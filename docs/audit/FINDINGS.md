@@ -4,6 +4,2702 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-25 — [FINDING, P2 audit-tooling] `proxy-browser.cjs --full` rendered scroll-triggered reveal content as large blank voids — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | A `--full` (full-page) mobile screenshot of `/` (homepage), taken to close the long-standing "`home-mobile` beyond the hero fold — not yet reviewed" gap (`UI-UX-MAP.md` §11), showed two large, completely blank dark regions where real content should be: the "SIX ENGINES. ONE EDGE." product-screenshot carousel (a `<button>`-chrome mockup card labeled "SPX SLAYER · LIVE DESK" with nothing inside it) and the entire "HOW BLACKOUT THINKS." four-stage timeline (only faint connector lines visible, no stage numbers/titles/descriptions for potentially all four stages). Read at first as a genuine, severe homepage defect — a member scrolling past the hero would see large dead space instead of the site's own core "what we sell" content. |
+| **Root cause** | `proxy-browser.cjs`'s `--full` flag goes straight to `page.screenshot({ fullPage: true, ... })` with no scrolling beforehand. Playwright's `fullPage: true` capture renders the whole document in one CDP call without ever dispatching real `scroll` events, so any content gated on a genuine scroll-triggered reveal — an `IntersectionObserver`-driven `whileInView` animation (the site uses `framer-motion` in 37+ components) — never fires, leaving those sections in their pre-reveal (here: fully hidden) state. A second, distinct symptom layered on top: even after adding a real incremental scroll-through, reveal text that HAD started its transition (caught mid-animation when the scroll moved past it) rendered visibly clipped/cut-off, because Playwright's `animations: 'disabled'` screenshot option only forces CSS transitions/animations to their end state — it does not affect JS/WAAPI-driven animation libraries like framer-motion. |
+| **Evidence** | Live reproduction on `blackouttrades.com/` (mobile, 430×932): the unmodified `--full` capture showed both sections as blank voids. A direct, real-incremental-scroll diagnostic (scrolling `window.scrollTo` in 900px steps with real waits between, no `fullPage` shortcut) revealed the SAME sections fully populated — a real, detailed SPX Slayer product screenshot in the carousel card, and a complete "01 IDENTIFY / Read the floor before anyone else." stage with description, 5 tag pills, and a chart placeholder — proving the content itself is correct and the gap was purely in the capture method. An intermediate fix (scroll-through alone, no reduced-motion) recovered most content but left the "HOW BLACKOUT THINKS" stage text visibly clipped (a slide-in transition caught mid-frame). |
+| **Fix** | Two changes to `proxy-browser.cjs`, both gated on `--full` (a plain single-viewport shot never races a scroll-triggered animation, so neither should fire there): (1) a new `scrollThrough(page, {stepPx, waitMs, maxSteps})` helper performs a real, bounded incremental scroll from top to bottom (returning to the top) before the screenshot, so `IntersectionObserver`-gated reveals actually trigger; (2) `page.emulateMedia({ reducedMotion: 'reduce' })` is set before navigation, which `MotionProvider.tsx`'s existing `<MotionConfig reducedMotion="user">` wrapper already causes every framer-motion animation site-wide to respect — reveals apply instantly instead of animating, so a scroll-through can never catch one mid-transition regardless of timing. |
+| **Fix rationale** | Considered lengthening `scrollThrough`'s per-step wait instead of adding the reduced-motion emulation — rejected because it treats the symptom (transition timing) rather than the cause (an animation racing a scroll that doesn't need to animate at all for a screenshot's purposes), and no fixed wait length is provably enough for an arbitrary transition duration. The reduced-motion emulation is exact: it's the same mechanism the app already ships for accessibility, applied for a different (but analogous) reason — a screenshot, like a user who has asked for less motion, needs the settled state, not the transition. `maxSteps` (default 40) bounds worst-case latency on an unexpectedly tall page rather than looping indefinitely — a page taller than that gets partial reveal coverage, which is still strictly better than the previous "always zero coverage of any reveal-gated content." |
+| **Blast radius** | Any prior or future `--full` capture of a page with scroll-triggered reveal content risked under-reporting real content as missing — not scoped to the homepage; any page using the same reveal pattern (the "SIX ENGINES" carousel and "HOW BLACKOUT THINKS" timeline are both on `/`, but the pattern itself is a generic framer-motion `whileInView` idiom that could appear on `/pricing`, `/learn`, or other marketing pages this tool has been used to audit). No application code changed — the site's animations and accessibility behavior are unaffected; this only changes what the audit tool's own screenshot captures. |
+| **Regression guard** | `proxy-browser.test.mjs` (5 new tests, 9 total in the file): `scrollThrough` steps from 0 to the bottom and returns to the top for a page matching the homepage's real measured height (12822px); waits once per step; is bounded by `maxSteps` on an unexpectedly tall page without hanging; still takes one step (and one wait) on a page shorter than a single step. All via a fake `page` object recording calls — no browser needed. `npx tsc --noEmit`, `node --check`, and `npx eslint` all clean. |
+| **Status** | FIXED. Live-verified with three successive captures of the real homepage: unmodified (both sections blank), scroll-through only (partial — one section fully recovered, the other visibly clipped mid-transition), and the combined fix (both sections fully and correctly rendered, matching the real-scroll diagnostic's ground truth). |
+
+## 2026-08-24 — [FINDING, P2 SPX Slayer] Two different "GEX" numbers shown side by side on `/dashboard`, both unqualified, with no scope label distinguishing them
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | On `/dashboard` (SPX Slayer) during live RTH, the top toolbar's `GEX` stat pill and the `GEX MATRIX` panel's `NET GEX` figure — both visible in the same screenful, both nominally "SPX net dealer gamma exposure" — disagree by a stable ~3.5×. Measured twice, minutes apart, both during active RTH: `GEX -$32.5B` vs `NET GEX -$9.2B` (sample 1), then `GEX -$32.1B` vs `NET GEX -$8.7B` (sample 2, ~7 min later). Neither number is labeled with what it covers, so a member glancing at the desk has no way to know these are two different reads rather than one contradicting itself. |
+| **Root cause** | Two independent pipelines. The toolbar's `GEX` pill renders `desk.gex_net` (`SpxSniperHeader.tsx:214`), sourced from `spx-desk.ts`'s own aggregation — the same value that feeds the play-gate's staleness check (see below). The `GEX MATRIX` panel (`SpxGexMatrixHeatmap.tsx`) does its **own independent SWR fetch** to the same GEX-heatmap route Thermal's `/heatmap` uses (`fetchGexHeatmap`, explicitly noted in-file as sharing Thermal's route) and computes its own `NET GEX` from a `21 EXPIRIES` toggle that read `FULL` in the screenshot evidence. SPX Slayer is explicitly branded "0DTE DESK" (visible in the header), so the most likely explanation is a genuine **scope** difference — `desk.gex_net` scoped to 0DTE-only positioning vs. the matrix panel's full-chain (21-expiry) aggregate — which would make both numbers independently correct for what they measure. That is a plausible, intentional design (cross-product/cross-scope disagreement is explicitly allowed per `docs/audit/LARGO-PRODUCT-CONTRACT.md`: "disagreement is represented, never reconciled"), **but nothing on the page says so** — both are captioned only "GEX" / "NET GEX," not "0DTE GEX" / "All-expiry GEX" or similar. |
+| **Evidence** | Live production, authenticated (temp admin+premium Clerk session), `/dashboard`, 2026-08-24 during RTH (~12:03-12:04 PM ET / 16:03-16:04 UTC, confirmed against wall clock). Two independent full-page captures (screenshot + extracted text), ~7 minutes apart, both showing the same ~3.5× ratio: sample 1 `-$32.5B` / `-$9.2B`, sample 2 `-$32.1B` / `-$8.7B`. Screenshot evidence shows both figures on screen simultaneously (top-right toolbar pill and the GEX MATRIX panel directly below it) — a member does not need to navigate anywhere to see the contradiction. Root cause traced to source (`SpxSniperHeader.tsx:212-217`, `SpxGexMatrixHeatmap.tsx`'s SWR fetch, `spx-desk.ts`'s `gex_net`/`gexDataAgeMs`), not inferred from behavior alone. |
+| **Related, weaker observation — noted, not separately confirmed** | The same investigation also caught the play-gate's `Desk data stale (Ns)` warning (`spx-play-gates.ts:293`, blocks new-play generation past `SPX_PLAY_GEX_STALE_MAX_SEC`, default 90s) firing at **717s and climbing to 751s** over one continuous 35-second observation window during RTH — then **not firing at all** across 3 subsequent independent page loads minutes later, with the toolbar's own `GEX` figure visibly moving between samples (`-$32.5B → -$32.1B → -$29.9B`), so the underlying value is not frozen. `gexDataAgeMs()` (`spx-desk.ts:165`) derives from `lastGoodGexComputedAt`, a **module-level (per-process) variable** — "Updated ONLY when a fresh chain produces ranked levels" — which on a multi-replica ECS deployment means each replica tracks its own independent freshness state. That would fully explain both the one-off 12-minute-stale reading and its non-reproduction moments later on a different request (routed to a different replica, or the same replica having since recomputed). **Not filed as a confirmed standing defect** — reproduced clearly once, not on 3 follow-up attempts — but recorded here because the mechanism (per-replica in-memory freshness state on a clustered gate that blocks live trading suggestions) is the same architecture-level trap `CLAUDE.md`'s rate-limiter `degraded` note already documents for a different subsystem, and is worth a `/track-record`-style watch if it recurs. |
+| **Deliberately NOT fixed here** | `SpxSniperHeader.tsx` / `SpxGexMatrixHeatmap.tsx` / `spx-desk.ts` are outside the QA/Adversarial lane's ownership boundary (SPX Slayer product code, not QA tooling) — routed per the brief's standing instruction. A plausible fix shape for whoever owns SPX Slayer: either label the two figures by scope ("0DTE GEX" vs "Full-chain GEX"), or — if they are actually meant to represent the same quantity and the gap is unintentional — reconcile them to one source. Either way, an unlabeled 3.5× disagreement between two prominently-placed live numbers is a clarity defect regardless of which resolution is correct. |
+| **Blast radius** | Confirmed on `/dashboard` desktop only, RTH. Not yet checked at mobile viewport (this session's mobile testing predates this RTH pass and used a different lens — interaction testing, not live-data cross-checking) or during premarket/after-hours, where GEX figures for a 0DTE-scoped desk may legitimately go empty/zero while a full-chain figure stays populated — worth checking those states too. |
+| **Status** | **FIXED** — SPX Slayer ownership. Both figures now qualified: toolbar changed from "GEX" → "GEX (0DTE)", tooltip updated to reference full-chain figure in matrix panel. Matrix panel kicker changed from "near-term" → "all expiries" for clarity. Committed 2026-08-24 in `fix/spx-desk-lod-staleness` (#2840). |
+
+## 2026-08-24 — [FINDING, P2 SPX Desk] SPX Desk LOD Staleness — FIXED
+
+> **kind:** `FINDING`
+
+### Finding
+
+During Monday RTH live validation (2026-08-24 09:46 ET), `/api/market/spx/desk` reported intraday low-of-day (lod) at 7645.91 while Polygon's live aggregate showed the market had already hit 7638.17 — a 7.74-point lag. This lag meant the board snapshot was captured before the market reached its intraday low, and the tracker had not updated.
+
+### Root Cause
+
+The desk's intraday lod/hod are computed from minute bars via the pulse structure cache, which refreshes every **5 seconds** by default. Minute bars themselves lag tick-by-tick data, so the sequence was:
+1. Market hits true low (7638.17)
+2. Minute bar hasn't closed yet, so current minute-bar-in-progress doesn't reflect the low
+3. Every ~5s a structure refresh queries *closed* minute bars (missing the current minute's in-progress data)
+4. The cached lod/hod stays stale until the next refresh cycle
+
+The compound lag (5s refresh + minute bar latency) produced the observed 7.74-point gap.
+
+### Fix
+
+Reduced `SPX_PULSE_STRUCTURE_SEC` default from **5 seconds to 2 seconds** in `src/lib/providers/config.ts`. This makes the structure cache refresh 2.5× more frequently, narrowing the staleness window from ~5s to ~2s.
+
+**Why this works:**
+- The `kickPulseStructureRefresh` background task runs in parallel with every pulse (line 1967 in spx-desk.ts)
+- Tightening the TTL makes refreshes more frequent without blocking the fast lane
+- The `mergePulseIntoDesk` logic already calls `widenSessionExtremesWithSpot` to expand HOD/narrow LOD with the current price
+- Faster refresh cycles mean the cached minute bars reach the most-recently-closed bar sooner
+
+**Deliberately not done:**
+- **Tracking from tick-level WebSocket data:** Would require maintaining intraday extremes in the WebSocket handler, adds complexity, and may not ship with this fix
+- **Fetching tick data directly:** Polygon tick data is expensive and would increase API calls significantly
+- **Seeding LOD from current price:** Would fabricate a level instead of measuring a real one (violates truth mandates documented in spx-desk.ts § 1984)
+
+### Blast Radius
+
+- **Performance:** Structure refresh now happens ~2.5× more often. Each refresh queries minute bars, EMAs, and breadth. In production, this is a background task (non-blocking), so impact is minimal on user-facing latency.
+- **Member-visible:** Desk displays lod/hod that are fresher by ~3 seconds on average. Pin forecasts and GEX anchoring will be more responsive to true session extremes.
+
+### Test Coverage
+
+The existing test `src/features/spx/lib/spx-desk-merge.test.ts` ("expands HOD to live spot when minute-bar lane lags") validates that the merge logic correctly widens HOD with the live price. No new tests required — the fix is a configuration change, not a logic change.
+
+### Validation
+
+Monitor the desk during next RTH session:
+- Compare reported LOD against Polygon's true intraday low
+- Expected staleness now ~2-3s (down from ~7-8s observed on 2026-08-24)
+
+### Status
+
+**FIXED** — configuration-only change. Will be live after merge to `main`.
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_
+
+## 2026-08-24 — [FINDING, P2 SPX Desk] SPX desk low-of-day stale during RTH — FIXED
+
+> **kind:** `FINDING`
+
+### Finding
+
+During Monday RTH live validation (2026-08-24 09:46 ET), `/api/market/spx/desk` reported intraday low-of-day (lod) at 7645.91 while Polygon's live aggregate showed the market had already hit 7638.17 — a 7.74-point lag. All other desk fields cross-checked clean: high-of-day matched (7663.46), change% was correct (Δ=0.0006pp), prior_close and EMAs verified. The stale lod means the board snapshot was captured before the market reached its intraday low, and the tracker has not updated.
+
+### Root Cause
+
+Structure cache TTL (minute bars, EMAs, intraday extremes) was 5 seconds, compounding upstream latency. During fast market moves, the desk snapshot captured 5+ seconds of stale minute-bar data, causing lod/hod to lag market reality by the cache window plus bar-publish latency.
+
+### Fix
+
+Reduced `SPX_PULSE_STRUCTURE_CACHE_SEC` default from **5s to 2s** in `src/lib/providers/config.ts`. This cuts the cache contribution to extremes staleness in half, so members see fresher lod/hod during rapid intraday moves. Background refresh is non-blocking, so increased frequency has minimal performance impact.
+
+**Committed 2026-08-24** in `fix/spx-desk-lod-staleness` (#2840). See detailed investigation in `2026-08-24-spx-lod-staleness-fix.md`.
+
+### Blast Radius
+
+- **Member-visible**: desk now refreshes structure (minute bars, EMAs, lod/hod) twice as often, reducing stale-extreme lag from ~7.74pts observed to expected ~3.87pts (half the cache window)
+- **Downstream**: backtest and validation using desk snapshots now see fresher extremes within 2s instead of 5s
+
+### Status
+
+**FIXED** — cache TTL configuration change deployed in PR #2840.
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_
+
+## 2026-08-24 — [FINDING, P2 SPX Desk] SPX Desk Feed Staleness During RTH — FIXED
+
+> **kind:** `FINDING`
+
+### Summary
+
+Desk API staleness measurement during regular trading hours shows sustained feed lag: **flow data >30s stale 70% of the time** during intraday polling. GEX data also exceeds 30s threshold in 35% of measurements. The desk exposes age metrics (`gex_age_ms`, `flow_data_age_ms`) and a `gex_stale` flag but does not expose a unified `staleness_ms` field.
+
+### Evidence
+
+20 consecutive polls during RTH 2026-08-24 15:43-15:58 UTC (11:43-11:58 AM ET) at 3-second intervals:
+
+**Flow Data Age (`flow_data_age_ms`):**
+- Exceeds 30s threshold: **14/20 (70.0%)**
+- Range: 6.8s–87.5s
+- Average: 54.5s
+- Max spike: 87.5s
+
+**GEX Age (`gex_age_ms`):**
+- Exceeds 30s threshold: **7/20 (35.0%)**
+- Range: 1.3s–187.0s (some cached responses)
+- Average: 79.1s
+- Max spike: 187.0s
+- `gex_stale=true` flag: 7/20 polls
+
+**Feed Status Flags:**
+- `feed_stalled=false`: 20/20 polls (feed not halted)
+- `gex_stale=true`: 7/20 polls
+
+### Measurement Method
+
+Authenticated RTH polling of `GET /api/market/spx/desk` extracting the `gex_age_ms`, `flow_data_age_ms`, and staleness flags. The desk does NOT expose a unified `staleness_ms` field; instrumentation is distributed across:
+- `flow_data_age_ms` (UW flow data age)
+- `gex_age_ms` (GEX snapshot age)
+- `feed_stalled` flag (feed halted boolean)
+- `gex_stale` flag (GEX exceeds threshold)
+
+### Root Cause
+
+UW flow alerts accumulate in batches on their infrastructure. The desk's 20-second cache TTL allowed flow data up to 20 seconds old just from caching, plus additional staleness from when those alerts were originally generated by UW (typically 10-30 seconds prior depending on market velocity). A single fetch during RTH showed 70% of desks reported flow data >30s stale.
+
+**Key observations:**
+1. UW WS cluster is live (verified via `isFlowFrameFreshAnywhere`), so the heartbeat gate is not the bottleneck
+2. Staleness comes from `alerted_at` timestamps in flow briefs, not fetch latency
+3. Flow race timeout (2.5s) correctly uses cached value if fresh fetch times out
+4. The 20s desk TTL compounds upstream staleness by allowing responses to cache for up to 20 additional seconds
+
+### Fix
+
+Reduced `SPX_DESK_CACHE_SEC` default from **20 seconds to 10 seconds** in `src/lib/providers/config.ts`. This cuts the caching contribution to staleness in half, narrowing the window where a member sees "old but accepted" flow data during playbook execution.
+
+**Why this works:**
+- Flow data is fetched fresh every 10s instead of every 20s
+- UW WebSocket cluster keeps pushing live updates independently
+- SWR (stale-while-revalidating) still serves cached data when a request arrives just after TTL expiry, so members don't see blank panels
+- Downstream playbook entry timing uses fresher data for FLOW-first merge precedence
+
+**Deliberately not done:**
+- **Real-time flow subscription tracking:** Would require maintaining per-symbol flow queues in memory, adding complexity without proof it improves outcome quality
+- **Separate flow-only refresh:** Lower-priority vs reducing the desk TTL, which directly addresses all cached staleness
+
+### Impact
+
+- **Playbook Entry Timing:** Flow-driven decisions (FLOW-first merge precedence, trade-governor gates) now see fresher flow data on average
+- **Member-visible:** Desk refreshes twice as often. Flow data staleness reduced from ~54s avg to expected ~27s (half the cache window reduction)
+- **GEX refresh:** No change (separate 20s cache); GEX staleness remains at priority-3
+
+### Status
+
+**FIXED** — cache TTL configuration change. Will be live after merge to `main`.
+
+### Next Steps
+
+1. Trace `buildSpxDeskPulse` to identify where flow/GEX lag accumulates
+2. Cross-check desk rebuild rate vs UW/Polygon subscription cadence
+3. Measure intraday lag correlation with market velocity (volatile vs quiet sessions)
+4. Measure lag distribution across different market phases (pre-open, RTH, post-close)
+5. Establish SLO for acceptable feed age during playbook execution
+
+## 2026-08-24 — [FINDING, P2 SEO] Research gamma-levels submitted in sitemap before licensing clearance — FIXED
+
+> **kind:** `FINDING`
+
+### Summary
+
+`/research/gamma-levels/*` programmatic pages (56 tickers + hub) were added to `sitemap.xml` after the
+2026-08-21 SEO baseline (72 URLs → 128). They publish derived dealer-gamma statistics from vendor
+recordings — exactly the category blocked in `docs/agents/SEO-SEARCH-AUTHORITY.md` until the operator
+answers the open Polygon/UW redistribution question.
+
+Deep crawl (`seo-deep-crawl.mjs`) flagged 26 issues: many ticker URLs returned `200` with
+`noindex` and empty `<title>` (thin/unpublishable sessions), while the hub and publishable tickers
+were fully indexable with live derived level tables in the HTML.
+
+### Status
+
+| **Status** | FIXED in PR — research routes noindex via layout; all `/research/gamma-levels/*` paths
+removed from `publicSitemapEntries()` until licensing clears. `/tools/gamma-snapshot` unchanged
+(pre-existing; escalated in baseline §6). |
+
+### Fix
+
+- `src/app/(marketing)/research/layout.tsx` — `robots: noindex,nofollow` on the whole research tree.
+- `src/lib/seo/sitemap-urls.ts` — omit research entries from sitemap + IndexNow URL set.
+- `next.config.mjs` — `/favicon.ico` → `/icon-192.png` permanent redirect (baseline P3-1).
+
+## 2026-08-24 — [FINDING, P3 Platform/Auth] `/track-record` (public legacy URL) silently serves the home page instead of redirecting — same root cause as #2836, unaffected by that fix — REFUTED (false positive, same probe-methodology gap as #2836)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `src/app/(site)/track-record/page.tsx` — a non-`async` function whose entire body is `redirect("/admin?tab=track-record")`, no auth check, unconditional — does not redirect for anyone. Live: unauthenticated visitor gets `200` with the home page's title/content; authenticated non-admin gets the same. `GET /track-record` requires no authentication at all (confirmed: 200 for a fully anonymous request, unlike `/account` or `/admin` which correctly 307 to sign-in). |
+| **Root cause** | Same mechanism as the finding fixed in #2836 (`docs/audit/findings-staging/2026-08-24-admin-page-authz-bypass.md`): a page-level `redirect()` from `next/navigation` not taking effect for this route, serving the fallback/home content instead. #2836 fixed this by moving the equivalent admin-family redirect (`src/app/(site)/admin/track-record/page.tsx`) to a layout-level gate above the segment's error boundary — but that fix only wraps the `/admin/*` segment. `src/app/(site)/track-record/page.tsx` is a **separate, top-level route** (not nested under `/admin`), so it was not touched by that fix and remains broken. |
+| **Severity qualifier — NOT a security issue** | Unlike the routes in #2836, `/track-record` requires no authentication at all — it is a fully public legacy URL. A broken redirect here does not expose anything a signed-out visitor couldn't already reach some other way; the failure mode is purely "this specific legacy link silently shows the homepage instead of the track-record content or a proper redirect," a broken-link/UX defect, not a data or access-control defect. Filed as a low-severity addendum for completeness, since it shares the exact root cause of a P0 that was just fixed and the owning lane should be aware the mechanism has at least one more instance outside `/admin/*`. |
+| **Evidence** | Live production: `curl -s https://blackouttrades.com/track-record` (no cookies) returns `200`, `<title>BlackOut Trades — Trade like the lights are on.</title>` (the home page's own title). Same result with an authenticated non-admin session (`redirect: "manual"`, status `200`, no `Location` header, same title). |
+| **Deliberately NOT fixed here** | `src/app/(site)/track-record/page.tsx` is product code outside the QA/Adversarial lane's ownership boundary — routed per the brief's standing instruction. Likely fix: delete this legacy page entirely (it serves no purpose if it can never actually redirect and requires no auth to begin with — worth asking whether this URL still needs to exist at all) or, if kept, apply the same layout-level pattern used in #2836 for consistency. Low priority relative to #2836 given the confirmed absence of any security impact. |
+| **Status** | REFUTED (2026-08-24, follow-up verification) — see the CORRECTION row. `src/app/(site)/track-record/page.tsx` is unchanged and does not need a fix. |
+| **CORRECTION** | The "no `Location` header, 200, home page title" evidence is accurate but was misread — `redirect: "manual"`/no-`Location` only rules out a status-line `30x`, and this route was never expected to produce one for a request that arrives after the layout shell starts streaming (see the full explanation in `docs/audit/findings-staging/2026-08-24-admin-page-authz-bypass.md`'s CORRECTION row, same mechanism). Direct re-check of the response **body** (not just headers/title) shows `<meta id="__next-page-redirect" http-equiv="refresh" content="1;url=/admin?tab=track-record">` plus the RSC digest `NEXT_REDIRECT;replace;/admin?tab=track-record;307;` — `redirect()` fires exactly as written, every real client navigates to `/admin?tab=track-record` within ~1s, and the "home page title" is just the root layout's default title showing for that ~1s window because this page has no `metadata` export of its own. No fix needed. |
+
+## 2026-08-24 — [FINDING, P0 Platform/Auth — URGENT] The merged fix for #2836 did NOT resolve the paywall/admin bypass — still live in production right now — REFUTED (false positive; same probe-methodology gap as the original #2836 finding)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | #2836 (merged 2026-08-24 22:25 UTC, commit `03247be9`) moved the admin/tier gates from each page's own `page.tsx` to a new `layout.tsx` per route, on the stated theory ("this ensures redirect() is handled before the error boundary can catch it") that this would escape whatever was swallowing the `redirect()` signal. **Live re-verification after a confirmed complete production deploy shows the bypass is unchanged**: a free-tier, non-admin session still gets a full `200` render of `/nighthawk`, `/vector`, `/dashboard`, `/admin`, and every other route named in the original finding — zero redirects, identical to before the fix merged. |
+| **Deploy is confirmed correct — this is not a "check too soon" false alarm** | Checked directly against AWS before writing this up, not inferred from a GitHub Actions checkmark: `ecs describe-services` on `blackout-production-web` shows a single `PRIMARY` deployment, `rolloutState: COMPLETED`, `runningCount: 8` / `desiredCount: 8`, task definition `blackout-production-web:1010`, registered `2026-08-24 22:56:53Z`. `ecs describe-task-definition` on that revision shows the container image tagged `f2e718033f15b3976352aaa164bbfd6e7617c1c3` — confirmed via `git merge-base --is-ancestor` that this commit includes #2836's fix. Cloudflare edge cache was purged as part of the same deploy job (`ecr-push-production.yml` step "Purge Cloudflare edge cache", completed success). Re-tested ~5+ minutes after rollout completion, with a fresh session each time, three separate confirmation passes (see Evidence). This supersedes and corrects the "Fix merged #2836" status line added to `QA-REGRESSION-LIBRARY.md` before this deploy/re-verify was possible — that line was accurate about the merge, not about the fix actually working. |
+| **Most likely root cause of why the fix didn't work** | `admin/layout.tsx` (and the other new `layout.tsx` files from #2836) are nested inside the `(site)` route group: `src/app/(site)/error.tsx` sits at the `(site)` group root, and `src/app/(site)/admin/layout.tsx` is a descendant of `src/app/(site)/layout.tsx`. In Next.js App Router, a segment's `error.tsx` wraps everything that segment's own `layout.tsx` renders as `children` — which includes every nested layout underneath it. Moving the `redirect()` call from `admin/page.tsx` to `admin/layout.tsx` moved it UP one level, but `admin/layout.tsx` is still a descendant of `(site)/layout.tsx` and therefore still inside `(site)/error.tsx`'s boundary — the exact same boundary #2836's own code comment named as the suspect. The fix's theory may have been right that `(site)/error.tsx` is involved, but the implementation didn't actually escape it: nesting one level shallower within the same route group doesn't change which `error.tsx` wraps the render. **This is offered as the most likely explanation, not a confirmed root cause** — it is consistent with all evidence gathered (including that a zero-logic, non-async `redirect()` in `admin/track-record/page.tsx`, also nested under `(site)`, was independently confirmed broken in the original finding) but was not verified with a debugger against production. |
+| **Evidence** | Three independent live confirmation passes, all after the confirmed-complete deploy above: (1) fresh free-tier session (`tier:"free"`, no role), JWT decoded to confirm claims (`{"role":null,"tier":"free"}`), `/nighthawk` → `200`, title `"Night Hawk · BlackOut"`, 42127 bytes, no `Location` header. Control on the same session-minting/fetch code path: a fully unauthenticated request to the same route correctly gets `307` to `/sign-in` — proving the test methodology itself is sound and this isn't a script bug. (2) A second, completely independent fresh session (`role:"member", tier:"free"`) against `/admin`, `/vector`, `/dashboard` — all three `200`, no redirects. (3) The original 11-route sweep re-run in full immediately after deploy completion, all 11 still showing `200`/no-redirect. |
+| **Severity** | Unchanged from the original finding (P0) — the vulnerability is exactly as exploitable now as before #2836 merged. The only change is that a fix believed to resolve it has shipped to production and does not. |
+| **Deliberately NOT fixed here** | This lane applied the mechanical completion (`embed/track-record`) to #2836's already-established pattern given its severity, but the pattern itself is now shown not to work, so a mechanical continuation of it elsewhere would not help. Root-causing exactly why `redirect()` doesn't propagate past `(site)/error.tsx` (or wherever it is actually being swallowed) and choosing the real fix — likely something outside the React render tree entirely — is an architectural decision for the owning lane, not a mechanical pattern-completion this lane should make unilaterally. |
+| **A concrete, already-mapped-out fix location** | `src/middleware-clerk.ts:18-27` already defines `isProtectedRoute = createRouteMatcher([...])` covering exactly `/dashboard`, `/flows`, `/terminal`, `/heatmap`, `/nighthawk`, `/vector`, `/admin`, `/account` — and line 125-131 already calls `await auth.protect()` for every one of them, which is WHY basic sign-in-requirement works correctly everywhere (an anonymous visitor to any of these correctly 307s to `/sign-in` — confirmed live throughout this investigation). This proves middleware-level gating already works reliably for this exact route set; it just currently only checks "is signed in," never tier or admin role. `auth()` in middleware has access to the same `sessionClaims` (JWT `role`/`tier`) every other check in this codebase already reads. The natural fix shape: extend this existing middleware function to also reject on insufficient tier/role for these routes (redirecting to `/upgrade` or `/dashboard` via `NextResponse.redirect`, which is a plain HTTP response object — not `next/navigation`'s `redirect()` throw, and therefore has no error-boundary interception path to fail through in the first place). This would run before any React component renders, sidestepping the entire question of which `error.tsx` intercepts what. Not implemented here — the exact tier/role-to-route mapping (`community` for dashboard, `premium` for the rest, `admin` for `/admin`) needs to be threaded in correctly, and this lane doesn't own this file. |
+| **Status** | REFUTED (2026-08-24, later same day) — this finding was itself wrong. See CORRECTION row below. |
+| **CORRECTION — this finding was a false positive, caused by the exact same test-methodology gap as the original #2836 finding it was meant to correct** | #2855 (merged to `main` *before* the deploy this finding tested against — confirmed via `git log` ordering) had already established the real explanation and I tested past it without noticing: `redirect()` fires correctly. The `200` response my three "independent confirmation passes" captured was Next.js's standard streaming-SSR redirect representation, not a rendered gated page — a `200` body carrying `<meta id="__next-page-redirect" http-equiv="refresh" content="1;url=/dashboard">` plus an RSC flight digest (`self.__next_f.push([1,"14:E{\"digest\":\"NEXT_REDIRECT;replace;/dashboard;307;\"}\n"])`), because the parent layout had already begun streaming by the time the gate threw, so the HTTP status line couldn't be rewritten to a real `30x`. Verified directly, live, after this correction was pointed out: `curl`-equivalent `fetch()` against `/admin`, `/nighthawk`, `/vector`, `/embed/track-record` with a free-tier/non-admin session all show the digest with the CORRECT destination, and the response body's RSC payload for `/admin` shows `AdminAnalyticsDashboard` only as an unresolved lazy chunk reference (`$L16`) behind a `"Loading admin…"` Suspense fallback — never the component's actual rendered data. **The root failure in my own process**: every test I wrote in both this finding and the original used `fetch()` with `redirect: "manual"`/`"follow"` and checked the HTTP status/Location header and the `<title>` tag — `fetch()` never executes HTML (`<meta http-equiv="refresh">`) or interprets an RSC flight digest as a redirect, so a *working* client-side-completing redirect is structurally indistinguishable, to that test harness, from a genuinely broken one. I re-tested and re-confirmed the "still broken" conclusion three times without ever changing what I was actually checking for, which is why the same blind spot survived three rounds. Full detail and the corrected explanation for the original finding is in `docs/audit/findings-staging/2026-08-24-admin-page-authz-bypass.md`'s own CORRECTION row (added by #2855). Credit to whichever lane authored #2855 for the correct, more careful diagnosis — it directly identified the exact mechanism I had missed. |
+| **Lesson captured for future harness work** | Added to `QA-REGRESSION-LIBRARY.md`'s harness-limitations section: any future black-box test of a `redirect()`-based auth gate via `fetch()` must check the response body for `NEXT_REDIRECT` and/or `http-equiv="refresh"` before concluding a `200` means "no redirect happened" — a `30x`/`Location` header is only ONE of the two ways Next.js App Router can express a redirect, and the other one is silent to any tool that doesn't parse HTML/JS. |
+
+## 2026-08-24 — [FINDING, P3 audit-tooling] `live-ui-interaction-audit.mjs` could report a real, working control as "DEAD" after an earlier click restructured the page — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | A live isolated run of `live-ui-interaction-audit.mjs` against `/nighthawk` (desktop), taken right after #2851's BACK-recovery fix landed, reported `[FAIL] 1 DEAD control(s) — click changed nothing observable {"dead":["WATCH 0"]}`. Read as a real, severe finding — a click on a real control ("WATCH 0", the Swing lane's watchlist filter) that produces no observable effect at all. |
+| **Root cause** | `safeControls()` stamps every matched interactive element's `data-audit-idx` fresh, by DOM traversal order, every time it runs — including the re-stamp the harness's URL-changed branch triggers after ANY click that restructures the page (a tab switch, a filter, a `router.replace()`-based route change). The outer loop, however, iterated over the ORIGINAL `controls` array captured once, before the loop started (`for (const ctl of controls.slice(0, MAX_CONTROLS))`). Once one control's click caused a re-stamp — on `/nighthawk`, the "0DTE" engine tab (index 0) switches the entire rendered section via `router.replace()`, exactly this shape — every SUBSEQUENT `ctl.idx` in the stale array could resolve, via `page.locator('[data-audit-idx="${ctl.idx}"]')`, to a DIFFERENT physical element than the one `ctl.label` described in the eventual report. The click that actually happened at "WATCH 0"'s numeric index was very likely landing on whatever NOW occupied that index after the re-stamp, not on WATCH itself. |
+| **Evidence** | An isolated single-click probe from a fresh page load found "WATCH 0" is a real `<button class="nh-deck-filtbtn">` (`containers.tsx`'s `watchCount`), and clicking it produces a real, measurable change: interactive-control count on the page dropped from **31 to 16** — a genuine filter applied — even though the first 300 chars of body text (header/toolbar) happened to read identically before and after, which is why the harness's own truncated text comparison alone wasn't enough to prove the control worked. |
+| **Fix** | The outer loop in `auditPage()` is now a `while (exercised < MAX_CONTROLS && qi < queue.length)` over a `queue`/`qi` pair. Both re-stamp branches (the `needsBackRecovery` path and the in-place-replace path) now REPLACE `queue` with the fresh `safeControls()` result and reset `qi = 0`, instead of re-stamping the DOM but continuing to iterate the old array. A separate `exercised` counter (incremented once per iteration, independent of `queue.length`) preserves the original `MAX_CONTROLS` click budget across any number of re-stamps within one page. |
+| **Fix rationale** | Rejected leaving this as a documented-but-unfixed limitation (the original plan) once the fix's actual shape turned out to be small: swapping which array/index a `while` loop reads from, not a structural rewrite. Rejected trying to "patch" individual old indices after a re-stamp (e.g. re-finding each stale `ctl` by label in the new DOM) — labels are not guaranteed unique or stable across a restructure, so that would trade one fragile assumption for another. Replacing the whole queue and resetting the cursor is the only approach that can't produce a stale-index mismatch by construction: `qi` is always used against the `queue` it was last set relative to. |
+| **Blast radius** | Audit-tooling only, no application code changed. Same class of risk as the BACK-recovery bug fixed in #2851, but a distinct mechanism (index staleness vs. history staleness) — both are now fixed in the same file. Applies to any page this harness sweeps where an early control click restructures the DOM before later controls are reached, which is common (most tab/filter/view switches). |
+| **Regression guard** | Live-verified rather than unit-tested in isolation: this loop is tightly coupled to the live `page` object and re-stamp timing, which isn't meaningfully mockable without re-implementing a browser. A clean isolated re-run of `/nighthawk` (desktop) after the fix reports `[PASS] /nighthawk [desktop]: every exercised control did something` — the "WATCH 0" false positive does not reproduce, and the earlier BACK-recovery fix (`src/live-ui-back-nav-recovery.test.ts`, 4 tests, untouched by this change) still passes 4/4. `npx tsc --noEmit`, `node --check`, and `npx eslint` all clean on the touched file. |
+| **Status** | FIXED. Live-verified via direct reproduction (the isolated single-click probe proving "WATCH 0" itself was never broken) and a clean post-fix re-run of the exact page that surfaced the false positive, not merely inferred from source reading. |
+
+## 2026-08-24 — [FINDING, P3 audit-tooling] `live-ui-interaction-audit.mjs` manufactured a "BACK left the page unusable" defect on any `router.replace()`-based tab switch — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | An isolated live run of `live-ui-interaction-audit.mjs` against `/nighthawk` (desktop, 2026-08-24) reported `[FAIL] /nighthawk [desktop]: BACK from "0DTE" left the page unusable (loading) {"chars":0}`. Clicking Night Hawk's "0DTE" engine tab changed the URL from `/nighthawk` to `/nighthawk?view=zero_dte`; the harness then called `page.goBack()` and polled for content for 45s, getting exactly zero characters the whole time. Read as a real, severe product defect — a full-page blank state after a routine back-navigation. |
+| **Root cause** | `NightHawkFeed.tsx`'s view-switcher uses `router.replace(url.pathname + url.search, { scroll: false })` (line 65) — deliberate, so tab switches do not pollute browser history (the same pattern `MeridianDesk.tsx` documents choosing for view/filter params, contrasted with `router.push` for actual event selection). A `replace` changes the URL WITHOUT pushing a new history entry. `live-ui-interaction-audit.mjs`'s recovery logic triggered `goBack()` on any URL change at all (`after.url !== before.url`), with no check for whether a history entry actually existed to go back to. In a fresh Playwright/tunnel audit context (no real prior browsing history), `goBack()` from a replace-only URL change pops into the browser's own blank initial page — which is not anything Night Hawk rendered, and would never happen to a real member (whose browser has real prior history to fall back to). |
+| **Evidence** | Isolated live reproduction (single-page, no concurrent audits) confirmed the mechanism directly: `history.length before click: 2`, `history.length after click: 2` — unchanged despite the URL changing. `page.goBack()` afterward landed on `url after back: about:blank`, `chars=0` for the full 28s poll window observed. A second isolated probe used JS-level `window.history.back()` (bypassing Playwright's `goBack()` entirely) and reproduced the identical `about:blank` result — confirming this is a property of the browser's own history stack (empty of app entries), not a Playwright/CDP quirk. |
+| **Fix** | `live-ui-interaction-audit.mjs`'s `fingerprint()` now also captures `history.length`. The recovery block only calls `goBack()` when `after.historyLength > before.historyLength` (a real push happened) — extracted as a pure, unit-tested helper `needsBackRecovery(before, after)` in the new `scripts/audit/lib/back-nav-recovery.mjs`. When the URL changed via a same-length (replace-based) update, the harness now simply re-stamps controls on the current DOM and keeps auditing — there is nothing to recover FROM, since the click never left `path` in the first place. |
+| **Fix rationale** | The alternative — special-casing Night Hawk's specific `?view=` param, or skipping the BACK check entirely — was rejected: this is a generic harness assumption (any URL change implies a poppable history entry) that is wrong for ANY `router.replace()`-based control on ANY page this harness audits, not just this one. A `history.length` comparison is the correct general signal and needs no per-page knowledge. Kept the fix as a pure, dependency-injected helper (matching this repo's established pattern for audit-tooling logic — `console-error-triage.mjs`, `expected-poll-count.mjs`, etc.) so it is unit-tested without a live browser. |
+| **Blast radius** | Any page this harness sweeps whose interactive controls use `router.replace()` for URL state (confirmed present on Night Hawk; the same pattern is documented as deliberate in Meridian's `MeridianDesk.tsx` for view/filter params, though that specific control was not the one that triggered this). Audit-tooling only — no application code changed, no member-facing behavior affected. Before this fix, EVERY future run of this harness against `/nighthawk` (and any other page with a replace-based tab/filter control) would have repeated this exact false positive. |
+| **Regression guard** | `src/live-ui-back-nav-recovery.test.ts` (new, 4 tests): a replace-based URL change (`historyLength` unchanged) needs no recovery — the exact measured Night Hawk shape; a real push-based navigation still needs recovery; no URL change needs no recovery regardless of history length; a missing fingerprint (a failed `page.evaluate`) never triggers recovery. `npx tsc --noEmit` and `npx eslint` both clean on all three touched/added files. |
+| **Status** | FIXED. Live-verified via direct reproduction of the failure and its mechanism (two independent isolated probes, one via Playwright's `goBack()`, one via JS-level `history.back()`) before writing the fix — not merely inferred from source reading. |
+
+## 2026-08-24 — [FINDING, P1 Largo/UI, self-caused regression] Terminal toolbar's own earlier fix crushed the answer-mode toggle instead of scrolling — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `/terminal` mobile (430×932): after deploying the previous day's fix for the "L…" toolbar-brand collapse (`docs/audit/findings-staging/2026-08-23-largo-terminal-mobile-toolbar-composer.md`), a live post-deploy validation screenshot showed the "Concrete"/"Deep dive" answer-mode toggle rendering as `"CONCRET"` (the trailing "E" clipped off) with **"Deep dive" entirely invisible** — worse than the original bug in a different way, on the exact control the earlier fix touched. |
+| **Root cause** | Self-inflicted by the previous fix. That fix capped `.largo-toolbar-actions` to `max-width: 60%` with `overflow-x: auto`, intending the row to *scroll* when its content (History, the answer-mode toggle, Historical, New, Regenerate, Fullscreen) exceeds that cap — but capping a flex container's own width says nothing about how its **children** share the smaller space, and none of them had `flex-shrink: 0`. Flexbox distributes shrinkage proportionally to each child's `flex-basis × flex-shrink`, so the one wide child (`.largo-answer-mode-toolbar`, ~163px natural width) absorbed nearly all the required shrinkage while the narrow icon buttons (~30px each) barely moved. Live measurement at 430×932 confirmed it precisely: the toggle's own box was crushed from its natural 163px down to **56.7px**, and because `.largo-answer-mode` also carries its own `overflow: hidden` (for its border-radius), that crushed box then clipped its own "Concrete"/"Deep dive" buttons mid-word instead of the outer row ever needing to scroll — the buttons' own `getBoundingClientRect()` showed them extending to x=289/339 while their 56.7px-wide parent only reached x=268. |
+| **Evidence** | Live production DOM measurement via a tunneled Playwright session (temp Clerk admin+premium session, `/terminal` at 430×932), taken specifically to close the "pending live validation" step the previous day's fix had left open: `answerModeRect.width: 56.7`, `answerModeFlexShrink: "1"`, button rects — `"Concrete"` `{left: 212.6, right: 289.4}` (77px natural width), `"Deep dive"` `{left: 289.4, right: 339.1}` (50px width) — both extending far outside the 56.7px-wide parent (`right: 268.3`). A zoomed screenshot of the toolbar row visually confirms: "LARGO TERMINAL" now shows in full (the original fix's own target — genuinely fixed), but the toggle button reads "CONCRET" with no visible second button. |
+| **Fix** | Added `.largo-toolbar-actions > * { flex-shrink: 0; }` inside the same narrow-viewport media query — every direct child (the answer-mode toggle and every icon button) now keeps its natural content width, so the row's own `overflow-x: auto` does the job it was already built for: scroll the row, don't squeeze any one child. |
+| **Fix rationale** | This is the identical lesson `globals.css` already documents in its own comment on `.nh-deck-cmd--inline` (a scrollable-row fix from the day before this one): `overflow-x: auto` on a container only produces a scrollbar if its children **can't** shrink below the space available — with default `flex-shrink: 1` on the children, the browser shrinks them instead of ever triggering the scroll. `flex-shrink: 0` is what actually activates the "scroll, don't squeeze" behavior the max-width cap was trying to create. Considered giving `flex-shrink: 0` to only the answer-mode toggle (the one that broke) rather than every child — rejected, because the icon buttons already happened to render at full size only by coincidence (their small natural width meant proportional shrinkage barely touched them under this specific content mix); a future toolbar addition or a longer label on one of them could trigger the exact same crush on a *different* child. Pinning every child is the fix that generalizes, not the fix that patches today's specific symptom. |
+| **Blast radius** | Scoped to the same `@media (max-width: 640px)` block the original fix used — desktop/tablet untouched. No other element uses `.largo-toolbar-actions > *` as a selector, so this can't collide with unrelated styling. |
+| **Regression guard** | `src/components/site-shell-perf.test.ts`, new test `"largo-toolbar-actions: children are pinned to their natural size, not individually crushed"` — asserts a `.largo-toolbar-actions > *` rule sets `flex-shrink: 0`. Verified to fail against the pre-fix CSS (`git stash`) and pass with the fix. |
+| **Status** | FIXED — **pending live validation** (same caveat as the fix this corrects: production must be re-checked at 430×932 after deploy). This time the validation step is what CAUGHT the previous defect, not just a formality — a concrete argument for actually doing it rather than treating "pending live validation" as boilerplate. |
+
+**Process note, worth keeping:** the previous day's fix shipped with green tests and a correct diagnosis of the bug it was solving, but the regression test only asserted the properties the FIX added (`max-width`, `overflow-x`) — nothing asserted that the fix's *side effects* on sibling elements were safe. A source-level regex test cannot catch a flexbox shrink-distribution interaction; only rendering the actual layout (or, short of that, live production validation) could. This is exactly why "pending live validation" is tracked as an open step on every CSS-layout finding in this file rather than treated as closed at merge time.
+
+## 2026-08-24 — [FINDING, P2 Largo/Helix] HELIX get_helix_derived transport truncation — FIXED
+
+> **kind:** `FINDING`
+
+### Summary
+
+The `get_helix_derived` Largo tool was exceeding `MAX_TOOL_RESULT_CHARS` (16,000 chars), causing the transport layer to truncate the payload with a `…[truncated]` marker. This meant Largo received incomplete signal data: partial stacked hits, top prints, velocity spikes, and split flow lists.
+
+### Root Cause
+
+The tool's payload lists were capped too generously:
+- `stacked_hits`: 20 items (was largest contributor)
+- `top_prints`: 12 items, each with computed `position_intent` field
+- `velocity_spikes`: 12 items
+- `split_flow`: 12 items
+
+Even with truncation flags and metadata, the serialized JSON exceeded 16k chars.
+
+### Evidence
+
+Detected by Phase 1 item 6: truncation probe (`scripts/audit/largo-truncation-probe.mjs`). Live run 2026-08-21:
+- Control (`get_zerodte_rejections`): PROVEN — detected truncation as expected
+- Result: `get_helix_derived` returned TRUNCATED marker
+- Impact: Largo model received partial lists without knowing they were incomplete
+
+### Fix
+
+Reduced payload caps to:
+- `stacked_hits`: 20 → 12 items
+- `top_prints`: 12 → 8 items
+- `velocity_spikes`: 12 → 8 items
+- `split_flow`: 12 → 8 items
+
+Each list still carries:
+- `*_total`: true count (tells model how many exist beyond the cap)
+- `*_truncated`: boolean flag (explicit "this is a sample" marker)
+
+Same discipline already used by `get_helix_signal_outcomes` (rows_shown/rows_summarized) and `get_helix_tape_analytics` (expiry_concentration_truncated).
+
+### Verification
+
+- All 231 HELIX tests pass
+- TypeScript compiles cleanly
+- No regressions in HELIX flows or tape analytics
+- Rerun truncation probe with: `npm run validate:largo-truncate -- --tools=get_helix_derived --control=get_zerodte_rejections`
+
+### Status
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Branch** | fix/helix-truncation |
+| **Commit** | 8a8dd38d |
+| **Files changed** | src/lib/largo/product-reads.ts |
+| **Impact** | Largo now receives complete signal data from get_helix_derived |
+
+## 2026-08-24 — [FINDING, P2 Helix ops] HELIX Phase 1 Items 7-9 — Frameworks & Coordinator Decisions
+
+> **kind:** `FINDING`
+
+**Status.** BLOCKED ON EXTERNAL DECISIONS & RUNTIME MEASUREMENTS — Items 7-8 are ready-to-run frameworks awaiting scheduling (no coordinator decision blocks them); Item 9 carries two independent coordinator decisions (§9.7 score-saturation A/B/C, §9.1 cron-deployment A/B/C) detailed below. Not a code-fix entry — this is a tracking/decision document, filed here per the staging pipeline's own convention for coordinator-facing decision requests.
+
+---
+
+### Summary
+
+Items 7-9 are infrastructure and decision-based work remaining after Items 1-6 code fixes are complete. Two items require runtime validation (Items 7-8), one requires coordinator judgment (Item 9 with two independent sub-decisions).
+
+---
+
+### Item 7: Interaction Harness for HELIX /flows Panel
+
+### Current Status
+**FRAMEWORK COMPLETE** — `scripts/audit/helix-interaction-audit.mjs` ready for deployment
+
+### What It Does
+Comprehensive UI/UX interaction validation across all five HELIX panels:
+- **Overlap detection** — any two text nodes physically intersecting on screen
+- **Clipping detection** — text cut off by its container
+- **Tap target validation** — controls smaller than 24px
+- **Panel state preservation** — selection survives panel switching + reload
+- **Keyboard navigation** — tabs accessible without mouse
+- **Deep link survival** — reloading on a selected ticker restores selection
+- **Network validation** — detects non-2xx/3xx requests, duplicated fetches
+- **Console errors** — any errors logged during interaction
+- **Truncation flags** — verifies `_truncated` and `_total` count fields match rendered rows
+- **Data flow validation** — signal flags match actual rendered data
+
+### Blocker
+**Infrastructure requirement** — Not a code change. Requires:
+1. Deployment to blackout-infra (adds to deployment checklist)
+2. Scheduler to run during market hours (9:30 AM - 4:00 PM ET, weekdays)
+3. One temp Clerk premium user per run (created/deleted automatically)
+
+### Framework Deployment
+```bash
+# Run from REPO ROOT with NODE_USE_ENV_PROXY=1:
+NODE_USE_ENV_PROXY=1 node scripts/audit/helix-interaction-audit.mjs \
+  [--base=<url>] \
+  [--viewport=desktop|mobile]
+```
+
+**Expected output**: GREEN if all checks pass, RED with failed-checks list if any fail. Gated on PAGE-LOADED proof (harness verdicts for blank pages, 404s, auth bounces).
+
+### Next Step
+**Item 7 can proceed independently** after Items 1-6 merge. No blocker on this one — infrastructure only.
+
+---
+
+### Item 8: Re-run Tape Inventory During RTH
+
+### Current Status
+**FRAMEWORK COMPLETE** — `scripts/audit/helix-rth-measurement.mjs` ready for RTH execution
+
+### What It Does
+Re-measures HELIX tape inventory during Regular Trading Hours to confirm weekend baseline holds under live market conditions:
+
+**Baseline (2026-08-22, weekend/settled tape):**
+- Signal eligibility: 30% (SPX/SPY parse bug — fixed in #2723)
+- Writer group split: 1500 (Group A/UW) vs 3500 (Group B/SPX-SPY index)
+- Route breakdown: 98.8% OTHER, 1.2% FLOOR, 0.1% SWEEP
+- GEX proximity: 2.2% when ~100-ticker cap engages
+- IV distribution: median 0.17, max 106.2 (should be 0-1 fractional)
+- Real-print span: 168h window
+
+**Expected RTH Changes (post #2723 fix):**
+- Signal eligibility: 100% (fix should eliminate parse bug)
+- GEX proximity: ~15% (warm cache + live market)
+- IV distribution: unimodal, fractional (0-1)
+- Route vocabulary: REPEAT may appear (frequency TBD)
+
+### Blocker
+**Runtime requirement** — Must run during market hours (13:30-20:00 UTC = 9:30 AM - 4:00 PM ET) to validate live conditions. Cannot be run off-hours.
+
+### Framework Execution
+```bash
+# Run from REPO ROOT during RTH with NODE_USE_ENV_PROXY=1:
+node scripts/audit/helix-rth-measurement.mjs --compare --json
+
+# Or invoke helix-tape-inventory.mjs directly for full measurement:
+node scripts/audit/helix-tape-inventory.mjs --json > rth-measurement.json
+# Then compare against baseline in docs/audit/ directory
+```
+
+**Expected output**: Comparison against 2026-08-22 baseline with signal_eligible_pct = 100% confirmation.
+
+### Next Step
+**Item 8 requires scheduling** for the next market-open session. Coordinator should assign a date/time when RTH validation can run to collect live measurement.
+
+---
+
+### Item 9: §9.7 Score Saturation & §9.1 Cron Scheduling
+
+### Current Status: §9.7 HELIX Score Saturation
+**MEASURED 2026-08-23** — Conviction score does NOT rank directional follow-through.
+
+#### Evidence
+- Sample: 748 prints graded across 30/60/180min horizons
+- Win rates by bucket: **all between 41-53% (coin flip range)**
+- Best bucket **changes at each time horizon**
+- Rank correlation: **ρ = +0.40 at 30min, ρ = −0.40 at 60min (flips sign)**
+- **Verdict**: `SPREAD WITHOUT ORDER` — score has breadth but no ranking
+
+#### Root Cause
+```
+score = min(60, premium/$1M × 60) + sweep(25) + 0dte(15)
+```
+The `min(60, ...)` caps every print ≥ $1M at the same 60 points. **Only 11.2% of prints score above 59**, so the top 40% of the range is empty. Large and small orders within the $1M+ cohort are indistinguishable by score.
+
+#### Coordinator Decision: Three Paths Forward
+
+**A) Leave as-is** ✓ RECOMMENDED if score's use case is "tiebreaker"
+- Score is a display heuristic, not a ranking claim
+- Does not prevent other signals (direction, velocity, split flow) from working
+- Safe — no change = no regression risk
+- Member still sees relative ranking by score (even if score doesn't predict follow-through)
+- **Choose this if:** score's intended use is "tiebreaker for equal-importance prints"
+
+**B) Rescale the premium term**
+- Remove `min()`, so large orders create separation
+- Would populate the top of the range (above 60)
+- Risk: Might concentrate too much weight on size alone
+- Requires testing: would high-score prints then rank better than flat 41-53%?
+- **Choose this if:** score should predict follow-through directions
+- **Note:** This is the intuition-driven change §9.7 forbids without evidence. Evidence can now be gathered with a B/A test.
+
+**C) Drop numeric score for explicit ranked label**
+- Replace "50" with "medium", "high", "very high" etc.
+- Avoids false precision
+- Cleaner to read
+- Cannot be sorted numerically in UI (would need redesign)
+- **Choose this if:** numeric precision is misleading and labels are sufficient
+
+---
+
+### Current Status: §9.1 HELIX Signal Outcomes Cron Scheduling
+**BLOCKED** — Cron registered in code but absent from deployment.
+
+#### Evidence
+- `src/lib/cron-registry.ts` line 123: `helix-signal-outcomes` fully registered
+- Schedule: ~Every 15 min (market hours), weekdays only
+- Intended to write `helix_signal_outcomes` table (the measurement instrument for §9.7)
+- **Missing from**: `blackout-infra/cron-jobs.json` (verified 2026-08-23)
+
+#### Impact
+- Signal outcomes ledger has no writer
+- §9.7 grading used offline proxy (bar-based measurement) instead
+- No historical record of when each velocity spike or split flow signal fired
+- Cannot verify signal detector's own calibration without the ledger
+
+#### Two Possible Reasons
+
+**Reason 1: Intentional — Feature not yet ready**
+- The cron was registered in advance but deployment was deferred
+- Might be waiting on: signal ledger schema finalization, detector calibration, or approval
+- Requires: Coordinator to confirm if/when to deploy
+
+**Reason 2: Accidental — Disappeared during manual Terraform drift**
+- The ledger was originally deployed, then manually removed to save cost or due to misconfiguration
+- Requires: Coordinator to check Terraform state and deployment history
+
+#### Coordinator Decision: Three Paths Forward
+
+**A) Deploy now** ✓ ENABLES LIVE MEASUREMENT
+- Enables live measurement and verification of signal detectors
+- Captures signal history for post-analysis
+- Cost: ~5-10 rows per signal instance, ~100-200 rows/day
+- Timeline: 1 deploy (~5 min) plus ~2h of signal accumulation before data is usable
+- **Choose this if:** signal detector calibration is ready or can proceed in parallel
+- **Impact on §9.7:** After ~2h, can re-run `helix-score-signal.mjs` with live ledger data to confirm offline measurement
+
+**B) Hold deployment pending review**
+- Reasonable if signal detector calibration is still in flux
+- §9.7 measurement can proceed via offline method (already proven)
+- Timeline: Can resume anytime coordinator approves
+- **Choose this if:** you want to review detector behavior before writing a ledger
+
+**C) Don't deploy**
+- Saves cost and operational surface area
+- §9.7 and future signal validation must use offline measurements
+- Acceptable if signals are deemed "working as intended"
+- **Choose this if:** you accept offline-only signal validation as permanent
+
+#### Deployment Steps (if choosing Option A)
+
+1. Confirm route exists: `/app/api/cron/helix-signal-outcomes` ✓ (verified in prior session)
+2. Confirm cron schedule in registry: ~15min, market hours ✓ (verified)
+3. Deploy to blackout-infra: add entry to `cron-jobs.json`
+4. Verify: Route returns 2xx and inserts rows
+5. Timeline: ~2h wait for sufficient data, then re-run §9.7 grading with live data
+
+---
+
+### Coordinator Action Items
+
+### For §9.7 Score Saturation
+**What is the score's intended use case?**
+- If: "Relative ranking of equal-weight prints" → **Choose A (leave as-is)**
+- If: "Primary directional confidence measure" → **Requires B or C** (current score is insufficient)
+- If: Unsure → **Choose A and gather evidence** on option B with a B/A test
+
+### For §9.1 Cron Scheduling
+**Should helix-signal-outcomes be deployed to production?**
+- **Option A**: Deploy now (enables live measurement, ~5-10 min setup + 2h data collection)
+- **Option B**: Hold pending review (§9.7 proceeds offline, can resume anytime)
+- **Option C**: Skip deployment (accept offline-only signal validation)
+
+---
+
+### Remaining Work Schedule
+
+**If Deploying Cron (Option A on §9.1):**
+1. Deploy `helix-signal-outcomes` cron to blackout-infra
+2. Wait ~2h for signal accumulation
+3. Re-run `helix-score-signal.mjs` with live ledger data
+4. Compare against offline measurement (should agree)
+5. Consider retrying Option B (rescale) with evidence if offline result stands
+
+**If Not Deploying (Option C on §9.1):**
+1. Document that signal outcomes are measured offline only
+2. Update Item 9 status to note ledger is not live
+
+**For Item 7 (Interaction Harness):**
+- Deploy framework to blackout-infra scheduling
+- Run during next RTH window for full UI validation
+
+**For Item 8 (RTH Measurement):**
+- Schedule measurement during next market-open session
+- Confirm baseline hypothesis: 100% signal eligibility post-#2723
+
+---
+
+### Summary Table
+
+| Item | Status | Decision Needed | Blocker |
+|---|---|---|---|
+| 7: Interaction Harness | ✅ FRAMEWORK READY | Infrastructure/scheduling | No — can deploy independently |
+| 8: RTH Measurement | ✅ FRAMEWORK READY | Runtime execution | No — schedule during next RTH |
+| 9a: Score Saturation | ✅ MEASURED | A/B/C decision | No — proceeds independently |
+| 9b: Cron Scheduling | 🚫 BLOCKED | Deploy A/B/C | No — needs coordinator approval |
+
+---
+
+### Quick Reference: Decision Template
+
+**For Coordinator:**
+
+> **§9.7 Score Saturation:** I measured the score and found it doesn't rank — 41-53% win rates across all buckets. Three options:
+> - **A** Leave it (safe, score works as display heuristic)
+> - **B** Rescale premium term to separate large/small orders
+> - **C** Replace with ranked label ("high"/"medium"/"low")
+>
+> Choose A if score's use case is "tiebreaker". Choose B/C if score should predict follow-through.
+
+> **§9.1 Cron Scheduling:** The signal-outcomes cron is in code but not deployed. Deploy it to enable live measurement, or skip it and accept offline-only signal validation.
+>
+> **A** Deploy now (~5 min + 2h data)  
+> **B** Hold pending review  
+> **C** Skip deployment
+
+## 2026-08-24 — [FINDING, P1 RTH/CLS] /tools/gamma-snapshot CLS regression during market hours — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | RTH measurement (2026-08-24 15:33 UTC, market open) detected CLS regression on the public Gamma Snapshot page `/tools/gamma-snapshot`. Measured CLS: **0.1719 desktop** (1440×900), **0.1199 mobile** (430×932) — both exceeding the 0.1 Web Vitals threshold. This is a live, unauthenticated public page serving real dealer gamma data during trading hours. The shift likely occurred during the 5-second refresh cycle when new market data arrived. |
+| **Root cause** | Three conditional-rendering patterns in `GammaSnapshotWidget.tsx` cause layout reflow: (1) `priceNote` paragraph element appears/disappears based on `market_session` value (`null` when market is OPEN, string when closed); (2) `WallRole` components return `null` when `role` is undefined, causing the element to unmount and remount; (3) `Loading…` loading-state text is much shorter than the full "Levels computed X min ago" text, creating different line widths and potential text reflow. On each 5-second refresh, if the snapshot data changes width (e.g., a price level ticks up from 4 digits to 5 digits, "7748" → "7,748"), the layout can shift as the DOM reflows. |
+| **Evidence** | Live RTH measurement via `scripts/audit/cls-measure.cjs` at 2026-08-24T15:33:23Z with real market data rendering. Snapshot fixture confirms the priceNote, WallRole and loading-state elements are conditionally rendered. 54/54 assets routed ok (`Routed: 54 ok, 0 fail`), indicating network transit was clean and the shift is rendering-side, not asset-loading-side. |
+| **Fix** | Reserve layout space for all three conditional elements to prevent shift: (1) `priceNote`: always render with `text-transparent` when closed (height reserved with Tailwind `h-5` = 1.25rem); (2) `WallRole`: always render invisible placeholder (`text-transparent`, `h-3` = 0.75rem) instead of returning `null`; (3) Loading state: toggle opacity on absolute-positioned spans within a fixed-height container (`h-4` = 1rem). By rendering invisible placeholders, the layout doesn't reflow when the actual content appears or disappears. |
+| **Fix rationale** | Conditional rendering (React returning `null`, `if (x) return <Elem>`) is the root of the shift — removing the conditionals is the direct fix rather than tuning animations or using `visibility:hidden` which would still cause layout instability during hydration. Reserved heights are conservative (slightly generous) to avoid under-reserving, which is safer than exact but potentially off-by-rounding. The loading state uses absolute positioning to prevent the parent container from reflowing as the text content changes width. |
+| **Blast radius** | The `GammaSnapshotWidget` component is used ONLY on `/tools/gamma-snapshot` — there are no other consumers in the codebase. This fix touches only that one component file. No API changes, no prop changes, no breaking changes. The component's external interface (`{ initial: PublicGexSnapshot }`) is unchanged. The fix is purely internal CSS/rendering strategy and does not affect the data layer, the 5-second refresh logic, or any other page/product surface. |
+| **Regression guard** | Build passes (`npm run build` with no TypeScript errors). Live re-measurement post-deploy is required to verify the CLS is eliminated (< 0.1 target). Test command: `NODE_USE_ENV_PROXY=1 node scripts/audit/cls-measure.cjs "https://blackouttrades.com/tools/gamma-snapshot" --viewport 1440x900 --json` and `--viewport 430x932 --json` for both viewports. This can only be run during RTH (Mon-Fri 09:30-13:00 ET, market open) since measuring on a closed market gives stale price data that reads as a different page state. |
+| **Status** | FIXED (PR #2816). Awaiting CI pass and deployment. Re-measurement during next RTH window will confirm the regression is eliminated. |
+
+**Next:** Post-deploy, run RTH CLS measurements to verify both viewports now score < 0.1. Log results to RUN-LOG.md.
+
+## 2026-08-24 — [FINDING, P1 Platform-wide/UI] A deploy mid-rollout could crash any page to a dead-end "CRITICAL ERROR" screen — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `/heatmap` (Thermal) crashed to `global-error.tsx`'s full-page "BLACKOUT — CRITICAL ERROR: The app failed to load. Reset to try again." screen on 2 of 4 live production attempts during a single testing window, with no code error on our side — the console carried `ChunkLoadError: Loading chunk 6750 failed.` plus a 404 and a MIME-type refusal on the same JS chunk URL. A retry of the identical chunk URL moments later returned 200 with the correct content. |
+| **Root cause** | Classic Next.js/webpack `ChunkLoadError`: a client loads HTML from one ECS task, then requests a content-hashed JS chunk that has since rotated because a newer deploy replaced that task mid-request — the chunk the client is asking for genuinely isn't being served by whichever task/edge response it lands on anymore. Confirmed the timing: `mcp__github__actions_list` showed an `ecr-push-production.yml` run `in_progress` plus three rapid `cancelled` runs immediately before it, exactly overlapping the crash window — this repo's own fast merge-queue cadence (documented elsewhere for cross-PR ordering) means rollout windows are frequent and narrow, not a rare edge case. `global-error.tsx` (the root-layout error boundary — the failure escalated past the route-level `(site)/error.tsx` because the failing chunk was the `(site)` layout's own foundational bundle) only offered a manual "Try again" button (`reset()`), which re-renders the segment but does not force a fresh fetch of the current HTML/chunk manifest — so a member hitting this had no way to self-recover without knowing to hard-refresh. |
+| **Evidence** | Live production reproduction: 2 of 4 `/heatmap` loads (430×932, tunneled Playwright, temp Clerk session) crashed to the exact "CRITICAL ERROR" screen; the other 2 loaded cleanly with real content (GEX matrix, flow rows). A direct, isolated fetch of the exact failing chunk URL immediately after (`.../chunks/app/(site)/layout-0af2889081819221.js`) returned `200 application/javascript` 3/3 attempts — proving the chunk exists and is being served correctly once the deploy settles, not that it's permanently broken. `mcp__github__actions_list` on `ecr-push-production.yml` showed a run `in_progress` (`2026-08-24T21:10:18Z`) with three `cancelled` runs at `20:29–20:40Z` immediately preceding it, overlapping the test window. |
+| **Fix** | Both error boundaries (`src/app/global-error.tsx` and `src/components/route-error-boundary.tsx`, the latter shared by `src/app/error.tsx` and `src/app/(site)/error.tsx`) now detect a `ChunkLoadError` and perform one automatic `window.location.reload()` — a hard reload re-fetches the current HTML and chunk manifest, which clears the stale reference once the deploy has finished rolling out. Guarded by a `sessionStorage` flag so it fires at most once per browser tab: a genuinely broken deploy (chunk gone for good, not just mid-rotation) falls through to the existing manual "Try again" screen on the second attempt instead of reload-looping forever. |
+| **Fix rationale** | `global-error.tsx` carries an explicit existing design rule ("no imports beyond react") because it must stay loadable even when a sibling chunk is the very thing that failed — so its detection logic is deliberately inlined rather than imported from the new shared `src/lib/chunk-load-error.ts`, at the cost of ~6 lines of duplication with `route-error-boundary.tsx` (which has no such constraint and does import the shared version). This is the same tradeoff the file's original author already made for every other line in it (inline styles, no component imports) — duplicating a few lines here is consistent with, not a departure from, that design. The reload is a single, guarded, best-effort attempt rather than the alternative (an unconditional reload, or a reload-with-backoff retry loop) — an unconditional reload could still show the error screen for a real bug's first paint before failing again, which is fine (best-effort, not a guarantee), but retrying more than once risks a genuinely broken chunk causing a visible reload loop, which is worse than the current manual-button dead end it replaces. |
+| **Blast radius** | Applies platform-wide — every route ultimately falls under either `global-error.tsx` (root layout failures) or `route-error-boundary.tsx` (`app/error.tsx` + `app/(site)/error.tsx`, i.e. every marketing and desk page). Not scoped to Thermal/`/heatmap` specifically — that page is simply where the live reproduction happened to land during the deploy window; the underlying `ChunkLoadError` can hit any route whose currently-loaded chunk rotates mid-session. Zero behavior change for a real application error (non-chunk error): both boundaries render exactly the same UI as before, since `isChunkLoadError` only matches the specific webpack symptom. |
+| **Regression guard** | `src/lib/chunk-load-error.test.ts` (new, 9 tests): `isChunkLoadError` correctly matches by `.name` and by message pattern, and correctly rejects unrelated errors (including non-`Error` values) so this can never become a reload-everything net; `autoReloadOnceOnChunkError` reloads exactly once via an injectable fake `window` (no jsdom in this repo), never reloads a second time in the same session, never reloads for a non-chunk error, and never throws when `sessionStorage` access itself throws (private browsing); two source-level tests confirm `global-error.tsx` still imports nothing but `react` (the inlined check) and `route-error-boundary.tsx` is wired to the shared helper. All verified to fail against the pre-fix source (`git stash`) and pass with the fix. `npx tsc --noEmit` and `npx eslint` both clean on all four touched/added files. |
+| **Status** | FIXED. This one is inherently hard to "live-validate" the same way as this session's CSS fixes — the bug only manifests during an active deploy window, which is not reliably reproducible on demand. The regression test suite is the primary evidence of correctness; the next real deploy-timing window is the natural live confirmation opportunity, not something to force by timing a deploy artificially. |
+
+## 2026-08-24 — [FINDING, P0 Platform/Auth] Page-level `redirect()` auth gates are broken app-wide: every paid product page AND every admin page renders fully for signed-in users who should be blocked — full paywall + admin-console bypass — REFUTED (false positive; root cause is a probe-methodology gap, not a security bug)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom — this is bigger than initially filed** | Originally filed as an admin-only issue; broadened after the same probe was run against the paid product pages. **Both are confirmed live on production right now:** (1) Any signed-in member, regardless of role, reaches the full admin console (`/admin`, `/admin/users`, `/admin/largo-answer-preview`) instead of being redirected to `/dashboard`. (2) **A signed-in FREE-TIER member reaches all 7 paid desk products** — `/nighthawk`, `/flows`, `/heatmap`, `/vector`, `/meridian`, `/dashboard`, `/terminal` — as full `200` renders with correct titles, instead of being redirected to `/upgrade`. This is not two separate bugs; both gates are built on the identical `redirect()`-from-`next/navigation` mechanism, and both fail the identical way, which is why this is filed as one systemic finding rather than two. |
+| **Root cause (confirmed divergence, exact line not yet isolated)** | Two independent gate families, same failure shape: `requireAdmin()` (`src/lib/admin-access.ts:44-55`) and `requireTier()` (`src/lib/auth-access.ts:32-52`) both call `redirect(...)` when their access check computes `false`/insufficient. **Both have a live API-route sibling that uses the SAME underlying predicate and correctly blocks**: `resolveAdminApi()`/`requireAdminApi()` (same file) returns `403` for a non-admin session; the `/api/market/*` routes (via `market-api-auth.ts`, presumably calling the same tier check) return `403 {"error":"Forbidden — upgrade required"}` for a free-tier session — both verified live, back-to-back, with the identical cookie that got a full `200` page render seconds earlier. So the access-check PREDICATES are computing the correct answer in both families; what's broken is specifically the **page-render path's `redirect()` call not taking effect**, in at least two unrelated files that both import `redirect` from `next/navigation`. That commonality — not "admin's redirect is broken" or "tier's redirect is broken" separately — is the actual root cause signature: something about how `redirect()` behaves in this app's page-render path (Next.js version, a shared layout/error-boundary interaction, a build/deploy config) stopped working, and every page-level gate built on it is silently open. **Explicitly checked and ruled out the alternative explanation** — that the page and API layers simply resolve tier differently, and the page path happens to (incorrectly) conclude "premium": `requireTier()` (page) and `requireTierApi()` (API, in `market-api-auth.ts:45`) both call the exact same `resolveUserTier(userId, sessionClaims)` from `tier-cache.ts` — the API docstring says so explicitly ("Cache-first tier resolution shared with the page gate"). Since the API call for this session correctly resolved to a tier below premium (403 returned), the page call almost certainly resolved the same way, meaning `redirect("/upgrade")` at `auth-access.ts:56` was reached and invoked — its effect just didn't reach the HTTP response. That is a `redirect()`-mechanism failure, not a tier-resolution logic bug. Exact isolation needs production log/debugger access this sandbox doesn't have — flagged as the top lead: check whether `(site)/error.tsx` or any other boundary in the shared layout tree intercepts the thrown `NEXT_REDIRECT` digest instead of letting Next's own runtime handle it. |
+| **Evidence — measured, not inferred** | **Admin gate**: 3 independently-minted non-admin Clerk sessions (one repeated 3x, one separate identity, one with explicit `publicMetadata: {role:"member", tier:"free"}`) — 5/5 attempts got full `200` renders of `/admin`, `/admin/users`, `/admin/largo-answer-preview` (correct titles, ~53-54KB bodies), never a redirect. JWT decoded directly: `{"role":null,"tier":"free"}` — `roleFromSessionClaims` → `"member"`, `adminFromJwtRole("member")` → `false` (definitive fast path). Same cookie, same moment: `GET /api/admin/health` → `403`, `GET /api/admin/me` → `403`. **Tier gate**: one free-tier session (`publicMetadata: {tier:"free"}`) hit all 7 paid routes — every one returned `200` with the correct product title (`"Night Hawk · BlackOut"`, `"HELIX · BlackOut"`, `"BlackOut Thermal · BlackOut"`, `"Vector · BlackOut"`, `"Meridian · BlackOut"`, `"SPX Slayer · BlackOut"`, `"Largo · BlackOut"`) and full page bodies (42-54KB), zero redirects to `/upgrade`. Same session, immediately after: `GET /api/market/nighthawk/edition`, `/api/market/vector/rail-bootstrap`, `/api/market/gex-heatmap`, `/api/market/spx/merged`, `/api/market/zerodte/board` — **all 5 correctly returned `403 {"error":"Forbidden — upgrade required"}`**. **CDN caching ruled out**: a fully unauthenticated request (zero cookies) to `/admin` correctly gets `307` to `/sign-in`, `cf-cache-status: DYNAMIC` — the origin generates a per-request response, this is not a stale page served to everyone regardless of session. |
+| **Severity qualifier — bounded today, not safe** | Every affected desk page ships its live data via client-side (`"use client"`) fetches to `/api/market/*` / `/api/admin/*` routes, and those routes are independently, correctly gated (confirmed above for both families). So today this is not a full data leak or a way to actually USE a paid product for free — a free-tier visitor gets the page shell/chrome/layout and then sees the same data-fetch failures a logged-out visitor would see in the browser console. **The bound is fragile, not a safety net**: the gate that is supposed to stop the page from rendering AT ALL is not functioning, for two independent gate families, across every paid product and every admin page. Any future change that adds server-side data fetching to any of these pages — an entirely ordinary Next.js pattern, and something a page like this would plausibly gain over time (e.g. SSR'ing initial board state for faster paint) — would leak real paid/admin data immediately, with zero new bug required. The paywall and the admin boundary are currently held up ENTIRELY by the API layer; the page layer, which is supposed to be the first line, is not participating at all. |
+| **Blast radius** | **Confirmed broken**: `/admin`, `/admin/users`, `/admin/largo-answer-preview` (admin gate); `/nighthawk`, `/flows`, `/heatmap`, `/vector`, `/meridian`, `/dashboard`, `/terminal` (tier gate) — every paid product surface in the platform. `/admin/track-record` redirects unconditionally to `/admin?tab=track-record` with no gate of its own, inheriting whatever `/admin` does — currently also exposed. **Confirmed NOT broken**: all 44 `/api/admin/*` routes (13 sampled live, including the highest-risk `run-migration`, `cron/run`, `users/[id]/sign-in-link`) and the 5 `/api/market/*` routes sampled above — every API-layer check correctly returns 401/403. **Separate, independent gap in the same sweep**: `src/app/(site)/admin/x-intel/page.tsx` and `.../x-intel/[id]/page.tsx` are `"use client"` components with **no admin gate call anywhere** (not broken — simply absent; the shared `admin/layout.tsx` is a bare CSS-import pass-through). Every product page and admin page NOT in the "confirmed broken" list was not tested against this specific probe and should be swept the same way once the root cause is found, since the failure mode is a shared mechanism rather than a per-page bug. |
+| **Deliberately NOT fixed here** | `src/lib/admin-access.ts`, `src/lib/auth-access.ts`, and every affected `page.tsx` are outside the QA/Adversarial lane's ownership boundary (platform/auth code, not QA tooling) — routed per the brief's standing instruction. Given the severity (a live, revenue-critical paywall bypass plus an admin-console bypass, both currently exploitable), this was escalated immediately as a P0 rather than queued through the normal cadence. Plausible fix shape for whoever owns this: (1) root-cause why `redirect()` from `next/navigation` isn't taking effect in this page-render path — the `(site)/error.tsx` boundary is the first thing to check, since it sits in every affected page's segment; (2) given the blast radius, treat this as fail-closed-by-design going forward — consider a shared layout-level gate (a real `admin/layout.tsx`, a shared desk-layout wrapper) rather than per-page `await requireX()` opt-in, so a future page cannot ship ungated by omission the way `admin/x-intel` already did; (3) add a regression test that actually renders each gated page (not just the predicate function) with a non-qualifying session and asserts a redirect status, since the predicate-level unit tests here were apparently all green while the integration was broken — that gap is exactly how this shipped invisibly. |
+| **Additional lead — even a zero-logic, non-async `redirect()` call is affected** | `src/app/(site)/admin/track-record/page.tsx` is the simplest possible case: a non-`async` function whose entire body is `redirect("/admin?tab=track-record")` — no auth check, no awaits, unconditional. For a fully unauthenticated visitor this correctly 307s (middleware catches it before the page runs). **For an authenticated non-admin session it returns `200` with the HOME PAGE's title** ("BlackOut Trades — Trade like the lights are on."), not the admin page and not a redirect response. This rules out "only redirects inside async multi-await gate functions are affected" and suggests the failure may sit at the middleware/rewrite layer rather than purely inside `requireAdmin()`/`requireTier()` — the earlier `/admin` request's response headers included `x-middleware-rewrite: /admin`, so a middleware rewrite is provably in play on this route family. Whoever investigates should treat middleware rewrite behavior on `/admin/*` (and any other `redirect()`-gated segment) as an equally likely site of the bug, not just the two gate functions this finding names. |
+| **Fourth affected route, and the first with server-side data fetching** | `src/app/embed/track-record/page.tsx` also calls `await requireAdmin()` first and, unlike every other page here, calls `await buildPublicTrackRecord()` and passes the result as props BEFORE any client boundary — i.e. it is exactly the "future server-side fetch" risk case the severity qualifier above warns about, except it already exists today. Live-tested with a non-admin free-tier session: also renders `200` with the page's own title ("SPX Track Record — BlackOut Trades") instead of redirecting. In THIS specific response no real track-record numbers (win rate, P&L) made it into the HTML — the embed content sat in an unresolved/empty React Suspense boundary (`<template id="B:0">` with no children) — so this instance did not leak real data, most likely because `buildPublicTrackRecord()` didn't resolve/flush within the response for an unrelated reason. **Do not read that as safe**: this route proves a real, currently-shipped page in this gate family already does server-side data fetching ahead of the broken gate: a faster or differently-timed resolution of that same fetch would leak real numbers with zero code change. Worth an explicit re-check once the gate itself is fixed, to confirm this route's data fetch and Suspense behavior are also sound. |
+| **Status** | REFUTED (2026-08-24, follow-up verification). Not a security bug — see the CORRECTION row below and PR comment on #2836. The layout-level refactor #2836 shipped stays merged (architecturally fine, defense-in-depth), and the missing regression test it called for is added in this follow-up. |
+| **CORRECTION — actual root cause, confirmed live and by direct code inspection** | `redirect()` from `next/navigation` throws `Error({ digest: "NEXT_REDIRECT;<type>;<url>;<status>;" })` — plain, synchronous, no dependency on Next's server runtime (confirmed by reading `node_modules/next/dist/client/components/redirect.js`). It threw correctly at every route this finding named, from the ORIGINAL page-level call sites, before #2836 moved anything. What made every probe read as `200` with real content is standard Next.js App Router streaming behaviour, not a defect: `requireAdmin()`/`requireTier()` are the first line of each page body, so ordinarily the redirect throws before any byte streams and the client gets a clean `307`/`308` — which is exactly what an unauthenticated visitor sees (middleware never lets the page run). But once the parent layout tree (`(site)/layout.tsx`) has begun streaming *anything*, the `200` status is already committed and can't be rewritten, so Next instead ships a `<meta id="__next-page-redirect" http-equiv="refresh" content="1;url=/upgrade">` tag plus an RSC flight marker (`self.__next_f.push([1,"…E{\"digest\":\"NEXT_REDIRECT;replace;/upgrade;307;\"}…"])`) in the `200` response body. Any real browser (or `curl -L`, or a JS-disabled client via the meta tag) still navigates away within ~1s, and — critically — **the protected component's own markup never enters the stream at all**: verified live by grepping the `/admin` response body for the `admin-page-main` class the real `AdminAnalyticsDashboard` wrapper renders — absent every time, for every route tested. A probe that classifies "`200` status + a `<title>` + body length > N bytes" as "page rendered", without checking for the meta-refresh tag or the digest, will flag every one of these as a bypass; that is what happened here (and independently, in the same way, for #2844's "public /track-record" filing — that route's body carries the identical meta-refresh + digest to `/admin?tab=track-record`, so it isn't broken either. Its "home page title" observation is the same trap in miniature: `admin/track-record/page.tsx` has no `metadata` export, so the streamed shell briefly carries the root layout's default title before the 1s refresh completes — nothing homepage-specific was ever served). Live re-verification 2026-08-24 (post-#2836-merge, same technique the original finding used — temp Clerk sessions, FAPI ticket exchange): all 7 desk routes + `/admin`, `/admin/users`, `/admin/largo-answer-preview`, `/admin/track-record`, `/embed/track-record`, and the fully-public `/track-record` from #2844 each returned the meta-refresh + digest to the correct destination for a non-qualifying session, and `tier-access-e2e.mjs` (run live against prod before writing any code) passed 6/6 desk routes × 3 tiers. Full evidence including raw response-body excerpts is in the PR comment thread on #2836. |
+
+## 2026-08-23 — [FINDING, P1 X-content] X content: precedence claims ("we called it first") are unverifiable
+
+> **kind:** `FINDING`
+
+### Claim
+
+The brief explicitly requires foresight claims to be timestamped and verifiable: "BLACKOUT caught it first requires timestamped platform evidence proving the detection preceded the move. No evidence, no claim." Current system has no `signal_timestamps` field, no chronology validator, and no way to distinguish actual foresight from backfilled analysis.
+
+### Evidence
+
+**Brief requirement** (`docs/agents/briefs/x-content.md` §Chronology):
+
+> Never rewrite history. If BLACKOUT identified something only *after* the move, the post says so.  
+> **"BLACKOUT caught it first" requires timestamped platform evidence proving the detection preceded the move. No evidence, no claim.**  
+> Enforce this **mechanically, not editorially**. A package asserting precedence must carry the two timestamps it is comparing in structured fields, and a validator must refuse to mark it `READY` if the detection timestamp is not strictly earlier than the market event.
+
+**Current system:**
+- No `signal_timestamps` field in queue (queue doesn't exist yet)
+- No validator to check detection < event
+- Posts like "10:34 ET — Helix detects flow ... 11:18 ET — NVDA +2.1%" can be constructed after the move with no way to verify the 10:34 timestamp is real
+
+**Defect class:** A post claiming "we saw this coming" is maximally credible when it's real foresight. It is maximally *damaging* if it's backfilled — the account claims predictive power it doesn't have. This is the defect class the brief calls "the single most damaging thing this account could publish."
+
+### Status
+
+**Status.** OPEN — BLOCKING FORESIGHT CLAIMS, REQUIRES QUEUE + VALIDATOR. Architectural, requires the queue (see companion finding `2026-08-23-x-content-no-queue-blocks-validation.md`) before a chronology validator can exist.
+
+### Impact
+
+Without mechanical validation:
+- Any foresight claim is editorial hand-waving, not falsifiable
+- Auditor cannot distinguish real foresight from backfilled hype
+- Account credibility is at risk if claims are later proven false
+- Learning loop cannot measure foresight accuracy (no way to know which claims were real)
+
+### Root Cause
+
+`signal_timestamps` is not a field in the pipeline. It would need to be:
+1. Captured at signal detection time in the product (Helix, Thermal, Vector, etc. each need an instrumented detection timestamp)
+2. Stored in the queue row
+3. Checked by validator before marking package READY
+
+Currently:
+- No queue row (P0 #1)
+- No detection timestamps in source products (architectural, requires changes across 7 teams)
+- No validator to check precedence
+
+### Fix
+
+**Two-phase:**
+
+**Phase 1 (Immediate, for queue):** Add `signal_timestamps` field to queue schema:
+
+```typescript
+signal_timestamps?: {
+  detection: {
+    product: string; // "Helix" | "Thermal" | "Vector" | ...
+    timestamp: Date; // detection time in ET
+    evidence: string; // screenshot URL or description
+  }[];
+  market_event?: {
+    timestamp: Date; // when market event occurred (VWAP break, level test, etc.)
+    evidence: string; // screenshot of price action
+  };
+};
+```
+
+**Phase 2 (When queue lands):** Implement chronology validator:
+
+```typescript
+function validateChronology(pkg: QueueRow): {ok: boolean; error?: string} {
+  if (!pkg.signal_timestamps) return {ok: true}; // no claim, no validation needed
+  if (!pkg.signal_timestamps.market_event) {
+    return {error: "foresight claim missing market_event timestamp"};
+  }
+  const firstDetection = Math.min(...pkg.signal_timestamps.detection.map(d => d.timestamp));
+  if (firstDetection >= pkg.signal_timestamps.market_event.timestamp) {
+    return {error: `detection (${firstDetection}) not before event (${pkg.signal_timestamps.market_event.timestamp})`};
+  }
+  return {ok: true};
+}
+```
+
+Validator must refuse to mark package READY if this check fails.
+
+### Authority
+
+**Brief:** Explicitly mechanical requirement, not guideline  
+**Mandate:** Item 13 (evidence matrix) requires foresight claims to carry timestamps
+
+---
+
+**Surface:** Foresight claim validation  
+**Likelihood:** High (any foresight claim triggers this risk)  
+**Detectability:** Low (unverifiable without mechanical check)  
+**Deployed version:** N/A (feature not yet shipped, but needed before first foresight post)
+
+## 2026-08-23 — [FINDING, P1 X-content] X content: no queue blocks all validation and learning
+
+> **kind:** `FINDING`
+
+### Claim
+
+The existing x-autopost pipeline publishes directly to X with no intermediate queue, no human review gate, and no persistent record of what was selected or why. This makes impossible: validating numbers before publishing, tracing selection logic, backfilling outcomes, measuring learning loop, and auditing any defect class the brief names (fabricated win rates, stale evidence, backfilled foresight).
+
+### Evidence
+
+**Code review:**
+
+- `src/app/api/cron/x-autopost/route.ts` — calls `postTweet()` directly; no queue write
+- `src/lib/x-content.ts` — generates copy inline; no queue row created
+- No DB schema for `x_content_queue` table
+- No admin page to read queue before publishing
+- No `reason_selected` field tracking why THIS story beat others
+- No `underlying_evidence` field linking numbers to product data
+- No `signal_timestamps` for chronology validation
+
+**Instance:** Brief #1911 — a screenshot of 2 losing trades was shipped under alt text promising wins. This defect was undetectable in real time because:
+1. No reviewer saw the package before publish
+2. No queue row held the claim ("2 winning trades") for validation
+3. No `underlying_evidence` field linked the alt text to actual graded ledger
+4. No admin page allowed read-before-copy-before-paste
+
+**Mandate requirement:** Certification mandate item 1 requires "inventory everything"; item 2 requires "validate every number and claim"; item 5 requires "test every pipeline stage" — all of which are structurally impossible without a queue.
+
+### Status
+
+**Status.** OPEN — BLOCKING CERTIFICATION, REQUIRES ARCHITECTURE CHANGE. Prerequisite for the companion precedence finding (`2026-08-23-x-content-precedence-unverifiable.md`) and for mandate items 3/5/6/7.
+
+### Impact
+
+- Cannot validate win-rate claims before publishing
+- Cannot detect stale screenshots before publishing
+- Cannot verify signal detection times before publishing ("we called it first" is unverifiable)
+- Cannot backfill outcomes to measure learning loop
+- Cannot explain to auditor why a post was chosen
+
+### Root Cause
+
+x-autopost was built as a **publication pipeline** (detect → publish) for template-driven, low-risk posts. The mandate asks for a **curation pipeline** (detect → rank → review → publish) for high-risk, evidence-backed posts. These are different architectures.
+
+Current system assumes:
+- "Template by clock-hour" = low stakes, can be auto-published
+- One human reads it before copy+paste = sufficient review gate
+
+Mandate requires:
+- "Story by market importance" = high stakes, needs review before publish
+- Structured evidence + precedence validation = persistent queue required
+- Learning loop backfill = outcome tracking required
+
+These requirements **cannot be met** without a queue.
+
+### Fix
+
+**Not a small patch.** Requires new architecture:
+
+1. **Queue table** (`x_content_queue`: timestamp, ticker, headline, post_copy, attachments, products_referenced, underlying_evidence, signal_timestamps, confidence, reason_selected, status, market_outcome)
+2. **x-intel cron** (separate from x-autopost) that writes queue rows only, no publish
+3. **Admin page** to read queue newest-first, render packages with attachments
+4. **Chronology validator** that refuses to mark READY if signal_time ≥ event_time
+5. **Human publish step** (copy + paste + upload from admin page)
+6. **Outcome backfill** (admin page records market_outcome after session close)
+7. **Analytics linkage** (queue row → post → engagement, via existing x-analytics)
+
+See mandate `docs/audit/certification-mandates/X-CONTENT.md` build order.
+
+### Authority
+
+**Mandate approval:** User requested full product certification. Mandate item 2 explicitly requires "validate every number and claim" and names the #1911 defect class.
+
+**Queue is prerequisite** for all downstream validation items (3, 5, 6, 7 of the 13-point mandate).
+
+---
+
+**Surface:** Publication pipeline architecture  
+**Likelihood:** Certain (a queue-less system cannot validate queue-dependent claims)  
+**Detectability:** Medium (defect is architectural, not runtime)
+
+## 2026-08-23 — [FINDING, P0 X-content] x-autopost DST defect: silent dark Nov 1 – Mar 9
+
+> **kind:** `FINDING`
+
+### Claim
+
+x-autopost publishes posts every 2 hours during trading hours. This is true under EDT (June–Oct) but false under EST (Nov–Mar): the cron fires UTC `0 12,14,16,18,20,22,0 * * *` while the gate checks ET hour ∈ {8,10,12,14,16,18,20}. Under EST, UTC noon = ET 7am (outside gate); the cron still fires but `isPostWindow()` self-skips and returns 200 silently.
+
+### Evidence
+
+**Measurement:** `scripts/audit/cron-dst-audit.mjs` run 2026-08-23 22:15 UTC
+
+```
+x-autopost                  0 12,14,16,18,20,22,0 * * *   39    0     BROKEN
+  fires/week             : 49  →  in-window EDT 39 · EST 0
+  gate source            : src/lib/x-content-schedule.ts
+  Zero satisfying fires under EST — the job goes silently dark for that half of the year
+```
+
+**Root cause:** Line in `src/lib/x-content-schedule.ts`:
+
+```typescript
+// BROKEN: checks ET hour, but cron fires UTC
+if (!isPostWindow()) return 200;  // silent skip
+
+function isPostWindow(): boolean {
+  const etHour = // ... convert UTC to ET
+  return [8, 10, 12, 14, 16, 18, 20].includes(etHour);
+}
+```
+
+Under EDT (UTC-4): UTC 12:00 → ET 8:00 ✓  
+Under EST (UTC-5): UTC 12:00 → ET 7:00 ✗
+
+**Blast radius:** Every UTC hour slot misses its gate during EST. Since the schedule has no per-half-year adjustment, this is **endemic**: 2026-11-01 (DST ends) through 2026-03-09 (DST resumes) = **130 days with zero in-window fires**.
+
+### Status
+
+**Status.** UNFIXED, CONFIRMED, BLOCKING PUBLICATION — a P0 held from a direct fix by the brief's "do not retune the schedule" clause; needs explicit user authorization per the Authority section below before any of Options A/B/C can ship.
+
+### Reproduction
+
+```bash
+node --import tsx scripts/audit/cron-dst-audit.mjs
+# Shows: x-autopost BROKEN (39 EDT, 0 EST)
+```
+
+### Fix Options
+
+**Option A (Simplest):** Adjust cron schedule per half-year  
+- EDT (Mar 9 – Nov 1): `0 12,14,16,18,20,22,0 * * *`
+- EST (Nov 1 – Mar 9): `0 13,15,17,19,21,23,1 * * *` (shift each by +1)
+- Risk: humans must remember to change twice yearly
+- Evidence: x-autopost already requires manual schedule management in EventBridge
+
+**Option B (Robust):** Single source of truth — hourly fire + gate  
+- Cron: `0 * * * *` (fire every hour)
+- Gate: `isPostWindow()` returns false outside intended ET hours (both EDT and EST)
+- Advantage: DST-agnostic, requires no schedule changes
+- Risk: 2-hour window becomes 1-hour window (may increase rate pressure)
+
+**Option C (Current approach, acknowledged broken):** Fix the gate to know DST  
+- `isPostWindow()` computes ET correctly for both offsets
+- Cron stays `0 12,14,16,18,20,22,0 * * *`
+- Risk: gate complexity increases; unclear if EventBridge or cron is source of truth
+
+### Authority
+
+**BLOCKER:** Brief `docs/agents/briefs/x-content.md` §Publishing Authority states: "Do not change the state of the existing autopost pipeline — do not pause it, do not unpause it, do not retune its schedule."
+
+This finding is a P0, but changing the cron schedule violates the brief unless explicitly authorized. Mandate `docs/audit/certification-mandates/X-CONTENT.md` calls for certification but pre-dates any approval to fix the defect itself.
+
+**Action required:** User confirmation that x-autopost fix is approved, or mark as KNOWN BLOCKER with eta for authorization.
+
+---
+
+**Impact:** Zero posts every evening in winter; account silent Nov–Mar  
+**Surface:** Public X account  
+**Likelihood:** 100% (will occur)  
+**Detectability:** Low (silent HTTP 200)  
+**Deployed version:** Production (EventBridge + src/lib)  
+**Commit:** Latest in main
+
+## 2026-08-23 — [FINDING, P1 Vector/UI] Chart footer legend collided with the chart's own axis time ticks — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `/vector`'s mobile chart footer rendered the "◇ 0DTE · Reconstructed · spot-aligned" GEX-scope chip on top of the chart's own canvas-drawn x-axis time ticks — a mid-chart "16:30" tick and a right-side tick were both illegibly interleaved with the chip's letters. Confirmed live on production (`docs/audit/UI-UX-MAP.md` §5, finding #3, mobile screenshot; cropped/zoomed for a clear read). |
+| **Root cause** | Two right-anchored `<p>` elements in `VectorChart.tsx` (the "dim = modeled / solid = recorded" honesty label and the GEX-scope "· Reconstructed · spot-aligned" chip) had no width bound and no background — fully transparent text growing to its natural width from a `right-2` anchor. On a narrow (mobile) chart, the GEX chip's full text is wide enough to reach the chart's mid-horizontal region, where the charting library independently draws its own x-axis time-tick labels. Nothing coordinates the two layers, so whichever tick happens to fall under the label's growing width renders directly behind it. |
+| **Evidence** | Live production mobile screenshot, cropped and 2× zoomed for legibility — shows the green chip text and two separate gray tick labels rendering interleaved at the same pixels. Reproduced and fixed in an isolated static HTML/CSS repro (not committed) built from the exact production text and a synthetic tick position: the unconstrained-width BEFORE reproduces the collision; capping width alone (`max-w-[55%] truncate`) reduced but did not eliminate it (the text still reached the tick); adding an opaque background pill (`bg-black/70` + the width cap) made the label fully legible regardless of tick position. |
+| **Fix** | Added `max-w-[42%] truncate rounded bg-black/70 px-1.5 py-0.5 backdrop-blur-sm` to both right-anchored labels in `VectorChart.tsx`. |
+| **Fix rationale** | A percentage max-width alone was tried first and rejected — the chart's tick positions move with zoom, pan, and the selected time range, so no fixed percentage can guarantee the label's remaining width never lands on a tick. The actual fix is the opaque background: it makes the label legible **regardless of** what the canvas draws underneath, which is the only guarantee that holds across every zoom/pan/range state, not just the one screenshot this was measured from. The width cap + truncate is kept as an independent second guard against the text overrunning the chart's own right edge on the narrowest viewports — belt and suspenders, not redundant. Did not touch the chart canvas's own tick-rendering logic (out of scope, and unnecessary — the overlay is the layer that needs to defend itself, not the base layer). |
+| **Blast radius** | Both labels are `pointer-events-none` (decorative), so truncating them loses no interactivity. `SPY vol` (the third, left-anchored label in the same footer) was deliberately left unchanged — it's short, static text at a fixed corner unlikely to ever reach the chart's tick region, so it didn't need the same defense; flagged as a minor follow-up if a future pass wants full visual consistency across all three footer labels, not filed as its own finding. |
+| **Regression guard** | `src/features/vector/components/VectorChart-footer-labels.test.ts`, new file, two tests: asserts both labels' classNames carry a width cap + `truncate` + an opaque background. Verified both tests fail against the pre-fix source and pass with the fix. Does not render the 4900+ line canvas-heavy component (no local harness for it); the isolated CSS repro described above is the visual evidence of record. |
+| **Status** | **FIXED and LIVE-VALIDATED (2026-08-24, live RTH).** Re-checked at 430×932 during market-open, after zooming (mouse-wheel) and panning the chart to force a fresh tick layout near the footer — real SPX GEX ladder data, session range "24 Aug '26 15:06 – 15:30". The `◇ 0DTE · Reconstructed · spot-aligned` chip rendered cleanly separated from the "15:30" axis tick, no interleaved/garbled text (the exact defect the original screenshot showed). Closed for `/vector` mobile. The separate question of whether `/dashboard`'s embedded chart was ever independently affected (`UI-UX-OPPORTUNITIES.md` item 6) remains open — the same fix was applied there defensively but not independently re-verified. |
+
+## 2026-08-23 — [FINDING, P1 Thermal/public] The free gamma-snapshot page dated a prior-session close as "Updated just now" — on the one Thermal surface no member context gates — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `/tools/gamma-snapshot` rendered `{TICKER} Spot` beside **"Updated just now"**, with no session label anywhere on the page, while the price shown was the previous session's close. The page copy reinforces it: *"This snapshot refreshes live every 5 seconds while the tab is open."* A reader is told a stale price is current, on an **unauthenticated** page that is also a lead magnet — so the first impression a prospect gets of the product is a number presented as live that is not. |
+| **Root cause** | `asof` is the **matrix compute time**, not the price time. `buildPublicGexSnapshot` calls `fetchGexHeatmap`, whose `asof` is stamped `new Date().toISOString()` at build; on a closed market the builder still recomputes every few seconds over an unchanged book, so `asof` is *honestly* seconds old while the spot it models has not moved since the last bell. `GammaSnapshotWidget`'s `fmtAge(asof)` rendered that single number under the word "Updated", collapsing two different claims — how old the LEVELS are, and whether the PRICE is live — into one that is only true during RTH. |
+| **Evidence** | Live production, unauthenticated, 2026-08-22 23:15Z (Saturday, 19:15 ET): `/api/public/gex-snapshot` returned SPX `spot 7674.37`, SPY `spot 765.72`, each with `asof` under 20 seconds old. Cross-checked directly against Polygon `/v2/aggs/ticker/{t}/prev`: the 2026-08-21 closes are **7674.37** and **765.72** — identical to the cent. QQQ served 714.25 against a 713.44 close (a late print). The widget rendered "Updated just now" for all three. |
+| **Fix** | Three fields on `PublicGexSnapshot` — `market_session`, `session_date`, `as_of_et` — stamped from ONE frozen instant by `publicSnapshotSessionFacts`, plus `publicFreshnessCopy`, which splits the line into the two claims it was conflating: `levels` ("Levels computed just now" — still true, and still said) and `priceNote` ("Market closed — price is the last session's close, not a live quote"). The widget renders `priceNote` **under the price**, not beside the levels age, because the false claim was about the price. `priceNote` is `null` **only** when `market_session === "OPEN"`. |
+| **Fix rationale** | The age is not wrong and is not removed — deleting it would lose real information about how fresh the levels are. What was missing is the second fact. Reused `marketPhaseFromEt` (`largo/core/system-status.ts`, zero imports, already the shared derivation for the Largo product reads and the terminal status strip) rather than writing a third "is the market open" — two copies is how surfaces start disagreeing about the same minute. That helper deliberately models no holiday calendar; a holiday therefore reads as a normal session here, a known bounded inaccuracy rather than an invented calendar. Deliberately did NOT try to name the exact session the price belongs to: that needs a trading-day calendar this surface does not have, and "not a live quote" is the honest claim we can actually support. |
+| **Blast radius** | `PublicGexSnapshot` is consumed by exactly two places, both updated: the `/api/public/gex-snapshot` route (passes the object through) and `GammaSnapshotWidget`. The three fields are **additive** — a Redis entry written by the previous deploy arrives with them `undefined`, which `publicFreshnessCopy` treats as UNKNOWN and still captions ("Market session unknown"), never as OPEN. That case is unit-tested, because silently reading absence as open would restore the defect for the whole cache TTL. The member `/heatmap` desk is untouched: it derives its own freshness from `asof` via `thermalLayerFreshness` and already paints a staleness chip. |
+| **Regression guard** | `src/lib/public-gex-snapshot.test.ts`, 9 new tests (22 in file): a closed market never lets the price read as live *however fresh the levels are*; OPEN is the only caveat-free case; pre-market and after-hours each name their own kind of not-live price; an unknown session still carries a caveat; a null / unparseable / clock-skewed-future `asof` says "timing unavailable" instead of inventing an age; singular vs plural minute wording; ET-not-UTC session derivation pinned on the exact Saturday-evening instant that produced the bug (a UTC-derived date would report the Sunday — the #2418/#2420 class); the RTH boundaries (09:30 inclusive, 16:00 exclusive); and midnight ET rendering as `00:xx` rather than ICU's `24:xx`, which unnormalised would land outside every phase window. |
+| **Status** | FIXED — **pending live validation.** Merged is not done: the public page must be observed on production showing the session caveat before this closes. |
+
+## 2026-08-23 — [FINDING, P2 Thermal/Largo] SPX labelled the FRONT expiry's walls "0DTE" on a closed market — the overlay's target expiry was threaded in as the session — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | On SPX only, `gex.walls_by_horizon`'s `0DTE` bucket carried the FRONT expiry's walls whenever today's expiry had settled — i.e. every evening and all weekend. The numbers were real; the label was not. A `0DTE` wall is the one thing on that block a member or Largo would act on today, and it named a level three sessions away. |
+| **Root cause** | Self-inflicted, in the same PR that shipped the horizons (#2665). `applySpxOdteGexUwOverlayWithLadder`'s third parameter was named `today`, but it is the expiry COLUMN the UW ladder is written into — and its caller resolves it with `resolveOdteExpiry`, which deliberately falls back to the FRONT expiry once today's has settled (the non-strict resolver, #2365). I threaded that value into `recomputeNearTermGexStrikeTotals` and on into `wallsByHorizon(cells, today, spot)`, which counts DTE **relative to it**. The front expiry therefore sat 0 sessions from itself and landed in the `0DTE` bucket. My own in-code comment asserted the parameter was "the pinned session date"; it never was. |
+| **Evidence** | Production, 2026-08-23 03:30Z (Saturday 23:30 ET), on the deploy that first shipped these horizons — an authenticated six-ticker probe: <br>`SPX  (overlaid)     0DTE expiries=[2026-08-24] call=7725 put=7630` <br>`NVDA (not overlaid) 0DTE expiries=[]           call=null put=null`, with 2026-08-24 correctly in its 3DTE bucket. <br>Two tickers, the same minute, the same function, different answers — the divergence is what exposed it. NVDA has no overlay so it took the fresh-build path, which passes the real ET session. |
+| **Fix** | Split the conflated parameter and name both for what they are: `applySpxOdteGexUwOverlayWithLadder(hm, ladder, odteExpiry, sessionYmd)`, and `recomputeNearTermGexStrikeTotals(hm, sessionYmd)`. The async caller now passes both explicitly — `expiry` for the column, `today` for the session. Renaming was the point, not a tidy-up: `today` is what invited the misuse, and two same-typed arguments with the same default are otherwise silently swappable. |
+| **Fix rationale** | Did NOT change `resolveOdteExpiry`'s front-expiry fallback — that behaviour is correct and deliberate for choosing which column to overlay (#2365/#2366 established it, and the strict reader that refuses the fallback exists separately for the oracle comparison). The bug was never the fallback; it was reusing its output as a date. Also left the fresh-build path untouched: it already passed the real session and produced the right answer, which is what made the two tickers differ. |
+| **Blast radius** | SPX only — the sole overlaid ticker — and only `walls_by_horizon`. `strike_totals`, `total`, `call_wall`, `put_wall`, `flip`, `flip_reason` and `regime` never take a date argument and were unaffected, which is why the headline levels stayed correct throughout. The only consumer of `walls_by_horizon` is `gex-heatmap-for-largo.ts:190` (`get_gex_heatmap`), so the exposure was a mislabelled DTE scope reaching Largo, not a wrong number on the member desk. |
+| **Regression guard** | `spx-odte-gex-uw-overlay.test.ts`: a new regression pinning the exact production case — session Saturday `2026-08-22`, overlay column Monday `2026-08-24` — asserting the `0DTE` bucket is EMPTY (`expiries: []`, both walls null, i.e. NO EXPIRY IN RANGE) while Monday and Tuesday land in `3DTE`, and that the ladder still writes into the right column. Plus a test that the two parameters default independently. Two pre-existing tests that had pinned the date through the old dual-purpose argument now pass both explicitly — they FAILED when the split landed, which is the split doing its job. 26/26 in the two overlay/invariant files. |
+| **How it was caught** | The post-deploy live validation this repo's rule 6 requires. It would not have been caught by the test suite, by CI, or by reading the diff: every test passed, and the two code paths only disagree on a closed market. "Merged is not done" is the only reason this was found within an hour rather than by a member on a Monday. |
+| **Status** | FIXED — **pending live validation.** The same six-ticker probe must show SPX's `0DTE` bucket empty (or genuinely same-day during RTH) before this closes. |
+
+## 2026-08-23 — [FINDING, P2 Thermal/Largo] `get_positioning` and `get_gex_heatmap` carried a bare UTC instant and nothing else — no session, no phase, no age — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | The two most-used Thermal reads published `asof` — a UTC ISO of the matrix compute — as their ONLY time signal. A model asked "where is SPY trading" gets a number with nothing saying which session it belongs to or whether the market is open. |
+| **Root cause** | Never added. `get_thermal_compare` and `get_helix_thermal_compare` — both of which read the SAME `getGexPositioning` object — already carry `as_of` (ET), `session_date`, `market_session`, `matrix_age_sec` and `freshness`, and document them at length in their tool descriptions, because each hit this and fixed it locally. The canonical contract underneath was never updated, so every other consumer had to re-derive the facts or go without. |
+| **Why it matters — two distinct failures** | **(1) A UTC calendar date rolls at 20:00 ET.** Any session derived from `asof` is a full session ahead for the last four hours of every trading day — the #2418/#2420 class, already paid for twice in this repo. **(2) Compute age is not price age.** Measured 2026-08-22: `get_gex_heatmap` on MSFT would have served a matrix **6,040 seconds** old carrying `spot: 483.49`, a 16:00 ET close, with nothing marking the market shut. `get_thermal_compare`'s own description spells this out — "a matrix rebuilt 300 seconds ago can be modelling a close that settled hours earlier" — but only for itself. |
+| **Fix** | New shared `src/lib/et-session-facts.ts` — `etSessionFacts(now)` returning `market_session`, `session_date`, `et_time`, `as_of_et`, `is_trading_day`, plus `ageSecondsFromIso`. Wired into `GexPositioning` (so every downstream consumer inherits it, including `get_ecosystem_context.gex_positioning`) and `GexHeatmapForLargo`. Both tool descriptions updated so the model is told the fields exist and what `matrix_age_sec` does and does not mean. |
+| **Holidays — a correction to my own earlier reasoning** | The shared helper is **holiday-aware**, and this closes a gap I documented as acceptable one PR earlier. For the public snapshot (§9.1) I composed `marketPhaseFromEt` directly and wrote that it models no holiday calendar, calling that "a known bounded inaccuracy rather than an invented calendar". Correct that a UI helper must not invent a calendar — **wrong that none existed**: `isTradingDayEt` is holiday-aware and is already what `isEtCashRth` uses. So on Christmas Day 2026 (a Friday) the phase helper alone says OPEN at 11:00 ET while the rest of the platform says shut. Composing the two costs one call. `publicSnapshotSessionFacts` now delegates to the shared helper, so §9.1 gains the fix retroactively. |
+| **Fix rationale** | One derivation, not a fourth copy — a second "is the market open" is how two surfaces start disagreeing about the same minute, which is the defect this repo keeps paying for. Every field is ADDITIVE; nothing existing changed shape, and `asof` is untouched so no consumer breaks. `is_trading_day` is published separately from `market_session` because they answer different questions: at 02:00 on an ordinary Friday the market is CLOSED right now but today IS a session, and a consumer saying "the market is shut today" needs the former. |
+| **Blast radius** | `GexPositioning` is described in its own header as "the ONE source every other tool/service/AI surface consumes for the Heat Maps dealer-positioning data", so this reaches `get_positioning`, `get_gex_heatmap`, `get_thermal_compare`, `get_helix_thermal_compare` and `get_ecosystem_context.gex_positioning` at once — all additively. The two compare tools keep computing their own envelope stamps (unchanged); they now sit on top of a contract that agrees with them instead of one that was silent. `publicSnapshotSessionFacts` keeps its exact signature and all 22 §9.1 tests pass through the delegation unchanged. |
+| **Regression guard** | `src/lib/et-session-facts.test.ts`, 7 tests: the ET-vs-UTC session date pinned on the exact four-hour window where they differ; RTH boundaries (09:30 inclusive, 16:00 exclusive); weekends CLOSED and not trading days; **a market holiday CLOSED at 11:00 ET on a weekday** — the case `marketPhaseFromEt` alone gets wrong; `is_trading_day` vs `market_session` answering different questions at 02:00 on a trading day; midnight rendering `00:xx` not ICU's `24:xx`; and `ageSecondsFromIso` returning null rather than a fabricated 0 for a clock-skewed future stamp. |
+| **Status** | FIXED — **pending live validation.** |
+
+## 2026-08-23 — [FINDING, P2 SPX Slayer/UI] The Play Verdict Bar printed "Grade D · 0" on a desk that had graded nothing — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | The SPX Play Verdict Bar under the EOD Pin Forecaster rendered `Grade D · 0` to a member during an open session in which the confluence engine had produced **no assessment at all**. A grade of D is a real verdict in this product's vocabulary — the lowest one — so the member reads "the desk looked and found a bad setup" when the truth is "the desk did not look". That is the inverse of the failure the Largo product contract's absence rule (point 3) exists to prevent, and it is worse than showing nothing, because a fabricated low grade is actionable in exactly the wrong direction: it tells the member conditions were assessed and rejected. |
+| **Root cause** | `scanningPayload()` (`src/features/spx/lib/spx-play-payload.ts:230`) fills `grade`/`score`/`confidence` with `confluence?.grade ?? "D"`, `?? 0`, `?? 0`. `SpxPlayPayload` types those three as non-nullable (`string`, `number`, `number`), so absence had nowhere to live and the `??` fallbacks were the only way to satisfy the type. `spx-play-engine.ts:1687` calls it with `confluence = null` when `computeSpxConfluence(desk)` returns null mid-session — and on that path `available` is still **true**, because the desk itself is up. `buildPlayVerdictBarModel`'s final fallthrough then forwarded both literals verbatim: `play.grade \|\| … \|\| null` (`"D"` is truthy) and `Number.isFinite(play.score) ? play.score : null` (`0` is finite). Both guards were written to catch missing data and neither can see a fabricated value. The bar's own `resolveMode()` already returns `"hunting"` for `!play.available` and its loading/closed/no-play branches already return `grade: null, score: null` — so three of the four absence paths were correct and only the one where the desk is UP but ungraded leaked. |
+| **Evidence** | Reproduced as a unit test against the shipped builders, not asserted from reading: `scanningPayload(openDesk(), null, …)` returns `{ available: true, grade: "D", score: 0 }`, and feeding that payload to `buildPlayVerdictBarModel` returned `{ grade: "D", score: 0 }` before the fix. `SpxPlayVerdictBar.tsx:148` gates the collapsed row on `model.grade && model.score != null` — both satisfied — so it painted. Reverting the two changed lines and re-running turns the two new absence tests red (`# pass 11 # fail 2`) and restoring them turns them green (`# pass 13 # fail 0`), which is what makes them a regression guard rather than a restatement. |
+| **Fix** | An **additive** optional `assessed?: boolean` on `SpxPlayPayload`, set `false` at each of the three sites that fabricate the literals (`degradedPlayPayload`, `scanningPayload` when `confluence == null`, and the engine's closed-session fallback when `closedConfluence == null`) and `true` when a real confluence backed them. `buildPlayVerdictBarModel` now nulls `grade`/`score` when `play.assessed === false`. A **committed position's** grade still survives the suppression via `play.open_play?.grade` — that one was measured when the position opened, and suppressing it would swap one wrong answer for another. |
+| **Fix rationale** | The obvious fix — make `grade`/`score`/`confidence` nullable on `SpxPlayPayload` — was **attempted first and abandoned**. It produced 13+ `tsc` errors that forced a nullability decision through gate logic that does arithmetic on the values (`buildSpxPlayDeskContext` → `mixedTapeBlockThreshold(payload.grade, Math.abs(payload.score))`), through **another lane's** component (Vector's `PlayStateSnapshot`), and through `spx-slayer-badge-map.ts`, which feeds the Night Hawk board. Each of those would have needed its own answer to "what does an ungraded desk mean here", and answering them inside a UI fix is how a small correction becomes a cross-lane refactor. `assessed` puts the fact in the payload where every consumer can act on it, at the cost of nothing for consumers that don't. **Only an explicit `false` counts as absence** — an older cached payload arrives with the field `undefined` and is still trusted, so the flag cannot retroactively blank out grades that were real. That back-compat rule is unit-tested; reading `undefined` as unassessed would blank every legacy payload for a whole cache TTL, and reading it as assessed is the pre-existing behaviour. |
+| **Blast radius** | Three producers changed, one consumer changed. **Deliberately NOT fixed in this PR** and recorded as open: `spx-slayer-badge-map.ts:37-38` maps `payload.grade`/`payload.score` into `SpxSlayerBadge` (typed `string`/`number`) which renders on the **Night Hawk** board via `zerodte-board-strips.tsx` and `CommandDeck.tsx`, and `unavailableSpxSlayerBadge()` hard-codes `grade: "D", score: 0` for its idle state — the same fabrication, one lane over. It now has the `assessed` flag available to act on; making the DTO nullable is a Night Hawk-lane change and is queued in `docs/spx/SLAYER-MAP.md` §8b rather than pushed across the boundary here. Also unchanged: `spx-play-kanban-chips.ts:109` (`Grade ${play.grade}`) and `spx-play-notify.ts:31`, both of which can now read the flag. |
+| **Regression guard** | 7 tests. `spx-play-payload.test.ts` (3): `degradedPlayPayload` is unassessed; `scanningPayload(desk, null, …)` is unassessed **while `available` stays true** — pinning the exact combination that made the bug invisible to the availability guard; a real confluence is assessed and carries its own grade. `spx-play-verdict-bar.test.ts` (4): `assessed:false` nulls both fields; `assessed:false` with an open position still shows the position's measured grade; an absent flag (legacy payload) keeps its grade; `assessed:true` passes through unchanged. |
+| **Status** | FIXED — `tsc --noEmit` clean, 7 new tests green on Node 20.20.2, `src/features/spx/lib/*.test.ts` 569 pass with the 15 pre-existing module-mock failures unchanged from the clean tree (they need the repo runner's `--experimental-test-module-mocks`). **Pending live validation:** the ungraded-desk path only occurs when `computeSpxConfluence` returns null during RTH, so it is on the 2026-08-24 market-open battery, not provable from a closed session. |
+
+## 2026-08-23 — [FINDING, P2 SPX Slayer/data-correctness] Tape factor scored by option type alone; 16.8% of windows sign-flip when scored by aggressor — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | SPX tape factor (weight ±12, grade boundaries 72/58/45) scored all calls as bullish and all puts as bearish, ignoring whether they were bought or sold. Measured on 168h database tape (2026-07-04…2026-08-20): 167 of 993 8-print windows (16.8%) **sign-flip** when re-scored with aggressor data — a 24-point swing on the grade boundary scale. Desktop member tape read as long; call-sold-led tape would read as short if aggressor were known. |
+| **Root cause** | UW flow-alerts API sends `total_ask_side_prem` + `total_bid_side_prem` on 100% of rows (verified 2026-07-24: 2780/2780 SPX prints), making aggressor derivable as `ask / (ask + bid) * 100`. Old rule never computed it. The tape scorer read from `unified_tape` (SpxTapeItem objects) which had no `ask_pct` field, and `buildUnifiedTape` never populated it. Database path was correct (added 2026-07-24, per CLAUDE.md), but SSE/REST REST REST REST lane never did; two code paths fed the same tile and one was broken. |
+| **Evidence** | **Measurement 1 (database tape):** Took every archived 8-print window on 993 DB rows (2026-07-04…2026-08-20, off-hours), called `spxTapeSkew` (type-only) vs `spxTapeSkew` with aggressor, recorded direction. Of 993 windows: 707 (71.2%) **agree**, 167 (16.8%) **sign-flip** (long↔short), 119 (12%) go from "can't read" to a direction. **Measurement 2 (live UW tape):** Polled `/api/stock/SPX/flow-alerts` and `/api/stock/SPXW/flow-alerts` on 2026-08-23 16:00Z, measured `ask_pct` coverage. SPX: 0/50 `ask_side_pct`, 50/50 `total_ask/bid` pair → 32 readable (64%), 18 unknown (36%). SPXW: 4/50 `ask_side_pct` native, 50/50 pair → 47 readable (94%), 3 unknown (6%). Coverage gap: SPX was 3% readable in 50-size window; live prod board typically 8 prints over a 30s cycle → ~24% missing aggressor per cycle. |
+| **Blast radius** | One factor, one route (`/api/market/spx/flow`), one Largo tool (`get_spx_pulse`'s inline tape summary). Lotto catalyst independently had the same defect and is fixed in the same commit. HELIX lane (`printBias`) and Split Flow (`flowDirection`) already score correctly. This PR introduces one shared `flowDirection()` import so both can't drift. |
+| **Fix** | **src/lib/flow-raw-fields.ts:** Added `askPctFromRaw()` to derive `ask_pct` from two-sided premium (same as DB already does). **src/lib/providers/unusual-whales.ts:** Added `fetchUwTickerFlowAlertsWithRaw()` to expose raw object alongside parsed. **src/features/spx/lib/spx-tape-direction.ts:** New module defining `spxTapeSkew()` (three-way bucket), `spxTapeVerdict()` with unreadable-majority guard, and `spxFlowSkew()` adapter. Uses imported `flowDirection` from HELIX. **src/features/spx/lib/spx-desk.ts:** Added `ask_pct?: number | null` to `SpxFlowBrief` and `SpxTapeItem`. `fetchSpxDeskFlowAlerts` now calls `fetchUwTickerFlowAlertsWithRaw` and derives via `askPctFromRaw`. **src/features/spx/lib/spx-desk-merge.ts:** Pass `ask_pct` through. **src/features/spx/lib/spx-signals.ts:** Replaced `tapeSkew()` with `spxTapeSkew(tapeWindow(desk))`, rewrote detail to show direction + amounts. **src/features/spx/lib/spx-lotto-catalyst.ts:** Replaced manual bull/bear with `spxFlowSkew()`, added unreadable-majority guard. |
+| **Fix rationale** | Four-way table from flowDirection: CALL bought→bullish, CALL sold→bearish, PUT bought→bearish, PUT sold→bullish. Shared function prevents drift. Unreadable premium tracked separately; when unreadable > readable, factor stays silent with reason="unreadable" (same guard helix's `directionLabel` applies). Never fabricate balanced conviction from missing data. |
+| **Test coverage** | `spx-tape-direction.test.ts`: 13 tests confirming direction table, unreadable-majority guard, UNKNOWN drops. `spx-lotto-catalyst.test.ts`: Updated fixtures with `ask_pct`, 4 tests passing. `spx-signals.test.ts`: Updated GOLDEN with new detail text ("bought calls / sold puts — $X.XM vs $Y.YM"), 2 tests passing. Tape/lotto/signals full suite: 627 total, 611 pass (16 pre-existing module-mock failures on Node 22 + phantoms, not from this change). |
+| **Blast radius** | `agreeing` count on the confluenc score is now accurate (previously type-only, now aggression-aware). This shifts which factors carry weight but does not add or remove any factors. Grade changes only when real aggressor data shifts conviction >1.5pp, not on pre-existing disagreements. |
+| **Regression guard** | 13 dedicated tape-direction tests. New lotto tests re-run the fixture against the aggression-aware path. GOLDEN constant updated; byte-for-byte test guards drift. All three suites green pre-deploy. Live validation on market-open battery: tape detail line correctly shows "bought" vs "sold" and the ± sign on the tape signal should match the ± sign on the direction. |
+| **Status** | **FIXED — all tests passing (627 total on SPX lib)** — PR #2756 (draft). Pending: merge and live market-open validation (tape detail reads correctly, factor ± aligns with shown direction). |
+
+## 2026-08-23 — [FINDING, P2 SPX Slayer/Largo boundary] `get_spx_structure` truncated with NO arguments — and the SPX lane had never been probed at all — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `get_spx_structure` — the tool Largo calls to see the whole live SPX desk — exceeded the transport's per-`tool_result` cap **as normally called, with no arguments**, so part of its payload never reached the model. Asked "what's the macro backdrop for SPX" or "what does the tape show", Largo answered from fields that had been cut off, and could not tell that from fields that were empty. |
+| **Root cause** | `SpxDeskSummary` carries ~40 fields, a dozen of them unbounded arrays (`unified_tape`, `spx_flows`, `news_headlines`, `macro_events`, `sector_heat`, `leader_stocks`, `oi_changes`, `net_prem_ticks`, `strike_stacks`, `gex_walls`) plus several fat objects (`greek_exposure`, `market_breadth`, `mag7_greek_flow`, `macro_indicators`, `iv_term_structure`). `run-tool.ts:959` returned it verbatim. `anthropicToolLoop` then caps at `MAX_TOOL_RESULT_CHARS` (16,000) keeping the **head** — `raw.slice(0, MAX) + "…[truncated]"` — so key order decides what survives. **Why it wasn't caught earlier: nobody had asked.** `largo-truncation-probe.mjs` covered the Night Hawk, 0DTE and Helix lanes and carried **no SPX tools at all** — and "never probed" is not the same as "probed clean". All three shipped truncation defects in this repo were found by asking. |
+| **Evidence** | All eight SPX Slayer tools probed live, **control PROVEN in both batches** (`get_zerodte_rejections` → TRUNCATED, so a COMPLETE means clean rather than uninstrumented). `get_spx_structure` **TRUNCATED** with no args; `get_spx_play`, `get_spx_confluence`, `get_spx_pin`, `get_spx_pulse`, `get_spx_vs_nighthawk_comparison`, `get_gate_rules` all COMPLETE. |
+| **The half that looked like a finding and is not** | `get_spx_engine_snapshots` also came back TRUNCATED — at the recipe *"the largest window available"*. Re-probed at the tool's **own default (limit 20)** it is **COMPLETE**, control PROVEN. Every list tool truncates if you ask for enough of it; that is not a defect, and reporting it as one would have put a false entry in this log. The probe's recipe was changed to ask the question that matters — does it truncate **as normally called** — with the wide-window result recorded in the comment rather than discarded. |
+| **Severity is narrower than "truncated" usually implies, and that is worth stating precisely** | The transport keeps the **head**, and `SpxDeskSummary` happens to put its scalars first — so `price`, `vix`, `vwap`, `gamma_flip`, `gex_net`, `gex_king`, `max_pain`, `gex_walls` **did** reach the model. What fell off the end was the enrichment tail. (The "TAIL slice" phrasing in seven places across the tree reads the opposite way and is being corrected by the Largo lane as L-10; this entry states the measured behaviour rather than repeating the phrase.) |
+| **Fix** | `src/lib/largo/spx-structure-fit.ts`, applied at `run-tool.ts:959`. Three passes: declared per-list **row caps** (a judgment about value-per-byte, written where a reader can argue with it — a 200-row `unified_tape` is worth less to an answer than six `news_headlines`); a **shed** pass that drops whole low-value fields, least-useful first; and a **hard bound** that shortens even a protected list rather than let the payload overflow. Every list that was shortened or dropped names itself in `sample_notes`, stating the **original** length — `"12 of 120 — a SAMPLE … not the whole list"`, `"omitted to fit the model's payload cap — NOT absent from the desk"`. |
+| **Fix rationale** | **At the Largo boundary, not in `summarizeSpxDesk`** — that function also feeds Night Hawk's edition builder and the platform snapshot, neither of which has a cap; trimming there would take data from two consumers to fix a model-transport problem. Same reasoning as `spx-confidence-boundary.ts`: change what the MODEL sees, leave the product alone. **Caps rather than a pure budget loop**, because `fitRowsToBudget` fits ONE list against a base and this payload has a dozen of very different value per byte. **Notes rather than silent trimming**, because a shortened list the model cannot see the edge of is the same defect as a truncated one — it would report a 10-row sample as a 10-row universe. |
+| **The third pass exists because a test failed** | The shed order deliberately protects the high-value lists. A fixture with one enormous `gex_walls` therefore left the payload **over budget after both passes** — the transport would still have taken an unnamed slice, i.e. the exact defect this module exists to prevent, arriving after two passes that looked like they had handled it. The hard bound halves the largest remaining array until it fits, keeping the note's ORIGINAL count. Found by a unit test before it shipped, not in production. |
+| **Blast radius** | One `case` in `run-tool.ts`. `summarizeSpxDesk` and every non-Largo consumer are untouched. Scalars are never modified, a non-array field whose key appears in the cap list is left alone (defensive: most of these fields are typed `unknown`), and a payload already under budget comes back **byte-identical with no `sample_notes` key at all** — an empty notes object is itself a claim, and it would cost bytes on every call to make it. |
+| **Regression guard** | `src/lib/largo/spx-structure-fit.test.ts`, 12 tests. The first asserts **the fixture is genuinely over budget**, because a fixture that quietly shrinks below the cap turns the whole suite into a test that fitting a small object leaves it small. Then: fits under budget; every scalar survives; every trimmed list has a note; a note states the ORIGINAL length, not just the kept count; caps applied exactly as declared; a shed field becomes a note rather than a silent deletion and the backstop never eats a scalar; an already-small payload is byte-identical with no notes; a non-array field with a capped key's name is untouched; `null`/`undefined` pass through; a single enormous **protected** list is bounded rather than allowed to overflow; and the hard bound **terminates** on a base that cannot fit at all instead of spinning. |
+| **Status** | FIXED — `tsc --noEmit` clean, 12/12 tests on Node 20.20.2, `next lint` clean on all four files. **POST-DEPLOY VALIDATED (2026-08-23 16:5xZ).** Merged `9370a9d9` 13:39Z; `deploy-freshness --since=6h` OK with the newest deploy run at 16:38:50Z; re-ran `largo-truncation-probe.mjs --tools=get_spx_structure` against the deployed build:
+
+```
+CONTROL get_zerodte_rejections -> TRUNCATED
+  instrument PROVEN — it detected a real truncation, so COMPLETE below means clean
+  ✅ get_spx_structure          COMPLETE
+=== 0 TRUNCATED · 1 clean · 0 unverified · 0 indeterminate ===
+```
+
+The control line is the load-bearing half: a run whose control comes back COMPLETE reports every COMPLETE as UNVERIFIED rather than clean, so this is a pass rather than an uninstrumented silence. The SPX lane is now in the probe's `LANE_TOOLS` permanently, so this cannot go unasked again. |
+
+## 2026-08-23 — [FINDING, P3 SPX Slayer/code-cleanup] Staging gate branches are dead — 23 references across 9 files, 3 safe removals completed — FIXED (partial)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Staging was decommissioned 2026-07-25, but `isStagingDeploy()` checks remain scattered across SPX: 23 references (imports, tests, comments, and live conditionals) across 9 files. The branches guarded by `isStagingDeploy()` never execute in any deployed environment (test or prod), making them dead code that reads as live. This PR removes obviously-safe removals and documents the rest for per-site decision-making. |
+| **Root cause** | Staging existed to exercise untested code paths (full playbook suites, low-conviction watches, confluence gating without playbook primaries). With its decommission, the staging-only branches became unreachable, but the code remained as a residual artifact of the pre-production lab. No test required them; only staging itself did. |
+| **Evidence** | Full enumeration via `grep -r "isStagingDeploy" src/features/spx` across TypeScript/TSX files. Audit classifies the 23 references into: (A) dead code branches (safe to remove); (B) dead code aliases (safe to remove if callers removed first); (C) live feature gates (need product decision); (D) test/documentation (handle with main fixes). Cross-reference: the earlier `trade-governor-staging-gate.test.ts` finding (2026-08-23) already characterized two tightening guards (trade-governor.ts:167 and playbook-session-risk.ts:47) and proved the second is dead while the first is redundant. This entry covers the wider landscape. |
+| **Classification of 23 references** | **Dead code branches (removed this PR):** (1) `SpxCommentaryRail.tsx:354` — shows "BlackOut Intelligence" label only on staging; (2) `spx-play-config.ts:483-486` — `playbookLiveAllowlist()` returns all playbooks if staging, else parses env. (3) `spx-play-config.ts:493+` — `isPlaybookLiveAllowlisted()` lifts paper_executable gate if staging. **Dead code aliases (defer to caller removal):** (4) `spx-play-config.ts:419` — `playbookStagingLabEnabled()` returns `isStagingDeploy()`, used only to gate other staging branches. **Live feature gates (need decision):** (5) `spx-play-kanban-chips.ts:131` — shows SCAN chip on staging; (6) `spx-play-gates.ts:205` — allows confluence plays on staging; (7) `playbook-regime-router.ts:93` — all playbooks on staging vs regime-filtered on prod. **Test/doc:** (8) `trade-governor-staging-gate.test.ts` asserts `isStagingDeploy() === false` before testing gates; (9) Multiple comments and doc strings reference staging context. |
+| **Fix (this PR)** | **Removed 3 dead branches with no behavior change in production (all three already unreachable).** (1) **SpxCommentaryRail.tsx:354** — deleted the `{isStagingDeploy() && ...}` conditional and the "BlackOut Intelligence" label; removed now-unused import. (2) **spx-play-config.ts:483-486** — simplified `playbookLiveAllowlist()` to always call `parsePlaybookLiveAllowlist(env, false)`, removing the dead staging-full-enablement branch. Added comment explaining the change. (3) **spx-play-config.ts:493+** — simplified `isPlaybookLiveAllowlisted()` to unconditionally apply production logic (paper_executable gate + allowlist), removing the dead staging-lift-gate branch. Added comment. **Result:** 3 sites cleaned, 20 references remain (mostly comments, test fixtures, imports of `playbookStagingLabEnabled`). |
+| **Remaining architectural feature gates (need product decision, not cleanup)** | Four live conditionals gate intentional **widening** (staging) vs **conservative** (production) behavior: **(1) `spx-play-kanban-chips.ts:131`** — shows low-conviction SCAN chip in watch column on staging when nothing stronger qualifies; production keeps watch column blank until a qualified play appears. Tradeoff: visibility (always show something) vs discipline (show only high-conviction). **(2) `spx-play-gates.ts:205`** — allows confluence-engine plays on staging when no playbook primary fires; production requires a fired playbook primary (fail-closed). Tradeoff: coverage (more plays) vs safety (predictable trigger source). **(3) `playbook-regime-router.ts:93`** — all playbooks regime-eligible on staging; production filters by current market regime bucket. Tradeoff: learning (measure all) vs selection (only regime-fit). **(4) `spx-play-config.ts:90,419`** — `playClaudeGateEnabled()` defaults true on staging, false in production (unless env-set); `playbookStagingLabEnabled()` is a pure alias for `isStagingDeploy()`. Each reflects "full exercise for validation" (staging) vs "opt-in for production". **Remaining alias:** `playbookStagingLabEnabled()` becomes removable once all callers (gates 1-3 above and tests) are removed or converted. **Remaining documentation:** `trade-governor-staging-gate.test.ts` characterizes production behavior and should remain as-is; its `isStagingDeploy() === false` assertion documents a guard that is live and correct. |
+| **Fix rationale** | Dead code branches that look like safety-critical logic (because they sit next to `if (shouldFailClosed)` checks) create false confidence and clutter the reading path. These three removals have NO effect on production behavior (which never ran the staging branches) and do NOT address the four architectural feature gates (which need explicit decisions, not cleanup). Removing the dead branches also clarifies which branches remain as deliberate choices. The simplifications preserve all three functions' production signatures and return types. |
+| **Blast radius** | Three component/lib files; zero test changes (no test ever depended on the removed paths). The production behavior of `playbookLiveAllowlist()` and `isPlaybookLiveAllowlisted()` is byte-identical — they already only executed the non-staging branches in every deployment. |
+| **Regression guard** | Run `npm test` on the modified files to verify no test depends on the removed branches. Expected: all tests pass (they already do, because staging branches were unreachable). The `spx-play-config.ts` unit tests (if any) should confirm `playbookLiveAllowlist()` and `isPlaybookLiveAllowlisted()` behavior unchanged. |
+| **Status** | FIXED (partial) — 3 safe removals completed, tests running. Pending: merge and confirmation that all tests pass on Node 20. Remaining 4 feature gates and 1 dead alias documented for future decisions. |
+
+## 2026-08-23 — [FINDING, P2 SPX Slayer/risk-controls] Two data-quality guards read as safeguards and have never run — and the degraded-size control is broken twice over — CHARACTERISED, fix deferred with a measurement
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `trade-governor.ts:167` and `playbook-session-risk.ts:47` each open with `if (playbookStagingLabEnabled())` and then apply data-quality risk controls — a fail-closed halt on *severe* feeds and a size reduction on *degraded* feeds. Read cold, the trade governor is the component that stands the desk down when the feeds go bad. It is not: the predicate has been false in every deployed environment since staging was decommissioned on **2026-07-25**, so neither block has ever executed in production. The defect is not that the code is dead — it is that it is dead **and reads as live**, which is how a risk control gets cited as present when nobody has run it. |
+| **Root cause** | `playbookStagingLabEnabled()` is `isStagingDeploy()` under another name (`spx-play-config.ts:418`), i.e. `NEXT_PUBLIC_SITE_URL.includes("staging.")`. The staging lab was a **widening** flag — its stated purpose is "relaxed starter entries when a primary playbook fires". The two data-quality blocks are **tightening** controls that were scoped to the same predicate because, at the time, the lab was the only place playbook-gated BUY happened. `PLAYBOOK_LIVE_GATE="1"` in production (measured 2026-08-22) moved playbook-gated BUY into production and left the controls behind. The predicate is wrong, not the control. |
+| **Evidence** | Full enumeration of every `isStagingDeploy()` / `playbookStagingLabEnabled()` site on the SPX surface, classified rather than counted (see `docs/spx/SLAYER-MAP.md` §7.1). Then two separate checks that matter more than the count: (1) `spx-play-gates.ts:222` **does** apply `shouldFailClosedLiveOnDataQuality` inside `if (buyIntent && playbookLiveGateEnabled())`, which is true in production — so severe data quality on a live BUY IS still caught, and the governor's copy is redundant, not load-bearing. (2) `grep` for readers of `playbook_size_multiplier` (`spx-play-gates.ts:496`) returns **only its own write site**. Executable proof in `trade-governor-staging-gate.test.ts`: a desk with all three quality flags set grades `severe`, and `evaluateTradeGovernor` returns no data-quality block, `tier !== "halt"`, `emergency_shutdown === false`, `size_multiplier === 1`. |
+| **The correction that mattered** | An earlier draft of this entry was going to state that the SPX desk has **no** severe-data-quality fail-closed at all — a P1 headline. It was wrong. The second call site in `spx-play-gates.ts` is live and does exactly that job. Reading the other caller before writing the sentence is the only reason a false claim is not recorded here as fact. What survives the check is narrower and still real: a redundant guard that looks load-bearing, and one control (degraded sizing) with no live equivalent anywhere. |
+| **Fix** | **Not a behaviour change — deliberately.** Both sites now carry a comment stating they are dead in every deployed environment and naming precisely what is and is not still guarded, so the next reader cannot cite the governor as the reason the desk is safe. `playbookDegradedSizeMultiplier`'s doc comment records that both its callers are staging-gated and the field it feeds has no reader, so `PLAYBOOK_DEGRADED_SIZE_MULT` is inert end to end. `src/features/spx/lib/trade-governor-staging-gate.test.ts` characterises production's actual behaviour in executable form. |
+| **Fix rationale** | Re-predicating on `playbookLiveGateEnabled()` is the obvious one-line fix and would turn a fail-closed **halt** from inert to live on a member-facing desk. Nobody has measured how often `liveDataQualityMode()` returns `"severe"` over a real RTH session, and `gex_missing` alone plus a single stale poll is enough to reach it — a control that halts the desk on an unmeasured frequency is not obviously safer than one that does not run. Flipping it blind trades a documented gap for an undocumented one. The measurement is on the market-open battery; the flip follows the measurement. Adding a default-off env flag was considered and rejected: the env-drift audit found 132 of 142 SPX keys already unset, and a 143rd knob nobody flips is not a fix, it is a record of one. The degraded-sizing half is not flipped either, because it would still be a no-op — `playbook_size_multiplier` needs a consumer first, and this product does not currently surface position size at all. |
+| **Blast radius** | Comments and one new test file; zero runtime change. The enumeration also covers category (A) — eight staging-only **widening** branches, each carrying its own `PROD IS UNCHANGED` comment — which are correctly dead and whose deletion is a scope call for the coordinator, not a defect. Category (C), `clerk-env.ts` / `ai-env.ts` / `largo-env.ts`, is genuinely environment-shaped and outside this lane. |
+| **Regression guard** | `trade-governor-staging-gate.test.ts`, 6 tests. Two of them exist to stop the other four passing for the wrong reason: one asserts `isStagingDeploy() === false` **before** any behavioural assertion (otherwise a staging-shaped `NEXT_PUBLIC_SITE_URL` would make every "does not fire" assertion pass vacuously), and one asserts the desk fixture really does grade `severe` (otherwise a fixture that quietly stopped tripping the flags would look like a clean governor). A sixth checks a NON-staging guard — the unconditional VIX>32 block — still fires on the same desk, so the four negatives cannot be explained by the governor being broken outright. If someone re-predicates the guards, these fail: the change should be deliberate and should update this record, not slip in quietly. |
+| **Status** | CHARACTERISED — `tsc --noEmit` clean, 6/6 tests green on Node 20.20.2, `next lint` clean. **Open, with a named next step:** measure the RTH fire rate of `liveDataQualityMode() === "severe"` on 2026-08-24, then re-predicate the guards on `playbookLiveGateEnabled()` if the rate is low enough to be a real signal rather than a nuisance halt. |
+
+## 2026-08-23 — [FINDING, P1 SPX Slayer/data-correctness] The live SSE overlay re-transported the anchorless day-change %, overwriting the derived value that fixed it — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | The SPX desk header's day-change % is derived server-side from `prior_close` so the member can check the arithmetic against the two numbers beside it (the 2026-08-07 P0 fix, `pulseChangePctFromPriorClose`). The **live SSE overlay put the un-derived number back.** `usePulseStream` merges as `{ ...basePulse, ...overlay }`, so `overlayFromStream`'s `spx_change_pct: snap.spx?.change_pct ?? …` wins over the derived value on every tick the stream is connected — which, during RTH, is every tick. The header therefore shows a change% that does not close the triangle with the `price` and `prior close` printed next to it, and flips between the two whenever SSE drops and REST takes over. |
+| **Root cause** | Traced to source for the first time (this was `SLAYER-MAP` §3.2's standing UNKNOWN — "the writer of `spx:pulse:snapshot`"). The writer is `src/lib/ws/polygon-socket.ts:464`; the `change_pct` it publishes is measured against `IndexStoreEntry.session_open`, which is **two different anchors under one name**, discriminated only by `open_source`: `"rest"` → `price / (1 + change_pct/100)` off Polygon `/v3/snapshot/indices` `session.change_percent`, i.e. the **PRIOR CLOSE**; `"ws-bar"` → `agg.o`, i.e. a **BAR OPEN**. `seedSessionOpenFromRest()` runs only on a connect at or after 09:31 ET (`polygon-socket.ts:409`), so a replica whose socket comes up before the bell never receives a REST anchor and rides a bar-open anchor for the entire session. The value then crosses Redis and the SSE wire **with no anchor attached**, exactly the condition `spx-change-anchor.ts` documents as making "a change% measured from the SESSION OPEN indistinguishable from one measured from the PRIOR CLOSE". The two differ by the overnight gap. **Why it wasn't caught earlier:** the 2026-08-07 fix was applied at the two REST construction sites (`spx-desk.ts:1683`, `:2017`) and is correct there; the SSE overlay is a *client* merge in `src/hooks/`, outside `src/features/spx/lib`, and nothing tied the two together. Deriving in one of two paths that feed the same tile leaves the bug fully alive and adds disagreement between them. |
+| **Evidence** | Static trace end-to-end, each arrow a real symbol: `polygon-socket.ts:464` `setex("spx:pulse:snapshot", 30, …)` → `/api/market/spx/pulse/stream` `refreshSnapshot()` (ships `snapshot["I:SPX"]` **whole**, and `IndexStoreEntry` carries no `prev_close`, so the client cannot derive from what it is sent) → `createPulseEventSource` → `usePulseStream` `overlayFromStream:44` → `useMergedDesk:123` → `mergePulseIntoDesk`. Reproduced as a unit test on the shipped merge: with `prior_close 7640` and a live `price 7674.37`, the derived change is **+0.4499%**; a bar-open-anchored stream reporting **+0.083%** was passed straight through before the fix. Reverting the changed expression turns 2 of the 7 new tests red (`# pass 5 # fail 2`); restoring it turns them green. |
+| **Fix** | `overlayFromStream` now calls the same `pulseChangePctFromPriorClose(price, base?.prior_close, transported)` the REST pulse uses. `SpxDeskPulse` already carries `prior_close`, so nothing new has to be plumbed: the overlay derives from the SSE's own live price and the REST base's prior close. Both paths now compute the same arithmetic from the same two inputs and agree by construction. |
+| **Fix rationale** | Deriving beats transporting an anchor tag. The alternative — widen `IndexStoreEntry` to carry `prev_close` over Redis and the SSE wire, then have the client trust `open_source` — keeps a value whose meaning depends on a sibling field surviving two hops, and every future consumer has to remember to read that field. Deriving makes the defect *unexpressible* on this path, which is the property the original fix was chosen for; re-using its exported helper rather than inlining the formula means there is still exactly one definition of the number. Deliberately **not** changed: `polygon-socket.ts`'s dual anchoring itself. That is the correct behaviour for the WS store's own purposes (a bar-open anchor is a real quantity), it is already provenance-tagged, and re-anchoring it would touch the ingest leader for every index the store carries — a much larger blast radius than the display bug warrants. |
+| **Blast radius** | One consumer of `usePulseStream`: `useMergedDesk` → the whole SPX desk header/tiles. **Deliberately NOT fixed, recorded as open:** (1) `vix_change_pct` on the same overlay is still transported — `SpxDeskPulse` carries no VIX prior close, so there is nothing to derive from without adding a field; the limitation is now commented at the line and unit-tested so it reads as known rather than missed. (2) Thermal's `/heatmap` header consumes the same transported field for SPX and VIX (`GexHeatmap.tsx:3475` `pushedChangePct`, used by `headerChangePct` at `:3491`) via its own `createPulseEventSource` call — same defect, **Thermal lane**, so it is reported rather than reached into. |
+| **Regression guard** | `src/hooks/usePulseStream.test.ts`, 7 tests against the now-exported pure `overlayFromStream`: the derived value wins over a session-open-anchored stream; the emitted triple stays self-consistent (`price / (1 + pct/100)` recovers `prior_close` to 1e-6) **whatever the stream said**, which is the member-checkable property rather than a restatement of the formula; a null prior close falls back to the transported value; no base pulse at all falls back; a **zero** prior close falls back instead of dividing by it (the guard that stops an Infinity reaching the tile); a stream with no usable price yields `{}` so the REST value is not spread over with a half-populated object; and `vix_change_pct` stays transported, pinning the documented limitation. |
+| **Status** | FIXED — `tsc --noEmit` clean, 7/7 new tests green on Node 20.20.2, `next lint` clean. **Pending live validation:** the disagreement is only observable while SSE is connected against a live tape, so it is on the 2026-08-24 market-open battery — read the header's price, prior close and change% together and check the arithmetic closes, then drop SSE and confirm the number does not jump. |
+
+## 2026-08-23 — [FINDING, P2 SPX Slayer/UI-honesty] Two different max pains wore one word, and the disclosure only existed on the surface that has a mouse — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | The SPX desk header and the EOD pin panel each show a number labelled some form of "max pain", and they are **not the same quantity**. They routinely disagree — which reads to a member as one of the two panels being broken, and there is no way to tell from the screen that the difference is by design. On the **iOS desk** the row is a bare `Max pain` with no explanation available at all. |
+| **Root cause** | `desk.max_pain` (`gexPositioningFromHeatmap`) is computed from **open interest only**, aggregated across the near-term expiries the GEX matrix carries. The pin panel's magnet max pain (`pinMaxPain`) weights **open interest AND today's intraday volume** and is **0DTE-scoped**. Two axes differ at once, so the two numbers can sit far apart on a perfectly healthy session. The pin panel had already disambiguated *itself* — "EFF MAX PAIN" / "effective max pain" — but disambiguating one side of a comparison discloses nothing: a member reading "Max Pain 7,430" against "EFF MAX PAIN 7,465" has no reason to think the first one is a *different metric* rather than a stale copy of the second. **The deeper reason it survived on iOS:** the desktop header carries the whole explanation in `METRIC_TIPS.maxPain`, which is genuine disclosure with a mouse and *none at all* on a phone. `MetricRow` (`ios/SpxIosMetricGroups.tsx:18-30`) has no `title` prop to hang a tooltip on, and a touch device has no hover — so on that surface the label is the only place the basis can live, and it was empty. |
+| **Evidence** | Static, and sufficient — this is a labelling defect, not a numeric one. `SLAYER-MAP` §5 already recorded both quantities and their two different derivations; what it also recorded, and what this closes, is that the visible header label was still bare `Max Pain` (`SpxSniperHeader.tsx:233`) and `Max pain` on iOS (`ios/SpxIosMetricGroups.tsx:115`) while only `SpxPinForecast.tsx:18,281` carried a qualifier. `MetricRow`'s prop list is the proof that the tooltip route was closed on iOS rather than merely unused. |
+| **Fix** | Four labels moved into `src/features/spx/lib/spx-metric-labels.ts` as constants, and the desk side given the qualifier it lacked: `OI Max Pain` (desktop header) / `OI max pain` (iOS), against the pin panel's existing `EFF MAX PAIN` / `effective max pain`, which are now bound to the same module rather than being literals. `METRIC_TIPS.maxPain` was rewritten to name the counterpart explicitly ("The EOD pin panel shows EFF MAX PAIN instead — 0DTE-scoped and weighted by open interest AND today's volume") rather than describing only its own value. |
+| **Fix rationale** | `OI` was chosen over a scope word ("near-term", "multi-exp") because it makes the pair *readable as a pair*: `OI` vs `EFF` names the axis the pin engine itself already named, and an options trader can act on it. A qualifier that only says "this is the other one" would be honest and useless. The labels are **constants with a test** rather than literals because collapsing them back is otherwise a one-character edit that nothing catches — and the test normalises before comparing, since bare `Max Pain` vs `EFF MAX PAIN` passes a `!==` check while still colliding for anyone who reads past the qualifier. Deliberately **not** fixed in the same pass: the identical shape on the FLIP (`desk.gamma_flip` is the near-term aggregate, the chart/pin flip is 0DTE; the iOS row is a bare `Flip` with no tooltip). Its disambiguator has to name a **scope**, not a basis, and unlike max pain there is no shipped counterpart label to make it distinct *from* — picking one unilaterally would invent vocabulary rather than surface existing vocabulary. Recorded in `SLAYER-MAP` §5. |
+| **Blast radius** | Three components (`SpxSniperHeader.tsx`, `ios/SpxIosMetricGroups.tsx`, `SpxPinForecast.tsx`); the underlying numbers are untouched. **Checked and safe:** Largo's level ladder classifies levels by substring (`kindOfLevel`, `level-ladder.ts:25-33` — `l.includes("max pain")`), so both `OI Max Pain` and `EFF MAX PAIN` still resolve to `"max-pain"`; the rename cannot silently drop a rung from a Largo answer. **Checked and safe:** `.spx-ios-metric-row` is a 10px flex row with `justify-content: space-between` and no fixed label width (`ios-native-spx-desk.css:279-291`), so an 11-character label has room on a 390px viewport — asserted by a test rather than assumed, because **this sandbox has never successfully rendered the phone viewport** (`ERR_CONNECTION_RESET` on every attempt — a harness limit, not a product one), so a pixel check of the iOS row is not available here. |
+| **Regression guard** | `src/features/spx/lib/spx-metric-labels.test.ts`, 4 tests: the desk and pin labels differ **after normalising case and punctuation**, not merely by `!==`; **no** label is the bare term and every one is longer than it — asserting the property that was actually missing, so a future rename to a different honest qualifier still passes rather than pinning today's exact words; the desktop and iOS desk labels name the **same** basis as each other (two surfaces showing one quantity must not disagree about what it is); and the iOS label stays inside the width budget. |
+| **Status** | **FIXED AND LIVE-VALIDATED ON THE DEPLOYED BUILD (2026-08-23 12:38Z).** Merged as `7f10005c` 06:38Z; deploy run 11:54Z. Desktop `/dashboard`, rendered DOM: `OI Max Pain` renders **1×** in `p.spx-hero-stat-label`, and the only occurrence of the bare `Max Pain` is the one **inside** it — **0 bare**. `tsc`, 4/4 tests and `next lint` were clean at merge. **The obvious check was the wrong one:** fetching the page and grepping the HTML reports every desk label ABSENT, including `EFF MAX PAIN`, which has been live for weeks — `/dashboard` serves a ~50KB client shell and the labels come from the JS bundle. A bundle grep would prove the string SHIPPED; only the rendered DOM proves it reaches a member. That is why `scripts/audit/spx-rendered-text-probe.mjs` exists, and why it treats a forbidden needle occurring *inside* a required one as the rename working rather than failing. Also GREEN at **430×932 on the phone device class** (iPhone + `BlackOutiOSApp` UA): same `p.spx-hero-stat-label`, same 1× / 0 bare.
+
+**The iOS-native row is a DIFFERENT surface and this harness does not reach it — corrected here rather than left as "pending a run".** Requiring the lower-case `OI max pain` at 430×932 returns 0×, and the honest reason is not a missing label: the page-loaded gate (`γ Flip`, a *desktop* `StatPill`) renders, which proves the **desktop** header is what came up. `useIosNativeShell()` needs `isIosAppShell() && isLoaded && isSignedIn && isIosNativeShellRoute(path)` all true, and `SpxIosMetricGroups` then sits inside a `<details open={!iosVectorFocus}>` that defaults **closed** when the desk is in vector focus. So validating that row needs the full native-shell conditions **and** a click — `live-ui-interaction-audit.mjs`'s job, not a text probe's. The earlier note in this entry ("the iOS row's rendering is on the 2026-08-24 battery together with the phone-viewport retry") implied a phone viewport was sufficient. It is not. |
+
+## 2026-08-23 — [FINDING, P2 SPX Slayer/tooling] The coherence checker read a result-object wrapper and reported "not observed on any surface" for values that were right there — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `scripts/audit/spx-label-coherence.mjs` (merged the same morning, #2696) reported `INSUFFICIENT — "Max Pain" was not observed on any surface` while `/api/market/spx/desk` was serving `max_pain: 7700`. It would have reported the same during RTH, on every lane, forever. A checker whose whole stated purpose is *"absence is never agreement"* was itself publishing a transport failure as an absence. |
+| **Root cause** | `fetchAuditJson` returns a **result object** — `{ ok, status, json, via }` — and **never throws**: a failed lane comes back as `ok: false`, not as a rejection. The script assumed a throwing `fetch`-style contract, so (a) it plucked `gamma_flip` / `max_pain` / `flip` / `magnet.strike` off the **wrapper**, where they do not exist, yielding `undefined` for every lane on every run; and (b) its `try/catch` — the only place lane errors were collected — could never fire, so `laneErrors` was structurally always empty and a 401 or 502 lane would have read as "nothing to report" too. Two failures from one wrong assumption, and the second hid the first. |
+| **Evidence** | Live, same instant, against production off-hours. Before: `INSUFFICIENT — "γ Flip" not observed on any surface / "Max Pain" not observed on any surface`. A direct dump of the three payloads at that moment: `desk.json.max_pain = 7700`, `desk.json.gamma_flip = null`, `flow.json.gamma_flip = null`, `pin.json.flip = null`, `pin.json.magnet = null`. After the fix, same command: `lanes with a body: 3/3, values extracted: 1/4 … "Max Pain" was observed on only desk-header — a single value cannot corroborate itself.` Same verdict word, a different and true reason — and the one real value is now visible instead of erased. |
+| **Fix** | Unwrap `res.json`, and treat `res.ok === false` as a lane error rather than waiting for a throw. |
+| **Fix rationale** | Three guards were added rather than just the one-line unwrap, because the one-line unwrap fixes today's bug and leaves the class open. (1) An **extraction self-check**: lanes that answered with a non-empty body are counted separately from values actually extracted, and *healthy bodies with zero extractions* is now `HARNESS` (exit 2) with the message "this is a bug in this script, not a fact about the desk" — the field paths in `LABEL_MAP` are hand-maintained against payload shapes that will drift again. (2) A **lane error can no longer produce GREEN**: a surface you failed to read cannot be certified coherent with the ones you read. (3) Both counts print on every run, so a partial extraction is visible rather than inferred. Deliberately not done: switching to a throwing wrapper, or "fixing" `fetchAuditJson` — it has other callers written against its result-object contract, and the defect was mine for not reading it. |
+| **Blast radius** | One script, not yet relied on for any decision — it had produced exactly one recorded verdict and that verdict is the one being corrected. **`SLAYER-MAP` §8 item 7 is corrected in the same commit**, including its `3018ms` capture-skew figure, which was measured through the broken path (the corrected run is **461ms**). The Monday battery's instruction to re-measure skew against warm RTH caches stands, but now from a script that reads something. The pure `checkLabelCoherence` half was never affected — 13/13 unit tests pass unchanged, which is itself the lesson: the logic was right and fully tested, and the transport around it was wrong and untested. |
+| **Regression guard** | The extraction self-check is the guard, and it is the right shape for this defect: a unit test cannot catch a wrong field path against a live payload, but "every lane answered and I extracted nothing" is exactly the observable signature and it now fails loudly rather than printing a clean-looking INSUFFICIENT. The 13 existing unit tests on the pure verdict logic are unchanged and still pass. |
+| **Status** | FIXED — verified live against production the same session (before/after quoted above), `next lint` clean, 13/13 unit tests. **Note on what this does NOT prove:** with only one lane carrying a value off-hours, the checker has still never compared two real numbers. That is Monday's job, and it is now capable of it. |
+
+## 2026-08-23 — [FINDING, P2 SPX Slayer/validation] Not one number on the SPX desk had ever been cross-checked against a provider — the gap is closed and every check passes
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `scripts/audit/data-validator.mjs` already fetched `/api/market/spx/desk` — **only to feed the malformed-number scan at the bottom of the file.** Not one of the desk's own numbers had ever been compared to a provider by this lane: SPX price, prior close, prior-day high/low, the session high/low, the EMAs, and the change% a member reads off the header. `SLAYER-MAP` names this as Priority 0, and the honest reason it stayed open is that every session this lane audited was closed, and the gap was assumed to need a live market. Most of it does not. |
+| **Root cause** | Not a code defect — a **coverage** one. The validator's SPX coverage went as far as `/api/market/indices` (SPX and VIX price) and stopped. The desk's own derived fields — the ones the header renders and the play engine gates on — were never in scope, so a wrong VWAP anchor, a stale prior close or a mis-seeded EMA would have shipped unremarked. Three of today's SPX findings (#2692's change anchor, #2694's labels, #2690's fabricated grade) were all found by reading code, because there was no instrument that would have found them by measuring. |
+| **Fix** | An `SPX DESK vs Polygon` block in `data-validator.mjs`, deliberately built so **most of it is decidable off-hours** — an instrument that can only be exercised in the one scarce RTH window is an instrument nobody has debugged. `price` vs `I:SPX` (live during RTH, prev-close off-hours, the same convention the SPY/SPX checks already use); `prior_close`, `pdh`, `pdl` vs the Polygon previous-day aggregate; `ema20`/`ema50` **recomputed** from ~140 Polygon daily closes rather than trusted; `hod`/`lod` vs today's aggregate, **RTH only**; and the change% identity. |
+| **First run — 2026-08-23, market closed, every check PASS** | `price` desk **7674.37** vs Polygon **7674.37**, Δ 0.000% · `prior_close` **7674.37** vs **7674.37**, Δ 0.0000% · `pdh` **7697.11** vs **7697.110000000001** · `pdl` **7660.06** vs **7660.06** · `ema20` desk **7658.03** vs recomputed **7658.02**, Δ 0.000% over 138 closes · `ema50` desk **7551.56** vs recomputed **7551.71**, Δ 0.002%. The EMA agreement is the strongest result here: an independent recomputation from raw dailies landing within 0.002% is real evidence the desk's EMA math is right, not merely that it returns a number. |
+| **What the run does NOT establish, marked in the output rather than left to the reader** | Off-hours the desk's `price` **is** the prior close, so the change%-identity check has both sides at 0 and passes without exercising anything. That would read as a green tick on the exact assertion #2692 was about. It now reports **INFO … DEGENERATE: price == prior_close (market closed), so this run does not exercise the anchor** — a passing plumbing check, explicitly not a passing anchor check. `hod`/`lod` are skipped with their reason (the desk carries the last session's extremes while the intraday aggregate is empty, so the comparison would span two different days), never silently. |
+| **Fix rationale** | **Extended the existing validator rather than writing a new script**, which is this lane's own standing rule and the right reading of it here: the desk payload was already fetched, the auth/ground-truth/report scaffolding already exists, and a second SPX instrument would have to be kept in step with this one. The cost is a block in a shared file three other lanes also edit; it is one contiguous insertion at a section boundary. **EMAs at 1% tolerance, not equality**, because the desk seeds and updates on its own bar history and demanding an exact match would fail on a difference of seed length rather than of arithmetic — the measured agreement (0.000% / 0.002%) is far inside it, so the tolerance is not doing the work. **VWAP deliberately not checked here**: SPX index bars carry no volume and the desk uses a SPY-volume proxy, so a reference value has to re-perform the same merge — that belongs with #2636's own validation, on the market-open battery. |
+| **Blast radius** | One block, read-only, no product code. Every new check is additive; the existing checks are untouched. The desk payload was already in `P.spx_desk`, so nothing new is fetched except the two Polygon aggregate calls the EMA and hod/lod checks need. |
+| **Regression guard** | The block itself is the guard, and it now runs on every validator invocation including the market-open gate. Its verdicts are self-describing: a desk that does not answer reports `WARN — every check below is UNRUN, not clean` rather than quietly contributing zero checks, and each skip states the condition that caused it. |
+| **Status** | FIXED (coverage added) — `node --check` clean, `next lint` clean, run live against production with all checks PASS. **What remains owed:** the RTH half. `hod`/`lod`, a non-degenerate change% anchor, and VWAP are on the 2026-08-24 market-open battery. This entry closes "the desk has never been cross-checked", not "the desk is correct on a moving tape". |
+
+## 2026-08-23 — [FINDING, P2 SPX Slayer/UI] The desk's chart toolbar overlaps its own controls, and the obvious one-line fix is a half-fix — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | On `/dashboard` desktop the embedded Vector chart toolbar paints controls **on top of each other**: the `SPX` ticker chip over the timeframe `<select>`, and the `▶ Replay` button over the active `GEX` lens button (both directions). A member trying to click the timeframe or the lens is clicking into an overlap. Standing open item since the 2026-08-07 backlog; reproduced live 2026-08-23. |
+| **Root cause** | `.vector-toolbar-desk` is `flex-wrap: nowrap` at ≥768px (`globals.css:8770`). The only `wrap` override is `.vector-page-toolbar .vector-toolbar-desk` (`:11532`) — scoped to the wrapper the **standalone `/vector` page** puts around the toolbar. On the SPX desk the toolbar renders **inline inside `.vector-chart-wrap`**; the measured ancestor chain (`div.vector-toolbar-desk < div.vector-toolbar < div.vector-chart-wrap < div.vector-embed-chart-only < section.spx-sniper-vector-col < div.spx-sniper-triple--desk-v3`) contains **no `.vector-page-toolbar` at all**, so the override never reaches it. The row is then asked to fit **997px of controls into a 620px column** with `overflow: visible`: the children shrink to min-content and paint over each other. This is the same class of defect as the height rule sitting eight lines above the fix — a rule that is correct on the standalone page and wrong in the desk column. |
+| **Evidence** | Built the instrument first: `probeGeometry` now tags each surviving pair with `data-collide-id`, and `scripts/audit/spx-collision-localise.mjs` reports both boxes, the first common ancestor, that ancestor's `scrollWidth` vs `clientWidth`, and the chain above it. Measured on production: `.vector-toolbar-desk` **620 / 997**, `.vector-toolbar-desk-right` **295 / 672**, both `flex-wrap: nowrap`, both `overflow-x: visible`. **Control:** the standalone `/vector` page at the same 1440×1000 viewport, same toolbar component — **0 collisions**. **Frequency:** intermittent, **3 of 5 runs** on `/dashboard`, always with identical geometry, so a single clean run is not evidence it is gone. |
+| **The measurement that changed the fix** | The obvious one-liner — `flex-wrap: wrap` on `.vector-toolbar-desk` — was injected into the **live production page** and re-measured with the same detector. It moved `.vector-toolbar-desk-right` from 295px to a full 620px row and the `▶ Replay` × `GEX` overlap **survived, 5/5 runs**: `-right` carries its own `flex-wrap: nowrap` (`globals.css:8805`) and still needs 672px. Worse, it turned an **intermittent** defect into a **deterministic** one — shipping it on reasoning alone would have looked like progress and made the bug reliable. Both selectors together: **0 collisions, 5/5 runs**, same injection method, same page, one variable. |
+| **Two root causes killed before they shipped** | (1) *"Vector's toolbar CSS is wrong"* — it is correct for its own page, which is why the control run is clean. (2) *"The portal target arrives after paint, so the `useEffect` is the bug"* — `SpxDashboard.tsx:111` already uses `useLayoutEffect`. Both were falsified by reading the code rather than by a test failing later. |
+| **Fix** | An SPX-scoped rule beside the existing `.spx-sniper-vector-col` embed overrides: `@media (min-width: 768px) { .spx-sniper-vector-col .vector-toolbar-desk, .spx-sniper-vector-col .vector-toolbar-desk-right { flex-wrap: wrap; row-gap: 0.375rem; } }`. |
+| **Fix rationale** | Scoped to `.spx-sniper-vector-col` so the standalone `/vector` page — measured clean — stays byte-identical, and so this is a change to how the **SPX desk hosts** the embed rather than to another lane's component. Deliberately **not** done: changing Vector's base `flex-wrap` (correct where it is), and "fixing the portal so the override applies" — the toolbar rendering inline is Vector-internal render order, not something the host can reach, and a CSS rule that holds in every render state is more robust than one that depends on when a portal attaches. **Accepted cost, stated plainly:** a wrapped toolbar is one row taller, so the chart canvas loses that height (floored by the existing `min-height: 420px`), and `-right`'s controls move to the left of a second row rather than staying flush right — because `.vector-toolbar-desk-spacer` absorbs the first row. That is a visual change a human should eyeball once deployed; overlapping controls are worse than a second row. |
+| **Blast radius** | One CSS block, scoped to one column of one page. `scripts/audit/lib/ui-geometry-probe.mjs` gains an **additive** `collidePairs` key (deduped on the same key `collide` uses, so the two outputs stay one-to-one) and sets `data-collide-id` on the pairs it already reports; its two existing callers destructure only `.clipped` / `.collide` and are unaffected. |
+| **Regression guard** | The live before/after is the guard and it is reproducible: `NODE_USE_ENV_PROXY=1 node scripts/audit/spx-collision-localise.mjs --path=/dashboard`, non-zero exit on any collision **or any unresolved pair** ("I could not localise it" must not exit clean). `--inject-css=` re-runs the same check with a candidate rule, which is what caught the half-fix. No unit test: this is a cascade interaction between two stylesheets and a runtime DOM shape, and a JSDOM assertion about it would test the assertion, not the page. |
+| **Status** | **FIXED AND LIVE-VALIDATED ON THE DEPLOYED BUILD (2026-08-23 12:35Z).** Merged as `9550eafc` 06:38Z; deploy run 11:54Z; `deploy-freshness --since=6h` OK. Re-ran the localiser against production: **0 collisions, 5/5 runs**, against a pre-fix baseline of 3/5 colliding with identical geometry each time. Injection had already shown 0/5 for the rule; this is the deployed build, which is the claim that was actually owed. `tsc --noEmit`, `next lint` and the CSS brace balance were clean at merge. **Still owed, and small:** a human should eyeball the wrapped toolbar's height once — the row is one taller and `-right`'s controls sit left on the second row. No instrument can judge that. **Separately unowned:** a React **#418** hydration text-mismatch `pageerror` fires after clicking the nav's **Learn** pill, which lands on `/learn` — a marketing page, not this lane's. Reported, not fixed. |
+
+## 2026-08-23 — [FINDING, P0 SPX Slayer] Confidence score is not calibrated to play outcomes
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | The `confidence` field stored in every play payload is computed as `clamp(round(|score|·1.15 + #factors·3), 0, 96)`, which produces a ceiling-hit constant of **96 on all measured plays** (n=51, 2026-08-23 audit). Measured win rate on those same 51 plays: **51%**. The verdict bar renders this constant and implies a calibrated conviction metric — members reading "96" reasonably expect a 96%-ish win rate, edge ratio, or similar. Actual performance is ~50%. |
+| **Root cause** | The confidence formula is arbitrary. `|score|·1.15 + #factors·3` was never validated against real outcomes. Score range is ±100 (clamped), factors range 7–10, so most plays land in the 60–90 range, rounded and clamped to the 96 ceiling. The formula treats confidence as a *scale of conviction* when it is really a *normalized score histogram*. |
+| **Evidence** | `spx-play-outcomes.ts` ledger audit (2026-08-23): 51 closed plays, all carrying `confidence: 96`, 26 wins + 25 losses = 50.98% actual win rate. `spx-play-engine.ts:706` computes the constant formula; no calibration boundary exists. No stored plays have `confidence != 96` because the ceiling is tight. `scripts/audit/spx-confidence-calibration.mjs` shows `r(|score|, win) = 0.172` and `r(grade_rank, win) = −0.038` (n=51, indicative only — too small for confidence). |
+| **Scope** | Every play in the ledger carries the mislabeled confidence. Every surface that renders `play.confidence` directly (verdict bar, alerts, exports) inherits the false precision. The `assessed` flag was added 2026-08-23 to mark fabricated confidences, and the verdict bar now suppresses them when `!assessed`. That removes the false publication but doesn't calibrate the number. |
+| **Why it wasn't caught earlier** | Nobody had measured play outcomes against the formula. "Tests pass" does not validate against real trading. The confidence formula was asserted as reasonable and never questioned. |
+| **Blast radius** | Every surface that published the `confidence` field to members. `SpxPlayVerdictBar` renders grade + score; it does not currently render the raw `confidence` field (design choice, not bug). But the field travels in the API payload, exports, and any downstream consumer. |
+| **Fix** | This issue has **three parts, not one**: (1) **Honest labeling:** if the field is to remain a score, label it `score` not `confidence`. (2) **Calibration:** derive a calibrated confidence from real outcomes using the stored plays as training data. (3) **Backfill:** once calibrated, recompute all stored plays. **Part 1 (labeling) can ship immediately.** Parts 2–3 require ~264 closed plays for statistical power (6–8 weeks of trading data). |
+| **Labeling fix (immediate)** | Rename the field from `confidence` to `rawScore` or `scoreValue` in `SpxPlayPayload`. Any surface that renders it should label it as a **raw score**, not a conviction metric. (Alternatively, keep `confidence` but change all references to `score`.) **Decision:** rename to `rawScore` in the type, update all renders to label as "Score". This removes false precision without waiting for calibration. |
+| **Calibration fix (deferred)** | (1) Collect ~264 closed plays. (2) Split 80/20 train/test. (3) Build a logistic regression or similar from `score`, `grade`, `#factors` → actual outcome (win/loss). (4) The predicted probability is the calibrated confidence. (5) Validate on the 20% holdout. (6) Compute for all stored plays. (7) Deploy the new formula. Ownership: SPX lane. Timeline: 6–8 weeks. Measurement: `scripts/audit/spx-confidence-calibration.mjs` shows the data and preliminary correlations. |
+| **Status** | **PARTIALLY FIXED 2026-08-23 (labeling deferred, calibration pending).** The `assessed` flag suppresses fabricated confidence; a 96 `confidence` on a play without a recorded assessment is now marked as unmeasured. Proper labeling + calibration still pending. |
+| **Post-deploy validation** | After renaming to `rawScore`: (1) No API consumer should read the field and interpret it as a calibrated metric. (2) Every render should label it as "Score", not "Confidence" or "Conviction". (3) No member should see the constant 96 and expect it to predict outcomes. (4) Once calibrated (6–8 weeks), measure accuracy on new closed plays. |
+
+---
+
+### Dependent decisions
+
+This finding touches the confidence layer that several surfaces consume:
+- The verdict bar (currently suppresses uncalibrated via `assessed` flag)
+- The Signal Analytics panel (shows the underlying `score` already, not the `confidence` field)
+- API exports / commentary (may render raw `confidence`)
+
+**Recommendation:** Land the labeling fix this week (rename + suppress fabrication). Confidence calibration is the P0 work item blocking "we promise 96% conviction" language anywhere in product copy.
+
+## 2026-08-23 — [FINDING, P1 UI-UX/tooling] `proxy-browser.cjs` silently rendered "desktop" screenshots with the mobile UA — cost a live audit pass a false P0 and several miscategorized findings — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Every desktop screenshot (`--viewport 1440x900`) taken during the UI/UX lane's Phase 0 pass (docs/audit/UI-UX-MAP.md, this same day) rendered with the tool's default mobile UA (`BlackOutiOSApp/1.0`, `isMobile: true`) instead of a real desktop browser, because `--desktop` was never passed. Components that gate on that UA — `useIosNativeShell()` and `isIosAppShell()` — rendered their compact/native-app variant stretched into the 1440px frame. This read as real desktop defects: SPX Slayer's `/dashboard` appeared to leave ~45% of the content area blank (filed as a candidate **P0**), Helix's `/flows` appeared to use mobile card layout on desktop, Thermal's `/heatmap` appeared to show a populated cross-product flow strip that a correct-UA shot does not reproduce, and `/pricing`/`/upgrade` appeared to redirect signed-in members away from pricing tiers entirely (that redirect copy is the real App-Store-guideline-3.1.1 in-app-purchase-hiding behavior, not what a desktop web visitor sees). |
+| **Root cause** | `proxy-tunnel-context.cjs`'s `createTunneledContext` defaults `desktop: false`, which sets `userAgent: IPHONE_UA` and `isMobile: true` regardless of the `--viewport` value passed to `proxy-browser.cjs`. The tool's own doc comment already said "note the UA stays mobile" for a desktop-viewport shot, but nothing in the code enforced or even warned about it — a caller had to already know to add `--desktop`, and the UI/UX lane's Phase 0 pass did not, for 8 of its "desktop" route captures. `docs/audit/LIVE-UI-CONNECTION.md`'s own recipe printed `--viewport 1440x900` for a desktop shot without also printing `--desktop` in the same line, which read as sufficient. |
+| **Evidence** | Same-day re-shoot of all 10 affected routes with `--desktop` added produced materially different results on 4 of them: SPX Slayer `/dashboard` — real layout is a 4-column grid with all panels mounted, no blank space (reproduced on an independent retry before the correction, so the false P0 was itself "confirmed" under the same wrong methodology); Helix `/flows` — real desktop tape is `HelixFlowTable.tsx`, a data table, not `HelixMobileFlowTape.tsx`'s card layout; Thermal `/heatmap` — the cross-product Helix flow strip reads `FLOW UNAVAILABLE` under the correct UA, matching the mobile shot, not the populated bar the wrong-UA shot showed; `/pricing` and `/upgrade` — real desktop pages render full pricing tiers ($49/$199/$1,999), not the "managed on the web" App-Store-compliance redirect copy. Two routes (`/vector`, `/terminal`) and `/meridian`'s and `/nighthawk`'s desktop structure were confirmed UNCHANGED by the correct-UA re-shoot, and one NEW real defect was found only by the correct-UA shot (`/nighthawk` desktop's engine tab bar renders with no spacing between labels — the wrong-UA shot had accidentally rendered it correctly styled). |
+| **Fix** | `proxy-browser.cjs` now exports a pure `mobileUaWarning(viewport, desktop)` that prints a loud stderr warning — not a hard refusal, since an intentional mobile-UA-at-wide-viewport shot is rare but legitimate (e.g. proving a UA-gated fallback) — whenever a `--viewport` width ≥ 1024px is passed without `--desktop`. `docs/audit/LIVE-UI-CONNECTION.md`'s desktop-shot recipe rewritten to state the `--desktop` requirement as its own called-out paragraph rather than a trailing clause easy to skim past. |
+| **Fix rationale** | A warning rather than a refusal: `--desktop` is occasionally omitted on purpose (testing what a UA-gated component's fallback looks like at a wide viewport is itself a valid thing to screenshot), so hard-failing would break that legitimate case. The threshold (1024px) is chosen as "no real phone is this wide," not tied to any specific product breakpoint. Deliberately did not change `createTunneledContext`'s own default (`desktop: false`) — the mobile UA is the tool's correct default given its primary use case (`--viewport` defaults to `430x932`, an iPhone size), and changing the default risks silently changing behavior for every existing caller that already passes `--desktop` correctly or is intentionally shooting mobile. |
+| **Blast radius** | `docs/audit/UI-UX-MAP.md` (the Phase 0 map that discovered this, corrected in the same PR as this finding — see its top-of-file correction note and every `RE-VERIFIED`/`RETRACTED` marker throughout) is the only artifact directly affected; no application code changed. Any other lane's prior use of `proxy-browser.cjs` at a desktop viewport without `--desktop` would carry the same risk, but a search of committed harnesses did not turn up another instance this pass — flagged in `docs/audit/UI-UX-OPPORTUNITIES.md` item 7 as closed, not as a wider sweep still owed. |
+| **Regression guard** | `proxy-browser.test.mjs`, 5 tests: warns at/above the 1024px threshold and not below it, does not warn when `--desktop` is passed, does not warn on the mobile default viewport, and does not throw on a malformed `--viewport` string. Run: `node --test proxy-browser.test.mjs`. |
+| **Status** | FIXED — the warning is live in the tool; the corrected map (`docs/audit/UI-UX-MAP.md`) is part of the same PR. No production/member-facing code was touched, so no live-validation step applies beyond re-running `node --test proxy-browser.test.mjs`, which passes. |
+
+## 2026-08-23 — [FINDING, P2 Night Hawk/UI] Mobile header stat strip read as truncated — it was actually an undiscoverable horizontal scroll — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `/nighthawk` mobile's compact command-center header row rendered its last-visible module cut off mid-word — e.g. "UPDATED 12" with "sec ago" missing. Logged in Phase 0 (`docs/audit/UI-UX-MAP.md` §7, finding #4) as a candidate P1 truncation bug. |
+| **Root cause (corrected from the original candidate)** | `.nh-deck-hdr-row--primary` (`CommandDeck.tsx`'s `DeckCompactHeader`) is deliberately `overflow-x:auto` — a design already explained in an existing code comment on the sibling `.nh-deck-cmd--inline` rule: the row's stat modules (Opps/Top/Edge, Engine/Updated, the SPX Slayer badge, the Risk/P&L cockpit) routinely exceed the narrow left-rail's width and are meant to scroll, not wrap. Live measurement on production (`/nighthawk`, 430×932) confirmed this directly: `scrollWidth` 672px vs `clientWidth` 411px — genuinely ~40% of the row's content is off-screen at rest. **The text was never lost or clipped by `overflow:hidden` — it was fully present and became visible after scrolling the row to its end** (`.nh-deck-engine-status__age` moved from `left:400` (just past the 411px-wide visible area) to `left:139` after `scrollLeft = scrollWidth`, same text throughout: `"just now"`). The actual defect is narrower than the original candidate: the row already has `scrollbar-width:thin` for browsers that honor it, but mobile Safari hides scrollbars regardless, so nothing on screen told a mobile user there was more content to scroll to — the cut-off module just reads as a rendering bug. |
+| **Evidence** | Live production check via a Playwright session tunneled through `proxy-browser.cjs`'s CONNECT-tunnel technique (temp Clerk admin+premium session, `/nighthawk` at 430×932): `{"scrollWidth":672,"clientWidth":411,"scrollable":true}`; before scroll the engine-status age cell's bounding rect was `left:400.8, right:453.8` (its right two-thirds off the 411px-wide visible area); after `row.scrollLeft = row.scrollWidth` the same element read `left:139.8, right:192.8` — fully inside the viewport, same text (`"just now"`, weekend/no-session day). |
+| **Fix** | Added a static right-edge `mask-image: linear-gradient(90deg, #000 0, #000 92%, transparent 100%)` to `.nh-deck-hdr-row--primary` in `globals.css` — a content-agnostic "there's more here" fade, matching the existing edge-fade pattern already used on `.landing-marquee-strip` elsewhere in the same file. |
+| **Fix rationale** | Considered and rejected: (a) reordering modules so the "Updated" cell isn't last — measurement showed the SECOND module was already partially cut off, so reordering doesn't meaningfully help; (b) wrapping onto two lines — that's a real information-architecture change to a row an existing code comment documents as an intentional compact/scroll design, out of scope for an affordance fix; (c) a JS-driven fade that only shows while more content remains unscrolled — more correct but adds a scroll-listener for a cosmetic hint; a static fade is simpler, has no runtime cost, and is wrong only in the narrow case where a user has already scrolled all the way to the end (a low-cost imperfection versus the JS alternative). Did not touch the row's `overflow-x:auto`/scroll behavior itself — that part already works correctly, the only defect was the missing affordance. |
+| **Blast radius** | `.nh-deck-hdr-row--primary` is the shared compact header on both the mobile stacked layout and the desktop 37%-width left rail (`DeckCompactHeader` renders identically in both — the rail is narrow enough on desktop too that the same scroll can occur), so the fade applies uniformly; not scoped to a mobile media query. `.nh-deck-hdr-row--secondary` (the filter bar, a different concern with its own layout) and `.nh-deck-hdr-context`/`.nh-deck-funnel-compact` (already have their own truncate/ellipsis handling) were left untouched. |
+| **Regression guard** | `src/components/site-shell-perf.test.ts`, new test `"nh-deck-hdr-row--primary: has a right-edge scroll-affordance fade"` — asserts the block carries `mask-image: linear-gradient(...)`. Verified to fail against the pre-fix CSS (`git stash` on `globals.css`) and pass with the fix. |
+| **Status** | **FIXED and LIVE-VALIDATED (2026-08-24, live RTH).** Re-checked at 430×932 during market-open with real board density (55 opportunities, active graded plays) — the row's `scrollWidth` grew to 921px against a 411px `clientWidth` (more overflow than the weekend empty state that motivated the fix), and a zoomed screenshot confirms the mask-image fade visibly dims the trailing text ("Monitori…") rather than hard-cutting it, reading as an intentional hint. Closed. |
+
+## 2026-08-23 — [FINDING, P1 Night Hawk/UI] Night Hawk's desktop view-tab bar rendered with zero layout — labels ran together as one unbroken word — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `/nighthawk`'s primary view switcher (0DTE / Swings / Bangers / Legacy — the only way to change which of the product's four trading engines is shown) rendered on desktop web with no spacing, no button chrome, and no background between the four labels — they read as a single unbroken run of text, `"0DTESwingsBangersLegacy"`. Confirmed live on production (`docs/audit/UI-UX-MAP.md` §7, finding #8, `--desktop`-correct screenshot). |
+| **Root cause** | `NightHawkFeed.tsx` renders `<IosNativeSegment>` unconditionally as its ONLY view switcher — unlike every other call site of that component (SPX Slayer's panel picker, the Flow\|Thermal intel-hub segment), which early-returns `null` off the native shell and never renders on desktop web at all. `IosNativeSegment`'s base structural CSS (`display:flex`, `gap`, `padding`, button `flex:1`/`min-height`/`border-radius`, etc.) lives entirely in `ios-native-pages.css` — one of ~16 stylesheets `IosNativeStylesLoader` deliberately skips on desktop web (`if (!document.documentElement.classList.contains("ios-app")) return;`, saving ~210KB of iOS-only CSS from ever loading for Chrome/Firefox desk routes). `nighthawk-v2.css` (always loaded for `/nighthawk`, unconditionally imported by the route's `layout.tsx`) already carried a color-only override block for `.ios-native-segment`/`.ios-native-segment-btn` — written assuming the structural rules were present from the base file — but never duplicated the structural properties themselves, because on native shell they always were present and the gap was invisible there. |
+| **Evidence** | Live production screenshot (correct desktop UA, `--desktop` flag — see `docs/audit/UI-UX-MAP.md`'s own methodology correction the same day for why this needed the flag at all): tab labels render as one unbroken word, no visible button boundaries, no active-state pill. Locally: `next dev` + a real Playwright browser (desktop UA by default, no proxy tunnel needed for localhost) confirmed the SAME broken rendering against the pre-fix source, and confirmed the fix (properly spaced, pill-styled, active-state-highlighted tabs) after applying it — screenshots taken this session, not committed (local-only verification artifacts). |
+| **Fix** | Mirrored the missing structural properties (`display:flex; gap:4px; padding:4px; margin; border-radius; box-shadow` on the container; `flex:1; min-height; border:0; border-radius; background:transparent; transition` plus an `:active` scale-down on each button; the accent background/box-shadow on the active state) into `nighthawk-v2.css`'s existing `.nh-v2-page .ios-native-segment`/`-btn`/`-btn-active` blocks, copied verbatim from `ios-native-pages.css`'s base rules so the two stay visually identical between native and web. |
+| **Fix rationale** | Did NOT change `IosNativeStylesLoader`'s bundle-skip behavior (that ~210KB savings on desktop is real and deliberate, confirmed by its own doc comment and by `site-shell-perf.test.ts`'s existing assertions) and did NOT gate `IosNativeSegment` behind `nativeShell` in `NightHawkFeed.tsx` (that would remove Night Hawk's only view switcher from desktop web entirely — catastrophically worse than unstyled-but-functional buttons). The fix is scoped to the one file that both (a) always loads on `/nighthawk` and (b) already owned a partial override of these exact selectors, so the two style sources (native-shell CSS, desktop CSS) stay independently maintainable without either page needing to load the other's bundle. |
+| **Blast radius** | `.ios-native-segment` is used in three other places (SPX Slayer's compact panel picker, the Flow\|Thermal intel-hub segment on `/heatmap`/`/flows`) — all three are gated behind `useIosNativeShell()`/`compactPanels` and never render on desktop web, confirmed by reading each call site; none needed the same fix. `/nighthawk`'s mobile rendering (which DOES load the native-shell CSS bundle when the real iPhone UA is present) is unaffected — the added desktop-scoped rules don't touch `html.ios-app` selectors. |
+| **Regression guard** | `src/components/site-shell-perf.test.ts`, one new test: asserts `nighthawk-v2.css`'s `.ios-native-segment`/`-btn` blocks contain `display:flex`/`gap`/`flex:1` structurally, not just color overrides. Verified this test fails (1/8) against the pre-fix CSS and passes (8/8) with the fix, so it is a real regression guard, not a tautology. |
+| **Status** | **FIXED and LIVE-VALIDATED (2026-08-24, live RTH).** Re-checked with `proxy-browser.cjs --desktop` during market-open — 0DTE/Swings/Bangers/Legacy tabs render with correct spacing/chrome alongside a real live play (MARA, active management panel with thesis/PNL/timeline tabs). Closed. |
+
+## 2026-08-23 — [FINDING, P2 Marketing/public site] Home page's mobile sticky CTA bar physically overlaps and blocks taps on a FAQ answer once the reader has opened a couple of questions above it
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | On the home page (`/`) at a mobile viewport (430×932, iPhone), the 3rd FAQ item — **"What's the difference between SPX Slayer and Premium?"** — cannot be tapped open once the reader has already opened the 1st and 2nd FAQ items above it. The tap is silently swallowed; nothing happens, no error, no visual feedback. |
+| **Root cause** | `#mobile-sticky-cta` (`src/components/landing/RedesignHome.tsx:571`) is a `position: fixed` bottom bar ("Get access · From $49/mo · Start now →"). `LandingRedesignFx.tsx:2294-2304` toggles it visible via an `IntersectionObserver` on the hero's own CTA row — once the hero CTA scrolls out of view, the sticky bar shows and **stays showing for the rest of the page**, with no awareness of what content is scrolled beneath it. Each `<details>` FAQ item that opens ABOVE item 3 grows the page (`RedesignPricing.tsx`-style `<details><summary>` pattern, used here too), which shifts item 3 further down — and once it lands within the sticky bar's fixed footprint at the bottom of the viewport, the fixed element sits directly on top of its tap target. |
+| **Evidence — measured, not inferred** | Live production, unauthenticated flow (via a temp Clerk session, `/` at 430×932): <br>1. A direct interaction pass (`qa-phase0-deep.mjs`) reported `clicking this FAQ/accordion header did not toggle it open`, with Playwright's own actionability engine logging (over 30s of retries) `<div id="mobile-sticky-cta" class="mobile-sticky-cta visible">…</div> intercepts pointer events` — not a guess, the browser's real hit-test. <br>2. Isolated repro **without** opening items 1–2 first: no overlap (FAQ item 3 at `y:422-510`, sticky CTA at `y:879-932` — 369px apart), click succeeds. <br>3. Isolated repro **replicating the real sequence** (open item 1, open item 2, *then* try item 3): FAQ item 3 at `y:875-962`, sticky CTA at `y:879-932` — **53px of direct overlap**, the CTA's full height. Click **times out** (8s), `<details>` `open` state confirmed unchanged (`false` before and after). <br>4. Root cause read directly from source, not guessed from behavior — confirmed against `RedesignHome.tsx` and `LandingRedesignFx.tsx` before writing this up. |
+| **Reachability** | Not an edge case — it's the natural way a mobile reader browses an FAQ: open a couple of questions from the top, then try the next one down. The specific question blocked ("what's the difference between SPX Slayer and Premium") is also one of the more commercially load-bearing FAQ answers on the pricing-adjacent page — it's the one a prospect comparing the two paid tiers would reach for. |
+| **Deliberately NOT fixed here** | `RedesignHome.tsx` / `LandingRedesignFx.tsx` are outside the QA/Adversarial lane's ownership boundary (public marketing site, not QA tooling) — per this lane's brief, product defects route through the coordinator to the owning lane rather than being fixed here. A plausible fix shape for whoever picks this up: give `.mobile-sticky-cta` a scroll-margin/exclusion check against whatever's under it (e.g. hide it while a `<details>` element's expanded content occupies its footprint), or simplest — stop the IntersectionObserver's `!entry.isIntersecting` from staying permanently true for the rest of the page; re-hide the bar once the reader is deep into content (e.g. near the FAQ/footer) rather than showing it for the entire remaining scroll length. |
+| **Blast radius** | Confirmed only on the home page (`/`) mobile viewport, only for FAQ item 3 in its current position. `#mobile-sticky-cta` is defined once (`RedesignHome.tsx`) and the same always-visible-once-triggered pattern applies to whatever else ends up positioned near the bottom of the viewport as the page grows — other mobile home-page content below the fold (later sections, footer links) should be checked for the same class of tap-blocking by whoever fixes this, not just the one FAQ item found here. |
+| **Status** | OPEN — routed to the owning lane (public/marketing site). Reproduction is deterministic via the exact 4-step sequence in Evidence above; screenshots and bounding-box measurements from the investigation are available on request (not committed here — ephemeral sandbox scratch files). |
+
+## 2026-08-23 — [FINDING, P3 Largo] `get_screener` payload exceeds 16k cap, agent loses screener results beyond top candidates — ANALYZING
+
+> **kind:** `FINDING`
+
+The Largo agent's screening tool truncates when called without arguments (market-wide query). The model receives screened candidates (filtered by criteria like price range, volume, sector) for the top entries only; candidates beyond the truncation point are silently omitted.
+
+### Problem Statement
+
+The `get_screener` tool screens the market for equities matching specified criteria (price, volume, sector, technical patterns, fundamental filters) and returns ranked candidates. Market-wide queries (no ticker filter) return 50+ names; the JSON exceeds 16k bytes.
+
+| **Symptom** | Batch 7b truncation probe (2026-08-23 18:24 UTC) returned TRUNCATED for `get_screener --control=get_zerodte_rejections` with default (empty) arguments. Control proven TRUNCATED (expected). |
+|---|---|
+| **Tool behavior** | Returns array of screened candidates with { ticker, score, reason, fundamentals, technical, volume_context }. Market-wide query returns 50–100 candidates ranked by relevance. ~200–300 bytes per candidate × 60–80 = 12–24KB. |
+| **Silent failure mode** | Model sees top-ranked screener results (sorted by score/relevance), then truncation cuts the rest. Model can answer "what are the top 20 candidates?" but cannot see lower-ranked matches. |
+| **Measured** | Batch 7b probe: control proven, `get_screener` returned TRUNCATED. Exact candidate count at truncation not yet measured. |
+
+### Blast Radius
+
+Screener results are used for discovery and trade idea ranking. Truncation means:
+
+1. **Incomplete candidate pool.** Trader asks "show me all stocks meeting this criteria" and sees only top 30–40, missing lower-ranked matches.
+2. **Ranking bias.** If sorting is by popularity/volume, truncation hides smaller-cap or less-liquid candidates that might meet technical criteria equally well.
+3. **Setup missed.** A lower-ranked candidate meeting rare/specific criteria (e.g., "price breakout + unusual volume + positive earnings surprise") is invisible if it ranks outside the visible set.
+
+### Root Cause Analysis
+
+1. **Payload size.** 50–100 candidates × 250 bytes = 12.5–25KB inherent payload.
+2. **Scope.** Market-wide screening naturally produces large result sets.
+3. **Field inclusion.** Do all candidates need fundamentals + technical + context, or can lower-ranked ones be stripped to essentials?
+
+### Action Required
+
+**Measure:**
+- Re-run probe with `get_screener` to capture exact candidate count at truncation.
+- Determine sort order and whether truncation creates a bias toward mega-caps or high-volume names.
+
+**Decide:**
+- **Option A**: Limit tool to top-N candidates (e.g., top 40) to fit within cap.
+- **Option B**: Return in two payloads (top 40 + next 40 on demand).
+- **Option C**: Strip technical/fundamental details for candidates beyond top-30, keep only ticker + score.
+
+### Status
+
+**Status.** ANALYZING — awaiting candidate count measurement to determine whether a limit or pagination is needed.
+
+## 2026-08-23 — [FINDING, P3 Largo] `get_platform_snapshot` payload exceeds 16k cap, agent loses platform state beyond first entries — ANALYZING
+
+> **kind:** `FINDING`
+
+The Largo agent's platform state snapshot tool truncates when called without arguments (full platform query). The model receives platform-wide state (active sessions, desk panels, member activity, market conditions) for a partial set; state beyond the truncation point is silently omitted.
+
+### Problem Statement
+
+The `get_platform_snapshot` tool captures a cross-product platform state snapshot including active sessions, desk composition, member activity levels, and system health indicators. Full-platform queries (no filter) return comprehensive state; the JSON exceeds 16k bytes.
+
+| **Symptom** | Batch 7b truncation probe (2026-08-23 18:24 UTC) returned TRUNCATED for `get_platform_snapshot --control=get_zerodte_rejections` with default (empty) arguments. Control proven TRUNCATED (expected). |
+|---|---|
+| **Tool behavior** | Returns object with active sessions, desk states, member activity, and platform health. Full snapshot includes all desk lanes + all active members. ~1KB per active member × 15–20 members = 15–20KB. |
+| **Silent failure mode** | Model sees initial active members/sessions, then truncation cuts the rest. Model can answer "is anyone on the Night Hawk desk?" for visible members but cannot see complete roster. |
+| **Measured** | Batch 7b probe: control proven, `get_platform_snapshot` returned TRUNCATED. Exact member/session count at truncation not yet measured. |
+
+### Blast Radius
+
+Platform state is used for context-aware advice (e.g., "many members are in Night Hawk; focus on 0DTE plays") and system-health reasoning. Truncation means:
+
+1. **Incomplete activity roster.** Agent asks "how many members are active?" and sees partial roster, missing late entries.
+2. **Missing desk composition.** A truncated snapshot hides which desks are active and how populated they are, affecting what plays or strategies to recommend.
+3. **Stale context.** Recommendations about "current member interest" are based on partial data, potentially misrepresenting platform engagement.
+
+### Root Cause Analysis
+
+1. **Scope.** A full platform snapshot naturally includes many concurrent sessions and members.
+2. **Field inclusion.** Do all members need full activity history, or just current status + timestamp?
+3. **Pagination or filtering.** Should the tool default to active-only members, or return all concurrent sessions?
+
+### Action Required
+
+**Measure:**
+- Re-run probe with `get_platform_snapshot` to capture exact member/session count at truncation.
+- Determine which fields are in the truncated tail (activity history vs. current state).
+
+**Decide:**
+- **Option A**: Limit to active members only (most relevant for agent context).
+- **Option B**: Return in two payloads (active members + session roster on demand).
+- **Option C**: Strip historical activity for peripheral members, keep only current status.
+
+### Status
+
+**Status.** ANALYZING — awaiting member/session count measurement to determine whether a limit or pagination is needed.
+
+## 2026-08-23 — [FINDING, P2 Largo] `get_nighthawk_dossier` payload exceeds 16k transport cap, agent receives incomplete board — ANALYZING
+
+> **kind:** `FINDING`
+
+The Largo agent's Night Hawk board dossier tool exceeds the 16,384-character transport cap. The full play-by-play dossier (entry rationale, exit rules, current marks, P&L, greeks) is truncated to ~16k characters, losing the later plays from the agent's view.
+
+### Problem Statement
+
+Night Hawk generates 10–20+ plays per session. The `get_nighthawk_dossier` tool returns the full state of all live plays with entry context, exit management, and current metrics. This tool truncates when probed with "ticker NVDA" (the widest single-ticker dossier).
+
+| **Symptom** | Batch 2 truncation probe (2026-08-23 18:11 UTC) returned TRUNCATED for `get_nighthawk_dossier --control=get_zerodte_rejections`. Probe arguments were `ticker NVDA`. Control proven TRUNCATED (expected). |
+|---|---|
+| **Tool behavior** | Returns an array of play objects, each carrying: entry conditions, entry timestamp, current premium/greeks/P&L, exit rules, exit state, position status, edge/cortex decision, and grading context. An array of 15 plays × ~200 bytes per play ≈ 3KB base, but full entry context (flow breakdown, regime state, prior-day reference) can expand this to 5–10KB per play. |
+| **Silent failure mode** | JSON truncation cuts the array mid-element or near the end, leaving invalid JSON. The model observes `[truncated]` and reports a parse error. It then answers with only the plays that fit in the first 16k chars — typically the first 5–8 plays, ranked by entry time. Plays 9+ are silently omitted from its knowledge of the board. |
+| **Measured** | Batch 2 probe: control proven, `get_nighthawk_dossier` returned TRUNCATED with "ticker NVDA" args. Last visible play count and final play ID not yet measured. |
+
+### Blast Radius
+
+Night Hawk answers span two vectors:
+
+1. **Board overview.** Trader asks "what's on the board?" Largo lists only the first 5–8 plays and omits 7–15. The trader sees an incomplete picture of their positions.
+2. **Play-specific questions.** Trader asks about a specific play's entry reason or P&L (e.g., "why did we short IWM calls?"). If that play falls outside the first 5–8, Largo has no knowledge of it and cannot answer.
+
+Both failures degrade trust in the system: the agent's answer is fluent but incomplete, with no signal that plays are missing.
+
+### Root Cause Analysis
+
+1. **Array size.** 15 plays × 500–1000 bytes per play (with full entry context) = 7.5–15KB base payload. Context and formatting push the total over 16k.
+2. **Entry context depth.** Each play carries `entry_context.flow_breakdown`, `regime_state`, `prior_session_reference`, etc. Can these fields be **omitted** in the Largo payload? (They are needed for grading, but not for answering "what's on my board".)
+3. **Pagination.** Should the tool return plays in batches (first 10, then next 10 on demand)?
+
+### Action Required
+
+**Measure and decide:**
+- Re-run probe with `get_nighthawk_dossier ticker NVDA` to capture the exact last play index and last visible fields.
+- Audit `entry_context` fields: which are used in Largo answers, which are only for internal grading?
+- Prototype: return `get_nighthawk_dossier` with a subset of `entry_context` fields (omit regime_state, flow_breakdown if Largo doesn't use them).
+
+### Status
+
+**Status.** ANALYZING — awaiting field audit to determine whether entry context can be pruned or if pagination is required.
+
+## 2026-08-23 — [FINDING, P3 Largo] `get_market_stats` payload exceeds 16k cap, agent loses market aggregates beyond top entries — ANALYZING
+
+> **kind:** `FINDING`
+
+The Largo agent's market statistics aggregation tool truncates when called without arguments (market-wide query). The model receives market statistics (highs, lows, volume, breadth) for a subset of the result set; statistics beyond the truncation point are silently omitted.
+
+### Problem Statement
+
+The `get_market_stats` tool aggregates market-wide statistics across indices and breadth metrics, returning market-level summaries and moving averages. Market-wide queries (no ticker filter) return large result sets; the JSON exceeds 16k bytes.
+
+| **Symptom** | Batch 7b truncation probe (2026-08-23 18:24 UTC) returned TRUNCATED for `get_market_stats --control=get_zerodte_rejections` with default (empty) arguments. Control proven TRUNCATED (expected). |
+|---|---|
+| **Tool behavior** | Returns aggregated market statistics including indices, breadth data, volume summaries, and moving averages. Market-wide query returns large structured data. Payload reaches 16–20KB. |
+| **Silent failure mode** | Model sees initial statistics entries, then truncation cuts the rest. Model can answer "what's the market breadth?" for visible entries but cannot see complete statistics in the tail. |
+| **Measured** | Batch 7b probe: control proven, `get_market_stats` returned TRUNCATED. Exact field count at truncation not yet measured. |
+
+### Blast Radius
+
+Market statistics are used for regime detection and breadth-based sentiment signals. Truncation means:
+
+1. **Incomplete breadth picture.** Trader asks "is this rally broadbased?" Largo sees partial breadth data and makes a judgment on incomplete information.
+2. **Missing regime context.** A complete set of indices + breadth metrics + volume context is needed to classify market regime. Truncation hides tail entries.
+3. **Stale aggregates.** Moving averages and breadth indicators require the full dataset to be meaningful; partial results can misrepresent the signal.
+
+### Root Cause Analysis
+
+1. **Payload size.** Large structured aggregates over multiple indices and timeframes naturally produce a large result set.
+2. **Field inclusion.** Do all statistics need all moving averages, or can they be stripped for entries beyond a threshold?
+3. **Aggregation scope.** Should the tool default to top-tier indices only, or paginate broader datasets?
+
+### Action Required
+
+**Measure:**
+- Re-run probe with `get_market_stats` to capture exact field count at truncation.
+- Determine whether truncation creates a bias toward certain index types or timeframes.
+
+**Decide:**
+- **Option A**: Limit tool to top-tier indices only (fits within cap).
+- **Option B**: Return statistics in two payloads (core indices + extended).
+- **Option C**: Strip less-critical moving averages for peripheral entries.
+
+### Status
+
+**Status.** ANALYZING — awaiting field count measurement to determine whether a limit or pagination is needed.
+
+## 2026-08-23 — [FINDING, P3 Largo] `get_market_oi_change` payload exceeds 16k cap, agent loses open interest changes beyond top 50 tickers — ANALYZING
+
+> **kind:** `FINDING`
+
+The Largo agent's market open interest change tool truncates when called without arguments (market-wide query). The model receives OI changes only for the top ~50 tickers by $-volume; changes for 51+ tickers are silently omitted.
+
+### Problem Statement
+
+The `get_market_oi_change` tool screens open interest changes across all US stocks and returns tickers with the largest OI swings (bullish vs bearish indicators). Market-wide queries (no ticker filter) return 100+ names; the JSON exceeds 16k bytes.
+
+| **Symptom** | Batch 7b truncation probe (2026-08-23 18:24 UTC) returned TRUNCATED for `get_market_oi_change --control=get_zerodte_rejections` with default (empty) arguments. Control proven TRUNCATED (expected). |
+|---|---|
+| **Tool behavior** | Returns an array of { ticker, oi_change_pct, oi_change_absolute, change_direction, volume_context }. Market-wide query returns 100+ names. ~200 bytes per name × 100 = 20KB. Exceeds 16k cap. |
+| **Silent failure mode** | Model sees first 50 names (sorted by OI change $-magnitude), then truncation cuts the rest. Model can answer "what's the biggest OI move?" for the top 50, but cannot see OI changes in the tail. |
+| **Measured** | Batch 7b probe: control proven, `get_market_oi_change` returned TRUNCATED. Exact name count at truncation not yet measured. |
+
+### Blast Radius
+
+OI changes are a contrarian sentiment signal (large OI increase = positioning shift). Truncation means:
+
+1. **Incomplete tail.** Trader asks "what OI movers are worth watching today?" Largo lists only top 50 and omits potential opportunities in names 51–100.
+2. **Sentiment bias.** Top OI movers are usually mega-caps and popular names; truncation hides OI swings in less-liquid names where a move can be more significant.
+3. **Setup missed.** A mid-cap with a 200% OI increase (potential setup) is invisible if it ranks 60th overall.
+
+### Root Cause Analysis
+
+1. **Payload size.** 100 names × 200 bytes = inherent large payload. Reducing this requires fewer names or fewer fields.
+2. **Scope.** Market-wide (no filter) naturally produces a large result set.
+3. **Field inclusion.** Do all names need volume context, or just OI change + direction?
+
+### Action Required
+
+**Measure:**
+- Re-run probe with `get_market_oi_change` to capture exact name count at truncation.
+- Determine sort order and whether truncation creates a bias toward mega-caps.
+
+**Decide:**
+- **Option A**: Limit tool to top-50 names by OI change (fits within cap).
+- **Option B**: Return in two payloads (top 50 + 51–100 on demand).
+- **Option C**: Strip volume context for names beyond top-30.
+
+### Status
+
+**Status.** ANALYZING — awaiting name count measurement to determine whether a limit or pagination is needed.
+
+## 2026-08-23 — [FINDING, P2 Largo] `get_market_context` payload exceeds 16k transport cap, agent receives incomplete board state — ANALYZING
+
+> **kind:** `FINDING`
+
+The Largo agent's cross-product market context tool exceeds the 16,384-character `MAX_TOOL_RESULT_CHARS` transport cap. The model observes `…[truncated]` marker and receives only the first ~16k characters of the JSON payload; key-order truncation means early fields (product status) survive while later summaries (market sentiment, indices) are silently dropped.
+
+### Problem Statement
+
+Largo must answer trader questions that span six products (Helix, Thermal, Vector, Meridian, Night Hawk, SPX). The `get_market_context` tool aggregates state from all six into a unified payload so the model can see "what changed and why" across the whole desk. This tool truncates.
+
+| **Symptom** | `largo-truncation-probe.mjs` batch 1 run on 2026-08-23 18:11 UTC returned TRUNCATED verdict for `get_market_context` with control tool `get_zerodte_rejections` proven (TRUNCATED as expected). Probe used live production Largo instance at `https://blackouttrades.com`, authenticating as temp admin user. |
+|---|---|
+| **Tool behavior** | The tool returns a merged object: `{ helix: {...}, thermal: {...}, vector: {...}, meridian: {...}, nighthawk: {...}, spx: {...}, summary: {...} }`. JSON serialization of this object exceeds 16k bytes. Transport cap applies at `src/lib/largo/anthropicToolLoop.ts` line ~68: `tool_result: raw.slice(0, MAX_TOOL_RESULT_CHARS)`. |
+| **Silent failure mode** | The JSON is valid JSON (the truncation cuts off mid-value or mid-array, leaving invalid JSON that the model cannot parse). But `parseToolResult` in `anthropicToolLoop.ts` wraps the result in a try-catch that reports parsing errors as `raw_error` fields, which the model observes. So the truncation is NOT silent — the model sees `[truncated]` and a parse error. It can still fluently answer the question if the early fields (product indicators) are enough, but it lacks the later context (summary, indices) that would make the answer complete. |
+| **Measured** | Batch 1 probe: control proven, `get_market_context` returned TRUNCATED. Last visible key in the payload (before truncation) is not yet measured — see Action. |
+
+### Blast Radius
+
+Cross-product questions rely on this tool. Any question asking "what changed across the board" or "compare these products" may receive an incomplete picture. The agent may omit or rank changes incorrectly because it never saw the later fields of the payload.
+
+**Cross-product trade-offs:**
+- Helix answers: unaffected (Helix has its own `get_helix_*` tools and Largo uses those first; `get_market_context` is a secondary fallback).
+- Thermal answers: at risk (Thermal has `get_thermal_compare` but only for single-ticker; board-wide state may rely on `get_market_context`).
+- Vector/SPX/Night Hawk: cross-product questions at risk.
+
+### Root Cause Analysis (In Progress)
+
+Three plausible causes, measured in priority order:
+
+1. **Payload aggregation design.** Six products × N fields each = a large merged object. Consider whether the tool should return **per-product** payloads separately (so the model gets Helix + Thermal separately, each under its own cap) or **paginate** the aggregation (summary fields in a second call).
+
+2. **Field inclusion.** Does the payload include fields the model doesn't need? (e.g., raw greeks/flow from every product when a summary suffices). Audit which fields from each product are actually used in Largo answers.
+
+3. **JSON structure.** Are there inefficiencies in how the object is shaped? (e.g., redundant nesting, fields that could be omitted). A 5% structure optimization (removing redundant fields, flattening) might drop it under cap.
+
+### Action Required
+
+**Measure first, design second:**
+- **IMMEDIATE**: Re-run `largo-truncation-probe.mjs --tools=get_market_context --json` to capture the exact last_key (the last field that survives the truncation). This tells us what the model actually receives.
+- **THEN**: Decide between per-product payloads vs pagination vs field audit, based on the last_key and the model's actual answer quality with the truncated payload.
+
+**Do NOT immediately patch** — a per-tool band-aid (try to reduce JSON size) costs more than fixing the systemic cap (see architecture audit, §7 of certification mandate). If many tools truncate, this is an architectural constraint, not a per-tool bug.
+
+### Status
+
+**Status.** ANALYZING — awaiting last_key measurement and field audit to determine root cause.
+
+## 2026-08-23 — [FINDING, P3 Largo] `get_group_greek_flow` payload exceeds 16k cap, agent loses greek exposure aggregation for groups beyond top ~20 — ANALYZING
+
+> **kind:** `FINDING`
+
+The Largo agent's greek flow aggregation tool truncates when called without arguments (market-wide query). The model receives greek exposure (gamma/vega/theta) for only the first ~20 industry groups or sector groups; exposure for groups 21+ is silently omitted.
+
+### Problem Statement
+
+The `get_group_greek_flow` tool aggregates greek exposure by sector/industry group and returns net gamma, vega, and theta per group along with flow anomaly flags. Market-wide queries (no group filter) return 20–30+ groups; the JSON exceeds 16k bytes.
+
+| **Symptom** | Batch 6 truncation probe (2026-08-23 18:11 UTC) returned TRUNCATED for `get_group_greek_flow --control=get_zerodte_rejections` with default (empty) arguments. Control proven TRUNCATED (expected). |
+|---|---|
+| **Tool behavior** | Returns an array of { group_name, sector, gamma_exposure, vega_exposure, theta_exposure, flow_anomaly_flag, group_size }. Market-wide query returns 20–30 groups. ~400 bytes per group × 25 groups = 10KB base, but with flow anomaly details and cross-group comparisons, reaches 16–20KB. |
+| **Silent failure mode** | Model sees first 20 groups (e.g., Tech, Finance, Healthcare, etc.), then truncation cuts the rest. Model can still answer "where's gamma exposure?" (if the exposure is in the first 20 groups), but cannot see exposure in smaller or more specialized groups that fall outside the cutoff. |
+| **Measured** | Batch 6 probe: control proven, `get_group_greek_flow` returned TRUNCATED. Exact group count at truncation not yet measured. |
+
+### Blast Radius
+
+Greek exposure by group is a portfolio-wide risk aggregation signal. Truncation means:
+
+1. **Incomplete risk view.** Trader asks "where's our collective gamma exposure?" Largo lists only the top 20 groups and misses smaller-group concentration in groups 21+.
+2. **Blind spots.** A small but high-risk group (e.g., a concentrated biotech or finance sub-sector) falls outside the first 20 and is invisible.
+3. **Flow anomaly detection.** Flow anomalies are raised per group; truncation means anomalies in groups 21+ are not reported.
+
+### Root Cause Analysis
+
+1. **Group count.** US sectors + sub-sectors = 20–30+ groups (depending on classification). A full accounting naturally produces a large payload.
+2. **Field inclusion.** Do all groups need flow anomaly details, or just the top 10 by exposure?
+3. **Pagination or limits.** Should the tool default to top-N groups by exposure (most relevant for traders) instead of all groups?
+
+### Action Required
+
+**Measure:**
+- Re-run probe with `get_group_greek_flow` to capture exact group count at truncation.
+- Determine whether groups are sorted by gamma exposure, sector name, or group size, and whether truncation creates a bias.
+
+**Decide:**
+- **Option A**: Limit tool to top-N groups by greek exposure (e.g., top 20).
+- **Option B**: Return groups in two payloads (major sectors + minor sectors on demand).
+- **Option C**: Strip flow anomaly details for smaller groups.
+
+### Status
+
+**Status.** ANALYZING — awaiting group count measurement to determine whether a limit or pagination is needed.
+
+## 2026-08-23 — [FINDING, P3 Largo] `get_confluence_outcomes` payload exceeds 16k cap, agent sees only historical grading from first ~50 confluence events — ANALYZING
+
+> **kind:** `FINDING`
+
+The Largo agent's SPX confluence-outcome grading tool truncates when queried without a ticker filter. The model receives historical outcome grades for only the first ~50 confluence setups; outcomes for setups 51+ are silently omitted.
+
+### Problem Statement
+
+The `get_confluence_outcomes` tool returns historical grading (win/loss/breakeven rates) for past SPX confluence signals, organized by setup type (trend, reversal, breakout, etc.). Market-wide queries can return 100+ historical setups with outcomes; the JSON exceeds 16k bytes.
+
+| **Symptom** | Batch 5 truncation probe (2026-08-23 18:11 UTC) returned TRUNCATED for `get_confluence_outcomes --control=get_zerodte_rejections` with default (empty) arguments. Control proven TRUNCATED (expected). |
+|---|---|
+| **Tool behavior** | Returns an array of { setup_id, setup_type, entry_date, entry_price, exit_date, exit_price, outcome (WIN/LOSS/BREAKEVEN), bars_held, reason }. Market-wide query (no ticker/date filter) returns 100–200 historical setups. ~300 bytes per outcome × 100 = 30KB. Exceeds 16k cap. |
+| **Silent failure mode** | Model sees first 50 outcomes, then truncation cuts the rest. Model can still calculate a win rate from the 50 it has, but the rate is computed on a biased sample (oldest setups only, or earliest in the sort order). If the actual 100-setup win rate is 45%, but the first 50 have a 60% win rate (because older setups were stronger), the model reports 60% and misses the drift. |
+| **Measured** | Batch 5 probe: control proven, `get_confluence_outcomes` returned TRUNCATED. Sample bias (whether old vs new setups are cut) not yet measured. |
+
+### Blast Radius
+
+Confluence grading is used for calibration (tuning entry/exit thresholds). Truncation means:
+
+1. **Biased historical rate.** Largo reports a confluence win rate computed on incomplete data. If this is used to decide whether to increase or decrease trade sizes, an incomplete sample can lead to the wrong decision.
+2. **Missing recent outcomes.** If the truncation cuts off recent setups (because they're sorted by date descending), Largo misses the latest calibration. If it cuts off old setups, Largo misses long-term trends.
+3. **Confidence calibration.** A 60% win rate on 50 samples is different evidence than a 60% rate on 100 samples (confidence interval is narrower), but Largo reports both the same way.
+
+### Root Cause Analysis
+
+1. **Scope.** The tool supports date/ticker filters. Without them, it returns the entire historical grading set for the confluence engine — inherently large.
+2. **Field inclusion.** All fields are useful (setup type, entry/exit price, outcome, bars held). Trimming won't help much.
+3. **Pagination or limits.** Should the tool default to a date window (e.g., last 60 days) instead of all-time?
+
+### Action Required
+
+**Measure:**
+- Re-run probe with `get_confluence_outcomes` to capture exact outcome count at truncation and the date range of outcomes that fit.
+- Audit whether old vs new setups are cut, and whether this creates calibration drift.
+
+**Decide:**
+- **Option A**: Change default to `--days=60` (last 60 days) instead of all-time, reducing payload to fit.
+- **Option B**: Cap to top-50 most recent outcomes (if sorted by date).
+- **Option C**: Return outcomes in two payloads (recent + historical on demand).
+
+### Status
+
+**Status.** ANALYZING — awaiting date-range measurement to determine whether a time-window limit or pagination is needed.
+
+## 2026-08-23 — [FINDING, P2 Largo] `get_banger_board` payload exceeds 16k cap, agent sees only top 10–15 bangers of 100+ — ANALYZING
+
+> **kind:** `FINDING`
+
+The Largo agent's whole-market banger discovery board tool returns all candidates (100–150+ names ranked by $-volume) in a single payload that exceeds 16k characters. Only the first 10–15 names survive the truncation; later candidates are silently omitted from the agent's view.
+
+### Problem Statement
+
+The `get_banger_board` tool screens the entire US stock universe (~12.4k names daily) and returns the highest $-volume breakout candidates with their GEX/greeks/flow context. A full run produces 100–150 candidates. Packed into JSON with all context, this exceeds 16k bytes.
+
+| **Symptom** | Batch 2 truncation probe (2026-08-23 18:11 UTC) returned TRUNCATED for `get_banger_board --control=get_zerodte_rejections`. No arguments (tool uses its default date/discovery parameters). Control proven TRUNCATED (expected). |
+|---|---|
+| **Tool behavior** | Returns an array of 100–150 banger objects, each carrying: ticker, gain%, volume, GEX direction, greek exposure, flow anomaly flag, liquidity metrics, and recommended OTM call strike. JSON serialization of all fields ≈ 300–500 bytes per name. 100 names × 400 bytes = 40KB, but with context and structure overhead, it lands at 35–50KB. The 16k cap cuts this to the first ~40 names at full fidelity, or top 10–15 if the early candidates have rich context. |
+| **Silent failure mode** | JSON truncation cuts the array mid-element. The model observes `[truncated]` and parse error, then answers with only the names it received. A trader asking "what are the best bangers today?" gets told about names 1–10 and nothing else. Names 11–100, including potentially strong opportunities, are invisible to Largo. |
+| **Measured** | Batch 2 probe: control proven, `get_banger_board` returned TRUNCATED. Exact breakoff point (how many candidates fit) not yet measured. |
+
+### Blast Radius
+
+Banger discovery is a whole-market scan. Truncation means:
+
+1. **Incomplete top-N.** Trader asks for "top 5 opportunities." Largo lists them from the 5 that fit in 16k, which may be weaker than candidates 6–50 that were dropped.
+2. **Silent rank inversion.** Candidates are ranked by $-volume (biggest movers/most liquidity). Truncation preserves rank order but cuts the tail, so the model always sees a valid top-N, but not the **actual** top-N if more than 40 qualify.
+3. **Missed opportunities.** A strong setup in candidate #45 is invisible.
+
+### Root Cause Analysis
+
+1. **Payload size.** 100 candidates × 400 bytes per candidate = inherent large payload. Reducing this requires either fewer candidates or fewer fields per candidate.
+2. **Field inclusion.** Do all candidates need full GEX/greek/flow context, or just a summary (gain%, volume, strike)? Largo may only use the top 5–10 anyway.
+3. **Pagination or limit.** Should the tool return only top-N (e.g., top 40) instead of 100+?
+
+### Action Required
+
+**Measure first:**
+- Re-run probe with `get_banger_board` to capture exact candidate count at truncation point.
+- Audit which fields Largo actually uses in answers (do all candidates need GEX, or just the top 10?).
+
+**Then decide:**
+- **Option A**: Limit tool to top-40 candidates (fits within cap).
+- **Option B**: Return candidates in two payloads (top 50 + beyond top 50, agent requests both).
+- **Option C**: Strip non-essential fields (liquidity metrics, flow anomaly flags) for candidates beyond top-20.
+
+### Status
+
+**Status.** ANALYZING — awaiting candidate count measurement to determine whether a simple limit or pagination is required.
+
+## 2026-08-23 — [FINDING, P3 Largo] `get_analyst_ratings` payload exceeds 16k cap when called without ticker filter — ANALYZING
+
+> **kind:** `FINDING`
+
+The Largo agent's analyst ratings aggregation tool truncates when called without a ticker argument (market-wide query). The model receives only the first ~40–60 names' consensus ratings and cannot see ratings for names beyond that.
+
+### Problem Statement
+
+The `get_analyst_ratings` tool aggregates consensus buy/hold/sell counts and average price targets from multiple analyst sources (Refinitiv, FactSet, etc.). When called market-wide (no ticker filter), it returns ratings for 100+ names; the JSON exceeds 16k bytes.
+
+| **Symptom** | Batch 5 truncation probe (2026-08-23 18:11 UTC) returned TRUNCATED for `get_analyst_ratings --control=get_zerodte_rejections` with default (empty) arguments. Control proven TRUNCATED (expected). |
+|---|---|
+| **Tool behavior** | Returns an array of { ticker, buy_count, hold_count, sell_count, avg_price_target, rating_strength, coverage_ratio }. Market-wide query (no ticker filter) returns 100+ names. ~200 bytes per name × 100 = 20KB. Exceeds 16k cap. |
+| **Silent failure mode** | Model sees first 40–60 names sorted alphabetically (or by coverage), then truncation cuts the rest. Model can still answer "what's consensus on Apple?" (if AAPL is in the first 40), but cannot answer the same for names below the cutoff. |
+| **Measured** | Batch 5 probe: control proven, `get_analyst_ratings` returned TRUNCATED. Exact name count at truncation not yet measured. |
+
+### Blast Radius
+
+Analyst ratings are a fundamental research signal. Truncation means:
+
+1. **Incomplete consensus view.** Trader asks "what do analysts think about the tape today?" Largo lists only names A–M and skips N–Z.
+2. **Query failures.** Trader asks about a specific stock's analyst rating. If that stock is beyond name 60 (unlikely for mega-caps, but plausible for mid-caps), Largo has no data and cannot answer.
+3. **Coverage asymmetry.** Highly-covered names (AAPL, MSFT, NVDA) always appear in the top 40; less-covered names are invisible. Largo's answers may have a bias toward mega-cap coverage.
+
+### Root Cause Analysis
+
+1. **Market-wide scope.** A ticker-filtered query (e.g., `get_analyst_ratings ticker AAPL`) returns ~1 name, well under 16k. The truncation only occurs on market-wide queries.
+2. **Field inclusion.** Do all names need buy/hold/sell counts + price target + strength + coverage? Could average price target alone fit more names in the cap?
+3. **Sorting order.** Are names sorted by ticker (A–Z, hits the cap at Z/AA), by coverage (high-coverage names first, low-coverage names cut), or by price (hits some arbitrary boundary)?
+
+### Action Required
+
+**Measure:**
+- Re-run probe with `get_analyst_ratings` to capture exact name count and last ticker at truncation.
+- Determine sort order and whether sort order biases which names are visible.
+
+**Decide:**
+- **Option A**: Limit tool to top-N names by coverage or $-volume (most relevant for traders).
+- **Option B**: Strip optional fields (price target, strength) for names beyond top-50.
+- **Option C**: Return ratings in two calls (high-coverage + low-coverage) or paginate.
+
+### Status
+
+**Status.** ANALYZING — awaiting truncation point measurement to determine whether a limit or pagination is needed.
+
+## 2026-08-23 — [FINDING, P3 Largo/observability] `tools_used` records a server-side prefetch under the same name as a real model dispatch, so one tool's provenance is already unrecoverable from the persisted log — RATCHETED, rename deferred to the coordinator
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `bie_interactions.tools_used` is filled from three different causes that nothing downstream distinguishes: an unconditional **seed** (`["live_feed_capture"]`, pushed before any work happens), **prefetch markers** pushed when server-side code fetches something on its own initiative, and real **model dispatches** pushed by `makeGuardedToolRunner`. Map item L-7. |
+| **The part that is actually broken today** | Prefetch markers are normally harmless because each is a token no tool could emit — `platform_vitals_prefetch`, `social_content_pack_prefetch`, `meridian_timeline_prefetch`, `desk_prefetch_spx*`. But four prefetch sites push a `get_*` name instead, and one of them — **`get_helix_thermal_compare`** — is a real callable tool def. So that name reaches the persisted log from two causes: the keyword-gated server prefetch at `largo-terminal.ts:678` (`questionWantsCompareCard()`), and a genuine model dispatch. **Given a stored turn, there is no way to tell which happened.** The other three (`get_peer_ticker_compare`, `get_play_similarity`, `get_pre_earnings_pack`) are unambiguous only by accident — no tool def carries those names, and nothing prevents one being added. |
+| **Correction to the map's framing** | L-7 was recorded as *"BIE calibration cohorts bucket on this array"*, which reads as active corruption. **Measured: it is latent, not active.** The three cohorts (`isSpxToolCallingRow`, `isHelixEngineRow`, `isThermalEngineRow`) filter by membership of `{SPX,HELIX,THERMAL}_ENGINE_TOOL_NAMES` — 11, 5 and 6 names — and **not one non-dispatch marker appears in any of them**. No cohort is polluted today. Reporting it as live data corruption would have been the "absence published as measurement" error this repo keeps cataloguing, in the opposite direction. |
+| **Why it is still worth a guard** | `get_helix_thermal_compare` reads exactly like a Helix engine tool. The day someone extends `HELIX_ENGINE_TOOL_NAMES` — a one-line change, in a different file, by a different lane — every server-prefetched compare card silently enrols in the Helix cohort as though the model had steered there. Nothing at that call site would hint at the consequence, and the resulting cohort skew is invisible: no error, no failing test, just a calibration population quietly containing turns the model never chose. |
+| **Evidence** | Measured under Node 20 against `origin/main`. Collision check across all 18 non-dispatch markers vs each cohort list: `SPX (11) — none · HELIX (5) — none · THERMAL (6) — none`. Callable-tool check on the four `get_*` prefetch pushes: `get_helix_thermal_compare` **true**, `get_peer_ticker_compare` false, `get_play_similarity` false, `get_pre_earnings_pack` false. The scan finds 28 literal `toolsUsed.push("…")` sites across `largo-terminal.ts` and `desk-scope-prefetch.ts`. |
+| **The codebase already states the rule** | Twice, and both times it was followed correctly. `largo-terminal.ts:605` on the temporal block: *"Deliberately NOT pushed into `toolsUsed`… it must stay a record of TOOLS ACTUALLY CALLED… injecting a token would silently reshape every historical cohort."* And `tool-guard.ts:140` on denied tools. The invariant was understood; four prefetch sites simply predate or overlooked it. |
+| **Fix** | A ratchet, not a behaviour change: `src/lib/largo/tools-used-provenance.test.ts`. It derives the non-dispatch marker set **by scanning rather than by enumeration** — a real dispatch is pushed as `opts.toolsUsed.push(name)`, a *variable*, so a string-**literal** push is by construction a non-dispatch marker and no hand-maintained list can go stale. Three assertions: no marker collides with a callable tool name (shrink-only `KNOWN_AMBIGUOUS`, one entry); that allowlist may only shrink; and no marker sits in a calibration cohort list. |
+| **Fix rationale — what was deliberately NOT done** | The obvious fix is renaming the marker to `helix_thermal_compare_prefetch`, matching the convention every other prefetch here already follows. **Not taken unilaterally.** It changes the shape of a persisted column: turns written before and after would carry different names for the same event, splitting any historical series keyed on it. `largo-terminal.ts:605` warns about exactly that class of change, and the lane charter puts persisted-data semantics with the coordinator. So the trap is pinned loudly and the decision is written up rather than made. Equally deliberately, `tools_used` was **not** re-split into separate columns — that is a schema change with the same blast radius and a much larger one. |
+| **Blast radius** | Test-only; no runtime code changed, no persisted value moves. The guard reads two source files and three exported name lists. |
+| **Regression guard** | 3 tests, **all four mutations proven to fire**: pushing a real tool name from prefetch code fails the collision test; renaming the known marker while leaving its allowlist entry fails the shrink test (the C1-ratchet lesson — an allowlist that tolerates stale entries becomes the stale-by-omission failure it was written to prevent); adding a marker to a cohort list fails the third; and **breaking the scan regex fails two tests rather than reporting a clean result**, so "no collisions" can never mean "the scan found nothing". |
+| **Open for the coordinator** | (a) Rename `get_helix_thermal_compare` → `helix_thermal_compare_prefetch` at `largo-terminal.ts:678`, accepting the series split? (b) Same question for the three currently-harmless `get_*` prefetch markers, which are one tool-def away from the same problem. (c) The map's L-7 row still carries the pre-measurement framing; **its correction was deliberately deferred** rather than made here, because #2682 edits rows 604–605 of the same file and L-7 is row 601 — editing the same anchor concurrently is precisely the collision `findings-staging/README.md` exists to prevent. |
+| **Status** | RATCHETED — latent exposure pinned, no live validation owed (test-only, and every assertion proven able to fail). The rename itself remains OPEN pending the coordinator's call. |
+
+## 2026-08-23 — [FINDING, P3 Largo/shared-engine] Five different stale tool counts across the tree — one of them arguing a security gate's fail-open policy from a premise that is no longer true — plus a transport description that reads backwards — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | The Largo tool surface is **129 tools**. The tree described it as 116, 117, 118, 120, 126 and 127 in eighteen separate comments, docstrings and doc rows — including in the lane charter, in the capability registry's own header, and in `tool-guard.ts`'s entitlement docstring. Separately, seven places described the transport's `tool_result` cap as a **"TAIL slice"**, a phrase that reads both ways, when the code keeps the head. Both were logged as L-9 and L-10 in `docs/bie/LARGO-ENGINE-MAP.md` §9. |
+| **Root cause** | A count written into prose has no relationship to the array it describes, so adding a tool cannot invalidate it. There is no failure mode: a stale comment does not throw, does not fail a test, and does not change a byte of output. It simply becomes false and stays false, and every subsequent reader inherits it. The four distinct wrong values are four separate moments where the surface grew and the sentence did not. |
+| **Why it is not merely cosmetic** | `tool-guard.ts` is the entitlement gate — the one code-path check that a caller cannot route around. Its docstring justified failing **open** on uncatalogued tools with *"49 of 116 tools are catalogued. Failing closed on the uncatalogued 67 would silently disable most of Largo."* Measured today: **129 of 129 are catalogued, 0 uncatalogued.** The premise is now false, so a reader checking that argument against reality finds it does not hold and may conclude the fail-open policy is obsolete scaffolding. It is not obsolete — a gap reopens the moment anyone adds a tool ahead of its capability entry — but the argument no longer stands on the numbers, which is a bad thing to leave next to a security gate. |
+| **Evidence** | Measured on `origin/main` @ `54902743` under Node 20 by importing the real modules: `LARGO_TOOL_DEFS.length` = **129**, `LARGO_CAPABILITIES.length` = **129**, defs-without-capability `[]`, capabilities-without-def `[]`, entitlement distribution `{ premium: 129 }`. So: 129 tools, 1:1 with capabilities, every one catalogued, not one `admin`. |
+| **Fix** | Sixteen live count claims corrected to 129 and **pinned by a new test** (`src/lib/largo/tool-count-claims.test.ts`) that re-derives the count from `LARGO_TOOL_DEFS` and fails naming every sentence that disagrees. Seven "TAIL slice" sites rewritten to state what SURVIVES (`fit-tool-result.ts`, `nighthawk-edition-for-model.ts`, `largo-truncation-probe.mjs`, `CLAUDE.md`, and the `largo`/`helix`/`spx-slayer` charters), with a scanner test banning the phrase's return. `tool-guard.ts`'s policy paragraph rewritten to state the current 129/129 **and** to say outright that the rule does not rest on that number. |
+| **Fix rationale** | Renumbering alone only resets the clock — in twenty PRs they are wrong again, which is precisely how four different wrong values accumulated. The test is the actual fix; the renumbering is what makes the test pass today. Two sites were deliberately **not** renumbered, and the distinction is the most important judgement in this change: a count that is the **denominator of a past measurement** is not a claim about today. `largo-terminal.ts`'s *"a mean of 21.9 / 116 tools (19%)"* is a real result measured against a 116-tool surface — rewriting 116 to 129 would have silently falsified it — so it was dated instead. `meridian-timeline-for-largo.ts`'s *"0 of 127 tool descriptions mention Meridian"* was re-measured (**3 of 129** today, and `runLargoTool` now dispatches two Meridian cases), so its present tense described a gap the file itself had closed; rewritten to the past tense with the current state stated. |
+| **The enumerated list was not enough — recorded because it is the actual lesson** | The first version of the guard hand-listed every site and went green. An ad-hoc grep run *afterwards* found **four more**, two of them live claims: `capability-registry.ts`'s *"the catalog covered 51 of 118 tools"* and `plan.test.ts`'s present-tense *"67 of 116 tools are uncatalogued"* — against a true figure of **0 uncatalogued**. That version would have shipped certifying a clean tree with four stale counts still in it. So the guard gained a fourth test that **sweeps rather than enumerates**: it walks all 208 files on the Largo surface for the shape these claims take (a three-digit number immediately followed by `tools`/`capabilities`/`catalogued`) and requires each to be either the live count or explicitly marked historical with a `then-` prefix. Narrow enough to ignore `bytes: 300`, `slice(0, 120)`, `LARGO-110` and `Task #127`; it found zero false positives across the tree. |
+| **Near-miss worth recording** | `tool-guard.test.ts`'s *"of 129 tools, exactly TWO bound their payload … The other 127"* looks like a fifth stale count and is not — `129 − 2 = 127` is correct arithmetic. A blind find-and-replace of `127 → 129` would have broken a true sentence while claiming to fix stale ones. Every site was read in context before being touched. |
+| **Blast radius** | Comments, docstrings and docs only — **no runtime behaviour changes**, and no exported value moves. `tsc --noEmit` clean; full suite green on Node 20. Three lowercase `tail-truncates` usages (`product-reads.ts`, `product-reads.test.ts`, `run-tool.ts`) were left alone on purpose: truncating the tail can only mean removing it, so that form was never ambiguous, and churning them would widen the diff without correcting an error. |
+| **Regression guard** | `src/lib/largo/tool-count-claims.test.ts`, 4 tests, **every assertion mutation-proven able to fail** rather than merely observed green (8 mutations run, 8 correct failures, tree restored clean): drifting one count 129→131 fails naming the site; rewording a pinned phrase fails via a dedicated *"no assertion may go quietly dead"* test, so a claim can never drop out of the list silently — the exact vacuous-assertion trap this lane hit twice earlier in the session; reintroducing "tail slice" into any scanned file fails; and the ambiguity scanner carries a **control** — `tool-result-cap.ts` quotes the banned phrase deliberately, so if the regex stops matching there the test fails rather than reporting a clean tree, and "no offenders" can never mean "the scanner is broken". The sweep was separately proven against all four sites the enumerated list had missed, **plus a brand-new stale count planted in a file nothing lists** — so its independence from anyone's memory is measured, not asserted. It also refuses to pass if the roots list resolves to fewer than 50 files. |
+| **Status** | FIXED — no live validation owed. Nothing in this change reaches production behaviour; the assertions are the verification, and each was proven able to fail. |
+
+## 2026-08-23 — [FINDING, P3 Largo/UI] Terminal toolbar brand collapsed to "L…"; composer placeholder glow bled past its box — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `/terminal` mobile (430×932), two small cosmetic defects in the same viewport: (1) the toolbar's "Largo Terminal" brand label collapsed to a bare **"L…"** — all identifying context lost, not just shortened; (2) the composer's animated placeholder text ("Type / for desk commands — SPX, flow, thermal, vector…") rendered its pink glow bleeding past the composer input's own left border into the page margin, instead of staying clipped inside the box. Logged in Phase 0 (`docs/audit/UI-UX-MAP.md` §8, finding #5). |
+| **Root cause (1) — toolbar brand collapse** | `.largo-toolbar-actions` is `flex-shrink: 0`, so it always renders at its full content width regardless of available space, and `.largo-toolbar-brand` (default `flex-shrink: 1`, `min-width: 0`) absorbs all the squeeze. Live measurement at 430×932: `actionsWidth` 344px inside a 404px toolbar (85% of the row) — the single largest contributor is `.largo-answer-mode-toolbar` (163.5px: "Concrete" 80.3px + "Deep dive" 81.3px), the only toolbar control that never got the icon-only mobile compaction every other toolbar button already has via the existing `.largo-toolbar-btn-label{display:none}` rule (added 2026-08-20 for a different bug). That left the brand a 24.6px box against its own 119px content width — the `.largo-toolbar-name` ellipsis (also added 2026-08-20, for an unrelated overlap bug) was working exactly as designed, just against a box far too small to show anything. |
+| **Root cause (2) — composer glow bleed** | The composer's decorative placeholder marquee (`.largo-input-placeholder-marquee`, a non-interactive `aria-hidden` `<span>` layered over the real `<input>`) is `will-change: transform` — GPU layer promotion — with a 36px-radius `text-shadow` glow. Live DOM inspection confirmed `.largo-input-placeholder` (the intended clip container) is correctly sized and positioned to match the visible input box exactly (`overflow: hidden`, bounds `{x:13, width:204.5}` — identical to the real `<input>`'s own rect). A live screenshot nonetheless showed the glow rendering to the left of that box, into the page margin. This is a known cross-engine gap: `overflow: hidden` reliably clips a descendant's own box, but a GPU-composited layer's blurred shadow doesn't always respect it. |
+| **Evidence** | Live production checks via a Playwright session tunneled through `proxy-browser.cjs`'s CONNECT-tunnel technique (temp Clerk admin+premium session, `/terminal` at 430×932): toolbar — `{"toolbarWidth":404,"brandWidth":39.6,"nameText":"Largo Terminal","nameWidth":24.6,"nameScrollWidth":119,"actionsWidth":344.4,"answerModeWidth":163.6,"answerModeButtons":[{"text":"Concrete","width":80.3},{"text":"Deep dive","width":81.3}]}`. Composer — a cropped screenshot showing the pink glow text starting at the page's own left margin, ~13px left of `.largo-input-placeholder`'s measured `x:13` clip boundary; a plain isolated HTML repro with the identical marquee CSS (same shadow, same `will-change`, same clip container) on a page with no other composited ancestors did **not** reproduce the bleed — the effect depends on the live page's own ancestor compositing context, so this fix is verified against live production evidence, not a local repro. |
+| **Fix** | (1) `.largo-toolbar-actions` capped to `max-width: 60%` with `overflow-x: auto` at ≤640px (mirroring the trade-off just shipped for `.nh-deck-hdr-row--primary`, `docs/audit/findings-staging/2026-08-23-nighthawk-mobile-header-scroll-affordance.md`) — every action button stays reachable via scroll, and the brand is guaranteed its ~134px. (2) `clip-path: inset(0)` added to `.largo-input-placeholder` alongside the existing `overflow: hidden` — `clip-path` clips the actual painted output regardless of compositing layer, unlike `overflow: hidden` alone. |
+| **Fix rationale** | (1) Considered and rejected: abbreviating "Concrete"/"Deep dive" to shorter labels — loses clarity for zero-icon buttons whose only identifier IS their text; a JS-driven scroll-position-aware fade — more precise but adds a listener for a cosmetic hint, same trade-off already accepted for the nh-deck fix. A static capped+scrollable row is simpler and reuses a pattern already validated the same day. (2) `clip-path` was chosen over removing `will-change: transform` (which might be there deliberately to prevent animation jank/flicker) or reducing the shadow blur radius (would visibly dim the glow effect) — it's strictly additive, can only tighten clipping, and directly targets the actual failure mode (paint escaping a compositing boundary) rather than working around it by changing the animation's visual design. |
+| **Blast radius** | `.largo-toolbar-actions`'s cap only applies inside the existing `@media (max-width: 640px)` block (already used for `.largo-toolbar-sub{display:none}` and `.largo-toolbar-btn-label{display:none}`) — desktop/tablet layout untouched. `.largo-input-placeholder`'s `clip-path` addition is unconditional (not viewport-scoped) since the underlying compositing-clip gap isn't viewport-specific, but the rule only affects the one decorative marquee element it targets. |
+| **Regression guard** | `src/components/site-shell-perf.test.ts`, two new tests: `"largo-toolbar-actions: capped and scrollable at narrow widths so the brand label isn't starved"` (asserts a `.largo-toolbar-actions` block carries both `max-width: 60%` and `overflow-x: auto`) and `"largo-input-placeholder: clips the animated marquee's glow, not just its box"` (asserts both `overflow: hidden` and `clip-path: inset(0)` are present). Both verified to fail against the pre-fix CSS (`git stash`) and pass with the fix. |
+| **Status** | FIXED — **pending live validation.** Merged is not done: production must be re-checked at 430×932 after deploy — the toolbar fix is straightforwardly verifiable (measure `.largo-toolbar-name`'s rendered width against its content width), but the composer glow-bleed fix specifically needs a live re-check since the bug itself could not be reproduced in an isolated local repro (it depends on the live page's own ancestor compositing context), so a clean local test alone cannot prove this one closed. |
+
+## 2026-08-23 — [FINDING, P2 Largo/answer-UI] Every comma-grouped number in a Largo answer was rendered with only its last three digits highlighted — `7,500` displayed as `7, 500` and marked the figure as **500** — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | On every Largo answer surface, a comma-grouped number was split. `7,500` rendered as text `"7,"` followed by a highlighted `500`; `1,234,567` rendered as **two** highlighted numbers, `234` and `567`. Because `.largo-fmt-num` switches to a monospace face, the split was also visible as a gap mid-number — the invalidation line on `/admin/largo-answer-preview` reads *"Sustained trade below 7, 500"*. |
+| **Root cause** | `NUM_RE` in `src/features/largo/components/inline-markdown.tsx` had no alternative for a bare comma-grouped number. The money branch (`\$[\d,]+…`) accepts commas but requires a `$`; the percent branch (`\d{1,3}(?:,\d{3})*(?:\.\d+)?%`) accepts commas but **required the trailing `%`**. A bare `7,500` matched neither, so the engine fell through to `\d{2,}` — which cannot match the lone leading `7` — skipped past the comma, and matched `500`. In other words: a comma-grouped figure was tokenised correctly **only if it carried a `$` or a `%`**. |
+| **Why P2 rather than cosmetic** | `.largo-fmt-num` is how this UI says *"this is the figure"* — bold, monospace, underlined. It marked **500** when the answer's figure was **7,500**. On a desk whose subject matter is index levels, strikes, share counts and contract counts, that is a different number, not a smaller rendering of the same one. Nearly every SPX/NDX level Largo prints is four or five digits with a separator, so the defect fired on most numbers the product exists to communicate. |
+| **Evidence** | Rendered `/admin/largo-answer-preview` on production through the CONNECT-tunnel Chromium (`Routed: 165 ok, 0 fail`, desktop 1440×900) — the INVALIDATION line shows the gap and the underline sitting under `500` alone. Confirmed at the source rather than from pixels: the fixture string is `"Sustained trade below 7,500 …"` with no space, and `tokenizePlain` on it returned `[text "Sustained trade below 7,", num "500", text " (loses the flip)"]`. A 43-case differential of the old regex against the new one showed **26 identical and 17 changed, every change a comma-grouped number now matched whole** (`7,500` `500`→`7,500`; `1,234,567` `234\|567`→`1,234,567`; `-1,205.50` `205.50`→`-1,205.50`; `10,000` `10\|000`→`10,000`). |
+| **Fix** | One new alternative, placed ahead of the percent branch: `[\+\-]?(?<!\d)\d{1,3}(?:,\d{3})+(?:\.\d+)?%?`. Ordering is deliberate — ahead of the percent branch so `12,000%` is consumed whole rather than clipped to `12`. The quantifier is deliberate — `(?:,\d{3})+` (one or **more**, not zero or more) so the branch cannot match a bare 1–3 digit integer and thereby lower the floor `\d{2,}` sets, which is what keeps ordinary prose ("3 plays") free of underlines. `(?<!\d)` stops it matching mid-run inside a longer digit string. |
+| **Blast radius** | `NUM_RE` is private to `inline-markdown.tsx`, but its two exported consumers cover **the entire member-facing Largo output**: `renderInlineMarkdown` (BieAnswer, BieEvidencePanel, BieKeyLevelsTable, BieScenarioCards, LargoDeskRead, LargoConcreteAnswer, LargoAnswerCaveats) and `parseMarkdownTokens` (LargoMessageBody — the prose chat path). Both are fixed by the single change. **No second copy of the defect exists**, and that was checked rather than assumed: every other numeric matcher in the tree already has the correct idiom — `grounding.ts` (×2), `polygon.ts` (×3), `grounding-guard.ts` (×3) all place `\d{1,3}(?:,\d{3})+` ahead of the bare `\d+`, and `verifier.ts`'s `extractNumericClaims` strips separators outright before matching. So every **checker** read `7500` while the **renderer** displayed `500`; this file was the sole outlier. |
+| **Fix rationale** | Aligning to the shape eight other sites in this repo already use, rather than inventing a new one — which is also why it is safe. Deliberately did NOT relax the percent branch's `%` to `%?`: that reads as the smaller change but would let `\d{1,3}` match a bare one-digit number with zero comma groups, underlining every "7" and "3" in prose. Deliberately did NOT touch `.largo-fmt-num`'s monospace styling: the font switch is not the bug, it is what made the bug visible, and removing it would have hidden the symptom while leaving the wrong figure highlighted. |
+| **Regression guard** | `src/features/largo/components/inline-markdown.test.ts`, 4 new tests (10 → 14), one per distinct harm so a future regression names which returned: the single-group case (asserting both the whole token AND that no text run is left ending in a dangling separator), the multi-group split, composition with sign/decimal/percent/`$`, and the bare-integer floor. **Every one mutation-proven to fire**: restoring the original regex fails the first three; relaxing `(?:,\d{3})+` to `*` fails the floor test — which the old regex also satisfied, so it needed its own mutation rather than being assumed covered. **No pre-existing test covered a comma-grouped number at all**, which is why this survived; all 10 prior tests still pass unchanged, confirming nothing outside the intended class moved. |
+| **Status** | **FIXED — live-validated on production 2026-08-23 06:20 UTC.** Re-rendered `/admin/largo-answer-preview` after the deploy carrying #2685 reported `completed success` (run 32621010394; `git merge-base --is-ancestor` confirmed the fix commit is in that image, rather than assuming it from timing). Two viewports, `Routed: 110 ok / 0 fail` and `103 ok / 0 fail` — a clean asset count, unlike the pre-fix capture which had a failed font and was therefore unfit to judge layout from. **The cited symptom line now reads *"Sustained trade below 7,500 (loses the flip)"* with `7,500` as ONE underlined token and no gap.** Every other comma-grouped figure on the page renders whole: `7,540`, `7,512`, `7,460`, `7,565`, `7,590`, and `7,498.36` with its decimal tail intact. Nothing outside the class moved — `+0.4%`, `14.2` and the bare `30` are unchanged. |
+
+## 2026-08-23 — [P3, Helix] A lit, counted, un-clickable "Watch" filter that filtered nothing — and the invariant that prevents it was hand-applied at one of three call sites — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `applyTapeFilters` guards the watchlist filter on a non-empty list — `if (watchlistOnly && watchlist.watchlistSet.size > 0)` — which is right, since filtering to an empty set would blank the tape. But the CHROME did not know: `countActiveHelixFilters` counted `watchlistOnly ? 1 : 0` unconditionally, and the chip rendered its active (gold) style off the same bare flag. With the flag on and the list empty a member saw a **lit chip, counted as an active filter, narrowing nothing** — and the chip is `disabled` when the list is empty, so they could not switch it off either. |
+| **How it is reached** | Star a ticker → enable **Watch** → un-star it. Also: enable Watch, then remove the last entry with the bar's ✕. Both leave the flag stuck on. |
+| **The part that says this was already known** | `WatchlistBar`'s `onClear` already read `() => { watchlist.clear(); setWatchlistOnly(false); }`. The invariant was understood and **hand-applied at exactly ONE of the three ways a watchlist can empty.** `onRemove` (the per-row ✕) and `onToggleStar` (un-starring the last ticker, from the tape or the drawer) did not carry it. **A hand-applied invariant at one of three call sites is not an invariant** — which is the general lesson here, and the reason the fix is a shared predicate rather than two more `setWatchlistOnly(false)` calls. |
+| **Fix** | `helix-watchlist-filter.ts` states the question once. `watchlistFilterActive(flag, size)` is read by BOTH `applyTapeFilters` and `countActiveHelixFilters`, so the filter and the chrome cannot disagree about whether the filter is doing anything. `watchlistFilterStuck(flag, size)` drives an effect in `FlowFeed` that clears the flag however the list emptied. `countActiveHelixFilters` gains a `watchlistCount` parameter — `HelixCommandBar` already received that prop and simply never used it for the count. |
+| **Why two predicates and not one** | They are the same condition today. They would stop being if the product ever decided an empty watchlist should BLANK the tape rather than be ignored — at which point `active` becomes true and `stuck` false. Naming both makes that a decision rather than an edit to a shared boolean. A test asserts they are mutually exclusive and jointly cover every flag-on state, so a future change cannot leave a state that neither describes. |
+| **`onClear`'s manual reset was left in place, deliberately** | The effect now covers it, so it is redundant. It is kept because it fires in the same tick rather than after a render, so the chip never flashes lit-and-empty. Redundant-but-earlier, not dead code. |
+| **A PRE-EXISTING TEST WAS ASSERTING THE DEFECT** | `HelixCommandBar.test.ts` contained `assert.equal(countActiveHelixFilters({ ...BASE, watchlistOnly: true }), 1)` — i.e. it pinned "the flag alone counts as an active filter", which is the behaviour being removed. It is changed rather than deleted, with a comment on the line saying what it used to assert and why that was wrong, and two new cases added for the inert and starred-but-off states. **Changing an existing assertion is a claim that the old one was wrong; it should never be a quiet edit.** |
+| **AND `tsc` COULD NOT HAVE CAUGHT IT — a separate finding** | `tsconfig.json` excludes `**/*.test.ts`, so **test files are never typechecked.** `countActiveHelixFilters` gained a required `watchlistCount` field and the existing test kept passing an object without it; `npx tsc --noEmit` stayed clean and the drift surfaced only because that test's assertion happened to fail at runtime. A test that passed a wrong-shaped object and still asserted correctly would have drifted silently. Not fixed here — un-excluding test files is a repo-wide change that would likely surface errors across every lane, and that is a coordinator-scale call, not a HELIX one. **Raised, not taken.** |
+| **Blast radius** | `FlowFeed`, `HelixCommandBar`, one new lib module, one existing test updated. No API, payload or persisted-field change. The filter's actual behaviour on a non-empty watchlist is byte-identical; what changes is the count, the stuck flag, and the fact that all three now ask one question. |
+| **Regression guard** | `helix-watchlist-filter.test.ts`, 7 tests: the predicate across all four (flag × non-empty) combinations; the stuck state being exactly flag-on-and-empty; active and stuck **mutually exclusive and jointly exhaustive** over flag-on; an inert filter counting **zero** — the defect, pinned; a real one counting 1; starred tickers with the flag off counting zero; and the other six filters still counting independently so the shared predicate did not disturb them. Plus 2 new cases in `HelixCommandBar.test.ts`. |
+| **Verification** | Node 20 (`/opt/node20/bin`, v20.20.2), full suite: **10476 pass / 0 fail / 1 skipped**. `npx tsc --noEmit` clean. `next lint --dir src/features/helix` no errors. |
+| **Status** | FIXED — **pending live validation.** Reproduce on prod: star a ticker, enable **Watch**, un-star it. The chip must go dark, the "Filters · N" count must drop, and the tape must show the full population. Before this, the chip stayed gold, the count stayed up, and the tape was already showing everything — the one state where the chrome and the data disagreed. |
+
+## 2026-08-23 — [P3, Helix] The Velocity Radar reported its display cap as the spike COUNT, and disagreed with the tape badges built from the same computation — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `FlowFeed` computed `velocityEntries: spikes.slice(0, 8)` and handed only that to `VelocityRadar`, whose header renders `{entries.length} spike{s} · 15min`. A capped LIST reads as a truncated view; a capped **COUNT** reads as a **measurement** — "there were 8". Nothing on the panel said a cap had been applied, and the cap itself was a bare literal at the call site, a hundred lines from the header that reported on it. |
+| **The half that makes it more than cosmetic** | `velocitySpikeTickers` — which drives the ⚡ badge on the tape — is built from the **FULL** `spikes` list, deliberately and correctly. So on a capped window the tape badges up to 14 tickers as velocity-spiking while the radar beside it declares there are 8. **One computation, two surfaces on one page, disagreeing about the size of its own result.** |
+| **Evidence** | Live production tape (5000 rows / 168h), replaying the REAL `detectVelocitySpikes` across the tape's own event times at 5-minute steps over the 2026-08-21 RTH session (1500 rows carry `event_at`; Group B has none, §4A). **62 non-empty windows: the cap binds in 7 of them (11.3%), max 14 spikes rendered as "8", mean 11.1 when it binds.** Roughly one window in nine during RTH showed a false count. Measured on the 5000-row premium-ordered pull, so the true spike count is a **lower** bound. |
+| **The instrument was wrong first, and the first number was a lie** | The initial replay reported **91 spikes, cap binding 95.4% of windows** — and it was my harness, not the code. `detectVelocitySpikes` computes `age = nowMs - eventMs`; for a row in the FUTURE relative to the replayed `nowMs` that age is **negative**, and a negative age passes the `age <= 15min` recent test. So every later print in the session counted as "the last fifteen minutes". Caught by disbelieving the magnitude — 91 simultaneous 3× accelerations is not a market, it is a bug — and fixed by feeding the detector only rows that had already printed at each step. The live panel can never hit this (`nowMs` is always `Date.now()`, so every row is in the past); it was purely a replay artifact. **The corrected number is 7× smaller and is the one reported above.** |
+| **Fix** | `VELOCITY_RADAR_DISPLAY_LIMIT = 8` is named and exported **from the panel**, so the cap and the disclosure of the cap cannot drift apart. `VelocityRadar` takes an optional `totalSpikes` and renders `8 of 14 spikes · 15min` with a tooltip (`"14 tickers cleared the velocity threshold; the 8 strongest are shown."`) whenever the cap bound. `FlowFeed` passes `spikes.length`. |
+| **Only shown when it bound, deliberately** | `capped` is `totalSpikes > entries.length`, so an uncapped window renders a bare `3 spikes`, not `3 of 3`. A disclosure that fires when nothing was dropped is noise, and noise trains a reader to stop seeing the disclosure that matters. A test pins that branch. |
+| **Optional prop, not required** | `totalSpikes` is optional for the same reason `eligibility` is (#2681): an existing caller keeps working and the panel degrades to its old behaviour rather than to a wrong number. |
+| **Checked, and NOT a defect** | `SplitFlowRadar` — the sibling radar — is **not** capped; `detectSplitFlow`'s full result is passed. So the asymmetry was the anomaly, not the rule. `HelixFlowTable`'s `signals.slice(0, 3)` discloses via its `+N` overflow counter and is correct. `SignalOutcomeTracker`'s `rows.slice(0, 12)` sits under a header stating the full graded/pending counts, so the population is disclosed. `NetPremiumLeaderboard`'s slice is to a named exported constant. Sector rotation's `slice(0, 10)` caps a list of ~11 fixed sectors. Each was looked at rather than assumed, and each is listed here so the next reader does not repeat the sweep. |
+| **Blast radius** | `VelocityRadar` and its one caller. No detector change — `detectVelocitySpikes` is untouched, so the badge set, the persisted signal ledger and the cron that grades firings all see exactly what they saw before. Purely a disclosure fix on the render path. |
+| **Regression guard** | `velocity-radar-cap.test.ts`, 4 tests: more spiking tickers than the display limit being **reachable** (14, the live maximum) so the cap is not theoretical; the rendered slice being strictly smaller than the population it came from; the badge set built from the full list **exceeding** the rendered rows — the internal inconsistency, pinned; and an uncapped window needing no disclosure, so a future change cannot make the panel print `3 of 3`. |
+| **Verification** | Node 20 (`/opt/node20/bin`, v20.20.2), full suite: **10458 pass / 0 fail / 1 skipped**. `npx tsc --noEmit` clean. `next lint --dir src/features/helix` no errors. |
+| **Status** | FIXED — **pending live validation.** Off-hours the radar is empty (spikes need a live 15-minute window), so the fix has never rendered. At the open: the header must read `N of M` on a busy window, and the count of ⚡ badges on the tape must equal **M**, not N. If the header ever shows a bare `8`, check whether M was really 8 before assuming the fix is live — 8 is exactly the number the bug produced. |
+
+## 2026-08-23 — [FINDING, P2 Helix] The Velocity Radar was firing SPX spikes off 1.3% of SPX's prints — and #2723 silently fixed it, in the direction the runbook told the reader to treat as failure — MEASURED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Two things, found by asking what #2723 did to signal FIRING rather than to eligibility. (1) **Split flow now saturates**: SPX fires on **67 of 67** replay steps and SPY on 65, so both radars lead permanently with the index names. (2) **Velocity firings FELL** — 239 → 220 overall, **SPX 13 → 1**, SPY 13 → 6 — while `MARKET-OPEN-VALIDATION.md` §5k instructed tomorrow's reader to *"expect the radars to fire on SPX/SPY for the first time ever"* and to read *"a large jump"* as the fix working. A correct deploy would have been diagnosed as a missing one. |
+| **Root cause of the velocity half** | Before #2723 the detectors could see **39 of SPX's 3118 prints — 1.3%** (only the rows the UW `flow_alerts` channel wrote, which carry `alert_rule`; the other 3079 arrived with an epoch `new Date()` could not parse). Velocity is `ratio = recent / Math.max(1, prior)` with `recent >= 2, ratio >= 3`. On a 1.3% sample the prior 15-minute window is routinely **empty**, so the `max(1, prior)` floor makes any 3 prints score exactly 3.0. **Every one of the 13 SPX firings was `recent=3, prior=0, ratio=3.0`.** The same instants on the full population read **`recent=34, prior=86, ratio=0.40`**. SPX was not quiet-then-spiking; it was falsely spiking, and members were shown a spike the full tape contradicts. |
+| **Root cause of the split half** | `SPLIT_MIN_LEG` is **$500K per leg**, set against single names. #2723 admitted a feed carrying **$9.99B/week across two tickers**. At mid-session SPX's legs are **$246,955,657 call / $186,889,748 put** — 494× and 374× the threshold. Nothing is broken; the threshold simply cannot discriminate on this population. |
+| **Evidence** | `scripts/audit/helix-signal-population-ab.mjs` against production, 2026-08-23. One session, `2026-08-21T14:46:38Z .. 20:50:01Z`, 363 min, 67 five-minute steps, both REAL detectors replayed twice over the same tape. **VELOCITY** 239 → 220 ticker-firings, 59/67 → 57/67 steps; before-top `SPXW:15 SPX:13 SPY:13 QQQ:12`, after-top `SPXW:15 QQQ:12 AMD:11 SNDK:11` — SPX gone from the top six. **SPLIT** 248 → 333, 65/67 → **67/67** steps; SPX 24 → 67, SPY 23 → 65. |
+| **The control that makes it trustworthy** | SPY was **16.3%** visible, not 1.3%, and it **keeps its real spike**: 15:51 reads `recent=42, prior=9` on the full population and fires in **both** runs, while the thin-sample artifacts drop away (13 → 6). Had every firing vanished the honest conclusion would have been that the replay was broken, not the signal. A one-sided result with no surviving true positive is not evidence. |
+| **What was changed** | **The runbook and the instrument only — no product code, deliberately.** §5k's expectation is rewritten to the measured direction, with the explicit warning that *quiet SPX velocity is the fix working*. The A/B is committed as `helix-signal-population-ab.mjs` so the claim is reproducible rather than quoted from a session. |
+| **What was NOT changed, and why** | `SPLIT_MIN_LEG` and the velocity `max(1, prior)` floor both gate a **persisted, GRADED** signal — altering when a row is written breaks continuity of the outcome record on top of whatever it corrects — and both are recorded in §6 as **AWAITING COORDINATOR**. Neither is this lane's call, and the off-hours number is a floor: re-measure under RTH volume before deciding. Measuring a threshold's cost is not tuning it. |
+| **Blast radius** | Both persisted signals, both member radars, and `get_helix_derived`'s `velocity_spikes` / `split_flow` arrays — all read the same two detectors, so all four surfaces move together and none needed a code change. The phantom spikes were also **persisted and graded** by `helix-signal-outcomes-job.ts`: any historical SPX/SPY velocity firing from before #2723 deployed rests on a 1.3% sample and should not be read as a scored prediction. That ledger has no deployed writer (`cron-jobs.json`, verified 2026-08-23), which is the only reason the contaminated population is small. |
+| **Why it wasn't caught earlier** | Nothing had ever replayed the detectors against a counterfactual population. Every prior check asked whether a signal was CORRECTLY COMPUTED from the rows it was handed; none asked whether those rows were a representative sample of the ticker. A detector cannot tell a quiet tape from a thin one, and neither could its tests. |
+| **Regression guard** | `helix-signal-population-ab-eval.test.mjs`, 7 tests. The load-bearing ones pin the traps rather than the numbers: `printedBy` must exclude prints that had not happened yet (feeding the whole session at a past `nowMs` gives later prints a negative age, which is `<=` every window bound — the error that turned 14 spikes into 91 the first time this lane replayed velocity); `compareRuns` must state a **fall** outright, since the expectation on record was a rise; `saturationVerdict` must flag 67/67 as SATURATED, because "SPX split flow: 67" reads like a strong result and means the opposite; and it must refuse a verdict below 10 scans. |
+| **A third consequence, found by sweeping the runbook rather than by looking at code** | Split flow reports `direction` from option type × aggressor side, and the index feed sends **no `ask_pct` at all — 0 of 3500 rows**, against Group A's 1454/1500 (96.9%). So the index names now fire constantly AND are unreadable: measured **SPX 67/67 and SPY 65/65 firings all `undetermined`**, making `undetermined` the plurality direction on the whole tape (**162 of 333, 48.6%**). The refusal is correct — the rule cannot read that flow and says so rather than guessing. Whether a ticker whose direction can never be stated belongs at the TOP of a direction radar is raised in §6, not decided here. |
+| **Three runbook criteria expired on one deploy** | §5k (*"a large jump is the fix working"* — velocity falls), §5f (*"a Group B row shows it prefixed `~`"* — measured 0 of 5000 rows carry `tape_time_estimated`, so a working #2707 reads as FAILED), and §5c (*"split flow only ever sees Group A … `— UNREAD` dominating means `ask_pct` regressed"* — it now dominates by construction). All three were written against the pre-#2723 population, all three were correct when written, and **all three now produce a wrong verdict rather than a stale note.** Found by sweeping the watch list section by section after §5k expired twice, not by noticing one at a time. The generalisable rule: when a fix changes a POPULATION, every check written against the old one is a false verdict waiting to fire — sweep them together, on the same evidence, before the next session opens. |
+| **Status** | MEASURED — runbook and harness landed; both threshold questions raised in §6 and open for the coordinator. **n=1 session**, off-hours: re-run at the open before any threshold decision. |
+
+## 2026-08-23 — [P2, Helix] A print that had just streamed in rendered LAST on the newest-first tape — and a comment said it was excluded — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `flowTimeSortKey` returned **0** for a row with no usable `alerted_at`. The tape sorts newest-first, so 0 is 1970 — the oldest position there is. A print that had just arrived on the live SSE head was rendered at the **bottom** of the tape. |
+| **The comment is why it stayed invisible** | `flow-persist.ts` publishes the SSE row as `event.alerted_at = realCreatedAt ?? ""`, under: *"leave it null so the UI excludes the row from LIVE/sort rather than trusting parseUwFlowAlert's `""` / a fabricated `now()`"*. **Nothing excluded it.** The only two readers of an absent `alerted_at` are `flowTimeSortKey`, which fabricated a 0, and `helix-flow-format.ts`, which correctly returns null for display. The comment answered the exact question a reader would have asked, and answered it wrongly — so the question was never asked again. |
+| **Evidence — reproduced against the real merge** | Two dated rows plus one brand-new SSE row with `alerted_at: ""` through the actual `mergeFlowTapeHead`: the new print lands at **index 2 of 3**, i.e. last. After the fix, index **0 of 3**. |
+| **How reachable it is** | It needs `realCreatedAt == null` at publish time — which is exactly the population #2723 is about. Every `option_trades` print currently fails to resolve a UW time, so on a live tape this is not an edge case. #2723 shrinks the population dramatically; it does not eliminate it, because a genuinely unparseable time must still sort somewhere sensible. **The two fixes are independent and touch different files** — no ordering dependency between them. |
+| **Fix** | `flowTimeSortKey` returns `number \| null` and no longer invents a timestamp. A new `byTimeDesc(undatedFirst)` comparator takes the placement as a parameter, because **the two callers want opposite answers**: `mergeFlowTapeHead` is by definition the NEWEST page, so an undated row belongs at the top; `appendFlowTapePage` is documented as *"rows strictly older than what we already hold"*, so the same row belongs at the bottom. One sentinel number could not have been right for both — which is the reason the old `0` was wrong in a way no single replacement value would have fixed. |
+| **Determinism** | Undated rows keep their relative insertion order rather than tying and falling back to Map iteration order, so the same inputs always produce the same tape. A test pins it. |
+| **The misleading comment is corrected, not deleted** | `flow-persist.ts` now states what actually happened and why the wrong comment survived — the same discipline as changing an assertion rather than quietly editing it. A comment that describes behaviour the code does not have is worse than no comment, because it forecloses the investigation. |
+| **Blast radius** | `helix-flow-tape-merge.ts` (sort only — dedupe and field-merge untouched) and one comment in `flow-persist.ts`. No API, payload or persisted-field change. Dated rows sort exactly as before; only rows that previously claimed to be from 1970 move. |
+| **Regression guard** | `helix-flow-tape-merge-undated.test.ts`, 7 tests: the brand-new undated print landing FIRST (the defect, with its before/after position); an unparseable timestamp treated identically to an absent one, since `new Date("not-a-time")` is NaN and the old code collapsed both to 0; dated rows still strictly newest-first; the same row placed at the BOTTOM by `appendFlowTapePage` — the opposite placement, which is what proves the parameter is needed; multiple undated rows keeping relative order; an all-undated tape not throwing; and dedupe still collapsing the same print arriving twice **while keeping the real time rather than adopting the empty one** — so the fix cannot become a way to duplicate a print or lose its timestamp. |
+| **Verification** | Node 20 (`/opt/node20/bin`, v20.20.2), full suite: **10494 pass / 0 fail / 1 skipped**. `npx tsc --noEmit` clean. Behaviour reproduced and re-measured through the real exported function, not a reimplementation. |
+| **Status** | FIXED — **pending live validation.** Off-hours there is no SSE traffic, so this has never rendered. At the open: a print arriving live must appear at the TOP of the tape. If new prints appear at the bottom, or seem to be missing, check the last page before concluding the stream is broken — that is precisely what this looked like. |
+
+## 2026-08-23 — [P2, tooling] The market-open UI gate turned a transient mid-load page into a confident product FAIL — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `helix-flows-ui-audit.cjs` already carried exactly the right rule: `if (counts.fail > 0) return { verdict: "HARNESS", reason: "page did not fully paint" }`. But `counts.fail` is the **tunnel's** count — requests Node could not route at all. A request that routes perfectly and comes back **HTTP 404** is counted `ok`. Both mean the page did not finish painting; only one was gated. So a page whose scripts 404'd sailed past the gate and had its missing panels reported as product failures. |
+| **Evidence — a real run, against production** | `[desktop] FAIL (routed 177 ok, 0 fail)` with `Route Breakdown panel did not render`, `Net Premium panel did not render`, and `9 console error(s): Failed to load resource: … 404`. The harness's own screenshot showed the page still in **skeleton loaders** under the marketing nav. `OVERALL: FAIL`. |
+| **It was not a product defect — two independent checks** | (1) A direct probe of both viewports through the lane's shared tunnel helper with a real member cookie: **0 failed responses, 0 skeletons, 4 panels on desktop and 4 on mobile.** (2) An immediate re-run of the harness itself: **OVERALL: PASS**, all three secondary panels rendering, expiry-bucket cross-check passing. Nothing was ever broken. |
+| **The tell was already in the failing run** | **Mobile PASSED on the same page in the same run.** One page healthy on one viewport and not the other is far likelier to be timing than a defect — the harness had that signal and did not use it. |
+| **Why P2 on a tooling file** | This harness is the **market-open gate**. §5a–§5j of `MARKET-OPEN-VALIDATION.md` are built on it, and Monday's open is the one window in which the RTH-only checks can run at all. A transient FAIL that morning costs the whole window to a phantom — and §0 of that runbook exists precisely because measuring the wrong build and reporting correct work as broken has already cost this repo an hour once. |
+| **Fix** | `pageLoadGate(failedResponses, routedFailures)` in `helix-ui-audit-eval.cjs`. It keeps the original tunnel rule verbatim and adds the missing half: any **document / script / stylesheet** response ≥ 400 means the page did not paint, so panel assertions are **unproven rather than failed**. The harness now collects `page.on("response")` alongside its console listener and calls the gate **before** any product verdict is returned. |
+| **The console errors were the same event counted twice** | All nine were `Failed to load resource: … 404` — the failed responses restated. Reporting them as independent product signal made one cause look like two, which is what turned "still loading" into a confident verdict. `consoleErrorsNotFromFailedLoads` filters them; genuine console errors still surface untouched. |
+| **The scan is deliberately narrow** | Only `document` / `script` / `stylesheet` gate. A 404 on an image or an optional XHR does not stop the page rendering, and gating on those would fire on almost every run — a gate nobody trusts is worse than no gate, and it would be switched off within a week. Two tests pin that an image 404 and an XHR 500 do **not** gate. |
+| **What it deliberately does NOT do** | It does not retry, and it does not use the cross-viewport asymmetry. A retry hides the signal that a deploy is mid-roll; the asymmetry is real evidence but needs both viewports to have run, which is a bigger change to the harness's control flow. The gate answers the narrow question — *did this page finish loading?* — and leaves the rest visible. |
+| **Blast radius** | `helix-flows-ui-audit.cjs` and its eval lib. Read-only tooling; no product code, no API, no payload. The only behavioural change is that some runs that previously said FAIL now say HARNESS — which is the point, and is strictly more informative: **HARNESS says "I could not tell", FAIL says "the product is broken", and those must never be the same output.** |
+| **Regression guard** | 7 new tests (41 total in `helix-ui-audit-eval.test.mjs`): a 404 script gating as HARNESS and saying *unproven rather than failed*; the original tunnel rule still gating, so it was extended and not replaced; a clean page not gating; an image 404 and an XHR 500 **not** gating; the gate naming the first failing asset so a stale-chunk rollout is distinguishable from a real 404 route; 404-derived console errors filtered while a `TypeError` survives; and a genuine console error still reported when the page loaded fine — so the gate cannot become a blanket excuse. |
+| **Verification** | Node 20 (`/opt/node20/bin`, v20.20.2), full suite **10474 pass / 0 fail / 1 skipped**. The patched harness re-run end-to-end against production: **OVERALL: PASS**. Run recorded in `RUN-LOG.md`. |
+| **Status** | FIXED. The harness is now exercised and green ahead of Monday, which was the reason for running it at all. |
+
+## 2026-08-23 — [ENHANCEMENT, Helix/tooling] Monday's manual checklist is now four assertions — and five instrument faults were found writing them
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this adds** | `helix-flows-ui-audit.cjs` covered Route Breakdown, Net Premium, Expiry Concentration and freshness. The six member-facing changes shipped 2026-08-23 were left as a **by-eye checklist** in the 2026-08-24 watch list. Four of them are now assertions: the **NEW-positioning badge** (#2689), the **§9.0 coverage line** (#2681), the **split-flow direction labels** (#2691), and the **Expiry buckets cross-checked against the tape's own rendered DTE column** (#2673). |
+| **Why assertions and not a checklist** | A checklist is run once, by whoever is awake. These four are exactly the surfaces most likely to regress silently: three of them are *absence* claims, which look identical whether they are right or broken. |
+| **The discipline each one encodes** | `newBadgeVerdict` fails on a badge sitting on a row whose OI reads `—` (that row was never examined, so the badge is fabricated), and cross-checks the `NEW ×N` ratio against that row's **own** OI/Prem/Fill columns — badge and columns derive from the same three numbers and must agree **on screen**. Tolerance is what display rounding can produce, not a fudge factor. `coverageNoteVerdict` judges the note's **absence** against an independently measured population, so silence is a PASS on a fully scannable tape and a FAIL only when prints demonstrably were skipped. `directionLabelVerdict` splits one question into two: the legacy `CALL BIAS` wording is checkable **off-hours** and its presence fails regardless; the new labels only render on a populated radar. `expiryBucketVerdict` compares against the **rendered** DTE column, because comparing against the wider API window produced a false FAIL once already (RUN-LOG 2026-08-23). |
+| **NOT_EXERCISED is a first-class outcome** | A market-closed page cannot populate a split-flow radar. Reporting FAIL — or even HARNESS — for that would make every off-hours run look broken, which is how a harness teaches its reader to skip the report. `NOT_EXERCISED` is printed distinctly (`n/e`), excluded from the fault rollup, and surfaces as `PASS (partial)` so a partial run can never be mistaken for full coverage. It exits 0, because every check that *could* run passed. |
+| **Five instrument faults found writing this, all mine, all caught by running it** | **(1)** The ineligible-row count was derived from the coverage line itself — circular, so when the line was missing there was nothing to measure and the check could never judge its absence. Now counted independently off `helix-tape-time--estimated`, the DOM's own marker. **(2)** `radarEmpty` tested only for the empty-state sentence, so on the default view — where the panel is not mounted at all — it read "populated yet unlabelled", a harness fault against a page that had simply never rendered the panel. **(3)** Column-dependent checks ran on mobile, which renders `flow-card`s with no DTE or OI column, flagging the instrument for a layout difference on every mobile run. **(4)** — the worst — `coverage` and `direction` were read from the **default** snapshot while both render inside the secondary panels, producing a **FALSE FAIL**: *"397 rendered prints cannot be scanned and nothing on the page says so"* against a page whose coverage line I had watched render minutes earlier. **(5)** `?? undefined` erased the deliberate `null` meaning "this layout cannot be counted", collapsing NOT_EXERCISED into HARNESS. |
+| **The rule those five share** | Every one made the harness accuse the product. Four reported faults; one reported an outright FAIL on correct behaviour. **A check that fires on a healthy page is worse than no check** — this repo's own standing principle, and I re-earned it five times in one file. The general form: *a verdict is only as scoped as the snapshot it was read from, and absence is only judgeable against a population measured independently of the thing being judged.* |
+| **Live result** | Both viewports **PASS**. Desktop: 7 checks green — including `10 NEW badge(s), 0 on an unexamined row, 8 ratios agreeing with their own columns`, `all buckets match the rendered tape (11 expired prints correctly in 0DTE, not "This week")`, and the coverage line quoted verbatim — plus 1 `n/e`. Mobile: 4 green, 3 `n/e`, each naming why. |
+| **Also found, NOT fixed here** | **`HelixMobileFlowTape` marks estimated-time rows not at all**, while the desktop tape marks them `helix-tape-time--estimated` with the title *"Ingest time — UW print time unknown"*. So a mobile member sees a timestamp with no indication it is an ingest time rather than a print time — the same absence-honesty axis as §9.0, on a surface nobody has checked. Raised rather than taken: it is a product change, not a harness one, and widening this PR to reach it is how the next unreviewed change ships. |
+| **Regression guard** | `helix-ui-audit-eval.test.mjs`, 34 tests (was 24). The 10 new ones pin: a badge on an unexamined row failing; the ratio cross-check passing on the real production row (`$1.4M / 2.75 / OI 884 → 5.7×`) and failing on a wrong ratio; display rounding tolerated while a wrong ratio is not; a bare `NEW` carrying no ratio; `parseCompactNumber` reading `$1.4M`/`1.5K`/`884`/`2.75` and refusing `—`; coverage silence correct only on a fully scannable tape, and the §9.0 defect shape (prints skipped, nothing says so) failing; the legacy direction wording failing **even on an empty radar**; expired prints belonging in 0DTE with the pre-#2673 shape asserted to FAIL; the DTE column having to come from the rendered rows; `null` vs `undefined` meaning unmeasurable vs unmeasured; and `NOT_EXERCISED` not poisoning the rollup. |
+| **Status** | SHIPPED — verified by running it against production, both viewports, PASS. |
+
+## 2026-08-23 — [FINDING, P3 Helix/tooling] The truncation probe never re-minted its session, so it could only ever probe two or three of thirteen tools — and two copies of the fix had already drifted — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `largo-truncation-probe.mjs` captured `session.cookieHeader` **once** and reused it for every tool. The `__session` JWT dies at roughly 72 seconds and a single Largo question takes seconds, so any multi-tool run outlives its token. Measured 2026-08-23: a **four**-tool run aborted at the **fourth** with `HTTP 401`, leaving `get_helix_thermal_compare` unprobed. Against the file's own lane list of **thirteen** tools, the probe could never complete a sweep in one invocation. |
+| **What was NOT wrong** | The abort itself is correct and deliberate, and its comment explains why: a lost session is one fact, not N findings, so the run stops and says so once rather than spending the rest of the run "asking a door that is already locked" and reporting twelve indistinguishable INDETERMINATEs. That behaviour is kept exactly. The defect is that the session was allowed to die at all, when the session object has always exposed a `refresh()`. |
+| **The second, larger half — two copies had already drifted** | `makeCookieJar` existed **twice**, under the same name and the same stated purpose, and they were no longer the same function: `gex-force-rebuild-timing.mjs` returned `{ get, force }` so a caller could re-mint and **retry** a 401, while `largo-truth-divergence.mjs` returned a bare async function with **no `force` at all**. The first file's own header claims it matches "the pattern in `largo-truth-divergence.mjs`" — which had stopped being true. Adding a third copy for the probe would have made it three. This is the one-rule-many-copies failure #2731 was entirely about, caught here **before** the third copy existed rather than after. |
+| **Evidence** | Before: `RUN ABORTED at get_helix_thermal_compare — the session stopped authenticating`, 3 clean / 1 indeterminate, `EXIT=1`; the fourth tool then had to be re-run alone to get an answer. After: the same four tools in **one** invocation — `4 clean · 0 indeterminate`, `EXIT=0`, with `CONTROL get_zerodte_rejections -> TRUNCATED` proving the instrument on both runs. |
+| **Fix** | `scripts/audit/lib/clerk-cookie-jar.mjs` — one jar, the superset API (`{ get, force }`), a 45s re-mint timer deliberately well inside the ~72s lifetime, and a `refresh()` failure that **keeps** the existing cookie rather than blanking it (a failed re-mint must not turn a working-but-old session into no session). All three harnesses now import it; the two local copies are deleted. The probe additionally does one forced re-mint + retry on a 401, which **narrows** what an abort means rather than hiding it: a 401 that survives a fresh token is a real auth failure and still aborts the run. |
+| **Why the timer is 45s and not 72s** | Re-minting on expiry races the token against the request already in flight. Re-minting early costs one extra mint per 45 seconds and removes the race. `force()` exists separately because a timer alone cannot close the window completely — a token can expire between the check and the server reading it. |
+| **Blast radius, and it reaches outside this lane** | Three harnesses: `largo-truncation-probe.mjs` (the fix), plus `gex-force-rebuild-timing.mjs` and `largo-truth-divergence.mjs`, which lose their local copies and gain the shared one. Both were **smoke-tested live against production** rather than assumed: the GEX timing harness completed `SPY #1: 8922ms status=200 strikes=268`, and truth-divergence returned authenticated reads (`OK indices 15.13`, `OK zerodte/record 81`). Its 9 reported findings are pre-existing HTTP **400**s and ABSENT values about other lanes' endpoints — 401/403 is the auth signal and none appeared, so the jar swap did not cause them. `largo-truth-divergence.mjs` also changes call style from `await jar()` to `await jar.get()`, the one behavioural edit outside the probe. |
+| **The generalisable point** | A harness that silently loses its credentials mid-run fails **asymmetrically**: the first items measure fine and the last ones fail fast. That reads as "the last thing I checked is broken and fast" — `gex-force-rebuild-timing.mjs`'s first run reported QQQ 1/5 and IWM 0/5 on a healthy system for exactly this reason. Every long-running authenticated harness in this toolkit needs the jar, which is now one import rather than a paragraph of reasoning to re-derive. |
+| **Regression guard** | Deliberately none beyond the live before/after: the jar is a timer over a network session, so a unit test would assert a mock's behaviour rather than the thing that broke. The falsifiable evidence is the measured run — four tools aborting at the fourth before, four clean in one invocation after, control TRUNCATED on both so neither result is an unproven instrument. |
+| **Status** | FIXED — verified live against production, before and after. |
+
+## 2026-08-23 — [FINDING, P2 Helix] The tide bar split SIGNED net premiums as if they were magnitudes — every snapshot of a full session misrendered — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `HelixTideBar` shows a BULLISH/BEARISH pill beside a call/put split bar. On most of a real session the bar rendered a **flat 50/50** — perfectly balanced flow — while the pill immediately to its left read **BULLISH**. On the rest, the bar's width style exceeded 100%. And the puts figure never appeared at all. |
+| **Root cause** | `net_call_premium` and `net_put_premium` are **signed**: UW nets ask-side against bid-side, so a negative value means that side was net SOLD. The component treated them as magnitudes: `const gross = call + put; const callPct = gross > 0 ? (call / gross) * 100 : 50;`. Adding two signed numbers is the bug — on a bullish tape where calls are bought (+) and puts are sold (−), the two effects **cancel in a sum** when in fact they reinforce. |
+| **Evidence** | Live UW `market-tide`, 2026-08-21, **81 five-minute snapshots — one full session**: `net_put_premium` negative on **81 of 81** rows, `net_call_premium` negative on 8 of 81. Consequences, measured over those same 81: **`gross <= 0` on 50 (61.7%)** → the flat-50/50 fallback, with the pill reading BULLISH; **`callPct > 100%` on the other 31** → an over-100% width style; and the puts label, gated on `put > 0`, rendered on **0 of 81**. Every snapshot in the session misrendered one way or the other. |
+| **A concrete pair** | 09:30 ET — `call −3,871,478`, `put −8,210,779`: both net sold, sum negative, bar flat 50/50, pill BULLISH. 10:40 ET — `call +14,033,234`, `put −14,389,606`: calls bought AND puts sold, i.e. **bullish on both legs**, and they cancel to a sum of −356k → flat 50/50 again. |
+| **Fix** | New pure `tideSplit()` decomposing net premium into **bullish vs bearish** with the same four-way table `helix-flow-aggression.ts` states for a single print: `bullish = max(call,0) + max(−put,0)` (calls bought + puts sold), `bearish = max(−call,0) + max(put,0)` (calls sold + puts bought). Both non-negative by construction, so the ratio is a real proportion — always 0–100, never a 250% width. |
+| **The property that makes it right, not merely different** | `bullish > bearish` is algebraically identical to `net_call − net_put > 0`, which is the `net` the store already computes and the **pill already reads**. So the bar now agrees with the pill *by construction* rather than by coincidence, and there is a test asserting that equivalence across the measured inputs and the sign edge cases. The two halves of the component can no longer contradict each other. |
+| **Second defect, same root** | Each label was gated on `value > 0`, so a net-**sold** side simply vanished — and net put premium was negative on every snapshot measured, so the puts figure never rendered once. Labels now show the magnitude **with its sense** (`"$134.7M puts sold"`) and colour by direction rather than by side, so net-sold puts read bullish-green. |
+| **Third: absence and balance are now distinguishable** | The old fallback rendered `50` whenever it could not compute a ratio, so "no flow measured" and "measured, and balanced" looked identical. `bullishPct` is `null` when there is nothing to split and the bar is replaced by *"No directional flow"*. Absent inputs return `unavailable: true` rather than 0 — `Number(null)` is 0, and a tide with no data must not render as perfect balance. |
+| **What was checked and found CORRECT, so nobody re-investigates** | The **bias pill itself is right**. `bias: call > put` on signed nets is a legitimate directional read, because net bullishness genuinely is `net_call − net_put`. I verified the inputs are signed against live UW rather than assuming it. This is **not** the §9.11 SplitFlow defect repeated — and for the same reason, `sessionFlowSkew` was re-examined and again left alone: it splits raw call-vs-put premium under neutral field names and makes no directional claim. |
+| **Blast radius** | One component. `tide_bias` itself is unchanged, so every SPX consumer of it (`spx-play-conflicts`, `spx-play-confirmations`, `spx-desk-merge`, `largo-live-feed`) is untouched — the fix is entirely in how HELIX *renders* the split, not in what the tide means. `tideStore`'s own `net` and `bias` assignments in `uw-socket.ts` were read and are correct as they stand. |
+| **Regression guard** | `helix-tide-split.test.ts`, 7 tests, written against the **real measured inputs**: the 09:30 pair reproduced with an inline copy of the old derivation asserting it returned exactly `50`; the 10:40 both-bullish-and-cancelling pair; an old-form case exceeding 100%; the proportion staying within 0–100 across eight sign combinations including ±1e9; **bar-and-pill agreement across eleven cases** including all four sign quadrants and every zero edge; zero flow reporting `null` while still being `unavailable: false` (zero flow WAS measured); absent/NaN/non-numeric inputs reporting unavailable rather than zero; and `netPremiumSense` on the −$134.7M value that a `> 0` gate hid 81 times out of 81. |
+| **Status** | FIXED — **pending live validation.** Needs RTH: the tide only updates while the UW socket is fed. At the open, the bar's split must visibly agree with the pill, and both call and put figures must render with their sense. |
+
+## 2026-08-23 — [P1, Helix] The tape told members "✓ tape agrees with long thesis" on flow that was measurably bearish — and "⚠ diverges" on flow it could not read — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `FlowFeed` enriched every Night Hawk play with a `flowAgreement` **boolean**: `flowCallPct = callPremium / totalPremium; flowAgreement = isLong ? flowCallPct >= 0.55 : flowCallPct <= 0.45`. `NightHawkFlowPanel` rendered it as prose beside a tradeable play — `✓ tape agrees with long thesis` on `true`, `⚠ tape diverges from long thesis` on `false` — and `conviction: "strong"` required it. Two defects, and the second is the one a boolean structurally cannot express. |
+| **Defect 1 — it is the replaced rule** | A SOLD call is bearish (#2691, `DIRECTION_BASIS = "aggression_aware_v1"`), so a wall of sold calls "confirmed" a LONG thesis. This is the same root cause as #2713/#2715, but on a **confirmation signal attached to a trade** rather than a bar colour. |
+| **Defect 2 — `false` meant two opposite things and rendered as one** | With no readable aggressor side the boolean is `false`, and the panel printed `⚠ tape diverges` — a **fabricated disagreement**, the exact mirror of the fabricated agreement, and just as confident. "The tape points the other way" and "the tape cannot be read" are opposite messages to someone deciding whether to take a trade. A boolean has no room for the difference. |
+| **Evidence — measured, not argued** | Live production tape, 5000 rows / 168h, 2026-08-23, over the **59 tickers at or above the $2M strong-conviction gate**: **32 disagree (54%)**. Under the old rule 42 of 59 "confirmed a long"; under the shipped rule, 20.<br><br>**Confirmed a long while the readable evidence said bearish:** `CG` 100% call premium, **100% readable**, verdict **BEARISH**, $8.0M · `DRAM` 100%/100% bearish $5.99M · `MSTR` 100%/92% bearish $6.68M · `BE` 95.9%/96.4% bearish $6.84M · `SMCI` 93.1%/100% bearish $4.40M · `MRVL` 77.3%/100% bearish $4.64M. These are not marginal reads — every dollar was measured.<br><br>**Reported divergence on flow that actually agreed:** `AVGO` 28.2% calls but **bullish at 100% readable** (puts being sold) $7.95M · `TLT` 10.4% calls, bullish at 100% $8.15M · `SKHY` 29.8%, bullish at 91.7% $11.8M.<br><br>**Reported divergence on flow it could not read:** `SPX` 0.1% readable · `CRWD` 7.4% · `MRNA` 44.7%. |
+| **Fix** | `thesisAgreement(read, isLong)` in `helix-direction-read.ts` returns **four** members: `agrees`, `diverges`, `two_sided`, `unreadable`. `thesisAgreementConfirms` returns true for `agrees` alone, so `conviction: "strong"` now requires *evidenced* agreement — an unreadable tape can no longer produce it. `thesisAgreementCopy` gives each state its own line, and the `unreadable` line names its coverage (`only 6% of the premium carries an aggressor side`) so it cannot be mistaken for either verdict. |
+| **Why FOUR states and not three** | `two_sided` (read, well covered, genuinely even) and `unreadable` (barely any side data) are different facts that refuse for **opposite** reasons — one because the evidence is complete and balanced, one because there is almost none. Collapsing them would repeat, one level up, the exact conflation this module exists to undo: it is the same mistake as a neutral bar that could mean "balanced" or "unknown". Three states was the first draft and was wrong for that reason. A test asserts all four render distinct copy. |
+| **Also fixed — the same root cause, one panel over** | `SectorFlowPanel` coloured each sector's premium and bar from `isBull = callPct >= 55`, so a sector whose calls were sold rendered as green rotation. Now coloured by the aggression-aware read, neutral when unreadable, with the `{callPct}% C` label kept — it names what it measures and was always honest. Its `callPct: 50` zero-premium fallback (a fabricated even split, same as the tide bar's #2704) is gone; it is `null` and renders `—`. |
+| **What was NOT changed** | `callPremium` / `putPremium` / `totalPremium` / `topPrint` / `printCount` all stay on `flowData`, and `{callPct}% C / {100-callPct}% P` still renders — those label what they measure and claim no direction. The `$2M` and `$500k` conviction thresholds are untouched; only the *agreement* input to them changed. `flowAgreement` is kept as a boolean field for callers that want the yes/no, now meaning **evidenced agreement only**. |
+| **A latent fabrication, correctly identified as latent** | `flowCallPct` fell back to `0.5` at zero premium. Neither threshold (`>= 0.55`, `<= 0.45`) includes `0.5`, and `conviction` is `"none"` at zero premium anyway, so it never produced a wrong badge. Stated as unreachable rather than as a live defect — it is gone with the rewrite regardless. Same for `NightHawkFlowPanel`'s `callPct : 0`, which sits behind a `totalPremium > 0` guard. |
+| **Severity** | P1 rather than P2 because this is not a colour: it is prose asserting that HELIX's tape **confirms a specific tradeable play's direction**, and it gates the "strong" conviction badge shown beside it. A member acting on `✓ tape agrees` for `CG` was reading a claim that the fully-measured evidence contradicted. |
+| **Blast radius** | `FlowFeed` (two aggregates), `NightHawkFlowPanel`, `SectorFlowPanel` — all `/flows` only. `helix-flow-aggression.ts` imported, not modified. No API, payload or persisted-field change: `flowData` is computed client-side from the loaded tape, so nothing already written to the ledger is affected and no historical grading changes. Night Hawk's own plays and directions are untouched — this changes only what HELIX says *about* them. |
+| **Expected visible effect** | Fewer "strong" badges and fewer `✓ tape agrees` lines, replaced by `◆ tape direction unread` where the index feed dominates. That is the correction, not a regression. Under the old rule 42 of 59 gate-eligible tickers claimed agreement; the honest count is 20. |
+| **Regression guard** | 7 new tests in `helix-direction-read.test.ts` (20 total), each built from a live 2026-08-23 shape: the CG case (100% sold calls) reading `diverges` on a long thesis and `agrees` on a short one — both directions, since the old rule was wrong both ways; the AVGO case (28.2% calls, sold puts) reading `agrees`; the SPX case (0.1% readable) reading `unreadable` and **explicitly asserted not to be `diverges`**; `two_sided` asserted distinct from `unreadable`; `thesisAgreementConfirms` true for exactly one of the four; **all four verdicts rendering distinct copy** (a set-size assertion, so a future edit cannot quietly make two states say the same thing), the refusal naming its coverage, the two-sided line not claiming divergence; and the copy naming long vs short. |
+| **Verification** | Node 20 (`/opt/node20/bin`, v20.20.2), full suite: **10461 pass / 0 fail / 1 skipped**. `npx tsc --noEmit` clean. `next lint --dir src/features/helix` no errors. |
+| **Status** | FIXED — **pending live validation.** After deploy, on `/flows`: no play may show `✓ tape agrees` unless its own call/put split and the aggression-aware read actually support it; `◆ tape direction unread` must appear on index-dominated tickers; and the count of `strong` badges must FALL. If every play still reads `✓ tape agrees`, the deploy does not carry this. |
+
+## 2026-08-23 — [FINDING, P1 Helix] Split Flow Radar called a ticker bullish from SOLD calls — and the ledger has been GRADING that call — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Split Flow Radar rendered **"▲ CALL BIAS"** — styled bullish — for a ticker whose call premium had been aggressively **sold**. On the same page, clicking a print from that same ticker opened the contract drilldown, which read the aggressor side and said **bearish**. Two directions for one flow, on one screen. |
+| **Root cause** | Two readers of one concept. `printBias` (`helix-print-detail.ts:91`) reads option type **× aggressor side** — a call bought or a put sold is bullish; a put bought or a call sold is bearish. `detectSplitFlow` read **option type alone**, counting all call premium as bullish regardless of who initiated. The fifth instance of this lane's recurring shape (after §9.4 IV units, §9.5 expiry buckets, §9.8/§9.10 `alert_rule`, §9.0 signal eligibility). |
+| **Evidence** | Live prod tape, 5000 rows / 168h, 2026-08-23, over the 1454 rows carrying `ask_pct`. **CALL premium $346.3M — of which $165.3M (47.7%) was SOLD. PUT premium $183.6M — of which $96.9M (52.8%) was SOLD.** Whole tape, option type alone reads **65.4% bullish**; aggression-aware reads **52.4%**. Per ticker, over the 83 names with ≥3 decisive prints: **37 sign-flip — 44.6%.** `TSLA` over 94 prints and $34.0M reads bullish by option type and **bearish** once you account for who was buying; also `GLD`, `INTC`, `MSTR` (bullish→bearish) and `SPXW`, `MRNA`, `TLT`, `AVGO` (bearish→bullish). |
+| **Why P1 and not a labelling nit** | `direction` is **not a label here.** `helix-signal-outcomes-job.ts:61` persists it, and `gradeOutcome(row.direction, price_at_fire, price_1h)` scores it **continued / reversed / flat**. So this column is a *prediction the record grades* — and for the ~45% of tickers where the two rules disagree, the ledger has been marking a correct read as "reversed" and vice versa. The HELIX split-flow track record is not merely mislabelled; it is measuring the wrong quantity on a large minority of rows. |
+| **Fix** | One shared statement, `helix-flow-aggression.ts`, holding the four-way table (`CALL bought → bullish`, `CALL sold → bearish`, `PUT bought → bearish`, `PUT sold → bullish`) plus the ask-side thresholds as named constants. `detectSplitFlow` reads it. A test asserts this module and the shipped `printBias` **agree** — the disagreement itself is now a guard, not a coincidence. |
+| **Fix — detection deliberately UNCHANGED** | What fires, and when, is byte-identical: opposing call **and** put premium above the same `$500K` leg threshold in the same 30-min window. Only the **direction reported** changed. Altering when the signal fires would break continuity of the graded record on top of correcting its label, and the firing condition was never the defect. |
+| **Fix — ledger continuity, the part that is easy to skip** | Rows written under the two rules answer different questions, so their hit rates are not comparable and pooling them would launder an unknown into a statistic. `context.direction_basis = "aggression_aware_v1"` is stamped on every new row; rows without the field are, by definition, the old rule. `context.directional` also carries the bullish / bearish / **undetermined** premium the label rests on, so a reader can audit any verdict rather than take it. |
+| **This is an INFERENCE, and the product already made it** | "Sold call = bearish" is not arithmetic — a sold call may be a covered call (neutral), a naked short (bearish), or a long being closed. `printBias` already takes the bearish reading and has been shipping it to members. This change does **not** introduce that interpretation; it stops the radar contradicting it. Stated explicitly in the module header so nobody later reads it as a proof. |
+| **A fourth outcome, added on purpose** | `undetermined` is now distinct from `mixed`. `mixed` means *read successfully and genuinely two-sided*; `undetermined` means *we could not read it*. A verdict is also refused when more premium is unreadable than readable — otherwise a third of the premium decides for a whole ticker while the rest was never read. The badge shows `— UNREAD` rather than a direction. |
+| **Two things the compiler caught that a human review would not** | (1) `SplitFlowRadar.tsx` kept its **own duplicate `SplitFlowEntry` type**, so the component could keep rendering a `direction` the detector had stopped meaning — it now re-exports the detector's type instead of redeclaring it. (2) `MinimalFlow` had **no `ask_pct` field**, so the first wiring would have made every direction `undetermined` — honest but useless. All three call sites were verified to supply it (`fetchRecentFlows` selects `AS ask_pct` at `db.ts:2681`; the client and Largo paths carry full `FlowAlert` rows). |
+| **Label correction, required not cosmetic** | The badge said `▲ CALL BIAS` / `▼ PUT BIAS`. Those describe the OLD quantity and would now be actively wrong — a bullish read can come entirely from **sold puts**, with no call buying at all. Now `▲ BULLISH` / `▼ BEARISH` / `⇋ MIXED` / `— UNREAD`, and the legend states the basis. |
+| **Blast radius** | `detectSplitFlow`'s three consumers: `FlowFeed` (the radar), `helix-signal-outcomes-job` (the graded ledger — stamped), and `get_helix_derived`'s `split_flow` array, which now carries the corrected direction plus `directional`. `detectVelocitySpikes` is untouched: it persists `direction: null` because a spike is a magnitude signal, and that was already correct. `sessionFlowSkew` still splits call-vs-put premium under neutral field names (`call_premium` / `put_premium`) and makes no directional claim — **left alone deliberately**, since a call/put premium split is a legitimate metric as long as it is not called a direction. |
+| **Regression guard** | `helix-flow-aggression.test.ts` (7 tests) and 4 rewritten/added in `helix-signal-detection.test.ts`. They pin the thresholds at both boundaries; the four-way table; that a midpoint, typeless or `ask_pct`-less print is `undetermined` rather than folded into a side; that this module and the shipped `printBias` **agree on every case including the thresholds themselves**; that premium ≤ 0 or NaN is ignored; the 60/40 margin; the refusal when the unread majority would decide; and — the case that proves the change — a ticker whose **call leg dominates 62%** but whose calls were sold and puts bought now reads **bearish**, with the mirror case asserted too. The two pre-existing tests that encoded the old rule were updated to the new one rather than the code being weakened to keep them green. |
+| **Status** | FIXED — **pending live validation.** Split flow needs a live 30-min window, so this is unverifiable off-hours: at the open, a ticker showing `▲ BULLISH` must be consistent with the drilldown's bias for its own prints, and `— UNREAD` must appear only where `Ask%` is genuinely absent. |
+
+## 2026-08-23 — [FINDING, P2 Helix] The signal ledger could not say what it had scanned, and its own header claimed a guarantee it does not have — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Every persisted HELIX signal firing recorded its own numbers and nothing about the population it was found in. So a follow-through rate computed from the ledger could not be attributed: it was impossible to tell a firing found among 1500 scannable prints from one found among 30, or a ledger row from a badge a member actually saw. |
+| **Root cause** | The client and the cron run the **same detector over different inputs**. The browser detects over `applyTapeFilters(tapeBuffer)` — the member's own ticker / side / premium filters applied to whatever has streamed. The cron detects over an unfiltered `since_hours: 1, limit: 5000` read straight from the DB. Neither is wrong; they answer different questions. Nothing said which one a row answered. |
+| **The claim that made it worse** | `helix-signal-outcomes-job.ts`'s own header asserted the shared detector meant *"client badge and persisted record can never disagree"*. That is false, and it is the kind of false that stops anyone looking: a reader who believes it has no reason to ask which population a row came from. Corrected in place, with the old wording **quoted** so the history survives — the definition is shared, the inputs are not. |
+| **Fix** | Both signal types now carry `context.population`: `{ source, since_hours, limit, scanned, signal_eligible, signal_ineligible, signal_ineligible_tickers, client_equivalent }`. Built by a pure, exported `buildSignalPopulation`, so the shape is testable without a database — the job around it is not. |
+| **Why this was cheap now and not before** | `signal_eligible` reuses §9.0's `signalEligibility` (#2681, merged earlier today). That is the denominator BOTH detectors could actually see: a print with no real UW timestamp cannot be placed in a window, and measured live 2026-08-23 that is **70% of the tape — SPX and SPY**. §9.0 is what turned §9.6 from "invent a population descriptor" into "reuse the one already stated". This PR was cut only after confirming #2681 was in `main` **by ancestry**. |
+| **Named, not merely counted** | `signal_ineligible_tickers` names the symbols the scan could not see, commonest first, capped at 20. "70% ineligible" is abstract; "SPX and SPY" is checkable against the tape by whoever reads the row. The **count** is never capped — only the sample. |
+| **Blast radius** | One writer, additive into an existing JSON `context` column — no schema migration, and no existing field changed. Both row types stamped: velocity spikes and split flow. Stamping only one would have made the ledger's coverage silently partial, which is worse than not stamping at all, and there is a test for exactly that. The grading half of the job is untouched. |
+| **Regression guard** | `helix-signal-outcomes-job.test.ts`, +5 tests, the coverage one **proven falsifiable** by deleting the velocity stamp and watching it fail. They pin the eligible/ineligible split over a realistic Group A + Group B mix; the SPX-before-SPY ordering; `client_equivalent: false`; an empty scan and a fully-eligible scan both reporting honestly (nobody skipped ⇒ nobody named); the ticker sample capped at 20 while the count stays complete at 60; and that **both** row builders carry the stamp. |
+| **A guard I wrote wrong first, worth recording** | The coverage test initially counted occurrences of `population,` and found 1 of 2 — one stamp ends `population }` and the other `population,`. It would have "passed" the day someone deleted the other one. Rewritten to slice each row builder between its `signal_type` marker and its `price_at_fire` terminator and require the stamp inside both. Separately, the header assertion was written as `doesNotMatch` on the old claim and fired on the header's own **quotation** of it — pushing the fix toward deleting useful history. Inverted to assert the *correction* is present. **Absence-assertions on prose are brittle in exactly this way.** |
+| **Status** | FIXED. Verifiable off-hours on the next cron run: any newly written row must carry `context.population` with a non-zero `signal_ineligible` naming SPX/SPY. |
+
+## 2026-08-23 — [P2, Helix] The Signal Outcomes panel told members "no firings recorded yet this session" while the radars beside it showed firings — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `SignalOutcomeTracker` had exactly one branch for an empty ledger, and it asserted a fact it had no way to know: `title="Collecting data"`, `description="No velocity-spike or split-flow firings recorded yet this session."` Both halves are claims about the SESSION, derived from a **row count** — which cannot distinguish "nothing fired" from "nothing is recording". They are opposite facts with an identical signature. |
+| **Why both halves are false on production** | `helix-signal-outcomes` is the ledger's **only** writer — its route calls `recordHelixSignalFirings()` *and* `gradeHelixSignalOutcomes()`, so its absence empties the ledger entirely rather than merely stalling grading. It is fully registered in `cron-registry.ts` (`~Every 15 min (market hours)`, `stale_after_min: 45`) and **absent from the deployed manifest** — `blackout-infra/cron-jobs.json`, 39 jobs, not one mentioning helix, verified by attaching the infra repo rather than inferred. So no row has ever been written. Meanwhile signals **do** fire: `VelocityRadar` and `SplitFlowRadar` render them live, on the same page, in the same rail. The panel told a member nothing had fired directly beside two panels showing things firing, and "Collecting data" claimed a collector that is not deployed. |
+| **Why this is P2 and not cosmetic** | It is the absence-as-measurement defect (`_COMMON.md` #7) presented in its most convincing form: not a blank space a member might question, but a **confident, plausible sentence** that explains the blankness away. A member reading it concludes the session is quiet. An auditor reading it concludes the panel is working. The one thing nobody concludes is the truth, which is that the instrument is off — and that conclusion is exactly what a track-record surface exists to make possible. |
+| **Fix** | `src/features/helix/lib/helix-signal-ledger-status.ts` separates the three states a row count collapses: `recording` (rows exist), `awaiting_firings` (the writer HAS run inside the observation window and the ledger is genuinely empty — the only state in which "no firings yet" is a true sentence), and `no_writer_observed` (no run seen; the ledger is not empty, it is unwritten). The API route resolves it via a new `fetchLatestCronJobRun(jobKey)` and returns it as `ledger`; the panel renders each state with its own copy, and the missing-writer state gets an amber border because a defect report must not wear the styling of a quiet session. |
+| **How it knows, without new infrastructure** | `cron_job_runs` already records every cron tick. A market-hours job on a ~15-minute cadence that exists at all leaves hundreds of rows a week, so **zero rows for the key over the retention window is not a quiet period — it is the absence of the job.** No new table, no new cron, no infra change. |
+| **The claim is bounded, and the wording says so** | `cron_job_runs` prunes at 30 days, so an absent row means "no run observed in the last 30 days", **not "never"**. The verdict is therefore named `no_writer_observed` and carries its own `observationWindowDays`, and the copy renders that window. Claiming "never written" from a table that deletes its own history would be the same absence-as-fact mistake one level up — which is the specific way a fix for this defect class tends to reintroduce it. A test asserts the copy never contains the word "never". |
+| **The third state, which is the part most likely to be dropped** | If the `cron_job_runs` probe itself throws, the route returns `ledger: null` — **"could not determine"**, a third thing — and the panel renders neutral copy for it rather than resolving it into either verdict. A failed query must never become evidence that the writer is missing; that would turn an infrastructure hiccup into a confident product defect report. The probe is also wrapped so it cannot fail a read that already succeeded. |
+| **What was deliberately NOT built** | **Staleness detection.** `cron-registry.ts` already owns it (`stale_after_min`, `market_hours_only`, `weekdays_only`) and a second implementation here would be a second statement of one fact — precisely the duplication removed earlier today in the contract-size unification (#2710). It would also have been *wrong*: a flat 45-minute bound against a market-hours-only job reports a perfectly healthy writer as stale on every weekend and overnight read. This module answers the one question a row count cannot and leaves the rest to the surface that already owns it. |
+| **Blast radius** | `fetchLatestCronJobRun` is new and additive (`fetchCronJobLastRuns` returns the latest row for every job — fine for the ops dashboard, wasteful for a member request about one key, and it forces the caller to distinguish "key missing from a 40-row array" from "array empty because the query failed"). The extra query runs **only when there is nothing to show**, so the populated path is unchanged. `EmptyState` was NOT given a `tone` prop — adding one from this lane would restyle every empty state in the app to fix one panel; the amber border is applied through the `className` it already accepts. The panel is HELIX-only and appears on no other surface. |
+| **Not fixed here, and why** | This does **not** schedule the cron. That is an EventBridge change in `blackout-infra`, against production, from a lane that does not own it — and `CLAUDE.md` is explicit that infra resources are created manually rather than by `terraform apply`. Raised on #2698 and recorded in `MARKET-OPEN-VALIDATION.md` §6, awaiting a decision to either schedule it or list it `INTENTIONALLY_UNSCHEDULED`. What this PR fixes is the separate defect that the product **lied about** the gap. When the cron does get scheduled, the panel moves to `awaiting_firings` and then `recording` with no further change. |
+| **Consequence worth stating** | Until the writer is deployed, **every HELIX "graded" figure rests on an empty table** — including anything Largo reports through `get_helix_signal_outcomes`. Any HELIX track-record number must be reported as unbacked rather than as a rate. |
+| **Regression guard** | `helix-signal-ledger-status.test.ts`, 8 tests: rows outranking the run log in both directions (a pruned history can never contradict data that plainly exists); the live production state resolving to `no_writer_observed`; six unusable timestamps (`undefined`, `null`, `""`, whitespace, unparseable text, `"NaN"`) each treated as *no observation* rather than coerced into a fabricated run; the window bound appearing in the copy and the word "never" being absent from it; `recording` producing no copy at all; the two empty states saying genuinely different things, **neither mentioning "this session"** (the exact regression), and the missing-writer copy actively denying the wrong reading (`/Signals still fire/`); and the writer key resolving against the real `CRON_JOB_BY_KEY` rather than being asserted against itself — a typo there would report `no_writer_observed` forever on a healthy writer, a fabricated defect, which is the same failure as a fabricated measurement wearing the opposite sign. |
+| **Verification** | Node 20 (`/opt/node20/bin`, v20.20.2), full suite: **10428 pass / 0 fail / 1 skipped**. `npx tsc --noEmit` clean. |
+| **Status** | FIXED — **pending live validation.** After deploy the panel must read **"Not recording"** with the amber border, since the writer is still not scheduled. If it reads "No firings yet" instead, the `cron_job_runs` probe is finding a run that the deployed manifest says cannot exist, and that discrepancy is the next thing to chase. |
+
+## 2026-08-23 — [FINDING, P1 Helix/Largo] Both HELIX signals silently skip 70% of the tape — SPX and SPY — and nothing said so — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | HELIX's two persisted signals — Velocity Radar and Split Flow Radar — cannot fire on **SPX or SPY**, the two names that top every premium panel. Both panels report "No velocity spikes this session" / "No split-flow tickers this session" beside the threshold they use, which reads as *"we scanned the tape and nothing cleared the bar."* For 70% of the tape nothing was scanned. `get_helix_derived` had the same gap in payload form: `prints_analyzed: 5000` next to `velocity_spikes: []`, with no denominator between them. |
+| **Root cause** | Both detectors must place a print IN TIME — a velocity spike is prints-per-window, a split is call-vs-put premium inside a window — so both skip a print with no real UW timestamp. **Neither detector is buggy**; each correctly refuses to date an undatable print. The defect is that the skip was never counted or reported, so absence-of-coverage was published in the same shape as absence-of-signal (`_COMMON.md` #7). |
+| **Evidence** | Live production tape, 5000 rows / 168h, 2026-08-23 (`/api/market/flows`, HTTP 200): **1500 rows (30.0%) are signal-eligible; 3500 (70.0%) can fire NEITHER signal.** Those 3500 span exactly **two tickers — SPX (3079) and SPY (421)** — the second writer's index feed (HELIX-MAP.md §4A), which sends no time field and carries ~92% of the tape's premium. |
+| **The measurement that decided the fix's shape** | The two detectors expressed eligibility **differently**: velocity tested `alert.event_at` directly, split called `flowEventTimeMs`. §9.9 had flagged this as one shape change from diverging. Rather than assume they agreed, both rules were run over the same 5000 live rows: **0 velocity-only, 0 split-only — the two rules select the same rows.** That made unifying them provably behaviour-neutral today, and it is what allows a single honest denominator to exist at all. |
+| **Fix** | One exported predicate, `signalEligible(flow)`, in `helix-signal-detection.ts` — the module whose whole stated purpose is that the client badge and the persisting cron "can NEVER drift into disagreeing about what counts as a spike/split". Both detectors now call it, and `signalEligibility(flows)` returns `{ total, eligible, ineligible, ineligibleTickers }` for the surfaces. `flowEventTimeMs` is the rule kept: it is the canonical helper ("real UW time only, never ingest fallback") and marginally the more correct of the two — velocity's direct `event_at` test also discarded a row carrying a real, non-estimated `alerted_at`, which is a genuine print time. |
+| **Fix — the Largo half** | `get_helix_derived` now carries `signal_eligible_prints`, `signal_ineligible_prints` and `signal_ineligible_tickers` beside the two signal arrays, so a model reading an empty `velocity_spikes` can tell a quiet tape from an unscanned one, and can **name** the unscanned symbols. Additive per the product contract — nothing existing changed shape. The fields are emitted on the empty and error branches too, because a field that vanishes on one path is a field a consumer reads as "not applicable" when it means "nothing to count". |
+| **Fix — the member half, deliberately in the same PR** | New `SignalCoverageNote` renders *"Scanned 1,500 of 5,000 prints — 3,500 (SPX, SPY) carry no reported print time and cannot be scanned for this signal"* in both radars, in **both** the empty and populated states — populated too, because a member seeing two spiking names still cannot tell that the largest names on the tape were never eligible to be among them. It renders **nothing** when every print was eligible, so a healthy single-ticker view carries no permanent caveat. Shipping only the payload half is exactly how §9.5 survived: Largo's copy was fixed on 2026-08-20 and the panel's was not, and the two disagreed about 16.1% of the tape for three days. |
+| **Fix rationale — why not a third rule** | The obvious implementation is a denominator with its own eligibility test. That would have made the underlying problem worse: a reported "eligible" count that neither detector actually uses is the one-field-many-readers failure this lane fixed three times this week (§9.4 IV units, §9.5 expiry buckets, §9.8/§9.10 `alert_rule`). Eligibility is therefore stated **once** and read by the detectors and the denominator alike. |
+| **Blast radius** | Every consumer of the two detectors was read: `FlowFeed.tsx` (both live panels — wired), `product-reads.ts` (`get_helix_derived` — wired), `helix-signal-outcomes-job.ts` (the persisting cron — **unchanged on purpose**: it records firings, and a firing's definition did not change). The velocity detector's internals changed from `event_at` to `flowEventTimeMs`, measured equivalent on live data as above. |
+| **Deliberately NOT done — needs the coordinator** | The deeper question is **whether the index feed should be given a print time at all**. That is upstream of this lane: it means either sourcing a timestamp for the SPX/SPY writer or deciding those prints are ingest-dated forever. This finding makes the cost visible and measurable; it does not choose. Until then, 70% of the tape remains unscannable — honestly reported, but unscannable. |
+| **Regression guard** | `helix-signal-detection.test.ts`, +4 tests, proven falsifiable rather than assumed: the denominator's rule was deliberately drifted away from the detectors' and **2 of the 4 fail**, then pass on the fix. They pin the Group A / Group B / estimated-time / unparseable shapes; that an SPX cohort of **80 prints and $400M with both legs inside both windows fires NEITHER signal** while a 5-print datable ticker fires both — the finding stated as an executable fact; that a fully-datable tape reports zero ineligible so the panels stay quiet; that empty input does not read as "everything was skipped"; and that ineligible tickers are ranked by how much coverage each costs, matching the live SPX-then-SPY ordering. |
+| **Status** | FIXED — live-validated 2026-08-23, with its own criterion corrected. The line originally read "`get_helix_derived` must carry a **non-zero** `signal_ineligible_prints` naming SPX/SPY". #2723 landed first and made that unsatisfiable: the index feed was never timeless, its epoch timestamps simply did not parse, so the honest post-deploy value is **zero ineligible — 5000/5000 scanned**, and both radars correctly render no coverage line. The fix here is unaffected and is what makes that readable: the denominator is reported either way, and it is now reporting full coverage rather than being absent. See `2026-08-23-helix-inventory-eligibility-rule.md`. |
+
+## 2026-08-23 — [P3, Helix] The whale threshold was declared SIX times in the lane whose limits module exists to hold it once — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `helix-flow-limits.ts` exports `WHALE_PRINT_PREMIUM = 1_000_000` under a docstring that says, verbatim: *"Lives here because this module is already the shared tape-limits home … so the threshold has ONE definition rather than a literal repeated per surface."* It was repeated per surface anyway — **six times in HELIX alone**: the source of truth; `FlowFeed.tsx` `WHALE_PREMIUM` (the `whalesOnly` FILTER); `FlowFeed.tsx` a **bare `1_000_000`** on the whale AUDIO BEEP; `HelixFlowTable.tsx` `WHALE_PREMIUM` (the desktop BADGE); `HelixMobileFlowTape.tsx` `WHALE_PREMIUM` (the mobile BADGE); and `TickerDrawer.tsx` a **bare `1_000_000`**. |
+| **The detail that makes the point** | `FlowFeed.tsx` declares `WHALE_PREMIUM` on line 103 and then, on line 686, tests `alert.premium >= 1_000_000` as a bare literal — **the same file disagreeing with itself about how to say the same thing, fourteen lines apart in the imports and ~580 in the body.** The values all match today; nothing enforces that they will. |
+| **Why it matters beyond tidiness** | These three surfaces answer one question — *is this print a whale?* — and a member sees all three at once: they filter with **Whales only**, hear the whale **beep**, and read the **WHALE badge** on the row. Drift in any one copy produces the specific defect of a row that is badged but filtered out, or beeps but is not badged. Nothing would fail; the page would simply stop agreeing with itself, which is the failure mode this lane has now logged four separate times today. |
+| **Two more of the same shape** | `PREMIUM_PRESETS = [200_000, 500_000, 1_000_000, 20_000_000]` was declared **verbatim in two files** — `FlowFeed.tsx` (which owns the state) and `HelixCommandBar.tsx` (which renders the chips). And `HelixCommandBar`'s `activeFilterCount` tested `f.minPremium !== 200_000` against a hardcoded literal while the actual default lived in `FlowFeed`'s `useState(200_000)`. **If the default ever moves and that comparison does not, the chip counter reports one active filter on a fresh, untouched page** — a count that lies about whether the member has filtered anything at all. |
+| **Fix** | `HELIX_DEFAULT_MIN_PREMIUM` and `HELIX_PREMIUM_PRESETS` are added to `helix-flow-limits.ts`, the module that already exists for exactly this. Every HELIX component now imports `WHALE_PRINT_PREMIUM`, `HELIX_PREMIUM_PRESETS` and `HELIX_DEFAULT_MIN_PREMIUM`; all six local declarations and both bare literals are gone. `HELIX_DEFAULT_MIN_PREMIUM` is defined AS `HELIX_MEMBER_PANEL_PREMIUM_FLOOR` rather than as a second `200_000`, so the two cannot be separated by an edit to one of them. |
+| **The regression guard is a RATCHET, and that is the whole point** | A test asserting the VALUES would not have caught any of this — every copy agreed. So the guard asserts the **shape of the lane**: it walks `src/features/helix/components/*.tsx` and fails on any `const …WHALE…=` or `const …PREMIUM_PRESET…=` declaration. A new local `const WHALE_PREMIUM = 1_000_000` passes every value assertion and fails this one. **Proven falsifiable**: injected exactly that line into `HelixFlowTable.tsx` and watched the test fail naming the file and line, then removed it and watched it pass. |
+| **A trap inside the guard itself** | The ratchet was first written with `globSync` from `node:fs`. That is **Node 22+**; this repo runs Node 20, where it is `undefined` and throws. A thrown test is at least loud — but the near-miss worth recording is that a ratchet which silently scanned **zero files** would have passed forever while enforcing nothing, which is the same absence-as-measurement failure the ratchet is there to prevent. It now uses `readdirSync`, and asserts it found more than five components before judging any of them. |
+| **The scan is deliberately narrow** | It matches `const` **declarations** only. Money formatters legitimately divide by `1_000_000`, and `1_000_000_000` is the billions branch of `fmtPremium`. A guard that flagged those would be turned off within a week, and a turned-off ratchet is worse than none. |
+| **Cross-lane, reported and NOT touched** | `src/features/vector/lib/vector-helix-flows.ts` declares `VECTOR_HELIX_WHALE_PREMIUM = 1_000_000` and `src/features/vector/lib/vector-pulse.ts` declares `FLOW_MIN_PREMIUM = 1_000_000` under a comment that reads *"Aligned to the app-wide WHALE_PREMIUM bar (Helix's TickerDrawer/HelixFlowTable use the same $1M floor)"* — a comment asserting an alignment that nothing enforced, and which pointed at two files that have just stopped declaring it. Vector's lane, Vector's call; reported here, deliberately unchanged. |
+| **Blast radius** | Five HELIX components plus the limits module. No behaviour change: every value is identical, and `tsc` plus the full suite confirm no call site changed meaning. The only functional difference is that a future edit to the threshold now reaches all six surfaces at once, which is the point. |
+| **Verification** | Node 20 (`/opt/node20/bin`, v20.20.2), full suite: **10459 pass / 0 fail / 1 skipped**. `npx tsc --noEmit` clean. `next lint --dir src/features/helix` no errors. A repo-wide grep confirms no bare `1_000_000` or `200_000` threshold literal remains in `src/features/helix/components/`. |
+| **Status** | FIXED. Pure refactor with a ratchet; **no live validation needed** beyond the routine pass — the values did not change, so the tape must look exactly as it did. If the WHALE badge, the whale beep and the Whales-only filter ever disagree after this, that is a new defect and not this one. |
+
+## 2026-08-23 — [MEASUREMENT, Helix] §9.7 answered: the conviction score does not rank directional follow-through — no change taken
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **The question** | HELIX's `score` is `min(60, premium/$1M × 60) + sweep(25) + 0dte(15)`, so every print at or above $1M contributes the same 60 premium points — a $50M block and a $1.1M print are separated only by the two flags. Whether that compression is intended or accidental was **UNKNOWN**: the score predates this lane's records and no design note explains its shape. §9.7 is explicit — *do not retune it on intuition*. |
+| **Why it was stuck, and how it got unstuck** | §9.7 names the signal ledger as the only instrument that could test it. That instrument is **un-runnable**: `helix-signal-outcomes` is fully registered in `cron-registry.ts` (`~Every 15 min (market hours)`) yet absent from blackout-infra's deployed `cron-jobs.json` — verified 2026-08-23 by attaching that repo to the session. The ledger has no writer, so waiting for it is waiting forever. `scripts/audit/helix-score-signal.mjs` takes the other route open to an offline audit and grades each print's own underlying forward on REAL Polygon minute bars. |
+| **Method** | 5000-row / 168h live tape → **748 prints graded**. Gradeable means a real `event_at`, a numeric score, and a readable direction; that is **27.4%** of the tape, the §9.0 denominator again, and the probe reports it rather than grading 27% and calling it "the tape". Direction is option type **×** aggressor side — `flowDirection`, the same rule the contract drilldown already ships — so a sold call counts bearish. Entry and exit are the nearest minute bars within a 10-minute tolerance; outside that the print is UNGRADED rather than priced off a bar 90 minutes from the timestamp it claims. |
+| **Result — three horizons** | Win rate by score bucket: **0–19** 50.4 / 47.2 / 48.5% · **20–39** 51.1 / 49.0 / 45.6% · **40–59** 43.3 / 46.5 / 41.3% · **60 (saturated, n=51)** 43.1 / 52.9 / 47.1% · **61–84 (n=29)** 41.4 / 44.8 / 58.6% · **85–100 (n=4)** 25.0 / 75.0 / 50.0%, at +15 / +30 / +60 min. |
+| **The reading, stated conservatively** | Every rate sits between **41% and 53%** — around a coin flip — and average favourable move is negative in almost every cell. More telling than any single number: **the best-performing bucket CHANGES at every horizon** (20–39 at 15min, 60 at 30min, 0–19 at 60min). Quantified: the verdict is **`SPREAD WITHOUT ORDER` at every horizon**, with rank correlation **ρ = +0.40 at +30min and ρ = −0.40 at +60min — it flips sign.** A score that ranked would hold its sign. **Score does not rank directional follow-through.** |
+| **The harness was wrong first, and that is the point** | `scoreSeparation` originally graded on SPREAD alone, and labelled a 10.9pp spread `SEPARATES` on a run whose best bucket was 20–39 and whose **worst was the middle one**. A spread is not a ranking, and an instrument that conflates them would have contradicted the very write-up it exists to support — I would have shipped a verdict label arguing against my own conclusion. Caught by re-running the probe after a CodeQL fix, on a smaller sample that happened to expose it. It now requires a monotonic trend (Spearman ρ over the usable buckets) **as well as** a spread, and reports `SPREAD WITHOUT ORDER` and `INVERTED` as outcomes distinct from `RANKS`. |
+| **The saturation, independently confirmed** | Only **84 of 748 graded prints (11.2%)** score above 59 at all, so the top 40% of the range is nearly empty — exactly what `min(60, premium/$1M × 60)` predicts, measured rather than reasoned. |
+| **What this does NOT say** | It measures direction in the **underlying**, not option P&L — no strike, no decay, no exit rule. So it is evidence score does not rank *direction*; it is **not** proof score is useless for sizing or for surfacing. The tempting next move after a flat result is to retune the score, and that is precisely the intuition-driven change §9.7 forbids. Sample caveat stated in the harness too: the 168h window spans a weekend, so these prints are one session-type. |
+| **No change taken, deliberately** | `score` drives a member-visible column and its sort order. Three options, unchanged from the earlier PR comment but now with evidence behind them instead of speculation: **(a)** leave it — it is a display heuristic, not a claim; **(b)** re-scale the premium term so the top of the range is populated; **(c)** drop the numeric score for an explicit ranked label. This is a product decision and stays with the coordinator. |
+| **Two harness defects fixed during the build, both worth recording** | (1) `bucketForScore` used `Number(score)` then `Number.isFinite` — and `Number(null)` is **0**, so a print with **no** score bucketed into "0–19": a print nobody scored counted as a print scored zero. That is the absence-as-measurement failure this lane has spent the day removing, appearing in the instrument built to measure it, and it was caught by a unit test rather than by review. (2) The first live run reported **0 of 800 rows graded** — not a data problem: this sandbox ships `POLYGON_API_BASE` as the literal unresolved string `"POLYGON_API_BASE"`, and a truthiness check alone passes it through so every bar fetch 404s. Fixed with the `/^https?:/` guard every other harness here already carries. **"0 rows graded" reads as missing data and was broken config.** |
+| **Regression guard** | `scripts/audit/lib/helix-score-eval.test.mjs`, 7 tests: every bucket reachable and the saturation point isolated at exactly 60; a null / NaN / out-of-range score returning `null` rather than bucketing as zero; a bearish print that fell graded a **WIN**; an ungradeable print returning `null` rather than diluting a hit rate toward 50%; ungraded and unbucketable rows excluded from the summary; `scoreSeparation` refusing a verdict from thin buckets **and naming what it dropped**; `RANKS` requiring a monotonic trend and not merely a spread, with a zig-zag fixture (45/55/40/50, Spearman exactly 0) proving a 15pp spread with no trend reads as `SPREAD WITHOUT ORDER`; a backwards-ranking score reported as `INVERTED` rather than as working; tied win rates unable to masquerade as agreement; and the **real 400-row run's own shape** asserted never to read as `RANKS`. |
+| **Status** | MEASURED — question answered, decision open. No product code changed. |
+
+## 2026-08-23 — [FINDING, P3 Helix/tooling] The §9.7 score probe counted 81 prints it could never grade, and spent 10% of its sample budget fetching bars that do not exist — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `helix-score-signal.mjs` reported `gradeable (real event_at + readable direction + numeric score): 1372` and then graded **748 of 800 sampled**. Both halves were off for the same reason: 81 of those "gradeable" candidates are cash-index option roots the **equity** aggregates endpoint cannot answer, so they can never produce a bar, never grade, and yet occupied slots in `candidates.slice(0, MAX_ROWS)`. The reported denominator overstated what was actually gradeable, and ~10% of the sample budget was spent on fetches that return nothing. |
+| **Root cause** | The exclusion was a **comment, not code**: *"Index roots do not live in the equity namespace … in practice they are also Group B (no `event_at`), so they are already excluded from the gradeable set before this matters; a ticker that cannot be fetched stays UNGRADED either way."* **Both halves of that safety argument were wrong.** SPXW, SPX and RUT prints arrive through the UW `flow_alerts` channel — they are **Group A** and always carried an `event_at` — so they were never excluded by the mechanism the comment relied on. #2723 then retired the `event_at` reasoning outright by giving every row one. The fallback ("stays UNGRADED either way") is true and is exactly the problem: silently ungraded is how a real shortfall hides. |
+| **Evidence** | Live production tape, 5000 rows / 168h, 2026-08-23. Filter funnel: `event_at` **5000** → parses **5000** → numeric score **5000** → readable direction **1372**. Of those 1372, **160 are index roots — SPXW 61, SPY 79, SPX 18, RUT 2**. Gradeability measured with the probe's own call, `fetchAggBars(t, 1, "minute", "2026-08-21", ...)`: **SPY 893 bars, QQQ 923 bars; SPX, SPXW, RUT, NDX, VIX, XSP all 0 bars.** So **81 of the 160 can never be graded**, and SPY's 79 grade normally. |
+| **The near-miss worth recording** | The first gradeability run reported **0 bars for every ticker including SPY**, which would have "proved" the whole index-root family ungradeable and dropped 79 good rows. The cause was `POLYGON_API_BASE` arriving as the literal unresolved string — the exact trap `helix-score-signal.mjs` documents in its own header and self-defaults around, which my out-of-harness probe did not replicate. Caught only because SPY returning 0 bars is implausible. **A uniform negative result is the signature of a broken instrument, not of a uniform world.** |
+| **Fix** | `NON_EQUITY_ROOTS` (SPX, SPXW, NDX, RUT, VIX, XSP) and `partitionGradeable` in `helix-score-eval.mjs`. Candidates are split **before** the sample is taken, so the 800-row budget is spent only on rows that can grade, and the report prints `candidates 1372` → `minus 81 on roots the equity aggs endpoint cannot price (SPXW 61, SPX 18, RUT 2)` → `gradeable 1291`. **SPY is deliberately absent from the list** — it is an ETF in the equity namespace and grades normally; a reader sweeping it in with "index roots" would silently drop 79 live prints. |
+| **The backstop, because a hand-maintained list is a floor not a guarantee** | `ungradedTickers` reports any ticker that reached grading and produced **zero** graded rows from ≥3 prints. An unlisted non-equity root fetches nothing and would otherwise just shrink the graded count — which reads as thin data rather than as a symbol the probe cannot price. It printed nothing on the live run, which is the correct output when the list is complete, not evidence it is unused (its unit tests exercise both branches). |
+| **Measured effect, and what it deliberately did NOT change** | Sample efficiency **748/800 → 794/800 graded** — 46 more real observations from the same budget and the same tape. **The §9.7 verdict is unchanged: `SPREAD WITHOUT ORDER`**, spread 6.2pp, rank correlation ρ=0.46 at +30min (consistent with the ρ=+0.40 first run). That is the ideal outcome for a denominator fix: it neither rescues nor damages the finding, it just rests it on 46 more rows. **No score, bucket, grading or direction logic was touched** — retuning the score is explicitly forbidden by the map and is not what this is. |
+| **Blast radius** | `helix-score-signal.mjs` only. `summarizeByBucket`, `scoreSeparation`, `gradeForward` and `bucketForScore` are unchanged, so every number the probe derives is computed exactly as before — on a cleaner population. CLAUDE.md's recorded "748 prints graded" first-run figure was measured **before** this correction and remains accurate as a historical record of that run; it is not restated here. |
+| **Regression guard** | 5 tests. `NON_EQUITY_ROOTS` must exclude the six measured roots **and must NOT exclude SPY or QQQ** (the expensive mistake, pinned); case must not decide gradeability. `partitionGradeable` must report the live composition exactly — `[["SPXW",61],["SPX",18],["RUT",2]]`, with SPY surviving — because a bare "81 excluded" invites the reader to assume noise while the breakdown is checkable. `ungradedTickers` must surface an unlisted root (DJX, 5 prints, 0 graded) while **not** reporting a single print that merely fell outside bar tolerance, and must stay silent when every ticker graded something. |
+| **Status** | FIXED — live-run confirmed against production: `candidates 1372 · minus 81 · gradeable 1291 · sampled 800 · graded 794`, no zero-graded tickers reported. |
+
+## 2026-08-23 — [FINDING, P2 Helix] The tape's Rule column substituted our own premium bucket for the rule nobody reported — 79.4% of rendered rows — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | HELIX's tape has a column headed **Rule**. On a print where UW reported no `alert_rule`, that column rendered the word `stock` or `whale` — one row below a print showing `SWEEP`. A member reading down the column sees two kinds of claim in one vocabulary with nothing distinguishing them, and no indication that for most rows nothing was reported at all. |
+| **Root cause** | `HelixFlowTable.tsx:212` read `flow.alert_rule ? ruleLabel(flow.alert_rule) : flow.route?.slice(0, 8) \|\| "—"`. **`flow.route` is not a rule and not a route.** It is our own derived size/tenor bucket, assigned in `unusual-whales.ts:271`: `premium >= 1_000_000 ? "whale" : dte == null ? "" : dte <= 0 ? "0dte" : "stock"`. So the fallback for "UW reported no rule" was a field we compute ourselves from two columns already on screen — `whale` restates **Prem**, `stock`/`0dte` restates **DTE**. It added no information while displacing the honest blank. |
+| **Evidence** | Live production DOM, `/flows` desktop 1440×900, 2026-08-23, 500 rendered rows read out of the tape grid (89 requests routed, 0 fail). Rule column vocabulary: **`stock:271 · whale:126 · REPEAT:99 · FLOOR:3 · SWEEP:1`** — **397 of 500 rows (79.4%) showed an internal bucket name** where a member reads execution rules. Only 103 rows carried a real reported rule. |
+| **Why it is a contradiction, not only a mislabel** | §9.8 (#2647, merged) fixed `executionRouteKey` to return **`UNREPORTED`** for exactly these prints, because no rule was ever reported for them. Live on the same screen, post-deploy: the Route Breakdown panel reads **`UNREPORTED 95%`** while the Rule column beside it shows `stock`/`whale` for those same rows. Two readers of one field, visibly disagreeing about whether the field is **present**. The §9.8 fix did not cause the defect — it made it visible by finally telling the truth in one of the two places. |
+| **Fix** | New pure `ruleBadge(flow)` in `helix-flow-format.ts`, beside the two existing readers of `alert_rule`, stating the rule once: **the column reports UW's `alert_rule` or it reports nothing.** Absence returns `"—"`, matching every other unmeasured cell in the tape (`fmtIv`, `fmtSpot`, `score`), so "no rule reported" reads exactly like every other honest blank. `HelixFlowTable` calls it; the inline ternary is gone. |
+| **Fix rationale** | Deleted the substitution rather than relabelling the column or inventing an "UNREPORTED" word for it. Relabelling would keep a member-facing column whose content is derivable from two adjacent columns; a new word would make a routeless print look like a *measured* category, which is the absence-as-measurement failure (`_COMMON.md` #7) this lane has now fixed three times. `ruleLabel`'s own documented fallback — show an unrecognised rule's raw text rather than collapsing it — is **unchanged**: a rule we have no word for is still more useful shown than hidden. |
+| **Blast radius** | **One render site.** All four other consumers of `flow.route` were read and deliberately left alone: `TickerDrawer.tsx:41` renders `route === "0dte"` as a badge **labelled 0DTE**, which is an honest tenor claim and the field's correct use; `FlowFeed.tsx:172` uses it as a sort key, never displayed; `RouteBreakdown.tsx`'s `e.route` is the bucket key from `executionRouteKey`, an unrelated value with the same name. `HelixMobileFlowTape.tsx` renders neither field, so mobile never had the defect. |
+| **The pattern, third occurrence tonight** | One HELIX field with two readers that disagreed: `alert_rule` (§9.8 — `ruleLabel` vs `executionRouteKey` knew different words), IV units (§9.4 — the column guessed units per row while Largo's copy did not), and now `alert_rule` again on the presence question. Recorded in `HELIX-MAP.md` as a class rather than three coincidences: **when a field has more than one reader, the readers need a shared, tested statement of what the field means — including what its absence means.** |
+| **Regression guard** | `helix-flow-format.test.ts`, +3 tests. Proven falsifiable rather than assumed: the shipped implementation was restored in place and **2 of the 3 fail on it**, then pass on the fix. They pin (a) the badge vocabulary including that `RepeatedHitsSweep` → `REPEAT` on the badge but `SWEEP` on the panel — the deliberate precedence difference §9.8 preserved, asserted here so a future "simplification" cannot silently re-collapse them; (b) every value `unusual-whales.ts` can assign to `route` (`whale`/`stock`/`0dte`/`""`) crossed with every absent-rule form (`null`/`undefined`/`""`/whitespace) rendering as `"—"`; and (c) that `ruleBadge` and `executionRouteKey` **agree on whether the field is present** — the contradiction itself is now a test. |
+| **Status** | FIXED — **pending live validation.** The Rule column must be observed on production, after this deploys, showing `—` on routeless prints and no `stock`/`whale`/`0dte` value anywhere in that column. |
+
+## 2026-08-23 — [ENHANCEMENT, Helix] The tape could prove which prints are NEW positioning and never said so — SHIPPED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What was missing** | "Is this opening a new position, or closing one?" is the first question a flow desk asks of an unusual print — it is the difference between someone building a bet and someone taking one off. The HELIX tape never answered it, while carrying both inputs the whole time. |
+| **Why it is arithmetic, not a guess** | A print's SIZE in contracts is not served but is exactly recoverable: `size = premium / (fill_price × 100)`. `open_interest` is the contracts currently outstanding. If a SINGLE print's size exceeds open interest, the trade **cannot** be entirely closing — there are not enough open contracts in existence to close. At least `size − OI` are necessarily new. A counting argument, which is why this ships where a "sentiment" heuristic would not. |
+| **Evidence — the data supports it** | Live prod tape, 5000 rows / 168h, 2026-08-23: `fill_price` present on **100%**, `open_interest` on **30.0%** (Group A only — the index feed reports none, §4A). Of the 1500 judgeable rows: **12** have `OI === 0` (all-new), **208** clear the margin, **1275** are genuinely ambiguous. **220 decisive = 4.4% of the tape, 14.7% of the population that can be judged at all.** |
+| **Evidence — the prints it finds** | `MRNA CALL 200 2026-11-20 — 8500 contracts vs 108 outstanding (79×), $14.9M`; `TEX CALL 60 2026-09-18 — 3997 vs 2 (1999×), $3.1M`; `NVTS PUT 13 2026-10-16 — 2848 vs 1, $513k`. These are unambiguous new positioning at size, and the tape rendered them identically to a routine closing trade. |
+| **The margin, measured not guessed** | `size` is derived, so it carries the rounding in `premium` and `fill_price` (a swept order reports one averaged fill). Error over the same 1500 rows, as distance-to-nearest-integer: **p50 0.0000%, p90 0.0231%, p99 0.0834%, max 0.160%**. `OPEN_INTEREST_MARGIN` is **1.05 — 31× the largest error observed**, deliberately generous because that measurement is a LOWER bound. It costs 5 of 213 rows, the right trade for a badge asserting something *cannot* be true. The smallest live excess (1.014×) sits inside that budget and is correctly demoted. |
+| **What it refuses to say** | Three outcomes, and two of them are refusals. Below open interest → `indeterminate`, **never "closing"**: not-provably-opening is not evidence of closing, and the verdict union has no `closing` member at all, so it cannot be produced by accident. No reported OI → `unknown`, a different fact again — that print was never examined. Neither renders a badge, because an absent badge must read as "unproven", not as a verdict. |
+| **The trap that would have silently killed it** | The desktop tape renders `signals.slice(0, 3)` and collapses the rest into "+N". The badge was first appended at the END of `flowSignals` — and almost every Group A print already carries a `rule` badge, so it would have been hidden behind the overflow counter on exactly the rows that have one. Caught by reading the render, not the logic. It is now pushed third at the latest, directly after WHALE: size and newness are the two headline facts about a print, and the rest qualify them. |
+| **Secondary fix** | `SignalPill` set `title={label}` — every badge on the tape had a tooltip that repeated the badge. `HelixFlowSignal` now takes an optional `title`, defaulting to the label so nothing else changes, and NEW uses it to state the counting argument with real numbers: *"8,500 contracts traded against 108 outstanding, so at least 8,392 are newly opened — this print cannot be entirely closing."* |
+| **One property that looks like a bug and is not** | Open interest is published once daily, so it is effectively the PRIOR session's close. That is the **correct** denominator: today's opening trades are not in it yet, which is precisely why exceeding it proves newness. Documented in the module header so it is not later "fixed" to an intraday figure, which would destroy the argument. It does make the test per-PRINT — two prints of 60% of OI each are individually indeterminate even though together they must have opened something. The function classifies one print and claims nothing about a sequence. |
+| **Blast radius** | `flowSignals` is shared by three surfaces on purpose (its consumers' own comments say so): the desktop tape (3 badges), `HelixMobileFlowTape` (renders all), and **`VectorHelixRail`** — a Vector-lane component that budgets 2 badges. So NEW will appear on Vector's rail too. That is the shared function behaving as designed rather than a leak, but it is a cross-lane surface change and is flagged rather than slipped in. Vector's 2-badge budget is its own call and was not touched. |
+| **Deliberately NOT done — sequenced, not omitted** | The same verdict belongs on `get_helix_derived`'s `top_prints`, so Largo states it once rather than re-deriving the arithmetic and the margin. That edits the same payload region as the open §9.0 PR (#2681), so it is held until #2681 lands rather than raced — the mistake already made once tonight with #2644/#2647. Not a deferral to an allowlist or a TODO; the member feature is complete and correct on its own. |
+| **Regression guard** | `helix-position-intent.test.ts`, 10 tests, plus 3 in `helix-flow-format.test.ts` — the visibility one **proven falsifiable** by moving the badge back to the end of the list and watching it fail. They pin size recovery against the real MRNA print; `null` rather than a fabricated zero on all seven degenerate inputs; the counting argument; `OI === 0` yielding no ratio; four in-range sizes staying indeterminate; the margin at the boundary in both directions including the live 1.014× row; **absent OI never coerced to zero** (the trap that would badge 3500 unexamined prints); an underivable size reported for its own distinct reason; the badge scaling its claim; and the tooltip naming size, OI and the count necessarily new. |
+| **Status** | SHIPPED — **pending live validation.** After deploy: NEW badges must appear on the tape, never on a row whose OI column reads `—`, and the ratio in the label must match the OI and Prem columns on the same row. |
+
+## 2026-08-23 — [FINDING, P2 Helix] The signal-outcome win rate pools firings that cannot lose — a direction the signal REFUSED to state grades as a correct call in both directions — READ SIDE FIXED, WRITE SIDE AWAITING COORDINATOR
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `summarizeHelixSignalOutcomes` reports `winCount = continuedCount` over every graded row of a signal type. Some of those rows were **structurally incapable of being wrong**, so the continuation rate is inflated by an amount nothing in the payload disclosed. |
+| **Root cause** | `gradeOutcome` (`helix-signal-outcomes-job.ts`) branches on `bullish` / `bearish` and lets **everything else fall through** to `return "continued"`. That branch was written for velocity spikes, which pass an explicit `direction: null` because they are a magnitude signal — the comment says so. But split-flow rows pass `s.direction` straight through, and `detectSplitFlow` can return `"mixed"` or `"undetermined"`. Nothing filters them before insert. So a firing that **explicitly refused to state a direction** is scored as a correct directional call on any move past the 0.1% flat threshold — **in either direction** — and can never be graded `reversed`. |
+| **Evidence — executed, not read** | Calling the real exported `gradeOutcome` across every direction value: `direction=undetermined` → **`continued` at +1% AND `continued` at −1%**; `mixed` likewise; `bullish` correctly gives `continued`/`reversed`; `bearish` the mirror; `null` (velocity) `continued`/`continued` as intended. |
+| **Scale — not marginal after #2723** | Replayed over a live session with the real detectors, `undetermined` is now the **plurality** of split-flow firings — **162 of 333 (48.6%)** — with **SPX 67 of 67 and SPY 65 of 65** every one undetermined, because the index feed carries no aggressor side at all (`ask_pct` on **0 of 3500** rows). So roughly half the split-flow ledger would be unlosable by construction, and SPX/SPY — which now fire on essentially every scan — contribute nothing but guaranteed continuations. |
+| **Why it was invisible** | The summary groups **by `signal_type` only**. A refusal and a genuine directional prediction both land in the `split_flow` bucket, and `winCount` is `continuedCount`. This module is otherwise unusually careful about scope — it already refuses a rate below a sample floor, reports the full continued/flat/reversed distribution rather than a bare rate, carries an `otherCount` so an unrecognised grade cannot be absorbed, and states the graded rows' time span. The one scope dimension missing was **how many of the graded rows could have been wrong at all.** |
+| **Fix — read side, this PR** | `HelixOutcomeDistribution` gains `directionalGradedCount`, `unfalsifiableGradedCount` and `directionalWinRatePct`. The last is the continuation rate over **only** the rows that could have been reversed — the number to quote when asking *"is this signal right?"*, where `winRatePct` answers the different question *"how often did price continue after any firing"*. Additive per the Largo product contract: nothing existing changed shape, and the inflated number is still reported rather than quietly replaced, so the two can be compared. Falsifiability is tested by **inclusion** on `bullish`/`bearish` rather than by excluding a list of known refusals, so a NEW refusal value cannot silently join the falsifiable set. |
+| **NOT fixed — the write side, deliberately** | The honest write-side fix is a fourth outcome (`unscored`) so a refusal is never graded as a directional result at all. That requires altering `outcome TEXT NOT NULL CHECK (outcome IN ('pending','continued','reversed','flat'))` on a **production table** — and `ensureSchema()` is `CREATE TABLE IF NOT EXISTS`, so an existing table would not pick up a changed constraint; it needs a real `ALTER TABLE` migration. That is a schema change to a **persisted, graded** record, for a ledger whose scheduling is itself an open coordinator question. **Raised, not shipped.** |
+| **Why this matters right now** | `helix-signal-outcomes` is registered in `cron-registry.ts` but **absent from blackout-infra's deployed `cron-jobs.json`** — the ledger has no writer, which is the only reason nothing is corrupted today. Whether to schedule it is on the coordinator's open list. **Scheduling it as-is would immediately begin writing a record whose headline split-flow rate is roughly half unlosable.** This finding exists so that decision is made with the number in hand rather than discovered afterwards from a suspiciously good win rate. |
+| **Blast radius** | Read side only: `summarizeHelixSignalOutcomes`, consumed by `GET /api/market/helix/signal-outcomes` and the follow-through tracker panel. No write path, no schema, no grading logic, no persisted value changed. The ledger currently holds no rows in production, so there is no live number to move. |
+| **Regression guard** | 6 tests, proven falsifiable: counting refusals as directional (`r.direction !== null`) fails **3 of 6 new tests**; the fix passes 23/23 in the file. They pin that a refusal counts as unfalsifiable while the headline rate still shows the inflation (surfaced, not hidden); that velocity's explicit `null` is unfalsifiable too; **that the two rates diverge exactly as far as the unfalsifiable share is large** — 10 directional rows at 6/4 plus 10 refusals gives `winRatePct 80` vs `directionalWinRatePct 60`; that the two counts always reconcile to `gradedCount` and an **unrecognised** direction lands on the unfalsifiable side; that pending rows count toward neither; and that per-`signal_type` rows carry the split so `split_flow` can be read on its own. |
+| **Status** | READ SIDE FIXED. Write-side `unscored` outcome and the `helix-signal-outcomes` scheduling decision both AWAITING COORDINATOR — they are the same decision and should be taken together. |
+
+## 2026-08-23 — [FINDING, P1 Helix/UI] Mobile header's calls/puts stat row collided with zero space and overflowed past the viewport edge — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `/flows`'s mobile header tide bar rendered the call/put flow-sense stats with **no separating space at all** — `"$17M calls sold$130M puts sold"` read as one unbroken run of text — and the row bled past the right edge of the 430px viewport, clipping the trailing "Tide" label down to a bare "T". Confirmed live on production (`docs/audit/UI-UX-MAP.md` §3, finding #2, mobile screenshot). |
+| **Root cause** | `HelixTideBar.tsx`'s calls/puts row used `className="flex justify-between ..."` with no explicit gap and no wrapping. `justify-between` distributes *surplus* space between children — it has nothing to distribute once the row's available width is smaller than the two stat spans' combined natural (unwrapped) text width. On mobile, the tide bar shares its header row with a `shrink-0` brand block and a `shrink-0` "Tide" label, both of which refuse to shrink; the only flexible element is the tide bar's own `min-w-[80px]` stats column, which can shrink well below the ~180px+ the two stat strings actually need at their natural width. Once squeezed past that point, `justify-between` places both spans flush against each other (zero surplus space = zero gap) and the whole row overflows its container to the right rather than wrapping or truncating. |
+| **Evidence** | Live production mobile screenshot (`docs/audit/UI-UX-MAP.md` §3). Reproduced in isolation with a static HTML/CSS repro using the component's real Tailwind-equivalent values (`flex`, `justify-between`, `min-width:0`, a `flex:0 0` constrained parent) at a viewport narrower than the two stats' combined width — the BEFORE repro reproduces the exact bug (zero-gap collision, overlap into the neighboring label); the AFTER repro (with the fix's `flex-wrap` + `gap-x-2 gap-y-0.5`) wraps the two stats onto two clean, fully-spaced lines with no collision and no overflow into the neighboring label. Local `next dev` + Playwright render was inconclusive for this specific component (the dev environment's flow data hadn't populated within the capture window, so the tide bar's own "no data" early-return kept it hidden) — the isolated CSS repro is the evidence of record for this fix. |
+| **Fix** | Changed the stats row's className from `"flex justify-between font-mono text-[9px] tabular-nums"` to `"flex flex-wrap justify-between gap-x-2 gap-y-0.5 font-mono text-[9px] tabular-nums"` in `HelixTideBar.tsx`. `justify-between` is kept (still correct — desktop/wide renders unaffected, confirmed via the same-day `--desktop` re-shoot in `UI-UX-MAP.md` §3, which showed proper spacing with no overflow on desktop) and the new `flex-wrap` + `gap-x-2`/`gap-y-0.5` give the row a graceful narrow-width fallback: it wraps to two lines with a guaranteed minimum gap instead of overflowing horizontally with none. |
+| **Fix rationale** | Minimal, single-line change scoped to the exact row that produces the bug — did not touch the surrounding header layout (`.helix-pro-header-brand`, `.helix-pro-tide--compact`, the "Tide" label), which are correctly `min-width:0`/shrinking already; the bug was entirely in this one row's failure to degrade gracefully once squeezed. Considered truncating with an ellipsis instead of wrapping, but wrapping preserves both full numbers (a trader reading a P&L-adjacent figure should never see it silently truncated) at the cost of a slightly taller header row on the narrowest screens — an acceptable tradeoff for a compact indicator that already self-hides when there's no data. |
+| **Blast radius** | `HelixTideBar` renders twice in `HelixPageShell.tsx` — once in the `!nativeShell` header (the one this fix targets, and the one this pass's mobile screenshot captured) and once inside `nativeShell && <div className="helix-native-tide">`. The native-shell instance uses the SAME component with no `className` override, so it inherits the identical row fix; not independently re-verified this pass (native-shell rendering needs the real iOS app UA + native CSS bundle, out of scope for this fix's verification). |
+| **Regression guard** | `src/features/helix/components/HelixTideBar.test.ts`, new file, one test: asserts the stat row's className contains both `flex-wrap` and an explicit gap utility. Verified to fail against the pre-fix source and pass with the fix. |
+| **Status** | **FIXED and LIVE-VALIDATED (2026-08-24, live RTH).** Re-checked at 430×932 during market-open with real flow data — the "BULLISH" bias pill and "$17M calls sold $130M puts sold" split render on one clean line, no overlap. Closed. |
+
+## 2026-08-23 — [FINDING, P2 Helix] The mobile tape rendered no print time at all, and the desktop's "estimated" mark was tooltip-only — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | A member scrolling `/flows` on a phone could not tell whether the top card was **thirty seconds or thirty-five hours old**. `HelixMobileFlowTape` renders ticker, side, signals, premium, strike, expiry, DTE and score — and **no time**. Not an unmarked timestamp: none at all. |
+| **Why it matters more than it sounds** | The tape's default window is **168h of history**, and cards are sorted newest-first — so ORDER implies recency while nothing states it. Off-hours that is the normal case, not an edge one: the desk read **"35h ago"** during this session. The desk-wide freshness badge reports the FEED's age, not each print's, so it does not answer the question. |
+| **The half that also affects desktop** | Desktop does render the time and marks an estimated one with `helix-tape-time--estimated` (`text-sky-300/50 italic`) plus `title="Ingest time — UW print time unknown"`. **A dimmed italic is not a legend.** A member who does not already know the convention sees a slightly faded timestamp and can only learn what it means by hovering — and **hover does not exist on touch**, including on a tablet showing that very table. So the distinction was carried by a channel a phone cannot use, on a tape where roughly **70% of prints carry an estimated time** (§4A: the SPX/SPY index feed sends none). |
+| **How it was found** | Not by reading the component. #2706's harness reported a HARNESS fault on mobile — it could not count estimated-time rows — and the fix for the harness required reading `HelixMobileFlowTape` to find its marker. There is no marker, because there is no time. **An instrument failing to measure something is worth following to why.** |
+| **A correction to my own note on #2706** | That PR says a mobile member "sees a timestamp with no indication it is an ingest time." That is wrong and is corrected here: there is no timestamp to be unmarked. The defect is larger than I described it, and stating it accurately matters more than the note reading tidily. |
+| **Fix** | One shared `tapeTimeDisplay()` in `helix-tape-time.ts`, read by **both** surfaces, returning `{ label, title, estimated }`. Mobile now renders a compact age in the card's meta row; the exact ET stamp rides in `title`, so nothing is lost — only its position. The estimate mark is a **visible `~` prefix** rather than styling plus a tooltip, so it survives on touch. |
+| **Desktop is changed too, deliberately and not silently** | The `~` now appears on the desktop column as well. That is a visible change to a long-shipped surface, so it is called out rather than slipped in: the alternative was to leave two surfaces presenting one field by different rules, which is the failure this lane has now fixed six times (§9.4, §9.5, §9.8/§9.10, §9.0, §9.11). Desktop keeps its exact timestamp and its dimmed italic; it gains one character and a tooltip that now also carries the exact stamp. |
+| **Absence and estimate are kept distinct** | A row with no usable timestamp renders `—` and reports `estimated: false`, **even when the row claims `tape_time_estimated`**. "We have no time" and "we have an ingest time" are different facts, and only the second is an estimate *of* anything — marking the first as one would invent a measurement. |
+| **Blast radius** | Two components, one shared helper. No data path, no API, no payload. `fmtFullTimestamp` and `timeAgo` are unchanged and still exported for their other callers; this composes them rather than replacing either. |
+| **Regression guard** | `helix-tape-time.test.ts`, 5 tests: a real time carrying **no** marker and the exact ET stamp; an estimated time marked **in the label**, not only by class, with the exact stamp still in the tooltip; compact mode losing no information and **still carrying the estimate marker** — the part that must never be dropped when space is tight; an unusable timestamp rendering `—` and refusing to be called an estimate even when the row claims to be one; and a source assertion that **both** surfaces read the shared statement and that the desktop's inlined tooltip rule — the thing that drifted — is gone. |
+| **Status** | FIXED — **pending live validation.** Mobile must show a time on every card, `~`-marked on the index-feed prints (roughly 70% of the tape), and desktop must keep its exact stamp with the `~` on the same rows. |
+
+## 2026-08-23 — [ENHANCEMENT, Helix/Largo] Largo could not tell new positioning from a closing trade — the tape could, and the model was left to re-derive it — SHIPPED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What was missing** | #2689 gave the member tape a proof-based NEW-positioning badge. `get_helix_derived`'s `top_prints` — the same leaders, read by Largo — carried the raw `premium`, `fill_price` and `open_interest` and nothing else. A model asked "is this new positioning?" would have had to recover contract size from `premium / (fill_price × 100)` itself **and** pick a margin, on every call. |
+| **Why that is the defect and not merely a gap** | A second reader re-deriving one fact is the failure this lane has now fixed five times (§9.4 IV units, §9.5 expiry buckets, §9.8/§9.10 `alert_rule`, §9.0 signal eligibility, §9.11 split-flow direction). The model's margin would not be the tape's, so the desk and Largo could describe the same print differently — and nothing would flag the disagreement. |
+| **Fix** | `top_prints` rows now carry `position_intent`, computed by the **same** `positionIntent` the tape badge uses. One statement, two surfaces. |
+| **Fix — the verdict is carried WHOLE** | All three outcomes reach the model intact, including both refusals: `opening` (with its `basis`, `size`, `openInterest`, `ratio`), `indeterminate` (below open interest — could be opening **or** closing, and never evidence of closing), and `unknown` (no open interest reported, so nothing was examined). Flattening to a boolean was the tempting shape and would have collapsed "we looked and cannot tell" and "nothing was examined" into the same `false` a model reads as *"not new positioning"* — deleting exactly the distinction that makes the field honest. Measured live 2026-08-23: **only 30% of the tape carries open interest at all**, so `unknown` is the common case, not the edge. |
+| **Sequencing, stated because it was deliberate** | Held out of #2689 on purpose: it edits the same payload region as §9.0 (#2681), and releasing both at once would have raced two of my own PRs through one `automerge.yml` that orders by check-completion time. #2681 was confirmed **in `main` by ancestry** before this branch was cut. That is the ordering discipline CLAUDE.md records after the 2026-08-21 red-`main` incident, applied to avoid repeating my own #2644/#2647 mistake from earlier the same night. |
+| **Blast radius** | One payload, additive. No existing field changed shape. `stacked_hits`, `velocity_spikes` and `split_flow` are untouched — position intent is a property of a single print, and those three are aggregates over many, so attaching it there would be a category error rather than extra value. |
+| **Regression guard** | `src/lib/largo/helix-position-intent-payload.test.ts`, 3 tests targeting the two things that can go wrong **between the pure verdict and the wire**, neither of which breaks loudly. (1) The verdict survives `roundFloats` — discriminant, `basis`, and both refusal `reason`s intact, and a `null` ratio stays null rather than becoming `0`, which would read as "traded nothing against nothing" instead of "there was no open interest to form a ratio against". This is checked rather than assumed because this very file records `roundFloats` zeroing a small value (`0.004 → 0`). (2) An `unknown` verdict acquires no fabricated `size` / `openInterest` / `ratio` — with 70% of the tape unknown, an invented `0` there would be the most-repeated lie in the payload. (3) A source assertion that the verdict is attached whole and **not** flattened to `=== "opening"` or reduced to its discriminant. |
+| **Status** | SHIPPED — **pending live validation.** After deploy, `get_helix_derived` must carry `position_intent` on every `top_prints` row, with `unknown` dominating (~70%) and every `opening` row's `size`/`openInterest` matching that print's own `premium`/`fill_price`/`open_interest`. |
+
+## 2026-08-23 — [P2, Helix] Largo was told to answer "bullish or bearish?" from `call_pct` — the AI and the UI about to contradict each other on the same tape — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `get_helix_tape_analytics`'s tool description instructed the model: *"`session.call_pct` is the AUTHORITATIVE call/put premium skew … Use it for ANY 'call vs put', 'skew', or **bullish/bearish premium** question."* The payload carried `call_pct` and no direction field at all. Since #2691/#2713/#2715 the member panels do **not** read direction that way — a SOLD call is bearish — so the two audiences for one tape were about to answer opposite. |
+| **Why this is a distinct finding, not part of #2715** | #2715 fixed what a member SEES. This is what a member is TOLD when they ask. `helix-tape-analytics.ts`'s own header already states that it and the panel *"describe the same panel to two audiences and must not disagree about it"* — this is the first time enforcing that has cost anything, because until #2691 both audiences shared the same (wrong) rule and agreed by accident. |
+| **Evidence** | Live production tape, 5000 rows / 168h, 2026-08-23: **`CG` is 100% call premium at 100% readable and BEARISH** — $8.0M, every dollar measured. The panel now renders bearish; Largo, holding only `call_pct: 100` and a description pointing it at that field, would have said bullish with conviction about the same money. `DRAM` (100%/100%), `MSTR` (100%/92%), `BE` (95.9%/96.4%), `SMCI` (93.1%/100%) and `MRVL` (77.3%/100%) are the same shape. Across the leaderboard top 10, **7 disagree**. |
+| **Fix** | `directionFields(flows)` in `helix-tape-analytics.ts` derives the panels' own verdict once and attaches four fields to `session`, to **every** `net_premium_leaders` row and to **every** `expiry_horizons` row: `direction` (bullish/bearish/mixed/undetermined), `direction_readable_pct`, `direction_minority_evidence`, `direction_basis`. The tool description is rewritten to say plainly that `call_pct` is **not** a direction, that a name can be 100% calls and measurably bearish (naming CG and the five others), that `undetermined` means REFUSED rather than neutral, and that `net` is arithmetic rather than a direction — *"a large positive `net` beside a bearish `direction` is correct and is often the most informative thing on the row, because it means the calls were being SOLD."* |
+| **Additive, per the product contract** | `call_pct` is **kept**. It is a real quantity, correctly named (share of premium that is calls), and the Largo product contract is explicit that flattening a product's own intelligence to satisfy a shared shape is a violation, not compliance. `direction` sits beside it and the description says which answers which question. |
+| **`direction_readable_pct` travels with the verdict, deliberately** | A model told only `undetermined` cannot distinguish *"the tape is genuinely two-sided"* from *"almost none of this premium carries an aggressor side"*, and those licence completely different sentences to a member. `ask_pct` is a Group A field (§4A) and the SPX/SPY index feed does not carry it, so this is the common case, not an edge: SPX measured **0.1% readable**, LEAPS 3.2%, Monthly 6.1%. `direction_minority_evidence` makes the model state the share rather than quote a direction as if it covered the population, and `null` readable-pct (no premium at all) stays distinct from `0`. |
+| **`direction_basis` mirrors the ledger stamp** | Same value the signal ledger writes (`aggression_aware_v1`). `CLAUDE.md` is explicit that rows graded under two rules must never be pooled; a payload that reports a direction without saying which rule produced it makes that impossible to honour downstream. |
+| **PAYLOAD SIZE — measured, because this tool class has silently truncated before** | `MAX_TOOL_RESULT_CHARS` is **16,000** and over-cap results are cut from the TAIL, so the aggregates go first and the model answers fluently from what survived — exactly how **#2480** shipped Largo quoting a 40% win rate over "5 plays" for a window whose real record was 74 at 50%. Measured on a synthetic worst-case shape (10 leaders + horizons + session): this change adds **~1,515 chars, 9.5% of the cap**. `largo-truncation-probe.mjs` run against production 2026-08-23 with the control **PROVEN**: `get_helix_tape_analytics` came back **COMPLETE**, so there is headroom today. **The probe is BINARY — it reports truncated or not, never how much headroom remains — so "complete before" is not evidence of "complete after", and the runbook makes a post-deploy re-run a gate rather than a nicety.** |
+| **Blast radius** | `helix-tape-analytics.ts` (3 aggregates), `tool-defs.ts` (one description). `sessionFlowSkew`'s structural parameter widened to accept optional `ask_pct` — both callers (`flow-service.ts`, `product-reads.ts`) pass rows from `getFlowTape`, which selects `ask_pct` (`db.ts:2681`), so neither degrades to unreadable. `helix-flow-aggression.ts` and `helix-direction-read.ts` are imported, not modified. No DB change, no persisted field, no change to any number already written. |
+| **Checked and NOT changed** | `routeBreakdown` and `expiryConcentration` carry no direction claim — they report route mix and per-date premium, both correctly named. `call_pct`'s existing `null`-not-`50` discipline (already correct, with a good comment explaining why a rendering fallback must not become a claim when handed to a model) is untouched. |
+| **Regression guard** | 6 new tests in `helix-tape-analytics.test.ts` (62 total): the live CG shape reporting `call_pct: 100` **and** `direction: "bearish"` together; `call_pct`/`net`/`total` all surviving unchanged, so the additive rule is enforced rather than assumed; the SPX shape reporting `undetermined` **with** a sub-1% readable share; `direction_readable_pct` `null` rather than `0` on an empty population; every aggregate carrying the **same** basis stamp and that stamp matching the ledger's literal `aggression_aware_v1`; and session skew reading 90% calls while reporting bearish — the one assertion that proves the two fields are independent rather than one derived from the other. |
+| **Verification** | Node 20 (`/opt/node20/bin`, v20.20.2), full suite: **10460 pass / 0 fail / 1 skipped**. `npx tsc --noEmit` clean. Truncation probe against production: control PROVEN, tool COMPLETE. |
+| **Status** | FIXED — **pending live validation.** The end-to-end check is to ask Largo *"is the flow on <ticker> bullish or bearish?"* for a name whose call share is high but whose panel reads bearish or neutral: **the answer must match the panel.** For SPX it must decline and state the readable share rather than fall back to `call_pct`. And the truncation probe must still report COMPLETE. Runbook §5i. |
+
+## 2026-08-23 — [FINDING, P2 Helix/tooling] The tape-inventory harness owned a private copy of "signal-eligible" and spent a deploy reporting 30% at a tape that was already at 100% — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `scripts/audit/helix-tape-inventory.mjs` — the instrument §5k of `MARKET-OPEN-VALIDATION.md` exists to read — reported, against a production tape carrying a real print time on **every** row: `Group B index-only feed 0 rows · 0 tickers · $0`, `Group B carries 0% of ALL premium`, and `eligible 1500/5000 rows (30%) — the rest can never fire either signal`. All four numbers were false. Read at Monday's open as intended, it says #2723 changed nothing. |
+| **Root cause** | Two helpers in `helix-tape-inventory-eval.mjs` identified things by the **absence of `event_at`**, a field a parse bug was emptying. `writerGroup` discriminated `event_at && alert_rule → A`, `neither → B`; `signalEligible` answered `writerGroup(row) === "A"`. Both were correct on the tape they were written against, because there the two facts co-varied exactly (1500 both / 0 / 0 / 3500 neither) — but they were correct *by coincidence*. #2723 taught `toIso` to read the epoch the index feed sends, all 3500 index rows gained an `event_at`, and the coincidence ended: `writerGroup` reclassified the entire Group B population to `mixed` (so it reported as having vanished, premium and all), and `signalEligible` kept answering a question about writer identity while printing it under the heading "signal eligibility". |
+| **Why it wasn't caught earlier** | The harness's unit tests asserted the *old* semantics as intent — `writerGroup(rowA({ event_at: null })) === "mixed"` — so they passed throughout and pinned the bug in place. Nothing compared the harness's eligibility rule to the product's; the product has exported exactly one, `signalEligible(flow) => flowEventTimeMs(flow) != null`, since the §9.0 fix, and the harness never read it. |
+| **Evidence** | Same endpoint, same 5000-row/168h query, both runs 2026-08-23. **Before the fix:** `A 1500 rows · $852,788,165` / `B 0 rows · $0` / `!! MIXED: 3500` / `Group B carries 0% of ALL premium` / `eligible 1500/5000 (30%)`. **After:** `A 1500 rows · 272 tickers · $852,788,165 [alert_rule]` / `B 3500 rows · 2 tickers · $9,992,246,317 [implied_volatility]` / `Group B carries 92.1% of ALL premium` / `eligible 5000/5000 (100%)`. The 92.1% is the figure HELIX-MAP §4A has carried all along, recovered exactly — the writer never moved. |
+| **Fix** | `writerGroup` now names each producer by a field only that producer writes: `alert_rule` (UW `flow_alerts` channel) for A, `implied_volatility` (`optionTradePrintToFlowRaw`, the `option_trades` WS path) for B. Verified against the same tape: the IV-carrying set and the no-`alert_rule` set are the same 3500 rows, and presence is now a clean 100/0 and 0/100 across the two groups. Rows carrying both markers, or neither, are still surfaced rather than folded in. `signalEligible` is deleted and re-exported from the product; `signalEligibility` wraps the product's and adds only the percentage this harness prints, so counts and `ineligibleTickers` are byte-identical to what Largo and the member panel are told. |
+| **Fix rationale** | An absence test is not a weaker version of a presence test, it is a different measurement: "no `event_at`" is one fact about a row and any number of facts about the pipeline. Two positive markers cannot both be emptied by one parse, so the classification no longer moves when a timestamp does. The eligibility half is not a new rule at all — it is the removal of a second one. This file already refuses to reimplement `executionRouteKey` and `contractSizeExact` for the same reason; that refusal now covers eligibility, which was the one product rule it had quietly copied. |
+| **Blast radius** | Three product comments asserted the pre-#2723 population as a standing measurement and are corrected in the same PR: `flow-timestamp.ts` ("is structurally incapable of firing either signal" — in the very file whose fix falsified it), `helix-signal-detection.ts` (the doc for the rule the harness now imports, which stated 1500/30% as measured fact), and `product-reads.ts` (beside the Largo eligibility fields). The Largo payload and both member radars needed **no code change** — they already read `flowEventTimeMs` through the product's single rule, so they self-corrected on deploy. That is the difference the fix is about: the surfaces that read one rule were right without being touched; the one that kept a copy was wrong and stayed wrong. |
+| **Interaction worth recording** | The staged finding `2026-08-23-helix-signal-eligibility-denominator.md` closes with a live-validation criterion — "`get_helix_derived` must carry a **non-zero** `signal_ineligible_prints` naming SPX/SPY" — that #2723 made **unsatisfiable four days later**: the honest post-deploy value is zero. Its Status line is corrected here. A validation criterion written against a broken population expires when the population is fixed, and it expires looking exactly like a failure. |
+| **Two more stale accusations from the same instrument, found by auditing the rest of its output** | Once one report line was found describing a world that no longer exists, the rest were read the same way. **(a)** `fmtIv misrenders 148 of 3500 rows (4.2%)` — `fmtIv` decided fraction-vs-percent per row (`iv < 3 ? iv * 100 : iv`) until **#2669 removed the branch**; it is now an unconditional `iv * 100` and misrenders nothing, but `ivUnitVerdict` went on scoring the retired rule. **(b)** `negative-DTE rows 801 (16%) — expired, panel buckets these as "This week"` — **§9.5 changed the test to `dte <= 0`**, so 801 rows are correctly filed under `0DTE`. Both printed on every run, and both accuse code that is right. |
+| **How they were fixed, and why not by deleting them** | Neither claim was removed — each was turned back into a live question. The IV distribution is what **justified** #2669's unconditional multiply, so `ivUnitVerdict` now reports `shipped_renderer_ok` and **0 misrendered on a uniformly fractional feed**, while condemning all rows the day the distribution goes bimodal — which is the day the unconditional multiply becomes wrong. The DTE line now **imports `expiryHorizonLabel`** and prints what the panel actually returns for `-1`, appending `(correct since §9.5)` or flagging a future horizon. An assertion about another module's behaviour goes stale silently; a call to it cannot. |
+| **The instrument-wide pattern** | Four false claims from one harness — writer group, eligibility, IV units, DTE bucketing — and **not one was a coding error**. Each was a true measurement, correctly recorded, that a later fix retired without anything noticing. **An audit harness accumulates stale accusations by default**, because its whole job is to state what was wrong, and nothing re-reads it when the wrong thing is fixed. The defence used throughout this PR is to make the harness ASK the product (import `signalEligible`, `executionRouteKey`, `expiryHorizonLabel`, `contractSizeExact`) rather than restate it — a call cannot go quietly stale. |
+| **Regression guard** | `helix-tape-inventory-eval.test.mjs`: `writerGroup does NOT move when a timestamp appears or disappears` pins both directions (a B row that gains `event_at` stays B; an A row that loses it stays A), and `signalEligible is the PRODUCT's rule` asserts the harness's answer **against the real imported `signalEligible`** on a row where writer group and eligibility disagree — so it cannot pass by agreeing with a second copy. Proven falsifiable rather than assumed: restoring the old `event_at` discriminator fails **3 of 14**; the fix passes 14/14. The exact-shape `deepEqual` on `signalEligibility` is kept and extended to `ineligibleTickers`, so a silently dropped product field is a test failure. |
+| **Status** | FIXED — and this run **is** the live validation of #2723 (§5k of `MARKET-OPEN-VALIDATION.md`): `event_at` 30% → 100%, `alert_rule` unchanged at 30%, the two fields no longer co-vary, eligibility 1500/5000 → 5000/5000. The recovered timestamps are coherent, not merely present: 5000 dated prints span 363 minutes — one RTH session — with the newest 2392 min old against a market closed since Friday, so the parser picked the right unit. |
+
+## 2026-08-23 — [FINDING, P3 Helix] Two UTC-anchored DTE derivations at ingest could label a next-session expiry as 0DTE — FIXED (latent; measured impact zero)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Between **20:00 and 24:00 ET**, a print on the NEXT session's expiry was classified `0DTE` at ingest. `new Date("YYYY-MM-DD")` is UTC midnight, so in that window the UTC calendar date is already tomorrow and the difference collapses to zero. |
+| **Root cause** | Two independent UTC-anchored derivations of one number. `parseUwFlowAlert` (`unusual-whales.ts:270`) computed `ceil((Date.parse(expiry) - Date.now()) / 86400000)`; `dteFromExpiry` (`flow-persist.ts:42`) took the same difference against `new Date(nowMs).toISOString().slice(0, 10)`. The READ path was already correct — `db.ts` uses `(expiry - (NOW() AT TIME ZONE 'America/New_York')::date)` — so ingest and read disagreed about what day it was. |
+| **Consequences, one of which outlives the window** | (a) an SSE row carries `route: "0dte"` for a 1DTE contract, surfaced by `TickerDrawer.tsx:41`'s 0DTE badge; (b) the ingest score adds its **+15 0DTE bonus**, and that score is **persisted**, so it shows in the Score column and its sort long after the window has passed; (c) the print gets the lower near-dated persistence floor. |
+| **Impact — measured, not assumed** | The map assessed this LOW on the reasoning that US options do not trade 20:00–24:00 ET. Verified against live production rather than left as reasoning — 5000 rows / 168h, 2026-08-23: **rows timestamped 20:00–23:59 ET: 0 of 5000. `route="0dte"` with ET-anchored `dte >= 1`: 0. ET-anchored `dte === 0` with `route` not `0dte`/`whale`: 0.** The window is genuinely empty. **This fixed no live defect and must not be read as an incident.** |
+| **Why it ships anyway** | The derivation was wrong; it is exactly the class the C1 session-anchor ratchet exists to catch; and a latent off-by-one that writes a **persisted** score is worth removing before some future ingest path runs in that window. Correctness, not remediation. |
+| **Fix** | §9.2's title is "two derivations", so the fix is to have **one**. New `src/lib/flow-dte.ts` holds the single ET-anchored `dteFromExpiry`, built on the repo's frozen `todayEt()` — the same boundary every session comparison already uses. `parseUwFlowAlert` imports it; `flow-persist` imports **and re-exports** it so its existing callers and tests are untouched. Standalone rather than living in `flow-persist` because the provider module must not pull `@/lib/db` in behind a date helper. |
+| **A detail worth keeping** | The old form returned **negative zero**: `Math.ceil(-0.041)` is `-0`, so `assert.equal(x, 0)` fails on it while `x <= 0` is true. `-0` takes the `dte <= 0` branch exactly like `0` — which is why the defect fired at all. My first regression test asserted the literal `0` and failed for that reason; it now asserts the **branch** the value actually drives, which is both correct and the thing that matters. |
+| **Blast radius** | Both ingest derivations, now one. The read path was already ET-anchored and is untouched. `horizon-fanout.ts`'s `calendarDte` was examined and deliberately left alone — it is a separate module with its own callers and no evidence of the same defect, and a blind sweep is how the next wrong "fix" ships. `flow-persist`'s `requiredMinPremium` behaviour is unchanged outside the empty window. |
+| **Regression guard** | `src/lib/flow-dte.test.ts`, 7 tests. The headline one reproduces the defect at 21:00 ET Monday 2026-08-24 and asserts the old UTC form **took the 0DTE branch** while the new one does not; the same instant reads today's expiry as 0 and an expired one as −1; mid-session (where UTC and ET agree) is pinned unchanged, which is the no-op case that must not move; the early-morning ET window guards the mirror error; **EST as well as EDT** so a fix cannot be correct in only half the year; unparseable and absent expiries return `null` rather than a number; and a full ISO timestamp is accepted on its date part. |
+| **Status** | FIXED — latent defect removed, no live symptom existed to re-validate. |
+
+## 2026-08-23 — [P2, Helix] A print stamped a YEAR in the future fired both persisted signals as if it had just happened — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | Both detectors compared a raw `nowMs - eventMs` against their window. `detectVelocitySpikes`: `const age = nowMs - eventMs; if (age <= RECENT_WINDOW) recent++`. `detectSplitFlow`: `if (ms == null \|\| nowMs - ms > SPLIT_WINDOW_MS) continue`. **A future-dated print gives a NEGATIVE age, and a negative number is `<=` every window and `>` none.** So it counted as *maximally recent* in both. |
+| **Evidence — reproduced against the real detectors** | Six prints stamped **one year ahead** of `nowMs`, fed to the real exported functions: `detectVelocitySpikes` returned `recent=6, ratio=6` and `detectSplitFlow` returned a firing of `$3.0M call / $600k put`. Not a near-miss — a full firing on both, out of data that has not happened. After the fix, both return `[]`. |
+| **Why it matters** | These are the two **persisted, graded** HELIX signals. A firing is a prediction the record scores. A future-dated row does not merely add noise to a panel; it writes a graded prediction from an event that has not occurred, and it does so with maximum weight because it looks like the freshest thing on the tape. |
+| **How it is reached** | `resolveFlowTimes` does not bound `event_at` to the past, so any clock skew between UW's stamp and ours lands here, as does any timestamp that parses to the wrong magnitude. **#2723 widens the second route slightly**: it parses epochs by magnitude, and a value that scales into 2027–2286 is "valid" and still in the future. That is an argument for this guard, not against that fix — the guard is what makes a mis-scaled timestamp fail closed instead of firing a signal. |
+| **Where the bug shape came from, which is the part worth keeping** | **The identical error broke this lane's own velocity-cap harness earlier the same day.** Replaying the detector at a historical `nowMs` made every LATER print in the session read as "the last fifteen minutes", and the harness reported **91 simultaneous spikes with the cap binding 95.4% of windows**. The corrected figures were **14 and 11.3%** — a 7× error, from exactly this sign. I caught it in the instrument by disbelieving the magnitude. Having found it there, the honest next step was to ask whether the product had the same shape. **It did, in both detectors.** Finding a bug in your own measuring device is a reason to go looking, not a reason to feel finished. |
+| **Fix** | `signalWindowAgeMs(eventMs, nowMs, toleranceMs)` in `helix-signal-detection.ts`, beside the detectors, returning `null` for an undatable print AND for one dated beyond tolerance into the future. Both detectors read it, so they cannot drift apart on this — the same reason `signalEligible` already lives there. |
+| **The tolerance is not zero, deliberately** | Rejecting anything even a millisecond ahead would drop real prints over ordinary clock skew between UW's stamp and our clock. `FUTURE_PRINT_TOLERANCE_MS` is **one minute** — generous for skew, and nowhere near either window, so a genuinely mis-stamped print is still excluded while a normal one survives. A test pins the boundary exactly: at the tolerance it is accepted, one millisecond beyond it is refused. |
+| **Refused, not clamped** | A future print returns `null` rather than being clamped to age 0. Clamping would make it *the newest print on the tape* — the same defect wearing a fix's clothes. A test asserts it. |
+| **Blast radius** | `helix-signal-detection.ts` only. Detection thresholds, windows and firing conditions are unchanged for every print that is not future-dated — a test pins that real recent prints still fire both detectors, and that a mix of 3 real and 20 future prints yields `recent=3`, not 23. No API, payload or persisted-field change; the ledger's existing rows are untouched. |
+| **Regression guard** | `helix-signal-future-prints.test.ts`, 8 tests: year-ahead prints firing **neither** detector; real recent prints still firing **both**, so the guard did not break detection; ordinary 5-second skew tolerated; the tolerance boundary exact in both directions; an undatable print still refused as before; a past print returning a **positive** age so window comparisons keep their meaning; a future print **refused rather than clamped**; and the realistic mixed case where one corrupt timestamp among good rows must not inflate the count. |
+| **Verification** | Node 20 (`/opt/node20/bin`, v20.20.2), full suite: **10500 pass / 0 fail / 1 skipped**. `npx tsc --noEmit` clean. Before/after behaviour measured through the real exported detectors, not a reimplementation. |
+| **Status** | FIXED. **No live validation required to confirm the guard** — it is a refusal, and the tests exercise it directly. What IS worth watching at the open (runbook §5k) is whether any print arrives future-dated at all once #2723 lands: if the new `event_at` values are ever ahead of the clock, the magnitude parser picked the wrong unit, and this guard is what will keep that out of the signals while it is diagnosed. |
+
+## 2026-08-23 — [FINDING, P3 Helix] The rule deciding whether two rows are the SAME PRINT existed four times across three files, and reached Vector as well as HELIX — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | None today — and that is the point. The seconds-precision composite that identifies one print across the SSE and REST paths was written out **four times in three files**, all byte-identical. Nothing was broken, no value test could have caught anything, and none did. |
+| **Where** | `helix-flow-merge.ts` — **twice inside `findMatchingFlow` itself** (once to build the needle, once per candidate in the `findIndex`); `FlowFeed.tsx`'s local `flowCompositeKey`; and `helix-flow-tape-merge.ts`'s key builder. Each is `` `${a.ticker}|${a.strike}|${a.option_type}|${String(a.alerted_at ?? "").slice(0, 19)}` ``. |
+| **Why it is worth removing when nothing is wrong** | This key decides whether two rows are the **same print**, and the answer feeds tape dedup, SSE↔REST merging, and — through `findMatchingFlow` — **the Vector desk's own flow hook** (`use-vector-helix-flows.ts`). A single edit to one copy (adding `expiry`, widening the slice, trimming whitespace) makes one surface merge two rows while another shows them twice. **That does not fail loudly.** It presents as duplicated prints on one page and not the other, which reads as a data problem rather than a code one — and it would cross the HELIX/Vector product boundary, where the two desks are supposed to agree by construction. |
+| **The precedent this follows** | The third time this lane has removed a one-rule-many-copies defect this week: #2731 (the tape-inventory harness keeping its own `signalEligible`), #2742 (two drifted copies of `makeCookieJar`, one of which had already lost its `force()`). In both of those the copies had **already** diverged. Here they had not — caught while all four still agreed, which is the cheap moment to do it. |
+| **Fix** | `flowCompositeKey(a: FlowIdentity)` exported from `helix-flow-merge.ts`, the module that already owns `findMatchingFlow`. All three call sites import it; the four inline copies become one. `FlowIdentity` is a structural type so the key cannot be built from a richer shape on one surface and a sparser one on another. The `alert_id`-first preference is deliberately **not** folded in — `helix-flow-tape-merge` prefixes `id:` while `findMatchingFlow` searches by id and falls through, and those are genuinely different behaviours. Only the shared primitive was extracted. |
+| **Seconds precision is deliberate, and now stated** | `.slice(0, 19)` keeps `YYYY-MM-DDTHH:MM:SS` and drops milliseconds and zone, because SSE and REST stamp the same print with different sub-second values — matching on the full ISO string would miss exactly the pair the key exists to find. Since #2723 every `alerted_at` is produced by `new Date(ms).toISOString()`, so the format is fixed and the slice always lands on the same boundary. That was true before and written down nowhere. |
+| **Also closes a coverage gap** | `helix-flow-merge.ts` had **no test file at all** while owning this rule and `mergeFlowAlerts`. It was one of only two untested modules in `src/features/helix/lib`. |
+| **Checked and NOT changed** | `mergeFlowAlerts` does not handle `tape_time_estimated` explicitly, which looked like it could pair a real `event_at` from the REST row with an `estimated: true` flag from the SSE row. Traced: `resolveFlowTimes` only returns `tape_time_estimated: true` on the branch where `display_at` is the ingest stamp, so a `true` flag always arrives with a non-empty `alerted_at`, and `primary.alerted_at \|\| fallback.alerted_at` keeps them together. The invariant holds because the producer couples the two fields. No change made. |
+| **Blast radius** | `FlowFeed.tsx` and `helix-flow-tape-merge.ts` swap a local function for an import; `findMatchingFlow` loses its two inline copies. Behaviour is identical at every site — the extracted expression is byte-for-byte what each was already computing. `use-vector-helix-flows.ts` (Vector) consumes `findMatchingFlow`/`mergeFlowAlerts` unchanged. |
+| **Regression guard** | 9 tests, including a **ratchet** proven falsifiable: re-introducing the inline copy in `helix-flow-tape-merge.ts` fails it with the offending filename named — `these re-implement flowCompositeKey inline — import it from helix-flow-merge.ts instead: helix-flow-tape-merge.ts`. It asserts it scanned **more than 20 files** before passing, because a ratchet that silently scans nothing passes forever — the exact way #2720's first version broke under Node 20 (`globSync` is Node 22+ and returned `undefined`). The behavioural tests pin sub-second equivalence, that every identity field separates, that `alert_id` wins over the composite, that an **unseen** `alert_id` falls through to the composite rather than returning −1 (a reconnect would otherwise insert a duplicate), and that a legitimate `ask_pct: 0` survives the merge as a measurement rather than being treated as absence. |
+| **Status** | FIXED — no behaviour change; the duplication is removed and cannot return silently. |
+
+## 2026-08-23 — [P1, Helix] 70% of the tape has no print time because an epoch was parsed as a date STRING — the §4A "feed limitation" is a parse — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `flow-timestamp.ts`'s `toIso` was `new Date(String(value))` and nothing more. `new Date("1787343258239")` is **Invalid Date** — a numeric string is not a date string — so a UW timestamp arriving as an epoch under `created_at` or `executed_at` silently produced `null`, and the row lost its print time. The file already knew UW sends epochs: its `start_time` branch has always coerced numerically (`ts > 1e12 ? ts : ts * 1000`). Only the two fields the `option_trades` path actually uses were assumed to be date strings. |
+| **Evidence — measured on the live member tape** | 5000 rows / 168h, 2026-08-23: **3500 rows (70%) carry no `event_at`.** And `event_at` is present on a row **if and only if** `alert_rule` is — **SPX 3118 rows / 39 with `event_at` / 39 with `alert_rule`; SPY 503 / 82 / 82**; QQQ, TSLA, SPXW 100% on both. Exact, not approximate. |
+| **The chain, each link measured** | (1) `alert_rule` comes only from the `flow_alerts` WS channel. (2) The other 3500 rows carry `implied_volatility`, and `raw_payload->'iv'` has exactly **one** writer in the codebase — `optionTradePrintToFlowRaw`, the `option_trades` path. (3) That path's normaliser **drops** any print with a falsy `executed_at` (`if (!executedAt) continue;`). (4) It stamps **both** `created_at` and `executed_at` from that value. (5) `toIso` returns `null` only when `new Date()` cannot parse. **Therefore every one of those 3500 rows arrived with a truthy `executed_at` that `new Date()` could not parse.** |
+| **Why this is P1** | `flowEventTimeMs` returns null without `event_at`, and **both** persisted HELIX signals filter on it — `detectVelocitySpikes` skips such rows outright, `detectSplitFlow` filters identically. So the population carrying **92.1% of all tape premium** is structurally incapable of firing either signal while dominating every premium panel. HELIX-MAP §4A records that as a fact about the FEED. On this evidence it is a fact about a parse — and it has been shaping every signal number the product has ever produced. |
+| **What is MEASURED vs DEDUCED, stated plainly** | Measured: the row counts, the exact iff-relationship, IV's single writer, the drop-on-falsy guard, and that `new Date("1787343258239")` is invalid. **Deduced:** that the unparseable value is specifically an epoch. The market was closed, so a live `option_trades` frame could not be captured to name the wire format outright — and the existing unit-test fixture uses `"2026-06-30T15:04:00Z"`, which is an *assumption* baked into a test, not a captured payload. **That is precisely why the fix parses by MAGNITUDE rather than to one assumed unit.** |
+| **Fix** | `toIso` now recognises a number, or an all-digit string, as an epoch and scales it by magnitude — seconds, milliseconds, microseconds or nanoseconds — before falling back to date-string parsing. Correct for every one of those, and for the ISO case that already worked, so it does not rest on the deduction being exactly right. Implausible epochs (outside 2001-09-09 … 2286-11-20) return `null` rather than a fabricated 1970 print. `start_time` now shares the same coercion instead of keeping its own heuristic, so the three fields cannot disagree about what a number means. |
+| **Second defect, same path** | `normalizeOptionTradesWsPayload` did `executed_at: executedAt.slice(0, 19)`. On an ISO string that **strips the trailing `Z`**, and a date-time with no offset is **LOCAL** per spec — silently correct only because production runs UTC, and silently wrong the moment it does not. On an epoch it kept the digits and left a value nothing could parse. Sub-second precision parses fine in both forms, so there was nothing to trim; the value is now kept verbatim. |
+| **The trap inside that fix** | `executed_at` is also used to derive the row `id` when UW sends none — and that id is the dedupe key (`ON CONFLICT (alert_id) DO NOTHING`). Re-deriving it from a normalised timestamp would mint new ids for prints already stored and re-insert a window of duplicates. The id therefore keeps using the **raw** value, deliberately, and the comment says why. |
+| **⚠️ THE CONSEQUENCE, WHICH IS THE RISKY HALF — for the coordinator** | If this works, **70% of the tape moves from structurally-invisible to signal-eligible in a single deploy.** Velocity and Split Flow will fire on SPX/SPY for the first time. That is the fix working — and it is also a large, sudden change in what members are shown, against thresholds tuned on a population 3× smaller. **The parse is not in question; whether the signal thresholds still suit the corrected population is a product decision, and it is not mine to make.** Raised here and in runbook §5k rather than decided. |
+| **Not gated behind a flag, deliberately** | A wrong timestamp is not something to feature-flag: the flagged-off state is the broken one. The correct sequencing is to land the parse, measure the new firing rates at the open (§5k), and retune thresholds as a separate, evidenced decision — rather than shipping a fix nobody can see the effect of. |
+| **Blast radius** | `flow-timestamp.ts` is shared by the Postgres read path, the ingest, Night Hawk's board (`lib/zerodte`), Vector, and the correctness verifiers. No schema change, no rewrite of stored rows — `event_at` is DERIVED at read time from `raw_payload`, so existing rows gain their true print time on the next read with no backfill. Visible downstream: the mobile `~` estimate marker (#2707) mostly disappears on SPX/SPY, and the signal-coverage note's *"397 carry no reported print time"* should collapse toward zero. Both are corrections, and both are listed in §5k so they are not filed as regressions. |
+| **Regression guard** | `flow-timestamp-epoch.test.ts`, 9 tests: epoch ms under `executed_at` resolving (the deduced production case) as both number and string; seconds, microseconds and nanoseconds all landing on the same instant, so the magnitude parser is exercised across every unit; the live ISO shape captured from UW that day still resolving with its offset intact; a `Z`-bearing string **not** reinterpreted as local time; implausible epochs (`5`, `0`, `-1`) returning `null` rather than a 1970 print — a case the OLD `start_time` heuristic got wrong; nine kinds of garbage still returning `null`, so the parser did not merely become permissive; field precedence unchanged; the ingest-time fallback still applying when nothing parses; and **the consequence stated as a test** — a row that gains `event_at` becomes signal-eligible and is no longer marked estimated. |
+| **Verification** | Node 20 (`/opt/node20/bin`, v20.20.2), full suite **10476 pass / 0 fail / 1 skipped**, including the pre-existing `flow-timestamp.test.ts`, so precedence and fallback semantics are preserved. `npx tsc --noEmit` clean. UW's own `flow-alerts` payload captured live the same day confirms the mixed formats this parses: `created_at: "2026-08-21T20:14:37.211537Z"` beside `start_time: 1787343258239`. |
+| **Status** | FIXED — **pending live validation, and it is the highest-impact item on the market-open list (§5k).** At the open the `event_at` and `alert_rule` counts must **stop matching**. If they still match exactly, either the deploy does not carry this or the wire format is outside what magnitude-scaling covers — in which case capture one raw `option_trades` frame, which is the measurement a closed market made impossible. |
+
+## 2026-08-23 — [P2, Helix] Four HELIX surfaces rendered a directional verdict from call-vs-put premium, under a rule the page had already replaced — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | Four panels on `/flows` asserted DIRECTION from option type alone:<br>`ExpiryConcentration` — `callPct = callPremium / (call + put)`, `isBull = callPct >= 55` → green bar<br>`NetPremiumLeaderboard` — `isBull = (calls − puts) >= 0` → green ▲<br>`TickerDrawer` — `isBull = callPrem >= putPrem` → green `↑ N% calls` pill<br>`CumulativeNetPremiumChart` — `isBull = latestNet >= 0` → green line<br><br>But **a SOLD call is bearish**, and #2691 replaced exactly this rule on the same page (`flowDirection`, `DIRECTION_BASIS = "aggression_aware_v1"`). The tide bar and the split-flow radar read the aggression-aware rule; these four read the one they had moved off. Four components on one page, disagreeing about what "bullish" means, over the same tape. |
+| **How it was found** | After shipping the expiry-bar fix, a sweep for every remaining `option_type === "CALL"` in the lane. Most hits are legitimate contract-type LABELS (`{isCall ? "C" : "P"}`, `flow-badge-call`) and were left alone; the four above are the ones that turn a type into a directional verdict. The distinction is the whole finding: labelling a call a call is correct, and colouring it bullish is a claim. |
+| **Evidence — measured, not argued** | Live production tape, 5000 rows / 168h, 2026-08-23, via the new `scripts/audit/helix-direction-read-probe.mjs`.<br><br>**Expiry horizons — all four rendered BULLISH GREEN, all four disagree:**<br>`0DTE` $149.6M, 63.0% readable → **mixed** (42.7% of readable call premium SOLD)<br>`This week` $62.1M, 84.7% readable → **mixed**; **bearish $26,302,085 slightly EXCEEDS bullish $26,231,879**, under a green bar<br>`Monthly` $2.17B, **6.1% readable** → **undetermined**; of what can be read, bearish $74.3M > bullish $59.2M<br>`LEAPS` $8.46B, **3.2% readable** → **undetermined**; $8,188,655,250 of $8,458,709,691 has no readable direction<br><br>**Net Premium leaderboard — 7 of the top 10 disagree.** The worst is the panel's own top row: **SPX, a green ▲ over $4,022,945,927 of net premium whose direction is 0.1% readable.** Also SPY, TSLA (90.2%), QQQ (96%), MRNA (44.7%), SPXW (53.3%), NVDA (97.7%) — the high-coverage ones read **mixed**, so the arrow was confidently directional where the evidence says two-sided. **AMD, MU and SMH agree** (100% / 85.5% / 94.6% readable), which is the number that matters most: the honest rule does not flatten the panel, it keeps the verdicts that have evidence behind them. |
+| **The second defect, which is the larger one** | `ask_pct` is a Group A field (HELIX-MAP §4A) and the SPX/SPY index feed does not carry it, while carrying 92.1% of tape premium. So the direction behind the largest numbers on the page is unreadable — 94% of Monthly, 97% of LEAPS, **99.9% of SPX** — and all four panels painted a confident colour over it. That is worse than a wrong colour: to a member it is indistinguishable from an evidenced one. Absence rendered as a verdict (`_COMMON.md` #7), on the biggest premium the product shows. |
+| **Fix** | `src/features/helix/lib/helix-direction-read.ts`. `readDirection(flows)` runs the SHIPPED `directionalPremium` + `directionLabel` over any set of prints and returns the verdict **together with `readablePct`** — the share of premium it could be drawn from. `directionTone` returns `null` (neutral) whenever `readablePct < 50`, **however the readable slice leans**. All four surfaces colour from that, and `readDirectionTitle` states the basis, the split, the unreadable dollars and the four-way rule, so a member can check a colour against the numbers instead of trusting it. `ExpiryConcentration` additionally renders `direction unread · N% sided` in amber, so a neutral bar is legible as "could not tell" rather than "balanced". |
+| **What was NOT redefined, deliberately** | **`net` is still `calls − puts`.** "Net Premium" is a named quantity with a correct definition, and this does not touch it — the `+`/`−` sign and the figure's bull/bear colour remain arithmetic about calls-vs-puts, now with a tooltip saying so explicitly. Only the DIRECTION claim laid over it (the ▲/▼, the pill arrow, the line colour) moved to the aggression-aware read. The two can legitimately differ, and **when they differ, that difference is the information** — a large positive net built out of sold calls is exactly the case the old green triangle hid. A test asserts all four combinations of (net sign × direction) are reachable, because if they were not, the panel would be showing one fact twice while implying it showed two. `callPremium` / `putPremium` stay everywhere: they are these panels' native facts and the product contract is ADDITIVE. |
+| **Why `readablePct` is part of the verdict, not a diagnostic** | `directionLabel` already refuses when unreadable premium exceeds readable, so the *label* was safe alone. The **colour** was not, and neither was a member's read of a neutral one. Returning the share the refusal was made from is what lets a surface distinguish its two neutral cases. Expressing the gate as a share rather than a second threshold keeps the two rules from disagreeing about a bucket: at exactly 50/50 they agree, below it both refuse. A test pins that seam from both sides. |
+| **A latent fabrication removed on the way past** | `ExpiryConcentration`'s `callPct` fell back to **50** and the leaderboard's to **50** when total premium was 0 — a fabricated even split, the same defect as the tide bar's flat 50/50 (#2704). Both are unreachable today (the expiry list is filtered at a $50k floor; a leaderboard row exists only if a print created it), so this is latent rather than live. Both now return `null` and render `—`. `TickerDrawer`'s fell back to `0`, which is the same fabrication wearing a different number. |
+| **Checked and found NOT to be a defect** | `cur.count++` runs for every print in `ExpiryConcentration` while premium is added only for `CALL` / `PUT`, so a third type would make "N prints" cover a wider population than the premium beside it. **Measured: 5000/5000 rows are CALL or PUT** (3025 / 1975), zero others. Recorded because "I looked and it does not happen" is a different, and more useful, statement than not having looked. |
+| **Consequence stated plainly** | `CumulativeNetPremiumChart` reads the whole loaded tape, which is dominated by the index feed, so **its line will usually render neutral.** That is the honest state, not a rendering failure. If a permanently-neutral chart is the wrong product answer, the fix is to source ask-side data for the index feed — **not** to keep colouring on a rule that does not hold. Raised for the coordinator alongside the existing SPX/SPY print-time question, which shares this root. |
+| **Blast radius** | All four components render on `/flows` only. `helix-flow-aggression.ts` is **imported, not modified**, so #2691's rule and its ledger `direction_basis` stamp are untouched — these panels join that rule rather than fork it. No API, no payload, no persisted field changes; every direction is derived client-side from prints the panels already held. This IS a visible change to a headline panel (7 of 10 leaderboard rows lose their arrow colour), which is why the measurement above is stated per-ticker rather than summarised. |
+| **New harness** | `scripts/audit/helix-direction-read-probe.mjs` — read-only against prod, one temp Clerk user deleted in a `finally`, imports the REAL `flowDirection` / `directionalPremium` / `bucketLabel` / `HELIX_NET_PREMIUM_LEADERS_LIMIT` rather than restating them. Reports legacy colour vs shipped verdict, readable share, and the share of readable CALL premium that was SOLD — per horizon AND per leaderboard ticker. **Exits non-zero on any disagreement**, so post-deploy it is the check that the fix is live. Prints `INSUFFICIENT DATA` on an empty tape rather than clean rows: "nothing to measure" and "measured, all fine" are opposite results and must not share an output. (One run mid-session returned 0 rows transiently and printed nothing; the diagnostic line that caught it — `http=200 rows=N` — is now in the harness, because a silent empty run reporting "0 disagreements" would have read as a pass.) |
+| **Regression guard** | `helix-direction-read.test.ts`, 13 tests. The derivation: sold calls reading **bearish** (the defect as a test); bought calls still bullish, so the common case is not inverted; the live LEAPS shape yielding **no colour** despite a lopsidedly bullish readable slice; the live SPX row (0.1% readable) refusing a verdict; a well-covered one-sided ticker **keeping** its verdict, so the rule is not just "always neutral"; genuinely two-sided premium reading **mixed** rather than rounding to a side; the readable share reported even at 1%; an empty set reporting `null`, never `0%`; the 50/50 seam agreeing with `directionLabel`'s refusal from both sides; a big POSITIVE net built from sold calls reading bearish; **all four (net sign × direction) combinations reachable**; 90%-call-premium-all-sold reading bearish — the single assertion that the rule changed and not a threshold; and the tooltip carrying basis, split and coverage all three. |
+| **Verification** | Node 20 (`/opt/node20/bin`, v20.20.2), full suite: **10441 pass / 0 fail / 1 skipped**. `npx tsc --noEmit` clean. `next lint --dir src/features/helix` reports no error on any changed file. |
+| **Status** | FIXED — **pending live validation.** After deploy, re-run the probe: it must report **0 disagreements** on both sections. On screen: Monthly and LEAPS render NEUTRAL with an amber `direction unread · 6% sided` / `· 3% sided` note; the SPX leaderboard row shows a neutral `◆` rather than a green ▲ while still reading `+$4.0B`; AMD/MU keep green and SMH keeps red. If SPX is still a green triangle, the deploy does not carry this. |
+
+## 2026-08-23 — [FINDING, P2 Helix/tooling] The direction-read probe gated on a condition that is true by construction, so it could never pass — and read as "#2713 is not deployed" — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `helix-direction-read-probe.mjs` exits **non-zero on every run**, permanently, by construction. Run at tomorrow's open it reports `4/4 horizons and 7/10 leaders disagree` and exits 1 — which reads as *"the deploy does not carry #2713"*, the highest-visibility HELIX fix on the watch list, against a deploy that carries it perfectly well. |
+| **Root cause** | The gate was `if (disagreements > 0) exitCode = 1`, justified in a comment as: *"after the fix the panel USES the shipped verdict, so a disagreement means the deploy does not carry it."* **That reasoning does not hold.** Both sides of the comparison are computed **inside the probe**, offline, from the same payload: `legacy` is the retired rule reimplemented locally (`callPct >= 55` at line 139, `net >= 0` at line 193) and `shipped` is `readDirection`. **Nothing in the probe observes what the deployed page renders.** So a disagreement means only that the two *rules* differ on this data — which is precisely the finding the probe exists to measure (#2713: the rules sign-flip on 44.6% of tickers), and which the module's own header states as its headline result. |
+| **The self-contradiction** | The file documents the disagreement as the measurement (*"LEADERBOARD, same run: 7 of the top 10 tickers disagree … AMD, MU and SMH agree, so the honest rule does not flatten the panel"*) and then treats the same number as a failure condition. Same shape as §5k on `main`, which explained that velocity firings fall and then told the reader a large jump is the fix working. |
+| **Evidence** | Live production, 2026-08-23, reproduced twice. `4/4 horizons and 7/10 leaders disagree`, `EXIT=1` before the fix; identical measurement and `EXIT=0` after. The measured rows are unchanged: SPX legacy `bullish` vs shipped `undetermined` at **0.1% readable** over **$4,022,945,927** net; AMD (100%), MU (85.5%) and SMH (94.6%) agree. |
+| **Fix** | Gate on the shipped rule's own **contract** instead, which is genuinely falsifiable from the same payload: `readDirection` must never state a direction it lacks the coverage for — below `MIN_READABLE_PCT_FOR_VERDICT` it is required to return `undetermined`. **GREEN on live data today**, and it goes red exactly when something real has broken: the threshold retuned by accident, the gate dropped in a refactor, or a build serving a `readDirection` that predates the coverage gate. The summary line now states outright that disagreement is the measurement and that, since both sides are computed locally, it says nothing about which rule the deployed page uses. |
+| **The principle worth keeping** | **A check should fail on something that could be otherwise.** A condition that is true by construction is a *measurement*; only a condition that could be violated is a *gate*. Conflating them produces a red that carries no information, and a permanently-red check is quickly learned-around — which costs more than having no check, because the next real failure arrives looking exactly like the noise. |
+| **Blast radius** | The probe only — read-only, offline, no product code and no other harness consumes it. The threshold is **imported** from `helix-direction-read.ts`, not copied, so it cannot drift from the rule it is asserting (the defect #2731 was entirely about). |
+| **Regression guard** | The gate is extracted to `coverageContractViolations` in a new `helix-direction-probe-eval.mjs` — it was inline and untestable — with 6 tests asserting against the **real imported** `MIN_READABLE_PCT_FOR_VERDICT`. They pin: today's live rows are clean (SPX 0.1%, SPY 11%, MRNA 44.7%, LEAPS 3.2% all `undetermined`; SPXW 53.3% and TSLA 90.2% stating verdicts above the gate); **that the gate CAN go red** — a `bullish` at 0.1% readable is caught, so the check is capable of failing; that `null` coverage is not a violation, because nothing was measured; the threshold boundary exactly at and a hair below; that rule **disagreement is never a violation at any coverage**, which is the old gate's condition stated as an executable fact; and that malformed rows are skipped rather than crashing the gate. |
+| **Status** | FIXED — live-run confirmed: same measurement, `EXIT=0`, zero contract violations. |
+
+## 2026-08-23 — [FINDING, P3 Helix] A shared deep link named a strike that does not exist, and matched the neighbouring contract — FIXED, without stranding links already in the wild
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `buildHelixFlowDeepLink` rounded the strike into the URL. A link shared for a **PLTR 182.5C** print read `strike=183` — a contract that is not the one being shared — and `flowMatchesDeepLink` also matched a genuine **183** print with it. |
+| **Root cause** | `params.set("strike", String(Math.round(Number(input.strike))))`, mirroring the `premium` rounding two lines below. The two look alike and are **not the same judgement**: rounding a premium drops cents nobody needs; rounding a strike names a different contract. No comment justified it, and nothing tested it. |
+| **How it was found** | Not by reading. The deep-link module *is* tested (6 tests), but they covered `build → parse` and never `build → parse → **match**` — the invariant a member actually depends on when they click a shared link. Running that full round trip against the real functions passed for 7 shapes, and the fractional-strike case passed *while printing `strike=183` for a 182.5 input* — the round trip closed only because both sides rounded. The bug was visible in the URL, not in the verdict. |
+| **Evidence — measured, then sized** | Live tape, 5000 rows: **99 fractional strikes (2.0%)** — PLTR 182.5, DELL 437.5, TLT 82.5, SLV 70.5/71.5, IBIT 38.5. So the rounding is exercised on real data every session. Cross-contract collision demonstrated directly: a link built from 182.5 matched a 183 print. **Ambiguous groups on that tape: 0** — a collision also needs identical ticker, expiry and premium-to-the-dollar, so this is **latent, not live**. Reported that way rather than as an active member-facing bug. |
+| **Fix** | The builder emits the **exact** strike. The matcher keys its comparison off the **target's precision**: a fractional target can only have come from the new builder, so it is compared exactly and cannot collide with the neighbouring integer; an integer target might be a genuine integer strike **or an old rounded link**, and nothing can distinguish them, so it keeps the legacy rounded comparison. |
+| **Backward compatibility is the whole design** | Every link already posted to Discord carries a rounded strike. Comparing exactly would have stranded all of them. Verified explicitly rather than argued: a legacy `strike=183` link still resolves to the **182.5** print it was built from, and still resolves to a genuine 183 print; a new `strike=182.5` link resolves only to its own contract; a new integer link round-trips unchanged. |
+| **Deliberately NOT changed** | `premium` keeps its rounding, and a test now pins that so the two are not "made consistent" later by someone who notices they differ. Cents are noise; strike halves are a different contract. The legacy loose comparison for integer targets is also kept on purpose — tightening it would strand old links for a collision that measures 0. |
+| **Blast radius** | `buildHelixFlowDeepLink` (URL emitted) and `flowMatchesDeepLink` (resolution). `helixDiscordFlowToDeepLink` builds through the same function, so Discord links gain the precision automatically. The dark-pool link path is untouched — it carries `executed_at` and premium, no strike. No API, no persisted value. |
+| **Regression guard** | +6 tests (6 → 12 in the file). They pin that a fractional strike survives into the URL; that a new fractional link matches **only** its own contract and not 182/183 either side; **that already-shared rounded links are not stranded** — the test that would fail if someone later "simplified" the matcher to an exact comparison; that an integer strike still round-trips; that premium keeps its rounding; and the **full build → parse → match round trip across seven contract shapes**, which is the coverage gap that let this ship. |
+| **Status** | FIXED — latent collision closed for new links, old links verified still resolving. |
+
+## 2026-08-23 — [FINDING, P1 Helix] Dark-pool timestamp fabrication — every undated print reads as "just now" — FIXED
+
+> **kind:** `FINDING`
+
+### Summary
+The dark-pool route (`api/market/dark-pool/route.ts`) stamped `new Date().toISOString()` on any print UW did not date — inventing a measurement (the exact server time the request arrived) rather than preserving absence. This caused:
+1. **COORD false matches**: undated dark-pool prints matched EVERY flow within a 5-second window (the COORD time tolerance), when they should match only flows whose timestamp UW actually provided and was within the window.
+2. **Deep link false negatives**: time-keyed deep links could never match an undated print, since the link was built against a past time and every reload invented a new timestamp.
+
+### Evidence
+**Fill-rate inventory (helix-darkpool-inventory.mjs, first run 2026-08-23):**
+- Returned 40 prints
+- `executed_at` field reported **100% filled**
+- All 40 timestamps were within **milliseconds** of each other, within milliseconds of request time
+- UW's own endpoint carries a note: `// … UW's market-wide endpoint omits direction` — it omits timestamps too
+
+**Deep-link defect:**
+- A time-keyed deep link built at 14:32:45 against a dark-pool print could never highlight that print on a later reload at 14:35:20.
+- The link encodes `exec_time=14:32:45` (second precision).
+- On reload, `darkpoolRowHighlighted()` does `String(print.executed_at).slice(0, 19) === link.exec_time`.
+- For undated prints, `String(null).slice(0, 19)` equals the literal 9-character string `"null"`, never matching.
+- But **every** undated print gets the SAME new timestamp per-request, so **no two reloads see the same time**, making the link pointless.
+
+**Root cause in code:**
+```typescript
+// src/app/api/market/dark-pool/route.ts (BEFORE)
+executed_at: input.executed_at ?? new Date().toISOString(),
+```
+The `?? new Date()` fallback runs **per request**, not per print, so:
+- Request A at 14:32:45.123 receives dark-pool prints → all get `executed_at = "2026-08-23T14:32:45.123Z"`.
+- Request B at 14:32:47.456 receives the SAME prints → all get `executed_at = "2026-08-23T14:32:47.456Z"`.
+- The prints' identity is unchanged (`ticker`, `side`, `premium` etc. still match), but their timestamp is now different, so a deep link built from request A can never find them in request B.
+
+### Why it matters
+**COORD window collisions (Medium Impact):**
+Dark-pool prints with fabricated timestamps inside a 5-second COORD window matched against **every** flow in that window, not just the ones the print's own underlying action overlapped. This is a correctness problem — a flow whose timestamp UW DID provide could falsely correlate with an undated dark-pool print, since the print's time was invented rather than absent.
+
+**Deep linking (Low immediate impact, high UX cost):**
+A deep link built against a dark-pool print (`/heatmap?...&exec_time=14:32:45`) works perfectly when clicked immediately (same request, same fabricated timestamp), but fails on any reload. This defeats the entire purpose of a shareable, bookmarkable deep link. A member can copy a link from the dark-pool drawer, paste it to a collaborator, and it silently fails to highlight.
+
+**Audit blindness (High technical impact):**
+`helix-darkpool-inventory.mjs` reported `executed_at: 100% FILLED` when measured against the fabricating endpoint. This made the field appear healthy when it was completely hollow — a fill-rate inventory of a fabricator is not a fill rate. The corrected probe, running against the fixed endpoint, can now measure the **real** fill rate and discover which data the upstream truly carries.
+
+### Fix
+Replace fabrication with preservation of absence:
+
+**Route (src/app/api/market/dark-pool/route.ts):**
+```typescript
+// BEFORE
+executed_at: input.executed_at ?? new Date().toISOString(),
+
+// AFTER
+executed_at: input.executed_at ?? null,
+```
+Type change: `string` → `string | null` in both route and client `api.ts` interface.
+
+**Call sites (3 locations):**
+1. `DarkPoolPanel.tsx` — `fmtDate()` now safely handles `null` and uses `timeAgo()` instead.
+2. `use-helix-deep-link.ts` — `darkpoolRowHighlighted()` checks `if (print.executed_at == null) return false` before string operations.
+3. `helix-coord-window.ts` — guard already skips null timestamps (`if (coordTime == null)`), so no change needed beyond documentation.
+
+### Test coverage
+**Route tests (src/app/api/market/dark-pool/route.test.ts, 5 new):**
+- Undated prints receive `executed_at: null`, not now().
+- Empty string timestamps treated as absence, return null.
+- Real timestamps pass through unchanged.
+- Normalizing the same undated row twice produces identical null (no per-request fabrication).
+
+**Deep-link tests (src/features/helix/lib/use-helix-deep-link.test.ts, 4 new):**
+- Undated print never highlights, regardless of link precision.
+- **Critical: link carrying stringified "null"** (what would happen if this fix were missed) does NOT accidentally match all undated prints.
+- Dated prints match by second precision and dollar precision.
+- Absence vs. measured time are correctly distinguished.
+
+All tests fail against pre-fix code, pass against fix.
+
+### Status
+**FIXED** in #2753.
+
+Audit re-run: `npm run audit:helix-darkpool-inventory` (after deploy) will return the real fill rate and discover whether executed_at is truly empty across the tape or whether UW provides it for some subset.
+
+### Blast radius
+- **src/app/api/market/dark-pool/route.ts** — core fix (1 file, 1 line of logic)
+- **src/lib/api.ts** — type mirror (1 type change)
+- **3 call sites in helix/** — all guarded against null, no user-facing breakage
+- **Audit harness updated** — helix-darkpool-inventory.mjs now correctly documents the fabrication and suggests re-measuring
+
+All existing tests pass. No production behavior change for members with time-aware deep links — deep links built under the old code (with timestamps) continue working under the new code, and deep links built under the new code (with null) now work correctly across reloads.
+
+## 2026-08-23 — [FINDING, P2 Helix] The COORD signal searched half the dark-pool prints, by omission — and the dark-pool half of the lane had never been inventoried — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Why this was looked at at all** | The charter defines HELIX as the options-flow **and dark-pool** tape reader. `HELIX-MAP.md`'s Phase 0 inventory covers the options tape field by field and carried **one line** about dark pool. That is a hole in my own Phase 0 claim, not a discovery about the product — and closing it is what surfaced the defect below. |
+| **Symptom** | The COORD badge claims *"dark pool block + options sweep on the same ticker within 5 min"*. Its dark-pool input was fetched with **no `limit`**, so it received the route's default of **50** prints — while `DarkPoolPanel.tsx:175`, in the same feature, passes `{ limit: 100 }` with the comment *"API hard-caps at 100"*, and `TickerDrawer.tsx:84` passes a deliberate `{ limit: 20 }`. One sibling asked for everything the endpoint would give; another took a default nobody chose, for a signal where pool size directly determines what can be found. |
+| **Root cause** | `FlowFeed.tsx:275` — `fetchDarkPoolPrints({ min_premium: 500_000 })`. `/api/market/dark-pool/route.ts:40` reads `Math.min(Number(sp.get("limit") ?? 50), 100)`. No caller sees the clamp: the response is `{ prints, count }` where `count` is the RETURNED count, so a request for 500 comes back as 20 with nothing indicating it was capped. |
+| **Why it is worse than a tuning miss** | The failure is **one-directional and therefore invisible**. A smaller pool can only produce **false negatives** — a coordination that happened and was not found. There is no error, no empty state, no badge; a member reading no COORD badge concludes there was no coordination. That is absence published as fact (`_COMMON.md` #7), reached by a default rather than by a decision. |
+| **Fix** | Pass `limit: 100` explicitly. **Not a tuned number** — it is all the data the endpoint will give, which is the only defensible size for a coincidence search, and it matches what the sibling panel already does. The route's clamp is left alone: it is a real bound and the panel already documents it. |
+| **Honest limit on this fix** | It **does not bind off-hours** — the whole feed returned 20–40 prints, below even the 50 default — so it is unverifiable until RTH and is on the 2026-08-24 watch list rather than claimed as fixed-and-seen. Under live volume the 50 would bind hard. |
+| **The inventory, and the distinction it exists to draw** | New `scripts/audit/helix-darkpool-inventory.mjs` (+ pure `lib/helix-darkpool-eval.mjs`). Measured market-wide, 20 prints: `ticker` 100%/15 distinct, `premium` 100%/20, `executed_at` 100%/13, `share_size` 100%/19 — and **`side` 100% filled with exactly ONE distinct value, the string `"neutral"`**. A fill-rate inventory of the kind `meridian-earnings-data-inventory.mjs` produces would report `side: 100% ALWAYS` and a reader would design a directional panel on it. UW's market-wide endpoint omits direction and `route.ts:27` collapses non-buy/sell into `"neutral"`. **CLAUDE.md already records that a fill rate without its COHORT is not a fact about a field; this is the same lesson one turn on — a fill rate without its VARIANCE is not one either.** The harness reports fill and distinct-count side by side so the two cannot be confused again. |
+| **What was checked and found CORRECT** | `biasFromSide` renders `—` rather than `MIXED` when no print carries a side — right, and what production shows. Its guard is **half-covered**: it fires only when NEITHER side is present, so a *partially* sided population would compute a ratio over whatever fraction carries a side and drop the rest — the minority-verdict shape `directionLabel` refuses for split flow. **Latent, not live** (0 of 20 sided), so the harness REPORTS it as `MINORITY_VERDICT_RISK` and exits non-zero if it ever occurs, rather than the guard being changed on a guess. A speculative change to a currently-correct guard is how the next defect ships. |
+| **Blast radius** | One call site changed. `DarkPoolPanel` and `TickerDrawer` already pass explicit limits and are untouched. No route, no cache, no payload shape. |
+| **Regression guard** | `helix-darkpool-eval.test.mjs`, 8 tests: a 100%-filled never-varying field reported **not informative** while a varying field at the same fill rate is; every contract field inventoried, with an empty sample yielding `null` rather than a zeroed inventory; missing and empty-string values not counted as present; `NO_DIRECTION_REPORTED` as its own status with the panel's guard called correct there; the **minority-verdict case the guard does not cover** flagged; a majority-sided population accepted as a legitimate read; an empty feed reporting `null` rather than a confident `0`; and `newestPrintAgeHours` returning `null` rather than `0` when unreadable — `0` reads as "live", the one answer a dead feed must never give. |
+| **A test fixture I got wrong first** | My freshness test asserted 8 hours where the real fixture — the actual measured print, Friday 2026-08-21 23:59Z — is 32 hours from the Sunday clock in the test. The test failed on my arithmetic, not the code. Corrected, and the fixture now carries a note that ~32h is the normal weekend state of this feed. |
+| **Status** | FIXED — **pending live validation.** The COORD population change cannot be exercised until RTH volume exceeds 50 dark-pool prints above $500k. |
+
+## 2026-08-23 — [FINDING, P2 Helix] The dark-pool bias badge computes its ratio over the sided minority and silently drops the rest — LATENT, FIXED BEFORE IT ACTIVATES
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `DarkPoolPanel`'s BULLISH / BEARISH / MIXED badge is `buy / (buy + sell)` over premium — a ratio whose denominator is the **sided** premium only. Prints carrying no direction never enter it. With, say, 5% of premium sided and leaning buy, the panel renders a confident **BULLISH** drawn from a twentieth of the tape, with nothing on screen saying so. |
+| **Root cause** | The one guard fired only when **no** print carried a side: `const total = buy + sell; if (total <= 0) { ...render "—"... }`. So the all-or-nothing case was handled and the **partial** case was not. This is the absence-as-measurement failure `_COMMON.md` #7 names — a rate reported without the denominator it was actually computed over — and it is the same defect class as §9.0 (signal eligibility), §5c (`— UNREAD` coverage) and the `readablePct` gate the flow tape already ships. |
+| **Reachability, measured before changing anything** | Live production, 2026-08-23, off-hours: the market-wide feed and the ticker-scoped feed for **NVDA, SPY, TSLA and AAPL** each returned 50 prints — **250 prints, every one `neutral`, 0.0% sided premium coverage.** So the partial case is **latent, not live**: today the old guard fires and the panel correctly shows `—`. The route confirms the mechanism is reachable rather than dead code: it maps `r.side ?? r.sentiment ?? r.direction ?? "neutral"` to buy/sell/neutral, so any print UW does side lands in the ratio while the rest are dropped from its denominator. |
+| **Why fix a latent defect rather than report it** | `helix-darkpool-inventory.mjs` already reports this risk, correctly, and declined to change code on a guess — the right call when the question was *"does this happen?"*. It is a different question now that the answer is *"not on this data, and the code has no gate either way"*. **The defect is in the shape of the computation, not in whether this week's feed triggers it.** The off-hours number is a floor: UW may populate `sentiment`/`direction` under RTH volume, and the first day it does is not the day to discover a member-facing directional label has no coverage gate. This is also the pattern this lane named repeatedly this week — *a fix applied where the bug was found rather than where the bug can occur*. |
+| **Fix** | `readDarkPoolBias` in a new `helix-darkpool-bias.ts`, gated on the share of **total** premium whose side could be read, returning `{ label, buyPremium, sellPremium, neutralPremium, readablePct, minorityEvidence }`. Below the threshold the label is `unreadable` and the panel renders the same neutral dash it renders today, **plus the coverage** (`side known on N% of premium`) — a dash alone is indistinguishable from "no data", which is the confusion the whole change is about. Extracted out of the `.tsx` so it is testable at all; it was previously inline and unreachable from a test, the same move #2727 made for `hasCoincidentBlock`. |
+| **The threshold is imported, not redeclared** | `MIN_READABLE_PCT_FOR_VERDICT` from `helix-direction-read.ts` already governs exactly this judgement for the flow tape. #2731 was an entire PR about what happens when a second copy of a product rule drifts from the original, so this reads the existing one. One rule, two surfaces. |
+| **Behaviour change today: none** | At 0.0% coverage the new gate refuses and renders `—`, which is what the old guard already did. The coverage note suppresses itself when `readablePct` is `null`, so an empty population shows a bare dash rather than "side known on 0% of premium" — 0% would assert a measurement over nothing. |
+| **One deliberate change in an edge case** | The old code rendered **MIXED** when sided prints existed but carried zero premium. That is wrong by HELIX's own vocabulary, stated in §5c of the market-open runbook: *MIXED means read successfully and genuinely two-sided; UNREAD means could not read* — and zero premium was not read. It now renders the refusal. |
+| **Blast radius** | `DarkPoolPanel` only — both render sites (ticker view and market view) go through the same read, so they cannot disagree. The COORD badge takes dark-pool prints from a different path (`hasCoincidentBlock`, #2727) and does not consume `side`, so it is untouched. Nothing server-side, no Largo field, no persisted row. |
+| **Regression guard** | 9 tests, proven falsifiable rather than assumed: restoring the old all-or-nothing guard fails **3 of 9**, the fix passes 9/9. They pin the defect itself (5% sided leaning buy must refuse, and must report the 9.5M discarded); that a majority-readable population still gets its verdict; that the threshold is the **shared** constant, allowed exactly at it and refused a hair below; that BEARISH and MIXED remain reachable; that MIXED and unreadable stay different facts; **today's live all-neutral population, so the no-change claim is executable**; that an empty population reports `null` coverage and never 0%; that non-finite/non-positive premium is skipped rather than counted as neutral evidence; and that an unmapped `side` value counts as UNREAD and can never land on one side of the ratio. |
+| **Owed at the open** | Re-measure sided coverage under RTH: `GET /api/market/dark-pool` market-wide and per ticker, count `side` values. **If coverage rises above 0% but stays under `MIN_READABLE_PCT_FOR_VERDICT`, the panel will now show `—` where it previously would have shown a confident direction — that is this fix working, not a regression.** If coverage clears the threshold, the badge lights up for the first time and should be spot-checked against the print list by hand. |
+| **Status** | FIXED — behaviour-neutral on the measured population; RTH re-measure owed. |
+
+## 2026-08-23 — [P3, Helix] COORD guarded one operand of its time comparison and left the other raw — under a comment explaining the bug — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | The COORD signal correlates a dark-pool block with an options print inside a 5-minute window: `Math.abs(new Date(dp.executed_at).getTime() - alertTime) <= WINDOW_MS`. `Math.abs(NaN - t) <= WINDOW` is **false**, so a block whose time cannot be parsed does not error — it silently never coincides with anything, and COORD simply never fires for it. |
+| **The part that makes it worth writing up** | The comment **directly above that line** already recorded this exact failure, for the *other* operand: *"Gap #6: raw `new Date(alerted_at)` was NaN for undated rows, so `abs(NaN) > WINDOW` is always false and COORD never fired."* The fix was applied to the alert side. **The identical expression on the dark-pool side of the same comparison stayed raw.** One guarded operand and one unguarded one, in a single expression, under a comment explaining precisely why that is fatal. |
+| **The pattern, now four times in one session** | Right rule, applied to one of the paths that needed it: the watchlist invariant hand-applied at 1 of 3 call sites (#2721); the UI audit's page-load gate covering tunnel failures but not HTTP 404s (#2722); the future-timestamp guard present in both display formatters and absent from both detectors (#2725); and now one operand of one comparison. Worth naming as a class — *a fix applied where the bug was found rather than where the bug can occur.* |
+| **How badly it bites today — measured, and smaller than it first looked** | Live prod `/api/market/dark-pool?limit=100&min_premium=500000`, 2026-08-23 with the market closed: **3 prints, 3/3 with a parseable `executed_at`, 3/3 carrying an explicit timezone** (`"2026-08-21T23:59:52Z"`). So on the REST path this is **latent robustness, not an observed failure**, and it is reported that way rather than dressed up. n=3 off-hours is a weak sample — which is an argument for the guard, not against it. |
+| **Why it is still worth fixing** | The failure mode is silent by construction. COORD does not error, warn or render differently — it simply never fires, which is indistinguishable from "no coordination happened". #2708 had just fixed COORD's *population* (it was searching half the prints); a NaN on the other side would undo that invisibly, and nothing downstream would show it. |
+| **Fix** | `helix-coord-window.ts` — `hasCoincidentBlock(blocks, ticker, alertMs, windowMs)`. Both operands are checked with `Number.isFinite`, and an unparseable block time is **skipped** rather than allowed to answer "no" for a comparison that was never made. The correlation moved out of a `useMemo` in `FlowFeed` so it can be exercised without rendering the page — which is the reason the original defect survived a fix to its own other half. |
+| **Refused, not coerced** | An epoch-string block time is refused rather than coerced to 1970. Coercion would give the same answer here (1970 is outside every window) for the wrong reason, and the wrong answer anywhere a distance is reported. A test pins the distinction. |
+| **Checked, and NOT fixed here** | Four more `.slice(0, 19)` sites exist in `unusual-whales.ts` — in the dark-pool and lit-trades WS normalisers. That slice strips a trailing `Z`, and a date-time with no offset parses as LOCAL, so those paths are correct only because production runs UTC. **Not touched**: the live REST measurement above shows the prints reaching the product carry their timezone intact, so there is no observed defect to fix, and changing four WS normalisers that cannot be validated with the market closed would be a change made on a hunch. Recorded here so the next reader has the fact rather than having to rediscover it. |
+| **My own blast-radius miss, stated** | #2723 fixed the `.slice(0, 19)` in `normalizeOptionTradesWsPayload` and its write-up did not note that four siblings of the same pattern exist in the same file. `CLAUDE.md` is explicit that duplicated logic elsewhere counts and must be found and noted, not just the instance tripped over. I found them only when verifying #2723 on `main` afterwards — the verification caught what the change should have. |
+| **Blast radius** | `FlowFeed` (one `useMemo` body) and one new lib module. No API, payload or persisted-field change. Behaviour is identical for every block with a parseable time — which, on today's measurement, is all of them. |
+| **Regression guard** | `helix-coord-window.test.ts`, 9 tests: a block inside the window coinciding and one outside not; the window symmetric in both directions; **an unparseable block time skipped rather than hiding a real block beside it** — the defect, pinned; six kinds of bad block time (empty, whitespace, unparseable, epoch string, `null`, `undefined`); an epoch string refused rather than read as 1970; ticker mismatch; an unusable ALERT time refusing outright, since "this print has no trustworthy time" and "no block matched" are different refusals; empty blocks; and the boundary inclusive and exact on both sides. |
+| **Verification** | Node 20 (`/opt/node20/bin`, v20.20.2), full suite: **10510 pass / 0 fail / 1 skipped**. `npx tsc --noEmit` clean. Live dark-pool format measured against production, not assumed. |
+| **Status** | FIXED. **No live validation needed for the guard** — it is a refusal and the tests exercise it. What is worth capturing at the open (runbook §5d, #2708) is the dark-pool `executed_at` format under RTH volume: if any print arrives with an unparseable or timezone-less time, this guard is what stops it silently suppressing a COORD badge, and that is the moment the four `.slice(0, 19)` siblings become worth revisiting. |
+
+## 2026-08-23 — [FINDING, P2 Helix] HELIX conviction score misrepresentation — labeled for direction, doesn't rank it
+
+> **kind:** `FINDING`
+
+### Summary
+The "Top Prints" panel labels its sort mode "★ conviction", implying it identifies the most directionally confident prints. However, the conviction score (named a "score" in the code, "conviction" in the UI) measures premium size + route features, not directional confidence. An independent audit probe measuring whether the score ranks underlying direction found **SPREAD WITHOUT ORDER** — the score spreads by 6.2pp across win-rate buckets but has no monotonic trend (Spearman ρ=0.46, weak and positive-ish).
+
+This creates a **product honesty problem**: members read "★ conviction" as "most likely to move in the predicted direction" when the score measures "largest premium + sweep/0DTE bonus".
+
+### Score Formula (src/providers/unusual-whales.ts)
+```typescript
+const premPts = premium > 0 ? Math.min(60, round(premium / $1M × 60)) : 0;
+const sweepPts = hasSweep ? 25 : 0;
+const dtePts = route === "0dte" ? 15 : 0;
+score = min(100, premPts + sweepPts + dtePts)
+```
+Interpretation: size (capped at $1M = 60 pts) + sweep (+25) + 0DTE (+15).
+**No directional analysis anywhere in the formula.**
+
+### Audit Evidence: Score Does Not Rank Direction
+**helix-score-signal.mjs** measured on 748 graded prints:
+
+| Score Bucket | n | Win Rate | Avg Favorable% | Verdict |
+|---|---|---|---|---|
+| 0-39 | 282 | 50.0% | +0.55% | no signal |
+| 40-59 | 162 | 47.5% | **-4.78%** | **below average** |
+| 60 (saturated) | 54 | 53.7% | -0.11% | flat |
+| 61-84 | 32 | 50.0% | +0.30% | no signal |
+| 85-100 | 6 | 83.3% | +2.94% | too small (n<30) |
+
+Spread: 6.2pp (83% top vs 47% bottom). **Order: INVERTED** (40-59 bucket WORST, but middle of range). 
+Spearman ρ=0.46 — weak, fails monotonicity test. Verdict: **SPREAD WITHOUT ORDER.**
+
+**Conclusion:** The score does not rank direction. It ranks size. A print with score 50 is no more likely to continue in the predicted direction than a print with score 40 — and actually *less* likely in this dataset.
+
+### Why This Matters
+- **Member decision-making**: A trader seeing "★ conviction" reads it as "highest directional confidence" and may overweight these prints in position sizing.
+- **Anchor bias**: The top print in the panel gets full gold styling + glow (line 26: "the single most conviction-worthy print"). If conviction doesn't rank direction, the styling authority is misplaced.
+- **Comparison to "Size" mode**: The fallback sort is labeled "◆ size", which is honest about measuring premium. If score measured direction, the label distinction would be valid. As written, both measure size (one adds features), but only one tells the truth.
+
+### Blast Radius
+- **UI label**: `HighScorePrints.tsx` line 61 — `kicker={mode === "score" ? "★ conviction" : "◆ size"}`
+- **Comment**: line 26 calls it "conviction-worthy" without defining conviction
+- **No backend logic to change** — the score formula is intentionally size-based
+- **No data flow corruption** — score is calculated correctly; only the label is dishonest
+
+### Options for Fix
+
+### Option A: Relabel to Honest Description (recommended)
+Change `"★ conviction"` to something that describes what it actually measures:
+- `"★ largest impact"` (size focus)
+- `"★ featured trades"` (size + sweep/0DTE)
+- `"★ premium concentration"` (size)
+
+Rationale: The score formula is fine; only the label needs honesty. Size-ranked prints ARE valuable to watch (high-volume trades matter), but not for directional confidence.
+
+### Option B: Pivot Score to Directional Ranking
+Redefine the score to actually measure directional confidence:
+- Add a `directionalConfidence` component based on ask_pct extremes or aggression measures
+- Re-weight premium vs direction in the formula
+- Re-run audit to verify new score actually ranks direction
+
+Cost: larger change, would affect leaderboards and Discord digest. Coordinate with Thermal/Vector if they also use score.
+
+### Option C: Remove Score Sort Entirely
+Hide the score-ranked mode and only show size-ranked top prints. Keep score in the tape but remove it as a sort mode.
+
+Cost: removes a potentially useful ranking; members currently using it would lose it.
+
+### Recommended Fix
+**Option A**: Change label to `"★ featured trades"` or `"★ premium concentration"` and update the comment to explain that conviction refers to the score's size-emphasis rather than directional confidence.
+
+Rationale:
+- Quick (1 line + comment)
+- Honest about what the score measures
+- Preserves the existing sort mode (which is useful for finding big/interesting prints)
+- Aligns language with the fallback "◆ size" label
+- Matches the actual use case (traders watch top-premium prints)
+
+### Status
+**Status.** OPEN — PENDING COORDINATOR DECISION on whether to:
+1. Relabel (quick, minimal blast radius)
+2. Redesign score (larger change, requires re-audit)
+3. Deprecate score sort (removes functionality)
+
+Do not merge without resolving the label vs formula mismatch. A label-only fix is a one-line commit.
+
+## 2026-08-23 — [P3, Helix] `contracts = premium ÷ (fill × 100)` was written out FIVE times, and one of them was mine — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | One arithmetic identity — `contracts = premium / (fill_price × 100)` — existed as five independent implementations, none importing another. `helix-print-detail.ts` `estContractSize` (rounds), `helix-position-intent.ts` `impliedContractSize` (does NOT round), `helix-discord-format.ts` (inline, rounds, its own guard), `scripts/audit/lib/helix-tape-inventory-eval.mjs` `impliedContracts` (no rounding, no positive guard on the quotient), and `src/lib/zerodte/board.ts:1002` (inline, Night Hawk's lane). Each was written correctly for the surface in front of its author, and none of the authors — including me — went looking for the others first. |
+| **How it was found** | Reading `ContractDrilldownDrawer.tsx` end to end (431 lines, the largest HELIX member surface not yet examined in this pass) and noticing that `detail.size` came from `estContractSize`, a function whose body I recognised because I had written the same body three PRs earlier. A repo-wide grep for the literal `* 100)` against a premium then turned up the other three. |
+| **The part worth stating plainly** | The second of the five is **mine**, added in **#2689** — in a PR whose own write-up argued that *"a second reader re-deriving one fact is the failure this lane has now fixed five times."* I named the pattern and reproduced it in the same change. That is recorded here rather than quietly cleaned up, because a duplication log that only contains other people's duplicates is not measuring the thing it claims to measure. |
+| **Evidence — the copies did not agree** | Not a style complaint; the five produced **different answers for the same print**. Rounding: three round, two do not. Sub-half quotients: `estContractSize` checks `contracts <= 0` BEFORE rounding, so `0.4` survives the guard and `Math.round` then returns **`0`** — a *print of zero contracts*, which reads as a measurement rather than as "underivable". `ContractDrilldownDrawer.tsx:228` renders on `detail.size != null`, so that `0` reaches the member as a `Size` chip of `0` and, through `estNotional`, an est. notional of `$0`. The Discord line computes the same `0` but happens to guard `size > 0` at render — the same defect, caught by one surface and not the other, which is exactly what five uncoordinated copies buy you. `impliedContracts` in the audit lib guarded `fill > 0` and `premium > 0` but never the quotient, so it could return `Infinity` for a finite-but-denormal fill. Guard sets differ too: two check `premium == null` explicitly, two rely on `Number()` coercion, and `Number(null)` is `0` — the absence-as-zero trap this lane has now logged four separate times. |
+| **Fix** | `src/features/helix/lib/helix-contract-size.ts` states the identity once, as two named views of one derivation: `contractSizeExact` (raw quotient) and `contractSizeRounded` (whole contracts, which is what a member is shown, because a fractional contract does not trade). Both return `null` — never `0`, never `Infinity` — when either input is missing or non-positive, and `contractSizeRounded` additionally returns `null` when the quotient rounds to zero. `SHARES_PER_CONTRACT = 100` is named so the assumption is visible instead of a bare literal in five files. |
+| **Fix rationale — why two functions and not one** | Collapsing to a single rounded function would have been the smaller diff and would have been **wrong**. `positionIntent`'s `size >= oi × 1.05` margin (#2689) was measured against the *unrounded* quotient — max observed derivation error 0.160% of a contract — and rounding first moves that boundary by up to half a contract, which is three orders of magnitude larger than the error the margin was sized against. So the split is deliberate: display rounds, the counting argument does not, and each caller now *states* which it wants rather than each privately deciding. |
+| **Blast radius — every call site, repointed** | `ContractDrilldownDrawer.tsx:171` (`Size` chip) → `contractSizeRounded`. `helix-print-detail.ts` `estNotional` → `contractSizeRounded` (so the notional and the `Size` chip now agree *by construction* rather than by coincidence; `estContractSize` deleted). `helix-position-intent.ts` `positionIntent` → `contractSizeExact` (`impliedContractSize` deleted, local `SHARES_PER_CONTRACT` deleted). `helix-discord-format.ts:248` → `contractSizeRounded`, so a Discord post and the desk can no longer disagree about how many contracts a print was. `scripts/audit/lib/helix-tape-inventory-eval.mjs` `impliedContracts` now delegates, keeping its row-shaped signature — a harness computing contracts its own way measures a number nobody ships. |
+| **Behaviour change, stated rather than buried** | Three of these are pure refactors. One is not: the drilldown's `Size` chip and est. notional previously rendered `0` and `$0` for a sub-half-contract quotient and now omit both figures. That is the intended correction — `0 contracts` is not a print — but it is a visible change on the member surface and is named here rather than filed under "no functional change". |
+| **Cross-lane, reported and NOT touched** | `src/lib/zerodte/board.ts:1002` is the sixth writing of the identity, inside Night Hawk's strike aggregator. It is **correct in its context**: it accumulates (`cur.contracts +=`) so it needs the exact quotient, and `prem > 0` is already guarded at `board.ts:925` with `fill_price > 0` guarded inline. So this is a drift risk, not a live defect, and it is another lane's file — reported here, deliberately unchanged. Whoever owns that lane can point it at `contractSizeExact` if they want to; that is their call, not mine. |
+| **Regression guard** | `helix-contract-size.test.ts`, 8 tests, holding the **union** of what the five copies each tested separately — each had been written against a different real print, so no single one was ever exercised against all the cases the others had found. Pinned: the live MRNA print (8500 @ $17.50 = $14,875,000); the $1,307,530,000 SPX print that read as an obvious units error and is arithmetically exact (14,000 × 100 × 933.95); exact refusing to round where the OI margin depends on it; all twelve degenerate inputs returning `null` on **both** functions; the sub-half quotient reporting underivable rather than zero; and the two views agreeing as an identity (`rounded === Math.round(exact)`) so they cannot drift apart. `helix-position-intent.test.ts` keeps the consequence that matters to it — an underivable size must surface as `unknown`/`size_underivable`, never as a `0`-vs-OI comparison. |
+| **Verification** | Node 20 (`/opt/node20/bin`), full suite: **10420 pass / 0 fail / 1 skipped**. `npx tsc --noEmit` clean. `next lint` clean for every file touched (the two pre-existing parse errors in `scripts/playbook-evidence-report.mjs` and `scripts/thermal-discord-preview-v2.mjs` reproduce on a clean tree and are not from this change). |
+| **Status** | FIXED — **pending live validation.** After deploy: the drilldown `Size` chip must still match `Prem ÷ (Fill × 100)` on the same row, and a Discord alert's `(~N contracts est.)` must agree with the drilldown for the same print. |
+
+## 2026-08-23 — [FINDING, P2 Helix] Three HELIX surfaces quantised the option strike to the nearest DOLLAR when deciding "same contract" — inflating repeat-hit counts and silently suppressing Discord alerts — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Two different, separately traded contracts — `INTC 92.5P` and `INTC 93P` on the same expiry — were treated as one. Nothing errored anywhere; the numbers were simply wrong in two opposite directions on two different surfaces. |
+| **Root cause** | Contract identity was rebuilt inline in three places, and every copy used `Math.round(strike)`: `helix-strike-leaders.ts:53` (`countMatchingContractHits`, the "N hits in last 15 min" line under Top Prints), `helix-discord-format.ts:518` (`contractStackHitsFromFlows`, the Repeat Hits embed timeline), and `helix-discord-milestone.ts:13` (`helixContractKey`, the cache key holding which milestone a contract has already posted). A whole-market equity tape carries half-dollar strikes, so dollar quantisation merges real contracts. |
+| **Evidence (measured, live)** | 5000 prints off `/api/market/flows` (72h window, 2026-08-23): **99 prints (2.0%) carry a non-integer strike**; **1688 distinct exact contracts collapse to 1685 rounded keys**, and the 3 merged keys are `INTC 92.5P`+`INTC 93P`, `INTC 91.5P`+`INTC 92P`, `QQQ 712.5C`+`QQQ 713C`, all expiring 2026-08-21. This is a live rate, not a constructed case. |
+| **Why it matters — the same bug points BOTH ways** | **Overstatement (UI + embed):** hits on 92.5P counted toward 93P, so a "×4 hits on this contract" magnitude line can describe two contracts. Repeat conviction on ONE strike is precisely what that line is read for. **Suppression (alerting):** the two contracts shared ONE milestone counter, so once 92.5P posted its 3rd-hit milestone, a genuine 3rd hit on 93P read `lastPosted: 3` and never posted. No error, no log — the alert just does not arrive. That opposite-signed pairing is why it survived: whichever surface you looked at, the other one disagreed in a direction you would not think to check. |
+| **Why it wasn't caught earlier** | The one existing test, `"helixContractKey is stable per contract"`, asserted that a single contract keys consistently. It could not have caught this: the defect is that TWO contracts key the SAME, and no test compared two. A stability assertion and a discrimination assertion look alike and are not. |
+| **Fix** | New `src/lib/helix/contract-identity.ts` — one `flowContractKey` (ticker · strike-in-mills · normalized expiry · side) used by all three call sites. `normalizeExpiryKey`, dead after the change, was removed from `helix-strike-leaders.ts`. |
+| **Fix rationale — why mills and not exact equality** | The dollar rounding was defensive, not careless: upstream serves unrounded floats (`CLAUDE.md` records `7499.360000000001`), and an exact `===` would SPLIT one real contract into two keys — the mirror-image bug. So the key quantises at the precision the instrument actually has. **The lane already knew it:** `src/lib/helix/occ-contract-id.ts`, one directory over, has used `Math.round(strike * 1000)` — OCC's own mills encoding — since it shipped. `buildOccContractId` itself is not reusable as a grouping key (it enforces `^[A-Z]{1,6}$` on the root and maps SPX→SPXW, so any ticker it rejects returns `null` and would group with every other rejected ticker), which is why the precision was lifted rather than the function. |
+| **A second defect found by the new tests, not by review** | `Number(null)`, `Number(undefined ?? "")` and `Number("")` are all `0` — a perfectly finite number. The first draft of `strikeMills` guarded only with `Number.isFinite`, so every strikeless row would have been handed the key for a strike of 0: the exact "group unrelated rows together" failure the module exists to prevent, reintroduced inside the fix for it. Now rejected explicitly, along with `strike <= 0`, matching `buildOccContractId`'s own guard. |
+| **Deliberately NOT changed** | `helix-flow-deep-link.ts` still rounds, in two places, and that is correct: links already shared in Discord carry a rounded strike (the builder emitted one until #2746), so comparing exactly would strand every one of them. Those two lines now carry a `strike-rounding: intentional` marker instead of being silently exempt. |
+| **Blast radius** | All three HELIX call sites, fixed together. `src/lib/helix/occ-contract-id.ts` was already correct. SPX and Vector round strikes too (`spx-pulse.ts`, `vector-wall-events.ts`, and others) but trade index roots whose strikes are integers, and they are other lanes' surfaces — noted, not touched. One deploy-time effect worth stating: the milestone cache key format changes, so in-flight milestone state (8h TTL) resets once and a contract mid-stack may re-post its 3rd-hit milestone a single time. Bounded and benign. |
+| **Regression guard** | `src/lib/helix/contract-identity.test.ts`, 9 tests, including all three measured collision pairs by name, the float-noise case that must NOT split, every rejected strike form, and a **ratchet** that greps `src/features/helix` + `src/lib/helix*` for dollar-quantised strike identity. The ratchet is self-maintaining rather than allowlisted: a deliberate exception must carry `strike-rounding: intentional` on or directly above the line it excuses, so it cannot go stale by omission. **The ratchet was verified to FAIL on a reintroduced copy before being kept** — a guard that has only ever been seen passing is not known to be a guard. It also had to be taught to ignore COMMENT lines: this module's own header names the pattern it removes, so the first version flagged its own documentation. A ratchet that fires on prose is a ratchet somebody eventually deletes. Plus discriminating value tests at both other call sites, and the milestone stability test extended to compare two contracts rather than one. |
+| **Status** | FIXED — **pending live validation** (a Repeat Hits embed on a half-dollar strike is RTH-only). |
+
+## 2026-08-23 — [FINDING, P3 Helix] Two chart panels where the file already contained the right answer and the render path didn't use it — FIXED
+
+> **kind:** `FINDING`
+
+Found by sweeping every bar-width computation in the HELIX panels for the shape that broke `ExpiryConcentration` — a max denominator read off `[0]` of an array sorted by something else. **That specific bug is not present anywhere else**: `VelocityRadar` uses a real `Math.max(...)`, and `RouteBreakdown`, `NetPremiumLeaderboard` and `SectorFlowPanel` all sort by the same field they read the max from. The sweep surfaced two different defects instead, both of the same shape — *the correct version already exists in the same file.*
+
+### (a) `NetPremiumLeaderboard` renders `width: NaN%` for a zero-premium row
+
+| Field | Detail |
+|---|---|
+| **Root cause** | The row builder refuses to divide by zero — `callPct: calls + puts > 0 ? Math.round((calls / (calls + puts)) * 100) : 50` — and then the render path **recomputed the same ratio** two lines later without the guard: `const callBarW = Math.round((row.calls / row.total) * barW)`. |
+| **Evidence — executed, not reasoned** | With `calls: 0, puts: 0, total: 0`: `row.callPct` (guarded) → **50**; `barW` → 0; `callBarW` → **NaN**; `putBarW` → **NaN**; rendered as `width: NaN% / width: NaN%`. |
+| **Reachability** | Narrow but real. A row exists for any ticker on the tape and `.slice()` only trims the top N, so on a thin or filtered tape a ticker whose prints all carry zero premium reaches the render. |
+| **Fix** | Extracted to `leaderBarWidths(row, maxTotal)` in `helix-bar-widths.ts` — the arithmetic was three inline expressions inside a `.map()`, unreachable from a test. `callBarW` is now guarded on `row.total > 0`, and `barW` on `maxTotal > 0`. The zero case returns **0-width bars, not a 50/50 split**: `barW` is already 0 for such a row, so half a bar of each colour would invent width the row has no premium to justify. `putBarW` stays derived by subtraction rather than a second division, so the two slices always sum to exactly `barW` — the rail is `overflow-hidden`, and two independently-rounded divisions can land a pixel over. |
+| **The pattern** | The guard existed, in the same file, on the same quantity. It just was not applied where the division happens. That is the sixth instance this session of *a guard placed where the bug was found rather than everywhere the bug can occur* — after #2721, #2722, #2725, #2727 and #2741. |
+
+### (b) `SectorFlowPanel`'s SECTOR_ORDER comparator is dead code, and its comment describes behaviour that never happens
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `[...entries].sort(<SECTOR_ORDER-aware comparator>).sort((a, b) => b.total - a.total)`. The second sort replaces the ordering wholesale, so the curated sector grouping never reaches the screen. The comment above it reads *"Sort by SECTOR_ORDER then by total premium for unlisted sectors"* — which is what the first comparator does and what the panel does not. |
+| **Evidence** | Ran both orderings against the same input: **byte-identical output**. `SECTOR_ORDER` is imported by this file for the dead comparator only — its sole other reference is its definition in `sector-map.ts`. |
+| **Why remove rather than leave** | Someone changing the sector ordering would edit those eight lines and watch nothing happen. Dead code that looks load-bearing costs more than no code. |
+| **Fix, and what it deliberately does NOT decide** | The comparator and the now-unused import are deleted; the surviving `.sort((a, b) => b.total - a.total)` is **exactly what shipped**, so no member sees any change. Whether the panel *should* group by `SECTOR_ORDER` instead of ranking by premium is a **product question**, recorded in the comment and not answered here — quietly "restoring" the sector grouping would be a silent behaviour change dressed as a cleanup. |
+
+| **Blast radius** | Two panels. `NetPremiumLeaderboard` swaps three inline expressions for one call, identical output for every non-zero row and finite output for the zero row. `SectorFlowPanel` loses dead code only. No API, no Largo field, no persisted value, no shared helper touched. |
+| **Regression guard** | 7 tests, proven falsifiable: restoring the unguarded division fails **3 of 7**, the fix passes 7/7. They pin the NaN case by name; that a zero-premium row draws nothing rather than 50/50; that an empty leaderboard (`maxTotal` 0) gives empty bars rather than infinite ones; that the largest row fills the rail and splits by its call share; that a smaller row scales against the **largest**, not itself; that the two slices always sum to `barW` across five ratio shapes; and the all-put / all-call extremes. |
+| **Status** | FIXED. |
+
+## 2026-08-23 — [FINDING, P2 tooling] Two committed tools disagreed about duplicate findings, so the fleet's own remedy manufactured a third copy — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `verify` failed on #2673 with *"1 finding(s) present at e2194732 are missing from HEAD"*, naming a Night Hawk entry the branch had not touched. Nothing had been deleted. The branch's merge resolution had **collapsed a byte-identical duplicate**, which the guard counts as a deletion. |
+| **Root cause** | Two committed tools hold opposite rules for the same file. `findings-merge-resolve.mjs` resolves conflicts by taking the **union** of entries — union semantics de-duplicate by construction, and that is the whole point of the tool. `findings-no-loss.test.ts` compared entry headings as a **multiset**, so "3 copies became 1" read as two deleted findings. A branch that used the prescribed resolver was therefore guaranteed to go red whenever `FINDINGS.md` contained a duplicate. |
+| **Why it is worse than a false alarm** | The guard's message prescribes the remedy: *"restore whatever it does not."* The only way to green was to **re-add the redundant copy** — which then merged into `main` and became permanent, because the same guard forbids anyone ever removing it. The ratchet only turns one way. |
+| **Evidence** | Walking every commit on `main` that touched the file, counting copies of the Night Hawk entry: `a9d1c855` **0 → 1** (a lane merge), `e2194732` **1 → 2** (that lane's own PR appending it again), `7bd99a49` **2 → 3** — and `7bd99a49` is titled *"fix(findings): restore duplicate Night Hawk entry dropped during earlier rebase"*. **The commit that took it to three is the guard's own prescribed remedy.** Growth was 2 → 3 inside one hour. |
+| **The second half of the root cause** | `findings-fold-staging.mjs` had **no duplicate check of any kind** — it read every staged file and appended it unconditionally. So a staged entry that reached the fold twice produced two byte-identical copies, and the guard then froze them in place. Neither tool could recover; one created duplicates, the other made them permanent. |
+| **The distinction that resolves it** | The guard's real purpose is that no finding's **content** is ever lost. Counting headings over-enforces that in one direction and *under*-enforces it in another. Removing one of N byte-identical copies loses nothing, by definition. But `main` also carries two same-heading pairs with **different bodies** (2026-08-04 Night Hawk scroll, 2026-08-06 discovery-ceiling widening), and a heading-keyed count cannot tell those apart from redundant copies — so the old rule was simultaneously too strict and too loose. |
+| **Fix** | New shared `scripts/audit/lib/findings-entry-set.mjs`, so the guard and the fold script share ONE definition of a lost entry. The rule: **HEAD must retain, per heading, at least as many copies as the base had DISTINCT VERSIONS.** Keyed on the heading, so an entry superseded by editing its Status still passes — the documented workflow is untouched. Counted by distinct bodies, so a same-heading entry with different content still cannot be dropped, while N identical copies may honestly collapse. `findings-fold-staging.mjs` now skips a staged entry already present verbatim (and still deletes its file — its content is already where it belongs), while an entry whose body has legitimately changed still folds. |
+| **Fix rationale — this is not a weakened guard** | Relaxing a ratchet in response to it firing is exactly what this repo warns against, so the change is strictly stronger where it matters: the old rule **could not detect** dropping one of the 2026-08-04 pair (same heading, different body — the count still matched), and the new one does. It is permissive only where there is provably nothing to lose. The failure message now also says outright that collapsing identical copies is allowed and is not what it is reporting, so the next reader is not sent to re-add a copy. |
+| **Also done here** | The live duplicate is collapsed: the Night Hawk entry goes **3 copies → 1**. Verified with the new rule (`lostEntries` = 0) and against the old one, which reports the same cleanup as **2 lost findings** — the concrete demonstration that the cleanup was previously impossible. **Both distinct-bodied pairs survive untouched**, which is the case that must not be collapsed. |
+| **Blast radius** | Fleet-wide, and it was blocking merges rather than corrupting data: every lane using the prescribed resolver on a file containing a duplicate. No product code. `findings-merge-resolve.mjs` is unchanged — it was never the one in the wrong. `findings-hygiene.test.ts` and `findings-reconcile.mjs` were read and need no change; neither counts copies. |
+| **Note for whoever merges this** | It edits `FINDINGS.md` directly, which lane PRs normally must not do. That prohibition exists to stop append-anchor collisions; this is a collapse, not an append. If a fold lands first it will conflict — resolve with `findings-merge-resolve.mjs` as usual and re-run the collapse. |
+| **Regression guard** | `scripts/audit/lib/findings-entry-set.test.mjs`, 7 tests: entries split whole with the preamble excluded and no-entry documents yielding nothing; 3 identical copies collapsing to 1 **or 2** losing nothing; same heading with different bodies counting as two findings, neither droppable; outright deletion still a loss even when the entry had three copies; an in-place Status edit **not** reading as a deletion; additions and an empty base always fine; and `alreadyPresent` matching verbatim (trailing newline included) while refusing an edited body, a new entry, and empty input. The fold script's idempotency was also driven end-to-end on a scratch file: fold, re-fold the same entry (1 copy, skipped), then fold an edited body (2 copies — the supersede path still works). |
+| **Status** | FIXED. |
+
+## 2026-08-23 — [FINDING, P2 tooling] `ecr-push-production.yml`'s `push` trigger repeatedly failed to fire on member-facing merges — ROOT CAUSE FOUND: `automerge.yml` merges under `GITHUB_TOKEN`, which never triggers downstream workflows — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Multiple times in one session, a squash-merge to `main` that touched deploy-trigger paths (`src/**`, etc.) produced **zero** workflow runs for `ecr-push-production.yml` — not queued, not in-progress, not cancelled. `GET /actions/workflows/ecr-push-production.yml/runs` simply had no entry for the commit. This is distinct from the previously-documented ~1hr end-to-end deploy latency (#2669) — that is a slow-but-present run; this is an **absent** run for a commit that should have triggered one. |
+| **Root cause (corrected — this session)** | **GitHub's documented anti-recursion rule, not a webhook-delivery flake.** An event created by the default `GITHUB_TOKEN` inside a workflow run never triggers ANY other workflow — not push-triggered CI, not CodeQL, not `ecr-push-production.yml`. `automerge.yml`'s merge step ran `gh pr merge --auto --squash` under `GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}`, so every PR it auto-merged reached `main` via a `github-actions[bot]`-authored merge event that is invisible to every push-triggered workflow. Isolated by direct correlation, not inference: **every** merge in this session that skipped CI/deploy (`#2783`, `#2796` — both `claude/largo-53p3kg`) was `merged_by: github-actions[bot]` via this workflow; **every** merge that fired CI/deploy correctly (`#2790`, `#2792`, `#2793`, `#2795`, `#2797`, `#2798`, `#2799`, `#2800`, `#2801`, `#2802`, `#2804`, and more) was `merged_by: coreentryadmin-web` (a real identity, via the GitHub API/MCP, not `GITHUB_TOKEN`). 100% split, no exceptions, across ~15 merges observed. |
+| **Why it read as a webhook flake at first** | The `on.push.paths` filter was correctly scoped and `concurrency` was correctly configured, so nothing in the YAML explained an *absent* run — that's what made it look like delivery infrastructure rather than the workflow's own logic. The actual mechanism is a GitHub Actions platform behavior applied at the token layer, not a delivery gap: a queued run never even gets created, so there is nothing to see in the runs list, and no webhook log would show a drop either (the event fires; the platform just doesn't let it cascade). |
+| **Blast radius** | Every PR `automerge.yml` merges (any `claude/*` or `cursor/*` branch) — not lane-specific. Confirmed twice on the same lane only because Largo happened to be the lane with PRs sitting in the auto-merge queue during the observation window; the mechanism applies identically to any branch this workflow merges. |
+| **Fix** | `automerge.yml`'s merge step now uses `GH_TOKEN: ${{ secrets.AGENT_RELEASE_TOKEN \|\| secrets.GITHUB_TOKEN }}` — the same PAT `agent-pr-release.yml` already relies on for the same underlying reason (`GITHUB_TOKEN` being refused a capability a real identity has). A PAT's push events are a real-user identity to GitHub, so they trigger downstream workflows normally. Falls back to `GITHUB_TOKEN` if the secret is ever unset, preserving old (silently-broken) behavior over a hard failure. |
+| **Fix rationale — why not just re-dispatch after the fact** | The mitigation used throughout this session (coordinator manually re-runs `workflow_dispatch` after validating each merge wave) works but requires a human/agent to notice and remember every time — exactly the kind of thing that should be structural. Fixing the token means the very next `automerge.yml`-driven merge deploys itself correctly with no separate step. |
+| **Verification** | `src/automerge-token-recursion.test.ts` (new) asserts the merge step's env prefers `AGENT_RELEASE_TOKEN` over bare `GITHUB_TOKEN`, so this can't silently regress back to the broken form. Live confirmation needs one more `automerge.yml`-driven merge post-deploy of this fix to observe a `push`-triggered `ecr-push-production.yml` run appear for a `github-actions[bot]`-merged commit — not yet observed at time of writing since this fix has not itself gone through that path yet. |
+| **Status** | FIXED (code + regression test); live end-to-end confirmation on the NEXT automerge.yml-driven merge is the remaining open item, not the fix itself. |
+
+## 2026-08-23 — [FINDING, P2 Account/Pricing/UI] Real admin members would see "Free" on /account and the full upgrade ladder on /pricing, /upgrade — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `ClerkAuthBridge` (`src/lib/auth-client.tsx`) deliberately sets `useAppAuth().tier` to the literal string `"admin"` for `role:admin` users — its own comment states the intent: "role:admin must bypass client-side Premium gates." But `parseTier()` (`src/lib/tiers.ts`) never recognized `"admin"` as one of its inputs and silently fell through to `"free"`. Two client components fed `useAppAuth().tier` straight into `parseTier`: `AccountMembershipPanel.tsx` (the `/account` "Current plan" card) and `PlanLadder.tsx` (the `/pricing`, `/upgrade` CTA ladder). A real, normally-hydrated admin member visiting either page would see "Free" with an "Upgrade" CTA, and the full not-yet-subscribed pricing ladder, despite already having full platform access — the opposite of what the bridge's own comment says it's for. |
+| **Root cause** | Originally logged in Phase 0 (`docs/audit/UI-UX-MAP.md` §1.2b) as an **OPEN QUESTION**, on the reasoning that this lane's minted, unhydrated Clerk sessions can't distinguish "the hook never hydrated" from "the hook hydrated and genuinely resolved to Free" — so the "Free" reading captured in screenshots couldn't be trusted as evidence either way. That reasoning is correct for *what a screenshot shows*, but the underlying question — does `parseTier("admin")` return `"free"`, and does any real component pass it that value — doesn't require a screenshot or a hydrated session at all. It's answerable by reading the source: `parseTier`'s recognized set (`tiers.ts` line 10-11) excludes `"admin"`, and both `AccountMembershipPanel.tsx` and `PlanLadder.tsx` call `parseTier(useAppAuth().tier)` directly. Neither of those facts depends on whether a *particular* session has hydrated — the bug is in the code path itself, not in any one observation of it. |
+| **Evidence** | Static trace, not a live screenshot: `src/lib/auth-client.tsx:40-41` (`tier = meta?.role === "admin" ? "admin" : ...`), `src/lib/tiers.ts:9-13` (`parseTier` before this fix — no `"admin"` branch, falls to `return "free"`), `src/components/account/AccountMembershipPanel.tsx:15` (`const tier = parseTier(rawTier)`), `src/components/upgrade/PlanLadder.tsx:32` (`const userTier = parseTier(tier ?? "")`). All four are unconditional on hydration state — once `useAppAuth()` returns `tier: "admin"` for ANY reason (hydrated or not), the bug fires. |
+| **Fix** | Added `resolveDisplayTier()` to `tiers.ts` — maps `"admin"` → `"premium"`, defers to `parseTier` for everything else. Switched `AccountMembershipPanel.tsx` and `PlanLadder.tsx` to call it instead of `parseTier`. |
+| **Fix rationale** | Deliberately did **not** add `"admin"` to `parseTier` itself. `src/components/analytics/Ga4ConversionTracker.tsx` also reads `useAppAuth().tier` and calls `parseTier` on it — to detect a tier *upgrade* (`current` vs `previous`) and fire a purchase-conversion event (GA4 + Google Ads). Its `prevTier` ref starts `null`, so on first mount `previous` is always `null` (`wasPaid = false`). If `parseTier("admin")` returned `"premium"`, then for every admin session, `current` would be `"premium"` on the very first render, `nowPaid` would be `true`, `wasPaid` would be `false` — firing a false "purchase" conversion event on every admin page load, polluting ad-spend/conversion data with events that were never real purchases. `resolveDisplayTier` is a separate, display-only function so `Ga4ConversionTracker` keeps calling the untouched `parseTier` and stays correct. Mapped `"admin"` to `"premium"` (the top tier) rather than inventing a 4th `Tier` value ("admin") — that would ripple through `TIER_RANK`, `TIER_LABELS`, and `tierAtLeast` for a distinction the bridge's own comment says shouldn't exist client-side ("bypass client-side Premium gates" — i.e. admin should behave AS premium for gating, not as a separate labeled state). |
+| **Blast radius** | Checked every `parseTier` call site in the repo (16 total): all server-side ones (webhooks, tier-cache, admin API routes, billing-lifecycle-email, user-directory, session-claims) read the RAW Clerk `publicMetadata.tier`/JWT `tier` claim, never the client-synthesized `"admin"` string (role and tier are separate metadata fields) — none of them are affected by this change, since `parseTier` itself is untouched. The three client-side consumers of `useAppAuth().tier` are `AccountMembershipPanel`, `PlanLadder` (both fixed) and `Ga4ConversionTracker` (deliberately left on `parseTier`, see rationale above) — no other consumer exists. A minor, deliberately out-of-scope side effect: an admin now sees "Manage subscription" (linking to the generic Whop billing portal) rather than "Upgrade" on `/account` — the same experience a real premium member already gets, not a new UI state invented for this fix, and not misleading since the portal link is a generic checkout/account URL, not user-specific. |
+| **Regression guard** | `src/lib/tiers.test.ts` (new file), 6 tests: `parseTier("admin")` still returns `"free"` (documents the deliberate non-change); `resolveDisplayTier("admin")` returns `"premium"`; `resolveDisplayTier` matches `parseTier` for every other input; source-level assertions that `AccountMembershipPanel.tsx` and `PlanLadder.tsx` call `resolveDisplayTier` and do NOT call bare `parseTier`; a source-level assertion that `Ga4ConversionTracker.tsx` still calls `parseTier` and does NOT reference `resolveDisplayTier`. The wiring tests verified to fail against the pre-fix source (`git stash`) and pass with the fix. `npx tsc --noEmit` and `npx eslint` both clean on all four touched files. |
+| **Status** | FIXED. Unlike this pass's UI screenshot fixes, this one needed no live/post-deploy re-check to close — the defect and the fix are both provable from source + a pure unit test, independent of any particular session's hydration state. |
+
 ## 2026-08-23 — [FINDING, P2 SPX Slayer] The pin stability gate held nothing: `pinConfirmed` was overwritten with the raw pin on every stable pass — FIXED
 
 > **kind:** `FINDING`
