@@ -1854,7 +1854,7 @@ html.nav-locked body { overflow: hidden; }
 .mv-beats-tally { font-family: var(--font-mono, monospace); font-size: 0.74rem; color: #e2f4ff; }
 .mv-beats-rows { display: flex; flex-direction: column; gap: 0.22rem; }
 .mv-beat-row {
-  display: grid; grid-template-columns: 3.2rem 1fr 3.4rem 3.6rem;
+  display: grid; grid-template-columns: 3.8rem 1fr 3.4rem 3.6rem;
   align-items: center; gap: 0.5rem;
   padding: 0.18rem 0.3rem; border: 0; border-radius: 0.35rem;
   background: transparent; color: inherit; text-align: left; cursor: pointer;
@@ -1865,7 +1865,9 @@ html.nav-locked body { overflow: hidden; }
 .mv-beat-row { min-height: 24px; }
 .mv-beat-row:disabled { cursor: default; }
 .mv-beat-row:hover:not(:disabled) { background: rgba(125, 211, 252, 0.07); }
-.mv-beat-date { color: rgba(125,211,252,0.88); }
+/* nowrap: the 3.2rem column this replaced wrapped an 8-char yy-mm-dd date
+   ("26-05-\n20") onto two lines — widened to 3.8rem and pinned to one line. */
+.mv-beat-date { color: rgba(125,211,252,0.88); white-space: nowrap; }
 .mv-beat-track { position: relative; height: 8px; border-radius: 999px; background: var(--mv-track); overflow: hidden; }
 .mv-beat-bar {
   position: absolute; inset: 0; border-radius: 999px;
