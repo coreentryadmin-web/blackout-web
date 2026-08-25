@@ -931,7 +931,23 @@ the swap is correct App-Store-compliance behavior — but the original inventory
 describing the wrong platform's UI as if it were the desktop web page. **Separately, per §1.2b:**
 the three CTAs are `PlanLadder.tsx`'s not-yet-subscribed default state — our minted session's
 client-side tier hook never hydrates, so this pass cannot confirm whether a real hydrated premium
-session would show these same CTAs or a "Manage subscription" state instead.
+session would show these same CTAs or a different state instead.
+
+**RESOLVED, 2026-08-25 — a real hydrated premium session would NOT show these CTAs, confirmed by
+source trace (same method as item 8's `parseTier("admin")` closure).** `PlanLadder.tsx` gates each
+card independently: `hasPremium = isLoaded && tierAtLeast(userTier, "premium")`, `hasCommunity =
+isLoaded && tierAtLeast(userTier, "community")` (`resolveDisplayTier` per §1.2b, so an admin's
+synthetic `"admin"` tier resolves to `"premium"` here same as everywhere else this wrapper is
+used). Where the audit's unhydrated session rendered `<CheckoutLink>` ("Unlock Premium →" /
+"Unlock Monthly →" / "Get SPX Access →"), a real member whose tier already clears that card's
+requirement renders a static `"Current Plan"` badge instead — not a link, not a checkout CTA, and
+not literally "Manage subscription" text (the map's original phrasing guessed at a label that
+doesn't exist; the real state is simpler than that). This is a real, working conditional — not a
+hardcoded default the audit merely failed to trigger — so the only genuine unknown left is whether
+`isLoaded` itself ever becomes `true` in this lane's minted-session harness, which is the SAME
+already-documented hydration-timing limitation `§1.2b` describes for every `useAppAuth()`
+consumer, not a new gap specific to `/pricing`/`/upgrade`. No code change; this was a source-trace
+closure of an audit-coverage gap, not a defect.
 
 **`RE-VERIFIED 2026-08-23 (correct UA)` — the original `/upgrade` entry inherited the same error**
 ("same signed-in-member routing pattern as `/pricing`, no drift found" — there was no such pattern
