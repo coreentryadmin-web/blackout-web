@@ -18,3 +18,4 @@ export * from "./live-pipeline";
 export * from "./contract-attach";
 export * from "./evidence-bundle-map";
 export * from "./pin-positioning-stamp";
+export * from "./desk-evidence-lines";

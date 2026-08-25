@@ -84,6 +84,8 @@ test("Thesis tab renders ThesisRankCard when thesisFirst is on a 0DTE play", asy
   );
   assert.match(html, /nh-deck-thesis-rank/);
   assert.match(html, />Evidence</);
+  assert.match(html, />HELIX</);
+  assert.match(html, />THERMAL</);
   assert.match(html, />Contract</);
 });
 
