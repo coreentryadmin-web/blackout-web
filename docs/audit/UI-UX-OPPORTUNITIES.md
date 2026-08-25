@@ -84,6 +84,31 @@ a pattern worth generalizing. Classify with the brief's own scale:
    embeds of `VectorChart.tsx` could diverge) stays real but speculative — no second embed exists
    yet to check.
 
+   **Correction, 2026-08-25 — the tunnel-exhaustion hypothesis above does NOT hold up; the real
+   cause is still unknown.** Retried the `/dashboard` capture later the same day, well after the
+   original attempts, with no other live-capture activity in between and a fresh session mint —
+   `meridian-interaction-audit.mjs` had just completed cleanly through the same proxy tunnel
+   moments earlier, ruling out exhaustion from a leaked prior run. `/dashboard` still failed
+   identically (`ERR_CONNECTION_RESET`, both with and without `--full`), while every OTHER page
+   this session (homepage, `/meridian`, `/terminal`) succeeds through the identical mechanism.
+   This is `/dashboard`-specific, reproducible, and NOT a general tunnel-health problem — the
+   original diagnosis was wrong. Chased two hypotheses and ruled both out: (1) the known
+   28-50MB-SSR-payload bug (`FINDINGS.md`, 2026-08-01) — its fix (`trimHistoryToSession`) is
+   confirmed present in `main`, AND `SpxVectorEmbed.tsx`'s own header comment says it deliberately
+   never SSRs `loadVectorSeedProps` in the first place, specifically to avoid this exact failure
+   mode; (2) an HTTP/1.0-vs-103-Early-Hints parsing mismatch in `proxyFetch`
+   (`proxy-tunnel-context.cjs` sends `HTTP/1.0`, which shouldn't solicit a 103 from the origin, so
+   this doesn't fit either). A curl probe with the same session cookie also failed to reach
+   `/dashboard` as authenticated (redirected to `/sign-in`) even though the identical cookie
+   authenticates fine against API routes elsewhere in this session — inconclusive on its own
+   (curl's plain request doesn't replicate a full browser navigation), but a data point that
+   `/dashboard` specifically behaves differently under this cookie than every other route tried.
+   **Leaving this genuinely open rather than re-guessing**: the code-identity evidence still
+   closes the ORIGINAL question (does `/dashboard` inherit the footer-legend fix — yes), but
+   `proxy-browser.cjs`'s specific inability to capture `/dashboard` at all is now flagged as its
+   own unresolved, reproducible tooling gap, not attributed to a cause that turned out to be
+   wrong.
+
 7. **[DONE, 2026-08-23] `proxy-browser.cjs` now warns loud when `--viewport` implies desktop but
    `--desktop` is omitted.** This Phase 0 pass shipped 8 desktop findings built on the wrong UA
    (`docs/audit/UI-UX-MAP.md`'s top-of-file correction) because the script's own doc comment warned
