@@ -133,7 +133,7 @@ function buildPrompt(
   extraHint = "",
 ): string {
   const levels =
-    d.spxPrice != null
+    d.spxPrice != null && Number.isFinite(d.spxPrice)
       ? `LIVE SPX: $${Math.round(d.spxPrice)}, regime: ${d.regime}, flip: ${d.flipLevel}, call wall: ${d.topCallWall ?? "—"}, put wall: ${d.topPutWall ?? "—"}`
       : "No live data — write conceptually but stay specific about SPX/0DTE.";
 
@@ -157,8 +157,8 @@ export function fallbackDeskTweet(
   type: PostType,
   d: MarketSnapshot,
 ): string {
-  const spx = d.spxPrice ? `$${Math.round(d.spxPrice)}` : "SPX";
-  const flip = d.flipLevel ? `$${d.flipLevel}` : "flip";
+  const spx = d.spxPrice != null && Number.isFinite(d.spxPrice) ? `$${Math.round(d.spxPrice)}` : "SPX";
+  const flip = d.flipLevel != null && Number.isFinite(d.flipLevel) ? `$${d.flipLevel}` : "flip";
   const hooks: Record<PostType, string> = {
     desk_open: `Morning — SPX at ${spx}, flip sitting at ${flip}. Night Hawk had the levels before the bell; Vector's showing where dealers lean. How are you playing the open?`,
     desk_flow: `Helix caught a fat print while Thermal lit up the wall zone. Flip at ${flip} still the line in the sand. You fading or riding flow today?`,

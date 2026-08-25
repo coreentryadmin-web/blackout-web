@@ -191,6 +191,7 @@ async function priceNearMs(ticker: string, targetMs: number): Promise<number | n
 }
 
 export function gradeOutcome(direction: string | null, priceAtFire: number, price1h: number): "continued" | "reversed" | "flat" {
+  if (!(priceAtFire > 0) || !(price1h > 0)) return "flat";
   const changePct = ((price1h - priceAtFire) / priceAtFire) * 100;
   if (Math.abs(changePct) < OUTCOME_FLAT_THRESHOLD_PCT) return "flat";
   if (direction === "bullish") return changePct > 0 ? "continued" : "reversed";

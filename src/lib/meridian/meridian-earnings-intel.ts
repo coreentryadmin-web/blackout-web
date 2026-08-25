@@ -40,6 +40,7 @@ export type MeridianEarningsIntelPrefetch = {
 };
 
 function fmtPrem(n: number): string {
+  if (!Number.isFinite(n)) return "$—";
   const abs = Math.abs(n);
   if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (abs >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
@@ -228,7 +229,7 @@ export async function loadMeridianEarningsIntel(input: {
    * moves, and a quote that cannot describe this print is not evidence about this print.
    */
   const vector_move_pct =
-    vectorCoversPrint && vectorEm?.movePct != null
+    vectorCoversPrint && vectorEm?.movePct != null && Number.isFinite(vectorEm.movePct)
       ? Number((vectorEm.movePct * 100).toFixed(1))
       : null;
 

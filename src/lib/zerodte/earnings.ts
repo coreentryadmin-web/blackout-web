@@ -63,7 +63,7 @@ function shapeEarningsRows(
     const est = epsEst != null ? Number(epsEst) : null;
     const act = epsAct != null ? Number(epsAct) : null;
     const surprise =
-      est != null && act != null && est !== 0
+      est != null && act != null && Number.isFinite(est) && Number.isFinite(act) && est !== 0
         ? Number((((act - est) / Math.abs(est)) * 100).toFixed(1))
         : null;
     const emRaw = r.expected_move_perc ?? r.expected_move_pct ?? null;

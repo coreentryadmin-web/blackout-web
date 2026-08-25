@@ -95,9 +95,9 @@ export function computeEarningsYoY(row: BenzingaStructuredEarnings | MeridianEar
   const rev = row.estimated_revenue;
   const prevRev = row.previous_revenue;
   const eps_yoy_pct =
-    est != null && prev != null && prev !== 0 ? Number((((est - prev) / Math.abs(prev)) * 100).toFixed(1)) : null;
+    est != null && prev != null && prev !== 0 && Number.isFinite(est) && Number.isFinite(prev) ? Number((((est - prev) / Math.abs(prev)) * 100).toFixed(1)) : null;
   const revenue_yoy_pct =
-    rev != null && prevRev != null && prevRev !== 0
+    rev != null && prevRev != null && prevRev !== 0 && Number.isFinite(rev) && Number.isFinite(prevRev)
       ? Number((((rev - prevRev) / Math.abs(prevRev)) * 100).toFixed(1))
       : null;
   if (eps_yoy_pct == null && revenue_yoy_pct == null) return null;

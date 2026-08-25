@@ -110,7 +110,7 @@ export function buildHelixAuditRow(alertIdValue: string, flow: MarketFlowAlert) 
     direction: normalizeHelixDirection(flow.direction),
     confidence_score: flow.score,
     confidence_label: null,
-    trigger_reason: `$${flow.premium.toLocaleString()} ${flow.option_type} premium print`,
+    trigger_reason: `$${Number.isFinite(flow.premium) ? flow.premium.toLocaleString() : "—"} ${flow.option_type} premium print`,
     decision_trace: [
       { premium: flow.premium, option_type: flow.option_type, strike: flow.strike, expiry: flow.expiry, route: flow.route },
     ],

@@ -202,7 +202,7 @@ export function validatePrint<T extends FlowPrint>(row: T, spot: number | null, 
     const itmDepth = intrinsic == null ? 0 : intrinsic / CONTRACT_MULTIPLIER / spot;
     const moneyness = Math.abs(strike - spot) / spot;
 
-    if (itmDepth > DEEP_ITM_THRESHOLD) {
+    if (itmDepth > DEEP_ITM_THRESHOLD && Number.isFinite(itmDepth)) {
       issues.push({
         code: "premium_is_intrinsic",
         severity: "exclude_directional",
@@ -215,7 +215,7 @@ export function validatePrint<T extends FlowPrint>(row: T, spot: number | null, 
     // Surfaced for verification, never asserted malformed — see STRIKE_VERIFY_MONEYNESS. This is
     // additive to the deep-ITM exclusion above: a 97%-ITM strike is both non-directional AND worth
     // a human look, and reporting only one of those loses the other.
-    if (moneyness > STRIKE_VERIFY_MONEYNESS) {
+    if (moneyness > STRIKE_VERIFY_MONEYNESS && Number.isFinite(moneyness)) {
       issues.push({
         code: "strike_implausible",
         severity: itmDepth > DEEP_ITM_THRESHOLD ? "note" : "exclude",

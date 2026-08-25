@@ -174,7 +174,7 @@ export function evaluateSwingGates(
 
   // spread — a distinct structural gate (only meaningful once quotes exist).
   const spreadPct = spreadPctOf(contract);
-  if (spreadPct != null && spreadPct > ctx.liquidity.maxSpreadPct) {
+  if (spreadPct != null && Number.isFinite(spreadPct) && Number.isFinite(ctx.liquidity.maxSpreadPct) && spreadPct > ctx.liquidity.maxSpreadPct) {
     blocks.push(
       skipBlock("spread", `Spread ${(spreadPct * 100).toFixed(1)}% > max ${(ctx.liquidity.maxSpreadPct * 100).toFixed(1)}%.`, {
         spreadPct: Math.round(spreadPct * 1000) / 1000,

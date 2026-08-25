@@ -564,9 +564,12 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "X Autopost",
     kind: "http",
     path: "/api/cron/x-autopost",
-    schedule_label: "Every 2h",
+    schedule_label: "Every 1-2h (covers EDT + EST windows)",
     stale_after_min: 240,
-    schedule_cron_utc: "0 12,14,16,18,20,22,0 * * *",
+    // EDT (UTC-4): ET 8,10,12,14,16,18,20 → UTC 12,14,16,18,20,22,0
+    // EST (UTC-5): ET 8,10,12,14,16,18,20 → UTC 13,15,17,19,21,23,1
+    // Union covers both seasons: fire hourly 0-1,12-23 to guarantee post window hits
+    schedule_cron_utc: "0 0,1,12,13,14,15,16,17,18,19,20,21,22,23 * * *",
     description: "Scheduled X posts (paused via X marketing env)",
   },
   {

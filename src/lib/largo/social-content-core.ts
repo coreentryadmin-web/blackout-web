@@ -82,7 +82,7 @@ export function buildPostAngles(
     case "win_recap":
       if (top) {
         angles.push(
-          `Lead with ${top.ticker} ${top.direction ?? ""} — ${top.live_pnl_pct != null ? `${top.live_pnl_pct.toFixed(0)}%` : "live mark"} if still open/graded.`,
+          `Lead with ${top.ticker} ${top.direction ?? ""} — ${top.live_pnl_pct != null && Number.isFinite(top.live_pnl_pct) ? `${top.live_pnl_pct.toFixed(0)}%` : "live mark"} if still open/graded.`,
         );
         angles.push("Connect flow → positioning → board commit (Helix + Thermal + Night Hawk panels).");
       } else {
@@ -97,7 +97,7 @@ export function buildPostAngles(
     case "track_record":
       if (pack.record_7d && pack.record_7d.sample_size >= 5) {
         angles.push(
-          `Cite 7d 0DTE record: ${pack.record_7d.wins}W/${pack.record_7d.losses}L${pack.record_7d.win_rate_pct != null ? ` (${pack.record_7d.win_rate_pct.toFixed(0)}%)` : ""}.`,
+          `Cite 7d 0DTE record: ${pack.record_7d.wins}W/${pack.record_7d.losses}L${pack.record_7d.win_rate_pct != null && Number.isFinite(pack.record_7d.win_rate_pct) ? ` (${pack.record_7d.win_rate_pct.toFixed(0)}%)` : ""}.`,
         );
       } else {
         angles.push("Sample too thin — say so; do not quote a win rate.");

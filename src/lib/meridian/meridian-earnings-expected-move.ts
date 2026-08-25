@@ -70,7 +70,7 @@ export async function loadEarningsExpectedMovePct(
   earningsDateYmd: string | null
 ): Promise<number | null> {
   const em = await loadEarningsExpectedMove(ticker, earningsDateYmd);
-  if (em?.movePct == null) return null;
+  if (em?.movePct == null || !Number.isFinite(em.movePct)) return null;
   return Number((em.movePct * 100).toFixed(1));
 }
 

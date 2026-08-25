@@ -334,7 +334,7 @@ export function buildMeridianSummary(input: SummaryInput): MeridianSummary {
     const evNet = side === "call" ? evidence.net : -evidence.net;
 
     const why: string[] = [];
-    if (implied != null) {
+    if (implied != null && Number.isFinite(implied)) {
       why.push(
         `Options imply a ${(implied * 100).toFixed(0)}% chance of closing ${side === "call" ? "above" : "below"} ${picked.level} (${picked.from})`
       );
@@ -352,7 +352,7 @@ export function buildMeridianSummary(input: SummaryInput): MeridianSummary {
     if (names.length) why.push(`Evidence for: ${names.join(", ")}`);
     const against = side === "call" ? evidence.topBear : evidence.topBull;
     if (against.length) why.push(`Against: ${against.join(", ")}`);
-    if (reaction.medianAbsMovePct != null && movePct != null) {
+    if (reaction.medianAbsMovePct != null && movePct != null && Number.isFinite(movePct) && Number.isFinite(reaction.medianAbsMovePct)) {
       const rich = reaction.medianAbsMovePct < movePct;
       why.push(
         `Implied ${movePct.toFixed(1)}% vs typical realised ${reaction.medianAbsMovePct.toFixed(1)}% — options look ${rich ? "rich" : "cheap"}`
@@ -387,7 +387,7 @@ export function buildMeridianSummary(input: SummaryInput): MeridianSummary {
   let headline: string;
   if (evidence.voting === 0) {
     headline = "No pillar has taken a side — nothing to summarise yet";
-  } else if (contested) {
+  } else if (contested && Number.isFinite(evidence.bullWeight) && Number.isFinite(evidence.bearWeight)) {
     headline = `Evidence is split ${evidence.bullWeight.toFixed(1)} bull vs ${evidence.bearWeight.toFixed(1)} bear — both sides shown, neither promoted`;
   } else if (lean === "neutral") {
     headline = "Evidence is near-balanced — no directional edge worth forcing";

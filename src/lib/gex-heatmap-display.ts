@@ -220,6 +220,7 @@ export function fmtHeatmapExpiry(ymd: string): string {
 }
 
 export function fmtHeatmapStrike(n: number): string {
+  if (!Number.isFinite(n)) return "—";
   return n.toLocaleString("en-US", { maximumFractionDigits: 1, minimumFractionDigits: 0 });
 }
 

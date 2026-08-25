@@ -120,7 +120,9 @@ export async function diffEstimateRevisionTimeline(
       row.estimated_revenue != null &&
       prev.estimated_revenue != null &&
       prev.estimated_revenue !== 0 &&
-      row.estimated_revenue !== prev.estimated_revenue
+      row.estimated_revenue !== prev.estimated_revenue &&
+      Number.isFinite(row.estimated_revenue) &&
+      Number.isFinite(prev.estimated_revenue)
     ) {
       const revenue_delta_pct = Number(
         (((row.estimated_revenue - prev.estimated_revenue) / Math.abs(prev.estimated_revenue)) * 100).toFixed(1)

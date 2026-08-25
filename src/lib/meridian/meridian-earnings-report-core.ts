@@ -79,7 +79,7 @@ function fundamentalsLean(f: MeridianFinancialsContext | null): {
   }
   let score = 0;
   const parts: string[] = [];
-  if (f.revenue_yoy_pct != null) {
+  if (f.revenue_yoy_pct != null && Number.isFinite(f.revenue_yoy_pct)) {
     if (f.revenue_yoy_pct >= 10) {
       score += 1;
       parts.push(`Revenue ${f.revenue_yoy_pct >= 0 ? "+" : ""}${f.revenue_yoy_pct.toFixed(0)}% YoY`);
@@ -121,18 +121,20 @@ function thermalLean(input: ReportInput): { lean: MeridianEarningsReportSignal["
     score -= 1;
     parts.push("Short-gamma — moves can extend");
   }
-  if (input.spot != null && input.king_strike != null) {
+  if (input.spot != null && input.king_strike != null && Number.isFinite(input.spot) && Number.isFinite(input.king_strike) && input.king_strike !== 0) {
     const dist = ((input.spot - input.king_strike) / input.king_strike) * 100;
-    if (Math.abs(dist) <= 0.5) parts.push(`Spot pinned near king ${input.king_strike.toLocaleString()}`);
-    else if (dist > 1.5) {
-      score -= 1;
-      parts.push(`Spot ${dist.toFixed(1)}% above king — extended`);
-    } else if (dist < -1.5) {
-      score += 1;
-      parts.push(`Spot ${Math.abs(dist).toFixed(1)}% below king — compressed`);
+    if (Number.isFinite(dist)) {
+      if (Math.abs(dist) <= 0.5) parts.push(`Spot pinned near king ${input.king_strike.toLocaleString()}`);
+      else if (dist > 1.5) {
+        score -= 1;
+        parts.push(`Spot ${dist.toFixed(1)}% above king — extended`);
+      } else if (dist < -1.5) {
+        score += 1;
+        parts.push(`Spot ${Math.abs(dist).toFixed(1)}% below king — compressed`);
+      }
     }
   }
-  if (input.call_wall != null && input.put_wall != null && input.spot != null) {
+  if (input.call_wall != null && input.put_wall != null && input.spot != null && Number.isFinite(input.call_wall) && Number.isFinite(input.put_wall)) {
     parts.push(`Band ${input.put_wall.toLocaleString()}–${input.call_wall.toLocaleString()}`);
   }
   const lean: MeridianEarningsReportSignal["lean"] =
@@ -157,7 +159,7 @@ function bestPlayHint(
     return {
       headline: "Bullish lean into earnings",
       structure:
-        input.king_strike != null
+        input.king_strike != null && Number.isFinite(input.king_strike)
           ? `Directional bias above king ${input.king_strike.toLocaleString()} — keep risk inside ${emLabel}`
           : `Call-side structures inside ${emLabel}`,
       risk: "Gaps can exceed implied move — this is context, not a ticket",
@@ -167,7 +169,7 @@ function bestPlayHint(
     return {
       headline: "Bearish lean into earnings",
       structure:
-        input.put_wall != null
+        input.put_wall != null && Number.isFinite(input.call_wall ?? 0)
           ? `Put-side or fade setups below call wall ${input.call_wall?.toLocaleString() ?? "—"} · ${emLabel}`
           : `Put-side structures inside ${emLabel}`,
       risk: "Short squeezes on beats are common — respect the band",
