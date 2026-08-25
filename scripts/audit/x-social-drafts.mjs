@@ -260,6 +260,26 @@ async function captureThermal(page, sym) {
   return panel.screenshot({ type: "png", animations: "disabled" });
 }
 
+async function shotPanel(page, locator, maxH = 900) {
+  const el = locator.first();
+  await el.waitFor({ state: "visible", timeout: 30_000 });
+  await el.evaluate((node) => {
+    node.scrollTop = 0;
+  });
+  await sleep(500);
+  const clip = await el.evaluate((node, h) => {
+    const r = node.getBoundingClientRect();
+    return {
+      x: Math.max(0, r.x),
+      y: Math.max(0, r.y),
+      width: Math.min(r.width, 1880),
+      height: Math.min(r.height, h),
+    };
+  }, maxH);
+  assertCapturableUrl(page.url(), "helix panel clip");
+  return page.screenshot({ type: "png", animations: "disabled", clip });
+}
+
 async function captureHelix(page, sym) {
   await page.goto(`${BASE}/flows`, { waitUntil: "domcontentloaded", timeout: 90_000 });
   await dismissOverlays(page);
@@ -278,8 +298,7 @@ async function captureHelix(page, sym) {
   }
   assertCapturableUrl(page.url(), `Helix ${sym}`);
   const panel = page.locator(".helix-desk-terminal, .helix-pro-desk").first();
-  await panel.waitFor({ state: "visible", timeout: 30_000 });
-  return panel.screenshot({ type: "png", animations: "disabled" });
+  return shotPanel(page, panel, 860);
 }
 
 async function main() {
