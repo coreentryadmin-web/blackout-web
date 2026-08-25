@@ -266,8 +266,11 @@ const RECIPES = {
     const horizon = params.horizon ?? "0dte";
     const dteBtn = page.locator(`[data-testid="vector-dte-${horizon}"]`).first();
     if (await dteBtn.count()) {
-      await dteBtn.click();
-      await sleep(4000);
+      const pressed = await dteBtn.getAttribute("aria-pressed");
+      if (pressed !== "true") {
+        await dteBtn.click({ force: true, timeout: 5000 }).catch(() => {});
+        await sleep(4000);
+      }
     }
     const tf = params.timeframe ?? "15";
     await page.locator("#vector-tf-select").first().selectOption(String(tf)).catch(() => {});

@@ -73,7 +73,7 @@ async function main() {
   if (CREATIVE && !PACK_SLUG) {
     const ranked = await pickHotTicker(fetchAuditJson, BASE);
     ticker = (TICKER_OPT ?? ranked[0]?.ticker ?? "NVDA").toUpperCase();
-    pack = composeCreativePack(ticker);
+    pack = composeCreativePack(ticker, ranked);
     console.log("Mode: CREATIVE (hot ticker + rotating panels)");
     console.log(
       "Hot scan:",

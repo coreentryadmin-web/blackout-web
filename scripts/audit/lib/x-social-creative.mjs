@@ -8,6 +8,8 @@ import { dirname, join } from "node:path";
 const CREATIVE_STATE_PATH = join(process.cwd(), "data/x-intel/creative-rotation.json");
 
 const TICKERS = ["SPX", "NVDA", "TSLA", "META", "AAPL", "AMZN", "QQQ", "SPY", "COIN", "LLY", "IWM"];
+const MERIDIAN_EARNINGS = ["NVDA", "TSLA", "META", "AAPL", "AMZN"];
+const RELIABLE_LARGO = new Set(["largo.flow_why", "largo.gamma_read", "largo.spx_shift", "largo.wall_weak"]);
 
 /** Shot pools grouped by product family — each entry is a capturable catalog id. */
 export const CREATIVE_POOLS = {
@@ -143,18 +145,14 @@ export const CREATIVE_POOLS = {
         label: "Gamma read",
         params: { ticker: t, question: `What's the ${t} gamma setup — flip, walls, regime, and the one level that matters?` },
       },
-      {
-        id: "largo.conflict",
-        label: "Systems disagree",
-        params: { ticker: t, question: `Helix and Thermal disagree on ${t} — reconcile the flow vs gamma read.` },
-      },
+      { id: "largo.conflict", label: "Systems disagree", reliable: false, params: { ticker: t, question: `Helix and Thermal disagree on ${t} — reconcile the flow vs gamma read.` } },
       {
         id: "largo.wall_weak",
         label: "Wall test",
         params: { ticker: t, strike: "7800", question: `Is the wall on ${t} actually weakening or just being tested?` },
       },
       { id: "largo.spx_shift", label: "SPX 15m shift", params: { ticker: "SPX", question: "What changed in SPX in the last 15 minutes — gamma, flow, and levels?" } },
-      { id: "largo.board_best", label: "Strongest board setup", params: { question: "What's the strongest setup on the board right now and why?" } },
+      { id: "largo.board_best", label: "Strongest board setup", reliable: false, params: { question: "What's the strongest setup on the board right now and why?" } },
     ],
   },
 };
@@ -213,20 +211,33 @@ function saveCreativeState(state) {
   writeFileSync(CREATIVE_STATE_PATH, JSON.stringify(state, null, 2));
 }
 
-function expandPoolShots(poolKey, ticker) {
+function poolTicker(poolKey, heroTicker, hotRanked = []) {
+  if (poolKey === "meridian_event") {
+    if (MERIDIAN_EARNINGS.includes(heroTicker)) return heroTicker.toLowerCase();
+    const fromHot = hotRanked.find((r) => MERIDIAN_EARNINGS.includes(r.ticker));
+    return (fromHot?.ticker ?? "NVDA").toLowerCase();
+  }
+  return heroTicker.toLowerCase();
+}
+
+function expandPoolShots(poolKey, heroTicker, hotRanked = []) {
   const pool = CREATIVE_POOLS[poolKey];
-  const t = ticker.toLowerCase();
+  const t = poolTicker(poolKey, heroTicker, hotRanked);
   const raw = typeof pool.shots === "function" ? pool.shots(t) : pool.shots;
   return raw.map((s) => ({
     ...s,
     product: pool.product,
     poolKey,
-    params: { ticker: s.ticker ?? ticker.toUpperCase(), ...s.params },
+    params: { ticker: (s.ticker ?? t).toUpperCase(), ...s.params },
   }));
 }
 
-function pickPoolShot(poolKey, ticker, recentShotIds) {
-  const candidates = expandPoolShots(poolKey, ticker);
+function pickPoolShot(poolKey, heroTicker, recentShotIds, hotRanked = []) {
+  let candidates = expandPoolShots(poolKey, heroTicker, hotRanked);
+  if (poolKey === "largo") {
+    const reliable = candidates.filter((c) => RELIABLE_LARGO.has(c.id));
+    if (reliable.length) candidates = reliable;
+  }
   const fresh = candidates.filter((c) => !recentShotIds.includes(c.id));
   const pool = fresh.length ? fresh : candidates;
   return lruPick(pool, recentShotIds, (s) => s.id);
@@ -235,7 +246,7 @@ function pickPoolShot(poolKey, ticker, recentShotIds) {
 /**
  * Compose a unique 4-shot creative pack from different product families.
  */
-export function composeCreativePack(ticker = "NVDA") {
+export function composeCreativePack(ticker = "NVDA", hotRanked = []) {
   const state = loadCreativeState();
   const recentCombos = state.recent_combos ?? [];
   const recentShots = state.recent_shots ?? [];
@@ -244,7 +255,7 @@ export function composeCreativePack(ticker = "NVDA") {
   const comboIndex = FAMILY_COMBOS.findIndex((c) => c.join("+") === comboKeys.join("+"));
 
   const shots = comboKeys.map((poolKey, i) => {
-    const shot = pickPoolShot(poolKey, ticker, recentShots);
+    const shot = pickPoolShot(poolKey, ticker, recentShots, hotRanked);
     return {
       ...shot,
       file: `${i + 1}-${shot.product.toLowerCase().replace(/\s+/g, "-")}.png`,
@@ -356,5 +367,5 @@ export function buildCreativeCopy(story, pack) {
   const wallBit =
     story.callWall && story.putWall ? `Walls ${story.putWall}/${story.callWall}.` : "";
 
-  return [opener, "", dataHook, wallBit, panelLine, "", "Four desks · live numbers ↓"].filter(Boolean).join("\n");
+  return [opener, "", dataHook, wallBit, "", panelLine, "Four desks ↓"].filter(Boolean).join("\n");
 }
