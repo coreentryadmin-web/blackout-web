@@ -314,11 +314,25 @@ test("a tool that ACCEPTS A DATE is classified point_in_time, not as_of", () => 
    *
    * Asserted against the implementation rather than the catalog, so the two cannot drift: if a
    * tool starts consuming a date, this fails until it is reclassified.
+   *
+   * ONE NAMED EXCEPTION, not a silent skip. `get_meridian_peer_cohort` passes `input.date` to
+   * `resolveMeridianEventId` too, but only to help BUILD an id — the lookup that follows always
+   * reads `loadMeridianTimelineResponse(MERIDIAN_LARGO_WINDOW_DAYS)`, which is anchored at
+   * TODAY and looks forward only (see meridian-snapshot.ts). A date outside that live window
+   * resolves to `error: "not_found"`, not an old cohort — unlike `get_meridian_event`, which
+   * this test correctly caught in the past because IT reads `loadMeridianEarningsEventDetail`
+   * for the literal ticker+date requested and genuinely reaches a print from months ago.
+   * Reclassifying the cohort tool to a PAST_CAPABLE class here would be the over-claim this test
+   * exists to prevent, not a fix for it — so it is named and excluded instead of silently
+   * skipped, and the exclusion should be revisited only if the implementation changes to anchor
+   * the timeline load at the requested date rather than always at `today`.
    */
   const src = readFileSync("src/lib/largo/run-tool.ts", "utf8");
   const PAST_CAPABLE = new Set(["windowed", "point_in_time", "event_log"]);
+  const DATE_PARAM_BUT_STRUCTURALLY_LIVE_ONLY = new Set(["get_meridian_peer_cohort"]);
 
   for (const cap of LARGO_CAPABILITIES) {
+    if (DATE_PARAM_BUT_STRUCTURALLY_LIVE_ONLY.has(cap.tool)) continue;
     const i = src.indexOf(`case "${cap.tool}"`);
     if (i < 0) continue; // tools served outside the switch
     const body = src.slice(i, i + 700);
