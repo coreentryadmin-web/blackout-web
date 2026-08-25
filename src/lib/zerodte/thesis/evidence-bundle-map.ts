@@ -1,5 +1,20 @@
 import type { LegacyBridgeExtras } from "./rails/legacy-bridge";
 
+/** Default cap — matches FLOW-corroboration fan-out discipline (#2895). */
+export const THESIS_EVIDENCE_MAX_TICKERS_DEFAULT = 24;
+
+export function thesisEvidenceMaxTickers(): number {
+  const raw = process.env.ZERODTE_THESIS_EVIDENCE_MAX_TICKERS?.trim();
+  const n = raw != null && raw !== "" ? Number(raw) : THESIS_EVIDENCE_MAX_TICKERS_DEFAULT;
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : THESIS_EVIDENCE_MAX_TICKERS_DEFAULT;
+}
+
+/** Pure: dedupe + cap ticker fan-out for one scan pass (score-sort before calling). */
+export function selectThesisEvidenceTickers(tickers: string[], maxTickers?: number): string[] {
+  const max = maxTickers ?? thesisEvidenceMaxTickers();
+  return [...new Set(tickers.map((t) => t.trim().toUpperCase()).filter(Boolean))].slice(0, max);
+}
+
 /** Per-ticker cache-backed evidence for thesis rails (no provider calls in mapper). */
 export type ThesisEvidenceSnapshot = {
   thermal: {

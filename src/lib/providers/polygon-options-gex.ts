@@ -3839,6 +3839,39 @@ export async function readGexHeatmapSnapshot(underlying = "SPX"): Promise<GexHea
   return finalizeHeatmapForServe(cacheKey, handoff);
 }
 
+/**
+ * Strict cache-reader for scan-path consumers (thesis evidence bundle): in-memory, then
+ * Redis (500ms cap). NEVER registers single-flight or kicks a Polygon chain build — cold
+ * or past the SWR ceiling → null. Unlike readGexHeatmapSnapshot, this does not call
+ * tryStaleWhileRevalidateHeatmap, so a cache miss cannot fan out background builds across
+ * the whole 0DTE board roster.
+ */
+export async function readGexHeatmapCacheOnly(underlying: string): Promise<GexHeatmap | null> {
+  if (!polygonConfigured()) return null;
+  const { root } = resolveOptionsRoot(underlying);
+  if (!root) return null;
+  const cacheKey = `${GEX_HEATMAP_CACHE_PREFIX}:${root}`;
+  const now = Date.now();
+  const maxStaleMs = gexHeatmapMaxStaleMs();
+
+  let entry = cachedHeatmaps.get(cacheKey) ?? null;
+  if (!entry) {
+    try {
+      const { sharedCacheGet } = await import("../shared-cache");
+      entry = await Promise.race([
+        sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
+      ]);
+      if (entry) setCachedHeatmap(cacheKey, entry);
+    } catch {
+      /* redis optional */
+    }
+  }
+
+  if (!entry || now - entry.at > maxStaleMs) return null;
+  return finalizeHeatmapForServe(cacheKey, entry.data);
+}
+
 /** One ticker's shared-cache freshness, as reported by peekGexHeatmapCache. */
 export type GexHeatmapCachePeek = {
   ticker: string;
