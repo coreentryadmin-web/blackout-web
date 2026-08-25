@@ -564,12 +564,39 @@ export type MeridianEarningsDarkPool = {
   top_prints: MeridianEarningsDarkPoolPrint[];
 };
 
+export type MeridianEarningsVectorWallEvent = {
+  message: string;
+  severity: "info" | "warn";
+  time_label: string | null;
+};
+
+export type MeridianEarningsVectorFlowPrint = {
+  premium_label: string;
+  option_type: string | null;
+  strike: number | null;
+  executed_at: string | null;
+};
+
 export type MeridianEarningsVectorRead = {
   available: boolean;
+  /** Vector DTE horizon the read was scoped to (weekly for earnings context). */
+  horizon: string | null;
   expiry: string | null;
   move_pct: number | null;
   spot: number | null;
   bands: Array<{ sigma: number; low: number; high: number }> | null;
+  /** Human-readable gamma posture from Vector regime. */
+  regime: string | null;
+  call_wall: number | null;
+  put_wall: number | null;
+  gamma_flip: number | null;
+  max_pain: number | null;
+  /** Count of wall-history rail samples ("beads") in today's session rail. */
+  bead_samples: number;
+  recent_events: MeridianEarningsVectorWallEvent[];
+  recent_flow: MeridianEarningsVectorFlowPrint[];
+  /** Staleness disclosure when the Vector snapshot is not live. */
+  freshness_note: string | null;
 };
 
 export type MeridianEarningsReportSignal = {

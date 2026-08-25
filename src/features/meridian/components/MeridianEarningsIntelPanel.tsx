@@ -150,6 +150,61 @@ export function MeridianEarningsIntelPanel({ intel, printHistory, tickerExpected
           </MeridianDataCard>
         )}
 
+        {intel.vector.available && (
+          <MeridianDataCard
+            label={`Vector structure · ${intel.vector.horizon ?? "weekly"}`}
+            tone="earnings"
+            delay={200}
+          >
+            {intel.vector.regime && <p className="meridian-card-value">{intel.vector.regime}</p>}
+            <ul className="meridian-card-list">
+              {intel.vector.call_wall != null && intel.vector.put_wall != null && (
+                <li>
+                  Walls {intel.vector.put_wall.toLocaleString()} –{" "}
+                  {intel.vector.call_wall.toLocaleString()}
+                </li>
+              )}
+              {intel.vector.gamma_flip != null && (
+                <li>Gamma flip {intel.vector.gamma_flip.toLocaleString()}</li>
+              )}
+              {intel.vector.max_pain != null && (
+                <li>Max pain {intel.vector.max_pain.toLocaleString()}</li>
+              )}
+              {intel.vector.move_pct != null && (
+                <li>Expected move ~{intel.vector.move_pct}%</li>
+              )}
+              {intel.vector.bead_samples > 0 && (
+                <li>{intel.vector.bead_samples} wall-history samples today</li>
+              )}
+            </ul>
+            {intel.vector.recent_events.length > 0 && (
+              <ul className="meridian-card-list meridian-vector-events">
+                {intel.vector.recent_events.map((ev, i) => (
+                  <li key={`${ev.message}-${i}`} className={ev.severity === "warn" ? "mv-warn" : undefined}>
+                    {ev.time_label ? `${ev.time_label} · ` : ""}
+                    {ev.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {intel.vector.recent_flow.length > 0 && (
+              <ul className="meridian-card-list meridian-flow-prints">
+                {intel.vector.recent_flow.map((row, i) => (
+                  <li key={`vflow-${row.strike}-${i}`}>
+                    {row.premium_label}
+                    {row.option_type ? ` ${row.option_type}` : ""}
+                    {row.strike != null ? ` @ ${row.strike}` : ""}
+                    {row.executed_at ? ` · ${row.executed_at}` : ""}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {intel.vector.freshness_note && (
+              <p className="meridian-card-muted">{intel.vector.freshness_note}</p>
+            )}
+          </MeridianDataCard>
+        )}
+
         {flow_into_print.available && (
           <MeridianDataCard
             label={`HELIX flow · ${flow_into_print.window_hours}h window`}

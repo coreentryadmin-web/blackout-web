@@ -899,7 +899,13 @@ html.nav-locked body { overflow: hidden; }
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #7dd3fc;
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.35rem;
+}
+.meridian-action-dock-hint {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #22d3ee;
+  margin: 0 0 0.55rem;
 }
 .meridian-action-dock-row {
   display: flex;
