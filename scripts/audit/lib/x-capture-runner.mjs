@@ -329,8 +329,28 @@ const RECIPES = {
   async meridian_analytics_panel(page, base, entry, params) {
     await page.goto(`${base}/meridian`, { waitUntil: "domcontentloaded", timeout: 90_000 });
     await dismissOverlays(page);
-    await page.getByRole("tab", { name: /Analytics/i }).first().click().catch(() => {});
-    await sleep(4000);
+    await page.waitForSelector(".meridian-page-root", { timeout: 60_000 });
+    await page.getByRole("button", { name: /Analytics grid/i }).click();
+    await sleep(6000);
+    const panel =
+      params.panel ??
+      entry.params?.find((p) => p.key === "panel")?.default ??
+      "high_impact";
+    const panelSelectors = {
+      high_impact: '.meridian-analytics-grid[aria-label="High impact catalyst grid"]',
+      megacap_week: ".meridian-earnings-week",
+      next_24h: ".meridian-earnings-analytics .meridian-mea-split",
+      surprise_scatter: '.meridian-data-card:has-text("Surprise map")',
+      calendar_heat: '.meridian-data-card:has-text("Print calendar")',
+      earnings_pulse: ".meridian-earnings-analytics",
+      revision_timeline: ".meridian-earnings-revisions",
+      after_hours: ".meridian-after-hours",
+    };
+    const sel = panelSelectors[panel] ?? panelSelectors.high_impact;
+    const target = page.locator(sel).first();
+    await target.waitFor({ state: "visible", timeout: 45_000 });
+    await target.scrollIntoViewIfNeeded();
+    await sleep(1500);
   },
 
   async meridian_macro_report(page, base, entry, params) {
@@ -405,8 +425,24 @@ export async function captureFromCatalogEntry(page, base, entry, paramOverrides 
   const maxH = entry.clip?.max_height ?? 980;
   const selector = entry.clip?.selector ?? "main";
   if (entry.recipe === "helix_net_premium") {
-    const panel = page.locator(".helix-pro-rail-panel").filter({ hasText: "Net Premium" }).first();
-    return shotClip(page, panel, entry.id, maxH);
+    return shotClip(page, '.helix-pro-rail-panel:has-text("Net Premium")', entry.id, maxH);
+  }
+  if (entry.recipe === "meridian_analytics_panel") {
+    const panel =
+      params.panel ??
+      entry.params?.find((p) => p.key === "panel")?.default ??
+      "high_impact";
+    const panelSelectors = {
+      high_impact: '.meridian-analytics-grid[aria-label="High impact catalyst grid"]',
+      megacap_week: ".meridian-earnings-week",
+      next_24h: ".meridian-earnings-analytics .meridian-mea-split",
+      surprise_scatter: '.meridian-data-card:has-text("Surprise map")',
+      calendar_heat: '.meridian-data-card:has-text("Print calendar")',
+      earnings_pulse: ".meridian-earnings-analytics",
+      revision_timeline: ".meridian-earnings-revisions",
+    };
+    const sel = panelSelectors[panel] ?? panelSelectors.high_impact;
+    return shotClip(page, sel, entry.id, maxH);
   }
   return shotClip(page, selector, entry.id, maxH);
 }
