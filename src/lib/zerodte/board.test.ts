@@ -6,6 +6,7 @@ import {
   sessionHeat,
   resolveFreshFindStatus,
   deriveZeroDteSetups,
+  calibrateFlowEvidenceScore,
   rankEngineCards,
   enrichSetup,
   noteOriginDirectionConflict,
@@ -252,6 +253,46 @@ test("setups: flow_quality is computed on the setup's own tape (institutional fl
   assert.ok(fq, "flow_quality should be attached");
   assert.ok(fq!.score > 50, `expected a solid flow-quality score, got ${fq!.score}`);
   assert.equal(fq!.dominantSide, "call");
+});
+
+test("calibrateFlowEvidenceScore: QQQ-like $7.6M ETF tape clears 65 when flow_quality confirms", () => {
+  // Simulates live 2026-08-25: high gross, moderate dominance (ETF hedging), tier score ~58.
+  const baseTs = Date.parse("2026-08-25T14:00:00Z");
+  const rows: FlowSetupInput[] = [
+    row({ ticker: "QQQ", premium: 2_200_000, strike: 480, expiry: "2026-08-25", dte: 0, underlying_price: 478, ask_pct: 68, alerted_at: new Date(baseTs).toISOString() }),
+    row({ ticker: "QQQ", premium: 1_800_000, strike: 481, expiry: "2026-08-25", dte: 0, underlying_price: 478, ask_pct: 70, alerted_at: new Date(baseTs + 120_000).toISOString() }),
+    row({ ticker: "QQQ", premium: 1_600_000, strike: 479, expiry: "2026-08-25", dte: 0, underlying_price: 478, ask_pct: 65, alerted_at: new Date(baseTs + 240_000).toISOString() }),
+    row({ ticker: "QQQ", premium: 1_200_000, strike: 482, expiry: "2026-08-25", dte: 0, underlying_price: 478, ask_pct: 62, alerted_at: new Date(baseTs + 360_000).toISOString() }),
+    row({ ticker: "QQQ", premium: 900_000, option_type: "put", strike: 475, expiry: "2026-08-25", dte: 0, underlying_price: 478, ask_pct: 58, alerted_at: new Date(baseTs + 480_000).toISOString() }),
+  ];
+  const out = deriveZeroDteSetups(rows, { todayYmd: "2026-08-25", nowMs: baseTs + 600_000 });
+  assert.equal(out.length, 1);
+  const s = out[0]!;
+  assert.ok(s.gross_premium >= 7_000_000);
+  assert.ok(s.flow_quality, "flow_quality must be attached");
+  assert.ok(
+    s.score >= 65,
+    `QQQ-like institutional tape should clear G-3 (score=${s.score}, fq=${s.flow_quality!.score}, gross=${s.gross_premium})`
+  );
+  // When tiers under-score but flow_quality + gross confirm institutional size, lift toward FQ.
+  const syntheticFq = { ...s.flow_quality!, score: 62 };
+  assert.ok(
+    calibrateFlowEvidenceScore(58, syntheticFq, s.gross_premium) >= 65,
+    "calibration must lift under-scored tier evidence when FQ confirms"
+  );
+});
+
+test("calibrateFlowEvidenceScore lifts mixed-side ETF tape when tiers land ~58", () => {
+  const fq = {
+    score: 60,
+    components: {} as import("./flow-quality").FlowQuality["components"],
+    momentum: {} as import("./flow-quality").FlowQuality["momentum"],
+    dominantSide: "call" as const,
+    dominance: 0.62,
+    reason: "test",
+  };
+  assert.ok(calibrateFlowEvidenceScore(58, fq, 7_600_000) >= 65);
+  assert.equal(calibrateFlowEvidenceScore(58, fq, 500_000), 58, "low gross must not inflate");
 });
 
 test("setups: top strike is chosen by aggression-weighted premium, not raw dollar premium", () => {
