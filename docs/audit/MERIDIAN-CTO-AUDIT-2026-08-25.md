@@ -183,6 +183,33 @@ already covers them elsewhere on the same tab.
    a number and something upstream is silently dropping it? That's a data question before it's a
    display question.
 
+## 9. Additional live spot-checks, post-fix (2026-08-25, continued)
+
+Broadened ticker coverage beyond DKS to stress-test edge cases, per the operator's follow-up
+request to check "every field, every value" across the product.
+
+- **INTU (mega-cap, importance 5)** — Summary tab clean. "Evidence is split 4.0 bull vs 3.0 bear —
+  both sides shown, neither promoted" is exactly the calibration-honest verdict language the
+  product is supposed to produce when the book genuinely disagrees with itself. No defects found.
+- **SLQT (importance 1, spot $0.83, thin market)** — surfaced something that LOOKED like a bug and
+  turned out to be correct, deliberate behavior worth recording so it isn't re-flagged later: the
+  PUT idea card read "below 0.21 · implied move edge" while "Levels to Watch" listed `PUT WALL: 1`
+  — a different number, and 1 is actually ABOVE spot (0.83), not below it. `pickLevel()`
+  (`meridian-summary-core.ts:241`) explicitly guards against exactly this: a wall only qualifies as
+  a put TARGET if it sits on the correct side of spot (`wall < spot` for a put) — SLQT's put_wall
+  fails that check, so the function correctly falls through to the implied-move edge instead of
+  presenting a nonsensical "get below a level that's currently above you" idea. The code comment
+  cites the exact prior incident this guard was built for (BHP, wall on the wrong side / too near /
+  too far, with real numbers). **Not a Meridian bug** — if anything, a genuine open question one
+  layer up: why is Thermal's `put_wall` for SLQT sitting above spot at all (that's a Thermal-lane
+  question, not filed here).
+- Both checks required a fresh Clerk session mint — the temp session from the DKS/INTU pass had
+  aged past the ~30min sweep window mid-audit, which manifested as `ERR_CONNECTION_RESET` on every
+  navigation and was briefly mistaken for a stuck deploy (ECS was independently confirmed healthy,
+  8/8 tasks, `rolloutState: COMPLETED`, via `boto3` before the real cause — a stale session — was
+  found). Noted here as a harness gotcha for whoever runs this audit's commands next: mint a fresh
+  session per capture batch, not once for a whole long-running audit.
+
 ---
 
 *Live findings above are the actual product state as of 2026-08-25, ~04:30 UTC, ticker DKS
