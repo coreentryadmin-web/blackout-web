@@ -340,3 +340,16 @@ test("VectorChartViewSelect: segmented Intraday/4H/1D/1W control", () => {
   assert.match(src, /aria-pressed/);
   assert.doesNotMatch(src, /<select/);
 });
+
+test("VectorChart: wheel/pan interaction defers heavy overlay + crosshair work", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  // Overlay dim coalesced to one rAF per frame (not every wheel tick).
+  assert.match(src, /scheduleViewportDim/);
+  assert.match(src, /viewportDimRafRef/);
+  // Crosshair wall/gex lookups run once per frame, not per mousemove.
+  assert.match(src, /crosshairComputeRafRef/);
+  assert.match(src, /flushCrosshairCompute/);
+  // Live SSE defers trail/overlay repaints while member is panning/zooming.
+  assert.match(src, /interactionHot = memberViewportLocked/);
+  assert.match(src, /!inReplay && !interactionHot/);
+});
