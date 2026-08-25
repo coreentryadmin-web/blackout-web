@@ -7,12 +7,15 @@ export type CatalystRailInput = {
   catalyst_flags?: string[];
   news_hot?: NewsHeat | null;
   earnings?: EarningsFlag | null;
+  expected_move_pct?: number | null;
 };
 
 export function scoreCatalystRail(input: CatalystRailInput): RailHit | null {
   const flags = input.catalyst_flags ?? [];
   const news = input.news_hot;
   const earnings = input.earnings;
+  const em =
+    input.expected_move_pct ?? earnings?.expected_move_pct ?? null;
 
   let score = 40;
   const parts: string[] = [];
@@ -30,6 +33,11 @@ export function scoreCatalystRail(input: CatalystRailInput): RailHit | null {
   if (earnings?.report_date) {
     score += 15;
     parts.push(`earnings ${earnings.when}`);
+  }
+
+  if (em != null && Number.isFinite(em) && em >= 4) {
+    score += Math.min(12, Math.round(em));
+    parts.push(`EM ±${em.toFixed(1)}%`);
   }
 
   score = Math.min(100, Math.round(score));

@@ -16,3 +16,5 @@ export * from "./rails/legacy-bridge";
 export * from "./scan-shadow";
 export * from "./live-pipeline";
 export * from "./contract-attach";
+export * from "./evidence-bundle-map";
+export * from "./pin-positioning-stamp";

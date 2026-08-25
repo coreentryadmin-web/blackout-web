@@ -22,6 +22,11 @@ export type LegacyBridgeExtras = {
   gamma_posture?: "long" | "short" | null;
   call_wall?: number | null;
   put_wall?: number | null;
+  /** Vector bead / confluence level near spot (cache reader). */
+  bead_wall_near_spot?: number | null;
+  /** Options-implied 1σ move % when available. */
+  expected_move_pct?: number | null;
+  dark_pool_bias?: "bullish" | "bearish" | "mixed" | null;
 };
 
 /** Bridge existing EnrichedZeroDteSetup → thesis rail hits for shadow merge. */
@@ -44,11 +49,16 @@ export function railHitsFromLegacySetup(
   }
 
   if (setup.discovery_origin.includes("BREAKOUT")) {
+    const resistance =
+      extras.resistance ??
+      setup.key_resistances?.[0] ??
+      extras.bead_wall_near_spot ??
+      null;
     const h = scoreBreakoutRail({
       ticker,
       direction,
       spot: setup.underlying_price ?? 0,
-      resistance: extras.resistance ?? setup.key_resistances?.[0] ?? null,
+      resistance,
       support: extras.support ?? setup.key_supports?.[0] ?? null,
       rel_vol: setup.rel_volume ?? null,
       intraday: extras.intraday ?? setup.intraday ?? null,
@@ -103,6 +113,7 @@ export function railHitsFromLegacySetup(
     catalyst_flags: setup.catalyst_flags,
     news_hot: setup.news_hot ?? null,
     earnings: setup.earnings ?? null,
+    expected_move_pct: extras.expected_move_pct ?? setup.earnings?.expected_move_pct ?? null,
   });
   if (cat) hits.push(cat);
 

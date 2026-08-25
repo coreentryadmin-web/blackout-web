@@ -16,6 +16,15 @@ export function buildMergedThesisFromHits(ticker: string, hits: RailHit[]): Merg
   if (!direction) return null;
 
   const aligned = hits.filter((h) => h.direction === direction);
+  const disagreeing_rails = hits
+    .filter((h) => h.direction !== direction)
+    .map((h) => ({
+      rail: h.rail,
+      direction: h.direction,
+      score: h.score,
+      summary: h.summary,
+    }));
+
   const { rail_scores, rails_fired, summaries, structural_state, trigger_price } =
     buildRailScoreMap(aligned);
 
@@ -33,6 +42,7 @@ export function buildMergedThesisFromHits(ticker: string, hits: RailHit[]): Merg
     structural_state: structural_state ?? null,
     trigger_price,
     summaries,
+    disagreeing_rails,
   };
 }
 
@@ -55,6 +65,7 @@ export function runThesisPipelineForSetup(
       structural_state: null,
       trigger_price: null,
       summaries: {},
+      disagreeing_rails: [],
     } satisfies MergedThesis);
 
   const flowHit = hits.find((h) => h.rail === "FLOW");

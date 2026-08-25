@@ -50,6 +50,7 @@
     "healthcheck:0dte": "node --import tsx scripts/audit/zerodte-e2e-healthcheck.mjs",
     "validate:thesis-first-live": "node scripts/audit/thesis-first-live-audit.mjs",
     "validate:nighthawk-thesis-ui": "node scripts/audit/nighthawk-thesis-ui-audit.mjs",
+    "calibration:thesis-rank": "node scripts/audit/thesis-rank-calibration.mjs",
     "send:emails": "node --import tsx scripts/audit/email-template-send.mjs",
     "healthcheck:swing": "node --import tsx scripts/audit/swing-e2e-healthcheck.mjs",
     "validate:meridian": "node scripts/audit/meridian-data-audit.mjs",
