@@ -153,12 +153,13 @@ export function PlayTerminal({
   const [tab, setTab] = useState<Tab>(initialTab ?? "thesis");
   const [tabTouched, setTabTouched] = useState(false);
   useEffect(() => {
-    if (tabTouched || !play) return;
-    if (play.horizon === "ZERO_DTE" && (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM")) {
+    if (tabTouched || !play || play.horizon === "ZERO_DTE") return;
+    if (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM") {
       setTab("manage");
     }
   }, [play, tabTouched]);
   useEffect(() => {
+    if (play?.horizon === "ZERO_DTE") return;
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
@@ -166,7 +167,6 @@ export function PlayTerminal({
       if (e.key === "1") { setTabTouched(true); setTab("thesis"); }
       else if (e.key === "2") { setTabTouched(true); setTab("manage"); }
       else if (e.key === "3") { setTabTouched(true); setTab("pnl"); }
-      else if (e.key === "4" && play?.horizon === "ZERO_DTE") { setTabTouched(true); setTab("timeline"); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -220,6 +220,7 @@ export function PlayTerminal({
   );
   const greeksOff = !live || !greeksLive || streamKind === "CLOSED";
   const premium = isZeroDtePremiumTerminal(play);
+  const zeroDteSinglePanel = play.horizon === "ZERO_DTE";
 
   return (
     <div className={clsx("nh-deck-right", premium && "nh-deck-right-premium", (stale || streamKind === "CLOSED") && "nh-deck-dim")}>
@@ -348,23 +349,23 @@ export function PlayTerminal({
         </div>
       ))}
 
-      <div className="nh-deck-tabs">
-        <button className={clsx(tab === "thesis" && "on")} onClick={() => { setTabTouched(true); setTab("thesis"); }}><span className="n">[1]</span>Thesis</button>
-        <button className={clsx(tab === "manage" && "on")} onClick={() => { setTabTouched(true); setTab("manage"); }}><span className="n">[2]</span>Management</button>
-        <button className={clsx(tab === "pnl" && "on")} onClick={() => { setTabTouched(true); setTab("pnl"); }}><span className="n">[3]</span>PnL</button>
-        {play.horizon === "ZERO_DTE" && (
-          <button className={clsx(tab === "timeline" && "on")} onClick={() => { setTabTouched(true); setTab("timeline"); }}><span className="n">[4]</span>Timeline</button>
-        )}
-      </div>
+      {zeroDteSinglePanel ? (
+        <ZeroDteCommandPanel play={play} nowMs={nowMs} sessionClosed={sessionClosed} />
+      ) : (
+        <>
+          <div className="nh-deck-tabs">
+            <button className={clsx(tab === "thesis" && "on")} onClick={() => { setTabTouched(true); setTab("thesis"); }}><span className="n">[1]</span>Thesis</button>
+            <button className={clsx(tab === "manage" && "on")} onClick={() => { setTabTouched(true); setTab("manage"); }}><span className="n">[2]</span>Management</button>
+            <button className={clsx(tab === "pnl" && "on")} onClick={() => { setTabTouched(true); setTab("pnl"); }}><span className="n">[3]</span>PnL</button>
+          </div>
 
-      <div className="nh-deck-body">
-        {tab === "thesis" && <ThesisPanel play={play} sessionClosed={sessionClosed} />}
-        {tab === "manage" && <ManagePanel play={play} nowMs={nowMs} />}
-        {tab === "pnl" && <PnlPanel play={play} />}
-        {tab === "timeline" && play.horizon === "ZERO_DTE" && (
-          <PlayTimelinePanel play={play} nowMs={nowMs} />
-        )}
-      </div>
+          <div className="nh-deck-body">
+            {tab === "thesis" && <ThesisPanel play={play} sessionClosed={sessionClosed} />}
+            {tab === "manage" && <ManagePanel play={play} nowMs={nowMs} />}
+            {tab === "pnl" && <PnlPanel play={play} />}
+          </div>
+        </>
+      )}
 
       <div className="nh-deck-foot">
         <span>EXIT · {play.exitModel === "SCALE_OUT" ? "TRIM-SCALE" : play.horizon === "LEGACY" ? "STOCK LEVELS" : play.exitModel}</span>
@@ -378,6 +379,41 @@ export function PlayTerminal({
 /** Tier · confluence · discovery-origin header badges + the calibration scorecard line (shown ONLY
  *  when the payload carries a real figure — never fabricated). Renders nothing when a play carries
  *  none of them (a legacy row), so the header stays clean. */
+/** 0DTE Command: one scroll — why picked, live management, P&L, collapsible session log. */
+function ZeroDteCommandPanel({
+  play,
+  nowMs,
+  sessionClosed = false,
+}: {
+  play: TerminalPlay;
+  nowMs: number;
+  sessionClosed?: boolean;
+}) {
+  return (
+    <div className="nh-deck-command-panel nh-deck-body">
+      <section className="nh-deck-command-section" aria-labelledby="nh-cmd-why">
+        <h3 id="nh-cmd-why" className="nh-deck-command-heading">Why we picked it</h3>
+        <ThesisPanel play={play} sessionClosed={sessionClosed} />
+      </section>
+
+      <section className="nh-deck-command-section" aria-labelledby="nh-cmd-live">
+        <h3 id="nh-cmd-live" className="nh-deck-command-heading">Live · management</h3>
+        <ManagePanel play={play} nowMs={nowMs} />
+      </section>
+
+      <section className="nh-deck-command-section" aria-labelledby="nh-cmd-pnl">
+        <h3 id="nh-cmd-pnl" className="nh-deck-command-heading">P&amp;L · excursion</h3>
+        <PnlPanel play={play} />
+      </section>
+
+      <details className="nh-deck-command-log">
+        <summary className="nh-deck-command-heading">Session log</summary>
+        <PlayTimelinePanel play={play} nowMs={nowMs} />
+      </details>
+    </div>
+  );
+}
+
 function HeaderBadges({ play }: { play: TerminalPlay }) {
   const hasBadges = play.tierLabel || play.confluence != null || (play.discoveryOrigin?.length ?? 0) > 0 || play.sector || play.morningStatus;
   if (!hasBadges && !play.scorecard) return null;

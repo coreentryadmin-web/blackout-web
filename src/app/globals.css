@@ -19948,6 +19948,16 @@ html.product-shell .nav-mega {
 .nh-deck-timeline-node.is-live .nh-deck-timeline-dot{animation:nh-deck-timeline-pulse 1s ease infinite}
 @keyframes nh-deck-timeline-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes nh-deck-timeline-pulse{0%,100%{box-shadow:0 0 8px rgba(53,255,158,.55)}50%{box-shadow:0 0 16px rgba(53,255,158,.95)}}
+/* ── 0DTE single-panel Command scroll (replaces tab bar) ── */
+.nh-deck-command-panel{padding:12px 16px 18px;display:flex;flex-direction:column;gap:20px}
+.nh-deck-command-section{display:flex;flex-direction:column;gap:10px;padding-bottom:16px;border-bottom:1px solid var(--dk-line)}
+.nh-deck-command-section:last-of-type{border-bottom:none;padding-bottom:0}
+.nh-deck-command-heading{margin:0 0 4px;font-size:10px;font-weight:800;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--dk-cyan);cursor:default;list-style:none}
+.nh-deck-command-log{margin-top:4px;padding-top:8px;border-top:1px solid var(--dk-line)}
+.nh-deck-command-log summary{cursor:pointer;color:var(--dk-text-secondary)}
+.nh-deck-command-log summary:hover{color:var(--dk-cyan)}
+.nh-deck-command-log[open] summary{margin-bottom:12px;color:var(--dk-cyan)}
 /* ── Premium 0DTE terminal panels ── */
 .nh-deck-premium-stack{display:flex;flex-direction:column;gap:16px;margin-bottom:16px}
 .nh-deck-premium__heading{margin:0 0 8px;font-size:10px;font-weight:800;letter-spacing:.12em;

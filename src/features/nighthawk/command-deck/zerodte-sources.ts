@@ -172,6 +172,10 @@ function sourceFrom(
     exit_at: (lg?.exit_at as string) ?? null,
     exit_pnl_pct: (lg?.exit_pnl_pct as number) ?? null,
     timeline_tranches: (lg?.timeline_tranches as ZeroDteDeckSource["timeline_tranches"]) ?? null,
+    thesis_first_blob:
+      lg?.thesis_first && typeof lg.thesis_first === "object"
+        ? (lg.thesis_first as Record<string, unknown>)
+        : null,
   };
 }
 

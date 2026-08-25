@@ -46,7 +46,7 @@ test("OCC copy: control renders (accessible button, aria-label) when an OCC is o
   assert.match(html, /<button/); // a real, keyboard-focusable control
 });
 
-test("Play timeline tab renders for 0DTE horizon", async () => {
+test("0DTE single panel: no tab bar; session log in collapsible details", async () => {
   const html = await render(
     play({
       firstFlaggedAt: "2026-08-03T11:20:00-04:00",
@@ -54,11 +54,15 @@ test("Play timeline tab renders for 0DTE horizon", async () => {
       peak: 87,
     }),
   );
-  assert.match(html, />\[4\]</);
-  assert.match(html, />Timeline</);
+  assert.match(html, /nh-deck-command-panel/);
+  assert.match(html, />Why we picked it</);
+  assert.match(html, />Live · management</);
+  assert.match(html, />Session log</);
+  assert.doesNotMatch(html, /nh-deck-tabs/);
+  assert.doesNotMatch(html, />\[4\]</);
 });
 
-test("Thesis tab renders ThesisRankCard when thesisFirst is on a 0DTE play", async () => {
+test("ThesisRankCard renders in 0DTE command panel when thesisFirst is present", async () => {
   const html = await render(
     play({
       thesisFirst: {
@@ -80,7 +84,6 @@ test("Thesis tab renders ThesisRankCard when thesisFirst is on a 0DTE play", asy
         rank_tier: "A",
       },
     }),
-    { initialTab: "thesis" },
   );
   assert.match(html, /nh-deck-thesis-rank/);
   assert.match(html, />Evidence</);
@@ -115,7 +118,7 @@ test("premium thesis panels render for 0DTE", async () => {
 
 test("Play timeline tab absent on Legacy horizon", async () => {
   const html = await render(play({ horizon: "LEGACY" }));
-  assert.doesNotMatch(html, />Timeline</);
+  assert.doesNotMatch(html, />Session log</);
 });
 
 // ── Confidence/Conviction/Thesis-Strength dedup (Night Hawk panel declutter, docs/audit/FINDINGS.md
