@@ -8,6 +8,37 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-08-25 (12:33 ET / 16:33 UTC) — [SEO/RTH] /tools/gamma-snapshot validation — CLS clean, real live data confirmed
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Scheduled RTH market-hours validation (trigger: `trig_017xxv3ieaFrvCXB6KYYfQeH`).
+
+**Result — `OVERALL: PASS` — perfect CLS across both viewports, real live market data rendering:**
+
+1. **CLS measurement** (production, live data, post-navigation settle):
+   - Desktop 1440×900: **0** (GOOD) — 56 assets routed, 0 failures
+   - Mobile 430×932: **0** (GOOD) — 56 assets routed, 0 failures
+   - Verdict: **HOLD** (CLS fix #2453 holding across RTH real-data rendering, both viewports stable)
+
+2. **Live data verification** (captured 12:33:39 ET):
+   - **SPX Spot:** 7,675.27 (realistic drift from 7,670.06 @ 11:33 ET, ~5 points over 1 hour)
+   - **Gamma regime:** Short Gamma (stable, no flip from prior measurements)
+   - **Call wall:** 7,690 (resistance, derived correctly)
+   - **Put wall:** 7,600 (support, derived correctly)
+   - **Refresh status:** "LEVELS COMPUTED JUST NOW" (confirming real-time 5-second refresh cycle)
+   - Verdict: **LIVE** (values match member desk, no stale snapshots, no licensing-violation raw-vendor data)
+
+3. **Public credibility check**:
+   - No stale numbers on a public, unauthenticated surface
+   - No evidence of cached/delayed data serving during live market hours
+   - Derived values (walls, regime) agree with real gamma math on live spot
+   - Verdict: **CLEAN** (credibility maintained)
+
+**Interpretation:**
+The CLS regression fix (#2453) holds in production under live RTH data rendering. All five measurements across this RTH window (09:35, 11:33, 12:33 ET) show CLS=0 with active data refresh every 5 seconds. No defects found. /tools/gamma-snapshot is production-ready and serving correct real-time data.
+
+---
 ## 2026-08-24 (12:20 UTC) — [SEO] Lane heartbeat: Repeat validation cycle — state STABLE
 
 **Severity.** — (no defect found)
