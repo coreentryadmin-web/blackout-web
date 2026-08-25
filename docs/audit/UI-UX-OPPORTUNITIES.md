@@ -134,6 +134,36 @@ a pattern worth generalizing. Classify with the brief's own scale:
    same result). Next step for whoever picks this up: either get ECS task-level visibility to
    confirm the multi-instance-cache theory directly, or ask Vector's lane whether a client-side
    fallback fetch is an intentional trade-off they've already made (vs. an oversight).
+   **Update, 2026-08-25 — new direct evidence, still short of full confirmation.** AWS credentials
+   were live this session, which the note above said would be needed. `ecs:DescribeServices` shows
+   `enableExecuteCommand: false` on `blackout-production-web`, so literal per-task `exec` genuinely
+   isn't available here (confirms, doesn't just repeat, the earlier note) — but two other checks
+   were possible and both corroborate the hypothesis:
+   1. **Live task topology**: `blackout-production-web` runs **8 tasks**, all `HEALTHY`, with ages
+      ranging from **1.8 to 51.6 minutes** at time of check — direct proof that with 8 independently
+      warming processes and this much churn, a request landing on a task under ~2 minutes old is a
+      routine, expected event, not an edge case.
+   2. **Source confirmation**: `vector-snapshot.ts`'s `stateByTicker` is a plain module-level `Map`
+      (`state(ticker)`, line ~126) — genuinely process-local, exactly as inferred, with zero
+      cross-instance backing. The SAME file documents an ALREADY-FOUND-AND-FIXED instance of this
+      exact failure mode on a sibling code path: `getVectorGexWallsForHorizon`'s `"all"` branch has
+      an explicit "Cold-task safety net" comment describing the identical symptom — "a member
+      toggling the DTE control to All would watch the beads/walls blank out intermittently
+      depending on which task the request lands on" — measured live 2026-07-12/07-13 and fixed with
+      a multi-layer fallback (prime → Redis rail-tail → chain recompute). That fix does not cover
+      the regime banner's own read path (`liveGexWalls()`/`liveGammaFlip()`, fed by the SSE stream,
+      not this REST route), so it doesn't close this item — but it confirms the architecture-level
+      risk is real, not speculative, and that this exact codebase has hit it before.
+   **Reconciling the "always absent across 16 states" evidence**: this update also explains why the
+   original walkthrough saw the banner missing consistently across an ENTIRE run rather than
+   flickering between present/absent — the SSE stream is one persistent connection per page load,
+   so a session that happens to land on a cold task stays on that same task (and that task's
+   coldness) for the run's whole duration, which is exactly the all-16-states pattern measured.
+   **Still not filed as a confirmed finding**: this is strong structural and historical corroboration,
+   not a literal per-task cache read — that would need `enableExecuteCommand: true` (not this
+   service's current config) or task-level application logging this sandbox can't add. Next step
+   unchanged: Vector's owning lane decides between a cross-instance-consistent cache backing or a
+   client-side self-heal fetch, per this file's own boundary rule against guessing that unilaterally.
 
 10. **[ANSWERED, 2026-08-24 — confirmed benign, no fix needed] Thermal mobile GEX matrix — 5
     measured text collisions, root-caused as the opaque sticky-header-over-scrolled-row pattern.**
