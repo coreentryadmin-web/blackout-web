@@ -4,21 +4,37 @@
 **Status:** PROPOSED (supersedes option-first discovery in `0DTE-UNIFICATION-DESIGN.md` §1a over time)  
 **Prerequisite:** Deploy tactical recall-quality fixes (PR #2894 — G-3/G-17 floors, FLOW corroboration) before Phase 2 refactor.
 
+**Operator priority path (2026-08-25):** Ship **six rails first** (FLOW, MOMENTUM, BREAKOUT, REVERSAL, RS, POSITIONING), then the **cross-DTE Contract Engine** immediately — that pair is the foundation. CATALYST + VOL + regime v1 + UI follow.
+
 ---
 
-## 0. The architectural decision
+## 0. The architectural decision (the single biggest redesign)
+
+**Old architecture:**
+```
+Find 0DTE candidates → attach contracts → gate them
+```
+
+**New architecture:**
+```
+Find exceptional underlying opportunities first
+  → independently establish thesis (multi-rail)
+  → determine ideal holding horizon
+  → select the best option expression (Contract Engine)
+  → continuously manage thesis integrity
+```
 
 **Find the trade first. Find the option second.**
 
 Today's engine asks: *"Can I find a 0DTE option on this ticker?"*  
 The target engine asks:
 
-1. **Is there a high-quality opportunity in NVDA?** (thesis)
+1. **Is there a high-quality opportunity in NVDA?** (thesis — DTE-agnostic)
 2. **What is the optimal expression of that thesis?** (contract + horizon + exit)
 
-Expression may be 0DTE, 1DTE, 3DTE, 7DTE, 14DTE, weekly banger (Engine B), swing tactical, iron condor, or **no options trade at all**.
+That gives you **0DTE when 0DTE makes sense**, 3DTE when 3DTE makes sense, 14DTE when the market expresses a slower thesis — and sometimes **NO TRADE**. That is how an options desk thinks.
 
-That separation alone should improve candidate quality: discovery stops inheriting DTE constraints before the thesis is scored.
+Expression may be 0DTE, 1DTE, 3DTE, 7DTE, 14DTE, weekly banger (Engine B), swing tactical, iron condor, or **no options trade at all**.
 
 ---
 
@@ -26,25 +42,28 @@ That separation alone should improve candidate quality: discovery stops inheriti
 
 ```
 REGIME ENGINE
-    ↓ (rail weights + play-type router priors)
-DISCOVERY ENGINES (parallel, DTE-agnostic)
-    FLOW │ MOMENTUM │ RS │ BREAKOUT │ REVERSAL │ POSITIONING │ CATALYST │ VOL
     ↓
-MERGE BY TICKER (per-rail scores preserved — not collapsed to one origin)
+DISCOVERY (6 core rails — DTE-agnostic, parallel)
+    FLOW │ MOMENTUM │ RS │ BREAKOUT │ REVERSAL │ POSITIONING
+    (+ CATALYST │ VOL — phase 2)
     ↓
-ARCHETYPE CLASSIFIER (maps rail evidence → trade archetype — separate score models)
+MERGE BY TICKER → rail_scores panel + archetype classifier
     ↓
-CORTEX + HARD GATES (fail-closed spine — unchanged)
+ARCHETYPE SCORE + ARCHETYPE GATES (per-archetype models — NOT one generic formula)
     ↓
-ARCHETYPE SCORE (regime-weighted; NOT one generic formula)
+CORTEX JUDGE (post-discovery — COMMIT / WATCH / REJECT)
     ↓
-EXPRESSION ENGINE (horizon + DTE + contract — VOL rail drives DTE when direction is clear)
+CONTRACT ENGINE (cross-DTE scan — pick best expression, separate module)
     ↓
-RANK (A+ / A / B / WATCH / REJECT) → commit governor
+RANK + GOVERNOR → ledger + continuous thesis-integrity management
 ```
 
-**What stays:** gate stack, Cortex, governor, exit engines, graded ledger, calibration-first graduation.  
-**What changes:** discovery emits `ThesisCandidate` (no strike/expiry); contract attach moves to expression time.
+**What stays:** fail-closed spine, governor, exit engines, graded ledger, calibration-first graduation.  
+**What changes:**
+- Discovery emits thesis (no strike/expiry)
+- **Cortex becomes judge, not discoverer** — runs on `Candidate`, not the tape
+- **Contract Engine is a separate module** — scans expiries, ranks contracts, picks optimal expression
+- **Each archetype has its own scoring model AND gates**
 
 ---
 
@@ -434,11 +453,117 @@ Persist `rail_scores` + `trade_archetype` on ledger `entry_context` for calibrat
 
 Example: NVDA with RS 93, MOMENTUM 91, BREAKOUT 84 (COILED), FLOW 88 → primary **Momentum Continuation**, secondary **Breakout** (trigger pending). Rank uses Momentum model until 181.50 breaks, then may promote to Breakout model.
 
-**Ledger:** persist `trade_archetype` + `rail_scores` alongside `discovery_origin` (origins = which rails fired; archetype = how to score/rank).
+**Ledger:** persist `trade_archetype` + `rail_scores` alongside `discovery_origin`.
+
+### 5b. Per-archetype gates (NOT one gate stack)
+
+**A good reversal looks completely different from a good momentum trade.** Each archetype gets **its own scoring model AND its own gate thresholds.**
+
+| Archetype | Gates that differ from generic |
+|-----------|----------------------------------|
+| **Momentum Continuation** | Require RS ≥ floor; penalize extension > Nσ without RS; G-1 tape-align strict |
+| **Breakout** | Require TRIGGERED (not COILED alone for commit); volume confirm; chase cap post-break |
+| **Flow Following** | Require CAMPAIGN class; min persistence minutes; aggression floor |
+| **Mean Reversion** | **Relax G-1** when REVERSAL + wall evidence; require σ deviation + flow divergence |
+| **Gamma Break** | Require short gamma + wall/flip evidence; block into building opposing wall |
+| **Catalyst Continuation** | Require ≥2 confluence pillars; G-11 earnings window rules |
+| **Failed Breakout** | Require failed TRIGGERED + reclaim; block if trend re-accelerates |
+| **Vol Expansion** | Require compression score + expansion trigger; vol rising |
+
+Generic hard gates (liquidity, plan quality, governor, regime-plane fail-closed) remain universal. Archetype gates run **after** merge, **before** Cortex.
+
+Implementation: `archetype-gates.ts` — `evaluateArchetypeGates(archetype, candidate) → PASS | WATCH | BLOCK` with per-archetype env-tunable floors (calibration-first).
 
 ---
 
-## 6. Archetype score + confluence (replaces generic thesis score)
+## 6. Cortex — judge, not discoverer
+
+**Today:** Cortex (`cortex-gate.ts` + `nighthawk/cortex/`) runs on gate survivors and adds vetoes/score — partially aligned, but discovery and gates still happen option-first.
+
+**Target:** Cortex runs **after** discovery produces a `Candidate` (merged thesis + archetype). It does NOT discover trades — it **judges** whether to COMMIT, WATCH, or REJECT.
+
+```
+Discovery → Candidate → Cortex → COMMIT | WATCH | REJECT
+                              ↓
+                    Contract Engine (if COMMIT or WATCH-with-expression)
+```
+
+### 6a. Cortex questions (10 dimensions)
+
+| Dimension | Question | Primary inputs |
+|-----------|----------|----------------|
+| **Market alignment** | Does broader market support this? | SPY/QQQ tape, G-1, regime structure |
+| **Sector alignment** | Does sector confirm? | RS rail, sector ETF trend |
+| **Tape / Flow** | Does flow support? | FLOW rail, flow_quality, campaign class |
+| **Structure** | Is entry location good? | BREAKOUT state, intraday OR/VWAP, PDH/PDL |
+| **Positioning** | Are dealer levels supportive? | POSITIONING rail, gex walls, flip, vacuum |
+| **Volatility** | Are we paying too much? | VOL rail, IV rank at candidate expiries |
+| **Catalyst** | Any binary risk? | CATALYST rail, earnings, G-11 |
+| **Liquidity** | Can users actually trade this? | Spread, OI, volume (Contract Engine pre-check) |
+| **Timing** | Too early? Too late? | COILED vs TRIGGERED, session window, chase |
+| **Risk/reward** | Room before opposing structure? | Wall path, expected move, target/invalidation geometry |
+
+Verdict maps to:
+- **COMMIT** — thesis + Cortex green + Contract Engine found expression
+- **WATCH** — thesis interesting but trigger pending (COILED), Cortex thin, or no liquid contract yet
+- **REJECT** — Cortex veto, archetype gate block, or net-negative evidence
+
+Existing Cortex evidence composer (`composeCortexEvidence`) **extends** toward these dimensions — not replaced. Veto asymmetry + fail-closed veto-blind preserved (`NIGHTHAWK-CORTEX-DESIGN.md`).
+
+---
+
+## 7. Contract Engine (separate module — competitive advantage)
+
+**Today:** `pickAtmZeroDteContract` / `buildContractPlan` attach ONE contract at discovery time, 0–4 DTE window but nearest-first bias baked in before thesis is scored.
+
+**Target:** For a bullish NVDA thesis, **scan all liquid contracts across DTE** and rank expressions independently of "Night Hawk is a 0DTE system."
+
+Example (operator spec):
+```
+NVDA LONG — contract scan
+────────────────────────────
+0DTE 182.5C   score 61   theta brutal   spread 8%
+1DTE 182.5C   score 79   spread 3%
+4DTE 185C     score 91   ← BEST EXPRESSION
+7DTE 185C     score 83
+────────────────────────────
+→ Night Hawk chooses: Aug 29 185C (4 DTE)
+  not because the system is "4DTE" — because it's optimal for today's thesis
+```
+
+### 7a. Contract score inputs
+
+Each `(expiry, strike, call|put)` candidate scored on:
+- **delta** (vs archetype target band from `horizons.ts`)
+- **theta** (decay cost for intended hold)
+- **gamma** (convexity vs hold horizon)
+- **IV** (absolute + rank at this expiry)
+- **spread** (% of mid — hard reject above floor)
+- **OI + volume** (tradability)
+- **expected move** (strike vs EM envelope)
+- **distance to strike** (moneyness vs thesis)
+- **DTE** (fit to archetype hold horizon)
+- **target horizon** (0DTE ratchet vs 3–7D swing vs campaign expiry match)
+
+Pure module: `src/lib/zerodte/contract-engine.ts` — `rankContractsForThesis(thesis, chain) → ContractCandidate[]`.
+
+### 7b. Separation from discovery
+
+| Layer | Owns |
+|-------|------|
+| Discovery rails | Underlying thesis + direction + rail_scores |
+| Archetype | Score model + gates |
+| Cortex | COMMIT / WATCH / REJECT judgment |
+| **Contract Engine** | Which expiry/strike expresses the thesis best |
+| Exit engine | How to manage once committed |
+
+Contract Engine runs **only after** Cortex approves COMMIT (or WATCH with provisional expression for display).
+
+**NO TRADE:** thesis A+ but every contract fails spread/liquidity/vol fitness → WATCH with honest empty state, never force 0DTE lotto.
+
+---
+
+## 8. Archetype score + confluence (replaces generic thesis score)
 
 Within an archetype:
 1. Score from archetype-specific weights on **core rails only**
@@ -456,66 +581,86 @@ Confluence examples that must beat solo BREAKOUT on ledger:
 
 ---
 
-## 7. Expression engine (thesis → trade — VOL picks DTE)
-
-Runs **after** gates approve a merged thesis. **VOL rail is the primary DTE selector** when directional rails agree but front-expiry IV is rich.
+## 9. Expression output (Contract Engine result)
 
 ```ts
 type ExpressionDecision = {
   horizon: "ZERO_DTE" | "SWING" | "BANGER" | "CONDOR" | "NONE";
-  dte_target: number | null;
-  contract: ContractPlan | null;
+  dte_target: number;
+  contract: ContractPlan;
+  contract_score: number;
+  alternatives: ContractCandidate[]; // top-N for drill-down UI
   exit_primitive: "RATCHET" | "SCALE_OUT" | "CONDOR";
-  vol_rationale: string | null; // e.g. "0DTE IV rank 88 → picked 5 DTE"
-  rationale: string;
+  target_price: number | null;
+  invalidation_price: number | null;
+  risk_reward: number | null;
+  vol_rationale: string | null;
 };
 ```
 
-**DTE selection algorithm (sketch):**
-1. Direction + archetype pick target delta band (`horizons.ts` contract prefs)
-2. Scan liquid expiries in `[0, ZERODTE_MAX_DTE]` (or SWING window if archetype warrants)
-3. For each candidate expiry: score `vol_fitness = f(iv_rank_at_expiry, rv_iv_spread, event_premium, term_structure)`
-4. Pick expiry maximizing `vol_fitness` subject to campaign expiry concentration (FLOW rail)
-5. If all front expiries vol_fitness < floor → extend to SWING window or WATCH
-
-Routing rules (calibration-first — graduate each branch on ledger):
-
-| Thesis shape | Regime | Expression |
-|--------------|--------|------------|
-| RS + MOMENTUM (pre-break) | TREND EXPANSION | VOL picks DTE; WATCH if COILED not triggered |
-| BREAKOUT TRIGGERED + RVOL | TREND EXPANSION | 0–3 DTE slightly OTM unless VOL says rich |
-| FLOW CAMPAIGN + multi-expiry | any | Match campaign expiry concentration |
-| Directional A+ but VOL low | any | **5 DTE over 0 DTE** — the any-DTE payoff |
-| POSITIONING.PIN fade | PIN REVERSION | 0DTE or condor router |
-| REVERSAL + wall support | PIN / HIGH-VOL | 0DTE counter-trend (shadow G-1 relax) |
-| POSITIONING.VACUUM + FLOW | short gamma | OTM toward empty wall |
-| CATALYST + structure + flow | any | Event premium aware — often 3–7 DTE post-guidance |
-| RS + weekly structure | COMPRESSION → expansion | Route to **Engine B** banger |
-| Thesis strong, no liquid option | any | WATCH, not forced 0DTE |
-
-**Horizon spine:** `src/lib/horizons.ts` already defines ZERO_DTE / SWING / LEAPS windows and exit routing — expression engine **reads** this instead of hardcoded `max_dte: 1` in discovery fetch.
-
-**Do not merge banger ledger into 0DTE board** — share discovery signals, separate commit paths and exits.
+**Horizon spine:** `horizons.ts` supplies target delta bands + exit routing — Contract Engine reads, does not hardcode DTE.
 
 ---
 
-## 8. Rank + commit (surface)
+## 10. UI — "Best trades in the entire market" (rails hidden by default)
+
+**Product question changes from:**
+> "Here are some 0DTE scanner results."
+
+**To:**
+> "What are the best trades available in the entire market right now?"
+
+### 10a. Surface (default)
+
+```
+NIGHT HAWK — TODAY
+
+🥇 #1 NVDA — LONG          A+ · 94
+   🔥 Momentum  🐋 Flow  ⚡ Breakout     4/5 systems aligned
+   Entry trigger  181.50 ↑
+   Contract       Aug 29 185C  (4 DTE)
+   Target         186.20
+   Invalidation   179.80
+   Risk/Reward    3.4R
+
+🥈 #2 META — LONG            A · 87
+   🧲 Mean Reversion  🐋 Flow
+
+🥉 #3 TSLA — SHORT           A · 84
+   ⚡ Breakdown  💥 Gamma acceleration
+```
+
+Rails/systems shown as **badges**, not implementation detail. Rank = archetype_score × Cortex conviction × systems_aligned.
+
+### 10b. Drill-down tabs
+
+| Tab | Content |
+|-----|---------|
+| **THESIS** | Archetype, direction, trigger state, hold horizon rationale |
+| **EVIDENCE** | Full rail_scores panel (FLOW 88, RS 93, …) |
+| **CONTRACT** | Contract Engine scan table (0DTE vs 4DTE scores) |
+| **MANAGEMENT** | Exit rules, trim/ratchet, thesis-break conditions |
+| **TIMELINE** | Discovery time, trigger time, flow campaign span |
+
+Existing Night Hawk deck (`/nighthawk`, Grid board) refactors to this shell — backend thesis-first, frontend simplified.
+
+---
+
+## 11. Rank + commit (surface)
 
 Unified **Best Trades Today** rank across thesis survivors:
 
 | Tier | Meaning |
 |------|---------|
-| A+ | ≥4 rails fired + archetype core rails strong + VOL expression clean |
-| A | Dual-rail + archetype match + expression found |
-| B | Watch / reduced size / shadow calibration |
-| WATCH | COILED pre-trigger, or thesis strong but VOL blocks all expiries |
-| REJECT | Hard gate or Cortex veto |
-
-Existing merit tiers (`tiers.ts`) map forward — rename/display only after calibration slice proves equivalence.
+| A+ | ≥4 rails + COMMIT + Contract Engine score ≥90 + 3R+ |
+| A | COMMIT + strong archetype + expression found |
+| B | WATCH — COILED pre-trigger or thin Cortex |
+| WATCH | Thesis valid, waiting on trigger or contract |
+| REJECT | Cortex REJECT or archetype gate BLOCK |
 
 ---
 
-## 9. Current codebase map
+## 12. Current codebase map
 
 | Component | File(s) | Thesis-first status |
 |-----------|---------|---------------------|
@@ -538,70 +683,66 @@ Existing merit tiers (`tiers.ts`) map forward — rename/display only after cali
 | Meridian catalysts | `meridian-earnings-intel.ts`, Benzinga | CATALYST rail input |
 | Horizons / exits | `horizons.ts`, `exit-engine.ts`, `scale-out.ts` | Expression engine inputs |
 | Bangers | `src/lib/banger/*` | Expression route, not merged ledger |
-| Gates / Cortex | `gates.ts`, cortex modules | Keep spine; G-1 relax for REVERSAL shadow |
+| Contract pick | `breakout-source.ts` `pickAtmZeroDteContract`, `board.ts` `buildContractPlan` | **Replace** with `contract-engine.ts` |
+| Cortex | `cortex-gate.ts`, `nighthawk/cortex/` | Extend as post-thesis **judge** |
+| Archetype gates | — | **Missing** |
 
 ---
 
-## 10. Phased build order
+## 13. Phased build order
+
+### Operator priority path (foundation)
+
+**Ship in this order** — everything else waits on this pair:
+
+#### A. Six discovery rails (2–3 PRs, shadow → live)
+1. **FLOW** — upgrade to CAMPAIGN classifier (extend existing)
+2. **MOMENTUM** — new origin
+3. **BREAKOUT** — COILED/TRIGGERED structural (replace gain screen)
+4. **REVERSAL** — new origin + archetype gates (G-1 relax path)
+5. **RS** — port from `largo/technicals.ts`
+6. **POSITIONING** — expand PIN → wall/flip/vacuum archetypes
+
+Each rail: shadow log → `rail_scores` on merge → origin-band calibration.
+
+#### B. Contract Engine (1 PR — immediately after rails)
+- `contract-engine.ts` — cross-DTE scan + rank
+- Wire after Cortex COMMIT; shadow-compare vs today's `pickAtmZeroDteContract`
+- **This is the product differentiator** — optimal expression, not default 0DTE
+
+#### C. Thesis spine (parallel with A)
+- Phase 1 types: `ThesisCandidate`, `MergedThesis`, `TradeArchetype`, archetype gates
+- Merge panel + archetype classifier (unit-tested, flag-gated)
+
+### Extended path (after foundation)
 
 ### Phase 0 — Tactical (shipped, deploy)
 PR #2894: G-3/G-17 floors, post-breakout FLOW corroboration, flow score calibration.
 
 ### Phase 1 — Spec + types (1 PR)
-- `ThesisCandidate`, `MergedThesis`, `TradeArchetype`, `ExpressionDecision` in `src/lib/zerodte/thesis.ts`
-- `rail_scores` merge helper + archetype classifier (pure, unit-tested)
-- Feature flag `ZERODTE_THESIS_FIRST=0` (default off)
+- `src/lib/zerodte/thesis.ts` — all core types
+- `archetype-gates.ts` — per-archetype gate tables
+- `ZERODTE_THESIS_FIRST=0` shadow flag
 
-### Phase 2 — Regime v1 (1 PR)
-- Extend `regime.ts` + `market-state-engine.ts` with 4-class taxonomy
-- Breadth proxy (SPY constituents % above VWAP or advance/decline from grouped daily)
-- Persist `session_regime` on board snapshot
+### Phase 2 — Cortex judge refactor (1 PR)
+- Resequence: discovery → candidate → Cortex (10 dimensions) → contract engine
+- Map existing evidence sources to dimension table (§6a)
 
-### Phase 3 — RS rail (1 PR)
-- Port pure RS math from `largo/technicals.ts` into `relative-strength-source.ts`
-- Session + 10d alpha vs QQQ and sector ETF; shadow log
+### Phase 3 — CATALYST rail (1 PR)
+- Benzinga + Meridian; confluence gate
 
-### Phase 4 — MOMENTUM rail (1 PR)
-- Absolute dynamics origin; shadow mode
-- Graduate on origin-band ledger slice
+### Phase 4 — VOL rail (1 PR)
+- Feed Contract Engine IV/term/skew inputs
 
-### Phase 5 — BREAKOUT refactor + COILED (1 PR)
-- Structural levels + COILED/TRIGGERED state machine
-- Demote gain-only screen to universe pre-filter
+### Phase 5 — Regime v1 (1 PR)
+- 4-class taxonomy + rail weights
 
-### Phase 6 — POSITIONING expand (1 PR)
-- VACUUM, WALL_BREAK, WALL_REJECTION, GAMMA_FLIP archetypes
-- Migrate PIN → POSITIONING archetype (ledger backward compat)
-
-### Phase 7 — REVERSAL rail (1 PR)
-- Exhaustion / failed-break / flow-divergence reads
-- Shadow with G-1 counter-trend evidence pack
-
-### Phase 8 — CATALYST rail (1 PR)
-- Benzinga + Meridian wire-in; confluence gate (≥2 of 4 pillars)
-
-### Phase 9 — FLOW CAMPAIGN (1 PR)
-- EVENT/CAMPAIGN classifier; campaign score boost at thesis time
-- Remove `max_dte: 1` from flow fetch
-
-### Phase 10 — VOL rail + DTE picker (1 PR)
-- `volatility-source.ts` — IV rank, RV/IV, term structure, skew
-- Expression engine: vol_fitness across expiries → optimal DTE
-- Shadow log: "would have picked 5 DTE instead of 0 DTE"
-
-### Phase 11 — Expression engine (1 PR)
-- Move contract attach post-thesis
-- Horizon router to banger/swing/0DTE/condor
-- Flag flip `ZERODTE_THESIS_FIRST=1` after shadow parity checks
-
-### Phase 12 — Unified rank UI
-- Multi-rail evidence panel (per-rail scores like operator NVDA card)
-- Archetype badge + COILED trigger line
-- "Best Trades Today" cross-archetype sort
+### Phase 6 — UI shell (1 PR)
+- "Best Trades Today" rank + drill-down tabs (§10)
 
 ---
 
-## 11. Success metrics (calibration-first)
+## 14. Success metrics (calibration-first)
 
 Each phase must prove on graded ledger before gating:
 
@@ -613,10 +754,14 @@ Each phase must prove on graded ledger before gating:
 6. **RS lift** — RS+FLOW vs FLOW-only origin band
 7. **POSITIONING.VACUUM** — path-to-wall vs random OTM counterfactual
 8. **CATALYST confluence** — catalyst-only (blocked) vs catalyst+flow+structure
+9. **VOL DTE counterfactual** — graded P&L at expression-chosen DTE vs forced 0DTE on same thesis
+10. **Archetype bands** — Momentum Continuation WR vs Mean Reversion WR vs solo BREAKOUT
+11. **Contract Engine lift** — P&L at optimized DTE vs forced 0DTE on same thesis (counterfactual)
+12. **Systems aligned** — WR when ≥4 rails fire vs 1 (target multi-rail >25%)
 
 ---
 
-## 10. Non-goals
+## 15. Non-goals
 
 - Collapsing banger/swing/legacy edition into one ledger (share signals, separate commits/exits)
 - Regime-driven auto-commit (weights only until calibrated)
