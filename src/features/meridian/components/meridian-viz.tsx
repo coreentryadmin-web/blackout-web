@@ -746,6 +746,20 @@ export function MeridianDarkPoolTape({
           );
         })}
       </div>
+      {/* The tape strip carries MEANING (premium) in pixels only -- strike and date were
+          captured (`p.strike`/`p.at`) but previously surfaced solely via `title`/`aria-label`,
+          invisible until hover. Listing the largest few as text makes the same data legible at
+          a glance, matching the visible-list treatment MeridianEarningsIntelPanel already uses
+          for its own dark-pool prints. */}
+      <ul className="mv-tape-legend">
+        {tape.slice(0, 5).map((p, i) => (
+          <li key={`${p.at ?? i}-${p.premium}-legend`}>
+            <span className="mv-tape-legend-premium">{p.label ?? p.premium}</span>
+            {p.strike != null && <span className="mv-tape-legend-strike">@ {fmtPrice(p.strike)}</span>}
+            {p.dateLabel && <span className="mv-tape-legend-date">{p.dateLabel}</span>}
+          </li>
+        ))}
+      </ul>
       <p className="mv-note">largest first · area ∝ premium</p>
     </div>
   );

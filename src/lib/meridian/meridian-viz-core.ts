@@ -470,6 +470,9 @@ export type TapePrint = {
   strike: number | null;
   side: string | null;
   at: string | null;
+  /** `MM/DD` from `at`'s date portion, for a visible label — `at` itself is a raw ISO
+   *  timestamp (`2026-08-20T14:32:05`) never meant for display as-is. */
+  dateLabel: string | null;
   /** 0..1 area-proportional magnitude — see below. */
   magnitude: number;
 };
@@ -493,6 +496,7 @@ export function darkPoolTape(
       strike: num(p.strike),
       side: p.side ?? null,
       at: p.executed_at ?? null,
+      dateLabel: darkPoolDateLabel(p.executed_at),
     }))
     .filter((p): p is TapePrint & { premium: number } => p.premium !== null && p.premium > 0) as Array<
     Omit<TapePrint, "magnitude"> & { premium: number }
@@ -502,6 +506,18 @@ export function darkPoolTape(
   return rows
     .map((r) => ({ ...r, magnitude: peak > 0 ? clamp(Math.sqrt(r.premium / peak), 0, 1) : 0 }))
     .sort((a, b) => b.premium - a.premium);
+}
+
+/**
+ * `executed_at` arrives as a raw ISO stamp (`2026-08-20T14:32:05`, per unusual-whales.ts's
+ * `.slice(0, 19)`) that was never fit for display — the tape's tooltip used to interpolate it
+ * verbatim. Formats the date portion only as `MM/DD`; time-of-day isn't useful at print-history
+ * granularity and the tooltip already gives the fuller string via `title`.
+ */
+function darkPoolDateLabel(at: string | null | undefined): string | null {
+  if (!at) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(at);
+  return m ? `${m[2]}/${m[3]}` : null;
 }
 
 // ── Countdown ────────────────────────────────────────────────────────────────────────

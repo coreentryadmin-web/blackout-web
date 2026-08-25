@@ -1930,6 +1930,18 @@ html.nav-locked body { overflow: hidden; }
 .mv-tape-print[type="button"]:hover { transform: scale(1.16); }
 @keyframes mv-pop { to { opacity: 1; } }
 
+.mv-tape-legend {
+  display: flex; flex-direction: column; gap: 0.2rem;
+  margin: 0.4rem 0 0; padding: 0; list-style: none;
+}
+.mv-tape-legend li {
+  display: flex; align-items: baseline; gap: 0.4rem;
+  font-family: inherit; font-size: 0.7rem; font-variant-numeric: tabular-nums;
+}
+.mv-tape-legend-premium { color: var(--mv-chrome); }
+.mv-tape-legend-strike { color: rgba(167, 139, 250, 0.9); }
+.mv-tape-legend-date { color: rgba(148, 163, 184, 0.75); margin-left: auto; }
+
 /* ── Countdown ── */
 .mv-countdown {
   display: inline-flex; align-items: baseline; gap: 0.5rem;
