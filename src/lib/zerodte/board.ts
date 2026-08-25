@@ -791,7 +791,8 @@ export function calibrateFlowEvidenceScore(
   const fq = flowQuality.score;
   if (gross >= 5_000_000 && fq >= 55) {
     const blended = Math.round(base * 0.5 + fq * 0.5);
-    const institutionalFloor = gross >= 7_000_000 ? 65 : gross >= 5_000_000 ? 62 : 60;
+    // Already inside gross >= 5_000_000 here (line 792's guard), so the floor is just 65 vs 62.
+    const institutionalFloor = gross >= 7_000_000 ? 65 : 62;
     return Math.max(0, Math.min(100, Math.max(blended, Math.min(institutionalFloor, fq + 5))));
   }
   if (gross >= 2_000_000 && fq >= 65) {
