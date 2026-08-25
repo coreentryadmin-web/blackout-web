@@ -288,6 +288,77 @@ Recommend this as a small, separate `feat/` PR once reviewed — the strike/expi
 mechanical, but item 2's exact wording is a real editorial decision worth a second look before it
 ships, not a judgment call to make silently.
 
+## 9. Additional live spot-checks, post-fix (2026-08-25, continued)
+
+Broadened ticker coverage beyond DKS to stress-test edge cases, per the operator's follow-up
+request to check "every field, every value" across the product.
+
+- **INTU (mega-cap, importance 5)** — Summary tab clean. "Evidence is split 4.0 bull vs 3.0 bear —
+  both sides shown, neither promoted" is exactly the calibration-honest verdict language the
+  product is supposed to produce when the book genuinely disagrees with itself. No defects found.
+- **SLQT (importance 1, spot $0.83, thin market)** — surfaced something that LOOKED like a bug and
+  turned out to be correct, deliberate behavior worth recording so it isn't re-flagged later: the
+  PUT idea card read "below 0.21 · implied move edge" while "Levels to Watch" listed `PUT WALL: 1`
+  — a different number, and 1 is actually ABOVE spot (0.83), not below it. `pickLevel()`
+  (`meridian-summary-core.ts:241`) explicitly guards against exactly this: a wall only qualifies as
+  a put TARGET if it sits on the correct side of spot (`wall < spot` for a put) — SLQT's put_wall
+  fails that check, so the function correctly falls through to the implied-move edge instead of
+  presenting a nonsensical "get below a level that's currently above you" idea. The code comment
+  cites the exact prior incident this guard was built for (BHP, wall on the wrong side / too near /
+  too far, with real numbers). **Not a Meridian bug** — if anything, a genuine open question one
+  layer up: why is Thermal's `put_wall` for SLQT sitting above spot at all (that's a Thermal-lane
+  question, not filed here).
+- Both checks required a fresh Clerk session mint — the temp session from the DKS/INTU pass had
+  aged past the ~30min sweep window mid-audit, which manifested as `ERR_CONNECTION_RESET` on every
+  navigation and was briefly mistaken for a stuck deploy (ECS was independently confirmed healthy,
+  8/8 tasks, `rolloutState: COMPLETED`, via `boto3` before the real cause — a stale session — was
+  found). Noted here as a harness gotcha for whoever runs this audit's commands next: mint a fresh
+  session per capture batch, not once for a whole long-running audit.
+
+---
+
+## 10. Largo integration — live probe, 2026-08-25
+
+Per the operator's follow-up: "Largo should be able to answer everything on Meridian." Ran real
+questions against the LIVE `POST /api/market/largo/query` endpoint (production, admin temp
+session, `mintClerkPremiumSession`), not a simulation.
+
+**Q1: "What is the DKS earnings setup today according to Meridian?"** — Strong, correct, fully
+cited answer (21.7KB, 31.6s). Every number cross-checks against what this audit observed live in
+the product: 7/8 EPS beats, 88% rev-beat rate, -2.5% avg reaction, $206K bullish net flow, no
+gamma flip, call/put walls at 200/160, JPM target cut to $245. Properly hedged risk section (short
+gamma → moves extend, not dampen; beat-but-sell pattern flagged explicitly). No fabrication
+observed — this is Largo working as intended on a Meridian question.
+
+**Q2: "Which sector peers is DKS being compared against, and how have they historically
+reacted?"** — Largo called `get_meridian_event` (confirmed via `tools_used` in the response) but
+still answered *"There's no live peer-comparison panel for DKS beyond broad-market RS"* and fell
+back to generic `get_peer_ticker_compare`/`get_peer_rs` tools instead of Meridian's own
+sector-matched cohort. **Root cause, confirmed by reading the code, not guessed**:
+`get_meridian_event` (`run-tool.ts:1694`) returns `loadMeridianEventResponse(id)` — the exact
+single-event detail payload the UI's `/api/market/meridian/event` route serves. The Sector Peers
+cohort (`MeridianPeerCohortPanel.tsx`'s `buildCohortForItem`, and this audit's own new §7 peer
+reaction history) is computed **client-side**, from the full loaded timeline (`allItems`) filtered
+to same-SIC-major-group peers — it is a cross-event computation that has never been part of any
+single event's API response, so no tool call Largo can make today reaches it. **This is not a
+fabrication** (Largo correctly said "no panel" rather than inventing peer data) but it is a real,
+confirmed integration gap: Meridian's richest earnings-comparison feature is invisible to Largo.
+
+**What closing this gap would take** (not built this pass — a new tool, real scope, not a quick
+fix): a new Largo tool (e.g. `get_meridian_peer_cohort`) that takes a ticker/event id, loads the
+surrounding timeline window server-side, and returns `buildSectorCohort` + (now that #2884 has
+shipped it) `summarizePeerReaction` for the matched peers — reusing those exact pure functions,
+not reimplementing the classification. Small, well-scoped, but genuinely new surface, so flagged
+here rather than built silently.
+
+**Q1 vs Q2 also incidentally corrected a suspected finding from this same probe**: an earlier
+read of Q2's raw HTTP response looked truncated mid-sentence ("2026-05-27 −5.97% · 2026-03-",
+cut off) across three different JSON serializations of the same text. Re-ran with the full
+response saved to a file instead of a truncated terminal echo, and the answer was complete and
+well-formed end to end — the apparent truncation was an artifact of this audit's own
+`console.log(text.slice(0, 3500))` display line, not a real API defect. Recorded so the same false
+positive doesn't get re-investigated from a stale log.
+
 ---
 
 *Live findings above are the actual product state as of 2026-08-25, ~04:30 UTC, ticker DKS
