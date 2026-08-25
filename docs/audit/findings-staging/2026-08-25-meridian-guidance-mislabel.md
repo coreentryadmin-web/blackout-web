@@ -1,0 +1,11 @@
+## 2026-08-25 — [FINDING, P3 Meridian] "GUIDANCE" catalyst-brief tag was Benzinga's raw channel label, not corporate guidance — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live, DKS earnings (2026-08-25), Report tab: every item under "Catalyst briefs" read `GUIDANCE · <headline>`, but none of the six were the company's own forward outlook — e.g. "GUIDANCE · JP Morgan Maintains Overweight on Dick's Sporting Goods, Lowers Price Target to $245". All six were sell-side analyst rating/price-target actions. Found during a CTO-depth Meridian audit (`docs/audit/MERIDIAN-CTO-AUDIT-2026-08-25.md`). |
+| **Root cause** | `shapeCatalystBriefs` passed Benzinga's own `type` field through verbatim for any item on its "guidance" news channel — that channel is broader than the word implies. Corroborating evidence: a fresh fill-rate re-run (`meridian-earnings-data-inventory.mjs --min-importance=4`) found `enrichment.corporate_guidance` (the real guidance field) at **0% fill** even for mega-cap earnings, while the mislabeled Benzinga-channel tag is what members actually saw. The identical headline already appears, correctly labeled, under `analyst_revisions` elsewhere on the same tab. |
+| **Fix** | New `looksLikeAnalystAction(title)` in `meridian-feed-text.ts`, reusing `shapeAnalyst`'s existing action-keyword vocabulary (deliberately narrower than that function's own keywords — see its doc comment for why a bare "raises"/"lowers" would misclassify a real "raises guidance" headline). `shapeCatalystBriefs` (moved to a new pure `meridian-catalyst-enrich-core.ts` for testability — see below) now drops a "guidance"-typed item whose title matches, rather than relabeling it, since the same headline is already shown correctly elsewhere. |
+| **Blast radius / tooling note** | `meridian-catalyst-enrich.ts` carries `import "server-only"`, which throws unconditionally under `tsx --test` — nothing in that file was previously unit-testable. Extracted the pure shaping logic into `meridian-catalyst-enrich-core.ts` (no server-only import), matching the `-core.ts` split every other Meridian data layer in this repo already uses. |
+| **Status** | FIXED — tests added (`meridian-catalyst-enrich-core.test.ts`, `meridian-feed-text.test.ts`). `npx tsc --noEmit` clean, targeted suite green. |

@@ -15,6 +15,7 @@ import type {
   MeridianStreetSkew,
 } from "@/features/meridian/lib/meridian-types";
 import { meridianFeedText } from "@/lib/meridian/meridian-feed-text";
+import { shapeCatalystBriefs } from "@/lib/meridian/meridian-catalyst-enrich-core";
 
 export type MeridianAnalystRevision = {
   title: string;
@@ -96,19 +97,6 @@ async function loadPriceTargetRows(ticker: string): Promise<MeridianPriceTargetR
   } catch {
     return [];
   }
-}
-
-function shapeCatalystBriefs(
-  catalysts: Awaited<ReturnType<typeof fetchBenzingaCatalysts>>
-): MeridianCatalystBrief[] {
-  return catalysts
-    .filter((c) => ["m&a", "guidance", "buyback", "offering", "binary", "insider"].includes(c.type))
-    .slice(0, 8)
-    .map((c) => ({
-      type: c.type,
-      title: meridianFeedText(c.title),
-      published: c.published || null,
-    }));
 }
 
 function extractRows(data: unknown): Record<string, unknown>[] {
