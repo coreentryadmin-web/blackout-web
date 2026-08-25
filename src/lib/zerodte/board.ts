@@ -1473,6 +1473,9 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
    *  so the graded origin band can measure opposing-co-discovery outcomes; it does not change
    *  what commits. Absent = no conflict (same-direction corroboration or single origin). */
   origin_direction_conflict?: OriginDirectionConflict | null;
+  /** Thesis-first pipeline snapshot (shadow attach) — independent per-rail scores + archetype.
+   *  Populated by thesis/scan-shadow.ts; does not gate commits until ZERODTE_THESIS_FIRST=1. */
+  thesis_first?: import("./thesis/types").ThesisPipelineResult | null;
   /** WS-06: per-origin (direction, score) recorded at merge time — the raw material buildOriginMaps
    *  freezes onto the committed row. Populated in-place by recordOriginContributionsOnMerge for a
    *  multi-source ticker; absent for a single-origin setup (buildOriginMaps seeds those from the
