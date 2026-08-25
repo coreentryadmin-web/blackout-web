@@ -59,6 +59,8 @@
     "x-profile:optimize": "node --import tsx scripts/x-profile-optimize.ts",
     "x-showcase:dry": "node --import tsx scripts/x-showcase-post.mjs",
     "x-showcase:post": "node --import tsx scripts/x-showcase-post.mjs --post",
+    "x:catalog:export": "node --import tsx scripts/audit/export-capture-catalog.mjs",
+    "x:catalog:list": "node scripts/audit/x-catalog-list.mjs",
     "x-engage:now": "node --import tsx scripts/x-engage-now.ts",
     "x-growth:now": "node --import tsx scripts/x-growth-now.ts",
     "x-growth:loop": "node scripts/x-growth-loop.mjs",
