@@ -839,4 +839,6 @@ export type MeridianTimelinePayload = {
   /** How many lane rows carry a sector cohort key, and how many do not. Coverage, stated. */
   sectors_classified?: number;
   sectors_unclassified?: number;
+  /** True on the lite first paint — client should revalidate the full payload for implied moves. */
+  enrich_pending?: boolean;
 };

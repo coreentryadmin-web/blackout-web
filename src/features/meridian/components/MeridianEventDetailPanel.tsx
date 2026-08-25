@@ -128,11 +128,34 @@ export function MeridianEventDetailPanel({
         {detail?.kind === "earnings" && !loading && !error && (
           <MeridianEarningsTablist tab={earningsTab} onTabChange={setEarningsTab} />
         )}
+        {loading && item.kind === "macro" && (
+          <span className="meridian-detail-loading-chip" role="status">
+            Loading macro brief…
+          </span>
+        )}
       </header>
 
-      {loading && (
+      {loading && item.kind !== "macro" && (
         <div className="meridian-detail-loading">
           <MeridianShimmer lines={6} />
+        </div>
+      )}
+      {loading && item.kind === "macro" && (
+        <div className="meridian-detail-loading meridian-detail-loading-progressive">
+          <div className="meridian-detail-grid-v2">
+            <MeridianDataCard label="Macro context" wide tone="macro" delay={0}>
+              <MeridianShimmer lines={2} />
+            </MeridianDataCard>
+            <MeridianDataCard label="SPX positioning" tone="macro" delay={80}>
+              <MeridianShimmer lines={2} />
+            </MeridianDataCard>
+            <MeridianDataCard label="HELIX flow skew" tone="macro" delay={160}>
+              <MeridianShimmer lines={2} />
+            </MeridianDataCard>
+            <MeridianDataCard label="Prior prints · session + 60m" wide tone="macro" delay={240}>
+              <MeridianShimmer lines={3} />
+            </MeridianDataCard>
+          </div>
         </div>
       )}
       {error && !loading && <MeridianEmpty message={error} />}

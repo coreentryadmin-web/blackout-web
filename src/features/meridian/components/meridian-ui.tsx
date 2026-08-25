@@ -266,6 +266,23 @@ export function MeridianShimmer({ lines = 3 }: { lines?: number }) {
   );
 }
 
+/** Visible loading copy — silent shimmer reads as a broken empty lane. */
+export function MeridianLoadingNotice({
+  label,
+  sub,
+}: {
+  label: string;
+  sub?: string | null;
+}) {
+  return (
+    <div className="meridian-loading-notice" role="status" aria-live="polite">
+      <p className="meridian-loading-notice-label">{label}</p>
+      {sub ? <p className="meridian-loading-notice-sub">{sub}</p> : null}
+      <MeridianShimmer lines={3} />
+    </div>
+  );
+}
+
 export function MeridianEmpty({ message }: { message: string }) {
   return (
     <div className="meridian-empty-state">

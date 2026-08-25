@@ -166,7 +166,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t("get_earnings", "Per-ticker earnings: Benzinga STRUCTURED calendar primary — `next_report` (date, BMO/AMC time, confirmed vs projected) and `print_history` (actual vs estimated EPS and revenue, with each print's reaction anchored to its report timing) — plus UW earnings/estimates. `related_news` is news MENTIONING this ticker in the earnings channel, NOT its own results — never quote it as this company's earnings. A non-null `calendar_error` means the calendar could not be READ, which is not evidence the company has no scheduled report. Move/return fields are PERCENTS under `_pct` names; `expected_move` (no suffix) is a DOLLAR amount. Neither is to be rescaled.", T, ["ticker"]),
 
-  t("get_earnings_history", "UW earnings history and estimates — one row per past print. Move/return fields are PERCENTS under `_pct` names (reaction_pct is the print reaction, (post_close-pre_close)/pre_close x100); `expected_move` is a DOLLAR amount. Do not rescale either.", T, ["ticker"]),
+  t("get_earnings_history", "Per-ticker earnings history — PRIMARY is Meridian `print_history` (actual vs estimated EPS/revenue with timing-aware `reaction_pct`, same engine as the desk). Also includes UW earnings/estimates under `unusual_whales` with `meridian_reaction_pct` when enrichable. Prefer `print_history.reaction_pct` or `meridian_reaction_pct` over raw UW `reaction_pct` (close-to-close on the report session). Move fields ending in `_pct` are percents; `expected_move` is dollars.", T, ["ticker"]),
 
   t("get_analyst_ratings", "Benzinga analyst-ratings channel primary; UW screener fallback.", T, ["ticker"]),
 
@@ -441,7 +441,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   }, ["ticker", "indicator"]),
 
-  t("get_earnings_market", "UW ONLY — the current ET session's premarket/afterhours earnings. Trust each row's own `report_date` for which session it belongs to, and `as_of_session`/`as_of_weekday` for the ET session this was read on — do not infer today's session from a timestamp. Move/return fields are PERCENTS under `_pct` names; `expected_move` is a DOLLAR amount.", {}),
+  t("get_earnings_market", "Today's premarket/afterhours earnings (UW session lists). Each row may carry `meridian_reaction_pct` — timing-aware print reaction, same engine as the Meridian desk. Prefer that over raw UW `reaction_pct` (close-to-close on the report session). Trust each row's `report_date` for session membership and `as_of_session`/`as_of_weekday` for when this was read. Move fields ending in `_pct` are percents; `expected_move` is dollars.", {}),
 
   t(
     "get_meridian_timeline",

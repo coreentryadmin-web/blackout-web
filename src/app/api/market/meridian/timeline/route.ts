@@ -25,13 +25,14 @@ export async function GET(req: NextRequest) {
   const daysAhead = Number.isFinite(rawDays)
     ? Math.min(MAX_DAYS, Math.max(1, Math.floor(rawDays)))
     : DEFAULT_DAYS;
+  const skipEnrich = req.nextUrl.searchParams.get("skip_enrich") === "1";
 
   try {
     const today = todayEtYmd();
     const payload = await serverCache(
-      `meridian:timeline:v1:${today}:${daysAhead}`,
+      `meridian:timeline:v1:${today}:${daysAhead}:${skipEnrich ? "lite" : "full"}`,
       MERIDIAN_TIMELINE_TTL_MS,
-      () => loadMeridianTimelineResponse(daysAhead)
+      () => loadMeridianTimelineResponse(daysAhead, { skipEnrich })
     );
     return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
   } catch (error) {

@@ -1532,7 +1532,9 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     entities: ["ticker"],
     entitlement: "premium",
     keywords: ["earnings history", "beat", "miss", "eps", "past earnings"],
-    joinsWith: ["fund.earnings_calendar"],
+    caveat:
+      "print_history uses Meridian timing-aware reactions (same as the desk). Do not quote raw UW reaction_pct for how a name reacted.",
+    joinsWith: ["fund.earnings_calendar", "meridian.event"],
   },
   // ── Meridian: the catalyst desk ──
   // Registered as MERIDIAN rather than CATALYSTS on purpose. The calendar tools answer "when",
@@ -1601,7 +1603,8 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     entities: ["ticker", "session"],
     entitlement: "premium",
     keywords: ["premarket earnings", "after hours earnings", "reporting today"],
-    caveat: "Live only — today’s reporting schedule, not a record of past reports.",
+    caveat:
+      "Live only — today’s reporting schedule. Prefer meridian_reaction_pct over UW reaction_pct for print reactions.",
   },
   {
     id: "fund.catalysts",
