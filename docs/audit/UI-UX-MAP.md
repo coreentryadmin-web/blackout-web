@@ -864,7 +864,25 @@ layout, it was telling the app "you are the real iOS native app," which per an A
 3.1.1 comment in the source hides purchase-flow links/language site-wide. With the correct UA the
 nav shows in full. The hero itself (animated cracked-glass "B" mark, particle field, "TRADE LIKE"
 headline mid-reveal at the 9s capture point) is unchanged — that part of the original entry stands.
-Full scroll-depth inventory (module grid, membership block, footer) still not captured this pass.
+
+**LIVE 2026-08-25** (`home-desktop`, 1440×900, full scroll-depth) — closes the remaining desktop
+scroll-depth gap. Content is correct and clean end to end: hero → free "DEALER GAMMA, ON THE GLASS"
+live SPX gamma-snapshot module (real spot/wall data) → "SIX ENGINES. ONE EDGE." carousel (SPX
+Slayer / Helix / Thermal cards, real live-desk mockups, all three visible at once at this width) →
+"HOW BLACKOUT THINKS." four-stage timeline → membership tiers → FAQ → footer. **One capture-tool
+nuance worth recording, not a product defect:** two independent `--full` captures both showed the
+four-stage timeline's mini demo widgets (a live pipeline visualization, a sample trade card, a
+GEX-wall bar chart) as "● OFFLINE" and blank — while the SAME widgets, given real dwell time
+in-view (verified directly: scrolled straight to the section and watched for up to 14s), connect
+and populate correctly with live-looking data ("CONFLUENCE 3.8/5", a real "SPX 0DTE CALL 5640C ·
+Tier: A" trade card, populated GEX bars). The product is confirmed correct; these specific widgets
+just need longer sustained visibility than `proxy-browser.cjs --full`'s default per-step dwell
+provides (`scrollThrough`'s `waitMs`, from the fix in
+`docs/audit/findings-staging/2026-08-25-proxy-browser-full-page-reveal-animations.md`, was tuned
+against CSS/JS-transition-gated reveals, not connection-establishing live widgets — a different,
+slower class of "not yet visible" than that fix addresses). Not chased into a further tooling fix
+this pass — `--wait`/a longer `waitMs` is already available to a caller who knows a page has this
+pattern, and generalizing the default risks slowing every capture for a page-specific quirk.
 
 **LIVE 2026-08-25** (`home-mobile`, 430×932, full scroll-depth) — closes the `home-mobile` beyond-
 the-hero-fold gap from §11. First attempt (`proxy-browser.cjs --full`) showed two large blank
