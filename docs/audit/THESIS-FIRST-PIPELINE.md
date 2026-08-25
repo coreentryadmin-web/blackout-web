@@ -28,15 +28,17 @@ That separation alone should improve candidate quality: discovery stops inheriti
 REGIME ENGINE
     ↓ (rail weights + play-type router priors)
 DISCOVERY ENGINES (parallel, DTE-agnostic)
-    FLOW │ MOMENTUM │ RS │ BREAKOUT │ REVERSAL │ POSITIONING │ CATALYST
+    FLOW │ MOMENTUM │ RS │ BREAKOUT │ REVERSAL │ POSITIONING │ CATALYST │ VOL
     ↓
-MERGE BY TICKER (preserve origin set + campaign/event class)
+MERGE BY TICKER (per-rail scores preserved — not collapsed to one origin)
+    ↓
+ARCHETYPE CLASSIFIER (maps rail evidence → trade archetype — separate score models)
     ↓
 CORTEX + HARD GATES (fail-closed spine — unchanged)
     ↓
-THESIS SCORE (regime-weighted, multi-rail confluence)
+ARCHETYPE SCORE (regime-weighted; NOT one generic formula)
     ↓
-EXPRESSION ENGINE (horizon + contract + exit primitive)
+EXPRESSION ENGINE (horizon + DTE + contract — VOL rail drives DTE when direction is clear)
     ↓
 RANK (A+ / A / B / WATCH / REJECT) → commit governor
 ```
@@ -113,6 +115,10 @@ type ThesisCandidate = {
   positioning_archetype?: PositioningArchetype | null; // POSITIONING rail
   catalyst_bundle?: CatalystRead | null; // CATALYST rail
   reversal_read?: ReversalRead | null; // REVERSAL rail
+  vol_read?: VolatilityRead | null; // VOL rail — primarily expression, not direction
+  /** Per-rail 0–100 scores after merge — each engine scored independently. */
+  rail_scores?: Partial<Record<DiscoveryOrigin, number>>;
+  trade_archetype?: TradeArchetype | null;
   // NO strike, expiry, or plan until expression
 };
 ```
@@ -332,32 +338,127 @@ Files: wire Meridian earnings intel + Benzinga (`polygon` news API) into `cataly
 | **REVERSAL** | Anti-chase mean reversion | Missing |
 | **POSITIONING** | Dealer geometry (incl. PIN) | PIN fade only |
 | **CATALYST** | News × price × flow × structure | Flags only, no rail |
+| **VOL** | IV mispricing + term structure | Largo/UW tools only; not in discovery |
+
+### 3i. VOLATILITY rail (expression driver — the case for any-DTE)
+
+**Today:** VIX band in `regime.ts`; `fetchUwIvRank`, `fetchUwIvRankSeries`, `get_iv_term_structure`, `get_realized_vol`, `get_risk_reversal_skew` exist for Largo/SPX shadow factors — **not** in 0DTE discovery or contract pick.
+
+**Target:** Ask *"Is volatility itself mispriced?"* — options are not just direction bets.
+
+Signals:
+- IV rank / IV percentile (`fetchUwIvRank`, Polygon VIX rank fallback)
+- Realized vs implied (`fetchRealizedVol` / UW realized-vs-implied)
+- Term structure (contango / backwardation per expiry)
+- Expected move vs realized (`expected_move_pct` from Meridian/chain)
+- Event premium (earnings/FDA IV inflation)
+- Skew (risk reversal, put/call wing)
+- Vol expansion / compression (IV slope + RVOL of vol)
+
+**VOL rail does NOT discover direction.** It scores whether the **option expression** is favorable:
+- Directional thesis A+ but **0DTE IV rank 92** → expression picks **5 DTE** instead
+- Event premium elevated → avoid front-weekly unless catalyst continuation archetype
+- Backwardation → favor nearer expiry; contango → favor slightly longer DTE for same delta
+
+Example:
+```
+NVDA directional thesis: excellent (RS 93, MOMENTUM 91)
+VOL score: 68 — 0DTE IV rank 88, RV > IV, event premium none
+→ Expression: 3–5 DTE (not 0DTE) — "direction right, vol entry wrong at 0DTE"
+```
+
+Files: `volatility-source.ts` · reuse `unusual-whales.ts` IV stats, `polygon-options-gex.ts` realized vol, chain implied vol at pick time.
+
+**Cache-reader rule:** VOL reads ride existing UW Redis cache (`iv_rank:${ticker}`) — no per-request upstream flood.
 
 ---
 
-## 4. Merge + thesis score
+## 4. Merge by ticker (multi-rail evidence panel)
 
-**Merge:** Union by ticker; preserve full origin set (existing `DISCOVERY_ORIGIN_ORDER` pattern).
+**Merge:** Union by ticker. Each rail that fired retains its **independent 0–100 score**. Do NOT collapse to "came from FLOW."
 
-**Thesis score** (replaces origin-blind `enrichSetup` score for ranking):
-1. Base from strongest agreeing rail(s)
-2. × regime rail weights from §2
-3. + confluence bonus — examples that must beat solo BREAKOUT on ledger:
-   - RS + MOMENTUM + FLOW CAMPAIGN
-   - CATALYST + BREAKOUT TRIGGERED + FLOW
-   - REVERSAL + POSITIONING (put wall support) + flow divergence
-   - COILED → TRIGGERED + RS + short gamma
-4. + flow_quality when FLOW present (`calibrateFlowEvidenceScore` — shipped #2894)
-5. − chase penalty when MOMENTUM/BREAKOUT long without RS in late extension
-6. Cortex remains veto layer, not score additive
+Target card (operator spec):
+```
+NVDA  long
+────────────────────────
+FLOW             88   🐋 campaign
+MOMENTUM         91
+BREAKOUT         84   COILED → trigger 181.50
+REL STRENGTH     93
+POSITIONING      76   VACUUM
+CATALYST         40
+VOLATILITY       68
+────────────────────────
+Archetype: 🔥 Momentum Continuation (+ ⚡ Breakout trigger pending)
+Rank: A+
+Expression: 3 DTE (VOL — 0DTE IV too rich)
+```
 
-**Anti-pattern today (2026-08-25 prod):** 29 BREAKOUT-only, 0 multi-rail merges, BMNR/COIN/MSTR commits with `gross: 0` — structural proof that option-first breakout without flow thesis is weak.
+Implementation:
+```ts
+type MergedThesis = {
+  ticker: string;
+  direction: "long" | "short"; // majority vote or strongest rail
+  rail_scores: Record<DiscoveryOrigin, number>; // only rails that fired
+  rails_fired: DiscoveryOrigin[];
+  trade_archetype: TradeArchetype;
+  archetype_score: number; // from archetype-specific model, NOT generic blend
+};
+```
+
+Persist `rail_scores` + `trade_archetype` on ledger `entry_context` for calibration slices.
+
+**Anti-pattern today:** `discovery_origin: ["BREAKOUT"]` with score 65 and `gross: 0` — one rail, one number, no visibility into missing corroboration.
 
 ---
 
-## 5. Expression engine (thesis → trade)
+## 5. Trade archetypes (separate score models — NOT one generic model)
 
-Runs **after** gates approve a thesis candidate.
+**Do NOT score all trades with one formula.** Each archetype has **core evidence rails** and its own scoring weights (calibration-first per archetype band on ledger).
+
+| Archetype | Emoji | Core evidence rails | Score model emphasis |
+|-----------|-------|---------------------|----------------------|
+| **Momentum Continuation** | 🔥 | MOMENTUM + RS + FLOW | RS persistence, RVOL, VWAP hold; penalize late extension without RS |
+| **Breakout** | ⚡ | BREAKOUT + MOMENTUM + VOL | Level trigger, volume confirm, COILED→TRIGGERED; VOL for post-break expansion |
+| **Flow Following** | 🐋 | FLOW (CAMPAIGN) + RS | Persistence, acceleration, ask aggression; RS confirms not isolated whale |
+| **Mean Reversion** | 🧲 | REVERSAL + POSITIONING | σ deviation, wall support, flow divergence; penalize trend-chase |
+| **Gamma Break** | 💥 | POSITIONING (WALL_BREAK/GAMMA_FLIP) + BREAKOUT | Wall/flip transition, short gamma, volume through node |
+| **Catalyst Continuation** | 📰 | CATALYST + BREAKOUT + FLOW | ≥3 pillars; price reaction vs expected move |
+| **Failed Breakout** | ⚔️ | REVERSAL + BREAKOUT (failed) | Trap structure, reclaim, opposing flow; archetype for failed TRIGGERED |
+| **Vol Expansion** | 🌊 | BREAKOUT (COILED) + VOL + MOMENTUM | Compression → expansion; vol compression score rising |
+
+**Classifier (pure, deterministic):**
+1. Evaluate which archetypes' **required rails** are present above floor (e.g. FLOW CAMPAIGN ≥70 → Flow Following candidate)
+2. If multiple match, pick highest **core-rail agreement**; ties → regime prior (§2)
+3. Run **only that archetype's score function** for rank — not a weighted average of all rail scores
+
+Example: NVDA with RS 93, MOMENTUM 91, BREAKOUT 84 (COILED), FLOW 88 → primary **Momentum Continuation**, secondary **Breakout** (trigger pending). Rank uses Momentum model until 181.50 breaks, then may promote to Breakout model.
+
+**Ledger:** persist `trade_archetype` + `rail_scores` alongside `discovery_origin` (origins = which rails fired; archetype = how to score/rank).
+
+---
+
+## 6. Archetype score + confluence (replaces generic thesis score)
+
+Within an archetype:
+1. Score from archetype-specific weights on **core rails only**
+2. × regime multiplier from §2
+3. + bonus for **non-core corroborating rails** (e.g. Flow Following + RS 90)
+4. − archetype-specific penalties (chase, rich IV at chosen DTE, solo rail)
+5. Cortex veto unchanged
+
+Confluence examples that must beat solo BREAKOUT on ledger:
+- Flow Following: FLOW 88 + RS 93 + MOMENTUM 91
+- Breakout: TRIGGERED + RVOL + FLOW campaign
+- Mean Reversion: REVERSAL + put wall + flow divergence
+
+**Anti-pattern today (2026-08-25 prod):** 29 BREAKOUT-only, 0 multi-rail merges, BMNR/COIN/MSTR commits with `gross: 0`.
+
+---
+
+## 7. Expression engine (thesis → trade — VOL picks DTE)
+
+Runs **after** gates approve a merged thesis. **VOL rail is the primary DTE selector** when directional rails agree but front-expiry IV is rich.
 
 ```ts
 type ExpressionDecision = {
@@ -365,21 +466,30 @@ type ExpressionDecision = {
   dte_target: number | null;
   contract: ContractPlan | null;
   exit_primitive: "RATCHET" | "SCALE_OUT" | "CONDOR";
+  vol_rationale: string | null; // e.g. "0DTE IV rank 88 → picked 5 DTE"
   rationale: string;
 };
 ```
+
+**DTE selection algorithm (sketch):**
+1. Direction + archetype pick target delta band (`horizons.ts` contract prefs)
+2. Scan liquid expiries in `[0, ZERODTE_MAX_DTE]` (or SWING window if archetype warrants)
+3. For each candidate expiry: score `vol_fitness = f(iv_rank_at_expiry, rv_iv_spread, event_premium, term_structure)`
+4. Pick expiry maximizing `vol_fitness` subject to campaign expiry concentration (FLOW rail)
+5. If all front expiries vol_fitness < floor → extend to SWING window or WATCH
 
 Routing rules (calibration-first — graduate each branch on ledger):
 
 | Thesis shape | Regime | Expression |
 |--------------|--------|------------|
-| RS + MOMENTUM (pre-break) | TREND EXPANSION | 0–1 DTE ATM; WATCH if COILED not triggered |
-| BREAKOUT TRIGGERED + RVOL | TREND EXPANSION | 0–3 DTE slightly OTM |
+| RS + MOMENTUM (pre-break) | TREND EXPANSION | VOL picks DTE; WATCH if COILED not triggered |
+| BREAKOUT TRIGGERED + RVOL | TREND EXPANSION | 0–3 DTE slightly OTM unless VOL says rich |
 | FLOW CAMPAIGN + multi-expiry | any | Match campaign expiry concentration |
+| Directional A+ but VOL low | any | **5 DTE over 0 DTE** — the any-DTE payoff |
 | POSITIONING.PIN fade | PIN REVERSION | 0DTE or condor router |
 | REVERSAL + wall support | PIN / HIGH-VOL | 0DTE counter-trend (shadow G-1 relax) |
 | POSITIONING.VACUUM + FLOW | short gamma | OTM toward empty wall |
-| CATALYST + structure + flow | any | Horizon from catalyst (0DTE scalp vs 3–7 DTE swing) |
+| CATALYST + structure + flow | any | Event premium aware — often 3–7 DTE post-guidance |
 | RS + weekly structure | COMPRESSION → expansion | Route to **Engine B** banger |
 | Thesis strong, no liquid option | any | WATCH, not forced 0DTE |
 
@@ -389,23 +499,23 @@ Routing rules (calibration-first — graduate each branch on ledger):
 
 ---
 
-## 6. Rank + commit (surface)
+## 8. Rank + commit (surface)
 
 Unified **Best Trades Today** rank across thesis survivors:
 
 | Tier | Meaning |
 |------|---------|
-| A+ | Multi-rail + campaign + regime-aligned + expression clean |
-| A | Strong single-rail or dual-rail with full expression |
+| A+ | ≥4 rails fired + archetype core rails strong + VOL expression clean |
+| A | Dual-rail + archetype match + expression found |
 | B | Watch / reduced size / shadow calibration |
-| WATCH | Thesis interesting, expression or gate incomplete |
+| WATCH | COILED pre-trigger, or thesis strong but VOL blocks all expiries |
 | REJECT | Hard gate or Cortex veto |
 
 Existing merit tiers (`tiers.ts`) map forward — rename/display only after calibration slice proves equivalence.
 
 ---
 
-## 7. Current codebase map
+## 9. Current codebase map
 
 | Component | File(s) | Thesis-first status |
 |-----------|---------|---------------------|
@@ -418,8 +528,10 @@ Existing merit tiers (`tiers.ts`) map forward — rename/display only after cali
 | REVERSAL | — | **Missing** |
 | POSITIONING / PIN | `pin-source.ts`, `pin-temporal-stability.ts` | PIN fade only — expand archetypes |
 | CATALYST | `board.ts` `matchEarnings`, dossier flags | Flags only — no discovery rail |
+| VOL | `unusual-whales.ts` IV rank, Largo vol tools | **Not in 0DTE** — expression gap |
+| Archetypes | `play_type` DIRECTIONAL/CONDOR only | **Missing** — one score model today |
 | Regime labels | `regime.ts` | Partial — extend axes |
-| Rail weights | `market-state-engine.ts` | v0, 3 rails — extend to 7+ |
+| Rail weights | `market-state-engine.ts` | v0, 3 rails — extend to 8 |
 | Regime fail-closed | `regime-plane.ts` | Keep commit gate |
 | Intraday structure | `intraday.ts` | COILED/OR/VWAP — wire to BREAKOUT |
 | GEX / walls | `getGexPositioning()`, heatmap API | POSITIONING rail input |
@@ -430,15 +542,15 @@ Existing merit tiers (`tiers.ts`) map forward — rename/display only after cali
 
 ---
 
-## 8. Phased build order
+## 10. Phased build order
 
 ### Phase 0 — Tactical (shipped, deploy)
 PR #2894: G-3/G-17 floors, post-breakout FLOW corroboration, flow score calibration.
 
 ### Phase 1 — Spec + types (1 PR)
-- `ThesisCandidate` / `ExpressionDecision` types in `src/lib/zerodte/thesis.ts`
+- `ThesisCandidate`, `MergedThesis`, `TradeArchetype`, `ExpressionDecision` in `src/lib/zerodte/thesis.ts`
+- `rail_scores` merge helper + archetype classifier (pure, unit-tested)
 - Feature flag `ZERODTE_THESIS_FIRST=0` (default off)
-- Unit tests for merge + score without provider IO
 
 ### Phase 2 — Regime v1 (1 PR)
 - Extend `regime.ts` + `market-state-engine.ts` with 4-class taxonomy
@@ -472,19 +584,24 @@ PR #2894: G-3/G-17 floors, post-breakout FLOW corroboration, flow score calibrat
 - EVENT/CAMPAIGN classifier; campaign score boost at thesis time
 - Remove `max_dte: 1` from flow fetch
 
-### Phase 10 — Expression engine (1 PR)
+### Phase 10 — VOL rail + DTE picker (1 PR)
+- `volatility-source.ts` — IV rank, RV/IV, term structure, skew
+- Expression engine: vol_fitness across expiries → optimal DTE
+- Shadow log: "would have picked 5 DTE instead of 0 DTE"
+
+### Phase 11 — Expression engine (1 PR)
 - Move contract attach post-thesis
 - Horizon router to banger/swing/0DTE/condor
 - Flag flip `ZERODTE_THESIS_FIRST=1` after shadow parity checks
 
-### Phase 11 — Unified rank UI
-- Night Hawk deck: thesis card (multi-rail evidence) → expression footer
-- COILED watchlist with trigger price
-- "Best Trades Today" cross-lane sort
+### Phase 12 — Unified rank UI
+- Multi-rail evidence panel (per-rail scores like operator NVDA card)
+- Archetype badge + COILED trigger line
+- "Best Trades Today" cross-archetype sort
 
 ---
 
-## 9. Success metrics (calibration-first)
+## 11. Success metrics (calibration-first)
 
 Each phase must prove on graded ledger before gating:
 
