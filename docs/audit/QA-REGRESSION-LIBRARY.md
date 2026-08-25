@@ -224,6 +224,24 @@ verified:
 
 ### Harness limitations tracked, not yet solved
 
+- **`fetch()`-based redirect checks miss Next.js App Router's streaming-SSR redirect form —
+  the cause of a P0 false positive filed twice this session (2026-08-24).** A page-level
+  `redirect()` thrown AFTER the parent layout has begun streaming can't rewrite an already-committed
+  `200` status line to a real `30x`, so Next instead embeds a `<meta id="__next-page-redirect"
+  http-equiv="refresh" content="1;url=...">` tag plus an RSC flight digest
+  (`"digest":"NEXT_REDIRECT;replace;<url>;<status>;"`) in the `200` response body. `fetch()` never
+  executes HTML or interprets that digest as a redirect — it only recognizes an HTTP-level `30x` +
+  `Location` header. A probe that checks `res.status`/`redirect: "manual"`'s `Location` header and a
+  `<title>` tag, without also grepping the body for `NEXT_REDIRECT`/`http-equiv="refresh"`, cannot
+  tell a genuinely broken gate from a correctly-working one that happens to redirect mid-stream —
+  and re-testing the same way twice more doesn't catch it, since the blind spot is in what's being
+  checked, not in how many times. **Any future black-box test of a `redirect()`-based gate via
+  `fetch()`/`curl` must grep the response body for `NEXT_REDIRECT` and/or `http-equiv="refresh"`
+  before concluding a `200` means the gate failed** — and ideally also check whether the gated
+  component's real markup/data is present in the RSC payload (vs. only an unresolved lazy chunk
+  reference behind a Suspense fallback) to distinguish "redirect pending, nothing leaked" from an
+  actual render. See `docs/audit/findings-staging/2026-08-24-p0-authz-fix-did-not-work.md`'s
+  CORRECTION row for the full incident writeup.
 - **Mid-interaction rollout resilience.** The settle-poll fix (#2782) only guards the
   pre-interaction window; a deploy landing mid-interaction-pass (observed 3x live against
   `/meridian` during this session, from concurrent fleet activity) still corrupts that run's
