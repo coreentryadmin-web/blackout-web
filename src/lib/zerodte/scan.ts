@@ -108,6 +108,7 @@ import {
 import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy } from "./exit-sync";
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
 import { persistZeroDteRejections } from "./rejections";
+import { attachThesisFirstShadow, thesisFirstEntryContext } from "./thesis/scan-shadow";
 import {
   persistDiscoveryCommitEvents,
   persistDiscoveryDetectedEvents,
@@ -482,6 +483,10 @@ export async function scanZeroDteBoard(flags?: {
   const nowEt = etNowParts();
   const nowEtMinutes = nowEt.hour * 60 + nowEt.minute;
   attachConfluence(setups, nowEtMinutes);
+
+  // Thesis-first shadow pipeline — independent per-rail scores + archetype (default ON via
+  // ZERODTE_THESIS_FIRST_SHADOW). Evidence-only until ZERODTE_THESIS_FIRST=1 arms commit path.
+  attachThesisFirstShadow(setups);
 
   // Hard-gate verdicts LAST — G-3 judges the final post-edge-layer score, G-1 reuses the same SPY read
   // the edge layer just fetched, and G-12 reads the confluence just attached (one clock per cycle, so
@@ -1175,6 +1180,9 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       // ticker the OTHER way — evidence for the calibration origin band, never a commit change.
       // Present only on a real conflict so the blob stays honest for the common (agreeing) case.
       ...(s.origin_direction_conflict ? { origin_direction_conflict: s.origin_direction_conflict } : {}),
+      ...(s.thesis_first
+        ? { thesis_first: thesisFirstEntryContext(s.thesis_first) }
+        : {}),
       // Play STRUCTURE (Phase 4) pinned at first flag: play_type routes the CONDOR grade path in
       // gradeZeroDteLedger (a condor is graded WIN/breach, never on the −50/+100 directional grader)
       // and the calibration play-type band. The full priced condor geometry rides along for the
