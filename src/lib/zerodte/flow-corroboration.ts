@@ -83,7 +83,7 @@ export function applyFlowCorroboration(
   return merged;
 }
 
-/** Map DB flow rows → deriveZeroDteSetups input (mirrors scan.ts). */
+/** Map DB flow rows (FlowRow shape, db.ts) → deriveZeroDteSetups input (mirrors scan.ts). */
 export function mapFlowRowsForCorroboration(
   flows: ReadonlyArray<{
     ticker: string;
@@ -91,13 +91,13 @@ export function mapFlowRowsForCorroboration(
     option_type: string;
     strike: number;
     expiry: string;
-    dte: number | null;
-    alert_rule?: string | null;
-    ask_pct?: number | null;
-    underlying_price?: number | null;
-    fill_price?: number | null;
-    open_interest?: number | null;
-    alerted_at?: string | null;
+    dte?: number;
+    alert_rule?: string;
+    ask_pct?: number;
+    underlying_price?: number;
+    fill_price?: number;
+    open_interest?: number;
+    alerted_at: string;
   }>
 ): Parameters<typeof deriveZeroDteSetups>[0] {
   return flows.map((f) => ({
