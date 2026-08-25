@@ -361,6 +361,56 @@ positive doesn't get re-investigated from a stale log.
 
 ---
 
-*Live findings above are the actual product state as of 2026-08-25, ~04:30 UTC, ticker DKS
+## 11. Full tab pass + expected-move flakiness observation, 2026-08-25 (~05:55-06:10 UTC)
+
+Live-captured all 5 DKS earnings tabs desktop-1440 (`--desktop`, real desktop UA, not the
+mobile-UA trap this doc warns about elsewhere): **Report** (confluence meter, structure summary,
+expected move, dealer structure, signal orbit), **Estimates** (EPS/revenue trajectory, YoY,
+analyst momentum, forward-EPS dispersion, price targets vs. consensus), **Positioning** (dealer
+structure, strike exposure, options flow into print, sector peers), **History** (implied vs
+realized, beat rates, quarterly beat/miss streak), **Summary** (already covered in §9). All five
+rendered cleanly, zero console errors, zero failed requests. Two things worth recording:
+
+- **The beat/miss-streak contradiction #2881 fixes is still visible in prod** (History tab: "No
+  printed quarters on record for DKS" directly under an 8-row track record showing 7/8 EPS beats).
+  Expected — #2881 merged to `main` only minutes before this capture and hadn't rolled through
+  `ecr-push-production.yml` + ECS deploy yet. Not a new finding; flagging so a later spot-check
+  doesn't re-report it as unfixed without checking deploy timing first.
+- **Analytics Grid's absence-handling is correct by the same standard as the rest of the desk**:
+  with 0/360 prints having both EPS and revenue surprise on file yet, it says exactly that
+  ("Nothing has printed... 359 still pending") rather than computing a beat rate off a 0-row
+  sample or showing a blank chart.
+
+**Largo expected-move flakiness (transient, not a code defect):** asked Largo "DKS earnings
+expected move and dealer wall structure?" twice, ~10 minutes apart. First answer: "Options-implied
+expected move: not on file — `expected_move_pct` returns null" (and a call wall of 200, vs. 210 on
+the live Positioning tab moments earlier — plausible market movement between two independent
+snapshots, not investigated further). Second, narrower question ("DKS expected move today?") a
+few minutes later: a clean 7.9% implied move with full supporting facts. Read
+`meridian-earnings-intel.ts:137-147`'s `expected_move_pct` derivation — it already has a 3-deep
+fallback (`earningsEm` from `loadEarningsExpectedMovePct` → Vector's weekly cone if it covers the
+print → the calendar-sourced pack value) and is exactly the code path whose `expected_move_source`
+field values (`"chain_iv"` / `"calendar"`) match what the live Positioning tab UI displayed
+(`±16.0% · chain_iv`). So this isn't Largo reading a structurally different/absent field the way
+the §10 sector-peer gap is — it's the same field, and it resolved successfully on a later call.
+Most likely explanation: `loadEarningsExpectedMovePct` hits a live options-chain fetch that can be
+slow/flaky per-request, and the first Largo call independently re-fetched (didn't hit whatever warm
+cache the UI's own render had already populated) and lost the race within the tool-loop's time
+budget — consistent with a separate raw first attempt at a broader question ("expected move AND
+dealer wall structure") outright timing out ("This question ran long before the desk could
+finish"). **Not filed as a bug** — no code path was found returning a wrong value, only an
+occasionally-slow one under load. If this recurs on a repeatable trigger (not just "asked twice"),
+worth a proper `largo-truncation-probe.mjs`-style live instrument to measure it, rather than
+another manual two-shot anecdote.
+
+Merged this session: **#2881** (`fix/meridian-beat-streak-data-source`, squash-merged directly —
+`fix/*` branch, not auto-merge-eligible) and **#2885** (this doc's §9-§11, `docs/*` branch, same
+direct-merge path). Both confirmed `state=open→merged`, `verify=success` on the actual merged SHA
+before merging, per the CLAUDE.md "check before you push, and the merge is not a verification"
+standing rules.
+
+---
+
+*Live findings above are the actual product state as of 2026-08-25, ~04:30-06:10 UTC, ticker DKS
 (2026-08-25 earnings, high impact). Screenshots not committed (contain a live temp-session
 render only); reproducible via the commands in each section.*
