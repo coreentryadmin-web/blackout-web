@@ -11,6 +11,7 @@ import { scoreRsRail } from "./rails/rs";
 import { scoreCatalystRail } from "./rails/catalyst";
 import { scoreVolRail } from "./rails/vol";
 import { thesisFirstCommitBlocks } from "./live-pipeline";
+import { resolveThesisRankTier } from "./live-pipeline";
 import { strikesAroundSpot } from "./contract-attach";
 import type { RailHit } from "./types";
 
@@ -163,6 +164,44 @@ test("vol rail: elevated RVOL + short gamma", () => {
   });
   assert.ok(hit);
   assert.equal(hit!.rail, "VOL");
+});
+
+test("rank tier: solo BREAKOUT without FLOW/MOMENTUM caps at WATCH not A", () => {
+  const tier = resolveThesisRankTier(
+    {
+      ticker: "MRNA",
+      direction: "long",
+      rail_scores: { BREAKOUT: 82 },
+      rails_fired: ["BREAKOUT"],
+      systems_aligned: 1,
+      trade_archetype: "BREAKOUT",
+      archetype_score: 78,
+      structural_state: "TRIGGERED",
+      trigger_price: 90,
+      summaries: { BREAKOUT: "coiled" },
+    },
+    { verdict: "PASS", archetype: "BREAKOUT", blocks: [], notes: [] }
+  );
+  assert.equal(tier, "WATCH");
+});
+
+test("rank tier: solo BREAKOUT with MOMENTUM corroboration may rank A", () => {
+  const tier = resolveThesisRankTier(
+    {
+      ticker: "HOOD",
+      direction: "long",
+      rail_scores: { BREAKOUT: 82, MOMENTUM: 70 },
+      rails_fired: ["BREAKOUT", "MOMENTUM"],
+      systems_aligned: 2,
+      trade_archetype: "BREAKOUT",
+      archetype_score: 80,
+      structural_state: "TRIGGERED",
+      trigger_price: 100,
+      summaries: {},
+    },
+    { verdict: "PASS", archetype: "BREAKOUT", blocks: [], notes: [] }
+  );
+  assert.equal(tier, "A");
 });
 
 test("live pipeline: thesis blocks on archetype BLOCK", () => {

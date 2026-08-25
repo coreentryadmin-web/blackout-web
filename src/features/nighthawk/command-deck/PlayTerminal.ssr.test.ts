@@ -58,6 +58,34 @@ test("Play timeline tab renders for 0DTE horizon", async () => {
   assert.match(html, />Timeline</);
 });
 
+test("Thesis tab renders ThesisRankCard when thesisFirst is on a 0DTE play", async () => {
+  const html = await render(
+    play({
+      thesisFirst: {
+        thesis: {
+          ticker: "NVDA",
+          direction: "long",
+          rail_scores: { FLOW: 88, BREAKOUT: 84 },
+          rails_fired: ["FLOW", "BREAKOUT"],
+          systems_aligned: 2,
+          trade_archetype: "BREAKOUT",
+          archetype_score: 82,
+          structural_state: "TRIGGERED",
+          trigger_price: 181.5,
+          summaries: { FLOW: "campaign", BREAKOUT: "triggered" },
+        },
+        archetype_gates: { verdict: "PASS", archetype: "BREAKOUT", blocks: [], notes: [] },
+        expression: null,
+        rank_tier: "A",
+      },
+    }),
+    { initialTab: "thesis" },
+  );
+  assert.match(html, /nh-deck-thesis-rank/);
+  assert.match(html, />Evidence</);
+  assert.match(html, />Contract</);
+});
+
 test("premium thesis panels render for 0DTE", async () => {
   const html = await render(
     play({
