@@ -442,6 +442,30 @@ export function resolveDirectionOwner(
   return best;
 }
 
+/** When a whole-market rail gains FLOW corroboration, stamp whale-flow evidence onto the
+ *  kept row (breakouts carry gross_premium=0 by construction). Contract geometry stays
+ *  with the kept setup — only the flow conviction fields copy over. */
+function stampFlowEvidenceFromIncoming(
+  kept: EnrichedZeroDteSetup,
+  incoming: EnrichedZeroDteSetup
+): void {
+  const incomingHasFlow = incoming.discovery_origin?.includes("FLOW");
+  const keptHasFlowEvidence = (kept.gross_premium ?? 0) > 0;
+  if (!incomingHasFlow || keptHasFlowEvidence || (incoming.gross_premium ?? 0) <= 0) return;
+  kept.gross_premium = incoming.gross_premium;
+  kept.prints = incoming.prints;
+  kept.sweep_pct = incoming.sweep_pct;
+  kept.side_dominance = incoming.side_dominance;
+  kept.aggression = incoming.aggression;
+  kept.flow_quality = incoming.flow_quality;
+  kept.new_money = incoming.new_money;
+  kept.spike = incoming.spike;
+  kept.recent_premium_30m = incoming.recent_premium_30m;
+  kept.net_premium = incoming.net_premium;
+  if (incoming.first_seen) kept.first_seen = kept.first_seen ?? incoming.first_seen;
+  if (incoming.last_seen) kept.last_seen = incoming.last_seen;
+}
+
 /**
  * Merge one incoming discovery setup onto a same-ticker kept setup (MERGE_POLICY_VERSION v2).
  * Returns the setup that should occupy the ticker slot after the merge (may be `kept` or a
@@ -469,6 +493,8 @@ export function mergeSameTickerDiscovery(
     if (condor.discovery_origin.length > 1) {
       condor.score = Math.min(100, (condor.score ?? 0) + CORROBORATION_SCORE_BOOST);
     }
+    stampFlowEvidenceFromIncoming(condor, incoming);
+    stampFlowEvidenceFromIncoming(condor, kept);
     return condor;
   }
   if (kept.direction === incoming.direction) {
@@ -476,6 +502,7 @@ export function mergeSameTickerDiscovery(
     if (kept.discovery_origin.length > 1) {
       kept.score = Math.min(100, (kept.score ?? 0) + CORROBORATION_SCORE_BOOST);
     }
+    stampFlowEvidenceFromIncoming(kept, incoming);
     return kept;
   }
   const keptScore = Number.isFinite(kept.score) ? kept.score : 0;
@@ -744,6 +771,33 @@ function aggressionWeight(askPct: number | null | undefined): number {
   if (askPct >= 60) return 1;
   if (askPct >= 45) return 0.6;
   return 0.15;
+}
+
+/**
+ * Reconcile the tier-based FLOW evidence score with `computeFlowQuality`.
+ * Mega-cap / ETF tapes (QQQ, SPY) often carry $5–10M gross with mixed-side hedging
+ * that crushes dominance points in the tier formula while flow_quality still reads
+ * real institutional accumulation — measured live 2026-08-25: QQQ $7.6M gross scored
+ * 58 on tiers alone despite clearing every evidence gate. This lifts toward the
+ * flow-quality read when gross + FQ agree; it never inflates above what FQ supports.
+ */
+export function calibrateFlowEvidenceScore(
+  evidenceScore: number,
+  flowQuality: FlowQuality | null,
+  gross: number
+): number {
+  const base = Math.max(0, Math.min(100, evidenceScore));
+  if (!flowQuality || gross < 1_000_000) return base;
+  const fq = flowQuality.score;
+  if (gross >= 5_000_000 && fq >= 55) {
+    const blended = Math.round(base * 0.5 + fq * 0.5);
+    const institutionalFloor = gross >= 7_000_000 ? 65 : gross >= 5_000_000 ? 62 : 60;
+    return Math.max(0, Math.min(100, Math.max(blended, Math.min(institutionalFloor, fq + 5))));
+  }
+  if (gross >= 2_000_000 && fq >= 65) {
+    return Math.max(base, Math.min(100, Math.round(base * 0.65 + fq * 0.35)));
+  }
+  return base;
 }
 
 // ── Gate-rejection / near-miss capture (task #147) ────────────────────────────────
@@ -1219,6 +1273,9 @@ export function deriveZeroDteSetups(
     score += Math.round(Math.max(0, aggression - 0.5) * 20); // 0-10
     if (newMoney) score += 5;
 
+    const flowQuality = computeFlowQuality(agg.flowPrints);
+    const calibratedScore = calibrateFlowEvidenceScore(score, flowQuality, agg.gross);
+
     setups.push({
       ticker,
       direction: dominantCall ? "long" : "short",
@@ -1255,7 +1312,7 @@ export function deriveZeroDteSetups(
       // one. Carried through now so scan.ts can refresh it and any consumer can degrade honestly.
       underlying_price_as_of: agg.underlying == null ? null : agg.underlyingSeen,
       underlying_price_source: agg.underlying == null ? null : "flow_print",
-      score: Math.max(0, Math.min(100, score)),
+      score: Math.max(0, Math.min(100, calibratedScore)),
       aggression: Math.round(aggression * 100) / 100,
       otm_pct: otmPct,
       new_money: newMoney,
@@ -1263,7 +1320,7 @@ export function deriveZeroDteSetups(
       spike,
       first_seen: agg.firstSeen,
       last_seen: agg.lastSeen,
-      flow_quality: computeFlowQuality(agg.flowPrints),
+      flow_quality: flowQuality,
     });
   }
 
