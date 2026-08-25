@@ -2,8 +2,9 @@
 /**
  * Leaf-style X post drafts — live API numbers + EVERY major desk panel screenshot.
  *
- * Captures Thermal (matrix, VEX/DEX, sector grids, profile, depth) + Helix
- * (tape, whales, 0DTE, analytics rail, net premium).
+ * Captures Thermal (matrix, VEX/DEX/CHARM, all sector grids, profile, depth) +
+ * Helix (tape filters, whales, 0DTE, analytics) + Vector + Largo Q&A + Meridian +
+ * SPX Slayer + Night Hawk.
  *
  * Output: /opt/cursor/artifacts/x-posts/social-drafts/
  *
@@ -18,10 +19,16 @@ import { chromium } from "playwright";
 import { fetchAuditJson, releaseAuditClerkSession } from "./lib/audit-auth-fetch.mjs";
 import { mintIosPlaywrightSession } from "./lib/ios-playwright-auth.mjs";
 import {
+  ALL_PRODUCT_SHOTS,
   THERMAL_SHOTS,
   HELIX_SHOTS,
   captureThermalShot,
   captureHelixShot,
+  captureVectorShot,
+  captureLargoShot,
+  captureMeridianShot,
+  captureSlayerShot,
+  captureNighthawkShot,
 } from "./x-social-captures.mjs";
 
 const args = process.argv.slice(2);
@@ -232,17 +239,91 @@ Flip ${p.flip != null ? fmtNum(p.flip) : "—"} · walls ${fmtNum(p.call_wall) ?
 @BlackOutTrade blackouttrades.com`.slice(0, 280);
 }
 
-function wantThermal(panels) {
-  if (panels === "all") return true;
-  return panels.split(",").some((p) => p.includes("thermal"));
+function buildHelixFilterTweet(shot, h) {
+  const parts = [];
+  if (shot.whales) parts.push("whale prints only");
+  if (shot.dte0) parts.push("0DTE");
+  if (shot.indicesOnly) parts.push("indices");
+  if (shot.minPremium >= 1_000_000) parts.push("$1M+ floor");
+  if (shot.side === "CALL") parts.push("calls only");
+  const filterLine = parts.length ? parts.join(" · ") : "live tape";
+  if (h?.ok && h.top.length) return buildHelixTweet(h);
+  return `HELIX ${filterLine} — every block and sweep as it hits.
+
+Filter any ticker. Rank by size. No scraper.
+
+@BlackOutTrade blackouttrades.com`.slice(0, 280);
 }
 
-function wantHelix(panels) {
-  if (panels === "all") return true;
-  return panels.split(",").some((p) => p.includes("helix"));
+function buildLargoTweet(shot) {
+  return `Ask Largo anything across the desk — flow, gamma, plays, catalysts.
+
+"${shot.question.slice(0, 90)}${shot.question.length > 90 ? "…" : ""}"
+
+Live numbers. One answer.
+
+@BlackOutTrade blackouttrades.com`.slice(0, 280);
 }
 
-function copyForShot(shot, positioningCache, helixCache) {
+function buildMeridianTweet(shot) {
+  const sym = shot.ticker ?? "macro";
+  return `Meridian ${sym} catalyst brief — earnings positioning, expected move, history.
+
+One timeline. Every pillar in one panel.
+
+@BlackOutTrade blackouttrades.com`.slice(0, 280);
+}
+
+function buildVectorTweet(shot) {
+  const sym = shot.ticker ?? "SPX";
+  return `${sym} 0DTE structure — walls, beads, gamma flip on one chart.
+
+Same book as Thermal. Different lens.
+
+@BlackOutTrade blackouttrades.com`.slice(0, 280);
+}
+
+function buildSlayerTweet() {
+  return `SPX Slayer — play engine + live GEX matrix in one desk.
+
+Phase, grade, gates, and dealer gamma side by side.
+
+@BlackOutTrade blackouttrades.com`.slice(0, 280);
+}
+
+function buildNighthawkTweet(shot) {
+  const lane = shot.view === "SWING" ? "Swing horizon" : shot.view === "BANGER" ? "Banger board" : "0DTE command deck";
+  return `Night Hawk ${lane} — committed plays, live marks, discovery funnel.
+
+Whole-market 0DTE in one board.
+
+@BlackOutTrade blackouttrades.com`.slice(0, 280);
+}
+
+function resolveProducts(panels) {
+  if (panels === "all") return Object.keys(ALL_PRODUCT_SHOTS);
+  return panels
+    .split(",")
+    .map((p) => p.trim().toLowerCase())
+    .filter((p) => p in ALL_PRODUCT_SHOTS || p.startsWith("thermal") || p.startsWith("helix"));
+}
+
+function productsFromFlag(panels) {
+  const raw = resolveProducts(panels);
+  const out = new Set();
+  for (const p of raw) {
+    if (p === "all") {
+      for (const k of Object.keys(ALL_PRODUCT_SHOTS)) out.add(k);
+      continue;
+    }
+    if (p.startsWith("thermal")) out.add("thermal");
+    else if (p.startsWith("helix")) out.add("helix");
+    else if (ALL_PRODUCT_SHOTS[p]) out.add(p);
+  }
+  return [...out];
+}
+
+function copyForShot(product, shot, positioningCache, helixCache) {
   if (shot.id.startsWith("grid-")) {
     const labels = {
       "grid-mag7": ["Mag 7", "NVDA · AAPL · MSFT · GOOG · AMZN · META · TSLA"],
@@ -250,11 +331,16 @@ function copyForShot(shot, positioningCache, helixCache) {
       "grid-indices": ["Indices", "SPY · SPX · QQQ · IWM"],
       "grid-ai": ["AI infra", "PLTR · ORCL · ANET · VRT · ARM"],
       "grid-macro": ["Macro", "TLT · GLD · IBIT"],
+      "grid-space": ["Space", "RKLB · ASTS · LUNR · BA"],
+      "grid-crypto": ["Crypto", "COIN · MSTR · HOOD · MARA · RIOT"],
+      "grid-energy": ["Energy", "XOM · CVX · OXY · SLB · COP"],
+      "grid-financials": ["Financials", "JPM · GS · BAC · MS · V"],
+      "grid-healthcare": ["Healthcare", "LLY · UNH · MRK · ABBV · GILD"],
     };
     const [title, tickers] = labels[shot.id] ?? [shot.label, ""];
     return buildGridTweet(title, tickers.split(" · "));
   }
-  if (shot.id.startsWith("matrix-vex") || shot.id.startsWith("matrix-dex")) {
+  if (shot.id.startsWith("matrix-vex") || shot.id.startsWith("matrix-dex") || shot.id.startsWith("matrix-charm")) {
     const t = shot.ticker ?? "SPY";
     return buildLensTweet(t, shot.lens, positioningCache[t]);
   }
@@ -267,11 +353,27 @@ function copyForShot(shot, positioningCache, helixCache) {
   if (shot.id.startsWith("desk-analytics") || shot.id.startsWith("analytics-")) {
     return buildHelixAnalyticsTweet();
   }
+  if (product === "largo") return buildLargoTweet(shot);
+  if (product === "meridian") return buildMeridianTweet(shot);
+  if (product === "vector") return buildVectorTweet(shot);
+  if (product === "slayer") return buildSlayerTweet();
+  if (product === "nighthawk") return buildNighthawkTweet(shot);
   if (shot.ticker && helixCache[shot.ticker]) {
     return buildHelixTweet(helixCache[shot.ticker]);
   }
+  if (product === "helix") return buildHelixFilterTweet(shot, helixCache[shot.ticker ?? "SPX"]);
   return `@BlackOutTrade · ${shot.label} — live desk screenshot.\n\nblackouttrades.com`.slice(0, 280);
 }
+
+const CAPTURE_FN = {
+  thermal: captureThermalShot,
+  helix: captureHelixShot,
+  vector: captureVectorShot,
+  largo: captureLargoShot,
+  meridian: captureMeridianShot,
+  slayer: captureSlayerShot,
+  nighthawk: captureNighthawkShot,
+};
 
 async function main() {
   console.log(`[x-social-drafts] panels=${PANELS} tickers=${TICKERS.join(",")}`);
@@ -308,44 +410,27 @@ async function main() {
   const page = await ctx.newPage();
 
   const captured = [];
+  const products = productsFromFlag(PANELS);
+  console.log(`products: ${products.join(", ")}`);
 
   try {
-    if (wantThermal(PANELS)) {
-      for (const shot of THERMAL_SHOTS) {
-        console.log(`\n▸ Thermal · ${shot.label}`);
+    for (const product of products) {
+      const shots = ALL_PRODUCT_SHOTS[product] ?? [];
+      const capture = CAPTURE_FN[product];
+      if (!capture) continue;
+      for (const shot of shots) {
+        console.log(`\n▸ ${product} · ${shot.label}`);
         try {
-          const buf = await captureThermalShot(page, BASE, shot);
+          const buf = await capture(page, BASE, shot);
           const path = join(PANELS_DIR, `${shot.id}.png`);
           writeFileSync(path, buf);
           captured.push({
-            tool: "thermal",
+            tool: product,
             id: shot.id,
             label: shot.label,
             path,
             bytes: buf.length,
-            text: copyForShot(shot, positioningCache, helixCache),
-          });
-          console.log(`  ✓ ${path} (${buf.length})`);
-        } catch (err) {
-          console.warn(`  ✗ ${shot.id}: ${err?.message ?? err}`);
-        }
-      }
-    }
-
-    if (wantHelix(PANELS)) {
-      for (const shot of HELIX_SHOTS) {
-        console.log(`\n▸ Helix · ${shot.label}`);
-        try {
-          const buf = await captureHelixShot(page, BASE, shot);
-          const path = join(PANELS_DIR, `${shot.id}.png`);
-          writeFileSync(path, buf);
-          captured.push({
-            tool: "helix",
-            id: shot.id,
-            label: shot.label,
-            path,
-            bytes: buf.length,
-            text: copyForShot(shot, positioningCache, helixCache),
+            text: copyForShot(product, shot, positioningCache, helixCache),
           });
           console.log(`  ✓ ${path} (${buf.length})`);
         } catch (err) {

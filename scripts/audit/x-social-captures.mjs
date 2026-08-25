@@ -1,8 +1,10 @@
 /**
- * Playwright capture helpers for X marketing — every major Thermal + Helix panel.
+ * Playwright capture helpers for X marketing — full platform panel catalog.
+ * Thermal · Helix · Vector · Largo · Meridian · SPX Slayer · Night Hawk
  * Used by scripts/audit/x-social-drafts.mjs
  */
 import { assertCapturableUrl } from "@/lib/x-intel/capture-guard";
+import { THERMAL_COMPARE_PRESETS } from "@/features/thermal/lib/thermal-compare-presets";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -206,6 +208,37 @@ export async function navigateHelix(page, base, opts) {
     }
   }
 
+  if (opts.indicesOnly) {
+    const indices = page.getByRole("button", { name: "Indices", exact: true }).first();
+    if (await indices.count()) {
+      const pressed = await indices.getAttribute("aria-pressed");
+      if (pressed !== "true") {
+        await indices.click();
+        await sleep(2500);
+      }
+    }
+  }
+
+  if (opts.minPremium != null) {
+    const label =
+      opts.minPremium >= 1_000_000
+        ? `$${opts.minPremium / 1_000_000}M`
+        : `$${opts.minPremium / 1000}K`;
+    const floorBtn = page.locator(".helix-tape-seg--floor button").filter({ hasText: label }).first();
+    if (await floorBtn.count()) {
+      await floorBtn.click();
+      await sleep(2000);
+    }
+  }
+
+  if (opts.side && opts.side !== "ALL") {
+    const sideBtn = page.locator(".helix-tape-seg-btn").filter({ hasText: opts.side }).first();
+    if (await sideBtn.count()) {
+      await sideBtn.click();
+      await sleep(2000);
+    }
+  }
+
   const analyticsBtn = page.getByRole("button", { name: /Analytics|Hide analytics/i }).first();
   if (opts.analytics) {
     const label = (await analyticsBtn.textContent()) ?? "";
@@ -223,12 +256,25 @@ export async function navigateHelix(page, base, opts) {
     }
   }
 
+  if (opts.morePanels && opts.analytics) {
+    const moreBtn = page.getByRole("button", { name: /More panels/i }).first();
+    if (await moreBtn.count()) {
+      await moreBtn.click();
+      await sleep(3500);
+    }
+  }
+
   await sleep(2000);
   assertCapturableUrl(page.url(), `Helix ${opts.id ?? opts.ticker ?? "market"}`);
 }
 
 export async function captureHelixShot(page, base, shot) {
   await navigateHelix(page, base, shot);
+  if (shot.clip === "overlay") {
+    const overlay = page.locator(".helix-analytics-overlay-grid, .helix-analytics-overlay").first();
+    await overlay.waitFor({ state: "visible", timeout: 30_000 });
+    return shotClip(page, overlay, shot.id, 920);
+  }
   if (shot.clip === "rail") {
     const rail = page.locator(".helix-desk-analytics-rail").first();
     await rail.waitFor({ state: "visible", timeout: 30_000 });
@@ -247,26 +293,230 @@ export async function captureHelixShot(page, base, shot) {
   return shotClip(page, page.locator(".helix-desk-terminal, .helix-pro-desk"), shot.id, 920);
 }
 
-/** Every panel worth posting — ids stable for manifest + POSTS.md */
+const GRID_WARM = {
+  mega: ["NVDA", "TSLA"],
+  semis: ["NVDA", "AMD"],
+  indices: ["SPY", "SPX"],
+  ai: ["PLTR"],
+  macro: ["TLT", "GLD"],
+  space: ["RKLB", "ASTS"],
+  crypto: ["COIN", "MSTR"],
+  energy: ["XOM", "CVX"],
+  financials: ["JPM", "GS"],
+  healthcare: ["LLY", "UNH"],
+};
+
+function thermalGridShots() {
+  return THERMAL_COMPARE_PRESETS.map((p) => ({
+    id: `grid-${p.id === "mega" ? "mag7" : p.id}`,
+    label: `${p.label} compare grid`,
+    compare: true,
+    compareSet: p.id,
+    warmTickers: GRID_WARM[p.id] ?? [p.tickers[0]],
+  }));
+}
+
+/** Every Thermal panel worth posting */
 export const THERMAL_SHOTS = [
   { id: "matrix-gex-tsla", label: "TSLA GEX matrix", ticker: "TSLA", lens: "gex" },
   { id: "matrix-gex-spx", label: "SPX GEX matrix", ticker: "SPX", lens: "gex" },
+  { id: "matrix-gex-nvda", label: "NVDA GEX matrix", ticker: "NVDA", lens: "gex" },
   { id: "matrix-vex-spy", label: "SPY VEX matrix", ticker: "SPY", lens: "vex" },
   { id: "matrix-dex-nvda", label: "NVDA DEX matrix", ticker: "NVDA", lens: "dex" },
-  { id: "grid-mag7", label: "Mag 7 compare grid", compare: true, compareSet: "mega", warmTickers: ["NVDA", "TSLA"] },
-  { id: "grid-semis", label: "Semis compare grid", compare: true, compareSet: "semis", warmTickers: ["NVDA", "AMD"] },
-  { id: "grid-indices", label: "Indices compare grid", compare: true, compareSet: "indices", warmTickers: ["SPY", "SPX"] },
-  { id: "grid-ai", label: "AI infra compare grid", compare: true, compareSet: "ai", warmTickers: ["PLTR"] },
-  { id: "grid-macro", label: "Macro compare grid", compare: true, compareSet: "macro", warmTickers: ["TLT", "GLD"] },
+  { id: "matrix-charm-spy", label: "SPY CHARM matrix", ticker: "SPY", lens: "charm" },
+  ...thermalGridShots(),
   { id: "profile-curve-spy", label: "SPY gamma profile + curve", ticker: "SPY", lens: "gex", pairView: "pair-b" },
   { id: "depth-ladder-spx", label: "SPX forced-flow depth", ticker: "SPX", lens: "gex", pairView: "pair-c" },
 ];
 
+/** Helix tape + analytics combinations */
 export const HELIX_SHOTS = [
   { id: "tape-tsla", label: "TSLA flow tape", ticker: "TSLA", analytics: false },
+  { id: "tape-nvda", label: "NVDA flow tape", ticker: "NVDA", analytics: false },
   { id: "tape-spx-whales", label: "SPX whale tape", ticker: "SPX", whales: true, analytics: false },
   { id: "tape-spx-0dte", label: "SPX 0DTE tape", ticker: "SPX", dte0: true, analytics: false },
+  { id: "tape-indices", label: "Indices-only tape", indicesOnly: true, analytics: false },
+  { id: "tape-1m-floor", label: "$1M+ floor tape", minPremium: 1_000_000, analytics: false },
+  { id: "tape-calls-only", label: "Calls-only tape", side: "CALL", analytics: false },
   { id: "desk-analytics-market", label: "Market desk + analytics rail", analytics: true },
   { id: "analytics-net-premium", label: "Net premium leaderboard", analytics: true, clip: "net-premium" },
   { id: "analytics-rail-spx", label: "SPX conviction + net premium rail", ticker: "SPX", analytics: true, clip: "rail" },
+  { id: "analytics-more-panels", label: "All analytics panels overlay", analytics: true, morePanels: true, clip: "overlay" },
 ];
+
+export const VECTOR_SHOTS = [
+  { id: "vector-0dte-spx", label: "SPX 0DTE structure chart", ticker: "SPX" },
+  { id: "vector-0dte-tsla", label: "TSLA 0DTE structure chart", ticker: "TSLA" },
+  { id: "vector-0dte-nvda", label: "NVDA 0DTE structure chart", ticker: "NVDA" },
+];
+
+export const LARGO_SHOTS = [
+  {
+    id: "largo-tsla-gamma",
+    label: "Largo · TSLA gamma read",
+    question:
+      "What's the TSLA gamma setup right now? Flip level, call/put walls, dealer regime, and what matters for tomorrow.",
+  },
+  {
+    id: "largo-spx-watch",
+    label: "Largo · SPX session watch",
+    question: "What should I watch on SPX today — gamma flip, walls, flow, and the highest-conviction levels?",
+  },
+  {
+    id: "largo-mag7-compare",
+    label: "Largo · Mag 7 sector compare",
+    question: "Compare Mag 7 dealer gamma — who's long gamma vs short gamma and where are the pin risks?",
+  },
+  {
+    id: "largo-whale-flow",
+    label: "Largo · whale flow scan",
+    question: "What are the biggest whale option prints hitting the tape right now and what do they imply?",
+  },
+];
+
+export const MERIDIAN_SHOTS = [
+  { id: "meridian-nvda-report", label: "Meridian · NVDA earnings report", ticker: "NVDA", tab: "report" },
+  { id: "meridian-nvda-positioning", label: "Meridian · NVDA positioning", ticker: "NVDA", tab: "positioning" },
+  { id: "meridian-spx-macro", label: "Meridian · macro lane", filter: "macro" },
+];
+
+export const SLAYER_SHOTS = [{ id: "slayer-desk", label: "SPX Slayer play engine + GEX rail" }];
+
+export const NIGHTHAWK_SHOTS = [
+  { id: "nighthawk-0dte-deck", label: "Night Hawk 0DTE command deck", view: "ZERO_DTE" },
+  { id: "nighthawk-swing-deck", label: "Night Hawk swing horizon", view: "SWING" },
+  { id: "nighthawk-banger-board", label: "Night Hawk banger board", view: "BANGER" },
+];
+
+export async function captureVectorShot(page, base, shot) {
+  const sym = shot.ticker ?? "SPX";
+  await page.goto(`${base}/vector?ticker=${encodeURIComponent(sym)}`, {
+    waitUntil: "domcontentloaded",
+    timeout: 90_000,
+  });
+  await dismissOverlays(page);
+  await page.waitForSelector(".vector-chart-wrap", { timeout: 60_000 });
+  await sleep(3000);
+  const dteBtn = page.locator('[data-testid="vector-dte-0dte"]').first();
+  if (await dteBtn.count()) {
+    await dteBtn.click();
+    await sleep(4000);
+  }
+  const tf = page.locator("#vector-tf-select").first();
+  if (await tf.count()) {
+    await tf.selectOption("15").catch(() => {});
+    await sleep(5000);
+  }
+  assertCapturableUrl(page.url(), `Vector ${sym}`);
+  return shotClip(page, page.locator(".vector-chart-wrap"), shot.id, 920);
+}
+
+export async function captureLargoShot(page, base, shot) {
+  await page.goto(`${base}/terminal`, { waitUntil: "domcontentloaded", timeout: 90_000 });
+  await dismissOverlays(page);
+  const input = page.locator('input[aria-label="Ask Largo"], textarea[aria-label="Ask Largo"]').first();
+  await input.waitFor({ state: "visible", timeout: 30_000 });
+  await page.waitForFunction(
+    () => {
+      const el = document.querySelector('input[aria-label="Ask Largo"], textarea[aria-label="Ask Largo"]');
+      return el && !el.disabled;
+    },
+    { timeout: 45_000 },
+  );
+  await input.fill(shot.question);
+  await sleep(400);
+  const submit = page.locator('.largo-input-form button[type="submit"]').first();
+  if (await submit.count()) await submit.click();
+  else await input.press("Enter");
+  await page.waitForSelector(".desk-largo-assistant, .largo-msg-assistant", { timeout: 90_000 });
+  await page.waitForFunction(
+    () => {
+      const stopBtn = document.querySelector('.largo-stop-btn, [aria-label="Stop generating"]');
+      if (stopBtn && stopBtn.offsetParent !== null) return false;
+      const nodes = document.querySelectorAll(".desk-largo-assistant, .largo-msg-assistant");
+      const last = nodes[nodes.length - 1];
+      const text = last?.textContent?.trim() ?? "";
+      return text.length > 180 && !/working|pulling live|thinking/i.test(text.slice(0, 40));
+    },
+    { timeout: 150_000 },
+  );
+  await sleep(2500);
+  assertCapturableUrl(page.url(), `Largo ${shot.id}`);
+  return shotClip(page, page.locator(".largo-terminal-fullpage, .desk-largo-panel, main"), shot.id, 980);
+}
+
+const EARNINGS_ROW =
+  ".meridian-timeline-row.meridian-theme-earnings:has(.impact-high), .meridian-timeline-row.meridian-theme-earnings:has(.impact-medium)";
+
+export async function captureMeridianShot(page, base, shot) {
+  await page.goto(`${base}/meridian`, { waitUntil: "domcontentloaded", timeout: 90_000 });
+  await dismissOverlays(page);
+  await page.waitForSelector(".meridian-page-root, .meridian-desk-body", { timeout: 60_000 });
+  await sleep(3000);
+
+  if (shot.filter === "macro") {
+    const macroPill = page.getByRole("tab", { name: /Macro/i }).first();
+    if (await macroPill.count()) await macroPill.click();
+    await sleep(2000);
+    const row = page.locator(".meridian-timeline-row").first();
+    if (await row.count()) await row.click();
+    await sleep(4000);
+  } else if (shot.ticker) {
+    const search = page.locator(".meridian-search-input").first();
+    await search.fill(shot.ticker);
+    await sleep(2000);
+    const row = page.locator(EARNINGS_ROW).filter({ hasText: shot.ticker }).first();
+    if (await row.count()) {
+      await row.click();
+    } else {
+      const lookup = page.locator(".meridian-lookup-card").first();
+      if (await lookup.count()) await lookup.click();
+    }
+    await sleep(5000);
+    if (shot.tab === "positioning") {
+      await page.getByRole("tab", { name: /Positioning/i }).first().click();
+      await sleep(3000);
+    }
+  }
+
+  assertCapturableUrl(page.url(), `Meridian ${shot.id}`);
+  return shotClip(page, page.locator(".meridian-detail-v2, .meridian-earnings-tabs, .meridian-desk-body"), shot.id, 980);
+}
+
+export async function captureSlayerShot(page, base, shot) {
+  await page.goto(`${base}/dashboard`, { waitUntil: "domcontentloaded", timeout: 90_000 });
+  await dismissOverlays(page);
+  await page.waitForSelector(".spx-desk, .gex-heatmap-desk, main", { timeout: 60_000 });
+  await sleep(8000);
+  assertCapturableUrl(page.url(), "SPX Slayer");
+  return shotClip(page, page.locator(".spx-desk, main"), shot.id, 980);
+}
+
+export async function captureNighthawkShot(page, base, shot) {
+  const view = shot.view ?? "ZERO_DTE";
+  await page.goto(`${base}/nighthawk?view=${view.toLowerCase()}`, {
+    waitUntil: "domcontentloaded",
+    timeout: 90_000,
+  });
+  await dismissOverlays(page);
+  await page.waitForSelector(".nh-v2-page, .nighthawk-content-canvas", { timeout: 60_000 });
+  await sleep(view === "ZERO_DTE" ? 12_000 : 8000);
+  assertCapturableUrl(page.url(), `Night Hawk ${view}`);
+  return shotClip(
+    page,
+    page.locator(".nh-deck, .nighthawk-content-canvas, .nh-v2-page"),
+    shot.id,
+    980,
+  );
+}
+
+/** Flat catalog grouped by product for manifest filtering */
+export const ALL_PRODUCT_SHOTS = {
+  thermal: THERMAL_SHOTS,
+  helix: HELIX_SHOTS,
+  vector: VECTOR_SHOTS,
+  largo: LARGO_SHOTS,
+  meridian: MERIDIAN_SHOTS,
+  slayer: SLAYER_SHOTS,
+  nighthawk: NIGHTHAWK_SHOTS,
+};
