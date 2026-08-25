@@ -394,29 +394,18 @@ export function tierForSkip(
   };
 }
 
-// ── Source-aware scoreFloor (WS-20: BREAKOUT/PIN now have floor=50) ─────────────
+// ── Source-aware scoreFloor (mirrors gates.ts scoreFloorForOrigins) ───────────────
 /**
- * Derive the commit-time scoreFloor from discovery_origin. After WS-20, BREAKOUT
- * and PIN sources use a lower floor (50) than FLOW (65) to reflect their scoring
- * distributions. This is used retroactively for entry_context blobs that pin the
- * origin set (pre-WS-20 rows carry none and default to FLOW floor).
- *
- * Logic:
- * - If origin includes FLOW only: use ZERODTE_SCORE_FLOOR (65)
- * - If origin includes BREAKOUT or PIN: use ZERODTE_SCORE_FLOOR_BREAKOUT (50)
- *   (these floors are identical for BREAKOUT and PIN)
- * - If origin is absent or empty: default to ZERODTE_SCORE_FLOOR (65)
- *
- * For multi-source plays (e.g. FLOW + BREAKOUT), we use the lower floor (50)
- * to be fair to the BREAKOUT/PIN contribution to the merged score.
+ * Derive the commit-time scoreFloor from discovery_origin for retroactive tiering.
+ * Logic matches {@link scoreFloorForOrigins}: FLOW present → strict 65; BREAKOUT/PIN-only
+ * → origin floor (65 by default, restored 2026-08-25); absent → 65.
  */
 function scoreFloorForOrigin(origin: string[] | undefined | null): number {
   if (!origin || origin.length === 0) return ZERODTE_SCORE_FLOOR;
-  // If any source is BREAKOUT or PIN, use their floor (both are 50).
+  if (origin.includes("FLOW")) return ZERODTE_SCORE_FLOOR;
   if (origin.includes("BREAKOUT") || origin.includes("PIN")) {
     return ZERODTE_SCORE_FLOOR_BREAKOUT;
   }
-  // FLOW only or unrecognized origin: use the standard floor.
   return ZERODTE_SCORE_FLOOR;
 }
 
