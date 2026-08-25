@@ -327,10 +327,12 @@ const RECIPES = {
   },
 
   async meridian_analytics_panel(page, base, entry, params) {
-    await page.goto(`${base}/meridian`, { waitUntil: "domcontentloaded", timeout: 90_000 });
+    await page.goto(`${base}/meridian?view=analytics`, { waitUntil: "domcontentloaded", timeout: 90_000 });
     await dismissOverlays(page);
     await page.waitForSelector(".meridian-page-root", { timeout: 60_000 });
-    await page.getByRole("button", { name: /Analytics grid/i }).click();
+    await page.waitForSelector(".meridian-earnings-analytics, .meridian-analytics-grid", { timeout: 60_000 }).catch(async () => {
+      await page.getByRole("tab", { name: /Analytics grid/i }).click();
+    });
     await sleep(6000);
     const panel =
       params.panel ??
