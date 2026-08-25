@@ -961,6 +961,102 @@ html.nav-locked body { overflow: hidden; }
   animation: meridian-shimmer 1.4s ease-in-out infinite;
 }
 .meridian-detail-loading { padding: 0.5rem 0; }
+.meridian-detail-loading-progressive { padding: 0.75rem 0.5rem 0; }
+.meridian-detail-loading-chip {
+  align-self: center;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #22d3ee;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  background: rgba(34, 211, 238, 0.08);
+}
+.meridian-loading-notice {
+  padding: 0.65rem 0.85rem;
+  margin-bottom: 0.75rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  background: rgba(8, 10, 16, 0.72);
+}
+.meridian-loading-notice-label {
+  margin: 0 0 0.25rem;
+  font-size: 0.88rem;
+  color: #e0f2fe;
+}
+.meridian-loading-notice-sub {
+  margin: 0 0 0.45rem;
+  font-size: 0.78rem;
+  color: #7dd3fc;
+}
+.meridian-analytics-lane-strip {
+  margin-bottom: 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(56, 189, 248, 0.16);
+  background: rgba(8, 10, 16, 0.55);
+}
+.meridian-analytics-lane-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+  margin-bottom: 0.55rem;
+}
+.meridian-analytics-lane-sub {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #7dd3fc;
+}
+.meridian-analytics-lane-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.meridian-analytics-lane-row {
+  flex: 0 0 auto;
+  min-width: 10.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  background: rgba(4, 4, 7, 0.65);
+  text-align: left;
+  cursor: pointer;
+}
+.meridian-analytics-lane-row:hover { border-color: rgba(34, 211, 238, 0.45); }
+.meridian-analytics-lane-row.is-active {
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.45);
+}
+.meridian-analytics-lane-kind {
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #22d3ee;
+}
+.meridian-analytics-lane-title {
+  font-size: 0.82rem;
+  color: #f0f9ff;
+  line-height: 1.25;
+}
+.meridian-analytics-lane-meta {
+  font-size: 0.72rem;
+  color: #7dd3fc;
+}
+.meridian-macro-report-unavailable {
+  padding: 0.65rem 0.85rem;
+  margin-bottom: 0.65rem;
+  border-radius: 0.65rem;
+  border: 1px dashed rgba(34, 211, 238, 0.25);
+}
 
 .meridian-earn-wrap { margin-top: 0.5rem; }
 .meridian-earn-enrich { margin-bottom: 0.75rem; }

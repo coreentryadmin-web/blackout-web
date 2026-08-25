@@ -1532,7 +1532,9 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     entities: ["ticker"],
     entitlement: "premium",
     keywords: ["earnings history", "beat", "miss", "eps", "past earnings"],
-    joinsWith: ["fund.earnings_calendar"],
+    caveat:
+      "print_history uses Meridian timing-aware reactions (same as the desk). Do not quote raw UW reaction_pct for how a name reacted.",
+    joinsWith: ["fund.earnings_calendar", "meridian.event"],
   },
   // ── Meridian: the catalyst desk ──
   // Registered as MERIDIAN rather than CATALYSTS on purpose. The calendar tools answer "when",
@@ -1576,7 +1578,31 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     ],
     caveat:
       "Needs an event id from get_meridian_timeline, or kind + ticker + date. Earnings reactions carry a `reaction_basis` saying WHICH session was measured — an AMC print's reaction is the next session, and a value without its basis is not comparable across names.",
-    joinsWith: ["meridian.timeline", "fund.earnings_history"],
+    joinsWith: ["meridian.timeline", "fund.earnings_history", "meridian.peer_cohort"],
+  },
+  {
+    id: "meridian.peer_cohort",
+    product: "MERIDIAN",
+    tool: "get_meridian_peer_cohort",
+    answers:
+      "Which sector peers is this earnings print ranked against, and how have those peers historically reacted to their own prints?",
+    temporal: "live_only",
+    freshness: "periodic",
+    entities: ["ticker", "session"],
+    entitlement: "premium",
+    keywords: [
+      "sector peers",
+      "peer cohort",
+      "compared against",
+      "peer comparison",
+      "same sector",
+      "peer reaction",
+      "implied move vs peers",
+      "rich vs cohort",
+    ],
+    caveat:
+      "Earnings only. Built from the same-SIC-major-group names in the loaded Meridian timeline window — not a static watchlist. Pass an event id from get_meridian_timeline or kind=earnings + ticker + date.",
+    joinsWith: ["meridian.timeline", "meridian.event", "fund.earnings_history"],
   },
   {
     id: "fund.earnings_calendar",
@@ -1601,7 +1627,8 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     entities: ["ticker", "session"],
     entitlement: "premium",
     keywords: ["premarket earnings", "after hours earnings", "reporting today"],
-    caveat: "Live only — today’s reporting schedule, not a record of past reports.",
+    caveat:
+      "Live only — today’s reporting schedule. Prefer meridian_reaction_pct over UW reaction_pct for print reactions.",
   },
   {
     id: "fund.catalysts",

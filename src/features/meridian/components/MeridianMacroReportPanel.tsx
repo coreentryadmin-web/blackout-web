@@ -15,7 +15,15 @@ type Props = {
 
 export function MeridianMacroReportPanel({ detail }: Props) {
   const { report } = detail;
-  if (!report.available) return null;
+  if (!report.available) {
+    return (
+      <section className="meridian-macro-report meridian-macro-report-unavailable" aria-label={`${detail.event} macro report`}>
+        <p className="meridian-card-muted">
+          Macro report brief unavailable for this release window — correlation rail and positioning cards below still load when ready.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="meridian-macro-report" aria-label={`${detail.event} macro report`}>

@@ -41,13 +41,21 @@ function buildTimelineStats(items: MeridianTimelinePayload["items"]): MeridianTi
 
 const DEFAULT_WARM_DAYS = 21;
 
+export type MeridianTimelineLoadOptions = {
+  /** See `loadMeridianEarningsTimeline` — defers expected-move + sector enrichment. */
+  skipEnrich?: boolean;
+};
+
 /** Build the Meridian timeline payload (shared by API route + warm cron). */
-export async function loadMeridianTimelineResponse(daysAhead: number): Promise<MeridianTimelinePayload> {
+export async function loadMeridianTimelineResponse(
+  daysAhead: number,
+  options: MeridianTimelineLoadOptions = {}
+): Promise<MeridianTimelinePayload> {
   const today = todayEtYmd();
   const board_tickers = await readMeridianBoardTickers();
   const [macro, earningsBundle, fdaRows] = await Promise.all([
     fetchUpcomingMacroEventsLive(daysAhead),
-    loadMeridianEarningsTimeline(today, daysAhead, board_tickers),
+    loadMeridianEarningsTimeline(today, daysAhead, board_tickers, options),
     loadMeridianFdaTimeline(today, daysAhead),
   ]);
 
@@ -68,6 +76,7 @@ export async function loadMeridianTimelineResponse(daysAhead: number): Promise<M
   return roundFloats({
     as_of: new Date().toISOString(),
     days_ahead: daysAhead,
+    enrich_pending: options.skipEnrich === true,
     items,
     stats: buildTimelineStats(items),
     board_tickers,
