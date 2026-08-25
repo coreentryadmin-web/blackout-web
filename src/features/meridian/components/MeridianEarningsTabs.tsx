@@ -456,20 +456,17 @@ export function MeridianEarningsTabs({
 
       {tab === "history" && (
         <div role="tabpanel" className="meridian-earnings-tabpanel">
+          {/* `MeridianEarningsHistoryPanel` already renders `print_history_summary` as its own
+              "Summary" card -- a "Track record" banner repeating the identical string used to
+              render right below it here, verbatim (found live, 2026-08-25 CTO audit). Removed
+              rather than kept as a second view: it wasn't a second format, it was the same
+              sentence twice. */}
           <MeridianEarningsHistoryPanel
             ticker={pack.ticker}
             enrichment={enrichment}
             intel={intel}
             analyticsRows={analyticsRows}
           />
-          {enrichment.print_history_summary && (
-            <MeridianAnalyticsBanner
-              label="Track record"
-              headline={enrichment.print_history_summary}
-              tone="earnings"
-              icon="▣"
-            />
-          )}
           <div className="meridian-detail-grid-v2 meridian-earn-enrich">
             {enrichment.print_history.length > 0 && (
               <MeridianDataCard label="Print track · est vs actual" wide tone="earnings" delay={0}>
