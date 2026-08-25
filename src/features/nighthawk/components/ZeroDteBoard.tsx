@@ -1033,7 +1033,7 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
   return (
     <div className="nh-v2-briefing-drawer space-y-3 border-t border-white/[0.06] px-4 py-3">
       {s?.thesis_first && (
-        <BriefingSection title="Thesis rank" accent="cyan">
+        <BriefingSection title="Thesis rank" accent="sky">
           <ThesisRankCard thesis={s.thesis_first} />
         </BriefingSection>
       )}
