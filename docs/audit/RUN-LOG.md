@@ -1389,3 +1389,18 @@ RTH truncation probe for #2649.
 
 ---
 
+
+## 2026-08-25 14:20 UTC — [SEO GROWTH] Daily opportunity scan — QUIET (no changes)
+
+**28-day metrics (2026-07-26 → 2026-08-22):**
+- Clicks: 0 (no movement)
+- Impressions: 28
+- CTR: 0%
+- Avg position: 59.4
+
+**Opportunity status:** Striking-distance query `is 0dte gambling` (pos 11.5) already well-optimized (731w, 3 FAQs). No new on-page work indicated. Authority (backlinks/digital PR) remains the actual traffic lever per SEO-GROWTH-STRATEGY.md §3–5.
+
+**Blocker:** Coordinator action needed on backlink strategy (out of SEO-technical lane).
+
+---
+
