@@ -7,6 +7,8 @@ import { scoreMomentumRail } from "./momentum";
 import { scorePositioningRail } from "./positioning";
 import { scoreReversalRail } from "./reversal";
 import { scoreRsRail } from "./rs";
+import { scoreCatalystRail } from "./catalyst";
+import { scoreVolRail } from "./vol";
 import type { RailHit } from "../types";
 
 export type LegacyBridgeExtras = {
@@ -94,6 +96,24 @@ export function railHitsFromLegacySetup(
     intraday: extras.intraday ?? setup.intraday ?? null,
   });
   if (rev && rev.score >= 65) hits.push(rev);
+
+  const cat = scoreCatalystRail({
+    ticker,
+    direction,
+    catalyst_flags: setup.catalyst_flags,
+    news_hot: setup.news_hot ?? null,
+    earnings: setup.earnings ?? null,
+  });
+  if (cat) hits.push(cat);
+
+  const vol = scoreVolRail({
+    ticker,
+    direction,
+    rel_volume: setup.rel_volume ?? null,
+    gamma_regime: setup.gamma_regime ?? null,
+    rsi14: setup.rsi14 ?? null,
+  });
+  if (vol) hits.push(vol);
 
   return hits;
 }

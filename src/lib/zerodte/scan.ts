@@ -109,6 +109,9 @@ import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy } f
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
 import { persistZeroDteRejections } from "./rejections";
 import { attachThesisFirstShadow, thesisFirstEntryContext } from "./thesis/scan-shadow";
+import { attachThesisContractPlans } from "./thesis/contract-attach";
+import { thesisBlocksToGateBlocks } from "./thesis/live-pipeline";
+import { thesisFirstEnv } from "./thesis/types";
 import {
   persistDiscoveryCommitEvents,
   persistDiscoveryDetectedEvents,
@@ -470,7 +473,10 @@ export async function scanZeroDteBoard(flags?: {
   // window just leaves every context null.
   attachFlowAccumulation(setups, accumulationSignalsFromFlow(multiDayFlows, Date.now()));
 
-  await attachContractPlans(setups);
+  const thesisLive = thesisFirstEnv().enabled;
+  if (!thesisLive) {
+    await attachContractPlans(setups);
+  }
   const chainReceivedAt = Date.now();
   const tape = await attachIntradayEdge(setups);
 
@@ -484,14 +490,17 @@ export async function scanZeroDteBoard(flags?: {
   const nowEtMinutes = nowEt.hour * 60 + nowEt.minute;
   attachConfluence(setups, nowEtMinutes);
 
-  // Thesis-first shadow pipeline — independent per-rail scores + archetype (default ON via
-  // ZERODTE_THESIS_FIRST_SHADOW). Evidence-only until ZERODTE_THESIS_FIRST=1 arms commit path.
-  attachThesisFirstShadow(setups);
+  // Thesis-first: shadow (default) or live pipeline (ZERODTE_THESIS_FIRST=1).
+  attachThesisFirstShadow(setups, nowEtMinutes);
 
-  // Hard-gate verdicts LAST — G-3 judges the final post-edge-layer score, G-1 reuses the same SPY read
-  // the edge layer just fetched, and G-12 reads the confluence just attached (one clock per cycle, so
-  // scoring, gating, and confluence can never disagree about the time or the tape).
+  // Hard-gate verdicts — Cortex runs inside on gate survivors.
   await attachGateVerdicts(setups, tape.bias, tape.biasAsOfMs, nowEtMinutes);
+
+  // Live thesis-first: contract engine picks expression AFTER thesis + gates + Cortex.
+  if (thesisLive) {
+    await attachThesisContractPlans(setups);
+    await attachContractPlans(setups);
+  }
   const gatesCompletedAt = Date.now();
 
   // WS-14/15 (observability only, best-effort — recorders swallow their own errors): record
@@ -831,6 +840,15 @@ async function attachGateVerdicts(
       regimeBlockReason: regimePlane.humanReason,
     });
     s.regime_plane = regimePlane;
+    if (s.thesis_gate_blocks?.length) {
+      const tb = thesisBlocksToGateBlocks(s.thesis_gate_blocks);
+      s.gate = {
+        ...s.gate,
+        verdict: "BLOCKED",
+        blocks: [...tb, ...s.gate.blocks],
+      };
+      continue;
+    }
     if (s.gate.verdict !== "COMMIT") continue;
 
     // ── Night Hawk Cortex layer (NIGHTHAWK-CORTEX-DESIGN.md §2, wired by PR-B) ──

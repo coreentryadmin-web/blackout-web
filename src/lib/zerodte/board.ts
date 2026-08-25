@@ -833,7 +833,10 @@ export type ZeroDteGateFailure =
   | "regime_blind" // Regime Plane: VIX/macro/halt/GEX blind — no fresh commits
   | "governor_concentration" // Q9 enforced: too many correlated same-direction opens
   | "governor_premium_budget" // Phase 2c: aggregate entry premium budget exceeded
-  | "governor_gamma_budget"; // Phase 2c: short-gamma open count exceeded
+  | "governor_gamma_budget" // Phase 2c: short-gamma open count exceeded
+  // ── Thesis-first pipeline (thesis/live-pipeline.ts) — archetype + rank tier fail-closed
+  | "thesis_rank_reject"
+  | "thesis_archetype_block";
 
 export type ZeroDteGateRejection = {
   ticker: string;
@@ -1477,6 +1480,8 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
    *  scores, archetype classification, and gate verdict. Shadow by default; does not gate
    *  commits until ZERODTE_THESIS_FIRST=1. See thesis/scan-shadow.ts. */
   thesis_first?: import("./thesis/types").ThesisPipelineResult | null;
+  /** Pre-gate block codes when ZERODTE_THESIS_FIRST=1 (thesis/archetype fail-closed). */
+  thesis_gate_blocks?: string[];
   /** WS-06: per-origin (direction, score) recorded at merge time — the raw material buildOriginMaps
    *  freezes onto the committed row. Populated in-place by recordOriginContributionsOnMerge for a
    *  multi-source ticker; absent for a single-origin setup (buildOriginMaps seeds those from the

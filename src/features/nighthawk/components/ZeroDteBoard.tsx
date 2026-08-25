@@ -15,6 +15,7 @@ import { resolveFreshFindStatus, type EnrichedZeroDteSetup, type SessionHeat } f
 import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
 import { DiscoveryFunnelStrip, GovPill, MarketStateStrip } from "./zerodte-board-strips";
+import { ThesisRankCard } from "./ThesisRankCard";
 import { buildIntelNote, type IntelAction } from "@/lib/zerodte/intel";
 import { capConvictionDisplay } from "@/lib/zerodte/conviction";
 import { closedPnlDisplay, isZeroDteMarkStale, trimScaleTranchesArmed, type ZeroDteMarkSource } from "@/lib/zerodte/marks-math";
@@ -1031,6 +1032,12 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
   const target = row.entry_premium != null ? row.entry_premium * 2 : null;
   return (
     <div className="nh-v2-briefing-drawer space-y-3 border-t border-white/[0.06] px-4 py-3">
+      {s?.thesis_first && (
+        <BriefingSection title="Thesis rank" accent="cyan">
+          <ThesisRankCard thesis={s.thesis_first} />
+        </BriefingSection>
+      )}
+
       <BriefingSection title="Cortex verdict" accent="green">
         <CortexEvidenceBlock view={view} />
       </BriefingSection>

@@ -8,6 +8,10 @@ import { buildMergedThesisFromHits, mergeScanPassTheses, runThesisPipelineForSet
 import { scoreBreakoutRail } from "./rails/breakout";
 import { scoreFlowRail } from "./rails/flow";
 import { scoreRsRail } from "./rails/rs";
+import { scoreCatalystRail } from "./rails/catalyst";
+import { scoreVolRail } from "./rails/vol";
+import { thesisFirstCommitBlocks } from "./live-pipeline";
+import { strikesAroundSpot } from "./contract-attach";
 import type { RailHit } from "./types";
 
 test("merge: NVDA multi-rail panel matches operator spec shape", () => {
@@ -134,6 +138,60 @@ test("pipeline: legacy setup bridge produces thesis snapshot", () => {
   });
   assert.ok(result.thesis.rails_fired.length >= 2);
   assert.ok(["A", "A+", "B", "WATCH"].includes(result.rank_tier));
+});
+
+test("catalyst rail: flags + hot headline", () => {
+  const hit = scoreCatalystRail({
+    ticker: "NVDA",
+    direction: "long",
+    catalyst_flags: ["FDA", "guidance"],
+    news_hot: { title: "Beat", minutes_ago: 15, published: null, url: null },
+    earnings: null,
+  });
+  assert.ok(hit);
+  assert.equal(hit!.rail, "CATALYST");
+  assert.ok(hit!.score >= 55);
+});
+
+test("vol rail: elevated RVOL + short gamma", () => {
+  const hit = scoreVolRail({
+    ticker: "TSLA",
+    direction: "long",
+    rel_volume: 2.4,
+    gamma_regime: "short_gamma",
+    rsi14: 62,
+  });
+  assert.ok(hit);
+  assert.equal(hit!.rail, "VOL");
+});
+
+test("live pipeline: thesis blocks on archetype BLOCK", () => {
+  const result: import("./types").ThesisPipelineResult = {
+    thesis: {
+      ticker: "X",
+      direction: "long",
+      rail_scores: { MOMENTUM: 50, RS: 40 },
+      rails_fired: ["MOMENTUM", "RS"],
+      systems_aligned: 0,
+      trade_archetype: "MOMENTUM_CONTINUATION",
+      archetype_score: 55,
+      structural_state: null,
+      trigger_price: null,
+      summaries: {},
+    },
+    archetype_gates: { verdict: "BLOCK", archetype: "MOMENTUM_CONTINUATION", blocks: ["momentum_rs_floor"], notes: [] },
+    expression: null,
+    rank_tier: "REJECT",
+  };
+  const blocks = thesisFirstCommitBlocks(result);
+  assert.ok(blocks.includes("thesis_momentum_rs_floor"));
+  assert.ok(blocks.includes("thesis_rank_reject"));
+});
+
+test("strikesAroundSpot: ATM ladder", () => {
+  const strikes = strikesAroundSpot(181.32, 5);
+  assert.ok(strikes.length >= 3);
+  assert.ok(strikes.some((s) => Math.abs(s - 181.5) < 1 || Math.abs(s - 181) < 1));
 });
 
 test("mergeScanPassTheses: unions tickers across setups", () => {
