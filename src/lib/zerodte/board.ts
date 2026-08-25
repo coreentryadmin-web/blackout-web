@@ -187,7 +187,20 @@ export type FlowSetupInput = {
 // P&L by origin (the calibration origin band, calibration.ts) and each source graduates
 // through the n>=10 / delta>=15 ladder independently. PIN arrives in a later phase; the type
 // already admits it so the merge/label math never has to be revisited.
-export type DiscoveryOrigin = "FLOW" | "BREAKOUT" | "PIN";
+//
+// MOMENTUM/REVERSAL/RELATIVE_STRENGTH/POSITIONING (docs/audit/NIGHTHAWK-ANYDTE-RAILS-DESIGN.md,
+// Phase 1, 2026-08-25) are scaffolding for the same reason PIN was pre-admitted above: no source
+// currently emits them (each is wired as a no-op in scan.ts until its own Phase-2 PR), but the
+// merge/union/origin-map machinery below is generic over the whole union, so widening it now
+// means each later rail lands as pure additive discovery logic with zero type-plumbing changes.
+export type DiscoveryOrigin =
+  | "FLOW"
+  | "BREAKOUT"
+  | "PIN"
+  | "MOMENTUM"
+  | "REVERSAL"
+  | "RELATIVE_STRENGTH"
+  | "POSITIONING";
 
 // ── Play type (Phase 4, docs/audit/0DTE-UNIFICATION-DESIGN.md §1c + §3) ─────────────
 // The board commits TWO kinds of structure. Everything shipped through Phase 3b is
@@ -302,8 +315,18 @@ export function tradingSessionGapDays(todayYmd: string, expiryYmd: string): numb
   return gap;
 }
 
-/** Canonical order for a stable, dedup-friendly origin set/label (FLOW < BREAKOUT < PIN). */
-export const DISCOVERY_ORIGIN_ORDER: readonly DiscoveryOrigin[] = ["FLOW", "BREAKOUT", "PIN"];
+/** Canonical order for a stable, dedup-friendly origin set/label. New rails are appended, never
+ *  inserted — changing existing origins' relative order would silently reorder every already-
+ *  persisted multi-origin label/set. */
+export const DISCOVERY_ORIGIN_ORDER: readonly DiscoveryOrigin[] = [
+  "FLOW",
+  "BREAKOUT",
+  "PIN",
+  "MOMENTUM",
+  "REVERSAL",
+  "RELATIVE_STRENGTH",
+  "POSITIONING",
+];
 
 /** Union two origin sets into a deduped, canonically-ordered set (pure). Used at merge time so
  *  a ticker found by two sources carries both origins, never a collapsed single value. */
