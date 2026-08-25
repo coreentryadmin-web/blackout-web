@@ -418,8 +418,42 @@ STREAK — DKS · 4 straight beats · 88% beat · 8 graded · avg +215.0%"** wit
 no longer contradicting "EARNINGS TRACK RECORD — 7/8 EPS beats" two panels above it. §2.1 from this
 doc's original findings is now resolved in production, not just merged to `main`.
 
+## 12. Largo test-suite round 2, 2026-08-25 ~06:40-06:55 UTC — hypothesis confirmed
+
+Ran a further 5 questions covering breadth the earlier rounds hadn't: a 45-event multi-week
+calendar sweep ("high-impact earnings this week?" — 27/27 facts verified), an invalid ticker
+("has ZZZQ ever printed?" — correctly returned zero matches, no hallucination), a genuine
+cross-product reasoning question ("does DKS's beat streak match Thermal's dealer positioning?" —
+correctly refused the false equivalence between a historical fundamental record and a
+today's-snapshot options-structure read, then surfaced the more interesting real fact sitting
+inside Meridian's own data: beats have not produced positive reactions, 31/31 verified), a
+product-capability question ("what filters can I use on the catalyst lane?" — answered from the
+tool's actual `kind`/`impact`/`ticker`/`days_ahead`/`limit` schema, correctly self-scoped as "not a
+live-market read"), and NVDA's reaction history (6/6 EPS+revenue beats, average reaction -2.7%,
+"priced-for-perfection" read, 17/17 verified).
+
+**Confirms §11's expected-move-flakiness hypothesis.** A second broad/compound question ("how
+reliable has the implied move been for NVDA earnings historically?") also timed out with the same
+"This question ran long before the desk could finish. Try Quick read, or ask about one ticker or
+one desk" message. The narrower rephrase ("NVDA earnings reaction history?") on the same ticker
+succeeded cleanly seconds later — same pattern as §11's DKS expected-move retry. Two independent
+data points now support the same conclusion: **broad/compound questions against Meridian's live
+data occasionally exceed the tool-loop's time budget, and the product self-guides correctly when
+they do** (an honest error naming the fix, not a silent wrong answer or a crash). Not filed as a
+bug for the same reason as §11 — no path was found returning a wrong value. If it's worth hardening
+further (e.g. a longer budget specifically for multi-fact Meridian questions, or auto-splitting a
+compound question into sub-queries), that's a product decision for the operator, not something to
+guess at from two anecdotes.
+
+**Cumulative Largo↔Meridian test count this session: 11 questions**, spanning setup reads,
+sector-peer comparisons, calendar breadth, invalid-input handling, cross-product reasoning,
+product-capability self-description, and reaction-history lookups. 9 of 11 succeeded cleanly with
+full fact verification where verification was reported (100% coverage on every verified answer);
+2 timed out on broad/compound phrasing and both had a narrower successful counterpart.
+
 ---
 
-*Live findings above are the actual product state as of 2026-08-25, ~04:30-06:10 UTC, ticker DKS
-(2026-08-25 earnings, high impact). Screenshots not committed (contain a live temp-session
-render only); reproducible via the commands in each section.*
+*Live findings above are the actual product state as of 2026-08-25, ~04:30-06:55 UTC, ticker DKS
+(2026-08-25 earnings, high impact), cross-checked against INTU, NVDA, and a synthetic invalid
+ticker. Screenshots not committed (contain a live temp-session render only); reproducible via the
+commands in each section.*
