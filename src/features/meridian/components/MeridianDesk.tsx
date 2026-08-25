@@ -18,6 +18,10 @@ import {
   type DeskUrlState,
 } from "@/features/meridian/lib/meridian-deeplink-core";
 import {
+  readMeridianFilterPref,
+  writeMeridianFilterPref,
+} from "@/features/meridian/lib/meridian-desk-prefs";
+import {
   filterMeridianTimelineItems,
   isTickerLikeQuery,
   normalizeMeridianSearchQuery,
@@ -114,6 +118,11 @@ export function MeridianDesk() {
   const urlHydrated = useRef(false);
   const lastUrlState = useRef<DeskUrlState>({ event: null, view: null, filter: null });
 
+  const setFilterPref = useCallback((next: FilterKind) => {
+    setFilter(next);
+    writeMeridianFilterPref(next);
+  }, []);
+
   const syncDeskUrl = useCallback(
     (next: DeskUrlState, eventChanged: boolean) => {
       const url = `${window.location.pathname}${deskUrlSearch(next)}`;
@@ -129,7 +138,8 @@ export function MeridianDesk() {
       lastUrlState.current = st;
       setSelectedId(st.event);
       setView((st.view ?? "timeline") as DeskView);
-      setFilter((st.filter ?? "all") as FilterKind);
+      const urlFilter = st.filter as FilterKind | null;
+      setFilter(urlFilter ?? readMeridianFilterPref() ?? "all");
     };
     apply(window.location.search);
     urlHydrated.current = true;
@@ -597,7 +607,7 @@ export function MeridianDesk() {
                 count={f.count}
                 tone={f.tone}
                 active={filter === f.id}
-                onClick={() => setFilter(f.id)}
+                onClick={() => setFilterPref(f.id)}
               />
             ))}
           </div>

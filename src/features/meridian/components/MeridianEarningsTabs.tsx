@@ -469,26 +469,34 @@ export function MeridianEarningsTabs({
           <div className="meridian-detail-grid-v2 meridian-earn-enrich">
             {enrichment.print_history.length > 0 && (
               <MeridianDataCard label="Print track · est vs actual" wide tone="earnings" delay={0}>
-                <ul className="meridian-card-list meridian-history-list meridian-print-track">
-                  {enrichment.print_history.map((row) => (
-                    <li key={row.report_date ?? "unknown"}>
-                      <span className="meridian-history-date">{row.report_date?.slice(5) ?? "—"}</span>
-                      {row.eps_estimate != null && row.eps_actual != null ? (
-                        <span>
-                          {" "}
-                          EPS {row.eps_actual} vs {row.eps_estimate}
-                        </span>
-                      ) : null}
-                      {(row.reaction_pct ?? row.session_change_pct) != null && (
-                        <span className="meridian-history-move">
-                          {" "}
-                          · {fmtPct(row.reaction_pct ?? row.session_change_pct)} reaction
-                          <ReactionFlag print={row} />
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+                <details className="meridian-print-track-details">
+                  <summary className="meridian-print-track-summary">
+                    Raw EPS vs estimate per print
+                    <span className="meridian-print-track-summary-note">
+                      {enrichment.print_history.length} print{enrichment.print_history.length === 1 ? "" : "s"}
+                    </span>
+                  </summary>
+                  <ul className="meridian-card-list meridian-history-list meridian-print-track">
+                    {enrichment.print_history.map((row) => (
+                      <li key={row.report_date ?? "unknown"}>
+                        <span className="meridian-history-date">{row.report_date?.slice(5) ?? "—"}</span>
+                        {row.eps_estimate != null && row.eps_actual != null ? (
+                          <span>
+                            {" "}
+                            EPS {row.eps_actual} vs {row.eps_estimate}
+                          </span>
+                        ) : null}
+                        {(row.reaction_pct ?? row.session_change_pct) != null && (
+                          <span className="meridian-history-move">
+                            {" "}
+                            · {fmtPct(row.reaction_pct ?? row.session_change_pct)} reaction
+                            <ReactionFlag print={row} />
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               </MeridianDataCard>
             )}
             {enrichment.analyst_revisions.length > 0 && (

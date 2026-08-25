@@ -36,6 +36,19 @@ export async function loadMeridianTickerLookup(
   }
 
   const today = todayEtYmd();
+  const timelineKey = [...timelineIds].map((s) => s.trim()).filter(Boolean).sort().join(",");
+  return serverCache(
+    `meridian:lookup:v1:${ticker}:${today}:${timelineKey}`,
+    LOOKUP_TTL_MS,
+    async () => loadMeridianTickerLookupUncached(ticker, today, timelineIds)
+  );
+}
+
+async function loadMeridianTickerLookupUncached(
+  ticker: string,
+  today: string,
+  timelineIds: readonly string[]
+): Promise<MeridianTickerLookup> {
   const rows = await serverCache(`meridian:lookup:earnings:${ticker}:${today}`, LOOKUP_TTL_MS, async () => {
     const res = await fetchBenzingaStructuredEarnings({ ticker, dateGte: today, limit: 5 });
     return res.rows;
