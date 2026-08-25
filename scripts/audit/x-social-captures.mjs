@@ -4,6 +4,7 @@
  * Used by scripts/audit/x-social-drafts.mjs
  */
 import { assertCapturableUrl } from "@/lib/x-intel/capture-guard";
+import { prepareVectorSocialCapture } from "./lib/vector-showcase-prep.mjs";
 import { THERMAL_COMPARE_PRESETS } from "@/features/thermal/lib/thermal-compare-presets";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -127,6 +128,14 @@ export async function navigateThermal(page, base, opts) {
   }
 
   assertCapturableUrl(page.url(), `Thermal ${opts.id ?? opts.ticker ?? opts.compareSet}`);
+}
+
+export async function shotElement(page, selector, context) {
+  const el = page.locator(selector).first();
+  await el.waitFor({ state: "visible", timeout: 45_000 });
+  await sleep(500);
+  assertCapturableUrl(page.url(), context);
+  return el.screenshot({ type: "png", animations: "disabled" });
 }
 
 export async function shotClip(page, locator, context, maxH = 980) {
@@ -390,25 +399,23 @@ export const NIGHTHAWK_SHOTS = [
 
 export async function captureVectorShot(page, base, shot) {
   const sym = shot.ticker ?? "SPX";
+  const horizon = shot.horizon ?? "0dte";
   await page.goto(`${base}/vector?ticker=${encodeURIComponent(sym)}`, {
     waitUntil: "domcontentloaded",
     timeout: 90_000,
   });
   await dismissOverlays(page);
   await page.waitForSelector(".vector-chart-wrap", { timeout: 60_000 });
-  await sleep(3000);
-  const dteBtn = page.locator('[data-testid="vector-dte-0dte"]').first();
-  if (await dteBtn.count()) {
-    await dteBtn.click();
-    await sleep(4000);
-  }
-  const tf = page.locator("#vector-tf-select").first();
-  if (await tf.count()) {
-    await tf.selectOption("15").catch(() => {});
-    await sleep(5000);
-  }
+  await prepareVectorSocialCapture(page, {
+    horizon,
+    timeframe: shot.timeframe ?? "3",
+    nodes: shot.nodes ?? "20",
+    waitBeads: true,
+    sessionViewport: horizon === "0dte",
+  });
+  await dismissOverlays(page);
   assertCapturableUrl(page.url(), `Vector ${sym}`);
-  return shotClip(page, page.locator(".vector-chart-wrap"), shot.id, 920);
+  return shotElement(page, ".vector-chart-stage", shot.id);
 }
 
 export async function captureLargoShot(page, base, shot) {

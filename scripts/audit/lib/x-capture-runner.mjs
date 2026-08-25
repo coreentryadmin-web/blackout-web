@@ -5,6 +5,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { assertCapturableUrl } from "@/lib/x-intel/capture-guard";
+import { prepareVectorSocialCapture } from "./vector-showcase-prep.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -45,23 +46,31 @@ function resolveQuestion(template, params) {
 }
 
 export async function dismissOverlays(page) {
-  for (const sel of [
-    'button:has-text("SKIP")',
-    'button:has-text("Got it")',
-    '[aria-label="Close"]',
-    ".helix-analytics-overlay button[aria-label='Close']",
-  ]) {
-    try {
-      const el = page.locator(sel).first();
-      if ((await el.count()) > 0 && (await el.isVisible())) {
-        await el.click({ timeout: 1500 });
-        await sleep(400);
+  await sleep(800);
+  for (let pass = 0; pass < 3; pass += 1) {
+    for (const sel of [
+      'button:has-text("Skip")',
+      'button:has-text("SKIP")',
+      ".onboarding-btn-ghost",
+      'button:has-text("Got it")',
+      '[aria-label="Close"]',
+      ".helix-analytics-overlay button[aria-label='Close']",
+    ]) {
+      try {
+        const el = page.locator(sel).first();
+        if ((await el.count()) > 0 && (await el.isVisible())) {
+          await el.click({ timeout: 2000 });
+          await sleep(500);
+        }
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
     }
+    await page.keyboard.press("Escape").catch(() => {});
+    await sleep(400);
+    const tourOpen = await page.locator(".onboarding-modal, .onboarding-title").count();
+    if (!tourOpen) break;
   }
-  await page.keyboard.press("Escape").catch(() => {});
 }
 
 async function warmThermalChain(page, sym) {
@@ -70,6 +79,14 @@ async function warmThermalChain(page, sym) {
       credentials: "include",
     });
   }, sym);
+}
+
+export async function shotElement(page, selector, context) {
+  const el = page.locator(selector).first();
+  await el.waitFor({ state: "visible", timeout: 45_000 });
+  await sleep(500);
+  assertCapturableUrl(page.url(), context);
+  return el.screenshot({ type: "png", animations: "disabled" });
 }
 
 export async function shotClip(page, selector, context, maxH = 980) {
@@ -264,25 +281,17 @@ const RECIPES = {
     });
     await dismissOverlays(page);
     await page.waitForSelector(".vector-chart-wrap", { timeout: 60_000 });
-    const dteBtn = page.locator(`[data-testid="vector-dte-${horizon}"]`).first();
-    if (await dteBtn.count()) {
-      const pressed = await dteBtn.getAttribute("aria-pressed");
-      if (pressed !== "true") {
-        await dteBtn.click({ force: true, timeout: 5000 }).catch(() => {});
-        await sleep(4000);
-      }
-    }
-    const tf = params.timeframe ?? "15";
-    await page.locator("#vector-tf-select").first().selectOption(String(tf)).catch(() => {});
-    if (params.session_viewport) {
-      await page
-        .locator('button[data-testid="vector-viewport-session"], button:has-text("Session")')
-        .first()
-        .click({ force: true, timeout: 5000 })
-        .catch(() => {});
-      await sleep(1500);
-    }
-    await sleep(params.wait_beads ? 14_000 : 5000);
+    await prepareVectorSocialCapture(page, {
+      horizon,
+      timeframe: params.timeframe ?? "3",
+      nodes: params.nodes ?? "20",
+      zoom: params.zoom,
+      zoomAnchor: params.zoom_anchor,
+      priceZoom: params.price_zoom,
+      sessionViewport: params.session_viewport === true || params.session_viewport === "true",
+      waitBeads: params.wait_beads === true || params.wait_beads === "true",
+    });
+    await dismissOverlays(page);
   },
 
   async vector_fullscreen(page, base, entry, params) {
@@ -439,6 +448,10 @@ export async function captureFromCatalogEntry(page, base, entry, paramOverrides 
   const selector = entry.clip?.selector ?? "main";
   if (entry.recipe === "helix_net_premium") {
     return shotClip(page, '.helix-pro-rail-panel:has-text("Net Premium")', entry.id, maxH);
+  }
+  if (entry.recipe === "vector_desk") {
+    // Clip caps crop the canvas wrong on Vector — full stage (candles + beads + vol) only.
+    return shotElement(page, ".vector-chart-stage", entry.id);
   }
   if (entry.recipe === "meridian_analytics_panel") {
     const panel =
