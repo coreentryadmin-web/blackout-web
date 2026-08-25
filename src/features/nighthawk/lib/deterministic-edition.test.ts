@@ -299,11 +299,11 @@ test("thesis is grounded in the score breakdown and cites the leading driver", (
   assert.match(key_signal, /flow/);
 });
 
-test("score floor: candidates below MIN_PUBLISH_SCORE (42) are excluded (PR-N28)", () => {
+test("score floor: candidates below MIN_PUBLISH_SCORE (38) are excluded (PR-N28)", () => {
   const ranked = [
     scored("STRONG", "long", 60),
     scored("OKAY", "short", 45),
-    scored("WEAK", "long", 38),
+    scored("WEAK", "long", 37),
     scored("GARBAGE", "short", 10),
   ];
   const chains = {
@@ -315,7 +315,7 @@ test("score floor: candidates below MIN_PUBLISH_SCORE (42) are excluded (PR-N28)
     WEAK: dossier("WEAK", 120), GARBAGE: dossier("GARBAGE", 90),
   };
   const { plays, funnel } = buildDeterministicEditionPlays({ ranked, dossierMap, chains });
-  assert.equal(plays.length, 2, "only STRONG and OKAY clear the 42 floor");
+  assert.equal(plays.length, 2, "only STRONG and OKAY clear the 38 floor");
   assert.deepEqual(plays.map(p => p.ticker), ["STRONG", "OKAY"]);
   assert.equal(funnel.score_below_floor, 2, "WEAK + GARBAGE counted");
 });
@@ -420,15 +420,15 @@ test("R:R inflation cap: option-coherence push cannot exceed 1.25× the original
 });
 
 // ── PR-N31: diversity hedge floor ────────────────────────────────────────────────────
-test("PR-N31: diversity swap fires for contrarian above DIVERSITY_HEDGE_FLOOR (35) but below MIN_PUBLISH_SCORE (42)", () => {
-  // 5 long candidates scoring above 42, plus one short scoring 38 (above 35, below 42)
+test("PR-N31: diversity swap fires for contrarian above DIVERSITY_HEDGE_FLOOR (35) but below MIN_PUBLISH_SCORE (38)", () => {
+  // 5 long candidates scoring above 38, plus one short scoring 36 (above 35, below 38)
   const ranked = [
     scored("AA", "long", 70),
     scored("BB", "long", 65),
     scored("CC", "long", 60),
     scored("DD", "long", 55),
     scored("EE", "long", 50),
-    scored("FF", "short", 38),
+    scored("FF", "short", 36),
   ];
   const chains: Record<string, any> = {};
   const dossierMap: Record<string, any> = {};
@@ -671,14 +671,14 @@ test("NH_LEGACY_FORCED_HEDGE=0 disables Phase 2 forced-contrarian re-score (the 
 });
 
 test("PR-N32: forced contrarian does NOT fire when natural opposite-direction candidate exists", () => {
-  // FF is a natural short above DIVERSITY_HEDGE_FLOOR (35) — Phase 1 handles it, Phase 2 never runs.
+  // FF is a natural short above DIVERSITY_HEDGE_FLOOR (35) but below MIN_PUBLISH_SCORE (38) — Phase 1 handles it, Phase 2 never runs.
   const ranked = [
     scored("AA", "long", 72),
     scored("BB", "long", 68),
     scored("CC", "long", 63),
     scored("DD", "long", 58),
     scored("EE", "long", 52),
-    scored("FF", "short", 38),
+    scored("FF", "short", 36),
   ];
   const chains: Record<string, any> = {};
   const dossierMap: Record<string, any> = {};
@@ -767,7 +767,7 @@ test("diversity hedge fires for a 3-play all-LONG edition (threshold lowered to 
     scored("AA", "long", 70),
     scored("BB", "long", 65),
     scored("CC", "long", 60),
-    scored("FF", "short", 38),
+    scored("FF", "short", 36),
   ];
   const chains: Record<string, any> = {};
   const dossierMap: Record<string, any> = {};
@@ -960,4 +960,63 @@ test("diversity hedge skipped when NH_LEGACY_DIVERSITY_HEDGE=0", () => {
     if (prev === undefined) delete process.env[key];
     else process.env[key] = prev;
   }
+});
+
+// ── Day-trade mode: skip stock-only plays when no 0DTE/1DTE contract ──────────
+// Regression (2026-08-24): buildDeterministicEditionPlays was building stock-only
+// plays (contract=null) even in day-trade mode (maxDte ≤ 1). These had unparseable
+// options_play strings that failed DTE filter, dropping 31% of built plays downstream.
+// Fix: skip stock-only in day-trade; overnight swing still builds them as fallback.
+
+test("buildDeterministicEditionPlays: day-trade mode (maxDte=1) skips candidates with no 0/1DTE contract", () => {
+  // Chain with only 7+ DTE contracts (no same-day or next-day expiry).
+  const longDtedChain: EditionChainData = {
+    spot: 100,
+    rows: [row(100, { expiry: ymdPlus(7), callAsk: 4.2, callBid: 3.8 })],
+  };
+
+  const ranked = [scored("AAA", "long", 68), scored("BBB", "long", 65)];
+  const chains = {
+    AAA: longDtedChain, // no 0/1DTE contracts
+    BBB: chainAround(100), // has far-dated chain (will also have none when filtered)
+  };
+  const dossierMap = { AAA: dossier("AAA", 100), BBB: dossier("BBB", 100) };
+
+  // Day-trade mode: maxDte=1 means only 0DTE and 1DTE are acceptable.
+  const { plays } = buildDeterministicEditionPlays({
+    ranked,
+    dossierMap,
+    chains,
+    target: 5,
+    maxDte: 1,
+  });
+
+  // Both candidates should be skipped because the longDtedChain has no 0/1DTE contracts,
+  // and chainAround defaults to 120 days out (far from today).
+  assert.equal(plays.length, 0, "day-trade mode must skip candidates with no 0/1DTE contract");
+});
+
+test("buildDeterministicEditionPlays: overnight swing mode (maxDte=null) builds stock-only as fallback", () => {
+  // Chain with only 7+ DTE contracts.
+  const longDtedChain: EditionChainData = {
+    spot: 100,
+    rows: [row(100, { expiry: ymdPlus(7), callAsk: 4.2, callBid: 3.8 })],
+  };
+
+  const ranked = [scored("AAA", "long", 68)];
+  const chains = { AAA: longDtedChain };
+  const dossierMap = { AAA: dossier("AAA", 100) };
+
+  // Overnight swing mode: maxDte=null (or omitted) allows any expiry.
+  const { plays } = buildDeterministicEditionPlays({
+    ranked,
+    dossierMap,
+    chains,
+    target: 5,
+    maxDte: null, // swing mode
+  });
+
+  // Swing mode should accept the 7-DTE contract (meets the ≥5 DTE requirement).
+  assert.equal(plays.length, 1, "overnight swing builds the 7-DTE contract");
+  assert.equal(plays[0]!.ticker, "AAA");
 });

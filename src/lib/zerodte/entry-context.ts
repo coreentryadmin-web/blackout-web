@@ -99,6 +99,10 @@ export type ZeroDteEntryContext = {
    *  Note the tier is DERIVED from the blob's own fields, so a null here costs
    *  nothing durable — tierFromEntryContext re-derives it from the same pins. */
   tier: ZeroDteTierAssignment | null;
+  /** Discovery origin set at commit (FLOW/BREAKOUT/PIN) — used to determine the
+   *  source-specific scoreFloor for tier assignment. Pre-WS-20 rows carry no origin;
+   *  tierFromEntryContext defaults to the full ZERODTE_SCORE_FLOOR when absent. */
+  discovery_origin?: string[];
   /** WS-14 input-age manifest: age (ms) at decision time of each input the commit used
    *  (flow/underlying/option_quote/gex/vix/macro/spy_bias). Frozen at commit by
    *  persistZeroDteScan (buildInputAgeManifest). Optional/additive — pre-WS-14 rows and the
@@ -131,6 +135,10 @@ export function buildZeroDteEntryContext(
      *  pre-wire-in callers/tests are untouched; passed through verbatim — the
      *  Cortex composer already rounds its own weights/score at emission. */
     cortex?: ZeroDteCortexEntryContext | null;
+    /** Discovery origin set (FLOW/BREAKOUT/PIN) at commit. Optional for backwards
+     *  compat with call sites that don't have it; used to determine source-specific
+     *  scoreFloor for tier assignment (pre-WS-20 rows carry none). */
+    discovery_origin?: string[];
   },
   session: ZeroDteSessionContext | null,
   nowMs: number
@@ -144,6 +152,7 @@ export function buildZeroDteEntryContext(
     committed_at_et: formatEtStamp(nowMs),
     cortex: play.cortex ?? null,
     tier: null,
+    ...(play.discovery_origin && { discovery_origin: play.discovery_origin }),
   };
   // Commit-time merit tier (PR-F wiring): computed by feeding the JUST-BUILT blob
   // through tierFromEntryContext — the SAME adapter the calibration/record analyses

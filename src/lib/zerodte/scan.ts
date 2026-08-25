@@ -1097,7 +1097,12 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     // ratchet (conservative). The operator env override `ZERODTE_EXIT_MODE` still takes
     // precedence in resolveExitModeForTier.
     const baseEntryCtx = buildZeroDteEntryContext(
-      { score: s.score, gamma_regime: s.gamma_regime, cortex: cortexEntryContextFor(s.cortex) },
+      {
+        score: s.score,
+        gamma_regime: s.gamma_regime,
+        cortex: cortexEntryContextFor(s.cortex),
+        discovery_origin: s.discovery_origin,
+      },
       sessionCtx,
       committedAtMs
     );

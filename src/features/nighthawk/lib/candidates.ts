@@ -452,6 +452,8 @@ export type BreakoutMover = {
   close_strength: number;
   /** volume × close = $-volume, the liquidity/conviction rank. */
   dollar: number;
+  /** Daily bar: h = high, l = low, o = open. Used for gain-over-range ranking. */
+  bar: { h: number; l: number; o: number };
 };
 
 /** Pure whole-market breakout screen over grouped-daily bars. Returns the top `maxKeep` by $-volume.
@@ -474,7 +476,7 @@ export function screenBreakoutMovers(
     const range = h - l;
     const closeStrength = range > 0 ? (c - l) / range : 0;
     if (closeStrength < BREAKOUT_MIN_CLOSE_STRENGTH) continue;
-    out.push({ ticker, gain: (c - o) / o, volume: v, close_strength: closeStrength, dollar: v * c });
+    out.push({ ticker, gain: (c - o) / o, volume: v, close_strength: closeStrength, dollar: v * c, bar: { h, l, o } });
   }
   return out.sort((a, b) => b.dollar - a.dollar).slice(0, maxKeep);
 }
@@ -510,7 +512,7 @@ export function screenBreakdownMovers(
     // mid-range is not a conviction short.
     if (closeStrength > (1 - BREAKOUT_MIN_CLOSE_STRENGTH)) continue; // close_strength must be <= 0.5
     // Store gain as abs() so breakoutScore's gain factor works unchanged; the caller sets direction.
-    out.push({ ticker, gain: Math.abs(rawGain), volume: v, close_strength: closeStrength, dollar: v * c });
+    out.push({ ticker, gain: Math.abs(rawGain), volume: v, close_strength: closeStrength, dollar: v * c, bar: { h, l, o } });
   }
   return out.sort((a, b) => b.dollar - a.dollar).slice(0, maxKeep);
 }

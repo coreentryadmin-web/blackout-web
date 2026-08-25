@@ -69,10 +69,13 @@ const RTH_CUTOFF_ET_MINUTES = 15 * 60 + 30;
  *  `discovery-recall-probe.mjs` run: real qualifying pools of 100-390/day, cap stuck at 40). */
 export const BREAKOUT_MAX_CANDIDATES = 40; // dynamic-N floor — raised 6→15→25→40, now a floor not a ceiling
 
-/** Dynamic-N ceiling (2026-08-04) — bounds worst-case chain-fetch growth on a huge-breadth day to
- *  2.5x the pre-dynamic static cap. See `resolveBreakoutCandidateCap` for the sizing formula and
- *  `scripts/audit/breakout-dynamic-n-ab.mjs` for the A/B evidence that justified it. */
-export const BREAKOUT_MAX_CANDIDATES_CEILING = 100;
+/** Dynamic-N ceiling (2026-08-04, raised to 150 on 2026-08-24) — bounds worst-case chain-fetch
+ *  growth on a huge-breadth day. See `resolveBreakoutCandidateCap` for the sizing formula and
+ *  `scripts/audit/breakout-dynamic-n-ab.mjs` for the A/B evidence that justified the original 100.
+ *  Raised from 100→150 because evidence shows the ceiling is hit on 10/13 sessions, and momentum-rank
+ *  cohorts (41-100 vs top-40) show 44.9% WR vs 43.1% — indistinguishable, no quality loss from wider
+ *  pools, only more shots at the same hit rate. Chain-fetch budget is bounded, Polygon concurrency tuned. */
+export const BREAKOUT_MAX_CANDIDATES_CEILING = 150;
 
 /** Wider $-volume pool fed into the momentum re-rank before the chain-fetch cap. Liquidity filter
  *  stays in `screenBreakoutMovers` / `screenBreakdownMovers`; quality ranking is separate. Raised
@@ -84,18 +87,24 @@ export const BREAKOUT_SCREEN_POOL = 200;
 
 /**
  * Rank screened movers for the chain-fetch budget. Liquidity already gated the pool; this orders
- * by momentum quality so a sharp mid-cap continuation outranks a sluggish mega-cap grind.
- * - long / breakout: `gain × close_strength` (strong close = conviction)
- * - short / breakdown: `gain × (1 − close_strength)` (weak close = conviction)
- * Ties break by $-volume (still prefer tradeable names). Pure.
+ * by gain-over-range: the move relative to the daily volatility (measured 2026-08-06: +11.3pt signal
+ * vs the prior −5.2pt momentum ranking). Ties break by $-volume (still prefer tradeable names). Pure.
+ *
+ * EVIDENCE (docs/audit/FINDINGS.md 2026-08-06): breakout-ranking-signal.mjs over 15 sessions
+ * (3,305 graded names) shows gain_over_range +11.3pt (p=0.000) vs momentum −5.2pt (p=0.945).
+ * Held-out cohort (15 disjoint sessions, 2,538 names): +15.7pt vs −6.4pt. Current momentum ranking
+ * is harmful; gain_over_range captures whether a move is "clean" (most of the day's range) or
+ * exhausted (already priced in volatility).
  */
-export function rankMoversForChainFetch<T extends { gain: number; close_strength: number; dollar: number }>(
+export function rankMoversForChainFetch<T extends { gain: number; close_strength: number; dollar: number; bar: { h: number; l: number; o: number } }>(
   movers: readonly T[],
   maxKeep: number,
   side: "long" | "short"
 ): T[] {
-  const quality = (m: T): number =>
-    side === "long" ? m.gain * m.close_strength : m.gain * (1 - m.close_strength);
+  const quality = (m: T): number => {
+    const range = m.bar.h - m.bar.l;
+    return range > 0 ? m.gain / (range / m.bar.o) : 0;
+  };
   return [...movers]
     .sort((a, b) => {
       const dq = quality(b) - quality(a);

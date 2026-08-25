@@ -260,12 +260,14 @@ export type ZeroDteGateCalibration = {
 // raise the floor above the 55-64 band. Judged AFTER the intraday edge layer, so a
 // raw-evidence 70 that the tape/time-of-day layer marked down to 62 does NOT clear.
 export const ZERODTE_SCORE_FLOOR = 65;
-/** Origin-aware G-3 floors. 2026-07-29 precision restore: BREAKOUT/PIN share the same 65
- *  commit bar as FLOW. The 58 "unstarve" floor sat inside the measured near-flat 55–64 band
- *  (−3.6% avg / 36.8% WR) and admitted weak single-rail movers. Multi-rail +8 corroboration
- *  still helps real confluence clear 65; env overrides remain available. */
-export const ZERODTE_SCORE_FLOOR_BREAKOUT = envInt("ZERODTE_SCORE_FLOOR_BREAKOUT", 65);
-export const ZERODTE_SCORE_FLOOR_PIN = envInt("ZERODTE_SCORE_FLOOR_PIN", 65);
+/** Origin-aware G-3 floors. BREAKOUT/PIN use multiplicative scoring (gain×close / regime quality)
+ *  which naturally produces lower scores than FLOW's additive model. They're calibrated to the
+ *  measured 55–64 band (−3.6% avg / 36.8% WR — near-flat) per the evidence gate comments (line 513).
+ *  Their floor is 50 so legitimate whole-market moves aren't starved by comparing to flow-conviction
+ *  evidence scores. FLOW floor stays 65 (measured 65-74 at 50% WR). Multi-rail +8 corroboration still
+ *  helps real confluence; env overrides remain available. */
+export const ZERODTE_SCORE_FLOOR_BREAKOUT = envInt("ZERODTE_SCORE_FLOOR_BREAKOUT", 50);
+export const ZERODTE_SCORE_FLOOR_PIN = envInt("ZERODTE_SCORE_FLOOR_PIN", 50);
 
 /** Resolve the G-3 score floor for a setup's discovery origin set. Pure. */
 export function scoreFloorForOrigins(origins: readonly string[] | null | undefined): number {

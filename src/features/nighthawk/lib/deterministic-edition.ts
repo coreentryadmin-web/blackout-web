@@ -641,6 +641,11 @@ export function buildDeterministicEditionPlays(params: {
         noSpotCount += 1;
         continue;
       }
+      // Day-trade mode (maxDte <= 1) requires a real option contract; no stock-only fallback.
+      // For overnight swing (maxDte > 1 or null), stock-only is acceptable. Tickers with no
+      // 0DTE/1DTE options are simply not tradeable on that timeframe — skip them.
+      const isDayTrade = params.maxDte != null && params.maxDte <= 1;
+      if (isDayTrade) continue;
       stockOnly += 1;
     }
 

@@ -217,20 +217,20 @@ test("G-14: 15:45 is still BLOCKED after the cutoff", () => {
 });
 
 
-test("scoreFloorForOrigins: FLOW 65; BREAKOUT 65; PIN 65; FLOW+BREAKOUT stays FLOW", () => {
+test("scoreFloorForOrigins: FLOW 65; BREAKOUT 50; PIN 50; FLOW+BREAKOUT stays FLOW", () => {
   assert.equal(scoreFloorForOrigins(["FLOW"]), ZERODTE_SCORE_FLOOR);
   assert.equal(scoreFloorForOrigins(["FLOW", "BREAKOUT"]), ZERODTE_SCORE_FLOOR);
   assert.equal(scoreFloorForOrigins(["BREAKOUT"]), ZERODTE_SCORE_FLOOR_BREAKOUT);
   assert.equal(scoreFloorForOrigins(["PIN"]), ZERODTE_SCORE_FLOOR_PIN);
-  assert.equal(ZERODTE_SCORE_FLOOR_BREAKOUT, 65);
-  assert.equal(ZERODTE_SCORE_FLOOR_PIN, ZERODTE_SCORE_FLOOR);
+  assert.equal(ZERODTE_SCORE_FLOOR_BREAKOUT, 50);
+  assert.equal(ZERODTE_SCORE_FLOOR_PIN, 50);
   assert.equal(scoreFloorForOrigins([]), ZERODTE_SCORE_FLOOR);
 });
 
-test("G-3: BREAKOUT at score 65 clears at the 65 floor; sub-65 still blocked", () => {
-  const brk = evaluateZeroDteGates(input({ score: 65, discovery_origin: ["BREAKOUT"] }));
+test("G-3: BREAKOUT at score 50 clears at the 50 floor; sub-50 still blocked", () => {
+  const brk = evaluateZeroDteGates(input({ score: 50, discovery_origin: ["BREAKOUT"] }));
   assert.equal(brk.verdict, "COMMIT");
-  const brkLow = evaluateZeroDteGates(input({ score: 64, discovery_origin: ["BREAKOUT"] }));
+  const brkLow = evaluateZeroDteGates(input({ score: 49, discovery_origin: ["BREAKOUT"] }));
   assert.equal(brkLow.verdict, "BLOCKED");
   assert.ok(brkLow.blocks.some((b) => b.code === "score_floor"));
   const flow = evaluateZeroDteGates(input({ score: 60, discovery_origin: ["FLOW"] }));
