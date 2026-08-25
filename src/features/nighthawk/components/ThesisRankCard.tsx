@@ -54,6 +54,18 @@ export function ThesisRankCard({ thesis }: Props) {
             {archetype_gates.blocks.length ? ` · ${archetype_gates.blocks.join(", ")}` : ""}
           </p>
         )}
+        {merged.disagreeing_rails.length > 0 && (
+          <ul className="mt-1 space-y-0.5 border-t border-white/[0.06] pt-1">
+            {merged.disagreeing_rails.map((d) => (
+              <li key={`${d.rail}-${d.direction}`} className="flex justify-between gap-2 text-[10px]">
+                <span className="text-cyan-300">
+                  {d.rail} {d.direction.toUpperCase()} (opp)
+                </span>
+                <span className="t-num text-sky-200">{d.score}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2.5">

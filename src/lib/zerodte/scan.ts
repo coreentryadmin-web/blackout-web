@@ -120,9 +120,9 @@ import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy } f
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
 import { persistZeroDteRejections } from "./rejections";
 import { attachThesisFirstShadow, thesisFirstEntryContext } from "./thesis/scan-shadow";
+import { thesisFirstEnv } from "./thesis/types";
 import { attachThesisContractPlans } from "./thesis/contract-attach";
 import { thesisBlocksToGateBlocks } from "./thesis/live-pipeline";
-import { thesisFirstEnv } from "./thesis/types";
 import {
   persistDiscoveryCommitEvents,
   persistDiscoveryDetectedEvents,
@@ -530,7 +530,8 @@ export async function scanZeroDteBoard(flags?: {
   // window just leaves every context null.
   attachFlowAccumulation(setups, accumulationSignalsFromFlow(multiDayFlows, Date.now()));
 
-  const thesisLive = thesisFirstEnv().enabled;
+  const thesisEnv = thesisFirstEnv();
+  const thesisLive = thesisEnv.enabled;
   if (!thesisLive) {
     await attachContractPlans(setups);
   }
@@ -547,8 +548,13 @@ export async function scanZeroDteBoard(flags?: {
   const nowEtMinutes = nowEt.hour * 60 + nowEt.minute;
   attachConfluence(setups, nowEtMinutes);
 
-  // Thesis-first: shadow (default) or live pipeline (ZERODTE_THESIS_FIRST=1).
-  attachThesisFirstShadow(setups, nowEtMinutes);
+  // Thesis-first: cache-backed evidence bundle → rails; shadow or live.
+  if (thesisEnv.enabled || thesisEnv.shadow) {
+    const { fetchThesisEvidenceForTickers } = await import("./thesis/evidence-bundle");
+    const tickers = [...new Set(setups.map((s) => s.ticker.toUpperCase()))];
+    const thesisExtras = await fetchThesisEvidenceForTickers(tickers);
+    attachThesisFirstShadow(setups, nowEtMinutes, thesisExtras);
+  }
 
   // Hard-gate verdicts — Cortex runs inside on gate survivors.
   await attachGateVerdicts(setups, tape.bias, tape.biasAsOfMs, nowEtMinutes);

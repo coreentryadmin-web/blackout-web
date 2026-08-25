@@ -28,6 +28,7 @@ import { gexPositioningFromHeatmap } from "@/lib/providers/gex-positioning";
 import { computeGexWalls, mapFromStrikeTotalsRecord } from "@/lib/providers/gex-wall-levels";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import { buildPinSetup, evaluatePinRegime, pickAtmPinContract, pinScore, type PinChainRow } from "./pin-source";
+import { stampPinSetupPositioning } from "./thesis/pin-positioning-stamp";
 import {
   buildCondorPlan,
   buildCondorSetup,
@@ -280,7 +281,15 @@ export async function discoverPinSetups(opts: {
         const contract = pickAtmPinContract(rows, chain.spot, today, side);
         if (!contract) return null; // no liquid same-day/weekly contract → shared plan gate would drop it
 
-        return buildPinSetup({ ticker, spot: chain.spot, regime, contract, todayYmd: today });
+        return stampPinSetupPositioning(
+          buildPinSetup({ ticker, spot: chain.spot, regime, contract, todayYmd: today }),
+          {
+            gamma_posture: pos.gamma_posture,
+            call_wall: pos.call_wall,
+            put_wall: pos.put_wall,
+            gex_king_strike: pos.gex_king_strike ?? null,
+          }
+        );
       } catch {
         return null; // best-effort per ticker — one bad read never sinks the batch
       }

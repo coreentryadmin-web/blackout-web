@@ -179,6 +179,7 @@ test("rank tier: solo BREAKOUT without FLOW/MOMENTUM caps at WATCH not A", () =>
       structural_state: "TRIGGERED",
       trigger_price: 90,
       summaries: { BREAKOUT: "coiled" },
+      disagreeing_rails: [],
     },
     { verdict: "PASS", archetype: "BREAKOUT", blocks: [], notes: [] }
   );
@@ -198,6 +199,7 @@ test("rank tier: solo BREAKOUT with MOMENTUM corroboration may rank A", () => {
       structural_state: "TRIGGERED",
       trigger_price: 100,
       summaries: {},
+      disagreeing_rails: [],
     },
     { verdict: "PASS", archetype: "BREAKOUT", blocks: [], notes: [] }
   );
@@ -217,6 +219,7 @@ test("live pipeline: thesis blocks on archetype BLOCK", () => {
       structural_state: null,
       trigger_price: null,
       summaries: {},
+      disagreeing_rails: [],
     },
     archetype_gates: { verdict: "BLOCK", archetype: "MOMENTUM_CONTINUATION", blocks: ["momentum_rs_floor"], notes: [] },
     expression: null,

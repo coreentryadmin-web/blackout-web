@@ -66,6 +66,13 @@ export type RailHit = {
 
 export type RailScoreMap = Partial<Record<ThesisRail, number>>;
 
+export type DisagreeingRail = {
+  rail: ThesisRail;
+  direction: "long" | "short";
+  score: number;
+  summary: string;
+};
+
 export type MergedThesis = {
   ticker: string;
   direction: "long" | "short";
@@ -77,6 +84,8 @@ export type MergedThesis = {
   structural_state: StructuralState;
   trigger_price: number | null;
   summaries: Partial<Record<ThesisRail, string>>;
+  /** Opposing-direction rails preserved at merge — LARGO contract: disagreement is represented. */
+  disagreeing_rails: DisagreeingRail[];
 };
 
 export type ArchetypeGateResult = {

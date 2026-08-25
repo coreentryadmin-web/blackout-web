@@ -21,6 +21,7 @@ export function resolveThesisRankTier(
 }
 
 function soloBreakoutNeedsCorroboration(thesis: ThesisPipelineResult["thesis"]): boolean {
+  if (thesis.disagreeing_rails.length > 0) return true;
   if (thesis.trade_archetype !== "BREAKOUT") return false;
   if (thesis.systems_aligned > 1) return false;
   const flow = thesis.rail_scores.FLOW ?? 0;
@@ -50,16 +51,18 @@ export function thesisBlocksToGateBlocks(codes: string[]): ZeroDteGateBlock[] {
 /** Stamp thesis pipeline + optional pre-gate blocks when live path is armed. */
 export function attachThesisFirstLive(
   setups: EnrichedZeroDteSetup[],
-  nowEtMinutes?: number
+  nowEtMinutes?: number,
+  extrasByTicker: Record<string, import("./rails/legacy-bridge").LegacyBridgeExtras> = {}
 ): void {
   const env = thesisFirstEnv();
   if (!env.enabled && !env.shadow) return;
 
-  const mergedByTicker = mergeScanPassTheses(setups);
+  const mergedByTicker = mergeScanPassTheses(setups, extrasByTicker);
 
   for (const s of setups) {
-    const merged = mergedByTicker.get(s.ticker.toUpperCase());
-    let pipeline = runThesisPipelineForSetup(s);
+    const tickerKey = s.ticker.toUpperCase();
+    const merged = mergedByTicker.get(tickerKey);
+    let pipeline = runThesisPipelineForSetup(s, extrasByTicker[tickerKey] ?? {});
     if (merged) pipeline = { ...pipeline, thesis: merged };
 
     if (nowEtMinutes != null) {

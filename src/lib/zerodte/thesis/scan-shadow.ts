@@ -6,11 +6,12 @@ import { thesisFirstEnv } from "./types";
 /** Attach thesis-first pipeline snapshot to each setup (shadow by default). */
 export function attachThesisFirstShadow(
   setups: EnrichedZeroDteSetup[],
-  nowEtMinutes?: number
+  nowEtMinutes?: number,
+  extrasByTicker: Record<string, import("./rails/legacy-bridge").LegacyBridgeExtras> = {}
 ): void {
   const env = thesisFirstEnv();
   if (!env.enabled && !env.shadow) return;
-  attachThesisFirstLive(setups, nowEtMinutes);
+  attachThesisFirstLive(setups, nowEtMinutes, extrasByTicker);
 }
 
 /** Compact blob for entry_context persistence at commit. */
@@ -30,6 +31,7 @@ export function thesisFirstEntryContext(
     rank_tier,
     archetype_gate: archetype_gates.verdict,
     archetype_blocks: archetype_gates.blocks,
+    disagreeing_rails: thesis.disagreeing_rails,
     ...(expression?.contract
       ? {
           expression_horizon: expression.horizon,
