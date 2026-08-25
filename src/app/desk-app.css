@@ -1743,10 +1743,21 @@ html.nav-locked body { overflow: hidden; }
   position: absolute; top: 50%; width: 8px; height: 8px; padding: 0;
   margin: -4px 0 0 -4px; border-radius: 50%;
   border: 1px solid rgba(167, 139, 250, 0.8); background: rgba(167, 139, 250, 0.45);
-  cursor: pointer; transition: transform 0.16s var(--mv-ease);
+  transition: transform 0.16s var(--mv-ease);
 }
-.mv-target-dot:hover:not(:disabled) { transform: scale(1.55); }
-.mv-target-dot:disabled { cursor: default; }
+/* Only the real `<button>` variant (an `onTargetClick` handler was passed) is interactive — the
+   no-handler case renders a plain `<span>` (see MeridianTargetRail), so cursor/hover/hit-pad are
+   scoped to `type="button"` rather than the shared class, or a decorative span would look and act
+   clickable with nothing behind it. */
+.mv-target-dot[type="button"] { cursor: pointer; }
+.mv-target-dot[type="button"]:hover { transform: scale(1.55); }
+/* Same technique as .ms-orb::after: the drawn dot stays 8px (rail density is the point — many
+   targets close together), an invisible pad extends the real hit area to a 24px minimum without
+   inflating what's drawn. UI-UX-OPPORTUNITIES.md item 13. */
+.mv-target-dot[type="button"]::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: 24px; height: 24px; transform: translate(-50%, -50%);
+}
 .mv-target-consensus { position: absolute; top: 0; height: 100%; transform: translateX(-50%); }
 .mv-target-consensus-tick {
   position: absolute; top: 2px; bottom: 2px; left: 0; width: 2px; background: var(--mv-neutral);
@@ -1763,8 +1774,9 @@ html.nav-locked body { overflow: hidden; }
    (MV_LADDER_MIN_GAP = MV_LADDER_ROW_PX / MV_LADDER_HEIGHT_PX in meridian-viz-core.ts). That
    only holds if a row really is that tall. It was not: rows rendered at 20.5px against an
    assumed 16px, so every adjacent pair overlapped by 4-11px on live prod. The height is pinned
-   here and asserted equal to the TS constant by meridian-viz-core.test.ts. */
-.mv-ladder { --mv-ladder-row-h: 20px; position: relative; min-height: 132px; }
+   here and asserted equal to the TS constant by meridian-viz-core.test.ts. Raised 20px -> 24px
+   so the row is also a real touch target (UI-UX-OPPORTUNITIES.md item 13). */
+.mv-ladder { --mv-ladder-row-h: 24px; position: relative; min-height: 132px; }
 .mv-ladder-row {
   position: absolute; left: 0; right: 0; top: var(--mv-pos);
   height: var(--mv-ladder-row-h);
@@ -2406,6 +2418,10 @@ html.nav-locked body { overflow: hidden; }
 .mv-strikes-rows { display: flex; flex-direction: column; gap: 0.14rem; margin-top: 0.5rem; }
 .mv-strike-row {
   display: grid; grid-template-columns: 3.4rem 1fr 3.2rem; align-items: center; gap: 0.4rem;
+  /* min-height, not a fixed height: the row's content sets ~20px, under the 24px touch-target
+     minimum (UI-UX-OPPORTUNITIES.md item 13 — measured 301x20). No collision resolver depends on
+     this row's exact height (unlike the ladder above), so a min-height is enough. */
+  min-height: 24px;
   padding: 0.1rem 0.24rem; border: 0; border-radius: 0.28rem;
   background: transparent; color: rgba(226,244,255,0.9); text-align: left; cursor: pointer;
   font-family: var(--font-mono, monospace); font-size: 0.68rem;
