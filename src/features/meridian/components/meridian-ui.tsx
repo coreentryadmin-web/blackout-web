@@ -18,7 +18,10 @@ export function ReactionFlag({ print }: { print: MeridianEarningsPrint }) {
   const q = reactionQualifier(print);
   if (!q) return null;
   return (
-    <span className="meridian-reaction-flag" title={q.title}>
+    <span
+      className={`meridian-reaction-flag meridian-reaction-flag-${q.kind}`}
+      title={q.title}
+    >
       {q.mark}
     </span>
   );

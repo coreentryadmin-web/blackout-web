@@ -875,15 +875,22 @@ html.nav-locked body { overflow: hidden; }
 .meridian-reaction-flag {
   margin-left: 0.28rem;
   padding: 0 0.28rem;
-  border: 1px solid rgba(251, 191, 36, 0.45);
   border-radius: 3px;
   font-size: 0.62rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #fbbf24;
   vertical-align: 0.06em;
   white-space: nowrap;
   cursor: help;
+}
+/* Yellow = session still open (provisional tape). Red = timing assumption (wrong-session risk). */
+.meridian-reaction-flag-live {
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  color: #fbbf24;
+}
+.meridian-reaction-flag-assumed {
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  color: #f87171;
 }
 
 /* Action dock */
