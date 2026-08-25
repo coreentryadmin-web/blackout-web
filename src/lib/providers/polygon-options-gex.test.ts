@@ -129,6 +129,7 @@ test("gex heatmap Redis TTL covers SWR window (not 5s matrix TTL only)", () => {
   assert.match(src, /function gexHeatmapRedisTtlSec/);
   assert.match(src, /sharedCacheSet\(cacheKey, entry, gexHeatmapRedisTtlSec\(\)\)/);
   assert.match(src, /export async function readGexHeatmapSnapshot/);
+  assert.match(src, /export async function readGexHeatmapCacheOnly/);
 });
 
 // ── task #136: computeGexEvents — the pure diff durable persistence (gex-regime-

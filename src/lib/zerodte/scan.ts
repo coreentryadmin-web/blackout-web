@@ -554,7 +554,9 @@ export async function scanZeroDteBoard(flags?: {
     const { fetchThesisEvidenceForTickers } = await import("./thesis/evidence-bundle");
     const { buildHelixExtrasByTicker } = await import("./thesis/helix-tape-extras");
     const { mergeLegacyBridgeExtras } = await import("./thesis/evidence-bundle-map");
-    const tickers = [...new Set(setups.map((s) => s.ticker.toUpperCase()))];
+    const tickers = [...setups]
+      .sort((a, b) => b.score - a.score)
+      .map((s) => s.ticker.toUpperCase());
     const thesisExtras = await fetchThesisEvidenceForTickers(tickers);
     const helixExtras = buildHelixExtrasByTicker(
       flows.map((f) => ({

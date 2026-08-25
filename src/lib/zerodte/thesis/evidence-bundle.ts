@@ -1,38 +1,52 @@
 import "server-only";
 
 import { readVectorFullStateCache } from "@/lib/bie/vector-full-state-cache";
-import { getGexPositioning } from "@/lib/providers/gex-positioning";
+import { gexPositioningFromHeatmap } from "@/lib/providers/gex-positioning";
+import { readGexHeatmapCacheOnly } from "@/lib/providers/polygon-options-gex";
 import {
   thesisEvidenceToLegacyExtras,
+  selectThesisEvidenceTickers,
+  thesisEvidenceMaxTickers,
   type ThesisEvidenceSnapshot,
 } from "./evidence-bundle-map";
 import type { LegacyBridgeExtras } from "./rails/legacy-bridge";
 
 export type { ThesisEvidenceSnapshot } from "./evidence-bundle-map";
-export { thesisEvidenceToLegacyExtras, mergeLegacyBridgeExtras } from "./evidence-bundle-map";
+export {
+  thesisEvidenceToLegacyExtras,
+  mergeLegacyBridgeExtras,
+  selectThesisEvidenceTickers,
+  thesisEvidenceMaxTickers,
+  THESIS_EVIDENCE_MAX_TICKERS_DEFAULT,
+} from "./evidence-bundle-map";
 
-/** Build one ticker's evidence from shared cache readers only. */
+/** Build one ticker's evidence from shared cache readers only (no upstream chain builds). */
+async function fetchThermalEvidenceCacheOnly(ticker: string): Promise<ThesisEvidenceSnapshot["thermal"]> {
+  const root = ticker.trim().toUpperCase();
+  if (!root) return null;
+  const hm = await readGexHeatmapCacheOnly(root).catch(() => null);
+  const positioning = gexPositioningFromHeatmap(root, hm);
+  if (!positioning || !(positioning.spot > 0)) return null;
+  return {
+    gamma_posture: positioning.gamma_posture,
+    call_wall: positioning.call_wall,
+    put_wall: positioning.put_wall,
+    gex_king_strike: positioning.gex_king_strike,
+    cross_validation_divergence:
+      positioning.gex_cross_validation?.divergence != null &&
+      Number.isFinite(positioning.gex_cross_validation.divergence)
+        ? positioning.gex_cross_validation.divergence
+        : null,
+  };
+}
+
+/** Build one ticker's evidence from shared cache readers only (no upstream chain builds). */
 export async function fetchThesisEvidenceForTicker(ticker: string): Promise<ThesisEvidenceSnapshot> {
   const root = ticker.trim().toUpperCase();
-  const [positioning, vector] = await Promise.all([
-    getGexPositioning(root).catch(() => null),
+  const [thermal, vector] = await Promise.all([
+    fetchThermalEvidenceCacheOnly(root),
     readVectorFullStateCache(root, "0dte").catch(() => null),
   ]);
-
-  const thermal =
-    positioning && positioning.spot > 0
-      ? {
-          gamma_posture: positioning.gamma_posture,
-          call_wall: positioning.call_wall,
-          put_wall: positioning.put_wall,
-          gex_king_strike: positioning.gex_king_strike,
-          cross_validation_divergence:
-            positioning.gex_cross_validation?.divergence != null &&
-            Number.isFinite(positioning.gex_cross_validation.divergence)
-              ? positioning.gex_cross_validation.divergence
-              : null,
-        }
-      : null;
 
   let vectorSnap: ThesisEvidenceSnapshot["vector"] = null;
   if (vector && vector.spot != null && vector.spot > 0) {
@@ -81,11 +95,16 @@ function deriveDarkPoolBias(
   return "mixed";
 }
 
-/** Batch cache reads for a scan pass — one extras map per ticker. */
+/**
+ * Batch cache reads for a scan pass — one extras map per ticker.
+ * `tickers` should arrive score-sorted; only the first `maxTickers` are fetched.
+ */
 export async function fetchThesisEvidenceForTickers(
-  tickers: string[]
+  tickers: string[],
+  opts: { maxTickers?: number } = {}
 ): Promise<Record<string, LegacyBridgeExtras>> {
-  const uniq = [...new Set(tickers.map((t) => t.trim().toUpperCase()).filter(Boolean))];
+  const max = opts.maxTickers ?? thesisEvidenceMaxTickers();
+  const uniq = selectThesisEvidenceTickers(tickers, max);
   if (uniq.length === 0) return {};
 
   const settled = await Promise.allSettled(uniq.map((t) => fetchThesisEvidenceForTicker(t)));
