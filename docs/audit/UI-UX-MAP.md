@@ -866,6 +866,22 @@ nav shows in full. The hero itself (animated cracked-glass "B" mark, particle fi
 headline mid-reveal at the 9s capture point) is unchanged — that part of the original entry stands.
 Full scroll-depth inventory (module grid, membership block, footer) still not captured this pass.
 
+**LIVE 2026-08-25** (`home-mobile`, 430×932, full scroll-depth) — closes the `home-mobile` beyond-
+the-hero-fold gap from §11. First attempt (`proxy-browser.cjs --full`) showed two large blank
+voids where real content should be — the "SIX ENGINES. ONE EDGE." product-screenshot carousel and
+the entire "HOW BLACKOUT THINKS." four-stage timeline — traced to a real audit-tooling defect
+(scroll-triggered reveal animations never firing under a non-scrolling full-page capture) and
+FIXED same day; see
+`docs/audit/findings-staging/2026-08-25-proxy-browser-full-page-reveal-animations.md`. With the
+fix, the full scroll depth is clean: stat strip (6 live engines, 12,400+ contracts scanned daily,
+every setup graded A–F, free gamma snapshot) → sticky "Get access / From $199/mo / START NOW" bar
+→ "SIX ENGINES. ONE EDGE." horizontally-scrollable product-screenshot carousel (SPX Slayer's real
+live desk mockup — 0DTE gamma matrix, dealer wall levels — fully rendered, HELIX peeking in as
+card 2 of 6) → "HOW BLACKOUT THINKS." four-stage timeline (01 IDENTIFY fully populated: heading,
+tagline, description, 5 tag pills, a GEX-wall-exposure chart placeholder) → membership tier cards
+($49/$199/$1,999) → FAQ accordion → footer. No blank sections, no clipped text, no defect found —
+the original gap is closed with a clean result, not left open.
+
 **`RE-VERIFIED 2026-08-23 (correct UA)` — the original `/pricing` entry was ENTIRELY WRONG, same
 root cause.** The original said `/pricing` shows a "Your membership is managed on the web…"
 redirect message instead of pricing tiers, and attributed it to deliberate signed-in-member
@@ -921,7 +937,7 @@ about the account — it reflects the hook never loading.** Whether a real, full
 session would show "Premium" here is unconfirmed (§1.2b's open question about `parseTier("admin")`
 is the specific reason it's not a safe assumption either way).
 
-`home-mobile` scroll-depth beyond the hero fold not yet reviewed — fold in on next edit.
+`home-mobile` scroll-depth beyond the hero fold reviewed 2026-08-25 (§9) — clean, no defect found.
 
 ---
 
@@ -982,7 +998,10 @@ Cross-product patterns, not yet P0–P3 classified pending more coverage:
 Per the file's own opening rule (an honest gap is a finding, a plausible guess is a lie that
 outlives whoever wrote it):
 
-- **`home-mobile` beyond the hero fold** — still not reviewed.
+- **`home-mobile` beyond the hero fold — reviewed 2026-08-25, clean.** See §9. Along the way,
+  found and fixed a real capture-methodology defect in `proxy-browser.cjs --full` itself (scroll-
+  triggered reveal content rendered as blank voids without a real scroll-through) —
+  `docs/audit/findings-staging/2026-08-25-proxy-browser-full-page-reveal-animations.md`.
 - **Interaction testing — now run against EVERY product, 2026-08-23 through 2026-08-24.** Started
   with Vector-only (`vector-ui-walkthrough.cjs`, 16 states, no engine crashes) on 2026-08-23. Since
   then every other product has had at least one live isolated interaction pass: Thermal
