@@ -406,6 +406,33 @@ test("0DTE adapter: src.strike takes precedence over setup.top_strike", () => {
   assert.equal(p.contract, "500C · 0DTE");
 });
 
+test("0DTE adapter: thesis_first on setup surfaces as thesisFirst on TerminalPlay", () => {
+  const thesisFirst = {
+    thesis: {
+      ticker: "NVDA",
+      direction: "long" as const,
+      rail_scores: { FLOW: 88, BREAKOUT: 84 },
+      rails_fired: ["FLOW", "BREAKOUT"] as const,
+      systems_aligned: 2,
+      trade_archetype: "BREAKOUT" as const,
+      archetype_score: 82,
+      structural_state: "TRIGGERED" as const,
+      trigger_price: 181.5,
+      summaries: {},
+    },
+    archetype_gates: { verdict: "PASS" as const, archetype: "BREAKOUT" as const, blocks: [], notes: [] },
+    expression: null,
+    rank_tier: "A" as const,
+  };
+  const p = terminalPlayFromZeroDte({
+    ticker: "nvda",
+    status: "WATCH",
+    setup: { direction: "long", dte: 0, thesis_first: thesisFirst },
+  });
+  assert.equal(p.thesisFirst?.rank_tier, "A");
+  assert.equal(p.thesisFirst?.thesis.systems_aligned, 2);
+});
+
 // ── missing setup entirely ─────────────────────────────────────────────────────────────
 test("0DTE adapter: NO setup at all — defaults to LONG, empty factors, unknown thesis, gate driven by status", () => {
   const working = terminalPlayFromZeroDte({ ticker: "nvda", status: "HOLD", live_pnl_pct: 10, entry_premium: 4, last_mark: 4.4 });

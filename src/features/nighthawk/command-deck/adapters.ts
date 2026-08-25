@@ -163,7 +163,11 @@ export interface ZeroDteDeckSource {
     play_type?: string | null;
     /** First time the scanner surfaced this setup (board aggregation). */
     first_seen?: string | null;
+    /** Thesis-first pipeline snapshot when ZERODTE_THESIS_FIRST is armed. */
+    thesis_first?: import("@/lib/zerodte/thesis/types").ThesisPipelineResult | null;
   } | null;
+  /** Bare board setups carry thesis_first at the top level (same shape as nested setup). */
+  thesis_first?: import("@/lib/zerodte/thesis/types").ThesisPipelineResult | null;
   /**
    * First time the scanner surfaced this row, at the TOP level.
    *
@@ -396,6 +400,7 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     rrRatio: rrFromPlan(setup?.plan),
     thesisBreak,
     thesisHealth,
+    thesisFirst: setup?.thesis_first ?? src.thesis_first ?? null,
     ...mgmt,
     progress: mgmtBase.progress,
     entry,

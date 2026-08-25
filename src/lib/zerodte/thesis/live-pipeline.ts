@@ -2,8 +2,31 @@ import type { EnrichedZeroDteSetup } from "../board";
 import type { ZeroDteGateBlock } from "../gates";
 import { evaluateArchetypeGates } from "./archetype-gates";
 import { mergeScanPassTheses, runThesisPipelineForSetup } from "./pipeline";
-import type { ThesisPipelineResult } from "./types";
+import type { ThesisPipelineResult, ThesisRankTier } from "./types";
 import { thesisFirstEnv } from "./types";
+
+/** Solo BREAKOUT without FLOW/MOMENTUM corroboration must not rank A — the pre-thesis quality hole. */
+export function resolveThesisRankTier(
+  thesis: ThesisPipelineResult["thesis"],
+  archetype_gates: ThesisPipelineResult["archetype_gates"]
+): ThesisRankTier {
+  if (archetype_gates.verdict === "BLOCK") return "REJECT";
+  if (thesis.archetype_score >= 85 && thesis.systems_aligned >= 4) return "A+";
+  if (thesis.archetype_score >= 75 && archetype_gates.verdict === "PASS") {
+    if (soloBreakoutNeedsCorroboration(thesis)) return "WATCH";
+    return "A";
+  }
+  if (thesis.archetype_score >= 65) return "B";
+  return "WATCH";
+}
+
+function soloBreakoutNeedsCorroboration(thesis: ThesisPipelineResult["thesis"]): boolean {
+  if (thesis.trade_archetype !== "BREAKOUT") return false;
+  if (thesis.systems_aligned > 1) return false;
+  const flow = thesis.rail_scores.FLOW ?? 0;
+  const mom = thesis.rail_scores.MOMENTUM ?? 0;
+  return flow < 55 && mom < 55;
+}
 
 /** Fail-closed commit blocks from thesis + archetype gates (live path only). */
 export function thesisFirstCommitBlocks(result: ThesisPipelineResult): string[] {
@@ -55,14 +78,7 @@ export function attachThesisFirstLive(
           et_minutes: nowEtMinutes,
         }),
       };
-      let rank_tier = pipeline.rank_tier;
-      if (pipeline.archetype_gates.verdict === "BLOCK") rank_tier = "REJECT";
-      else if (pipeline.thesis.archetype_score >= 85 && pipeline.thesis.systems_aligned >= 4)
-        rank_tier = "A+";
-      else if (pipeline.thesis.archetype_score >= 75 && pipeline.archetype_gates.verdict === "PASS")
-        rank_tier = "A";
-      else if (pipeline.thesis.archetype_score >= 65) rank_tier = "B";
-      else rank_tier = "WATCH";
+      const rank_tier = resolveThesisRankTier(pipeline.thesis, pipeline.archetype_gates);
       pipeline = { ...pipeline, rank_tier };
     }
 

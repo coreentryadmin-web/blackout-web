@@ -9,6 +9,7 @@ import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from
 import { condorTent } from "@/lib/zerodte/condor-render";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { dispatchGotoSwing } from "@/features/nighthawk/lib/goto-swing";
+import { ThesisRankCard } from "@/features/nighthawk/components/ThesisRankCard";
 import { showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
 import { managementFor } from "./adapters";
 import type { DeckCondor } from "./types";
@@ -565,6 +566,11 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
 
   return (
     <>
+      {play.horizon === "ZERO_DTE" && play.thesisFirst && (
+        <div className="nh-deck-thesis-rank mb-3">
+          <ThesisRankCard thesis={play.thesisFirst} />
+        </div>
+      )}
       {premium ? (
         <div className="nh-deck-premium-stack">
           <ThesisChecklistPanel play={play} />

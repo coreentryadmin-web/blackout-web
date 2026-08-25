@@ -84,6 +84,8 @@ export interface TerminalPlay {
   thesisBreak?: { level: ThesisLevel; note?: string } | null;
   /** Thesis Health — weighted Entry Truth vs Current Truth (OPEN/HOLD/TRIM only). */
   thesisHealth?: ThesisHealthPayload | null;
+  /** Thesis-first pipeline snapshot (ZERODTE_THESIS_FIRST) — powers ThesisRankCard on the deck. */
+  thesisFirst?: import("@/lib/zerodte/thesis/types").ThesisPipelineResult | null;
   /** LEGACY only: true once morning-confirm's CONFIRMED promotion actually landed this ticker
    *  in the Swing serving snapshot (not just confirmed — promotion can fail per-ticker, e.g.
    *  "no chain rows"). Drives the "moved to Swings Open" clickable link in ThesisPanel. */
