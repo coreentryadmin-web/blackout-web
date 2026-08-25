@@ -261,13 +261,13 @@ export type ZeroDteGateCalibration = {
 // raw-evidence 70 that the tape/time-of-day layer marked down to 62 does NOT clear.
 export const ZERODTE_SCORE_FLOOR = 65;
 /** Origin-aware G-3 floors. BREAKOUT/PIN use multiplicative scoring (gain×close / regime quality)
- *  which naturally produces lower scores than FLOW's additive model. They're calibrated to the
- *  measured 55–64 band (−3.6% avg / 36.8% WR — near-flat) per the evidence gate comments (line 513).
- *  Their floor is 50 so legitimate whole-market moves aren't starved by comparing to flow-conviction
- *  evidence scores. FLOW floor stays 65 (measured 65-74 at 50% WR). Multi-rail +8 corroboration still
- *  helps real confluence; env overrides remain available. */
-export const ZERODTE_SCORE_FLOOR_BREAKOUT = envInt("ZERODTE_SCORE_FLOOR_BREAKOUT", 50);
-export const ZERODTE_SCORE_FLOOR_PIN = envInt("ZERODTE_SCORE_FLOOR_PIN", 50);
+ *  but share the SAME commit bar as FLOW: the measured 55–64 band ran 18.8% WR / −24.5% avg (F-2),
+ *  under the 33% breakeven of the −50/+100 payoff. A 50 floor (WS-20) let BREAKOUT-only commits
+ *  through that death band all session — live 2026-08-25: MSTR 54, LUNR 53, ASST 59 committed while
+ *  score_floor blocked 90 stronger candidates. Restored to 65; breakout-source.ts BASE bump helps
+ *  genuine 7%+ continuations clear without lowering the bar. Env overrides remain available. */
+export const ZERODTE_SCORE_FLOOR_BREAKOUT = envInt("ZERODTE_SCORE_FLOOR_BREAKOUT", 65);
+export const ZERODTE_SCORE_FLOOR_PIN = envInt("ZERODTE_SCORE_FLOOR_PIN", 65);
 
 /** Resolve the G-3 score floor for a setup's discovery origin set. Pure. */
 export function scoreFloorForOrigins(origins: readonly string[] | null | undefined): number {
@@ -512,7 +512,7 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
           ? " — the <55 band ran 20% WR / −23% avg premium on this engine's own calibration, " +
             "under the 33% breakeven of the −50/+100 payoff."
           : ` for ${(input.discovery_origin ?? []).join("+") || "non-FLOW"} origin ` +
-            `(FLOW floor stays ${ZERODTE_SCORE_FLOOR}; multi-rail floors are calibrated to the near-flat 55-64 band).`),
+            `(all rails share the ${ZERODTE_SCORE_FLOOR} floor — the 55-64 band is near-flat EV).`),
       threshold: scoreFloor,
       unlock_et: null,
     });

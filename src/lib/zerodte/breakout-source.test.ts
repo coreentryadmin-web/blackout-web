@@ -100,11 +100,12 @@ test("breakoutScore: liquid 8–10% strong-close clears 65; weak 5% mid-range do
   // Recalibrated 2026-07-28: a liquid 8% strong-close continuation MUST clear the shared floor
   // (prior map needed ~15%+ and starved the whole-market rail to ~0 commits/day).
   assert.ok(breakoutScore({ gain: 0.08, close_strength: 0.9 }, 1) >= 65);
+  assert.ok(breakoutScore({ gain: 0.07, close_strength: 0.85 }, 1) >= 65);
   assert.ok(breakoutScore({ gain: 0.1, close_strength: 0.8 }, 1) >= 65);
   // Bounds hold at the extremes.
   assert.equal(breakoutScore({ gain: 0.5, close_strength: 1 }, 1), 100);
   // No gain AND no liquidity → BASE only when dollar=0 and core=0 → SCORE_BASE.
-  assert.equal(breakoutScore({ gain: 0, close_strength: 1 }, 0), 15);
+  assert.equal(breakoutScore({ gain: 0, close_strength: 1 }, 0), 20);
   // Liquidity ALONE (weak move / mid-range close) can never lift a setup over the floor.
   assert.ok(breakoutScore({ gain: 0.05, close_strength: 0.5 }, 1) < 40);
 });

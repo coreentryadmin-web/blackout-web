@@ -56,12 +56,13 @@ export function breakoutSourceEnabled(): boolean {
 //
 // BASE credits the liquidity/gain screen the mover already cleared (not a free pass — weak closes
 // still collapse the core). Worked examples (dollar_norm = 1):
-//   5% gain, closed at 0.50 (screen floor)  → core 0     → score  25  (well below 65)
-//   6% gain, closed at 0.80                → core 0.36   → score  ~57 (still below 65)
-//   8% gain, closed at 0.90                → core 0.64   → score  ~73 (clears — real continuation)
-//   10% gain, closed at 0.80               → core 0.60   → score  ~70 (clears)
+//   5% gain, closed at 0.50 (screen floor)  → core 0     → score  30  (well below 65)
+//   6% gain, closed at 0.80                → core 0.36   → score  ~62 (still below 65)
+//   7% gain, closed at 0.85                → core ~0.58   → score  ~68 (clears — real continuation)
+//   8% gain, closed at 0.90                → core 0.64   → score  ~78 (clears)
+//   10% gain, closed at 0.80               → core 0.60   → score  ~75 (clears)
 //   15%+ gain, closed on the high          → core →1     → score 100
-export const BREAKOUT_SCORE_BASE = 15; // points for clearing the liquidity/gain screen
+export const BREAKOUT_SCORE_BASE = 20; // points for clearing the liquidity/gain screen (+5 vs 2026-07-28 map)
 export const BREAKOUT_GAIN_FULL = 0.1; // gain that saturates the gain factor (10% intraday)
 export const BREAKOUT_CORE_MAX = 75; // max points from the multiplicative gain×close core
 export const BREAKOUT_DOLLAR_MAX = 10; // max additive points from normalized $-volume
