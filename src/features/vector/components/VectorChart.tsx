@@ -19,6 +19,7 @@ import {
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
   type LineWidth,
+  type MouseEventParams,
   type SeriesMarker,
   type Time,
   type UTCTimestamp,
@@ -1657,6 +1658,12 @@ export function VectorChart({
   const crosshairLatestRef = useRef<VectorCrosshairState | null>(null);
   const crosshairDisplayedRef = useRef<VectorCrosshairState | null>(null);
   const crosshairRafRef = useRef<number | null>(null);
+  /** Latest crosshair move param — heavy wall/gex lookups run once per frame, not per mousemove. */
+  const crosshairParamLatestRef = useRef<MouseEventParams<Time> | null>(null);
+  const crosshairComputeRafRef = useRef<number | null>(null);
+  /** Coalesce overlay-dim primitive updates across wheel ticks (one repaint per frame). */
+  const viewportDimRafRef = useRef<number | null>(null);
+  const pendingVisibleBarCountRef = useRef<number | null>(null);
   const scheduleCrosshairUpdate = useCallback(
     (next: VectorCrosshairState | null) => {
       crosshairLatestRef.current = next;
@@ -1828,6 +1835,29 @@ export function VectorChart({
     [compareFourUp, compareFourUpBackground, compareCompactBeads]
   );
 
+  const flushViewportDim = useCallback(() => {
+    viewportDimRafRef.current = null;
+    const count = pendingVisibleBarCountRef.current;
+    if (count == null) return;
+    pendingVisibleBarCountRef.current = null;
+    applyOverlayDim(
+      overlayDimFactor(count, {
+        compareFourUp,
+        compareFourUpBackground,
+      })
+    );
+    applyBeadOverlayDim(count);
+  }, [applyOverlayDim, applyBeadOverlayDim, compareFourUp, compareFourUpBackground]);
+
+  const scheduleViewportDim = useCallback(
+    (count: number) => {
+      pendingVisibleBarCountRef.current = count;
+      if (viewportDimRafRef.current != null) return;
+      viewportDimRafRef.current = requestAnimationFrame(() => flushViewportDim());
+    },
+    [flushViewportDim]
+  );
+
   const sessionOverviewActive = useCallback((): boolean => {
     return (
       intradayZoomPresetRef.current === "session" ||
@@ -1840,13 +1870,8 @@ export function VectorChart({
       const range = chart.timeScale().getVisibleLogicalRange();
       const count = visibleBarCountFromRange(range);
       if (count == null) return;
-      applyOverlayDim(
-        overlayDimFactor(count, {
-          compareFourUp,
-          compareFourUpBackground,
-        })
-      );
-      applyBeadOverlayDim(count);
+      // Primitive dim updates repaint canvas layers — coalesce to one frame during wheel/pan bursts.
+      scheduleViewportDim(count);
       // Bar spacing is applied only on programmatic refits — NOT here. This callback runs
       // synchronously inside lightweight-charts' wheel handler before our bubble-phase wheel
       // listener stamps viewportLocked, so applyOptions here cancels every zoom tick.
@@ -1865,7 +1890,7 @@ export function VectorChart({
         if (timeframeRef.current !== coarser) setTimeframeState(coarser);
       }, 650);
     },
-    [applyOverlayDim, applyBeadOverlayDim, compareFourUp, compareFourUpBackground, sessionOverviewActive]
+    [scheduleViewportDim, compareFourUp, compareFourUpBackground, sessionOverviewActive]
   );
 
   const handleIntradayZoom = useCallback(
@@ -3748,7 +3773,12 @@ export function VectorChart({
           wallHistoryRef.current = merged;
           setSessionHistory(merged);
           if (hasVexInHistory(merged)) setVexAvailable(true);
-          if (!inReplay) refreshTrails(lensRef.current);
+          if (
+            !inReplay &&
+            !memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)
+          ) {
+            refreshTrails(lensRef.current);
+          }
         }
       }
 
@@ -3859,7 +3889,13 @@ export function VectorChart({
 
       // Painting the live overlays during replay would overwrite the cursor-sliced
       // frame applyFrame just drew — same leak shape as the 2026-07-07 finding.
-      if (!inReplay) {
+      // During member pan/zoom, defer heavy overlay/trail repaints so wheel/drag stays responsive;
+      // the forming candle still updates via series.update above.
+      const interactionHot = memberViewportLocked(
+        chartUserPannedRef.current,
+        wheelZoomCooldownRef.current
+      );
+      if (!inReplay && !interactionHot) {
         const now = Date.now();
         const throttleBackground = compareFourUpBackgroundRef.current;
         const overlayDue =
@@ -4219,7 +4255,10 @@ export function VectorChart({
 
     const unbindDrawClick = bindChartClickRef.current(chart, series);
 
-    chart.subscribeCrosshairMove((param) => {
+    const flushCrosshairCompute = () => {
+      crosshairComputeRafRef.current = null;
+      const param = crosshairParamLatestRef.current;
+      if (!param) return;
       if (!param.time || !param.point) {
         scheduleCrosshairUpdate(null);
         scheduleWallEventTooltipUpdate(null);
@@ -4240,14 +4279,20 @@ export function VectorChart({
       if (syncState?.linkCrosshair && !applyingExternalCrosshairRef.current && hoverEpochSec != null) {
         onCompareCrosshairRef.current?.(syncState.paneId, hoverEpochSec);
       }
-      const history = wallHistoryRef.current;
-      const walls = wallsAtCrosshairTime(
-        history,
-        hoverEpochSec,
-        activeLens,
-        gexWallsRef.current,
-        vexWallsRef.current
+      const interactionHot = memberViewportLocked(
+        chartUserPannedRef.current,
+        wheelZoomCooldownRef.current
       );
+      const history = wallHistoryRef.current;
+      const walls = interactionHot
+        ? wallsForActiveLens(activeLens, gexWallsRef.current, vexWallsRef.current)
+        : wallsAtCrosshairTime(
+            history,
+            hoverEpochSec,
+            activeLens,
+            gexWallsRef.current,
+            vexWallsRef.current
+          );
       const hoverPrice = series.coordinateToPrice(param.point.y);
       if (
         typeof hoverEpochSec === "number" &&
@@ -4257,6 +4302,7 @@ export function VectorChart({
         updateDraftCursorRef.current(hoverEpochSec, hoverPrice as number);
       }
       const gexCell =
+        !interactionHot &&
         indicatorsRef.current.has("gex-heatmap") &&
         gexHeatmapGridRef.current &&
         hoverEpochSec != null &&
@@ -4268,20 +4314,18 @@ export function VectorChart({
         time,
         close: bar?.close ?? null,
         lens: activeLens,
-        flip: flipAtCrosshairTime(
-          history,
-          hoverEpochSec,
-          activeLens,
-          gammaFlipRef.current,
-          vexFlipRef.current
-        ),
+        flip: interactionHot
+          ? flipForActiveLens(activeLens, gammaFlipRef.current, vexFlipRef.current)
+          : flipAtCrosshairTime(
+              history,
+              hoverEpochSec,
+              activeLens,
+              gammaFlipRef.current,
+              vexFlipRef.current
+            ),
         callWalls: walls?.callWalls ?? [],
         putWalls: walls?.putWalls ?? [],
         gexCell,
-        // No DP history exists — only today's live ladder. Walls/flip above resolve
-        // to their value AT the hovered time; showing live DP under a historical
-        // hover timestamp would mislabel it. Show DP only when hovering the present
-        // (at/after the latest recorded sample, or before any history exists).
         darkPoolLevels:
           hoverEpochSec == null ||
           history.length === 0 ||
@@ -4290,7 +4334,7 @@ export function VectorChart({
             : [],
       });
 
-      if (indicatorsRef.current.has("bead-event-glyphs")) {
+      if (indicatorsRef.current.has("bead-event-glyphs") && !interactionHot) {
         const hit = wallRailPrimitiveRef.current?.hitTestEventGlyph(
           param.point.x,
           param.point.y
@@ -4301,6 +4345,12 @@ export function VectorChart({
       } else {
         scheduleWallEventTooltipUpdate(null);
       }
+    };
+
+    chart.subscribeCrosshairMove((param) => {
+      crosshairParamLatestRef.current = param;
+      if (crosshairComputeRafRef.current != null) return;
+      crosshairComputeRafRef.current = requestAnimationFrame(flushCrosshairCompute);
     });
 
     // SHARED PRICE AXIS seam — only wired when a host asked for it at mount (the SPX desk
@@ -4396,6 +4446,14 @@ export function VectorChart({
       if (crosshairRafRef.current != null) {
         cancelAnimationFrame(crosshairRafRef.current);
         crosshairRafRef.current = null;
+      }
+      if (crosshairComputeRafRef.current != null) {
+        cancelAnimationFrame(crosshairComputeRafRef.current);
+        crosshairComputeRafRef.current = null;
+      }
+      if (viewportDimRafRef.current != null) {
+        cancelAnimationFrame(viewportDimRafRef.current);
+        viewportDimRafRef.current = null;
       }
       if (wallEventTooltipRafRef.current != null) {
         cancelAnimationFrame(wallEventTooltipRafRef.current);
