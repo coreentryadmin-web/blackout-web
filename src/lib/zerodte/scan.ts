@@ -118,6 +118,7 @@ import {
 } from "./strategy-version";
 import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy } from "./exit-sync";
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
+import { applyCortexVetoDwell } from "./cortex-veto-dwell";
 import { persistZeroDteRejections } from "./rejections";
 import { attachThesisFirstShadow, thesisFirstEntryContext } from "./thesis/scan-shadow";
 import { thesisFirstEnv } from "./thesis/types";
@@ -551,8 +552,21 @@ export async function scanZeroDteBoard(flags?: {
   // Thesis-first: cache-backed evidence bundle → rails; shadow or live.
   if (thesisEnv.enabled || thesisEnv.shadow) {
     const { fetchThesisEvidenceForTickers } = await import("./thesis/evidence-bundle");
+    const { buildHelixExtrasByTicker } = await import("./thesis/helix-tape-extras");
+    const { mergeLegacyBridgeExtras } = await import("./thesis/evidence-bundle-map");
     const tickers = [...new Set(setups.map((s) => s.ticker.toUpperCase()))];
     const thesisExtras = await fetchThesisEvidenceForTickers(tickers);
+    const helixExtras = buildHelixExtrasByTicker(
+      flows.map((f) => ({
+        ticker: f.ticker,
+        premium: f.premium,
+        option_type: f.option_type,
+        alerted_at: f.alerted_at,
+      }))
+    );
+    for (const t of tickers) {
+      thesisExtras[t] = mergeLegacyBridgeExtras(thesisExtras[t] ?? {}, helixExtras[t] ?? {});
+    }
     attachThesisFirstShadow(setups, nowEtMinutes, thesisExtras);
   }
 
@@ -929,6 +943,7 @@ async function attachGateVerdicts(
     s.cortex = await evaluateCortexForCommit(s.ticker, s.direction, new Date(nowMs), {}, {
       failClosedOnVetoBlind: true,
     });
+    s.cortex = await applyCortexVetoDwell(today, s.ticker, s.cortex);
     const cortexBlocks = cortexGateBlocks(s.cortex);
     if (cortexBlocks.length > 0) {
       // A Cortex veto / net-negative blocks EXACTLY like a hard-gate block:

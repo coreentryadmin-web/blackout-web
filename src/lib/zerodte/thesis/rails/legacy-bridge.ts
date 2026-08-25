@@ -11,6 +11,35 @@ import { scoreCatalystRail } from "./catalyst";
 import { scoreVolRail } from "./vol";
 import type { RailHit } from "../types";
 
+/** Corroboration bump when cross-product evidence aligns with setup direction. */
+export function crossProductCorroborationBoost(
+  direction: "long" | "short",
+  extras: LegacyBridgeExtras
+): number {
+  let boost = 0;
+  const dp = extras.dark_pool_bias;
+  if (dp === "bullish" && direction === "long") boost += 4;
+  if (dp === "bearish" && direction === "short") boost += 4;
+  const helix = extras.helix_direction_bias;
+  if (helix === direction) boost += 5;
+  if (
+    (extras.helix_gross_premium ?? 0) >= 1_000_000 &&
+    helix === direction
+  ) {
+    boost += 3;
+  }
+  return boost;
+}
+
+function applyCorroborationBoost(hit: RailHit, boost: number): RailHit {
+  if (boost <= 0) return hit;
+  return {
+    ...hit,
+    score: Math.min(100, hit.score + boost),
+    summary: `${hit.summary} · +${boost} cross-product`,
+  };
+}
+
 export type LegacyBridgeExtras = {
   intraday?: IntradayRead | null;
   flow_quality?: FlowQuality | null;
@@ -27,6 +56,10 @@ export type LegacyBridgeExtras = {
   /** Options-implied 1σ move % when available. */
   expected_move_pct?: number | null;
   dark_pool_bias?: "bullish" | "bearish" | "mixed" | null;
+  /** HELIX Postgres tape aggregates (scan batch, not per-request provider). */
+  helix_print_count?: number | null;
+  helix_gross_premium?: number | null;
+  helix_direction_bias?: "long" | "short" | "mixed" | null;
 };
 
 /** Bridge existing EnrichedZeroDteSetup → thesis rail hits for shadow merge. */
@@ -37,15 +70,17 @@ export function railHitsFromLegacySetup(
   const hits: RailHit[] = [];
   const ticker = setup.ticker;
   const direction = setup.direction;
+  const corroBoost = crossProductCorroborationBoost(direction, extras);
 
   if (setup.discovery_origin.includes("FLOW") || (setup.gross_premium ?? 0) >= 200_000) {
     const h = scoreFlowRail({
       ticker,
       direction,
-      gross_premium: setup.gross_premium ?? 0,
+      gross_premium: setup.gross_premium ?? extras.helix_gross_premium ?? 0,
       flow_quality: extras.flow_quality ?? setup.flow_quality ?? null,
+      print_count: extras.helix_print_count ?? undefined,
     });
-    if (h) hits.push(h);
+    if (h) hits.push(applyCorroborationBoost(h, corroBoost));
   }
 
   if (setup.discovery_origin.includes("BREAKOUT")) {
@@ -64,7 +99,7 @@ export function railHitsFromLegacySetup(
       intraday: extras.intraday ?? setup.intraday ?? null,
       legacy_score: setup.score,
     });
-    if (h) hits.push(h);
+    if (h) hits.push(applyCorroborationBoost(h, corroBoost));
   }
 
   if (setup.discovery_origin.includes("PIN")) {
@@ -79,7 +114,7 @@ export function railHitsFromLegacySetup(
       spot: setup.underlying_price ?? null,
       pin_score: setup.score,
     });
-    if (h) hits.push(h);
+    if (h) hits.push(applyCorroborationBoost(h, Math.min(corroBoost, 6)));
   }
 
   const mom = scoreMomentumRail({

@@ -2,6 +2,7 @@ import type { EnrichedZeroDteSetup } from "../board";
 import type { ZeroDteGateBlock } from "../gates";
 import { evaluateArchetypeGates } from "./archetype-gates";
 import { mergeScanPassTheses, runThesisPipelineForSetup } from "./pipeline";
+import { syncSetupDiscoveryFromThesis } from "./thesis-board-sync";
 import type { ThesisPipelineResult, ThesisRankTier } from "./types";
 import { thesisFirstEnv } from "./types";
 
@@ -64,6 +65,8 @@ export function attachThesisFirstLive(
     const merged = mergedByTicker.get(tickerKey);
     let pipeline = runThesisPipelineForSetup(s, extrasByTicker[tickerKey] ?? {});
     if (merged) pipeline = { ...pipeline, thesis: merged };
+
+    syncSetupDiscoveryFromThesis(s, pipeline.thesis);
 
     if (nowEtMinutes != null) {
       pipeline = {
