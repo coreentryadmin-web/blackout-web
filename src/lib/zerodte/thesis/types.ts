@@ -116,11 +116,13 @@ export type ExpressionDecision = {
   rationale: string;
 };
 
+export type ThesisRankTier = "A+" | "A" | "B" | "WATCH" | "REJECT";
+
 export type ThesisPipelineResult = {
   thesis: MergedThesis;
   archetype_gates: ArchetypeGateResult;
   expression: ExpressionDecision | null;
-  rank_tier: "A+" | "A" | "B" | "WATCH" | "REJECT";
+  rank_tier: ThesisRankTier;
 };
 
 export type ThesisFirstEnv = {
