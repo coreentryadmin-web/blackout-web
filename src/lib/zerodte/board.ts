@@ -778,6 +778,7 @@ export type ZeroDteGateFailure =
   | "opening_window" // G-2: no new commits before 10:00 ET
   | "late_afternoon" // G-14: no new directional commits after 15:30 ET
   | "score_floor" // G-3: post-edge-layer score below 65
+  | "single_rail_corroboration" // G-17: BREAKOUT/PIN-only without FLOW needs prime band (≥75)
   | "confluence_floor" // G-12: too few VWAP-side/market-aligned confirmations (0-conf −12.5% EV; higher floor 10:00–10:45)
   | "governor_max_concurrent" // G-5: 3 plans already open
   | "governor_session_stops" // G-5: 3 stops today — halted for the session

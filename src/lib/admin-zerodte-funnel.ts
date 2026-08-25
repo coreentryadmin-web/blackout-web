@@ -95,6 +95,7 @@ const GATE_LABELS: Record<string, string> = {
   max_itm_pct: "Max ITM",
   no_dominant_strike: "No dominant strike",
   score_floor: "Score floor (G-3)",
+  single_rail_corroboration: "Single-rail prime (G-17)",
   cortex_veto: "Cortex veto",
   governor_session_stops: "Session governor",
   correlated_conflict: "Correlated conflict",

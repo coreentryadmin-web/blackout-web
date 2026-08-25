@@ -1,4 +1,4 @@
-# 2026-08-25 — Night Hawk 0DTE recall/quality: unified G-3 floor — FIXED
+# 2026-08-25 — Night Hawk 0DTE recall/quality: best-plays-only gates — FIXED
 
 > **kind:** FINDING
 
@@ -11,12 +11,15 @@
 
 ## Root cause
 
-WS-20 lowered `ZERODTE_SCORE_FLOOR_BREAKOUT` / `PIN` to **50** so multiplicative BREAKOUT/PIN scores could commit. Engine calibration (F-2) shows the **55–64 band ran 18.8% WR / −24.5% avg** — the 50 floor re-opened that bucket for BREAKOUT-only rails while score_floor still blocked 90 candidates above 50.
+WS-20 lowered `ZERODTE_SCORE_FLOOR_BREAKOUT` / `PIN` to **50** so multiplicative BREAKOUT/PIN scores could commit. Engine calibration (F-2) shows the **55–64 band ran 18.8% WR / −24.5% avg** — the 50 floor re-opened that bucket for BREAKOUT-only rails while score_floor still blocked 90 candidates above 50. Every live commit lacked FLOW corroboration — momentum-only whole-market names with no whale-print confirmation.
 
 ## Fix
 
 1. Restore BREAKOUT/PIN G-3 default floor to **65** (env overrides unchanged).
 2. Bump `BREAKOUT_SCORE_BASE` 15→20 so genuine 7%+ strong-close continuations clear 65 without lowering the bar.
-3. Align `tiers.ts` `scoreFloorForOrigin` with `gates.ts` (FLOW present → strict 65).
+3. **G-17 single-rail corroboration:** BREAKOUT-only or PIN-only commits require **score ≥ 75** (prime band) unless FLOW is on the merged origin set. Multi-rail FLOW+BREAKOUT may still commit at 65 (+8 corroboration boost on merge).
+4. Align `tiers.ts` `scoreFloorForOrigin` with `gates.ts` (FLOW present → strict 65).
 
-| **Status** | FIXED in `fix/nighthawk-0dte-recall-quality-3d11` |
+DTE window unchanged: board admits **0–4 DTE** same-day contracts (nearest expiry preferred); dte≥5 excluded at persist.
+
+| **Status** | FIXED in `cursor/nighthawk-0dte-recall-quality-3d11` |

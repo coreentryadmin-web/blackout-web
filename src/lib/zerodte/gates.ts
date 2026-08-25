@@ -281,6 +281,20 @@ export function scoreFloorForOrigins(origins: readonly string[] | null | undefin
   return ZERODTE_SCORE_FLOOR;
 }
 
+/** G-17 — single-rail whole-market commits (BREAKOUT-only or PIN-only) must clear the
+ *  measured PRIME score band (75-84 ran 63.6% WR n=11, F-5) OR carry FLOW corroboration.
+ *  Live 2026-08-25: every OPEN commit was BREAKOUT-only in the 53-68 band — momentum-only
+ *  names with no whale-flow confirmation. FLOW-present setups (incl. FLOW+BREAKOUT merge +8)
+ *  may commit at the unified 65 floor; this gate only fires on lone whole-market rails. */
+export const ZERODTE_SINGLE_RAIL_PRIME_MIN = envInt("ZERODTE_SINGLE_RAIL_PRIME_MIN", 75);
+
+/** True when discovery_origin is exactly one non-FLOW rail (BREAKOUT or PIN alone). Pure. */
+export function isSingleRailWithoutFlow(origins: readonly string[] | null | undefined): boolean {
+  const set = Array.isArray(origins) ? origins : [];
+  if (set.includes("FLOW")) return false;
+  return set.length === 1 && (set[0] === "BREAKOUT" || set[0] === "PIN");
+}
+
 export type ZeroDteGateBlock = {
   /** Machine-readable code — same namespace as the evidence gates' gate_failed. */
   code: ZeroDteGateFailure;
@@ -514,6 +528,26 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
           : ` for ${(input.discovery_origin ?? []).join("+") || "non-FLOW"} origin ` +
             `(all rails share the ${ZERODTE_SCORE_FLOOR} floor — the 55-64 band is near-flat EV).`),
       threshold: scoreFloor,
+      unlock_et: null,
+    });
+  }
+
+  // G-17 — single-rail corroboration (BREAKOUT-only / PIN-only). Whole-market rails without a
+  // FLOW print must clear the prime band — the 65-74 bucket is positive EV for FLOW-backed
+  // setups but today's BREAKOUT-only commits clustered there with no independent confirmation.
+  if (
+    !isCondor &&
+    isSingleRailWithoutFlow(input.discovery_origin) &&
+    input.score < ZERODTE_SINGLE_RAIL_PRIME_MIN
+  ) {
+    const rail = (input.discovery_origin ?? [])[0] ?? "whole-market";
+    blocks.push({
+      code: "single_rail_corroboration",
+      reason:
+        `${rail}-only setup scored ${Math.round(input.score)} — needs ≥${ZERODTE_SINGLE_RAIL_PRIME_MIN} ` +
+        "without a FLOW corroborating print (prime band ran 63.6% WR vs 50% at 65-74). " +
+        "Multi-rail FLOW+BREAKOUT/PIN may commit at the 65 floor.",
+      threshold: ZERODTE_SINGLE_RAIL_PRIME_MIN,
       unlock_et: null,
     });
   }
