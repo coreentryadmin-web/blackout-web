@@ -17,9 +17,9 @@
 import { useMemo } from "react";
 import useSWR from "swr";
 import type { MeridianTimelineItem } from "@/features/meridian/lib/meridian-types";
+import { buildCohortForTimelineItem } from "@/lib/meridian/meridian-peer-cohort-core";
 import {
   MAX_PEER_REACTION_TICKERS,
-  buildSectorCohort,
   describeCohortPosition,
   type PeerReactionSummary,
   type SectorCohort,
@@ -35,29 +35,7 @@ export function buildCohortForItem(
   item: MeridianTimelineItem,
   allItems: readonly MeridianTimelineItem[]
 ): SectorCohort | null {
-  const group = item.sic_major_group;
-  if (!group || !item.ticker) return null;
-  const peers = (allItems ?? [])
-    .filter(
-      (i) =>
-        i.kind === "earnings" &&
-        i.sic_major_group === group &&
-        i.ticker &&
-        i.ticker !== item.ticker
-    )
-    .map((i) => ({ ticker: i.ticker!, value: i.expected_move_pct ?? null, date: i.date }));
-
-  return buildSectorCohort({
-    subject: item.ticker,
-    subjectValue: item.expected_move_pct ?? null,
-    classification: {
-      majorGroup: group,
-      label: item.sector_label ?? null,
-      sicCode: null,
-      sicDescription: null,
-    },
-    peers,
-  });
+  return buildCohortForTimelineItem(item, allItems);
 }
 
 export function MeridianPeerCohortPanel({

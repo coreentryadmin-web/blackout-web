@@ -1578,7 +1578,31 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     ],
     caveat:
       "Needs an event id from get_meridian_timeline, or kind + ticker + date. Earnings reactions carry a `reaction_basis` saying WHICH session was measured — an AMC print's reaction is the next session, and a value without its basis is not comparable across names.",
-    joinsWith: ["meridian.timeline", "fund.earnings_history"],
+    joinsWith: ["meridian.timeline", "fund.earnings_history", "meridian.peer_cohort"],
+  },
+  {
+    id: "meridian.peer_cohort",
+    product: "MERIDIAN",
+    tool: "get_meridian_peer_cohort",
+    answers:
+      "Which sector peers is this earnings print ranked against, and how have those peers historically reacted to their own prints?",
+    temporal: "live_only",
+    freshness: "periodic",
+    entities: ["ticker", "session"],
+    entitlement: "premium",
+    keywords: [
+      "sector peers",
+      "peer cohort",
+      "compared against",
+      "peer comparison",
+      "same sector",
+      "peer reaction",
+      "implied move vs peers",
+      "rich vs cohort",
+    ],
+    caveat:
+      "Earnings only. Built from the same-SIC-major-group names in the loaded Meridian timeline window — not a static watchlist. Pass an event id from get_meridian_timeline or kind=earnings + ticker + date.",
+    joinsWith: ["meridian.timeline", "meridian.event", "fund.earnings_history"],
   },
   {
     id: "fund.earnings_calendar",

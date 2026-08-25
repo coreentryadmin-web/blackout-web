@@ -467,6 +467,17 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   ),
 
   t(
+    "get_meridian_peer_cohort",
+    "MERIDIAN — sector peer cohort for ONE earnings print: same-SIC-major-group names reporting in the loaded timeline window, with each peer's forward implied move AND settled print-reaction history (avg reaction %, EPS beat rate, n). This is the Positioning tab's Sector Peers panel — NOT reachable from get_meridian_event alone. Use for 'which sector peers is X compared against', 'how do retail peers historically react', 'is this implied move rich vs its group'. Pass `id` from get_meridian_timeline, or `kind=earnings` + `ticker` + `date`. `distribution: null` with an `insufficient_reason` means too few peers carry a comparable implied move — members are still listed. Reaction fields omitted when a peer has no settled prints; that is unknown, not zero.",
+    {
+      id: { type: "string", description: "Timeline id, e.g. earnings:DKS:2026-08-25." },
+      kind: { type: "string", description: "Must be earnings when building an id without `id`." },
+      ticker: { type: "string", description: "Subject ticker when building an id." },
+      date: { type: "string", description: "ET print date YYYY-MM-DD when building an id." },
+    }
+  ),
+
+  t(
     "get_earnings_calendar",
     "Market-wide earnings calendar (Alpha Vantage, 3-month horizon) — next report date per ticker. Distinct from get_earnings (Benzinga per-ticker). Optional ticker filter. Read `available` and `configured` before concluding anything from an empty result: `available:false` means the calendar could not be read at all, and `configured:false` means it holds no dates for ANY ticker — neither is evidence that a ticker has no upcoming report. Only `available:true` + `configured:true` + a null `next_report_date` means the horizon genuinely has no date for that ticker.",
     { ticker: { type: "string", description: "Optional — filter to one symbol." } }

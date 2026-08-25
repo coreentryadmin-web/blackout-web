@@ -1769,6 +1769,24 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       }
       return { available: true, ...stamp, id: resolved.id, kind: resolved.kind, detail };
     }
+    case "get_meridian_peer_cohort": {
+      const { loadMeridianPeerCohortForLargo } = await import(
+        "@/lib/largo/meridian-peer-cohort-for-largo"
+      );
+      const asOfSession = todayEtYmd();
+      const stamp = {
+        as_of: etStamp(Date.now()) ?? new Date().toISOString(),
+        as_of_session: asOfSession,
+        as_of_weekday: weekdayEt(asOfSession),
+      };
+      const result = await loadMeridianPeerCohortForLargo({
+        id: input.id,
+        kind: input.kind,
+        ticker: input.ticker,
+        date: input.date,
+      });
+      return { ...stamp, ...result };
+    }
     case "get_earnings_calendar": {
       const { callInternalApiRead } = await import("@/lib/bie/internal-api");
       const { shapeEarningsCalendarRead } = await import("@/lib/largo/earnings-calendar-for-largo");
