@@ -254,8 +254,22 @@ a pattern worth generalizing. Classify with the brief's own scale:
     usable; changed the no-handler path to render a plain `<span>` instead of interactive markup
     for a control that can never be controlled. See
     `docs/audit/findings-staging/2026-08-25-meridian-earnings-tap-targets.md` for full evidence,
-    fix rationale, and regression coverage (119 meridian tests + tsc green). Not yet deployed/
-    live-verified against production — that's the natural post-merge follow-up.
+    fix rationale, and regression coverage (119 meridian tests + tsc green).
+
+    **Deployed and live-verified, 2026-08-25 — and a second round found by the same probe.**
+    Post-deploy, `meridian-interaction-audit.mjs` against production (different ticker/live data
+    than the original audit) confirmed the fix directly: **zero wall/pin-row or strike-row items**
+    appear in the flagged list anymore. But the same run surfaced **two controls the original
+    26-item sample never sampled** — the probe caps at 10 hits per tab, and which controls even
+    render depends on the current ticker's data, so a control absent from one run's sample was
+    never proven absent, only unsampled. Found: a `"revisions"` toggle (`79x21`,
+    `MeridianRevisionMomentum`'s `.mv-rev-more` — a real undersized control, `min-height: 24px`
+    fixed it) and `MeridianDarkPoolTape`'s dark-pool print markers (`11x11`–`18x18`) — the
+    identical disabled-button non-control pattern as the already-fixed price-target dots (neither
+    call site passes `onPrintClick`), fixed the same way: a `<span>` instead of interactive markup
+    for a control that can never be controlled. See
+    `docs/audit/findings-staging/2026-08-25-meridian-tap-targets-round-2.md`. Not yet deployed —
+    this round's own post-merge follow-up.
 
 14. **[ANSWERED, 2026-08-25 — confirmed working, the original harness finding was a stall, not a
     defect] Meridian tablet deeplink — selecting an event DOES change the URL.**

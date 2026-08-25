@@ -629,7 +629,14 @@ contention between the two concurrent runs, not a product defect; not filed):
   wall/pin rows with adequate width but ~20px height, `18x18` intel-source badges, `8x8`
   price-target/analyst-rating dots in Estimates). Real, reproducible, `button`/`a[href]`/
   `[role=button]` elements per the harness's own interactive-element filter — not a text-collision
-  false positive. See `UI-UX-OPPORTUNITIES.md` item 13.
+  false positive. See `UI-UX-OPPORTUNITIES.md` item 13. **Fixed and deployed 2026-08-25**, and
+  live-re-verified post-deploy: the same probe against production (different ticker) shows zero
+  wall/pin-row or strike-row items anymore, positive confirmation the fix is live — but the SAME
+  re-check surfaced two more undersized/non-controls the original 10-per-tab-capped sample never
+  happened to catch (a `revisions` toggle, and `MeridianDarkPoolTape`'s dark-pool print markers —
+  same disabled-non-control pattern as the already-fixed price-target dots). Fixed the same day;
+  see `UI-UX-OPPORTUNITIES.md` item 13's update and
+  `docs/audit/findings-staging/2026-08-25-meridian-tap-targets-round-2.md`.
 - **Tablet only: a P3 saying "selecting an event does not change the URL."** This directly
   contradicts a static trace of `meridian-deeplink-core.ts` (built and unit-tested 2026-08-18 for
   exactly this behavior) and `MeridianDesk.tsx` (`onSelect={() => setSelectedId(item.id)}` →
