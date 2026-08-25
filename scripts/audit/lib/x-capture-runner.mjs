@@ -257,13 +257,13 @@ const RECIPES = {
 
   async vector_desk(page, base, entry, params) {
     const ticker = params.ticker ?? "SPX";
+    const horizon = params.horizon ?? "0dte";
     await page.goto(`${base}/vector?ticker=${encodeURIComponent(ticker)}`, {
       waitUntil: "domcontentloaded",
       timeout: 90_000,
     });
     await dismissOverlays(page);
     await page.waitForSelector(".vector-chart-wrap", { timeout: 60_000 });
-    const horizon = params.horizon ?? "0dte";
     const dteBtn = page.locator(`[data-testid="vector-dte-${horizon}"]`).first();
     if (await dteBtn.count()) {
       const pressed = await dteBtn.getAttribute("aria-pressed");
@@ -274,7 +274,15 @@ const RECIPES = {
     }
     const tf = params.timeframe ?? "15";
     await page.locator("#vector-tf-select").first().selectOption(String(tf)).catch(() => {});
-    await sleep(5000);
+    if (params.session_viewport) {
+      await page
+        .locator('button[data-testid="vector-viewport-session"], button:has-text("Session")')
+        .first()
+        .click({ force: true, timeout: 5000 })
+        .catch(() => {});
+      await sleep(1500);
+    }
+    await sleep(params.wait_beads ? 14_000 : 5000);
   },
 
   async vector_fullscreen(page, base, entry, params) {

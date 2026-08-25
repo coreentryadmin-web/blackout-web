@@ -3,9 +3,10 @@
  * Rotating four-panel X post — catalog capture + live copy + BLACK50 + Whop on every post.
  *
  * Usage:
- *   npm run x:social:post                    # creative mode (default) — hot ticker + random panels
- *   npm run x:social:post -- --pack slug     # curated pack from x-social-post-kit
- *   npm run x:social:post -- --ticker NVDA   # force hero ticker in creative mode
+ *   npm run x:social:post                    # auto: king node / banger story, else creative
+ *   npm run x:social:post -- --story king    # force king-node pack (weekly/monthly Vector)
+ *   npm run x:social:post -- --story banger  # force banger-caught pack
+ *   npm run x:social:post -- --story creative
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -16,11 +17,11 @@ import { captureByCatalogId } from "./lib/x-capture-runner.mjs";
 import {
   assemblePost,
   getPanelPack,
-  nextPanelPack,
   resolvePackShots,
   xWeightedLength,
 } from "./lib/x-social-post-kit.mjs";
-import { buildCreativeCopy, composeCreativePack, pickHotTicker } from "./lib/x-social-creative.mjs";
+import { composeCreativePack, pickHotTicker } from "./lib/x-social-creative.mjs";
+import { pickStoryPack, scanStoryCandidates } from "./lib/x-social-story-data.mjs";
 
 const args = process.argv.slice(2);
 const opt = (k, def) => {
@@ -30,9 +31,8 @@ const opt = (k, def) => {
 const flag = (k) => args.includes(`--${k}`);
 
 const BASE = "https://blackouttrades.com";
+const STORY_MODE = opt("story", "auto"); // auto | king | banger | creative
 const PACK_SLUG = opt("pack", null);
-const TICKER_OPT = opt("ticker", null);
-const CREATIVE = !PACK_SLUG || flag("creative");
 
 async function loadStory(ticker) {
   const [posR, flowR] = await Promise.all([
@@ -66,23 +66,48 @@ async function captureShot(page, shot) {
   }
 }
 
+const TICKER_OPT = opt("ticker", null);
+
 async function main() {
   let pack;
   let ticker;
+  let storyCandidates = [];
 
-  if (CREATIVE && !PACK_SLUG) {
+  if (PACK_SLUG) {
+    pack = getPanelPack(PACK_SLUG);
+    ticker = (TICKER_OPT ?? pack.ticker ?? "NVDA").toUpperCase();
+    console.log("Mode: CURATED PACK");
+  } else if (STORY_MODE === "creative") {
     const ranked = await pickHotTicker(fetchAuditJson, BASE);
     ticker = (TICKER_OPT ?? ranked[0]?.ticker ?? "NVDA").toUpperCase();
     pack = composeCreativePack(ticker, ranked);
-    console.log("Mode: CREATIVE (hot ticker + rotating panels)");
-    console.log(
-      "Hot scan:",
-      ranked.slice(0, 4).map((r) => `${r.ticker}:${fmtPremShort(r.premium)}`).join(" · "),
-    );
+    console.log("Mode: CREATIVE");
+    console.log("Hot scan:", ranked.slice(0, 4).map((r) => `${r.ticker}:${fmtPremShort(r.premium)}`).join(" · "));
   } else {
-    pack = PACK_SLUG ? getPanelPack(PACK_SLUG) : nextPanelPack();
-    ticker = (TICKER_OPT ?? pack.ticker ?? "NVDA").toUpperCase();
-    console.log("Mode: CURATED PACK");
+    storyCandidates = await scanStoryCandidates(fetchAuditJson, BASE);
+    const prefer = STORY_MODE === "auto" ? undefined : STORY_MODE === "king" ? "king" : STORY_MODE;
+    pack = pickStoryPack(storyCandidates, prefer);
+    if (!pack) {
+      const ranked = await pickHotTicker(fetchAuditJson, BASE);
+      ticker = (TICKER_OPT ?? ranked[0]?.ticker ?? "NVDA").toUpperCase();
+      pack = composeCreativePack(ticker, ranked);
+      console.log("Mode: CREATIVE (no strong king/banger story — fallback)");
+    } else {
+      ticker = (TICKER_OPT ?? pack.ticker ?? "NVDA").toUpperCase();
+      console.log(`Mode: STORY · ${pack.storyKind ?? pack.slug}`);
+      if (pack.story?.kingStrike) {
+        console.log(`King: ${pack.story.kingStrike} · γ ${fmtPremShort(pack.story.kingGamma)} · ${pack.story.horizon ?? "weekly"}`);
+      }
+      if (pack.story?.banger) {
+        console.log(`Banger: ${pack.story.banger.ticker} · discovery +${pack.story.banger.gain}%`);
+      }
+    }
+    if (storyCandidates.length) {
+      console.log(
+        "Story scan top:",
+        storyCandidates.slice(0, 3).map((c) => `${c.ticker}:${c.kind}:${c.score.toFixed(1)}`).join(" · "),
+      );
+    }
   }
 
   const slug = pack.slug ?? `${pack.slug}-${ticker.toLowerCase()}`;
@@ -94,7 +119,7 @@ async function main() {
 
   mkdirSync(OUT, { recursive: true });
   const story = await loadStory(ticker);
-  const shots = pack.creative ? pack.shots : resolvePackShots(pack, ticker);
+  const shots = pack.shots ?? resolvePackShots(pack, ticker);
 
   const auth = await mintIosPlaywrightSession({ appUrl: BASE });
   if (auth.skip) throw new Error(auth.reason ?? "auth failed");
@@ -136,11 +161,7 @@ async function main() {
     await releaseAuditClerkSession();
   }
 
-  const body = pack.creative
-    ? buildCreativeCopy(story, pack)
-    : pack.buildCopy
-      ? pack.buildCopy({ ...story, ticker })
-      : pack.label;
+  const body = pack.buildCopy ? pack.buildCopy({ ...story, ticker }) : pack.label;
   const copy = assemblePost(body, slug);
   const weighted = xWeightedLength(copy);
 
@@ -150,7 +171,7 @@ async function main() {
     [
       `# X post — ${slug}`,
       "",
-      `**Mode:** ${pack.creative ? "creative composer" : "curated pack"}`,
+      `**Mode:** ${pack.storyKind ? `story · ${pack.storyKind}` : pack.creative ? "creative composer" : "curated pack"}`,
       `**Pack:** ${pack.slug ?? pack.label}`,
       `**Combo:** ${pack.combo?.join(" · ") ?? "—"}`,
       `**Panels:** ${pack.label}`,
