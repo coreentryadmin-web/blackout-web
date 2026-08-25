@@ -9,7 +9,7 @@
 
 ## Executive summary
 
-**Architecturally: yes — this is the best 0DTE design shipped so far.**  
+**Architecturally: yes — best 0DTE design shipped so far (provisional until G9 is fixed).**  
 **Operationally: not yet — the platform’s cross-product resources are under-utilized.**
 
 The thesis-first pipeline (discover → merge by ticker → archetype → gates → expression → commit) is the correct shape. What is live today is **v1 of that shape**, still fed mostly by Night Hawk’s legacy setup object via `railHitsFromLegacySetup()`, not by a unified evidence layer from Helix, Thermal, Vector, Meridian, etc.
@@ -75,9 +75,9 @@ Thesis rails today are built in `src/lib/zerodte/thesis/rails/legacy-bridge.ts` 
 
 **Design maturity (rough):**
 
-- Pipeline / archetypes / contract engine: **~75%**  
+- Pipeline / archetypes / contract engine: **~65%** (was ~75%; G9 — merge drops losing-direction rails — downgrades this)  
 - Cross-product evidence utilization: **~30%**  
-- Outcome-calibrated edge proof: **~10%**
+- Outcome-calibrated edge proof: **~10%** (generous — calibration loop has not run once)
 
 ---
 
@@ -90,11 +90,13 @@ Thesis rails today are built in `src/lib/zerodte/thesis/rails/legacy-bridge.ts` 
 
 They can disagree on direction/ownership. **Target state:** one canonical `MergedThesis` per ticker per scan pass; discovery origins become provenance on that object, not a parallel fight.
 
+**Reviewer consensus (Claude, 2026-08-25):** Board merge should become a **thin view over `MergedThesis`**, not the reverse. Thesis merge carries strictly more information (per-rail scores). Do not defer this call to Phase C — commit to direction now, implement in Phase C.
+
 ### G2 — Rank tier is rule-based, not calibrated
 
 `resolveThesisRankTier()` (live-pipeline.ts) uses score + archetype gates. **No closed loop** from graded ledger outcomes (“A tier 30d WR vs B tier”). Rank is honest ordering, not proven edge.
 
-**Review ask:** Should rank tiers be frozen until a 20-session calibration pass completes?
+**Calibration gate (reviewer consensus):** Do not use a session-count target. Require **n≥30 A-tier rows from non-halted sessions** before promoting rank rules to commit gates. Keep "3+ rails for A tier" display-only (#2901) until that population clears. PIN is dead (G4) and governor halts early (G8), so a 20-session window could take weeks and understate real WR.
 
 ### G3 — Solo BREAKOUT quality hole (partially patched)
 
@@ -103,9 +105,9 @@ Pre-patch: ~15 solo-rail BREAKOUT names still rank **A**.
 
 **Deeper fix:** COMMIT requires N independent systems (not just rank display). Gate `single_rail_corrobor` (#2895) handles commit path; thesis rank must stay aligned.
 
-### G4 — POSITIONING / PIN rail under-fires
+### G4 — POSITIONING / PIN rail under-fires (live production gap)
 
-0DTE healthcheck (2026-08-25): **0 live PIN setups**. Either rail thresholds are too strict or positioning fields aren’t reaching setups. Measure before claiming “8 rails live.”
+0DTE healthcheck (2026-08-25): **0 live PIN setups** — one of the three original discovery origins is effectively dead in prod, not merely immature. Every other rail fires from fields on `EnrichedZeroDteSetup`; POSITIONING needs `gamma_posture` / `call_wall` / `put_wall`, which are thin/not fully wired from Thermal. **Reviewer consensus:** treat as **bug, not strictness** until proven otherwise. Five-minute check: log what fraction of live setups carry non-null `gamma_posture` before tuning thresholds.
 
 ### G5 — Cortex veto is stateless
 
@@ -122,6 +124,14 @@ Committed rows stamp compact `entry_context.thesis_first` (`thesisFirstEntryCont
 ### G8 — Session governor masked commit proof today
 
 Governor halted: 8 realized losers vs max 5. Open book (APLD, RUM) was **pre-thesis** solo BREAKOUT. **First clean commit read: next RTH session.**
+
+### G9 — Cross-rail disagreement discarded, not surfaced (added post-review)
+
+**Severity: above G5 (Cortex flicker).** Distinct from G1 (two merges disagreeing).
+
+In `buildMergedThesisFromHits` (`pipeline.ts`), `resolveMergedDirection()` picks long vs short by summed score, then **`hits.filter((h) => h.direction === direction)` silently drops the losing-direction rail**. There is no `disagreeing_rails` field on `MergedThesis`. This violates the LARGO contract principle: *disagreement is represented, never reconciled by the lanes themselves.*
+
+**Fix direction:** preserve opposing-direction hits on `MergedThesis` (e.g. `disagreeing_rails: RailHit[]` or per-rail direction map); surface in UI and gates; do not treat merge as "done" while evidence is dropped.
 
 ---
 
@@ -247,6 +257,27 @@ Win rate = **selection × exit × sizing**. Thesis-first mainly improves **selec
 
 ---
 
+## Claude Code review (2026-08-25) — synthesis
+
+[PR comment](https://github.com/coreentryadmin-web/blackout-web/pull/2902#issuecomment-5414922867) — reviewed against `merge.ts`, `pipeline.ts`, `live-pipeline.ts`, `archetype-gates.ts`, `legacy-bridge.ts`.
+
+| Topic | Claude verdict | Agent alignment |
+|-------|----------------|-----------------|
+| Best design so far? | Yes — right shape | **Agree** |
+| Pipeline ~75%? | **No — ~65%** (G9 information leak) | **Agree** — I overstated maturity |
+| Cross-product ~30%, calibration ~10%? | Yes; calibration may be generous | **Agree** |
+| G1–G8 accurate? | All hold; add **G9** | **Agree** — G9 is real, verified in code |
+| Roadmap B→C→D? | Correct; don't flip (calibrating noise first) | **Agree** |
+| G1 direction | Board merge → view on `MergedThesis` | **Agree** |
+| G2 sample | n≥30 A-tier rows, non-halted sessions | **Agree** — better than 20-session count |
+| G4 PIN | Bug (missing inputs), not strictness | **Agree** |
+| Ship first | **Evidence bundle (E1)** only | **Agree** |
+| Framing pushback | "Best design" provisional until G9 fixed | **Agree** |
+
+**First PR to ship:** `thesis/evidence-bundle.ts` — cache-reader only, additive, no merge/gate changes. Every other open question (G1, G2, G4, E3) is downstream of what rails actually see.
+
+---
+
 ## Bottom line (one paragraph)
 
-We have the **best architectural design so far** for 0DTE: thesis-first correctly separates discovery, evidence merge, archetype classification, gating, and expression. Live prod proves the **merge layer works** (0% → 58% multi-rail). We have **not yet** turned the full desk—Helix, Thermal, Vector, beads, catalysts, levels—into first-class thesis inputs; rails still bridge from the legacy setup. Closing that gap via a **cache-backed evidence bundle**, **unified merge**, and **outcome-calibrated rank tiers** is the path from “best design” to “best results.” Reviewers should stress-test G1–G8, the efficiency rules (E1–E4), and whether Phase A–E ordering matches deploy risk and measurement discipline.
+We have the **best architectural design shipped so far** for 0DTE — **provisional until G9 is fixed** (merge must not silently drop opposing-direction evidence). Thesis-first correctly separates discovery, evidence merge, archetype classification, gating, and expression. Live prod proves multi-rail merge is working (0% → 58%), but PIN discovery is dead in prod (G4) and calibration has not run once. We have **not yet** turned the full desk—Helix, Thermal, Vector, beads, catalysts, levels—into first-class thesis inputs. **Ship evidence bundle (E1) first**, then unify merge (board as view on `MergedThesis`), then calibrate rank on n≥30 A-tier rows from clean sessions.
