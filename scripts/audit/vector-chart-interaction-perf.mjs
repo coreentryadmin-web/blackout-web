@@ -40,7 +40,13 @@ async function main() {
   try {
     await page.goto(`${BASE}/vector?ticker=SPY`, { waitUntil: "domcontentloaded", timeout: 120_000 });
     await page.waitForSelector("canvas", { timeout: 90_000 });
-    await page.waitForTimeout(4000);
+    // Dismiss onboarding so wheel events hit the chart, not the modal overlay.
+    const skipTour = page.getByRole("button", { name: /^skip$/i });
+    if (await skipTour.isVisible().catch(() => false)) {
+      await skipTour.click();
+      await page.waitForTimeout(500);
+    }
+    await page.waitForTimeout(3500);
 
     const canvas = page.locator("canvas").first();
     const canvasCount = await page.locator("canvas").count();
