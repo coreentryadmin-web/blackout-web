@@ -48,7 +48,6 @@ async function main() {
     }
     await page.waitForTimeout(3500);
 
-    const canvas = page.locator("canvas").first();
     const canvasCount = await page.locator("canvas").count();
     if (canvasCount < 1) {
       rec("PAGE-LOAD", "RED", "no chart canvas found");
@@ -79,17 +78,8 @@ async function main() {
       const cy = rect.top + rect.height * 0.5;
 
       const wheelSamples = [];
-      let rangeBefore = null;
       const chartContainer = canvas.parentElement;
 
-      const readRange = () => {
-        // lightweight-charts doesn't expose API on window — infer zoom via canvas width vs scroll
-        // Use time-axis scroll position proxy: store canvas transform isn't accessible.
-        // Instead measure frame time for wheel burst.
-        return performance.now();
-      };
-
-      rangeBefore = readRange();
       const wheelStart = performance.now();
       for (let i = 0; i < 25; i++) {
         const t0 = performance.now();
