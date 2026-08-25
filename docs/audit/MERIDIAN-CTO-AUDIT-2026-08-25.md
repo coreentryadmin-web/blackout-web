@@ -212,6 +212,50 @@ request to check "every field, every value" across the product.
 
 ---
 
+## 10. Largo integration — live probe, 2026-08-25
+
+Per the operator's follow-up: "Largo should be able to answer everything on Meridian." Ran real
+questions against the LIVE `POST /api/market/largo/query` endpoint (production, admin temp
+session, `mintClerkPremiumSession`), not a simulation.
+
+**Q1: "What is the DKS earnings setup today according to Meridian?"** — Strong, correct, fully
+cited answer (21.7KB, 31.6s). Every number cross-checks against what this audit observed live in
+the product: 7/8 EPS beats, 88% rev-beat rate, -2.5% avg reaction, $206K bullish net flow, no
+gamma flip, call/put walls at 200/160, JPM target cut to $245. Properly hedged risk section (short
+gamma → moves extend, not dampen; beat-but-sell pattern flagged explicitly). No fabrication
+observed — this is Largo working as intended on a Meridian question.
+
+**Q2: "Which sector peers is DKS being compared against, and how have they historically
+reacted?"** — Largo called `get_meridian_event` (confirmed via `tools_used` in the response) but
+still answered *"There's no live peer-comparison panel for DKS beyond broad-market RS"* and fell
+back to generic `get_peer_ticker_compare`/`get_peer_rs` tools instead of Meridian's own
+sector-matched cohort. **Root cause, confirmed by reading the code, not guessed**:
+`get_meridian_event` (`run-tool.ts:1694`) returns `loadMeridianEventResponse(id)` — the exact
+single-event detail payload the UI's `/api/market/meridian/event` route serves. The Sector Peers
+cohort (`MeridianPeerCohortPanel.tsx`'s `buildCohortForItem`, and this audit's own new §7 peer
+reaction history) is computed **client-side**, from the full loaded timeline (`allItems`) filtered
+to same-SIC-major-group peers — it is a cross-event computation that has never been part of any
+single event's API response, so no tool call Largo can make today reaches it. **This is not a
+fabrication** (Largo correctly said "no panel" rather than inventing peer data) but it is a real,
+confirmed integration gap: Meridian's richest earnings-comparison feature is invisible to Largo.
+
+**What closing this gap would take** (not built this pass — a new tool, real scope, not a quick
+fix): a new Largo tool (e.g. `get_meridian_peer_cohort`) that takes a ticker/event id, loads the
+surrounding timeline window server-side, and returns `buildSectorCohort` + (now that #2884 has
+shipped it) `summarizePeerReaction` for the matched peers — reusing those exact pure functions,
+not reimplementing the classification. Small, well-scoped, but genuinely new surface, so flagged
+here rather than built silently.
+
+**Q1 vs Q2 also incidentally corrected a suspected finding from this same probe**: an earlier
+read of Q2's raw HTTP response looked truncated mid-sentence ("2026-05-27 −5.97% · 2026-03-",
+cut off) across three different JSON serializations of the same text. Re-ran with the full
+response saved to a file instead of a truncated terminal echo, and the answer was complete and
+well-formed end to end — the apparent truncation was an artifact of this audit's own
+`console.log(text.slice(0, 3500))` display line, not a real API defect. Recorded so the same false
+positive doesn't get re-investigated from a stale log.
+
+---
+
 *Live findings above are the actual product state as of 2026-08-25, ~04:30 UTC, ticker DKS
 (2026-08-25 earnings, high impact). Screenshots not committed (contain a live temp-session
 render only); reproducible via the commands in each section.*
