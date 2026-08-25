@@ -10,8 +10,8 @@
  */
 
 import { settledReactions } from "@/features/meridian/lib/meridian-reaction-display";
+import { printHistoryToAnalyticsRows } from "@/lib/meridian/meridian-earnings-analytics-core";
 import type {
-  MeridianEarningsAnalyticsRow,
   MeridianEarningsEnrichment,
   MeridianEarningsIntel,
 } from "@/features/meridian/lib/meridian-types";
@@ -23,15 +23,17 @@ export function MeridianEarningsHistoryPanel({
   ticker,
   enrichment,
   intel,
-  analyticsRows,
 }: {
   ticker: string;
   enrichment: Pick<MeridianEarningsEnrichment, "print_history" | "beat_rates" | "print_history_summary">;
   intel: Pick<MeridianEarningsIntel, "expected_move_pct">;
-  /** Full-window analytics rows — powers the beat/miss streak rail when present. */
-  analyticsRows?: readonly MeridianEarningsAnalyticsRow[];
 }) {
   const prints = enrichment.print_history ?? [];
+  // The Quarterly Beat/Miss Streak card below reads THIS ticker's real print history, not the
+  // market-wide forward calendar window (`earnings_analytics_rows`) it used to be wired to — see
+  // `printHistoryToAnalyticsRows`'s doc comment for why that produced a live contradiction with
+  // the Beat Rates card two panels above.
+  const streakRows = printHistoryToAnalyticsRows(ticker, prints);
   // The REACTION, not the anchor session's open→close: "is the market pricing more than it
   // delivers" compares an implied move against what the print actually did, and for a print with
   // a known bell-relative timing that is the gap plus the session, not the session alone.
@@ -86,9 +88,9 @@ export function MeridianEarningsHistoryPanel({
         )}
       </div>
 
-      {(analyticsRows?.length ?? 0) > 0 && (
+      {streakRows.length > 0 && (
         <MeridianDataCard label="Quarterly beat / miss streak" wide tone="earnings">
-          <MeridianBeatStreak ticker={ticker} rows={analyticsRows!} />
+          <MeridianBeatStreak ticker={ticker} rows={streakRows} />
         </MeridianDataCard>
       )}
     </section>

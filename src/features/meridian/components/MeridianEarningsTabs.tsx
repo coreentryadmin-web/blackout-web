@@ -465,7 +465,6 @@ export function MeridianEarningsTabs({
             ticker={pack.ticker}
             enrichment={enrichment}
             intel={intel}
-            analyticsRows={analyticsRows}
           />
           <div className="meridian-detail-grid-v2 meridian-earn-enrich">
             {enrichment.print_history.length > 0 && (
