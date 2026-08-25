@@ -233,8 +233,9 @@ export function MeridianRing({
   const cx = size / 2;
   const r = size / 2 - 5;
   const pct = v === null || max <= 0 ? 0 : clamp(v / max, 0, 1);
+  const isBalanced = v === 0;
   return (
-    <div className="mv-ring" title={`${label}: ${v ?? "no data"}`}>
+    <div className="mv-ring" title={`${label}: ${v ?? "no data"}${isBalanced ? " — signals balanced" : ""}`}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
         <circle cx={cx} cy={cx} r={r} className="mv-ring-track" />
         {/* No arc at all when there is no value — an empty ring is honest, a full grey one is not. */}
@@ -242,8 +243,9 @@ export function MeridianRing({
       </svg>
       <div className="mv-ring-body">
         <span className="mv-ring-label">{label}</span>
-        <span className={`mv-ring-value ${LEAN_CLASS[lean]}`}>
+        <span className={`mv-ring-value ${LEAN_CLASS[lean]}${isBalanced ? " is-balanced" : ""}`}>
           {v === null ? "—" : <MeridianCountUp value={v} />}
+          {isBalanced ? <span className="mv-ring-balanced-note">balanced</span> : null}
           {signal && <span className="mv-ring-sig" aria-hidden="true">{LIVE_SIGNAL_GLYPH[signal]}</span>}
         </span>
       </div>
