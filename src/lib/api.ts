@@ -1013,18 +1013,18 @@ export type VectorContractPick = {
 
 /** Real contract ideas for the Suggested Play (see vector-contract-picks.ts). `bias`/`conviction`
  *  are the play the client already computed — the server only resolves the chain and picks a
- *  real strike/expiry against it, it never re-derives the play itself. */
+ *  real strike/expiry against it, it never re-derives the play itself. No horizon/dte param —
+ *  the pick's expiry is independent of the chart's DTE toggle (see that module's "BUG FIXED"
+ *  note: this used to force a same-day contract whenever the chart was on the 0DTE view). */
 export async function fetchVectorContractPicks(params: {
   ticker: string;
   bias: "long" | "short" | "range" | "neutral";
   conviction: number;
-  horizon: string;
 }): Promise<{ picks: VectorContractPick[] }> {
   const qs = new URLSearchParams({
     ticker: params.ticker,
     bias: params.bias,
     conviction: String(Math.round(params.conviction)),
-    dte: params.horizon,
   });
   return marketFetch<{ picks: VectorContractPick[] }>(`/vector/contract-picks?${qs.toString()}`);
 }

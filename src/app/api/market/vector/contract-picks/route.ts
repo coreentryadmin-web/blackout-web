@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { isVectorTickerAllowed } from "@/features/vector/lib/vector-ticker";
-import { resolveDteHorizonParam } from "@/features/vector/lib/vector-dte-horizon";
 import { buildVectorContractPicks } from "@/features/vector/lib/vector-contract-picks";
 import type { VectorPlayBias } from "@/features/vector/lib/vector-play-engine";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
@@ -24,6 +23,10 @@ function parseBias(raw: string | null): VectorPlayBias | null {
  * with, so a member never sees a Vector-only picker disagree with Night Hawk's read of the same
  * chain. Confidence is passed through as `conviction`, not recomputed — see
  * `vector-contract-picks.ts`'s module doc for why that's a rule, not an oversight.
+ *
+ * No `dte`/horizon param: the pick's expiry is independent of whichever DTE lens the chart
+ * happens to have open (0DTE/Weekly/Monthly walls view) — see `buildVectorContractPicks`'s "BUG
+ * FIXED" note for why coupling those was wrong.
  */
 export async function GET(req: NextRequest) {
   const auth = await authorizePremiumDeskApi(req);
@@ -45,8 +48,6 @@ export async function GET(req: NextRequest) {
   const convictionRaw = Number(req.nextUrl.searchParams.get("conviction"));
   const conviction = Number.isFinite(convictionRaw) ? Math.max(0, Math.min(100, Math.round(convictionRaw))) : 0;
 
-  const horizon = resolveDteHorizonParam(req.nextUrl.searchParams);
-
   const chain = await resolveTickerChainRows(rawTicker!);
   if (!chain) {
     // Honest empty, not an error — no chain reachable right now means no picks, same as any
@@ -54,6 +55,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ picks: [] }, { headers: NO_STORE_HEADERS });
   }
 
-  const picks = buildVectorContractPicks({ bias, conviction }, chain, horizon);
+  const picks = buildVectorContractPicks({ bias, conviction }, chain);
   return NextResponse.json({ picks }, { headers: NO_STORE_HEADERS });
 }

@@ -44,7 +44,7 @@ function chainAround(spot: number): EditionChainData {
   };
 }
 
-test("legsForBias: long/short get one leg, range gets both, neutral gets none", () => {
+test("legsForBias: long/short get one leg, range candidates both directions, neutral gets none", () => {
   assert.deepEqual(legsForBias("long"), ["long"]);
   assert.deepEqual(legsForBias("short"), ["short"]);
   assert.deepEqual(legsForBias("range"), ["long", "short"]);
@@ -53,7 +53,7 @@ test("legsForBias: long/short get one leg, range gets both, neutral gets none", 
 
 test("buildVectorContractPicks: long bias returns one CALL pick at the play's own conviction", () => {
   const chain = chainAround(100);
-  const picks = buildVectorContractPicks({ bias: "long", conviction: 72 }, chain, "monthly");
+  const picks = buildVectorContractPicks({ bias: "long", conviction: 72 }, chain);
   assert.equal(picks.length, 1);
   assert.equal(picks[0]!.side, "call");
   assert.equal(picks[0]!.confidence, 72, "confidence is the play's conviction, never a separate number");
@@ -62,32 +62,58 @@ test("buildVectorContractPicks: long bias returns one CALL pick at the play's ow
 
 test("buildVectorContractPicks: short bias returns one PUT pick", () => {
   const chain = chainAround(100);
-  const picks = buildVectorContractPicks({ bias: "short", conviction: 55 }, chain, "monthly");
+  const picks = buildVectorContractPicks({ bias: "short", conviction: 55 }, chain);
   assert.equal(picks.length, 1);
   assert.equal(picks[0]!.side, "put");
   assert.equal(picks[0]!.confidence, 55);
 });
 
-test("buildVectorContractPicks: range bias returns BOTH legs at the same conviction (one play, two entries)", () => {
-  const chain = chainAround(100);
-  const picks = buildVectorContractPicks({ bias: "range", conviction: 60 }, chain, "monthly");
-  assert.equal(picks.length, 2);
-  const sides = picks.map((p) => p.side).sort();
-  assert.deepEqual(sides, ["call", "put"]);
-  assert.ok(picks.every((p) => p.confidence === 60));
+test("buildVectorContractPicks: range bias collapses to ONE pick — the leg nearer to spot — never two opposite directions sharing one confidence number", () => {
+  // Call's nearest liquid strike is 105 (10% away); put's is 100 (0% away, ATM). A member
+  // correctly flagged the old behavior (both legs shown at the play's shared conviction, e.g.
+  // "577.5C 75%" next to "565P 75%") as nonsensical — a call and a put can't both have the same
+  // odds of the same outcome. Only the nearer (put) leg should survive.
+  const chain: EditionChainData = {
+    spot: 100,
+    rows: [
+      row(100, { putAsk: 4, putBid: 3.6 }), // ATM put only
+      row(105, { callAsk: 1.2, callBid: 1.0 }), // nearest liquid call, 5% out
+    ],
+  };
+  const picks = buildVectorContractPicks({ bias: "range", conviction: 60 }, chain);
+  assert.equal(picks.length, 1, "range never surfaces two competing directions");
+  assert.equal(picks[0]!.side, "put");
+  assert.equal(picks[0]!.strike, 100);
+  assert.equal(picks[0]!.confidence, 60);
+});
+
+test("buildVectorContractPicks: range bias with only one side pricable returns that one pick, not two", () => {
+  const callOnly: EditionChainData = {
+    spot: 100,
+    rows: [row(100, { callAsk: 4, callBid: 3.6, putAsk: null, putBid: null })],
+  };
+  const picks = buildVectorContractPicks({ bias: "range", conviction: 45 }, callOnly);
+  assert.equal(picks.length, 1);
+  assert.equal(picks[0]!.side, "call");
 });
 
 test("buildVectorContractPicks: neutral bias (stand-aside/pivot) never fabricates a pick", () => {
   const chain = chainAround(100);
-  assert.deepEqual(buildVectorContractPicks({ bias: "neutral", conviction: 40 }, chain, "monthly"), []);
+  assert.deepEqual(buildVectorContractPicks({ bias: "neutral", conviction: 40 }, chain), []);
 });
 
 test("buildVectorContractPicks: no play or no chain degrades to no picks, never throws", () => {
-  assert.deepEqual(buildVectorContractPicks(null, chainAround(100), "monthly"), []);
-  assert.deepEqual(buildVectorContractPicks({ bias: "long", conviction: 80 }, null, "monthly"), []);
+  assert.deepEqual(buildVectorContractPicks(null, chainAround(100)), []);
+  assert.deepEqual(buildVectorContractPicks({ bias: "long", conviction: 80 }, null), []);
 });
 
-test("buildVectorContractPicks: 0DTE horizon restricts to a same-day expiry", () => {
+// Bug found 2026-08-26 (live member report): this used to accept a `horizon` param and cap the
+// search to `horizonMaxDte(horizon)` — the chart's currently-selected DTE toggle. A member on the
+// 0DTE view therefore always got a same-day contract, regardless of what the play called for.
+// The picker no longer takes a horizon at all: it always uses `pickChainContract`'s own swing
+// window (nearest liquid expiry, never same-day), independent of which DTE lens the chart happens
+// to have open.
+test("buildVectorContractPicks: same-day expiry is never picked, regardless of what DTE view the chart is on", () => {
   const chain: EditionChainData = {
     spot: 100,
     rows: [
@@ -95,9 +121,17 @@ test("buildVectorContractPicks: 0DTE horizon restricts to a same-day expiry", ()
       row(100, { expiry: ymdPlus(30), callAsk: 5, callBid: 4.6 }),
     ],
   };
-  const picks = buildVectorContractPicks({ bias: "long", conviction: 65 }, chain, "0dte");
+  const picks = buildVectorContractPicks({ bias: "long", conviction: 65 }, chain);
   assert.equal(picks.length, 1);
-  assert.equal(picks[0]!.expiry, ymdPlus(0));
+  assert.equal(picks[0]!.expiry, ymdPlus(30), "the real, further-dated liquid expiry wins, never the same-day one");
+});
+
+test("buildVectorContractPicks: no longer accepts a horizon/DTE argument at all", () => {
+  const chain = chainAround(100);
+  // @ts-expect-error — the old 3-arg signature (play, chain, horizon) is gone.
+  const withExtraArg = buildVectorContractPicks({ bias: "long", conviction: 65 }, chain, "0dte");
+  const withoutExtraArg = buildVectorContractPicks({ bias: "long", conviction: 65 }, chain);
+  assert.deepEqual(withExtraArg, withoutExtraArg, "an extra arg must be ignored, not change behavior");
 });
 
 test("buildVectorContractPicks: a caveated (relaxed) pick still returns a real contract, flagged", () => {
@@ -105,7 +139,7 @@ test("buildVectorContractPicks: a caveated (relaxed) pick still returns a real c
     spot: 100,
     rows: [row(100, { oi: 10, callAsk: 4, callBid: 3.6 })], // below the liquidity floor
   };
-  const picks = buildVectorContractPicks({ bias: "long", conviction: 50 }, illiquid, "monthly");
+  const picks = buildVectorContractPicks({ bias: "long", conviction: 50 }, illiquid);
   assert.equal(picks.length, 1);
   assert.equal(picks[0]!.caveat, "low_liquidity");
 });
@@ -116,5 +150,5 @@ test("buildVectorContractPicks: no eligible contract on the requested side → n
     spot: 100,
     rows: [row(100, { callAsk: 4, callBid: 3.6, putAsk: null, putBid: null })],
   };
-  assert.deepEqual(buildVectorContractPicks({ bias: "short", conviction: 60 }, callOnly, "monthly"), []);
+  assert.deepEqual(buildVectorContractPicks({ bias: "short", conviction: 60 }, callOnly), []);
 });

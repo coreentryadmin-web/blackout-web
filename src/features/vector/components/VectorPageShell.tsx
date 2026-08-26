@@ -618,7 +618,6 @@ export function VectorPageShell({
   const { picks: contractPicks, loading: contractPicksLoading } = useVectorContractPicks(
     activeTicker,
     play,
-    dteHorizon,
     liveSession
   );
 

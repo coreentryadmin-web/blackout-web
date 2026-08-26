@@ -21,11 +21,13 @@ const CAVEAT_TEXT: Record<NonNullable<VectorContractPick["caveat"]>, string> = {
 };
 
 /**
- * "1-3 plays for this ticker" rail — real contract ideas (strike/expiry) derived from the
- * Suggested Play, not a second invented picker (see vector-contract-picks.ts). Renders nothing
- * when there are no picks: a NEUTRAL/stand-aside play has no directional idea to attach a
- * contract to, and the Suggested Play card above already says so — this card doesn't repeat
- * that message with an empty box.
+ * "<TICKER> PLAYS" rail — a real contract idea (strike/expiry) derived from the Suggested Play,
+ * not a second invented picker (see vector-contract-picks.ts). Always at most ONE pick — a range
+ * play used to surface two opposite-direction legs sharing one confidence number, which read as
+ * "both directions have the same odds" and is wrong; `buildVectorContractPicks` now collapses
+ * that down to the single nearer-to-spot entry. Renders nothing when there are no picks: a
+ * NEUTRAL/stand-aside play has no directional idea to attach a contract to, and the Suggested
+ * Play card above already says so — this card doesn't repeat that message with an empty box.
  */
 export function VectorContractPicksCard({ ticker, play, picks, loading, className }: Props) {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
