@@ -195,11 +195,13 @@ export function normalizeImpliedVol(iv: number | null | undefined): number | nul
 
 /**
  * Mid of bid/ask. bid may be 0 for deep-OTM; require ask>0 so it is a REAL quote — IDENTICAL
- * guard to the chain (valuationFromContract) and the WS midOf, so the snapshot mid equals the
- * chain mid for the same bid/ask.
+ * guard to the WS midOf (ws/options-socket.ts) and zeroDteMidOf (zerodte/marks-math.ts), so the
+ * snapshot mid equals the chain mid for the same bid/ask. Also rejects a CROSSED book
+ * (ask < bid) — a stale/glitched print must not synthesize a fabricated mid (found 2026-08-26
+ * alongside the identical gap in the two sibling copies above).
  */
 function midOf(bid: number | null, ask: number | null): number | null {
-  if (bid != null && ask != null && ask > 0 && bid >= 0) {
+  if (bid != null && ask != null && ask > 0 && bid >= 0 && ask >= bid) {
     return Number(((bid + ask) / 2).toFixed(4));
   }
   return null;

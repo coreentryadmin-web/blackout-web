@@ -29,9 +29,16 @@ export const LEGACY_QUOTE_STALE_MS = 30_000;
 export type ZeroDteMarkSource = "mid" | "last" | "none";
 
 /** Mid of bid/ask — IDENTICAL guard to the chain/WS midOf (ask>0 = a real quote,
- *  bid may be 0 for deep-OTM). */
+ *  bid may be 0 for deep-OTM). Also rejects a CROSSED book (ask < bid) — a transient
+ *  crossed print (e.g. a stale bid lagging a fast-moving thin 0DTE book near expiry)
+ *  must not compute a fabricated "mid" that then feeds pinnedLivePnlPct, the persisted
+ *  peak/trough latch (advancePlayLatch), and the live exit engine on an already-open
+ *  play. The pre-commit gate (plan.ts's evaluateQuoteValidity) already refuses a crossed
+ *  quote outright ("crossed"); this lane runs continuously on committed plays and had no
+ *  equivalent guard until this fix, unlike its sibling zeroDteHalfSpreadFrac a few
+ *  functions below, which already required ask >= bid. Found 2026-08-26. */
 export function zeroDteMidOf(bid: number | null, ask: number | null): number | null {
-  if (bid != null && ask != null && ask > 0 && bid >= 0) {
+  if (bid != null && ask != null && ask > 0 && bid >= 0 && ask >= bid) {
     return Number(((bid + ask) / 2).toFixed(4));
   }
   return null;

@@ -93,6 +93,15 @@ test("clock: at/after the time-stop clamps to 0 remaining / full decay", () => {
   assert.equal(c.past_time_stop, true);
 });
 
+// Bug found 2026-08-26: past_time_stop used `>=`, so the displayed "TIME STOP" flag lit
+// up a full minute before derivePlayStatus's (plan.ts) own boundary, which is strict `>`
+// (the stop minute itself is still in the window — plan.test.ts pins this as inclusive).
+test("clock: past_time_stop matches derivePlayStatus's own boundary — AT the stop minute is NOT past it", () => {
+  const stop = PLAN_RULES.time_stop_et_minutes;
+  assert.equal(timeStopClock(stop).past_time_stop, false, "the stop minute itself is still in the window");
+  assert.equal(timeStopClock(stop + 1).past_time_stop, true);
+});
+
 test("executable: long sells into the BID, not the mid", () => {
   const e = executableFill(2.4, 2.6, 2.0); // mid 2.5, bid 2.4
   assert.equal(e.mid, 2.5);
