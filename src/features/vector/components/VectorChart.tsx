@@ -3572,7 +3572,10 @@ export function VectorChart({
         if (cancelled || dteHorizonRef.current !== dteHorizon || !res.ok) return;
         const data = (await res.json()) as { history?: WallHistorySample[] };
         if (cancelled || dteHorizonRef.current !== dteHorizon) return;
-        horizonHistoryRef.current = Array.isArray(data.history) ? data.history : [];
+        const remote = Array.isArray(data.history) ? data.history : [];
+        const merged = mergeWallHistory(horizonHistoryRef.current, remote);
+        if (merged === horizonHistoryRef.current) return;
+        horizonHistoryRef.current = merged;
         repaint();
         if (dteHorizonRef.current === "0dte") requestAnimationFrame(() => fitSessionOverview());
       } catch {

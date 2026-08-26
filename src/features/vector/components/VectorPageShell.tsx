@@ -228,10 +228,10 @@ export function VectorPageShell({
   const [wallEvents, setWallEvents] = useState<VectorWallEvent[]>([]);
   const [lens, setLens] = useState<VectorWallLens>("gex");
   // Mirror the chart's DTE horizon so the GEX ladder re-scopes to the same expiries the walls use.
-  // Must match VectorChart's default ("weekly", or the host's defaultDteHorizon override) — this
+  // Must match VectorChart's default (0DTE, or the host's defaultDteHorizon override) — this
   // copy drives the GEX ladder's scope label + fetch. When it defaulted to "all" while the chart
-  // defaulted to weekly, the ladder's first paint showed the near-term aggregate against a
-  // weekly-scoped chart until hydration converged them.
+  // scoped weekly, the ladder's first paint showed the near-term aggregate against a mismatched
+  // chart until hydration converged them.
   const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(
     defaultDteHorizon ?? VECTOR_DEFAULT_DTE_HORIZON
   );

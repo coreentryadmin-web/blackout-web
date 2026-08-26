@@ -304,11 +304,17 @@ test("VectorChart: live 'all' horizon polls enriched blended history during RTH"
   assert.match(src, /mergeWallHistory\(wallHistoryRef\.current, remote\)/);
 });
 
-test("Vector desk defaults to weekly DTE when host does not override", () => {
+test("Vector desk defaults to 0DTE when host does not override", () => {
   const chart = read("src/features/vector/components/VectorChart.tsx");
   assert.match(chart, /VECTOR_DEFAULT_DTE_HORIZON/);
   const horizon = read("src/features/vector/lib/vector-dte-horizon.ts");
-  assert.match(horizon, /VECTOR_DEFAULT_DTE_HORIZON: VectorDteHorizon = "weekly"/);
+  assert.match(horizon, /VECTOR_DEFAULT_DTE_HORIZON: VectorDteHorizon = "0dte"/);
+});
+
+test("VectorChart: narrowed DTE horizon history poll merges remote tail (does not wipe live stamps)", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /const fetchHistory = async \(\) =>/);
+  assert.match(src, /mergeWallHistory\(horizonHistoryRef\.current, remote\)/);
 });
 
 test("VectorChart fetches and uses the blended rail when it was given no seed", () => {
