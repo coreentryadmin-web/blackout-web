@@ -73,8 +73,16 @@ function formatHelixLine(
   const bias = extras?.helix_direction_bias ?? null;
   const flowScore = thesis.rail_scores.FLOW;
   const flowSummary = thesis.summaries.FLOW;
+  const breakoutSummary = thesis.summaries.BREAKOUT;
 
   if ((prem == null || prem < 50_000) && !flowScore && !flowSummary) {
+    if (breakoutSummary) {
+      return {
+        desk: "HELIX",
+        status: railAligned(thesis.rail_scores.BREAKOUT),
+        text: `structure-led · ${breakoutSummary}`,
+      };
+    }
     return { desk: "HELIX", status: "unavailable", text: "no flow read in window" };
   }
 

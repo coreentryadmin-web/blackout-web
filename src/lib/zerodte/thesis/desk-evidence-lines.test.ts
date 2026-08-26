@@ -67,7 +67,23 @@ test("buildDeskEvidenceLines: HELIX + THERMAL use extras when present", () => {
   assert.equal(meridian.text, "earnings AMC");
 });
 
-test("buildDeskEvidenceLines: Meridian unavailable when no catalyst", () => {
+test("buildDeskEvidenceLines: BREAKOUT-led HELIX uses structure summary when flow quiet", () => {
+  const thesis: MergedThesis = {
+    ...baseThesis(),
+    rail_scores: { BREAKOUT: 74, MOMENTUM: 68 },
+    rails_fired: ["BREAKOUT", "MOMENTUM"],
+    summaries: {
+      BREAKOUT: "TRIGGERED · RVOL 2.1×",
+    },
+    disagreeing_rails: [],
+  };
+  const helix = buildDeskEvidenceLines({ thesis, rank_tier: "WATCH" }).find((l) => l.desk === "HELIX")!;
+  assert.match(helix.text, /structure-led/);
+  assert.match(helix.text, /TRIGGERED/);
+  assert.notEqual(helix.status, "unavailable");
+});
+
+test("buildDeskEvidenceLines: MERIDIAN unavailable without catalyst rail", () => {
   const thesis = baseThesis();
   delete thesis.rail_scores.CATALYST;
   delete thesis.summaries.CATALYST;

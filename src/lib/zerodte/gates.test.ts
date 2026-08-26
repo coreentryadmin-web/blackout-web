@@ -13,6 +13,7 @@ import {
   gateRejectionFor,
   MARKET_BIAS_MAX_AGE_MS,
   planQualityGateBlocks,
+  refreshPlanQualityGateBlocks,
   confluenceFloorAt,
   scoreFloorForOrigins,
   ZERODTE_CONFLUENCE_MIN,
@@ -755,6 +756,28 @@ test("G-7: macro hard-block during CPI window", () => {
 test("planQualityGateBlocks: exported helper matches gate evaluation", () => {
   assert.deepEqual(planQualityGateBlocks(CLEAN_PLAN), []);
   assert.equal(planQualityGateBlocks(null)[0]!.code, "plan_no_quote");
+});
+
+test("refreshPlanQualityGateBlocks: drops stale plan_no_quote after deferred attach", () => {
+  const stale = evaluateZeroDteGates(
+    input({ plan: null, deferPlanQualityGates: true, score: 88 })
+  );
+  assert.equal(stale.verdict, "COMMIT");
+  assert.equal(stale.blocks.some((b) => b.code === "plan_no_quote"), false);
+
+  const refreshed = refreshPlanQualityGateBlocks(stale, CLEAN_PLAN);
+  assert.equal(refreshed.verdict, "COMMIT");
+  assert.equal(refreshed.blocks.some((b) => b.code === "plan_no_quote"), false);
+
+  const blocked = refreshPlanQualityGateBlocks(stale, null);
+  assert.equal(blocked.verdict, "BLOCKED");
+  assert.equal(blocked.blocks.some((b) => b.code === "plan_no_quote"), true);
+});
+
+test("deferPlanQualityGates: evaluateZeroDteGates skips plan blocks when plan is null", () => {
+  const v = evaluateZeroDteGates(input({ plan: null, deferPlanQualityGates: true, score: 88 }));
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.blocks.some((b) => b.code === "plan_no_quote"), false);
 });
 
 // ── WS-04 · Malformed-quote validation gate (fail-closed) ─────────────────────────

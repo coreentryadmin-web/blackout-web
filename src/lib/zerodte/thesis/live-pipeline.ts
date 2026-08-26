@@ -2,7 +2,9 @@ import type { EnrichedZeroDteSetup } from "../board";
 import type { ZeroDteGateBlock } from "../gates";
 import { evaluateArchetypeGates } from "./archetype-gates";
 import { deskEvidenceFromPipeline } from "./desk-evidence-lines";
+import { mergeLegacyBridgeExtras } from "./evidence-bundle-map";
 import { mergeScanPassTheses, runThesisPipelineForSetup } from "./pipeline";
+import { legacyBridgeExtrasFromSetup } from "./rails/legacy-bridge";
 import { syncSetupDiscoveryFromThesis } from "./thesis-board-sync";
 import type { ThesisPipelineResult, ThesisRankTier } from "./types";
 import { thesisFirstEnv } from "./types";
@@ -63,8 +65,12 @@ export function attachThesisFirstLive(
 
   for (const s of setups) {
     const tickerKey = s.ticker.toUpperCase();
+    const mergedExtras = mergeLegacyBridgeExtras(
+      legacyBridgeExtrasFromSetup(s),
+      extrasByTicker[tickerKey] ?? {},
+    );
     const merged = mergedByTicker.get(tickerKey);
-    let pipeline = runThesisPipelineForSetup(s, extrasByTicker[tickerKey] ?? {});
+    let pipeline = runThesisPipelineForSetup(s, mergedExtras);
     if (merged) pipeline = { ...pipeline, thesis: merged };
 
     syncSetupDiscoveryFromThesis(s, pipeline.thesis);
@@ -91,10 +97,7 @@ export function attachThesisFirstLive(
 
     pipeline = {
       ...pipeline,
-      desk_evidence: deskEvidenceFromPipeline(
-        pipeline,
-        extrasByTicker[tickerKey] ?? {}
-      ),
+      desk_evidence: deskEvidenceFromPipeline(pipeline, mergedExtras),
     };
 
     s.thesis_first = pipeline;
