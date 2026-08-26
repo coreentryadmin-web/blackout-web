@@ -11,8 +11,23 @@ import {
 import { railHitsFromLegacySetup, type LegacyBridgeExtras } from "./rails/legacy-bridge";
 import type { MergedThesis, RailHit, ThesisPipelineResult } from "./types";
 
-export function buildMergedThesisFromHits(ticker: string, hits: RailHit[]): MergedThesis | null {
-  const direction = resolveMergedDirection(hits);
+export function buildMergedThesisFromHits(
+  ticker: string,
+  hits: RailHit[],
+  /** Pin the thesis to an already-decided direction (the setup's committed `direction`) instead
+   *  of re-deriving one from the hits' own score-weighted vote. Required for a SINGLE setup
+   *  (runThesisPipelineForSetup) — the board already decided which direction is traded via its
+   *  own merge precedence, so the thesis must describe THAT direction and report any
+   *  disagreeing rail against it, never quietly resolve to a different one. Omitted for the
+   *  cross-setup scan-pass merge (mergeScanPassTheses), which has no single pre-decided
+   *  direction to pin to and must resolve one from the pooled hits. */
+  keptDirection?: "long" | "short"
+): MergedThesis | null {
+  // Preserve resolveMergedDirection's own "no hits → no thesis" contract even when a
+  // keptDirection is pinned — an empty hit set must still fall through to the caller's
+  // no-rail-evidence fallback, not synthesize a thesis with an artificially pinned direction.
+  if (hits.length === 0) return null;
+  const direction = keptDirection ?? resolveMergedDirection(hits);
   if (!direction) return null;
 
   const aligned = hits.filter((h) => h.direction === direction);
@@ -53,7 +68,7 @@ export function runThesisPipelineForSetup(
 ): ThesisPipelineResult {
   const hits = railHitsFromLegacySetup(setup, extras);
   const thesis =
-    buildMergedThesisFromHits(setup.ticker, hits) ??
+    buildMergedThesisFromHits(setup.ticker, hits, setup.direction) ??
     ({
       ticker: setup.ticker,
       direction: setup.direction,

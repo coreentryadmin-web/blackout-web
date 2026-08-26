@@ -94,11 +94,22 @@ export function railHitsFromLegacySetup(
   const ticker = setup.ticker;
   const direction = setup.direction;
   const corroBoost = crossProductCorroborationBoost(direction, extras);
+  // Each discovery origin's OWN voted direction (recordOriginContributionsOnMerge, board.ts) —
+  // a same-ticker merge can carry a real cross-origin disagreement (e.g. FLOW long, PIN short)
+  // that the board's merge precedence resolves to a single kept `setup.direction` for COMMIT
+  // purposes, but the losing origin's real vote is preserved here. Falling back to `direction`
+  // covers the common single-origin case (no conflict recorded) and any legacy row from before
+  // origin_contributions existed. Without this, every rail hit echoed `setup.direction` and
+  // `disagreeing_rails` (pipeline.ts) could never fire on a genuine cross-rail conflict — see
+  // the 2026-08-26 finding.
+  const flowDirection = setup.origin_contributions?.FLOW?.direction ?? direction;
+  const breakoutDirection = setup.origin_contributions?.BREAKOUT?.direction ?? direction;
+  const pinDirection = setup.origin_contributions?.PIN?.direction ?? direction;
 
   if (setup.discovery_origin.includes("FLOW") || (setup.gross_premium ?? 0) >= 200_000) {
     const h = scoreFlowRail({
       ticker,
-      direction,
+      direction: flowDirection,
       gross_premium: setup.gross_premium ?? extras.helix_gross_premium ?? 0,
       flow_quality: extras.flow_quality ?? setup.flow_quality ?? null,
       print_count: extras.helix_print_count ?? undefined,
@@ -114,7 +125,7 @@ export function railHitsFromLegacySetup(
       null;
     const h = scoreBreakoutRail({
       ticker,
-      direction,
+      direction: breakoutDirection,
       spot: setup.underlying_price ?? 0,
       resistance,
       support: extras.support ?? setup.key_supports?.[0] ?? null,
@@ -128,7 +139,7 @@ export function railHitsFromLegacySetup(
   if (setup.discovery_origin.includes("PIN")) {
     const h = scorePositioningRail({
       ticker,
-      direction,
+      direction: pinDirection,
       gamma_posture:
         extras.gamma_posture ??
         (setup.gamma_regime?.includes("short") ? "short" : setup.gamma_regime?.includes("long") ? "long" : null),

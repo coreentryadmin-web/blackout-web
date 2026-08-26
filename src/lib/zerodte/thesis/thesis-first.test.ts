@@ -141,6 +141,41 @@ test("pipeline: legacy setup bridge produces thesis snapshot", () => {
   assert.ok(["A", "A+", "B", "WATCH"].includes(result.rank_tier));
 });
 
+test("pipeline: a real cross-origin conflict surfaces in disagreeing_rails, not silently agrees", () => {
+  // The bug this pins (2026-08-26): every rail hit used to echo `setup.direction`
+  // unconditionally, so disagreeing_rails could never fire even when the board's own merge
+  // recorded a genuine cross-origin conflict (origin_contributions). Here FLOW argued long
+  // (the direction the board kept) while PIN independently argued short — origin_contributions
+  // carries both real votes, same as a live merged setup.
+  const setup = {
+    ticker: "NVDA",
+    direction: "long" as const,
+    discovery_origin: ["FLOW" as const, "PIN" as const],
+    gross_premium: 3_000_000,
+    score: 80,
+    underlying_price: 100,
+    key_resistances: [110],
+    key_supports: [95],
+    gex_king_strike: 110,
+    gamma_regime: "long_gamma",
+    rel_volume: 1.2,
+    intraday: null,
+    flow_quality: null,
+    origin_contributions: {
+      FLOW: { direction: "long" as const, score: 80 },
+      PIN: { direction: "short" as const, score: 70 },
+    },
+  };
+  const result = runThesisPipelineForSetup(setup as never, {});
+  assert.equal(result.thesis.direction, "long", "thesis must still describe the board's kept/traded direction");
+  assert.ok(
+    result.thesis.disagreeing_rails.some((r) => r.rail === "POSITIONING" && r.direction === "short"),
+    "PIN's real opposing vote must surface as a disagreeing rail"
+  );
+  // The disagreeing rail must NOT contribute to the aligned rail_scores/archetype conviction.
+  assert.equal(result.thesis.rail_scores.POSITIONING, undefined);
+});
+
 test("catalyst rail: flags + hot headline", () => {
   const hit = scoreCatalystRail({
     ticker: "NVDA",
