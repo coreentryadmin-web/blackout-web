@@ -4273,7 +4273,17 @@ export function VectorChart({
         intradayZoomPresetRef.current === "live" ||
         (intradayZoomPresetRef.current == null && defaultChartViewportRef.current === "live");
       if (sessionFramedOnLoad) {
-        applySessionOverviewViewport(chart, initialDisplay);
+        // Live member report (2026-08-26): on first paint, session-overview's right-anchored
+        // framing (applySessionOverviewViewport pins the newest bar 2 slots from the right edge,
+        // with nothing padding the LEFT) left the candles looking dropped into one side of the
+        // pane rather than centered — the exact "SPX Slayer" reference the member pointed to uses
+        // `defaultChartViewport="live"`, whose applyCenteredLiveViewport frames the latest ~48 bars
+        // with the newest bar near the middle. Reuse that same centered framing for the FIRST paint
+        // only — every ongoing session-overview behavior (autoscale gating, re-seed framing on a
+        // new session, live-follow opt-in) still keys off defaultChartViewportRef/
+        // intradayZoomPresetRef being "session", untouched below; this only changes what the member
+        // sees the instant the chart mounts.
+        applyCenteredLiveViewport(chart, initialDisplay.length);
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
       } else if (liveFramedOnLoad) {
         applyCenteredLiveViewport(chart, initialDisplay.length);
