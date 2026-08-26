@@ -131,7 +131,13 @@ export function timeStopClock(nowEtMinutes: number): TimeStopClock {
     minutes_remaining: remaining,
     label: `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`,
     elapsed_frac: Math.max(0, Math.min(1, elapsed)),
-    past_time_stop: nowEtMinutes >= stop,
+    // Strict `>`, matching derivePlayStatus (plan.ts) and every grader's own time-stop
+    // boundary check — all use `nowEtMinutes > time_stop_et_minutes` (the boundary minute
+    // itself is still in the window; plan.test.ts pins this as "inclusive"). This used to
+    // read `>=`, so the displayed "TIME STOP" flag lit up a full minute before the play's
+    // actual lifecycle/grading boundary — cosmetic only (nothing here grades a play), but a
+    // real, previously-undocumented clock mismatch. Found 2026-08-26.
+    past_time_stop: nowEtMinutes > stop,
   };
 }
 
