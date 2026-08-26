@@ -315,6 +315,14 @@ function memberViewportLocked(chartUserPanned: boolean, wheelZoomAtMs: number): 
   return chartUserPanned || Date.now() - wheelZoomAtMs < 8_000;
 }
 
+/** Short post-wheel tail — defer heavy repaints during burst; resume quickly once zoom stops. */
+const GESTURE_REPAINT_COOLDOWN_MS = 600;
+
+/** Active wheel burst or pointer-down drag — defer heavy bead/overlay repaints, not permanent pan lock. */
+function isMemberGesturing(wheelZoomAtMs: number, pointerActive: boolean): boolean {
+  return pointerActive || Date.now() - wheelZoomAtMs < GESTURE_REPAINT_COOLDOWN_MS;
+}
+
 type Props = {
   ticker: string;
   initialBars: VectorBar[];
@@ -1589,6 +1597,15 @@ export function VectorChart({
     defaultChartViewportRef.current = defaultChartViewport;
   }, [defaultChartViewport]);
   const chartUserPannedRef = useRef(false);
+  /** True between pointerdown and pointerup on the chart canvas (active drag). */
+  const chartPointerActiveRef = useRef(false);
+  const pendingTrailRefreshRef = useRef(false);
+  const pendingTrailLensRef = useRef<VectorWallLens>("gex");
+  const pendingOverlayRefreshRef = useRef(false);
+  const deferredRepaintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trailPaintForceRef = useRef(false);
+  const overlayPaintForceRef = useRef(false);
+  const queueDeferredRepaintRef = useRef<() => void>(() => {});
   // Dedupe regime emissions — the read only changes when posture/flip/levels
   // shift, not every tick, so we skip identical reads to avoid re-rendering the
   // banner on every SSE frame.
@@ -2280,6 +2297,16 @@ export function VectorChart({
   const refreshTrails = useCallback((activeLens: VectorWallLens) => {
     const series = seriesRef.current;
     if (!series) return;
+    if (
+      !trailPaintForceRef.current &&
+      isMemberGesturing(wheelZoomCooldownRef.current, chartPointerActiveRef.current)
+    ) {
+      pendingTrailRefreshRef.current = true;
+      pendingTrailLensRef.current = activeLens;
+      queueDeferredRepaintRef.current();
+      return;
+    }
+    trailPaintForceRef.current = false;
     // Replay bead rail is owned by applyFrame (cursor-sliced history + bar-aligned buckets).
     // The live composeHorizonTrail path unions a session-end "current column" that has no
     // matching bar on the cursor-sliced series — feeding it here wipes formations to candles-only.
@@ -2409,6 +2436,15 @@ export function VectorChart({
       vexFlip: number | null,
       dp: VectorDarkPoolLevel[]
     ) => {
+      if (
+        !overlayPaintForceRef.current &&
+        isMemberGesturing(wheelZoomCooldownRef.current, chartPointerActiveRef.current)
+      ) {
+        pendingOverlayRefreshRef.current = true;
+        queueDeferredRepaintRef.current();
+        return;
+      }
+      overlayPaintForceRef.current = false;
       const series = seriesRef.current;
       if (!series) return;
       const walls = wallsForActiveLens(activeLens, gexWalls, vexWalls);
@@ -3099,6 +3135,41 @@ export function VectorChart({
       pickHorizonScopedValue(dteHorizonRef.current, horizonFlipRef.current, gammaFlipRef.current),
     []
   );
+
+  const queueDeferredRepaint = useCallback(() => {
+    if (deferredRepaintTimerRef.current != null) {
+      clearTimeout(deferredRepaintTimerRef.current);
+    }
+    deferredRepaintTimerRef.current = setTimeout(() => {
+      deferredRepaintTimerRef.current = null;
+      if (!pendingTrailRefreshRef.current && !pendingOverlayRefreshRef.current) {
+        return;
+      }
+      if (isMemberGesturing(wheelZoomCooldownRef.current, chartPointerActiveRef.current)) {
+        queueDeferredRepaint();
+        return;
+      }
+      if (pendingTrailRefreshRef.current) {
+        pendingTrailRefreshRef.current = false;
+        trailPaintForceRef.current = true;
+        refreshTrails(pendingTrailLensRef.current ?? lensRef.current);
+      }
+      if (pendingOverlayRefreshRef.current) {
+        pendingOverlayRefreshRef.current = false;
+        overlayPaintForceRef.current = true;
+        refreshOverlays(
+          lensRef.current,
+          liveGexWalls(),
+          vexWallsRef.current,
+          liveGammaFlip(),
+          vexFlipRef.current,
+          darkPoolRef.current
+        );
+      }
+    }, 48);
+  }, [refreshTrails, refreshOverlays, liveGexWalls, liveGammaFlip]);
+
+  queueDeferredRepaintRef.current = queueDeferredRepaint;
 
   useEffect(() => {
     darkPoolWallsEnabledRef.current = darkPoolWallsEnabled;
@@ -3896,9 +3967,9 @@ export function VectorChart({
       // frame applyFrame just drew — same leak shape as the 2026-07-07 finding.
       // During member pan/zoom, defer heavy overlay/trail repaints so wheel/drag stays responsive;
       // the forming candle still updates via series.update above.
-      const interactionHot = memberViewportLocked(
-        chartUserPannedRef.current,
-        wheelZoomCooldownRef.current
+      const interactionHot = isMemberGesturing(
+        wheelZoomCooldownRef.current,
+        chartPointerActiveRef.current
       );
       if (!inReplay && !interactionHot) {
         const now = Date.now();
@@ -4138,6 +4209,7 @@ export function VectorChart({
     const onWheel = (e: WheelEvent) => {
       wheelZoomCooldownRef.current = Date.now();
       chartUserPannedRef.current = true;
+      queueDeferredRepaintRef.current();
       const rect = container.getBoundingClientRect();
       const xInChart = e.clientX - rect.left;
       const priceAxisZone = rect.width - 65;
@@ -4180,9 +4252,18 @@ export function VectorChart({
 
     const onChartPointerDown = () => {
       chartUserPannedRef.current = true;
+      chartPointerActiveRef.current = true;
+    };
+    const onChartPointerUp = () => {
+      chartPointerActiveRef.current = false;
+      queueDeferredRepaintRef.current();
     };
     container.addEventListener("mousedown", onChartPointerDown);
     container.addEventListener("touchstart", onChartPointerDown, { passive: true });
+    container.addEventListener("mouseup", onChartPointerUp);
+    container.addEventListener("mouseleave", onChartPointerUp);
+    container.addEventListener("touchend", onChartPointerUp, { passive: true });
+    container.addEventListener("touchcancel", onChartPointerUp, { passive: true });
 
     chartRef.current = chart;
     seriesRef.current = series;
@@ -4284,9 +4365,9 @@ export function VectorChart({
       if (syncState?.linkCrosshair && !applyingExternalCrosshairRef.current && hoverEpochSec != null) {
         onCompareCrosshairRef.current?.(syncState.paneId, hoverEpochSec);
       }
-      const interactionHot = memberViewportLocked(
-        chartUserPannedRef.current,
-        wheelZoomCooldownRef.current
+      const interactionHot = isMemberGesturing(
+        wheelZoomCooldownRef.current,
+        chartPointerActiveRef.current
       );
       const history = wallHistoryRef.current;
       const walls = interactionHot
@@ -4446,6 +4527,10 @@ export function VectorChart({
     return () => {
       layoutObserver.disconnect();
       intersectionObserver?.disconnect();
+      if (deferredRepaintTimerRef.current != null) {
+        clearTimeout(deferredRepaintTimerRef.current);
+        deferredRepaintTimerRef.current = null;
+      }
       container.removeEventListener("wheel", onWheel);
       unbindDrawClick();
       if (crosshairRafRef.current != null) {
@@ -4467,6 +4552,10 @@ export function VectorChart({
       renderWallEventTooltip(wallEventTooltipRef.current, null);
       container.removeEventListener("mousedown", onChartPointerDown);
       container.removeEventListener("touchstart", onChartPointerDown);
+      container.removeEventListener("mouseup", onChartPointerUp);
+      container.removeEventListener("mouseleave", onChartPointerUp);
+      container.removeEventListener("touchend", onChartPointerUp);
+      container.removeEventListener("touchcancel", onChartPointerUp);
       chart.timeScale().unsubscribeVisibleTimeRangeChange(onVisibleTimeRangeChange);
       stopReplayTimer();
       if (priceScaleTimer != null) clearInterval(priceScaleTimer);

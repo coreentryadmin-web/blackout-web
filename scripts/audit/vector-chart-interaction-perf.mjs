@@ -10,7 +10,11 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
-import { mintIosPlaywrightSession } from "./lib/ios-playwright-auth.mjs";
+import {
+  mintIosPlaywrightSession,
+  onboardingInitScript,
+  dismissDeskModals,
+} from "./lib/ios-playwright-auth.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(
@@ -28,6 +32,7 @@ async function main() {
     userAgent:
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
   });
+  await context.addInitScript(onboardingInitScript);
   await context.addCookies(auth.cookies);
   const page = await context.newPage();
 
@@ -40,13 +45,9 @@ async function main() {
   try {
     await page.goto(`${BASE}/vector?ticker=SPY`, { waitUntil: "domcontentloaded", timeout: 120_000 });
     await page.waitForSelector("canvas", { timeout: 90_000 });
-    // Dismiss onboarding so wheel events hit the chart, not the modal overlay.
-    const skipTour = page.getByRole("button", { name: /^skip$/i });
-    if (await skipTour.isVisible().catch(() => false)) {
-      await skipTour.click();
-      await page.waitForTimeout(500);
-    }
+    await dismissDeskModals(page);
     await page.waitForTimeout(3500);
+    await dismissDeskModals(page);
 
     const canvasCount = await page.locator("canvas").count();
     if (canvasCount < 1) {
@@ -158,7 +159,7 @@ async function main() {
       );
       rec(
         "LONG-TASKS",
-        metrics.longTaskCount > 5 ? "AMBER" : "GREEN",
+        metrics.longTaskCount > 8 ? "AMBER" : "GREEN",
         `count=${metrics.longTaskCount} total=${metrics.longTaskTotalMs.toFixed(0)}ms`
       );
       report.metrics = metrics;

@@ -364,7 +364,11 @@ test("VectorChart: wheel/pan interaction defers heavy overlay + crosshair work",
   // Crosshair wall/gex lookups run once per frame, not per mousemove.
   assert.match(src, /crosshairComputeRafRef/);
   assert.match(src, /flushCrosshairCompute/);
-  // Live SSE defers trail/overlay repaints while member is panning/zooming.
-  assert.match(src, /interactionHot = memberViewportLocked/);
+  // Active gesture (pointer down or wheel cooldown) defers trail/overlay repaints.
+  assert.match(src, /isMemberGesturing/);
+  assert.match(src, /GESTURE_REPAINT_COOLDOWN_MS/);
+  assert.match(src, /chartPointerActiveRef/);
+  assert.match(src, /queueDeferredRepaint/);
+  assert.match(src, /interactionHot = isMemberGesturing/);
   assert.match(src, /!inReplay && !interactionHot/);
 });
