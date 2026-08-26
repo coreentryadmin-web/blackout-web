@@ -107,7 +107,7 @@ export function isSetupInvalidated(
  * Uses live bid/ask mid, entry anchor, play invalidation, and liquidity gates.
  */
 export function evaluateVectorPickLiveStatus(input: VectorPickLiveEvalInput): VectorPickLiveEval {
-  const { quote, spot, entryMid, side } = input;
+  const { quote, spot, entryMid } = input;
   const mid =
     quote.mid ??
     zeroDteMidOf(quote.bid, quote.ask);
