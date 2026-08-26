@@ -169,6 +169,7 @@ const KIND_LABEL: Record<ConfluenceKind, string> = {
   pdh: "PDH",
   pdl: "PDL",
   pivot: "pivot",
+  "dark-pool": "dark pool",
 };
 
 /**
