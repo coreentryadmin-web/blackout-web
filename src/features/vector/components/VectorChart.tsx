@@ -2319,13 +2319,15 @@ export function VectorChart({
     );
     const history: WallHistorySample[] =
       composeHorizonTrail(recordedTrail, currentColumn) ??
-      (liveSessionRef.current && !replayModeRef.current && !sessionOverview
-        ? trimHistoryForLiveTrails(
-            wallHistoryRef.current,
-            undefined,
-            liveTrailAnchorSec(wallHistoryRef.current, minuteBarsRef.current.map((b) => b.time))
-          )
-        : wallHistoryRef.current);
+      (horizon !== "all"
+        ? []
+        : liveSessionRef.current && !replayModeRef.current && !sessionOverview
+          ? trimHistoryForLiveTrails(
+              wallHistoryRef.current,
+              undefined,
+              liveTrailAnchorSec(wallHistoryRef.current, minuteBarsRef.current.map((b) => b.time))
+            )
+          : wallHistoryRef.current);
     const liveBeads = liveSessionRef.current && !replayModeRef.current;
     const pinLiveAnchorBeads = liveFollowEnabledRef.current;
     const trailBucketSec = wallTrailSecRef.current;

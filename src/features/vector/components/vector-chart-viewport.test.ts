@@ -317,6 +317,15 @@ test("VectorChart: narrowed DTE horizon history poll merges remote tail (does no
   assert.match(src, /mergeWallHistory\(horizonHistoryRef\.current, remote\)/);
 });
 
+test("VectorChart: narrowed DTE bead trail never falls back to blended all rail", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /composeHorizonTrail\(recordedTrail, currentColumn\)/);
+  assert.match(
+    src,
+    /composeHorizonTrail\(recordedTrail, currentColumn\) \?\?\s*\n\s*\(horizon !== "all"\s*\n\s*\? \[\]/
+  );
+});
+
 test("VectorChart fetches and uses the blended rail when it was given no seed", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /const seedRailEmpty = initialWallHistory\.length === 0/);
