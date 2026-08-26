@@ -207,6 +207,7 @@ import { vectorWallTrailSecClient } from "@/features/vector/lib/vector-wall-samp
 import { vectorHeatmapScopeLabel } from "@/lib/gex-scope-labels";
 import { readPersisted, writePersisted, VECTOR_DARK_POOL_WALLS_STORAGE_KEY } from "@/features/vector/lib/vector-chart-view";
 import {
+  applyCenteredLiveViewport,
   applySessionOverviewViewport,
   wantsSessionOverviewViewport,
 } from "@/features/vector/lib/vector-chart-viewport";
@@ -215,7 +216,6 @@ import {
   coarserTimeframeIfZoomedOut,
   hasExtendedHoursBars,
   intradayZoomPresetFromKeyboard,
-  liveEdgeVisibleLogicalRange,
   overlayDimFactor,
   beadOverlayDimFactor,
   structureVisibleLogicalRange,
@@ -302,11 +302,17 @@ function chartIsFollowingLive(chart: IChartApi): boolean {
   return Number.isFinite(pos) && pos <= LIVE_FOLLOW_THRESHOLD_BARS;
 }
 
-/** Avoid yanking pan/zoom when the member scrolled back to study structure. */
-function maybeScrollToLive(chart: IChartApi | null, liveFollowEnabled: boolean): void {
-  if (!chart || !liveFollowEnabled) return;
-  if (!chartIsFollowingLive(chart)) return;
-  chart.timeScale().scrollToRealTime();
+/** Re-center the live window unless the member is mid-gesture or has panned away. */
+function maybeFollowLiveViewport(
+  chart: IChartApi | null,
+  liveFollowEnabled: boolean,
+  barCount: number,
+  userPanned: boolean,
+  wheelZoomAtMs: number
+): void {
+  if (!chart || !liveFollowEnabled || barCount <= 0) return;
+  if (memberViewportLocked(userPanned, wheelZoomAtMs)) return;
+  applyCenteredLiveViewport(chart, barCount);
 }
 
 
@@ -526,7 +532,7 @@ function applyDisplayBars(
  *
  * We snapshot the exact visible logical range before swapping the data and restore it after —
  * UNLESS the chart is currently following the live edge, in which case we defer to the same
- * maybeScrollToLive() follow behavior the live-tick path uses (pinning a stale range there
+ * maybeFollowLiveViewport() follow behavior the live-tick path uses (pinning a stale range there
  * would fight the live follow). First load and explicit timeframe switches deliberately keep
  * their fitContent() refit and must NOT route through here.
  */
@@ -545,7 +551,7 @@ function applyDisplayBarsPreservingView(
     timeScale && !(following && liveFollowEnabled) ? timeScale.getVisibleLogicalRange() : null;
   applyDisplayBars(candleSeries, volumeSeries, volumeAvgSeries, bars, volumeMode);
   if (following && liveFollowEnabled) {
-    maybeScrollToLive(chart, true);
+    maybeFollowLiveViewport(chart, true, bars.length, false, 0);
   } else if (prevRange && timeScale) {
     timeScale.setVisibleLogicalRange(prevRange);
   }
@@ -1790,10 +1796,10 @@ export function VectorChart({
   const autoCoarsenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayDimRef = useRef(1);
   const [intradayZoomPreset, setIntradayZoomPreset] = useState<IntradayZoomPreset | null>(() =>
-    defaultChartViewport === "session" ? "session" : null
+    defaultChartViewport === "session" ? "session" : defaultChartViewport === "live" ? "live" : null
   );
   const intradayZoomPresetRef = useRef<IntradayZoomPreset | null>(
-    defaultChartViewport === "session" ? "session" : null
+    defaultChartViewport === "session" ? "session" : defaultChartViewport === "live" ? "live" : null
   );
   useEffect(() => {
     intradayZoomPresetRef.current = intradayZoomPreset;
@@ -1946,11 +1952,11 @@ export function VectorChart({
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
         liveFollowEnabledRef.current = false;
       } else {
-        chartUserPannedRef.current = true;
-        const range = liveEdgeVisibleLogicalRange(barCount);
-        if (range) chart.timeScale().setVisibleLogicalRange(range);
+        chartUserPannedRef.current = false;
+        wheelZoomCooldownRef.current = 0;
+        applyCenteredLiveViewport(chart, barCount);
         liveFollowEnabledRef.current = true;
-        chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: true });
+        chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
       }
       syncCandleViewportFromRange(chart);
       applyAdaptiveBarSpacingToChart(chart);
@@ -4195,8 +4201,15 @@ export function VectorChart({
       const sessionFramedOnLoad =
         intradayZoomPresetRef.current === "session" ||
         (intradayZoomPresetRef.current == null && defaultChartViewportRef.current === "session");
+      const liveFramedOnLoad =
+        intradayZoomPresetRef.current === "live" ||
+        (intradayZoomPresetRef.current == null && defaultChartViewportRef.current === "live");
       if (sessionFramedOnLoad) {
         applySessionOverviewViewport(chart, initialDisplay);
+        chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
+      } else if (liveFramedOnLoad) {
+        applyCenteredLiveViewport(chart, initialDisplay.length);
+        liveFollowEnabledRef.current = true;
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
       } else {
         chart.timeScale().fitContent();
@@ -4332,6 +4345,17 @@ export function VectorChart({
         if (memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)) return;
         const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
         applySessionOverviewViewport(chart, display);
+        chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
+        refreshTrails(lensRef.current);
+      });
+    } else if (
+      intradayZoomPresetRef.current === "live" ||
+      (intradayZoomPresetRef.current == null && defaultChartViewportRef.current === "live")
+    ) {
+      requestAnimationFrame(() => {
+        if (memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)) return;
+        const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
+        applyCenteredLiveViewport(chart, display.length);
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
         refreshTrails(lensRef.current);
       });
@@ -5000,7 +5024,13 @@ export function VectorChart({
         darkPoolRef.current
       );
       if (liveSession) {
-        maybeScrollToLive(chart, liveFollowEnabledRef.current);
+        maybeFollowLiveViewport(
+          chart,
+          liveFollowEnabledRef.current,
+          displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current).length,
+          chartUserPannedRef.current,
+          wheelZoomCooldownRef.current
+        );
       }
     }
     chart?.timeScale().applyOptions({ secondsVisible: timeframe === 1 });

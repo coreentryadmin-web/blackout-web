@@ -5,12 +5,13 @@ import { join } from "node:path";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
-test("SPX embed seeds 0DTE horizon history and opens on session viewport", () => {
+test("SPX embed seeds 0DTE horizon history and uses shared desk-open defaults", () => {
   const embed = read("src/features/spx/components/SpxVectorEmbed.tsx");
   assert.match(embed, /defaultVectorDeskOpenProps\("SPX"\)/);
   assert.match(embed, /import \{ defaultVectorDeskOpenProps \}/);
+  const ticker = read("src/features/vector/lib/vector-ticker.ts");
+  assert.match(ticker, /defaultChartViewport: "live"/);
   const shell = read("src/features/vector/components/VectorPageShell.tsx");
-  assert.match(shell, /defaultChartViewport = "session"/);
   assert.match(shell, /defaultChartViewport=\{defaultChartViewport\}/);
   assert.match(shell, /initialHorizonWallHistory=\{initialHorizonWallHistory\}/);
 });
@@ -29,11 +30,13 @@ test("VectorPageShell forwards desk-open props to standalone chartBlock", () => 
   assert.match(shell, /defaultChartViewport=\{defaultChartViewport\}/);
 });
 
-test("VectorChart: session viewport defers live-edge scroll until member pans", () => {
+test("VectorChart: live viewport centers the forming bar and follows until member pans", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /liveFollowEnabledRef/);
   assert.match(src, /defaultChartViewport = "session"/);
-  assert.match(src, /maybeScrollToLive\(chart, liveFollowEnabledRef\.current\)/);
+  assert.match(src, /maybeFollowLiveViewport/);
+  assert.match(src, /applyCenteredLiveViewport/);
+  assert.match(src, /liveFramedOnLoad/);
   assert.match(src, /pinLiveAnchorBeads/);
   assert.match(src, /fitSessionOverview/);
   assert.match(src, /applySessionOverviewViewport/);
@@ -50,9 +53,19 @@ test("VectorChart: session overview blocks live-follow flip and auto-coarsen", (
   assert.match(src, /fitContent\(\)/);
 });
 
+test("VectorChart: default load frames centered live when defaultChartViewport is live", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /defaultChartViewport === "live" \? "live" : null/);
+  assert.match(src, /liveFramedOnLoad/);
+  assert.match(src, /applyCenteredLiveViewport\(chart, initialDisplay\.length\)/);
+});
+
 test("VectorChart: default load frames session overview when defaultChartViewport is session", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
-  assert.match(src, /defaultChartViewport === "session" \? "session" : null/);
+  assert.match(
+    src,
+    /defaultChartViewport === "session" \? "session" : defaultChartViewport === "live" \? "live" : null/
+  );
   assert.match(src, /sessionFramedOnLoad/);
   assert.match(src, /applySessionOverviewViewport\(chart, initialDisplay\)/);
 });

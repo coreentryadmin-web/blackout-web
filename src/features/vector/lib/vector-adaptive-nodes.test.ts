@@ -36,7 +36,7 @@ test("adaptiveAutoNodeCount: SPX keeps timeframe AUTO cap (10 on 3m)", () => {
   assert.equal(n, tfAuto, "dense ladder should not self-limit");
 });
 
-test("adaptiveAutoNodeCount: NVDA self-limits below timeframe cap but respects AUTO floor", () => {
+test("adaptiveAutoNodeCount: NVDA respects AUTO floor on coarse ladders", () => {
   const tfAuto = wallCountForTimeframe(3);
   assert.ok(tfAuto >= 10, `3m AUTO cap should be a dense-ladder count, got ${tfAuto}`);
   const candle = {
@@ -49,8 +49,8 @@ test("adaptiveAutoNodeCount: NVDA self-limits below timeframe cap but respects A
     candleRange: candle,
     tfAutoCount: tfAuto,
   });
-  assert.ok(n < tfAuto, `NVDA should self-limit below cap, got ${n}`);
-  assert.ok(n >= 7 && n <= tfAuto, `expected AUTO floor ~7 rows, got ${n}`);
+  assert.ok(n >= 12 || n === tfAuto, `expected AUTO floor or full cap, got ${n}`);
+  assert.ok(n <= tfAuto);
 });
 
 test("adaptiveAutoNodeCount: volatile NVDA day allows more rows", () => {

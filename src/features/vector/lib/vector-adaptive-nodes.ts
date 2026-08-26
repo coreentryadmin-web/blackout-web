@@ -19,8 +19,8 @@ import { resolveNodeCount } from "./vector-node-density";
 export const AUTO_MIN_CANDLE_SHARE = 0.16;
 
 /** AUTO never draws fewer rows than this when the timeframe cap allows — single names were self-
- *  limiting to ~4 rows while the rail carries 8+ (measured NVDA 2026-08-24). Clamped to cap. */
-export const AUTO_MIN_ROWS_PER_SIDE = 7;
+ *  limiting to ~7 rows while the rail carries 16+ (measured NVDA 2026-08-24). Clamped to cap. */
+export const AUTO_MIN_ROWS_PER_SIDE = 12;
 
 export type AdaptiveNodeInputs = {
   spot: number;
