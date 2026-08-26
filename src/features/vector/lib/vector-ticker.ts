@@ -70,33 +70,31 @@ export function defaultVectorDteHorizon(_raw: string | null | undefined): Vector
 }
 
 /**
- * Opening NODES density — oracle desks (SPX/SPY/QQQ) open at 20 rows/side so beads + walls read
- * clearly on first paint (member showcase / SPX Slayer reference). Single names keep AUTO so coarse
- * ladders do not sacrifice candle share on load.
+ * Opening NODES density — every desk opens at 20 rows/side so single-name beads match SPX Slayer
+ * showcase density (server records up to 20/side for all tickers; AUTO was self-limiting NVDA to ~7).
  */
 export const VECTOR_ORACLE_DEFAULT_NODE_DENSITY = 20 as const satisfies VectorNodeDensity;
+export const VECTOR_DEFAULT_OPEN_NODE_DENSITY = VECTOR_ORACLE_DEFAULT_NODE_DENSITY;
 
-export function defaultVectorNodeDensity(raw: string | null | undefined): VectorNodeDensity {
-  return VECTOR_ORACLE_TICKERS.has(normalizeVectorTicker(raw))
-    ? VECTOR_ORACLE_DEFAULT_NODE_DENSITY
-    : "auto";
+export function defaultVectorNodeDensity(_raw: string | null | undefined): VectorNodeDensity {
+  return VECTOR_DEFAULT_OPEN_NODE_DENSITY;
 }
 
 /** Opening desk props shared by SPX Slayer embed and standalone /vector — one showcase contract. */
 export type VectorDeskOpenDefaults = {
   defaultDteHorizon: VectorDteHorizon;
-  defaultChartViewport: "session";
+  defaultChartViewport: "session" | "live";
   defaultTimeframe: VectorPresetTimeframe;
   defaultNodeDensity: VectorNodeDensity;
 };
 
-/** SPX Slayer reference load: session overview · 3m · oracle 0DTE · 20-row beads when applicable. */
+/** Desk open: centered live window · 3m · 0DTE · 20-row beads for every symbol. */
 export function defaultVectorDeskOpenProps(
   raw: string | null | undefined
 ): VectorDeskOpenDefaults {
   return {
     defaultDteHorizon: defaultVectorDteHorizon(raw),
-    defaultChartViewport: "session",
+    defaultChartViewport: "live",
     defaultTimeframe: VECTOR_DEFAULT_TIMEFRAME,
     defaultNodeDensity: defaultVectorNodeDensity(raw),
   };

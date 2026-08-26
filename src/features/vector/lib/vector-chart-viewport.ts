@@ -1,5 +1,6 @@
 import type { IChartApi, UTCTimestamp } from "lightweight-charts";
 import { lastSessionBars } from "@/features/vector/lib/vector-key-levels";
+import { centeredLiveVisibleLogicalRange } from "@/features/vector/lib/vector-candle-render";
 
 /** Right-edge breathing room (in bar slots) so the latest bead cluster is not glued to the axis. */
 const SESSION_VIEWPORT_RIGHT_PAD = 2;
@@ -36,6 +37,14 @@ export function sessionVisibleTimeRange(
 }
 
 /** Fit the chart to the current session's bars (not the full multi-day seed). */
+/** Frame ~48 bars with the latest candle near center — default live desk load. */
+export function applyCenteredLiveViewport(chart: IChartApi, barCount: number): boolean {
+  const range = centeredLiveVisibleLogicalRange(barCount);
+  if (!range) return false;
+  chart.timeScale().setVisibleLogicalRange(range);
+  return true;
+}
+
 export function applySessionOverviewViewport(
   chart: IChartApi,
   bars: readonly { time: number }[]

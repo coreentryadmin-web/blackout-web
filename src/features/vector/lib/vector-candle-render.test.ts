@@ -10,6 +10,7 @@ import {
   hasExtendedHoursBars,
   intradayZoomPresetFromKeyboard,
   intradayZoomShortcutLabel,
+  centeredLiveVisibleLogicalRange,
   liveEdgeVisibleLogicalRange,
   overlayDimFactor,
   structureVisibleLogicalRange,
@@ -67,6 +68,14 @@ describe("vector-candle-render", () => {
     assert.deepEqual(structureVisibleLogicalRange(200), { from: 125, to: 201 });
     assert.deepEqual(liveEdgeVisibleLogicalRange(100), { from: 52, to: 101 });
     assert.deepEqual(structureVisibleLogicalRange(10), { from: 0, to: 11 });
+  });
+
+  test("centeredLiveVisibleLogicalRange: latest bar sits near horizontal center", () => {
+    const range = centeredLiveVisibleLogicalRange(100);
+    assert.ok(range);
+    const mid = (range!.from + range!.to) / 2;
+    assert.ok(Math.abs(mid - 99) <= 2, `expected center near bar 99, got mid=${mid}`);
+    assert.equal(range!.to - range!.from, 49);
   });
 
   test("coarserTimeframeIfZoomedOut: steps up preset when equivalent 1m bars exceed threshold", () => {
