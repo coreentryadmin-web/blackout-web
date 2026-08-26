@@ -10,6 +10,7 @@ import {
   type VectorPickLiveQuote,
 } from "@/features/vector/lib/vector-pick-live-status";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -164,5 +165,9 @@ export async function POST(req: NextRequest) {
     };
   });
 
-  return NextResponse.json({ live, asOf: new Date().toISOString() }, { headers: NO_STORE_HEADERS });
+  const nowMs = Date.now();
+  return NextResponse.json(
+    { live, asOf: etStamp(nowMs), session_date: etSessionDate(nowMs) },
+    { headers: NO_STORE_HEADERS }
+  );
 }
