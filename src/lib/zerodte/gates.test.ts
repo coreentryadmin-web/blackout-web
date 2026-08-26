@@ -1151,6 +1151,38 @@ test("G-4: elevated flat-tape score floor is 65 (same as aligned) — 64 blocks,
   // floor for unknown tape is tested via the calibration path and fail-closed tests.
 });
 
+// ── G-4: elevated-VIX tape scoping must match G-1's (index/ETF only) ─────────────────
+// Bug found 2026-08-26: the elevated-VIX floor read `input.bias` vs `input.direction`
+// unconditionally, so a single name (which G-1 already exempts from tape alignment
+// entirely) with a disagreeing SPY bias was silently held to the stricter 75 floor —
+// re-imposing exactly the SPY-tape constraint G-1 was written to remove for single names.
+test("G-4: a single name with a DISAGREEING SPY bias still gets the standard 65 floor (G-1 exempts it from tape alignment)", () => {
+  // NVDA long, SPY tape DOWN (disagreeing) — G-1 never fires for single names, so this
+  // must reach G-4 and clear at the standard 65 floor, not the 75 elevated-counter-tape floor.
+  const v = evaluateZeroDteGates(
+    input({ ticker: "NVDA", direction: "long", bias: "down", score: 70, vixDayOpen: 18 })
+  );
+  assert.equal(v.calibration.g4_vix.tier, "elevated");
+  assert.equal(v.verdict, "COMMIT", "single names must not be judged against the SPY tape at all");
+  assert.ok(!v.blocks.some((b) => b.code === "vix_elevated"));
+
+  // The same score/VIX/disagreeing-bias combination on an INDEX ETF must still block —
+  // this fix must not loosen the elevated floor for the instrument class it actually protects.
+  const vEtf = evaluateZeroDteGates(
+    input({ ticker: "QQQ", direction: "long", bias: "down", score: 70, vixDayOpen: 18 })
+  );
+  assert.equal(vEtf.verdict, "BLOCKED");
+  assert.ok(vEtf.blocks.some((b) => b.code === "tape_alignment"), "index ETF counter-tape still blocked by G-1 before G-4 is reached");
+});
+
+test("computeGateCalibration: a single name's g4_vix.tier ignores SPY bias the same way the live gate does", () => {
+  const v = evaluateZeroDteGates(
+    input({ ticker: "NVDA", direction: "long", bias: "down", score: 70, vixDayOpen: 18 })
+  );
+  assert.equal(v.calibration.g4_vix.would_block, false);
+  assert.match(v.calibration.g4_vix.note, /tape-aligned/);
+});
+
 // ── G-4 fail-closed couldBlock narrowing: index/ETF flat at EXACTLY the 65 floor ──────
 test("G-4 fail-closed: an index/ETF flat-tape at 65+ could NOT have been blocked → unavailable VIX passes it", () => {
   // couldBlock = !isIndexEtf || (!tapeAlignedOrFlat && score < 75). QQQ flat → tapeAlignedOrFlat=true → couldBlock false.
