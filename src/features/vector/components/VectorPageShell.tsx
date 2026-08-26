@@ -610,6 +610,16 @@ export function VectorPageShell({
     [onCompareSpotChange]
   );
 
+  // Hooks must run unconditionally on every render — this sits ABOVE the chartOnly early return
+  // below (react-hooks/rules-of-hooks). The embed path never renders VectorContractPicksCard, but
+  // the hook itself still has to fire every render regardless of which branch returns.
+  const { picks: contractPicks, loading: contractPicksLoading } = useVectorContractPicks(
+    activeTicker,
+    play,
+    dteHorizon,
+    liveSession
+  );
+
   // Chart-only embed (SPX Slayer flagship desk): the SAME VectorChart with the SAME seed props and
   // the SAME toolbar/regime/freshness/toast plumbing — just none of the page chrome or side rails.
   // Saved alert rules for the pinned ticker still evaluate + toast here, so a member's /vector
@@ -693,13 +703,6 @@ export function VectorPageShell({
   // they're visible without scrolling. Below the wide-desktop breakpoint this still renders (see
   // .vector-action-rail in globals.css), just as a full-width row under the 3-column area rather
   // than its own column — nothing is ever lost, only the wide-desktop layout changes.
-  const { picks: contractPicks, loading: contractPicksLoading } = useVectorContractPicks(
-    activeTicker,
-    play,
-    dteHorizon,
-    liveSession
-  );
-
   const actionRail = (
     <>
       <VectorPlayCard play={play} className="mb-2" />
