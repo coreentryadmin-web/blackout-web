@@ -2319,13 +2319,15 @@ export function VectorChart({
     );
     const history: WallHistorySample[] =
       composeHorizonTrail(recordedTrail, currentColumn) ??
-      (liveSessionRef.current && !replayModeRef.current && !sessionOverview
-        ? trimHistoryForLiveTrails(
-            wallHistoryRef.current,
-            undefined,
-            liveTrailAnchorSec(wallHistoryRef.current, minuteBarsRef.current.map((b) => b.time))
-          )
-        : wallHistoryRef.current);
+      (horizon !== "all"
+        ? []
+        : liveSessionRef.current && !replayModeRef.current && !sessionOverview
+          ? trimHistoryForLiveTrails(
+              wallHistoryRef.current,
+              undefined,
+              liveTrailAnchorSec(wallHistoryRef.current, minuteBarsRef.current.map((b) => b.time))
+            )
+          : wallHistoryRef.current);
     const liveBeads = liveSessionRef.current && !replayModeRef.current;
     const pinLiveAnchorBeads = liveFollowEnabledRef.current;
     const trailBucketSec = wallTrailSecRef.current;
@@ -3572,7 +3574,10 @@ export function VectorChart({
         if (cancelled || dteHorizonRef.current !== dteHorizon || !res.ok) return;
         const data = (await res.json()) as { history?: WallHistorySample[] };
         if (cancelled || dteHorizonRef.current !== dteHorizon) return;
-        horizonHistoryRef.current = Array.isArray(data.history) ? data.history : [];
+        const remote = Array.isArray(data.history) ? data.history : [];
+        const merged = mergeWallHistory(horizonHistoryRef.current, remote);
+        if (merged === horizonHistoryRef.current) return;
+        horizonHistoryRef.current = merged;
         repaint();
         if (dteHorizonRef.current === "0dte") requestAnimationFrame(() => fitSessionOverview());
       } catch {

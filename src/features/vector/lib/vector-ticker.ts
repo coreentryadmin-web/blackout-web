@@ -64,9 +64,9 @@ export function vectorHasWsOracle(ticker: string): boolean {
   return VECTOR_ORACLE_TICKERS.has(normalizeVectorTicker(ticker));
 }
 
-/** Opening DTE horizon: oracle indices on 0DTE; everything else on weekly (5s per-horizon rail). */
-export function defaultVectorDteHorizon(raw: string | null | undefined): VectorDteHorizon {
-  return VECTOR_ORACLE_TICKERS.has(normalizeVectorTicker(raw)) ? "0dte" : "weekly";
+/** Opening DTE horizon: intraday desk defaults to 0DTE for every symbol (matrix + beads match session view). */
+export function defaultVectorDteHorizon(_raw: string | null | undefined): VectorDteHorizon {
+  return "0dte";
 }
 
 /**

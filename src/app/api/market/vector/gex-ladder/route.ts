@@ -112,9 +112,8 @@ export async function GET(req: NextRequest) {
   //
   // It was originally restricted to "all" so the rail could never sit beside bars drawn from a
   // different expiry set. Live check on prod proved that reasoning shipped the feature DARK: the
-  // Vector chart defaults to "weekly", and to "0dte" on oracle tickers like SPY, so the default
-  // view of the page a member lands on never rendered a single rail cell. A correctness guard that
-  // hides the feature in its own default state is not a guard, it is a bug.
+  // Vector chart defaults to 0DTE on every symbol, so the default view always renders the scoped
+  // matrix rail and per-horizon bead trail the member expects on intraday.
   //
   // Serving the near-term book on every horizon is also the more defensible number. Forced hedging
   // flow is a property of the WHOLE near-term book — dealers hedge the position they hold, not the

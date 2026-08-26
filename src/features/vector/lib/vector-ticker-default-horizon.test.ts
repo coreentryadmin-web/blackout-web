@@ -3,17 +3,17 @@ import assert from "node:assert/strict";
 import { defaultVectorDteHorizon, defaultVectorNodeDensity, defaultVectorDeskOpenProps, VECTOR_ORACLE_DEFAULT_NODE_DENSITY } from "./vector-ticker";
 import { VECTOR_DEFAULT_DTE_HORIZON } from "./vector-dte-horizon";
 
-test("defaultVectorDteHorizon: oracle indices open on 0DTE, single names on weekly", () => {
+test("defaultVectorDteHorizon: intraday desk opens on 0DTE for every symbol", () => {
   assert.equal(defaultVectorDteHorizon("SPX"), "0dte");
   assert.equal(defaultVectorDteHorizon("SPY"), "0dte");
   assert.equal(defaultVectorDteHorizon("QQQ"), "0dte");
-  assert.equal(defaultVectorDteHorizon("NVDA"), "weekly");
-  assert.equal(defaultVectorDteHorizon("TSLA"), "weekly");
-  assert.equal(defaultVectorDteHorizon("META"), "weekly");
+  assert.equal(defaultVectorDteHorizon("NVDA"), "0dte");
+  assert.equal(defaultVectorDteHorizon("TSLA"), "0dte");
+  assert.equal(defaultVectorDteHorizon("META"), "0dte");
 });
 
-test("VECTOR_DEFAULT_DTE_HORIZON is weekly (not blended all) for standalone desk fallback", () => {
-  assert.equal(VECTOR_DEFAULT_DTE_HORIZON, "weekly");
+test("VECTOR_DEFAULT_DTE_HORIZON is 0DTE for standalone desk fallback", () => {
+  assert.equal(VECTOR_DEFAULT_DTE_HORIZON, "0dte");
 });
 
 test("defaultVectorDeskOpenProps: session · 3m · oracle 0DTE · 20-row nodes", () => {
@@ -23,7 +23,7 @@ test("defaultVectorDeskOpenProps: session · 3m · oracle 0DTE · 20-row nodes",
   assert.equal(open.defaultTimeframe, 3);
   assert.equal(open.defaultNodeDensity, 20);
   const nvda = defaultVectorDeskOpenProps("NVDA");
-  assert.equal(nvda.defaultDteHorizon, "weekly");
+  assert.equal(nvda.defaultDteHorizon, "0dte");
   assert.equal(nvda.defaultNodeDensity, "auto");
 });
 
