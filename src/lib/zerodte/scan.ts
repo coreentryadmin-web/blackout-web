@@ -134,6 +134,7 @@ import {
   freshCommitBlockedByPlan,
   gateRejectionFor,
   planQualityGateBlocks,
+  refreshPlanQualityGateBlocks,
   recentNighthawkTake,
 } from "./gates";
 import { buildRegimePlaneSnapshot, inferRegimeGexQuality } from "./regime-plane";
@@ -557,7 +558,9 @@ export async function scanZeroDteBoard(flags?: {
     const tickers = [...setups]
       .sort((a, b) => b.score - a.score)
       .map((s) => s.ticker.toUpperCase());
-    const thesisExtras = await fetchThesisEvidenceForTickers(tickers);
+    const thesisExtras = await fetchThesisEvidenceForTickers(tickers, {
+      maxTickers: tickers.length,
+    });
     const helixExtras = buildHelixExtrasByTicker(
       flows.map((f) => ({
         ticker: f.ticker,
@@ -579,6 +582,11 @@ export async function scanZeroDteBoard(flags?: {
   if (thesisLive) {
     await attachThesisContractPlans(setups);
     await attachContractPlans(setups);
+    for (const s of setups) {
+      if (s.gate) {
+        s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null);
+      }
+    }
   }
   const gatesCompletedAt = Date.now();
 
@@ -892,6 +900,7 @@ async function attachGateVerdicts(
       macroUnavailable,
       todayYmd: today,
       plan: s.plan ?? null,
+      deferPlanQualityGates: thesisFirstEnv().enabled,
       intradayConflict: s.intraday_conflict,
       // G-11 for EVERY committable rank: prefer the cheap batch halt/earnings reads
       // (computed for all fresh tickers above) over the dossier-only flags that ranks

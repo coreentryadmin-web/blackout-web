@@ -62,6 +62,29 @@ export type LegacyBridgeExtras = {
   helix_direction_bias?: "long" | "short" | "mixed" | null;
 };
 
+/** Setup-native fields the scan already carries — floor for desk evidence when cache extras miss a ticker. */
+export function legacyBridgeExtrasFromSetup(setup: EnrichedZeroDteSetup): LegacyBridgeExtras {
+  const gamma = setup.gamma_regime;
+  let gamma_posture: "long" | "short" | null = null;
+  if (gamma?.includes("long")) gamma_posture = "long";
+  else if (gamma?.includes("short")) gamma_posture = "short";
+
+  const callWall = setup.key_resistances?.[0] ?? setup.gex_king_strike ?? null;
+  const putWall = setup.key_supports?.[0] ?? null;
+
+  return {
+    intraday: setup.intraday ?? null,
+    flow_quality: setup.flow_quality ?? null,
+    gamma_posture,
+    call_wall: callWall,
+    put_wall: putWall,
+    resistance: callWall,
+    support: putWall,
+    helix_gross_premium: (setup.gross_premium ?? 0) > 0 ? setup.gross_premium : null,
+    helix_print_count: (setup.prints ?? 0) > 0 ? setup.prints : null,
+  };
+}
+
 /** Bridge existing EnrichedZeroDteSetup → thesis rail hits for shadow merge. */
 export function railHitsFromLegacySetup(
   setup: EnrichedZeroDteSetup,

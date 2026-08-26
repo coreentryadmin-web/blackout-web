@@ -376,6 +376,9 @@ export type ZeroDteGateInput = {
   macroUnavailable?: boolean;
   /** G-8/G-9: contract plan from attachContractPlans (null = no quote + no fill). */
   plan?: ContractPlan | null;
+  /** Thesis-first live path: plan is attached AFTER gates — skip G-8/G-9 here and call
+   *  refreshPlanQualityGateBlocks once attachContractPlans has run. */
+  deferPlanQualityGates?: boolean;
   /** G-15: selected contract horizon (`ZERO_DTE` | `ONE_DTE` | `WEEKLY_FALLBACK`). Absent →
    *  gate no-op (legacy callers/tests). When present and not `ZERO_DTE`, fresh commits are blocked
    *  so the 0DTE board never grades a tomorrow-expiry as a same-session scalp. */
@@ -793,7 +796,7 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         unlock_et: null,
       });
     }
-  } else {
+  } else if (!input.deferPlanQualityGates) {
     // G-8/G-9 — plan quality: no chase (MOVED), no untradeable spread (illiquid), no
     // plan without a real quote or fill. UI SKIP already hid these; persist must match.
     blocks.push(...planQualityGateBlocks(input.plan ?? null));
@@ -1044,6 +1047,28 @@ const QUOTE_INVALID_SENTENCE: Record<
   wide_dollars: "Contract bid/ask dollar spread is over the cap",
   thin_size: "Contract resting quote size is below the floor",
 };
+
+const PLAN_QUALITY_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
+  "plan_no_quote",
+  "plan_moved",
+  "plan_illiquid",
+  "plan_quote_stale",
+  "plan_quote_invalid",
+]);
+
+/** Re-apply G-8/G-9 after thesis-first deferred plan attach (scan.ts). */
+export function refreshPlanQualityGateBlocks(
+  gate: ZeroDteGateVerdict,
+  plan: ContractPlan | null
+): ZeroDteGateVerdict {
+  const nonPlan = gate.blocks.filter((b) => !PLAN_QUALITY_GATE_CODES.has(b.code));
+  const blocks = [...nonPlan, ...planQualityGateBlocks(plan)];
+  return {
+    ...gate,
+    verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
+    blocks,
+  };
+}
 
 /** Belt-and-suspenders: true when a fresh find must NOT write a ledger row. */
 export function freshCommitBlockedByPlan(plan: ContractPlan | null | undefined): boolean {
