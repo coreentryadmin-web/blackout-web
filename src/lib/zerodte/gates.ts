@@ -652,25 +652,29 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         });
       }
     } else if (vix >= VIX_ELEVATED_THRESHOLD) {
-      // G-1 already hard-blocks counter-tape entries. A setup that reaches G-4 either
-      // PASSED G-1 (tape aligned or flat) or is a condor (skipped above). The 75 floor
-      // only applies to the residual unknown-tape case (bias == null / stale — G-1's
-      // no_market_bias already blocked these, so 75 here is belt-and-suspenders).
+      // G-1 already hard-blocks counter-tape entries — but ONLY for index ETFs (isIndexEtfG1
+      // above); single names bypass G-1 entirely and move on their own catalysts, independently
+      // of SPY direction. This branch must mirror that same scoping: a single name's `bias`
+      // vs `direction` comparison means nothing about ITS OWN tape, only SPY's — so judging a
+      // single name against the tape here re-imposes exactly the constraint G-1 was written to
+      // exempt it from. Found 2026-08-26: a single-name long at VIX 18 with a disagreeing SPY
+      // tape was silently held to the stricter 75 floor though nothing in the design intends
+      // single names to be judged against SPY direction at all. Non-index/ETF tickers therefore
+      // always get the standard 65 floor here, exactly as if tape-aligned/flat, regardless of
+      // `input.bias` — the F-1 69% vs 25% WR evidence backing the 75 floor was never measured
+      // as a single-name-vs-SPY-tape effect, and G-1's own comment already establishes that
+      // relationship holds for index ETFs only.
       //
-      // NOTE: This branch is effectively unreachable in normal flow — G-1 (tape alignment)
-      // blocks any setup with null spy_bias before G-4 evaluates. Retained as a safety
-      // net if G-1 is ever disabled via ZERODTE_GATE_DISABLE.
-      //
-      // FLAT tape: the setup has no directional fight with the market (G-1 passed it),
-      // so it keeps the standard 65 floor — the same treatment as tape-aligned. Before
-      // this fix, flat tape was treated as non-aligned, requiring 75, which produced
-      // zero-commit sessions on choppy/range-bound days with VIX 17-20 (the most common
-      // market regime). The 75 floor was designed for COUNTER-tape entries, but G-1
-      // already hard-blocks those — double-gating them here was redundant, and
-      // collateral-damaging flat-tape setups that had no directional opposition.
+      // For index ETFs: the 75 floor only applies to the residual unknown-tape case (bias ==
+      // null / stale — G-1's no_market_bias already blocked these, so 75 here is
+      // belt-and-suspenders if G-1 is ever disabled via ZERODTE_GATE_DISABLE). FLAT tape: no
+      // directional fight with the market, so it keeps the standard 65 floor — the same
+      // treatment as tape-aligned (see prior fix note: treating flat as non-aligned produced
+      // zero-commit sessions on choppy/range-bound VIX 17-20 days, the most common regime).
       const tapeAlignedOrFlat =
-        input.bias != null &&
-        (input.bias === "flat" || (input.bias === "up") === (input.direction === "long"));
+        !isIndexEtfG1 ||
+        (input.bias != null &&
+          (input.bias === "flat" || (input.bias === "up") === (input.direction === "long")));
       const elevatedFloor = tapeAlignedOrFlat ? ZERODTE_SCORE_FLOOR : VIX_ELEVATED_SCORE_FLOOR;
       if (input.score < elevatedFloor) {
         blocks.push({
@@ -1091,9 +1095,14 @@ function etLabel(etMinutes: number): string {
  */
 export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCalibration {
   const ticker = input.ticker.toUpperCase();
-  // Flat tape = no directional opposition (same treatment as aligned in G-4).
-  const aligned: boolean | null =
-    input.bias == null
+  // Flat tape = no directional opposition (same treatment as aligned in G-4). Single names are
+  // scoped OUT of the SPY-tape comparison here, mirroring the live gate's own G-1 scoping
+  // (INDEX_ETF_TICKERS-only) — a single name's bias-vs-direction comparison says nothing about
+  // its own tape, only SPY's, so an ungated non-index/ETF ticker reads as unconditionally
+  // "aligned" (found alongside the same bug in the live elevated-VIX gate, 2026-08-26).
+  const aligned: boolean | null = !INDEX_ETF_TICKERS.has(ticker)
+    ? true
+    : input.bias == null
       ? null
       : input.bias === "flat"
         ? true
