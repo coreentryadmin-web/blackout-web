@@ -11624,8 +11624,14 @@ html.product-shell .nav-mega {
   .vector-contract-pick-confidence {
     @apply font-mono text-[12px] font-bold text-white/60;
   }
+  .vector-contract-pick-dte {
+    @apply text-[10px] font-normal text-white/45;
+  }
   .vector-contract-pick-drawer-conf {
     @apply font-mono text-[11px] uppercase tracking-wide text-violet-300/80;
+  }
+  .vector-contract-pick-drawer-reasons {
+    @apply mt-2 list-disc space-y-1 pl-4 text-[12px] leading-snug text-cyan-300/90;
   }
   .vector-contract-pick-drawer-headline {
     @apply mt-2 text-sm font-semibold text-white;
