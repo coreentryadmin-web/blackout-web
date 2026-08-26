@@ -2,11 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   summarizeSessionFlowBias,
-  darkPoolNearReference,
   derivePlayPlatformContext,
   platformConvictionDelta,
   platformStarredLine,
-  largestAlignedFlowPremium,
 } from "./vector-play-platform";
 
 test("summarizeSessionFlowBias: premium-weighted lean ignores sub-floor prints", () => {
