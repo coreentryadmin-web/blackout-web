@@ -14,8 +14,11 @@ import type { VectorBar } from "@/features/vector/components/VectorChart";
 import type { PlayLevelsInput } from "@/features/vector/lib/vector-play-levels";
 import type { FlowAlert, VectorDarkPoolLevel, VectorWalls } from "@/lib/api";
 import { VectorHelixRail } from "@/features/vector/components/VectorHelixRail";
+import { useVectorHelixFlows } from "@/features/vector/lib/use-vector-helix-flows";
 import { flowAlertTimeSec } from "@/features/vector/lib/vector-flow-confluence";
 import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
+import { VectorContractPicksCard } from "@/features/vector/components/VectorContractPicksCard";
+import { useVectorContractPicks } from "@/features/vector/lib/use-vector-contract-picks";
 import { VectorTechnicalsPanel } from "@/features/vector/components/VectorTechnicalsPanel";
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
 import { VectorOdteMatrixRail } from "@/features/vector/components/VectorOdteMatrixRail";
@@ -279,6 +282,7 @@ export function VectorPageShell({
   const [focusMode, setFocusMode] = useState(false);
   const panels = vectorPanelVisibility(focusMode);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
+  const helixState = useVectorHelixFlows(activeTicker, liveSession, handleHelixFlowFlash);
   const navigateTicker = useCallback(
     (t: string) => {
       if (onTickerSelect) {
@@ -608,6 +612,16 @@ export function VectorPageShell({
     [onCompareSpotChange]
   );
 
+  // Hooks must run unconditionally on every render — this sits ABOVE the chartOnly early return
+  // below (react-hooks/rules-of-hooks). The embed path never renders VectorContractPicksCard, but
+  // the hook itself still has to fire every render regardless of which branch returns.
+  const { picks: contractPicks, loading: contractPicksLoading } = useVectorContractPicks(
+    activeTicker,
+    play,
+    dteHorizon,
+    liveSession
+  );
+
   // Chart-only embed (SPX Slayer flagship desk): the SAME VectorChart with the SAME seed props and
   // the SAME toolbar/regime/freshness/toast plumbing — just none of the page chrome or side rails.
   // Saved alert rules for the pinned ticker still evaluate + toast here, so a member's /vector
@@ -662,6 +676,7 @@ export function VectorPageShell({
           replayLeadSlot={toolbarReplayLeadSlot}
           regimeSlot={embedRegimeSlot}
           toolbarPortalEl={toolbarPortalEl}
+          sessionHelixFlows={helixState.flows}
         />
         {toast && (
           <div className="vector-alert-toast" role="status" aria-live="polite">
@@ -680,8 +695,8 @@ export function VectorPageShell({
     <VectorHelixRail
       ticker={activeTicker}
       liveSession={liveSession}
+      helixState={helixState}
       onStrikeFocus={handleHelixStrikeFocus}
-      onFlowFlash={handleHelixFlowFlash}
     />
   );
 
@@ -694,6 +709,13 @@ export function VectorPageShell({
   const actionRail = (
     <>
       <VectorPlayCard play={play} className="mb-2" />
+      <VectorContractPicksCard
+        ticker={activeTicker}
+        play={play}
+        picks={contractPicks}
+        loading={contractPicksLoading}
+        className="mb-2"
+      />
       <VectorTechnicalsPanel technicals={technicals} className="mb-2" />
       <VectorAlertsPanel
         ticker={activeTicker}
@@ -753,6 +775,7 @@ export function VectorPageShell({
       trailSlot={chartFreshness}
       regimeSlot={<VectorRegimeBanner regime={regime} />}
       toolbarPortalEl={toolbarPortalEl}
+      sessionHelixFlows={helixState.flows}
     />
   );
 

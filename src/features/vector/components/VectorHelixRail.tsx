@@ -14,7 +14,7 @@ import {
   fmtFullTimestamp,
 } from "@/features/helix/lib/helix-flow-format";
 import { flowDedupeKey } from "@/features/helix/lib/helix-flow-tape-merge";
-import { useVectorHelixFlows } from "@/features/vector/lib/use-vector-helix-flows";
+import type { useVectorHelixFlows } from "@/features/vector/lib/use-vector-helix-flows";
 import {
   pickVectorLiveHelixLayout,
   VECTOR_HELIX_DEFAULT_FILTERS,
@@ -24,13 +24,18 @@ import {
   type VectorHelixTypeFilter,
 } from "@/features/vector/lib/vector-helix-flows";
 
+export type VectorHelixFlowState = Pick<
+  ReturnType<typeof useVectorHelixFlows>,
+  "flows" | "loading" | "live" | "flashKeys"
+>;
+
 type Props = {
   ticker: string;
   liveSession: boolean;
+  /** Session tape from the shell — one fetch feeds the rail AND the Suggested Play engine. */
+  helixState: VectorHelixFlowState;
   /** Flash the flow's strike on the chart (alongside drilldown). */
   onStrikeFocus?: (strike: number, flow: FlowAlert) => void;
-  /** Live SSE print — auto flash strike + pulse the matching candle. */
-  onFlowFlash?: (flow: FlowAlert) => void;
 };
 
 function SignalPill({ label, tone }: { label: string; tone: string }) {
@@ -118,9 +123,9 @@ function FlowCard({
 }
 
 /** Vector desk — Live Helix: Recent strip + premium-ranked session tape. */
-export function VectorHelixRail({ ticker, liveSession, onStrikeFocus, onFlowFlash }: Props) {
+export function VectorHelixRail({ ticker, liveSession, helixState, onStrikeFocus }: Props) {
   const normalized = ticker.trim().toUpperCase();
-  const { flows, loading, live, flashKeys } = useVectorHelixFlows(normalized, liveSession, onFlowFlash);
+  const { flows, loading, live, flashKeys } = helixState;
 
   const [filters, setFilters] = useState<VectorHelixFlowFilters>(VECTOR_HELIX_DEFAULT_FILTERS);
   const [selected, setSelected] = useState<FlowAlert | null>(null);

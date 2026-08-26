@@ -25,7 +25,8 @@ export type ConfluenceKind =
   | "lod"
   | "pdh"
   | "pdl"
-  | "pivot";
+  | "pivot"
+  | "dark-pool";
 
 export type ConfluenceLevel = {
   price: number;
@@ -60,6 +61,7 @@ export const DEFAULT_WEIGHTS: Record<ConfluenceKind, number> = {
   pivot: 1.5,
   hod: 1,
   lod: 1,
+  "dark-pool": 2.5,
 };
 
 /**
@@ -167,6 +169,7 @@ const KIND_LABEL: Record<ConfluenceKind, string> = {
   pdh: "PDH",
   pdl: "PDL",
   pivot: "pivot",
+  "dark-pool": "dark pool",
 };
 
 /**

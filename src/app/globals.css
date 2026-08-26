@@ -11602,6 +11602,53 @@ html.product-shell .nav-mega {
     @apply font-mono font-semibold text-white/80;
   }
 
+  /* ── Contract picks — real strike/expiry ideas derived from the Suggested Play ── */
+  .vector-contract-picks-list {
+    @apply mt-1 flex flex-col gap-1;
+  }
+  .vector-contract-pick-row {
+    @apply flex w-full items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-left transition-colors hover:border-violet-400/40 hover:bg-violet-400/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50;
+  }
+  .vector-contract-pick-rank {
+    @apply font-mono text-[10px] text-white/40;
+  }
+  .vector-contract-pick-label {
+    @apply flex-1 font-mono text-[13px] font-bold;
+  }
+  .vector-contract-pick-call {
+    @apply text-emerald-300;
+  }
+  .vector-contract-pick-put {
+    @apply text-rose-300;
+  }
+  .vector-contract-pick-confidence {
+    @apply font-mono text-[12px] font-bold text-white/60;
+  }
+  .vector-contract-pick-drawer-conf {
+    @apply font-mono text-[11px] uppercase tracking-wide text-violet-300/80;
+  }
+  .vector-contract-pick-drawer-headline {
+    @apply mt-2 text-sm font-semibold text-white;
+  }
+  .vector-contract-pick-drawer-thesis {
+    @apply mt-1 text-[13px] leading-snug text-white/70;
+  }
+  .vector-contract-pick-drawer-levels {
+    @apply mt-3 flex flex-col gap-1 border-t border-white/10 pt-2;
+  }
+  .vector-contract-pick-drawer-level {
+    @apply flex items-baseline gap-1.5 text-[12px];
+  }
+  .vector-contract-pick-drawer-level dt {
+    @apply font-mono uppercase tracking-wide text-white/40;
+  }
+  .vector-contract-pick-drawer-level dd {
+    @apply font-mono font-semibold text-white/80;
+  }
+  .vector-contract-pick-drawer-caveat {
+    @apply mt-3 rounded-lg border border-amber-400/30 bg-amber-400/[0.08] px-2.5 py-1.5 text-[12px] text-amber-200;
+  }
+
   /* ── Ticker search combobox — type any optionable symbol ── */
   .vector-ticker-search {
     @apply relative flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-black/70 px-2.5 py-1.5;

@@ -246,7 +246,17 @@ export async function computeVectorFullState(
     if (maxPain != null) confluenceLevels.push({ price: maxPain, kind: "max-pain" });
     const gp = technicals?.goldenPocket;
     if (gp) confluenceLevels.push({ price: (gp.low + gp.high) / 2, kind: "golden-pocket" });
+    for (const dp of darkPoolLevels.slice(0, 3)) {
+      confluenceLevels.push({ price: dp.strike, kind: "dark-pool" });
+    }
     const zones = confluenceZones(confluenceLevels, spot);
+
+    const sessionFlows =
+      flowMarkers?.prints?.map((p) => ({
+        option_type: p.side === "call" ? "CALL" : "PUT",
+        premium: p.premium,
+        strike: p.strike,
+      })) ?? [];
 
     const snapshot: VectorSnapshot = {
       ticker: t,
@@ -270,6 +280,10 @@ export async function computeVectorFullState(
       // degrades gracefully, keying the play off regime / proximity / walls / magnet.
       technicals,
       bie: null,
+      platformInputs: {
+        sessionFlows,
+        darkPoolLevels,
+      },
     };
 
     const play: VectorPlay | null = buildVectorPlay(snapshot);
