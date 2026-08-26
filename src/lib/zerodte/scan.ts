@@ -1251,7 +1251,29 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     // the win rate (see resolveLedgerEntryPremium's doc comment, plan.ts). The mark is
     // pinned here — the upsert COALESCEs entry_premium first-write-wins, so it's the
     // flag-time mark, never a later refresh tick.
-    entry_premium: resolveLedgerEntryPremium(s.plan?.entry_max, s.top_strike_avg_fill, s.plan?.mark),
+    //
+    // CONDOR: s.plan/s.top_strike_avg_fill are always null (a condor has no single-leg
+    // plan), so resolveLedgerEntryPremium(null, null, ...) used to return null for EVERY
+    // condor row — permanently. Consequence: aggregatePremiumAtRisk (governor.ts) sums
+    // entry_premium across open rows for the session premium-at-risk budget, so an open
+    // condor's real risk (net_credit) was silently invisible to the governor the whole
+    // time it was open. condor_plan.net_credit is priced in $×100-per-contract units (see
+    // its doc comment) while entry_premium is per-share throughout this ledger (matching
+    // directional plays, e.g. $0.57) — divided by 100 here to stay in that same unit, so
+    // the aggregate sums apples to apples. Found 2026-08-26.
+    //
+    // This does NOT restore live per-play condor P&L display: condorSellerPnlPct still
+    // needs a live MARK, and syncLedgerLiveState's mark-fetch keys strictly off a
+    // single-leg plan_json.occ, which a condor row never has — there is no multi-leg
+    // (4-leg) mark-fetch path anywhere in scan.ts/live-marks.ts. That is a separate,
+    // larger gap (a new fetch pipeline, not a one-line fix) — left OPEN, not fixed here;
+    // see the companion findings-staging entry.
+    entry_premium:
+      s.play_type === "CONDOR"
+        ? s.condor_plan?.net_credit != null
+          ? Math.round((s.condor_plan.net_credit / 100) * 100) / 100
+          : null
+        : resolveLedgerEntryPremium(s.plan?.entry_max, s.top_strike_avg_fill, s.plan?.mark),
     flow_avg_fill: s.top_strike_avg_fill,
     plan_json: s.plan ? ({ ...s.plan } as unknown as Record<string, unknown>) : null,
     // G-4/G-6 calibration verdict at commit (C-2 context columns). Refresh-lane
