@@ -4094,6 +4094,17 @@ export function VectorChart({
         if (!beadExtensionAllowed(wheelZoomCooldownRef.current)) {
           return res;
         }
+        // Live member report (2026-08-26): zoom/drag/scroll on the chart felt "very very slow".
+        // The wheel-cooldown check above only covers scroll-zoom — a click-drag PAN was never
+        // gated at all, so this provider's wall/bead union work (array spreads, Set-dedup +
+        // sort inside rowAwareSpanPct, run twice) executed in full on EVERY autoscale tick
+        // lightweight-charts fires while panning, which is every frame of the gesture.
+        // `isMemberGesturing` is the SAME "defer heavy work during an active gesture" check this
+        // file already uses elsewhere (deferred bead/overlay repaints) — reusing it here instead
+        // of inventing a second, drag-specific cooldown.
+        if (isMemberGesturing(wheelZoomCooldownRef.current, chartPointerActiveRef.current)) {
+          return res;
+        }
         const preset = intradayZoomPresetRef.current;
         const sessionOverviewFrame =
           (preset === "session" ||
@@ -4156,7 +4167,29 @@ export function VectorChart({
           sessionOverviewFrame ? sessionBeadViewPct : undefined
         );
         let beadViewPct = compareCompactBeadsRef.current ? COMPARE_BEAD_VIEW_MAX_PCT : BEAD_VIEW_MAX_PCT;
-        if (sessionOverviewFrame) beadViewPct = sessionBeadViewPct;
+        // Live member report (2026-08-26): on load, the candles rendered squeezed into a thin
+        // band near the bottom of the pane with a huge empty band above — the axis had widened
+        // to include every drawn bead strike within the full BEAD_VIEW_MAX_PCT (20% of spot),
+        // unconditionally, in the live/default (non-session) frame. Session-overview already
+        // protects against this (candleShareSpanCapPct + clampPriceRangeSpan below); the live
+        // frame never got the same protection. Compare-compact is deliberately left untouched —
+        // its wider fixed window is tuned for short panes needing more rows visible.
+        let frameSpanPct: number | null = null;
+        if (sessionOverviewFrame) {
+          beadViewPct = sessionBeadViewPct;
+          frameSpanPct = sessionSpanPct;
+        } else if (!compareCompactBeadsRef.current) {
+          beadViewPct = withCandleFloor(
+            rowAwareSpanPct(
+              spotRef.current ?? 0,
+              sessionBeadStrikes,
+              sessionRows,
+              WALL_VIEW_MAX_PCT,
+              BEAD_VIEW_MAX_PCT
+            )
+          );
+          frameSpanPct = beadViewPct;
+        }
         const beadCalls = sessionOverviewFrame
           ? filterStrikesNearSpot(beadStrikesRef.current.call, spotRef.current ?? 0, beadViewPct)
           : beadStrikesRef.current.call;
@@ -4171,11 +4204,11 @@ export function VectorChart({
           beadViewPct,
           beadViewPct
         );
-        if (sessionOverviewFrame && spotRef.current != null && spotRef.current > 0) {
+        if (frameSpanPct != null && spotRef.current != null && spotRef.current > 0) {
           priceRange = clampPriceRangeSpan(
             priceRange,
             spotRef.current,
-            sessionSpanPct,
+            frameSpanPct,
             res.priceRange
           );
         }
