@@ -66,6 +66,7 @@ import {
   commitRowComplete,
   partitionMarkRows,
   verdictForMark,
+  formatGovernorNote,
 } from "./lib/zerodte-healthcheck-eval.mjs";
 
 // ── args ──────────────────────────────────────────────────────────────────────────
@@ -308,7 +309,7 @@ function stageB_discovery() {
   // governor / heat / gate context rather than calling empty "correct".
   const heat = board.session?.heat?.state ?? "?";
   const gov = board.governor;
-  const govNote = gov ? `governor ${gov.state ?? gov.status ?? "?"}` : "governor unavailable";
+  const govNote = formatGovernorNote(gov);
   for (const origin of ["FLOW", "BREAKOUT", "PIN"]) {
     if (originsPresent.has(origin)) {
       const n = setups.filter((s) => (s.discovery_origin || []).includes(origin)).length;
