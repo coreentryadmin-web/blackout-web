@@ -8530,12 +8530,18 @@ html.product-shell .nav-mega {
 
   /*
    * Standalone /vector desk — flex-fill chart height. The old inline calc(100vh - 132px) assumed
-   * only site nav above the canvas; the real page stacks toolbar + view toggle + regime banner +
-   * a 3-col grid, so the canvas overflowed its column and clipped the volume sub-pane at the bottom.
-   * Same flex chain as SPX embed (spx-sniper-vector-col) and compare panes.
+   * only site nav above the canvas; the real page stacks toolbar + a 3-col grid, so the canvas
+   * overflowed its column and clipped the volume sub-pane at the bottom. Same flex chain as SPX
+   * embed (spx-sniper-vector-col) and compare panes.
+   *
+   * Reduced from 10.5rem (2026-08-26, member request — "fit the chart so we don't have to
+   * scroll"): the Intraday/4H/1D/1W view toggle row and the gamma-regime narrative banner that
+   * used to stack above the canvas are both gone (VectorPageShell no longer renders either), so
+   * the chrome this subtrahend budgets for is just the site nav + the single toolbar row now —
+   * the grid can claim the vertical space those two rows used to occupy.
    */
   .vector-page-shell .vector-chart-terminal-grid {
-    min-height: calc(100dvh - 10.5rem);
+    min-height: calc(100dvh - 7rem);
     align-items: stretch;
   }
 

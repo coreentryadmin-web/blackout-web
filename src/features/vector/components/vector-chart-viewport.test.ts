@@ -16,6 +16,16 @@ test("SPX embed seeds 0DTE horizon history and uses shared desk-open defaults", 
   assert.match(shell, /initialHorizonWallHistory=\{initialHorizonWallHistory\}/);
 });
 
+test("VectorPageShell: standalone page drops the regime narrative banner, embed keeps it", () => {
+  // Member request (2026-08-26): the "Short/Long gamma …" callout above the standalone chart was
+  // removed to reclaim vertical space — regimeSlot is now null there. The chart-only SPX Slayer
+  // embed path (embedRegimeSlot) is a different product surface and is deliberately untouched.
+  const shell = read("src/features/vector/components/VectorPageShell.tsx");
+  assert.match(shell, /regimeSlot=\{null\}/);
+  assert.match(shell, /embedRegimeSlot = spxIosEmbed \|\| suppressRegimeBanner \? null : <VectorRegimeBanner regime=\{regime\} \/>/);
+  assert.match(shell, /regimeSlot=\{embedRegimeSlot\}/);
+});
+
 test("/vector page preloads 0DTE rail for oracle tickers and weekly for single names", () => {
   const page = read("src/app/(site)/vector/page.tsx");
   const client = read("src/features/vector/components/VectorPageClient.tsx");
@@ -60,14 +70,21 @@ test("VectorChart: default load frames centered live when defaultChartViewport i
   assert.match(src, /applyCenteredLiveViewport\(chart, initialDisplay\.length\)/);
 });
 
-test("VectorChart: default load frames session overview when defaultChartViewport is session", () => {
+test("VectorChart: default load centers the latest candle even when defaultChartViewport is session", () => {
+  // Live member report (2026-08-26): session-overview's right-anchored first paint left candles
+  // looking dropped to one side rather than centered like the "live" viewport default (SPX Slayer
+  // reference). The FIRST-PAINT framing now reuses applyCenteredLiveViewport for both branches;
+  // session-overview's own OWN behavior (re-seed framing, autoscale gating) is unchanged elsewhere.
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(
     src,
     /defaultChartViewport === "session" \? "session" : defaultChartViewport === "live" \? "live" : null/
   );
   assert.match(src, /sessionFramedOnLoad/);
-  assert.match(src, /applySessionOverviewViewport\(chart, initialDisplay\)/);
+  assert.match(
+    src,
+    /if \(sessionFramedOnLoad\) \{[\s\S]{0,1200}applyCenteredLiveViewport\(chart, initialDisplay\.length\)/
+  );
 });
 
 test("VectorChart: member wheel zoom not overridden by adaptive bar spacing", () => {
@@ -348,18 +365,18 @@ test("VectorChart fetches and uses the blended rail when it was given no seed", 
   assert.match(src, /horizon !== "all" \|\| seedRailEmptyRef\.current/);
 });
 
-test("VectorPageShell: chart view toggle stays mounted when historical chart replaces intraday", () => {
+test("VectorPageShell: Intraday/4H/1D/1W toggle removed, chart column always renders intraday", () => {
+  // Member request (2026-08-26): "Remove Intraday all that totally .. default it to Intraday" —
+  // the historical (4H/1D/1W) view and its selector are gone from the standalone page entirely.
+  // VectorDailyChart/VectorChartViewSelect themselves are left in place (unused) rather than
+  // deleted — no other surface imports them — but VectorPageShell must never reference either.
   const shell = read("src/features/vector/components/VectorPageShell.tsx");
-  assert.match(shell, /vector-chart-column-head/);
-  assert.match(shell, /data-testid="vector-chart-column-head"/);
-  assert.match(shell, /chartColumnHead/);
-  assert.match(shell, /chartView === "intraday" \? \(\s*chartBlock/);
-  assert.match(shell, /VectorDailyChart/);
-  assert.doesNotMatch(
-    shell,
-    /chartLead[\s\S]{0,400}VectorChartViewSelect/,
-    "view select must not live only inside VectorChart leadSlot"
-  );
+  assert.doesNotMatch(shell, /VectorChartViewSelect/);
+  assert.doesNotMatch(shell, /VectorDailyChart/);
+  assert.doesNotMatch(shell, /vector-chart-column-head/);
+  assert.doesNotMatch(shell, /\bchartColumnHead\b/);
+  assert.doesNotMatch(shell, /\bchartView\b/);
+  assert.match(shell, /\{chartBlock\}/);
 });
 
 test("VectorChartViewSelect: segmented Intraday/4H/1D/1W control", () => {

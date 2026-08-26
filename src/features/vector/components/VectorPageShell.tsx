@@ -22,8 +22,6 @@ import { useVectorContractPicks } from "@/features/vector/lib/use-vector-contrac
 import { VectorTechnicalsPanel } from "@/features/vector/components/VectorTechnicalsPanel";
 import type { VectorPlay, VectorPlayEmit } from "@/features/vector/lib/vector-play-engine";
 import { VectorOdteMatrixRail } from "@/features/vector/components/VectorOdteMatrixRail";
-import { VectorDailyChart } from "@/features/vector/components/VectorDailyChart";
-import { VectorChartViewSelect, type VectorChartView } from "@/features/vector/components/VectorChartViewSelect";
 import { VectorRegimeBanner } from "@/features/vector/components/VectorRegimeBanner";
 import { VectorAlertsPanel } from "@/features/vector/components/VectorAlertsPanel";
 import type { AlertRule, AlertKind, FiredAlert } from "@/features/vector/lib/vector-alerts";
@@ -238,10 +236,6 @@ export function VectorPageShell({
   const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(
     defaultDteHorizon ?? VECTOR_DEFAULT_DTE_HORIZON
   );
-  // Price under the historical chart's crosshair, lifted here so the GEX ladder — a sibling, not
-  // a child, of the chart — can highlight the matching strike. Null whenever the cursor is off
-  // the plot.
-  const [hoverPrice, setHoverPrice] = useState<number | null>(null);
   // Live Helix → chart strike flash (same seq pattern as SPX Pulse → chart focusLevel).
   const [chartFocus, setChartFocus] = useState<{
     price: number;
@@ -293,12 +287,6 @@ export function VectorPageShell({
     },
     [onTickerSelect, router]
   );
-  // Daily/Weekly/4H historical view (CTO audit P2 #5, and P2 "4h remains open" 2026-08-05) — a
-  // separate chart surface from the intraday VectorChart (see VectorDailyChart's header comment
-  // for why). Standalone-page-only; the chart-only embed (SPX Slayer) never renders this toggle
-  // and always stays intraday.
-  const [chartView, setChartView] = useState<VectorChartView>("intraday");
-
   useEffect(() => {
     if (!compactPanels) return;
     try {
@@ -397,10 +385,7 @@ export function VectorPageShell({
         : { min: map.rangeMin, max: map.rangeMax }
     );
   }, []);
-  // Only the intraday surface emits a band. The 1D/1W/4H views are a DIFFERENT chart component
-  // (VectorDailyChart) spanning months of price, and scoping the rail to a multi-month range would
-  // hide nothing while implying the two are linked — so those views get the full rail, as before.
-  const priceBand = chartView === "intraday" ? chartPriceBand : null;
+  const priceBand = chartPriceBand;
 
   // Load the member's saved alert rules whenever the ticker changes (and clear the recent history so
   // one ticker's fires don't bleed into another). Persisted per ticker in localStorage.
@@ -531,9 +516,6 @@ export function VectorPageShell({
   const iosCompactChrome = compactPanels && nativeShell;
   /** SPX Slayer iOS embed — spot + gamma chips live in SpxIosMarketStrip above the segment. */
   const spxIosEmbed = chartOnly && nativeShell;
-  const chartViewSelect = !spxIosEmbed ? (
-    <VectorChartViewSelect value={chartView} onChange={setChartView} idSuffix="-column" />
-  ) : null;
   const chartLead = spxIosEmbed
     ? null
     : chartOnly || iosCompactChrome
@@ -585,17 +567,6 @@ export function VectorPageShell({
       />
     );
   const embedRegimeSlot = spxIosEmbed || suppressRegimeBanner ? null : <VectorRegimeBanner regime={regime} />;
-
-  /** Persistent chart chrome — must stay mounted when switching Intraday ↔ 1D/4H/1W. The view
-   *  select used to live inside VectorChart's toolbar (leadSlot), so choosing a historical view
-   *  unmounted the intraday chart and hid the only way back. */
-  const chartColumnHead =
-    chartViewSelect != null ? (
-      <div className="vector-chart-column-head" data-testid="vector-chart-column-head">
-        {chartViewSelect}
-        {chartView !== "intraday" ? chartFreshness : null}
-      </div>
-    ) : null;
 
   const handleRegime = useCallback(
     (r: VectorRegime) => {
@@ -774,7 +745,11 @@ export function VectorPageShell({
       onAlertsFired={handleAlertsFired}
       leadSlot={chartLead}
       trailSlot={chartFreshness}
-      regimeSlot={<VectorRegimeBanner regime={regime} />}
+      // Regime narrative banner removed on the standalone page (member request, 2026-08-26): the
+      // "Short/Long gamma …" callout ate a full row above the canvas for a read the SCALP rail and
+      // ODTE matrix already give at a glance. `regime` state itself is untouched — still forwarded
+      // to Compare sync and the contract-picks reasoning — only the visual banner is gone.
+      regimeSlot={null}
       toolbarPortalEl={toolbarPortalEl}
       sessionHelixFlows={helixState.flows}
     />
@@ -861,7 +836,6 @@ export function VectorPageShell({
             )}
           >
             <VectorOdteMatrixRail
-              hoverPrice={hoverPrice}
               ticker={activeTicker}
               liveSession={liveSession}
               initialSpot={initialBars.length ? initialBars[initialBars.length - 1]!.close : null}
@@ -882,16 +856,7 @@ export function VectorPageShell({
               compactPanels && nativeShell && iosPanel !== "chart" && "ios-native-panel-hidden"
             )}
           >
-            {chartColumnHead}
-            {chartView === "intraday" ? (
-              chartBlock
-            ) : (
-              <VectorDailyChart
-                ticker={activeTicker}
-                unit={chartView}
-                onHoverPrice={setHoverPrice}
-              />
-            )}
+            {chartBlock}
           </div>
 
           {panels.terminal ? (
