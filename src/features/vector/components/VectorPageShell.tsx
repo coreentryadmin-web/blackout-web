@@ -16,6 +16,8 @@ import type { FlowAlert, VectorDarkPoolLevel, VectorWalls } from "@/lib/api";
 import { VectorHelixRail } from "@/features/vector/components/VectorHelixRail";
 import { flowAlertTimeSec } from "@/features/vector/lib/vector-flow-confluence";
 import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
+import { VectorContractPicksCard } from "@/features/vector/components/VectorContractPicksCard";
+import { useVectorContractPicks } from "@/features/vector/lib/use-vector-contract-picks";
 import { VectorTechnicalsPanel } from "@/features/vector/components/VectorTechnicalsPanel";
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
 import { VectorOdteMatrixRail } from "@/features/vector/components/VectorOdteMatrixRail";
@@ -691,9 +693,23 @@ export function VectorPageShell({
   // they're visible without scrolling. Below the wide-desktop breakpoint this still renders (see
   // .vector-action-rail in globals.css), just as a full-width row under the 3-column area rather
   // than its own column — nothing is ever lost, only the wide-desktop layout changes.
+  const { picks: contractPicks, loading: contractPicksLoading } = useVectorContractPicks(
+    activeTicker,
+    play,
+    dteHorizon,
+    liveSession
+  );
+
   const actionRail = (
     <>
       <VectorPlayCard play={play} className="mb-2" />
+      <VectorContractPicksCard
+        ticker={activeTicker}
+        play={play}
+        picks={contractPicks}
+        loading={contractPicksLoading}
+        className="mb-2"
+      />
       <VectorTechnicalsPanel technicals={technicals} className="mb-2" />
       <VectorAlertsPanel
         ticker={activeTicker}

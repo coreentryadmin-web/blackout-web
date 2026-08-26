@@ -7,6 +7,7 @@ import {
   isVectorDteHorizon,
   dteHorizonLabel,
   pickHorizonScopedValue,
+  horizonMaxDte,
   VECTOR_DTE_HORIZONS,
 } from "./vector-dte-horizon";
 
@@ -123,4 +124,11 @@ test("normalizeDteHorizon: case-insensitive — UI-cased '0DTE'/'WEEKLY' must no
   assert.equal(normalizeDteHorizon("ALL"), "all");
   assert.equal(normalizeDteHorizon("garbage"), "0dte");
   assert.equal(normalizeDteHorizon(null), "0dte");
+});
+
+test("horizonMaxDte: matches expiriesForHorizon's own ceiling; 'all' is unbounded (null)", () => {
+  assert.equal(horizonMaxDte("0dte"), 0);
+  assert.equal(horizonMaxDte("weekly"), 7);
+  assert.equal(horizonMaxDte("monthly"), 35);
+  assert.equal(horizonMaxDte("all"), null);
 });

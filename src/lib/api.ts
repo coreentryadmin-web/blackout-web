@@ -1001,6 +1001,34 @@ export type VectorStreamSnapshot = {
   wallTrailSec?: number;
 };
 
+export type VectorContractPick = {
+  side: "call" | "put";
+  strike: number;
+  expiry: string;
+  label: string;
+  premium: number;
+  confidence: number;
+  caveat?: "premium_high" | "low_liquidity" | "premium_high_low_liquidity";
+};
+
+/** Real contract ideas for the Suggested Play (see vector-contract-picks.ts). `bias`/`conviction`
+ *  are the play the client already computed — the server only resolves the chain and picks a
+ *  real strike/expiry against it, it never re-derives the play itself. */
+export async function fetchVectorContractPicks(params: {
+  ticker: string;
+  bias: "long" | "short" | "range" | "neutral";
+  conviction: number;
+  horizon: string;
+}): Promise<{ picks: VectorContractPick[] }> {
+  const qs = new URLSearchParams({
+    ticker: params.ticker,
+    bias: params.bias,
+    conviction: String(Math.round(params.conviction)),
+    dte: params.horizon,
+  });
+  return marketFetch<{ picks: VectorContractPick[] }>(`/vector/contract-picks?${qs.toString()}`);
+}
+
 let activeVectorStream: ReconnectingEventSource | null = null;
 let activeVectorStreamTicker: string | null = null;
 

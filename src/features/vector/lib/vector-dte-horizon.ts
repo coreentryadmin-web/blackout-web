@@ -29,6 +29,14 @@ const HORIZON_MAX_DTE: Record<Exclude<VectorDteHorizon, "all">, number> = {
   monthly: 35,
 };
 
+/** Same per-horizon DTE ceiling `expiriesForHorizon` filters walls by, exposed for any other
+ *  Vector consumer (e.g. the contract-pick chain filter) that needs to reason in the same
+ *  DTE window as the walls a member is already looking at. Null for "all" (unbounded) — the
+ *  same null a caller like `pickChainContract` already treats as "no ceiling". */
+export function horizonMaxDte(horizon: VectorDteHorizon): number | null {
+  return horizon === "all" ? null : HORIZON_MAX_DTE[horizon];
+}
+
 /** Short label for the UI toggle. */
 export function dteHorizonLabel(h: VectorDteHorizon): string {
   switch (h) {
