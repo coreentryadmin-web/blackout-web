@@ -2,9 +2,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   evaluateVectorPickLiveStatus,
+  formatPickPremiumDriftPct,
   isSetupInvalidated,
   parseInvalidationLevel,
 } from "./vector-pick-live-status";
+
+test("formatPickPremiumDriftPct: signed whole-percent", () => {
+  assert.equal(formatPickPremiumDriftPct(12.4), "+12%");
+  assert.equal(formatPickPremiumDriftPct(-8.2), "-8%");
+  assert.equal(formatPickPremiumDriftPct(null), null);
+});
 
 test("parseInvalidationLevel extracts numeric level", () => {
   assert.equal(parseInvalidationLevel("5m close > 7,600 (wall breaks)"), 7600);

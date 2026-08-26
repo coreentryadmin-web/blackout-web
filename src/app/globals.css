@@ -11624,6 +11624,18 @@ html.product-shell .nav-mega {
   .vector-contract-pick-premium {
     @apply font-mono text-[10px] text-sky-300/90;
   }
+  .vector-contract-pick-premium-row {
+    @apply flex flex-wrap items-baseline gap-x-1.5 gap-y-0;
+  }
+  .vector-contract-pick-drift {
+    @apply font-mono text-[10px] font-semibold tabular-nums;
+  }
+  .vector-contract-pick-drift-up {
+    @apply text-emerald-300;
+  }
+  .vector-contract-pick-drift-down {
+    @apply text-rose-300;
+  }
   .vector-pick-action-chip {
     @apply shrink-0 rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide;
   }

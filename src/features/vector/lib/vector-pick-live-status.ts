@@ -228,3 +228,10 @@ export function formatPickPremiumRange(bid: number | null, ask: number | null, m
   if (mid != null && mid > 0) return `@ $${mid.toFixed(2)}`;
   return null;
 }
+
+/** Compact drift vs pick-time mid for pick rows, e.g. "+12%" / "-8%". */
+export function formatPickPremiumDriftPct(pct: number | null | undefined): string | null {
+  if (pct == null || !Number.isFinite(pct)) return null;
+  const sign = pct >= 0 ? "+" : "";
+  return `${sign}${pct.toFixed(0)}%`;
+}

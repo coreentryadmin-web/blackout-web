@@ -6,7 +6,7 @@ import { Drawer } from "@/components/ui";
 import type { VectorContractPick, VectorPickEvidenceSection } from "@/lib/api";
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
 import { partitionPickEvidence } from "@/features/vector/lib/vector-pick-evidence-rails";
-import { formatPickPremiumRange } from "@/features/vector/lib/vector-pick-live-status";
+import { formatPickPremiumDriftPct, formatPickPremiumRange } from "@/features/vector/lib/vector-pick-live-status";
 
 type Props = {
   ticker: string;
@@ -117,6 +117,7 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
             const liveRange =
               formatPickPremiumRange(pick.liveBid ?? null, pick.liveAsk ?? null, pick.liveMid ?? null) ??
               formatPickPremiumRange(pick.entryBid ?? null, pick.entryAsk ?? null, pick.entryMid ?? pick.premium);
+            const driftPct = formatPickPremiumDriftPct(pick.premiumPctFromEntry);
             return (
             <button
               key={`${pick.side}-${pick.strike}-${pick.expiry}`}
@@ -142,8 +143,24 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
                     <span className="vector-contract-pick-dte"> · 0DTE</span>
                   ) : null}
                 </span>
-                {liveRange ? (
-                  <span className="vector-contract-pick-premium">{liveRange}</span>
+                {liveRange || driftPct ? (
+                  <span className="vector-contract-pick-premium-row">
+                    {liveRange ? (
+                      <span className="vector-contract-pick-premium">{liveRange}</span>
+                    ) : null}
+                    {driftPct ? (
+                      <span
+                        className={clsx(
+                          "vector-contract-pick-drift",
+                          (pick.premiumPctFromEntry ?? 0) >= 0
+                            ? "vector-contract-pick-drift-up"
+                            : "vector-contract-pick-drift-down"
+                        )}
+                      >
+                        {driftPct}
+                      </span>
+                    ) : null}
+                  </span>
                 ) : null}
               </span>
               {pick.actionStatus ? (
