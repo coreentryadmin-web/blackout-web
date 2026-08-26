@@ -3,8 +3,12 @@ import type { Time } from "lightweight-charts";
 /** Trailing whitespace when volume profile is off — bead bands stop before the price axis. */
 export const VECTOR_BASE_RIGHT_OFFSET_BARS = 6;
 
-/** Fixed pixel gutter when VP is on — stable separation on narrow SPX embed + mobile (bar-count offset varies). */
-export const VECTOR_VP_RIGHT_OFFSET_PX = 108;
+/** Fixed pixel gutter when VP is on — stable separation on narrow SPX embed + mobile (bar-count offset varies).
+ *  Reduced from 108 (2026-08-26, live member report): the profile bars were taking up a large,
+ *  disproportionate share of the chart's width for what's meant to be an ambient background
+ *  reference, not a competing foreground element. 64px still gives every bucket a legible width
+ *  at typical desk zoom while leaving far more of the pane to the candles. */
+export const VECTOR_VP_RIGHT_OFFSET_PX = 64;
 
 /** @deprecated Prefer `vectorChartTimeScaleGutter` — bar offset alone is too narrow on phone embeds. */
 export const VECTOR_VP_RIGHT_OFFSET_BARS = 18;
