@@ -75,25 +75,32 @@ export function attachThesisFirstLive(
 
     syncSetupDiscoveryFromThesis(s, pipeline.thesis);
 
-    if (nowEtMinutes != null) {
-      pipeline = {
-        ...pipeline,
-        archetype_gates: evaluateArchetypeGates({
-          archetype: pipeline.thesis.trade_archetype,
-          rail_scores: pipeline.thesis.rail_scores,
-          structural_state: pipeline.thesis.structural_state,
-          flow_class:
-            pipeline.thesis.summaries.FLOW != null
-              ? pipeline.thesis.rail_scores.FLOW != null && (s.gross_premium ?? 0) >= 1_500_000
-                ? "CAMPAIGN"
-                : "EVENT"
-              : null,
-          et_minutes: nowEtMinutes,
-        }),
-      };
-      const rank_tier = resolveThesisRankTier(pipeline.thesis, pipeline.archetype_gates);
-      pipeline = { ...pipeline, rank_tier };
-    }
+    // MUST run unconditionally, not gated on `nowEtMinutes != null`: `pipeline.thesis` may have
+    // just been swapped to the ticker-merged, multi-setup `merged` thesis above, but
+    // `archetype_gates`/`rank_tier` up to this point still reflect the DISCARDED single-setup
+    // thesis from runThesisPipelineForSetup. Skipping this recompute when `nowEtMinutes` is
+    // omitted used to leave `s.thesis_first` internally inconsistent — thesis from the merge,
+    // tier/gates from the pre-merge view (found 2026-08-26; latent — every current caller
+    // supplies nowEtMinutes, so this never misfired live, but a future shadow-mode caller
+    // omitting it would silently ship the mismatch). `et_minutes` is optional on
+    // evaluateArchetypeGates (only gates the `pre_1000_et` WATCH note), so passing it through
+    // as possibly-undefined changes nothing when `nowEtMinutes` IS supplied.
+    pipeline = {
+      ...pipeline,
+      archetype_gates: evaluateArchetypeGates({
+        archetype: pipeline.thesis.trade_archetype,
+        rail_scores: pipeline.thesis.rail_scores,
+        structural_state: pipeline.thesis.structural_state,
+        flow_class:
+          pipeline.thesis.summaries.FLOW != null
+            ? pipeline.thesis.rail_scores.FLOW != null && (s.gross_premium ?? 0) >= 1_500_000
+              ? "CAMPAIGN"
+              : "EVENT"
+            : null,
+        et_minutes: nowEtMinutes,
+      }),
+    };
+    pipeline = { ...pipeline, rank_tier: resolveThesisRankTier(pipeline.thesis, pipeline.archetype_gates) };
 
     pipeline = {
       ...pipeline,

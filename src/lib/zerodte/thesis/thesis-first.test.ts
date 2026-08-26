@@ -10,7 +10,7 @@ import { scoreFlowRail } from "./rails/flow";
 import { scoreRsRail } from "./rails/rs";
 import { scoreCatalystRail } from "./rails/catalyst";
 import { scoreVolRail } from "./rails/vol";
-import { thesisFirstCommitBlocks } from "./live-pipeline";
+import { thesisFirstCommitBlocks, attachThesisFirstLive } from "./live-pipeline";
 import { resolveThesisRankTier } from "./live-pipeline";
 import { strikesAroundSpot } from "./contract-attach";
 import type { RailHit } from "./types";
@@ -298,4 +298,65 @@ test("mergeScanPassTheses: unions tickers across setups", () => {
   assert.ok(map.has("NVDA"));
   assert.ok((map.get("NVDA")!.rail_scores.FLOW ?? 0) > 0);
   assert.ok((map.get("NVDA")!.rail_scores.BREAKOUT ?? 0) > 0);
+});
+
+test("attachThesisFirstLive: rank_tier/archetype_gates reflect the MERGED thesis even when nowEtMinutes is omitted", () => {
+  // The bug this pins (2026-08-26, latent): archetype_gates/rank_tier used to only recompute
+  // against the merged thesis INSIDE `if (nowEtMinutes != null)`. Omitting nowEtMinutes left
+  // them computed from the single-setup thesis (before the ticker-merge swapped in the real
+  // multi-setup one) — internally inconsistent with the thesis actually stamped on the setup.
+  // Same two-setup fixture as "mergeScanPassTheses: unions tickers across setups" — FLOW alone
+  // on setup a, BREAKOUT alone on setup b, same ticker, so the correct (merged) thesis carries
+  // BOTH rails and the single-setup view of EITHER setup does not.
+  const a = {
+    ticker: "NVDA",
+    direction: "long" as const,
+    discovery_origin: ["FLOW" as const],
+    gross_premium: 3_000_000,
+    score: 80,
+    underlying_price: 100,
+    intraday: null,
+    flow_quality: null,
+  };
+  const b = {
+    ticker: "NVDA",
+    direction: "long" as const,
+    discovery_origin: ["BREAKOUT" as const],
+    gross_premium: 0,
+    score: 75,
+    underlying_price: 100,
+    key_resistances: [101],
+    rel_volume: 2,
+    intraday: null,
+    flow_quality: null,
+  };
+  const setups = [a as never, b as never] as import("../board").EnrichedZeroDteSetup[];
+  // No nowEtMinutes argument — exercises exactly the omitted-parameter path.
+  attachThesisFirstLive(setups);
+
+  for (const s of setups) {
+    const pipeline = s.thesis_first!;
+    assert.ok(pipeline, `${s.ticker} must carry a thesis_first result`);
+    // The stamped thesis is the merged one (both rails) ...
+    assert.ok((pipeline.thesis.rail_scores.FLOW ?? 0) > 0);
+    assert.ok((pipeline.thesis.rail_scores.BREAKOUT ?? 0) > 0);
+    // ... and archetype_gates/rank_tier must be recomputed FROM that same merged thesis, not
+    // the single-setup one runThesisPipelineForSetup originally produced for this row alone.
+    // flow_class mirrors attachThesisFirstLive's own per-setup computation exactly.
+    const flow_class =
+      pipeline.thesis.summaries.FLOW != null
+        ? pipeline.thesis.rail_scores.FLOW != null && (s.gross_premium ?? 0) >= 1_500_000
+          ? "CAMPAIGN"
+          : "EVENT"
+        : null;
+    const expected = evaluateArchetypeGates({
+      archetype: pipeline.thesis.trade_archetype,
+      rail_scores: pipeline.thesis.rail_scores,
+      structural_state: pipeline.thesis.structural_state,
+      flow_class,
+    });
+    assert.equal(pipeline.archetype_gates.verdict, expected.verdict);
+    assert.deepEqual(pipeline.archetype_gates.blocks, expected.blocks);
+    assert.equal(pipeline.rank_tier, resolveThesisRankTier(pipeline.thesis, pipeline.archetype_gates));
+  }
 });
