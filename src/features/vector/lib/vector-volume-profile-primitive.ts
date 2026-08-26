@@ -20,8 +20,14 @@ import { volumeProfileBarRect, volumeProfileGutter } from "./vector-volume-profi
  * the same zOrder:"bottom" background-layer convention `GexHeatmapPrimitive`/`GammaRegimePrimitive`
  * use, so it reads as ambient reference under the candles/beads, not a foreground overlay.
  *
- * Palette is deliberately OFF the bead/wall hues (no yellow/magenta/cyan beads): warm stone outside
- * the value area, violet inside it, amber POC — plus labeled POC / VAH / VAL guide lines.
+ * Palette (2026-08-26, live member report): the value-area fill and POC highlight were violet
+ * (rgba(192,132,252)) and amber/gold (rgba(251,191,36)) — the doc comment above claimed this was
+ * "off the bead/wall hues," but those ARE the same hue families as the put wall (#d97bff, magenta)
+ * and call wall (#ffd60a, gold) bead rails one pane over, so a member correctly couldn't tell the
+ * volume profile apart from the wall beads at a glance. Repalette to blue (value area) and near-
+ * white/silver (POC) — neither hue is used anywhere else on the Vector chart (gamma flip/vanna
+ * flip/VEX are cyan, sky-blue and rose; dark pool is orange), so the profile now reads as its own
+ * distinct overlay instead of a second, confusing set of yellow/purple bars.
  *
  * Data + visibility via `setData(profile, enabled)`; an empty profile or `enabled === false` makes
  * the renderer return null → nothing drawn (honest absence, never a fabricated profile).
@@ -32,14 +38,14 @@ type AttachedSeries = ISeriesApi<SeriesType, Time>;
 
 /** Outside the ~70% value area — neutral warm gray, low alpha. */
 export const VP_BAR_FILL = "rgba(161, 161, 170, 0.22)";
-/** Value-area buckets — violet, distinct from put/call bead rails. */
-export const VP_VALUE_AREA_FILL = "rgba(192, 132, 252, 0.40)";
-/** POC bucket highlight. */
-export const VP_POC_FILL = "rgba(251, 191, 36, 0.88)";
+/** Value-area buckets — blue, distinct from the gold/magenta put+call bead rails. */
+export const VP_VALUE_AREA_FILL = "rgba(59, 130, 246, 0.32)";
+/** POC bucket highlight — near-white/silver, a sharp neutral accent rather than another hue. */
+export const VP_POC_FILL = "rgba(226, 232, 240, 0.92)";
 /** POC full-width guide. */
-export const VP_POC_LINE = "rgba(251, 191, 36, 0.72)";
+export const VP_POC_LINE = "rgba(226, 232, 240, 0.8)";
 /** VAH / VAL boundary guides. */
-export const VP_VA_LINE = "rgba(196, 181, 253, 0.62)";
+export const VP_VA_LINE = "rgba(96, 165, 250, 0.6)";
 export const VP_LABEL_COLOR = "rgba(250, 250, 250, 0.92)";
 
 const RIGHT_PAD_PX = 2;
