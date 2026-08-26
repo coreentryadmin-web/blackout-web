@@ -14,6 +14,7 @@ import {
   MARKET_BIAS_MAX_AGE_MS,
   planQualityGateBlocks,
   refreshPlanQualityGateBlocks,
+  refreshGovernorPremiumBudgetBlocks,
   confluenceFloorAt,
   scoreFloorForOrigins,
   ZERODTE_CONFLUENCE_MIN,
@@ -30,7 +31,7 @@ import {
 import type { ContractPlan } from "./plan";
 import { buildContractPlan, evaluateQuoteValidity, QUOTE_VALIDITY } from "./plan";
 import type { ZeroDteConfluence } from "./confluence";
-import { GOVERNOR_MAX_CONCURRENT_PLANS } from "./governor";
+import { GOVERNOR_MAX_CONCURRENT_PLANS, GOVERNOR_MAX_PREMIUM_AT_RISK } from "./governor";
 
 /** Minimal confluence read carrying `confirmations` (the only field G-12 reads). */
 function confluence(confirmations: number): ZeroDteConfluence {
@@ -772,6 +773,32 @@ test("refreshPlanQualityGateBlocks: drops stale plan_no_quote after deferred att
   const blocked = refreshPlanQualityGateBlocks(stale, null);
   assert.equal(blocked.verdict, "BLOCKED");
   assert.equal(blocked.blocks.some((b) => b.code === "plan_no_quote"), true);
+});
+
+// Bug found 2026-08-26 alongside the plan_no_quote fix: G-5's premium-budget check runs with
+// entry_premium computed from the (still-null, deferred) plan, so a thesis-first candidate's
+// own premium contribution was permanently 0 unless refreshed after the real plan attaches.
+// Currently dormant (GOVERNOR_ENFORCE_PREMIUM_BUDGET defaults false) — `enforce: true` is
+// passed explicitly here since the flag is read once at module load and cannot be flipped
+// at runtime by a test.
+test("refreshGovernorPremiumBudgetBlocks: recomputes the budget using the REAL post-attach premium, not the stale plan=null 0", () => {
+  const base = evaluateZeroDteGates(input({ plan: null, score: 88 }));
+  assert.equal(base.blocks.some((b) => b.code === "governor_premium_budget"), false);
+
+  // premiumAtRisk sits just under the cap; only a real (now-attached) entry_premium pushes
+  // it over — the stale plan=null (entryPremium null → 0) computation must NOT block.
+  const almostAtCap = GOVERNOR_MAX_PREMIUM_AT_RISK - 200;
+  const staleNull = refreshGovernorPremiumBudgetBlocks(base, null, almostAtCap, true);
+  assert.equal(staleNull.blocks.some((b) => b.code === "governor_premium_budget"), false, "null entry_premium (the stale value) must not block");
+
+  const withRealPremium = refreshGovernorPremiumBudgetBlocks(base, 500, almostAtCap, true);
+  assert.equal(withRealPremium.verdict, "BLOCKED");
+  assert.ok(withRealPremium.blocks.some((b) => b.code === "governor_premium_budget"));
+
+  // With enforcement OFF (the real, current production default) the same over-cap premium
+  // never blocks — confirms this stays a dormant MEASURE path until the flag is flipped on.
+  const enforcementOff = refreshGovernorPremiumBudgetBlocks(base, 500, almostAtCap, false);
+  assert.equal(enforcementOff.blocks.some((b) => b.code === "governor_premium_budget"), false);
 });
 
 test("deferPlanQualityGates: evaluateZeroDteGates skips plan blocks when plan is null", () => {

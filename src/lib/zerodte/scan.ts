@@ -135,6 +135,7 @@ import {
   gateRejectionFor,
   planQualityGateBlocks,
   refreshPlanQualityGateBlocks,
+  refreshGovernorPremiumBudgetBlocks,
   recentNighthawkTake,
 } from "./gates";
 import { buildRegimePlaneSnapshot, inferRegimeGexQuality } from "./regime-plane";
@@ -576,7 +577,7 @@ export async function scanZeroDteBoard(flags?: {
   }
 
   // Hard-gate verdicts — Cortex runs inside on gate survivors.
-  await attachGateVerdicts(setups, tape.bias, tape.biasAsOfMs, nowEtMinutes);
+  const { governorPremiumAtRisk } = await attachGateVerdicts(setups, tape.bias, tape.biasAsOfMs, nowEtMinutes);
 
   // Live thesis-first: contract engine picks expression AFTER thesis + gates + Cortex.
   if (thesisLive) {
@@ -585,6 +586,13 @@ export async function scanZeroDteBoard(flags?: {
     for (const s of setups) {
       if (s.gate) {
         s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null);
+        // G-5 premium budget was computed with plan=null (entry_premium 0) above, same
+        // "deferred, never reconciled" shape as G-8/G-9 — see refreshGovernorPremiumBudgetBlocks.
+        s.gate = refreshGovernorPremiumBudgetBlocks(
+          s.gate,
+          s.plan?.entry_max ?? s.plan?.mark ?? null,
+          governorPremiumAtRisk
+        );
       }
     }
   }
@@ -685,14 +693,14 @@ async function attachGateVerdicts(
   bias: MarketBias | null,
   biasAsOfMs: number | null,
   nowEtMinutes: number
-): Promise<void> {
-  if (setups.length === 0) return;
+): Promise<{ governorPremiumAtRisk: number }> {
+  if (setups.length === 0) return { governorPremiumAtRisk: 0 };
   const today = todayEt();
   const nowMs = Date.now();
   const ledgerRows = dbConfigured()
     ? await fetchZeroDteSetupLog(today).catch(() => null)
     : ([] as ZeroDteSetupLogRow[]);
-  if (ledgerRows == null) return; // gates stay null → fresh commits fail closed downstream
+  if (ledgerRows == null) return { governorPremiumAtRisk: 0 }; // gates stay null → fresh commits fail closed downstream
   const committed = new Set(ledgerRows.map((r) => r.ticker.toUpperCase()));
 
   // G-5 snapshot: open/stop counts from the shared Postgres ledger (authoritative),
@@ -967,6 +975,7 @@ async function attachGateVerdicts(
     }
     committedThisCycle.push({ ticker: s.ticker, direction: s.direction });
   }
+  return { governorPremiumAtRisk };
 }
 
 /**
