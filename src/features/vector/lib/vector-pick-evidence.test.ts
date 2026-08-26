@@ -40,7 +40,46 @@ test("buildVectorPickEvidence: includes strike, flow, positioning, technicals wh
   assert.ok(flow?.items.some((i) => i.value.includes("2.6M")));
 });
 
-test("buildVectorPickEvidence: omits flow section when no tape data", () => {
+test("buildVectorPickEvidence: includes Thermal GEX and catalyst sections when grounded", () => {
+  const sections = buildVectorPickEvidence({
+    side: "call",
+    strike: 575,
+    expiry: "2026-08-28",
+    dte: 2,
+    premium: 12.5,
+    role: "primary-long",
+    targetStrike: 575,
+    spot: 576,
+    callWall: 580,
+    putWall: 570,
+    magnetStrike: 575,
+    gammaFlip: 572,
+    regimePosture: "long",
+    technicals: null,
+    platformInputs: null,
+    confluenceZones: null,
+    playStarred: [],
+    gexKingStrike: 575,
+    strikeGex: 18_500_000,
+    catalysts: [
+      { kind: "earnings", label: "NVDA earnings 2026-08-27", daysUntil: 3, when: "afterhours" },
+      { kind: "catalyst", label: "Analyst raises price target", detail: "guidance" },
+    ],
+    newsHeadline: "NVDA options flow surges ahead of print",
+  });
+
+  const ids = sections.map((s) => s.id);
+  assert.ok(ids.includes("gex"));
+  assert.ok(ids.includes("catalyst"));
+
+  const gex = sections.find((s) => s.id === "gex");
+  assert.ok(gex?.items.some((i) => i.label === "Net GEX at strike"));
+
+  const cat = sections.find((s) => s.id === "catalyst");
+  assert.ok(cat?.items.some((i) => i.label === "Earnings"));
+});
+
+test("buildVectorPickEvidence: omits gex/catalyst when not provided", () => {
   const sections = buildVectorPickEvidence({
     side: "put",
     strike: 100,
@@ -62,4 +101,6 @@ test("buildVectorPickEvidence: omits flow section when no tape data", () => {
   });
   assert.equal(sections.some((s) => s.id === "flow"), false);
   assert.equal(sections.some((s) => s.id === "technicals"), false);
+  assert.equal(sections.some((s) => s.id === "gex"), false);
+  assert.equal(sections.some((s) => s.id === "catalyst"), false);
 });

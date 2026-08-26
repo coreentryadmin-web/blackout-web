@@ -9,6 +9,8 @@ import type { PlayPlatformFlowPrint, PlayPlatformInputs } from "./vector-play-pl
 import { darkPoolNearReference, summarizeSessionFlowBias } from "./vector-play-platform";
 import type { VectorDarkPoolLevel } from "./vector-dark-pool-levels";
 import type { ConfluenceZone } from "./vector-confluence";
+import type { VectorPickCatalyst } from "./vector-pick-types";
+import { fmtPremium } from "@/lib/fmt-money";
 
 export type VectorPickEvidenceItem = {
   label: string;
@@ -17,7 +19,7 @@ export type VectorPickEvidenceItem = {
 };
 
 export type VectorPickEvidenceSection = {
-  id: "strike" | "flow" | "positioning" | "structure" | "technicals" | "liquidity" | "session";
+  id: "strike" | "flow" | "positioning" | "structure" | "technicals" | "liquidity" | "session" | "gex" | "catalyst";
   title: string;
   items: VectorPickEvidenceItem[];
 };
@@ -41,6 +43,10 @@ export type VectorPickEvidenceInput = {
   confluenceZones: readonly ConfluenceZone[] | null;
   playStarred: readonly string[];
   caveat?: "premium_high" | "low_liquidity" | "premium_high_low_liquidity";
+  gexKingStrike?: number | null;
+  strikeGex?: number | null;
+  catalysts?: readonly VectorPickCatalyst[];
+  newsHeadline?: string | null;
 };
 
 function fmt(n: number): string {
@@ -92,6 +98,8 @@ const ROLE_LABEL: Record<string, string> = {
   "fade-dip": "Range fade — buy the dip",
   "fade-rip": "Range fade — sell the rip",
   "flow-whale": "HELIX whale anchor",
+  "gex-king-pin": "Thermal GEX king pin",
+  "magnet-mean": "Range mean-revert anchor",
 };
 
 /**
@@ -190,6 +198,51 @@ export function buildVectorPickEvidence(input: VectorPickEvidenceInput): VectorP
   }
   if (posItems.length) {
     sections.push({ id: "positioning", title: "Positioning", items: posItems });
+  }
+
+  // —— Thermal GEX at this strike ——
+  const gexItems: VectorPickEvidenceItem[] = [];
+  if (input.strikeGex != null) {
+    const sign = input.strikeGex >= 0 ? "Long gamma" : "Short gamma";
+    gexItems.push({
+      label: "Net GEX at strike",
+      value: fmtPremium(input.strikeGex),
+      detail: `${sign} at this node (near-term matrix)`,
+    });
+  }
+  if (input.gexKingStrike != null) {
+    gexItems.push({
+      label: "GEX king",
+      value: fmt(input.gexKingStrike),
+      detail:
+        input.gexKingStrike === strike
+          ? "This strike is the largest |net gamma| node"
+          : `Strike ${pctDist(strike, input.gexKingStrike)} vs king`,
+    });
+  }
+  if (gexItems.length) {
+    sections.push({ id: "gex", title: "Thermal GEX", items: gexItems });
+  }
+
+  // —— Catalysts & news (grounded only) ——
+  const catItems: VectorPickEvidenceItem[] = [];
+  for (const c of input.catalysts ?? []) {
+    if (!c.label) continue;
+    const detail =
+      c.kind === "earnings" && c.daysUntil != null
+        ? `${c.daysUntil === 0 ? "Today" : c.daysUntil === 1 ? "Tomorrow" : `${c.daysUntil}d`}${c.when ? ` · ${c.when}` : ""}${c.detail ? ` · ${c.detail}` : ""}`
+        : c.detail;
+    catItems.push({
+      label: c.kind === "earnings" ? "Earnings" : "Catalyst",
+      value: c.label,
+      detail,
+    });
+  }
+  if (input.newsHeadline && !catItems.some((i) => i.value === input.newsHeadline)) {
+    catItems.push({ label: "Latest headline", value: input.newsHeadline });
+  }
+  if (catItems.length) {
+    sections.push({ id: "catalyst", title: "Catalysts & news", items: catItems.slice(0, 4) });
   }
 
   // —— Structure (confluence + dark pool) ——

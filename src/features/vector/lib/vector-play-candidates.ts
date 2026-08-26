@@ -19,6 +19,9 @@ import type { VectorContractPick } from "./vector-contract-picks";
 import type { VectorRegimePosture } from "./vector-regime";
 import type { ConfluenceZone } from "./vector-confluence";
 import { buildVectorPickEvidence, type VectorPickEvidenceSection } from "./vector-pick-evidence";
+import { rangeMeanReference } from "./vector-play-engine";
+import type { VectorPickEnrichmentData } from "./vector-pick-types";
+import { strikeGexFromTotals, topGexPinStrikes } from "./strike-gex-lookup";
 
 export type VectorPlayPickContext = {
   play: VectorPlay;
@@ -31,6 +34,8 @@ export type VectorPlayPickContext = {
   technicals?: PlayTechnicals | null;
   confluenceZones?: readonly ConfluenceZone[] | null;
   platformInputs?: PlayPlatformInputs | null;
+  /** Server-enriched desk context (GEX matrix, catalysts). Omitted in unit tests. */
+  enrichment?: VectorPickEnrichmentData | null;
 };
 
 export type VectorRankedPick = VectorContractPick & {
@@ -237,21 +242,42 @@ function dteFitScore(style: VectorPlayStyle, dte: number): { pts: number; reason
 }
 
 function specsForContext(ctx: VectorPlayPickContext): CandidateSpec[] {
-  const { play, spot, callWall, putWall } = ctx;
+  const { play, spot, callWall, putWall, magnetStrike } = ctx;
   const flows = ctx.platformInputs?.sessionFlows;
   const specs: CandidateSpec[] = [];
+  const king = num(ctx.enrichment?.gexKingStrike);
+  const maxPain = num(ctx.enrichment?.maxPain) ?? num(magnetStrike);
 
   if (play.bias === "long") {
     const target = num(putWall) ?? spot;
     specs.push({ direction: "long", targetStrike: target, role: "primary-long" });
+    // GEX king as support pin when below spot — wall-aligned long leg.
+    if (king != null && king < spot && Math.abs(king - target) / spot > 0.004) {
+      specs.push({ direction: "long", targetStrike: king, role: "gex-king-pin" });
+    }
   } else if (play.bias === "short") {
     const target = num(callWall) ?? spot;
     specs.push({ direction: "short", targetStrike: target, role: "primary-short" });
+    if (king != null && king > spot && Math.abs(king - target) / spot > 0.004) {
+      specs.push({ direction: "short", targetStrike: king, role: "gex-king-pin" });
+    }
   } else if (play.bias === "range") {
     const pw = num(putWall);
     const cw = num(callWall);
     if (pw != null) specs.push({ direction: "long", targetStrike: pw, role: "fade-dip" });
     if (cw != null) specs.push({ direction: "short", targetStrike: cw, role: "fade-rip" });
+    const meanRef = rangeMeanReference(num(magnetStrike), maxPain, pw, cw);
+    if (meanRef.price != null && spot > 0) {
+      const dist = Math.abs(meanRef.price - spot) / spot;
+      if (dist <= 0.025) {
+        const dir = meanRef.price <= spot ? "long" : "short";
+        specs.push({
+          direction: dir,
+          targetStrike: meanRef.price,
+          role: "magnet-mean",
+        });
+      }
+    }
   } else {
     return [];
   }
@@ -374,6 +400,33 @@ function rankPick(
   if (spec.role === "fade-rip") reasons.push("Put leg — sell the rip toward range mean");
   if (spec.role === "primary-long") reasons.push("Call leg — aligned with long Suggested Play bias");
   if (spec.role === "primary-short") reasons.push("Put leg — aligned with short Suggested Play bias");
+  if (spec.role === "gex-king-pin") reasons.push("Strike at Thermal GEX king — largest net gamma node");
+  if (spec.role === "magnet-mean") reasons.push("Strike at range mean-revert anchor (magnet / max pain)");
+
+  const totals = ctx.enrichment?.strikeTotals;
+  const strikeGex = strikeGexFromTotals(totals, contract.strike);
+  const king = num(ctx.enrichment?.gexKingStrike);
+  if (king != null && contract.strike === king) {
+    score += 10;
+    if (!reasons.some((r) => /GEX king/i.test(r))) {
+      reasons.push("Contract strike is the GEX king node on Thermal");
+    }
+  } else if (strikeGex != null && totals) {
+    const pins = topGexPinStrikes(totals, 3);
+    if (pins.includes(contract.strike)) {
+      score += 6;
+      reasons.push("Strike sits on a top net-gamma pin in the matrix");
+    }
+  }
+
+  const zone = ctx.confluenceZones?.find((z) => {
+    if (!(spot > 0)) return false;
+    return Math.abs(z.center - contract.strike) <= spot * 0.006;
+  });
+  if (zone) {
+    score += 5;
+    reasons.push(`Confluence stack (${zone.kinds.slice(0, 2).join(", ") || "multi-kind"}) at this strike`);
+  }
 
   if (windowId === "0dte" && play.style !== "scalp") {
     score -= 4;
@@ -475,6 +528,10 @@ export function rankVectorPlayCandidates(
         confluenceZones: ctx.confluenceZones ?? null,
         playStarred: ctx.play.starred ?? [],
         caveat: row.contract.caveat,
+        gexKingStrike: num(ctx.enrichment?.gexKingStrike),
+        strikeGex: strikeGexFromTotals(ctx.enrichment?.strikeTotals, row.contract.strike),
+        catalysts: ctx.enrichment?.catalysts ?? [],
+        newsHeadline: ctx.enrichment?.newsHeadline ?? null,
       }),
     });
     if (out.length >= MAX_PICKS) break;

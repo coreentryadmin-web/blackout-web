@@ -1002,7 +1002,7 @@ export type VectorStreamSnapshot = {
 };
 
 export type VectorPickEvidenceSection = {
-  id: "strike" | "flow" | "positioning" | "structure" | "technicals" | "liquidity" | "session";
+  id: "strike" | "flow" | "positioning" | "structure" | "technicals" | "liquidity" | "session" | "gex" | "catalyst";
   title: string;
   items: Array<{ label: string; value: string; detail?: string }>;
 };
