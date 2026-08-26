@@ -148,6 +148,33 @@ test("HELIX whale print surfaces as a scored candidate with reason", () => {
   assert.ok(picks.some((p) => p.strike === strike && p.reasons?.some((r) => /HELIX/i.test(r))));
 });
 
+test("GEX king strike boosts rank when enrichment present", () => {
+  const king = 100;
+  const chain: EditionChainData = {
+    spot: 102,
+    rows: [
+      row(king, { expiry: ymdPlus(7), callAsk: 5, callBid: 4.5 }),
+      row(98, { expiry: ymdPlus(7), callAsk: 5, callBid: 4.5 }),
+    ],
+  };
+  const picks = rankVectorPlayCandidates(
+    {
+      play: basePlay("long", 70),
+      spot: 102,
+      putWall: 98,
+      enrichment: {
+        gexKingStrike: king,
+        strikeTotals: { "100": 50_000_000, "98": 1_000_000 },
+      },
+    },
+    chain
+  );
+  assert.ok(picks.length >= 1);
+  const top = picks[0]!;
+  assert.equal(top.strike, king);
+  assert.ok(top.reasons?.some((r) => /GEX king|net-gamma pin/i.test(r)));
+});
+
 test("neutral play returns no picks", () => {
   assert.deepEqual(
     rankVectorPlayCandidates({ play: basePlay("neutral"), spot: 100 }, { spot: 100, rows: [] }),

@@ -19,6 +19,7 @@ import { flowAlertTimeSec } from "@/features/vector/lib/vector-flow-confluence";
 import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
 import { VectorContractPicksCard } from "@/features/vector/components/VectorContractPicksCard";
 import { useVectorContractPicks } from "@/features/vector/lib/use-vector-contract-picks";
+import { useVectorPickLiveMonitor } from "@/features/vector/lib/use-vector-pick-live-monitor";
 import { VectorTechnicalsPanel } from "@/features/vector/components/VectorTechnicalsPanel";
 import type { VectorPlay, VectorPlayEmit } from "@/features/vector/lib/vector-play-engine";
 import { VectorOdteMatrixRail } from "@/features/vector/components/VectorOdteMatrixRail";
@@ -593,6 +594,12 @@ export function VectorPageShell({
     helixState.flows,
     liveSession
   );
+  const monitoredPicks = useVectorPickLiveMonitor(
+    activeTicker,
+    playEmit,
+    contractPicks,
+    liveSession
+  );
 
   // Chart-only embed (SPX Slayer flagship desk): the SAME VectorChart with the SAME seed props and
   // the SAME toolbar/regime/freshness/toast plumbing — just none of the page chrome or side rails.
@@ -684,7 +691,7 @@ export function VectorPageShell({
       <VectorContractPicksCard
         ticker={activeTicker}
         play={play}
-        picks={contractPicks}
+        picks={monitoredPicks}
         loading={contractPicksLoading}
         className="mb-2"
       />

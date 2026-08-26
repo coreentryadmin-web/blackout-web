@@ -1002,7 +1002,7 @@ export type VectorStreamSnapshot = {
 };
 
 export type VectorPickEvidenceSection = {
-  id: "strike" | "flow" | "positioning" | "structure" | "technicals" | "liquidity" | "session";
+  id: "strike" | "flow" | "positioning" | "structure" | "technicals" | "liquidity" | "session" | "gex" | "catalyst";
   title: string;
   items: Array<{ label: string; value: string; detail?: string }>;
 };
@@ -1020,6 +1020,21 @@ export type VectorContractPick = {
   rank?: number;
   dte?: number;
   evidence?: VectorPickEvidenceSection[];
+  occ?: string | null;
+  entryMid?: number;
+  entryBid?: number | null;
+  entryAsk?: number | null;
+  liveBid?: number | null;
+  liveAsk?: number | null;
+  liveMid?: number | null;
+  liveDelta?: number | null;
+  liveGamma?: number | null;
+  liveTheta?: number | null;
+  liveIv?: number | null;
+  actionStatus?: "still_buy" | "caution" | "dont_buy";
+  actionReason?: string;
+  premiumPctFromEntry?: number | null;
+  setupInvalidated?: boolean;
 };
 
 export type VectorContractPicksRequest = {
@@ -1068,6 +1083,44 @@ export async function fetchVectorContractPicks(
   params: VectorContractPicksRequest
 ): Promise<{ picks: VectorContractPick[] }> {
   return marketFetch<{ picks: VectorContractPick[] }>(`/vector/contract-picks`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function fetchVectorPickLiveQuotes(params: {
+  ticker: string;
+  spot: number;
+  play: VectorContractPicksRequest["play"] & { invalidation?: string };
+  callWall?: number | null;
+  putWall?: number | null;
+  gammaFlip?: number | null;
+  picks: Array<{
+    occ: string;
+    side: "call" | "put";
+    strike: number;
+    expiry: string;
+    entryMid?: number | null;
+    caveat?: VectorContractPick["caveat"];
+  }>;
+}): Promise<{
+  live: Array<{
+    occ: string;
+    bid: number | null;
+    ask: number | null;
+    mid: number | null;
+    delta: number | null;
+    gamma: number | null;
+    theta: number | null;
+    iv: number | null;
+    actionStatus: "still_buy" | "caution" | "dont_buy";
+    actionReason: string;
+    premiumPctFromEntry: number | null;
+    setupInvalidated: boolean;
+  }>;
+  asOf: string;
+}> {
+  return marketFetch(`/vector/contract-picks/live`, {
     method: "POST",
     body: JSON.stringify(params),
   });
