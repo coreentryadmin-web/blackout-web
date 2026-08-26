@@ -3,18 +3,15 @@
 import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
-import { timeStopClock } from "@/lib/zerodte/terminal-ladder";
-import { zerodteTimeStopEtLabel } from "@/lib/zerodte/plan";
 import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
-import { condorTent } from "@/lib/zerodte/condor-render";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { dispatchGotoSwing } from "@/features/nighthawk/lib/goto-swing";
+import { ZeroDteCommandPanel } from "./ZeroDteCommandPanel";
+import { CondorPanel, TimeStopClock } from "./play-terminal-shared";
 import { ThesisRankCard } from "@/features/nighthawk/components/ThesisRankCard";
 import { showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
 import { managementFor } from "./adapters";
-import type { DeckCondor } from "./types";
 import { markStreamKind } from "./deck-session-ui";
-import { PlayTimelinePanel } from "./PlayTimelinePanel";
 import { useSecondTick, useFlash } from "./use-deck-live";
 import { isZeroDtePremiumTerminal, swingStatusLine } from "./terminal-display";
 import type { ConvictionRankContext } from "./deck-command-center";
@@ -335,7 +332,7 @@ export function PlayTerminal({
         </div>
       )}
 
-      {premium && (greeksOff ? <MarketContextRow play={play} /> : (
+      {premium && !zeroDteSinglePanel && (greeksOff ? <MarketContextRow play={play} /> : (
         <div className={clsx("nh-deck-greeks", greeksOff && "off")} title={greeksOff ? "Greeks update with live marks" : undefined}>
           <GreekCell k="delta" v={g?.delta ?? null} />
           <GreekCell k="gamma" v={g?.gamma ?? null} />
@@ -368,44 +365,6 @@ export function PlayTerminal({
         <span>{play.tierLabel ? `TIER ${play.tierLabel}` : play.scorecard ? formatScorecardHint(play.scorecard) : ""}</span>
         {play.allocation && <span style={{ marginLeft: "auto" }}>{play.allocation.role} · {play.allocation.sizing}</span>}
       </div>
-    </div>
-  );
-}
-
-/** Tier · confluence · discovery-origin header badges + the calibration scorecard line (shown ONLY
- *  when the payload carries a real figure — never fabricated). Renders nothing when a play carries
- *  none of them (a legacy row), so the header stays clean. */
-/** 0DTE Command: one scroll — why picked, live management, P&L, collapsible session log. */
-function ZeroDteCommandPanel({
-  play,
-  nowMs,
-  sessionClosed = false,
-}: {
-  play: TerminalPlay;
-  nowMs: number;
-  sessionClosed?: boolean;
-}) {
-  return (
-    <div className="nh-deck-command-panel nh-deck-body">
-      <section className="nh-deck-command-section" aria-labelledby="nh-cmd-why">
-        <h3 id="nh-cmd-why" className="nh-deck-command-heading">Why we picked it</h3>
-        <ThesisPanel play={play} sessionClosed={sessionClosed} />
-      </section>
-
-      <section className="nh-deck-command-section" aria-labelledby="nh-cmd-live">
-        <h3 id="nh-cmd-live" className="nh-deck-command-heading">Live · management</h3>
-        <ManagePanel play={play} nowMs={nowMs} />
-      </section>
-
-      <section className="nh-deck-command-section" aria-labelledby="nh-cmd-pnl">
-        <h3 id="nh-cmd-pnl" className="nh-deck-command-heading">P&amp;L · excursion</h3>
-        <PnlPanel play={play} />
-      </section>
-
-      <details className="nh-deck-command-log">
-        <summary className="nh-deck-command-heading">Session log</summary>
-        <PlayTimelinePanel play={play} nowMs={nowMs} />
-      </details>
     </div>
   );
 }
@@ -825,120 +784,6 @@ function TrimScaleLadder({ play }: { play: TerminalPlay }) {
   );
 }
 
-/** Re-shape a DeckCondor (camelCase render geometry) into the snake CondorGeometry condorTent() reads.
- *  One place so the panel + the left card build the tent from the same inputs. */
-function tentGeomOf(c: DeckCondor) {
-  return {
-    spot: c.spot, short_put: c.shortPut, long_put: c.longPut, short_call: c.shortCall,
-    long_call: c.longCall, wing_pts: c.wingPts, net_credit: c.netCredit, max_loss: c.maxLoss,
-    breach_lower: c.breachLower, breach_upper: c.breachUpper,
-    est_win_rate: c.winRate, est_intraday_breach_pct: c.breachRatePct,
-  };
-}
-
-/** The REAL iron-condor render (Wave 2): the "price-inside-the-tent" gauge (spot vs the two short
- *  strikes), distance-to-breach both sides in points, the net credit captured, and WR shown TOGETHER
- *  with the intraday-breach rate (never a bare WR — the honest negative-skew pairing). Replaces the
- *  neutral Wave-1 placeholder. NEVER draws a directional long trim/ratchet ladder or a call/put P&L —
- *  a condor profits from decay/pin, not a rising premium. Degrades to an honest note when the geometry
- *  wasn't pinned on the row (never a fabricated tent). */
-function CondorPanel({ play }: { play: TerminalPlay }) {
-  const c = play.condor;
-  if (!c) {
-    return (
-      <div className="nh-deck-recnote" style={{ marginTop: 4 }}>
-        Credit iron condor — profit comes from the underlying pinning between the short strikes
-        (premium decay), not a rising long premium. The 4-leg geometry wasn&apos;t pinned on this row,
-        so the tent gauge is unavailable.
-      </div>
-    );
-  }
-  const tent = condorTent(tentGeomOf(c), c.spot);
-  const pts = (n: number | null): string => (n == null ? "—" : n.toFixed(0));
-  return (
-    <div className="nh-deck-condor">
-      <div className="nh-deck-lab" style={{ marginTop: 4 }}>
-        Iron condor — sell the range · WIN if {c.spotIsLive ? "spot" : "close"} stays between the shorts
-      </div>
-
-      {/* Price-inside-the-tent gauge: the short-strike band with spot marked; the long wings frame it. */}
-      <div className="nh-deck-tent">
-        <div className="wing lo">▽ {c.longPut}</div>
-        <div className={clsx("tent-band", tent.breached && "brk")}>
-          <span className="edge lo">{c.breachLower}</span>
-          <span className="edge hi">{c.breachUpper}</span>
-          {tent.spotFrac != null ? (
-            <span
-              className={clsx("spot", tent.breached && "brk")}
-              style={{ left: `${Math.round(tent.spotFrac * 100)}%` }}
-            >
-              <span className="dot" />
-              <span className="lbl">{c.spot != null ? c.spot.toFixed(0) : "?"}{c.spotIsLive ? "" : " ∗"}</span>
-            </span>
-          ) : null}
-        </div>
-        <div className="wing hi">△ {c.longCall}</div>
-      </div>
-      {!c.spotIsLive && c.spot != null && (
-        <div className="nh-deck-recnote">∗ commit-time spot — live underlying not on this refresh.</div>
-      )}
-      {tent.spotFrac == null && (
-        <div className="nh-deck-recnote">Underlying price unavailable — showing the sold range only.</div>
-      )}
-
-      {/* Distance-to-breach, both sides, in underlying points. */}
-      <div className="nh-deck-breach">
-        <div className={clsx("side dn", (tent.roomDown ?? 1) <= 0 && "brk")}>
-          <span className="k">↓ to put breach</span>
-          <span className="v">{pts(tent.roomDown)} pt</span>
-        </div>
-        <div className={clsx("side up", (tent.roomUp ?? 1) <= 0 && "brk")}>
-          <span className="k">↑ to call breach</span>
-          <span className="v">{pts(tent.roomUp)} pt</span>
-        </div>
-      </div>
-
-      {/* Net credit captured + defined max loss + the WR / breach-rate pair. */}
-      <div className="nh-deck-meta" style={{ marginTop: 12 }}>
-        <div><span className="k">Net credit</span><span className="v">{c.netCredit != null ? `$${c.netCredit.toFixed(0)}` : "—"}</span></div>
-        <div><span className="k">Defined max loss</span><span className="v">{c.maxLoss != null ? `$${c.maxLoss.toFixed(0)}` : "—"}</span></div>
-        <div><span className="k">Wings</span><span className="v">{c.wingPts.toFixed(0)} pt</span></div>
-        <div><span className="k">Range</span><span className="v">{tent.widthPts.toFixed(0)} pt</span></div>
-      </div>
-
-      {c.breachRatePct != null && (
-        <div className={clsx("nh-deck-wrline", tent.breached && "brk")}>
-          <span className="br">Intraday breach rate · {c.breachRatePct.toFixed(0)}%</span>
-        </div>
-      )}
-      <div className="nh-deck-recnote">
-        Negative skew: a small credit on most days, a DEFINED loss on a breakout. High WR is not edge on
-        its own — the credit, the breach stop, and small size are. {tent.breached ? "Range BREACHED — the defended pin failed; the loss is capped at the wing." : "Range holding — decay is working for you."}
-      </div>
-    </div>
-  );
-}
-
-/** Countdown to the hard time-stop + a session-decay bar (09:30→exit elapsed). */
-function TimeStopClock({ nowMs }: { nowMs: number }) {
-  const exitLabel = zerodteTimeStopEtLabel();
-  // Recompute ET minute-of-day each tick (etNowParts reads the live clock).
-  void nowMs; // depend on the tick so this recomputes every second
-  const { hour, minute } = etNowParts();
-  const clock = timeStopClock(hour * 60 + minute);
-  return (
-    <div className={clsx("nh-deck-clock", clock.past_time_stop && "past")}>
-      <div className="row">
-        <span className="lab">◷ THETA / TIME-STOP</span>
-        <span className={clsx("val", clock.minutes_remaining <= 30 && "warn")}>
-          {clock.past_time_stop ? `TIME STOP — flat by ${exitLabel}` : `${clock.label} to ${exitLabel} ET`}
-        </span>
-      </div>
-      <div className="decay"><i style={{ width: `${Math.round(clock.elapsed_frac * 100)}%` }} /></div>
-    </div>
-  );
-}
-
 function PnlPanel({ play }: { play: TerminalPlay }) {
   const markFlash = useFlash(play.mark ?? play.pnlPct ?? null);
   if (play.horizon === "LEGACY") return <LegacyPnlPanel play={play} />;
@@ -976,10 +821,6 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
       <div className="nh-deck-grid">
         <div><span className="k">Entry</span><span className="v">{has ? usd(play.entry) : "—"}</span></div>
         <div><span className="k">Live mark</span><span className="v">{usd(play.mark)}</span></div>
-        {/* Peak/trough already shown once in the hero (0DTE/Swing) and again in the excursion-graphic
-            stats row above — a 3rd rendering here was redundant for premium plays. Kept for
-            non-premium (LEAPS/Legacy) rows, which carry neither the hero nor this excursion stats
-            row, so this grid is their only Peak/Trough surface. */}
         {has && !premium && <div><span className="k">Peak</span><span className="v nh-deck-pos">{signPct(play.peak)}</span></div>}
         {has && !premium && <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>}
       </div>
