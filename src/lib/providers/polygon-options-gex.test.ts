@@ -23,6 +23,7 @@ import {
   __test_vannaPerShare,
   __test_charmPerShare,
   __test_resolveHeatmapDividendYieldUncached,
+  warnChainTruncated,
 } from "./polygon-options-gex";
 
 function contract(
@@ -735,4 +736,21 @@ test("dividend-yield resolve normalizes percent notation and caches a genuine no
   // A real non-payer resolves to 0 WITHOUT throwing — it is an answer, so it is cacheable.
   ratiosStub = async () => ({ dividend_yield: 0 });
   assert.equal(await __test_resolveHeatmapDividendYieldUncached("NVDA"), 0);
+});
+
+// CodeQL js/log-injection: `underlying` reaches this from a caller-supplied ticker. A newline in
+// it used to forge a second, indistinguishable log line — this pins that it no longer can.
+test("warnChainTruncated: a newline-bearing underlying cannot forge a second log line", () => {
+  const calls: string[] = [];
+  const restore = mock.method(console, "warn", (msg: string) => {
+    calls.push(msg);
+  });
+  try {
+    warnChainTruncated("fetchChainBand", "SPY\n[fake] admin override granted", 50);
+  } finally {
+    restore.mock.restore();
+  }
+  assert.equal(calls.length, 1, "one real call must produce exactly one log line, not two");
+  assert.ok(!calls[0]!.includes("\n"), "no raw newline survives into the logged message");
+  assert.match(calls[0]!, /SPY.*admin override granted/, "the token itself still renders, just flattened");
 });

@@ -8,6 +8,7 @@ import { fetchStockSnapshot, fetchIndexSnapshot } from "./polygon";
 import { rebaseChangePct } from "./change-pct";
 import { todayEtYmd } from "./spx-session";
 import { liveExpiries } from "./expiry-liveness";
+import { logToken } from "@/lib/log-token";
 import { buildGexDepthLadder, type DepthContract, type GexDepthLadder } from "@/lib/gex-depth";
 import { polygonTrackedFetch } from "./polygon-rate-limiter";
 import { isHeatmapPreset } from "../heatmap-allowlist";
@@ -1757,9 +1758,12 @@ const GEX_HEATMAP_FAST_MOVE_TTL_MS = gexHeatmapFastMoveTtlMs();
  * the cap / fully following next_url is a value-changing follow-up (API_INTEGRATION_MAP →
  * "Pagination guards can silently truncate the chain").
  */
-function warnChainTruncated(label: string, underlying: string, pages: number): void {
+// Exported for tests only — this is the same shape as every other test-only export in this
+// file: a call-site-adjacent unit prevents the log-injection regression without needing a full
+// network mock (see `polygon-options-gex.test.ts` for the newline-neutralization case).
+export function warnChainTruncated(label: string, underlying: string, pages: number): void {
   console.warn(
-    `[polygon-gex] ${label}(${underlying}) truncated: hit ${pages}-page guard with next_url still set — chain incomplete, walls/OI/IV understated. Raise the page guard or paginate fully if this recurs.`
+    `[polygon-gex] ${logToken(label)}(${logToken(underlying)}) truncated: hit ${pages}-page guard with next_url still set — chain incomplete, walls/OI/IV understated. Raise the page guard or paginate fully if this recurs.`
   );
 }
 
@@ -3967,12 +3971,12 @@ async function polygonFetchUrl(url: string): Promise<ChainResponse | null> {
     if (!res.ok) {
       // Surface silent provider failures (invalid/non-Massive key, plan without
       // options-chain access, bad symbol). Host + status only — never the apiKey.
-      console.warn(`[polygon-gex] chain fetch ${res.status} ${res.statusText || ""} from ${hostOf(full)} ${endpointKey}`.trim());
+      console.warn(`[polygon-gex] chain fetch ${res.status} ${res.statusText || ""} from ${hostOf(full)} ${logToken(endpointKey)}`.trim());
       return null;
     }
     return (await res.json()) as ChainResponse;
   } catch (err) {
-    console.warn(`[polygon-gex] chain fetch threw from ${hostOf(full)} ${endpointKey}: ${err instanceof Error ? err.message : String(err)}`);
+    console.warn(`[polygon-gex] chain fetch threw from ${hostOf(full)} ${logToken(endpointKey)}: ${logToken(err instanceof Error ? err.message : String(err))}`);
     return null;
   }
 }

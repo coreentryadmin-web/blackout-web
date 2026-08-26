@@ -5,6 +5,7 @@ import { polygonConfigured } from "./config";
 import { sessionStatsFromMinuteBars, todayEtYmd, priorEtYmd } from "./spx-session";
 import { smaFromCloses, emaFromCloses } from "./ma-math";
 import { serverCache, TTL } from "@/lib/server-cache";
+import { logToken } from "@/lib/log-token";
 
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
 const KEY = process.env.POLYGON_API_KEY ?? "";
@@ -137,7 +138,7 @@ export async function fetchStockSnapshot(ticker: string): Promise<StockQuoteSnap
   try {
     return _rowToSnapshot(sym, row);
   } catch (err) {
-    console.warn(`[polygon] snapshot validation failed for ${sym}:`, err);
+    console.warn(`[polygon] snapshot validation failed for ${logToken(sym)}:`, err);
     return null;
   }
 }
