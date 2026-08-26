@@ -12,6 +12,7 @@ export type PlayPlatformFlowPrint = {
   option_type?: string | null;
   premium?: number | null;
   strike?: number | null;
+  expiry?: string | null;
 };
 
 export type PlayPlatformContext = {

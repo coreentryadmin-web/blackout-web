@@ -20,12 +20,17 @@ const CAVEAT_TEXT: Record<NonNullable<VectorContractPick["caveat"]>, string> = {
   premium_high_low_liquidity: "Premium above cap and thin open interest — verify size and use a limit order.",
 };
 
+const ROLE_LABEL: Record<string, string> = {
+  "primary-long": "Primary long",
+  "primary-short": "Primary short",
+  "fade-dip": "Range fade — buy dip",
+  "fade-rip": "Range fade — sell rip",
+  "flow-whale": "HELIX whale anchor",
+};
+
 /**
- * "1-3 plays for this ticker" rail — real contract ideas (strike/expiry) derived from the
- * Suggested Play, not a second invented picker (see vector-contract-picks.ts). Renders nothing
- * when there are no picks: a NEUTRAL/stand-aside play has no directional idea to attach a
- * contract to, and the Suggested Play card above already says so — this card doesn't repeat
- * that message with an empty box.
+ * Ranked 1–3 contract ideas. Play conviction lives in the card header (one number); rank + reasons
+ * differentiate picks — no second invented confidence per row.
  */
 export function VectorContractPicksCard({ ticker, play, picks, loading, className }: Props) {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
@@ -39,7 +44,9 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
         <div className="vp-intel-card-head">
           <span className="vp-intel-card-icon">🎯</span>
           <span className="vp-intel-card-title">
-            {ticker} PLAYS{loading ? " · updating" : ""}
+            {ticker} PLAYS
+            {play ? ` · ${play.conviction}% play` : ""}
+            {loading ? " · updating" : ""}
           </span>
         </div>
         <div className="vector-contract-picks-list">
@@ -50,7 +57,7 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
               className="vector-contract-pick-row"
               onClick={() => setOpenIdx(i)}
             >
-              <span className="vector-contract-pick-rank">{i + 1}.</span>
+              <span className="vector-contract-pick-rank">{pick.rank ?? i + 1}.</span>
               <span
                 className={clsx(
                   "vector-contract-pick-label",
@@ -58,8 +65,15 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
                 )}
               >
                 {pick.label}
+                {pick.dte != null && pick.dte > 0 ? (
+                  <span className="vector-contract-pick-dte"> · {pick.dte}D</span>
+                ) : pick.dte === 0 ? (
+                  <span className="vector-contract-pick-dte"> · 0DTE</span>
+                ) : null}
               </span>
-              <span className="vector-contract-pick-confidence">{pick.confidence}%</span>
+              {(pick.rank ?? i + 1) === 1 ? (
+                <span className="vector-contract-pick-primary-tag">Primary</span>
+              ) : null}
             </button>
           ))}
         </div>
@@ -74,8 +88,18 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
         {open && play ? (
           <div className="vector-contract-pick-drawer">
             <p className="vector-contract-pick-drawer-conf">
-              {open.confidence}% conviction — same read as the Suggested Play above
+              Rank #{open.rank ?? 1}
+              {open.role && ROLE_LABEL[open.role] ? ` · ${ROLE_LABEL[open.role]}` : ""}
+              {" · "}
+              {play.conviction}% Suggested Play conviction
             </p>
+            {open.reasons?.length ? (
+              <ul className="vector-contract-pick-drawer-reasons">
+                {open.reasons.map((r) => (
+                  <li key={r}>{r}</li>
+                ))}
+              </ul>
+            ) : null}
             <p className="vector-contract-pick-drawer-headline">{play.headline}</p>
             <p className="vector-contract-pick-drawer-thesis">{play.thesis}</p>
             <dl className="vector-contract-pick-drawer-levels">

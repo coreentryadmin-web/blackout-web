@@ -2,36 +2,34 @@
 
 import { useEffect, useRef, useState } from "react";
 import { fetchVectorContractPicks, type VectorContractPick } from "@/lib/api";
-import type { VectorPlay } from "./vector-play-engine";
-import type { VectorDteHorizon } from "./vector-dte-horizon";
+import type { VectorPlayEmit } from "./vector-play-engine";
+import type { FlowAlert } from "@/lib/api";
 
 const REFRESH_MS = 45_000;
 const DEBOUNCE_MS = 500;
 
 /**
- * Fetches real contract picks for the current Suggested Play. Debounced against `play` churn
- * (the chart re-derives the play on every tick) and re-fetched on an interval while live so the
- * premium stays current, but a bias/conviction change that doesn't move the picked strike won't
- * cause a visible flicker — this only replaces `picks` when the response actually arrives.
- *
- * Degrades to `[]` (never stale/wrong picks) whenever the play has no directional leg to price
- * (`bias === "neutral"`) or a ticker/horizon change is mid-flight.
+ * Fetches ranked contract picks (1–3) for the current play context. POSTs full walls/spot/flow
+ * so each pick is scored independently across DTE windows — not cloned conviction on both legs.
  */
 export function useVectorContractPicks(
   ticker: string,
-  play: VectorPlay | null,
-  horizon: VectorDteHorizon,
+  emit: VectorPlayEmit | null,
+  sessionFlows: readonly FlowAlert[],
   liveSession: boolean
 ): { picks: VectorContractPick[]; loading: boolean } {
   const [picks, setPicks] = useState<VectorContractPick[]>([]);
   const [loading, setLoading] = useState(false);
   const genRef = useRef(0);
 
+  const play = emit?.play ?? null;
   const bias = play?.bias ?? null;
-  const conviction = play?.conviction ?? 0;
+  const contextKey = emit
+    ? `${emit.spot}|${emit.callWall}|${emit.putWall}|${play?.conviction}|${play?.headline}|${sessionFlows.length}`
+    : "";
 
   useEffect(() => {
-    if (!bias || bias === "neutral") {
+    if (!emit || !play || !bias || bias === "neutral") {
       setPicks([]);
       setLoading(false);
       return;
@@ -41,7 +39,20 @@ export function useVectorContractPicks(
 
     const load = () => {
       setLoading(true);
-      fetchVectorContractPicks({ ticker, bias, conviction, horizon })
+      fetchVectorContractPicks({
+        ticker,
+        play,
+        spot: emit.spot,
+        callWall: emit.callWall,
+        putWall: emit.putWall,
+        magnetStrike: emit.magnetStrike,
+        flows: sessionFlows.map((f) => ({
+          option_type: f.option_type,
+          premium: f.premium,
+          strike: f.strike,
+          expiry: f.expiry,
+        })),
+      })
         .then((res) => {
           if (cancelled || genRef.current !== gen) return;
           setPicks(res.picks ?? []);
@@ -63,7 +74,7 @@ export function useVectorContractPicks(
       clearTimeout(debounce);
       if (interval) clearInterval(interval);
     };
-  }, [ticker, bias, conviction, horizon, liveSession]);
+  }, [ticker, play, bias, contextKey, liveSession, emit, sessionFlows]);
 
   return { picks, loading };
 }

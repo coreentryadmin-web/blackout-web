@@ -144,7 +144,7 @@ import { buildFlowMarkers, DEFAULT_FLOW_MAX_MARKERS, type FlowPrint } from "@/fe
 import { confluenceZones, confluenceCallouts, topConfluenceBand, type ConfluenceLevel } from "@/features/vector/lib/vector-confluence";
 import { summarizeTechnicals, technicalsCalloutLines, type TechnicalsLine } from "@/features/vector/lib/vector-technicals";
 import { playTechnicalsFromSummary } from "@/features/vector/lib/vector-server-technicals-core";
-import { buildVectorPlay, type VectorPlay, type PlayTechnicals } from "@/features/vector/lib/vector-play-engine";
+import { buildVectorPlay, type VectorPlay, type VectorPlayEmit, type PlayTechnicals } from "@/features/vector/lib/vector-play-engine";
 import { expectedMoveCallouts, type ExpectedMove } from "@/features/vector/lib/vector-expected-move";
 import { evaluateAlerts, type AlertRule, type AlertState, type FiredAlert } from "@/features/vector/lib/vector-alerts";
 import { sessionHodLod } from "@/features/vector/lib/vector-key-levels";
@@ -371,7 +371,7 @@ type Props = {
    *  already emitted above (regime/magnet/proximity/confluence/wall-integrity/technicals/expected
    *  move/max-pain), re-derived on every selection change and live tick. Null when there isn't
    *  enough structure yet (no spot) — never fabricated. */
-  onPlayChange?: (play: VectorPlay | null) => void;
+  onPlayChange?: (emit: VectorPlayEmit | null) => void;
   /** Session HELIX tape — feeds platform fusion for the Suggested Play (optional). */
   sessionHelixFlows?: readonly FlowAlert[];
   /** Member-defined alert rules for THIS ticker (wall-touch / flip-cross). Evaluated on each live tick. */
@@ -3382,7 +3382,17 @@ export function VectorChart({
       : "none";
     if (key === lastPlayKeyRef.current) return;
     lastPlayKeyRef.current = key;
-    cb(play);
+    if (!play || spot == null || !(spot > 0)) {
+      cb(null);
+      return;
+    }
+    cb({
+      play,
+      spot,
+      callWall: walls?.callWalls?.[0]?.strike ?? null,
+      putWall: walls?.putWalls?.[0]?.strike ?? null,
+      magnetStrike: magnet?.strike ?? null,
+    });
   }, [ticker, liveGexWalls, liveGammaFlip, gatherConfluenceLevels]);
 
   useEffect(() => {

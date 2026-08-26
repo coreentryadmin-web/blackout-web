@@ -1009,24 +1009,45 @@ export type VectorContractPick = {
   premium: number;
   confidence: number;
   caveat?: "premium_high" | "low_liquidity" | "premium_high_low_liquidity";
+  /** Evidence for rank order — not a second confidence model. */
+  reasons?: string[];
+  role?: string;
+  rank?: number;
+  dte?: number;
 };
 
-/** Real contract ideas for the Suggested Play (see vector-contract-picks.ts). `bias`/`conviction`
- *  are the play the client already computed — the server only resolves the chain and picks a
- *  real strike/expiry against it, it never re-derives the play itself. */
-export async function fetchVectorContractPicks(params: {
+export type VectorContractPicksRequest = {
   ticker: string;
-  bias: "long" | "short" | "range" | "neutral";
-  conviction: number;
-  horizon: string;
-}): Promise<{ picks: VectorContractPick[] }> {
-  const qs = new URLSearchParams({
-    ticker: params.ticker,
-    bias: params.bias,
-    conviction: String(Math.round(params.conviction)),
-    dte: params.horizon,
+  play: {
+    bias: "long" | "short" | "range" | "neutral";
+    conviction: number;
+    style?: "scalp" | "swing" | "position";
+    grade?: "A" | "B" | "C";
+    headline?: string;
+    thesis?: string;
+    entryZone?: string;
+    targets?: string[];
+  };
+  spot: number;
+  callWall?: number | null;
+  putWall?: number | null;
+  magnetStrike?: number | null;
+  flows?: Array<{
+    option_type?: string;
+    premium?: number;
+    strike?: number;
+    expiry?: string;
+  }>;
+};
+
+/** Rank 1–3 strong contract picks using full play + wall + HELIX context. */
+export async function fetchVectorContractPicks(
+  params: VectorContractPicksRequest
+): Promise<{ picks: VectorContractPick[] }> {
+  return marketFetch<{ picks: VectorContractPick[] }>(`/vector/contract-picks`, {
+    method: "POST",
+    body: JSON.stringify(params),
   });
-  return marketFetch<{ picks: VectorContractPick[] }>(`/vector/contract-picks?${qs.toString()}`);
 }
 
 let activeVectorStream: ReconnectingEventSource | null = null;

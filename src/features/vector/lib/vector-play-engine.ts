@@ -127,6 +127,15 @@ export type VectorPlay = {
   dataAge?: number | null;
 };
 
+/** Emitted with the play so contract-pick ranking has walls + spot context. */
+export type VectorPlayEmit = {
+  play: VectorPlay;
+  spot: number;
+  callWall: number | null;
+  putWall: number | null;
+  magnetStrike: number | null;
+};
+
 /** The core setup the regime + proximity resolve to — the branch that shapes everything downstream. */
 type PlaySetup =
   | "fade-call" // long gamma, testing/at a call wall → fade short

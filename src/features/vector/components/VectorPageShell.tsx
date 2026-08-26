@@ -20,7 +20,7 @@ import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
 import { VectorContractPicksCard } from "@/features/vector/components/VectorContractPicksCard";
 import { useVectorContractPicks } from "@/features/vector/lib/use-vector-contract-picks";
 import { VectorTechnicalsPanel } from "@/features/vector/components/VectorTechnicalsPanel";
-import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
+import type { VectorPlay, VectorPlayEmit } from "@/features/vector/lib/vector-play-engine";
 import { VectorOdteMatrixRail } from "@/features/vector/components/VectorOdteMatrixRail";
 import { VectorDailyChart } from "@/features/vector/components/VectorDailyChart";
 import { VectorChartViewSelect, type VectorChartView } from "@/features/vector/components/VectorChartViewSelect";
@@ -341,7 +341,8 @@ export function VectorPageShell({
   // The fused, single concrete trade idea (buildVectorPlay) — null until the chart has emitted its
   // first read (needs a live spot). Rendered above the Pulse rail's raw narration as the "so what do
   // I do" synthesis; VectorPlayCard degrades to nothing when null rather than showing a placeholder.
-  const [play, setPlay] = useState<VectorPlay | null>(null);
+  const [playEmit, setPlayEmit] = useState<VectorPlayEmit | null>(null);
+  const play = playEmit?.play ?? null;
   // Always-on technicals lines (VWAP/EMA/RSI/MACD/pocket/structure) — narrated by the terminal even
   // when the member hasn't toggled the overlays on the chart.
   const [technicals, setTechnicals] = useState<TechnicalsLine[]>([]);
@@ -617,8 +618,8 @@ export function VectorPageShell({
   // the hook itself still has to fire every render regardless of which branch returns.
   const { picks: contractPicks, loading: contractPicksLoading } = useVectorContractPicks(
     activeTicker,
-    play,
-    dteHorizon,
+    playEmit,
+    helixState.flows,
     liveSession
   );
 
@@ -762,7 +763,7 @@ export function VectorPageShell({
       onDteHorizonChange={setDteHorizon}
       onTechnicalsChange={setTechnicals}
       onExpectedMoveChange={setExpectedMove}
-      onPlayChange={setPlay}
+      onPlayChange={setPlayEmit}
       focusLevel={chartFocus}
       // The chart-only embed returns earlier with its own VectorChart, so in practice only the
       // standalone page reaches here and `onPriceScaleRender` is undefined. The `??` keeps a host's
