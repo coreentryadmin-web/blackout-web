@@ -27,7 +27,14 @@
 
 import type { MarketBias } from "./intraday";
 import type { EarningsFlag, EnrichedZeroDteSetup, PlayType, ZeroDteGateFailure, ZeroDteGateRejection } from "./board";
-import { evaluateZeroDteGovernor, type GovernorOpenPlan, type GovernorSnapshot } from "./governor";
+import {
+  evaluateZeroDteGovernor,
+  premiumBudgetReason,
+  GOVERNOR_ENFORCE_PREMIUM_BUDGET,
+  GOVERNOR_MAX_PREMIUM_AT_RISK,
+  type GovernorOpenPlan,
+  type GovernorSnapshot,
+} from "./governor";
 import { CHASE_PCT, type ContractPlan } from "./plan";
 import type { ZeroDteConfluence } from "./confluence";
 import { NEW_PLAY_CUTOFF_ET_MINUTES } from "./plan";
@@ -1077,6 +1084,55 @@ export function refreshPlanQualityGateBlocks(
 /** Belt-and-suspenders: true when a fresh find must NOT write a ledger row. */
 export function freshCommitBlockedByPlan(plan: ContractPlan | null | undefined): boolean {
   return planQualityGateBlocks(plan ?? null).length > 0;
+}
+
+/**
+ * Re-apply the G-5 premium-budget check after thesis-first deferred plan attach (scan.ts),
+ * mirroring refreshPlanQualityGateBlocks. G-5 (governor.ts's evaluateZeroDteGovernor) runs
+ * INSIDE attachGateVerdicts with `entry_premium: input.plan?.entry_max ?? input.plan?.mark ?? null`
+ * — under thesis-first, `input.plan` is still null at that point (contract plans attach
+ * afterward), so the candidate's OWN contribution to the premium budget is permanently computed
+ * as 0 for the life of that gate verdict, even once the real plan is attached. Currently dormant
+ * in production (GOVERNOR_ENFORCE_PREMIUM_BUDGET defaults false — this is a MEASURE-only path
+ * today), but the same "stale verdict never reconciled after deferred attach" shape as the
+ * plan_no_quote bug (#2911) — found 2026-08-26 alongside it. If the flag is ever flipped on
+ * without this refresh, every thesis-first commit would silently under-count its own premium
+ * against the session cap.
+ *
+ * `gamma_regime` is NOT similarly stale — it comes from discovery/positioning data already on
+ * the setup before gates ever run, not from the deferred plan, so G-5's gamma-budget check
+ * (governor_gamma_budget) needs no refresh here.
+ */
+export function refreshGovernorPremiumBudgetBlocks(
+  gate: ZeroDteGateVerdict,
+  entryPremium: number | null,
+  premiumAtRisk: number,
+  /** Test-only override for GOVERNOR_ENFORCE_PREMIUM_BUDGET — the flag is read once at module
+   *  load (envFlag), so a test cannot flip it at runtime. Production always uses the default
+   *  (the real env-driven flag); only tests pass this explicitly. */
+  enforce: boolean = GOVERNOR_ENFORCE_PREMIUM_BUDGET
+): ZeroDteGateVerdict {
+  const nonPremium = gate.blocks.filter((b) => b.code !== "governor_premium_budget");
+  const premiumReason = premiumBudgetReason(premiumAtRisk + (entryPremium ?? 0));
+  const blocks =
+    enforce && premiumReason
+      ? [
+          ...nonPremium,
+          {
+            code: "governor_premium_budget" as const,
+            reason: premiumReason
+              .replace(" (MEASURE)", "")
+              .replace(/Surfaced as calibration evidence.*/, "Blocked — premium budget exceeded."),
+            threshold: GOVERNOR_MAX_PREMIUM_AT_RISK,
+            unlock_et: null,
+          },
+        ]
+      : nonPremium;
+  return {
+    ...gate,
+    verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
+    blocks,
+  };
 }
 
 /** "HH:MM" from ET minutes-since-midnight. */
