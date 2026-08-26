@@ -100,6 +100,7 @@ test("every pick exposes play.conviction as confidence — no per-pick invented 
   );
   for (const p of picks) {
     assert.equal(p.confidence, 75);
+    assert.ok((p.evidence?.length ?? 0) >= 2);
   }
 });
 

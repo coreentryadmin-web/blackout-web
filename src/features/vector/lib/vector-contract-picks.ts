@@ -20,12 +20,12 @@ export type VectorContractPick = {
   /** 0–100 — always `play.conviction`; rank/reasons differentiate picks, not a second score. */
   confidence: number;
   caveat?: "premium_high" | "low_liquidity" | "premium_high_low_liquidity";
-  /** Evidence bullets shown in the detail drawer. */
+  /** Evidence for rank order — not a second confidence model. */
   reasons?: string[];
-  /** Candidate role: primary-long, fade-dip, flow-whale, etc. */
   role?: string;
   rank?: number;
   dte?: number;
+  evidence?: import("./vector-pick-evidence").VectorPickEvidenceSection[];
 };
 
 export type { VectorPlayPickContext, VectorRankedPick };

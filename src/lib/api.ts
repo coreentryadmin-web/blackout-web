@@ -1001,6 +1001,12 @@ export type VectorStreamSnapshot = {
   wallTrailSec?: number;
 };
 
+export type VectorPickEvidenceSection = {
+  id: "strike" | "flow" | "positioning" | "structure" | "technicals" | "liquidity" | "session";
+  title: string;
+  items: Array<{ label: string; value: string; detail?: string }>;
+};
+
 export type VectorContractPick = {
   side: "call" | "put";
   strike: number;
@@ -1009,11 +1015,11 @@ export type VectorContractPick = {
   premium: number;
   confidence: number;
   caveat?: "premium_high" | "low_liquidity" | "premium_high_low_liquidity";
-  /** Evidence for rank order — not a second confidence model. */
   reasons?: string[];
   role?: string;
   rank?: number;
   dte?: number;
+  evidence?: VectorPickEvidenceSection[];
 };
 
 export type VectorContractPicksRequest = {
@@ -1027,11 +1033,28 @@ export type VectorContractPicksRequest = {
     thesis?: string;
     entryZone?: string;
     targets?: string[];
+    starred?: string[];
   };
   spot: number;
   callWall?: number | null;
   putWall?: number | null;
   magnetStrike?: number | null;
+  gammaFlip?: number | null;
+  regimePosture?: "long" | "short" | "transition" | "unknown" | null;
+  technicals?: {
+    vwap?: number | null;
+    emaStack?: "up" | "down" | "mixed" | null;
+    rsi?: number | null;
+    macd?: "bull" | "bear" | null;
+    goldenPocket?: { low: number; high: number } | null;
+    structure?: { type: string; direction: string; level: number } | null;
+  } | null;
+  confluenceZones?: Array<{
+    center: number;
+    score: number;
+    kinds: string[];
+  }>;
+  darkPoolLevels?: Array<{ strike: number; premium: number; pct: number }>;
   flows?: Array<{
     option_type?: string;
     premium?: number;

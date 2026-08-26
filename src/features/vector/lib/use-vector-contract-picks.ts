@@ -46,6 +46,15 @@ export function useVectorContractPicks(
         callWall: emit.callWall,
         putWall: emit.putWall,
         magnetStrike: emit.magnetStrike,
+        gammaFlip: emit.gammaFlip,
+        regimePosture: emit.regimePosture,
+        technicals: emit.technicals,
+        confluenceZones: emit.confluenceZones?.map((z) => ({
+          center: z.center,
+          score: z.score,
+          kinds: z.kinds,
+        })),
+        darkPoolLevels: emit.darkPoolLevels,
         flows: sessionFlows.map((f) => ({
           option_type: f.option_type,
           premium: f.premium,

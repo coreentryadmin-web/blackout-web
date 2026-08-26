@@ -3392,6 +3392,11 @@ export function VectorChart({
       callWall: walls?.callWalls?.[0]?.strike ?? null,
       putWall: walls?.putWalls?.[0]?.strike ?? null,
       magnetStrike: magnet?.strike ?? null,
+      gammaFlip: flip,
+      regimePosture: regime.posture,
+      technicals: technicalsForPlayRef.current,
+      confluenceZones: zones,
+      darkPoolLevels: darkPoolRef.current ?? [],
     });
   }, [ticker, liveGexWalls, liveGammaFlip, gatherConfluenceLevels]);
 
