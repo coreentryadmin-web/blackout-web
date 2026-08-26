@@ -63,23 +63,36 @@ test("Swing OPEN play: tabbed terminal defaults to Thesis at first paint (SSR)",
   assert.doesNotMatch(html, /Trim-scale ladder — the engine banks partials/);
 });
 
-test("0DTE single panel: no tab bar; session log in collapsible details", async () => {
+test("0DTE single panel v2: verdict band, evidence stack, collapsed technicals", async () => {
   const html = await render(
     play({
       firstFlaggedAt: "2026-08-03T11:20:00-04:00",
       pnlPct: 35,
       peak: 87,
+      thesisHealth: {
+        health: 82,
+        currentIndex: 92,
+        advisory: "Thesis intact",
+        pillars: [{ id: "flow", label: "Flow", status: "intact" }],
+        committedAtEt: "10:15",
+      },
     }),
   );
-  assert.match(html, /nh-deck-command-panel/);
+  assert.match(html, /nh-deck-command-panel-v2/);
+  assert.match(html, /nh-deck-verdict-band/);
   assert.match(html, />Why we picked it</);
   assert.match(html, />Live · management</);
+  assert.match(html, />Technicals · gates · factors</);
   assert.match(html, />Session log</);
   assert.doesNotMatch(html, /nh-deck-tabs/);
   assert.doesNotMatch(html, />\[4\]</);
+  // v2 drops stacked legacy tab bodies — no duplicate Engine Checklist in default OPEN view.
+  assert.doesNotMatch(html, /Engine Checklist/);
+  // Technicals collapsed by default on OPEN working plays.
+  assert.doesNotMatch(html, /<details class="nh-deck-command-technicals" open="">/);
 });
 
-test("ThesisRankCard renders in 0DTE command panel when thesisFirst is present", async () => {
+test("DeskEvidenceStack renders in 0DTE command panel when thesisFirst is present", async () => {
   const html = await render(
     play({
       thesisFirst: {
@@ -102,11 +115,11 @@ test("ThesisRankCard renders in 0DTE command panel when thesisFirst is present",
       },
     }),
   );
-  assert.match(html, /nh-deck-thesis-rank/);
-  assert.match(html, />Evidence</);
+  assert.match(html, /nh-deck-evidence-stack/);
   assert.match(html, />HELIX</);
   assert.match(html, />THERMAL</);
-  assert.match(html, />Contract</);
+  assert.doesNotMatch(html, /nh-deck-thesis-rank/);
+  assert.doesNotMatch(html, />Contract</);
 });
 
 test("premium thesis panels render for 0DTE", async () => {
@@ -177,8 +190,8 @@ test("Management tab: no longer renders the Entry-plan Contract/Current-mark tri
   assert.doesNotMatch(html, /Current mark/);
 });
 
-test("Thesis tab: R:R ratio now appears in the commit-snapshot meta grid (folded in from the removed Entry-plan block)", async () => {
-  const html = await render(play({ rrRatio: 2.4 }));
+test("Thesis tab: R:R ratio appears in technicals when expanded (CLOSED play)", async () => {
+  const html = await render(play({ rrRatio: 2.4, status: "CLOSED" }));
   assert.match(html, /Risk : Reward/);
   assert.match(html, /2\.4:1/);
 });

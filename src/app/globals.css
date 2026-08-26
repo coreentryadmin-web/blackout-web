@@ -19958,6 +19958,46 @@ html.product-shell .nav-mega {
 .nh-deck-command-log summary{cursor:pointer;color:var(--dk-text-secondary)}
 .nh-deck-command-log summary:hover{color:var(--dk-cyan)}
 .nh-deck-command-log[open] summary{margin-bottom:12px;color:var(--dk-cyan)}
+/* ── 0DTE Command v2: verdict band + evidence stack ── */
+.nh-deck-command-panel-v2{gap:16px}
+.nh-deck-verdict-band{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:10px 12px;
+  border:1px solid rgba(53,255,158,.22);border-radius:6px;background:linear-gradient(135deg,rgba(53,255,158,.05),rgba(0,0,0,.25))}
+.nh-deck-verdict-band__rec{font-size:11px;font-weight:900;letter-spacing:.12em;padding:4px 10px;border-radius:4px;
+  border:1px solid rgba(255,255,255,.12);color:var(--dk-cyan)}
+.nh-deck-verdict-band__rec.is-hold,.nh-deck-verdict-band__rec.is-buy{color:var(--dk-green-hi);border-color:rgba(53,255,158,.35)}
+.nh-deck-verdict-band__rec.is-trim{color:var(--dk-amber);border-color:rgba(255,200,80,.35)}
+.nh-deck-verdict-band__rec.is-sell{color:var(--dk-red-hi);border-color:rgba(255,80,80,.35)}
+.nh-deck-verdict-band__pnl{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums}
+.nh-deck-verdict-band__thesis{flex:1 1 180px;font-size:11px;font-weight:600;line-height:1.4;color:var(--dk-cyan)}
+.nh-deck-evidence-stack{display:flex;flex-direction:column;gap:8px}
+.nh-deck-evidence-stack__summary{display:flex;flex-wrap:wrap;gap:8px 12px;font-size:10px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--dk-cyan)}
+.nh-deck-evidence-stack__state{color:var(--dk-sky, #7dd3fc)}
+.nh-deck-evidence-stack__list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.nh-deck-evidence-stack__row{display:grid;grid-template-columns:4.5rem 1fr auto;gap:8px;align-items:baseline;
+  padding:8px 10px;border-radius:4px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02)}
+.nh-deck-evidence-stack__row.is-aligned{border-color:rgba(53,255,158,.18)}
+.nh-deck-evidence-stack__row.is-opposed{border-color:rgba(255,80,100,.22)}
+.nh-deck-evidence-stack__desk{font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--dk-cyan)}
+.nh-deck-evidence-stack__row.is-opposed .nh-deck-evidence-stack__desk{color:#fda4af}
+.nh-deck-evidence-stack__text{font-size:11px;line-height:1.35;color:#fff}
+.nh-deck-evidence-stack__chip{font-size:8px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+  padding:2px 6px;border-radius:3px;color:var(--dk-cyan);border:1px solid rgba(255,255,255,.1)}
+.nh-deck-evidence-stack__row.is-aligned .nh-deck-evidence-stack__chip{color:var(--dk-green-hi);border-color:rgba(53,255,158,.25)}
+.nh-deck-evidence-stack__row.is-opposed .nh-deck-evidence-stack__chip{color:#fda4af;border-color:rgba(255,80,100,.25)}
+.nh-deck-evidence-stack__fracture{margin-top:4px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06)}
+.nh-deck-evidence-stack__fracture-hd{font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--dk-cyan)}
+.nh-deck-evidence-stack__fracture-list{margin:6px 0 0;padding:0;list-style:none;font-size:10px;color:var(--dk-cyan);line-height:1.4}
+.nh-deck-evidence-stack__gate{margin:0;font-size:10px;color:var(--dk-cyan)}
+.nh-deck-command-contract,.nh-deck-command-archetype{margin:0;font-size:11px;line-height:1.4;color:var(--dk-cyan)}
+.nh-deck-command-archetype{font-weight:600;color:#fff}
+.nh-deck-command-technicals{margin-top:4px;padding-top:8px;border-top:1px solid var(--dk-line)}
+.nh-deck-command-technicals summary{cursor:pointer;color:var(--dk-text-secondary)}
+.nh-deck-command-technicals summary:hover{color:var(--dk-cyan)}
+.nh-deck-command-technicals[open] summary{margin-bottom:12px;color:var(--dk-cyan)}
+.nh-deck-command-technicals__body{display:flex;flex-direction:column;gap:10px}
+.nh-deck-command-live .nh-deck-premium-stack{margin-bottom:0}
+.nh-deck-command-thesis-prose{font-style:italic}
 /* ── Premium 0DTE terminal panels ── */
 .nh-deck-premium-stack{display:flex;flex-direction:column;gap:16px;margin-bottom:16px}
 .nh-deck-premium__heading{margin:0 0 8px;font-size:10px;font-weight:800;letter-spacing:.12em;
