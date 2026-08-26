@@ -6,6 +6,7 @@ import { Drawer } from "@/components/ui";
 import type { VectorContractPick, VectorPickEvidenceSection } from "@/lib/api";
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
 import { partitionPickEvidence } from "@/features/vector/lib/vector-pick-evidence-rails";
+import { formatPickPremiumRange } from "@/features/vector/lib/vector-pick-live-status";
 
 type Props = {
   ticker: string;
@@ -22,6 +23,18 @@ const CAVEAT_TEXT: Record<NonNullable<VectorContractPick["caveat"]>, string> = {
   low_liquidity: "Thin open interest — use a limit order.",
   premium_high_low_liquidity: "Premium above cap and thin open interest — verify size and use a limit order.",
 };
+
+const ACTION_LABEL: Record<NonNullable<VectorContractPick["actionStatus"]>, string> = {
+  still_buy: "Still buy",
+  caution: "Caution",
+  dont_buy: "Don't buy",
+};
+
+function actionClass(status: VectorContractPick["actionStatus"]): string {
+  if (status === "still_buy") return "vector-pick-action-still-buy";
+  if (status === "dont_buy") return "vector-pick-action-dont-buy";
+  return "vector-pick-action-caution";
+}
 
 const ROLE_LABEL: Record<string, string> = {
   "primary-long": "Primary long",
@@ -100,7 +113,11 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
         </div>
         <p className="vector-contract-picks-sub">Buy-to-open contracts · ranked by setup quality</p>
         <div className="vector-contract-picks-list">
-          {picks.map((pick, i) => (
+          {picks.map((pick, i) => {
+            const liveRange =
+              formatPickPremiumRange(pick.liveBid ?? null, pick.liveAsk ?? null, pick.liveMid ?? null) ??
+              formatPickPremiumRange(pick.entryBid ?? null, pick.entryAsk ?? null, pick.entryMid ?? pick.premium);
+            return (
             <button
               key={`${pick.side}-${pick.strike}-${pick.expiry}`}
               type="button"
@@ -111,24 +128,35 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
               }}
             >
               <span className="vector-contract-pick-rank">{pick.rank ?? i + 1}.</span>
-              <span
-                className={clsx(
-                  "vector-contract-pick-label",
-                  pick.side === "call" ? "vector-contract-pick-call" : "vector-contract-pick-put"
-                )}
-              >
-                {pick.label}
-                {pick.dte != null && pick.dte > 0 ? (
-                  <span className="vector-contract-pick-dte"> · {pick.dte}D</span>
-                ) : pick.dte === 0 ? (
-                  <span className="vector-contract-pick-dte"> · 0DTE</span>
+              <span className="vector-contract-pick-main">
+                <span
+                  className={clsx(
+                    "vector-contract-pick-label",
+                    pick.side === "call" ? "vector-contract-pick-call" : "vector-contract-pick-put"
+                  )}
+                >
+                  {pick.label}
+                  {pick.dte != null && pick.dte > 0 ? (
+                    <span className="vector-contract-pick-dte"> · {pick.dte}D</span>
+                  ) : pick.dte === 0 ? (
+                    <span className="vector-contract-pick-dte"> · 0DTE</span>
+                  ) : null}
+                </span>
+                {liveRange ? (
+                  <span className="vector-contract-pick-premium">{liveRange}</span>
                 ) : null}
               </span>
-              {(pick.rank ?? i + 1) === 1 ? (
+              {pick.actionStatus ? (
+                <span className={clsx("vector-pick-action-chip", actionClass(pick.actionStatus))}>
+                  {ACTION_LABEL[pick.actionStatus]}
+                </span>
+              ) : null}
+              {(pick.rank ?? i + 1) === 1 && !pick.actionStatus ? (
                 <span className="vector-contract-pick-primary-tag">Primary</span>
               ) : null}
             </button>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -147,6 +175,45 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
               {play.conviction}% Suggested Play conviction
             </p>
             <p className="vector-contract-pick-drawer-action">{sideActionLabel(open.side)}</p>
+            {open.actionStatus ? (
+              <p className={clsx("vector-pick-action-banner", actionClass(open.actionStatus))}>
+                {ACTION_LABEL[open.actionStatus]}
+                {open.actionReason ? ` — ${open.actionReason}` : ""}
+              </p>
+            ) : null}
+            {(open.liveMid != null || open.liveDelta != null) && (
+              <dl className="vector-pick-live-greeks">
+                {formatPickPremiumRange(open.liveBid ?? null, open.liveAsk ?? null, open.liveMid ?? null) ? (
+                  <div className="vector-contract-pick-drawer-level">
+                    <dt>Live premium</dt>
+                    <dd>
+                      {formatPickPremiumRange(open.liveBid ?? null, open.liveAsk ?? null, open.liveMid ?? null)}
+                      {open.premiumPctFromEntry != null
+                        ? ` (${open.premiumPctFromEntry >= 0 ? "+" : ""}${open.premiumPctFromEntry.toFixed(0)}% vs pick)`
+                        : ""}
+                    </dd>
+                  </div>
+                ) : null}
+                {open.liveDelta != null ? (
+                  <div className="vector-contract-pick-drawer-level">
+                    <dt>Delta</dt>
+                    <dd>{open.liveDelta.toFixed(2)}</dd>
+                  </div>
+                ) : null}
+                {open.liveGamma != null ? (
+                  <div className="vector-contract-pick-drawer-level">
+                    <dt>Gamma</dt>
+                    <dd>{open.liveGamma.toFixed(3)}</dd>
+                  </div>
+                ) : null}
+                {open.liveTheta != null ? (
+                  <div className="vector-contract-pick-drawer-level">
+                    <dt>Theta</dt>
+                    <dd>{open.liveTheta.toFixed(3)}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            )}
 
             <div className="vector-pick-rail-tabs" role="tablist" aria-label="Pick justification">
               <button

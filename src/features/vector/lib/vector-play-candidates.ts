@@ -22,6 +22,9 @@ import { buildVectorPickEvidence, type VectorPickEvidenceSection } from "./vecto
 import { rangeMeanReference } from "./vector-play-engine";
 import type { VectorPickEnrichmentData } from "./vector-pick-types";
 import { strikeGexFromTotals, topGexPinStrikes } from "./strike-gex-lookup";
+import { vectorPickOcc } from "./vector-pick-occ";
+
+export type VectorPickActionStatus = "still_buy" | "caution" | "dont_buy";
 
 export type VectorPlayPickContext = {
   play: VectorPlay;
@@ -439,13 +442,28 @@ function pickKey(c: PickedContract): string {
   return `${c.side}-${c.strike}-${c.expiry}`;
 }
 
+function chainQuotesForContract(
+  chain: EditionChainData,
+  contract: PickedContract
+): { bid: number | null; ask: number | null } {
+  const row = chain.rows.find(
+    (r) => r.strike === contract.strike && r.expiry === contract.expiry
+  );
+  if (!row) return { bid: null, ask: null };
+  if (contract.side === "call") {
+    return { bid: row.call_bid, ask: row.call_ask };
+  }
+  return { bid: row.put_bid, ask: row.put_ask };
+}
+
 /**
  * Rank up to 3 strong contract ideas for this ticker. Returns [] when the play is neutral or
  * nothing clears the minimum score bar — never fabricates weak/random strikes.
  */
 export function rankVectorPlayCandidates(
   ctx: VectorPlayPickContext | null,
-  chain: EditionChainData | null
+  chain: EditionChainData | null,
+  ticker = ""
 ): VectorRankedPick[] {
   if (!ctx || !chain || ctx.play.bias === "neutral") return [];
 
@@ -497,11 +515,17 @@ export function rankVectorPlayCandidates(
     if (row.rankScore < MIN_SHOW_SCORE) continue;
     seen.add(key);
     const dte = dteOn(row.contract.expiry, today);
+    const quotes = chainQuotesForContract(chain, row.contract);
+    const root = ticker.trim().toUpperCase();
     out.push({
       side: row.contract.side,
       strike: row.contract.strike,
       expiry: row.contract.expiry,
       premium: row.contract.premium,
+      occ: root ? vectorPickOcc(root, row.contract.expiry, row.contract.side, row.contract.strike) : null,
+      entryMid: row.contract.premium,
+      entryBid: quotes.bid,
+      entryAsk: quotes.ask,
       caveat: row.contract.caveat,
       confidence: playConviction,
       label: labelFor(row.contract),

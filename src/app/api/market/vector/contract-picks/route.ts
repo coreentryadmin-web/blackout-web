@@ -177,7 +177,7 @@ async function handlePicks(ctx: VectorPlayPickContext | null, ticker: string) {
         },
       }
     : null;
-  const picks = buildRankedVectorPicks(enrichedCtx, chain);
+  const picks = buildRankedVectorPicks(enrichedCtx, chain, ticker);
   return NextResponse.json({ picks }, { headers: NO_STORE_HEADERS });
 }
 
@@ -245,6 +245,6 @@ export async function GET(req: NextRequest) {
     platformInputs: { sessionFlows: [], darkPoolLevels: [] },
   };
 
-  const picks = buildRankedVectorPicks(ctx, chain);
+  const picks = buildRankedVectorPicks(ctx, chain, rawTicker!);
   return NextResponse.json({ picks }, { headers: NO_STORE_HEADERS });
 }

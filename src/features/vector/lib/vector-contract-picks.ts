@@ -26,6 +26,21 @@ export type VectorContractPick = {
   rank?: number;
   dte?: number;
   evidence?: import("./vector-pick-evidence").VectorPickEvidenceSection[];
+  occ?: string | null;
+  entryMid?: number;
+  entryBid?: number | null;
+  entryAsk?: number | null;
+  liveBid?: number | null;
+  liveAsk?: number | null;
+  liveMid?: number | null;
+  liveDelta?: number | null;
+  liveGamma?: number | null;
+  liveTheta?: number | null;
+  liveIv?: number | null;
+  actionStatus?: "still_buy" | "caution" | "dont_buy";
+  actionReason?: string;
+  premiumPctFromEntry?: number | null;
+  setupInvalidated?: boolean;
 };
 
 export type { VectorPlayPickContext, VectorRankedPick };
@@ -43,9 +58,10 @@ export function legsForBias(bias: VectorPlayBias): Array<"long" | "short"> {
 /** Primary entry — ranks 1–3 strong picks with per-contract scoring. */
 export function buildRankedVectorPicks(
   ctx: VectorPlayPickContext | null,
-  chain: EditionChainData | null
+  chain: EditionChainData | null,
+  ticker = ""
 ): VectorRankedPick[] {
-  return rankVectorPlayCandidates(ctx, chain);
+  return rankVectorPlayCandidates(ctx, chain, ticker);
 }
 
 /** Legacy shim: bias-only input → ranked picks with synthetic play shell. */
