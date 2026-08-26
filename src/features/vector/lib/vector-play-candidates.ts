@@ -13,9 +13,12 @@ import type { ChainStrikeRow, EditionChainData } from "@/features/nighthawk/lib/
 import { GROUNDING_MIN_OI, tieredMinOi } from "@/features/nighthawk/lib/grounding";
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/features/nighthawk/lib/constants";
 import { todayEtYmd } from "@/lib/providers/spx-session";
-import type { VectorPlay, VectorPlayStyle } from "./vector-play-engine";
+import type { PlayTechnicals, VectorPlay, VectorPlayStyle } from "./vector-play-engine";
 import type { PlayPlatformFlowPrint, PlayPlatformInputs } from "./vector-play-platform";
 import type { VectorContractPick } from "./vector-contract-picks";
+import type { VectorRegimePosture } from "./vector-regime";
+import type { ConfluenceZone } from "./vector-confluence";
+import { buildVectorPickEvidence, type VectorPickEvidenceSection } from "./vector-pick-evidence";
 
 export type VectorPlayPickContext = {
   play: VectorPlay;
@@ -23,6 +26,10 @@ export type VectorPlayPickContext = {
   callWall?: number | null;
   putWall?: number | null;
   magnetStrike?: number | null;
+  gammaFlip?: number | null;
+  regimePosture?: VectorRegimePosture | null;
+  technicals?: PlayTechnicals | null;
+  confluenceZones?: readonly ConfluenceZone[] | null;
   platformInputs?: PlayPlatformInputs | null;
 };
 
@@ -31,6 +38,7 @@ export type VectorRankedPick = VectorContractPick & {
   role: string;
   rank: number;
   dte: number;
+  evidence: VectorPickEvidenceSection[];
 };
 
 const FLOW_WHALE = 500_000;
@@ -435,6 +443,7 @@ export function rankVectorPlayCandidates(
     if (seen.has(key)) continue;
     if (row.rankScore < MIN_SHOW_SCORE) continue;
     seen.add(key);
+    const dte = dteOn(row.contract.expiry, today);
     out.push({
       side: row.contract.side,
       strike: row.contract.strike,
@@ -446,7 +455,27 @@ export function rankVectorPlayCandidates(
       reasons: row.reasons,
       role: row.spec.role,
       rank: out.length + 1,
-      dte: dteOn(row.contract.expiry, today),
+      dte,
+      evidence: buildVectorPickEvidence({
+        side: row.contract.side,
+        strike: row.contract.strike,
+        expiry: row.contract.expiry,
+        dte,
+        premium: row.contract.premium,
+        role: row.spec.role,
+        targetStrike: row.spec.targetStrike,
+        spot: ctx.spot,
+        callWall: num(ctx.callWall),
+        putWall: num(ctx.putWall),
+        magnetStrike: num(ctx.magnetStrike),
+        gammaFlip: num(ctx.gammaFlip),
+        regimePosture: ctx.regimePosture ?? null,
+        technicals: ctx.technicals ?? null,
+        platformInputs: ctx.platformInputs ?? null,
+        confluenceZones: ctx.confluenceZones ?? null,
+        playStarred: ctx.play.starred ?? [],
+        caveat: row.contract.caveat,
+      }),
     });
     if (out.length >= MAX_PICKS) break;
   }

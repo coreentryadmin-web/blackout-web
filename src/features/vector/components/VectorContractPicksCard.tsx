@@ -3,7 +3,7 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { Drawer } from "@/components/ui";
-import type { VectorContractPick } from "@/lib/api";
+import type { VectorContractPick, VectorPickEvidenceSection } from "@/lib/api";
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
 
 type Props = {
@@ -28,9 +28,28 @@ const ROLE_LABEL: Record<string, string> = {
   "flow-whale": "HELIX whale anchor",
 };
 
+function EvidenceBlock({ section }: { section: VectorPickEvidenceSection }) {
+  return (
+    <section className="vector-pick-evidence-section">
+      <h3 className="vector-pick-evidence-title">{section.title}</h3>
+      <dl className="vector-pick-evidence-list">
+        {section.items.map((item) => (
+          <div key={`${section.id}-${item.label}-${item.value}`} className="vector-pick-evidence-row">
+            <dt>{item.label}</dt>
+            <dd>
+              <span className="vector-pick-evidence-value">{item.value}</span>
+              {item.detail ? <span className="vector-pick-evidence-detail">{item.detail}</span> : null}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 /**
- * Ranked 1–3 contract ideas. Play conviction lives in the card header (one number); rank + reasons
- * differentiate picks — no second invented confidence per row.
+ * Ranked 1–3 contract ideas. Play conviction lives in the card header; drawer shows structured
+ * desk evidence (flow, positioning, technicals) per pick.
  */
 export function VectorContractPicksCard({ ticker, play, picks, loading, className }: Props) {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
@@ -93,41 +112,47 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
               {" · "}
               {play.conviction}% Suggested Play conviction
             </p>
-            {open.reasons?.length ? (
+
+            {open.evidence?.length ? (
+              <div className="vector-pick-evidence-stack">
+                {open.evidence.map((section) => (
+                  <EvidenceBlock key={section.id} section={section} />
+                ))}
+              </div>
+            ) : open.reasons?.length ? (
               <ul className="vector-contract-pick-drawer-reasons">
                 {open.reasons.map((r) => (
                   <li key={r}>{r}</li>
                 ))}
               </ul>
             ) : null}
-            <p className="vector-contract-pick-drawer-headline">{play.headline}</p>
-            <p className="vector-contract-pick-drawer-thesis">{play.thesis}</p>
-            <dl className="vector-contract-pick-drawer-levels">
-              {play.entryZone ? (
-                <div className="vector-contract-pick-drawer-level">
-                  <dt>Entry</dt>
-                  <dd>{play.entryZone}</dd>
-                </div>
-              ) : null}
-              {play.targets.length ? (
-                <div className="vector-contract-pick-drawer-level">
-                  <dt>Targets</dt>
-                  <dd>{play.targets.join(" → ")}</dd>
-                </div>
-              ) : null}
-              {play.invalidation ? (
-                <div className="vector-contract-pick-drawer-level">
-                  <dt>Invalidation</dt>
-                  <dd>{play.invalidation}</dd>
-                </div>
-              ) : null}
-              <div className="vector-contract-pick-drawer-level">
-                <dt>Contract</dt>
-                <dd>
-                  {open.label} @ ${open.premium.toFixed(2)}
-                </dd>
-              </div>
-            </dl>
+
+            <div className="vector-pick-play-plan">
+              <h3 className="vector-pick-evidence-title">Play plan</h3>
+              <p className="vector-contract-pick-drawer-headline">{play.headline}</p>
+              <p className="vector-contract-pick-drawer-thesis">{play.thesis}</p>
+              <dl className="vector-contract-pick-drawer-levels">
+                {play.entryZone ? (
+                  <div className="vector-contract-pick-drawer-level">
+                    <dt>Entry</dt>
+                    <dd>{play.entryZone}</dd>
+                  </div>
+                ) : null}
+                {play.targets.length ? (
+                  <div className="vector-contract-pick-drawer-level">
+                    <dt>Targets</dt>
+                    <dd>{play.targets.join(" → ")}</dd>
+                  </div>
+                ) : null}
+                {play.invalidation ? (
+                  <div className="vector-contract-pick-drawer-level">
+                    <dt>Invalidation</dt>
+                    <dd>{play.invalidation}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </div>
+
             {open.caveat ? (
               <p className="vector-contract-pick-drawer-caveat">{CAVEAT_TEXT[open.caveat]}</p>
             ) : null}

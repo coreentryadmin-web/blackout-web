@@ -6,6 +6,7 @@ import type { WallProximity } from "./vector-wall-proximity";
 import type { ExpectedMove } from "./vector-expected-move";
 import type { ConfluenceZone } from "./vector-confluence";
 import type { WallIntegrity } from "./vector-wall-integrity";
+import type { VectorDarkPoolLevel } from "./vector-dark-pool-levels";
 import {
   derivePlayPlatformContext,
   platformConvictionDelta,
@@ -127,13 +128,18 @@ export type VectorPlay = {
   dataAge?: number | null;
 };
 
-/** Emitted with the play so contract-pick ranking has walls + spot context. */
+/** Emitted with the play so contract-pick ranking has full desk context. */
 export type VectorPlayEmit = {
   play: VectorPlay;
   spot: number;
   callWall: number | null;
   putWall: number | null;
   magnetStrike: number | null;
+  gammaFlip: number | null;
+  regimePosture: VectorRegimePosture | null;
+  technicals: PlayTechnicals | null;
+  confluenceZones: ConfluenceZone[];
+  darkPoolLevels: VectorDarkPoolLevel[];
 };
 
 /** The core setup the regime + proximity resolve to — the branch that shapes everything downstream. */

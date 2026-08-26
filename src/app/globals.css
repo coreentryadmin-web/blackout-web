@@ -11657,6 +11657,36 @@ html.product-shell .nav-mega {
   .vector-contract-pick-drawer-caveat {
     @apply mt-3 rounded-lg border border-amber-400/30 bg-amber-400/[0.08] px-2.5 py-1.5 text-[12px] text-amber-200;
   }
+  .vector-pick-evidence-stack {
+    @apply mt-3 flex flex-col gap-3;
+  }
+  .vector-pick-evidence-section {
+    @apply rounded-lg border border-cyan-500/20 bg-cyan-500/[0.04] px-2.5 py-2;
+  }
+  .vector-pick-evidence-title {
+    @apply font-mono text-[10px] uppercase tracking-wider text-cyan-400/90;
+  }
+  .vector-pick-evidence-list {
+    @apply mt-1.5 flex flex-col gap-1;
+  }
+  .vector-pick-evidence-row {
+    @apply grid grid-cols-[minmax(5.5rem,38%)_1fr] gap-x-2 gap-y-0.5 text-[12px];
+  }
+  .vector-pick-evidence-row dt {
+    @apply font-mono uppercase tracking-wide text-white/45;
+  }
+  .vector-pick-evidence-row dd {
+    @apply flex flex-col gap-0.5;
+  }
+  .vector-pick-evidence-value {
+    @apply font-mono font-semibold text-white;
+  }
+  .vector-pick-evidence-detail {
+    @apply text-[11px] leading-snug text-sky-300/85;
+  }
+  .vector-pick-play-plan {
+    @apply mt-4 border-t border-white/10 pt-3;
+  }
 
   /* ── Ticker search combobox — type any optionable symbol ── */
   .vector-ticker-search {
