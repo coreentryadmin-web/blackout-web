@@ -241,6 +241,8 @@ export type ZeroDteBoardLedgerRow = {
    *  "⚡ triggered by …" ribbon. Null on a legacy row committed before the pin, or one whose
    *  signals supported no reason — the ribbon is then omitted (never a fabricated trigger). O(1). */
   why_now: WhyNow | null;
+  /** Compact thesis-first panel pinned at commit (entry_context.thesis_first). */
+  thesis_first: Record<string, unknown> | null;
   /** Thesis Health — Entry Truth vs Current Truth for working ledger rows (thesis-health.ts).
    *  Null on WATCH/SKIP, CLOSED, or rows without entry_context. Recomputed each board build. */
   thesis_health: ThesisHealthPayload | null;
@@ -530,6 +532,10 @@ function mapLedgerRow(
     // Wave 3 — the "why now" trigger reason pinned at commit (entry_context.why_now). Structural
     // reader, fail-soft → null on a legacy/absent pin (the terminal omits the ribbon). O(1).
     why_now: readPinnedWhyNow(r.entry_context),
+    thesis_first:
+      r.entry_context && typeof r.entry_context.thesis_first === "object"
+        ? ((r.entry_context.thesis_first as Record<string, unknown> | null) ?? null)
+        : null,
     thesis_health: null,
   };
 }
