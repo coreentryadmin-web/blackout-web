@@ -41,6 +41,7 @@ import { vectorCrosshairStatesEqual } from "@/features/vector/lib/vector-crossha
 import { useVectorChartDrawings } from "@/features/vector/lib/use-vector-chart-drawings";
 import {
   createVectorEventSource,
+  type FlowAlert,
   type VectorDarkPoolLevel,
   type VectorWallLevel,
   type VectorWalls,
@@ -371,6 +372,8 @@ type Props = {
    *  move/max-pain), re-derived on every selection change and live tick. Null when there isn't
    *  enough structure yet (no spot) — never fabricated. */
   onPlayChange?: (play: VectorPlay | null) => void;
+  /** Session HELIX tape — feeds platform fusion for the Suggested Play (optional). */
+  sessionHelixFlows?: readonly FlowAlert[];
   /** Member-defined alert rules for THIS ticker (wall-touch / flip-cross). Evaluated on each live tick. */
   alertRules?: AlertRule[];
   /** Fired alerts from the latest tick (already deduped/cooled-down by the engine) — for toast + terminal. */
@@ -1329,6 +1332,7 @@ export function VectorChart({
   onTechnicalsChange,
   onExpectedMoveChange,
   onPlayChange,
+  sessionHelixFlows = [],
   alertRules,
   onAlertsFired,
   leadSlot,
@@ -1396,6 +1400,10 @@ export function VectorChart({
   // lastPlayKeyRef follow the same latest-callback / dedupe pattern as every other emit* above.
   const onPlayChangeRef = useRef(onPlayChange);
   const technicalsForPlayRef = useRef<PlayTechnicals | null>(null);
+  const sessionHelixFlowsRef = useRef<readonly FlowAlert[]>(sessionHelixFlows);
+  useEffect(() => {
+    sessionHelixFlowsRef.current = sessionHelixFlows;
+  }, [sessionHelixFlows]);
   const lastPlayKeyRef = useRef<string>("");
   useEffect(() => {
     onPlayChangeRef.current = onPlayChange;
@@ -3275,6 +3283,9 @@ export function VectorChart({
     if (priorDayRef.current) {
       lvls.push({ price: priorDayRef.current.pdh, kind: "pdh" }, { price: priorDayRef.current.pdl, kind: "pdl" });
     }
+    for (const dp of darkPoolRef.current.slice(0, 3)) {
+      lvls.push({ price: dp.strike, kind: "dark-pool", label: `DP ${dp.strike}` });
+    }
     return lvls;
   }, [liveGexWalls, liveGammaFlip]);
 
@@ -3361,6 +3372,10 @@ export function VectorChart({
       confluenceZones: zones,
       wallIntegrity: integrity,
       technicals: technicalsForPlayRef.current,
+      platformInputs: {
+        sessionFlows: sessionHelixFlowsRef.current,
+        darkPoolLevels: darkPoolRef.current,
+      },
     });
     const key = play
       ? `${play.headline}|${play.conviction}|${play.grade}|${play.entryZone ?? ""}`
@@ -3369,6 +3384,11 @@ export function VectorChart({
     lastPlayKeyRef.current = key;
     cb(play);
   }, [ticker, liveGexWalls, liveGammaFlip, gatherConfluenceLevels]);
+
+  useEffect(() => {
+    lastPlayKeyRef.current = "";
+    emitPlay();
+  }, [sessionHelixFlows, emitPlay]);
 
   // Evaluate the member's alert rules against the CURRENT live tick (spot + horizon-scoped walls +
   // flip). The pure engine does the dedupe/cooldown/hysteresis; we just persist its state + the prior

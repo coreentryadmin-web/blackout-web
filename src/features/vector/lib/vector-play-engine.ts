@@ -6,6 +6,12 @@ import type { WallProximity } from "./vector-wall-proximity";
 import type { ExpectedMove } from "./vector-expected-move";
 import type { ConfluenceZone } from "./vector-confluence";
 import type { WallIntegrity } from "./vector-wall-integrity";
+import {
+  derivePlayPlatformContext,
+  platformConvictionDelta,
+  platformStarredLine,
+  type PlayPlatformInputs,
+} from "./vector-play-platform";
 
 /**
  * Vector PLAY ENGINE — the desk's single, concrete, timeframe-aware trade idea.
@@ -85,6 +91,8 @@ export type VectorSnapshot = {
   wallIntegrity: { call: WallIntegrity | null; put: WallIntegrity | null } | null | undefined;
   technicals: PlayTechnicals | null | undefined;
   bie?: PlayBieContext | null;
+  /** Session HELIX flow + dark-pool levels for platform fusion (optional — play degrades without). */
+  platformInputs?: PlayPlatformInputs | null;
   /** Age of the underlying stream data in ms (passthrough, for the terminal to show staleness). */
   dataAgeMs?: number | null;
   /** The derived play, attached by the caller after `buildVectorPlay` runs. Part of the full-state
@@ -631,7 +639,14 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
   }
 
   const firstTargetPrice = parseFirstTargetPrice(targets);
-  const conviction = computeConviction(input, setup, bias, refLevel, firstTargetPrice, atWall);
+  let conviction = computeConviction(input, setup, bias, refLevel, firstTargetPrice, atWall);
+  const platformCtx = derivePlayPlatformContext(
+    input.platformInputs ?? {},
+    bias,
+    refLevel,
+    spot
+  );
+  conviction = Math.max(0, Math.min(100, conviction + platformConvictionDelta(platformCtx, bias)));
   const grade = gradeFor(conviction);
 
   // Starred = the "watch this NOW" set. The headline always leads; then the imminent, actionable
@@ -652,6 +667,8 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
       `BIE · setups like this resolved ${Math.round(input.bie.favPct * 100)}% fav over ${input.bie.samples} · ${input.bie.windowDays}d`
     );
   }
+  const platformLine = platformStarredLine(platformCtx);
+  if (platformLine) starred.push(platformLine);
 
   return {
     style,
