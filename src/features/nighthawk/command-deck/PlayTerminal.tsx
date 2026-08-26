@@ -149,15 +149,11 @@ export function PlayTerminal({
    *  the normal "thesis" first paint. */
   initialTab?: Tab;
 }) {
-  // Default to Management for working 0DTE rows (action first); Thesis otherwise.
+  // Tabbed horizons (Swing/Legacy/…) default to Thesis at first paint. 0DTE uses the single-panel
+  // scroll — no tab state. (Working 0DTE rows used to auto-switch to Management; that path was
+  // removed with the tab bar in #2909 — do not reintroduce auto-switch for other horizons.)
   const [tab, setTab] = useState<Tab>(initialTab ?? "thesis");
   const [tabTouched, setTabTouched] = useState(false);
-  useEffect(() => {
-    if (tabTouched || !play || play.horizon === "ZERO_DTE") return;
-    if (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM") {
-      setTab("manage");
-    }
-  }, [play, tabTouched]);
   useEffect(() => {
     if (play?.horizon === "ZERO_DTE") return;
     const onKey = (e: KeyboardEvent) => {
