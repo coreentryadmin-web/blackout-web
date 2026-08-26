@@ -17,7 +17,7 @@ export type VectorContractPick = {
   expiry: string;
   label: string;
   premium: number;
-  /** Per-pick score 0–100 (not a copy of the whole play conviction when multiple legs rank). */
+  /** 0–100 — always `play.conviction`; rank/reasons differentiate picks, not a second score. */
   confidence: number;
   caveat?: "premium_high" | "low_liquidity" | "premium_high_low_liquidity";
   /** Evidence bullets shown in the detail drawer. */

@@ -50,7 +50,7 @@ function basePlay(
   };
 }
 
-test("range bias: spot near call wall ranks put fade higher than call dip", () => {
+test("range bias: spot near call wall ranks put fade before call dip", () => {
   const spot = 576;
   const putWall = 567;
   const callWall = 580;
@@ -75,16 +75,15 @@ test("range bias: spot near call wall ranks put fade higher than call dip", () =
   const calls = picks.filter((p) => p.side === "call");
   if (puts.length && calls.length) {
     assert.ok(
-      puts[0]!.confidence >= calls[0]!.confidence,
-      "put fade near call wall should score >= call dip when spot is closer to call wall"
+      (puts[0]!.rank ?? 99) < (calls[0]!.rank ?? 99),
+      "put fade should rank above call dip when spot is closer to call wall"
     );
-    assert.notEqual(puts[0]!.confidence, calls[0]!.confidence);
   }
 });
 
-test("range bias: picks can differ in confidence — not cloned play conviction", () => {
+test("every pick exposes play.conviction as confidence — no per-pick invented score", () => {
   const chain: EditionChainData = {
-    spot: 100,
+    spot: 102,
     rows: [
       row(95, { expiry: ymdPlus(7), callAsk: 5, callBid: 4.5 }),
       row(105, { expiry: ymdPlus(7), putAsk: 5, putBid: 4.5 }),
@@ -99,8 +98,8 @@ test("range bias: picks can differ in confidence — not cloned play conviction"
     },
     chain
   );
-  if (picks.length >= 2) {
-    assert.notEqual(picks[0]!.confidence, picks[1]!.confidence);
+  for (const p of picks) {
+    assert.equal(p.confidence, 75);
   }
 });
 

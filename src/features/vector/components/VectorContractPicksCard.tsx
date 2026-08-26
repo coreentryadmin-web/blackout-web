@@ -29,7 +29,8 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 /**
- * Ranked 1–3 contract ideas with per-pick confidence and evidence bullets in the drawer.
+ * Ranked 1–3 contract ideas. Play conviction lives in the card header (one number); rank + reasons
+ * differentiate picks — no second invented confidence per row.
  */
 export function VectorContractPicksCard({ ticker, play, picks, loading, className }: Props) {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
@@ -43,7 +44,9 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
         <div className="vp-intel-card-head">
           <span className="vp-intel-card-icon">🎯</span>
           <span className="vp-intel-card-title">
-            {ticker} PLAYS{loading ? " · updating" : ""}
+            {ticker} PLAYS
+            {play ? ` · ${play.conviction}% play` : ""}
+            {loading ? " · updating" : ""}
           </span>
         </div>
         <div className="vector-contract-picks-list">
@@ -68,7 +71,9 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
                   <span className="vector-contract-pick-dte"> · 0DTE</span>
                 ) : null}
               </span>
-              <span className="vector-contract-pick-confidence">{pick.confidence}%</span>
+              {(pick.rank ?? i + 1) === 1 ? (
+                <span className="vector-contract-pick-primary-tag">Primary</span>
+              ) : null}
             </button>
           ))}
         </div>
@@ -83,8 +88,10 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
         {open && play ? (
           <div className="vector-contract-pick-drawer">
             <p className="vector-contract-pick-drawer-conf">
-              {open.confidence}% conviction
+              Rank #{open.rank ?? 1}
               {open.role && ROLE_LABEL[open.role] ? ` · ${ROLE_LABEL[open.role]}` : ""}
+              {" · "}
+              {play.conviction}% Suggested Play conviction
             </p>
             {open.reasons?.length ? (
               <ul className="vector-contract-pick-drawer-reasons">

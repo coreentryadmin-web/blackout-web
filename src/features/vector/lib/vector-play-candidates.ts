@@ -1,11 +1,12 @@
 /**
  * VECTOR PLAY CANDIDATES — ranks 1–3 real option contracts for a ticker using the full play
  * context (bias, walls, spot, HELIX flow, style), searching ACROSS DTE buckets (0DTE, weekly,
- * monthly) instead of mirroring the chart's horizon toggle or duplicating range legs at the same
- * conviction.
+ * monthly) instead of mirroring the chart's horizon toggle.
  *
- * Each pick gets its OWN score + justification bullets — a range fade shows dip vs rip with
- * different confidence based on where spot sits, not two contradictory 75% lines.
+ * Member-facing `confidence` on every pick is ONLY `play.conviction` — the one calibrated number
+ * the Suggested Play already computed. An internal rank score (never serialized) orders picks;
+ * differentiation is rank + role + reason bullets, not a second invented probability (Largo
+ * product contract: omit or reuse real conviction, never fabricate a new one).
  */
 import { pickChainContract } from "@/features/nighthawk/lib/deterministic-edition";
 import type { ChainStrikeRow, EditionChainData } from "@/features/nighthawk/lib/option-chain-prompt";
@@ -295,12 +296,12 @@ function rangeProximityDelta(
   return { delta: 0, reason: null };
 }
 
-function scorePick(
+function rankPick(
   ctx: VectorPlayPickContext,
   spec: CandidateSpec,
   contract: PickedContract,
   windowId: string
-): { score: number; reasons: string[] } {
+): { rankScore: number; reasons: string[] } {
   const { play, spot } = ctx;
   const flows = ctx.platformInputs?.sessionFlows;
   const today = todayEtYmd();
@@ -370,7 +371,7 @@ function scorePick(
     score -= 4;
   }
 
-  return { score: Math.round(Math.min(100, Math.max(0, score))), reasons: [...new Set(reasons)] };
+  return { rankScore: Math.round(Math.min(100, Math.max(0, score))), reasons: [...new Set(reasons)] };
 }
 
 function pickKey(c: PickedContract): string {
@@ -390,7 +391,7 @@ export function rankVectorPlayCandidates(
   const specs = specsForContext(ctx);
   if (!specs.length) return [];
 
-  const raw: Array<{ contract: PickedContract; spec: CandidateSpec; windowId: string; score: number; reasons: string[] }> =
+  const raw: Array<{ contract: PickedContract; spec: CandidateSpec; windowId: string; rankScore: number; reasons: string[] }> =
     [];
 
   for (const spec of specs) {
@@ -417,21 +418,22 @@ export function rankVectorPlayCandidates(
         );
       }
       if (!contract) continue;
-      const { score, reasons } = scorePick(ctx, spec, contract, win.id);
-      raw.push({ contract, spec, windowId: win.id, score, reasons });
+      const { rankScore, reasons } = rankPick(ctx, spec, contract, win.id);
+      raw.push({ contract, spec, windowId: win.id, rankScore, reasons });
     }
   }
 
-  raw.sort((a, b) => b.score - a.score);
+  raw.sort((a, b) => b.rankScore - a.rankScore);
 
   const out: VectorRankedPick[] = [];
   const seen = new Set<string>();
   const today = todayEtYmd();
+  const playConviction = ctx.play.conviction;
 
   for (const row of raw) {
     const key = pickKey(row.contract);
     if (seen.has(key)) continue;
-    if (row.score < MIN_SHOW_SCORE) continue;
+    if (row.rankScore < MIN_SHOW_SCORE) continue;
     seen.add(key);
     out.push({
       side: row.contract.side,
@@ -439,7 +441,7 @@ export function rankVectorPlayCandidates(
       expiry: row.contract.expiry,
       premium: row.contract.premium,
       caveat: row.contract.caveat,
-      confidence: row.score,
+      confidence: playConviction,
       label: labelFor(row.contract),
       reasons: row.reasons,
       role: row.spec.role,

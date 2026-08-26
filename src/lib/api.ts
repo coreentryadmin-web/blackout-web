@@ -1009,6 +1009,7 @@ export type VectorContractPick = {
   premium: number;
   confidence: number;
   caveat?: "premium_high" | "low_liquidity" | "premium_high_low_liquidity";
+  /** Evidence for rank order — not a second confidence model. */
   reasons?: string[];
   role?: string;
   rank?: number;

@@ -65,7 +65,7 @@ test("buildRankedVectorPicks: long bias returns CALL with independent score", ()
   assert.ok(picks[0]!.reasons?.length);
 });
 
-test("buildRankedVectorPicks: range legs do NOT share identical confidence when both show", () => {
+test("buildRankedVectorPicks: range picks share play conviction; rank orders legs", () => {
   const chain = {
     spot: 102,
     rows: [
@@ -74,8 +74,11 @@ test("buildRankedVectorPicks: range legs do NOT share identical confidence when 
     ],
   };
   const picks = buildRankedVectorPicks(ctx("range", 102, { put: 95, call: 105 }, 75), chain);
+  for (const p of picks) {
+    assert.equal(p.confidence, 75);
+  }
   if (picks.length >= 2) {
-    assert.notEqual(picks[0]!.confidence, picks[1]!.confidence);
+    assert.ok((picks[0]!.rank ?? 0) < (picks[1]!.rank ?? 99));
   }
 });
 
