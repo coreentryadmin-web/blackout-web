@@ -614,10 +614,24 @@ export function underlyingMarkAgeMs(
  * the flow/breakout/pin construction sites use (positive = OTM on either side), so refreshing the
  * mark while leaving the old moneyness behind would leave the setup internally inconsistent by
  * exactly the staleness we just removed — and `otm_pct` is a gate input (SETUP_MAX_ITM_PCT /
- * SETUP_MAX_OTM_PCT). The refresh runs BEFORE attachGateVerdicts, so the moneyness gate now judges
- * the REAL moneyness. This is precisely the feedback the no_underlying_price comment below
+ * SETUP_MAX_OTM_PCT).
+ *
+ * CORRECTED 2026-08-27 (P0 fix — this comment previously claimed "the refresh runs BEFORE
+ * attachGateVerdicts, so the moneyness gate now judges the REAL moneyness", which was FALSE: the
+ * refresh restamps this field, but until gates.ts's evaluateZeroDteGates gained the `otmPct` input
+ * (moneynessGateBlocks/refreshMoneynessGateBlocks), NOTHING ever re-compared the refreshed value
+ * against SETUP_MAX_ITM_PCT/SETUP_MAX_OTM_PCT — it rode through the gate stack as a passive AUDIT
+ * field only, exactly like the ordinary (non-refreshed) case this function exists to fix. Caught
+ * live 2026-08-27: SNXX short committed 9.55% ITM and PATH long 4.11% ITM, both ~2-5x past the 2%
+ * SETUP_MAX_ITM_PCT cap. What actually happens now: in the ordinary pipeline (scan.ts's
+ * attachContractPlans runs before attachGateVerdicts) the caller passes this refreshed otm_pct
+ * straight into evaluateZeroDteGates's `otmPct` input, so the moneyness gate DOES now judge the
+ * real, refreshed moneyness. In the thesis-first pipeline (attachContractPlans runs AFTER gates),
+ * the caller must additionally call refreshMoneynessGateBlocks once this refresh has run — see
+ * that function's doc. This is precisely the feedback the no_underlying_price comment below
  * ("a live underlying price is available moments later in scan.ts's attachContractPlans ... but
- * was never fed back") flagged as missing.
+ * was never fed back") flagged as missing — restamping the field alone was not "feeding it back";
+ * feeding it back requires the gate to actually re-read it, which this fix adds.
  */
 export function refreshUnderlyingFromLiveSpot(input: {
   livePrice: number | null | undefined;
