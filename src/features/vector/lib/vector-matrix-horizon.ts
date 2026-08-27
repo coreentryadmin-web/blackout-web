@@ -51,3 +51,17 @@ export function strikeTotalsForScope(
 export function matrixRailTitle(horizon: VectorDteHorizon): string {
   return horizon === "0dte" ? "0DTE Matrix" : `${horizon === "weekly" ? "Weekly" : horizon === "monthly" ? "Monthly" : "All"} Matrix`;
 }
+
+/** When 0DTE scope falls back to the nearest expiry (weekend/holiday), say so explicitly. */
+export function matrixScopeExpiryNote(
+  scopeExpiries: readonly string[],
+  horizon: VectorDteHorizon,
+  todayYmd: string
+): string | null {
+  const exp = scopeExpiries[0];
+  if (!exp || horizon !== "0dte" || exp === todayYmd) return null;
+  const d = new Date(`${exp}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  return `Nearest expiry · ${label}`;
+}

@@ -40,6 +40,15 @@ export function vectorPanelVisibility(focusMode: boolean): VectorPanelVisibility
   };
 }
 
+function noModifiers(e: {
+  altKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  shiftKey?: boolean;
+}): boolean {
+  return !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
+}
+
 /**
  * Escape leaves focus mode — the conventional exit for any fullscreen surface, and the only one a
  * member has if the toolbar scrolls out of reach. Matched on `key` (not the deprecated `keyCode`)
@@ -53,7 +62,34 @@ export function shouldExitFocusMode(e: {
   shiftKey?: boolean;
 }): boolean {
   if (e.key !== "Escape") return false;
-  return !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
+  return noModifiers(e);
+}
+
+/** F toggles focus mode (Compare uses the same key for focus-expand). Ignored in text fields. */
+export function shouldToggleFocusMode(
+  e: {
+    key: string;
+    altKey?: boolean;
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+    shiftKey?: boolean;
+    target?: EventTarget | null;
+  },
+  focusModeAvailable: boolean
+): boolean {
+  if (!focusModeAvailable) return false;
+  if (e.key !== "f" && e.key !== "F") return false;
+  if (!noModifiers(e)) return false;
+  const el = e.target;
+  if (el != null && typeof el === "object" && "tagName" in el) {
+    const tag = String((el as { tagName: string }).tagName).toUpperCase();
+    const editable =
+      "isContentEditable" in el && Boolean((el as { isContentEditable?: boolean }).isContentEditable);
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || editable) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**

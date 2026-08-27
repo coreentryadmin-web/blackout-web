@@ -20,7 +20,9 @@ import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
 import { VectorContractPicksCard } from "@/features/vector/components/VectorContractPicksCard";
 import { useVectorContractPicks } from "@/features/vector/lib/use-vector-contract-picks";
 import { useVectorPickLiveMonitor } from "@/features/vector/lib/use-vector-pick-live-monitor";
-import { VectorTechnicalsPanel } from "@/features/vector/components/VectorTechnicalsPanel";
+import { VectorPlayIntelStrip } from "@/features/vector/components/VectorPlayIntelStrip";
+import { VectorPlayAnalyticsDrawer } from "@/features/vector/components/VectorPlayAnalyticsDrawer";
+import { VectorReplayPlayGate } from "@/features/vector/components/VectorReplayPlayGate";
 import type { VectorPlay, VectorPlayEmit } from "@/features/vector/lib/vector-play-engine";
 import { VectorOdteMatrixRail } from "@/features/vector/components/VectorOdteMatrixRail";
 import { VectorRegimeBanner } from "@/features/vector/components/VectorRegimeBanner";
@@ -38,12 +40,13 @@ import type { WallHistorySample, VectorWallLens } from "@/features/vector/lib/ve
 import { VECTOR_DEFAULT_DTE_HORIZON, type VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { VectorPriceScaleMap } from "@/features/vector/lib/vector-price-scale-map";
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
-import type { TechnicalsLine } from "@/features/vector/lib/vector-technicals";
 import { VectorTickerSelect } from "@/features/vector/components/VectorTickerSelect";
+import { VectorTickerComparisonStrip } from "@/features/vector/components/VectorTickerComparisonStrip";
 import { VectorScanner } from "@/features/vector/components/VectorScanner";
 import {
   vectorPanelVisibility,
   shouldExitFocusMode,
+  shouldToggleFocusMode,
   focusModeAvailable,
   focusModeContentClass,
 } from "@/features/vector/lib/vector-focus-mode";
@@ -149,10 +152,11 @@ type Props = {
   toolbarPortalEl?: HTMLElement | null;
 };
 
-type VectorIosPanel = "chart" | "pulse" | "ladder" | "scanner";
+type VectorIosPanel = "chart" | "pulse" | "ladder" | "scanner" | "plays";
 
 const VECTOR_IOS_PANELS: { id: VectorIosPanel; label: string }[] = [
   { id: "chart", label: "Chart" },
+  { id: "plays", label: "Plays" },
   { id: "pulse", label: "Helix" },
   { id: "ladder", label: "Matrix" },
   { id: "scanner", label: "Scanner" },
@@ -269,12 +273,26 @@ export function VectorPageShell({
     },
     [pushHelixChartFocus]
   );
+  const handleMatrixStrikeFocus = useCallback((strike: number) => {
+    setChartFocus((prev) => ({
+      price: strike,
+      label: String(strike),
+      tone: "sky",
+      seq: (prev?.seq ?? 0) + 1,
+    }));
+  }, []);
   const [scannerOpen, setScannerOpen] = useState(false);
   // FOCUS MODE (member ask 2026-08-18): chart fills the viewport, every side rail UNMOUNTS. See
   // vector-focus-mode.ts for why unmounting (not CSS-hiding) is the rule — the rails poll and
   // subscribe, and leaving them alive behind a fullscreen chart spends frame budget on panels
   // nobody can see.
   const [focusMode, setFocusMode] = useState(false);
+  const [playAnalyticsOpen, setPlayAnalyticsOpen] = useState(false);
+  /** True while VectorChart is in session replay — play engine + live pick polls pause. */
+  const [chartReplayMode, setChartReplayMode] = useState(false);
+  const handleReplayModeChange = useCallback((active: boolean) => {
+    setChartReplayMode(active);
+  }, []);
   const panels = vectorPanelVisibility(focusMode);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
   const helixState = useVectorHelixFlows(activeTicker, liveSession, handleHelixFlowFlash);
@@ -292,7 +310,7 @@ export function VectorPageShell({
     if (!compactPanels) return;
     try {
       const saved = window.sessionStorage.getItem("vector-ios-panel");
-      if (saved === "chart" || saved === "pulse" || saved === "ladder" || saved === "scanner") {
+      if (saved === "chart" || saved === "pulse" || saved === "ladder" || saved === "scanner" || saved === "plays") {
         setIosPanel(saved);
       }
     } catch {
@@ -332,9 +350,6 @@ export function VectorPageShell({
   // I do" synthesis; VectorPlayCard degrades to nothing when null rather than showing a placeholder.
   const [playEmit, setPlayEmit] = useState<VectorPlayEmit | null>(null);
   const play = playEmit?.play ?? null;
-  // Always-on technicals lines (VWAP/EMA/RSI/MACD/pocket/structure) — narrated by the terminal even
-  // when the member hasn't toggled the overlays on the chart.
-  const [technicals, setTechnicals] = useState<TechnicalsLine[]>([]);
   // Options-implied EXPECTED MOVE callouts (±1σ/2σ range) — narrated by the terminal, horizon-scoped
   // (#15 cone, slice 3a). Empty when the chain has no real ATM IV to price the move.
   const [expectedMove, setExpectedMove] = useState<string[]>([]);
@@ -409,20 +424,13 @@ export function VectorPageShell({
     setToast(null);
   }, [activeTicker]);
 
-  // BUG FIX (2026-08-27): playEmit/technicals/expectedMove/confluence are all populated by
-  // VectorChart's onXChange callbacks, but they live in THIS parent component, not in the child
-  // VectorChart remounted via key={activeTicker} on a ticker switch. The remount only resets
-  // VectorChart's OWN internal state -- it does nothing to these parent-owned values, so
-  // VectorPlayCard kept rendering ticker A's grade/bias/entry/stop/target/invalidation (real,
-  // believable-looking risk levels) until the newly-mounted chart for ticker B completed its
-  // first data fetch and called onPlayChange. Same root cause the alert-rules reset above already
-  // handles for its own state; this extends the same discipline to the play/technicals/expected-
-  // move/confluence values.
+  // BUG FIX (2026-08-27): playEmit/expectedMove/confluence are populated by VectorChart callbacks
+  // but live in THIS parent — reset on ticker switch so the play card never shows stale levels.
   useEffect(() => {
     setPlayEmit(null);
-    setTechnicals([]);
     setExpectedMove([]);
     setConfluence(null);
+    setPlayAnalyticsOpen(false);
   }, [activeTicker]);
 
   // Auto-dismiss the toast a few seconds after the newest fire.
@@ -432,17 +440,24 @@ export function VectorPageShell({
     return () => clearTimeout(id);
   }, [toast]);
 
-  // Escape leaves focus mode. Bound only while focus mode is ON, so the desk adds no global key
-  // listener in its normal state (and can't shadow Escape for a dialog/menu that wants it).
+  // F toggles focus mode; Escape exits when fullscreen. Desktop web only.
   const canFocusMode = focusModeAvailable({ chartOnly, nativeShell });
+  const focusModeRef = useRef(focusMode);
+  focusModeRef.current = focusMode;
   useEffect(() => {
-    if (!focusMode) return;
+    if (!canFocusMode) return;
     const onKey = (e: KeyboardEvent) => {
-      if (shouldExitFocusMode(e)) setFocusMode(false);
+      if (shouldExitFocusMode(e) && focusModeRef.current) {
+        setFocusMode(false);
+        return;
+      }
+      if (shouldToggleFocusMode(e, true)) {
+        setFocusMode((v) => !v);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [focusMode]);
+  }, [canFocusMode]);
 
   // Never strand a member in a fullscreen chart with no exit: if the surface stops offering focus
   // mode under them (iOS shell hydrates, or the desk re-renders as an embed), drop out of it.
@@ -580,7 +595,7 @@ export function VectorPageShell({
             onClick={() => setFocusMode((v) => !v)}
             data-testid="vector-focus-toggle"
             aria-pressed={focusMode}
-            title={focusMode ? "Exit fullscreen chart (Esc)" : "Fullscreen chart — hides every side panel"}
+            title={focusMode ? "Exit fullscreen chart (Esc or F)" : "Fullscreen chart — hides side panels (F)"}
           >
             {focusMode ? "Exit full screen" : "Full screen"}
           </button>
@@ -644,13 +659,15 @@ export function VectorPageShell({
     activeTicker,
     playEmit,
     helixState.flows,
-    liveSession
+    liveSession,
+    chartReplayMode
   );
   const monitoredPicks = useVectorPickLiveMonitor(
     activeTicker,
     playEmit,
     contractPicks,
-    liveSession
+    liveSession,
+    chartReplayMode
   );
 
   // Chart-only embed (SPX Slayer flagship desk): the SAME VectorChart with the SAME seed props and
@@ -689,6 +706,7 @@ export function VectorPageShell({
           hideReplayControls={hideReplayControls}
           defaultNodeDensity={defaultNodeDensity}
           onReplayTimeline={onReplayTimeline}
+          onReplayModeChange={handleReplayModeChange}
           compareFourUp={compareFourUp}
           compareFourUpBackground={compareFourUpBackground}
           comparePane={comparePane}
@@ -731,23 +749,45 @@ export function VectorPageShell({
     />
   );
 
-  // Desktop 4th "action" column (2026-08-05, member-directed): the things a member actually ACTS
-  // on — the fused trade idea, the technical read, and the alert-rule builder — pulled out of the
-  // long narrative feed (regime/signals/gamma-magnet/wall-integrity/confluence/expected-move) so
-  // they're visible without scrolling. Below the wide-desktop breakpoint this still renders (see
-  // .vector-action-rail in globals.css), just as a full-width row under the 3-column area rather
-  // than its own column — nothing is ever lost, only the wide-desktop layout changes.
+  // Desktop 4th "action" column: fused trade idea + contract picks + desk intel — play-engine only
+  // (technicals stay on-chart as overlays; no separate Technicals panel in this rail).
   const actionRail = (
     <>
-      <VectorPlayCard play={play} className="mb-2" />
+      {chartReplayMode ? <VectorReplayPlayGate className="mb-2" /> : null}
+      <VectorPlayCard
+        play={play}
+        className="mb-2"
+        replayPaused={chartReplayMode}
+        onOpenAnalytics={() => setPlayAnalyticsOpen(true)}
+      />
+      <VectorPlayIntelStrip
+        regime={regime}
+        expectedMove={expectedMove}
+        confluence={confluence}
+        wallIntegrity={wallIntegrity}
+        className="mb-2"
+      />
       <VectorContractPicksCard
         ticker={activeTicker}
         play={play}
         picks={monitoredPicks}
         loading={contractPicksLoading}
+        replayPaused={chartReplayMode}
         className="mb-2"
       />
-      <VectorTechnicalsPanel technicals={technicals} className="mb-2" />
+      <VectorPlayAnalyticsDrawer
+        open={playAnalyticsOpen}
+        onClose={() => setPlayAnalyticsOpen(false)}
+        ticker={activeTicker}
+        play={play}
+        playEmit={playEmit}
+        regime={regime}
+        magnet={magnet}
+        proximity={proximity}
+        expectedMove={expectedMove}
+        confluence={confluence}
+        wallIntegrity={wallIntegrity}
+      />
     </>
   );
 
@@ -780,9 +820,9 @@ export function VectorPageShell({
       onConfluenceChange={setConfluence}
       onWallIntegrityChange={setWallIntegrity}
       onDteHorizonChange={setDteHorizon}
-      onTechnicalsChange={setTechnicals}
       onExpectedMoveChange={setExpectedMove}
       onPlayChange={setPlayEmit}
+      onReplayModeChange={handleReplayModeChange}
       focusLevel={chartFocus}
       // The chart-only embed returns earlier with its own VectorChart, so in practice only the
       // standalone page reaches here and `onPriceScaleRender` is undefined. The `??` keeps a host's
@@ -859,6 +899,14 @@ export function VectorPageShell({
           />
         ) : null}
 
+        {!chartOnly && !comparePane && !focusMode && !(compactPanels && nativeShell) ? (
+          <VectorTickerComparisonStrip
+            activeTicker={activeTicker}
+            onSelect={navigateTicker}
+            className="vector-comparison-strip-page mb-2"
+          />
+        ) : null}
+
         <div
           className={clsx(
             "vector-chart-terminal-grid",
@@ -893,6 +941,7 @@ export function VectorPageShell({
                 initialWallTrailSec != null ? initialWallTrailSec * 1000 : undefined
               }
               priceBand={priceBand}
+              onStrikeFocus={handleMatrixStrikeFocus}
             />
           </div>
           ) : null}
@@ -920,14 +969,10 @@ export function VectorPageShell({
           ) : null}
 
           {/*
-            Desktop 4th "action" column (member request, 2026-08-05): Play card + Technicals +
-            Alert builder, split out of the narrative pulse rail so they're visible without
-            scrolling. Skipped entirely inside the iOS native app shell — that shell's segment
-            switcher (VECTOR_IOS_PANELS) only knows ladder/chart/pulse/scanner, and mobile wasn't
-            in scope for this change; on ordinary responsive web (non-native, narrow viewport) the
-            CSS below still stacks it as a full-width row rather than hiding it.
+            Action rail: desktop 4th column; iOS native "Plays" segment (2026-08-27).
           */}
-          {panels.action && !(compactPanels && nativeShell) && (
+          {panels.action &&
+            (!compactPanels || !nativeShell || iosPanel === "plays") && (
             <div key="action" className="vector-action-rail">{actionRail}</div>
           )}
         </div>
