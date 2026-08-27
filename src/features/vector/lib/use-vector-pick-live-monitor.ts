@@ -44,7 +44,8 @@ export function useVectorPickLiveMonitor(
   ticker: string,
   emit: VectorPlayEmit | null,
   picks: VectorContractPick[],
-  liveSession: boolean
+  liveSession: boolean,
+  paused = false
 ): VectorContractPick[] {
   const [liveByOcc, setLiveByOcc] = useState<
     Record<
@@ -82,7 +83,8 @@ export function useVectorPickLiveMonitor(
   }, [ticker]);
 
   useEffect(() => {
-    if (!emit?.play || picks.length === 0 || !liveSession) {
+    if (paused || !emit?.play || picks.length === 0 || !liveSession) {
+      if (paused) return;
       setLiveByOcc({});
       lastSuccessAtRef.current = null;
       pinnedEntryByOcc.current.clear();
@@ -155,7 +157,7 @@ export function useVectorPickLiveMonitor(
       cancelled = true;
       clearInterval(id);
     };
-  }, [ticker, emit, pickKey, picks, liveSession]);
+  }, [ticker, emit, pickKey, picks, liveSession, paused]);
 
   return useMemo(() => {
     const stale = isLiveQuotesStale(lastSuccessAtRef.current, Date.now());

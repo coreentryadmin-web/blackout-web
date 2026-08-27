@@ -13,6 +13,8 @@ type Props = {
   play: VectorPlay | null;
   picks: VectorContractPick[];
   loading: boolean;
+  /** Session replay — last pick frame stays visible; live quotes do not refresh. */
+  replayPaused?: boolean;
   className?: string;
 };
 
@@ -123,7 +125,14 @@ function EvidenceRail({
  * Ranked 1–3 buy-to-open contract ideas. Drawer splits justification into Option play (execution)
  * vs Desk data (HELIX, Thermal, catalysts, chart context).
  */
-export function VectorContractPicksCard({ ticker, play, picks, loading, className }: Props) {
+export function VectorContractPicksCard({
+  ticker,
+  play,
+  picks,
+  loading,
+  replayPaused = false,
+  className,
+}: Props) {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const [rail, setRail] = useState<DrawerRail>("desk");
 
@@ -172,7 +181,8 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
           <span className="vp-intel-card-title">
             {ticker} PLAYS
             {play ? ` · ${play.conviction}% play` : ""}
-            {loading ? " · updating" : ""}
+            {loading && !replayPaused ? " · updating" : ""}
+            {replayPaused ? " · replay" : ""}
           </span>
         </div>
         <p className="vector-contract-picks-sub">Buy-to-open contracts · ranked by setup quality</p>
@@ -232,7 +242,7 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
                   {ACTION_LABEL[pick.actionStatus]}
                 </span>
               ) : null}
-              {pick.liveQuotesStale ? (
+              {pick.liveQuotesStale && !replayPaused ? (
                 <span
                   className="vector-play-card-stale"
                   title="Live quote feed hasn't updated recently — bid/ask/status shown are the last known-good read"

@@ -467,6 +467,8 @@ type Props = {
   compareKeyboardActive?: boolean;
   /** Reports this pane's replay timeline so Compare can build a union scrubber. */
   onReplayTimeline?: (timeline: number[]) => void;
+  /** Fires when replay mode toggles so the desk can pause live play/pick polling. */
+  onReplayModeChange?: (active: boolean) => void;
   /** When set, the chart toolbar portals here (full-page desk bar) instead of nesting in the chart column. */
   toolbarPortalEl?: HTMLElement | null;
 };
@@ -1391,6 +1393,7 @@ export function VectorChart({
   comparePane = false,
   compareKeyboardActive = true,
   onReplayTimeline,
+  onReplayModeChange,
   toolbarPortalEl = null,
 }: Props) {
   const initialTimeframe = defaultTimeframe ?? VECTOR_DEFAULT_TIMEFRAME;
@@ -2233,6 +2236,10 @@ export function VectorChart({
   useEffect(() => {
     replayModeRef.current = replayMode;
   }, [replayMode]);
+
+  useEffect(() => {
+    onReplayModeChange?.(replayMode);
+  }, [replayMode, onReplayModeChange]);
 
   useEffect(() => {
     cursorIndexRef.current = cursorIndex;

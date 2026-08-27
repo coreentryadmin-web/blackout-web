@@ -22,6 +22,7 @@ import { useVectorContractPicks } from "@/features/vector/lib/use-vector-contrac
 import { useVectorPickLiveMonitor } from "@/features/vector/lib/use-vector-pick-live-monitor";
 import { VectorPlayIntelStrip } from "@/features/vector/components/VectorPlayIntelStrip";
 import { VectorPlayAnalyticsDrawer } from "@/features/vector/components/VectorPlayAnalyticsDrawer";
+import { VectorReplayPlayGate } from "@/features/vector/components/VectorReplayPlayGate";
 import type { VectorPlay, VectorPlayEmit } from "@/features/vector/lib/vector-play-engine";
 import { VectorOdteMatrixRail } from "@/features/vector/components/VectorOdteMatrixRail";
 import { VectorRegimeBanner } from "@/features/vector/components/VectorRegimeBanner";
@@ -287,6 +288,11 @@ export function VectorPageShell({
   // nobody can see.
   const [focusMode, setFocusMode] = useState(false);
   const [playAnalyticsOpen, setPlayAnalyticsOpen] = useState(false);
+  /** True while VectorChart is in session replay — play engine + live pick polls pause. */
+  const [chartReplayMode, setChartReplayMode] = useState(false);
+  const handleReplayModeChange = useCallback((active: boolean) => {
+    setChartReplayMode(active);
+  }, []);
   const panels = vectorPanelVisibility(focusMode);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
   const helixState = useVectorHelixFlows(activeTicker, liveSession, handleHelixFlowFlash);
@@ -653,13 +659,15 @@ export function VectorPageShell({
     activeTicker,
     playEmit,
     helixState.flows,
-    liveSession
+    liveSession,
+    chartReplayMode
   );
   const monitoredPicks = useVectorPickLiveMonitor(
     activeTicker,
     playEmit,
     contractPicks,
-    liveSession
+    liveSession,
+    chartReplayMode
   );
 
   // Chart-only embed (SPX Slayer flagship desk): the SAME VectorChart with the SAME seed props and
@@ -698,6 +706,7 @@ export function VectorPageShell({
           hideReplayControls={hideReplayControls}
           defaultNodeDensity={defaultNodeDensity}
           onReplayTimeline={onReplayTimeline}
+          onReplayModeChange={handleReplayModeChange}
           compareFourUp={compareFourUp}
           compareFourUpBackground={compareFourUpBackground}
           comparePane={comparePane}
@@ -744,9 +753,11 @@ export function VectorPageShell({
   // (technicals stay on-chart as overlays; no separate Technicals panel in this rail).
   const actionRail = (
     <>
+      {chartReplayMode ? <VectorReplayPlayGate className="mb-2" /> : null}
       <VectorPlayCard
         play={play}
         className="mb-2"
+        replayPaused={chartReplayMode}
         onOpenAnalytics={() => setPlayAnalyticsOpen(true)}
       />
       <VectorPlayIntelStrip
@@ -761,6 +772,7 @@ export function VectorPageShell({
         play={play}
         picks={monitoredPicks}
         loading={contractPicksLoading}
+        replayPaused={chartReplayMode}
         className="mb-2"
       />
       <VectorPlayAnalyticsDrawer
@@ -810,6 +822,7 @@ export function VectorPageShell({
       onDteHorizonChange={setDteHorizon}
       onExpectedMoveChange={setExpectedMove}
       onPlayChange={setPlayEmit}
+      onReplayModeChange={handleReplayModeChange}
       focusLevel={chartFocus}
       // The chart-only embed returns earlier with its own VectorChart, so in practice only the
       // standalone page reaches here and `onPriceScaleRender` is undefined. The `??` keeps a host's

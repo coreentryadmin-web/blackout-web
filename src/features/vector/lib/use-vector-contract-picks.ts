@@ -16,7 +16,8 @@ export function useVectorContractPicks(
   ticker: string,
   emit: VectorPlayEmit | null,
   sessionFlows: readonly FlowAlert[],
-  liveSession: boolean
+  liveSession: boolean,
+  paused = false
 ): { picks: VectorContractPick[]; loading: boolean } {
   const [picks, setPicks] = useState<VectorContractPick[]>([]);
   const [loading, setLoading] = useState(false);
@@ -29,6 +30,10 @@ export function useVectorContractPicks(
     : "";
 
   useEffect(() => {
+    if (paused) {
+      setLoading(false);
+      return;
+    }
     if (!emit || !play || !bias || bias === "neutral") {
       setPicks([]);
       setLoading(false);
@@ -83,7 +88,7 @@ export function useVectorContractPicks(
       clearTimeout(debounce);
       if (interval) clearInterval(interval);
     };
-  }, [ticker, play, bias, contextKey, liveSession, emit, sessionFlows]);
+  }, [ticker, play, bias, contextKey, liveSession, emit, sessionFlows, paused]);
 
   return { picks, loading };
 }

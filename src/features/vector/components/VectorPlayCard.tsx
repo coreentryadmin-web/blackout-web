@@ -6,6 +6,8 @@ import { STALE_MILD_MS, type VectorPlay } from "@/features/vector/lib/vector-pla
 type Props = {
   play: VectorPlay | null;
   className?: string;
+  /** Chart is replaying session history — last live play frame stays visible but is not updating. */
+  replayPaused?: boolean;
   /** Opens the full desk analytics drawer (regime, walls, confluence, watch list). */
   onOpenAnalytics?: () => void;
 };
@@ -48,7 +50,7 @@ const BIAS_LABEL: Record<VectorPlay["bias"], string> = {
  *  - Overall padding/type scale increased throughout so the card reads as a primary rail element,
  *    not a cramped sidebar afterthought next to the (also-enlarged-in-spirit) contract picks card.
  */
-export function VectorPlayCard({ play, className, onOpenAnalytics }: Props) {
+export function VectorPlayCard({ play, className, replayPaused = false, onOpenAnalytics }: Props) {
   if (!play) return null;
   // dataAge was a documented passthrough nothing ever read — the doc comment on VectorSnapshot
   // promised "for the terminal to show staleness," but no UI surfaced it. This is that surface:
@@ -74,7 +76,11 @@ export function VectorPlayCard({ play, className, onOpenAnalytics }: Props) {
             {BIAS_LABEL[play.bias]}
           </span>
         </div>
-        {isStale ? (
+        {replayPaused ? (
+          <span className="vector-play-card-stale" title="Session replay active — suggested play is frozen at the last live read">
+            REPLAY
+          </span>
+        ) : isStale ? (
           <span className="vector-play-card-stale" title="Live data feed hasn't updated recently">
             STALE
           </span>
