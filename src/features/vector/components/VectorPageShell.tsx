@@ -369,6 +369,19 @@ export function VectorPageShell({
   const [liveSpot, setLiveSpot] = useState<number | null>(
     initialBars.length ? initialBars[initialBars.length - 1]!.close : null
   );
+  // BUG FIX (2026-08-27): liveSpot was never reset on a ticker switch, so a stale price from the
+  // PREVIOUS ticker kept being passed as VectorOdteMatrixRail's `liveSpot` prop (which it prefers
+  // over its own ticker-scoped fetch: `liveSpot ?? data?.spot ?? initialSpot`) until the new
+  // ticker's first live tick arrived. That window — a fresh SSE reconnect plus first candle, up to
+  // several seconds — showed the matrix rail's spot row / King-strike / wall highlighting computed
+  // against a DIFFERENT ticker's price entirely; if the two tickers don't share a strike range, the
+  // "spot" row pins to whatever real-but-meaningless strike happens to be closest to the leftover
+  // number. Nulling here on ticker change lets the rail correctly fall back to its own fetched
+  // spot for the new ticker, mirroring the alert-rules reset a few lines below.
+  useEffect(() => {
+    setLiveSpot(initialBars.length ? initialBars[initialBars.length - 1]!.close : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ticker switch only, mirrors the alert-rules reset below
+  }, [activeTicker]);
 
   // LADDER↔CHART BAND (2026-08-09). The measured bug: on NVDA the ladder spanned 162.5→300 while
   // the chart's price axis spanned ~197.5→247.5. Same instrument, two unrelated scales, so finding
