@@ -40,6 +40,56 @@ function parseInline(text: string): ReactNode[] {
   return result;
 }
 
+function parseTableBlock(block: string, tableKey: number): ReactNode {
+  const lines = block.trim().split("\n").map((l) => l.trim());
+  const headerCells = lines[0]
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((c) => c.trim());
+  const bodyLines = lines.slice(2);
+  return (
+    <div key={tableKey} className="my-6 overflow-x-auto rounded-xl border border-white/10">
+      <table className="min-w-full text-left text-sm">
+        <thead>
+          <tr className="border-b border-white/10 bg-white/[0.03]">
+            {headerCells.map((cell, i) => (
+              <th key={i} className="px-4 py-2.5 font-syne text-xs font-bold uppercase tracking-wide text-white/80">
+                {parseInline(cell)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {bodyLines.map((line, ri) => {
+            const cells = line
+              .replace(/^\|/, "")
+              .replace(/\|$/, "")
+              .split("|")
+              .map((c) => c.trim());
+            return (
+              <tr key={ri} className="border-b border-white/[0.06] last:border-0">
+                {cells.map((cell, ci) => (
+                  <td key={ci} className="px-4 py-2.5 align-top text-white/70">
+                    {parseInline(cell)}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function isGfmTableBlock(trimmed: string): boolean {
+  const lines = trimmed.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return false;
+  if (!lines.every((l) => l.startsWith("|") && l.endsWith("|"))) return false;
+  return /^\|[\s\-:|]+\|$/.test(lines[1]);
+}
+
 export function MarkdownBody({ content }: { content: string }) {
   const blocks = content.split(/\n\n+/);
   const elements: ReactNode[] = [];
@@ -105,6 +155,8 @@ export function MarkdownBody({ content }: { content: string }) {
           ) : null}
         </figure>,
       );
+    } else if (isGfmTableBlock(trimmed)) {
+      elements.push(parseTableBlock(trimmed, key++));
     } else if (/^\d+\.\s/.test(trimmed)) {
       const items = trimmed.split(/\n/).map((line) => line.replace(/^\d+\.\s+/, ""));
       elements.push(
