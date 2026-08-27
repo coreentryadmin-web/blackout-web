@@ -24,7 +24,7 @@ import { VectorTechnicalsPanel } from "@/features/vector/components/VectorTechni
 import type { VectorPlay, VectorPlayEmit } from "@/features/vector/lib/vector-play-engine";
 import { VectorOdteMatrixRail } from "@/features/vector/components/VectorOdteMatrixRail";
 import { VectorRegimeBanner } from "@/features/vector/components/VectorRegimeBanner";
-import { VectorAlertsPanel } from "@/features/vector/components/VectorAlertsPanel";
+import { VectorAlertsBell } from "@/features/vector/components/VectorAlertsBell";
 import type { AlertRule, AlertKind, FiredAlert } from "@/features/vector/lib/vector-alerts";
 import { loadAlertRules, saveAlertRules, buildAlertRule, loadNotifyEnabled, saveNotifyEnabled } from "@/features/vector/lib/vector-alerts-store";
 import { notificationForFire, shouldSystemNotify } from "@/features/vector/lib/vector-notify";
@@ -462,7 +462,7 @@ export function VectorPageShell({
   // registers a web-push subscription when VAPID is configured — inert otherwise). We only persist
   // the opt-in when permission actually lands 'granted', so a dismissed/denied prompt doesn't leave
   // the toggle stuck "on" with no way for banners to fire.
-  // useCallback here (not just an inline function): VectorAlertsPanel/GexShiftLeadersStrip are
+  // useCallback here (not just an inline function): VectorAlertsBell/GexShiftLeadersStrip are
   // React.memo'd specifically to skip the ~1Hz liveSpot re-render churn (SSE spot ticks) — a plain
   // function expression would hand memo a fresh identity every render and silently defeat it.
   const handleToggleNotify = useCallback(async () => {
@@ -596,6 +596,29 @@ export function VectorPageShell({
         label={liveSession ? "Live session" : `${sessionLabel} close`}
       />
     );
+  // Alerts moved off the standalone page and into a bell icon anchored right next to this chip
+  // (member: "add a clickable icon next to LIVE SESSION on the top", 2026-08-27) — see
+  // VectorAlertsBell for the popover + rationale. Deliberately NOT added to `chartFreshness`
+  // itself: that value is also used by the chartOnly SPX Slayer embed (line below), which never
+  // rendered a standalone alerts panel either and stays terminal/panel-free by design (member
+  // directive, 2026-08-05) — only the full standalone /vector page gets the bell.
+  const chartFreshnessWithAlerts =
+    chartFreshness == null ? null : (
+      <span className="vector-freshness-alerts-group">
+        {chartFreshness}
+        <VectorAlertsBell
+          ticker={activeTicker}
+          rules={alertRules}
+          recent={recentAlerts}
+          onAdd={handleAddRule}
+          onToggle={handleToggleRule}
+          onRemove={handleRemoveRule}
+          notifyEnabled={notifyEnabled}
+          notifyPermission={notifyPerm}
+          onToggleNotify={handleToggleNotify}
+        />
+      </span>
+    );
   const embedRegimeSlot = spxIosEmbed || suppressRegimeBanner ? null : <VectorRegimeBanner regime={regime} />;
 
   const handleRegime = useCallback(
@@ -725,17 +748,6 @@ export function VectorPageShell({
         className="mb-2"
       />
       <VectorTechnicalsPanel technicals={technicals} className="mb-2" />
-      <VectorAlertsPanel
-        ticker={activeTicker}
-        rules={alertRules}
-        recent={recentAlerts}
-        onAdd={handleAddRule}
-        onToggle={handleToggleRule}
-        onRemove={handleRemoveRule}
-        notifyEnabled={notifyEnabled}
-        notifyPermission={notifyPerm}
-        onToggleNotify={handleToggleNotify}
-      />
     </>
   );
 
@@ -780,7 +792,7 @@ export function VectorPageShell({
       alertRules={alertRules}
       onAlertsFired={handleAlertsFired}
       leadSlot={chartLead}
-      trailSlot={chartFreshness}
+      trailSlot={chartFreshnessWithAlerts}
       // Regime narrative banner removed on the standalone page (member request, 2026-08-26): the
       // "Short/Long gamma …" callout ate a full row above the canvas for a read the SCALP rail and
       // ODTE matrix already give at a glance. `regime` state itself is untouched — still forwarded
