@@ -490,7 +490,7 @@ export function rankVectorPlayCandidates(
           spec.preferExpiry
         );
       } else if (win.id === "0dte") {
-        contract = pickChainContract(chain, spec.direction, 0);
+        contract = pickChainContract(chain, spec.direction, 0, spec.targetStrike);
       } else {
         contract = pickContractNearTarget(
           chain,
