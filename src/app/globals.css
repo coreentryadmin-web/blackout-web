@@ -10684,6 +10684,16 @@ html.product-shell .nav-mega {
     }
   }
 
+  .vector-compare-add-error {
+    margin: 0;
+    padding: 6px 14px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.72rem;
+    color: #fca5a5;
+    background: rgb(127 29 29 / 0.15);
+    border-bottom: 1px solid rgb(127 29 29 / 0.3);
+  }
+
   .vector-compare-mobile-gate {
     display: flex;
     flex-direction: column;

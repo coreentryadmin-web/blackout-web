@@ -46,6 +46,16 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   const router = useRouter();
   const [seeds, setSeeds] = useState<VectorClientSeed[]>(initialSeeds.slice(0, VECTOR_COMPARE_MAX_PANES));
   const [loadingTickers, setLoadingTickers] = useState<Set<string>>(new Set());
+  // RESILIENCE (2026-08-27): loadTicker's fetchVectorClientSeed(ticker) had no catch — a bad/
+  // unknown ticker or an API error just cleared the loading spinner and did nothing else. The
+  // click looked like it silently did nothing. addTickerError surfaces that failure; auto-dismiss
+  // mirrors the toast pattern VectorPageShell already uses for fired alerts.
+  const [addTickerError, setAddTickerError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!addTickerError) return;
+    const id = setTimeout(() => setAddTickerError(null), 5000);
+    return () => clearTimeout(id);
+  }, [addTickerError]);
   const [linked, setLinked] = useState(true);
   const [linkedZoom, setLinkedZoom] = useState(true);
   const [syncEpoch, setSyncEpoch] = useState(0);
@@ -317,6 +327,7 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
     async (ticker: string) => {
       if (exclude.has(ticker) || seeds.length >= VECTOR_COMPARE_MAX_PANES) return;
       setLoadingTickers((prev) => new Set(prev).add(ticker));
+      setAddTickerError(null);
       try {
         const seed = await fetchVectorClientSeed(ticker);
         setSeeds((prev) => {
@@ -327,6 +338,11 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
         });
         setFocusedTicker(ticker);
         bumpSync();
+      } catch {
+        // A bad/unknown ticker or a transient API error is a fact about THIS ticker, not a reason
+        // to fail silently — matches loadCompareSeedsBounded's "settle per item" rationale below,
+        // just for the single-add path instead of the bulk preset path.
+        setAddTickerError(ticker);
       } finally {
         setLoadingTickers((prev) => {
           const n = new Set(prev);
@@ -542,6 +558,12 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
           syncZoomPreset={syncZoomPreset}
           onSyncZoomPreset={applySyncZoomPreset}
         />
+
+        {addTickerError ? (
+          <p className="vector-compare-add-error" role="alert">
+            Couldn&rsquo;t add {addTickerError} — check the ticker and try again.
+          </p>
+        ) : null}
 
         <div className="vector-compare-mobile-gate" role="status">
           <p className="vector-compare-mobile-gate-title">Compare needs a wider screen</p>
