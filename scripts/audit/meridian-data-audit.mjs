@@ -8,7 +8,15 @@ import { join } from "node:path";
 
 const POLY = process.env.POLYGON_API_KEY;
 const UW = process.env.UW_API_KEY;
-const POLY_BASE = (process.env.POLYGON_API_BASE || "https://api.polygon.io").replace(/\/$/, "");
+// SELF-DEFAULT THE PROVIDER BASE, with the /^https?:/ guard every other harness here carries.
+// This sandbox ships `POLYGON_API_BASE` as the literal, unresolved string "POLYGON_API_BASE" — a
+// `${{shared.*}}` ref that never expanded (CLAUDE.md, "Environment realities"). A plain `||`
+// fallback doesn't catch this (the string is non-empty), so every Polygon/Benzinga probe below
+// (Benzinga rides the same POLY_BASE) silently 404s and reads as "the upstream is down" rather
+// than "the base URL is a broken placeholder" — reproduced live 2026-08-27: all 6 Polygon/Benzinga
+// probes RED with http=0 while the sibling UW probes on the same run were all GREEN.
+const rawPolyBase = process.env.POLYGON_API_BASE;
+const POLY_BASE = (rawPolyBase && /^https?:\/\//.test(rawPolyBase) ? rawPolyBase : "https://api.polygon.io").replace(/\/$/, "");
 const OUT = process.env.AUDIT_OUT || join(process.cwd(), "audit-output");
 
 function req(name) {
@@ -53,13 +61,17 @@ async function main() {
     checks.push(
       await probe(
         "Polygon SPX daily bars",
-        `${POLY_BASE}/v2/aggs/ticker/SPX/range/1/day/2026-07-01/2026-07-10?limit=5&apiKey=${polyKey}`
+        // "SPX" (no prefix) is not a Polygon ticker — the index lives under "I:SPX" (same mapping
+        // board.ts's polygonSpotTicker()/POLYGON_INDEX_SPOT use). Confirmed live: plain "SPX" over
+        // this window returns HTTP 200 with 0 rows every time (looks like "no data", not "wrong
+        // symbol"); "I:SPX" over the same window returns 5.
+        `${POLY_BASE}/v2/aggs/ticker/I:SPX/range/1/day/2026-07-01/2026-07-10?limit=5&apiKey=${polyKey}`
       )
     );
     checks.push(
       await probe(
         "Polygon SPX minute bars",
-        `${POLY_BASE}/v2/aggs/ticker/SPX/range/1/minute/2026-07-10/2026-07-10?limit=50&sort=asc&apiKey=${polyKey}`
+        `${POLY_BASE}/v2/aggs/ticker/I:SPX/range/1/minute/2026-07-10/2026-07-10?limit=50&sort=asc&apiKey=${polyKey}`
       )
     );
     checks.push(
