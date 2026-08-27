@@ -293,12 +293,17 @@ export function filterFreshPulseSignals(
 // ---------------------------------------------------------------------------
 
 export function wallEventToPulseSignal(ev: VectorWallEvent): PulseSignal {
+  // NOTE: spot_broke_call/spot_broke_put are currently ALWAYS severity:"warn" (vector-wall-events.ts),
+  // so the ev.severity==="warn" branch above always wins for them and this kind-based branch is
+  // unreachable today. Its mapping was previously inverted (spot_broke_call → "bear",
+  // spot_broke_put → "bull") — fixed here so a future change that gives either event a non-warn
+  // severity doesn't silently color a bullish resistance-break red or a bearish support-break green.
   const tone: PulseSignalTone =
     ev.severity === "warn"
       ? "warn"
-      : ev.kind.startsWith("call_wall") || ev.kind === "spot_broke_put"
+      : ev.kind.startsWith("call_wall") || ev.kind === "spot_broke_call"
         ? "bull"
-        : ev.kind.startsWith("put_wall") || ev.kind === "spot_broke_call"
+        : ev.kind.startsWith("put_wall") || ev.kind === "spot_broke_put"
           ? "bear"
           : ev.kind === "spot_crossed_flip"
             ? "warn"

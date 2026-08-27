@@ -311,6 +311,35 @@ test("wallEventToPulseSignal: put_wall_fading → bear tone", () => {
   assert.equal(sig.tone, "bear");
 });
 
+// spot_broke_call/spot_broke_put are always severity:"warn" in production (vector-wall-events.ts),
+// so ev.severity==="warn" always wins for them and this kind-based mapping is unreachable today —
+// but it was previously INVERTED, a landmine for any future change that gives either event a
+// non-warn severity. Forcing a non-warn severity here (impossible via the real event builder) is
+// the only way to exercise and pin the correct mapping ahead of that happening.
+test("wallEventToPulseSignal: spot_broke_call (non-warn) → bull tone — resistance break is bullish", () => {
+  const ev: VectorWallEvent = {
+    time: 400,
+    lens: "gex",
+    kind: "spot_broke_call",
+    message: "broke above call wall",
+    severity: "info",
+  };
+  const sig = wallEventToPulseSignal(ev);
+  assert.equal(sig.tone, "bull");
+});
+
+test("wallEventToPulseSignal: spot_broke_put (non-warn) → bear tone — support break is bearish", () => {
+  const ev: VectorWallEvent = {
+    time: 500,
+    lens: "gex",
+    kind: "spot_broke_put",
+    message: "broke below put wall",
+    severity: "info",
+  };
+  const sig = wallEventToPulseSignal(ev);
+  assert.equal(sig.tone, "bear");
+});
+
 // ── Play state signal tests ──
 
 test("detectPlayStateSignals: SCANNING→WATCHING emits watch signal", () => {
