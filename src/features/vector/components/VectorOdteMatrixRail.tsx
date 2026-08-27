@@ -217,9 +217,11 @@ export function VectorOdteMatrixRail({
           <table className="vector-odte-matrix-table spx-gex-matrix-table w-full border-collapse font-mono text-[11px] tabular-nums">
             <thead className="sticky top-0 z-10 bg-[#08080e]">
               <tr className="border-b border-white/10 text-[9px] uppercase tracking-wider text-sky-300">
-                <th className="py-1 pl-1 pr-1 text-left font-semibold">Strike</th>
-                <th className="py-1 px-1 text-right font-semibold">{lens.toUpperCase()}</th>
-                <th className="py-1 pr-1 text-right font-semibold">Δ%</th>
+                <th className="py-1 pl-1 pr-2 text-left font-semibold">Strike</th>
+                {/* Δ% folded into this cell (see MatrixRow) — Vector only ever shows the single
+                    0DTE column, so a standalone Δ% column just burned rail width for one number
+                    that reads fine as a small inline suffix next to the value it explains. */}
+                <th className="py-1 pr-1 text-right font-semibold">{lens.toUpperCase()} · Δ%</th>
               </tr>
             </thead>
             <tbody>
@@ -299,13 +301,23 @@ const MatrixRow = memo(function MatrixRow({
         {row.isKing ? <span className="vector-odte-matrix-crown" aria-hidden> ♛</span> : null}
       </th>
       <td
-        className="py-0.5 px-1 text-right whitespace-nowrap"
+        className="py-0.5 pr-1 text-right whitespace-nowrap"
         style={{ ...cellStyle, ...textStyle }}
       >
-        {hasVal ? fmtHeatmapMoneySigned(row.value) : "·"}
-      </td>
-      <td className={clsx("py-0.5 pr-1 text-right text-[10px] font-semibold tabular-nums", pctTone)}>
-        {row.driftLabel ?? "—"}
+        <span
+          className={clsx(row.isKing && "vector-odte-matrix-king-value")}
+          title={row.isKing ? "King node — largest |GEX| on the board" : undefined}
+        >
+          {hasVal ? fmtHeatmapMoneySigned(row.value) : "·"}
+        </span>
+        {row.driftLabel != null && row.driftLabel !== "—" ? (
+          <span className={clsx("vector-odte-matrix-pct-inline", pctTone)}>
+            {row.shiftDelta != null && row.shiftDelta >= 0 ? "▲" : "▼"}
+            {/* driftLabel already carries its own +/− sign (fmtShiftPercentForStrike) — the arrow
+                above is the direction cue, so strip that leading sign glyph rather than show both. */}
+            {row.driftLabel.replace(/^[+−-]/, "")}
+          </span>
+        ) : null}
       </td>
     </tr>
   );
