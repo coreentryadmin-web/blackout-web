@@ -2681,9 +2681,25 @@ export function VectorChart({
       // at exact trade times (atPriceMiddle + price), so they don't need to align to a bar boundary —
       // lightweight-charts snaps them onto the axis, matching how the wall beads use sample times.
       if (flowMarkersRef.current) {
+        // BUG FIX (2026-08-27): during replay this used to draw the FULL unfiltered flowPrintsRef —
+        // scrubbing back to 10:00 AM still showed flow arrows for prints that occurred after 10:00,
+        // misrepresenting "what had printed by this point in the session." Wall beads already get this
+        // right via sliceHistoryToTime/cursorTime in applyFrame; flow markers were the one overlay that
+        // never got the same cursor clip, because they're painted from THIS shared paintOverlays path
+        // (also called on every live tick) rather than only from the replay-specific applyFrame.
+        // Derive cursor time from the already-sliced `bars` (applyFrame passes cursor-clipped
+        // display bars). cursorIndexRef can lag applyFrame by one tick during auto-play/step,
+        // which would show flow arrows one frame ahead of the scrubbed time.
+        const replayCursorMs = replayModeRef.current
+          ? (bars.length ? (bars[bars.length - 1]!.time as number) * 1000 : 0)
+          : null;
+        const flowPrintsToDraw =
+          replayCursorMs != null
+            ? flowPrintsRef.current.filter((p) => p.tsMs <= replayCursorMs)
+            : flowPrintsRef.current;
         flowMarkersRef.current.setMarkers(
           enabled.has("flow-markers")
-            ? buildFlowMarkers(flowPrintsRef.current, flowMinPremiumRef.current).map((m) => ({
+            ? buildFlowMarkers(flowPrintsToDraw, flowMinPremiumRef.current).map((m) => ({
                 time: m.time as Time,
                 position: m.position,
                 price: m.price,
@@ -2753,7 +2769,12 @@ export function VectorChart({
       // Cheap: the primitive just stores refs and requests a redraw; a null grid or the toggle off
       // draws nothing. This lives in paintOverlays so a toggle flip (which repaints here via the
       // indicators effect) shows/hides the surface instantly; the fetch pushes fresh data directly.
-      gexHeatmapPrimitiveRef.current?.setData(gexHeatmapGridRef.current, enabled.has("gex-heatmap"));
+      // During replay, applyFrame calls paintOverlays on every scrub — gate the paint so the
+      // background poll's live grid doesn't overwrite the frozen cursor-time frame (same rule as
+      // fetchGexHeatmap's setData/setSpot gate added 2026-08-27).
+      if (!replayModeRef.current) {
+        gexHeatmapPrimitiveRef.current?.setData(gexHeatmapGridRef.current, enabled.has("gex-heatmap"));
+      }
       // Dealer-gamma regime glow — same toggle-repaint path as the heatmap: re-push the last cached
       // active-lens flip + live spot so flipping "gamma-regime" on/off shows/hides the glow instantly
       // (live flip/spot updates come through refreshOverlays on each tick). No-op when off.
@@ -3662,8 +3683,15 @@ export function VectorChart({
         gexHeatmapGridRef.current = grid;
         if (spotNow != null && spotNow > 0) gexHeatmapSpotAtFetchRef.current = spotNow;
         else if (grid?.spot != null) gexHeatmapSpotAtFetchRef.current = grid.spot;
-        gexHeatmapPrimitiveRef.current?.setData(grid, indicatorsRef.current.has("gex-heatmap"));
-        if (spotRef.current != null) gexHeatmapPrimitiveRef.current?.setSpot(spotRef.current);
+        // BUG FIX (2026-08-27): these two calls force-repaint the heatmap surface/spot marker
+        // (_requestUpdate() in vector-gex-heatmap-primitive.ts). Scrubbing into replay used to keep
+        // this surface tracking whatever the background poll last fetched, silently overwriting the
+        // frozen cursor-time frame the rest of the chart shows. The ref update above still runs
+        // unconditionally so live data keeps accumulating in the background — only the paint is gated.
+        if (!replayModeRef.current) {
+          gexHeatmapPrimitiveRef.current?.setData(grid, indicatorsRef.current.has("gex-heatmap"));
+          if (spotRef.current != null) gexHeatmapPrimitiveRef.current?.setSpot(spotRef.current);
+        }
       } catch {
         // Network throw: keep the last-drawn surface rather than blank it on a transient blip.
       }
@@ -4040,7 +4068,12 @@ export function VectorChart({
         spotRef.current = curSpot;
         dataReceivedAtMsRef.current = Date.now();
         onSpotChange?.(curSpot);
-        gexHeatmapPrimitiveRef.current?.setSpot(curSpot);
+        // BUG FIX (2026-08-27): unconditional setSpot() force-repaints the heatmap spot marker on
+        // every live tick (see the matching fetchGexHeatmap fix above) — gated the same way so the
+        // marker freezes at the replay cursor instead of continuing to track the live tape.
+        if (!inReplay) {
+          gexHeatmapPrimitiveRef.current?.setSpot(curSpot);
+        }
         if (
           !compareFourUpBackgroundRef.current &&
           liveSessionRef.current &&
