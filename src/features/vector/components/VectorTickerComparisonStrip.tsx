@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { useVectorUniverseSnapshot } from "@/features/vector/lib/vector-universe-client";
 import { buildTickerComparisonRows } from "@/features/vector/lib/vector-ticker-comparison";
+import { formatVectorAge, VECTOR_UNIVERSE_STALE_MS } from "@/features/vector/lib/vector-age-format";
 
 type Props = {
   activeTicker: string;
@@ -32,7 +34,28 @@ function fmtDist(pct: number | null): string {
  * shown as a placeholder — same convention the rest of Vector's overlays follow.
  */
 export function VectorTickerComparisonStrip({ activeTicker, onSelect, className }: Props) {
-  const { data, isLoading } = useVectorUniverseSnapshot();
+  const { data, error, isLoading } = useVectorUniverseSnapshot();
+  const [now, setNow] = useState<number | null>(null);
+
+  // BUG FIX (2026-08-27): this reads the SAME shared universe snapshot VectorScanner does, which
+  // was just given a staleness disclosure (`data.updatedAt` reaches the client explicitly "for
+  // consumers to age-gate" — see vector-universe.ts) because a stale scan otherwise renders with
+  // zero visual difference from a live one. This component reused the fetch but not the
+  // disclosure; wiring it here too so the same silent-staleness gap can't ship the moment this
+  // (currently unmounted) component gets wired into a page.
+  useEffect(() => {
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (error && !data?.rows?.length) {
+    return (
+      <p className="vector-comparison-strip-note" role="status">
+        Cross-ticker comparison unavailable.
+      </p>
+    );
+  }
 
   if (isLoading && !data?.rows?.length) {
     return (
@@ -54,12 +77,23 @@ export function VectorTickerComparisonStrip({ activeTicker, onSelect, className 
   const rows = buildTickerComparisonRows(activeTicker, data.rows);
   if (!rows.length) return null;
 
+  const age = formatVectorAge(data.updatedAt, now);
+  const isStale = now != null && data.updatedAt > 0 && now - data.updatedAt >= VECTOR_UNIVERSE_STALE_MS;
+
   return (
     <div
       className={clsx("vector-comparison-strip", className)}
       role="group"
       aria-label="Cross-ticker wall comparison"
     >
+      {age != null && (
+        <span
+          className={clsx("vector-comparison-age", isStale && "is-stale")}
+          title={isStale ? "Comparison data hasn't refreshed recently — showing the last cached snapshot" : "Comparison data age"}
+        >
+          {isStale ? "⚠ " : ""}{age}
+        </span>
+      )}
       {rows.map((row) => (
         <button
           key={row.ticker}
