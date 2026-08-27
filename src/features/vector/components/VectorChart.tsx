@@ -1655,6 +1655,12 @@ export function VectorChart({
   // banner on every SSE frame.
   const lastRegimeReadRef = useRef<string>("");
   const lastProximityRef = useRef<string>("");
+  // BUG FIX (2026-08-27): holds the actual last deriveWallProximity() result (not just the dedup
+  // key above) so it can be fed back in as `prev` for the module's exit-hysteresis — see
+  // vector-wall-proximity.ts. Shared by emitProximity and emitPlay: both represent the same
+  // real-world quantity and must hysterese together, not maintain two independently-drifting
+  // notions of "is spot still at this wall".
+  const wallProximityStateRef = useRef<WallProximity | null>(null);
   const lastMagnetRef = useRef<string>("");
   const lastWallIntegrityRef = useRef<string>("");
   const lensRef = useRef<VectorWallLens>("gex");
@@ -3364,12 +3370,14 @@ export function VectorChart({
   // the member's DTE selection actually surfaces — deduped by callout text so it only
   // fires when the actionable level actually changes.
   const emitProximity = useCallback(() => {
-    if (!onProximityChange) return;
     const prox = deriveWallProximity({
       spot: spotRef.current,
       walls: liveGexWalls(),
       gammaFlip: liveGammaFlip(),
+      prev: wallProximityStateRef.current,
     });
+    wallProximityStateRef.current = prox;
+    if (!onProximityChange) return;
     const key = prox ? `${prox.side}:${prox.strike}:${prox.nearness}` : "none";
     if (key === lastProximityRef.current) return;
     lastProximityRef.current = key;
@@ -3505,7 +3513,13 @@ export function VectorChart({
       topPutWall: walls?.putWalls?.[0]?.strike ?? null,
     });
     const magnet = deriveGammaMagnet({ spot, walls, posture: regime.posture });
-    const proximity = deriveWallProximity({ spot, walls, gammaFlip: flip });
+    const proximity = deriveWallProximity({
+      spot,
+      walls,
+      gammaFlip: flip,
+      prev: wallProximityStateRef.current,
+    });
+    wallProximityStateRef.current = proximity;
     const zones = spot && spot > 0 ? confluenceZones(gatherConfluenceLevels(spot), spot) : [];
     const integrity = scoreTopWalls(walls, wallHistoryRef.current);
     const play = buildVectorPlay({
@@ -3595,6 +3609,10 @@ export function VectorChart({
     // here guarantees the first post-selection emit fires; steady-state SSE dedup is unaffected.
     lastRegimeReadRef.current = "";
     lastProximityRef.current = "";
+    // A ticker/horizon switch means the old wall-proximity read no longer describes anything
+    // real (a new ticker's walls could coincidentally share a strike but mean nothing) — hand
+    // the new scope's first read a clean slate rather than hysteresing off stale context.
+    wallProximityStateRef.current = null;
     lastMagnetRef.current = "";
     lastWallIntegrityRef.current = "";
     lastPlayKeyRef.current = "";
@@ -3969,6 +3987,10 @@ export function VectorChart({
     if (!chartReady || replayModeRef.current || !seriesRef.current) return;
     lastRegimeReadRef.current = "";
     lastProximityRef.current = "";
+    // A ticker/horizon switch means the old wall-proximity read no longer describes anything
+    // real (a new ticker's walls could coincidentally share a strike but mean nothing) — hand
+    // the new scope's first read a clean slate rather than hysteresing off stale context.
+    wallProximityStateRef.current = null;
     lastMagnetRef.current = "";
     lastWallIntegrityRef.current = "";
     lastPlayKeyRef.current = "";
