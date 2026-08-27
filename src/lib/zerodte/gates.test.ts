@@ -14,6 +14,8 @@ import {
   MARKET_BIAS_MAX_AGE_MS,
   planQualityGateBlocks,
   refreshPlanQualityGateBlocks,
+  moneynessGateBlocks,
+  refreshMoneynessGateBlocks,
   refreshGovernorPremiumBudgetBlocks,
   confluenceFloorAt,
   scoreFloorForOrigins,
@@ -30,6 +32,7 @@ import {
 } from "./gates";
 import type { ContractPlan } from "./plan";
 import { buildContractPlan, evaluateQuoteValidity, QUOTE_VALIDITY } from "./plan";
+import { SETUP_MAX_ITM_PCT, SETUP_MAX_OTM_PCT } from "./board";
 import type { ZeroDteConfluence } from "./confluence";
 import { GOVERNOR_MAX_CONCURRENT_PLANS, GOVERNOR_MAX_PREMIUM_AT_RISK } from "./governor";
 
@@ -773,6 +776,110 @@ test("refreshPlanQualityGateBlocks: drops stale plan_no_quote after deferred att
   const blocked = refreshPlanQualityGateBlocks(stale, null);
   assert.equal(blocked.verdict, "BLOCKED");
   assert.equal(blocked.blocks.some((b) => b.code === "plan_no_quote"), true);
+});
+
+// ── Moneyness re-check (P0 fix, 2026-08-27) ─────────────────────────────────────────────
+// Live-caught: board.ts's deriveZeroDteSetups gates SETUP_MAX_ITM_PCT/SETUP_MAX_OTM_PCT exactly
+// once, before scan.ts's attachContractPlans refreshes otm_pct from a fresher live-spot read —
+// and nothing ever re-compared the REFRESHED value against either cap. SNXX (short, 9.55% ITM)
+// and PATH (long, 4.11% ITM) both committed live past the 2% cap on this exact hole.
+
+test("moneynessGateBlocks: within both caps → no blocks (no false positive on ordinary moneyness)", () => {
+  assert.deepEqual(moneynessGateBlocks(3, false), []); // 3% OTM — comfortably inside [-2, 12]
+  assert.deepEqual(moneynessGateBlocks(-1.5, false), []); // 1.5% ITM — inside the 2% ITM cap
+});
+
+test("moneynessGateBlocks: breaches the ITM cap → max_itm_pct", () => {
+  const blocks = moneynessGateBlocks(-9.55, false); // SNXX-shaped: 9.55% ITM
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "max_itm_pct");
+  assert.equal(blocks[0]!.threshold, -SETUP_MAX_ITM_PCT);
+  assert.match(blocks[0]!.reason, /9\.55% ITM/);
+});
+
+test("moneynessGateBlocks: breaches the OTM lotto cap → max_otm_pct", () => {
+  const blocks = moneynessGateBlocks(16.11, false); // GAP-shaped: 16.11% OTM, cap is 12%
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "max_otm_pct");
+  assert.equal(blocks[0]!.threshold, SETUP_MAX_OTM_PCT);
+  assert.match(blocks[0]!.reason, /16\.11% OTM/);
+});
+
+test("moneynessGateBlocks: a CONDOR is exempt regardless of otm_pct (no single-strike moneyness)", () => {
+  assert.deepEqual(moneynessGateBlocks(50, true), []);
+  assert.deepEqual(moneynessGateBlocks(-50, true), []);
+  assert.deepEqual(moneynessGateBlocks(null, true), []);
+});
+
+test("moneynessGateBlocks: fails OPEN on a null/undefined otmPct (supplementary re-check, not sole authority)", () => {
+  assert.deepEqual(moneynessGateBlocks(null, false), []);
+  assert.deepEqual(moneynessGateBlocks(undefined, false), []);
+});
+
+test("evaluateZeroDteGates: existing gate behavior is UNCHANGED when otmPct is simply not supplied", () => {
+  // The base `input()` fixture never sets `otmPct` — every pre-existing gate test in this file
+  // relies on that being a true no-op. Guard it explicitly so a future edit can't silently
+  // reintroduce a fail-closed default here.
+  const v = evaluateZeroDteGates(input());
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks, []);
+});
+
+test("evaluateZeroDteGates: a candidate whose REFRESHED otm_pct has drifted past the ITM cap is BLOCKED", () => {
+  // Initial otm_pct (at candidate derivation, board.ts) was inside the cap — e.g. 1% ITM — but by
+  // the time attachContractPlans's live-spot refresh ran, the underlying moved and the true
+  // (refreshed) moneyness is now 9.55% ITM, mirroring the live SNXX evidence. The ordinary
+  // (non-thesis-first) pipeline passes this refreshed value straight into `otmPct`.
+  const v = evaluateZeroDteGates(input({ otmPct: -9.55 }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "max_itm_pct"), true);
+});
+
+test("evaluateZeroDteGates: a candidate whose REFRESHED otm_pct has drifted past the OTM lotto cap is BLOCKED", () => {
+  const v = evaluateZeroDteGates(input({ otmPct: 16.11 }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "max_otm_pct"), true);
+});
+
+test("evaluateZeroDteGates: a refreshed otm_pct comfortably inside both caps does NOT block (no false positive)", () => {
+  const v = evaluateZeroDteGates(input({ otmPct: 4 }));
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks, []);
+});
+
+test("evaluateZeroDteGates: a CONDOR is exempt from the moneyness re-check even with an extreme otmPct", () => {
+  const v = evaluateZeroDteGates(
+    input({ play_type: "CONDOR", condorPlan: null, otmPct: -50 })
+  );
+  assert.equal(v.blocks.some((b) => b.code === "max_itm_pct" || b.code === "max_otm_pct"), false);
+});
+
+test("refreshMoneynessGateBlocks: re-applies the caps after a deferred (thesis-first) contract-plan attach", () => {
+  // Gates ran first (thesis-first order) with the PRE-refresh otm_pct (inside caps) — no
+  // moneyness block yet.
+  const preRefresh = evaluateZeroDteGates(input({ otmPct: 1, score: 88 }));
+  assert.equal(preRefresh.verdict, "COMMIT");
+  assert.equal(preRefresh.blocks.some((b) => b.code === "max_itm_pct"), false);
+
+  // attachContractPlans now runs and refreshes the live spot — the true moneyness is 9.55% ITM.
+  const postRefresh = refreshMoneynessGateBlocks(preRefresh, -9.55, false);
+  assert.equal(postRefresh.verdict, "BLOCKED");
+  assert.equal(postRefresh.blocks.some((b) => b.code === "max_itm_pct"), true);
+
+  // And the inverse: a candidate that started BLOCKED on a stale reading clears once the
+  // refreshed otm_pct is back inside both caps (drift can go either direction).
+  const badPreRefresh = evaluateZeroDteGates(input({ otmPct: -9.55, score: 88 }));
+  assert.equal(badPreRefresh.verdict, "BLOCKED");
+  const goodPostRefresh = refreshMoneynessGateBlocks(badPreRefresh, 1, false);
+  assert.equal(goodPostRefresh.blocks.some((b) => b.code === "max_itm_pct"), false);
+});
+
+test("refreshMoneynessGateBlocks: a CONDOR stays exempt through the refresh", () => {
+  const gate = evaluateZeroDteGates(
+    input({ play_type: "CONDOR", condorPlan: null, score: 88 })
+  );
+  const refreshed = refreshMoneynessGateBlocks(gate, -50, true);
+  assert.equal(refreshed.blocks.some((b) => b.code === "max_itm_pct" || b.code === "max_otm_pct"), false);
 });
 
 // Bug found 2026-08-26 alongside the plan_no_quote fix: G-5's premium-budget check runs with

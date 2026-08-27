@@ -135,6 +135,7 @@ import {
   gateRejectionFor,
   planQualityGateBlocks,
   refreshPlanQualityGateBlocks,
+  refreshMoneynessGateBlocks,
   refreshGovernorPremiumBudgetBlocks,
   recentNighthawkTake,
 } from "./gates";
@@ -586,6 +587,14 @@ export async function scanZeroDteBoard(flags?: {
     for (const s of setups) {
       if (s.gate) {
         s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null);
+        // Moneyness re-check (P0 fix, 2026-08-27): attachContractPlans (just above) is what runs
+        // refreshUnderlyingFromLiveSpot in this (thesis-first) pipeline, i.e. AFTER
+        // attachGateVerdicts already evaluated the moneyness caps against the PRE-refresh
+        // otm_pct — the exact "deferred, never reconciled" shape refreshPlanQualityGateBlocks
+        // exists to fix for G-8/G-9. Re-apply the same two caps against the now-refreshed
+        // s.otm_pct so a candidate whose live moneyness drifted past a cap during this pass
+        // still gets caught (mirrors refreshGovernorPremiumBudgetBlocks below).
+        s.gate = refreshMoneynessGateBlocks(s.gate, s.otm_pct ?? null, s.play_type === "CONDOR");
         // G-5 premium budget was computed with plan=null (entry_premium 0) above, same
         // "deferred, never reconciled" shape as G-8/G-9 — see refreshGovernorPremiumBudgetBlocks.
         s.gate = refreshGovernorPremiumBudgetBlocks(
@@ -909,6 +918,14 @@ async function attachGateVerdicts(
       todayYmd: today,
       plan: s.plan ?? null,
       deferPlanQualityGates: thesisFirstEnv().enabled,
+      // Moneyness re-check (P0 fix, 2026-08-27): in the ORDINARY (non-thesis-first) pipeline
+      // attachContractPlans (and its refreshUnderlyingFromLiveSpot) has already run above (this
+      // function is called AFTER that pass — see the caller), so s.otm_pct here is already the
+      // live-refreshed value and this closes the hole directly. In the thesis-first pipeline
+      // attachContractPlans runs AFTER this call instead, so this otmPct is still the PRE-refresh
+      // value — refreshMoneynessGateBlocks (below) re-applies the same caps once the refresh has
+      // actually happened, exactly like refreshPlanQualityGateBlocks does for G-8/G-9.
+      otmPct: s.otm_pct ?? null,
       intradayConflict: s.intraday_conflict,
       // G-11 for EVERY committable rank: prefer the cheap batch halt/earnings reads
       // (computed for all fresh tickers above) over the dossier-only flags that ranks
@@ -1044,8 +1061,14 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
     //
     // This closes the exact hole board.ts's no_underlying_price comment flagged — "a live
     // underlying price is available moments later in scan.ts's attachContractPlans
-    // (snap?.underlyingPrice) but was never fed back to re-check this gate". attachGateVerdicts
-    // runs after this pass, so the moneyness gate now judges the REFRESHED otm_pct.
+    // (snap?.underlyingPrice) but was never fed back to re-check this gate". CORRECTED
+    // 2026-08-27: this restamp alone did NOT close that hole — evaluateZeroDteGates never
+    // re-read otm_pct against the moneyness caps at all until gates.ts's `otmPct` input was
+    // added (moneynessGateBlocks/refreshMoneynessGateBlocks). In THIS (non-thesis-first)
+    // pipeline attachGateVerdicts runs after this pass and now reads the refreshed otm_pct
+    // directly, so the moneyness gate does judge the REFRESHED value here; the thesis-first
+    // pipeline calls attachContractPlans in the opposite order and must re-run
+    // refreshMoneynessGateBlocks afterward (see that call site) to get the same guarantee.
     //
     // When the snapshot has no usable underlying/as-of we do NOT touch the setup: it keeps its
     // older mark WITH its honest `flow_print`/`chain_spot` stamp, so a consumer can still see the

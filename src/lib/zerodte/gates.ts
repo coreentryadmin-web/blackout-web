@@ -27,6 +27,7 @@
 
 import type { MarketBias } from "./intraday";
 import type { EarningsFlag, EnrichedZeroDteSetup, PlayType, ZeroDteGateFailure, ZeroDteGateRejection } from "./board";
+import { SETUP_MAX_ITM_PCT, SETUP_MAX_OTM_PCT } from "./board";
 import {
   evaluateZeroDteGovernor,
   premiumBudgetReason,
@@ -429,6 +430,27 @@ export type ZeroDteGateInput = {
   /** Regime Plane: block fresh commits when regime inputs are blind. */
   regimeBlockFreshCommits?: boolean;
   regimeBlockReason?: string | null;
+  /**
+   * Moneyness re-check input (P0 fix, 2026-08-27 — live-caught: SNXX short 9.55% ITM, PATH long
+   * 4.11% ITM both committed past the 2% SETUP_MAX_ITM_PCT cap). board.ts's deriveZeroDteSetups
+   * gates SETUP_MAX_ITM_PCT/SETUP_MAX_OTM_PCT exactly ONCE, off whatever underlying_price the flow
+   * print carried at candidate-derivation time. scan.ts's attachContractPlans later REFRESHES
+   * `otm_pct` from a fresher live option snapshot (refreshUnderlyingFromLiveSpot, board.ts) — but
+   * until this field existed, nothing ever re-compared that refreshed value against either cap, so
+   * a candidate whose true (post-refresh) moneyness had drifted past a cap could still commit with
+   * `otm_pct` riding through as a passive audit field only. Pass the setup's CURRENT (ideally
+   * post-refresh) `otm_pct` here so `moneynessGateBlocks` can re-fire the same two caps board.ts
+   * already applies once. DIRECTIONAL ONLY — a CONDOR has no single-strike moneyness
+   * (hasSingleStrikeMoneyness=false at the refresh call site pins its otm_pct to null), so this
+   * never fires for one regardless of what is passed. Fails OPEN on null/undefined — like every
+   * other optional gate input here (VIX, macro, confluence), a caller that simply doesn't supply
+   * this is unaffected; it is a SUPPLEMENTARY re-check, not the sole authority — board.ts's own
+   * evidence gate already fails CLOSED on an unreadable underlying before a candidate ever reaches
+   * this function. When the live scan's attachContractPlans runs BEFORE this gate (the ordinary
+   * pipeline), pass the already-refreshed value directly; when it runs AFTER (thesis-first deferred
+   * attach), the caller must re-apply via {@link refreshMoneynessGateBlocks} once the refresh has run.
+   */
+  otmPct?: number | null;
 };
 
 /**
@@ -605,6 +627,17 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
       unlock_et: null,
     });
   }
+
+  // ── Moneyness re-check (live-refreshed underlying) — P0 fix, 2026-08-27 ─────────────────
+  // See the `otmPct` field doc above for the full root cause. In short: board.ts's evidence
+  // gate compared otm_pct to SETUP_MAX_ITM_PCT/SETUP_MAX_OTM_PCT exactly once, before the
+  // scan's later live-spot refresh could move it; this re-applies the SAME two caps to
+  // whatever otm_pct the caller currently has (ideally the refreshed value), so a name that
+  // drifted past a cap between candidate derivation and commit no longer slips through. Pure
+  // pass-through to moneynessGateBlocks, which is also exported standalone so scan.ts can
+  // re-run it after a deferred (thesis-first) contract-plan attach — see
+  // refreshMoneynessGateBlocks below, mirroring refreshPlanQualityGateBlocks.
+  blocks.push(...moneynessGateBlocks(input.otmPct, isCondor));
 
   // G-4 — VIX regime hard gate (promoted from calibration 2026-07-16).
   // F-1: 69.2% WR at VIX<17 vs 25.0% at ≥17 — the strongest measured factor.
@@ -1058,6 +1091,69 @@ const QUOTE_INVALID_SENTENCE: Record<
   wide_dollars: "Contract bid/ask dollar spread is over the cap",
   thin_size: "Contract resting quote size is below the floor",
 };
+
+/**
+ * Moneyness cap re-check — pure, unit-testable, reused by the deferred (thesis-first) refresh
+ * below. Re-applies the SAME two board.ts constants (SETUP_MAX_ITM_PCT / SETUP_MAX_OTM_PCT) the
+ * evidence gate already used once, against whatever `otmPct` the caller currently holds. Never
+ * invents a different threshold — see the `otmPct` field doc on ZeroDteGateInput for why.
+ *
+ * `isCondor` short-circuits to no blocks: a CONDOR is delta-neutral (no single-strike moneyness),
+ * and its otm_pct is always null at the refresh call site anyway (hasSingleStrikeMoneyness=false),
+ * so this is belt-and-suspenders, not load-bearing, for that branch.
+ *
+ * Fails OPEN on null/undefined `otmPct` — this is a supplementary re-check layered on top of
+ * board.ts's own fail-closed evidence gate (no_underlying_price), not a replacement for it, and a
+ * caller that doesn't supply a value must see zero behavior change (mirrors every other optional
+ * gate input in this file).
+ */
+export function moneynessGateBlocks(
+  otmPct: number | null | undefined,
+  isCondor: boolean
+): ZeroDteGateBlock[] {
+  if (isCondor || otmPct == null) return [];
+  const blocks: ZeroDteGateBlock[] = [];
+  if (otmPct < -SETUP_MAX_ITM_PCT) {
+    blocks.push({
+      code: "max_itm_pct",
+      reason:
+        `Top strike is ${Math.abs(otmPct).toFixed(2)}% ITM — past the ${SETUP_MAX_ITM_PCT}% ` +
+        "stock-replacement cap on the live-refreshed underlying (re-checked post live-spot refresh).",
+      threshold: -SETUP_MAX_ITM_PCT,
+      unlock_et: null,
+    });
+  } else if (otmPct > SETUP_MAX_OTM_PCT) {
+    blocks.push({
+      code: "max_otm_pct",
+      reason:
+        `Top strike is ${otmPct.toFixed(2)}% OTM — past the ${SETUP_MAX_OTM_PCT}% far-OTM lotto ` +
+        "cap on the live-refreshed underlying (re-checked post live-spot refresh).",
+      threshold: SETUP_MAX_OTM_PCT,
+      unlock_et: null,
+    });
+  }
+  return blocks;
+}
+
+const MONEYNESS_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set(["max_itm_pct", "max_otm_pct"]);
+
+/** Re-apply the moneyness cap after a deferred (thesis-first) contract-plan attach (scan.ts) —
+ *  mirrors refreshPlanQualityGateBlocks exactly. Needed because thesis-first defers
+ *  attachContractPlans (and therefore refreshUnderlyingFromLiveSpot) until AFTER
+ *  evaluateZeroDteGates has already run once against the PRE-refresh otm_pct. */
+export function refreshMoneynessGateBlocks(
+  gate: ZeroDteGateVerdict,
+  otmPct: number | null | undefined,
+  isCondor: boolean
+): ZeroDteGateVerdict {
+  const rest = gate.blocks.filter((b) => !MONEYNESS_GATE_CODES.has(b.code));
+  const blocks = [...rest, ...moneynessGateBlocks(otmPct, isCondor)];
+  return {
+    ...gate,
+    verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
+    blocks,
+  };
+}
 
 const PLAN_QUALITY_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
   "plan_no_quote",
