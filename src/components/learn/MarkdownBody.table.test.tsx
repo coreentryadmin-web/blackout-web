@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 (globalThis as unknown as { React: typeof React }).React = React;
 
 test("MarkdownBody renders GFM pipe tables as semantic HTML tables", async () => {
-  const { MarkdownBody } = await import("./MarkdownBody.tsx");
+  const { MarkdownBody } = await import("./MarkdownBody");
   const md = `| State | Window |
 | --- | --- |
 | **RTH** | 10:00-16:00 |
