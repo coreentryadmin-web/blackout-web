@@ -332,6 +332,29 @@ test("VectorChart: explicit zoom in/out/reset buttons wired through to the toolb
   assert.match(zoomComponent, /onReset: \(\) => void/);
 });
 
+test("VectorChart: Compare mode's live frame now gets the same candle-share floor as standalone", () => {
+  // Audit finding (2026-08-27): the 2026-08-26 candle-squeeze fix explicitly excluded
+  // Compare-compact ("its wider fixed window is tuned for short panes") — that guard bypassed
+  // withCandleFloor entirely for Compare's live frame (frameSpanPct stayed null, so
+  // clampPriceRangeSpan below never ran), the identical bug class the fix exists for, and worse
+  // there since COMPARE_BEAD_VIEW_MAX_PCT (24%) is wider than BEAD_VIEW_MAX_PCT (20%). Compare
+  // now composes withCandleFloor against its own wider hard cap instead of being skipped.
+  const chart = read("src/features/vector/components/VectorChart.tsx");
+  assert.doesNotMatch(
+    chart,
+    /\} else if \(!compareCompactBeadsRef\.current\) \{/,
+    "Compare-compact must no longer be excluded from the candle-floor branch"
+  );
+  assert.match(
+    chart,
+    /const hardCapPct = compareCompactBeadsRef\.current \? COMPARE_BEAD_VIEW_MAX_PCT : BEAD_VIEW_MAX_PCT;/
+  );
+  assert.match(
+    chart,
+    /rowAwareSpanPct\(\s*spotRef\.current \?\? 0,\s*sessionBeadStrikes,\s*sessionRows,\s*WALL_VIEW_MAX_PCT,\s*hardCapPct\s*\)/
+  );
+});
+
 test("VectorChart: volume profile bars render in the right gutter beside the last candle", () => {
   const chart = read("src/features/vector/components/VectorChart.tsx");
   const primitive = read("src/features/vector/lib/vector-volume-profile-primitive.ts");
