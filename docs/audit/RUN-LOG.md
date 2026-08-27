@@ -8,6 +8,29 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-08-27 (13:35 UTC) — [SEO] RTH market-hours validation (09:33 EDT) — PASS
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Scheduled RTH (Regular Trading Hours) market-hours validation trigger. Market open: Wed 2026-08-27, 09:30–13:00 ET (trading day, not a holiday).
+
+**Result — `OVERALL: PASS`, `EXIT=0` — Live public surfaces GREEN:**
+
+1. **/tools/gamma-snapshot (public, unauthenticated, live-data page):**
+   - CLS: **0.0** (1440×900 desktop, post-CF purge, 55/55 assets ok)
+   - Verdict: **LIVE RENDER CLEAN** (layout stable during market data refresh; fix #2453 holding)
+
+2. **/api/og crawlability (public image endpoint):**
+   - Response: HTTP 200, `content-type: image/png`
+   - User-Agent: Googlebot/2.1 (unauthenticated)
+   - Verdict: **CRAWLABLE** (OG images indexed; fix #2448 holding)
+
+3. **Licensing check (RESEARCH-PUBLISH-POSTURE compliance):**
+   - `/tools/gamma-snapshot` serves derived gamma state (flip regime, walls), not raw vendor tables
+   - Vendor data redistribution policy: no raw Polygon/UW tables published; editorial/aggregate only
+   - Verdict: **COMPLIANT** (no new licensing questions found)
+
+---
 ## 2026-08-24 (15:33 UTC) — [RTH] Regular trading hours surface validation — CLS REGRESSION DETECTED & FIXED
 
 **Severity.** P1 — Public page, during RTH, serving real market data, CLS exceeding threshold.
