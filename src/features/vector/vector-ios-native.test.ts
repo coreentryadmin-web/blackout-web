@@ -21,18 +21,20 @@ test("VectorTechnicalsPanel — honest-absence + reuses VectorPulse's intel-card
   assert.match(src, /renderEmphasis/);
 });
 
-test("VectorPageShell — desktop action rail (Play/Technicals) excluded from iOS native shell", () => {
+test("VectorPageShell — iOS Plays segment mounts action rail on native shell", () => {
+  const src = readFileSync(join(root, "src/features/vector/components/VectorPageShell.tsx"), "utf8");
+  assert.match(src, /id: "plays", label: "Plays"/);
+  assert.match(src, /iosPanel === "plays"/);
+  assert.match(src, /VectorTickerComparisonStrip/);
+  assert.doesNotMatch(src, /VectorTechnicalsPanel/);
+});
+
+test("VectorPageShell — desktop action rail (Play engine) available on web; iOS uses Plays segment", () => {
   const src = readFileSync(join(root, "src/features/vector/components/VectorPageShell.tsx"), "utf8");
   assert.match(src, /vector-action-rail/);
-  assert.match(src, /!\(compactPanels && nativeShell\)/);
-  assert.match(src, /VectorTechnicalsPanel/);
+  assert.match(src, /iosPanel === "plays"/);
   assert.match(src, /VectorHelixRail/);
   assert.equal((src.match(/<VectorPlayCard/g) ?? []).length, 1);
-  // Alerts moved off the action rail entirely on 2026-08-27 (member: remove the standalone panel,
-  // add a bell icon next to LIVE SESSION instead) — see VectorAlertsBell.test.ts. It is no longer
-  // imported/mounted directly here at all, and its toolbar-anchored replacement is intentionally
-  // NOT gated by the iOS-native action-rail exclusion above (it lives in the toolbar trailSlot,
-  // which renders regardless of compactPanels/nativeShell — a member still needs alerts on iOS).
   assert.doesNotMatch(src, /<VectorAlertsPanel\b/);
   assert.match(src, /<VectorAlertsBell\b/);
 });

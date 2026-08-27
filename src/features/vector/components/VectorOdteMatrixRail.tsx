@@ -10,7 +10,7 @@ import {
   heatmapCellTextStyle,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
-import { matrixScopeExpiries, matrixRailTitle } from "@/features/vector/lib/vector-matrix-horizon";
+import { matrixScopeExpiries, matrixRailTitle, matrixScopeExpiryNote } from "@/features/vector/lib/vector-matrix-horizon";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import {
   readGexHeatmapSessionCache,
@@ -67,6 +67,8 @@ type Props = {
   wallsPollMs?: number;
   hoverPrice?: number | null;
   priceBand?: { min: number; max: number } | null;
+  /** Click a strike row → flash that level on the chart (same seam as HELIX strike focus). */
+  onStrikeFocus?: (strike: number) => void;
 };
 
 function scrollSpotIntoView(list: HTMLElement, target: HTMLElement): void {
@@ -85,6 +87,7 @@ export function VectorOdteMatrixRail({
   wallsPollMs,
   hoverPrice = null,
   priceBand = null,
+  onStrikeFocus,
 }: Props) {
   const [lens, setLens] = useState<GexHeatmapLens>("gex");
   const pollMs = wallsPollMs ?? vectorWallsScopePollMs(ticker);
@@ -162,6 +165,7 @@ export function VectorOdteMatrixRail({
 
   const hasData = Boolean(data?.available && built.rows.length > 0 && scopeExpiries.length > 0);
   const asOf = fmtAsof(data?.asof);
+  const scopeNote = matrixScopeExpiryNote(scopeExpiries, dteHorizon, todayYmd);
   const emptyLabel =
     dteHorizon === "0dte" ? "No 0DTE structure near spot" : `No ${matrixTitle.toLowerCase()} structure near spot`;
 
@@ -186,6 +190,11 @@ export function VectorOdteMatrixRail({
             {spot != null && spot > 0 ? fmtHeatmapStrike(spot) : "—"}
           </span>
           {asOf ? <span className="vector-odte-matrix-asof">{asOf} ET</span> : null}
+          {scopeNote ? (
+            <span className="vector-odte-matrix-scope-note" title="0DTE expiry unavailable — showing nearest listed expiry">
+              {scopeNote}
+            </span>
+          ) : null}
         </div>
         <div className="vector-odte-matrix-lens" role="group" aria-label="Matrix lens">
           {(["gex", "vex"] as const).map((l) => (
@@ -235,6 +244,7 @@ export function VectorOdteMatrixRail({
                   lens={lens}
                   highlighted={hoverStrike === row.strike}
                   spotRowRef={si === built.spotIdx ? spotRowRef : undefined}
+                  onStrikeFocus={onStrikeFocus}
                 />
               ))}
             </tbody>
@@ -258,6 +268,7 @@ const MatrixRow = memo(function MatrixRow({
   lens,
   highlighted,
   spotRowRef,
+  onStrikeFocus,
 }: {
   row: OdteMatrixRow;
   si: number;
@@ -266,6 +277,7 @@ const MatrixRow = memo(function MatrixRow({
   lens: GexHeatmapLens;
   highlighted: boolean;
   spotRowRef?: RefObject<HTMLTableRowElement>;
+  onStrikeFocus?: (strike: number) => void;
 }) {
   const isSpot = si === spotIdx;
   const hasVal = row.value !== 0;
@@ -287,8 +299,23 @@ const MatrixRow = memo(function MatrixRow({
         row.isKing && "spx-odte-matrix-row--anchor",
         row.isCallWall && "spx-odte-matrix-row--max-pos",
         row.isPutWall && "spx-odte-matrix-row--max-neg",
-        highlighted && "vector-odte-matrix-hover"
+        highlighted && "vector-odte-matrix-hover",
+        onStrikeFocus && "vector-odte-matrix-row-clickable"
       )}
+      onClick={onStrikeFocus ? () => onStrikeFocus(row.strike) : undefined}
+      onKeyDown={
+        onStrikeFocus
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onStrikeFocus(row.strike);
+              }
+            }
+          : undefined
+      }
+      tabIndex={onStrikeFocus ? 0 : undefined}
+      role={onStrikeFocus ? "button" : undefined}
+      aria-label={onStrikeFocus ? `Focus chart on strike ${row.strike}` : undefined}
     >
       <th
         scope="row"

@@ -14,6 +14,8 @@ type Props = {
   liveSession?: boolean;
   /** When false, omit data-testid (compact toolbar row duplicates desktop controls in DOM). */
   exposeTestIds?: boolean;
+  /** Shown when VEX is disabled — explains why the toggle is inactive. */
+  vexUnavailableHint?: string;
 };
 
 /** Compact GEX / VEX lens toggle — no helper copy (toolbar). */
@@ -25,6 +27,7 @@ export function VectorLensToggle({
   vexAsOf,
   liveSession = false,
   exposeTestIds = true,
+  vexUnavailableHint = "VEX unavailable — no vanna chain data for this ticker",
 }: Props) {
   const [now, setNow] = useState<number | null>(null);
 
@@ -50,6 +53,7 @@ export function VectorLensToggle({
             type="button"
             disabled={disabled}
             onClick={() => onLens(key)}
+            title={disabled && key === "vex" ? vexUnavailableHint : undefined}
             aria-pressed={active}
             {...(exposeTestIds ? { "data-testid": `vector-lens-${key}` } : {})}
             className={clsx(

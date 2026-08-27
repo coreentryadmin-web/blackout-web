@@ -9885,6 +9885,28 @@ html.product-shell .nav-mega {
     font-variant-numeric: tabular-nums;
   }
 
+  .vector-odte-matrix-scope-note {
+    font-size: 0.58rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgb(125, 211, 252);
+  }
+
+  .vector-odte-matrix-row-clickable {
+    cursor: pointer;
+  }
+
+  .vector-odte-matrix-row-clickable:hover,
+  .vector-odte-matrix-row-clickable:focus-visible {
+    outline: none;
+    background: rgba(34, 211, 238, 0.08);
+  }
+
+  .vector-comparison-strip-page {
+    @apply px-0.5;
+  }
+
   .vector-odte-matrix-lens {
     display: flex;
     gap: 0.25rem;

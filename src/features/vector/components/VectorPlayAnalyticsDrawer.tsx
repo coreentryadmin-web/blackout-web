@@ -1,6 +1,5 @@
 "use client";
 
-import clsx from "clsx";
 import { Drawer } from "@/components/ui";
 import type { VectorPlay, VectorPlayEmit } from "@/features/vector/lib/vector-play-engine";
 import type { VectorRegime } from "@/features/vector/lib/vector-regime";
@@ -108,7 +107,7 @@ export function VectorPlayAnalyticsDrawer({
         {magnet ? (
           <Section title="Gamma magnet">
             <p className="vector-play-analytics-prose">
-              {magnet.strike != null ? `${fmtLevel(magnet.strike)} · ${magnet.posture} · ${magnet.nearness}` : magnet.read}
+              {fmtLevel(magnet.strike)} · {magnet.posture} · {magnet.pull} · {magnet.callout}
             </p>
           </Section>
         ) : null}
@@ -117,7 +116,8 @@ export function VectorPlayAnalyticsDrawer({
           <Section title="Wall proximity">
             <p className="vector-play-analytics-prose">
               {proximity.side.toUpperCase()} {fmtLevel(proximity.strike)} · {proximity.nearness}
-              {proximity.pct != null ? ` · ${proximity.pct.toFixed(2)}% from spot` : ""}
+              {proximity.distancePct != null ? ` · ${proximity.distancePct.toFixed(2)}% from spot` : ""}
+              {proximity.callout ? ` — ${proximity.callout}` : ""}
             </p>
           </Section>
         ) : null}
@@ -146,11 +146,11 @@ export function VectorPlayAnalyticsDrawer({
           <Section title="Confluence zones">
             <dl className="vector-play-analytics-dl">
               {zones.slice(0, 6).map((z) => (
-                <div key={`${z.strike}-${z.score}`} className="vector-play-analytics-dl-row">
-                  <dt>{fmtLevel(z.strike)}</dt>
+                <div key={`${z.center}-${z.score}`} className="vector-play-analytics-dl-row">
+                  <dt>{fmtLevel(z.center)}</dt>
                   <dd>
                     score {z.score}
-                    {z.tags?.length ? ` · ${z.tags.join(", ")}` : ""}
+                    {z.kinds?.length ? ` · ${z.kinds.join(", ")}` : ""}
                   </dd>
                 </div>
               ))}

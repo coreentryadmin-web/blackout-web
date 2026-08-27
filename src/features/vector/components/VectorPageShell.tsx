@@ -40,6 +40,7 @@ import { VECTOR_DEFAULT_DTE_HORIZON, type VectorDteHorizon } from "@/features/ve
 import type { VectorPriceScaleMap } from "@/features/vector/lib/vector-price-scale-map";
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
 import { VectorTickerSelect } from "@/features/vector/components/VectorTickerSelect";
+import { VectorTickerComparisonStrip } from "@/features/vector/components/VectorTickerComparisonStrip";
 import { VectorScanner } from "@/features/vector/components/VectorScanner";
 import {
   vectorPanelVisibility,
@@ -150,10 +151,11 @@ type Props = {
   toolbarPortalEl?: HTMLElement | null;
 };
 
-type VectorIosPanel = "chart" | "pulse" | "ladder" | "scanner";
+type VectorIosPanel = "chart" | "pulse" | "ladder" | "scanner" | "plays";
 
 const VECTOR_IOS_PANELS: { id: VectorIosPanel; label: string }[] = [
   { id: "chart", label: "Chart" },
+  { id: "plays", label: "Plays" },
   { id: "pulse", label: "Helix" },
   { id: "ladder", label: "Matrix" },
   { id: "scanner", label: "Scanner" },
@@ -270,6 +272,14 @@ export function VectorPageShell({
     },
     [pushHelixChartFocus]
   );
+  const handleMatrixStrikeFocus = useCallback((strike: number) => {
+    setChartFocus((prev) => ({
+      price: strike,
+      label: String(strike),
+      tone: "sky",
+      seq: (prev?.seq ?? 0) + 1,
+    }));
+  }, []);
   const [scannerOpen, setScannerOpen] = useState(false);
   // FOCUS MODE (member ask 2026-08-18): chart fills the viewport, every side rail UNMOUNTS. See
   // vector-focus-mode.ts for why unmounting (not CSS-hiding) is the rule — the rails poll and
@@ -294,7 +304,7 @@ export function VectorPageShell({
     if (!compactPanels) return;
     try {
       const saved = window.sessionStorage.getItem("vector-ios-panel");
-      if (saved === "chart" || saved === "pulse" || saved === "ladder" || saved === "scanner") {
+      if (saved === "chart" || saved === "pulse" || saved === "ladder" || saved === "scanner" || saved === "plays") {
         setIosPanel(saved);
       }
     } catch {
@@ -876,6 +886,14 @@ export function VectorPageShell({
           />
         ) : null}
 
+        {!chartOnly && !comparePane && !focusMode && !(compactPanels && nativeShell) ? (
+          <VectorTickerComparisonStrip
+            activeTicker={activeTicker}
+            onSelect={navigateTicker}
+            className="vector-comparison-strip-page mb-2"
+          />
+        ) : null}
+
         <div
           className={clsx(
             "vector-chart-terminal-grid",
@@ -910,6 +928,7 @@ export function VectorPageShell({
                 initialWallTrailSec != null ? initialWallTrailSec * 1000 : undefined
               }
               priceBand={priceBand}
+              onStrikeFocus={handleMatrixStrikeFocus}
             />
           </div>
           ) : null}
@@ -937,14 +956,10 @@ export function VectorPageShell({
           ) : null}
 
           {/*
-            Desktop 4th "action" column (member request, 2026-08-05): Play card + Technicals +
-            Alert builder, split out of the narrative pulse rail so they're visible without
-            scrolling. Skipped entirely inside the iOS native app shell — that shell's segment
-            switcher (VECTOR_IOS_PANELS) only knows ladder/chart/pulse/scanner, and mobile wasn't
-            in scope for this change; on ordinary responsive web (non-native, narrow viewport) the
-            CSS below still stacks it as a full-width row rather than hiding it.
+            Action rail: desktop 4th column; iOS native "Plays" segment (2026-08-27).
           */}
-          {panels.action && !(compactPanels && nativeShell) && (
+          {panels.action &&
+            (!compactPanels || !nativeShell || iosPanel === "plays") && (
             <div key="action" className="vector-action-rail">{actionRail}</div>
           )}
         </div>
