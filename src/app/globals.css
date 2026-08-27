@@ -12218,6 +12218,15 @@ html.product-shell .nav-mega {
     font-size: 0.6875rem;
     color: rgba(165, 243, 252, 0.6);
   }
+  .vector-screener-age {
+    margin-left: auto;
+    font-size: 0.6875rem;
+    color: rgba(165, 243, 252, 0.5);
+    white-space: nowrap;
+  }
+  .vector-screener-age.is-stale {
+    color: rgb(253, 186, 116);
+  }
 
   .vector-scanner-table-wrap {
     @apply overflow-x-auto;
