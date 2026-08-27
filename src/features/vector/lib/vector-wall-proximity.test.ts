@@ -40,6 +40,17 @@ test("put wall overhead (spot fell through it) → support-broken caution, NOT d
   assert.doesNotMatch(p!.callout, /dip-buy|reclaimed/i);
 });
 
+test("call wall broken through (spot cleared it) → resistance-cleared caution, NOT back-under/lost-magnet", () => {
+  // spot 7602 is above the 7600 call wall (0.026% away, inside the band): resistance has broken.
+  const p = deriveWallProximity({ spot: 7602, walls, gammaFlip: 7000, bandPct: 0.5 });
+  assert.ok(p);
+  assert.equal(p!.side, "call");
+  assert.ok(p!.distancePct < 0); // strike is now below spot
+  assert.match(p!.callout, /resistance gave way/);
+  // must never narrate spot as still under/testing a call wall it has actually broken above
+  assert.doesNotMatch(p!.callout, /back under|lost magnet/i);
+});
+
 test("gamma flip proximity → regime-hinge callout wins when closest", () => {
   // flip (7501, 0.013% away) is closer than the put wall (7500, 0.027%).
   const p = deriveWallProximity({

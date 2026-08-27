@@ -72,9 +72,14 @@ export function deriveWallProximity(input: {
   if (best.side === "flip") {
     callout = `${fmt(best.strike)} gamma flip ${above ? "overhead" : "below"} (${best.dist.toFixed(2)}% away) — a cross flips the regime; expect the sharpest moves here.`;
   } else if (best.side === "call") {
+    // `above` (signed >= 0) means the call-wall STRIKE is at/above spot — spot is testing it from
+    // below. `!above` means spot has broken THROUGH and is now above the wall — resistance
+    // cleared, not "back under" it. The prior wording said "back under the call wall ... lost
+    // magnet" in exactly that case, describing spot as below a wall it had actually broken above
+    // (inverted bias) — the call-wall mirror of the put-wall fix immediately below.
     callout = above
       ? `Testing ${fmt(best.strike)} call wall (${best.dist.toFixed(2)}% below) — dealers sell into strength; resistance unless it breaks on volume.`
-      : `Back under the ${fmt(best.strike)} call wall (${best.dist.toFixed(2)}% away) — lost magnet, watch for fade.`;
+      : `Cleared the ${fmt(best.strike)} call wall (${best.dist.toFixed(2)}% below spot) — resistance gave way; dealers stop capping, watch for continuation higher.`;
   } else {
     // `above` (signed >= 0) means the put-wall STRIKE is at/above spot — i.e. spot has fallen to or
     // through its largest-negative-gamma support. That is support BREAKING, not a reclaim: the prior

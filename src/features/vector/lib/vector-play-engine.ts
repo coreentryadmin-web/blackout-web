@@ -405,10 +405,23 @@ function computeConviction(
   // biggest edge — several independent levels agreeing where we're acting. Scaled by the zone score,
   // and only credited when a top zone actually sits near the reference (else a small far-field bump).
   const zones = input.confluenceZones ?? [];
-  const top = zones[0] ?? null;
-  if (top && refLevel != null) {
-    const nearRef = Math.abs(top.center - refLevel) / spot <= 0.004;
-    if (nearRef) c += Math.min(14, top.score * 1.6);
+  if (zones.length && refLevel != null) {
+    // Credit the zone NEAREST the level actually being traded, not the globally strongest zone on
+    // the whole board — `zones[0]` (board-wide top score) let an unrelated, stronger zone elsewhere
+    // starve the real confluence sitting at refLevel, so adding strictly more corroborating market
+    // structure elsewhere could silently DROP the grade for this play (measured: A→B on adding an
+    // unrelated stronger zone 4% away). Comment above ("stacked AT the level") already stated the
+    // intent this restores.
+    let nearest: ConfluenceZone | null = null;
+    let nearestDist = Infinity;
+    for (const z of zones) {
+      const d = Math.abs(z.center - refLevel) / spot;
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearest = z;
+      }
+    }
+    if (nearest && nearestDist <= 0.004) c += Math.min(14, nearest.score * 1.6);
     else c += 3;
   }
 
