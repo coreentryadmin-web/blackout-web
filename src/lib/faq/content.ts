@@ -135,24 +135,20 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
       a: "Create your free BlackOut account, then pick a plan: SPX Slayer ($49/mo) for SPX desk access — live regime, GEX, 0DTE graded plays — or Premium ($199/mo or $1,999/yr) to unlock the full platform with all six modules. Same email, same login — upgrade anytime from your account.",
     },
     {
-      q: "What's the difference between Community and Premium?",
-      a: "Community gives you the private Discord server — daily live signals, market reads, real-time session discussions, and evening recaps. Premium includes everything in Community plus the full platform: the SPX Slayer desk, HELIX live flow feed, Largo desk analyst, GEX / dealer positioning, dark-pool activity, Night Hawk, strike-level heatmaps, and the graded play log.",
+      q: "What's the difference between SPX Slayer and Premium?",
+      a: "SPX Slayer ({{communityPrice}}) unlocks the live SPX/SPXW desk — regime, GEX, graded 0DTE plays, and strike heatmaps — plus Discord. Premium ({{premiumMonthly}} or {{premiumYearly}}) adds every module: HELIX live flow, Largo AI, Night Hawk evening + 0DTE Command scanners, Thermal multi-ticker heatmaps, Vector, Meridian, and the full graded play log.",
+    },
+    {
+      q: "Can I upgrade from SPX Slayer to Premium later?",
+      a: "Yes — upgrade from your account at any time. Your SPX Slayer subscription is replaced by Premium, which includes everything in SPX Slayer plus the full platform.",
     },
     {
       q: "What's included in Premium?",
       a: "The entire arsenal, one membership: the SPX Slayer desk, the HELIX live flow feed, Largo, GEX / dealer positioning, dark-pool activity, Night Hawk, the market heatmap, the graded play log — and full Discord access. One tier, full clearance — nothing held back.",
     },
     {
-      q: "Can I upgrade from Community to Premium later?",
-      a: "Yes — upgrade from your account at any time. Your Community subscription is replaced by Premium, which includes everything Community offers plus the full platform.",
-    },
-    {
       q: "Can I cancel anytime?",
       a: "Yes. Go to Account → Membership & Billing and click \"Manage subscription\" — that opens your secure billing portal, where you can update your card, switch plans, or cancel. Questions about a charge, an invoice, or your plan? Email billing@blackouttrades.com and we'll sort it out personally.",
-    },
-    {
-      q: "What's the difference between SPX Slayer and Premium?",
-      a: "SPX Slayer ({{communityPrice}}) gives you the 0DTE desk — live SPX regime, GEX, and graded plays. Premium ({{premiumMonthly}} or {{premiumYearly}}) unlocks all six modules: HELIX flow, Largo analyst, dark pool, Night Hawk, heatmaps, and the full graded play log.",
     },
     {
       q: "Is there a refund if it's not for me?",
@@ -198,8 +194,8 @@ export function selectFaqItems(ids: readonly string[]): FaqItem[] {
  *  ((marketing)/page.tsx) — both render selectFaqItems(HOME_FAQ_IDS) directly,
  *  so the schema.org markup Google indexes can never say something different
  *  from what a visitor actually sees (previously true — see FINDINGS #10). */
-export const HOME_FAQ_IDS = ["member-5", "platform-4", "member-6", "platform-5", "start-1"] as const;
+export const HOME_FAQ_IDS = ["member-5", "platform-4", "member-2", "platform-5", "start-1"] as const;
 
 /** /pricing's objection-handling FAQ block (RedesignPricing.tsx) + its
  *  FAQPage JSON-LD (pricing/page.tsx). */
-export const PRICING_FAQ_IDS = ["member-5", "member-7", "member-6", "platform-5"] as const;
+export const PRICING_FAQ_IDS = ["member-5", "member-6", "member-2", "platform-5"] as const;

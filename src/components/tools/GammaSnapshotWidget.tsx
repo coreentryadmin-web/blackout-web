@@ -135,11 +135,15 @@ export function GammaSnapshotWidget({ initial }: { initial: PublicGexSnapshot })
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-[#050608]/60 backdrop-blur-md p-6">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5" role="tablist" aria-label="Index ticker">
           {TICKERS.map((t) => (
             <button
               key={t}
               type="button"
+              role="tab"
+              aria-selected={t === ticker}
+              aria-controls="gamma-snapshot-panel"
+              id={`gamma-tab-${t}`}
               onClick={() => selectTicker(t)}
               className={
                 "rounded-lg px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wide transition " +
@@ -152,12 +156,16 @@ export function GammaSnapshotWidget({ initial }: { initial: PublicGexSnapshot })
             </button>
           ))}
         </div>
-        <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-sky-300/50 relative h-4">
-          <span className={`absolute right-0 transition-opacity ${loading ? "opacity-100" : "opacity-0 pointer-events-none"}`}>Loading…</span>
-          <span className={`absolute right-0 transition-opacity ${loading ? "opacity-0 pointer-events-none" : "opacity-100"}`}>{freshness.levels}</span>
+        <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-sky-300/50 relative h-4 min-w-[8rem] text-right">
+          {loading ? (
+            <span>Loading…</span>
+          ) : (
+            <span>{freshness.levels}</span>
+          )}
         </div>
       </div>
 
+      <div id="gamma-snapshot-panel" role="tabpanel" aria-labelledby={`gamma-tab-${ticker}`}>
       {!snapshot.available ? (
         <p className="font-mono text-sm text-sky-300/70">{snapshot.read}</p>
       ) : (
@@ -207,6 +215,7 @@ export function GammaSnapshotWidget({ initial }: { initial: PublicGexSnapshot })
           <p className="font-mono text-xs text-sky-300/70 leading-relaxed">{snapshot.read}</p>
         </>
       )}
+      </div>
     </div>
   );
 }
