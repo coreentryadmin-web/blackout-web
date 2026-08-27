@@ -34,6 +34,7 @@
     "clerk:recommendations-apply": "node scripts/clerk-recommendations-apply.mjs",
     "validate:clerk-config": "node scripts/validate-clerk-config.mjs",
     "validate:prod-ux-cto": "node scripts/validate-prod-ux-cto.mjs",
+    "validate:vector-gesture-perf": "node scripts/audit/vector-gesture-perf-guard.mjs",
     "sim:0dte": "node --import tsx scripts/audit/zerodte-sim.mjs",
     "sim:nighthawk-evening": "node --import tsx scripts/audit/nighthawk-evening-replay.mjs",
     "probe:nighthawk-flow-polarity": "node --import tsx scripts/audit/nighthawk-flow-polarity.mjs",
