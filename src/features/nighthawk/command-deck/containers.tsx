@@ -3,7 +3,25 @@
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import clsx from "clsx";
+import dynamic from "next/dynamic";
 import { CommandDeck } from "./CommandDeck";
+
+// Session Analytics panel (real win-rate/tier/exit-outcome bars + a session P&L curve, see
+// NighthawkAnalyticsPanel.tsx) — code-split like the rest of the deck's heavier panels so it
+// never blocks first paint of the live ledger below it. Loading fallback is panel-sized (NOT
+// NightHawkLoadingSkeleton, which is a full two-column deck skeleton meant for the whole view).
+const NighthawkAnalyticsPanel = dynamic(
+  () => import("@/features/nighthawk/components/NighthawkAnalyticsPanel").then((m) => m.NighthawkAnalyticsPanel),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="nh-analytics-panel nh-analytics-panel-loading" role="status" aria-label="Loading session analytics">
+        <span className="nh-analytics-panel-title">Session analytics</span>
+        <span className="nh-analytics-empty">Loading…</span>
+      </div>
+    ),
+  }
+);
 import {
   terminalPlayFromZeroDte,
   terminalPlayFromHorizon,
@@ -103,6 +121,11 @@ export function ZeroDteDeck({
           <span>SIMULATION — not live. Admin-only replay; members see the real board.</span>
         </div>
       )}
+      {/* Additive: sits above the live ledger, never gates or replaces it. Sim mode keeps
+          showing the REAL member track record here (not a sim record) — same isolation
+          posture as the board banner above, this panel just isn't sim-aware because there's
+          no sim record endpoint to isolate against. */}
+      {!sim && <NighthawkAnalyticsPanel />}
       <CommandDeck
         plays={plays}
         laneLabel={sim ? NIGHTHAWK_COMPACT_LANE_LABEL.ZERO_DTE_SIM : NIGHTHAWK_COMPACT_LANE_LABEL.ZERO_DTE}

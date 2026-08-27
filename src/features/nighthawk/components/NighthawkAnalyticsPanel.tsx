@@ -1,0 +1,216 @@
+"use client";
+
+// Session Analytics panel for the 0DTE Command deck (/nighthawk, ZERO_DTE view).
+//
+// WHY: the deck's left column is a play-by-play ledger table (ZeroDteBoard/CommandDeck) —
+// real-time and correct, but it never answers "how is the SESSION/TRACK RECORD doing" at a
+// glance. This panel sits above the deck and answers exactly that from the SAME data source
+// members already partially see in HawkRecordStrip (`/api/market/zerodte/record`), with real
+// chart primitives (recharts, code-split like DarkPoolSpark) instead of plain text.
+//
+// Every number here is either served directly by ZeroDteRecord (win_rate_pct, avg_pnl_pct,
+// by_outcome, by_direction) or derived from its own `plays[]` by the pure, unit-tested helpers
+// in `analytics-panel.ts` (tier win-rate, same-session P&L curve) — nothing is invented client
+// side. Gated behind the same TRACK_RECORD_MIN_SAMPLE the legacy HawkRecordStrip uses, so a
+// thin sample never renders confident-looking bars off 2 plays.
+import { useMemo } from "react";
+import dynamic from "next/dynamic";
+import useSWR from "swr";
+import { clsx } from "clsx";
+import type { ZeroDteRecord, ZeroDteRecordBucket } from "@/lib/zerodte/record";
+import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
+import { TRACK_RECORD_MIN_SAMPLE } from "@/components/track-record/format";
+import { winRateByTier, sessionPnlCurve, type TierWinRateBucket } from "@/features/nighthawk/lib/analytics-panel";
+
+const SessionPnlChart = dynamic(
+  () => import("./NighthawkSessionPnlChart").then((m) => m.NighthawkSessionPnlChart),
+  { ssr: false }
+);
+
+const EM_DASH = "—";
+
+function fmtPct(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return EM_DASH;
+  return `${v}%`;
+}
+
+function fmtSignedPct(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return EM_DASH;
+  return `${v >= 0 ? "+" : ""}${v}%`;
+}
+
+const json = (u: string) => fetch(u, { cache: "no-store", credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null));
+
+/** Horizontal win-rate bar — one row of the tier/outcome/direction breakouts. Width is the
+ *  win rate itself (0-100), color ramps red→amber→green so a scanning trader reads the shape
+ *  before the number. Null win-rate (no decided plays yet) renders a hairline, not a full bar
+ *  — a 0-width bar is invisible and reads as "no data", which is what it is. */
+function WinRateBar({
+  label,
+  n,
+  winRatePct,
+  avgPnlPct,
+  lowN,
+}: {
+  label: string;
+  n: number;
+  winRatePct: number | null;
+  avgPnlPct: number | null;
+  lowN: boolean;
+}) {
+  const pct = winRatePct ?? 0;
+  const tone = winRatePct == null ? "bg-white/10" : pct >= 55 ? "bg-emerald-400" : pct >= 40 ? "bg-amber-400" : "bg-rose-400";
+  return (
+    <div className="nh-analytics-barrow" title={`${label}: ${n} play${n === 1 ? "" : "s"}, ${fmtPct(winRatePct)} win rate`}>
+      <div className="nh-analytics-barrow-label">
+        <span>{label}</span>
+        {lowN && n > 0 && (
+          <span
+            className="rounded border border-gold/35 bg-gold/[0.08] px-1 py-px font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-gold"
+            title={`Fewer than ${LOW_N_THRESHOLD} scoreable plays — not enough samples to read as a trend`}
+          >
+            n&lt;{LOW_N_THRESHOLD}
+          </span>
+        )}
+      </div>
+      <div className="nh-analytics-bartrack">
+        <div className={clsx("nh-analytics-barfill", tone)} style={{ width: `${Math.max(pct, winRatePct == null ? 0 : 2)}%` }} />
+      </div>
+      <div className="nh-analytics-barvalue">
+        <span className="tabular-nums">{fmtPct(winRatePct)}</span>
+        <span className="nh-analytics-barvalue-sub tabular-nums">
+          {n} · avg {fmtSignedPct(avgPnlPct)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function BucketRows({ buckets }: { buckets: ZeroDteRecordBucket[] }) {
+  const shown = buckets.filter((b) => b.n > 0);
+  if (shown.length === 0) return <p className="nh-analytics-empty">No graded plays in this window yet.</p>;
+  return (
+    <div className="nh-analytics-barlist">
+      {shown.map((b) => (
+        <WinRateBar key={b.label} label={b.label} n={b.n} winRatePct={b.win_rate_pct} avgPnlPct={b.avg_pnl_pct} lowN={b.low_n} />
+      ))}
+    </div>
+  );
+}
+
+function TierRows({ buckets }: { buckets: TierWinRateBucket[] }) {
+  const shown = buckets.filter((b) => b.n > 0);
+  if (shown.length === 0) return <p className="nh-analytics-empty">No tier-graded plays in this window yet.</p>;
+  return (
+    <div className="nh-analytics-barlist">
+      {shown.map((b) => (
+        <WinRateBar key={b.tier} label={`Tier ${b.tier}`} n={b.n} winRatePct={b.win_rate_pct} avgPnlPct={b.avg_pnl_pct} lowN={b.low_n} />
+      ))}
+    </div>
+  );
+}
+
+function StatTile({ label, value, tone }: { label: string; value: string; tone?: "up" | "down" | "flat" }) {
+  return (
+    <div className="nh-analytics-tile">
+      <span className="nh-analytics-tile-label">{label}</span>
+      <span
+        className={clsx(
+          "nh-analytics-tile-value",
+          tone === "up" && "text-emerald-300",
+          tone === "down" && "text-rose-300",
+          tone === "flat" && "text-sky-100"
+        )}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+export function NighthawkAnalyticsPanel() {
+  const { data: record, isLoading } = useSWR<ZeroDteRecord>("/api/market/zerodte/record?days=30", json, {
+    // The ledger updates as plays grade through the session, not tick-by-tick — 30s keeps the
+    // panel fresh without adding load next to the board's own 1s RTH poll.
+    refreshInterval: 30_000,
+    revalidateOnFocus: true,
+  });
+
+  const tierBuckets = useMemo(() => winRateByTier(record?.plays ?? []), [record?.plays]);
+  const pnlCurve = useMemo(() => sessionPnlCurve(record?.plays ?? []), [record?.plays]);
+  const sessionNet = pnlCurve.length > 0 ? pnlCurve[pnlCurve.length - 1].cumulative_pct : null;
+
+  if (isLoading && !record) {
+    return (
+      <div className="nh-analytics-panel nh-analytics-panel-loading" role="status">
+        <span className="nh-analytics-panel-title">Session analytics</span>
+        <span className="nh-analytics-empty">Loading track record…</span>
+      </div>
+    );
+  }
+
+  if (!record?.available || record.graded < TRACK_RECORD_MIN_SAMPLE) {
+    return (
+      <div className="nh-analytics-panel nh-analytics-panel-building" role="status">
+        <span className="nh-analytics-panel-title">Session analytics</span>
+        <span className="nh-analytics-empty">
+          Building track record — outcomes resolve after each session
+          {record ? ` · ${record.graded}/${TRACK_RECORD_MIN_SAMPLE} graded` : ""}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <section className="nh-analytics-panel" aria-label="0DTE session analytics">
+      <div className="nh-analytics-header">
+        <span className="nh-analytics-panel-title">Session analytics</span>
+        <span className="nh-analytics-panel-sub">{record.window.days}d track record · {record.graded} graded</span>
+      </div>
+
+      <div className="nh-analytics-tiles">
+        <StatTile
+          label="Win rate"
+          value={fmtPct(record.win_rate_pct)}
+          tone={record.win_rate_pct == null ? "flat" : record.win_rate_pct >= 50 ? "up" : "down"}
+        />
+        <StatTile
+          label="Avg return"
+          value={fmtSignedPct(record.avg_pnl_pct)}
+          tone={record.avg_pnl_pct == null ? "flat" : record.avg_pnl_pct >= 0 ? "up" : "down"}
+        />
+        <StatTile label="Graded" value={String(record.graded)} tone="flat" />
+        <StatTile
+          label="Session P&L"
+          value={sessionNet == null ? EM_DASH : fmtSignedPct(sessionNet)}
+          tone={sessionNet == null ? "flat" : sessionNet >= 0 ? "up" : "down"}
+        />
+      </div>
+
+      <div className="nh-analytics-grid">
+        <div className="nh-analytics-col">
+          <span className="nh-analytics-col-title">By merit tier</span>
+          <TierRows buckets={tierBuckets} />
+        </div>
+        <div className="nh-analytics-col">
+          <span className="nh-analytics-col-title">By exit outcome</span>
+          <BucketRows buckets={record.by_outcome} />
+        </div>
+        <div className="nh-analytics-col nh-analytics-col-wide">
+          <span className="nh-analytics-col-title">
+            Today&apos;s session P&amp;L{pnlCurve.length > 0 ? ` · ${pnlCurve.length} resolved` : ""}
+          </span>
+          {pnlCurve.length > 0 ? (
+            <div className="nh-analytics-curve">
+              <SessionPnlChart points={pnlCurve} />
+            </div>
+          ) : (
+            <p className="nh-analytics-empty">No plays have resolved yet today.</p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export default NighthawkAnalyticsPanel;
