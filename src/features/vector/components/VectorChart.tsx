@@ -4080,11 +4080,16 @@ export function VectorChart({
         }
         spotRef.current = curSpot;
         dataReceivedAtMsRef.current = Date.now();
-        onSpotChange?.(curSpot);
-        // BUG FIX (2026-08-27): unconditional setSpot() force-repaints the heatmap spot marker on
-        // every live tick (see the matching fetchGexHeatmap fix above) — gated the same way so the
-        // marker freezes at the replay cursor instead of continuing to track the live tape.
+        // BUG FIX (2026-08-27): onSpotChange carries the same live-tick spot the heatmap marker
+        // gate below was written for, but it was left unconditional here — it's consumed upstream
+        // (VectorPageShell -> VectorOdteMatrixRail's `liveSpot`) as the primary source for the
+        // matrix rail's spot row / King-strike / wall highlighting. Left ungated, the 0DTE matrix
+        // rail kept tracking the LIVE tape during replay while the chart itself (candles, this
+        // heatmap marker) correctly froze at the scrubbed cursor — the rail visibly disagreed with
+        // the chart it sits next to. spotRef.current above stays unconditional (other live-view
+        // consumers still need it); only the callback and the heatmap marker are gated.
         if (!inReplay) {
+          onSpotChange?.(curSpot);
           gexHeatmapPrimitiveRef.current?.setSpot(curSpot);
         }
         if (
