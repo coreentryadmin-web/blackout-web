@@ -86,6 +86,8 @@ type Props = {
   hideVolumePane?: boolean;
   darkPoolWallsEnabled?: boolean;
   onDarkPoolWalls?: (enabled: boolean) => void;
+  /** Server fetch time of the currently-rendered dark-pool snapshot — see VectorDarkPoolToggle. */
+  darkPoolAsOf?: number | null;
   /** Explicit zoom in/out/reset buttons (2026-08-27 member request). Optional — a host that
    *  doesn't wire these (e.g. an embed) simply omits the control rather than rendering a dead one. */
   onZoomIn?: () => void;
@@ -145,6 +147,7 @@ export function VectorToolbar(props: Props) {
     hideVolumePane = false,
     darkPoolWallsEnabled = false,
     onDarkPoolWalls,
+    darkPoolAsOf,
     onZoomIn,
     onZoomOut,
     onZoomReset,
@@ -308,6 +311,8 @@ export function VectorToolbar(props: Props) {
           <VectorDarkPoolToggle
             enabled={darkPoolWallsEnabled}
             onChange={onDarkPoolWalls}
+            darkPoolAsOf={darkPoolAsOf}
+            liveSession={liveSession}
             exposeTestIds={false}
           />
         ) : null}
@@ -385,7 +390,12 @@ export function VectorToolbar(props: Props) {
             <VectorVolumeModeToggle value={volumeMode} onChange={onVolumeMode} />
           ) : null}
           {onDarkPoolWalls ? (
-            <VectorDarkPoolToggle enabled={darkPoolWallsEnabled} onChange={onDarkPoolWalls} />
+            <VectorDarkPoolToggle
+              enabled={darkPoolWallsEnabled}
+              onChange={onDarkPoolWalls}
+              darkPoolAsOf={darkPoolAsOf}
+              liveSession={liveSession}
+            />
           ) : null}
           {zoomControls}
           {trailSlot}
