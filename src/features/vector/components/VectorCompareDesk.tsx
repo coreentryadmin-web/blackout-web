@@ -338,7 +338,11 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
           return next;
         });
         setFocusedTicker(ticker);
-        bumpSync();
+        // Visual pulse only — do NOT bumpSync here: syncEpoch is in the pane React key and
+        // forces a full lightweight-charts teardown/remount of EVERY pane. Remounting stable
+        // panes just because one ticker was added measured "Value is null" console storms
+        // during Compare 4-up (2026-08-27 RTH audit).
+        flashSync();
       } catch {
         // A bad/unknown ticker or a transient API error is a fact about THIS ticker, not a reason
         // to fail silently — matches loadCompareSeedsBounded's "settle per item" rationale below,
@@ -352,7 +356,7 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
         });
       }
     },
-    [exclude, seeds.length, syncUrl, bumpSync]
+    [exclude, seeds.length, syncUrl, flashSync]
   );
 
   const removeTicker = useCallback(
@@ -368,9 +372,9 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
         delete copy[ticker];
         return copy;
       });
-      bumpSync();
+      flashSync();
     },
-    [syncUrl, bumpSync]
+    [syncUrl, flashSync]
   );
 
   const applyPreset = useCallback(
@@ -391,12 +395,14 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
         setSeeds(ok);
         syncUrl(ok);
         setFocusedTicker(ok[0]?.ticker ?? null);
-        bumpSync();
+        // Preset swap already mounts/unmounts panes via seed tickers — bumpSync remounted every
+        // surviving chart a second time and tripped lightweight-charts "Value is null" noise.
+        flashSync();
       } finally {
         setLoadingTickers(new Set());
       }
     },
-    [syncUrl, bumpSync]
+    [syncUrl, flashSync]
   );
 
   const handleMeta = useCallback((ticker: string, meta: VectorComparePaneMeta) => {

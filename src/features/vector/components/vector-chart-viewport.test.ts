@@ -572,6 +572,21 @@ test("VectorCompareDesk: sync-zoom preset no longer forces a redundant 4x pane r
   assert.match(fn, /flashSync\(\)/, "still gives the visual synced pulse without the remount");
 });
 
+test("VectorCompareDesk: seed add/remove/preset no longer remounts stable panes via bumpSync", () => {
+  // Regression (RTH audit 2026-08-27): applyPreset/loadTicker/removeTicker also called bumpSync(),
+  // remounting every surviving chart when Compare went 1-up → 4-up. lightweight-charts logged
+  // "Value is null" during the redundant teardown (vector-e2e ui:console-errors FAIL).
+  const src = read("src/features/vector/components/VectorCompareDesk.tsx");
+  for (const fnName of ["loadTicker", "removeTicker", "applyPreset"] as const) {
+    const start = src.indexOf(`const ${fnName} = useCallback(`);
+    assert.ok(start >= 0, `expected ${fnName}`);
+    const end = src.indexOf("\n  const ", start + 1);
+    const fn = src.slice(start, end);
+    assert.doesNotMatch(fn, /\bbumpSync\(\)/, `${fnName} must not bump syncEpoch (pane remount)`);
+    assert.match(fn, /flashSync\(\)/, `${fnName} still flashes the sync pulse`);
+  }
+});
+
 test("VectorChart: real dataAgeMs is captured from live ticks and fed to buildVectorPlay", () => {
   // dataAgeMs was a documented VectorSnapshot field ("for the terminal to show staleness") that no
   // production caller ever set — buildVectorPlay always saw a play built "just now" regardless of

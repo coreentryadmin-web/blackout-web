@@ -80,7 +80,7 @@ rec(
 // mapping rows — assert both halves of that fix stay wired.
 rec(
   "static:zerodte-ambient-feed-live-synced",
-  /syncLedgerLiveState\(raw\)/.test(read("src/lib/zerodte/scan.ts"))
+  /syncLedgerLiveState\(read\.rows\)/.test(read("src/lib/zerodte/scan.ts"))
 );
 
 rec(
