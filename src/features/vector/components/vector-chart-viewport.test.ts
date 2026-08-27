@@ -525,3 +525,28 @@ test("VectorPlayCard: shows a STALE badge once dataAge crosses the play engine's
   assert.match(src, /play\.dataAge != null && play\.dataAge > STALE_MILD_MS/);
   assert.match(src, /vector-play-card-stale/);
 });
+
+test("VectorChart: volume sub-pane gets an 18-22% share of chart height, never more", () => {
+  // FIXED (2026-08-27, operator-reported): PRICE_PANE_STRETCH:VOLUME_PANE_STRETCH was 7:2.2
+  // (~76.1%/23.9%) — outside the product's documented 78-82% candles / 18-22% volume split and
+  // the exact margin of error that read as clipped volume bars on shorter chart-height budgets
+  // (see the constant's own comment in VectorChart.tsx for the full trace). This is a ratio
+  // assertion, not an exact-value one, so it stays green across any proportional retune within
+  // the documented band.
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  const priceMatch = src.match(/const PRICE_PANE_STRETCH = ([\d.]+);/);
+  const volumeMatch = src.match(/const VOLUME_PANE_STRETCH = ([\d.]+);/);
+  assert.ok(priceMatch && volumeMatch, "expected both pane-stretch constants to be found");
+  const price = Number(priceMatch![1]);
+  const volume = Number(volumeMatch![1]);
+  const volumeShare = volume / (price + volume);
+  assert.ok(
+    volumeShare >= 0.18 && volumeShare <= 0.22,
+    `volume pane share ${(volumeShare * 100).toFixed(1)}% is outside the documented 18-22% band`
+  );
+  // bottom:0 is the load-bearing half of the volume histogram's own scale margins — it is what
+  // puts the 0-baseline exactly on the pane's lowest pixel so bars draw all the way to the true
+  // floor (verified live against production, 2026-08-27). Guard it so a future edit can't silently
+  // reintroduce bottom padding that would shrink bars away from the floor again.
+  assert.match(src, /scaleMargins: \{ top: [\d.]+, bottom: 0 \}/);
+});
