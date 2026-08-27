@@ -183,6 +183,22 @@ export function VectorToolbar(props: Props) {
             autoCount={nodeAutoCount}
             exposeTestIds={false}
           />
+          {/* Member-requested zoom in/out/reset (2026-08-27) shipped to the standalone chart but
+              never reached Compare — this branch renders its own control set and `zoomControls`
+              was computed above but never referenced here. A per-pane zoom is exactly what a
+              member switching to "Per-pane" (unlinked) mode needs, since the linked command bar's
+              own zoom control is Session/Structure/Live presets, not a discrete step-zoom.
+              exposeTestIds=false (not the shared `zoomControls` var, which defaults true) — up to
+              4 panes render this row at once, and the NODES toggle right above already follows
+              this same false-in-compare convention to avoid 4 duplicate data-testids. */}
+          {onZoomIn && onZoomOut && onZoomReset ? (
+            <VectorZoomControls
+              onZoomIn={onZoomIn}
+              onZoomOut={onZoomOut}
+              onReset={onZoomReset}
+              exposeTestIds={false}
+            />
+          ) : null}
           {drawMenu}
           {replayLeadSlot}
           {!hideReplayControls ? (

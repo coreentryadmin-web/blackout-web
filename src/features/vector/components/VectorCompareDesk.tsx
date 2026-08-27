@@ -269,19 +269,32 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
     [router]
   );
 
-  const bumpSync = useCallback(() => {
-    setSyncEpoch((e) => e + 1);
+  const flashSync = useCallback(() => {
     setSyncFlash(true);
     window.setTimeout(() => setSyncFlash(false), 420);
   }, []);
 
+  const bumpSync = useCallback(() => {
+    setSyncEpoch((e) => e + 1);
+    flashSync();
+  }, [flashSync]);
+
   const applySyncZoomPreset = useCallback(
     (preset: IntradayZoomPreset) => {
+      // Deliberately skips the full-remount path below: VectorChart already applies a synced zoom preset
+      // reactively via the syncZoomPreset/tick props (no remount) — see the effect keyed on
+      // `compareSync?.zoomPreset` tick. bumpSync() bumps `syncEpoch`, which VectorComparePane
+      // folds into the pane's React `key`, forcing React to fully destroy and rebuild all 4
+      // VectorChart instances (tearing down each lightweight-charts instance, WallRailPrimitive,
+      // and SSE connection) for something the reactive path already applies for free. Measured
+      // 2026-08-27: every Sync-zoom click was doing a redundant 4x full remount on top of the
+      // cheap path, discarding the very WallRailPrimitive._derivedCache the perf fix (#2939) keeps
+      // warm across repaints. flashSync() alone still gives the visual "synced" pulse.
       setSyncZoomPreset(preset);
       setSyncZoomPresetTick((t) => t + 1);
-      bumpSync();
+      flashSync();
     },
-    [bumpSync]
+    [flashSync]
   );
 
   const enterFocusExpand = useCallback(

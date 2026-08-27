@@ -478,3 +478,33 @@ test("VectorChart: wheel/pan interaction defers heavy overlay + crosshair work",
   assert.match(src, /interactionHot = isMemberGesturing/);
   assert.match(src, /!inReplay && !interactionHot/);
 });
+
+test("VectorToolbar: Compare-pane branch renders zoom controls (member request shipped standalone-only)", () => {
+  // Regression (Compare-mode audit, 2026-08-27): onZoomIn/Out/Reset were built and passed down
+  // unconditionally from VectorChart.tsx, and `zoomControls` was even computed at the top of this
+  // file — but the comparePane early-return branch never referenced it, so every Compare pane (and
+  // the "Per-pane"/unlinked mode specifically, where the linked command bar's own zoom preset
+  // control is disabled) had no way to zoom at all.
+  const src = read("src/features/vector/components/VectorToolbar.tsx");
+  const compareBranchStart = src.indexOf("if (comparePane) {");
+  const compareBranchEnd = src.indexOf("\n  return (", compareBranchStart);
+  const compareBranch = src.slice(compareBranchStart, compareBranchEnd);
+  assert.match(compareBranch, /VectorZoomControls/);
+  assert.match(compareBranch, /exposeTestIds=\{false\}/);
+});
+
+test("VectorCompareDesk: sync-zoom preset no longer forces a redundant 4x pane remount", () => {
+  // Regression (Compare-mode audit, 2026-08-27): applySyncZoomPreset called bumpSync(), which
+  // bumps syncEpoch — folded into VectorComparePane's `key` prop, forcing React to fully destroy
+  // and rebuild all 4 VectorChart instances (each with its own lightweight-charts instance,
+  // WallRailPrimitive, and SSE connection) even though VectorChart already applies a synced zoom
+  // preset reactively via syncZoomPreset/tick props with no remount at all. The redundant remount
+  // discarded the very WallRailPrimitive._derivedCache the wall-rail perf fix (#2939) keeps warm
+  // across repaints, on every single sync-zoom click.
+  const src = read("src/features/vector/components/VectorCompareDesk.tsx");
+  const fnStart = src.indexOf("const applySyncZoomPreset = useCallback(");
+  const fnEnd = src.indexOf("\n  const enterFocusExpand", fnStart);
+  const fn = src.slice(fnStart, fnEnd);
+  assert.doesNotMatch(fn, /^\s*bumpSync\(\);\s*$/m, "applySyncZoomPreset must not force a full pane remount");
+  assert.match(fn, /flashSync\(\)/, "still gives the visual synced pulse without the remount");
+});
