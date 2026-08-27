@@ -9,6 +9,7 @@ import {
   VectorComparePane,
   type VectorComparePaneMeta,
 } from "@/features/vector/components/VectorComparePane";
+import { VectorPaneErrorBoundary } from "@/features/vector/components/VectorPaneErrorBoundary";
 import { fetchVectorClientSeed } from "@/features/vector/lib/vector-client-seed";
 import {
   VECTOR_COMPARE_MAX_PANES,
@@ -568,34 +569,39 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
               : undefined;
 
             return (
-              <VectorComparePane
-                key={seed.ticker}
-                seed={seed}
-                slotIndex={i}
-                syncEpoch={syncEpoch}
-                linked={linked}
-                linkedTimeframe={timeframe}
-                linkedDteHorizon={dteHorizon}
-                linkedLens={lens}
-                toolbarHideLinkedControls={linked}
-                onRemove={() => removeTicker(seed.ticker)}
-                removable={seeds.length > 1}
-                onMeta={handleMeta}
-                focused={focusedTicker === seed.ticker}
-                onFocus={() => setFocusedTicker(seed.ticker)}
-                focusHero={isHero}
-                focusRail={isRail}
-                focusRailRow={railRow}
-                onRequestFocusExpand={() => enterFocusExpand(seed.ticker)}
-                compareSync={paneCompareSync(seed.ticker)}
-                onCompareCrosshair={handleCompareCrosshair}
-                onCompareVisibleRange={handleCompareVisibleRange}
-                linkedReplay={linkedReplayBind}
-                hideReplayControls={linked}
-                onReplayTimeline={(timeline) => handleReplayTimeline(seed.ticker, timeline)}
-                compareFourUp={seeds.length >= 4}
-                compareFourUpBackground={seeds.length >= 4 && focusedTicker !== seed.ticker}
-              />
+              // Per-pane isolation: an uncaught render error in one pane (bad ticker, malformed
+              // live payload reaching an overlay) must not take down the other (working) panes and
+              // the desk chrome via the app-level route error boundary. Keyed by ticker like the
+              // pane itself, so swapping tickers naturally resets any tripped boundary.
+              <VectorPaneErrorBoundary key={seed.ticker} ticker={seed.ticker} onRemove={() => removeTicker(seed.ticker)}>
+                <VectorComparePane
+                  seed={seed}
+                  slotIndex={i}
+                  syncEpoch={syncEpoch}
+                  linked={linked}
+                  linkedTimeframe={timeframe}
+                  linkedDteHorizon={dteHorizon}
+                  linkedLens={lens}
+                  toolbarHideLinkedControls={linked}
+                  onRemove={() => removeTicker(seed.ticker)}
+                  removable={seeds.length > 1}
+                  onMeta={handleMeta}
+                  focused={focusedTicker === seed.ticker}
+                  onFocus={() => setFocusedTicker(seed.ticker)}
+                  focusHero={isHero}
+                  focusRail={isRail}
+                  focusRailRow={railRow}
+                  onRequestFocusExpand={() => enterFocusExpand(seed.ticker)}
+                  compareSync={paneCompareSync(seed.ticker)}
+                  onCompareCrosshair={handleCompareCrosshair}
+                  onCompareVisibleRange={handleCompareVisibleRange}
+                  linkedReplay={linkedReplayBind}
+                  hideReplayControls={linked}
+                  onReplayTimeline={(timeline) => handleReplayTimeline(seed.ticker, timeline)}
+                  compareFourUp={seeds.length >= 4}
+                  compareFourUpBackground={seeds.length >= 4 && focusedTicker !== seed.ticker}
+                />
+              </VectorPaneErrorBoundary>
             );
           })}
         </div>
