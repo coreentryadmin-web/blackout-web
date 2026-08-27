@@ -6,6 +6,8 @@ import { STALE_MILD_MS, type VectorPlay } from "@/features/vector/lib/vector-pla
 type Props = {
   play: VectorPlay | null;
   className?: string;
+  /** Opens the full desk analytics drawer (regime, walls, confluence, watch list). */
+  onOpenAnalytics?: () => void;
 };
 
 const GRADE_TONE: Record<VectorPlay["grade"], string> = {
@@ -46,7 +48,7 @@ const BIAS_LABEL: Record<VectorPlay["bias"], string> = {
  *  - Overall padding/type scale increased throughout so the card reads as a primary rail element,
  *    not a cramped sidebar afterthought next to the (also-enlarged-in-spirit) contract picks card.
  */
-export function VectorPlayCard({ play, className }: Props) {
+export function VectorPlayCard({ play, className, onOpenAnalytics }: Props) {
   if (!play) return null;
   // dataAge was a documented passthrough nothing ever read — the doc comment on VectorSnapshot
   // promised "for the terminal to show staleness," but no UI surfaced it. This is that surface:
@@ -76,6 +78,17 @@ export function VectorPlayCard({ play, className }: Props) {
           <span className="vector-play-card-stale" title="Live data feed hasn't updated recently">
             STALE
           </span>
+        ) : null}
+        {onOpenAnalytics ? (
+          <button
+            type="button"
+            className="vector-play-card-analytics-btn"
+            onClick={onOpenAnalytics}
+            aria-label="Open desk analytics"
+            title="Full desk analytics — regime, walls, confluence, watch list"
+          >
+            Analytics
+          </button>
         ) : null}
       </header>
       <p className="vector-play-card-headline">{play.headline}</p>

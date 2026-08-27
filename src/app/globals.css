@@ -8903,7 +8903,7 @@ html.product-shell .nav-mega {
        (10/53/25/12) rather than keeping the terminal's 30% and cramming the action rail in free
        space that doesn't exist. */
     .vector-chart-terminal-grid {
-      grid-template-columns: minmax(168px, 14%) minmax(0, 1fr) minmax(280px, 25%) minmax(260px, 12%);
+      grid-template-columns: minmax(168px, 14%) minmax(0, 1fr) minmax(280px, 25%) minmax(280px, 16%);
       /*
        * DEFINITE height (member report, 2026-08-27 — screenshot at this exact width showing the
        * page scrolling well past the fold to reach the volume profile / lower walls). All four
@@ -12026,6 +12026,103 @@ html.product-shell .nav-mega {
   .vector-play-card-level-invalidation dd {
     @apply text-rose-300;
   }
+  .vector-play-card-analytics-btn {
+    @apply ml-auto rounded-lg border border-violet-400/35 bg-violet-400/10 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-violet-200 transition-colors hover:border-violet-300/50 hover:bg-violet-400/20;
+  }
+
+  /* Compact desk-intel chips under the play card */
+  .vector-play-intel-strip {
+    @apply flex flex-wrap gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] p-2;
+  }
+  .vector-play-intel-chip {
+    @apply inline-flex max-w-full flex-col gap-0.5 rounded-lg border border-white/10 bg-black/20 px-2 py-1;
+  }
+  .vector-play-intel-chip-label {
+    @apply font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-white/45;
+  }
+  .vector-play-intel-chip-value {
+    @apply truncate font-mono text-[11px] font-semibold text-cyan-300;
+  }
+  .vector-play-intel-chip--calm .vector-play-intel-chip-value {
+    @apply text-emerald-300;
+  }
+  .vector-play-intel-chip--volatile .vector-play-intel-chip-value {
+    @apply text-amber-300;
+  }
+  .vector-play-intel-chip--em .vector-play-intel-chip-value {
+    @apply text-sky-300;
+  }
+  .vector-play-intel-chip--conf .vector-play-intel-chip-value {
+    @apply text-violet-300;
+  }
+  .vector-play-intel-chip--wall .vector-play-intel-chip-value {
+    @apply text-cyan-200;
+  }
+
+  /* Full desk analytics drawer (play engine popup) */
+  .vector-play-analytics {
+    @apply flex flex-col gap-4;
+  }
+  .vector-play-analytics-hero {
+    @apply flex gap-3 rounded-xl border border-violet-400/25 bg-violet-400/[0.06] p-3;
+  }
+  .vector-play-analytics-hero-grade {
+    @apply flex shrink-0 flex-col items-center justify-center rounded-lg border border-white/10 bg-black/30 px-3 py-2;
+  }
+  .vector-play-analytics-grade {
+    @apply font-mono text-2xl font-bold text-emerald-300;
+  }
+  .vector-play-analytics-conviction {
+    @apply font-mono text-[11px] font-bold text-white/70;
+  }
+  .vector-play-analytics-headline {
+    @apply text-[15px] font-bold leading-snug text-white;
+  }
+  .vector-play-analytics-thesis {
+    @apply mt-1 text-[13px] leading-relaxed text-white/70;
+  }
+  .vector-play-analytics-empty {
+    @apply text-[13px] text-sky-300/80;
+  }
+  .vector-play-analytics-stat-grid {
+    @apply grid grid-cols-2 gap-2 sm:grid-cols-3;
+  }
+  .vector-play-analytics-stat {
+    @apply flex flex-col gap-0.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2;
+  }
+  .vector-play-analytics-stat-label {
+    @apply font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-white/45;
+  }
+  .vector-play-analytics-stat-value {
+    @apply font-mono text-[13px] font-semibold text-white;
+  }
+  .vector-play-analytics-stat-detail {
+    @apply text-[11px] leading-snug text-white/55;
+  }
+  .vector-play-analytics-section-title {
+    @apply mb-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-300/90;
+  }
+  .vector-play-analytics-prose {
+    @apply text-[13px] leading-relaxed text-white/75;
+  }
+  .vector-play-analytics-list {
+    @apply list-disc space-y-1 pl-4 text-[13px] leading-relaxed text-white/75;
+  }
+  .vector-play-analytics-watch {
+    @apply text-cyan-200;
+  }
+  .vector-play-analytics-dl {
+    @apply space-y-2;
+  }
+  .vector-play-analytics-dl-row {
+    @apply grid grid-cols-[5.5rem_1fr] gap-2 text-[12.5px];
+  }
+  .vector-play-analytics-dl-row dt {
+    @apply font-mono font-semibold text-white/80;
+  }
+  .vector-play-analytics-dl-row dd {
+    @apply text-white/65;
+  }
 
   /* ── Contract picks — real strike/expiry ideas derived from the Suggested Play ── */
   .vector-contract-picks-list {
@@ -12214,6 +12311,12 @@ html.product-shell .nav-mega {
   .vector-pick-evidence-icon {
     @apply text-[12px] leading-none not-italic;
     filter: saturate(1.1);
+  }
+  .vector-pick-evidence-code {
+    @apply inline-flex min-w-[2rem] items-center justify-center rounded border border-white/15 bg-black/30 px-1 py-0.5 font-mono text-[9px] font-bold tracking-wide text-cyan-300;
+  }
+  .vp-intel-card-code {
+    @apply inline-flex min-w-[2.25rem] items-center justify-center rounded border border-violet-400/30 bg-violet-400/10 px-1 py-0.5 font-mono text-[9px] font-bold tracking-wide text-violet-200;
   }
   /* Per-category accent — nine distinct hues so the drawer reads as a dashboard, not nine
      identical grey boxes (member: "so boring and bad"). Values reuse the app's existing accent

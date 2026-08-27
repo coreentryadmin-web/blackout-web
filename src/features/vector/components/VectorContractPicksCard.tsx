@@ -50,27 +50,38 @@ function sideActionLabel(side: "call" | "put"): string {
   return side === "call" ? "Buy call to open" : "Buy put to open";
 }
 
-// Each evidence category gets its own icon + accent so the drawer reads as a scannable dashboard
-// rather than nine identical grey boxes stacked in a row (member: "so boring and bad").
-const SECTION_STYLE: Record<VectorPickEvidenceSection["id"], { icon: string; accent: string }> = {
-  strike: { icon: "🎯", accent: "sky" },
-  flow: { icon: "🌊", accent: "violet" },
-  positioning: { icon: "📊", accent: "blue" },
-  structure: { icon: "🧱", accent: "slate" },
-  technicals: { icon: "📈", accent: "teal" },
-  liquidity: { icon: "💧", accent: "cyan" },
-  session: { icon: "🕒", accent: "amber" },
-  gex: { icon: "⚡", accent: "emerald" },
-  catalyst: { icon: "📰", accent: "orange" },
+// Institutional section codes — scannable without emoji (member: professional play-engine UI).
+const SECTION_CODE: Record<VectorPickEvidenceSection["id"], string> = {
+  strike: "STR",
+  flow: "FLW",
+  positioning: "POS",
+  structure: "STC",
+  technicals: "TEC",
+  liquidity: "LIQ",
+  session: "SES",
+  gex: "GEX",
+  catalyst: "CAT",
+};
+
+const SECTION_ACCENT: Record<VectorPickEvidenceSection["id"], string> = {
+  strike: "sky",
+  flow: "violet",
+  positioning: "blue",
+  structure: "slate",
+  technicals: "teal",
+  liquidity: "cyan",
+  session: "amber",
+  gex: "emerald",
+  catalyst: "orange",
 };
 
 function EvidenceBlock({ section }: { section: VectorPickEvidenceSection }) {
-  const style = SECTION_STYLE[section.id];
+  const accent = SECTION_ACCENT[section.id];
   return (
-    <section className={clsx("vector-pick-evidence-section", `vector-pick-evidence-section--${style.accent}`)}>
+    <section className={clsx("vector-pick-evidence-section", `vector-pick-evidence-section--${accent}`)}>
       <h3 className="vector-pick-evidence-title">
-        <span className="vector-pick-evidence-icon" aria-hidden="true">
-          {style.icon}
+        <span className="vector-pick-evidence-code" aria-hidden="true">
+          {SECTION_CODE[section.id]}
         </span>
         {section.title}
       </h3>
@@ -114,7 +125,7 @@ function EvidenceRail({
  */
 export function VectorContractPicksCard({ ticker, play, picks, loading, className }: Props) {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
-  const [rail, setRail] = useState<DrawerRail>("option");
+  const [rail, setRail] = useState<DrawerRail>("desk");
 
   if (!picks.length) {
     // A directional play with zero picks is a real, member-relevant state (every candidate
@@ -125,7 +136,7 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
         <div className={clsx("vp-intel vector-contract-picks-card", className)}>
           <div className="vp-intel-card">
             <div className="vp-intel-card-head">
-              <span className="vp-intel-card-icon">🎯</span>
+              <span className="vp-intel-card-code">PLYS</span>
               <span className="vp-intel-card-title">{ticker} PLAYS · loading</span>
             </div>
             <p className="vector-contract-picks-empty">Scanning the chain for a contract worth showing…</p>
@@ -138,7 +149,7 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
         <div className={clsx("vp-intel vector-contract-picks-card", className)}>
           <div className="vp-intel-card">
             <div className="vp-intel-card-head">
-              <span className="vp-intel-card-icon">🎯</span>
+              <span className="vp-intel-card-code">PLYS</span>
               <span className="vp-intel-card-title">{ticker} PLAYS</span>
             </div>
             <p className="vector-contract-picks-empty">
@@ -157,7 +168,7 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
     <div className={clsx("vp-intel vector-contract-picks-card", className)}>
       <div className="vp-intel-card">
         <div className="vp-intel-card-head">
-          <span className="vp-intel-card-icon">🎯</span>
+          <span className="vp-intel-card-code">PLYS</span>
           <span className="vp-intel-card-title">
             {ticker} PLAYS
             {play ? ` · ${play.conviction}% play` : ""}
@@ -178,7 +189,7 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
               className="vector-contract-pick-row"
               onClick={() => {
                 setOpenIdx(i);
-                setRail("option");
+                setRail("desk");
               }}
             >
               <span className="vector-contract-pick-rank">{pick.rank ?? i + 1}.</span>
@@ -242,7 +253,7 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
         open={open != null}
         onClose={() => setOpenIdx(null)}
         title={open ? `${ticker} ${open.label}` : undefined}
-        size="md"
+        size="lg"
       >
         {open && play ? (
           <div className="vector-contract-pick-drawer">
@@ -342,24 +353,36 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
               <button
                 type="button"
                 role="tab"
-                aria-selected={rail === "option"}
-                className={clsx("vector-pick-rail-tab", rail === "option" && "vector-pick-rail-tab-active")}
-                onClick={() => setRail("option")}
-              >
-                <span aria-hidden="true">🎫</span> Option play
-              </button>
-              <button
-                type="button"
-                role="tab"
                 aria-selected={rail === "desk"}
                 className={clsx("vector-pick-rail-tab", rail === "desk" && "vector-pick-rail-tab-active")}
                 onClick={() => setRail("desk")}
               >
-                <span aria-hidden="true">🖥️</span> Desk data
+                Desk data
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={rail === "option"}
+                className={clsx("vector-pick-rail-tab", rail === "option" && "vector-pick-rail-tab-active")}
+                onClick={() => setRail("option")}
+              >
+                Option play
               </button>
             </div>
 
-            {rail === "option" ? (
+            {rail === "desk" ? (
+              <div role="tabpanel" className="vector-pick-rail-panel">
+                <p className="vector-pick-desk-rail-lead">
+                  Cross-product context grounding this contract — flow, positioning, Thermal, catalysts.
+                </p>
+                {partitioned ? (
+                  <EvidenceRail
+                    sections={partitioned.deskData}
+                    emptyLabel="No cross-desk data for this pick right now."
+                  />
+                ) : null}
+              </div>
+            ) : (
               <div role="tabpanel" className="vector-pick-rail-panel">
                 {partitioned ? (
                   <EvidenceRail
@@ -370,51 +393,18 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
 
                 {open.reasons?.length ? (
                   <div className="vector-pick-rank-reasons">
-                    <h3 className="vector-pick-evidence-title">Why this rank</h3>
+                    <h3 className="vector-pick-evidence-title">
+                      <span className="vector-pick-evidence-code" aria-hidden="true">
+                        RNK
+                      </span>
+                      Why this rank
+                    </h3>
                     <ul className="vector-contract-pick-drawer-reasons">
                       {open.reasons.map((r) => (
                         <li key={r}>{r}</li>
                       ))}
                     </ul>
                   </div>
-                ) : null}
-
-                <div className="vector-pick-play-plan">
-                  <h3 className="vector-pick-evidence-title">Play plan</h3>
-                  <p className="vector-contract-pick-drawer-headline">{play.headline}</p>
-                  <p className="vector-contract-pick-drawer-thesis">{play.thesis}</p>
-                  <dl className="vector-contract-pick-drawer-levels">
-                    {play.entryZone ? (
-                      <div className="vector-contract-pick-drawer-level">
-                        <dt>Entry</dt>
-                        <dd>{play.entryZone}</dd>
-                      </div>
-                    ) : null}
-                    {play.targets.length ? (
-                      <div className="vector-contract-pick-drawer-level">
-                        <dt>Targets</dt>
-                        <dd>{play.targets.join(" → ")}</dd>
-                      </div>
-                    ) : null}
-                    {play.invalidation ? (
-                      <div className="vector-contract-pick-drawer-level">
-                        <dt>Invalidation</dt>
-                        <dd>{play.invalidation}</dd>
-                      </div>
-                    ) : null}
-                  </dl>
-                </div>
-              </div>
-            ) : (
-              <div role="tabpanel" className="vector-pick-rail-panel">
-                <p className="vector-pick-desk-rail-lead">
-                  Cross-product context grounding this contract — flow, positioning, Thermal, catalysts.
-                </p>
-                {partitioned ? (
-                  <EvidenceRail
-                    sections={partitioned.deskData}
-                    emptyLabel="No cross-desk data for this pick right now."
-                  />
                 ) : null}
               </div>
             )}
