@@ -50,10 +50,30 @@ function sideActionLabel(side: "call" | "put"): string {
   return side === "call" ? "Buy call to open" : "Buy put to open";
 }
 
+// Each evidence category gets its own icon + accent so the drawer reads as a scannable dashboard
+// rather than nine identical grey boxes stacked in a row (member: "so boring and bad").
+const SECTION_STYLE: Record<VectorPickEvidenceSection["id"], { icon: string; accent: string }> = {
+  strike: { icon: "🎯", accent: "sky" },
+  flow: { icon: "🌊", accent: "violet" },
+  positioning: { icon: "📊", accent: "blue" },
+  structure: { icon: "🧱", accent: "slate" },
+  technicals: { icon: "📈", accent: "teal" },
+  liquidity: { icon: "💧", accent: "cyan" },
+  session: { icon: "🕒", accent: "amber" },
+  gex: { icon: "⚡", accent: "emerald" },
+  catalyst: { icon: "📰", accent: "orange" },
+};
+
 function EvidenceBlock({ section }: { section: VectorPickEvidenceSection }) {
+  const style = SECTION_STYLE[section.id];
   return (
-    <section className="vector-pick-evidence-section">
-      <h3 className="vector-pick-evidence-title">{section.title}</h3>
+    <section className={clsx("vector-pick-evidence-section", `vector-pick-evidence-section--${style.accent}`)}>
+      <h3 className="vector-pick-evidence-title">
+        <span className="vector-pick-evidence-icon" aria-hidden="true">
+          {style.icon}
+        </span>
+        {section.title}
+      </h3>
       <dl className="vector-pick-evidence-list">
         {section.items.map((item) => (
           <div key={`${section.id}-${item.label}-${item.value}`} className="vector-pick-evidence-row">
@@ -185,51 +205,88 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
       >
         {open && play ? (
           <div className="vector-contract-pick-drawer">
-            <p className="vector-contract-pick-drawer-conf">
-              Rank #{open.rank ?? 1}
-              {open.role && ROLE_LABEL[open.role] ? ` · ${ROLE_LABEL[open.role]}` : ""}
-              {" · "}
-              {play.conviction}% Suggested Play conviction
-            </p>
-            <p className="vector-contract-pick-drawer-action">{sideActionLabel(open.side)}</p>
+            <div className="vector-pick-drawer-hero">
+              <div className="vector-pick-drawer-hero-main">
+                <span
+                  className={clsx(
+                    "vector-pick-drawer-side-badge",
+                    open.side === "call" ? "vector-pick-drawer-side-badge--call" : "vector-pick-drawer-side-badge--put"
+                  )}
+                >
+                  {open.side === "call" ? "CALL" : "PUT"}
+                </span>
+                <div className="vector-pick-drawer-hero-text">
+                  <p className="vector-contract-pick-drawer-action">{sideActionLabel(open.side)}</p>
+                  <p className="vector-contract-pick-drawer-conf">
+                    Rank #{open.rank ?? 1}
+                    {open.role && ROLE_LABEL[open.role] ? ` · ${ROLE_LABEL[open.role]}` : ""}
+                  </p>
+                </div>
+              </div>
+              <div className="vector-pick-conviction-meter" role="img" aria-label={`${play.conviction}% conviction`}>
+                <svg viewBox="0 0 36 36" className="vector-pick-conviction-ring">
+                  <circle className="vector-pick-conviction-ring-track" cx="18" cy="18" r="15.5" />
+                  <circle
+                    className="vector-pick-conviction-ring-fill"
+                    cx="18"
+                    cy="18"
+                    r="15.5"
+                    strokeDasharray={`${(play.conviction / 100) * 97.4} 97.4`}
+                  />
+                </svg>
+                <span className="vector-pick-conviction-value">{play.conviction}%</span>
+                <span className="vector-pick-conviction-label">conviction</span>
+              </div>
+            </div>
+
             {open.actionStatus ? (
               <p className={clsx("vector-pick-action-banner", actionClass(open.actionStatus))}>
+                <span className="vector-pick-action-banner-dot" aria-hidden="true" />
                 {ACTION_LABEL[open.actionStatus]}
                 {open.actionReason ? ` — ${open.actionReason}` : ""}
               </p>
             ) : null}
+
             {(open.liveMid != null || open.liveDelta != null) && (
-              <dl className="vector-pick-live-greeks">
+              <div className="vector-pick-live-greeks">
                 {formatPickPremiumRange(open.liveBid ?? null, open.liveAsk ?? null, open.liveMid ?? null) ? (
-                  <div className="vector-contract-pick-drawer-level">
-                    <dt>Live premium</dt>
-                    <dd>
+                  <div className="vector-pick-stat-tile vector-pick-stat-tile--wide">
+                    <span className="vector-pick-stat-label">Live premium</span>
+                    <span className="vector-pick-stat-value">
                       {formatPickPremiumRange(open.liveBid ?? null, open.liveAsk ?? null, open.liveMid ?? null)}
-                      {open.premiumPctFromEntry != null
-                        ? ` (${open.premiumPctFromEntry >= 0 ? "+" : ""}${open.premiumPctFromEntry.toFixed(0)}% vs pick)`
-                        : ""}
-                    </dd>
+                    </span>
+                    {open.premiumPctFromEntry != null ? (
+                      <span
+                        className={clsx(
+                          "vector-pick-stat-delta",
+                          open.premiumPctFromEntry >= 0 ? "vector-pick-stat-delta--up" : "vector-pick-stat-delta--down"
+                        )}
+                      >
+                        {open.premiumPctFromEntry >= 0 ? "+" : ""}
+                        {open.premiumPctFromEntry.toFixed(0)}% vs pick
+                      </span>
+                    ) : null}
                   </div>
                 ) : null}
                 {open.liveDelta != null ? (
-                  <div className="vector-contract-pick-drawer-level">
-                    <dt>Delta</dt>
-                    <dd>{open.liveDelta.toFixed(2)}</dd>
+                  <div className="vector-pick-stat-tile">
+                    <span className="vector-pick-stat-label">Delta</span>
+                    <span className="vector-pick-stat-value">{open.liveDelta.toFixed(2)}</span>
                   </div>
                 ) : null}
                 {open.liveGamma != null ? (
-                  <div className="vector-contract-pick-drawer-level">
-                    <dt>Gamma</dt>
-                    <dd>{open.liveGamma.toFixed(3)}</dd>
+                  <div className="vector-pick-stat-tile">
+                    <span className="vector-pick-stat-label">Gamma</span>
+                    <span className="vector-pick-stat-value">{open.liveGamma.toFixed(3)}</span>
                   </div>
                 ) : null}
                 {open.liveTheta != null ? (
-                  <div className="vector-contract-pick-drawer-level">
-                    <dt>Theta</dt>
-                    <dd>{open.liveTheta.toFixed(3)}</dd>
+                  <div className="vector-pick-stat-tile">
+                    <span className="vector-pick-stat-label">Theta</span>
+                    <span className="vector-pick-stat-value">{open.liveTheta.toFixed(3)}</span>
                   </div>
                 ) : null}
-              </dl>
+              </div>
             )}
 
             <div className="vector-pick-rail-tabs" role="tablist" aria-label="Pick justification">
@@ -240,7 +297,7 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
                 className={clsx("vector-pick-rail-tab", rail === "option" && "vector-pick-rail-tab-active")}
                 onClick={() => setRail("option")}
               >
-                Option play
+                <span aria-hidden="true">🎫</span> Option play
               </button>
               <button
                 type="button"
@@ -249,7 +306,7 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
                 className={clsx("vector-pick-rail-tab", rail === "desk" && "vector-pick-rail-tab-active")}
                 onClick={() => setRail("desk")}
               >
-                Desk data
+                <span aria-hidden="true">🖥️</span> Desk data
               </button>
             </div>
 
