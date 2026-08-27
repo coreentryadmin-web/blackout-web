@@ -9719,6 +9719,23 @@ html.product-shell .nav-mega {
     font-size: 0.58rem;
   }
 
+  /* King-node GEX value — painted gold (same token as the crown/--sig-king) instead of relying
+     solely on the row's white anchor frame, so the single largest-|GEX| strike reads at a glance
+     even when the row scrolls under the sticky header or a hover ring dims the frame. */
+  .vector-odte-matrix-king-value {
+    color: var(--color-gold);
+    text-shadow: 0 0 8px rgba(255, 210, 63, 0.45);
+  }
+
+  /* Δ% folded inline next to the GEX value (was its own column) — Vector shows only the 0DTE
+     column, so the extra column bought nothing but width; same pos/neg tones as the old column. */
+  .vector-odte-matrix-pct-inline {
+    margin-left: 0.35rem;
+    font-size: 0.58rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
   .vector-odte-matrix-empty,
   .vector-odte-matrix-refresh {
     padding: 0.75rem 0.5rem;
