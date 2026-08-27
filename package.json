@@ -99,6 +99,7 @@
     "validate:spx-e2e": "node scripts/spx-dashboard-e2e-audit.mjs",
     "validate:vector-e2e": "node scripts/vector-e2e-audit.mjs",
     "validate:vector-play-invariants": "node --import tsx scripts/audit/vector-play-invariants.mjs",
+    "validate:vector-pick-pnl": "node --import tsx scripts/audit/vector-pick-pnl-audit.mjs",
     "validate:bead-cadence": "node --import tsx scripts/audit/bead-cadence-validate.mjs --nonuniverse=PLTR",
     "validate:vector-wall-trail-sec": "node --import tsx scripts/audit/vector-wall-trail-sec-validate.mjs",
     "validate:gex-parity": "node scripts/validate-gex-parity.mjs",

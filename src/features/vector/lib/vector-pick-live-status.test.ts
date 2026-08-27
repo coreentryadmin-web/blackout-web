@@ -5,6 +5,9 @@ import {
   formatPickPremiumDriftPct,
   isSetupInvalidated,
   parseInvalidationLevel,
+  pinVectorPickEntryMid,
+  premiumDriftPct,
+  resolveVectorPickLiveMid,
 } from "./vector-pick-live-status";
 
 test("formatPickPremiumDriftPct: signed whole-percent", () => {
@@ -59,4 +62,25 @@ test("evaluateVectorPickLiveStatus: dont_buy when setup invalidated", () => {
   });
   assert.equal(r.status, "dont_buy");
   assert.equal(r.setupInvalidated, true);
+});
+
+test("resolveVectorPickLiveMid: prefers bid/ask mid over a stale last-trade mark", () => {
+  assert.equal(
+    resolveVectorPickLiveMid({ bid: 3.2, ask: 3.6, mark: 1.05 }),
+    3.4
+  );
+});
+
+test("resolveVectorPickLiveMid: falls back to mark when quotes are one-sided", () => {
+  assert.equal(resolveVectorPickLiveMid({ bid: null, ask: 2.5, mark: 2.5 }), 2.5);
+});
+
+test("premiumDriftPct matches pinnedLivePnlPct rounding", () => {
+  assert.equal(premiumDriftPct(4.0, 4.5), 12.5);
+});
+
+test("pinVectorPickEntryMid: keeps first anchor across refreshes", () => {
+  const pinned = new Map<string, number>();
+  assert.equal(pinVectorPickEntryMid(pinned, "O:NVDA", 3.25), 3.25);
+  assert.equal(pinVectorPickEntryMid(pinned, "O:NVDA", 3.8), 3.25);
 });

@@ -3,7 +3,7 @@
  * Still Buy / Caution / Don't Buy from spot, play invalidation, and live quotes.
  */
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/features/nighthawk/lib/constants";
-import { zeroDteMidOf } from "@/lib/zerodte/marks-math";
+import { pinnedLivePnlPct, resolveZeroDteMark, zeroDteMidOf } from "@/lib/zerodte/marks-math";
 
 export type VectorPickActionStatus = "still_buy" | "caution" | "dont_buy";
 
@@ -53,9 +53,23 @@ export function parseInvalidationLevel(invalidation: string | null | undefined):
   return null;
 }
 
-function premiumDriftPct(entryMid: number | null, liveMid: number | null): number | null {
-  if (entryMid == null || entryMid <= 0 || liveMid == null) return null;
-  return Math.round(((liveMid - entryMid) / entryMid) * 10000) / 100;
+/** Premium drift vs pick-time mid — shared with the 0DTE live-marks lane (pinnedLivePnlPct). */
+export function premiumDriftPct(entryMid: number | null, liveMid: number | null): number | null {
+  return pinnedLivePnlPct(entryMid, liveMid);
+}
+
+/**
+ * Resolve the live mark for a Vector pick quote. Prefers a two-sided mid over a stored
+ * `mark` field — the options WS can carry a last-trade fallback in `mark` while bid/ask
+ * are fresh, which would otherwise inflate/deflate "% vs pick" vs the chain mid used at rank time.
+ */
+export function resolveVectorPickLiveMid(input: {
+  bid: number | null;
+  ask: number | null;
+  mark?: number | null;
+  last?: number | null;
+}): number | null {
+  return resolveZeroDteMark(input.bid, input.ask, input.last ?? input.mark ?? null).mark;
 }
 
 function spreadPct(bid: number | null, ask: number | null, mid: number | null): number | null {
@@ -227,6 +241,18 @@ export function formatPickPremiumRange(bid: number | null, ask: number | null, m
   }
   if (mid != null && mid > 0) return `@ $${mid.toFixed(2)}`;
   return null;
+}
+
+/** Pin the first-seen entry mid per OCC across pick refreshes (45s cadence). */
+export function pinVectorPickEntryMid(
+  pinned: Map<string, number>,
+  occ: string,
+  incoming: number
+): number {
+  const existing = pinned.get(occ);
+  if (existing != null) return existing;
+  pinned.set(occ, incoming);
+  return incoming;
 }
 
 /** Compact drift vs pick-time mid for pick rows, e.g. "+12%" / "-8%". */
