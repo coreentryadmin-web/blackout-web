@@ -2592,9 +2592,19 @@ export function VectorChart({
    * nothing is drawn while the (default-empty) enabled set is empty. Values are computed 1:1 with
    * the bars and the null warm-up region is dropped so lines simply start once defined.
    */
-  const paintOverlays = useCallback((bars: VectorBar[]) => {
+  const paintOverlays = useCallback((bars: VectorBar[], frameSpot?: number | null) => {
     const chart = chartRef.current;
     if (!chart || !seriesRef.current) return;
+    // BUG FIX (2026-08-27): during replay, applyFrame calls paintOverlays with the cursor-sliced
+    // historical `bars`, but the technicals summary and the gamma-regime glow both used to read
+    // spotRef.current directly — the LIVE spot, which keeps moving because the SSE tape stays open
+    // during replay. That mixed today's live price against a scrubbed-to-the-past VWAP/flip, e.g.
+    // the TECHNICALS panel's "price N% above/below VWAP" line comparing live price to a VWAP
+    // computed only through the replay cursor, and the gamma-regime glow lighting up the wrong side
+    // of the (correctly historical) flip line. `resolvedSpot` is the frame's own spot when the
+    // caller is replaying (applyFrame passes the cursor bar's close), and only falls back to the
+    // live spotRef for the ordinary live-tick paint path.
+    const resolvedSpot = frameSpot !== undefined ? frameSpot : spotRef.current;
     lastDisplayBarsRef.current = bars;
     syncExtendedHoursShade();
     setDisplayBarCount(bars.length); // menu availability follows the shown-bar count (no-op if unchanged)
@@ -2780,7 +2790,7 @@ export function VectorChart({
       // (live flip/spot updates come through refreshOverlays on each tick). No-op when off.
       gammaRegimePrimitiveRef.current?.setData({
         flip: regimeFlipRef.current,
-        spot: spotRef.current,
+        spot: resolvedSpot,
         enabled: enabled.has("gamma-regime"),
       });
       // Session volume profile (P2 #4) — recompute from the raw 1m session bars (not the
@@ -2806,7 +2816,7 @@ export function VectorChart({
     // replay frame, toggle) from the SHOWN bars, INDEPENDENT of the enabled-overlay set, so the desk
     // terminal keeps reading VWAP/EMA/RSI/MACD/pocket/structure even when nothing is toggled on the
     // chart. Deduped so an unchanged read is not re-emitted.
-    const summary = summarizeTechnicals(bars, spotRef.current);
+    const summary = summarizeTechnicals(bars, resolvedSpot);
     technicalsForPlayRef.current = playTechnicalsFromSummary(summary);
     const techCb = onTechnicalsChangeRef.current;
     if (techCb) {
@@ -3114,7 +3124,10 @@ export function VectorChart({
 
       const visibleBars = displayBarsFromMinute(bars, timeframeRef.current, cursorTime);
       applyDisplayBars(series, volumeSeriesRef.current, volumeAvgSeriesRef.current, visibleBars, volumeModeRef.current);
-      paintOverlays(visibleBars);
+      // Pass the FRAME's own spot (the cursor bar's close), not the live spotRef — see the
+      // BUG FIX comment inside paintOverlays for why this matters during replay.
+      const frameSpot = visibleBars.length ? visibleBars[visibleBars.length - 1]!.close : null;
+      paintOverlays(visibleBars, frameSpot);
       lastDisplayBarsRef.current = visibleBars;
       const barTimes = visibleBars.map((b) => b.time);
 

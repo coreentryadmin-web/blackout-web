@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { summarizeTechnicals, technicalsCallouts, technicalsCalloutLines, type TechnicalsBar } from "./vector-technicals";
 
 // RTH-anchored base (09:30 ET) — vwapSeries (used by summarizeTechnicals) is RTH-only (2026-08-05
@@ -150,4 +152,36 @@ test("technicalsCalloutLines: structure direction maps to bull/bear", () => {
 test("technicalsCalloutLines: empty bars → empty array", () => {
   const empty = summarizeTechnicals([], null);
   assert.deepEqual(technicalsCalloutLines(empty), []);
+});
+
+test("guard: VectorChart resolves the technicals/gamma-regime-glow spot from the FRAME, not the live tick, during replay", () => {
+  // Regression guard for the 2026-08-27 fix: summarizeTechnicals() and the gamma-regime glow both
+  // used to read spotRef.current directly inside paintOverlays. spotRef.current is written
+  // unconditionally on every live SSE tick (the tape stays open during replay by design), so
+  // scrubbing the chart to an earlier time computed VWAP/regime-glow correctly from the
+  // cursor-sliced historical bars but still compared them against TODAY's live spot -- e.g. the
+  // TECHNICALS panel's "price N% above/below VWAP" line mixing live price against a
+  // scrubbed-to-the-past VWAP, and the gamma-regime glow lighting up the wrong side of the
+  // (correctly historical) flip line. paintOverlays now takes an explicit frameSpot, and
+  // applyFrame (the replay path) must pass the cursor bar's own close rather than leaving it to
+  // fall back to the live ref. No React rendering harness exists in this repo to mount the
+  // component directly, so this asserts the fix is wired into the source.
+  const src = readFileSync(join(process.cwd(), "src/features/vector/components/VectorChart.tsx"), "utf8");
+  assert.match(
+    src,
+    /const paintOverlays = useCallback\(\(bars: VectorBar\[\], frameSpot\?: number \| null\)/,
+    "paintOverlays must accept an explicit frame spot"
+  );
+  assert.match(
+    src,
+    /const resolvedSpot = frameSpot !== undefined \? frameSpot : spotRef\.current;/,
+    "paintOverlays must resolve spot from the frame when one is supplied, falling back to the live ref only for ordinary live-tick paints"
+  );
+  assert.match(src, /summarizeTechnicals\(bars, resolvedSpot\)/, "technicals summary must use the resolved (frame-aware) spot");
+  assert.match(src, /spot: resolvedSpot,/, "gamma-regime glow must use the resolved (frame-aware) spot");
+  assert.match(
+    src,
+    /const frameSpot = visibleBars\.length \? visibleBars\[visibleBars\.length - 1\]!\.close : null;\s*\n\s*paintOverlays\(visibleBars, frameSpot\);/,
+    "applyFrame (the replay path) must pass the cursor bar's own close as the frame spot"
+  );
 });
