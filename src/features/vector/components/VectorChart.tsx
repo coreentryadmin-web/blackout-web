@@ -4822,7 +4822,14 @@ export function VectorChart({
     const layoutObserver = new ResizeObserver(() => {
       const w = container.clientWidth;
       const h = container.clientHeight;
-      if (w > 0 && h > 0) chart.resize(w, h);
+      if (w > 0 && h > 0) {
+        chart.resize(w, h);
+        // Flex-hosted desk canvases can cross a height threshold after the first paint — reassert
+        // pane stretch so the volume strip keeps its 80/20 share instead of collapsing to ~0px.
+        if (fillHost || container.classList.contains("vector-chart-canvas--desk-fill")) {
+          applyPaneStretch(chart, hideVolumePaneRef.current);
+        }
+      }
     });
     layoutObserver.observe(container);
     // Compare grid starts `display:none` below 1280px and can mount before flex settles —
@@ -4831,7 +4838,12 @@ export function VectorChart({
     const nudgeChartSize = () => {
       const w = container.clientWidth;
       const h = container.clientHeight;
-      if (w > 0 && h > 0) chart.resize(w, h);
+      if (w > 0 && h > 0) {
+        chart.resize(w, h);
+        if (fillHost || container.classList.contains("vector-chart-canvas--desk-fill")) {
+          applyPaneStretch(chart, hideVolumePaneRef.current);
+        }
+      }
     };
     if (fillHost && typeof IntersectionObserver !== "undefined") {
       intersectionObserver = new IntersectionObserver(

@@ -299,9 +299,14 @@ test("VectorChart: wide-desktop grid flex-fills below toolbar + scanner (no docu
   const css = read("src/app/globals.css");
   const wideBlock = css.slice(css.indexOf("@media (min-width: 1600px)"));
   assert.match(wideBlock, /vector-page-shell:not\(:has\(\.vector-page-content-focus\)\)/);
-  assert.match(wideBlock, /height: calc\(100dvh - var\(--nav-offset\)\)/);
-  const gridRuleEnd = wideBlock.indexOf("}", wideBlock.indexOf(".vector-chart-terminal-grid {"));
-  const gridRule = wideBlock.slice(0, gridRuleEnd);
+  assert.match(wideBlock, /height: 100dvh/);
+  assert.match(wideBlock, /\.vector-page-shell \.vector-chart-terminal-grid \{\s*min-height: 0;/);
+  const colIdx = wideBlock.indexOf("grid-template-columns: minmax(168px, 14%)");
+  assert.ok(colIdx > -1, "expected wide-desktop grid-template-columns");
+  const gridRuleStart = wideBlock.lastIndexOf(".vector-chart-terminal-grid {", colIdx);
+  assert.ok(gridRuleStart > -1, "expected the main wide-desktop grid rule");
+  const gridRuleEnd = wideBlock.indexOf("}", gridRuleStart);
+  const gridRule = wideBlock.slice(gridRuleStart, gridRuleEnd);
   assert.match(gridRule, /flex: 1 1 0/);
   assert.match(gridRule, /height: auto/);
   // The base (mobile/stacked, <1280px) rule must stay a MIN — that layout is meant to scroll the
@@ -321,8 +326,12 @@ test("VectorChart: wide-desktop grid row is forced to fill its container, not si
   // perfectly could bleed back into document flow instead of clipping inside its own box.
   const css = read("src/app/globals.css");
   const wideBlock = css.slice(css.indexOf("@media (min-width: 1600px)"));
-  const gridRuleEnd = wideBlock.indexOf("}", wideBlock.indexOf(".vector-chart-terminal-grid {"));
-  const gridRule = wideBlock.slice(0, gridRuleEnd);
+  const colIdxWide = wideBlock.indexOf("grid-template-columns: minmax(168px, 14%)");
+  assert.ok(colIdxWide > -1, "expected wide-desktop grid-template-columns");
+  const gridRuleStart = wideBlock.lastIndexOf(".vector-chart-terminal-grid {", colIdxWide);
+  assert.ok(gridRuleStart > -1, "expected the main wide-desktop grid rule");
+  const gridRuleEnd = wideBlock.indexOf("}", gridRuleStart);
+  const gridRule = wideBlock.slice(gridRuleStart, gridRuleEnd);
   assert.match(gridRule, /grid-template-rows:\s*minmax\(0,\s*1fr\)/);
   assert.match(gridRule, /overflow:\s*hidden/);
 });
@@ -352,9 +361,14 @@ test("VectorChart: 1280-1599px desk (before the 4-col breakpoint) also flex-fill
   assert.ok(block1280Start > -1 && block1600Start > block1280Start, "expected the vector 1280px block before its 1600px block");
   const block1280 = css.slice(block1280Start, block1600Start);
   assert.match(block1280, /vector-page-shell:not\(:has\(\.vector-page-content-focus\)\)/);
-  assert.match(block1280, /height: calc\(100dvh - var\(--nav-offset\)\)/);
-  const gridRuleEnd = block1280.indexOf("}", block1280.indexOf(".vector-chart-terminal-grid {"));
-  const gridRule = block1280.slice(0, gridRuleEnd);
+  assert.match(block1280, /height: 100dvh/);
+  assert.match(block1280, /\.vector-page-shell \.vector-chart-terminal-grid \{\s*min-height: 0;/);
+  const colIdx1280 = block1280.indexOf("grid-template-columns: minmax(168px, 14%)");
+  assert.ok(colIdx1280 > -1, "expected 1280px grid-template-columns");
+  const gridRuleStart1280 = block1280.lastIndexOf(".vector-chart-terminal-grid {", colIdx1280);
+  assert.ok(gridRuleStart1280 > -1, "expected the main 1280px grid rule");
+  const gridRuleEnd1280 = block1280.indexOf("}", gridRuleStart1280);
+  const gridRule = block1280.slice(gridRuleStart1280, gridRuleEnd1280);
   assert.match(gridRule, /flex: 1 1 0/);
   assert.match(gridRule, /height: auto/);
   assert.match(gridRule, /overflow:\s*hidden/);

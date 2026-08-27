@@ -8767,10 +8767,19 @@ html.product-shell .nav-mega {
      * and `grid-template-rows` back to a single `minmax(0, 1fr)` once the action rail earns its own
      * column and no longer needs a reserved row at all.
      */
+    /*
+     * PageShell already clears the fixed nav via padding-top: var(--nav-offset) on the SAME
+     * border box (box-sizing: border-box). Subtracting --nav-offset again here double-counted
+     * the nav and left an ~88px dead band under the desk while the grid's separate
+     * min-height: calc(100dvh - 7rem) floor still forced the chart column taller than the
+     * capped shell — clipping the volume sub-pane at the bottom (measured live 1920×1080:
+     * shell bottom 992 vs viewport 1080; grid 968px in ~904px of usable content).
+     * Match the SPX desk pattern: shell fills 100dvh; nav lives inside the padding.
+     */
     html:not(.ios-native-shell) .vector-page-shell:not(:has(.vector-page-content-focus)) {
-      height: calc(100dvh - var(--nav-offset));
-      max-height: calc(100dvh - var(--nav-offset));
-      min-height: calc(100dvh - var(--nav-offset));
+      height: 100dvh;
+      max-height: 100dvh;
+      min-height: 100dvh;
       overflow: hidden;
     }
     html:not(.ios-native-shell) .vector-page-shell:not(:has(.vector-page-content-focus)) .vector-page-content {
@@ -8791,6 +8800,12 @@ html.product-shell .nav-mega {
     html:not(.ios-native-shell) .vector-page-shell .vector-page-toolbar,
     html:not(.ios-native-shell) .vector-page-shell .vector-scanner-panel {
       flex: 0 0 auto;
+    }
+
+    /* Drop the mobile/stacked min-height FLOOR here — it beats the bare `.vector-chart-terminal-grid`
+       min-height:0 below on specificity and re-inflates the row past the flex cap. */
+    .vector-page-shell .vector-chart-terminal-grid {
+      min-height: 0;
     }
 
     /* Left rail: 0DTE matrix (strike · gamma · Δ%). Wider than the old 1D ladder — three
@@ -8855,9 +8870,9 @@ html.product-shell .nav-mega {
      * flex to whatever remains after the portalled toolbar + scanner row.
      */
     html:not(.ios-native-shell) .vector-page-shell:not(:has(.vector-page-content-focus)) {
-      height: calc(100dvh - var(--nav-offset));
-      max-height: calc(100dvh - var(--nav-offset));
-      min-height: calc(100dvh - var(--nav-offset));
+      height: 100dvh;
+      max-height: 100dvh;
+      min-height: 100dvh;
       overflow: hidden;
     }
     html:not(.ios-native-shell) .vector-page-shell:not(:has(.vector-page-content-focus)) .vector-page-content {
@@ -8878,6 +8893,10 @@ html.product-shell .nav-mega {
     html:not(.ios-native-shell) .vector-page-shell .vector-page-toolbar,
     html:not(.ios-native-shell) .vector-page-shell .vector-scanner-panel {
       flex: 0 0 auto;
+    }
+
+    .vector-page-shell .vector-chart-terminal-grid {
+      min-height: 0;
     }
 
     /* Wide desktop: genuine 4th column. Narrow the ladder/chart/terminal slightly to make room
