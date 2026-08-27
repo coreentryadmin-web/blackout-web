@@ -8641,6 +8641,41 @@ html.product-shell .nav-mega {
   }
 
   @media (min-width: 1600px) {
+    /*
+     * Wide-desktop flex-fill desk (#2936 follow-up, 2026-08-27). #2936 fixed the implicit grid row
+     * (chart column no longer blows past the grid), but `calc(100dvh - 7rem)` on the grid alone
+     * still left ~100px of document scroll at 1680×900 — measured live: chart 788px = grid 788px,
+     * yet scrollHeight 1003 vs innerHeight 900. The collapsed universe-scanner summary below the
+     * grid is intentional UI; it just was not in the height budget. Same flex chain as
+     * `.vector-compare-page`: cap the shell to one viewport below the fixed nav, then let the grid
+     * flex to whatever remains after the portalled toolbar + scanner row.
+     */
+    html:not(.ios-native-shell) .vector-page-shell:not(:has(.vector-page-content-focus)) {
+      height: calc(100dvh - var(--nav-offset));
+      max-height: calc(100dvh - var(--nav-offset));
+      min-height: calc(100dvh - var(--nav-offset));
+      overflow: hidden;
+    }
+    html:not(.ios-native-shell) .vector-page-shell:not(:has(.vector-page-content-focus)) .vector-page-content {
+      height: 100%;
+      max-height: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    html:not(.ios-native-shell) .vector-page-shell:not(:has(.vector-page-content-focus)) .vector-page-content > div {
+      flex: 1 1 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    html:not(.ios-native-shell) .vector-page-shell .vector-page-toolbar,
+    html:not(.ios-native-shell) .vector-page-shell .vector-scanner-panel {
+      flex: 0 0 auto;
+    }
+
     /* Wide desktop: genuine 4th column. Narrow the ladder/chart/terminal slightly to make room
        (10/53/25/12) rather than keeping the terminal's 30% and cramming the action rail in free
        space that doesn't exist. */
@@ -8663,8 +8698,10 @@ html.product-shell .nav-mega {
        * and capping the grid's total height there would squash that row's own space along with
        * everything else, which is a different, unreported layout and not this bug.
        */
-      height: calc(100dvh - 7rem);
-      max-height: calc(100dvh - 7rem);
+      flex: 1 1 0;
+      min-height: 0;
+      height: auto;
+      max-height: none;
       /*
        * THE FIX ABOVE WAS INCOMPLETE (member report, 2026-08-27 — a fresh screenshot at this exact
        * width still scrolled to the fold). `height`/`max-height` bound the GRID CONTAINER's own
