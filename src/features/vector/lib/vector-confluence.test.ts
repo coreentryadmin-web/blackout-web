@@ -39,6 +39,41 @@ test("confluenceZones: one kind repeated is NOT confluence (five fib lines ≠ f
   assert.deepEqual(zones, []);
 });
 
+test("confluenceZones: a kind repeated inside a mixed-kind cluster scores once, not per occurrence", () => {
+  // 3 ranked call walls (all kind "call-wall", weight 3 each) + 1 HOD (weight 1) — 2 distinct
+  // kinds, so it passes the >=2-kind gate, but the repeated call-wall must not multiply its own
+  // contribution: score should be max(call-wall)=3 + hod=1 = 4, NOT 3+3+3+1=10.
+  const zones = confluenceZones(
+    [
+      { price: 500.5, kind: "call-wall" },
+      { price: 500.55, kind: "hod" },
+      { price: 500.6, kind: "call-wall" },
+      { price: 500.7, kind: "call-wall" },
+    ],
+    500
+  );
+  assert.equal(zones.length, 1);
+  assert.equal(zones[0]!.levels.length, 4);
+  assert.deepEqual(zones[0]!.kinds.sort(), ["call-wall", "hod"]);
+  assert.equal(zones[0]!.score, DEFAULT_WEIGHTS["call-wall"] + DEFAULT_WEIGHTS.hod);
+
+  // A true 3-distinct-kind stack of lower per-level weight must still outrank the repeated-kind
+  // cluster above — this is the actual member-facing consequence of the bug.
+  const trueStack = confluenceZones(
+    [
+      { price: 700, kind: "gamma-flip" },
+      { price: 700.05, kind: "max-pain" },
+      { price: 700.1, kind: "pdh" },
+    ],
+    700
+  );
+  assert.equal(trueStack[0]!.score, DEFAULT_WEIGHTS["gamma-flip"] + DEFAULT_WEIGHTS["max-pain"] + DEFAULT_WEIGHTS.pdh);
+  assert.ok(
+    trueStack[0]!.score > zones[0]!.score,
+    "a real 3-kind stack must outrank a single kind repeated 3x alongside one other kind"
+  );
+});
+
 test("confluenceZones: chain merge — adjacent-within-tol links even when the span exceeds tol", () => {
   // 999 → 1000.2 → 1001.4: each hop 1.2 ≤ 1.5 but the span (2.4) exceeds tol — still ONE zone.
   const zones = confluenceZones(
