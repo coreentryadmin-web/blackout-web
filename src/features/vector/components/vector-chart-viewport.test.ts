@@ -313,6 +313,24 @@ test("VectorChart: wide-desktop grid gets a DEFINITE height so rails scroll inte
   assert.match(css, /\.vector-page-shell \.vector-chart-terminal-grid \{\s*min-height: calc\(100dvh - 7rem\);/);
 });
 
+test("VectorChart: wide-desktop grid row is forced to fill its container, not sized by content", () => {
+  // The height/max-height fix above (2026-08-27) was INCOMPLETE — measured live the same day at
+  // 1920x1080: the grid container correctly computed to 968px, but `.vector-chart-terminal-chart`
+  // inside it measured 2806px and the page still scrolled to 2938px. Root cause: with no
+  // `grid-template-rows` declared, the single implicit row used the default `grid-auto-rows: auto`,
+  // which sizes to the MAX-CONTENT of its children — completely independent of the container's own
+  // height/max-height. `grid-template-rows: minmax(0, 1fr)` forces the row to actually BE the
+  // container's height while still letting it shrink below any child's intrinsic size; `overflow:
+  // hidden` on the container is the second half — without it, a child that still doesn't shrink
+  // perfectly could bleed back into document flow instead of clipping inside its own box.
+  const css = read("src/app/globals.css");
+  const wideBlock = css.slice(css.indexOf("@media (min-width: 1600px)"));
+  const gridRuleEnd = wideBlock.indexOf("}", wideBlock.indexOf(".vector-chart-terminal-grid {"));
+  const gridRule = wideBlock.slice(0, gridRuleEnd);
+  assert.match(gridRule, /grid-template-rows:\s*minmax\(0,\s*1fr\)/);
+  assert.match(gridRule, /overflow:\s*hidden/);
+});
+
 test("VectorChart: explicit zoom in/out/reset buttons wired through to the toolbar", () => {
   // Member request (2026-08-27): "add better user controls for zoom in, zoom out, drag, move".
   const chart = read("src/features/vector/components/VectorChart.tsx");
