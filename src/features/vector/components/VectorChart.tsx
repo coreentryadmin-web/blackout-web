@@ -1857,7 +1857,7 @@ export function VectorChart({
     replayMode,
     chartReady,
     seriesRef,
-    minuteBarsRef,
+    displayBarsRef: lastDisplayBarsRef,
     drawingsPrimitiveRef: userDrawingsPrimitiveRef,
   });
   const updateDraftCursorRef = useRef(updateDraftCursor);
