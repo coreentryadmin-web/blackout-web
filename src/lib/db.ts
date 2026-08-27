@@ -6652,7 +6652,10 @@ export async function gradeZeroDteSetupRow(
  *    were already told to trim. The row's own peak_premium column is the shared
  *    truth, so a lower-rung write from a stale latch is dropped here, not raced.
  *  A regressing write still lands its mark and widens peak/trough (real quote
- *  data), it just cannot move the status rung backwards. */
+ *  data), it just cannot move the status rung backwards — UNLESS the row is
+ *  already CLOSED, in which case last_mark/peak_premium/trough_premium freeze
+ *  too (2026-08-27 fix): a closed row must never keep absorbing quotes from a
+ *  writer whose stale active-set cache hasn't noticed the close yet. */
 export async function updateZeroDteLiveState(
   sessionDate: string,
   ticker: string,
@@ -6666,7 +6669,24 @@ export async function updateZeroDteLiveState(
          WHEN status = 'TRIM' AND $3 IN ('OPEN','HOLD') THEN status
          ELSE $3
        END,
-       last_mark = COALESCE($4, last_mark),
+       -- BUG FIX (2026-08-27): all four mark-anchored columns below now short-circuit on
+       -- status = 'CLOSED' (the row's PRE-update value -- Postgres evaluates every SET
+       -- expression against the row as it was before this statement, so this is the same
+       -- "already closed" fact the status CASE above already tests). Before this fix only
+       -- status was frozen at close; last_mark/peak_premium/trough_premium kept moving for
+       -- up to ACTIVE_SET_TTL_MS (10s, live-marks.ts) after a row closed, because the ~1s
+       -- live-marks poller's local active-set cache can still believe a just-closed row is
+       -- OPEN/HOLD for that window and keeps heartbeat-persisting a fresh quote into it. The
+       -- status guard silently absorbed the write (correct), but the mark fields were NOT
+       -- guarded the same way, so they drifted post-close -- and reconcileLedgerLivePnlPct
+       -- (marks-math.ts) reads last_mark directly for any closed_reason other than "stopped"/
+       -- condor (i.e. every thesis/flat/ratchet close), so the DISPLAYED "realized" P&L kept
+       -- reflecting the market's move for several seconds after the trade was actually over.
+       -- Live evidence: MSTR closed "thesis" at a real exit_pnl_pct of +1.61% (the exit-context
+       -- stamp is first-write-wins, trustworthy) but the board showed live_pnl_pct -3.23% — the
+       -- market moved against the position in the post-close window and last_mark followed it,
+       -- flipping the member-visible sign on an already-decided winning trade.
+       last_mark = CASE WHEN status = 'CLOSED' THEN last_mark ELSE COALESCE($4, last_mark) END,
        -- STAMPED ONLY ON A REAL OBSERVATION, and that is the whole point of the column.
        -- last_mark is COALESCEd (correct: a stale tick must not discard a good mark), so a row
        -- whose contract NEVER produced a quote keeps the value it was seeded with — its entry
@@ -6675,12 +6695,18 @@ export async function updateZeroDteLiveState(
        -- exactly 0.00% and closed "breakeven" on a contract that actually traded 0.24 -> 1.48
        -- (76 of 84 minute bars more than $0.05 away from the mark being shown).
        -- With this column, last_mark_at IS NULL says "no quote was ever seen" out loud.
-       last_mark_at = CASE WHEN $4 IS NOT NULL THEN now() ELSE last_mark_at END,
+       last_mark_at = CASE
+         WHEN status = 'CLOSED' THEN last_mark_at
+         WHEN $4 IS NOT NULL THEN now()
+         ELSE last_mark_at
+       END,
        peak_premium = CASE
+         WHEN status = 'CLOSED' THEN peak_premium
          WHEN $4 IS NOT NULL THEN GREATEST(COALESCE(peak_premium, $4), $4)
          ELSE peak_premium
        END,
        trough_premium = CASE
+         WHEN status = 'CLOSED' THEN trough_premium
          WHEN $4 IS NOT NULL THEN LEAST(COALESCE(trough_premium, $4), $4)
          ELSE trough_premium
        END
