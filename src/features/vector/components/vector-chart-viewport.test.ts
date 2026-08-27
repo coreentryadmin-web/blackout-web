@@ -327,6 +327,55 @@ test("VectorChart: wide-desktop grid row is forced to fill its container, not si
   assert.match(gridRule, /overflow:\s*hidden/);
 });
 
+test("VectorChart: 1280-1599px desk (before the 4-col breakpoint) also flex-fills, no document scroll", () => {
+  // FOLLOW-UP to #2981 (2026-08-27). #2981 fixed the 80/20 price/volume SHARE, but that ratio only
+  // ever applies to whatever height the chart's own container ends up with — and the >=1600px fix
+  // two tests below was never extended down to this breakpoint. Live capture at 1366x768 (a normal
+  // laptop height, well inside 1280-1599px) reproduced the identical "min-height is a floor, not a
+  // size" bug the wide-desktop tests below already guard: `.vector-chart-terminal-grid` here carried
+  // only `min-height: calc(100dvh - 7rem)`, so `grid-auto-rows: auto` sized the row to the
+  // MAX-CONTENT of its tallest column (the GEX ladder / ODTE matrix / desk terminal all strip their
+  // own `max-height` at this exact breakpoint a few lines below) instead of the viewport — measured
+  // live: chart column swung between 823px and 1955px on the SAME 768px-tall viewport depending on
+  // live content, and the grid grew to 1316-2448px, pushing the volume sub-pane completely below the
+  // fold and requiring the whole PAGE to scroll to reach it (`docScrollHeight` up to 2663 vs
+  // `innerHeight` 768) — exactly the "last time" page-scroll regression the operator does not want
+  // repeated.
+  const css = read("src/app/globals.css");
+  // globals.css has several unrelated `@media (min-width: 1280px)` blocks (Largo etc.) — anchor on
+  // the vector desk's own base rule (`.vector-page-shell .vector-chart-terminal-grid`, the min-height
+  // floor) and take the FIRST 1280px query after it, which is the vector one.
+  const vectorBaseRule = css.indexOf(".vector-page-shell .vector-chart-terminal-grid {");
+  assert.ok(vectorBaseRule > -1, "expected the vector base grid rule");
+  const block1280Start = css.indexOf("@media (min-width: 1280px)", vectorBaseRule);
+  const block1600Start = css.indexOf("@media (min-width: 1600px)", block1280Start);
+  assert.ok(block1280Start > -1 && block1600Start > block1280Start, "expected the vector 1280px block before its 1600px block");
+  const block1280 = css.slice(block1280Start, block1600Start);
+  assert.match(block1280, /vector-page-shell:not\(:has\(\.vector-page-content-focus\)\)/);
+  assert.match(block1280, /height: calc\(100dvh - var\(--nav-offset\)\)/);
+  const gridRuleEnd = block1280.indexOf("}", block1280.indexOf(".vector-chart-terminal-grid {"));
+  const gridRule = block1280.slice(0, gridRuleEnd);
+  assert.match(gridRule, /flex: 1 1 0/);
+  assert.match(gridRule, /height: auto/);
+  assert.match(gridRule, /overflow:\s*hidden/);
+  // Two rows here (not one, unlike >=1600px): the action rail is still a full-width row UNDER the
+  // 3-col section at this breakpoint (it doesn't earn its own column until 1600px), so the row that
+  // holds ladder/chart/terminal must be capped to `minmax(0, 1fr)` while the action-rail row gets its
+  // own bounded track instead of `auto` — an unbounded `auto` row would just move the overflow from
+  // the chart column onto the action rail instead of eliminating it.
+  assert.match(gridRule, /grid-template-rows:\s*minmax\(0,\s*1fr\)\s+minmax\(0,/);
+  // The action rail must actually USE that row's height and scroll internally, or a long
+  // Play-card/Technicals/Alerts stack re-inflates the page exactly like the chart column used to.
+  const actionRuleStart = block1280.indexOf(".vector-action-rail {");
+  const actionRuleEnd = block1280.indexOf("}", actionRuleStart);
+  const actionRule = block1280.slice(actionRuleStart, actionRuleEnd);
+  assert.match(actionRule, /height: 100%/);
+  assert.match(actionRule, /overflow-y: auto/);
+  // The base (mobile/stacked, <1280px) rule must stay a MIN — unchanged by this fix, that layout is
+  // meant to scroll the whole page like any other stacked mobile view.
+  assert.match(css, /\.vector-page-shell \.vector-chart-terminal-grid \{\s*min-height: calc\(100dvh - 7rem\);/);
+});
+
 test("VectorChart: explicit zoom in/out/reset buttons wired through to the toolbar", () => {
   // Member request (2026-08-27): "add better user controls for zoom in, zoom out, drag, move".
   const chart = read("src/features/vector/components/VectorChart.tsx");
