@@ -26,6 +26,27 @@ test("guard: the halted banner prefers gov.would_halt over the hard-stop wording
   );
 });
 
+// Regression for the 2026-08-27 live-monitoring finding: realized_losers/session_pnl_pct/
+// would_halt are computed by the governor UNCONDITIONALLY (regardless of whether
+// GOVERNOR_ENFORCE_LOSS_HALT is on), but before this fix the ONLY place they ever rendered
+// was inside the `gov.halted` banner above — with that enforcement channel disabled, a real
+// "5 realized losers, -9.7% today" session was invisible on every product surface (confirmed
+// live: `GET /api/market/zerodte/board` carried the values, no UI showed them). Fix adds a
+// neutral-toned FYI pill shown whenever there's something to report, independent of `halted`.
+test("guard: realized_losers/session_pnl_pct render as their own pills, not gated on gov.halted", () => {
+  const src = readFileSync(join(process.cwd(), "src/features/nighthawk/components/ZeroDteBoard.tsx"), "utf8");
+  // Find the governor strip's pill block (between the "Plans" pill and the halted banner) —
+  // scoped so this can't accidentally match the halted banner's own use of these fields.
+  const stripStart = src.indexOf('label="Plans"');
+  const bannerStart = src.indexOf("{gov.halted && (");
+  assert.ok(stripStart > 0 && bannerStart > stripStart, "expected the governor pill strip before the halted banner");
+  const stripSrc = src.slice(stripStart, bannerStart);
+  assert.match(stripSrc, /gov\.realized_losers\s*!=\s*null\s*&&\s*gov\.realized_losers\s*>\s*0/,
+    "the realized-losers pill must render independent of gov.halted");
+  assert.match(stripSrc, /gov\.session_pnl_pct\s*!=\s*null\s*&&\s*gov\.session_pnl_pct\s*!==\s*0/,
+    "the session P&L pill must render independent of gov.halted");
+});
+
 test("resolveZeroDteFreshness: upstream_ok=false always reads offline, regardless of age", () => {
   assert.equal(resolveZeroDteFreshness(false, Date.now(), Date.now()), "offline");
   // Even a fresh as_of can't paper over a scan that couldn't see the tape this cycle.
