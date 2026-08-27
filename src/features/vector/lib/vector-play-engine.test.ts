@@ -191,6 +191,42 @@ test("short-gamma no wall in range → follows the EMA trend", () => {
   assert.equal(down.bias, "short");
 });
 
+test("short-gamma, no wall, NO trend either (ema null/mixed): asymmetric momentum-short default — documented, not silently absent", () => {
+  // determineSetup's short-gamma branch has no genuine signal here (no wall in the proximity band,
+  // no EMA-stack trend) and still falls through to `momentum-short` off an asserted "asymmetry of a
+  // short-gamma regime" — unlike the equivalent long-gamma no-signal case, which correctly falls
+  // back to a neutral `range` bias instead of asserting a direction. This branch was previously
+  // untested (the sibling test above only covers explicit ema up/down), and unlike this repo's other
+  // documented design asymmetries (docs/audit/INTENTIONAL-DESIGN.md), it carries no A/B measurement
+  // behind it. Fixing the asymmetry itself would need real backtested evidence this repo doesn't yet
+  // have for Vector plays — this test exists so the assumption is at least visible and locked down,
+  // not silently untested, and so a future change to this default shows up here rather than as a
+  // surprise regression.
+  const noEma = buildVectorPlay(
+    base({ regime: { posture: "short" }, proximity: null, technicals: { emaStack: null } })
+  )!;
+  assert.equal(noEma.bias, "short", "current behavior: defaults short even with zero directional signal");
+
+  const mixedEma = buildVectorPlay(
+    base({ regime: { posture: "short" }, proximity: null, technicals: { emaStack: "mixed" } })
+  )!;
+  assert.equal(mixedEma.bias, "short", "current behavior: 'mixed' EMA still defaults short under short gamma");
+
+  // The one thing this default MUST do given it has no real signal: it must not read as confident.
+  // A real trend + wall setup (from the sibling test above) should clearly outscore this bare guess.
+  const realSignal = buildVectorPlay(
+    base({
+      regime: { posture: "short" },
+      proximity: proximity("put", 7500, "testing"),
+      technicals: { emaStack: "down", macd: "bear" },
+    })
+  )!;
+  assert.ok(
+    realSignal.conviction > noEma.conviction,
+    `a real wall+trend setup (${realSignal.conviction}) should outscore the no-signal default (${noEma.conviction})`
+  );
+});
+
 // ── Flip transition pivot ────────────────────────────────────────────────────
 test("transition regime → pivot play at the flip, neutral bias, tight invalidation at the flip", () => {
   const play = buildVectorPlay(
