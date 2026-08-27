@@ -27,6 +27,7 @@ import {
   GOVERNOR_REENTRY_LOCK_MS,
   GOVERNOR_LOSS_HALT_COUNT,
   GOVERNOR_SESSION_LOSS_FLOOR_PCT,
+  GOVERNOR_ENFORCE_LOSS_HALT,
   GOVERNOR_MAX_CORRELATED_SAME_DIR,
   type GovernorLedgerRow,
 } from "./governor";
@@ -255,22 +256,24 @@ test("governor/P2: a recorded (timed) twin downgrades the session hold to the re
 
 // ── AUDIT SEV-3: realized-loss day-halt (losing time-stops, not just −50% hard stops) ──
 
-test("SEV-3 REGRESSION CLOSED: a session of 5 losing time-stops (no hard stop) now halts new commits", () => {
-  // The exact gap: five committed plays each close red at 15:30 (−30%) without ever
-  // touching the −50% hard stop. Pre-fix, stops.length stayed 0 all day and the scanner
-  // kept committing — same capital bleed as 7/13, uncapped.
+test("SEV-3 (2026-08-27, DISABLED BY DEFAULT — operator directive, GOVERNOR_ENFORCE_LOSS_HALT): a session of 5 losing time-stops (no hard stop) is measured but no longer halts new commits", () => {
+  // The exact gap this channel exists for: five committed plays each close red at 15:30 (−30%)
+  // without ever touching the −50% hard stop. governorLossHaltReason still COMPUTES the reason
+  // (the board keeps showing it as a diagnostic), but evaluateZeroDteGovernor no longer BLOCKS on
+  // it while GOVERNOR_ENFORCE_LOSS_HALT is off (default false) — the pipeline keeps producing
+  // plays every session regardless of realized-loser count, per the operator's explicit directive.
+  // The separate hard-stop-count halt (governor_session_stops, 3 stops) is UNCHANGED.
   const rows = ["A", "B", "C", "D", "E"].map((t) => losingTimeStop(t));
   const snap = deriveGovernorFromLedger(rows);
   assert.equal(snap.stops.length, 0, "none are HARD stops — the old halt channel stays silent");
   assert.equal(snap.realized_losers, 5, "but all five are realized losers");
+  assert.match(governorLossHaltReason(snap) ?? "", /realized losers/, "the reason is still COMPUTED for board diagnostics");
 
   const blocks = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, snap, NOW);
-  assert.deepEqual(blocks.map((b) => b.code), ["governor_session_loss_halt"]);
-  assert.equal(blocks[0]!.threshold, GOVERNOR_LOSS_HALT_COUNT);
-  assert.match(blocks[0]!.reason, /realized losers/, "the block names the realized-loss cause");
+  assert.deepEqual(blocks, [], "not enforced by default -- 5 realized losers no longer blocks a new commit");
 });
 
-test("SEV-3: the cumulative session-P&L floor halts even below the loser COUNT", () => {
+test("SEV-3 (disabled by default): the cumulative session-P&L floor is measured but does not halt below the loser COUNT", () => {
   // Two big losers (−70% each = −140%) sink past the −120% floor before hitting 5 losers.
   const rows = [
     losingTimeStop("A", -70),
@@ -279,9 +282,13 @@ test("SEV-3: the cumulative session-P&L floor halts even below the loser COUNT",
   const snap = deriveGovernorFromLedger(rows);
   assert.equal(snap.realized_losers, 2, "below the count cap");
   assert.ok(snap.session_pnl_pct! <= GOVERNOR_SESSION_LOSS_FLOOR_PCT, "but past the P&L floor");
+  assert.match(governorLossHaltReason(snap) ?? "", /floor/, "still computed as a diagnostic");
   const blocks = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, snap, NOW);
-  assert.deepEqual(blocks.map((b) => b.code), ["governor_session_loss_halt"]);
-  assert.match(blocks[0]!.reason, /floor/);
+  assert.deepEqual(blocks, [], "not enforced by default -- the P&L floor no longer blocks a new commit");
+});
+
+test("GOVERNOR_ENFORCE_LOSS_HALT defaults to false (the enforcement toggle for the disabled channel above)", () => {
+  assert.equal(GOVERNOR_ENFORCE_LOSS_HALT, false);
 });
 
 test("SEV-3: a session of WINNERS does not halt (only losing exits count)", () => {
@@ -337,15 +344,20 @@ test("SEV-3: a hard stop is also counted as a realized loser (union, not double-
   assert.equal(snap.session_pnl_pct, -50);
 });
 
-test("SEV-3: would_halt is SURFACED on the board summary on real ledger evidence", () => {
+test("SEV-3 (2026-08-27, DISABLED BY DEFAULT): would_halt is still SURFACED on the board summary as a diagnostic, but no longer flips `halted`", () => {
+  // GOVERNOR_ENFORCE_LOSS_HALT is off by default (operator directive) -- the board keeps
+  // reporting realized_losers/session_pnl_pct/would_halt so the desk can SEE a bad session, but
+  // `halted` (the field the "SESSION HALTED" banner gates on) no longer flips on loss evidence
+  // alone. `halted` still flips on the separate hard-stop-count channel, unchanged (see the next
+  // test and "SEV-3: the existing 3x HARD-stop halt... still fire unchanged" above).
   const rows = ["A", "B", "C", "D", "E"].map((t) => losingTimeStop(t));
   const s = summarizeGovernorForBoard(rows, []);
   assert.equal(s.realized_losers, 5);
   assert.equal(s.session_pnl_pct, -150);
   assert.equal(s.loss_halt_count, GOVERNOR_LOSS_HALT_COUNT);
   assert.equal(s.session_loss_floor_pct, GOVERNOR_SESSION_LOSS_FLOOR_PCT);
-  assert.match(s.would_halt ?? "", /realized losers/, "the halt reason is exposed for the operator");
-  assert.equal(s.halted, true, "and the desk reads as stood-down even with zero HARD stops");
+  assert.match(s.would_halt ?? "", /realized losers/, "the halt reason is still exposed for the operator as a diagnostic");
+  assert.equal(s.halted, false, "not enforced by default -- 5 realized losers no longer stands the desk down");
   assert.equal(s.stops.length, 0, "…none of which are hard stops");
 });
 
@@ -555,8 +567,9 @@ test("governor: re-entry lock boundary — exactly 20 min ago is UNLOCKED; one m
   );
 });
 
-// ── loss-halt COUNT boundary: 4 losers pass, exactly 5 halt ──────────────────────────
-test("SEV-3: loss-halt count boundary — 4 realized losers pass, exactly 5 halt", () => {
+// ── loss-halt COUNT boundary: the REASON still fires at 5 (board diagnostic), but the
+// gate is disabled by default (GOVERNOR_ENFORCE_LOSS_HALT) so neither side blocks a commit ──
+test("SEV-3: loss-halt count boundary — the reason fires at exactly 5, but the (disabled) gate never blocks either side", () => {
   const four = deriveGovernorFromLedger([losingTimeStop("A", -20), losingTimeStop("B", -20), losingTimeStop("C", -20), losingTimeStop("D", -20)]);
   assert.equal(four.realized_losers, 4);
   assert.ok(four.session_pnl_pct! > GOVERNOR_SESSION_LOSS_FLOOR_PCT, "−80% is above the −120 floor, so only the count matters here");
@@ -565,24 +578,31 @@ test("SEV-3: loss-halt count boundary — 4 realized losers pass, exactly 5 halt
 
   const five = deriveGovernorFromLedger([losingTimeStop("A", -20), losingTimeStop("B", -20), losingTimeStop("C", -20), losingTimeStop("D", -20), losingTimeStop("E", -20)]);
   assert.equal(five.realized_losers, GOVERNOR_LOSS_HALT_COUNT);
-  const halt = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, five, NOW);
-  assert.deepEqual(halt.map((b) => b.code), ["governor_session_loss_halt"]);
-  assert.match(halt[0]!.reason, /realized losers/);
+  assert.match(governorLossHaltReason(five) ?? "", /realized losers/, "the diagnostic reason still fires at the threshold");
+  assert.deepEqual(
+    evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, five, NOW),
+    [],
+    "but the gate is disabled by default -- 5 losers no longer blocks a commit"
+  );
 });
 
-// ── loss-halt FLOOR boundary: exactly at −120% halts; just above does not ─────────────
-test("SEV-3: session-P&L floor boundary — exactly −120% halts, −119% does not (count still under cap)", () => {
-  // Two losers at −60 each = −120 exactly → floor is `<=` so it halts, on 2 losers (< count cap).
+// ── loss-halt FLOOR boundary: same story — reason fires, gate stays open by default ──
+test("SEV-3: session-P&L floor boundary — the reason fires at exactly −120%, but the (disabled) gate never blocks", () => {
+  // Two losers at −60 each = −120 exactly → floor is `<=` so the REASON fires, on 2 losers (< count cap).
   const at = deriveGovernorFromLedger([losingTimeStop("A", -60), losingTimeStop("B", -60)]);
   assert.equal(at.session_pnl_pct, GOVERNOR_SESSION_LOSS_FLOOR_PCT);
   assert.equal(at.realized_losers, 2);
-  const halt = evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, at, NOW);
-  assert.deepEqual(halt.map((b) => b.code), ["governor_session_loss_halt"]);
-  assert.match(halt[0]!.reason, /floor/, "the FLOOR reason, not the count reason (count is only 2)");
+  assert.match(governorLossHaltReason(at) ?? "", /floor/, "the FLOOR reason, not the count reason (count is only 2)");
+  assert.deepEqual(
+    evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, at, NOW),
+    [],
+    "the reason fires but the gate is disabled by default -- no block"
+  );
 
-  // −59.5 each = −119 → above the floor, 2 losers → no halt.
+  // −59.5 each = −119 → above the floor, 2 losers → no reason, no halt either way.
   const above = deriveGovernorFromLedger([losingTimeStop("A", -59.5), losingTimeStop("B", -59.5)]);
   assert.equal(above.session_pnl_pct, -119);
+  assert.equal(governorLossHaltReason(above), null);
   assert.deepEqual(evaluateZeroDteGovernor({ ticker: "NVDA", direction: "long" }, above, NOW), []);
 });
 
