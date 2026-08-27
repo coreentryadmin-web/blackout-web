@@ -1784,6 +1784,12 @@ export function VectorChart({
   );
   const [gexAsOf, setGexAsOf] = useState<number | null>(null);
   const [vexAsOf, setVexAsOf] = useState<number | null>(null);
+  // Fix (2026-08-27): the SSE payload has carried darkPoolAsOf since dark-pool overlays shipped,
+  // but nothing read it — a 20+ minute-stale dark-pool cache (the cache tolerates one missed cron
+  // run, up to 25min TTL, and a failed refetch skips the write so an outage can push it further)
+  // rendered with zero visual difference from a fresh print. gexAsOf/vexAsOf already had this
+  // exact wiring; dark pool was the one overlay missing it.
+  const [darkPoolAsOf, setDarkPoolAsOf] = useState<number | null>(null);
   // 1m is the seed resolution; host desks may open on a coarser preset (defaultTimeframe — 3m default).
   // Aggregation is client-side from the same 1m bars.
   const [timeframe, setTimeframeState] = useState<VectorTimeframeMinutes>(initialTimeframe);
@@ -3989,6 +3995,9 @@ export function VectorChart({
       if (snap.darkPoolLevels) {
         darkPoolRef.current = snap.darkPoolLevels;
       }
+      if (snap.darkPoolAsOf != null) {
+        setDarkPoolAsOf(snap.darkPoolAsOf);
+      }
       // Capture the PREVIOUS tick's structure before overwriting — spot-break
       // detection requires the level to have been stable across the tick (a
       // wall relocating across a flat spot is not a breakout).
@@ -5285,6 +5294,7 @@ export function VectorChart({
       dteAvailable={dteAvailable}
       gexAsOf={gexAsOf}
       vexAsOf={vexAsOf}
+      darkPoolAsOf={darkPoolAsOf}
       liveSession={liveSession && !replayMode}
       replayMode={replayMode}
       playing={playing}
