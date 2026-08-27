@@ -439,16 +439,201 @@ test("FINDINGS 2026-08-06: a degenerate trim_scale reconstruction defers to a re
   assert.equal(rec.plays[0]!.managed_outcome, "thesis_break");
 });
 
-test("FINDINGS 2026-08-06: a GENUINE partial-bank reconstruction (2+ tranches) still takes precedence over a real exit stamp (unchanged)", () => {
-  // Guards against over-correcting: a real multi-tranche reconstruction carries information
-  // (the blended partial-banking P&L) a single exit stamp cannot — it must still win.
+// ── FINDINGS 2026-08-27: reconstructionShowsGenuinePartialBank alone is NOT enough — a real,
+// TERMINAL live-only exit must still outrank the reconstruction, or the "genuine" partial bank
+// becomes a fictitious continuation of a position the live engine already closed. This is the
+// correction to the 2026-08-06 fix's over-broad "GENUINE reconstruction always wins" framing:
+// live evidence (90-day prod pull) showed 94/104 reconstructed rows also carried a real
+// entry_context.exit, 43/94 (46%) sign-flipping the displayed outcome (APLD/MU/SPXW repros in
+// the PR). The corrected rule: the reconstruction only outranks a real exit when that real
+// exit's OWN reason is one the bar-walk can faithfully reproduce (a plain premium stop, or the
+// trim-scale ladder's own target/tranche exits) — see realExitIsBarWalkReproducible.
+
+test("FINDINGS 2026-08-27: a real THESIS-BREAK exit outranks a GENUINE (2+ tranche) reconstruction (APLD-shaped)", () => {
+  // The bar-walk reconstruction is structurally blind to live GEX-wall/Cortex thesis state — a
+  // real thesis_break exit is not "a stray stamp the reconstruction supersedes", it is the
+  // record of the position actually being closed before the reconstruction's bar-walk got there.
+  const r = row({
+    ticker: "APLD",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: -0.98,
+    entry_context: {
+      exit: { reason: "thesis_break:gex-walls", pnl_pct: 19.0 },
+      executable: {
+        lane: "conservative",
+        exit_policy: "trim_scale",
+        plan_outcome: "time_stop",
+        plan_pnl_pct: -0.98,
+        tranches: [
+          { tranche: 1, fraction: 1 / 3, exit_pnl_pct: 10.0, exit_reason: "trim_scale_first", at_et: "10:00" },
+          { tranche: 2, fraction: 2 / 3, exit_pnl_pct: -6.47, exit_reason: "time_stop", at_et: "15:15" },
+        ],
+      },
+    },
+  });
+  assert.equal(asManagedPnlPct(r), 19.0, "the real thesis-break exit wins, not the genuine-looking reconstruction");
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_source, "engine");
+  assert.equal(rec.plays[0]!.managed_outcome, "thesis_break");
+  assert.equal(rec.wins, 1, "this play is a real win — the reconstruction alone would have booked it as a small loss");
+});
+
+test("FINDINGS 2026-08-27: a real RATCHET-FLOOR exit (exactly breakeven) outranks a GENUINE reconstruction (SPXW-shaped)", () => {
+  const r = row({
+    ticker: "SPXW",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: 56.07,
+    entry_context: {
+      exit: { reason: "ratchet_breakeven_floor", pnl_pct: 0 },
+      executable: {
+        lane: "conservative",
+        exit_policy: "trim_scale",
+        plan_outcome: "time_stop",
+        plan_pnl_pct: 56.07,
+        tranches: [
+          { tranche: 1, fraction: 1 / 3, exit_pnl_pct: 40.0, exit_reason: "trim_scale_first", at_et: "10:00" },
+          { tranche: 2, fraction: 2 / 3, exit_pnl_pct: 64.1, exit_reason: "time_stop", at_et: "15:15" },
+        ],
+      },
+    },
+  });
+  assert.equal(asManagedPnlPct(r), 0, "the real ratchet-floor exit wins — the position closed at breakeven, not +56%");
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_source, "engine");
+  assert.equal(rec.plays[0]!.managed_outcome, "ratchet");
+  assert.equal(rec.breakeven, 1, "breakeven, neither win nor loss — not the fictitious +56% the reconstruction alone would report");
+});
+
+test("FINDINGS 2026-08-27: a real FLAT-TIMEOUT exit outranks a genuine reconstruction (live-only reason, unreproducible by the bar-walk)", () => {
+  const r = row({
+    ticker: "MU",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: 56.93,
+    entry_context: {
+      exit: { reason: "flat_theta_bleed", pnl_pct: -21.92 },
+      executable: {
+        lane: "conservative",
+        exit_policy: "trim_scale",
+        plan_outcome: "time_stop",
+        plan_pnl_pct: 56.93,
+        tranches: [
+          { tranche: 1, fraction: 1 / 3, exit_pnl_pct: 13.64, exit_reason: "trim_scale_first", at_et: "10:00" },
+          { tranche: 2, fraction: 2 / 3, exit_pnl_pct: 78.75, exit_reason: "time_stop", at_et: "15:15" },
+        ],
+      },
+    },
+  });
+  assert.equal(asManagedPnlPct(r), -21.92, "the real, live-only flat-timeout exit wins, not the reconstruction's fictitious +56.93%");
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_source, "engine");
+  assert.equal(rec.plays[0]!.managed_outcome, "flat_scratch");
+  assert.equal(rec.losses, 1);
+});
+
+test("FINDINGS 2026-08-27: a GENUINE partial-bank reconstruction still wins when the real exit's reason IS bar-walk-reproducible (no regression)", () => {
+  // The reconstruction and the real exit are both trim-scale-family here — the real exit did
+  // NOT need any live-only signal, so the reconstruction's own richer per-tranche math (which
+  // this real single-exit stamp cannot express) is legitimately preferred. This is the case
+  // the 2026-08-06 fix was actually protecting, correctly kept intact by this fix.
   const r = row({
     ticker: "NVDA",
     plan_outcome: "time_stop",
     plan_pnl_pct: 40,
     entry_context: {
-      // A stray/stale single-exit stamp from an earlier tick, superseded by genuine banking.
-      exit: { reason: "flat_theta_bleed", pnl_pct: 1 },
+      // A real trim_scale_runner_target stamp — mechanical, premium-threshold-driven, exactly
+      // what the bar-walk reconstruction itself models — so it does NOT block the reconstruction.
+      exit: { reason: "trim_scale_runner_target", pnl_pct: 1 },
+      executable: {
+        lane: "conservative",
+        exit_policy: "trim_scale",
+        plan_outcome: "time_stop",
+        plan_pnl_pct: 25.61,
+        tranches: [
+          { tranche: 1, fraction: 1 / 3, exit_pnl_pct: 13.64, exit_reason: "trim_scale_first", at_et: "10:00" },
+          { tranche: 2, fraction: 1 / 3, exit_pnl_pct: 36.36, exit_reason: "trim_scale_second", at_et: "10:05" },
+          { tranche: 3, fraction: 1 / 3, exit_pnl_pct: 26.82, exit_reason: "time_stop", at_et: "10:10" },
+        ],
+      },
+    },
+  });
+  assert.equal(asManagedPnlPct(r), 25.61);
+  const rec = buildZeroDteRecord([r], WINDOW);
+  assert.equal(rec.plays[0]!.managed_source, "reconstructed");
+});
+
+test("FINDINGS 2026-08-27: officialPlanPnlPct/isZeroDteWin (calibration + feature-store lane) inherit the fix, not just the as-managed headline", () => {
+  // Before this fix, officialPlanPnlPct read entry_context.executable.plan_pnl_pct directly —
+  // the RECONSTRUCTION's own blended number — regardless of managedGradeView's precedence, so
+  // fixing only the headline would have left the calibration/learning-store base rate corrupted.
+  const r = row({
+    ticker: "APLD",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: -0.98,
+    entry_context: {
+      exit: { reason: "thesis_break:gex-walls", pnl_pct: 19.0 },
+      executable: {
+        lane: "conservative",
+        exit_policy: "trim_scale",
+        plan_outcome: "time_stop",
+        plan_pnl_pct: -0.98,
+        tranches: [
+          { tranche: 1, fraction: 1 / 3, exit_pnl_pct: 10.0, exit_reason: "trim_scale_first", at_et: "10:00" },
+          { tranche: 2, fraction: 2 / 3, exit_pnl_pct: -6.47, exit_reason: "time_stop", at_et: "15:15" },
+        ],
+      },
+    },
+  });
+  assert.equal(officialPlanPnlPct(r), 19.0, "official pnl follows the real thesis-break exit, not the fictitious reconstruction");
+  assert.equal(isZeroDteWin(r), true, "calibration/feature-store must grade this a WIN, matching what actually happened live");
+});
+
+test("FINDINGS 2026-08-27: officialPlanPnlPct stays on the reconstruction when the real exit IS bar-walk-reproducible (no regression)", () => {
+  const r = row({
+    ticker: "NVDA",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: 40,
+    entry_context: {
+      exit: { reason: "trim_scale_runner_target", pnl_pct: 1 },
+      executable: {
+        lane: "conservative",
+        exit_policy: "trim_scale",
+        plan_outcome: "time_stop",
+        plan_pnl_pct: 25.61,
+        tranches: [
+          { tranche: 1, fraction: 1 / 3, exit_pnl_pct: 13.64, exit_reason: "trim_scale_first", at_et: "10:00" },
+          { tranche: 2, fraction: 1 / 3, exit_pnl_pct: 36.36, exit_reason: "trim_scale_second", at_et: "10:05" },
+          { tranche: 3, fraction: 1 / 3, exit_pnl_pct: 26.82, exit_reason: "time_stop", at_et: "10:10" },
+        ],
+      },
+    },
+  });
+  assert.equal(officialPlanPnlPct(r), 25.61);
+  assert.equal(isZeroDteWin(r), true);
+});
+
+test("FINDINGS 2026-08-27: officialPlanPnlPct is untouched for ratchet-mode rows (no tranches — pre-existing mechanical-vs-managed divergence, not this bug)", () => {
+  // WS-11 #3's own fixture: officialPlanPnlPct deliberately reads the single-walk executable
+  // grade (-54.5), NOT the live ratchet exit (+22.5) — that split is the documented, INTENTIONAL
+  // mechanical-vs-as-managed distinction (OUTCOME-GRADING-SPEC.md), untouched by this fix, which
+  // only ever fires when a GENUINE multi-tranche (or partial-fraction) reconstruction exists.
+  const r = row({
+    ticker: "QQQ",
+    plan_outcome: "stopped",
+    plan_pnl_pct: -50,
+    entry_context: {
+      executable: { lane: "conservative", plan_outcome: "stopped", plan_pnl_pct: -54.5, exit_policy: "ratchet" },
+      exit: { reason: "ratchet_profit_floor", pnl_pct: 22.5 },
+    },
+  });
+  assert.equal(officialPlanPnlPct(r), -54.5);
+});
+
+test("FINDINGS 2026-08-27: a GENUINE reconstruction wins outright when there is NO real exit stamp at all", () => {
+  const r = row({
+    ticker: "TSLA",
+    plan_outcome: "time_stop",
+    plan_pnl_pct: 40,
+    entry_context: {
       executable: {
         lane: "conservative",
         exit_policy: "trim_scale",
