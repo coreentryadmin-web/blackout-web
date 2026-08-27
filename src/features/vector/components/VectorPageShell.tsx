@@ -409,6 +409,22 @@ export function VectorPageShell({
     setToast(null);
   }, [activeTicker]);
 
+  // BUG FIX (2026-08-27): playEmit/technicals/expectedMove/confluence are all populated by
+  // VectorChart's onXChange callbacks, but they live in THIS parent component, not in the child
+  // VectorChart remounted via key={activeTicker} on a ticker switch. The remount only resets
+  // VectorChart's OWN internal state -- it does nothing to these parent-owned values, so
+  // VectorPlayCard kept rendering ticker A's grade/bias/entry/stop/target/invalidation (real,
+  // believable-looking risk levels) until the newly-mounted chart for ticker B completed its
+  // first data fetch and called onPlayChange. Same root cause the alert-rules reset above already
+  // handles for its own state; this extends the same discipline to the play/technicals/expected-
+  // move/confluence values.
+  useEffect(() => {
+    setPlayEmit(null);
+    setTechnicals([]);
+    setExpectedMove([]);
+    setConfluence(null);
+  }, [activeTicker]);
+
   // Auto-dismiss the toast a few seconds after the newest fire.
   useEffect(() => {
     if (!toast) return;
