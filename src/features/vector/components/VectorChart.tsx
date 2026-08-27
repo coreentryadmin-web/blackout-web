@@ -200,6 +200,7 @@ import {
 import {
   VECTOR_GEX_HEATMAP_FAST_MOVE_PCT,
   VECTOR_GEX_HEATMAP_POLL_MS,
+  VECTOR_EXPECTED_MOVE_POLL_MS,
   VECTOR_COMPARE_FOUR_UP_OVERLAY_REFRESH_MS,
   VECTOR_WALL_TRAIL_SEC,
   vectorComparePerfPollMs,
@@ -3668,6 +3669,13 @@ export function VectorChart({
 
     const heatmapPollMs = vectorComparePerfPollMs(GEX_HEATMAP_REFRESH_MS, compareFourUpBackground);
     const heatmapId = liveSession ? setInterval(() => void fetchGexHeatmap(false), heatmapPollMs) : null;
+    // Bug fix (2026-08-27): fetchExpectedMove used to fire once at mount with no interval, so the
+    // flat expected-move band stayed pinned to the mount-time spot/IV reading for the rest of the
+    // session while the EM cone kept re-anchoring to live spot — see VECTOR_EXPECTED_MOVE_POLL_MS.
+    const expectedMovePollMs = vectorComparePerfPollMs(VECTOR_EXPECTED_MOVE_POLL_MS, compareFourUpBackground);
+    const expectedMoveId = liveSession
+      ? setInterval(() => void fetchExpectedMove(), expectedMovePollMs)
+      : null;
 
     // Clear stale horizon state UP FRONT on every DTE switch — prevents the terminal from
     // briefly narrating the PREVIOUS horizon's walls/confluence while the new fetch is in flight,
@@ -3724,6 +3732,7 @@ export function VectorChart({
           cancelled = true;
           clearInterval(blendedHistId);
           if (heatmapId) clearInterval(heatmapId);
+          if (expectedMoveId) clearInterval(expectedMoveId);
         };
       }
 
@@ -3731,6 +3740,7 @@ export function VectorChart({
       return () => {
         cancelled = true;
         if (heatmapId) clearInterval(heatmapId);
+        if (expectedMoveId) clearInterval(expectedMoveId);
       };
     }
 
@@ -3797,6 +3807,7 @@ export function VectorChart({
       if (id) clearInterval(id);
       if (histId) clearInterval(histId);
       if (heatmapId) clearInterval(heatmapId);
+      if (expectedMoveId) clearInterval(expectedMoveId);
     };
   }, [
     dteHorizon,
