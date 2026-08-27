@@ -522,6 +522,33 @@ function GovernorStrip({
               : "No stops this session"
           }
         />
+        {/* Realized-loser/session-PnL diagnostics (2026-08-27): computed unconditionally by
+         *  the governor regardless of whether GOVERNOR_ENFORCE_LOSS_HALT is on, but until now
+         *  only ever rendered inside the `gov.halted` block below — with that channel
+         *  currently disabled, a real "5 realized losers, -9.7% today" session was fully
+         *  invisible on every product surface (member board, admin) unless someone hit the
+         *  API directly. Neutral-toned (not an alarm — the halt itself still governs whether
+         *  new commits are blocked) FYI pill, shown whenever there's something to report. */}
+        {gov.realized_losers != null && gov.realized_losers > 0 && (
+          <GovPill
+            label="Losers"
+            value={
+              gov.loss_halt_count != null
+                ? `${gov.realized_losers}/${gov.loss_halt_count}`
+                : String(gov.realized_losers)
+            }
+            tone={gov.halted ? "bear" : "sky"}
+            title="Realized losers this session (any exit reason) — diagnostic; the session halt on this channel is currently disabled by operator directive"
+          />
+        )}
+        {gov.session_pnl_pct != null && gov.session_pnl_pct !== 0 && (
+          <GovPill
+            label="Session P&L"
+            value={`${gov.session_pnl_pct > 0 ? "+" : ""}${gov.session_pnl_pct.toFixed(1)}%`}
+            tone={gov.session_pnl_pct < 0 ? "bear" : "bull"}
+            title="Sum of realized P&L% across today's closed rows — diagnostic, not a live mark-to-market total"
+          />
+        )}
         {locks.map((l) => (
           <GovPill
             key={`lock-${l.ticker}`}
