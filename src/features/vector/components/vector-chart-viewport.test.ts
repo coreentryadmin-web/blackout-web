@@ -628,3 +628,28 @@ test("VectorChart: volume sub-pane gets an 18-22% share of chart height, never m
   // reintroduce bottom padding that would shrink bars away from the floor again.
   assert.match(src, /scaleMargins: \{ top: [\d.]+, bottom: 0 \}/);
 });
+
+test("VectorCompareDesk: focused play strip mirrors single-chart action rail", () => {
+  const desk = read("src/features/vector/components/VectorCompareDesk.tsx");
+  assert.match(desk, /VectorComparePlayStrip/);
+  assert.match(desk, /onPlayDeskSnapshot=\{handlePlayDeskSnapshot\}/);
+  assert.match(desk, /replayPaused=\{linkedReplayMode\}/);
+});
+
+test("VectorPageShell chart-only embed: wires play-engine callbacks for Compare export", () => {
+  const src = read("src/features/vector/components/VectorPageShell.tsx");
+  const embedStart = src.indexOf('if (chartOnly) {');
+  const embedEnd = src.indexOf("const helixRail = (", embedStart);
+  const embed = src.slice(embedStart, embedEnd);
+  assert.match(embed, /onPlayChange=\{setPlayEmit\}/);
+  assert.match(embed, /onExpectedMoveChange=\{setExpectedMove\}/);
+  assert.match(src, /onPlayDeskSnapshot\(\{/);
+});
+
+test("VectorComparePlayStrip: renders play card, intel, and contract picks", () => {
+  const strip = read("src/features/vector/components/VectorComparePlayStrip.tsx");
+  assert.match(strip, /VectorPlayCard/);
+  assert.match(strip, /VectorPlayIntelStrip/);
+  assert.match(strip, /VectorContractPicksCard/);
+  assert.match(strip, /VectorReplayPlayGate/);
+});

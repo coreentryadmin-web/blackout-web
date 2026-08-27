@@ -11489,6 +11489,67 @@ html.product-shell .nav-mega {
     color: #e0f2fe;
   }
 
+  .vector-compare-play-strip {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid rgba(34, 211, 238, 0.12);
+    background:
+      linear-gradient(180deg, rgba(6, 10, 16, 0.98) 0%, rgba(4, 4, 7, 0.96) 100%);
+    flex-shrink: 0;
+    max-height: min(42vh, 420px);
+    min-height: 0;
+  }
+  .vector-compare-play-strip-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .vector-compare-play-strip-kicker {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(34, 211, 238, 0.55);
+  }
+  .vector-compare-play-strip-ticker {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    color: #e0f2fe;
+  }
+  .vector-compare-play-strip-body {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.1fr) minmax(180px, 0.9fr) minmax(200px, 1fr);
+    gap: 10px;
+    align-items: start;
+    overflow-x: auto;
+    overflow-y: auto;
+    min-height: 0;
+    padding-bottom: 2px;
+  }
+  .vector-compare-play-strip-gate {
+    grid-column: 1 / -1;
+  }
+  .vector-compare-play-strip-body .vector-play-card,
+  .vector-compare-play-strip-body .vector-play-intel-strip,
+  .vector-compare-play-strip-body .vector-contract-picks-card {
+    margin: 0 !important;
+    min-width: 0;
+  }
+  @media (max-width: 1599px) {
+    .vector-compare-play-strip-body {
+      grid-template-columns: minmax(200px, 1fr) minmax(160px, 0.85fr);
+    }
+    .vector-compare-play-strip-body .vector-contract-picks-card {
+      grid-column: 1 / -1;
+    }
+  }
+
   .vector-compare-strip {
     display: flex;
     flex-wrap: wrap;
@@ -11541,6 +11602,9 @@ html.product-shell .nav-mega {
     }
     .vector-compare-grid {
       display: grid;
+    }
+    .vector-compare-play-strip {
+      display: flex;
     }
     .vector-compare-strip {
       display: flex;

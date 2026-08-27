@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { useRouter } from "next/navigation";
 import { PageShell } from "@/components/ui";
 import { VectorCompareCommandBar } from "@/features/vector/components/VectorCompareCommandBar";
+import { VectorComparePlayStrip } from "@/features/vector/components/VectorComparePlayStrip";
 import {
   VectorComparePane,
   type VectorComparePaneMeta,
@@ -37,6 +38,7 @@ import {
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import type { VectorCompareChartSyncBind } from "@/features/vector/lib/vector-compare-sync";
 import type { IntradayZoomPreset } from "@/features/vector/lib/vector-candle-render";
+import type { VectorPlayDeskSnapshot } from "@/features/vector/lib/vector-play-desk-snapshot";
 
 type Props = {
   initialSeeds: VectorClientSeed[];
@@ -71,6 +73,7 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   const [focusedTicker, setFocusedTicker] = useState<string | null>(seeds[0]?.ticker ?? null);
   const [focusExpanded, setFocusExpanded] = useState(false);
   const [metaByTicker, setMetaByTicker] = useState<Record<string, VectorComparePaneMeta>>({});
+  const [playByTicker, setPlayByTicker] = useState<Record<string, VectorPlayDeskSnapshot>>({});
   const [syncFlash, setSyncFlash] = useState(false);
   const [linkedReplayMode, setLinkedReplayMode] = useState(false);
   const [linkedReplayPlaying, setLinkedReplayPlaying] = useState(false);
@@ -409,6 +412,28 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
     setMetaByTicker((prev) => ({ ...prev, [ticker]: meta }));
   }, []);
 
+  const handlePlayDeskSnapshot = useCallback((ticker: string, snapshot: VectorPlayDeskSnapshot) => {
+    setPlayByTicker((prev) => ({ ...prev, [ticker]: snapshot }));
+  }, []);
+
+  useEffect(() => {
+    const active = new Set(seeds.map((s) => s.ticker));
+    setPlayByTicker((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const key of Object.keys(next)) {
+        if (!active.has(key)) {
+          delete next[key];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [seeds]);
+
+  const focusedPlaySnapshot =
+    focusedTicker != null ? (playByTicker[focusedTicker] ?? null) : null;
+
   useEffect(() => {
     setLinkedReplayIndex((prev) => clampTimelineIndex(unionTimeline, prev));
   }, [unionTimeline]);
@@ -628,11 +653,21 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
                   onReplayTimeline={(timeline) => handleReplayTimeline(seed.ticker, timeline)}
                   compareFourUp={seeds.length >= 4}
                   compareFourUpBackground={seeds.length >= 4 && focusedTicker !== seed.ticker}
+                  onPlayDeskSnapshot={handlePlayDeskSnapshot}
                 />
               </VectorPaneErrorBoundary>
             );
           })}
         </div>
+
+        {focusedTicker ? (
+          <VectorComparePlayStrip
+            ticker={focusedTicker}
+            snapshot={focusedPlaySnapshot}
+            liveSession={liveSession}
+            replayPaused={linkedReplayMode}
+          />
+        ) : null}
 
         {seeds.length >= 2 ? (
           <footer className="vector-compare-strip" aria-label="Compare summary">

@@ -24,6 +24,7 @@ import { VectorPlayIntelStrip } from "@/features/vector/components/VectorPlayInt
 import { VectorPlayAnalyticsDrawer } from "@/features/vector/components/VectorPlayAnalyticsDrawer";
 import { VectorReplayPlayGate } from "@/features/vector/components/VectorReplayPlayGate";
 import type { VectorPlay, VectorPlayEmit } from "@/features/vector/lib/vector-play-engine";
+import type { VectorPlayDeskSnapshot } from "@/features/vector/lib/vector-play-desk-snapshot";
 import { VectorOdteMatrixRail } from "@/features/vector/components/VectorOdteMatrixRail";
 import { VectorRegimeBanner } from "@/features/vector/components/VectorRegimeBanner";
 import { VectorAlertsBell } from "@/features/vector/components/VectorAlertsBell";
@@ -150,6 +151,8 @@ type Props = {
   compareKeyboardActive?: boolean;
   /** Host desk portal target — renders the Vector toolbar full-width above the desk grid. */
   toolbarPortalEl?: HTMLElement | null;
+  /** Compare embed: export play-engine desk state for the focused play strip. */
+  onPlayDeskSnapshot?: (snapshot: VectorPlayDeskSnapshot) => void;
 };
 
 type VectorIosPanel = "chart" | "pulse" | "ladder" | "scanner" | "plays";
@@ -216,6 +219,7 @@ export function VectorPageShell({
   comparePane = false,
   compareKeyboardActive = true,
   toolbarPortalEl: hostToolbarPortalEl = null,
+  onPlayDeskSnapshot,
 }: Props) {
   const chartOnly = embed === "chart-only";
   const router = useRouter();
@@ -432,6 +436,30 @@ export function VectorPageShell({
     setConfluence(null);
     setPlayAnalyticsOpen(false);
   }, [activeTicker]);
+
+  useEffect(() => {
+    if (!onPlayDeskSnapshot) return;
+    onPlayDeskSnapshot({
+      playEmit,
+      regime,
+      expectedMove,
+      confluence,
+      wallIntegrity,
+      magnet,
+      proximity,
+      chartReplayMode,
+    });
+  }, [
+    onPlayDeskSnapshot,
+    playEmit,
+    regime,
+    expectedMove,
+    confluence,
+    wallIntegrity,
+    magnet,
+    proximity,
+    chartReplayMode,
+  ]);
 
   // Auto-dismiss the toast a few seconds after the newest fire.
   useEffect(() => {
@@ -718,6 +746,12 @@ export function VectorPageShell({
           onFreshness={liveSession ? setStreamUpdatedAt : undefined}
           onRegimeChange={handleRegime}
           onSpotChange={liveSession ? handleSpot : undefined}
+          onProximityChange={setProximity}
+          onMagnetChange={setMagnet}
+          onWallIntegrityChange={setWallIntegrity}
+          onConfluenceChange={setConfluence}
+          onExpectedMoveChange={setExpectedMove}
+          onPlayChange={setPlayEmit}
           alertRules={alertRules}
           onAlertsFired={handleAlertsFired}
           leadSlot={chartLead}
