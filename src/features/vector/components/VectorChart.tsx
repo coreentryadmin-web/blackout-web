@@ -4614,8 +4614,17 @@ export function VectorChart({
         chartPointerActiveRef.current
       );
       const history = wallHistoryRef.current;
+      // BUG FIX (2026-08-27): this used to fall back to the LIVE wall/flip refs during an active
+      // gesture (interactionHot), unconditionally — not just in replay, but any time the member is
+      // hovering an OLDER bar mid-session too. wallsAtCrosshairTime/flipAtCrosshairTime exist
+      // precisely to answer "what were the walls/flip AT the hovered time" rather than "what are
+      // they right now" (see their own doc comments); substituting live data here silently
+      // mislabeled a historical hover with today's/right-now's levels for the ~600ms gesture-
+      // cooldown window. gexCell and the wall-event tooltip a few lines below already suppress
+      // (render nothing) during interactionHot instead of substituting wrong data — this now
+      // matches that same "defer heavy work, never serve wrong data" pattern.
       const walls = interactionHot
-        ? wallsForActiveLens(activeLens, gexWallsRef.current, vexWallsRef.current)
+        ? null
         : wallsAtCrosshairTime(
             history,
             hoverEpochSec,
@@ -4645,7 +4654,7 @@ export function VectorChart({
         close: bar?.close ?? null,
         lens: activeLens,
         flip: interactionHot
-          ? flipForActiveLens(activeLens, gammaFlipRef.current, vexFlipRef.current)
+          ? null
           : flipAtCrosshairTime(
               history,
               hoverEpochSec,
