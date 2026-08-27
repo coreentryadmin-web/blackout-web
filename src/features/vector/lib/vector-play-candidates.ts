@@ -97,14 +97,18 @@ function dteOn(expiry: string, today: string): number {
 function contractPremium(row: ChainStrikeRow, side: "call" | "put"): number | null {
   const ask = side === "call" ? row.call_ask : row.put_ask;
   const bid = side === "call" ? row.call_bid : row.put_bid;
-  if (ask != null && Number.isFinite(ask) && ask > 0) {
-    if (bid != null && Number.isFinite(bid) && bid > 0) {
-      const mid = (ask + bid) / 2;
-      if ((ask - bid) / mid > 1.0) return null;
-      return mid;
-    }
-    return ask;
+  const askOk = ask != null && Number.isFinite(ask) && ask > 0;
+  const bidOk = bid != null && Number.isFinite(bid) && bid > 0;
+  if (askOk && bidOk) {
+    const mid = (ask! + bid!) / 2;
+    if ((ask! - bid!) / mid > 1.0) return null;
+    return mid;
   }
+  if (askOk) return ask!;
+  // Ask can go dark on a thin/wide-quoted contract while the bid is still live — a real,
+  // executable (sell-the-put-to-open-adjacent, or the ask simply hasn't refreshed) contract that
+  // was previously invisible to every liquidity tier including the catch-all `anyQuoted` bucket.
+  if (bidOk) return bid!;
   return null;
 }
 

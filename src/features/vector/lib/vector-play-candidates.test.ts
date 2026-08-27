@@ -182,6 +182,45 @@ test("neutral play returns no picks", () => {
   );
 });
 
+test("bid-only quote (no ask) is still a visible, pickable contract", () => {
+  // A contract whose ask has gone dark (thin/wide market, or simply stale) but whose bid is live
+  // is real and executable — it must not be invisible to every liquidity tier.
+  const chain: EditionChainData = {
+    spot: 100,
+    rows: [row(100, { expiry: ymdPlus(7), callBid: 4.2 })],
+  };
+  const picked = pickContractNearTarget(chain, "long", 100, 1, 7);
+  assert.ok(picked, "bid-only contract should be picked, not silently dropped");
+  assert.equal(picked?.premium, 4.2);
+});
+
+test("both bid and ask missing still returns no contract", () => {
+  const chain: EditionChainData = {
+    spot: 100,
+    rows: [row(100, { expiry: ymdPlus(7) })],
+  };
+  const picked = pickContractNearTarget(chain, "long", 100, 1, 7);
+  assert.equal(picked, null);
+});
+
+test("empty chain rows returns no picks, never fabricates a contract", () => {
+  const picks = rankVectorPlayCandidates(
+    { play: basePlay("long", 70), spot: 100, putWall: 98 },
+    { spot: 100, rows: [] }
+  );
+  assert.deepEqual(picks, []);
+});
+
+test("null chain returns no picks", () => {
+  const picks = rankVectorPlayCandidates({ play: basePlay("long", 70), spot: 100 }, null);
+  assert.deepEqual(picks, []);
+});
+
+test("null context returns no picks", () => {
+  const chain: EditionChainData = { spot: 100, rows: [row(100, { expiry: ymdPlus(7), callAsk: 4, callBid: 3.6 })] };
+  assert.deepEqual(rankVectorPlayCandidates(null, chain), []);
+});
+
 test("pickContractNearTarget: chooses strike closest to target in DTE window", () => {
   const chain: EditionChainData = {
     spot: 100,
