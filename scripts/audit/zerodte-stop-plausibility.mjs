@@ -23,16 +23,12 @@
  *
  * Run:
  *   env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx \
- *     scripts/audit/zerodte-stop-plausibility.mjs [--date=YYYY-MM-DD] [--json]
+ *     scripts/audit/zerodte-stop-plausibility.mjs [--json]
  */
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
 import { evaluateStopPlausibility } from "./lib/stop-plausibility-eval.mjs";
 
 const args = process.argv.slice(2);
-const flag = (name, dflt) => {
-  const hit = args.find((a) => a.startsWith(`--${name}=`));
-  return hit ? hit.slice(name.length + 3) : dflt;
-};
 const asJson = args.includes("--json");
 
 const APP_BASE = (process.env.VALIDATE_BASE || "https://blackouttrades.com").replace(/\/$/, "");
