@@ -879,9 +879,30 @@ function applyPinProjection(
  * oscillator panes are (re)built, since a freshly-created pane starts at the default stretch of 1.
  */
 const VOLUME_PANE_INDEX = 1;
-const PRICE_PANE_STRETCH = 7;
+/**
+ * Price:volume split — 80/20 (matches VectorDailyChart's own `scaleMargins: {top:0.82,bottom:0}`
+ * overlay convention for its volume pane, and sits centered in the product's documented 78-82%
+ * candles / 18-22% volume target).
+ *
+ * FIXED (2026-08-27, operator-reported): this used to be 7:2.2 (≈76.1%/23.9% — volume ~2pt over
+ * the target band). That extra share was invisible on a comfortably tall viewport (nothing here
+ * clips at 900px+), but it directly ate into the price pane's headroom on the shorter viewport
+ * heights the standalone /vector desk budgets for after `globals.css`'s 2026-08-26 change
+ * (`.vector-page-shell .vector-chart-terminal-grid` min-height dropped from `calc(100dvh - 10.5rem)`
+ * to `calc(100dvh - 7rem)`, deliberately reclaiming vertical space once two rows above the chart
+ * were removed). A too-generous volume stretch is exactly the kind of margin that reduced budget
+ * stopped absorbing — on the shorter end of that range the volume pane's bars rendered visibly
+ * compressed toward its own baseline, reading as bars "cut off" above a band of unused canvas
+ * (the pane's own top-margin blank strip, now a larger fraction of a smaller pane) rather than
+ * filling it. Tightening the stretch ratio back into the documented band removes that margin of
+ * error without touching `scaleMargins` (`{top:0.1,bottom:0}` on the volume price-scale was
+ * already correct — verified live: the 0-baseline of the histogram lands exactly on the pane's
+ * lowest gridline pixel, so bars already draw all the way to the true floor; the pane's SHARE of
+ * total chart height, not its internal margins, was the lever that mattered here).
+ */
+const PRICE_PANE_STRETCH = 8;
 /** Volume sub-pane — tall enough to read RVOL bars; price pane stays dominant. */
-const VOLUME_PANE_STRETCH = 2.2;
+const VOLUME_PANE_STRETCH = 2;
 const OSCILLATOR_PANE_STRETCH = 2.6;
 
 function applyPaneStretch(chart: IChartApi, hideVolumePane = false): void {
