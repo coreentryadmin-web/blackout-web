@@ -4231,20 +4231,30 @@ export function VectorChart({
         // to include every drawn bead strike within the full BEAD_VIEW_MAX_PCT (20% of spot),
         // unconditionally, in the live/default (non-session) frame. Session-overview already
         // protects against this (candleShareSpanCapPct + clampPriceRangeSpan below); the live
-        // frame never got the same protection. Compare-compact is deliberately left untouched —
-        // its wider fixed window is tuned for short panes needing more rows visible.
+        // frame never got the same protection.
+        //
+        // Compare-compact WAS excluded here on purpose ("its wider fixed window is tuned for
+        // short panes needing more rows visible") — audited 2026-08-27 after the fixes above
+        // shipped and found that guard bypasses the candle floor entirely for Compare's live
+        // frame (frameSpanPct stayed null, so the clampPriceRangeSpan call below never ran), the
+        // identical bug class this whole block exists to fix, and arguably worse there since
+        // COMPARE_BEAD_VIEW_MAX_PCT (24%) is wider than BEAD_VIEW_MAX_PCT (20%). Compare now gets
+        // the same withCandleFloor protection, just composed against its own wider hard cap —
+        // "more rows visible" and "candles never collapse to a sliver" both still hold, since the
+        // floor only ever TIGHTENS a window the ladder wanted wider, never widens one.
         let frameSpanPct: number | null = null;
         if (sessionOverviewFrame) {
           beadViewPct = sessionBeadViewPct;
           frameSpanPct = sessionSpanPct;
-        } else if (!compareCompactBeadsRef.current) {
+        } else {
+          const hardCapPct = compareCompactBeadsRef.current ? COMPARE_BEAD_VIEW_MAX_PCT : BEAD_VIEW_MAX_PCT;
           beadViewPct = withCandleFloor(
             rowAwareSpanPct(
               spotRef.current ?? 0,
               sessionBeadStrikes,
               sessionRows,
               WALL_VIEW_MAX_PCT,
-              BEAD_VIEW_MAX_PCT
+              hardCapPct
             )
           );
           frameSpanPct = beadViewPct;
