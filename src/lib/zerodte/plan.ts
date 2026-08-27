@@ -297,6 +297,22 @@ export function buildContractPlan(input: {
  * — only the ledger's grading/tracking reference moves, and only UP toward the mark
  * (never below entry_max), so the clean IN_RANGE/CHEAPER path where the mark sits at or
  * below the fill is unchanged. `markAtFlag` omitted → legacy behavior (no floor).
+ *
+ * ACHIEVABILITY CEILING (2026-08-27, live finding) — the symmetric completion the floor
+ * above never had: achievability cuts BOTH ways, but this function only ever bounded the
+ * basis UP toward the mark, never down. Live session 2026-08-27 produced two rows whose
+ * `plan_stop` exit fired inside ~1.2s of commit (QQQ 720C 0DTE: flow fill $3.27, real
+ * market never above $1.31 all session; NVDA 225C 1DTE: flow fill $5.86 vs a live market
+ * around $2.6-3.1 at the same instant) — a "stopped -77%"/"-53%" a member arriving at
+ * flag time and paying the live mark could never have experienced, because the flow
+ * print itself (stale, or matched to the wrong strike/expiry upstream) was never a
+ * tradeable price. A member can't be graded against a fill they couldn't get in EITHER
+ * direction, so when the mark sits FAR below the fill (the QQQ case above was ~73%
+ * below) — by the same CHASE_PCT magnitude this file already treats as "too extreme to
+ * trust" for the opposite (MOVED) case — the ledger basis is capped DOWN to the mark
+ * instead of trusting the outlier fill.
+ * Ordinary CHEAPER prints (mark a few/some percent below the fill — real front-running)
+ * are far inside this band and are completely unaffected.
  */
 export function resolveLedgerEntryPremium(
   planEntryMax: number | null | undefined,
@@ -305,7 +321,11 @@ export function resolveLedgerEntryPremium(
 ): number | null {
   const base = planEntryMax ?? flowAvgFill ?? null;
   if (base == null) return null;
-  if (markAtFlag != null && markAtFlag > 0 && markAtFlag > base) return round2(markAtFlag);
+  if (markAtFlag != null && markAtFlag > 0) {
+    if (markAtFlag > base) return round2(markAtFlag);
+    const pctBelow = ((base - markAtFlag) / base) * 100;
+    if (pctBelow >= CHASE_PCT) return round2(markAtFlag);
+  }
   return base;
 }
 
