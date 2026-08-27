@@ -2032,7 +2032,15 @@ export function VectorChart({
   const handleZoomReset = useCallback(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
+    // BUG FIX (2026-08-27): during replay this used to always aggregate the FULL, still-growing
+    // live minuteBarsRef buffer — the reset button has no replay guard (unlike the intraday-zoom
+    // preset selector, which VectorToolbar disables via `disabled={replayMode}`), so a member
+    // scrubbed to mid-session could hit ⟲ and have the viewport re-center on a bar count that
+    // includes bars AFTER the replay cursor, corrupting the scrubbed frame. Mirror applyFrame's
+    // own cursor-scoping (line ~2477) so reset centers on the same cursor-sliced bars replay painted.
+    const cursorTime =
+      replayModeRef.current ? (timelineRef.current[cursorIndexRef.current] ?? undefined) : undefined;
+    const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current, cursorTime);
     chartUserPannedRef.current = false;
     wheelZoomCooldownRef.current = 0;
     applyCenteredLiveViewport(chart, display.length);
