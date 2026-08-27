@@ -36,10 +36,15 @@ export function useVectorChartDrawings(opts: {
   replayMode: boolean;
   chartReady: boolean;
   seriesRef: React.RefObject<ISeriesApi<"Candlestick"> | null>;
-  minuteBarsRef: React.RefObject<SessionBar[]>;
+  // BUG FIX (2026-08-27): must be the currently-DISPLAYED (timeframe-aggregated) bars, not raw
+  // 1-minute bars. resolveChartClickTime's empty-margin fallback indexes this array with a logical
+  // index from chart.timeScale().coordinateToLogical(), which is an index into whatever series is
+  // actually plotted — at any timeframe above 1m that's a shorter, aggregated array, so indexing
+  // the raw minute bars landed on the wrong bar (and therefore the wrong time) entirely.
+  displayBarsRef: React.RefObject<SessionBar[]>;
   drawingsPrimitiveRef: React.RefObject<UserDrawingsPrimitive | null>;
 }) {
-  const { ticker, replayMode, chartReady, seriesRef, minuteBarsRef, drawingsPrimitiveRef } = opts;
+  const { ticker, replayMode, chartReady, seriesRef, displayBarsRef, drawingsPrimitiveRef } = opts;
 
   const [drawTool, setDrawTool] = useState<VectorDrawTool>("select");
   const [drawColor, setDrawColor] = useState<VectorDrawColorId>("cyan");
@@ -138,7 +143,7 @@ export function useVectorChartDrawings(opts: {
     (chart: IChartApi, param: MouseEventParams<Time>, series: ISeriesApi<"Candlestick">) => {
       if (replayModeRef.current || !param.point) return;
 
-      const t = resolveChartClickTime(chart, param, minuteBarsRef.current ?? []);
+      const t = resolveChartClickTime(chart, param, displayBarsRef.current ?? []);
       if (t == null) return;
 
       let p = series.coordinateToPrice(param.point.y) as number | null;
@@ -178,7 +183,7 @@ export function useVectorChartDrawings(opts: {
       const d = createDrawingFromClick(tool, color, { t, p }, null);
       if (d) addDrawing(d);
     },
-    [addDrawing, drawingsPrimitiveRef, minuteBarsRef]
+    [addDrawing, drawingsPrimitiveRef, displayBarsRef]
   );
 
   const handleUndo = useCallback(() => {
