@@ -2052,6 +2052,19 @@ export function VectorChart({
   useEffect(() => {
     const payload = compareSync?.zoomPreset;
     if (!chartReady || !payload) return;
+    // BUG FIX (2026-08-27): when Compare panes are unlinked a member can manually enter replay
+    // on ONE pane (its own toolbar replay control is only hidden while linked, see
+    // hideReplayControls={linked} at the VectorCompareDesk call site) and then re-link — the
+    // relink path only exits replay for panes it itself put into replay
+    // (linkedReplayControlledRef), so a manually-replaying pane stays in replay while linked.
+    // The shared "Sync zoom" command-bar control is gated only on `linked`, not on any pane's
+    // replay state, so it can broadcast a zoom preset into that still-replaying pane. Unlike the
+    // per-pane toolbar selector (already `disabled={replayMode}`) and the keyboard shortcut
+    // (already `if (replayMode) return;`), this compareSync-driven call had no such guard, so it
+    // would call handleIntradayZoom which recomputes from the full LIVE minuteBarsRef buffer —
+    // the same viewport-corruption bug just fixed in handleZoomReset (#2969), reachable here via
+    // the cross-pane broadcast instead of a direct click.
+    if (replayModeRef.current) return;
     handleIntradayZoomRef.current(payload.preset);
   }, [chartReady, compareSync?.zoomPreset?.tick]);
 
