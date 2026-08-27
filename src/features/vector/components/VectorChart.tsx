@@ -5339,15 +5339,29 @@ export function VectorChart({
   // price axis widens off the drawn strikes (rangeWallsRef/beadStrikesRef), so repainting only the
   // beads would leave the axis sized for the old count and clip the new outer rows.
   useEffect(() => {
-    refreshTrails(lensRef.current);
-    refreshOverlays(
-      lensRef.current,
-      liveGexWalls(),
-      vexWallsRef.current,
-      liveGammaFlip(),
-      vexFlipRef.current,
-      darkPoolRef.current
-    );
+    // BUG FIX (2026-08-27): this used to call refreshOverlays with the LIVE liveGexWalls()/
+    // liveGammaFlip() unconditionally -- no replay check at all, unlike every sibling repaint-on-
+    // selection-change effect in this file (see the indicator-toggle effect just above, which is
+    // the idiom mirrored here). Flipping the Nodes density select during replay snapped the
+    // gamma-flip line and the axis auto-widening to TODAY's live flip/walls, even though every
+    // other overlay stayed frozen at the replay cursor. In replay, re-run applyFrame for the
+    // current cursor time instead (same replay-scoped walls/flip/history it already draws from).
+    if (replayModeRef.current) {
+      const t = timelineRef.current[cursorIndexRef.current];
+      if (t != null) {
+        applyFrameRef.current?.(t, minuteBarsRef.current, wallHistoryRef.current, lensRef.current);
+      }
+    } else {
+      refreshTrails(lensRef.current);
+      refreshOverlays(
+        lensRef.current,
+        liveGexWalls(),
+        vexWallsRef.current,
+        liveGammaFlip(),
+        vexFlipRef.current,
+        darkPoolRef.current
+      );
+    }
   }, [nodeDensity, refreshTrails, refreshOverlays, liveGexWalls, liveGammaFlip]);
 
   const toolbar = (
