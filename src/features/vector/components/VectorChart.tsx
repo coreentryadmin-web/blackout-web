@@ -2687,8 +2687,11 @@ export function VectorChart({
         // right via sliceHistoryToTime/cursorTime in applyFrame; flow markers were the one overlay that
         // never got the same cursor clip, because they're painted from THIS shared paintOverlays path
         // (also called on every live tick) rather than only from the replay-specific applyFrame.
+        // Derive cursor time from the already-sliced `bars` (applyFrame passes cursor-clipped
+        // display bars). cursorIndexRef can lag applyFrame by one tick during auto-play/step,
+        // which would show flow arrows one frame ahead of the scrubbed time.
         const replayCursorMs = replayModeRef.current
-          ? (timelineRef.current[cursorIndexRef.current] ?? 0) * 1000
+          ? (bars.length ? (bars[bars.length - 1]!.time as number) * 1000 : 0)
           : null;
         const flowPrintsToDraw =
           replayCursorMs != null
@@ -2766,7 +2769,12 @@ export function VectorChart({
       // Cheap: the primitive just stores refs and requests a redraw; a null grid or the toggle off
       // draws nothing. This lives in paintOverlays so a toggle flip (which repaints here via the
       // indicators effect) shows/hides the surface instantly; the fetch pushes fresh data directly.
-      gexHeatmapPrimitiveRef.current?.setData(gexHeatmapGridRef.current, enabled.has("gex-heatmap"));
+      // During replay, applyFrame calls paintOverlays on every scrub — gate the paint so the
+      // background poll's live grid doesn't overwrite the frozen cursor-time frame (same rule as
+      // fetchGexHeatmap's setData/setSpot gate added 2026-08-27).
+      if (!replayModeRef.current) {
+        gexHeatmapPrimitiveRef.current?.setData(gexHeatmapGridRef.current, enabled.has("gex-heatmap"));
+      }
       // Dealer-gamma regime glow — same toggle-repaint path as the heatmap: re-push the last cached
       // active-lens flip + live spot so flipping "gamma-regime" on/off shows/hides the glow instantly
       // (live flip/spot updates come through refreshOverlays on each tick). No-op when off.
