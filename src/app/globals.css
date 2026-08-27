@@ -8604,10 +8604,83 @@ html.product-shell .nav-mega {
   }
 
   @media (min-width: 1280px) {
+    /*
+     * DEFINITE height for the whole above-the-fold desk (FOLLOW-UP to #2981, 2026-08-27 — member
+     * report + fresh screenshot at 1366x768, a completely ordinary laptop height: volume pane not
+     * merely squeezed but pushed entirely below the fold, requiring the PAGE to scroll to reach it,
+     * which is exactly the regression the operator flagged "last time" and does not want repeated).
+     *
+     * #2981 fixed the price/volume SHARE (PRICE_PANE_STRETCH/VOLUME_PANE_STRETCH, 80/20) but that
+     * ratio is only ever applied to whatever height the chart's OWN container ends up with — and at
+     * this breakpoint (1280-1599px) that container had no definite height to begin with. Root cause
+     * is the identical bug the >=1600px block below documents and fixes for the 4-column layout:
+     * `.vector-page-shell .vector-chart-terminal-grid` only ever carried `min-height` — a FLOOR, not
+     * a size — so `grid-auto-rows: auto` sized the single (here: first) row to the MAX-CONTENT of
+     * its tallest column, completely independent of the viewport. `.vector-gex-ladder` and
+     * `.vector-odte-matrix-scroll` both explicitly strip their own `max-height` at this exact
+     * breakpoint (`max-height: none` a few lines below) so their real scroll region can flex to a
+     * TALL rail — but with no definite parent height, "flex to a tall rail" became "grow to however
+     * tall the ladder's live content happens to be", and every `height:100%` down the chain
+     * (`.vector-odte-matrix-rail`, `.vector-ladder-rail`, `.vector-desk-terminal`'s
+     * `min-height: min(72vh,640px)` floor) inherited that "auto" instead of a real number.
+     *
+     * Measured live at 1366x768 (two separate captures, `docScrollHeight` vs `innerHeight=768`):
+     * chart column 823px -> grid 1316px one run, chart column 1955px -> grid 2448px the next (same
+     * page, same viewport — the row's height is whatever the ladder/terminal naturally want, not a
+     * function of the screen). Either way the page scrolled ~550-1680px past the fold before the
+     * volume sub-pane at the BOTTOM of the chart canvas ever entered view.
+     *
+     * THE FIX applies the same "cap the shell to one viewport, let the grid flex-fill what's left,
+     * force the row to actually BE that height via `minmax(0, 1fr)`" technique the >=1600px block
+     * already uses — down to this breakpoint too. It differs from the >=1600px case in ONE way: the
+     * action rail is not yet a 4th column here (still a full-width row underneath the 3-col
+     * section, per the block below), so this needs TWO explicit rows, not one — `minmax(0, 1fr)` for
+     * the 3-col rail row so it takes whatever height remains, and a capped-but-still-generous
+     * `minmax(0, min(34vh, 380px))` for the action-rail row so a long Play-card/Technicals/Alerts
+     * stack scrolls INSIDE its own row (`.vector-action-rail` gets `overflow-y: auto` below) instead
+     * of either being clipped or re-inflating the page. The >=1600px block below still WINS at wider
+     * viewports (later in cascade, same specificity) by overriding `grid-template-columns` to 4 cols
+     * and `grid-template-rows` back to a single `minmax(0, 1fr)` once the action rail earns its own
+     * column and no longer needs a reserved row at all.
+     */
+    html:not(.ios-native-shell) .vector-page-shell:not(:has(.vector-page-content-focus)) {
+      height: calc(100dvh - var(--nav-offset));
+      max-height: calc(100dvh - var(--nav-offset));
+      min-height: calc(100dvh - var(--nav-offset));
+      overflow: hidden;
+    }
+    html:not(.ios-native-shell) .vector-page-shell:not(:has(.vector-page-content-focus)) .vector-page-content {
+      height: 100%;
+      max-height: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    html:not(.ios-native-shell) .vector-page-shell:not(:has(.vector-page-content-focus)) .vector-page-content > div {
+      flex: 1 1 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    html:not(.ios-native-shell) .vector-page-shell .vector-page-toolbar,
+    html:not(.ios-native-shell) .vector-page-shell .vector-scanner-panel {
+      flex: 0 0 auto;
+    }
+
     /* Left rail: 0DTE matrix (strike · gamma · Δ%). Wider than the old 1D ladder — three
        columns need readable GEX $ + DR% without clipping. */
     .vector-chart-terminal-grid {
       grid-template-columns: minmax(168px, 14%) minmax(0, 1fr) minmax(300px, 30%);
+      /* Row 1 = the 3-col rail (fills whatever the shell cap above leaves); row 2 = the full-width
+         action rail below, capped rather than left `auto` (see the fix comment above). */
+      flex: 1 1 0;
+      min-height: 0;
+      height: auto;
+      max-height: none;
+      overflow: hidden;
+      grid-template-rows: minmax(0, 1fr) minmax(0, min(34vh, 380px));
     }
     .vector-ladder-rail,
     .vector-chart-terminal-chart,
@@ -8633,10 +8706,17 @@ html.product-shell .nav-mega {
     }
     /* Between 1280px and the wide 4-column breakpoint below, the action rail hasn't earned its
        own column yet — span the full 3-col grid width as a row underneath so it's still visible
-       without scrolling to the page bottom, just not squeezed into a 4th narrow column too early. */
+       without scrolling to the page bottom, just not squeezed into a 4th narrow column too early.
+       `overflow-y: auto` + the grid's own `minmax(0, min(34vh, 380px))` row above cap this row so a
+       long Play-card/Technicals/Alerts stack scrolls INSIDE it instead of re-inflating the page —
+       the same reason the row above stopped being `auto`. */
     .vector-action-rail {
       grid-column: 1 / -1;
       order: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow-y: auto;
     }
   }
 
