@@ -10,3 +10,9 @@ export function formatVectorAge(asOf: number | null | undefined, now: number | n
   if (s < 60) return `${s}s`;
   return `${Math.floor(s / 60)}m`;
 }
+
+/** Past this age the shared universe snapshot (rebuilt by a 5-minute cron) is old enough to call
+ *  out — two missed cron cycles — shared by every consumer of `useVectorUniverseSnapshot` so the
+ *  staleness threshold can't drift between them (extracted 2026-08-27 when the second consumer,
+ *  VectorTickerComparisonStrip, needed the same disclosure VectorScanner already had). */
+export const VECTOR_UNIVERSE_STALE_MS = 10 * 60 * 1000;

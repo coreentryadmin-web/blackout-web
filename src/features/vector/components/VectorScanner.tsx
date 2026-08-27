@@ -8,12 +8,7 @@ import {
   type ScreenerPreset,
 } from "@/features/vector/lib/vector-screener";
 import { useVectorUniverseSnapshot } from "@/features/vector/lib/vector-universe-client";
-import { formatVectorAge } from "@/features/vector/lib/vector-age-format";
-
-/** Past this age the snapshot is old enough to call out — the universe cache tolerates one
- *  missed 5-minute cron run by design, so anything past two runs is worth a visible flag rather
- *  than silently rendering an unchanged table that looks indistinguishable from a live scan. */
-const VECTOR_SCANNER_STALE_MS = 10 * 60 * 1000;
+import { formatVectorAge, VECTOR_UNIVERSE_STALE_MS } from "@/features/vector/lib/vector-age-format";
 
 type Props = {
   activeTicker: string;
@@ -75,7 +70,7 @@ export function VectorScanner({ activeTicker, onSelect }: Props) {
   const activePreset = PRESETS.find((p) => p.key === preset) ?? PRESETS[0]!;
   const displayRows = screenUniverse(data.rows, { preset });
   const age = formatVectorAge(data.updatedAt, now);
-  const isStale = now != null && data.updatedAt > 0 && now - data.updatedAt >= VECTOR_SCANNER_STALE_MS;
+  const isStale = now != null && data.updatedAt > 0 && now - data.updatedAt >= VECTOR_UNIVERSE_STALE_MS;
 
   return (
     <div className="vector-scanner-table-wrap">
