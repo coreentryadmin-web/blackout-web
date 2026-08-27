@@ -11654,27 +11654,41 @@ html.product-shell .nav-mega {
     @apply text-white/70;
   }
 
-  /* ── Suggested Play card — buildVectorPlay's fused trade idea, above the Pulse narration ── */
+  /* ── Suggested Play card — buildVectorPlay's fused trade idea, above the Pulse narration ──
+     Redesigned 2026-08-27 (member: "make it bigger" + better hierarchy) — larger padding/type
+     scale throughout, grade+conviction fused into one verdict badge, and the levels grid gets a
+     left accent rule per row + directional coloring so "where do I get out" reads without having
+     to parse the sentence. See the component doc comment for the full before/after rationale. */
   .vector-play-card {
-    @apply rounded-xl border border-violet-400/25 bg-violet-400/[0.06] px-3 py-2.5;
+    @apply rounded-2xl border border-violet-400/25 bg-violet-400/[0.07] px-4 py-3.5;
   }
   .vector-play-card-head {
-    @apply flex flex-wrap items-center gap-2;
+    @apply flex flex-wrap items-center gap-2.5;
   }
-  .vector-play-card-grade {
-    @apply flex h-5 w-5 items-center justify-center rounded font-mono text-[11px] font-bold;
+  /* Fused grade+conviction verdict badge — was two disconnected scraps (a tiny letter chip and a
+     right-floated bare "%"); this is the ONE thing a member should be able to read at a glance,
+     so it gets the pill-badge treatment (border+background+text in one tone), same idea as
+     SpxPlayVerdictBar's mode badge. */
+  .vector-play-card-badge {
+    @apply inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-mono text-[12px] font-bold tracking-wide;
+  }
+  .vector-play-card-badge-sep {
+    @apply opacity-50;
   }
   .vector-play-grade-a {
-    @apply bg-emerald-400/20 text-emerald-300;
+    @apply border-emerald-400/40 bg-emerald-400/15 text-emerald-300;
   }
   .vector-play-grade-b {
-    @apply bg-amber-400/20 text-amber-300;
+    @apply border-amber-400/40 bg-amber-400/15 text-amber-300;
   }
   .vector-play-grade-c {
-    @apply bg-white/10 text-white/60;
+    @apply border-white/15 bg-white/10 text-white/65;
+  }
+  .vector-play-card-head-meta {
+    @apply flex flex-col gap-0.5;
   }
   .vector-play-card-style {
-    @apply font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-violet-300/80;
+    @apply font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-violet-300/80;
   }
   .vector-play-card-bias {
     @apply font-mono text-[10px] font-bold uppercase tracking-[0.1em];
@@ -11689,29 +11703,38 @@ html.product-shell .nav-mega {
   .vector-play-bias-neutral {
     @apply text-cyan-300;
   }
-  .vector-play-card-conviction {
-    @apply ml-auto font-mono text-[11px] font-bold text-white/50;
-  }
   .vector-play-card-stale {
-    @apply rounded border border-amber-400/40 bg-amber-400/10 px-1 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide text-amber-300;
+    @apply ml-auto rounded border border-amber-400/40 bg-amber-400/10 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide text-amber-300;
   }
   .vector-play-card-headline {
-    @apply mt-1.5 text-sm font-semibold text-white;
+    @apply mt-2.5 text-[17px] font-bold leading-snug text-white;
   }
   .vector-play-card-thesis {
-    @apply mt-0.5 text-[13px] leading-snug text-white/70;
+    @apply mt-1 text-[13.5px] leading-relaxed text-white/70;
   }
   .vector-play-card-levels {
-    @apply mt-2 flex flex-col gap-0.5 border-t border-white/10 pt-1.5;
+    @apply mt-3 flex flex-col gap-2 border-t border-white/10 pt-3;
   }
   .vector-play-card-level {
-    @apply flex items-baseline gap-1.5 text-[11px];
+    @apply flex items-baseline gap-2 border-l-2 border-white/10 pl-2.5 text-[12.5px];
   }
   .vector-play-card-level dt {
-    @apply font-mono uppercase tracking-wide text-white/40;
+    @apply w-[5.5rem] shrink-0 font-mono text-[10.5px] uppercase tracking-wide text-white/45;
   }
   .vector-play-card-level dd {
-    @apply font-mono font-semibold text-white/80;
+    @apply font-mono text-[13px] font-semibold text-white/85;
+  }
+  .vector-play-card-level-targets {
+    @apply border-l-emerald-400/50;
+  }
+  .vector-play-card-level-targets dd {
+    @apply text-emerald-300;
+  }
+  .vector-play-card-level-invalidation {
+    @apply border-l-rose-400/50;
+  }
+  .vector-play-card-level-invalidation dd {
+    @apply text-rose-300;
   }
 
   /* ── Contract picks — real strike/expiry ideas derived from the Suggested Play ── */
