@@ -3444,6 +3444,15 @@ export function VectorChart({
   const emitPlay = useCallback(() => {
     const cb = onPlayChangeRef.current;
     if (!cb) return;
+    // BUG FIX (2026-08-27): unlike every sibling emit function in this file (refreshTrails's own
+    // internal guard, the lens-change effect, the SSE-tick handler), emitPlay had no replay check
+    // at all. It's called on a live poll cadence (fetchMaxPain/fetchExpectedMove, ~15-30s) that
+    // stays armed during replay, so the Suggested Play card kept silently re-rendering a plan
+    // built from TODAY's live spot/walls/flip while every other overlay (candles, beads) stayed
+    // frozen at the replay cursor -- with no STALE badge, since the live SSE feed itself was
+    // fresh. Freezing here (skip, don't clear) matches refreshTrails's "leave the last frame
+    // painted" replay behavior.
+    if (replayModeRef.current) return;
     const spot = spotRef.current;
     const walls = liveGexWalls();
     const flip = liveGammaFlip();
