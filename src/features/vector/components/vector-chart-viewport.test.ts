@@ -293,6 +293,45 @@ test("VectorChart: standalone desk uses flex-fill canvas (volume sub-pane must n
   assert.match(css, /\.vector-page-shell \.vector-chart-stage/);
 });
 
+test("VectorChart: wide-desktop grid gets a DEFINITE height so rails scroll internally instead of growing the page", () => {
+  // Member report (2026-08-27, screenshot at >=1600px): the grid only ever had a min-height (a
+  // floor), so a `height:100%` percentage down every rail's ancestor chain never resolved against
+  // a definite size, and a tall GEX ladder / long Helix print list pushed the WHOLE PAGE past one
+  // viewport instead of scrolling inside its own already-built .vector-odte-matrix-scroll /
+  // .vector-helix-scroll / .vector-action-rail regions. Fixed ONLY at the 1600px+ breakpoint,
+  // where all four rails genuinely sit side-by-side in one row (below it the action rail is a
+  // separate full-width row underneath the 3-col section, and capping the grid there would squash
+  // that row's own space too — a different, unreported layout).
+  const css = read("src/app/globals.css");
+  const wideBlock = css.slice(css.indexOf("@media (min-width: 1600px)"));
+  const gridRuleEnd = wideBlock.indexOf("}", wideBlock.indexOf(".vector-chart-terminal-grid {"));
+  const gridRule = wideBlock.slice(0, gridRuleEnd);
+  assert.match(gridRule, /height:\s*calc\(100dvh - 7rem\)/);
+  assert.match(gridRule, /max-height:\s*calc\(100dvh - 7rem\)/);
+  // The base (mobile/stacked, <1280px) rule must stay a MIN — that layout is meant to scroll the
+  // whole page like any other stacked mobile view.
+  assert.match(css, /\.vector-page-shell \.vector-chart-terminal-grid \{\s*min-height: calc\(100dvh - 7rem\);/);
+});
+
+test("VectorChart: explicit zoom in/out/reset buttons wired through to the toolbar", () => {
+  // Member request (2026-08-27): "add better user controls for zoom in, zoom out, drag, move".
+  const chart = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(chart, /const stepZoom = useCallback/);
+  assert.match(chart, /zoomedLogicalRange\(range, factor, MIN_ZOOM_LOGICAL_SPAN\)/);
+  assert.match(chart, /const handleZoomIn = useCallback/);
+  assert.match(chart, /const handleZoomOut = useCallback/);
+  assert.match(chart, /const handleZoomReset = useCallback/);
+  assert.match(chart, /onZoomIn=\{handleZoomIn\}/);
+  assert.match(chart, /onZoomOut=\{handleZoomOut\}/);
+  assert.match(chart, /onZoomReset=\{handleZoomReset\}/);
+  const toolbar = read("src/features/vector/components/VectorToolbar.tsx");
+  assert.match(toolbar, /VectorZoomControls/);
+  const zoomComponent = read("src/features/vector/components/VectorZoomControls.tsx");
+  assert.match(zoomComponent, /onZoomIn: \(\) => void/);
+  assert.match(zoomComponent, /onZoomOut: \(\) => void/);
+  assert.match(zoomComponent, /onReset: \(\) => void/);
+});
+
 test("VectorChart: volume profile bars render in the right gutter beside the last candle", () => {
   const chart = read("src/features/vector/components/VectorChart.tsx");
   const primitive = read("src/features/vector/lib/vector-volume-profile-primitive.ts");

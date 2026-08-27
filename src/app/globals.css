@@ -8539,6 +8539,13 @@ html.product-shell .nav-mega {
    * used to stack above the canvas are both gone (VectorPageShell no longer renders either), so
    * the chrome this subtrahend budgets for is just the site nav + the single toolbar row now —
    * the grid can claim the vertical space those two rows used to occupy.
+   *
+   * Stays a MIN on this base (mobile/stacked, <1280px) rule on purpose: below the 1280px
+   * breakpoint the grid is a single column and every rail stacks as its own full-width row in
+   * sequence (ladder, then chart, then terminal, then action) — that's supposed to scroll down
+   * the page like any other stacked mobile layout. The multi-column desktop layout gets a
+   * DEFINITE height instead, right below, once the rails actually become side-by-side columns —
+   * see that rule for why.
    */
   .vector-page-shell .vector-chart-terminal-grid {
     min-height: calc(100dvh - 7rem);
@@ -8639,6 +8646,25 @@ html.product-shell .nav-mega {
        space that doesn't exist. */
     .vector-chart-terminal-grid {
       grid-template-columns: minmax(168px, 14%) minmax(0, 1fr) minmax(280px, 25%) minmax(260px, 12%);
+      /*
+       * DEFINITE height (member report, 2026-08-27 — screenshot at this exact width showing the
+       * page scrolling well past the fold to reach the volume profile / lower walls). All four
+       * columns here are ALREADY built with a correct internal scroll region — .vector-odte-
+       * matrix-scroll, .vector-helix-scroll, this rule's own .vector-action-rail all set
+       * `flex:1 1 auto; min-height:0; overflow-y:auto` — but none of them ever activated, because
+       * every one of them sits under a `height:100%` ancestor and a PERCENTAGE height only
+       * resolves against a DEFINITE parent size. The grid's height used to be `min-height` alone —
+       * a floor, not a size — so track sizing fell back to "auto" (grow to fit content), every
+       * `height:100%` down the tree resolved to "auto" too, and a 20-row GEX ladder or a long
+       * Helix print list pushed the WHOLE GRID (and the page) taller instead of scrolling inside
+       * its own column. Only added at THIS breakpoint, where all four rails genuinely sit
+       * side-by-side in one row — below it (1280-1599px) the action rail is still a separate
+       * full-width row underneath the 3-col section (see the 1280px block's `grid-column: 1/-1`),
+       * and capping the grid's total height there would squash that row's own space along with
+       * everything else, which is a different, unreported layout and not this bug.
+       */
+      height: calc(100dvh - 7rem);
+      max-height: calc(100dvh - 7rem);
     }
     .vector-action-rail {
       grid-column: auto;
@@ -8735,6 +8761,20 @@ html.product-shell .nav-mega {
     background: transparent;
     cursor: pointer;
     white-space: nowrap;
+  }
+
+  /* Zoom in/out/reset (member request, 2026-08-27) — single-glyph buttons, so the default seg-btn
+     horizontal padding (tuned for multi-letter labels like "GEX"/"DP") reads too wide/loose. */
+  .vector-zoom-btn {
+    min-width: 1.6rem;
+    justify-content: center;
+    padding-left: 0.45rem;
+    padding-right: 0.45rem;
+    font-size: 12px;
+  }
+
+  .vector-zoom-reset-btn {
+    font-size: 11px;
   }
 
   /* NODES is a SELECT (2026-08-19) — same visual language as the seg buttons beside it, so the

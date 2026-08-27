@@ -211,6 +211,7 @@ import {
   applyCenteredLiveViewport,
   applySessionOverviewViewport,
   wantsSessionOverviewViewport,
+  zoomedLogicalRange,
 } from "@/features/vector/lib/vector-chart-viewport";
 import {
   applyAdaptiveBarSpacingToChart,
@@ -284,6 +285,13 @@ const EMPTY_WALLS: VectorWalls = { callWalls: [], putWalls: [] };
 const SPY_VOLUME_BACKFILL_MS = 60_000;
 /** If the viewport is within this many bars of the live edge, new bars may follow (TradingView-style). */
 const LIVE_FOLLOW_THRESHOLD_BARS = 2;
+/** Explicit zoom-button step size — each click scales the visible logical range by this factor
+ *  (in: divide, out: multiply), matching a single "solid" mouse-wheel tick rather than a subtle
+ *  nudge a member would have to click many times to notice. */
+const ZOOM_STEP_FACTOR = 1.35;
+/** Zoom-in floor, in bar-index units — never let the explicit zoom button shrink the visible
+ *  range to fewer than this many bars; below it candles overlap into an unreadable smear. */
+const MIN_ZOOM_LOGICAL_SPAN = 6;
 /** Opacity multiplier for a strike row that has LEFT the current wall set (its last bead predates
  *  this side's latest bucket). A closed/faded wall dims to this fraction so a member reads it as
  *  receding history, not a live rail — the birth→fade lifecycle Skylit shows (BUG 3). */
@@ -1974,6 +1982,52 @@ export function VectorChart({
 
   const handleIntradayZoomRef = useRef(handleIntradayZoom);
   handleIntradayZoomRef.current = handleIntradayZoom;
+
+  /**
+   * Explicit +/- zoom buttons (member request, 2026-08-27: "add better user controls for zoom
+   * in, zoom out, drag, move" — mouse-wheel/trackpad zoom already exists but is easy to miss or
+   * fight on some inputs, and there was no on-screen control at all). Scales the CURRENT visible
+   * logical range around its own center rather than resetting to any preset, so a click reads as
+   * "zoom in/out from here" — the same mental model as the existing wheel-zoom gesture, just a
+   * discrete step instead of a continuous one. Reuses the identical wheel-zoom bookkeeping
+   * (chartUserPannedRef / wheelZoomCooldownRef / queueDeferredRepaint) so a button click is
+   * indistinguishable from a wheel tick to every other part of the chart that gates on "the
+   * member just zoomed" (autoscale widening, auto-coarsen, live-follow).
+   */
+  const stepZoom = useCallback(
+    (factor: number) => {
+      const chart = chartRef.current;
+      if (!chart) return;
+      const ts = chart.timeScale();
+      const range = ts.getVisibleLogicalRange();
+      if (!range) return;
+      const next = zoomedLogicalRange(range, factor, MIN_ZOOM_LOGICAL_SPAN);
+      if (!next) return;
+      chartUserPannedRef.current = true;
+      wheelZoomCooldownRef.current = Date.now();
+      queueDeferredRepaintRef.current();
+      ts.setVisibleLogicalRange(next);
+      syncCandleViewportFromRange(chart);
+      applyAdaptiveBarSpacingToChart(chart);
+    },
+    [syncCandleViewportFromRange]
+  );
+  const handleZoomIn = useCallback(() => stepZoom(1 / ZOOM_STEP_FACTOR), [stepZoom]);
+  const handleZoomOut = useCallback(() => stepZoom(ZOOM_STEP_FACTOR), [stepZoom]);
+  /** Reset — the SAME centered framing the chart opens with (see the first-load effect above),
+   *  not a preset the member never asked for. Re-centers on the newest bar and clears the
+   *  member-panned/wheel-cooldown flags so autoscale widening resumes immediately. */
+  const handleZoomReset = useCallback(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
+    chartUserPannedRef.current = false;
+    wheelZoomCooldownRef.current = 0;
+    applyCenteredLiveViewport(chart, display.length);
+    chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
+    syncCandleViewportFromRange(chart);
+    applyAdaptiveBarSpacingToChart(chart);
+  }, [syncCandleViewportFromRange]);
 
   useEffect(() => {
     const payload = compareSync?.zoomPreset;
@@ -5241,6 +5295,9 @@ export function VectorChart({
       hideVolumePane={hideVolumePane}
       darkPoolWallsEnabled={darkPoolWallsEnabled}
       onDarkPoolWalls={handleDarkPoolWalls}
+      onZoomIn={handleZoomIn}
+      onZoomOut={handleZoomOut}
+      onZoomReset={handleZoomReset}
     />
   );
 

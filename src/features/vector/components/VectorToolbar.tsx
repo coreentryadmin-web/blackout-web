@@ -7,6 +7,7 @@ import { VectorBeadRailToggle } from "@/features/vector/components/VectorBeadRai
 import { VectorNodesToggle } from "@/features/vector/components/VectorNodesToggle";
 import { VectorVolumeModeToggle } from "@/features/vector/components/VectorVolumeModeToggle";
 import { VectorDarkPoolToggle } from "@/features/vector/components/VectorDarkPoolToggle";
+import { VectorZoomControls } from "@/features/vector/components/VectorZoomControls";
 import { VectorReplayControls } from "@/features/vector/components/VectorReplayControls";
 import { VectorTimeframeSelect } from "@/features/vector/components/VectorTimeframeSelect";
 import { VectorIndicatorMenu } from "@/features/vector/components/VectorIndicatorMenu";
@@ -85,6 +86,11 @@ type Props = {
   hideVolumePane?: boolean;
   darkPoolWallsEnabled?: boolean;
   onDarkPoolWalls?: (enabled: boolean) => void;
+  /** Explicit zoom in/out/reset buttons (2026-08-27 member request). Optional — a host that
+   *  doesn't wire these (e.g. an embed) simply omits the control rather than rendering a dead one. */
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onZoomReset?: () => void;
 };
 
 /** Single compact toolbar — timeframe left, replay + lens right. */
@@ -139,7 +145,15 @@ export function VectorToolbar(props: Props) {
     hideVolumePane = false,
     darkPoolWallsEnabled = false,
     onDarkPoolWalls,
+    onZoomIn,
+    onZoomOut,
+    onZoomReset,
   } = props;
+
+  const zoomControls =
+    onZoomIn && onZoomOut && onZoomReset ? (
+      <VectorZoomControls onZoomIn={onZoomIn} onZoomOut={onZoomOut} onReset={onZoomReset} />
+    ) : null;
 
   const drawMenu = drawTools ? <VectorDrawToolsMenu {...drawTools} /> : null;
 
@@ -281,6 +295,14 @@ export function VectorToolbar(props: Props) {
             exposeTestIds={false}
           />
         ) : null}
+        {onZoomIn && onZoomOut && onZoomReset ? (
+          <VectorZoomControls
+            onZoomIn={onZoomIn}
+            onZoomOut={onZoomOut}
+            onReset={onZoomReset}
+            exposeTestIds={false}
+          />
+        ) : null}
         {trailSlot}
       </div>
 
@@ -349,6 +371,7 @@ export function VectorToolbar(props: Props) {
           {onDarkPoolWalls ? (
             <VectorDarkPoolToggle enabled={darkPoolWallsEnabled} onChange={onDarkPoolWalls} />
           ) : null}
+          {zoomControls}
           {trailSlot}
         </div>
       </div>
