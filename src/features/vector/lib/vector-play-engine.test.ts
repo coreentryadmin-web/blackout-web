@@ -266,6 +266,37 @@ test("conviction: confluence stacked at the play level raises conviction", () =>
   assert.ok(withConf.conviction > without.conviction);
 });
 
+test("conviction: credits the zone AT the traded level even when a stronger, unrelated zone exists elsewhere", () => {
+  // Regression: computeConviction used to key off `zones[0]` (the globally strongest zone on the
+  // whole board), not the zone nearest refLevel (the level this play actually trades). A stronger
+  // zone 4% away — completely irrelevant to this fade — silently starved credit for the real
+  // confluence sitting AT 7600, dropping conviction even though strictly more corroborating market
+  // structure was added. It must find and credit the zone nearest refLevel regardless of ranking.
+  const atLevelOnly = buildVectorPlay(
+    base({
+      spot: 7598,
+      proximity: proximity("call", 7600, "at"),
+      confluenceZones: [
+        { center: 7600, low: 7599, high: 7601, score: 4, kinds: ["call-wall", "max-pain"], levels: [] } as ConfluenceZone,
+      ],
+    })
+  )!;
+  const plusStrongerFarZone = buildVectorPlay(
+    base({
+      spot: 7598,
+      proximity: proximity("call", 7600, "at"),
+      confluenceZones: [
+        { center: 7600, low: 7599, high: 7601, score: 4, kinds: ["call-wall", "max-pain"], levels: [] } as ConfluenceZone,
+        { center: 7300, low: 7295, high: 7305, score: 6, kinds: ["pdl", "vwap", "gamma-flip"], levels: [] } as ConfluenceZone,
+      ],
+    })
+  )!;
+  assert.ok(
+    plusStrongerFarZone.conviction >= atLevelOnly.conviction,
+    `adding an unrelated stronger zone elsewhere must not DROP conviction (${plusStrongerFarZone.conviction} < ${atLevelOnly.conviction})`
+  );
+});
+
 test("grade thresholds: A ≥75, B 55–74, C <55", () => {
   // Cheap direct check of the banding by driving conviction through inputs.
   const a = buildVectorPlay(
