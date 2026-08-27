@@ -827,6 +827,38 @@ test("pickChainContract: maxDte=0 returns null when the chain has NO same-day ex
   assert.equal(pickChainContract(noSameDay, "long", 0), null);
 });
 
+test("pickChainContract: targetStrike ranks by distance to that strike, not to spot", () => {
+  // Regression: pickChainContract's `dist` was hardcoded to distance-from-SPOT with no way to
+  // target a different strike, so Vector's role-specific 0DTE candidates (gex-king-pin, a wall
+  // strike away from spot; magnet-mean, a different level) all collapsed onto the same
+  // ATM-to-spot contract regardless of the strike each role was actually supposed to anchor to.
+  const chain: EditionChainData = {
+    spot: 100,
+    rows: [
+      row(100, { expiry: ymdPlus(0), callAsk: 4, callBid: 3.6 }),
+      row(105, { expiry: ymdPlus(0), callAsk: 2, callBid: 1.6 }),
+    ],
+  };
+  const atSpot = pickChainContract(chain, "long", 0);
+  assert.equal(atSpot?.strike, 100, "no targetStrike → nearest-to-spot, unchanged Night Hawk behavior");
+
+  const atTarget = pickChainContract(chain, "long", 0, 105);
+  assert.equal(atTarget?.strike, 105, "targetStrike=105 → nearest-to-target, not nearest-to-spot");
+});
+
+test("pickChainContract: without targetStrike, distinct-role Vector specs no longer collapse onto one strike", () => {
+  const chain: EditionChainData = {
+    spot: 100,
+    rows: [
+      row(100, { expiry: ymdPlus(0), callAsk: 4, callBid: 3.6 }),
+      row(108, { expiry: ymdPlus(0), callAsk: 1.5, callBid: 1.2 }),
+    ],
+  };
+  const primaryLong = pickChainContract(chain, "long", 0, 100); // targets spot itself
+  const gexKingPin = pickChainContract(chain, "long", 0, 108); // targets a wall strike away from spot
+  assert.notEqual(primaryLong?.strike, gexKingPin?.strike, "two different target strikes must pick different contracts");
+});
+
 test("bangerTickers get the scale-out exit risk_note; non-banger plays do not", () => {
   const ranked = [scored("AAA", "long", 68), scored("BBB", "short", 61)];
   const chains = { AAA: chainAround(120), BBB: chainAround(80) };
