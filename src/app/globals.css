@@ -8665,6 +8665,22 @@ html.product-shell .nav-mega {
        */
       height: calc(100dvh - 7rem);
       max-height: calc(100dvh - 7rem);
+      /*
+       * THE FIX ABOVE WAS INCOMPLETE (member report, 2026-08-27 — a fresh screenshot at this exact
+       * width still scrolled to the fold). `height`/`max-height` bound the GRID CONTAINER's own
+       * box, but with no `grid-template-rows` declared, the single implicit row still used the
+       * default `grid-auto-rows: auto` — which sizes a row to the MAX-CONTENT of whatever sits in
+       * it, completely independent of the container's own height. A 20-row GEX ladder / a tall
+       * chart column's natural content height (measured live: 2806px vs. a 968px container at
+       * 1920x1080) simply overflowed the box, and since overflow defaults to visible, the PAGE grew
+       * to 2938px and kept scrolling — the container height changed nothing. `minmax(0, 1fr)` forces
+       * the row to actually BE the container's height (the `1fr`) while allowing it to shrink below
+       * any child's intrinsic content size (the `0` floor) — only with that in place do the
+       * `height:100%` + `overflow-y:auto` rails below (and the flex-column chain inside
+       * `.vector-chart-terminal-chart`) ever get a real constraint to size against.
+       */
+      grid-template-rows: minmax(0, 1fr);
+      overflow: hidden;
     }
     .vector-action-rail {
       grid-column: auto;

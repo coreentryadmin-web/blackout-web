@@ -332,6 +332,38 @@ async function clearStickyNavForToolbar(page) {
   await page.waitForTimeout(200);
 }
 
+/** Wide-desktop guard (#2932 + #2936): terminal grid must not force document scroll. */
+async function assertWideDesktopGridNoPageScroll(page, viewport) {
+  await page.setViewportSize(viewport);
+  await page.goto(`${BASE}/vector?ticker=SPX`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+  await page.locator(".vector-chart-terminal-grid").waitFor({ state: "visible", timeout: 90_000 });
+  await page.waitForTimeout(4000);
+  const metrics = await page.evaluate(() => {
+    const grid = document.querySelector(".vector-chart-terminal-grid");
+    const chart = document.querySelector(".vector-chart-terminal-chart");
+    const gridH = grid ? Math.round(grid.getBoundingClientRect().height) : 0;
+    const chartH = chart ? Math.round(chart.getBoundingClientRect().height) : 0;
+    return {
+      scrollH: document.documentElement.scrollHeight,
+      innerH: window.innerHeight,
+      gridH,
+      chartH,
+    };
+  });
+  const label = `${viewport.width}x${viewport.height}`;
+  const pageOk = Math.abs(metrics.scrollH - metrics.innerH) <= 2;
+  const chartOk = metrics.chartH <= metrics.gridH + 2;
+  if (pageOk && chartOk) {
+    rec(`ui:grid-no-page-scroll-${label}`, "PASS", `scroll ${metrics.scrollH} inner ${metrics.innerH} chart ${metrics.chartH} grid ${metrics.gridH}`);
+  } else {
+    rec(
+      `ui:grid-no-page-scroll-${label}`,
+      "FAIL",
+      `scroll ${metrics.scrollH} vs inner ${metrics.innerH}; chart ${metrics.chartH} vs grid ${metrics.gridH}`
+    );
+  }
+}
+
 async function browserVector(session) {
   const pw = await mintIosPlaywrightSession({ appUrl: BASE });
   if (pw.skip) {
@@ -474,6 +506,10 @@ async function browserVector(session) {
 
     await page.screenshot({ path: join(OUT, `vector-e2e-desk-${Date.now()}.png`), fullPage: true });
     rec("ui:screenshot-desk", "PASS", OUT);
+
+    // Wide-desktop grid must not grow the document (#2932 + #2936).
+    await assertWideDesktopGridNoPageScroll(page, { width: 1680, height: 900 });
+    await assertWideDesktopGridNoPageScroll(page, { width: 1920, height: 1080 });
 
     // ── Compare mode (dynamic grid — 1 chart + add on entry) ───────────────
     if (await compareBtn.isVisible().catch(() => false)) {
