@@ -76,6 +76,16 @@ export function winRateByTier(plays: ZeroDteRecordPlay[]): TierWinRateBucket[] {
   });
 }
 
+/** The most recent session_date present in `plays`, or null when empty. Exported so the
+ *  panel can compare it against `record.window.through` (the record's own as-of date) —
+ *  the curve's own latest date can lag "today" pre-market or over a holiday, and the panel
+ *  must not caption a prior session's plays as "Today's session P&L" (Cursor review,
+ *  PR #2989). */
+export function latestSessionDate(plays: ZeroDteRecordPlay[]): string | null {
+  if (plays.length === 0) return null;
+  return plays.reduce((max, p) => (p.session_date > max ? p.session_date : max), plays[0].session_date);
+}
+
 export type PnlCurvePoint = {
   /** 1-based sequence within the session, for the chart's x-axis. */
   seq: number;
@@ -100,10 +110,8 @@ export type PnlCurvePoint = {
  */
 export function sessionPnlCurve(plays: ZeroDteRecordPlay[]): PnlCurvePoint[] {
   if (plays.length === 0) return [];
-  const latestDate = plays.reduce(
-    (max, p) => (p.session_date > max ? p.session_date : max),
-    plays[0].session_date
-  );
+  const latestDate = latestSessionDate(plays);
+  if (latestDate == null) return [];
   const sessionRows = plays
     .filter((p) => p.session_date === latestDate && isGraded(p))
     .sort((a, b) => Date.parse(a.flagged_at) - Date.parse(b.flagged_at));

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { winRateByTier, sessionPnlCurve } from "./analytics-panel";
+import { winRateByTier, sessionPnlCurve, latestSessionDate } from "./analytics-panel";
 import type { ZeroDteRecordPlay } from "@/lib/zerodte/record";
 
 function play(overrides: Partial<ZeroDteRecordPlay>): ZeroDteRecordPlay {
@@ -72,6 +72,20 @@ test("sessionPnlCurve: only the LATEST session date, sorted, running sum", () =>
   assert.equal(curve[1].ticker, "B");
   assert.equal(curve[1].cumulative_pct, 20); // 30 + (-10)
   assert.ok(curve.every((p) => p.seq >= 1));
+});
+
+// Cursor review, PR #2989: the panel captioned the curve "Today's session P&L" regardless of
+// whether the latest session in `plays` actually IS today — a stale pre-market/holiday payload
+// would mislabel a prior day's plays as today's. latestSessionDate() is the helper the panel
+// now compares against record.window.through to decide the caption; this pins its own math.
+test("latestSessionDate: returns the max session_date, or null when empty", () => {
+  const plays: ZeroDteRecordPlay[] = [
+    play({ session_date: "2026-08-19" }),
+    play({ session_date: "2026-08-20" }),
+    play({ session_date: "2026-08-18" }),
+  ];
+  assert.equal(latestSessionDate(plays), "2026-08-20");
+  assert.equal(latestSessionDate([]), null);
 });
 
 test("sessionPnlCurve: empty input and all-ungraded session both return []", () => {

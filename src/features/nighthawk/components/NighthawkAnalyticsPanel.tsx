@@ -20,7 +20,42 @@ import { clsx } from "clsx";
 import type { ZeroDteRecord, ZeroDteRecordBucket } from "@/lib/zerodte/record";
 import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
 import { TRACK_RECORD_MIN_SAMPLE } from "@/components/track-record/format";
-import { winRateByTier, sessionPnlCurve, type TierWinRateBucket } from "@/features/nighthawk/lib/analytics-panel";
+import {
+  winRateByTier,
+  sessionPnlCurve,
+  latestSessionDate,
+  type TierWinRateBucket,
+} from "@/features/nighthawk/lib/analytics-panel";
+
+// Humanizes the raw `by_outcome` bucket labels (record.ts stamps the literal engine exit
+// reason — thesis_break:gex-walls, ratchet_breakeven_floor, flat_theta_bleed, etc). Distinct
+// from ZeroDteBoard.tsx's NIGHTHAWK_OUTCOME_LABEL, which covers a different vocabulary (the
+// BIE echo note's target/stop/open/ambiguous/pending/unfilled) — not reusable here (Cursor
+// review, PR #2989: the two label sets don't overlap despite the "outcome" name in both).
+const OUTCOME_BUCKET_LABEL: Record<string, string> = {
+  doubled: "doubled",
+  stopped: "stopped",
+  time_stop: "time stop",
+  ratchet_breakeven_floor: "breakeven floor",
+  ratchet_early_profit_floor: "early profit floor",
+  ratchet_profit_floor: "profit floor",
+  runner_floor: "runner floor",
+  plan_stop: "plan stop",
+  plan_target_trim: "target trim",
+  trim_scale_first: "1st trim",
+  trim_scale_second: "2nd trim",
+  trim_scale_runner_target: "runner target",
+  flat_theta_bleed: "flat scratch",
+  ungraded: "ungraded",
+};
+
+function humanizeOutcomeLabel(raw: string): string {
+  if (OUTCOME_BUCKET_LABEL[raw]) return OUTCOME_BUCKET_LABEL[raw];
+  // thesis_break:<source> carries a variable suffix (gex-walls, oppose_cluster, ...) —
+  // strip it rather than hardcoding every source.
+  if (raw.startsWith("thesis_break")) return "thesis break";
+  return raw;
+}
 
 const SessionPnlChart = dynamic(
   () => import("./NighthawkSessionPnlChart").then((m) => m.NighthawkSessionPnlChart),
@@ -92,7 +127,7 @@ function BucketRows({ buckets }: { buckets: ZeroDteRecordBucket[] }) {
   return (
     <div className="nh-analytics-barlist">
       {shown.map((b) => (
-        <WinRateBar key={b.label} label={b.label} n={b.n} winRatePct={b.win_rate_pct} avgPnlPct={b.avg_pnl_pct} lowN={b.low_n} />
+        <WinRateBar key={b.label} label={humanizeOutcomeLabel(b.label)} n={b.n} winRatePct={b.win_rate_pct} avgPnlPct={b.avg_pnl_pct} lowN={b.low_n} />
       ))}
     </div>
   );
@@ -139,6 +174,12 @@ export function NighthawkAnalyticsPanel() {
   const tierBuckets = useMemo(() => winRateByTier(record?.plays ?? []), [record?.plays]);
   const pnlCurve = useMemo(() => sessionPnlCurve(record?.plays ?? []), [record?.plays]);
   const sessionNet = pnlCurve.length > 0 ? pnlCurve[pnlCurve.length - 1].cumulative_pct : null;
+  // The curve's own latest session can lag "today" pre-market or over a weekend/holiday —
+  // caption it against record.window.through (the record's own as-of session date, already
+  // computed server-side) rather than always saying "Today's", which would mislabel a prior
+  // session's plays as today's (Cursor review, PR #2989).
+  const curveDate = record?.plays?.length ? latestSessionDate(record.plays) : null;
+  const curveIsToday = curveDate != null && record != null && curveDate === record.window.through;
 
   if (isLoading && !record) {
     return (
@@ -198,7 +239,9 @@ export function NighthawkAnalyticsPanel() {
         </div>
         <div className="nh-analytics-col nh-analytics-col-wide">
           <span className="nh-analytics-col-title">
-            Today&apos;s session P&amp;L{pnlCurve.length > 0 ? ` · ${pnlCurve.length} resolved` : ""}
+            {curveIsToday ? "Today's session P&L" : "Latest session P&L"}
+            {pnlCurve.length > 0 ? ` · ${pnlCurve.length} resolved` : ""}
+            {!curveIsToday && curveDate ? ` · ${curveDate}` : ""}
           </span>
           {pnlCurve.length > 0 ? (
             <div className="nh-analytics-curve">

@@ -121,10 +121,10 @@ export function ZeroDteDeck({
           <span>SIMULATION — not live. Admin-only replay; members see the real board.</span>
         </div>
       )}
-      {/* Additive: sits above the live ledger, never gates or replaces it. Sim mode keeps
-          showing the REAL member track record here (not a sim record) — same isolation
-          posture as the board banner above, this panel just isn't sim-aware because there's
-          no sim record endpoint to isolate against. */}
+      {/* Additive: sits above the live ledger, never gates or replaces it. Hidden entirely in
+          sim mode — there's no isolated sim record endpoint, so showing the REAL member
+          track record under a sim banner would misleadingly present live stats next to
+          simulated plays; the board banner above is the only sim-mode surface here. */}
       {!sim && <NighthawkAnalyticsPanel />}
       <CommandDeck
         plays={plays}
