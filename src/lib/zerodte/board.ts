@@ -971,7 +971,23 @@ export function deriveZeroDteSetups(
     sweep: number;
     gross: number;
     prints: number;
-    strikes: Map<string, { prem: number; premAggr: number; strike: number; expiry: number; isCall: boolean; fillPrem: number; fillW: number; contracts: number; oi: number }>;
+    strikes: Map<
+      string,
+      {
+        prem: number;
+        premAggr: number;
+        strike: number;
+        expiry: number;
+        isCall: boolean;
+        fillPrem: number;
+        fillW: number;
+        contracts: number;
+        oi: number;
+        /** Per-print (timestamp, fill price, premium) at this strike — lets avgFill prefer
+         *  the RECENT window over the whole lookback (see the recency note at avgFill below). */
+        fillEntries: Array<{ ts: number; price: number; prem: number }>;
+      }
+    >;
     underlying: number | null;
     /** alerted_at of the print that supplied `underlying` — keep only the freshest. */
     underlyingSeen: string | null;
@@ -1059,7 +1075,7 @@ export function deriveZeroDteSetups(
     }
     agg.minDte = Math.min(agg.minDte, dte);
     const key = `${r.strike}|${r.expiry}|${isCall ? "c" : "p"}`;
-    const cur = agg.strikes.get(key) ?? { prem: 0, premAggr: 0, strike: r.strike, expiry: Date.parse(r.expiry) || 0, isCall, fillPrem: 0, fillW: 0, contracts: 0, oi: 0 };
+    const cur = agg.strikes.get(key) ?? { prem: 0, premAggr: 0, strike: r.strike, expiry: Date.parse(r.expiry) || 0, isCall, fillPrem: 0, fillW: 0, contracts: 0, oi: 0, fillEntries: [] };
     cur.prem += prem;
     // Same at-the-ask aggression weight the ticker-level callAggr/putAggr use to decide
     // direction — the top strike must be chosen by the SAME conviction measure that won
@@ -1073,6 +1089,11 @@ export function deriveZeroDteSetups(
       // Implied contracts traded (premium / (fill × 100)) vs the strike's OI —
       // flow bigger than existing OI is OPENING positioning, not closing.
       cur.contracts += prem / (r.fill_price * 100);
+      // Kept alongside the running fillPrem/fillW sum so avgFill can prefer a RECENT
+      // window over the whole multi-hour lookback (2026-08-27 QQQ/NVDA finding: a single
+      // large, hours-stale print dominated the premium-weighted average and priced the
+      // ledger 2-4x away from what the contract actually traded at by flag time).
+      cur.fillEntries.push({ ts: r.alerted_at ? Date.parse(r.alerted_at) : Number.NaN, price: r.fill_price, prem });
     }
     if (r.open_interest && r.open_interest > 0) cur.oi = Math.max(cur.oi, r.open_interest);
     agg.strikes.set(key, cur);
@@ -1164,7 +1185,7 @@ export function deriveZeroDteSetups(
     // premium (prem) can crown a strike that's mostly SOLD (bid-side) premium even
     // when the buying conviction that actually made this side "dominant" concentrated
     // at a different strike — see docs/audit/FINDINGS.md.
-    let top: { prem: number; premAggr: number; strike: number; expiry: number; fillPrem: number; fillW: number; contracts: number; oi: number } | null = null;
+    let top: { prem: number; premAggr: number; strike: number; expiry: number; fillPrem: number; fillW: number; contracts: number; oi: number; fillEntries: Array<{ ts: number; price: number; prem: number }> } | null = null;
     let topExpiry = "";
     for (const [key, s] of Array.from(agg.strikes.entries())) {
       if (s.isCall !== dominantCall) continue;
@@ -1189,7 +1210,24 @@ export function deriveZeroDteSetups(
       });
       continue;
     }
-    const avgFill = top.fillW > 0 ? Math.round((top.fillPrem / top.fillW) * 100) / 100 : null;
+    // Prefer a RECENT-window average fill over the whole multi-hour lookback (same
+    // SPIKE_WINDOW_MS the sudden-flow-spike read already uses above). Root cause of the
+    // 2026-08-27 QQQ/NVDA mispricing: top.fillPrem/top.fillW is a premium-weighted average
+    // across the ENTIRE query window (up to 7h), so one large, hours-stale print (e.g. an
+    // early-session fill at a price the contract hasn't traded at since) can dominate the
+    // average and diverge 2-4x from what the contract trades at by flag time. Falls back to
+    // the full-window average when nothing in this strike's tape is recent (rather than
+    // going null), so a genuinely quiet/aged strike is unaffected.
+    const recentFillEntries = top.fillEntries.filter(
+      (e) => Number.isFinite(e.ts) && nowMs - e.ts <= SPIKE_WINDOW_MS
+    );
+    const recentFillW = recentFillEntries.reduce((sum, e) => sum + e.prem, 0);
+    const avgFill =
+      recentFillW > 0
+        ? Math.round((recentFillEntries.reduce((sum, e) => sum + e.price * e.prem, 0) / recentFillW) * 100) / 100
+        : top.fillW > 0
+          ? Math.round((top.fillPrem / top.fillW) * 100) / 100
+          : null;
 
     // Moneyness: deep-ITM top strike = stock replacement, not a directional 0DTE
     // bet — excluded outright (the fake-out class live-caught on day one). This

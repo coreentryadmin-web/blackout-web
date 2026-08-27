@@ -772,6 +772,40 @@ test("setups: top-strike avg fill is premium-weighted from real prints", () => {
   assert.equal(out[0]!.top_strike_avg_fill, 4.5);
 });
 
+// 2026-08-27 QQQ/NVDA finding: top_strike_avg_fill is a premium-weighted average of EVERY
+// print at that strike across the whole lookback (up to 7h), with no recency weighting. A
+// single large, hours-stale print can dominate the average and price the ledger 2-4x away
+// from what the contract actually trades at by flag time — this is what fed the false
+// instant stop-outs the achievability ceiling (resolveLedgerEntryPremium) papers over
+// downstream. This test reproduces the QQQ shape directly at the source: avgFill must
+// prefer the SAME recency window (SPIKE_WINDOW_MS, 30min) already used for the spike read.
+test("setups: top-strike avg fill prefers the RECENT window over a stale dominant print (QQQ 2026-08-27 shape)", () => {
+  const nowMs = Date.parse("2026-07-06T14:31:00Z");
+  const rows = [
+    // Stale, hours-old, large print — real UW fill from early in the session.
+    row({ ticker: "QQQ", premium: 2_000_000, strike: 720, underlying_price: 718, fill_price: 3.27, alerted_at: "2026-07-06T07:00:00Z" }),
+    // Recent, smaller prints — what the contract is actually trading at by flag time.
+    row({ ticker: "QQQ", premium: 100_000, strike: 720, underlying_price: 718, fill_price: 0.9, alerted_at: "2026-07-06T14:25:00Z" }),
+    row({ ticker: "QQQ", premium: 100_000, strike: 720, underlying_price: 718, fill_price: 0.9, alerted_at: "2026-07-06T14:29:00Z" }),
+  ];
+  const out = deriveZeroDteSetups(rows, { nowMs });
+  // Old behavior would have been ~3.05 (the stale $2M print dominates); fixed behavior
+  // uses only the two recent prints, both at 0.9.
+  assert.equal(out[0]!.top_strike_avg_fill, 0.9);
+});
+
+test("setups: top-strike avg fill falls back to the full-window average when NOTHING at that strike is recent", () => {
+  const nowMs = Date.parse("2026-07-06T14:31:00Z");
+  const rows = [
+    row({ premium: 900_000, strike: 190, fill_price: 4.0, alerted_at: "2026-07-06T07:00:00Z" }),
+    row({ premium: 300_000, strike: 190, fill_price: 6.0, alerted_at: "2026-07-06T07:05:00Z" }),
+  ];
+  const out = deriveZeroDteSetups(rows, { nowMs });
+  // No recent prints at all for this strike — falls back to the same premium-weighted
+  // full-window average as before, rather than going null.
+  assert.equal(out[0]!.top_strike_avg_fill, 4.5);
+});
+
 test("plan: MOVED when the premium already ran past the flow's fill — the skip rule", () => {
   const base = {
     occ: "O:NVDA260702C00190000",
