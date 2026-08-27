@@ -16,7 +16,6 @@ import {
   beadKey,
   kingKey,
   kingStrikeByTime,
-  maxPctByTime,
   trailingRefs,
   rowSwellMul,
   rowPeakRefs,
@@ -327,7 +326,6 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
   private _derivedCache: {
     forData: WallRailData;
     earliest: number;
-    maxPctAtTime: Map<number, number>;
     callKingAt: Map<number, number>;
     putKingAt: Map<number, number>;
     liveTime: number;
@@ -596,9 +594,10 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
 
       // Kingship PER BUCKET, not one scalar per strike — the crown belongs to whichever strike held
       // the highest share at that moment, so a handover is visible where it happened.
-      // One reference per bucket across BOTH sides — a call and a put of equal share at the same
-      // moment must read equally bright, exactly as maxPct did frame-wide.
-      const maxPctAtTimeCalc = maxPctByTime([...callTrails, ...putTrails]);
+      // (A per-bucket maxPct-by-time map used to be computed here too, for point-in-time colour
+      // contrast — removed 2026-08-27, CodeQL-flagged dead code: the colour channel was switched to
+      // the frame-wide `maxPct` denominator back on 2026-08-19 — see the "COLOUR USES THE SAME
+      // SHARED DENOMINATOR AS SIZE" comment below — and nothing has read the per-bucket map since.)
       const callKingAtCalc = kingStrikeByTime(callTrails);
       const putKingAtCalc = kingStrikeByTime(putTrails);
 
@@ -614,13 +613,12 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       this._derivedCache = {
         forData: this._data,
         earliest: earliestCalc,
-        maxPctAtTime: maxPctAtTimeCalc,
         callKingAt: callKingAtCalc,
         putKingAt: putKingAtCalc,
         liveTime: liveTimeCalc,
       };
     }
-    const { earliest, maxPctAtTime, callKingAt, putKingAt, liveTime } = this._derivedCache;
+    const { earliest, callKingAt, putKingAt, liveTime } = this._derivedCache;
 
     const addTrail = (
       trail: StrikeTrail,
