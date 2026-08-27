@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import clsx from "clsx";
+import { ExternalLink } from "lucide-react";
 import type { FlowAlert } from "@/lib/api";
 import { fmtPremium } from "@/lib/api";
 import { FreshnessChip } from "@/components/ui";
@@ -19,7 +20,6 @@ import {
   pickVectorLiveHelixLayout,
   VECTOR_HELIX_DEFAULT_FILTERS,
   VECTOR_HELIX_WHALE_PREMIUM,
-  vectorLiveHelixSubtitle,
   type VectorHelixFlowFilters,
   type VectorHelixTypeFilter,
 } from "@/features/vector/lib/vector-helix-flows";
@@ -135,7 +135,6 @@ export function VectorHelixRail({ ticker, liveSession, helixState, onStrikeFocus
     [flows, filters]
   );
   const { recent, ranked } = layout;
-  const subtitle = vectorLiveHelixSubtitle(layout, liveSession);
   const hasAny = recent.length > 0 || ranked.length > 0;
 
   const setTypeFilter = (typeFilter: VectorHelixTypeFilter) => {
@@ -152,17 +151,20 @@ export function VectorHelixRail({ ticker, liveSession, helixState, onStrikeFocus
           <div>
             <p className="vector-helix-kicker">Live Helix</p>
             <h2 className="vector-helix-title">{normalized} live tape</h2>
-            <p className="vector-helix-subtitle">{subtitle}</p>
           </div>
-          <FreshnessChip status={liveSession && live ? "live" : "stale"} label={live ? "LIVE" : "STALE"} />
+          <div className="vector-helix-head-actions">
+            <FreshnessChip status={liveSession && live ? "live" : "stale"} label={live ? "LIVE" : "STALE"} />
+            <Link
+              href={`/flows?ticker=${encodeURIComponent(normalized)}`}
+              className="vector-helix-open-full"
+              aria-label="Open full Helix tape"
+              title="Full Helix tape"
+              data-testid="vector-helix-open-full"
+            >
+              <ExternalLink size={13} aria-hidden />
+            </Link>
+          </div>
         </div>
-        <Link
-          href={`/flows?ticker=${encodeURIComponent(normalized)}`}
-          className="vector-helix-open-full"
-          data-testid="vector-helix-open-full"
-        >
-          Full Helix tape →
-        </Link>
       </header>
 
       <div className="vector-helix-controls vector-helix-controls--major">
@@ -195,7 +197,6 @@ export function VectorHelixRail({ ticker, liveSession, helixState, onStrikeFocus
             {recent.length > 0 ? (
               <div className="vector-helix-section" data-testid="vector-helix-recent-section">
                 <h3 className="vector-helix-section-title">Recent</h3>
-                <p className="vector-helix-section-kicker">Latest prints · by time</p>
                 <div className="vector-helix-cards">
                   {recent.map((flow, i) => (
                     <FlowCard
@@ -213,7 +214,6 @@ export function VectorHelixRail({ ticker, liveSession, helixState, onStrikeFocus
             {ranked.length > 0 ? (
               <div className="vector-helix-section" data-testid="vector-helix-ranked-section">
                 <h3 className="vector-helix-section-title">Top by premium</h3>
-                <p className="vector-helix-section-kicker">Session rank</p>
                 <div className="vector-helix-cards" data-testid="vector-helix-live-tape">
                   {ranked.map((flow, i) => (
                     <FlowCard

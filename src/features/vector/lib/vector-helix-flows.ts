@@ -14,8 +14,39 @@ export const VECTOR_HELIX_WHALE_PREMIUM = 1_000_000;
 export const VECTOR_LIVE_HELIX_TAPE_CAP = 40;
 /** Session seed fetch — enough rows to rank today's top prints (API returns recent-first). */
 export const VECTOR_LIVE_HELIX_SESSION_FETCH_LIMIT = 200;
-/** Recent strip — latest prints by time (above premium-ranked session list). */
-export const VECTOR_LIVE_HELIX_RECENT_N = 3;
+/** Recent strip — latest prints by time (above premium-ranked session list). Raised from 3 to 15
+ *  per operator feedback (2026-08-27): a 3-row strip read as near-empty next to a "40 prints
+ *  today" subtitle. */
+export const VECTOR_LIVE_HELIX_RECENT_N = 15;
+/** Top-by-premium DISPLAY cap for the rail. Deliberately separate from `VECTOR_LIVE_HELIX_TAPE_CAP`
+ *  (the 40-row in-memory pool cap, still used for fetch/trim) — the rail itself now shows 15 to
+ *  match Recent, per operator feedback. */
+export const VECTOR_LIVE_HELIX_RANKED_DISPLAY_N = 15;
+/**
+ * DTE ceilings for the rail's two sections — the fix for "random flows... a 500-day-out print
+ * nobody cares about" (operator, 2026-08-27). Both sections previously ranked/sorted across the
+ * FULL DTE range with no ceiling at all, so a single far-dated LEAPS whale (measured live on SPX:
+ * a $31.4M print at 85 DTE, a $30.4M print at 113 DTE, several $5-16M prints at 294-386 DTE) sat
+ * at the top of "Top by premium" ahead of every same-day/near-dated print a member actually cares
+ * about on an intraday desk. Recent gets the tighter ceiling since it's explicitly framed as
+ * "today's session" prints; Top by premium gets a slightly wider one so a legitimate
+ * few-weeks-out monthly print (this repo's own "monthly" DTE horizon convention in
+ * `vector-dte-horizon.ts` ceilings at 35) still has headroom to rank, while five-figure-day LEAPS
+ * prints are excluded either way.
+ */
+export const VECTOR_HELIX_RECENT_MAX_DTE = 30;
+export const VECTOR_HELIX_RANKED_MAX_DTE = 45;
+/**
+ * Pool-level DTE ceiling — deliberately WIDER than both section ceilings above (with headroom)
+ * so the pool trim itself never crowds near-dated prints out ahead of the per-section filters
+ * running. `trimVectorHelixFlowPool` keeps the pool's top-`cap` prints BY PREMIUM, and premium
+ * alone does not correlate with DTE — measured live: for SPX, the top 40 prints by premium
+ * (out of a 200-row session fetch) were ALL >45 DTE, i.e. a premium-only trim discarded every
+ * single near-dated print before the rail's own DTE filter ever ran. Bounding the pool by DTE
+ * first (with the same honest nearest-DTE fallback as the section filters, so a genuinely
+ * LEAPS-only illiquid ticker never goes blank) fixes that at the source.
+ */
+export const VECTOR_HELIX_POOL_MAX_DTE = 60;
 /** @deprecated Alias for legacy imports. */
 export const VECTOR_HELIX_FETCH_LIMIT = VECTOR_LIVE_HELIX_TAPE_CAP;
 /** @deprecated Alias for legacy imports. */
@@ -54,6 +85,29 @@ function sideAndFlagsFilter(
     }
     return true;
   });
+}
+
+/** DTE for a flow — prefer the API's own field, fall back to deriving it from expiry. */
+function flowDte(f: FlowAlert): number {
+  return f.dte ?? daysToExpiry(f.expiry);
+}
+
+/**
+ * Keep only flows within `maxDte` (inclusive). HONEST FALLBACK: if the ceiling matches nothing
+ * at all (e.g. an illiquid ticker whose only prints today are LEAPS), return the `fallbackN`
+ * NEAREST-dated flows instead of an empty list — a bounded window must never blank a section
+ * that has real data, only re-rank what it shows. Mirrors the same "return the nearest instead
+ * of nothing" rule `expiriesForHorizon` already uses for wall expiries (`vector-dte-horizon.ts`).
+ * When some flows DO fall inside the window, the window is respected exactly — no partial widen.
+ */
+export function filterByMaxDte(
+  flows: readonly FlowAlert[],
+  maxDte: number,
+  fallbackN: number
+): FlowAlert[] {
+  const within = flows.filter((f) => flowDte(f) <= maxDte);
+  if (within.length > 0 || flows.length === 0) return within;
+  return [...flows].sort((a, b) => flowDte(a) - flowDte(b)).slice(0, fallbackN);
 }
 
 export function flowAlertedMs(f: FlowAlert): number {
@@ -130,17 +184,31 @@ export type VectorLiveHelixLayout = {
 export function pickVectorLiveHelixLayout(
   flows: readonly FlowAlert[],
   filters: VectorHelixFlowFilters,
-  opts: { recentN?: number; rankedCap?: number } = {}
+  opts: {
+    recentN?: number;
+    rankedCap?: number;
+    recentMaxDte?: number;
+    rankedMaxDte?: number;
+  } = {}
 ): VectorLiveHelixLayout {
   const recentN = opts.recentN ?? VECTOR_LIVE_HELIX_RECENT_N;
-  const rankedCap = opts.rankedCap ?? VECTOR_LIVE_HELIX_TAPE_CAP;
+  const rankedCap = opts.rankedCap ?? VECTOR_LIVE_HELIX_RANKED_DISPLAY_N;
+  const recentMaxDte = opts.recentMaxDte ?? VECTOR_HELIX_RECENT_MAX_DTE;
+  const rankedMaxDte = opts.rankedMaxDte ?? VECTOR_HELIX_RANKED_MAX_DTE;
   const eligible = filterVectorHelixFlows(flows, filters);
 
-  const rankedFull = [...eligible].sort(compareLiveHelixByPremium);
+  // Each section gets its OWN near-dated pool — Recent's is tighter than Ranked's — so a
+  // 400+ day LEAPS print can never win "top by premium" or "recent" just because it is the
+  // single largest number in the unfiltered set. See the constants' doc comments for why
+  // these particular ceilings (and the live SPX evidence that motivated them).
+  const nearDatedForRanked = filterByMaxDte(eligible, rankedMaxDte, rankedCap);
+  const nearDatedForRecent = filterByMaxDte(eligible, recentMaxDte, recentN);
+
+  const rankedFull = [...nearDatedForRanked].sort(compareLiveHelixByPremium);
   const leader = rankedFull[0];
   const leaderKey = leader ? flowDedupeKey(leader) : null;
 
-  const recent = sortVectorHelixFlows(eligible, "time", "desc")
+  const recent = sortVectorHelixFlows(nearDatedForRecent, "time", "desc")
     .filter((f) => !leaderKey || flowDedupeKey(f) !== leaderKey)
     .slice(0, recentN);
 
@@ -166,12 +234,25 @@ export function vectorLiveHelixSubtitle(
   return parts.join(" · ");
 }
 
-/** Trim in-memory pool — keep the largest prints so an early session leader is never dropped. */
+/**
+ * Trim in-memory pool — keep the largest prints so an early session leader is never dropped.
+ *
+ * DTE-BOUNDED FIRST, then premium-sorted: a plain premium sort here would let a handful of
+ * far-dated LEAPS whales fill the entire cap before ranking ever runs — measured live for SPX,
+ * the top 40 prints by premium (of 200 fetched) were ALL >45 DTE, so every near-dated print was
+ * discarded before `pickVectorLiveHelixLayout`'s own DTE filters could even see them. Bounding by
+ * `VECTOR_HELIX_POOL_MAX_DTE` first (wider than either section ceiling, so it never itself
+ * becomes the bottleneck) fixes that at the source rather than papering over it downstream.
+ * Falls back to the nearest-DTE flows (not empty) if a ticker's whole pool is genuinely far-dated
+ * — see `filterByMaxDte`.
+ */
 export function trimVectorHelixFlowPool(
   flows: readonly FlowAlert[],
-  cap = VECTOR_LIVE_HELIX_TAPE_CAP
+  cap = VECTOR_LIVE_HELIX_TAPE_CAP,
+  maxDte = VECTOR_HELIX_POOL_MAX_DTE
 ): FlowAlert[] {
-  return [...flows].sort(compareLiveHelixByPremium).slice(0, cap);
+  const nearDated = filterByMaxDte(flows, maxDte, cap);
+  return [...nearDated].sort(compareLiveHelixByPremium).slice(0, cap);
 }
 
 /** Dedupe key set for excluding hot lane duplicates (legacy helper). */

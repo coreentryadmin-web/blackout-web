@@ -9776,13 +9776,12 @@ html.product-shell .nav-mega {
     text-transform: uppercase;
   }
 
-  .vector-helix-subtitle {
-    margin: 0.15rem 0 0;
-    font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.58rem;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    color: rgb(125, 211, 252);
+  .vector-helix-head-actions {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
   }
 
   .vector-helix-controls--major {
@@ -9834,16 +9833,6 @@ html.product-shell .nav-mega {
     color: rgb(255, 214, 10);
   }
 
-  .vector-helix-section-kicker {
-    margin: 0;
-    padding: 0 0.65rem 0.15rem;
-    font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.55rem;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    color: rgb(125, 211, 252);
-  }
-
   .vector-helix-badge {
     display: inline-flex;
     align-items: center;
@@ -9864,18 +9853,18 @@ html.product-shell .nav-mega {
   }
 
   .vector-helix-open-full {
-    display: inline-block;
-    margin-top: 0.35rem;
-    font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.62rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.2rem;
+    border-radius: 0.35rem;
     color: rgb(125, 211, 252);
     text-decoration: none;
   }
 
   .vector-helix-open-full:hover {
     color: rgb(34, 211, 238);
+    background: rgba(125, 211, 252, 0.1);
   }
 
   .vector-helix-controls {
