@@ -11705,10 +11705,85 @@ html.product-shell .nav-mega {
     @apply border-rose-400/40 bg-rose-400/10 text-rose-300;
   }
   .vector-pick-action-banner {
-    @apply mt-2 rounded-lg border px-2.5 py-1.5 text-[12px] leading-snug;
+    @apply mt-2 flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] leading-snug;
   }
+  .vector-pick-action-banner-dot {
+    @apply h-1.5 w-1.5 shrink-0 rounded-full;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+  }
+
+  /* ── Drawer hero — side badge + conviction ring (member: the old plain-text stack "boring") ── */
+  .vector-pick-drawer-hero {
+    @apply flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3;
+  }
+  .vector-pick-drawer-hero-main {
+    @apply flex min-w-0 items-center gap-2.5;
+  }
+  .vector-pick-drawer-side-badge {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-mono text-[10px] font-black tracking-wide;
+  }
+  .vector-pick-drawer-side-badge--call {
+    @apply border border-emerald-400/40 bg-emerald-400/15 text-emerald-300;
+  }
+  .vector-pick-drawer-side-badge--put {
+    @apply border border-rose-400/40 bg-rose-400/15 text-rose-300;
+  }
+  .vector-pick-drawer-hero-text {
+    @apply min-w-0 flex-1;
+  }
+  .vector-pick-conviction-meter {
+    @apply relative flex shrink-0 flex-col items-center justify-center;
+    width: 3.25rem;
+    height: 3.25rem;
+  }
+  .vector-pick-conviction-ring {
+    @apply absolute inset-0 -rotate-90;
+  }
+  .vector-pick-conviction-ring-track {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.08);
+    stroke-width: 3;
+  }
+  .vector-pick-conviction-ring-fill {
+    fill: none;
+    stroke: #a78bfa;
+    stroke-width: 3;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 3px rgba(167, 139, 250, 0.6));
+    transition: stroke-dasharray 0.3s ease;
+  }
+  .vector-pick-conviction-value {
+    @apply font-mono text-[12px] font-bold text-white;
+  }
+  .vector-pick-conviction-label {
+    @apply font-mono text-[7px] uppercase tracking-wide text-white/40;
+  }
+
+  /* ── Live greeks as a stat grid, not a stacked dl ── */
   .vector-pick-live-greeks {
-    @apply mt-2 flex flex-col gap-1 border-t border-white/10 pt-2;
+    @apply mt-2 grid grid-cols-3 gap-1.5 border-t border-white/10 pt-2;
+  }
+  .vector-pick-stat-tile {
+    @apply flex flex-col gap-0.5 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1.5;
+  }
+  .vector-pick-stat-tile--wide {
+    @apply col-span-3;
+  }
+  .vector-pick-stat-label {
+    @apply font-mono text-[9px] uppercase tracking-wide text-white/40;
+  }
+  .vector-pick-stat-value {
+    @apply font-mono text-[13px] font-semibold text-white;
+  }
+  .vector-pick-stat-delta {
+    @apply font-mono text-[10px] font-semibold tabular-nums;
+  }
+  .vector-pick-stat-delta--up {
+    @apply text-emerald-300;
+  }
+  .vector-pick-stat-delta--down {
+    @apply text-rose-300;
   }
   .vector-contract-pick-rank {
     @apply font-mono text-[10px] text-white/40;
@@ -11759,13 +11834,68 @@ html.product-shell .nav-mega {
     @apply mt-3 rounded-lg border border-amber-400/30 bg-amber-400/[0.08] px-2.5 py-1.5 text-[12px] text-amber-200;
   }
   .vector-pick-evidence-stack {
-    @apply mt-3 flex flex-col gap-3;
+    @apply mt-3 flex flex-col gap-2;
   }
   .vector-pick-evidence-section {
-    @apply rounded-lg border border-cyan-500/20 bg-cyan-500/[0.04] px-2.5 py-2;
+    @apply rounded-lg border px-2.5 py-2;
+    border-color: var(--vp-ev-border, rgba(34, 211, 238, 0.2));
+    background: var(--vp-ev-bg, rgba(34, 211, 238, 0.04));
   }
   .vector-pick-evidence-title {
-    @apply font-mono text-[10px] uppercase tracking-wider text-cyan-400/90;
+    @apply flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider;
+    color: var(--vp-ev-fg, rgba(34, 211, 238, 0.9));
+  }
+  .vector-pick-evidence-icon {
+    @apply text-[12px] leading-none not-italic;
+    filter: saturate(1.1);
+  }
+  /* Per-category accent — nine distinct hues so the drawer reads as a dashboard, not nine
+     identical grey boxes (member: "so boring and bad"). Values reuse the app's existing accent
+     palette (sky/violet/blue/teal/cyan/amber/emerald/orange), just scoped per evidence category. */
+  .vector-pick-evidence-section--sky {
+    --vp-ev-border: rgba(56, 189, 248, 0.22);
+    --vp-ev-bg: rgba(56, 189, 248, 0.05);
+    --vp-ev-fg: rgb(125, 211, 252);
+  }
+  .vector-pick-evidence-section--violet {
+    --vp-ev-border: rgba(167, 139, 250, 0.22);
+    --vp-ev-bg: rgba(167, 139, 250, 0.05);
+    --vp-ev-fg: rgb(196, 181, 253);
+  }
+  .vector-pick-evidence-section--blue {
+    --vp-ev-border: rgba(96, 165, 250, 0.22);
+    --vp-ev-bg: rgba(96, 165, 250, 0.05);
+    --vp-ev-fg: rgb(147, 197, 253);
+  }
+  .vector-pick-evidence-section--slate {
+    --vp-ev-border: rgba(148, 163, 184, 0.22);
+    --vp-ev-bg: rgba(148, 163, 184, 0.05);
+    --vp-ev-fg: rgb(203, 213, 225);
+  }
+  .vector-pick-evidence-section--teal {
+    --vp-ev-border: rgba(45, 212, 191, 0.22);
+    --vp-ev-bg: rgba(45, 212, 191, 0.05);
+    --vp-ev-fg: rgb(153, 246, 228);
+  }
+  .vector-pick-evidence-section--cyan {
+    --vp-ev-border: rgba(34, 211, 238, 0.22);
+    --vp-ev-bg: rgba(34, 211, 238, 0.05);
+    --vp-ev-fg: rgb(165, 243, 252);
+  }
+  .vector-pick-evidence-section--amber {
+    --vp-ev-border: rgba(251, 191, 36, 0.22);
+    --vp-ev-bg: rgba(251, 191, 36, 0.05);
+    --vp-ev-fg: rgb(253, 224, 145);
+  }
+  .vector-pick-evidence-section--emerald {
+    --vp-ev-border: rgba(52, 211, 153, 0.22);
+    --vp-ev-bg: rgba(52, 211, 153, 0.05);
+    --vp-ev-fg: rgb(110, 231, 183);
+  }
+  .vector-pick-evidence-section--orange {
+    --vp-ev-border: rgba(251, 146, 60, 0.22);
+    --vp-ev-bg: rgba(251, 146, 60, 0.05);
+    --vp-ev-fg: rgb(253, 186, 116);
   }
   .vector-pick-evidence-list {
     @apply mt-1.5 flex flex-col gap-1;
@@ -11798,7 +11928,8 @@ html.product-shell .nav-mega {
     @apply flex-1 rounded-md px-2 py-1.5 font-mono text-[10px] uppercase tracking-wide text-white/50 transition-colors hover:text-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50;
   }
   .vector-pick-rail-tab-active {
-    @apply bg-violet-500/20 text-violet-200;
+    @apply text-violet-100 shadow-sm;
+    background: linear-gradient(135deg, rgba(167, 139, 250, 0.28), rgba(34, 211, 238, 0.14));
   }
   .vector-pick-rail-panel {
     @apply mt-3;
