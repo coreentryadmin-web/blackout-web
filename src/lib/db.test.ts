@@ -266,12 +266,35 @@ test("both live-state writers stamp last_mark_at ONLY when a real mark arrives",
   const zStart = src.indexOf("export async function updateZeroDteLiveState");
   assert.ok(zStart > 0, "updateZeroDteLiveState exists");
   const zBody = src.slice(zStart, src.indexOf("stampZeroDteExitContext"));
-  assert.match(zBody, /last_mark_at = CASE WHEN \$4 IS NOT NULL THEN now\(\) ELSE last_mark_at END/);
+  assert.match(
+    zBody,
+    /last_mark_at = CASE\s*\n\s*WHEN status = 'CLOSED' THEN last_mark_at\s*\n\s*WHEN \$4 IS NOT NULL THEN now\(\)\s*\n\s*ELSE last_mark_at\s*\n\s*END/
+  );
   // The COALESCE it disambiguates must still be there — the stamp ADDS a fact, it does not
-  // change which marks are kept.
-  assert.match(zBody, /last_mark = COALESCE\(\$4, last_mark\)/);
+  // change which marks are kept (for an OPEN/HOLD/TRIM row; see the CLOSED-freeze test below).
+  assert.match(zBody, /last_mark = CASE WHEN status = 'CLOSED' THEN last_mark ELSE COALESCE\(\$4, last_mark\) END/);
 
   // Writer 2: the swing/other ledger lane ($3 is the mark). Both writers or neither — a row
   // updated only by the unstamped one would be indistinguishable from a never-quoted row.
   assert.match(src, /last_mark_at = CASE WHEN \$3 IS NOT NULL THEN now\(\) ELSE last_mark_at END/);
+});
+
+// BUG FIX (2026-08-27, live evidence: MSTR closed "thesis" at a real exit_pnl_pct of +1.61%
+// but the board displayed live_pnl_pct -3.23%): the status CASE above was already terminal at
+// CLOSED, but last_mark/peak_premium/trough_premium were NOT — the ~1s live-marks poller's
+// 10s-stale active-set cache (ACTIVE_SET_TTL_MS, live-marks.ts) can still believe a just-closed
+// row is OPEN/HOLD for up to that window and heartbeat-persists a fresh quote into it anyway.
+// reconcileLedgerLivePnlPct (marks-math.ts) reads last_mark directly for every closed_reason
+// other than "stopped"/condor, so the member-visible "realized" P&L kept drifting — and could
+// flip sign — for several seconds after the trade was actually decided. All four mark-anchored
+// columns must freeze the instant the row's OWN pre-update status is already CLOSED.
+test("updateZeroDteLiveState: last_mark/last_mark_at/peak_premium/trough_premium all freeze once status is already CLOSED", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function updateZeroDteLiveState");
+  assert.ok(start > 0, "updateZeroDteLiveState exists");
+  const body = src.slice(start, src.indexOf("stampZeroDteExitContext"));
+  assert.match(body, /last_mark = CASE WHEN status = 'CLOSED' THEN last_mark ELSE COALESCE\(\$4, last_mark\) END/);
+  assert.match(body, /WHEN status = 'CLOSED' THEN last_mark_at/);
+  assert.match(body, /WHEN status = 'CLOSED' THEN peak_premium/);
+  assert.match(body, /WHEN status = 'CLOSED' THEN trough_premium/);
 });
