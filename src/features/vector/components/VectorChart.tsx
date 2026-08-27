@@ -1644,6 +1644,11 @@ export function VectorChart({
   const spotRef = useRef<number | null>(
     initialBars.length ? initialBars[initialBars.length - 1]!.close : null
   );
+  /** Wall-clock time of the last live spot/wall tick — feeds VectorSnapshot.dataAgeMs so
+   *  computeConviction can discount a play built from data that stopped updating (a stalled SSE
+   *  connection, a dead upstream feed) instead of scoring it identically to a fresh tick. Seeded to
+   *  "now" so a play built before the first live tick reads as fresh, not infinitely stale. */
+  const dataReceivedAtMsRef = useRef<number>(Date.now());
   const timelineRef = useRef<number[]>([]);
   const connRef = useRef<ReturnType<typeof createVectorEventSource> | null>(null);
   const replayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -3430,6 +3435,7 @@ export function VectorChart({
         sessionFlows: sessionHelixFlowsRef.current,
         darkPoolLevels: darkPoolRef.current,
       },
+      dataAgeMs: Date.now() - dataReceivedAtMsRef.current,
     });
     const key = play
       ? `${play.headline}|${play.conviction}|${play.grade}|${play.entryZone ?? ""}`
@@ -4012,6 +4018,7 @@ export function VectorChart({
           }
         }
         spotRef.current = curSpot;
+        dataReceivedAtMsRef.current = Date.now();
         onSpotChange?.(curSpot);
         gexHeatmapPrimitiveRef.current?.setSpot(curSpot);
         if (

@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
+import { STALE_MILD_MS, type VectorPlay } from "@/features/vector/lib/vector-play-engine";
 
 type Props = {
   play: VectorPlay | null;
@@ -30,6 +30,10 @@ const BIAS_LABEL: Record<VectorPlay["bias"], string> = {
  */
 export function VectorPlayCard({ play, className }: Props) {
   if (!play) return null;
+  // dataAge was a documented passthrough nothing ever read — the doc comment on VectorSnapshot
+  // promised "for the terminal to show staleness," but no UI surfaced it. This is that surface:
+  // the same STALE_MILD_MS boundary computeConviction's discount starts applying at.
+  const isStale = play.dataAge != null && play.dataAge > STALE_MILD_MS;
   return (
     <section
       className={clsx("vector-play-card", className)}
@@ -43,6 +47,11 @@ export function VectorPlayCard({ play, className }: Props) {
           {BIAS_LABEL[play.bias]}
         </span>
         <span className="vector-play-card-conviction">{play.conviction}%</span>
+        {isStale ? (
+          <span className="vector-play-card-stale" title="Live data feed hasn't updated recently">
+            STALE
+          </span>
+        ) : null}
       </header>
       <p className="vector-play-card-headline">{play.headline}</p>
       <p className="vector-play-card-thesis">{play.thesis}</p>

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildVectorPlay, type VectorSnapshot , rangeMeanReference } from "./vector-play-engine";
+import { buildVectorPlay, type VectorSnapshot , rangeMeanReference, stalenessConvictionDiscount } from "./vector-play-engine";
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 import type { GammaMagnet } from "./vector-gamma-magnet";
 import type { WallProximity } from "./vector-wall-proximity";
@@ -356,6 +356,29 @@ test("BIE: zero samples never applied", () => {
   const noBie = buildVectorPlay(base({ spot: 7598, proximity: proximity("call", 7600, "at") }))!;
   assert.equal(zero.conviction, noBie.conviction);
   assert.ok(!zero.starred.some((s) => /BIE/.test(s)));
+});
+
+// ── Data freshness (dataAgeMs was a documented passthrough nothing ever read) ───────────────────
+test("stalenessConvictionDiscount: no discount inside normal SSE cadence, graduated beyond it", () => {
+  assert.equal(stalenessConvictionDiscount(null), 0);
+  assert.equal(stalenessConvictionDiscount(undefined), 0);
+  assert.equal(stalenessConvictionDiscount(0), 0);
+  assert.equal(stalenessConvictionDiscount(5_000), 0, "5s — normal SSE tick cadence");
+  assert.equal(stalenessConvictionDiscount(30_000), 0, "at the boundary — still fresh");
+  assert.equal(stalenessConvictionDiscount(60_000), -5, "1 minute — mild discount");
+  assert.equal(stalenessConvictionDiscount(300_000), -15, "5 minutes — moderate discount");
+  assert.equal(stalenessConvictionDiscount(900_000), -30, "15 minutes — feed reads as disconnected");
+});
+
+test("conviction: a stale data feed lowers conviction vs an identical fresh one", () => {
+  const fresh = buildVectorPlay(
+    base({ spot: 7598, proximity: proximity("call", 7600, "at"), dataAgeMs: 2_000 })
+  )!;
+  const stale = buildVectorPlay(
+    base({ spot: 7598, proximity: proximity("call", 7600, "at"), dataAgeMs: 900_000 })
+  )!;
+  assert.ok(stale.conviction < fresh.conviction, "stale data must score lower than fresh data");
+  assert.equal(stale.dataAge, 900_000, "play.dataAge passes through for the UI staleness badge");
 });
 
 // ── Graceful degradation ─────────────────────────────────────────────────────
