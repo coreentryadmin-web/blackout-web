@@ -116,7 +116,40 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const [rail, setRail] = useState<DrawerRail>("option");
 
-  if (!picks.length) return null;
+  if (!picks.length) {
+    // A directional play with zero picks is a real, member-relevant state (every candidate
+    // contract missed the quality/liquidity bar) — distinct from "still fetching" and from "no
+    // directional play exists at all" (neutral bias / no play yet), neither of which needs a card.
+    if (loading) {
+      return (
+        <div className={clsx("vp-intel vector-contract-picks-card", className)}>
+          <div className="vp-intel-card">
+            <div className="vp-intel-card-head">
+              <span className="vp-intel-card-icon">🎯</span>
+              <span className="vp-intel-card-title">{ticker} PLAYS · loading</span>
+            </div>
+            <p className="vector-contract-picks-empty">Scanning the chain for a contract worth showing…</p>
+          </div>
+        </div>
+      );
+    }
+    if (play && play.bias !== "neutral") {
+      return (
+        <div className={clsx("vp-intel vector-contract-picks-card", className)}>
+          <div className="vp-intel-card">
+            <div className="vp-intel-card-head">
+              <span className="vp-intel-card-icon">🎯</span>
+              <span className="vp-intel-card-title">{ticker} PLAYS</span>
+            </div>
+            <p className="vector-contract-picks-empty">
+              No contract in the chain cleared our setup-quality bar for this play right now.
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  }
   const open = openIdx != null ? picks[openIdx] : null;
   const partitioned = open?.evidence?.length ? partitionPickEvidence(open.evidence) : null;
 
