@@ -63,7 +63,15 @@ export function useVectorChartDrawings(opts: {
   }, [replayMode]);
   useEffect(() => {
     drawToolRef.current = drawTool;
-  }, [drawTool]);
+    // BUG FIX (2026-08-27): switching tools mid-draft used to leave draftAnchorRef pointing at the
+    // abandoned first click. The ghost preview line kept following the cursor regardless of the new
+    // tool, and re-selecting a two-click tool (trend/ray/rect/fib) later would silently treat the
+    // next click as the SECOND click of the old, long-abandoned draft — producing a drawing anchored
+    // to a stale point the user never intended. Clearing here on every tool change (including to a
+    // two-click tool) ensures a fresh draft always starts from scratch.
+    draftAnchorRef.current = null;
+    drawingsPrimitiveRef.current?.setDraft(null, null);
+  }, [drawTool, drawingsPrimitiveRef]);
   useEffect(() => {
     drawColorRef.current = drawColor;
   }, [drawColor]);
