@@ -1126,9 +1126,28 @@ export async function fetchVectorPickLiveQuotes(params: {
   });
 }
 
-let activeVectorStream: ReconnectingEventSource | null = null;
-let activeVectorStreamTicker: string | null = null;
-
+/**
+ * One connection per call — NOT a shared singleton.
+ *
+ * A module-level "close the other ticker's stream" guard lived here until this comment (dating to
+ * the original single-ticker-desk design, before Compare mode existed): it force-closed whichever
+ * stream was previously tracked whenever a call arrived for a DIFFERENT ticker. That is correct
+ * for exactly one concurrent caller. Compare mode mounts up to VECTOR_COMPARE_MAX_PANES independent
+ * `VectorChart` instances, each calling this with its OWN ticker — so pane 2 mounting with a
+ * different ticker than pane 1 silently closed pane 1's live stream, pane 3 then closed pane 2's,
+ * and so on: only the LAST-mounted pane ever ended up with a live connection. The other panes froze
+ * on their last-received tick with no reconnect (the `closed=true` flag `createReconnectingEventSource`
+ * sets on `.close()` permanently disables that instance's own retry loop) and no staleness
+ * indicator — a silently-wrong "looks live, isn't" state.
+ *
+ * The guard was also redundant for the single-pane case it was written for: `VectorChart`'s own
+ * chart-setup effect already closes `connRef.current` in its cleanup on every ticker switch (a full
+ * remount — see the "remount (ticker switch) starts clean" comments on that effect), so the caller
+ * was never relying on this module to deduplicate an old connection. Each `VectorChart` instance
+ * (single-pane or one of up to 4 compare panes) now owns its own connection lifecycle end to end,
+ * matching every sibling stream helper in this file (`createFlowEventSource`,
+ * `createPulseEventSource`, `createSpotStreamEventSource` — none of which carry this pattern).
+ */
 export function createVectorEventSource(
   ticker: string,
   onMessage: (snap: VectorStreamSnapshot) => void,
@@ -1138,13 +1157,7 @@ export function createVectorEventSource(
   const t = (ticker || "SPX").trim().toUpperCase();
   const url = `/api/market/vector/stream?ticker=${encodeURIComponent(t)}`;
 
-  if (activeVectorStream && activeVectorStreamTicker !== t) {
-    activeVectorStream.close();
-    activeVectorStream = null;
-    activeVectorStreamTicker = null;
-  }
-
-  const es = createReconnectingEventSource(
+  return createReconnectingEventSource(
     url,
     (raw) => {
       try {
@@ -1165,21 +1178,8 @@ export function createVectorEventSource(
         /* ignore */
       }
     },
-    {
-      onOpen: hooks?.onOpen,
-      onClose: () => {
-        if (activeVectorStream === es) {
-          activeVectorStream = null;
-          activeVectorStreamTicker = null;
-        }
-        hooks?.onClose?.();
-      },
-    }
+    hooks
   );
-
-  activeVectorStream = es;
-  activeVectorStreamTicker = t;
-  return es;
 }
 
 // ── Stock/ETF live spot-price stream (PR 2/3 of the sub-second-spot project) ──
