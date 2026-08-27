@@ -6,6 +6,7 @@ import {
   type VectorContractPick,
 } from "@/lib/api";
 import type { VectorPlayEmit } from "./vector-play-engine";
+import { pinVectorPickEntryMid } from "./vector-pick-live-status";
 
 const LIVE_POLL_MS = 1_000;
 // Same threshold VectorPageShell already uses for the chart's own candle staleness
@@ -64,8 +65,10 @@ export function useVectorPickLiveMonitor(
     >
   >({});
 
-  const pickKey = picks.map((p) => `${p.occ}|${p.entryMid}|${p.strike}`).join(";");
+  const pickKey = picks.map((p) => `${p.occ}|${p.strike}|${p.expiry}`).join(";");
   const genRef = useRef(0);
+  /** Pin the first-seen entry mid per OCC so 45s pick refreshes do not reset "% vs pick". */
+  const pinnedEntryByOcc = useRef<Map<string, number>>(new Map());
   // Wall-clock time of the last SUCCESSFUL poll — not reset on failure, so it keeps growing stale
   // across an outage instead of resetting on every failed attempt.
   const lastSuccessAtRef = useRef<number | null>(null);
@@ -75,9 +78,14 @@ export function useVectorPickLiveMonitor(
   const [pollTick, setPollTick] = useState(0);
 
   useEffect(() => {
+    pinnedEntryByOcc.current.clear();
+  }, [ticker]);
+
+  useEffect(() => {
     if (!emit?.play || picks.length === 0 || !liveSession) {
       setLiveByOcc({});
       lastSuccessAtRef.current = null;
+      pinnedEntryByOcc.current.clear();
       return;
     }
     const occPicks = picks.filter((p): p is VectorContractPick & { occ: string } => Boolean(p.occ));
@@ -87,6 +95,12 @@ export function useVectorPickLiveMonitor(
     const gen = ++genRef.current;
 
     const poll = () => {
+      const resolveEntryMid = (p: (typeof occPicks)[number]) => {
+        const incoming = p.entryMid ?? p.premium;
+        if (!p.occ) return incoming;
+        return pinVectorPickEntryMid(pinnedEntryByOcc.current, p.occ, incoming);
+      };
+
       fetchVectorPickLiveQuotes({
         ticker,
         spot: emit.spot,
@@ -99,7 +113,7 @@ export function useVectorPickLiveMonitor(
           side: p.side,
           strike: p.strike,
           expiry: p.expiry,
-          entryMid: p.entryMid ?? p.premium,
+          entryMid: resolveEntryMid(p),
           caveat: p.caveat,
         })),
       })

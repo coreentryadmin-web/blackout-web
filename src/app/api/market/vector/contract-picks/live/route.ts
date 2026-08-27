@@ -4,9 +4,10 @@ import { requireToolApi } from "@/lib/tool-access-server";
 import { isVectorTickerAllowed } from "@/features/vector/lib/vector-ticker";
 import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
 import { getLiveOptionMarkSync } from "@/lib/ws/options-socket";
-import { zeroDteMidOf, ZERODTE_MARK_STALE_MS } from "@/lib/zerodte/marks-math";
+import { ZERODTE_MARK_STALE_MS } from "@/lib/zerodte/marks-math";
 import {
   evaluateVectorPickLiveStatus,
+  resolveVectorPickLiveMid,
   type VectorPickLiveQuote,
 } from "@/features/vector/lib/vector-pick-live-status";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
@@ -30,17 +31,20 @@ function quoteFromSources(
   side: "call" | "put"
 ): VectorPickLiveQuote {
   const ws = getLiveOptionMarkSync(occ, ZERODTE_MARK_STALE_MS);
-  if (ws && ws.mark != null) {
-    return {
-      bid: ws.bid,
-      ask: ws.ask,
-      mid: ws.mark,
-      delta: null,
-      markStale: false,
-    };
+  if (ws) {
+    const mid = resolveVectorPickLiveMid({ bid: ws.bid, ask: ws.ask, mark: ws.mark });
+    if (mid != null || ws.bid != null || ws.ask != null) {
+      return {
+        bid: ws.bid,
+        ask: ws.ask,
+        mid,
+        delta: null,
+        markStale: mid == null,
+      };
+    }
   }
   if (snap) {
-    const mid = zeroDteMidOf(snap.bid, snap.ask) ?? snap.mark ?? null;
+    const mid = resolveVectorPickLiveMid({ bid: snap.bid, ask: snap.ask, mark: snap.mark ?? null });
     const rawDelta = snap.delta;
     return {
       bid: snap.bid,
