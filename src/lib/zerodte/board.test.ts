@@ -866,6 +866,39 @@ test("resolveLedgerEntryPremium: floors the graded basis at the flag-time mark w
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 5.19), 5.19);
 });
 
+// Fix (2026-08-27, live QQQ/NVDA finding): the symmetric CEILING. The floor above only
+// ever bounded the basis UP toward the mark; an outlier flow fill sitting FAR ABOVE the
+// live mark (a stale/mismatched print, never a real tradeable price) was adopted wholesale
+// with no ceiling at all, manufacturing a same-second "stopped" grade nobody could have
+// experienced. Live production instances the same morning: QQQ 720C 0DTE committed with
+// flow-fill entry_premium $3.27 while the real market never traded above $1.31 all session
+// (~73% below the fill) — plan_stop fired 357ms after commit at a reported -77%; NVDA
+// 225C 1DTE entry_premium $5.86 against a live market trading materially lower at the
+// same instant — plan_stop fired 1.2s after commit at -53%. Both losses were fake: the
+// underlying barely moved in either case (verified against real 1-min Polygon bars), so a
+// hard stop breaching within ~1 second of a fresh commit is a mispriced entry, not real
+// decay. The threshold reuses CHASE_PCT (55) — the SAME magnitude this file already
+// treats as "too extreme to trust" for the opposite (MOVED) direction.
+test("resolveLedgerEntryPremium: caps the graded basis DOWN at the flag-time mark when the mark is FAR BELOW the flow fill (outlier fill, achievability ceiling)", () => {
+  // The live QQQ shape: flow fill 3.27, live mark 0.88 (~73% below) — outlier, cap to mark.
+  assert.equal(resolveLedgerEntryPremium(3.27, 3.27, 0.88), 0.88);
+  // A comparable outlier shape well past the CHASE_PCT magnitude (5.86 -> 2.0, ~66% below).
+  assert.equal(resolveLedgerEntryPremium(5.86, 5.86, 2.0), 2.0);
+  // Ordinary CHEAPER (real front-running): mark modestly below the fill, well inside the
+  // CHASE_PCT band — untouched, matches the existing CHEAPER test above.
+  assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 3.5), 4.0);
+  // Exactly at the CHASE_PCT boundary (45% of the fill remains, i.e. 55% below) — the
+  // ceiling fires (>=), consistent with the existing >= comparison at the MOVED boundary.
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 4.5), 4.5);
+  // Just inside the boundary (45.01% remains, i.e. 54.99% below) — no ceiling.
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 4.501), 10.0);
+  // A malformed non-positive mark never drags the basis down via this path either.
+  assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 0), 4.0);
+  assert.equal(resolveLedgerEntryPremium(4.0, 4.0, -1), 4.0);
+  // No mark supplied → legacy behavior, unaffected.
+  assert.equal(resolveLedgerEntryPremium(4.0, 4.0), 4.0);
+});
+
 // Fix 3, end-to-end: the achievable-entry floor flips a flattered "doubled" into the honest
 // "stopped" — the graded stop/target are recomputed off the floored basis by gradePlanFromBars.
 test("resolveLedgerEntryPremium + gradePlanFromBars: the achievable basis grades the trade a member could take", () => {
