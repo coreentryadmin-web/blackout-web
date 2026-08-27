@@ -377,6 +377,22 @@ function playWallIntegrity(
  * commented with WHY it moves conviction; the sum is clamped and graded A/B/C. Kept transparent
  * (a plain accumulation, not a black box) so a reviewer can trace why a setup graded the way it did.
  */
+/** Staleness thresholds (ms). Under STALE_MILD the stream is operating normally (SSE ticks ~1s) —
+ *  no discount at all. Beyond STALE_SEVERE the feed reads as effectively disconnected. Exported so
+ *  the UI (VectorPlayCard's "stale" badge) uses the exact same boundary as the scoring discount. */
+export const STALE_MILD_MS = 30_000;
+const STALE_MODERATE_MS = 120_000;
+const STALE_SEVERE_MS = 600_000;
+
+/** Conviction discount for stale underlying data. Pure + exported for direct unit testing —
+ *  see the call site in computeConviction for why this exists. */
+export function stalenessConvictionDiscount(dataAgeMs: number | null | undefined): number {
+  if (dataAgeMs == null || !Number.isFinite(dataAgeMs) || dataAgeMs <= STALE_MILD_MS) return 0;
+  if (dataAgeMs <= STALE_MODERATE_MS) return -5;
+  if (dataAgeMs <= STALE_SEVERE_MS) return -15;
+  return -30;
+}
+
 function computeConviction(
   input: VectorPlayInput,
   setup: PlaySetup,
@@ -485,6 +501,14 @@ function computeConviction(
     const sampleWeight = Math.min(1, input.bie.samples / 50);
     c += edge * 20 * sampleWeight;
   }
+
+  // Data freshness: `dataAgeMs` was a documented passthrough (field existed, plumbed to `play.
+  // dataAge` for the terminal to show staleness) that nothing here ever actually read — a play
+  // built from a stream frozen for 20 minutes scored identically to one built this instant. Normal
+  // operation ticks every ~1s (see the SSE comment above emitPlay), so anything under 30s is not a
+  // staleness signal at all, only a genuinely stalled connection is. Graduated, not a cliff: a
+  // member losing their feed for a few minutes still gets a play, just a visibly less confident one.
+  c += stalenessConvictionDiscount(input.dataAgeMs);
 
   return Math.max(0, Math.min(100, Math.round(c)));
 }

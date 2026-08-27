@@ -508,3 +508,20 @@ test("VectorCompareDesk: sync-zoom preset no longer forces a redundant 4x pane r
   assert.doesNotMatch(fn, /^\s*bumpSync\(\);\s*$/m, "applySyncZoomPreset must not force a full pane remount");
   assert.match(fn, /flashSync\(\)/, "still gives the visual synced pulse without the remount");
 });
+
+test("VectorChart: real dataAgeMs is captured from live ticks and fed to buildVectorPlay", () => {
+  // dataAgeMs was a documented VectorSnapshot field ("for the terminal to show staleness") that no
+  // production caller ever set — buildVectorPlay always saw a play built "just now" regardless of
+  // how long the underlying stream had actually been frozen.
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /dataReceivedAtMsRef/);
+  assert.match(src, /dataReceivedAtMsRef\.current = Date\.now\(\)/);
+  assert.match(src, /dataAgeMs: Date\.now\(\) - dataReceivedAtMsRef\.current/);
+});
+
+test("VectorPlayCard: shows a STALE badge once dataAge crosses the play engine's own threshold", () => {
+  const src = read("src/features/vector/components/VectorPlayCard.tsx");
+  assert.match(src, /import \{ STALE_MILD_MS, type VectorPlay \}/);
+  assert.match(src, /play\.dataAge != null && play\.dataAge > STALE_MILD_MS/);
+  assert.match(src, /vector-play-card-stale/);
+});

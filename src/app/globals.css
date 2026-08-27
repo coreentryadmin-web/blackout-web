@@ -11682,6 +11682,9 @@ html.product-shell .nav-mega {
   .vector-play-card-conviction {
     @apply ml-auto font-mono text-[11px] font-bold text-white/50;
   }
+  .vector-play-card-stale {
+    @apply rounded border border-amber-400/40 bg-amber-400/10 px-1 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide text-amber-300;
+  }
   .vector-play-card-headline {
     @apply mt-1.5 text-sm font-semibold text-white;
   }
