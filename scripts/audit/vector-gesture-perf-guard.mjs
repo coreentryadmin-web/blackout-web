@@ -30,7 +30,9 @@
  *   node scripts/audit/vector-gesture-perf-guard.mjs [--base=https://blackouttrades.com] [--ticker=SPX] [--max-share=15] [--json]
  */
 import { createRequire } from "node:module";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const require = createRequire(import.meta.url);
 const { createTunneledContext } = require("./lib/proxy-tunnel-context.cjs");
@@ -48,7 +50,10 @@ const flag = (name, def = null) => {
 const BASE = flag("base", "https://blackouttrades.com");
 const TICKER = flag("ticker", "SPX");
 const MAX_SHARE = Number(flag("max-share", 35));
-const OUT = flag("out", "/tmp/vector-gesture-perf-guard.cpuprofile");
+// No fixed default path: a predictable filename under the shared /tmp is a symlink-attack target
+// (CodeQL: "Insecure creation of file in the os temp dir"). mkdtempSync makes a securely-random,
+// caller-unwritable-in-advance directory, so an explicit --out is the only way to get a fixed path.
+const OUT = flag("out", null) ?? join(mkdtempSync(join(tmpdir(), "vector-gesture-perf-")), "profile.cpuprofile");
 const asJson = !!flag("json");
 const TARGET = `${BASE}/vector?ticker=${TICKER}`;
 
@@ -120,7 +125,6 @@ async function main() {
       process.exit(1);
     }
 
-    mkdirSync(require("node:path").dirname(OUT), { recursive: true });
     writeFileSync(OUT, JSON.stringify(profile));
 
     const result = evaluateGesturePerfGuard(profile, { maxSharePct: MAX_SHARE });
