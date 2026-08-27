@@ -196,6 +196,19 @@ export const GOVERNOR_ENFORCE_GAMMA_BUDGET = envFlag("GOVERNOR_ENFORCE_GAMMA_BUD
 /** Phase 2c — time-of-day concurrent cap scaling (lunch chop / opening chop). Enforce opt-in. */
 export const GOVERNOR_ENFORCE_TOD_SIZING = envFlag("GOVERNOR_ENFORCE_TOD_SIZING", false);
 
+/** AUDIT SEV-3 realized-loss halt — DISABLED BY DEFAULT (2026-08-27, operator directive: the
+ *  system is in a testing/pre-launch phase with no members trading 0DTE aggressively off it yet,
+ *  and the operator wants the discovery/commit pipeline to keep producing plays every session
+ *  regardless of how many realized losers or how deep the session drawdown gets, rather than go
+ *  quiet for the rest of the day). `governorLossHaltReason` (below) still COMPUTES the would-halt
+ *  reason/counts unconditionally — the board keeps showing realized_losers/session_pnl_pct/
+ *  would_halt as live diagnostics — this flag only controls whether that reason actually BLOCKS a
+ *  new commit (evaluateZeroDteGovernor) and contributes to the board's `halted` flag
+ *  (summarizeGovernorForBoard). The separate hard-stop-count halt (GOVERNOR_MAX_SESSION_STOPS,
+ *  `governor_session_stops`) is UNCHANGED and still enforced unconditionally — it was not part of
+ *  this directive. Flip GOVERNOR_ENFORCE_LOSS_HALT=1 to restore the prior always-on behavior. */
+export const GOVERNOR_ENFORCE_LOSS_HALT = envFlag("GOVERNOR_ENFORCE_LOSS_HALT", false);
+
 /** The largest same-direction cluster of open plans within a single correlation group, or
  *  null if no two open plans share a group+direction. Pure. Used both by the board measure
  *  and by the per-candidate evaluator, so the "what counts as concentration" logic lives
@@ -572,7 +585,7 @@ export function evaluateZeroDteGovernor(
   // hard-stop halt fires on 3 −50% stops, the loss halt fires on 3 realized losers
   // (any exit reason) or cumulative −120% session P&L. Strictly additive.
   const lossHalt = governorLossHaltReason(snap);
-  if (lossHalt) {
+  if (GOVERNOR_ENFORCE_LOSS_HALT && lossHalt) {
     blocks.push({
       code: "governor_session_loss_halt",
       reason: lossHalt,
@@ -821,7 +834,14 @@ export function summarizeGovernorForBoard(
     max_concurrent: GOVERNOR_MAX_CONCURRENT_PLANS,
     stops,
     max_session_stops: GOVERNOR_MAX_SESSION_STOPS,
-    halted: stops.length >= GOVERNOR_MAX_SESSION_STOPS || wouldHalt != null,
+    // `wouldHalt` only contributes to `halted` when the loss-halt is actually enforced
+    // (GOVERNOR_ENFORCE_LOSS_HALT) -- otherwise the board would show "SESSION HALTED" while
+    // evaluateZeroDteGovernor keeps accepting new commits underneath, the exact display/reality
+    // mismatch PR #2973 fixed for a different field. `would_halt` below still reports the reason
+    // as a live diagnostic even when it isn't gating anything.
+    halted:
+      stops.length >= GOVERNOR_MAX_SESSION_STOPS ||
+      (GOVERNOR_ENFORCE_LOSS_HALT && wouldHalt != null),
     reentry_lock_ms: GOVERNOR_REENTRY_LOCK_MS,
     realized_losers: snap.realized_losers ?? 0,
     session_pnl_pct: snap.session_pnl_pct ?? 0,
