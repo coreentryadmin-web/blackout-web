@@ -221,6 +221,14 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
                   {ACTION_LABEL[pick.actionStatus]}
                 </span>
               ) : null}
+              {pick.liveQuotesStale ? (
+                <span
+                  className="vector-play-card-stale"
+                  title="Live quote feed hasn't updated recently — bid/ask/status shown are the last known-good read"
+                >
+                  STALE
+                </span>
+              ) : null}
               {(pick.rank ?? i + 1) === 1 && !pick.actionStatus ? (
                 <span className="vector-contract-pick-primary-tag">Primary</span>
               ) : null}
@@ -277,6 +285,14 @@ export function VectorContractPicksCard({ ticker, play, picks, loading, classNam
                 <span className="vector-pick-action-banner-dot" aria-hidden="true" />
                 {ACTION_LABEL[open.actionStatus]}
                 {open.actionReason ? ` — ${open.actionReason}` : ""}
+                {open.liveQuotesStale ? (
+                  <span
+                    className="vector-play-card-stale ml-2"
+                    title="Live quote feed hasn't updated recently — this status is the last known-good read"
+                  >
+                    STALE
+                  </span>
+                ) : null}
               </p>
             ) : null}
 
