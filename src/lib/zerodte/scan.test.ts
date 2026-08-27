@@ -845,7 +845,7 @@ function losingTimeStop(ticker: string): LedgerRow {
   });
 }
 
-test("scanZeroDteBoard: 5 realized losing time-stops HALT a fresh commit — the enforcement snapshot carries realized_losers/session_pnl_pct (SEV-3 wiring)", async () => {
+test("scanZeroDteBoard: 5 realized losing time-stops no longer HALT a fresh commit (GOVERNOR_ENFORCE_LOSS_HALT disabled by default, 2026-08-27 operator directive) — the enforcement snapshot still carries realized_losers/session_pnl_pct (SEV-3 wiring, now diagnostic-only)", async () => {
   resetState();
   // Ledger = five losing time-stops on OTHER tickers (so NVDA is a genuinely fresh,
   // un-committed candidate the gate stack will judge).
@@ -880,17 +880,14 @@ test("scanZeroDteBoard: 5 realized losing time-stops HALT a fresh commit — the
   assert.ok(nvda, "the NVDA flow print must survive discovery into a gated setup");
   assert.ok(nvda!.gate, "a fresh (un-committed) candidate must get a gate verdict");
 
-  // The discriminating assertion: the realized-loss halt block must be present. Its code
-  // is governor_session_loss_halt (distinct from the hard-stop halt's governor_session_stops).
-  const lossHalt = nvda!.gate!.blocks.find(
-    (b) => b.code === "governor_session_loss_halt" && /realized losers/i.test(b.reason)
-  );
-  assert.ok(
-    lossHalt,
-    "the enforcement snapshot must carry realized_losers so the loss-halt fires — pre-fix, the " +
-      "two-field literal dropped it and this block was absent (fresh commits ran through a 5-loser day)"
-  );
-  assert.equal(nvda!.gate!.verdict, "BLOCKED", "a halted session must not COMMIT a fresh play");
+  // GOVERNOR_ENFORCE_LOSS_HALT defaults to false (2026-08-27 operator directive: testing/
+  // pre-launch phase, no aggressive live 0DTE users yet — keep producing plays regardless of
+  // realized losses). The loss-halt block must therefore be ABSENT from a fresh candidate's
+  // gate trace even on a 5-realized-loser day — this is the mirror image of the pre-fix
+  // regression this test used to guard (a dropped realized_losers field silently prevented the
+  // block from ever firing; now it is INTENTIONALLY not enforced, a different fact).
+  const lossHalt = nvda!.gate!.blocks.find((b) => b.code === "governor_session_loss_halt");
+  assert.equal(lossHalt, undefined, "the loss-halt channel is measure-only by default -- it must not block a fresh commit");
 });
 
 // ── Phase 3a: with the whole-market flags OFF, the board is flow-only + every setup is ["FLOW"] ──
