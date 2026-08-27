@@ -8,6 +8,43 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-08-27 (15:33–15:39 UTC) — [RTH] Market-hours live-surface validation — state GREEN
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Scheduled RTH market-hours validation during 09:30–13:00 ET trading window (Wed 2026-08-27 11:33–11:39 AM ET).
+
+**Result — `OVERALL: PASS`, `EXIT=0`:**
+
+1. **Cloudflare edge cache purge:**
+   - Full HTML cache cleared (7200s TTL reset to live origin)
+   - Verdict: **PURGED** (no stale-page measurement risk)
+
+2. **Core Web Vitals on `/tools/gamma-snapshot` live rendering:**
+   - Desktop 1440×900: **CLS 0.0** (GOOD — well under 0.1 threshold)
+   - Assets routed: **42 ok, 0 fail** → **44 ok, 0 fail** (second load)
+   - Verdict: **GOOD** (fix #2453 holding under production RTH live-data rendering)
+
+3. **OG image crawlability (`/api/og`):**
+   - HTTP 200, PNG image (magic bytes `89 50 4e 47`)
+   - Unauthenticated Googlebot-reachable
+   - Verdict: **LIVE** (fix #2448 confirmed crawlable during RTH)
+
+4. **Live public gamma API (`/api/public/gex-snapshot`):**
+   - **Derived data only** (call_wall 7740, put_wall 7600, no raw vendor republish)
+   - Spot price changed 7718.13 → 7716.89 across 13s (live real-time refresh)
+   - Timestamp progression 15:38:39.664Z → 15:38:52.742Z (5s refresh cycle verified)
+   - Verdict: **LIVE AND REFRESHING** (real-time derived gamma data, no stale cache)
+
+5. **Licensing posture:**
+   - Public, real-time, derived ✓ (per RESEARCH-PUBLISH-POSTURE.md)
+   - Flagged as "open item" pending Polygon/UW vendor term review (accepted risk, deliberate)
+   - Verdict: **DOCUMENTED OPEN ITEM** (no new licensing defect)
+
+**Interpretation:**
+All public production surfaces serving real market data correctly during RTH. Fixes #2453 (CLS) and #2448 (OG crawl) hold under live rendering. No defects detected. Platform ready for intraday trading session.
+
+---
 ## 2026-08-27 (13:35 UTC) — [SEO] RTH market-hours validation (09:33 EDT) — PASS
 
 **Severity.** — (no defect found)
