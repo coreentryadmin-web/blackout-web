@@ -293,21 +293,17 @@ test("VectorChart: standalone desk uses flex-fill canvas (volume sub-pane must n
   assert.match(css, /\.vector-page-shell \.vector-chart-stage/);
 });
 
-test("VectorChart: wide-desktop grid gets a DEFINITE height so rails scroll internally instead of growing the page", () => {
-  // Member report (2026-08-27, screenshot at >=1600px): the grid only ever had a min-height (a
-  // floor), so a `height:100%` percentage down every rail's ancestor chain never resolved against
-  // a definite size, and a tall GEX ladder / long Helix print list pushed the WHOLE PAGE past one
-  // viewport instead of scrolling inside its own already-built .vector-odte-matrix-scroll /
-  // .vector-helix-scroll / .vector-action-rail regions. Fixed ONLY at the 1600px+ breakpoint,
-  // where all four rails genuinely sit side-by-side in one row (below it the action rail is a
-  // separate full-width row underneath the 3-col section, and capping the grid there would squash
-  // that row's own space too — a different, unreported layout).
+test("VectorChart: wide-desktop grid flex-fills below toolbar + scanner (no document scroll)", () => {
+  // #2936 fixed the implicit grid row; follow-up caps the page shell like Compare mode so the
+  // collapsed universe-scanner row below the grid is in the flex budget instead of pushing scroll.
   const css = read("src/app/globals.css");
   const wideBlock = css.slice(css.indexOf("@media (min-width: 1600px)"));
+  assert.match(wideBlock, /vector-page-shell:not\(:has\(\.vector-page-content-focus\)\)/);
+  assert.match(wideBlock, /height: calc\(100dvh - var\(--nav-offset\)\)/);
   const gridRuleEnd = wideBlock.indexOf("}", wideBlock.indexOf(".vector-chart-terminal-grid {"));
   const gridRule = wideBlock.slice(0, gridRuleEnd);
-  assert.match(gridRule, /height:\s*calc\(100dvh - 7rem\)/);
-  assert.match(gridRule, /max-height:\s*calc\(100dvh - 7rem\)/);
+  assert.match(gridRule, /flex: 1 1 0/);
+  assert.match(gridRule, /height: auto/);
   // The base (mobile/stacked, <1280px) rule must stay a MIN — that layout is meant to scroll the
   // whole page like any other stacked mobile view.
   assert.match(css, /\.vector-page-shell \.vector-chart-terminal-grid \{\s*min-height: calc\(100dvh - 7rem\);/);
