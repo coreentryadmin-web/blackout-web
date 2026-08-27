@@ -10254,6 +10254,67 @@ html.product-shell .nav-mega {
     color: rgba(203, 213, 225, 0.85);
   }
 
+  /* ── Alerts bell (2026-08-27): the alerts panel moved off the page into a popover anchored
+     next to the LIVE SESSION freshness chip — member: "add a clickable icon next to LIVE
+     SESSION on the top and it gives us options". This wrapper just keeps the chip + bell
+     together as one inline group wherever trailSlot renders (mobile row + desktop row). ── */
+  .vector-freshness-alerts-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .vector-alerts-bell-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+  .vector-alerts-bell-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.7rem;
+    height: 1.7rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(203, 213, 225, 0.85);
+    cursor: pointer;
+    position: relative;
+    transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+  }
+  .vector-alerts-bell-btn:hover {
+    border-color: rgba(251, 191, 36, 0.5);
+    color: rgba(251, 191, 36, 0.95);
+  }
+  .vector-alerts-bell-btn[aria-expanded="true"] {
+    border-color: rgba(251, 191, 36, 0.65);
+    background: rgba(251, 191, 36, 0.12);
+    color: rgba(251, 191, 36, 0.95);
+  }
+  .vector-alerts-bell-dot {
+    position: absolute;
+    top: 0.15rem;
+    right: 0.15rem;
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 999px;
+    background: rgb(52, 211, 153);
+    box-shadow: 0 0 0 1.5px #050508;
+  }
+  .vector-alerts-bell-popover {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    z-index: 40;
+    width: min(19rem, 88vw);
+  }
+  /* The popover surface IS the (unmodified) `.vector-alerts-panel` section — no extra chrome
+     wrapped around it — so it only needs its own drop shadow here; the panel keeps its own
+     border/background/radius exactly as it had on the page. */
+  .vector-alerts-bell-popover .vector-alerts-panel {
+    margin-top: 0;
+    box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.85);
+  }
+
   .vector-alert-toast {
     position: fixed;
     right: 1rem;
