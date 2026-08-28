@@ -29,6 +29,22 @@ async function gotoHome(page, opts = {}) {
   }
 }
 
+/** Footer links can detach mid-scroll during hydration — retry before failing the desktop suite. */
+async function scrollClickStable(page, locator) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await locator.waitFor({ state: "visible", timeout: 12_000 });
+      await locator.scrollIntoViewIfNeeded({ timeout: 12_000 });
+      await locator.click({ timeout: 12_000 });
+      return;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/not attached|detached|stable|Target closed/i.test(msg) || attempt === 2) throw e;
+      await page.waitForTimeout(500);
+    }
+  }
+}
+
 /** @typedef {{ severity: string, code: string, detail: string }} Issue */
 
 /** @param {import('playwright').Page} page */
@@ -117,13 +133,13 @@ async function runDesktop(browser) {
     ["Privacy", "/privacy"],
   ]) {
     await gotoHome(page);
+    await page.locator("footer").waitFor({ state: "visible", timeout: 12_000 });
     const link = page.locator(`footer a[href="${path}"]`).first();
     if ((await link.count()) === 0) {
       issues.push({ severity: "P1", code: "FOOTER_LINK_MISSING", detail: `${label} ${path}` });
       continue;
     }
-    await link.scrollIntoViewIfNeeded();
-    await link.click();
+    await scrollClickStable(page, link);
     await page.waitForURL(new RegExp(`${path.replace("/", "\\/")}(\\?|$)`), { timeout: 15_000 });
     passes.push(`footer ${label} → ${path}`);
   }
