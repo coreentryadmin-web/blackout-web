@@ -23,6 +23,105 @@
   .desk-panel { animation: none; }
 }
 
+/* Slim icon rail — answers "do we have the same left rail as the X Ads Manager
+   screenshot to pick a system?" Desktop-only (>=1024px): below that the existing
+   Nav hamburger menu + IosAppTabBar already own navigation, and a second, narrower
+   nav competing for thumb space would be a regression, not an enhancement. Fixed
+   under the nav bar (top offset matches .nav-bar's own height) so it never
+   overlaps the app bar or the mobile drawer it can trigger. */
+.desk-sidebar {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .desk-sidebar {
+    display: block;
+    position: fixed;
+    top: 64px;
+    left: 0;
+    bottom: 0;
+    width: 56px;
+    z-index: 40;
+    background: linear-gradient(180deg, rgba(9, 10, 14, 0.92), rgba(6, 7, 10, 0.96));
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 14px 0;
+  }
+}
+/* Push page content clear of the fixed rail (desktop only). Desk pages already
+   manage their own top offset for the fixed nav bar; this only adds the left
+   gutter, and only for the signed-in wrapper the layout applies it to — a plain
+   class beats a `:has()` selector here since this must work everywhere, not
+   only in browsers new enough to support it. */
+@media (min-width: 1024px) {
+  .desk-sidebar-gutter {
+    padding-left: 56px;
+  }
+}
+.desk-sidebar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.desk-sidebar-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.55);
+  text-decoration: none;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+.desk-sidebar-item:hover,
+.desk-sidebar-item:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
+}
+.desk-sidebar-item.is-active {
+  background: rgba(0, 217, 163, 0.12);
+  color: #00d9a3;
+}
+.desk-sidebar-item.is-locked {
+  opacity: 0.45;
+}
+.desk-sidebar-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+.desk-sidebar-tooltip {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  background: #0d0f16;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f4f6fb;
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.desk-sidebar-item:hover .desk-sidebar-tooltip,
+.desk-sidebar-item:focus-visible .desk-sidebar-tooltip {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .desk-sidebar-item,
+  .desk-sidebar-tooltip {
+    transition: none;
+  }
+}
+
 /* nav scroll lock (fixed app bar) */
 html.nav-locked,
 html.nav-locked body { overflow: hidden; }

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { auth } from "@/lib/auth-server";
 import { signedInFromRequestCookies } from "@/lib/clerk-session-cookies";
 import { Nav } from "@/components/Nav";
+import { DeskSidebar } from "@/components/DeskSidebar";
 import { IosAppChrome } from "@/components/ios/IosAppChrome";
 import { IosNativePageTransition } from "@/components/ios/IosNativePageTransition";
 import { IosAppTabBar } from "@/components/IosAppTabBar";
@@ -60,9 +61,12 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       <MarketPulseLayer />
       <IosNativeStylesLoader />
       <Nav lockedTools={lockedTools} initialSignedIn={initialSignedIn} />
+      {initialSignedIn && <DeskSidebar lockedTools={lockedTools} />}
       <IosAppChrome lockedTools={lockedTools} />
       <IosAppTabBar lockedTools={lockedTools} />
-      <IosNativePageTransition>{children}</IosNativePageTransition>
+      <div className={initialSignedIn ? "desk-sidebar-gutter" : undefined}>
+        <IosNativePageTransition>{children}</IosNativePageTransition>
+      </div>
     </AppShellProviders>
     </div>
   );
