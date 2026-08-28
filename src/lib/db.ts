@@ -2206,6 +2206,39 @@ async function runMigrations(): Promise<void> {
        ON meridian_report_snapshots(ticker, event_date, snapshot_day DESC)`
   );
 
+  // Meridian estimate-revision history — ONE ROW PER detected revision, kept (not overwritten).
+  //
+  // `diffEstimateRevisionTimeline` (Redis snapshot diff) only EMITS a revision in the single
+  // ~20-min cached build that happens to run while the delta is fresh — the act of diffing also
+  // advances the Redis snapshot, so the next build compares equal and stays silent forever after.
+  // A member who loads the page outside that one build's window sees an empty "timeline" despite
+  // real revisions having happened (measured 2026-08-18: 4 entries at 14:52 UTC, 0 at 14:57 UTC —
+  // see FINDINGS.md). This table makes each emitted entry durable so it can be read back on any
+  // later build within the lookback window, not just the one that detected it. UNIQUE on the same
+  // fields that define the entry so a second build that races the diff (or re-observes the same
+  // Benzinga row before the Redis snapshot has propagated) writes the identical row harmlessly.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS meridian_estimate_revisions (
+      id BIGSERIAL PRIMARY KEY,
+      ticker TEXT NOT NULL,
+      event_date DATE NOT NULL,
+      change_kind TEXT NOT NULL,
+      revised_at TIMESTAMPTZ NOT NULL,
+      company_name TEXT,
+      eps_delta NUMERIC,
+      revenue_delta_pct NUMERIC,
+      estimated_eps NUMERIC,
+      estimated_revenue NUMERIC,
+      headline TEXT NOT NULL,
+      inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (ticker, event_date, change_kind, revised_at)
+    );
+  `);
+  await p.query(
+    `CREATE INDEX IF NOT EXISTS idx_meridian_est_revisions_recent
+       ON meridian_estimate_revisions(revised_at DESC)`
+  );
+
   // X INTEL QUEUE — the hourly market-intelligence package a human reviews and publishes by hand.
   //
   // `cycle_key` is UNIQUE and carries the ET hour slot ("2026-08-21T11"), so a re-run of the same
@@ -9797,6 +9830,99 @@ export async function readMeridianReportSnapshots(
       .reverse();
   } catch (err) {
     console.warn(`[meridian-snapshot] read failed for ${safeLogTicker(ticker)}:`, err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+/* ── Meridian estimate-revision history ─────────────────────────────────────────────── */
+
+export type MeridianEstimateRevisionRow = {
+  ticker: string;
+  company_name: string | null;
+  date: string;
+  last_updated: string;
+  change_kind: "eps" | "revenue" | "date_status" | "print" | "calendar";
+  eps_delta: number | null;
+  revenue_delta_pct: number | null;
+  estimated_eps: number | null;
+  estimated_revenue: number | null;
+  headline: string;
+};
+
+/**
+ * Persist ONE detected estimate revision so it survives past the single ~20-min cached build
+ * that emitted it. `diffEstimateRevisionTimeline`'s Redis snapshot advances the moment it diffs a
+ * row, so without this the SAME revision can never be re-emitted by a later build (see the table
+ * comment in runMigrations). Fire-and-forget from the caller, mirroring `recordMeridianReportSnapshot`;
+ * never throws. ON CONFLICT DO NOTHING — a re-diffed row (overlapping cache windows racing, or the
+ * same Benzinga row re-observed before the Redis snapshot has propagated) writes an identical row.
+ */
+export async function recordMeridianEstimateRevision(entry: MeridianEstimateRevisionRow): Promise<void> {
+  if (!dbConfigured()) return;
+  try {
+    const p = await getPool();
+    await p.query(
+      `INSERT INTO meridian_estimate_revisions
+         (ticker, event_date, change_kind, revised_at, company_name, eps_delta, revenue_delta_pct, estimated_eps, estimated_revenue, headline)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (ticker, event_date, change_kind, revised_at) DO NOTHING`,
+      [
+        entry.ticker.trim().toUpperCase(),
+        entry.date,
+        entry.change_kind,
+        entry.last_updated,
+        entry.company_name,
+        entry.eps_delta,
+        entry.revenue_delta_pct,
+        entry.estimated_eps,
+        entry.estimated_revenue,
+        entry.headline,
+      ]
+    );
+  } catch (err) {
+    console.warn(
+      `[meridian-est-revisions] write failed for ${safeLogTicker(entry.ticker)}:`,
+      err instanceof Error ? err.message : err
+    );
+  }
+}
+
+/**
+ * Recent revision history across ALL tickers, newest first — this is what turns the market-wide
+ * `estimate_revision_timeline` panel from a momentary sample into an actual timeline: the caller
+ * merges this with the current build's live diff, so a member landing outside the one build that
+ * detected a revision still sees it until it ages out of `sinceIso`. Empty on any failure — the
+ * panel simply falls back to whatever the live diff found this build.
+ */
+export async function readRecentMeridianEstimateRevisions(
+  sinceIso: string,
+  limit = 24
+): Promise<MeridianEstimateRevisionRow[]> {
+  if (!dbConfigured()) return [];
+  try {
+    const p = await getPool();
+    const res = await p.query(
+      `SELECT ticker, event_date, change_kind, revised_at, company_name, eps_delta, revenue_delta_pct, estimated_eps, estimated_revenue, headline
+         FROM meridian_estimate_revisions
+        WHERE revised_at >= $1
+        ORDER BY revised_at DESC
+        LIMIT $2`,
+      [sinceIso, Math.min(200, Math.max(1, limit))]
+    );
+    return res.rows.map((r: Record<string, unknown>) => ({
+      ticker: String(r.ticker),
+      company_name: (r.company_name ?? null) as string | null,
+      date: String(r.event_date instanceof Date ? r.event_date.toISOString().slice(0, 10) : r.event_date).slice(0, 10),
+      last_updated: r.revised_at instanceof Date ? r.revised_at.toISOString() : String(r.revised_at),
+      change_kind: r.change_kind as MeridianEstimateRevisionRow["change_kind"],
+      eps_delta: r.eps_delta == null ? null : Number(r.eps_delta),
+      revenue_delta_pct: r.revenue_delta_pct == null ? null : Number(r.revenue_delta_pct),
+      estimated_eps: r.estimated_eps == null ? null : Number(r.estimated_eps),
+      estimated_revenue: r.estimated_revenue == null ? null : Number(r.estimated_revenue),
+      headline: String(r.headline),
+    }));
+  } catch (err) {
+    console.warn(`[meridian-est-revisions] read failed:`, err instanceof Error ? err.message : err);
     return [];
   }
 }

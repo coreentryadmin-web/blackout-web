@@ -9,9 +9,11 @@ import {
   type BenzingaStructuredEarnings,
 } from "@/lib/providers/polygon";
 import { serverCache } from "@/lib/server-cache";
+import { recordMeridianEstimateRevision, readRecentMeridianEstimateRevisions } from "@/lib/db";
 import {
   buildEarningsWeekAnalytics,
   diffEstimateRevisionTimeline,
+  mergeEstimateRevisionTimeline,
 } from "@/lib/meridian/meridian-benzinga-analytics";
 import {
   buildEarningsWeekRows,
@@ -109,10 +111,19 @@ export async function loadBenzingaEarningsBundle(
     // between them; pagination can also repeat a key across pages.
     //
     // Newest `last_updated` wins — the freshest observation is the one worth diffing against.
-    const estimate_revision_timeline = await diffEstimateRevisionTimeline(
+    const liveRevisions = await diffEstimateRevisionTimeline(
       dedupeEarningsRowsByEvent([...window_rows, ...revisionRes.rows]),
       since
     );
+    // Persist every freshly-detected revision (best-effort, matches recordMeridianReportSnapshot's
+    // fire-and-forget pattern) and merge with recent persisted history — otherwise this panel is
+    // only ever populated in the single ~20-min build that happened to detect each revision. See
+    // FINDINGS.md "Estimate-revision timeline is momentary, not cumulative" (2026-08-18).
+    for (const entry of liveRevisions) {
+      void recordMeridianEstimateRevision(entry);
+    }
+    const persistedRevisions = await readRecentMeridianEstimateRevisions(since, 24);
+    const estimate_revision_timeline = mergeEstimateRevisionTimeline(liveRevisions, persistedRevisions, 24);
 
     return {
       window_rows,
