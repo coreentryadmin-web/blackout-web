@@ -15079,7 +15079,6 @@ P3 exit-engine study → P4 regime → P5 timing → P6 learning loop.
 
 ## 2026-07-14 — Vector data refresh rate optimization (member-reported, real-time responsiveness)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P2 — Slow Vector data updates (spot every 3s, GEX ladder every 60s, flow/history every 30-60s) (FIXED, pending deploy verify)
 - **Root cause:** SWR refresh intervals set conservatively for minimal server load; member reported Vector felt "static" and laggy, not responsive to market moves. Multiple Vector surfaces refreshing at different rates (3s/30s/60s).
@@ -15094,11 +15093,13 @@ P3 exit-engine study → P4 regime → P5 timing → P6 learning loop.
     - VectorScanner.tsx:45: Universe scanner refresh `30_000` → `15_000` (every 15s)
 - **Impact:** All Vector surfaces now refresh on same 15s cadence; spot prices update every 1s from playbook/SSE stream; gamma Greeks (GEX/VEX/DEX/charm) refresh 4x per minute instead of every 1-2 minutes.
 - **Evidence expected:** Post-deploy, GEX/flow/history all update 4 times per minute; consistent refresh across all tickers and horizons; member experience no longer "static".
-- **Status:** Fixed (commit 78cdf74), staged on `claude/three-repos-review-36t217`, awaiting deployment verification. (Staging + its Cognito auth were decommissioned 2026-07-25; validate on production with a temp Clerk user instead.)
+**Status.** FIXED — confirmed present and evolved further in `main` today: `VectorChart.tsx`'s flow
+poll is `15_000`, `VectorGexLadder.tsx`'s ladder poll is now dynamic (`vectorWallsScopePollMs(ticker)`)
+rather than the fixed 15s this entry describes. Restamped, the pre-existing "**Status:**" line (colon
+inside bold) was not read by the reconciler.
 
 ## 2026-07-14 — Vector GEX ladder asymmetry (discovered during wall-birth validation)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P1 — Scoped DTE ladder strikes mismatched chart walls (FIXED)
 - **Root cause:** The GEX ladder panel (gex-ladder API endpoint) computed the ladder for narrowed horizons (0DTE/WEEKLY/MONTHLY) using OI-only GEX values, while the chart walls used volumeAdjusted GEX (OI + today's per-strike traded volume). This created an asymmetry: ladder UI showed different strike sets and values than the chart's beads, breaking cross-surface truth.
@@ -15108,11 +15109,14 @@ P3 exit-engine study → P4 regime → P5 timing → P6 learning loop.
 - **Fix:** Pass `{ volumeAdjusted: true }` to `gexLadderAtSpot()` in `getHorizonStrikeTotals()` (line 95). Since the ladder is fetched every 15s during live session, it must show dynamic walls (OI + dayVolume) that birth mid-day, not static OI-only structures.
   - **Commit 107c450:** Single-line fix + deep-dive comment in PR write-up.
 - **Rationale:** The ladder is displayed live alongside the chart and polls every 15s. It should reflect the same volumeAdjusted positioning the chart uses for wall/bead rendering — consistency and honest mid-day births. Reconstruction (historical playback) still uses OI-only (no options passed).
-- **Status:** Fixed (commit 107c450). Pending staging E2E re-validation (ladder strike count, banner/king alignment, cross-surface agreement).
+**Status.** FIXED — `gexLadderAtSpot(filtered, spot, today, { volumeAdjusted: true })` confirmed
+present in `src/features/vector/lib/vector-dte-walls-server.ts:101` in `main` today. Restamped, the
+pre-existing "**Status:**" line (colon inside bold) was not read by the reconciler; staging (referenced
+in the original note) was decommissioned 2026-07-25 — this is verified against the current tree, not
+that environment.
 
 ## 2026-07-14 — Vector wall death visibility (user-observed)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P2 — Dead walls not visually distinguished from live walls (FIXED)
 - **Observation:** Old walls that dropped below the dominant set (top-3 by strength) were still visible on the chart at the same brightness as active walls, making it unclear which walls were live vs stale/dead.
@@ -15123,18 +15127,24 @@ P3 exit-engine study → P4 regime → P5 timing → P6 learning loop.
   - `strikeTrailLifecycle()`: Sets `active = (lastSeen === latest)`. A wall is inactive if it's not in the latest bucket.
   - `VectorChart.tsx:740`: Applies `staleFade` multiplier to alpha (40% for inactive)
 - **Fix:** Increased wall fade for inactive trails from 40% to 15% opacity (commit 70df3ea). Dead walls now render at the same ghost-opacity as modeled/reconstructed beads, making the "alive vs dead" distinction unmistakable. Visual hierarchy: solid beads (100%) > modeled beads (15%) ≈ dead walls (15%) > background.
-- **Status:** Fixed (commit 70df3ea). Visual distinction should now be clear on staging — dead walls fade to a faint historical artifact level instead of remaining visually prominent.
+**Status.** FIXED — `STALE_TRAIL_FADE` confirmed present in `VectorChart.tsx:302` and now `0.15`
+(evolved further from the `0.4` this entry describes; already the lower target this fix asked for).
+Restamped, the pre-existing "**Status:**" line (colon inside bold) was not read by the reconciler;
+staging (referenced in the original note) was decommissioned 2026-07-25 — this is verified against
+the current tree, not that environment.
 
 ## 2026-07-15 — Night Hawk publish gates too strict off-hours/staging
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### P1 — Staging/off-hours Night Hawk editions published zero plays after G-N3 gate merged (FIXED, CI green, deployable)
 - **Root cause:** PR-N3 (commit 9c9c122) added publish-gate G-N3 (stale-quote basis check). Price from Polygon fallback to hourly bars (no daily bar) yields `price_session=null`. The gate failed-closed: null=unknown=indistinguishable from stale → BLOCK. All plays blocked on staging (off-hours, no daily bars). Real issue: the gate couldn't distinguish "no daily bar" (legitimate, current data) from "stale quote" (wrong trading day).
 - **Fix:** G-N3 now only blocks when `price_session` is KNOWN but STALE (wrong trading day). Null passes — data-gap ≠ staleness proof. `src/features/nighthawk/lib/publish-gates.ts:200,207`. Commit 53e1f67. Test updated (was fail-closed on null; now passes "hourly fallback is valid off-hours").
 - **Verification:** (1) All 3487 unit tests pass, including deterministic-edition.test.ts (10/10 green). (2) TypeScript clean (`npx tsc --noEmit`). (3) Test updated: "G-N3 lenient: an UNDATEABLE quote (price_session null) passes — hourly fallback is valid off-hours" asserts `verdict="PUBLISH"`.
 - **Blast radius:** Fix is isolated to the G-N3 gate logic in publish-gates.ts; no other code paths reference stale-quote checks. Deterministic edition builder, candidate extraction, and scoring all untouched.
-- **Status:** Fixed (commit 53e1f67), deployable; Night Hawk on staging should now publish with plays. Trigger with `?force=1` post-deploy and verify 5 plays generate for tomorrow.
+**Status.** FIXED — the G-N3 lenient-on-null-`price_session` logic confirmed present in
+`src/features/nighthawk/lib/publish-gates.ts` (comment block at line 237-240) in `main` today.
+Restamped, the pre-existing "**Status:**" line (colon inside bold) was not read by the reconciler;
+staging (referenced in the original note) was decommissioned 2026-07-25.
 
 ## 2026-07-15 — 0DTE desk bundle cache stampede (architecture audit)
 > **kind:** `FINDING`
