@@ -3,6 +3,25 @@
 (Repo also has `AGENTS.md` — the general agent playbook. This file captures the
 standing **audit + issue-handling policy**. Keep it and `docs/audit/FINDINGS.md` updated.)
 
+## NEVER SIT IDLE WHILE WAITING (standing instruction, confirmed 2026-08-28)
+**Waiting on a PR — your own or a lane's — is not a stopping point.** CI pending, a review
+requested from Cursor, another PR's merge, a lane's response: none of these block you from other
+work. They block that ONE PR, not you. The concrete failure mode this corrects: an agent that opens
+a PR, tags `@cursor review`, then spends every subsequent wake-up doing nothing but re-checking that
+one PR's comment thread and re-scheduling the next check — reporting "still waiting" as if that were
+itself the work. It is not. That agent had a live coordinator loop the whole time (sweep other PRs,
+chase other lanes, scan CloudWatch, revisit FINDINGS.md, do live product exploration) and used none
+of it, because "waiting" was silently treated as "idle" instead of as one blocked item among many
+open ones.
+**The rule:** every time you would otherwise just poll and re-schedule, first ask "is there
+independent work I could be doing right now instead of just checking this one thing?" — a fresh
+CloudWatch sweep, another open PR, another lane's stale status, an old FINDINGS.md entry worth
+revisiting, a new bug/feature/enhancement worth starting. If yes, do that work in the same turn,
+*then* schedule the check-in. Only report "nothing to do, waiting" after you've actually verified
+there is nothing — the same discipline `DEFINITION OF IDLE` (in the standing autonomous-mode
+instructions, not this file) already requires before concluding no worthwhile work exists. A blocked
+PR is a reason to route around it, never a reason to stop.
+
 ## Issue-handling policy (standing instruction)
 As soon as an issue is spotted during any audit/validation:
 1. **Open a new branch off `main`**, named `fix/<slug>`. Do NOT push straight to `main`.
