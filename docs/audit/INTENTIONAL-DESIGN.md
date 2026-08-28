@@ -257,6 +257,38 @@ iron-condor calibration table) is evidence first, gating second. The missing hal
 the graded outcome of the would-be commits this would unlock — the counterfactual needs real minute
 bars, not just a count of what was blocked.
 
+**The missing half, measured (2026-08-28).** `scripts/audit/g11-print-window-outcome.mjs` (pure
+classifier mirrored in `lib/print-window-eval.mjs`, 8 unit tests) pulls every CONFIRMED Benzinga
+structured-earnings row (importance≥4) over a real 4-week window (2026-08-02…08-27, 447 rows),
+classifies each with the same print-window logic, and — for every row the coarse gate over-blocks
+(`after_close`/`pre_open_landed`) — pulls REAL Polygon 1-minute RTH bars and measures realized
+intraday range%, against a same-day SPY/QQQ/IWM baseline.
+
+| | count |
+|---|---|
+| after_close | 192 |
+| pre_open_landed | 253 |
+| pre_open_pending | 0 |
+| intraday | 2 |
+| unknown | 0 |
+| **exemptible (would unblock)** | **445 / 447** |
+
+**Median realized RTH range: exemptible names 4.06% vs. SPY/QQQ/IWM baseline 0.73% — ~5.6x.** This
+is NOT a graded P&L backtest (that needs the full discovery+contract-pick+exit pipeline, deliberately
+not reimplemented here — see zerodte-sim.mjs for that instrument) — it answers the narrower question
+of whether an exemptible day still carries elevated realized vol despite having zero direct print-gap
+risk to a same-day 0DTE. It does, by a wide margin. **Caveat, stated plainly:** the baseline is index
+ETFs, not liquidity/cap-matched non-earnings single stocks, so part of the gap is ordinary
+single-name-vs-index vol rather than an earnings-specific effect — a matched single-stock control
+(same tickers, a non-earnings week) would sharpen this further and is the natural next step before
+any gate change is even drafted.
+
+**Verdict: the evidence argues against a naive "unblock all exemptible" change**, but does not
+settle whether SOME subset (e.g. `after_close` with a small confirmed expected-move, or a
+liquidity/cap floor) could be safely exempted — that needs the sharper control and, ultimately, a
+real graded backtest through the actual pipeline. No gate touched. This measurement only narrows what
+a future proposal would need to show.
+
 **Fail-closed posture is preserved in the classifier itself**: unknown time, projected date, or an
 unreadable date all classify as THREATENING. A projected date does not earn the after-close
 exemption, because that exemption rests entirely on knowing the print lands after the position is
