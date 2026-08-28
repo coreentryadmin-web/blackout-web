@@ -49,6 +49,12 @@ async function main() {
   await page.goto(`${BASE}/nighthawk?view=vector`, { waitUntil: "networkidle", timeout: 120_000 });
   await page.waitForTimeout(2000);
 
+  const closedBtn = page.getByRole("button", { name: /Closed/i });
+  if (await closedBtn.count()) {
+    await closedBtn.first().click();
+    await page.waitForTimeout(500);
+  }
+
   const apiJson = await page.evaluate(async (base) => {
     const r = await fetch(`${base}/api/market/vector/pick-closures/board`, { cache: "no-store" });
     return r.json();

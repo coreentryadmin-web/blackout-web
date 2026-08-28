@@ -48,11 +48,18 @@ export type VectorRankedPick = VectorContractPick & {
   rank: number;
   dte: number;
   evidence: VectorPickEvidenceSection[];
+  /** Desk-visible quality lane — whale + A-grade + strong rank. */
+  tier: VectorPickTier;
 };
 
+export type VectorPickTier = "elite" | "standard";
+
 const FLOW_WHALE = 500_000;
+const FLOW_MEGA = 2_000_000;
 const FLOW_CONFIRM = 200_000;
 const MIN_SHOW_SCORE = 52;
+/** HELIX whale anchors can surface with a lower internal rank bar — the print IS the signal. */
+const MIN_SHOW_SCORE_WHALE = 44;
 const DEFAULT_MAX_PICKS = 3;
 /** Deep pool ranked for live backfill when top slots go Don't buy. */
 export const VECTOR_CANDIDATE_POOL_SIZE = 8;
@@ -63,6 +70,32 @@ export type RankVectorPlayCandidatesOptions = {
   /** OCC symbols to omit — used after a pick invalidates so the next rank can surface. */
   excludeOccs?: readonly string[];
 };
+
+/** Minimum internal rank score required to surface a pick (whale role gets a lower bar). */
+export function minRankScoreToShow(role: string, flowPremiumAtStrike: number): number {
+  if (role === "flow-whale" && flowPremiumAtStrike >= FLOW_WHALE) return MIN_SHOW_SCORE_WHALE;
+  return MIN_SHOW_SCORE;
+}
+
+/** Elite = A-grade setup + HELIX whale or wall pin + strong contract rank. */
+export function classifyVectorPickTier(input: {
+  playGrade: VectorPlay["grade"];
+  playConviction: number;
+  role: string;
+  rankScore: number;
+  flowPremiumAtStrike: number;
+  atKeyLevel: boolean;
+}): VectorPickTier {
+  const whale = input.role === "flow-whale" && input.flowPremiumAtStrike >= FLOW_WHALE;
+  const megaWhale = input.flowPremiumAtStrike >= FLOW_MEGA;
+  const highGrade = input.playGrade === "A" && input.playConviction >= 68;
+  const strongRank = input.rankScore >= 78;
+
+  if (megaWhale && input.playGrade !== "C" && input.rankScore >= 70) return "elite";
+  if (highGrade && (whale || input.atKeyLevel) && strongRank) return "elite";
+  if (whale && input.rankScore >= 72 && input.playGrade !== "C") return "elite";
+  return "standard";
+}
 
 /** DTE windows searched independently — best contract per window, then ranked globally. */
 const DTE_WINDOWS: Array<{ id: string; minDte: number; maxDte: number }> = [
@@ -347,6 +380,11 @@ function rangeProximityDelta(
   return { delta: 0, reason: null };
 }
 
+function distPctAtTarget(strike: number, targetStrike: number, spot: number): number {
+  if (!(spot > 0)) return 1;
+  return Math.abs(strike - targetStrike) / spot;
+}
+
 function rankPick(
   ctx: VectorPlayPickContext,
   spec: CandidateSpec,
@@ -382,8 +420,12 @@ function rankPick(
   const flowAt = flowPremiumAtStrike(flows, contract.strike, contract.side);
   const flowDir = largestFlowPremium(flows, spec.direction);
   if (spec.role === "flow-whale" && flowAt >= FLOW_WHALE) {
-    score += 14;
+    score += 18;
     reasons.push(`HELIX whale print $${(flowAt / 1_000_000).toFixed(1)}M at this strike`);
+    if (flowAt >= FLOW_MEGA) {
+      score += 8;
+      reasons.push("Mega-whale flow ($2M+) — highest-conviction HELIX anchor");
+    }
   } else if (flowAt >= FLOW_CONFIRM) {
     score += 8;
     reasons.push(`HELIX flow $${Math.round(flowAt / 1000)}K confirms this strike`);
@@ -533,16 +575,29 @@ export function rankVectorPlayCandidates(
   const seen = new Set<string>();
   const today = todayEtYmd();
   const playConviction = ctx.play.conviction;
+  const flows = ctx.platformInputs?.sessionFlows;
+  const spot = ctx.spot;
 
   for (const row of raw) {
     const key = pickKey(row.contract);
     if (seen.has(key)) continue;
-    if (row.rankScore < MIN_SHOW_SCORE) continue;
+    const flowAt = flowPremiumAtStrike(flows, row.contract.strike, row.contract.side);
+    const atKeyLevel = distPctAtTarget(row.contract.strike, row.spec.targetStrike, spot) <= 0.004;
+    const minScore = minRankScoreToShow(row.spec.role, flowAt);
+    if (row.rankScore < minScore) continue;
     seen.add(key);
     const dte = dteOn(row.contract.expiry, today);
     const quotes = chainQuotesForContract(chain, row.contract);
     const occ = root ? vectorPickOcc(root, row.contract.expiry, row.contract.side, row.contract.strike) : null;
     if (occ && excludeOccs.has(occ.toUpperCase())) continue;
+    const tier = classifyVectorPickTier({
+      playGrade: ctx.play.grade,
+      playConviction: playConviction,
+      role: row.spec.role,
+      rankScore: row.rankScore,
+      flowPremiumAtStrike: flowAt,
+      atKeyLevel,
+    });
     out.push({
       side: row.contract.side,
       strike: row.contract.strike,
@@ -559,6 +614,7 @@ export function rankVectorPlayCandidates(
       role: row.spec.role,
       rank: out.length + 1,
       dte,
+      tier,
       evidence: buildVectorPickEvidence({
         side: row.contract.side,
         strike: row.contract.strike,

@@ -463,6 +463,18 @@ export const CRON_JOBS: CronJobDefinition[] = [
       "Snapshot the COMPLETE Vector desk state (regime/walls/flip/magnet/max-pain/expected-move/ladder/heatmap/flow/beads/VEX/dark-pool/technicals/play) per universe ticker × DTE horizon into Redis, so Largo-BIE serves current Vector state for any stock/horizon cache-only without a per-query fan-out",
   },
   {
+    key: "vector-pick-sweep",
+    name: "Vector Pick Universe Sweep",
+    kind: "http",
+    path: "/api/cron/vector-pick-sweep",
+    schedule_label: "~Every 2 min (market hours)",
+    stale_after_min: 8,
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Server-side sweep of every Vector universe ticker: buildVectorPlay + rank contract picks + live quote eval → persist leaders (winners lane) and Don't buy closures without requiring /vector open",
+  },
+  {
     key: "bie-full-state-snapshot",
     name: "BIE Full-State Snapshot",
     kind: "http",

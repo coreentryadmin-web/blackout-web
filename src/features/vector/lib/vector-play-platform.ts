@@ -126,8 +126,9 @@ export function platformConvictionDelta(
   else if (ctx.flowBias === "bear" && bias === "short") delta += 8;
   else if (ctx.flowBias === "bull" && bias === "short") delta -= 7;
   else if (ctx.flowBias === "bear" && bias === "long") delta -= 7;
-  if (ctx.flowConfirmPremium >= 1_000_000) delta += 4;
-  else if (ctx.flowConfirmPremium >= 500_000) delta += 2;
+  if (ctx.flowConfirmPremium >= 2_000_000) delta += 10;
+  else if (ctx.flowConfirmPremium >= 1_000_000) delta += 6;
+  else if (ctx.flowConfirmPremium >= 500_000) delta += 3;
   if (ctx.darkPoolNearRef) delta += bias === "range" ? 3 : 4;
   return delta;
 }

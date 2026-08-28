@@ -1035,6 +1035,8 @@ export type VectorContractPick = {
   actionReason?: string;
   premiumPctFromEntry?: number | null;
   setupInvalidated?: boolean;
+  /** Elite whale / A-grade wall pins — surfaced in PLYS + Night Hawk winners board. */
+  tier?: "elite" | "standard";
   /** True once the live-quote poll (use-vector-pick-live-monitor.ts) has gone LIVE_QUOTES_STALE_MS
    *  without a successful read — the bid/ask/greeks/actionStatus above are frozen at their last
    *  known-good value, not a live read, and the UI should say so rather than presenting them as

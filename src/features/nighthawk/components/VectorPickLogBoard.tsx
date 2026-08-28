@@ -15,11 +15,17 @@ import {
   premiumPctTone,
   sortVectorClosureRows,
 } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
-import type { VectorPickClosuresResponse } from "@/features/nighthawk/components/VectorPickLogBoard.types";
+import type {
+  VectorClosurePlay,
+  VectorLeaderPlay,
+  VectorPickBoardResponse,
+} from "@/features/nighthawk/components/VectorPickLogBoard.types";
 
-async function fetchVectorClosures(url: string): Promise<VectorPickClosuresResponse> {
+type BoardSection = "winners" | "leaders" | "closed";
+
+async function fetchVectorBoard(url: string): Promise<VectorPickBoardResponse> {
   const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`vector closures fetch failed: ${res.status}`);
+  if (!res.ok) throw new Error(`vector board fetch failed: ${res.status}`);
   return res.json();
 }
 
@@ -32,6 +38,85 @@ function fmtTimestamp(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return etDateTimeShort(d) ?? "—";
+}
+
+function leaderPct(row: VectorLeaderPlay): number | null {
+  return row.premium_pct_from_entry ?? row.peak_premium_pct;
+}
+
+function statusBadge(status: string, isWinner: boolean) {
+  if (isWinner) return <Badge tone="bull">Winner</Badge>;
+  if (status === "still_buy") return <Badge tone="bull">Still buy</Badge>;
+  if (status === "caution") return <Badge tone="accent">Caution</Badge>;
+  return <Badge tone="bear">Closed</Badge>;
+}
+
+function LeaderCard({ row }: { row: VectorLeaderPlay }) {
+  const pct = leaderPct(row);
+  return (
+    <Panel className="vector-leader-row shrink-0 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-bold text-white">{row.ticker}</span>
+            {statusBadge(row.action_status, row.is_winner)}
+            {row.tier === "elite" ? <Badge tone="accent">Elite</Badge> : null}
+            {row.setup_invalidated ? <Badge tone="accent">Thesis stressed</Badge> : null}
+          </div>
+          <p className="mt-1 text-sm font-bold text-sky-100">
+            {row.contract.label ?? `${row.contract.strike}${row.contract.side === "call" ? "C" : "P"}`}
+            {row.rank != null ? ` · rank #${row.rank}` : ""}
+          </p>
+          <p className="mt-1 text-xs leading-snug text-sky-200">{row.action_reason}</p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1 text-right">
+          <div className="text-xs text-sky-200">{fmtTimestamp(row.updated_at)}</div>
+          <Badge tone={premiumPctTone(pct)} size="md">
+            {formatPremiumPct(pct) === "—" ? "No %" : `${formatPremiumPct(pct)} premium`}
+          </Badge>
+          <div className="text-xs font-bold text-white">
+            {fmtPrice(row.entry_mid)} → {fmtPrice(row.live_mid)}
+          </div>
+          {row.peak_premium_pct != null &&
+          row.premium_pct_from_entry != null &&
+          row.peak_premium_pct > row.premium_pct_from_entry ? (
+            <div className="text-[11px] font-bold text-sky-300">Peak {formatPremiumPct(row.peak_premium_pct)}</div>
+          ) : null}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function ClosureCard({ row }: { row: VectorClosurePlay }) {
+  const pct = row.premium_pct_from_entry;
+  return (
+    <Panel className="vector-closure-row shrink-0 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-bold text-white">{row.ticker}</span>
+            <Badge tone="bear">Don&apos;t buy</Badge>
+            {row.setup_invalidated ? <Badge tone="accent">Setup invalidated</Badge> : null}
+          </div>
+          <p className="mt-1 text-sm font-bold text-sky-100">
+            {row.contract.label ?? `${row.contract.strike}${row.contract.side === "call" ? "C" : "P"}`}
+            {row.rank != null ? ` · rank #${row.rank}` : ""}
+          </p>
+          <p className="mt-1 text-xs leading-snug text-sky-200">{row.close_reason}</p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1 text-right">
+          <div className="text-xs text-sky-200">{fmtTimestamp(row.closed_at)}</div>
+          <Badge tone={premiumPctTone(pct)} size="md">
+            {formatPremiumPct(pct) === "—" ? "No %" : `${formatPremiumPct(pct)} premium`}
+          </Badge>
+          <div className="text-xs font-bold text-white">
+            {fmtPrice(row.entry_mid)} → {fmtPrice(row.close_mid)}
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
 }
 
 const REASON_OPTIONS: { id: VectorClosureReasonFilter; label: string }[] = [
@@ -51,14 +136,14 @@ const SORT_OPTIONS: { id: VectorClosureSort; label: string }[] = [
 ];
 
 /**
- * Night Hawk Vector tab — closed (Don't buy) Vector contract picks for system analysis.
- * Standalone board (same pattern as BangerBoard), not part of the horizon ledger.
+ * Night Hawk Vector tab — universe sweep winners/leaders + closed contract picks.
  */
 export function VectorPickLogBoard() {
   const todaySession = etSessionDate(Date.now()) ?? "";
   const [sessionFilter, setSessionFilter] = useState<"today" | "all">("today");
+  const [section, setSection] = useState<BoardSection>("winners");
   const [reasonFilter, setReasonFilter] = useState<VectorClosureReasonFilter>("all");
-  const [sort, setSort] = useState<VectorClosureSort>("newest");
+  const [sort, setSort] = useState<VectorClosureSort>("pct_desc");
   const [tickerQuery, setTickerQuery] = useState("");
 
   const apiUrl =
@@ -66,13 +151,15 @@ export function VectorPickLogBoard() {
       ? `/api/market/vector/pick-closures/board?limit=500&session_date=${todaySession}`
       : "/api/market/vector/pick-closures/board?limit=500";
 
-  const { data, error, isLoading } = useSWR<VectorPickClosuresResponse>(apiUrl, fetchVectorClosures, {
+  const { data, error, isLoading } = useSWR<VectorPickBoardResponse>(apiUrl, fetchVectorBoard, {
     refreshInterval: 30_000,
   });
 
+  const winners = data?.winners ?? [];
+  const leaders = data?.leaders ?? [];
   const closed = data?.closed ?? [];
 
-  const visible = useMemo(() => {
+  const filteredClosed = useMemo(() => {
     const filtered = filterVectorClosureRows(closed, {
       sessionDate: sessionFilter === "today" ? todaySession : null,
       reason: reasonFilter,
@@ -80,6 +167,24 @@ export function VectorPickLogBoard() {
     });
     return sortVectorClosureRows(filtered, sort);
   }, [closed, sessionFilter, todaySession, reasonFilter, tickerQuery, sort]);
+
+  const filteredLeaders = useMemo(() => {
+    const q = tickerQuery.trim().toUpperCase();
+    if (!q) return leaders;
+    return leaders.filter((r) => r.ticker.toUpperCase().includes(q));
+  }, [leaders, tickerQuery]);
+
+  const filteredWinners = useMemo(() => {
+    const q = tickerQuery.trim().toUpperCase();
+    if (!q) return winners;
+    return winners.filter((r) => r.ticker.toUpperCase().includes(q));
+  }, [winners, tickerQuery]);
+
+  const visibleRows = useMemo(() => {
+    if (section === "winners") return filteredWinners;
+    if (section === "leaders") return filteredLeaders;
+    return filteredClosed;
+  }, [section, filteredWinners, filteredLeaders, filteredClosed]);
 
   if (isLoading && !data) {
     return (
@@ -93,20 +198,13 @@ export function VectorPickLogBoard() {
   if (error || data?.degraded) {
     return (
       <EmptyState
-        title="Vector closures unavailable"
-        description="The analysis log could not load right now — it will retry automatically."
+        title="Vector board unavailable"
+        description="The Vector leaders log could not load right now — it will retry automatically."
       />
     );
   }
 
-  if (!closed.length) {
-    return (
-      <EmptyState
-        title="No closed Vector picks yet"
-        description="When a Vector contract pick goes Don't buy (setup invalidated, premium chase, or desk cap), it is logged here while the Vector desk live-evaluates that ticker."
-      />
-    );
-  }
+  const coverage = data?.coverage;
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-3">
@@ -114,17 +212,41 @@ export function VectorPickLogBoard() {
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="sky" size="md" dot>
-              Vector pick log
+              Vector plays
             </Badge>
-            <span className="text-xs font-bold text-sky-100">
-              Showing {visible.length} of {closed.length} closed picks
-              {sessionFilter === "today" && todaySession ? ` · ${todaySession}` : ""}
-            </span>
+            {coverage ? (
+              <span className="text-xs font-bold text-sky-100">
+                {coverage.winners} winner{coverage.winners === 1 ? "" : "s"} · {coverage.leaders} live ·{" "}
+                {coverage.closed} closed
+              </span>
+            ) : null}
           </div>
           <p className="text-xs leading-snug text-sky-200">
             {data?.note ??
-              "Premium % is option mid vs pick entry — not Night Hawk 0DTE trade P&L. Rows log the first Don't buy per contract while Vector live quotes run."}
+              "Premium % is option mid vs pick entry. Leaders come from the server universe sweep every ~2 min RTH."}
           </p>
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ["winners", `Winners (${winners.length})`],
+                ["leaders", `Live (${leaders.length})`],
+                ["closed", `Closed (${closed.length})`],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={
+                  section === id
+                    ? "rounded border border-cyan-400/60 bg-cyan-400/10 px-2 py-1 text-xs font-bold text-white"
+                    : "rounded border border-white/10 px-2 py-1 text-xs font-bold text-sky-200"
+                }
+                onClick={() => setSection(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="flex flex-wrap items-end gap-2">
             <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wide text-sky-300">
               Session
@@ -137,40 +259,44 @@ export function VectorPickLogBoard() {
                 <option value="all">All sessions</option>
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wide text-sky-300">
-              Reason
-              <select
-                value={reasonFilter}
-                onChange={(e) => setReasonFilter(e.target.value as VectorClosureReasonFilter)}
-                className="min-h-9 rounded-lg border border-white/10 bg-black/40 px-2 text-sm font-bold normal-case text-white"
-              >
-                {REASON_OPTIONS.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wide text-sky-300">
-              Sort
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as VectorClosureSort)}
-                className="min-h-9 rounded-lg border border-white/10 bg-black/40 px-2 text-sm font-bold normal-case text-white"
-              >
-                {SORT_OPTIONS.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {section === "closed" ? (
+              <>
+                <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wide text-sky-300">
+                  Reason
+                  <select
+                    value={reasonFilter}
+                    onChange={(e) => setReasonFilter(e.target.value as VectorClosureReasonFilter)}
+                    className="min-h-9 rounded-lg border border-white/10 bg-black/40 px-2 text-sm font-bold normal-case text-white"
+                  >
+                    {REASON_OPTIONS.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wide text-sky-300">
+                  Sort
+                  <select
+                    value={sort}
+                    onChange={(e) => setSort(e.target.value as VectorClosureSort)}
+                    className="min-h-9 rounded-lg border border-white/10 bg-black/40 px-2 text-sm font-bold normal-case text-white"
+                  >
+                    {SORT_OPTIONS.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : null}
             <label className="flex min-w-[7rem] flex-1 flex-col gap-1 text-[11px] font-bold uppercase tracking-wide text-sky-300">
               Ticker
               <input
                 value={tickerQuery}
                 onChange={(e) => setTickerQuery(e.target.value.toUpperCase())}
-                placeholder="e.g. SPX"
+                placeholder="e.g. INTC"
                 className="min-h-9 rounded-lg border border-white/10 bg-black/40 px-2 text-sm font-bold normal-case text-white placeholder:text-sky-300/50"
               />
             </label>
@@ -179,45 +305,31 @@ export function VectorPickLogBoard() {
       </Panel>
 
       <div className="nh-deck-rows min-h-0 flex-1 space-y-2 overflow-y-auto pb-4">
-        {visible.length === 0 ? (
+        {!visibleRows.length ? (
           <EmptyState
-            title="No rows match filters"
-            description="Try All sessions or clear the ticker filter."
+            title={
+              section === "winners"
+                ? "No winning Vector picks yet"
+                : section === "leaders"
+                  ? "No live Vector leaders"
+                  : "No closed Vector picks match"
+            }
+            description={
+              section === "winners"
+                ? "Winners are +50% vs pick (or peak) from the universe sweep — INTC-class runners land here after deploy."
+                : section === "leaders"
+                  ? "Every Vector universe ticker is evaluated every ~2 min during RTH."
+                  : "Try All sessions or clear filters."
+            }
           />
         ) : (
-          visible.map((row) => {
-            const pct = row.premium_pct_from_entry;
-            const pctLabel = formatPremiumPct(pct);
-            return (
-              <Panel key={row.id} className="vector-closure-row shrink-0 p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-bold text-white">{row.ticker}</span>
-                      <Badge tone="bear">Closed</Badge>
-                      {row.setup_invalidated ? <Badge tone="accent">Setup invalidated</Badge> : null}
-                    </div>
-                    <p className="mt-1 text-sm font-bold text-sky-100">
-                      {row.contract.label ??
-                        `${row.contract.strike}${row.contract.side === "call" ? "C" : "P"}`}
-                      {row.rank != null ? ` · rank #${row.rank}` : ""}
-                    </p>
-                    <p className="mt-1 text-xs leading-snug text-sky-200">{row.close_reason}</p>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-                    <div className="text-xs text-sky-200">{fmtTimestamp(row.closed_at)}</div>
-                    <Badge tone={premiumPctTone(pct)} size="md">
-                      {pctLabel === "—" ? "No %" : `${pctLabel} premium`}
-                    </Badge>
-                    <div className="text-xs font-bold text-white">
-                      {fmtPrice(row.entry_mid)} → {fmtPrice(row.close_mid)}
-                    </div>
-                    <div className="text-[11px] font-bold text-sky-300">vs pick entry mid</div>
-                  </div>
-                </div>
-              </Panel>
-            );
-          })
+          visibleRows.map((row) =>
+            section === "closed" ? (
+              <ClosureCard key={`c-${row.id}`} row={row as VectorClosurePlay} />
+            ) : (
+              <LeaderCard key={`l-${row.id}`} row={row as VectorLeaderPlay} />
+            )
+          )
         )}
       </div>
     </div>

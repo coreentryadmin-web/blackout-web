@@ -1723,6 +1723,42 @@ async function runMigrations(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_vector_pick_closures_session
     ON vector_pick_closures(session_date DESC, ticker);
   `);
+  // Vector pick leaders — server sweep of ranked contract picks + live P&L (Night Hawk winners lane).
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS vector_pick_leaders (
+      id BIGSERIAL PRIMARY KEY,
+      leader_key TEXT NOT NULL,
+      session_date DATE NOT NULL,
+      ticker TEXT NOT NULL,
+      occ TEXT NOT NULL,
+      side TEXT NOT NULL,
+      strike NUMERIC NOT NULL,
+      expiry DATE NOT NULL,
+      rank INT,
+      label TEXT,
+      role TEXT,
+      entry_mid NUMERIC,
+      live_mid NUMERIC,
+      premium_pct_from_entry NUMERIC,
+      peak_premium_pct NUMERIC,
+      action_status TEXT NOT NULL,
+      action_reason TEXT NOT NULL,
+      setup_invalidated BOOLEAN NOT NULL DEFAULT FALSE,
+      spot NUMERIC,
+      vector_play JSONB,
+      pick_context JSONB,
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await p.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_vector_pick_leaders_key
+    ON vector_pick_leaders(leader_key);
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_vector_pick_leaders_session_pct
+    ON vector_pick_leaders(session_date DESC, premium_pct_from_entry DESC NULLS LAST);
+  `);
   await p.query(`
     ALTER TABLE largo_messages
     ADD COLUMN IF NOT EXISTS tool_results JSONB;

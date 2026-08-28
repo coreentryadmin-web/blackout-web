@@ -43,6 +43,8 @@ export type VectorContractPick = {
   actionReason?: string;
   premiumPctFromEntry?: number | null;
   setupInvalidated?: boolean;
+  /** Elite whale / A-grade wall pins — surfaced in PLYS + Night Hawk winners board. */
+  tier?: "elite" | "standard";
 };
 
 export type { VectorPlayPickContext, VectorRankedPick };
