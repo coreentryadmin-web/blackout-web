@@ -192,7 +192,7 @@ const OI_QUALITY_SATURATION = 500;
  *  "worth" when tie-breaking near-ATM candidates. Deliberately small — a strike 1+ points closer to
  *  spot still wins regardless of liquidity; this only decides between strikes that are ALREADY
  *  close (the ATM pick stays ATM-first, quality only breaks genuine near-ties). */
-const LIQUIDITY_TIE_BREAK_DOLLARS_PER_POINT = 0.15;
+export const LIQUIDITY_TIE_BREAK_DOLLARS_PER_POINT = 0.15;
 
 /**
  * NH-R5 fix: `sideHasLiquidity` was a pure binary admission gate — every row that cleared it
