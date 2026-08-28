@@ -1105,6 +1105,7 @@ export async function fetchVectorPickLiveQuotes(params: {
   callWall?: number | null;
   putWall?: number | null;
   gammaFlip?: number | null;
+  bieBucket?: string | null;
   picks: Array<{
     occ: string;
     side: "call" | "put";
@@ -1136,6 +1137,31 @@ export async function fetchVectorPickLiveQuotes(params: {
   asOf: string;
 }> {
   return marketFetch(`/vector/contract-picks/live`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export type VectorPlayBieResponse = {
+  bucketKey: string;
+  bie: { favPct: number; samples: number; windowDays: number } | null;
+  insufficientSample: boolean;
+};
+
+/** Historical win-rate grounding for the current play bucket (vector_pick_closures). */
+export async function fetchVectorPlayBie(params: {
+  ticker: string;
+  horizon: string;
+  timeframeMin: number;
+  spot: number;
+  regime: { posture: string };
+  gexWalls?: unknown;
+  gammaFlip?: number | null;
+  magnet?: unknown;
+  proximity?: unknown;
+  technicals?: unknown;
+}): Promise<VectorPlayBieResponse> {
+  return marketFetch<VectorPlayBieResponse>(`/vector/play-bie`, {
     method: "POST",
     body: JSON.stringify(params),
   });

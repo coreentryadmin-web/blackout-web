@@ -41,6 +41,7 @@ import { vectorCrosshairStatesEqual } from "@/features/vector/lib/vector-crossha
 import { useVectorChartDrawings } from "@/features/vector/lib/use-vector-chart-drawings";
 import {
   createVectorEventSource,
+  fetchVectorPlayBie,
   type FlowAlert,
   type VectorDarkPoolLevel,
   type VectorWallLevel,
@@ -144,7 +145,7 @@ import { buildFlowMarkers, DEFAULT_FLOW_MAX_MARKERS, type FlowPrint } from "@/fe
 import { confluenceZones, confluenceCallouts, topConfluenceBand, type ConfluenceLevel } from "@/features/vector/lib/vector-confluence";
 import { summarizeTechnicals, technicalsCalloutLines, type TechnicalsLine } from "@/features/vector/lib/vector-technicals";
 import { playTechnicalsFromSummary } from "@/features/vector/lib/vector-server-technicals-core";
-import { buildVectorPlay, type VectorPlay, type VectorPlayEmit, type PlayTechnicals } from "@/features/vector/lib/vector-play-engine";
+import { buildVectorPlay, type VectorPlay, type VectorPlayEmit, type PlayTechnicals, type PlayBieContext, vectorPlayBieBucketKey } from "@/features/vector/lib/vector-play-engine";
 import { expectedMoveCallouts, type ExpectedMove } from "@/features/vector/lib/vector-expected-move";
 import { evaluateAlerts, type AlertRule, type AlertState, type FiredAlert } from "@/features/vector/lib/vector-alerts";
 import { sessionHodLod } from "@/features/vector/lib/vector-key-levels";
@@ -1680,6 +1681,10 @@ export function VectorChart({
    *  connection, a dead upstream feed) instead of scoring it identically to a fresh tick. Seeded to
    *  "now" so a play built before the first live tick reads as fresh, not infinitely stale. */
   const dataReceivedAtMsRef = useRef<number>(Date.now());
+  /** BIE historical grounding for the current play bucket — fetched async, applied on next emitPlay. */
+  const bieContextRef = useRef<PlayBieContext | null>(null);
+  const bieBucketRef = useRef<string | null>(null);
+  const bieFetchGenRef = useRef(0);
   const timelineRef = useRef<number[]>([]);
   const connRef = useRef<ReturnType<typeof createVectorEventSource> | null>(null);
   const replayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -3529,7 +3534,7 @@ export function VectorChart({
     wallProximityStateRef.current = proximity;
     const zones = spot && spot > 0 ? confluenceZones(gatherConfluenceLevels(spot), spot) : [];
     const integrity = scoreTopWalls(walls, wallHistoryRef.current);
-    const play = buildVectorPlay({
+    const playInput = {
       ticker,
       horizon: dteHorizonRef.current,
       timeframeMin: timeframeRef.current,
@@ -3549,7 +3554,37 @@ export function VectorChart({
         darkPoolLevels: darkPoolRef.current,
       },
       dataAgeMs: Date.now() - dataReceivedAtMsRef.current,
-    });
+      bie: bieContextRef.current,
+    };
+    const bucketKey = vectorPlayBieBucketKey(playInput);
+    if (spot != null && spot > 0 && bucketKey !== bieBucketRef.current) {
+      bieBucketRef.current = bucketKey;
+      bieContextRef.current = null;
+      const gen = ++bieFetchGenRef.current;
+      void fetchVectorPlayBie({
+        ticker,
+        horizon: dteHorizonRef.current,
+        timeframeMin: timeframeRef.current,
+        spot,
+        regime: { posture: regime.posture },
+        gexWalls: walls,
+        gammaFlip: flip,
+        magnet,
+        proximity,
+        technicals: technicalsForPlayRef.current,
+      })
+        .then((res) => {
+          if (bieFetchGenRef.current !== gen) return;
+          bieContextRef.current = res.bie;
+          lastPlayKeyRef.current = "";
+          emitPlay();
+        })
+        .catch(() => {
+          if (bieFetchGenRef.current !== gen) return;
+          bieContextRef.current = null;
+        });
+    }
+    const play = buildVectorPlay(playInput);
     const key = play
       ? `${play.headline}|${play.conviction}|${play.grade}|${play.entryZone ?? ""}`
       : "none";
@@ -3570,6 +3605,7 @@ export function VectorChart({
       technicals: technicalsForPlayRef.current,
       confluenceZones: zones,
       darkPoolLevels: darkPoolRef.current ?? [],
+      bieBucket: bucketKey,
     });
   }, [ticker, liveGexWalls, liveGammaFlip, gatherConfluenceLevels]);
 

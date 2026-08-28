@@ -19,7 +19,8 @@ export function useVectorContractPicks(
   sessionFlows: readonly FlowAlert[],
   liveSession: boolean,
   paused = false,
-  excludeOccs: readonly string[] = []
+  excludeOccs: readonly string[] = [],
+  refetchToken = 0
 ): { picks: VectorContractPick[]; loading: boolean } {
   const [picks, setPicks] = useState<VectorContractPick[]>([]);
   const [loading, setLoading] = useState(false);
@@ -89,7 +90,7 @@ export function useVectorContractPicks(
       clearTimeout(debounce);
       if (interval) clearInterval(interval);
     };
-  }, [ticker, play, bias, contextKey, liveSession, emit, sessionFlows, paused, excludeOccs]);
+  }, [ticker, play, bias, contextKey, liveSession, emit, sessionFlows, paused, excludeOccs, refetchToken]);
 
   return { picks, loading };
 }

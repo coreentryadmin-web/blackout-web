@@ -35,7 +35,9 @@ export function useVectorActionablePicks(
 ): VectorActionablePicks {
   const [excludeOccs, setExcludeOccs] = useState<string[]>([]);
   const [archivedClosed, setArchivedClosed] = useState<VectorContractPick[]>([]);
+  const [poolRefetchToken, setPoolRefetchToken] = useState(0);
   const archivedOccsRef = useRef<Set<string>>(new Set());
+  const poolExhaustionSigRef = useRef<string>("");
 
   const play = emit?.play ?? null;
   const bias = play?.bias ?? null;
@@ -53,7 +55,8 @@ export function useVectorActionablePicks(
     sessionFlows,
     liveSession,
     paused,
-    excludeOccs
+    excludeOccs,
+    poolRefetchToken
   );
 
   const monitored = useVectorPickLiveMonitor(ticker, emit, pool, liveSession, paused);
@@ -74,6 +77,22 @@ export function useVectorActionablePicks(
       }
     }
   }, [monitored, archiveClosed, liveSession, paused]);
+
+  useEffect(() => {
+    if (paused || !liveSession || loading || !pool.length) return;
+    const activeCount = monitored.filter((p) => p.actionStatus !== "dont_buy").length;
+    const poolOccs = pool.map((p) => p.occ).filter(Boolean).join(",");
+    const sig = `${excludeOccs.join(",")}|${poolOccs}`;
+    if (
+      activeCount < VECTOR_PICK_MAX_ACTIVE &&
+      excludeOccs.length >= pool.length &&
+      pool.every((p) => p.occ && excludeOccs.includes(p.occ)) &&
+      poolExhaustionSigRef.current !== sig
+    ) {
+      poolExhaustionSigRef.current = sig;
+      setPoolRefetchToken((t) => t + 1);
+    }
+  }, [monitored, pool, excludeOccs, loading, liveSession, paused]);
 
   return useMemo(() => {
     const partitioned = partitionVectorPicksByLiveStatus(monitored, VECTOR_PICK_MAX_ACTIVE);

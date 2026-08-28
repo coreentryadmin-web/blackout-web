@@ -110,6 +110,7 @@ export function useVectorPickLiveMonitor(
         callWall: emit.callWall,
         putWall: emit.putWall,
         gammaFlip: emit.gammaFlip,
+        bieBucket: emit.bieBucket ?? null,
         picks: occPicks.map((p) => ({
           occ: p.occ!,
           side: p.side,

@@ -202,8 +202,14 @@ export async function POST(req: NextRequest) {
           thesis: play.thesis,
           invalidation: play.invalidation,
           style: play.style,
+          bie_bucket:
+            typeof body.bieBucket === "string"
+              ? body.bieBucket
+              : null,
         }
       : null;
+
+  const bieBucketFromBody = typeof body.bieBucket === "string" ? body.bieBucket : null;
 
   void (async () => {
     if (!sessionDate) return;
@@ -238,6 +244,7 @@ export async function POST(req: NextRequest) {
             premium: row.pick.premium,
             confidence: row.pick.confidence,
             caveat: row.pick.caveat,
+            bie_bucket: bieBucketFromBody,
           },
         });
       } catch (err) {
