@@ -120,9 +120,10 @@ export async function bangerBoardForLargo(limit = 40) {
       discovery_gain: row.discovery_gain,
     });
     const nowMs = Date.now();
-    // Cap open at 12 rows to match closed, preventing truncation under model's transport cap (16k chars).
+    // Cap open at 6 rows to stay well under model's transport cap (16k chars).
+    // 12-row cap still caused TRUNCATED in production 2026-08-28; 6 rows as conservative fallback.
     // `open.length` counts qualifying rows; `open_truncated` marks when we capped them.
-    const openDisplayLimit = 12;
+    const openDisplayLimit = 6;
     const openShown = Math.min(open.length, openDisplayLimit);
     const openTruncated = open.length > openDisplayLimit;
     return roundFloats({
@@ -141,12 +142,12 @@ export async function bangerBoardForLargo(limit = 40) {
       // page-limited number as a total.
       open_count: trueOpenCount ?? open.length,
       open_count_exact: trueOpenCount != null,
-      /** How many open rows this response actually carries. Capped at 12 to stay under model transport cap. */
+      /** How many open rows this response actually carries. Capped at 6 to stay under model transport cap. */
       open_shown: openShown,
       open_truncated: openTruncated,
       // Combined truncation: either the true count exceeds page, or we capped the serialized display.
       truncated: (trueOpenCount != null && trueOpenCount > open.length) || openTruncated,
-      // `closed` is capped at 12 rows. The open side now also caps at 12 and states `open_truncated`
+      // `closed` is capped at 12 rows. The open side now caps at 6 and states `open_truncated`
       // so the model cannot mistake a page for a total; the closed side said nothing, and
       // `closed_count` is itself page-limited — it counts the closed rows among the most recent
       // `limit` of ALL statuses, not every closed row there is. Both facts are now stated.
