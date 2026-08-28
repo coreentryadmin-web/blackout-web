@@ -104,10 +104,6 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
         className="ios-native-desk-segment mb-3 shrink-0"
         segments={NIGHTHAWK_VIEWS.map((v) => ({ id: v, label: NIGHTHAWK_VIEW_META[v].label }))}
       />
-      {!nativeShell ? (
-        <p className="mb-3 shrink-0 text-sm font-bold leading-snug text-sky-100">{NIGHTHAWK_VIEW_META[view].blurb}</p>
-      ) : null}
-
       <div
         className={clsx(
           "nighthawk-single-view flex w-full max-w-none flex-1 flex-col",

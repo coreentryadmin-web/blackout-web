@@ -45,9 +45,12 @@ test("Vector route — no DeskShell double offset", () => {
   assert.match(page, /VectorPageClient/);
 });
 
-test("NightHawkFeed hides view blurb on native shell", () => {
+test("NightHawkFeed still adapts the view segment control for native shell (blurb removed entirely, not just hidden natively)", () => {
   const src = readFileSync(join(root, "src/features/nighthawk/components/NightHawkFeed.tsx"), "utf8");
-  assert.match(src, /!nativeShell/);
+  // The per-view descriptive blurb paragraph (NIGHTHAWK_VIEW_META[view].blurb) was removed
+  // entirely from the page — not conditionally hidden on native shell — per the 2026-08-28
+  // page-declutter direction (see NighthawkPageShell.tsx's own comment on the same change).
+  assert.doesNotMatch(src, /NIGHTHAWK_VIEW_META\[view\]\.blurb/);
   assert.match(src, /variant=\{nativeShell \? "compact"/);
 });
 
