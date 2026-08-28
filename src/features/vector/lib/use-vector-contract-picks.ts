@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchVectorContractPicks, type VectorContractPick } from "@/lib/api";
 import type { VectorPlayEmit } from "./vector-play-engine";
+import { vectorContractPickFetchKey } from "./vector-pick-context-key";
 import type { FlowAlert } from "@/lib/api";
 
 const REFRESH_MS = 45_000;
@@ -26,9 +27,7 @@ export function useVectorContractPicks(
 
   const play = emit?.play ?? null;
   const bias = play?.bias ?? null;
-  const contextKey = emit
-    ? `${emit.spot}|${emit.callWall}|${emit.putWall}|${play?.conviction}|${play?.headline}|${sessionFlows.length}|${excludeOccs.join(",")}`
-    : "";
+  const contextKey = vectorContractPickFetchKey(emit, sessionFlows.length, excludeOccs);
 
   useEffect(() => {
     if (paused) {

@@ -11,6 +11,7 @@ import {
 } from "./vector-pick-partition";
 import { useVectorContractPicks } from "./use-vector-contract-picks";
 import { useVectorPickLiveMonitor } from "./use-vector-pick-live-monitor";
+import { vectorPickArchiveResetKey } from "./vector-pick-context-key";
 
 export type VectorActionablePicks = {
   active: VectorContractPick[];
@@ -38,9 +39,7 @@ export function useVectorActionablePicks(
 
   const play = emit?.play ?? null;
   const bias = play?.bias ?? null;
-  const contextKey = emit
-    ? `${emit.spot}|${emit.callWall}|${emit.putWall}|${play?.conviction}|${play?.headline}|${sessionFlows.length}|${bias}`
-    : "";
+  const contextKey = vectorPickArchiveResetKey(emit, sessionFlows.length, bias);
 
   useEffect(() => {
     setExcludeOccs([]);
