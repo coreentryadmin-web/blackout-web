@@ -97,13 +97,16 @@ export function entryCortexScoreOf(entryContext: Record<string, unknown> | null)
 }
 
 /**
- * Live exit-mode selector — the CONFIG flag lives in the IO shell so the pure engine
- * (exit-engine.ts) never reads an env or a clock. Defaults to the shipped ratchet;
- * `ZERODTE_EXIT_MODE=trim_scale` flips the board to the E5 ⅓@+25% / ⅓@+50% / run
- * scale-out for an operator A/B. DEFAULT-OFF: unset ⇒ ratchet ⇒ live behavior is
- * byte-for-byte unchanged (this is the "keep the old ratchet behind a flag" the change
- * requires). The trim graduates on the live-ledger grader — this env is the operator's
- * post-sign-off switch, not an auto-flip.
+ * Legacy/unpinned-row exit-mode selector — superseded by resolveExitModeForTier() (the E5
+ * graduation) for every fresh commit; this one is now only a fallback for rows with no
+ * exit_policy_at_commit pin (readFrozenExitMode returned null). CORRECTED 2026-08-28 (this
+ * comment was stale): DEFAULT_EXIT_MODE (exit-engine.ts) is "trim_scale", not "ratchet" —
+ * unset/empty/`ZERODTE_EXIT_MODE=ratchet`/any other token all resolve to the default here
+ * (only an exact "trim_scale" is recognized, and it's now a no-op since that's the
+ * default) — this legacy fallback does NOT honor a "ratchet" override the way
+ * resolveExitModeForTier() does; that's deliberate and tested (see exit-sync.test.ts). The
+ * CONFIG flag lives in the IO shell so the pure engine (exit-engine.ts) never reads an env
+ * or a clock.
  */
 export function resolveExitMode(env: NodeJS.ProcessEnv = process.env): ZeroDteExitMode {
   return env.ZERODTE_EXIT_MODE === "trim_scale" ? "trim_scale" : DEFAULT_EXIT_MODE;
