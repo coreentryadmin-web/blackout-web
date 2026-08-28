@@ -4,6 +4,241 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## Night Hawk session-analytics panel pushed the whole play ledger below the fold on mobile — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/nighthawk-collapse-analytics-panel) |
+|---|---|
+
+**Symptom:** Member screenshot (2026-08-28, mobile) showed the `/nighthawk` 0DTE deck opening
+directly onto the "Session analytics" panel (win-rate/avg-return/graded/session-P&L tiles + by-merit-tier
+bars + by-exit-outcome bars + a session P&L curve) — the live play ledger (OPEN/WATCH/CLOSED tabs
+and the play cards, rendered by `CommandDeck`) was entirely below the fold, requiring a scroll past
+the whole analytics section before any play was visible. Member described it as "literally blocking
+the play panels fully."
+
+**Root cause:** `NighthawkAnalyticsPanel` (added by the 2026-08-XX Night Hawk UI redesign) always
+rendered its full contents — 4 stat tiles, a 2-3 column bar-chart grid, and a `recharts` P&L curve
+— unconditionally above `CommandDeck` in `containers.tsx`. That is a reasonable amount of content on
+a wide desktop viewport but stacks to several screen-heights on a phone, and there was no way to
+collapse it.
+
+**Fix:** `NighthawkAnalyticsPanel.tsx` now defaults to a collapsed state — a single tappable summary
+row (`Session analytics · Win X% · Y% avg · tap to expand`) with a chevron, `aria-expanded`, and
+`aria-controls` on a real `<button>`. Tapping it reveals the full tiles/grid/curve exactly as
+before. The choice persists per-device via `localStorage` (`nh-analytics-collapsed`), read/written
+best-effort so a blocked/private-mode store just keeps the safe collapsed default. New CSS in
+`globals.css` (`.nh-analytics-toggle`, `.nh-analytics-panel-collapsed`, `.nh-analytics-chevron*`).
+
+**Blast radius:** `NighthawkAnalyticsPanel.tsx` only — `CommandDeck`/the play ledger itself is
+untouched (it was never actually narrowed, just pushed down by the panel above it; the "full width"
+part of the report was this panel eating the screen, not a real width regression in the ledger).
+
+**Evidence:** New `NighthawkAnalyticsPanel.test.ts` (3 tests, SSR via `renderToStaticMarkup` + SWR's
+`fallback` cache seed for a synchronous first render) asserts the full tier/outcome/curve sections
+do NOT reach the first render, that the collapsed summary text and a real accessible toggle button
+do. `npx tsc --noEmit` clean; full `src/features/nighthawk/{components,lib}` + `command-deck` suite
+(396 tests) green on Node 20.
+
+## 0DTE exit-sync used a STALE pinned stop after the achievability ceiling capped entry down — instant phantom stops, contributing to a false session halt — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/nighthawk-ceiling-phantom-stop) |
+|---|---|
+
+**Symptom (live, 2026-08-28):** Investigating a member report of "zero open plays all day", found
+the board had actually committed several plays, but two — **AMD** (flagged 14:59:24 UTC, closed
+14:59:24.814Z, ~0.8s later) and **NVDA** (flagged 15:03:57 UTC, closed 15:04:00.200Z, ~3.2s later)
+— closed as `closed_reason: "stop"` (the ENGINE-exit family, distinct from the mechanical board's
+`"stopped"`) essentially the instant they were flagged, both with `exit_pnl_pct: 0` despite the
+narrated detail text describing a real but tiny adverse move (-0.41%, -1.14%). `governor.halted`
+was `true` with 4 entries in `stops[]` against `max_session_stops: 3`, even though only 2 of those
+stops (SNDK, MSFT) were real -50% losses.
+
+**Root cause:** `plan.ts`'s `resolveLedgerEntryPremium` has two symmetric adjustments to the
+ledger's tracked entry premium versus the plan's own `entry_max` (the flow's fill): an
+**ACHIEVABILITY FLOOR** (raises the ledger basis UP toward the mark when the flow fill sat well
+below it — shipped 2026-08-06) and an **ACHIEVABILITY CEILING** (caps the ledger basis DOWN toward
+the mark when the flow fill sat well ABOVE it — shipped 2026-08-27, PR #2986). `exit-sync.ts`'s
+`entryBasisDiverged` check exists precisely so the exit engine re-derives the operative stop from
+the CURRENT ledger basis whenever it disagrees with the plan's pinned `stop_premium` (which is
+always computed from the original, un-adjusted `entry_max`). That check was written for the FLOOR
+case only (`entry > planEntryMax`, 2026-08-06) and was never updated when the CEILING shipped three
+weeks later — so a ceiling-capped row (`entry < planEntryMax`) left `entryBasisDiverged` **false**,
+and the exit engine kept using the STALE pinned stop computed from the pre-cap, much-higher
+`entry_max`.
+
+**Live numbers:** AMD's `stop_pct` is a fixed -50%. The narrated exit detail cited "plan stop 1.9"
+against a ledger `entry_premium` of 1.23 — algebraically, `1.9 = entry_max × 0.5` implies the
+original flow fill was **$3.80**, capped down by the achievability ceiling to $1.23 because the
+real market never traded anywhere near $3.80. Since the stale pinned stop (1.9) sits ABOVE the
+correctly-capped ledger entry (1.23), *any* real market quote for this contract reads as
+"at/below 1.9" — so the very next evaluation pass after commit fired an immediate false stop,
+regardless of real price action. Same shape on NVDA. This is the mechanical cause of both the
+near-zero holding times and the `exit_pnl_pct: 0` (the fixed -50% stop label was applied at a real
+premium level that hadn't actually moved).
+
+**Fix:** `entryBasisDiverged` in `exit-sync.ts` now checks divergence in EITHER direction
+(`Math.abs(entry - planEntryMax) > 0.005`, a half-cent epsilon for round2() noise) instead of only
+`entry > planEntryMax`. When it fires (either the floor or ceiling path), the operative stop/target
+are re-derived from the row's own correct ledger basis (`entry * (1 + stopPct/100)`), exactly as
+the existing floor-case logic already did — this is a one-line generalization of an existing,
+already-shipped mechanism, not new behavior.
+
+**Blast radius:** `src/lib/zerodte/exit-sync.ts` only — the sole call site (`syncLedgerLiveState`,
+used by both the 1s live-marks lane and the scan-pass sync). No other stop consumer is affected:
+`gradePlanFromBars`/`derivePlayStatus` (plan.ts) both already compute their stop fresh from
+`row.entry_premium` (the ledger basis) with no pinned-stop shortcut, so they were never exposed to
+this divergence — this file was correctly identified as "the sole holdout" in the original
+2026-08-06 comment, which is exactly why fixing it here is sufficient.
+
+**Evidence:** New test `entry-basis coherence: a ledger basis BELOW entry_max (achievability
+ceiling) also re-bases the stop — no instant phantom stop` in `exit-sync.test.ts`, using the exact
+AMD numbers (entry_max $3.82, ledger entry $1.24, pinned stop $1.91, live mark $1.225) — confirmed
+FAILING against the pre-fix code (asserts `CLOSED` when pre-fix it actually closes) and PASSING
+post-fix, plus confirms the correct re-derived stop (entry × 0.5) still fires when the mark
+genuinely reaches it. Full `src/lib/zerodte/*.test.ts` suite: 1188/1188 pass (1 pre-existing skip),
+`npx tsc --noEmit` clean, on Node 20.
+
+**Why this matters beyond the two phantom rows:** every genuinely-stopped play increments the
+governor's session stop tally toward `max_session_stops` and can trip `governor.halted`, which
+blocks new commits for the rest of the trading day. A false stop is not cosmetic — it can end a
+member's session early on a day the desk would otherwise still be committing legitimate plays.
+
+## 2026-08-28 — [FINDING, P2 Largo/SPX Desk] `get_market_context` spx_desk transport truncation — FIXED
+
+> **kind:** `FINDING`
+
+**Root cause.** The `get_market_context` Largo tool's `spx_desk` field was returning the full `summarizeSpxDesk` payload without transport-cap fitting, causing the enrichment tail to exceed `MAX_TOOL_RESULT_CHARS` (16,384 chars). The transport layer truncated: news_headlines, macro_events, sector_heat, oi_changes, iv_term_structure, greek_exposure, market_breadth, mag7_greek_flow all fell off the end. The model received only core scalars (price, VIX, VWAP, gamma, GEX, max_pain), losing enrichment context needed to answer "what's the macro backdrop for SPX".
+
+Detected by Phase 5 truncation probe (2026-08-28 07:08 UTC): `get_market_context` showed TRUNCATED verdict. Root cause: `summarizeSpxDesk` carries ~40 fields including a dozen unbounded arrays; no fitting was applied at the Largo boundary, unlike the parallel `get_spx_structure` tool.
+
+**Fix rationale.** Apply `fitSpxStructureForModel` to the `spx_desk` field at the Largo boundary only — the same pattern as `get_spx_structure`. This caps lists per-list rules (gex_walls: 12, strike_stacks: 8, spx_flows: 12, news_headlines: 6, macro_events: 6, etc) and sheds non-essential fields in order (net_prem_ticks, unified_tape, oi_changes…) until payload fits.
+
+`spxDeskSummary` also feeds Night Hawk's edition builder and the platform snapshot, which need the full data — fitting only at the Largo boundary preserves product data while constraining what the model receives.
+
+**Status.** PENDING VALIDATION (PR #3038 in progress, CI running 2026-08-28 07:08Z):
+- Branch `fix/largo-market-context` pushed with SPX structure fitting applied
+- PR #3038 created as draft, awaiting CI completion
+- Test plan: re-run truncation probe post-merge to confirm TRUNCATED → COMPLETE
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_
+
+## 2026-08-28 — [FINDING, P2 Largo/Night Hawk] `get_banger_board` transport truncation — FIXED
+
+> **kind:** `FINDING`
+
+**Root cause.** The `get_banger_board` Largo tool was exceeding `MAX_TOOL_RESULT_CHARS` (16,384 chars), causing the transport layer to truncate the payload with a `…[truncated]` marker. This meant Largo received incomplete board state: positions beyond the truncation point were silently omitted from the model's context.
+
+First detected by Phase 5 truncation probe (2026-08-28 06:31 UTC live production run) showing TRUNCATED verdict. Root cause analysis: 12 open rows × ~250 bytes each + 12 closed rows + metadata exceeded cap under diverse market conditions (different premium widths, scale-out complexity, position counts).
+
+**Fix rationale.** Reduced open row cap from 12 to 6 rows (`openDisplayLimit = 6` in `product-reads.ts:126`). Each row carries full detail (strike, expiry, premium, mark, live P&L, scale action, discovery context), so row count is the right knob. 6 rows × ~250 bytes = ~1.5k, leaving 14k+ margin for closed rows and metadata. Earlier PR #3026 had attempted 12-row cap which still TRUNCATED in live probe; further reduction proved necessary under production payload sizes.
+
+Core fields (`open_count`, `open_shown`, `open_truncated`, `truncated` flags) allow the model to read "5 of 47 open positions shown" rather than mistaking a page for a total.
+
+**Status.** FIXED and VALIDATED (2026-08-28 07:26 UTC):
+- PR #3032 merged to main with banger board cap reduction + test assertions
+- Production deployed automatically via ECR push + ECS rollout
+- Live truncation probe re-run: `get_banger_board` TRUNCATED → **COMPLETE** (control_proven: true)
+- Test suite: 12 OPEN + 5 CLOSED synthetic payload stays under 16k; `open_shown=6` asserted
+
+| **Field** | **Before** | **After** |
+|-----------|-----------|----------|
+| **Verdict** | TRUNCATED | **COMPLETE** |
+| **Open cap** | 12 rows | **6 rows** |
+| **Test payload size** | ~9.5k | **~7.2k** |
+| **Margin to cap** | ~6.5k | **~9.2k** |
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_
+
+## Heatmap verifier gamma_flip P0 false-flag — lowest vs nearest crossing — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (cursor/heatmap-verifier-flip-selection-3d11) |
+|---|---|
+
+**Symptom:** `ops:collect` P0 `[invariant/gamma_flip]` on ~$215 tickers off-hours — reported flip 214.95 vs verifier "nearest" 219.01 (~4pt).
+
+**Root cause:** Production `cumulativeGammaFlipDetail` (2026-08-19) selects the **lowest plausible** short→long crossing; `heatmap-verifier.ts` INV-4 still used **nearest-to-spot**, so multi-crossing books false-flagged whenever spot sat closer to the upper crossing.
+
+**Fix:** Align `deriveCumulativeGammaFlip` selection with production (lowest plausible within ±12%). Test ratchets parity against `cumulativeGammaFlip` on the TWO_CROSSING_BOOK fixture.
+
+**Blast radius:** Correctness cron / ops-auto-fix only — no member-facing flip math changed.
+
+## 2026-08-28 — [FINDING, P2 SPX/NDX/RUT heatmap] Index dividend-yield q permanently fell back to 0 via ETF proxies — FIXED (scoped follow-up to #3021)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | **P2** — closed-form vanna/charm under-reads gamma exposure by 10–22% for SPX/NDX/RUT (measured in `polygon-options-gex.ts`'s own comments) whenever `q` silently resolves to 0 instead of the real ETF-proxy yield. |
+| **Status** | FIXED — scoped, documented follow-up from `docs/audit/findings-staging/2026-08-28-polygon-financial-ratios-always-broken.md` (PR #3021), which explicitly deferred this. |
+| **Root cause** | `resolveHeatmapDividendYieldUncached()` resolved dividend yield q ONLY through `/stocks/financials/v1/ratios`, which covers companies, not funds. `HEATMAP_DIVIDEND_YIELD_PROXY` maps `SPX→SPY`, `NDX→QQQ`, `RUT→IWM` specifically to route index yield through an ETF — but the ratios endpoint has no row at all for any of those three tickers (live-verified: `ticker=SPY`/`QQQ`/`IWM` all correctly return an empty result set, not an error — they're funds, not companies with P/E-style financial statements). So the fallback path this proxy exists to serve always produced `null`, and the caller turned that into `q=0` — silently, for every single heatmap rebuild, forever. |
+| **Fix** | Added `fetchPolygonDividends()` (`src/lib/providers/polygon.ts`) — `GET /v3/reference/dividends?ticker=<SYM>`, which DOES carry real ETF cash-distribution history (live-verified: SPY/QQQ/IWM all return real quarterly rows). Added a pure `trailingTwelveMonthDividendYield(dividends, spot, nowMs)` helper (`polygon-options-gex.ts`) that sums `cash_amount` for rows within the trailing 365 days and divides by spot. `resolveHeatmapDividendYieldUncached()` now falls back to this when the ratios endpoint has no row — `spot` is threaded through `resolveHeatmapDividendYield(root, spot)` from its existing call site (spot was already in scope there). |
+| **Evidence** | Live end-to-end test through the real functions against production Polygon: `SPY` ratios → `null` (no row) → fallback trailing-12mo yield **1.25%**; `QQQ` → **0.61%**; `IWM` → **1.21%** — all realistic magnitudes, all real distribution data, not fabricated. `AAPL` (a real company, unaffected by this change) still resolves via the original ratios path (**0.34%**), confirming the fallback only engages when the primary path genuinely has nothing. 53/53 tests in `polygon-options-gex.test.ts` pass (adds 4 new cases: the ETF fallback path, the pure trailing-window function including a malformed-date guard, and a corrected "empty dividends ≠ unavailable" case). `tsc --noEmit` clean. |
+| **Design notes** | An empty dividends result (API succeeded, zero rows) resolves to `0` (a real non-payer answer, cacheable) rather than throwing — consistent with the existing ratios-path philosophy (`raw <= 0` → 0, cacheable). A genuine fetch failure on `/v3/reference/dividends` still throws and is excluded from the 1h `TTL.REFERENCE` cache, same as before. The 1h cache tolerance is unchanged and still appropriate — a trailing-12mo yield computed against a spot up to an hour stale is a negligible additional error against a quantity that itself only moves once a quarter. |
+
+## G-17's 75-floor exemption for multi-rail/FLOW commits removed — 65-74 band now needs the prime floor for every origin combo — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/g17-extend-floor-multi-rail) |
+|---|---|
+
+**Symptom:** Member observed several high-scoring WATCH plays that would have been large winners
+(INTC 92P +275%, TSLA 355P +98%, IWM 297P +56%) never promoted to OPEN, alongside a live session
+where 3 real losses (SNDK -50.45%, MSFT -52.07%, META -50.44%) all carried the highest-magnitude
+Cortex `gex-walls` oppose of anything committed that morning. Investigation of the oppose-magnitude
+theory (see the 2026-08-28 cortex-oppose-magnitude finding) did NOT hold up over a 90-day sample —
+but investigating the SAME real data for G-17 (single-rail prime-band gate) surfaced a different,
+better-supported signal.
+
+**Root cause:** G-17 (`isSingleRailWithoutFlow` + `ZERODTE_SINGLE_RAIL_PRIME_MIN`) only required the
+75-score prime floor for single-rail-without-flow (BREAKOUT-only or PIN-only) setups in the 65-74
+band. Multi-rail and FLOW-corroborated setups were exempt, on the 2026-08-06 theory that
+corroboration itself was sufficient evidence to skip the extra floor.
+
+**Evidence (90-day window, `/api/market/zerodte/record`, 341 graded plays):**
+
+| Population | n | Win rate | Avg P&L |
+|---|---|---|---|
+| Single-rail (BREAKOUT/PIN only), score ≥75 — the only single-rail population that could commit | 89 | 41.0% | -3.76% |
+| Multi-rail/FLOW, score 65-74 — previously exempt from any extra floor | 34 | 35.7% | -10.43% |
+| Multi-rail/FLOW, score ≥75 | 29 | 42.3% | -11.6% |
+
+The exempt population (multi-rail/FLOW, 65-74) graded WORSE than the single-rail population G-17
+was specifically strict about. The exemption was never buying safety — the whole 65-74 band is weak
+EV on its own score, independent of rail composition.
+
+**Fix:** G-17 now requires the 75 floor for EVERY origin combo in the 65-74 band (only scoped to
+scores that already clear each origin's own G-3 floor, so it never produces a redundant block
+alongside `score_floor` for scores already below 65). Same gate code (`single_rail_corroboration`),
+generalized condition. `ZERODTE_SINGLE_RAIL_PRIME_MIN` stays at 75 (unchanged, env-overridable).
+
+**Blast radius:**
+- `src/lib/zerodte/gates.ts` — the gate condition + doc comments.
+- `src/lib/zerodte/board.ts`, `src/lib/zerodte/pane.ts`, `src/lib/admin-zerodte-funnel.ts` — stale
+  "single-rail" labels/comments updated to describe the now-universal 65-74 band floor.
+- `src/lib/zerodte/gates.test.ts` — 18 fixtures used the shared `input()` helper's default score
+  (70) or explicit scores in [65,75) with no `discovery_origin` set, which is unrealistic for real
+  commits but exposed the change's full-verdict impact on tests actually targeting OTHER gates
+  (G-3/G-4/G-6 boundaries). Fixed by bumping the shared default to 80 and, for boundary-specific
+  tests, asserting the SPECIFIC gate code clears rather than the overall verdict.
+- `src/lib/zerodte/gates-replay-2026-07-13.test.ts` — the REAL 2026-07-13 session replay fixture.
+  QQQ (real score 65, real winner +76.57%) and META (real score 67, real loser -50.11%) BOTH now
+  block via G-17 — the session's "1W/1L" print becomes 0 prints. This is the honest cost side of
+  the change: on this one historical day, the tightened floor zeroes out a real winner along with
+  the real loser it was extended to catch. The justification is the 90-day AGGREGATE, not a claim
+  that every blocked play in this band was already a loser.
+
+**Evidence of correctness:** Full `src/lib/zerodte/*.test.ts` suite: 1188/1188 pass (1 pre-existing
+skip). `npx tsc --noEmit` clean. All on Node 20.
+
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
