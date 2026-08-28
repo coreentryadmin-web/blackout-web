@@ -10,6 +10,8 @@ export const RTH_WRITER_HEAL_AFTER_MIN: Record<string, number> = {
   "vector-walls-warm": 20 / 60,
   /** 10s — primary 5s writer is vector-bead-recorder-leader; HTTP cron is backup when leader stalls. */
   "vector-bead-record": 10 / 60,
+  /** 4 min — ~2 min RTH schedule; EventBridge not yet synced (#3066). In-app leader backup. */
+  "vector-pick-sweep": 4,
   /** 5 min — Meridian timeline + SPX GEX + desk enrichment; was missing from EventBridge
    *  (ops #2351: market_hours_stale during RTH). */
   "meridian-warm": 5,
