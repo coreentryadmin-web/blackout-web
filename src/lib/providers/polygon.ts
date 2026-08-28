@@ -1237,6 +1237,32 @@ export async function fetchPolygonFinancialRatios(ticker: string): Promise<Polyg
   }
 }
 
+export type PolygonDividend = {
+  cash_amount: number;
+  ex_dividend_date: string;
+};
+
+/**
+ * Cash dividend history — GET /v3/reference/dividends?ticker=<SYM>. Unlike
+ * /stocks/financials/v1/ratios (companies only — SPY/QQQ/IWM/VOO/DIA all correctly return null
+ * there, live-verified 2026-08-28), this endpoint DOES carry real ETF distribution history, which
+ * is the fix for the SPX/NDX/RUT heatmap's ETF-proxy dividend-yield gap (resolveHeatmapDividendYield
+ * in polygon-options-gex.ts). Newest-first by ex-dividend date.
+ */
+export async function fetchPolygonDividends(ticker: string, limit = 8): Promise<PolygonDividend[]> {
+  const sym = ticker.toUpperCase();
+  const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
+    "/v3/reference/dividends",
+    { ticker: sym, limit: String(limit), sort: "ex_dividend_date", order: "desc" }
+  );
+  return (data.results ?? [])
+    .map((r) => ({
+      cash_amount: Number(r.cash_amount),
+      ex_dividend_date: String(r.ex_dividend_date ?? ""),
+    }))
+    .filter((d) => Number.isFinite(d.cash_amount) && d.ex_dividend_date.length > 0);
+}
+
 // ---------------------------------------------------------------------------
 // Company financial statements (Massive `/stocks/financials/v1/*`).
 //   CRITICAL: the filter param is `tickers=` (plural). Default sort is OLDEST-first,
