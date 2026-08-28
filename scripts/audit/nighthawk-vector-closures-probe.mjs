@@ -50,12 +50,38 @@ async function main() {
   await page.waitForTimeout(2000);
 
   const winnersBtn = page.getByRole("button", { name: /Winners/i });
+  const liveBtn = page.getByRole("button", { name: /Live/i });
   const closedBtn = page.getByRole("button", { name: /Closed/i });
   const hasWinnersTab = (await winnersBtn.count()) > 0;
 
-  if (hasWinnersTab) {
-    await winnersBtn.first().click();
+  const apiJson = await page.evaluate(async (base) => {
+    const r = await fetch(`${base}/api/market/vector/pick-closures/board`, { cache: "no-store" });
+    return r.json();
+  }, BASE);
+
+  const apiLeadersCount = apiJson?.leaders?.length ?? 0;
+  const apiWinnersCount = apiJson?.winners?.length ?? 0;
+
+  // After load, board should auto-select Live when winners=0 but leaders>0.
+  if (hasWinnersTab && apiLeadersCount > 0 && apiWinnersCount === 0) {
+    await page.waitForTimeout(800);
+  }
+
+  let liveDom = null;
+  if (apiLeadersCount > 0 && (await liveBtn.count())) {
+    await liveBtn.first().click();
     await page.waitForTimeout(600);
+    liveDom = await page.evaluate(() => {
+      const leaderRows = [...document.querySelectorAll(".vector-leader-row")];
+      const first = leaderRows[0];
+      const rect = first?.getBoundingClientRect();
+      const style = first ? getComputedStyle(first) : null;
+      return {
+        leaderRowCount: leaderRows.length,
+        firstHeight: rect?.height ?? 0,
+        firstFlexShrink: style?.flexShrink ?? null,
+      };
+    });
   }
 
   // Verify closed rows render on the Closed tab (labels include counts, e.g. "Closed (47)").
@@ -70,11 +96,6 @@ async function main() {
     );
     return tabs.map((b) => ({ label: b.textContent?.trim(), pressed: b.getAttribute("aria-pressed") }));
   });
-
-  const apiJson = await page.evaluate(async (base) => {
-    const r = await fetch(`${base}/api/market/vector/pick-closures/board`, { cache: "no-store" });
-    return r.json();
-  }, BASE);
 
   const dom = await page.evaluate(() => {
     const scrollport = document.querySelector(".nh-deck-rows");
@@ -103,9 +124,10 @@ async function main() {
     base: BASE,
     apiClosedCount: apiJson?.closed?.length ?? 0,
     apiLeadersCount: apiJson?.leaders?.length ?? 0,
-    apiWinnersCount: apiJson?.winners?.length ?? 0,
+    apiWinnersCount,
     boardHasLeaders,
     tabState,
+    liveDom,
     dom,
     verdict:
       !boardHasLeaders && (apiJson?.closed?.length ?? 0) > 0
@@ -114,8 +136,12 @@ async function main() {
           ? "RED — API has rows but DOM empty"
           : hasFlexCol
             ? "RED — flex-col on scrollport (regression)"
+            : liveDom && liveDom.leaderRowCount > 0 && liveDom.firstHeight < 60
+              ? "RED — leader rows collapsed (layout bug)"
             : dom.rowCount > 0 && dom.firstHeight < 60
               ? "RED — rows collapsed (layout bug)"
+              : boardHasLeaders && hasWinnersTab && liveDom && liveDom.leaderRowCount > 0 && dom.closureRowCount > 0
+                ? "GREEN — live leaders + closed rows render"
               : boardHasLeaders && hasWinnersTab && dom.closureRowCount > 0
                 ? "GREEN — winners board + tabs shipped, closed rows render"
                 : boardHasLeaders && hasWinnersTab

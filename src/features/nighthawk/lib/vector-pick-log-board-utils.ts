@@ -9,6 +9,18 @@ export type VectorClosureReasonFilter =
 
 export type VectorClosureSort = "newest" | "oldest" | "pct_desc" | "pct_asc" | "ticker";
 
+export type VectorBoardSection = "winners" | "leaders" | "closed";
+
+/** First paint tab — show Live when Winners is empty but the sweep has leaders. */
+export function preferredVectorBoardSection(
+  winnersCount: number,
+  leadersCount: number
+): VectorBoardSection {
+  if (winnersCount > 0) return "winners";
+  if (leadersCount > 0) return "leaders";
+  return "winners";
+}
+
 export function classifyVectorClosureReason(row: Pick<VectorClosurePlay, "close_reason" | "setup_invalidated">): Exclude<
   VectorClosureReasonFilter,
   "all"
