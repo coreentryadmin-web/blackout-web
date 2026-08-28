@@ -9,6 +9,8 @@ import { publishTierChanged } from '@/lib/tier-cache';
 import { startWelcomeSequence } from '@/lib/welcome-sequence';
 import { parseTier } from '@/lib/tiers';
 import type { BillingKind } from '@/lib/whop';
+import { notifyOpsDiscord } from '@/features/spx/lib/spx-play-notify';
+import { buildNewMemberNotificationBody } from '@/lib/clerk-new-member-notify';
 
 const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
@@ -139,6 +141,14 @@ export async function POST(req: Request) {
         // Self-guards internally (never throws) — a welcome-email hiccup must not
         // fail user provisioning or trigger a Clerk retry of the whole webhook.
         if (email) void startWelcomeSequence({ userId, email, firstName });
+        // Same pattern as the Whop webhook's ops pings (membership activated/deactivated,
+        // refund, payment failed) — a real-time "someone just showed up" signal, not a
+        // billing alert, so severity is "info" and it never blocks/fails provisioning.
+        void notifyOpsDiscord({
+          title: "New member signed up",
+          body: buildNewMemberNotificationBody({ email, firstName, lastName, clerkUserId: userId }),
+          severity: "info",
+        }).catch(() => undefined);
       } else {
         await dbQuery(
           `UPDATE users
