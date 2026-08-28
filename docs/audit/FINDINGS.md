@@ -4,6 +4,3098 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## Whop trial-ending-soon email — ADDED
+
+> **kind:** `FINDING`
+
+| **Status** | Shipped in PR (cursor/whop-trial-ending-nudge-3d11) |
+|---|---|
+
+**Problem:** Whop emits `membership.trial_ending_soon` before the first charge, but the webhook ignored it — trialing members got no conversion nudge.
+
+**Fix:** Handler in `app/api/webhook/whop/route.ts` + `trialEndingSoonEmail` template + Redis dedup (`whop-trial-nudge.ts`). Gated on `status === trialing` and resolved `billingKind` (premium/community).
+
+**Evidence:** `whop-trial-nudge.test.ts`, `trial-ending-soon.test.ts`; template wired into `email-template-send.mjs`.
+
+## 2026-08-28 — [FINDING, P1 billing/conversion] A member can pay/trial on Whop and never learn they need a separate BlackOut account — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Two real live signups (`jj99ellis@gmail.com`, `j0312ellis@gmail.com`) started Whop trials for Premium Monthly (confirmed live via the Whop API: `status: "trialing", valid: true`, product `prod_DVboHRgi2jgYP` — in the live `WHOP_PREMIUM_PRODUCT_IDS`, so `resolveTierFromMembership` correctly grades this as `premium`), but neither had a Clerk account on blackouttrades.com (`GET /v1/users?email_address=...` → `[]` for both). They paid/started a trial and had no way to know the desk sits behind a *separate* account-creation step. |
+| **Root cause** | `/upgrade` is intentionally open to anonymous visitors — Whop checkout requires no BlackOut sign-in first (`UpgradePageShell.tsx`'s own copy: *"Pay with the same email as your BlackOut account at checkout, then sync access above"* assumes the reader already knows this two-step model). Access is granted by MATCHING EMAIL at Clerk `user.created`/webhook sync, never by the Whop purchase itself. `syncWhopMembershipForEmail` (`membership.ts:162-165`) already has a comment for exactly this state — *"No Clerk account yet (e.g. paid before signing up): resolve the triggering email so the caller still gets a tier, but there's nothing to write"* — i.e. the gap was already known well enough to be code-commented, but nothing acted on the signal: the `membership.activated` webhook handler discarded it (`updatedUserIds` empty → loop over zero ids → no-op) instead of treating an empty-with-a-real-billingKind result as "this person needs to be told." |
+| **Evidence** | Live Whop API pull for both emails: `status: trialing`, `valid: true`, `acquisition_data.utm_campaign: premium_monthly` (came through our own `/upgrade` page). Live Clerk API pull for both emails: `[]` (no account). Live AWS Secrets Manager read of `blackout-production/app/env`: `WHOP_PRO_PRODUCT_IDS` includes `prod_DVboHRgi2jgYP`, confirming the membership resolves to `premium` and is not some unmapped/free product. `SyncMembershipButton.tsx`/`membership/sync/route.ts` traced to confirm the manual "Already paid? Sync now" fallback checks the CURRENTLY SIGNED-IN account's own email — it cannot rescue a member who signs up with a different email than they paid with, so the copy of any fix had to say this precisely rather than imply "just click sync" works for that case. |
+| **Blast radius** | Only the `membership.activated` branch of `src/app/api/webhook/whop/route.ts` — `membership.deactivated` and `membership.cancel_at_period_end_changed` cannot hit this state (both presuppose an existing membership a member is already aware of). Does not touch `syncWhopMembershipForEmail`'s resolution logic itself — that was already correct; only the webhook's handling of its "no Clerk account" result was silent. |
+| **Fix** | New `completeSignupEmail()` template (`src/lib/email/templates/complete-signup.ts`) — "you paid, here's the one remaining step" with a `/sign-up` CTA, correctly scoped copy about the sync button's same-email requirement (see Evidence — an earlier draft of this copy incorrectly implied "Sync now" could pull access onto ANY email, corrected before shipping). Wired into the `membership.activated` branch: when `syncWhopMembershipAndNotify` returns `updatedUserIds.length === 0` AND a real `billingKind` (`premium`/`community` — i.e. a genuine paying/trialing membership, not an unmapped product), send the nudge once. Dedup via a new `whop-signup-nudge.ts` (mirrors `whop-dunning.ts`'s per-membership Redis-key pattern, 30-day TTL, fail-open on cache miss) keyed by `event.data.id` (the membership id) so a webhook redelivery or the hourly reconcile re-observing the same still-unsigned-up membership does not re-send. Added to `scripts/audit/email-template-send.mjs`'s template roster for the standing "send every template to one test inbox" audit tool. |
+| **Fix rationale** | Fired only on `membership.activated` (not the reconcile cron) for the same reason `syncWhopMembershipAndNotify`'s doc comment gives for its own real-time-only scope: a first deploy's reconcile pass correcting a backlog would otherwise flood a batch of these rather than nudging the person who just paid. Gated on a genuinely-resolved `billingKind` rather than "any activated event with no updatedUserIds" so a membership on a product that doesn't map to any tier (misconfigured/unrelated Whop product) does not get a misleading "unlock your Premium access" email. Left `membership.trial_ending_soon` (a second, later nudge point Whop's SDK exposes but this webhook does not yet handle at all) as a documented follow-up rather than folding it into this PR — it is a separate, currently-unhandled event type and deserves its own scoped change. |
+| **Status** | FIXED — `src/app/api/webhook/whop/route.ts`, `src/lib/whop-signup-nudge.ts` (+4 tests), `src/lib/email/templates/complete-signup.ts` (+3 tests), `scripts/audit/email-template-send.mjs`. `npx tsc --noEmit` clean; targeted whop-lib tests (27/27) and the repo-wide email-compliance test (no hardcoded price, routes through `emailLayout`) all pass on Node 20. Not yet observed live in production (no webhook has fired against this code yet) — the next real Whop trial/activation with no matching Clerk account is the first live proof. |
+
+## 2026-08-28 — [FINDING, P1 email-deliverability] Welcome-sequence step-1 email bounced 1,860/1,862 times (99.9%) over 14 days — internal audit accounts, not customers — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | While investigating the same-day Discord ops-alert audit-account-noise finding, queried the admin email-events endpoint (`GET /api/admin/email-events`, live production data) for context. `welcome-step-1` (the immediate day-0 welcome email, sent synchronously from the Clerk `user.created` webhook): **1,862 sent, 1,860 bounced (99.9%)** over the last 14 days. The `recent` sample is almost entirely `claude-audit-temp+...@blackouttrades.com` / `seo-audit-<ts>@blackouttrades.com` addresses — the exact same population identified in the Discord-noise finding, minted by this repo's own audit toolkit against production Clerk. |
+| **Root cause** | `startWelcomeSequence()` (`src/lib/welcome-sequence.ts`) sends its day-0 email synchronously and unconditionally from the Clerk webhook route (`src/app/api/webhooks/clerk/route.ts`), with no filter for the account that triggered it. Every disposable Clerk user the audit toolkit creates (~15 harnesses, deleted within seconds-to-minutes) fires a real `user.created` webhook → a real Resend send to an address that is either not a real mailbox at all or gets deleted before any bounce/retry cycle completes. |
+| **Evidence** | `/api/admin/email-events` 14-day summary: `welcome-step-1: {sent: 1862, bounced: 1860, delivered: 3, delivery_delayed: 4, failed: 1}`. Sample recent events show the bounce landing on the SAME request cycle as the send (`occurred_at` identical to the second) for addresses like `seo-audit-1787893123547@blackouttrades.com` and `claude-audit-temp+3kv9g@blackouttrades.com`. |
+| **Blast radius** | A 99.9% bounce rate on a transactional template is a real sender-reputation risk, not merely wasted send volume — Gmail/Yahoo/Outlook throttle or suspend sending domains/IPs on elevated bounce/complaint rates, and Resend shares infrastructure/reputation signals across an account's sends. This directly threatens deliverability of every OTHER transactional email this app sends (billing receipts, payment-failed alerts, the REST of the welcome sequence, password resets) to REAL members — the exact "spam-complaint event" `welcome-sequence.ts`'s own `MAX_STEP_LATENESS_DAYS` comment already identifies as the one metric that gets bulk senders suspended, just triggered by a different mechanism (audit noise, not a stale backlog flush) than the one that comment was written to prevent. |
+| **Fix** | Reused `isInternalAuditEmail()` (added same-day for the Discord-alert fix, already merged) to gate the `startWelcomeSequence()` call in the Clerk webhook route — one line, same pattern as the Discord-alert gate. Provisioning, DB row, and Whop sync remain untouched. |
+| **Fix rationale** | The root identification (audit toolkit's own naming convention) and the fix mechanism (skip the side effect, not the provisioning) are identical to the Discord-noise fix from earlier today — reusing the same predicate keeps both fixes' behavior in sync by construction rather than maintaining two independent audit-account detectors that could drift apart. |
+| **Status** | FIXED — `src/app/api/webhooks/clerk/route.ts` (one-line gate, reusing `isInternalAuditEmail` from `src/lib/internal-audit-email.ts`). `npx tsc --noEmit` clean; `welcome-sequence.test.ts` (17/17, unaffected — the gate lives at the call site, not inside the tested function) and `internal-audit-email.test.ts` (6/6) pass on Node 20. |
+| **Follow-up (not done here)** | The 1,860 historical bounces already happened and are baked into Resend's account-level bounce-rate metrics; this fix stops the bleeding going forward but does not retroactively clean the reputation signal. Worth checking Resend's dashboard for any current suppression-list/reputation warnings as a follow-up, and considering whether `sendEmail()` itself should also skip known-audit addresses as defense in depth (this fix only closes the ONE call site that was actually driving the volume). |
+
+## 2026-08-28 — [FINDING, P3 marketing copy] Day-0 welcome email implied a free signup already has full paid access — FIXED, plus new Clerk signup ops notification
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `WELCOME_SEQUENCE` step 1 (`welcome-sequence.ts`) fires unconditionally on Clerk `user.created` for EVERY new signup — `welcome-sequence.ts`'s own doc comment says so explicitly: *"Tier is 'free' here: this fires straight off Clerk's user.created, before any billing has happened."* Its copy nonetheless said "You just got access to the mechanics that cause it" and "Six engines live under one login... we're not dumping all six on you today — that full walkthrough is coming," both of which read as a present-tense claim that the reader already has full paid entitlement, regardless of whether they paid anything. |
+| **Root cause** | The email was written for the persuasive "here's everything BlackOut offers" framing without distinguishing platform-capability language from personal-entitlement language — a distinction that didn't matter until this exact review (raised while auditing all email templates for duplication) asked the question directly. |
+| **Fix** | Reworded the two overclaiming lines to describe capability without asserting current ownership: "You're about to see the mechanics that cause it" (was "You just got access to..."), and the six-engines paragraph now explicitly separates what a free account gets today (live key levels, the Learn library, the fast-start) from what unlocks "under the same login the moment you go Premium." Tone/voice and every other line (subject, CTA, closing) left untouched — this was a targeted accuracy fix, not a rewrite. |
+| **Separately: new Clerk signup ops notification.** | Requested alongside the copy review: parity with the existing Whop webhook's Discord ops pings (membership activated/deactivated, refund, payment failed, cancellation-reason capture — all via `notifyOpsDiscord`). Added the same call on Clerk's `user.created`, `severity: "info"`, fire-and-forget (`.catch(() => undefined)`, matching every other ops ping in both webhook routes so a Discord hiccup can never fail user provisioning or trigger a Clerk retry). Message body built by a new pure `buildNewMemberNotificationBody()` (`src/lib/clerk-new-member-notify.ts`), extracted the same way `whop-cancellation-notify.ts`'s `buildCancellationNotificationBody` already is in the sibling webhook — testable without the route's signature-verification/DB machinery. Reuses the EXISTING `DISCORD_OPS_WEBHOOK_URL` (same channel every Whop billing ping already posts to) rather than standing up a new webhook/channel — no new secret needed, works the moment this deploys. If a dedicated signups-only channel (separate from billing/ops alerts) is wanted instead, that's a one-line change (a new `DISCORD_SIGNUPS_WEBHOOK_URL` env var) once that channel's webhook exists. |
+| **Status** | FIXED — `src/lib/email/templates/welcome-sequence.ts` (copy), `src/app/api/webhooks/clerk/route.ts` (notification wiring), `src/lib/clerk-new-member-notify.ts` (+4 tests). `npx tsc --noEmit` clean; `email/*.test.ts` (20/20) and the new `clerk-new-member-notify.test.ts` (4/4) pass on Node 20. Not yet observed live — the next real Clerk signup is the first live proof the Discord ping actually fires. |
+
+## Vector play engine — BIE wiring, server staleness, pool exhaustion refetch
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+
+Three gaps from the 2026-08-27 play-engine audit remained after the backfill/contextKey merges:
+
+1. **PlayBieContext was fully built in the engine but never populated in production.** Added
+   `vectorPlayBieBucketKey()` + `vector-play-bie-stats.ts` aggregation (n≥10 from
+   `vector_pick_closures`), server resolver `resolveVectorPlayBieContext()`, tier-gated
+   `POST /api/market/vector/play-bie`, wiring in `vector-full-state.ts` and `VectorChart.tsx`
+   emitPlay, and `bie_bucket` persistence on closure rows.
+
+2. **Server-built plays ignored cache age for conviction.** `withReadContext()` now rebuilds
+   `buildVectorPlay()` with read-time `dataAgeMs = now - asOf` so Largo/BIE conviction staleness
+   matches the chart card. BIE full-state compute also uses proximity hysteresis via cached
+   `prev` on rebuild.
+
+3. **All 8 pool picks invalidating left the active strip empty until the 45s refresh.** When every
+   ranked OCC is excluded, `useVectorActionablePicks` triggers one immediate pool refetch (deduped
+   by signature) via `refetchToken` on `useVectorContractPicks`.
+
+**Evidence:** `npx tsx --test src/features/vector/lib/vector-play-engine.test.ts`,
+`vector-play-bie-stats.test.ts`, full vector play/pick suite; `npx tsc --noEmit` clean.
+
+**Honest limit:** BIE samples come from Don't buy closure rows only until a positive-outcome cron
+exists — fav rates are conservative by construction, not fabricated.
+
+## Vector contract picks — no backfill on Don't buy + closed picks invisible
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+
+When a ranked pick went `dont_buy` (setup invalidated, premium chase, or cap breach), it stayed in
+the active 1–3 strip with a red chip until the next 45s re-rank — and **no replacement** promoted
+from rank #4+. Members asking "if one of three plays closed, do we find a new one?" got **no**
+until the slow refresh, and invalidated contracts were not grouped as closed history.
+
+**Fix:** rank an 8-contract deep pool server-side; `useVectorActionablePicks` archives every
+`dont_buy`, excludes its OCC from the next rank, partitions active vs closed, and backfills active
+slots from the pool. UI renders **Closed · setup invalidated** below the active strip.
+
+Also: short-gamma with no wall and no EMA trend now **stand aside** (neutral) instead of asserting
+`momentum-short` with zero evidence — mirrors long-gamma fail-closed behavior.
+
+**Verification:** `npx tsx --test` on `vector-pick-partition`, `vector-play-candidates`,
+`vector-play-engine`, replay gate, and `VectorContractPicksCard` tests — all green; `tsc --noEmit` clean.
+
+## 2026-08-28 — [FINDING, P2 providers] UW stock-state index guard over-blocked I:SPY ETF fallback — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | PR #3017 blocked all `I:` roots; `seedPulseSnapshotFromUwPrices` uses `I:SPY`, which maps to UW ticker `SPY` (ETF, HTTP 200) — would be silently skipped after merge. |
+| **Fix** | Replace prefix guard with explicit unsupported ticker set `{SPX,VIX,NDX,RUT}`. |
+| **Status** | FIXED — `spot-fallback.ts`, `spot-fallback.test.ts` (+`I:SPY` case). Stacks on #3017. |
+
+## 2026-08-28 — [FINDING, P2 resilience] The UW "last resort" spot fallback can never actually work for SPX (or any index) — silently wasting calls and unable to protect the exact ticker it exists for — FIXED (partial; real fix documented as follow-up)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live `GET /api/admin/health` showed `unusual_whales.errors_5m: 13` out of `calls_5m: 31` (42% error rate), with `last_error` consistently `"Stock state data is not available for index ticker SPX"` from `/api/stock/SPX/stock-state`. |
+| **Root cause** | `resolveSpotFromUwStockState()` (`src/lib/providers/spot-fallback.ts`) is the fallback spot-price source used when Polygon's indices WS/REST/cluster snapshot are all cold — called explicitly with `"I:SPX"` from `socket-cluster-health.ts`'s `readPolygonClusterHealth()` (comment: *"Polygon REST may be 403 while UW tape is healthy"*) and from `seedPulseSnapshotFromUwPrices()` (which seeds the real `spx:pulse:snapshot` production key). But UW's `/stock-state` endpoint does not serve index tickers **at all** — confirmed live against production UW: `SPX`, `VIX`, `NDX`, and `RUT` all return HTTP 422 ("Stock state data is not available for index ticker X"), while `SPY` (a real ETF, not an index) returns 200 normally. So this fallback could never actually protect SPX — the single most central ticker to this whole platform (0DTE, Night Hawk, SPX Slayer) — while still making a guaranteed-to-fail network round-trip on every attempt. |
+| **Evidence** | Live `curl` against `api.unusualwhales.com/api/stock/{X}/stock-state` with the production `UW_API_KEY`: `SPX→422`, `VIX→422`, `NDX→422`, `RUT→422`, `SPY→200`. `/api/admin/health`: 13/31 UW calls errored in one 5-minute window — all attributable to this call for SPX. |
+| **Blast radius** | `readPolygonClusterHealth()` (drives the `cluster_live` health signal) and `seedPulseSnapshotFromUwPrices()` (seeds `spx:pulse:snapshot`, a real production Redis key web-tier readers use) both silently get `null`/no seed for `I:SPX` whenever this path is exercised — meaning the resilience layer this repo explicitly built for "Polygon REST may be 403 while UW tape is healthy" does not actually work for SPX. Right now this has zero visible member impact because Polygon is healthy (confirmed via the same-day `data-validator.mjs` run, all PASS) — the gap would only bite during an actual Polygon outage, which is exactly when a fallback is supposed to earn its keep. |
+| **Fix (this PR)** | Added `isUwStockStateUnsupportedIndex()` — recognizes the same `"I:"` prefix `uwTickerFromOptionsRoot()` already strips — and short-circuits `resolveSpotFromUwStockState()` to `null` immediately for index roots, skipping the doomed network call entirely. This does NOT change the function's return value for any caller (it was already effectively always `null` for indices) — it only removes the wasted round-trip and the UW error-rate pollution. Zero behavior change, zero risk. |
+| **Real fix — NOT done here, follow-up** | UW *does* serve index spot price through a different endpoint already used elsewhere in this file's siblings: `/api/stock/{t}/spot-exposures/strike` carries a `price` field per row and is confirmed index-compatible (live-verified: `SPX` returns 200 with `"price": "7720"` rows). Wiring that in as the real index-ticker fallback source is a genuine improvement over this PR's short-circuit, but it changes `resolveSpotFromUwStockState`'s cost profile (a strike-ladder fetch vs. one lightweight row) and `change_pct` semantics (`spot-exposures/strike` carries no prior-close field, so `change_pct` would need a different derivation or an honest "unavailable" state on the member-facing `/api/market/quote` route) — that needs a deliberate product decision on the `QuotePayload` contract, not a same-PR addition. |
+| **Status** | FIXED (the safe half — eliminates wasted calls / error noise) — `src/lib/providers/spot-fallback.ts`, `src/lib/providers/spot-fallback.test.ts` (updated — 4/4 pass, including a network-call-is-skipped assertion). `npx tsc --noEmit` clean; `socket-cluster-health.test.ts` (14/14) and `polygon-options-gex.test.ts` (51/51, run with `node --experimental-test-module-mocks --import tsx --test` — the flag `npm test`'s CI runner supplies; plain `npx tsx --test` fails identically on `main` with no changes, a pre-existing sandbox/tsx-version limitation unrelated to this fix) pass on Node 20. |
+
+## 2026-08-28 — [FINDING, P3 ops-visibility] Admin health panel falsely reports "no connection pooler, enable PgBouncer" — RDS Proxy is actually correctly wired — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live `GET /api/admin/health` (`ops_config.database_via_pooler`) returns `false` with hint `"direct Postgres host (...) — enable PgBouncer per docs/PGBOUNCER-SETUP.md"`, even though the DB connection IS going through a connection pooler in production. |
+| **Root cause** | `databaseViaPooler()` (`src/lib/ops-config-status.ts`) detects a pooled host by string-matching the hostname against `pgbouncer`, `pooler`, `proxy.rlwy`, `-pool.` — all Railway-era PgBouncer naming patterns. `docs/PGBOUNCER-SETUP.md` itself is marked `> **DEPRECATED** — Railway decommissioned 2026-07. Database now runs on Amazon RDS with RDS Proxy for connection pooling.` The detection heuristic was never updated for the migration: an RDS Proxy endpoint follows a completely different, AWS-fixed shape — `<proxy-name>.proxy-<id>.<region>.rds.amazonaws.com` — which matches none of the old patterns. |
+| **Evidence** | Live `DATABASE_URL` host: `blackout-production-proxy.proxy-c89mwake2by8.us-east-1.rds.amazonaws.com`. Confirmed via `aws rds describe-db-proxies` (boto3): `blackout-production-proxy`, status `available`, `Endpoint` byte-identical to the DB host in use. So the app IS correctly connecting through RDS Proxy — the pooling posture is fine — but the admin panel's own detection reported the opposite. |
+| **Blast radius** | Only the `database_via_pooler` / `pg_pooler_hint` fields on `/api/admin/health` (`ops_config`) — a read-only operational-visibility indicator, no behavior change to the actual DB connection. |
+| **Fix** | Extracted the hostname check into an exported pure function `isPooledDbHost()` and added a case for the RDS Proxy shape: `host.includes(".proxy-") && host.endsWith(".rds.amazonaws.com")`, alongside the existing Railway-era patterns (kept for any leftover references). Updated the "direct host" hint to point at the deprecation note rather than just naming the stale runbook. |
+| **Fix rationale** | A hostname-shape check is the only zero-network-call way to answer this from inside the request (matches the existing function's design — it deliberately never makes an AWS API call). Kept the old patterns rather than replacing them, since removing dead detection code isn't the point of this fix and there's no evidence anything still emits those old hostnames, but no cost to keeping the check either. |
+| **Status** | FIXED — `src/lib/ops-config-status.ts`, `src/lib/ops-config-status.test.ts` (new, 4 tests incl. a negative case that a plain unpooled RDS instance host must NOT read as pooled). `npx tsc --noEmit` clean; tests pass on Node 20. |
+
+## 2026-08-28 — [FINDING, P1 data-correctness] `fetchPolygonFinancialRatios` has thrown on EVERY call, for EVERY ticker, silently starving Largo/BIE fundamentals, Night Hawk swing dossier scoring, and the SPX/NDX/RUT heatmap dividend-yield resolver — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live production logs (`/ecs/blackout-production`) show a repeating `[server-cache] CRITICAL: upstream for cache key "heatmap-div-yield:SPY" has failed N consecutive time(s). Error: no dividend_yield for SPY` — multiple interleaved counters climbing past 100+ consecutive failures over a single ~20-minute observation window, i.e. continuously, not a transient blip. |
+| **Root cause** | `fetchPolygonFinancialRatios()` (`src/lib/providers/polygon.ts`) called `GET /stocks/financials/v1/ratios` with `{ tickers: sym, ticker: sym, limit: "1", sort: "period_end.desc" }`. Two things were wrong with this, confirmed live against production Polygon with the real API key: (1) `sort=period_end.desc` is **not a valid sort field for this endpoint at all** — Polygon rejects it with a hard **HTTP 400**: `"Invalid query parameter: 'sort'. Expected one of [ticker, cik, price, ..., dividend_yield, ...], but found: 'period_end'."` — for every ticker, including a plain, fully-covered name like AAPL, not just illiquid ones. (2) The plural `tickers=` param is **silently ignored** by this endpoint — confirmed live: `tickers=SPY` with no `ticker=` returned the row for ticker **"A"** (Agilent), the alphabetically-first row of the whole *unfiltered* dataset, not SPY. Since the code always sent the invalid `sort`, `polygonGet`'s `if (!res.ok) throw` fired on literally every single call — this function has never once returned real data since these params were added, for any ticker. |
+| **Why it was invisible** | All three call sites wrap the call in `.catch(() => null)` (`dossier.ts:147`, `ticker-fundamentals.ts:139`, and indirectly through `resolveHeatmapDividendYieldUncached`'s own try/catch in `polygon-options-gex.ts`), so the exception was swallowed everywhere — no crash, no visible error to a member, just permanently-missing data. The ONE place this surfaced at all was the `heatmap-div-yield` cache's own `[server-cache] CRITICAL` logging (a generic "upstream keeps failing" alarm, not anything naming the actual HTTP 400 or the malformed query) — and even that only fires for the SPX/NDX/RUT heatmap path, not the other two silent consumers. |
+| **Blast radius** | (1) `src/lib/bie/ticker-fundamentals.ts` — Largo's BIE conversational tool has been unable to answer any fundamentals question (P/E, ROE, debt/equity, price/book, price/sales, EV/EBITDA, market cap, EPS, dividend yield) for ANY ticker, ever, since these params were added — it silently falls back to whatever partial data the income/balance/cash-flow statement calls (a separate, unaffected code path) can cover. (2) `src/features/nighthawk/lib/dossier.ts` — Night Hawk's swing dossier builder threads `fundamentalRatios` from this same broken call into every swing candidate's dossier; that data has been null/missing for every dossier built. (3) `src/lib/providers/polygon-options-gex.ts`'s `resolveHeatmapDividendYield()` — the SPX/NDX/RUT heatmap's continuous dividend yield `q` (used for closed-form vanna/charm) has always resolved to 0 via this path, for every one of the three major indices, continuously — reintroducing exactly the "10–22% VEX/CHARM under-read" this module's own comments say the whole caching mechanism exists to prevent, silently, the entire time. |
+| **Fix** | Corrected the query to `{ ticker: sym, limit: "1" }` — the singular `ticker=` param DOES correctly filter (live-verified: `ticker=AAPL` and `ticker=NVDA` both return the real, correct row; `ticker=SPY` correctly returns empty — see the separate note below), and `sort` is dropped entirely rather than replaced with a valid-but-meaningless value, since a single-row result for one ticker has nothing to sort by. |
+| **Evidence** | Live end-to-end test through the ACTUAL fixed function (not a reimplementation): `fetchPolygonFinancialRatios("AAPL")` now returns a full real row (`pe_ratio: 35.61, dividend_yield: 0.0034, market_cap: 4591037144400, ...`); `fetchPolygonFinancialRatios("NVDA")` likewise (`pe_ratio: 28.63, dividend_yield: 0.0012, ...`). Before the fix, the identical call with the original (broken) params returned HTTP 400 for AAPL — confirmed via direct `curl` with the production Polygon key and the exact params the code sent. `npx tsc --noEmit` clean. |
+| **A separate, real gap this fix does NOT close** | `fetchPolygonFinancialRatios("SPY")` (and QQQ/IWM/VOO/DIA — checked live) correctly returns `null` even after this fix — Polygon's `/stocks/financials/v1/ratios` endpoint appears to structurally not cover ETFs at all (they're funds, not companies with P/E-style financial statements). `HEATMAP_DIVIDEND_YIELD_PROXY` (`polygon-options-gex.ts`) maps `SPX→SPY`, `NDX→QQQ`, `RUT→IWM` specifically to route around this — but since NONE of those ETF proxies have ratios data, the SPX/NDX/RUT heatmap dividend-yield resolver will still always fall back to `q=0` even with this fix applied. A real fix exists and is live-verified: Polygon's `/v3/reference/dividends?ticker=SPY` returns real quarterly cash-dividend records (confirmed live: 4 real rows, trailing-12mo sum ≈ $7.52, ≈0.98% yield at SPY's current price — a realistic number), so a trailing-12-month yield could be computed from that endpoint instead. Left as a separate, scoped follow-up rather than folded into this fix, since it's a different root cause (data-source availability, not a malformed query) and touches a different function (`resolveHeatmapDividendYieldUncached`) with its own design considerations (needs `spot` threaded in, needs a trailing-window sum rather than a single field read). |
+| **Status** | FIXED (the universal-breakage half) — `src/lib/providers/polygon.ts`. No test file exists for this network-dependent provider function (consistent with its siblings in the same file); verified via a live end-to-end call through the real unmodified function against production Polygon, before/after. `npx tsc --noEmit` clean. |
+
+## E2E harness emails still triggered Discord signup alerts — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+
+After the first audit-email filter (`claude-`, `-audit-`), Playwright harnesses using
+`vector-e2e-<ts>@` and `ios-ui-e2e-<ts>@` still fired `user.created` → Discord ops alerts
+(measured live 2026-08-28 ~11:22 PM operator channel).
+
+**Fix:** extend `isInternalAuditEmail()` with `-e2e-` and other harness prefixes.
+
+## 2026-08-28 — [FINDING, P3 ops-UX] Every app-originated Discord ops alert renders as an unstructured plain-text line next to Whop's properly-formatted embed cards — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Once `notifyOpsDiscord` alerts actually started delivering (see the same-day finding on the missing task-definition secret mapping), the operator asked why they look so bad. In the same `#website-logs` channel, Whop's own native "Whop Events" bot posts a clean embed card — bold field labels (Key / Access Pass / Name / Email / Discord ID / Membership Status), a colored left accent bar, a "View Detailed Logs" link — while every alert from this app (`notifyOpsDiscord`) rendered as one unstructured `content` string: emoji + bold title on line 1, then a flat body line, e.g. `claude-audit-temp+s5ru48@blackouttrades.com · clerk_user_id=user_3IWp...` with no field labels, no color, no timestamp. |
+| **Root cause** | `notifyOpsDiscord` (`src/features/spx/lib/spx-play-notify.ts`) always posted `{ content: "emoji **title**\nbody" }` — plain Discord message content, never an `embed`. Discord embeds are what give the colored side-bar + labeled-field look; `postDiscordWebhook` (`src/lib/discord-post.ts`) already supported an `embeds` array (used by `helix-discord-format.ts`, `darkpool-discord-format.ts`, `discord-eod-recap.ts` for other channels), but the ops-alert path never used it. The specific "New member signed up" alert additionally used `buildNewMemberNotificationBody` (`src/lib/clerk-new-member-notify.ts`), which concatenated email/name/clerk-user-id into one string (`a@b.com — Name · clerk_user_id=user_x`) instead of separate labeled fields — the flat-string equivalent of the embed problem, one level down. |
+| **Blast radius** | All 16 `notifyOpsDiscord` call sites (new-member signup, cron health, data-correctness flags, WS leader-lock, nighthawk crons, admin critical alerts) rendered as unstructured text, not just the new-member one the operator happened to screenshot. |
+| **Fix** | (1) `notifyOpsDiscord` now posts a Discord **embed** — `title` (with severity emoji), `description` (from `body`, when non-empty — bullet-list callers like cron-health/data-correctness are unaffected since Discord renders markdown in embed descriptions same as content), a severity-mapped `color` (red/amber/blurple, same hex-int convention as the other embed builders in this repo), an optional `fields` array for structured facts, and a `timestamp`. (2) Added `OpsDiscordField` type and a `fields` parameter to `notifyOpsDiscord`. (3) Replaced `buildNewMemberNotificationBody` (flat string) with `buildNewMemberNotificationFields` (`Email` / `Name` (omitted when absent) / `` `Clerk User ID` `` as inline code) in `clerk-new-member-notify.ts`, and updated the Clerk `user.created` webhook route to pass `fields` instead of a concatenated `body` string. Live-verified the new embed shape by posting a preview payload directly to the real `DISCORD_OPS_WEBHOOK_URL` (HTTP 204) before shipping. |
+| **Fix rationale** | Embeds are the correct Discord primitive for exactly this — every *other* Discord integration in this codebase (Helix, dark pool, EOD recap, and Whop's own native bot) already uses them; `notifyOpsDiscord` was the one holdout still using flat `content`. Making the change at the `notifyOpsDiscord` level (rather than only fixing the new-member call site) fixes the visual quality for all 16 callers at once, for free, since none of them need to change their `title`/`body`/`severity` call shape — `fields` is additive and optional. |
+| **Status** | FIXED — `src/features/spx/lib/spx-play-notify.ts`, `src/lib/clerk-new-member-notify.ts` (+ its test, replacing the old flat-string tests with field-shape tests), `src/app/api/webhooks/clerk/route.ts`. `npx tsc --noEmit` clean; `clerk-new-member-notify.test.ts` (4/4) and `ws/leader-lock-shared.test.ts` (8/8, exercises `notifyOpsDiscord`'s drop-path) pass on Node 20. |
+
+## 2026-08-28 — [FINDING, P2 ops-signal] The "New member signed up" Discord alert is >90% internal audit-bot noise, not real customers — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Once the Discord ops-alert path was fixed to actually deliver (same-day finding on the missing task-definition secret mapping), the operator's live channel filled with a flood of "New member signed up" alerts for emails like `claude-audit-temp+s5ru48@blackouttrades.com` and `seo-audit-1787891027622@blackouttrades.com` — not real members. |
+| **Root cause** | This repo's own audit toolkit (`scripts/audit/*.mjs`, `scripts/audit/lib/clerk-audit-user.mjs`, and ~15 individual harnesses) creates real, disposable Clerk users against **production** Clerk to run live validations (data-validator, e2e healthchecks, tier-gating probes, the fleet's SEO/Largo lanes, etc.), then deletes them. Every one of those creations fires a genuine `user.created` webhook, which now correctly posts to Discord. Measured via CloudWatch (`[clerk-webhook] Provisioned user:` lines, last 500 events): **465/500 (93%) were internal audit/test accounts**, not customers. The signal the operator actually wants — "tell me when a real human shows up" — was drowning in the fleet's own testing traffic. |
+| **Blast radius** | Only the "New member signed up" alert (this is specific to how heavily that webhook is exercised by internal tooling vs. the other 15 `notifyOpsDiscord` call sites, which aren't driven by every audit run). |
+| **Fix** | Added `isInternalAuditEmail()` (`src/lib/internal-audit-email.ts`) — recognizes the audit toolkit's own naming conventions: this repo's `claude-` prefix (`claude-audit-temp+...`, `claude-nh-check`, `claude-simfeed-temp`, ...), the `-audit-` tag used by lanes with their own prefix (`seo-audit-<ts>@`, `largo-spx-audit-<ts>@`), and `@example.com` (used by a couple of harnesses that don't hit the real domain). Wired into the Clerk `user.created` webhook route (`src/app/api/webhooks/clerk/route.ts`) to skip the Discord alert — and ONLY the alert — for matching emails; provisioning, welcome-sequence, and Whop sync are all untouched, since a test account still needs to work correctly for the audit that created it. |
+| **Fix rationale** | A pattern match on the audit toolkit's own established naming conventions, rather than e.g. an allowlist of real customer domains (which the operator hasn't defined and would need constant upkeep) or a Clerk metadata flag (would require touching every one of the ~15 harnesses' user-creation calls). Deliberately conservative: `startsWith("claude-")` requires the hyphen immediately after "claude" (a real person literally named Claude, `claude@gmail.com`, does not match), and `includes("-audit-")` requires hyphens on both sides (`auditor@gmail.com` does not match) — false-positive risk against a real member's email is close to zero. |
+| **Status** | FIXED — `src/lib/internal-audit-email.ts` (new, unit-tested, 10 cases incl. the false-positive guards above) and `src/app/api/webhooks/clerk/route.ts`. `npx tsc --noEmit` clean; `internal-audit-email.test.ts` (6/6) and `clerk-new-member-notify.test.ts` (4/4) pass on Node 20. |
+
+## 2026-08-28 — [FINDING, P3 cosmetic, ops noise] Data-correctness FLAG alerts printed the ticker twice ("MSTR MSTR $138 CALL...") — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live, caught by eye in `#website-logs`: `Data-correctness FLAG ×1 (platform)` alert read "1 sampled play(s) are CONTRADICTED by the live chain (strike present but OI below the liquidity floor): MSTR MSTR $138 CALL @ $6.08 — Sep 4, entry prem ~$6.08." — the ticker appears twice. |
+| **Root cause** | `nighthawk-verifier.ts`'s cross-provider/strike check unconditionally built the alert detail as `` `${play.ticker} ${play.options_play}` ``. Every real generator of `options_play` — `formatOptionsPlay()` (`deterministic-edition.ts`), `grounding.ts`'s unconfirmed-contract fallback, and `play-backfill.ts` — already writes the ticker as the narrative's own leading word (e.g. `"MSTR $138 CALL @ $6.08 — Sep 4"`), so prepending `play.ticker` again duplicated it. |
+| **What this does NOT mean** | This is a message-formatting bug only — it does not affect the underlying check's correctness. The flag itself is real and means what it says: the sampled play's strike is genuinely present in the live Polygon chain (not a data error) but its open interest is below the platform's liquidity floor, i.e. a currently-published play recommends a contract too thin to be considered safely tradeable. |
+| **Fix** | Only prepend `play.ticker` when `options_play` doesn't already start with it (case-insensitive check) — defensive against any future/edge-case source that doesn't self-prefix, rather than assuming every caller behaves like the three generators audited here. |
+| **Evidence** | New regression test constructs a CONTRADICTED play and asserts the ticker appears exactly once in the resulting detail string; confirmed it fails (2 occurrences) against the pre-fix code and passes (1 occurrence) with the fix. Existing `nighthawk-verifier-chain-pulled.test.ts` and `nighthawk-verifier.test.ts` (10 tests) unaffected. `tsc --noEmit` clean. |
+| **What this does NOT fix** | The alert firing twice in the same minute (visible in the same screenshot) — traced the two `notifyOpsDiscord` call sites in `src/app/api/cron/data-correctness/route.ts` and confirmed they sit in mutually exclusive branches (async-full dispatch vs. synchronous path) within a single request, so this specific duplication is not a same-request double-fire. Left as an open question — likely an infra-level double-trigger (e.g. overlapping cron invocations) rather than an application bug; not reproducible from this sandbox without direct evidence of two near-simultaneous route invocations. |
+| **Status** | FIXED — `src/lib/correctness/nighthawk-verifier.ts`. |
+
+## Night Hawk Vector tab — persist closed contract picks for analysis
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+
+Vector contract picks were advisory-only: when the live monitor marked **Don't buy**, nothing was
+persisted for later analysis. Operators could not answer "how often do rank-1 picks invalidate before
+entry?" without scraping logs.
+
+**Fix:** `vector_pick_closures` table + edge-triggered insert on `POST /api/market/vector/contract-picks/live`
+(first `dont_buy` per session/ticker/OCC, idempotent on `commit_key`). Night Hawk gains a fifth toggle
+**Vector** rendering `VectorPickLogBoard` via `GET /api/market/vector/pick-closures/board`.
+
+These rows are analysis events, not committed positions — distinct from 0DTE/swing/banger ledgers.
+
+**Verification:** unit tests on closure helpers + updated `nighthawk-view.test.ts`; `tsc --noEmit` clean.
+
+## Night Hawk prod-check stale LEAPS toggle heuristic — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Shipped in PR (cursor/nighthawk-prod-check-bangers-3d11) |
+|---|---|
+
+**Root cause:** `nighthawk-prod-check.mjs` still looked for `Swings` + `LEAPS` in served HTML. The Aug 2026 remodel renamed the segment to **Bangers** (`nighthawk-view.ts`), so every pass WARNed falsely (NH-LEAPS-LABEL).
+
+**Fix:** Toggle probe now checks `Swings` + `Bangers`. Added `mobileStickyFaqOverlapGate` repo guard in marketing-funnel audit (locks #2799 fix in CI).
+
+## Home mobile sticky CTA blocked FAQ taps (P2 #2799) — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in PR (cursor/mobile-sticky-faq-fix-3d11) |
+|---|---|
+
+**Root cause:** `#mobile-sticky-cta` stayed visible for the entire scroll after the hero CTA left the viewport. Expanded FAQ items pushed item 3 into the bar's fixed footprint (53px overlap measured on prod).
+
+**Fix:** `LandingRedesignFx` now suppresses the bar when any `.faq-item` or `.footer` rect overlaps the sticky rect; `toggle` + scroll listeners refresh visibility. Pure helpers in `src/lib/marketing/mobile-sticky-cta.ts`; regression in `homepage-e2e-audit.mjs` (`runMobileFaqSticky`).
+
+**Evidence:** Unit tests pin the measured overlap geometry from FINDINGS; live proof via `npm run validate:homepage-e2e` post-deploy.
+
+## 2026-08-28 — [FINDING, P1 marketing/mobile] Mobile drawer Platform link did not land on #protocol — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `validate:homepage-e2e` mobile pass reported `MOBILE_ANCHOR`: Expected `#protocol` got empty after tapping Platform in the mobile nav drawer on production. |
+| **Root cause** | `MarketingMobileNav` used Next.js `<Link href="/#protocol">` with `onClick={close}`. Client-side navigation from `/?_cb=…` to `/#protocol` often drops the URL fragment, so `location.hash` stayed empty even though the drawer closed. |
+| **Fix** | `onHashNavClick` intercepts same-page homepage hash links: `preventDefault`, `scrollIntoView` on the target section, `history.replaceState` to set the hash explicitly. |
+| **Evidence** | Prod audit before fix: `issue_count: 1`, `MOBILE_ANCHOR`. Unit guard in `marketing-mobile-nav.test.ts` locks the handler. |
+| **Status** | FIXED — `src/components/landing/MarketingMobileNav.tsx`, `marketing-mobile-nav.test.ts`. |
+
+## Methodology page lane jump-nav — ADDED
+
+> **kind:** `FINDING`
+
+| **Status** | Shipped in PR (cursor/methodology-lane-nav-3d11) |
+|---|---|
+
+**Problem:** `/methodology` is a long trust page covering three grading systems. Readers had no in-page way to jump between SPX Slayer, Night Hawk, and 0DTE Command sections — only endless scroll.
+
+**Fix:** Sticky `MethodologyLaneNav` with anchor pills + `scroll-margin-top` section IDs. Repo guard extended in `methodologyPageGate` (live marketing-funnel audit).
+
+**Evidence:** `src/components/landing/methodology-lane-nav.test.ts` locks nav + anchor parity; `validate:marketing-funnel` live gate checks rendered nav.
+
+## findings-fold-staging.mjs rejected the real staging convention — the fold step silently never ran for days — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+
+**Root cause.** `findings-fold-staging.mjs`'s format guard required a staged file's FIRST line to
+match a date-prefixed, bracket-tagged heading pattern. Every real staged file actually in use —
+README.md's own documented convention, and every one of 109 files checked, 2026-08-25 through
+2026-08-28 — instead puts the kind-tag line BEFORE a plain `## Title` heading with no date prefix
+and no bracket. The guard rejected effectively all of them, and rejecting even ONE staged file made
+the script refuse the ENTIRE batch (an early-exit before folding anything). So the fold step — "the
+coordinator does this routinely" per `findings-staging/README.md` — had not actually run
+successfully in days: `FINDINGS.md` stood still while findings-staging silently accumulated.
+
+Two further defects compounded it, both invisible until the first was fixed and real folding was
+attempted: (1) 23 files wrote the kind-tag word un-wrapped, without the surrounding backticks that
+`findings-hygiene.test.ts`'s own kind-detection check requires; (2) 10 files use `## Root cause` /
+`## Fix` / `## Evidence` sub-sections at the SAME heading level FINDINGS.md reserves for entry
+boundaries — this file's own entry-splitting logic breaks on every such line, so folding one of
+these in raw would fragment a single finding into several headless sub-"entries."
+
+**Fix.** Rewrote the guard as a per-file normalizer instead of an all-or-nothing batch check:
+reorders a kind-line-before-heading file to heading-first, wraps a bare kind word in backticks, and
+refuses (names, skips, leaves in staging) any file with no heading, no kind line, or more than one
+entry-level heading line — never guessing at which of several such lines is the "real" entry title.
+A malformed file no longer blocks its siblings from folding.
+
+**Evidence.** Ran the fixed script for real against the live `docs/audit/findings-staging/`
+directory: **99 of 109** staged findings folded cleanly into `FINDINGS.md` (a second run is a
+correct no-op, confirming idempotency); the remaining **10** are named in the script's own output
+for a human pass to demote their internal sub-headings. `findings-hygiene.test.ts` (8/8, including
+"every entry declares a kind" and the UNRECONCILED ceiling) and `findings-fold-staging.test.ts`
+(9/9, including 3 new tests pinning the normalization and the multi-heading refusal) both pass
+against the real folded result. `tsc --noEmit` clean.
+
+**Blast radius.** Single file (`scripts/audit/findings-fold-staging.mjs`) plus its test. No other
+tool reads staged files directly — the reconciler, the merge resolver, and the PR-resolver script
+all operate on `FINDINGS.md` itself, downstream of this fold step, so none of them needed changes.
+
+**What this does NOT fix:** the 10 files using internal sub-section headings still need a human (or
+a follow-up automated) pass to demote those headings before they can fold — the list is in this
+PR's CI output / the script's own stderr on the next run.
+
+## Estimate-revision timeline is momentary, not cumulative
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+
+`diffEstimateRevisionTimeline` (Redis snapshot diff) only emits a revision in the single ~20-min
+cached build that happens to run while the delta is fresh — diffing a row also advances the Redis
+snapshot it compares against, so the next build compares equal and stays silent forever after.
+Measured live 2026-08-18: `estimate_revision_timeline` served **4 entries at 14:52 UTC and 0 at
+14:57 UTC**. Nothing was wrong with either number in isolation, but a member who opened the page
+outside the one detecting build's window saw an empty panel despite the word "timeline" promising
+a series.
+
+**Root cause.** The diff's Redis snapshot (`meridian:est-snap:v1:<ticker>:<date>`, 14-day TTL) is
+mutated as a side effect of comparison: on the same pass that detects `prev.estimated_eps !==
+row.estimated_eps` and emits a revision entry, it also overwrites `prev` with `row`'s values. Any
+later ~20-min rebuild diffs the now-current value against itself and finds nothing — the emission
+is single-shot per real-world change, not per read.
+
+**Fix.** New table `meridian_estimate_revisions` (one row per detected revision, `UNIQUE (ticker,
+event_date, change_kind, revised_at)`, `ON CONFLICT DO NOTHING` for safety under overlapping
+rebuilds) — same "persist what the diff emits" pattern as `meridian_report_snapshots`.
+`loadBenzingaEarningsBundle` now writes every freshly-diffed entry (fire-and-forget, mirrors
+`recordMeridianReportSnapshot`'s call-site pattern) and merges the live diff with
+`readRecentMeridianEstimateRevisions(since, 24)` via a new pure `mergeEstimateRevisionTimeline`
+helper — same `(ticker, date, change_kind, last_updated)` key dedupes a revision seen by both the
+live diff and persisted history, newest-first, capped at 24 (unchanged cap). A member visiting
+between builds now sees the accumulated recent history instead of only whatever this exact build's
+diff happened to catch.
+
+**Verification:** `mergeEstimateRevisionTimeline` unit tests reproduce the exact measured
+14:52→14:57 scenario (a build with an empty live diff still serves the persisted entries), confirm
+a revision seen by both sources counts once, and confirm newest-first ordering + limit across both
+sources — 6/6 pass (`npx tsx --test src/lib/meridian/meridian-benzinga-analytics.test.ts`, Node
+20). Full Meridian suite (`src/lib/meridian/**/*.test.ts`, `src/features/meridian/**/*.test.ts`,
+548 tests) green, 1 unrelated skip. `tsc --noEmit` clean.
+
+## 2026-08-28 — [FINDING, P2 ops noise] `isInternalAuditEmail` missed ~20 ad-hoc E2E/audit naming conventions — real "New member signed up" Discord alerts still firing for test accounts — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live, caught by eye in `#website-logs`: two "New member signed up" alerts posted for `vector-e2e-1787898155137@blackouttrades.com` and `ios-ui-e2e-1787898161119@blackouttrades.com` — both automated E2E test-suite accounts, not real members. |
+| **Root cause** | PR #3012 (2026-08-28, earlier this session) added `isInternalAuditEmail()` to suppress this exact class of noise, but its predicate only recognized two conventions: this repo's own `claude-` prefix and an `-audit-` tag. A full sweep of `scripts/**` found **~30 harnesses**, each inventing its own address format independently, most of which don't contain either signal — `vector-e2e-<ts>@`, `ios-ui-e2e-<ts>@`, `spx-e2e-<ts>@`, `zerodte-e2e-<ts>@`, `e2e-subject-<ts>@`, `e2e-subject-fb-<ts>@`, `rth-sweep-<ts>@`, `jwt-probe-<ts>@`, `nh-deploy-<ts>@`, `audit-nh-force-<ts>@` (starts with `audit-`, not `-audit-` — no hyphen before it), `meridian-cap-<hex8>@`, `cto-free-<hex8>@`, `cto-prem-<hex8>@`, `admin-ui-<hex8>@`, `nav-soak-<hex8>@`, `desk-ui-<hex8>@`, plus `deep-security-audit.mjs`/`premium-security-audit.mjs`'s dynamic `${label}-${Date.now()}[-<base36>]`. |
+| **Fix** | Widened the predicate to recognize the underlying STRUCTURE these ~30 scripts share, rather than chasing an ever-growing prefix list: (1) `e2e` as its own hyphen-delimited segment; (2) a bare `audit-` prefix (in addition to the existing `-audit-` substring); (3) a hyphen immediately followed by 9+ digits — the `Date.now()` (Unix-ms) convention used by most of the rest; (4) a hyphen immediately followed by exactly 8 lowercase hex chars — the `crypto.randomBytes(4).toString("hex")` convention used by the handful that embed no timestamp at all. All four are hyphen-anchored specifically so they can't false-positive on a genuine member's email (a phone-number-style local part, an incidental "e2e" substring, etc — see the added false-positive test cases). |
+| **Evidence** | Verified all 21 real generator patterns found in the codebase sweep are now caught (script output, before/after). 16 unit tests pass (10 existing + 6 new categories), including explicit false-positive guards. `tsc --noEmit` clean. |
+| **What this does NOT fix** | The underlying architecture problem — ~30 scripts each minting their own Clerk address inline instead of going through the shared `scripts/audit/lib/clerk-audit-user.mjs` helper (which CLAUDE.md already documents as the intended pattern) — is unchanged. This PR fixes the symptom (ops alert noise) via the detection predicate; consolidating the generators themselves onto one helper is a separate, much larger refactor, out of scope here. |
+| **Status** | FIXED — `src/lib/internal-audit-email.ts`. |
+
+## 2026-08-28 — [FINDING, P1 ops-visibility] Every ops Discord alert (new members, cron health, data-correctness, WS leader-lock) has been silently dropped in production — the secret VALUE existed nowhere the containers could see it — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `notifyOpsDiscord()` (`src/features/spx/lib/spx-play-notify.ts`) is called from 16 call sites — new-member signup, cron-staleness watchdog, data-correctness flags, nighthawk-edition/morning-confirm crons, WS leader-lock transitions, admin critical alerts — and every single call in production logged `[notify] ops alert DROPPED — neither DISCORD_OPS_WEBHOOK_URL nor DISCORD_PLAY_WEBHOOK_URL is set`. Confirmed via CloudWatch Logs Insights on `/ecs/blackout-production` (14-day retention, the full window available): **2,613 dropped alerts** just in that window — "New member signed up", "Data-correctness FLAG", and "⚠️ Cron health: N job(s) need attention" all repeatedly lost. |
+| **Root cause — two layers, and fixing only the first is not enough** | (1) `DISCORD_OPS_WEBHOOK_URL` was never present as a key in the `blackout-production/app/env` Secrets Manager JSON blob at all — this alone would explain the drops. (2) **Even after adding the key with a real value**, alerts kept dropping (re-verified live via a real disposable Clerk signup at 2026-08-28 03:53:30 UTC, `[clerk-webhook] Event: user.created` immediately followed by the same DROPPED line). The reason: this app's ECS task definitions do **not** inject the secret blob wholesale — `blackout-production-web`'s and `blackout-production-market-worker`'s `containerDefinitions[].secrets` arrays enumerate **each individual env var by name**, each with its own `valueFrom: <secret-arn>:<jsonKey>::` pointer. `DISCORD_OPS_WEBHOOK_URL` (and its fallback, `DISCORD_PLAY_WEBHOOK_URL`, which doesn't exist in the blob at all) were simply never added to either task definition's `secrets` list, so no container ever had the env var, no matter what the secret's JSON value held. Writing the secret VALUE and forcing a new deployment (which I did first) was necessary but silently insufficient — the container came up with 8/8 tasks converged on the updated secret version and still dropped the alert, because the task definition itself had no mapping for that key. |
+| **Evidence** | CloudWatch Logs Insights query `fields @timestamp, @message | filter @message like /ops alert DROPPED/` over the full 14-day retention window: 2,613 matches, distributed across every day in range (33–348/day), including *after* the secret-value write and a full 8/8 forced ECS redeploy — proving the value alone doesn't fix it. `ecs describe-task-definition` on `blackout-production-web:1080`'s `blackout-web` container: 78 `secrets` entries, none named `DISCORD_OPS_WEBHOOK_URL` or `DISCORD_PLAY_WEBHOOK_URL`, while sibling webhooks (`DISCORD_THERMAL_WEBHOOK_URL`, `DISCORD_HELIX_WEBHOOK_URL`, `DISCORD_DARKPOOL_WEBHOOK_URL`) were all present — proving the pattern (per-key secret mapping) is real and consistently applied to every *other* Discord webhook, just missed for ops. Same gap independently confirmed on `blackout-production-market-worker:656` (67 secrets, same three sibling webhooks present, ops missing) — this alert path is reached from WS leader-lock code that runs in the worker service, not just the web service. |
+| **Blast radius** | All 16 `notifyOpsDiscord` call sites in both ECS services: `src/app/api/webhook/whop/route.ts`, `src/app/api/webhooks/clerk/route.ts` (this session's new-member notification, PR #3005), `src/features/nighthawk/lib/edition-builder.ts`, `src/app/api/cron/nighthawk-edition/route.ts`, `src/app/api/cron/nighthawk-morning-confirm/route.ts`, `src/app/api/cron/cron-staleness-watchdog/route.ts`, `src/app/api/cron/data-correctness/route.ts`, `src/lib/ws/leader-lock-shared.ts`, `src/lib/cron-run.ts`, `src/lib/admin-critical-alerts.ts`, `src/instrumentation.ts`, `src/app/api/membership/sync/route.ts`, plus provider rate-limit/anthropic alert paths. Every one of these has been alerting into the void since whenever `notifyOpsDiscord` was first wired up — this was not a regression from today's work, it predates it and was only surfaced *because* today's work tried to use the path for the first time and got tested end-to-end. |
+| **Fix** | Two-part, both required: (1) wrote `DISCORD_OPS_WEBHOOK_URL` into the `blackout-production/app/env` Secrets Manager JSON blob (a real, operator-supplied, curl-verified-204 Discord webhook URL). (2) Registered new ECS task-definition revisions — `blackout-production-web:1081` and `blackout-production-market-worker:657` — each an exact clone of its prior revision (`:1080`/`:656`) with **one added `secrets` entry**: `{"name": "DISCORD_OPS_WEBHOOK_URL", "valueFrom": "<same secret ARN>:DISCORD_OPS_WEBHOOK_URL::"}`, following the exact `valueFrom` shape already used by the sibling Discord webhook secrets. Diffed the full task-definition JSON before and after registering to confirm this was the *only* change in each (78→79 secrets on web, 67→68 on worker). Updated both services (`forceNewDeployment=True`) to roll onto the new revisions. No terraform apply — per this repo's standing instruction that terraform state does not match production, this was a single surgical `register_task_definition` + `update_service` call reusing every other field verbatim, exactly the "changing an existing resource" playbook. |
+| **Fix rationale** | The per-key secrets mapping is this app's established, consistently-applied pattern (every other Discord webhook, every DB/API key, is wired the same way) — the omission was almost certainly just never noticed because nothing had ever exercised the ops-alert path against production traffic before. Cloning the existing task definition and adding exactly one entry, rather than switching to a wholesale-secret-injection model, keeps the change minimal and consistent with the 78/67 other entries already there; a broader "just inject the whole blob" redesign would be a much larger, riskier change for a problem this narrow fix already solves. Terraform is deliberately NOT touched here (state drift risk per this repo's own standing note) — the task definition is now the source of truth on AWS, and it should be codified back into `blackout-infra` terraform as a follow-up record, not reconciled via `apply`. |
+| **Status** | FIXED (infra-only, no application code change) — `blackout-production-web:1081` and `blackout-production-market-worker:657` registered and deployed; both services force-redeployed. Live re-test in progress: created a second real disposable Clerk signup post-redeploy to confirm delivery; see `docs/audit/RUN-LOG.md` / follow-up commit for the confirmed-delivered proof once both deployments converge. |
+| **Follow-up (not done here)** | Codify the new secrets mapping in `blackout-infra` terraform (`terraform/modules/ecs/*` or wherever the task definition's `secrets` list is templated) as a durable record, per this repo's own "create manually, codify after" rule — do NOT `terraform apply` against production to do this; add the terraform diff in a PR for the infra lane to review and land without an apply against drifted state. |
+
+## 2026-08-28 — [FINDING, P2 Thermal/Depth ladder] Call/put wall marker mislabeled the nearest existing rung instead of showing the wall's real price — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | On `/heatmap`'s Depth tab (`GexDepthLadderView`), the Key Levels header read `CALL WALL 770` while the ladder's row tagged `call wall` showed **767** — a rung 3 points off, and on the wrong side of spot (771): a green (buy-side) bar the reader would read as support, for a level the header itself calls resistance. Found live during an authenticated-product audit pass (desktop 1440, `/heatmap`), screenshots retained under `/tmp/depth-ladder-ui/`. |
+| **Root cause** | The header and the ladder read the exact same underlying wall value the whole time — both derive from `filteredLevels.posWall`/`negWall` (`GexHeatmap.tsx:3060-3061`/`3069-3070`), so this was never a data disagreement. The mismatch was purely a rendering choice: `GexDepthLadderView`'s `nearest()` helper (previously at `GexHeatmap.tsx:2262-2267`) picked whichever existing rung was CLOSEST to the wall price and tagged that row's text with "call wall" / "put wall" — but that row still displayed **its own price**, not the wall's. On a coarse ladder (rungs spaced `step_pct` apart, ~4pt live), the nearest rung can sit a full band or more from the real wall, and can land on the opposite side of spot from it, so the labeled row's own price and the header's wall price can be two different numbers for what is supposed to be the same fact. |
+| **Evidence** | Live capture: header `CALL WALL 770`, spot `771`, ladder's tagged `call wall` row at `767` (a buy-side/green bar below spot for a level the header calls resistance). Unit-reproduced in `gex-depth.test.ts`'s new `wallMarkerRowIndex` suite with the same shape (rungs `[779,775,771,767,763]`, spot `771`, wall `770`): the old nearest-rung approach would have tagged rung `767`; the fix instead returns the insertion index (`3`) so the caller draws the true price `770` on its own row, with an explicit assertion that the returned index is never mistaken for the wall's own price. |
+| **Blast radius** | Only `GexDepthLadderView`'s wall-tag rendering. The `callWall`/`putWall` VALUES it receives as props (`profilePosWall`/`profileNegWall`, fed from the same `filteredLevels` the Key Levels header reads) were already correct and untouched — this was never a computation bug, so no other consumer of `posWall`/`negWall` (the matrix row highlighting at `GexHeatmap.tsx:3908-3909`, the regime strip) needed a change. |
+| **Fix** | Added `wallMarkerRowIndex()` to `src/lib/gex-depth.ts` — a pure, exported helper that returns the row-insertion index for a wall marker in a descending-sorted rung list (mirroring the ladder's existing repriced-flip `crossingIdx` pattern, which already drew its OWN dedicated row at the true modelled-flip price rather than tagging a rung). `GexDepthLadderView` now renders call-wall and put-wall markers as dedicated rows at their real price (rose for call wall, emerald for put wall, dashed connector like the flip marker) instead of tagging an existing rung's row and letting that row's own (different) price stand in for the wall's. The old `nearest()`/`callWallRung`/`putWallRung`/tag-text plumbing was removed entirely — nothing else referenced it. |
+| **Fix rationale** | Chose "draw the true price on its own row" over "tighten `nearest()`'s tolerance and hide the tag when too far" because the ladder already has a working precedent for exactly this (the crossing/flip marker) — reusing that pattern keeps the visual language consistent (three kinds of derived-price markers: spot, flip, wall) rather than adding a second, different failure mode (a wall that silently stops being labeled once far enough from any rung, which would read as "no wall" rather than "wall between these two rungs"). Extracted the index logic into `gex-depth.ts` (the file that already hosts this component's other pure ladder helpers, `depthBandForPrice`/`forcedFlowBetween`) rather than leaving it inline, since the component itself isn't exported/rendered in tests here — this makes the exact regression class unit-testable without a React-rendering harness this codebase doesn't otherwise use for this feature area. |
+| **Status** | FIXED — `src/lib/gex-depth.ts` (`wallMarkerRowIndex`), `src/features/thermal/components/GexHeatmap.tsx` (`GexDepthLadderView` marker rendering), `src/lib/gex-depth.test.ts` (+6 tests: the reproducing live case, exact-rung-boundary case, null target, beyond-range gate, non-finite guards, below-every-rung case). `npx tsc --noEmit` clean; `gex-depth.test.ts` 45/45 pass on Node 20. |
+
+## 2026-08-28 — [FINDING, P1 member-visible] The site's Discord invite was dead — everyone, free and paid, hit a broken link — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Every "Join Discord" link on the site (marketing footer, homepage community rail, contact page, welcome-sequence day-0 email, JsonLd schema) used `SITE.social.discord.url` = `https://discord.gg/5zSt7G34dw`. That invite code no longer resolves. |
+| **Root cause** | Two independent Discord invite constants existed in the codebase with nothing tying them together: `SITE.social.discord.url` (`src/lib/site.ts`) and `LINKS.discord` (`src/lib/x-intel/cta.ts`, used only by the X/Twitter auto-posting module) pointed at two DIFFERENT invite codes. A comment already flagging this exact split was added to `cta.ts` on 2026-08-21 ("one of the two is stale and they are not reconciled here on purpose... Raised in the PR") — the divergence was noticed, documented, and never resolved, and nothing enforced reconciling it. |
+| **Evidence** | Verified live against Discord's own public invite-resolve API (`GET https://discord.com/api/v10/invites/{code}`, no auth required): `5zSt7G34dw` → `HTTP 404 {"message":"Unknown Invite","code":10006}`. `j9FNuBXfMH` (the `cta.ts` one, "supplied by the operator 2026-08-21") → resolves cleanly to the real "BLACKOUT" server: 151 members, 21 online, roles including `Premium`/`Community`/`Life-Time-Members` matching this app's own tier model, `expires_at: null` (never expires). Control-tested the API itself against Discord's own public invite (`discord-api`) to confirm the endpoint behaves normally and the 404 wasn't a transport/proxy artifact. |
+| **Blast radius** | Every consumer of `SITE.social.discord.url` — `HomeCommunityRail.tsx`, `StaticLandingFooter.tsx`, `JsonLd.tsx`, `(marketing)/contact/page.tsx`, `largo/platform-links.ts`, `welcome-sequence.ts` (day-0 welcome email), `email/layout.ts` (every transactional/marketing email's footer) — all served the dead link. This is a single source of truth (`SITE.social.discord.url`), so one fix corrects every surface at once. |
+| **Fix** | Updated `SITE.social.discord.url` to the live invite (`j9FNuBXfMH`), matching what `x-intel/cta.ts` already used. Updated `cta.ts`'s own comment to record the reconciliation and the live-verification method, so a future reader doesn't have to redo the API check to understand why the two constants now agree. |
+| **Fix rationale** | Reconciled toward the operator-supplied, verified-live code rather than either guessing or leaving the split — the whole point of the original 2026-08-21 comment was refusing to "pick one silently," and this fix resolves that refusal with actual evidence (a live API check) instead of a guess. |
+| **Status** | FIXED — `src/lib/site.ts`, `src/lib/x-intel/cta.ts` (comment only, `LINKS` now exported), `src/lib/site.test.ts` (new — asserts `SITE.social.discord.url === LINKS.discord`, so the two constants can never silently re-diverge without a test failure). `npx tsc --noEmit` clean; `site.test.ts` + `x-intel/cta.test.ts` 23/23 pass on Node 20. |
+
+## 2026-08-28 — [FINDING, P2 ops noise] Data-correctness FLAG alerts posted twice — no debounce across independent `?force=1` callers — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live, caught by eye in `#website-logs`: an identical `Data-correctness FLAG ×1 (platform)` alert posted twice within the same minute. |
+| **Root cause** | The route has exactly ONE registered EventBridge cron (`terraform/modules/crons/cron-jobs.json`, `0,30 11-21 ? * MON-FRI`) — it uses the SYNCHRONOUS path (no `?force=1`), which never even logs `[data-correctness] background done` (that line only exists in the async-full dispatch branch). So the registered infra cron is NOT the source. The `?force=1` async-full branch — reached only via `rth-deep-audit.yml`'s manual dispatch, `scripts/gha-rth-audit.mjs`, and ad-hoc fleet audit scripts — has no lock: any two independent callers hitting it within seconds of each other each dispatch their own full 8-surface sweep, and each posts its own `notifyOpsDiscord` alert on the same underlying flags. With multiple independent Claude fleet lane sessions each running their own periodic health checks against the same production endpoint, this collision is not rare. |
+| **Evidence** | CloudWatch `/ecs/blackout-production`, last 6h: every single `[data-correctness] background done` line appears in a pair, seconds to tens-of-seconds apart, **each with a DIFFERENT `elapsed=` value** (e.g. `elapsed=9425ms` / `elapsed=28151ms` at 05:32:28 and 05:32:32; `elapsed=16632ms` / `elapsed=11394ms` at 04:24:11 and 04:24:34) — proof of two independent process runs, not one duplicated log line. The GHA-scheduled `rth-deep-audit.yml` workflow's own times (10:00/14:00/16:30 ET, dual-cron EDT/EST pairs) don't match the observed UTC timestamps, ruling it out as the direct source too. |
+| **Fix** | Added a 90-second cross-replica debounce lock (`sharedCacheSetNx`, the repo's existing atomic "claim if absent" primitive — same idiom already used by `swing-discovery`/`banger-discovery`/other cron routes) around the async-full dispatch. A second `?force=1` call while the lock is held returns `202 {status: "debounced"}` and does not dispatch a sweep or post an alert. Fail-open on a Redis error (treated as acquired) so a cache outage never silently blocks every correctness sweep. Scoped ONLY to the async-full branch — the registered cron's synchronous path and the targeted `?surface=heatmap` path are both untouched. |
+| **Evidence (fix)** | New test `route.test.ts` (3 cases): first `?force=1` acquires the lock and dispatches; a second concurrent call is debounced with no sweep/no alert; `?surface=heatmap` is unaffected by the lock even when held. `tsc --noEmit` clean. |
+| **Status** | FIXED — `src/app/api/cron/data-correctness/route.ts`. |
+
+## 2026-08-27 — [FINDING, P0 0DTE grading] WS-11 trim-scale reconstruction silently overrode a real, terminal thesis-break/ratchet-floor/flat-timeout exit — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `record.ts`'s `managedGradeView` (the AS-MANAGED headline every member sees, plus `officialPlanPnlPct`/`isZeroDteWin`, which feed calibration and `feature-store.ts`'s learning store) preferred the bar-only WS-11 trim-scale reconstruction (`reconstructTrimScaleExecutableFromBars`) over the LIVE ENGINE's actually-stamped exit (`entry_context.exit`) whenever the reconstruction showed 2+ tranches or one tranche with fraction < 1 — REGARDLESS of whether the real exit had already closed the position for a reason (thesis-break, any ratchet floor, flat-timeout) the bar-walk is structurally blind to. Concrete live examples (re-verified fresh against prod, 90-day pull, 2026-08-27): **APLD 2026-08-25** — real exit `thesis_break:gex-walls` at **+19.0%**, displayed **-0.98%** `time_stop`; **MU 2026-07-30** — real exit `thesis_break:gex-walls` at **-21.92%**, displayed **+56.93%**; **SPXW 2026-08-21** — real exit `ratchet_breakeven_floor` at exactly **0%** (breakeven), displayed **+56.07%**. All three sign/magnitude-flip the outcome a member sees for a trade that already closed. |
+| **Root cause** | `reconstructTrimScaleExecutableFromBars` (`plan.ts`) replays the frozen ⅓/⅓/⅓ tranche ladder against raw Polygon minute bars with **zero knowledge of live Cortex/GEX-wall/thesis state** — it is a pure mechanical bar-walk. `reconstructionShowsGenuinePartialBank` (added 2026-08-06 to stop a *degenerate* single-tranche "reconstruction" from burying a real exit) only asked "did the bar-walk itself trim more than once" — it never asked whether a REAL, terminal exit had already closed the position for a reason the bar-walk cannot see. So once a genuine multi-tranche bank existed, the reconstruction won unconditionally, even against a real `thesis_break`/`ratchet_*`/`flat_theta_bleed` exit — turning "more information" (the 2026-08-06 fix's framing) into a fictitious continuation of an already-closed trade. |
+| **Evidence** | 90-day `/api/market/zerodte/record` pull, re-verified live (not copied from a prior report): 344 total plays, **98 GENUINE reconstructions**, **94 of those also carry a real terminal `entry_context.exit`**, and **43/94 (46%) sign-flip** between the pre-fix (reconstruction-wins) and post-fix (precedence-corrected) grade. All three headline examples above (APLD/MU/SPXW) reproduced with the exact real-vs-displayed numbers. Re-run script and raw output available on request; see the PR for the full example list. |
+| **Blast radius** | `record.ts`: `managedGradeView` (the as-managed headline — every member-facing play + `by_outcome`/`by_time_of_day`/`by_direction`/`by_score_band` bucket that reads it), **and separately** `officialPlanPnlPct`/`officialPlanOutcome` (the WS-10/11 "official" lane read directly off `entry_context.executable`, which `isZeroDteWin`/`isGradedZeroDteRow` and `feature-store.ts`'s `labelFromPlanOutcome` consume — a SEPARATE read path from `managedGradeView` that would have kept grading the fictitious reconstruction even after the headline was fixed, since scan.ts stamps `entry_context.executable.plan_pnl_pct` as the reconstruction's own number whenever `tranches` is present). Both were fixed; a dedicated test (`FINDINGS 2026-08-27: officialPlanPnlPct/isZeroDteWin ... inherit the fix`) proves the second one is not just "assumed to flow through." Confirmed NOT in scope: the pre-existing, documented, INTENTIONAL mechanical-vs-as-managed divergence for ratchet-mode rows (WS-11 #3's own fixture — `officialPlanPnlPct` deliberately differs from the live ratchet exit there; untouched by this fix, which only ever fires on a *genuine* trim-scale reconstruction). |
+| **Fix** | New `realExitIsBarWalkReproducible(reason)` in `record.ts`, built on the EXISTING `categorizeExitReason` taxonomy (`exit-engine.ts`) rather than a new ad-hoc string match: a real exit's reason is bar-walk-reproducible only when its category is `"stop"` (`plan_stop`) or `"target"` (`plan_target*`/`trim_scale*` — literally the same mechanism the reconstruction models). `"thesis"`, `"ratchet"`, and `"flat"` categories — and any unrecognized/future reason — fail CLOSED toward trusting the real exit. `managedGradeView`'s precedence is now: reconstruction wins only when it is GENUINE **AND** (no real exit exists **OR** the real exit's reason is bar-walk-reproducible); otherwise the real exit wins outright. `officialPlanPnlPct`/`officialPlanOutcome` get a narrowly-scoped `officialOverridingRealExit` helper applying the identical condition, restoring WS-11's own stated invariant ("the as-managed number and the official number are one and the same by construction") for the specific case it silently stopped holding. |
+| **Fix rationale** | Reusing `categorizeExitReason` (rather than inventing a second reason taxonomy) means the split can never drift from the board's own display categories. Scoping the `officialPlanPnlPct` fix to ONLY the genuine-reconstruction-blocked-by-real-exit case (not touching the pre-existing ratchet-mode mechanical/managed divergence, and not touching degenerate-reconstruction rows, which were already a known, separate, out-of-scope gap) keeps this a small, surgical, real-money-safe change rather than a broad regrade. Deliberately did NOT add a timestamp/ordering check to distinguish "stale mid-session exit stamp" from "real terminal exit" — the engine only ever stamps `entry_context.exit` on a terminal EXIT decision (never on a HOLD), so any stamped exit present at grading time IS the terminal one; the earlier 2026-08-06 test's "stray/stale stamp" framing was itself the misconception this fix corrects (see `record.test.ts`'s replaced test). |
+| **Status** | FIXED — `record.ts` (`realExitIsBarWalkReproducible`, `managedGradeView` precedence, `officialOverridingRealExit`, `officialPlanPnlPct`/`officialPlanOutcome`), `record.test.ts` (+8 tests: APLD/MU/SPXW-shaped real-exit-wins cases, a bar-walk-reproducible-real-exit case confirming the reconstruction still wins with no regression, a no-real-exit case, and the `officialPlanPnlPct`/`isZeroDteWin` inheritance + non-regression cases). Full `record.test.ts` (30/30), `feature-store.test.ts`, `exit-engine.test.ts`, `plan.test.ts` all green on Node 20. Live 90-day re-verification above confirms the magnitude (94 overlapping rows, 43 sign-flips) independently of the prior audit's numbers. |
+
+## Vector zoom-reset button corrupts the replay viewport — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Component** | `VectorChart.tsx` / `VectorZoomControls.tsx` |
+| **Severity** | P2 — visual/functional corruption of replay, no data-integrity impact |
+
+### Root cause
+
+`handleZoomReset` (the ⟲ button wired through `VectorZoomControls` at all three `VectorToolbar`
+call sites — desktop row, compact/mobile row, compare-pane row) computed its display bars with:
+
+```ts
+const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
+```
+
+`displayBarsFromMinute(minuteBars, intervalMinutes, cursorTime?)` only slices `minuteBars` to a
+point in time when a `cursorTime` is supplied — omitted, it aggregates the **entire** live minute
+buffer. `minuteBarsRef.current` keeps growing with live bars even while a member is scrubbed into
+replay (that accumulation is exactly why `applyFrame` exists: it re-slices the buffer to the cursor
+on every frame). `applyFrame` itself always passes a cursor time here (`VectorChart.tsx:3125`); the
+established pattern for computing that cursor time from outside `applyFrame` already exists
+elsewhere in the same file (`VectorChart.tsx:2477`, inside the wall-rail feed):
+
+```ts
+const eventCursorTime =
+  replayModeRef.current ? (timelineRef.current[cursorIndexRef.current] ?? undefined) : undefined;
+```
+
+`handleZoomReset` never adopted it. So clicking Reset zoom mid-replay recomputed `display.length`
+off the full, still-growing live bar count and re-centered the viewport
+(`applyCenteredLiveViewport(chart, display.length)`) as if the member were live — corrupting the
+scrubbed frame's viewport (wrong bar count, wrong centering) while every other overlay stayed
+correctly frozen at the cursor.
+
+### Why it wasn't caught earlier
+
+The sibling preset selector for the SAME class of operation, `VectorIntradayZoomControls`
+(session/structure/etc.), already has a `disabled` prop wired to `replayMode` at its call site —
+so that control is unreachable during replay and never hit this bug. `VectorZoomControls` (the
+separate +/−/reset trio) has **no** `disabled` prop at all, at any of its three `VectorToolbar`
+render sites. The two plain zoom in/out buttons are harmless during replay — `stepZoom` only
+rescales the chart's *currently rendered* logical range, it never recomputes bars from
+`minuteBarsRef`, so it never leaks live data regardless of replay state. Only the reset button
+recomputes from the raw buffer, and it's the one member of the trio without any replay guard —
+an easy asymmetry to miss since the other two buttons in the same component are fine.
+
+### Fix
+
+Hardened `handleZoomReset` to compute the same `replayModeRef.current ? (timelineRef.current[...]
+?? undefined) : undefined` cursor-time value used elsewhere in the file, and pass it as
+`displayBarsFromMinute`'s third argument — mirroring `applyFrame`'s own cursor-scoping exactly.
+Deliberately did **not** add a `disabled` prop to `VectorZoomControls` — unlike the intraday-zoom
+presets, the reset button doesn't need to be unreachable during replay; with the cursor-time fix it
+now does the CORRECT thing during replay (re-center on the cursor-sliced frame) rather than needing
+to be disabled to avoid a wrong one. That is a better outcome for a scrubbing member than losing
+the reset control entirely.
+
+### Blast radius
+
+Single call site (`handleZoomReset`), single file. `handleIntradayZoom`'s own "session"/"structure"
+presets have the identical missing-`cursorTime` pattern in the same function, but they're routed
+through `VectorIntradayZoomControls`, which is already `disabled={replayMode}`-gated — unreachable
+during replay, so not a live bug and left alone. A related, lower-confidence finding from the same
+audit round (`compareSync?.zoomPreset` effect, `VectorChart.tsx:2044-2048`, no `replayMode` check)
+needs Compare-mode's per-pane replay-state ownership investigated before deciding whether it's a
+reachable bug — deferred to a follow-up, not bundled into this fix.
+
+### Test
+
+`VectorChart-zoom-reset-replay-guard.test.ts` — source-invariant guard (no React render harness in
+this repo) asserting `handleZoomReset` computes the cursor-time value and passes it as
+`displayBarsFromMinute`'s third argument.
+
+## Vector wide-desktop page still scrolled ~100px after #2936 — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in `cursor/vector-wide-desktop-no-scroll-3d11` |
+| **Severity** | P2 — desk UX |
+| **Surface** | `/vector` @ ≥1600px |
+
+### Symptom
+
+Post-#2936 prod audit: chart column height matched grid (788px @ 1680×900), but `scrollHeight` was still 1003 vs `innerHeight` 900 (~103px page scroll). Harness `ui:grid-no-page-scroll-*` failed.
+
+### Root cause
+
+`calc(100dvh - 7rem)` on `.vector-chart-terminal-grid` budgeted nav+toolbar only. The collapsed **Universe scanner** summary row below the grid (~48px + gap) was outside the budget, so total page content exceeded one viewport even though the grid row fix worked.
+
+### Fix
+
+At `@media (min-width: 1600px)`, mirror `.vector-compare-page` flex chain: cap `.vector-page-shell` to `calc(100dvh - var(--nav-offset))`, flex column through `.vector-page-content > div`, toolbar + scanner `flex: 0 0 auto`, grid `flex: 1 1 0; height: auto` (keep `grid-template-rows: minmax(0,1fr)` + `overflow: hidden` from #2936).
+
+### Evidence
+
+- Pre-fix: `npm run validate:vector-e2e` → `ui:grid-no-page-scroll-1680x900` FAIL (scroll 1003 vs 900; chart 788 = grid 788)
+- Post-fix: pending prod deploy + re-run harness
+
+## Vector wall-rail primitive recomputed full-history data derivations on every repaint frame — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Context.** Member report: "the user actions on vector chart are very slow, lagging ... zoom in,
+scroll, drag ... they should be very fast and responsive." Measured live on production first,
+before touching any code (per this repo's own "measure, don't guess" standard) — a CDP `Profiler`
+session (Chrome DevTools Protocol, via a Playwright `newCDPSession`, NOT the earlier Playwright
+action-log tracing attempt which lacks JS call-stack data) was attached during a synthetic
+wheel-zoom + click-drag gesture burst against `/vector?ticker=SPX` on prod. Result: **31% of all
+CPU samples during the gesture burst landed in a single minified vendor-chunk function**, with
+`arc`, `stroke`, `beginPath`, `fill` (canvas 2D primitives), `project`, and `_tick` all appearing as
+separate hot functions in the same chunk — consistent with a canvas-drawing chart library doing very
+heavy per-frame work.
+
+**Root cause.** `WallRailPaneView.renderer()` (`vector-wall-rail-primitive.ts`) calls
+`this._source.project()` — and lightweight-charts invokes `renderer()` on **every single canvas
+repaint**, i.e. every wheel tick and every drag mousemove that changes the visible range, since
+coordinates must be reprojected against the current scale each frame. `project()` was recomputing,
+from scratch, on every one of those calls:
+- `maxPctByTime([...callTrails, ...putTrails])` — full scan of every point in every trail
+- `kingStrikeByTime(callTrails)` / `kingStrikeByTime(putTrails)` — same, twice more
+- an "earliest bucket" scan and a "newest bucket" (`liveTime`) scan — two more full passes
+
+All four of these are **pure functions of the trail DATA** (`this._data`) — none read the viewport,
+scale, or anything else that changes between repaint frames. `this._data` itself only changes on the
+much lower-frequency poll/refresh cadence (`setData()`, called from `refreshTrails`, not from the
+zoom/pan visible-range subscription) — so the SAME `this._data` instance survives many dozens of
+repaint frames within a single zoom/drag gesture, and every one of those frames re-ran all four
+full-history scans for no reason. With a full session's worth of buckets per trail (the file's own
+comments cite "2800+ buckets/session"), that is a real, measurable, repeated cost landing squarely on
+the gesture the member described as laggy.
+
+**Fix.** Added a cache (`_derivedCache`) on `WallRailPrimitive`, keyed on `this._data` object
+identity: the four derivations (`earliest`, `maxPctAtTime`, `callKingAt`, `putKingAt`, `liveTime`)
+are computed once and reused across every repaint frame until `setData()` reassigns `this._data` to
+a new object, at which point the cache is invalidated and recomputed exactly once. Cache is also
+cleared in `detached()` to avoid holding stale references. The per-frame pixel-projection work
+inside `project()` (the `addTrail` loop, which genuinely depends on the current chart scale via
+`series.priceToCoordinate`) is untouched — only the data-only preamble is memoized.
+
+**Blast radius.** Only `vector-wall-rail-primitive.ts`. `feedWallRail`/`setData` callers in
+`VectorChart.tsx` are unchanged; the cache is entirely internal to the primitive and invisible to
+every caller.
+
+**What was deliberately left unchanged.** The per-point canvas draw calls in `WallRailRenderer.draw()`
+(halo/ring/core/stroke — up to 4 `arc()`+`fill()` per bead) were NOT touched. That is real,
+zoom-level-dependent visual work (more bars visible = more points drawn) rather than a caching bug,
+and reducing bead visual fidelity during an active gesture would be a separate, riskier change
+requiring its own before/after visual check — not bundled into this fix.
+
+**Verification.** `tsc --noEmit` clean, full suite clean (10992 pass / 0 fail / 2 pre-existing
+skips), `npm run build` clean. No existing test harness instantiates `WallRailPrimitive` directly
+(it requires a real `IChartApi`/`ISeriesApi`, which the repo's other primitive files also have no
+test coverage for) — verification is the live CDP profile itself: a follow-up profile run against
+production post-deploy will confirm the before/after change in self-time share for the hot chunk
+identified above, the same methodology used to find the bug in the first place.
+
+## 2026-08-27 — [FINDING, P2 Vector] Wall-proximity nearness flipped on sub-tick spot noise, changing the displayed play's letter grade — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | A live measurement (per-ticker snapshot-skew probe run this session, reproducing what two members polling the same ticker a few seconds apart would each independently compute) found NVDA's Suggested Play card flip from grade **B** to grade **A** between two reads 25 seconds apart, on a spot move of only **0.06%** (229.51 → 229.65) — nowhere near a real wall test or break. |
+| **Root cause** | `deriveWallProximity` (`src/features/vector/lib/vector-wall-proximity.ts`) classifies a level's `nearness` ("near"/"testing"/"at") with hard, symmetric distance thresholds re-evaluated fresh on every poll, with no memory of the previous read. `computeConviction` (`vector-play-engine.ts`) gives a conviction bump for "testing" (+6) and a larger one for "at" (+8), and that bump sits right under the play card's A/B grade cutoff (conviction 75). A ticker sitting right at a wall for an extended stretch — measured live: SPY, QQQ, IWM, and SPX all sat "at" their call wall for a full ~2-minute observation window — has its spot ticking back and forth across the exact `nearness` boundary by sub-tenth-percent amounts purely from quote noise, and each crossing silently flips the displayed grade. Two members opening the identical setup a few seconds apart could see different confidence grades purely from which side of the boundary their poll happened to land on. |
+| **Why it wasn't caught earlier** | The classification is correct at any single instant — it's the boundary's total lack of memory across polls that produces the flicker, which only shows up as a live, time-series phenomenon (an A/B test between two near-simultaneous reads), not from reading the function in isolation or from a single-snapshot unit test. |
+| **Fix** | Added an optional `prev?: WallProximity | null` parameter to `deriveWallProximity`. Entering a tighter tier (near→testing→at) still uses the plain, tight threshold — a level should register as "testing"/"at" promptly the first time. Leaving a tier now requires crossing back out past a **25% wider** threshold (`HYSTERESIS_EXIT_MARGIN`), so a level already classified "at" doesn't downgrade until spot has moved meaningfully away, not just ticked across the exact boundary. The same widened exit also applies to leaving the band entirely (dropping to `null`). A "same level" check (`sameLevel`) gates this on the previous read being the *same* side/strike (exact match for discrete wall strikes; a 5bps tolerance for the continuously-recomputed gamma flip) — switching to a genuinely different level (e.g. spot moves from testing a call wall to testing the put wall) gets the plain tight threshold, never inheriting the old level's nearness. |
+| **Blast radius** | `VectorChart.tsx`'s two call sites (`emitProximity`, feeding the UI proximity callout, and `emitPlay`, feeding `buildVectorPlay`'s conviction/grade) now share one `wallProximityStateRef` so both hysterese together off a single source of truth rather than drifting independently — a beneficial side effect, since both represent the same real-world quantity. The ref is reset to `null` on ticker/horizon switch (alongside the existing dedup-key resets) so a new scope never inherits hysteresis from an unrelated prior selection. `VectorPageShell.tsx`'s one-shot `useState` initializer and the BIE snapshot builder (`src/lib/bie/vector-full-state.ts`) are unaffected — `prev` is optional and defaults to the pre-fix plain-threshold behavior, so a caller with no continuous state to track (a single point-in-time read) behaves exactly as before. |
+| **Fix rationale** | Considered a full server-synced canonical wall/proximity read (all clients reading one shared computation) instead — the broader measurement this fix responds to found that approach could also close the gap, but it's a materially bigger change (a new cached/shared read path) for a problem whose actual footprint is one narrow boundary. Hysteresis on the specific threshold that flips is the minimal fix that removes the flicker without centralizing `buildVectorPlay` itself, which stays a pure per-client function either way. |
+| **Regression guard** | `src/features/vector/lib/vector-wall-proximity.test.ts`: 4 new tests — entering a tier still uses the tight threshold even while a same-level prior "at"/"testing" exists; a tracked level survives past the plain exit threshold and only downgrades past the widened one (walked through at→testing→near using round numbers so the tier boundaries are exact); a fresh read (no `prev`) at the identical distance as the tracked case gets the plain (tighter) classification, proving the hysteresis is genuinely gated on tracking continuity; a tracked level survives past the plain band edge up to the widened exit band, while a fresh read at the same distance correctly returns `null`; switching to a different level (different side) does not inherit the old level's nearness. All 12 tests (8 pre-existing + 4 new) pass; full related suite (`vector-wall-proximity`, `vector-play-candidates`, `VectorChart-emitplay-replay-guard`, `vector-chart-viewport`) 73/73 pass on Node 20. `tsc --noEmit` clean. |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P3 Vector] Volume histogram pane's stretch share ran ~2pt over the product's own 78-82/18-22 split — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Operator-reported: a screenshot of the Vector product page (`/vector`) showed the volume histogram pane at the bottom of the main price chart with its bars visibly cut off before reaching the bottom of their own pane, leaving a band of unused blank canvas beneath them where more of the bars should have been visible. |
+| **Investigation** | Read `VectorChart.tsx`'s full volume-series setup (creation at `chart.addSeries(HistogramSeries, ..., VOLUME_PANE_INDEX)`, its own `priceScale().applyOptions({ scaleMargins: { top: 0.1, bottom: 0 } })`, and `applyPaneStretch`'s per-pane `setStretchFactor`). Then live-verified against production: minted a temp Clerk premium session (`scripts/audit/lib/prod-clerk-session.mjs`) and screenshotted `/vector` through the CONNECT-tunnel Chromium (`proxy-browser.cjs ... --desktop --full`), and pixel-measured the rendered histogram against its own axis gridlines. At the 1440×900 desktop viewport captured live, the histogram's 0-baseline landed exactly on the pane's lowest gridline pixel (measured: gridline spacing ~43.8px per 40K step, extrapolated 0-baseline at y≈2948.6, actual bar-bottom pixel at y≈2950) — the volume series's own `scaleMargins` (`bottom: 0`) is correct and bars there already draw all the way to the true floor, not clipped. |
+| **Root cause** | The bug is in the pane's SHARE of total chart height, not its internal margins. `PRICE_PANE_STRETCH = 7` / `VOLUME_PANE_STRETCH = 2.2` gives the volume pane **23.9%** of the chart's vertical space — outside this product's own documented 78-82% candles / 18-22% volume convention (the convention `VectorDailyChart.tsx` already encodes explicitly via its overlay `scaleMargins: { top: 0.82, bottom: 0 }`, i.e. volume gets the bottom 18% there). That extra ~2pt of stretch was invisible on a comfortably tall desktop viewport (nothing clips at 900px of chart height), but it directly narrows the margin of safety on the shorter viewport-height budgets `globals.css` allocates to the standalone `/vector` desk — which was **itself reduced on 2026-08-26** (`.vector-page-shell .vector-chart-terminal-grid`'s `min-height` dropped from `calc(100dvh - 10.5rem)` to `calc(100dvh - 7rem)`, a deliberate reclaim of vertical space once two rows above the chart were removed). On the shorter end of that reclaimed range, the over-sized volume pane's own 10% top margin — a fixed *fraction* of a now-smaller pane — reads as a proportionally larger blank strip above bars that already look compressed toward the baseline, which is what the operator's screenshot shows. |
+| **Evidence** | Live pixel measurement above (production, 2026-08-27) confirms the `scaleMargins` config is not the defect — it proves the opposite: `bottom: 0` already renders correctly. The measurable, in-repo defect is the stretch ratio itself: `7 / (7 + 2.2) = 76.09%` price / `23.91%` volume, versus the product's documented 78-82%/18-22% band. `globals.css` (~line 8527) carries the operator-facing history of this exact symptom class ("the canvas overflowed its column and clipped the volume sub-pane at the bottom") from the 2026-08-26 CSS pass, which is the standing evidence that this pane's vertical budget is a recurring, deliberately-tracked pressure point on this page — not new here. |
+| **Fix** | `PRICE_PANE_STRETCH` 7→8, `VOLUME_PANE_STRETCH` 2.2→2, giving an exact 80%/20% split — centered in the documented band and matching `VectorDailyChart.tsx`'s own 82/18 overlay convention. `scaleMargins: { top: 0.1, bottom: 0 }` on the volume price-scale is untouched — it was already correct. |
+| **Fix rationale** | Tightening the stretch ratio (not the margins) removes the actual margin of error without touching the one piece of config already proven correct by live measurement. Widening `bottom` margin was considered and rejected — `bottom: 0` is what puts the histogram's 0-baseline on the pane's lowest pixel; increasing it would *reduce* usable bar height and reproduce the reported symptom on purpose. Reducing the top margin instead of the stretch ratio was also considered, but it only buys back space at the top of an already-slightly-oversized pane rather than fixing the share itself, and would drift further from `VectorDailyChart.tsx`'s established 18% convention. |
+| **Blast radius** | Single file, `src/features/vector/components/VectorChart.tsx` — the two constants feed `applyPaneStretch`, the only function that reads them, and only the standalone/main `VectorChart` pane layout (oscillator panes, the volume-hide path, and `VectorDailyChart.tsx`'s separate overlay-based volume pane are all untouched, since none of them read these constants). |
+| **Regression guard** | Added `VectorChart: volume sub-pane gets an 18-22% share of chart height, never more` to `src/features/vector/components/vector-chart-viewport.test.ts` — reads both constants from source and asserts the derived share stays in the documented 18-22% band (a ratio assertion, so it stays green across any future proportional retune within the band, not pinned to today's exact numbers), plus a guard that the volume price-scale's `bottom: 0` margin isn't silently reintroduced with padding. `npx tsx --test src/features/vector/components/vector-chart-viewport.test.ts` — 48/48 pass on Node 20. `npx tsc --noEmit` clean. |
+| **Status** | FIXED. Not yet deployed/live-verified at the new ratio — the live pixel measurement above was taken against the *pre-fix* production build (which is where the "already correct at 900px" / "share is the actual lever" conclusion came from); the post-fix render is confirmed only by the local test asserting the new 80/20 split, per this repo's standing "a merge is not a verification" note. |
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_
+
+## 2026-08-27 — [FINDING, P2 Vector] Universe snapshot's age reached the client but the scanner never surfaced it — a frozen scan could render indistinguishably from a live one — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Vector's scanner (ticker screener, `VectorScanner.tsx`) shows a table of every covered name's spot/regime/flip/wall levels, sourced from a shared universe snapshot rebuilt by a background cron. Nothing in the UI indicates how old the currently-displayed snapshot is. |
+| **Root cause** | `VectorUniverseSnapshot.updatedAt` (`vector-universe.ts`) is explicitly documented in its own source comment as existing "for consumers to age-gate" against a 48-hour Redis TTL — "staleness is disclosed, not hidden via expiry," i.e. the data model was deliberately built so a stale scan CAN be told apart from a live one. But `VectorScanner.tsx` destructured `{ data, error, isLoading }` from the shared SWR hook and never read `data.updatedAt` anywhere — the same "computed correctly server-side, never wired to the client" pattern already found twice this session for dark-pool and expected-move staleness. |
+| **Why it matters** | If the 5-minute universe-rebuild cron stops running — the exact failure mode the 48h TTL is designed to tolerate gracefully rather than blank the table — the scanner keeps showing the last cached rows, completely unchanged, for up to 48 hours with zero visual difference from a live scan. A member using the scanner to find "nearest flip" or "most pinned" names has no way to know the levels they're looking at could be a day old. |
+| **Fix** | Added a live-ticking `now` state to `VectorScanner` (mirroring the existing 1s-tick pattern in `VectorDarkPoolToggle`), and render `data.updatedAt`'s age via the already-shared `formatVectorAge` helper (built for the dark-pool/GEX-lens age chips) as an "Updated Nm ago" label in the screener control row. Past a 10-minute threshold (two missed 5-minute cron cycles) the label switches to a visually distinct amber "⚠" warning state. |
+| **Blast radius** | `VectorScanner.tsx` (new state + one rendered label) and `globals.css` (two small rule additions, `.vector-screener-age`/`.is-stale`). No change to the universe snapshot fetch/cache/merge logic, the SWR hook, or the screener filter/sort math — purely a client-side surfacing of an already-computed field. Reuses the existing `formatVectorAge` helper rather than duplicating age-formatting logic. |
+| **Regression guard** | No React rendering/hook test harness exists in this repo (no `renderHook`/`@testing-library`); added `VectorScanner.test.ts` with a source-invariant guard (matching the `readFileSync` pattern already used elsewhere in this suite, e.g. `VectorContractPicksCard.test.ts`) asserting the component reads `data.updatedAt`, formats it via `formatVectorAge`, and renders a distinct `is-stale` visual state. |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P2 Vector] Live spot leaked into the Technicals panel and gamma-regime glow during replay — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | During Replay mode the chart's candles, walls, and beads correctly freeze at the scrubbed cursor time (the same guarantee just added for flow markers and the GEX heatmap in the prior audit round, PR #2957). But the TECHNICALS panel's VWAP-delta narration ("price N% above/below VWAP") and the gamma-regime background glow (long/short-gamma tint keyed to which side of the flip the spot sits on) kept tracking today's LIVE price instead of the frame's historical price. |
+| **Root cause** | `spotRef.current = curSpot` in the SSE tick handler (`VectorChart.tsx`) is correctly left unconditional — the live tape deliberately stays open during replay so re-entering live mode is instant. The bug was on the READ side: `paintOverlays()` — called both for ordinary live-tick paints AND, unchanged, by the replay-specific `applyFrame()` on every scrub — read `spotRef.current` directly for two consumers: `summarizeTechnicals(bars, spotRef.current)` and the gamma-regime glow's `spot: spotRef.current`. Both received the correctly cursor-sliced historical `bars`/flip, but paired them with TODAY's live spot — mixing a live number against a scrubbed-to-the-past series. This is exactly the bug class already fixed for `emitRegime`/`emitProximity`/`emitMagnet` (properly gated by `!inReplay`/`replayModeRef.current`) and for flow markers/the GEX heatmap in the previous PR — the technicals summarizer and the glow primitive were the two call sites that audit round didn't reach. |
+| **Why it matters** | A member scrubbing to an earlier point in the session sees the VWAP-delta callout and the gamma-regime glow computed from a live price that has nothing to do with the frame being examined — the same "silently misrepresents what had happened by this point" defect class as the flow-marker/heatmap bug, just on two different consumers. |
+| **Fix** | `paintOverlays` now accepts an optional `frameSpot` parameter; when supplied it resolves to `frameSpot`, otherwise falls back to the live `spotRef.current` exactly as before (so every live-tick call site, which passes no second argument, is unaffected). `applyFrame` (the replay path) now computes `frameSpot` as the cursor-sliced bars' own last close and passes it through. Both consumers (`summarizeTechnicals`, the gamma-regime glow) were switched from `spotRef.current` to the resolved value. |
+| **Blast radius** | Single file (`VectorChart.tsx`) — `paintOverlays`'s new parameter is optional and defaults to the pre-existing behavior, so every other of its ~12 call sites (live ticks, timeframe switches, toggles, mount) is unchanged. `summarizeTechnicals` (`vector-technicals.ts`) and the gamma-regime primitive are both unchanged; only what's passed to them differs. A related but distinct read (`spotRef.current` inside `applyFrame` for `applyWallBeadMarkers`'s near-spot proximity coloring) was reviewed and left alone — it wasn't flagged by this audit round and needs its own verification before touching. |
+| **Regression guard** | No React rendering/hook test harness exists in this repo; added a source-invariant guard (`vector-technicals.test.ts`, matching the `readFileSync` pattern already used elsewhere in this session's fixes) asserting `paintOverlays`'s signature, the frame/live spot resolution, both consumer call sites, and `applyFrame`'s frame-spot computation are all wired correctly. |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P2 Vector] Replay mode didn't freeze the options-flow markers or the GEX heatmap surface/spot marker — scrubbing back showed live data past the cursor — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Vector's Replay mode lets a member scrub the chart back to an earlier point in the session (`cursorTime`/`cursorIndex`). Wall beads correctly freeze at that point (`sliceHistoryToTime` gates them in `applyFrame`), but two other overlays did not: (1) options-flow arrow markers kept showing every print in the session regardless of cursor position, so scrubbing to 10:00 AM still displayed flow arrows for prints that occurred at 2:00 PM; (2) the GEX heatmap color surface and its spot-price marker kept repainting from the live background poll / live SSE ticks while replay was active, so the heatmap visibly changed under a chart that was supposed to be showing a frozen historical frame. |
+| **Root cause** | Both overlays are painted from code paths that are shared between live-tick handling and replay: `paintOverlays()` (flow markers) and the SSE tick handler + `fetchGexHeatmap()`'s background poll (GEX heatmap). Neither path checked `replayModeRef.current`/`inReplay` before calling into the drawing primitives — `buildFlowMarkers(flowPrintsRef.current, ...)` (unfiltered) and `gexHeatmapPrimitiveRef.current.setData()`/`.setSpot()`, both of which call the primitive's `_requestUpdate()` to force a repaint (`vector-gex-heatmap-primitive.ts`). Wall beads never had this bug only because they happen to be drawn from a replay-specific `applyFrame` path that already slices by `cursorTime`; flow markers and the GEX heatmap are drawn from the same shared path live ticks use, so nothing had ever gated them on replay state. |
+| **Why it matters** | Replay mode exists so a member can study exactly what the chart showed at a prior instant. An overlay that keeps updating during replay silently misrepresents "what had happened by this point in the session" — flow arrows appear for trades that hadn't printed yet as of the scrubbed time, and the GEX heatmap/spot marker show current market structure superimposed on a historical price frame, which can materially change where the walls/flip line up relative to price. |
+| **Fix** | Flow markers: compute `replayCursorMs` from `timelineRef.current[cursorIndexRef.current]` when `replayModeRef.current` is set, and filter `flowPrintsRef.current` to `p.tsMs <= replayCursorMs` before calling `buildFlowMarkers`, live behavior (`replayCursorMs == null`) unchanged. GEX heatmap: gated the two `gexHeatmapPrimitiveRef.current?.setData()`/`.setSpot()` calls inside `fetchGexHeatmap`'s background-poll success path behind `if (!replayModeRef.current)`, and the one unconditional `setSpot()` call in the SSE tick handler behind the `inReplay` flag already computed in that handler (a few lines below it, an existing guarded force-refetch already checked it — this was the one sibling call that didn't). In all three spots the underlying ref/state (`gexHeatmapGridRef.current`, `flowPrintsRef.current`) still updates unconditionally, so live data keeps accumulating in the background and is drawn correctly the instant replay is exited — only the paint call itself is gated. |
+| **Blast radius** | Single file, `VectorChart.tsx`. No change to `vector-flow-markers.ts` (still a pure function assuming pre-filtered input, as documented) or `vector-gex-heatmap-primitive.ts` (unchanged). No other overlay found with the same gap in the same audit pass — wall beads were already confirmed correct, and state cleanup/timer lifecycle on replay-exit was also confirmed correct (separate, clean finding from the same audit). |
+| **Regression guard** | No React rendering/hook test harness exists in this repo (confirmed via repeated greps for `renderHook`/`@testing-library` across prior fixes this session), and this logic lives entirely inside `VectorChart.tsx`'s effects/closures rather than an extractable pure function, so it isn't independently unit-testable the way e.g. `vector-confluence.ts` was. Verified via `tsc --noEmit` (clean) only; this limitation is disclosed rather than worked around, consistent with how the error-boundary and expected-move-poll fixes in this same session were handled. |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P3 Vector] wallEventToPulseSignal's kind-based bull/bear mapping was inverted for spot_broke_call/spot_broke_put — currently dead code, fixed before it could bite — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `wallEventToPulseSignal` (`src/features/vector/lib/vector-pulse.ts`) derives a signal's `tone` ("bull"/"bear"/"warn"/"info") from the wall event. Its kind-based branch mapped `ev.kind === "spot_broke_put"` (a bearish support break) to `"bull"`, and `ev.kind === "spot_broke_call"` (a bullish resistance break) to `"bear"` — backwards. |
+| **Why it's not live today** | The tone function checks `ev.severity === "warn"` FIRST, before falling through to the kind-based branch. `vector-wall-events.ts` sets `severity: "warn"` unconditionally for both `spot_broke_call` and `spot_broke_put` — the only two kinds the inverted branch is meant to catch — so that branch is currently unreachable for them. Found via a data-integrity audit of Vector's GEX/contract-picks pipeline, not a live symptom report. |
+| **Why it's still worth fixing now** | It's a landmine: if any future change ever demotes either event's severity to `"info"` (e.g. to reduce feed noise for a routine break), the pulse feed would silently start coloring a bullish resistance-break event red and a bearish support-break event green — with no test or type system in place today to catch that regression, since the branch has zero coverage while unreachable. |
+| **Fix** | Swapped the two kind checks so the mapping is correct: `spot_broke_call` → `"bull"`, `spot_broke_put` → `"bear"`. Added a comment at the site explaining the dead-code status and why it's fixed anyway. |
+| **Regression guard** | `vector-pulse.test.ts` — two new tests construct a `VectorWallEvent` with `severity: "info"` (impossible via the real event builder today, but valid per the type) and each currently-unreachable kind, asserting the correct tone. This is the only way to exercise and pin the mapping ahead of a future severity change making it live. |
+| **Blast radius** | Single function, single file. No behavior change today (confirmed: both real callers always pass `severity: "warn"` for these kinds, so `tone` is unaffected in production as of this fix). |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P2 Vector] Suggested Play card, technicals narration, expected-move, and confluence never reset on ticker switch — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Switching the active Vector ticker (e.g. A → B) could briefly leave the Suggested Play card, the technicals terminal narration, the expected-move callouts, and the confluence zone list all showing ticker A's values while the chart itself has already switched to displaying ticker B. |
+| **Root cause** | `playEmit`, `technicals`, `expectedMove`, and `confluence` are all state owned by `VectorPageShell` (the *parent* of `VectorChart`), populated by `VectorChart`'s `onXChange` callbacks. `VectorChart` is remounted on ticker switch via `key={activeTicker}`, but that only resets *its own* internal state — it does nothing to the parent's already-set values. The repo already fixed exactly this class of bug for alert rules (a `useEffect` explicitly resetting `alertRules`/`recentAlerts`/`toast` keyed on `[activeTicker]`, immediately preceding this fix in the file) and, in the same audit round, for `liveSpot` — but no equivalent reset existed for `playEmit`/`technicals`/`expectedMove`/`confluence`. |
+| **Why it matters** | `VectorPlayCard` renders a believable-looking Suggested Play (grade, bias, entry, stop, target, invalidation) for whatever ticker `playEmit` was last set to — after switching tickers, it kept showing the PREVIOUS ticker's play until the newly-mounted chart completed its first data fetch and called `onPlayChange`, a window during which a member could act on risk levels for a symbol no longer on screen. |
+| **Fix** | Added a `useEffect` immediately after the existing alert-rules reset, resetting `playEmit` to `null`, `technicals` to `[]`, `expectedMove` to `[]`, and `confluence` to `null`, keyed on `[activeTicker]` — mirroring the alert-rules reset exactly. `regime`/`proximity`/`magnet`/`wallIntegrity` were deliberately left untouched: unlike `playEmit`, they already have real per-ticker derivations computed from `initialWalls`/`initialGammaFlip`/`initialBars` (props that update per ticker), so resetting them would require re-deriving rather than simply clearing, and they're informational badges rather than risk-level advice — a narrower, lower-severity gap left for a future pass if warranted. |
+| **Blast radius** | Single file (`VectorPageShell.tsx`), one new effect. No change to `VectorChart.tsx`'s emission logic or the `onXChange` callback wiring — this purely adds a reset on the receiving end. Two related but distinct findings from the same audit round (the Suggested Play card's missing replay guard, #2966, and a nodes-density-toggle replay leak) are fixed separately per this repo's one-issue-per-branch policy. |
+| **Regression guard** | No React rendering/hook test harness exists in this repo; added `VectorPageShell-play-ticker-reset.test.ts` (matching the `readFileSync` source-invariant pattern established by `VectorChart-footer-labels.test.ts`) asserting the reset effect exists, keyed on `[activeTicker]`. |
+| **Status** | FIXED. |
+
+## Vector play engine: dataAgeMs staleness never produced nor consumed — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `VectorSnapshot.dataAgeMs` was documented ("Age of the underlying stream data in
+ms... for the terminal to show staleness") but three things were all simultaneously true: (1)
+`computeConviction` never read `input.dataAgeMs` — a play built from data frozen for 20 minutes
+scored identically to one built this instant; (2) the sole production caller, `VectorChart.tsx`'s
+`emitPlay`, never set `dataAgeMs` on the snapshot it built; (3) no UI component ever read
+`play.dataAge` to show staleness as the doc comment promised. The field was simultaneously never
+produced and never consumed.
+
+**Fix — three parts:**
+
+1. **Producer:** `VectorChart.tsx` now tracks `dataReceivedAtMsRef`, stamped to `Date.now()` every
+   time a live spot/wall tick actually lands (the same handler that updates `spotRef.current`).
+   `emitPlay` passes `dataAgeMs: Date.now() - dataReceivedAtMsRef.current` into `buildVectorPlay`.
+2. **Consumer:** `computeConviction` now applies a graduated discount via a new exported pure
+   function, `stalenessConvictionDiscount(dataAgeMs)`: 0 under 30s (normal SSE cadence, ~1 tick/sec —
+   this is not a staleness signal), −5 at 30s–2min, −15 at 2–10min, −30 beyond 10min (feed reads as
+   effectively disconnected). Graduated, not a cliff: a member losing their feed for a few minutes
+   still gets a play, just a visibly less confident one.
+3. **UI:** `VectorPlayCard` now shows a small "STALE" badge once `play.dataAge` crosses the same
+   `STALE_MILD_MS` boundary the discount uses (exported from the engine so the UI can't drift out of
+   sync with the scoring threshold) — the actual "terminal shows staleness" surface the original doc
+   comment promised but nothing ever built.
+
+**Blast radius.** `vector-play-engine.ts` (new discount + export), `VectorChart.tsx` (new ref +
+one field on the `buildVectorPlay` call), `VectorPlayCard.tsx` (one badge). No other `VectorSnapshot`
+consumer reads `dataAgeMs`, and no other caller of `computeConviction`/`buildVectorPlay` exists.
+
+**What was deliberately left unchanged.** The specific threshold values (30s/2min/10min) and discount
+magnitudes (−5/−15/−30) are a reasonable first calibration matched to the ~1s SSE tick cadence
+documented elsewhere in this file, not a measured/backtested calibration — there is no existing A/B
+harness for Vector play conviction the way `docs/audit/INTENTIONAL-DESIGN.md`'s 0DTE harnesses exist.
+Flagged here rather than silently treated as final; a future pass could measure real disconnect
+durations and calibrate against them if this proves too aggressive or too lax in practice.
+
+**Verification:** new unit tests for `stalenessConvictionDiscount` (every threshold boundary), an
+integration test (`buildVectorPlay` with fresh vs. stale `dataAgeMs`), and wiring tests confirming
+`VectorChart.tsx` captures/passes the real value and `VectorPlayCard` reads it. `tsc --noEmit` clean,
+full suite clean (11008 pass / 0 fail / 2 pre-existing skips), `npm run build` clean.
+
+## Vector play engine audit — 2 correctness bugs found and fixed, 3 gaps flagged for follow-up
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED (2 of 5 findings; see below for the other 3, left open) |
+|---|---|
+
+Member request: "can you also try to fully validate the entire play engine that cursor wrote... find
+any bugs, gaps... check everything." Full audit covered `vector-play-engine.ts`,
+`vector-play-engine.test.ts`, `vector-play-platform.ts`, `vector-regime.ts`, `vector-confluence.ts`,
+`vector-play-candidates.ts`, `vector-wall-proximity.ts`, `vector-gamma-magnet.ts`,
+`vector-wall-integrity.ts`, and the two production callers (`VectorChart.tsx`,
+`src/lib/bie/vector-full-state.ts`). Every finding below was reproduced against the actual exported
+functions, not inferred from reading alone.
+
+### FIXED — Bug 1: inverted directional wording when spot breaks *above* a call wall
+**File:** `src/features/vector/lib/vector-wall-proximity.ts` (`deriveWallProximity`)
+
+`above = signed >= 0` means the call-wall strike is at/above spot (approaching from below). When
+spot has broken **through and above** the wall, `above` is `false`, and the code emitted "**Back
+under** the X call wall ... **lost magnet**, watch for fade" — describing spot as under a wall it
+was actually 5+ points above. Reproduced live: `spot=7605, callWall=7600` → the old code printed
+"Back under the 7,600 call wall (0.07% away) — lost magnet, watch for fade."
+
+This is the exact same bug class the file's own comment (still in place, a few lines below)
+documents having found and fixed on the **put-wall** side ("the prior 'reclaimed support, dip-buy
+zone' wording ... inverting the directional bias") — the call-wall mirror was apparently never
+patched. There was no test at all for this branch, so it went undetected. This string is pushed
+verbatim into the member-facing "watch this now" `starred` list via `vector-play-engine.ts`.
+
+**Fix:** mirrors the put-wall fix already in the file — `!above` (spot broke through) now reads
+"Cleared the X call wall (Y% below spot) — resistance gave way; dealers stop capping, watch for
+continuation higher," analogous to the put-wall's "support gave way" bearish-continuation wording.
+Added a regression test (`vector-wall-proximity.test.ts`) mirroring the existing put-wall regression
+test, asserting the callout never contains "back under" or "lost magnet" when spot has broken above.
+
+### FIXED — Bug 2: confluence conviction credit keyed off the globally-strongest zone, not the zone at the traded level
+**File:** `src/features/vector/lib/vector-play-engine.ts` (`computeConviction`)
+
+`const top = zones[0] ?? null;` — always the single highest-scored confluence zone **anywhere on
+the board**, never the zone nearest `refLevel` (the level this specific play actually trades). If a
+stronger, unrelated zone exists elsewhere, the real confluence sitting at the traded level was
+invisible to this check and only a flat `+3` far-field bump applied.
+
+Reproduced: a fade-call setup at wall 7600 with a real 2-kind confluence zone exactly at 7600
+(score 4) scored conviction 76 (grade A) alone; adding a stronger, unrelated 3-kind zone at 7300 (4%
+away, score 6) **dropped** it to 73 (grade B) — adding strictly more corroborating market structure
+elsewhere flipped the member-visible grade from A to B, because the stronger-but-irrelevant zone now
+occupied `zones[0]` and starved credit for the zone actually being traded. This directly contradicts
+the function's own doc comment ("Confluence stacked AT the level the play references... is the
+single biggest edge").
+
+**Fix:** scans all zones for the one nearest `refLevel` (not the globally top-scored one) and credits
+that zone's score when it's within the proximity band; otherwise the same flat `+3` far-field bump.
+Added a regression test asserting conviction never drops when an unrelated stronger zone is added
+elsewhere.
+
+### OPEN — 3 gaps flagged for follow-up (not fixed here; each needs a design decision, not a one-line patch)
+
+1. **BIE grounding is fully built and tested but never populated by either production caller.** The
+   engine has real, tested conviction-adjustment logic for `PlayBieContext` (historical win-rate
+   nudges ±10, plus a starred evidence line), but both `src/lib/bie/vector-full-state.ts` (hardcoded
+   `bie: null`) and `VectorChart.tsx` (zero references to `input.bie`) never supply a real value. The
+   only place a real `bie` exists in the repo is the test fixture. Fully engineered, fully
+   unit-tested, unreachable by any real member session — same shape as the deferred contract-picks
+   BIE gap noted earlier this session.
+2. **`dataAgeMs`/`dataAge` is a documented freshness passthrough that nothing sets and nothing
+   reads.** `computeConviction` never reads it (zero staleness discount on conviction), the sole
+   client caller never sets it on the snapshot it builds, and no UI component reads `play.dataAge` to
+   show staleness as the doc comment claims. The field is simultaneously never produced and never
+   consumed.
+3. **Untested, unmeasured bearish default when short-gamma has no wall and no clear trend.** When
+   posture is short, no wall is in proximity, and `technicals.emaStack` is absent/mixed, the engine
+   still emits a directional "momentum-short" play off an asserted, uncited "asymmetry of a
+   short-gamma regime" — the equivalent no-signal case under long gamma correctly falls through to
+   neutral `range`. This exact branch is not exercised anywhere in `vector-play-engine.test.ts`, and
+   unlike this repo's other documented design decisions (`docs/audit/INTENTIONAL-DESIGN.md`), it
+   carries no equivalent measurement/A-B harness.
+
+Flagging these 3 for Cursor (who wrote this module) rather than fixing here — each is a real design
+question (build the missing BIE writer? add a staleness discount curve and calibrate it? measure the
+short-gamma-no-signal default before keeping or removing it?), not a mechanical bug fix.
+
+**Not flagged (checked and found correct):** `rangeMeanReference`'s rail-inclusion/collision
+handling; `pickTargets`'s beyond-trigger exclusion; the position-horizon EMA-stack override ordering
+relative to flip-pivot; `computeConviction`'s magnet-alignment gating on `posture === "long"` only;
+`vector-play-platform.ts`'s bull/bear symmetry; wall-integrity's strength/persistence/isolation
+normalization.
+
+**Verification:** `npx tsx --test` on both touched test files clean; full suite clean; `tsc
+--noEmit` clean; `npm run build` clean.
+
+## 2026-08-27 — [FINDING, P1 Vector] Suggested Play card had NO replay guard at all — kept re-rendering a plan built from live data while the chart stayed frozen — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | While Vector is in Replay mode (chart scrubbed to an earlier point in the session), the Suggested Play card kept silently re-rendering — every ~15-30 seconds, on the existing expected-move/max-pain poll cadence — with a plan built from TODAY's live spot/walls/flip, even though every other overlay on the chart (candles, wall beads, the previously-fixed technicals/gamma-regime glow) correctly stayed frozen at the replay cursor. |
+| **Root cause** | `emitPlay()` (`VectorChart.tsx`) reads `spotRef.current`, `liveGexWalls()`, and `liveGammaFlip()` directly and had **no `replayModeRef.current` check anywhere in the function** — unlike every sibling emit function in this file: `refreshTrails` has its own internal `if (replayModeRef.current) return;` guard, the lens-change effect gates on `replayModeRef.current` before re-emitting, and the SSE-tick handler checks `!inReplay`. `emitPlay` is called from ~6 sites including two live polling intervals (`fetchMaxPain`, `fetchExpectedMove`) that stay armed during replay by design (the underlying data-fetch intervals are meant to keep running so live mode resumes instantly) — but `emitPlay` itself never checked whether it should actually run. |
+| **Why it matters** | The `STALE` badge on the Play card (driven by `dataAgeMs = Date.now() - dataReceivedAtMsRef.current`) never fired, because the underlying SSE feed itself stayed fresh — only the DISPLAYED chart was frozen, not the data pipeline. So a member scrubbing to an earlier point in the session could see a "Suggested Play" with entry/stop/target/invalidation levels quietly computed from today's current market, with no visual signal that anything was wrong — the single most misleading form of this session's whole "live data leaks into a frozen replay view" bug class, since a play card presents as actionable advice. |
+| **Fix** | Added `if (replayModeRef.current) return;` at the top of `emitPlay`, immediately after its existing early-return guard. This freezes the card at whatever it last showed when replay was entered, matching the "leave the last frame painted" behavior `refreshTrails` already uses — it does not clear the card to null (which would read as "no play" rather than "frozen"). |
+| **Blast radius** | Single function, one added guard line. All ~6 call sites of `emitPlay` are unaffected in live mode (the guard only short-circuits when `replayModeRef.current` is true) and none needed individual changes, since the guard lives inside the shared function. Two related but distinct findings from the same audit round — a node-density-toggle repaint leaking live wall/flip data during replay, and `playEmit`/technicals/etc. not resetting on ticker switch — are fixed separately in their own PRs per this repo's one-issue-per-branch policy. |
+| **Regression guard** | No React rendering/hook test harness exists in this repo; added `VectorChart-emitplay-replay-guard.test.ts` (matching the `readFileSync` source-invariant pattern established by `VectorChart-footer-labels.test.ts`) asserting `emitPlay` early-returns when `replayModeRef.current` is true. |
+| **Status** | FIXED. |
+
+## Vector Suggested Play card redesigned — bigger, clearer hierarchy (operator UI request) — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in `fix/vector-alerts-icon-and-play-card` |
+| **Severity** | P3 — desk UX (operator-requested, not a defect) |
+| **Surface** | `/vector` standalone page, `VectorPlayCard` in the action rail |
+
+### Ask (verbatim, operator, 2026-08-27)
+
+> "I feel like the layout UI UX of Vector plays is really bad — like really bad — and it is small,
+> can we make it bigger??"
+
+### What changed
+
+Presentation-only redesign of `src/features/vector/components/VectorPlayCard.tsx`. No field was
+added or removed and `src/features/vector/lib/vector-play-engine.ts` (`buildVectorPlay`, the
+conviction/grade math, everything that decides WHAT the play is) is completely untouched — every
+value rendered (`style`, `bias`, `conviction`, `grade`, `headline`, `thesis`, `entryZone`,
+`targets`, `invalidation`, `dataAge`/STALE) was already on `VectorPlay` before this change.
+
+### Design decisions
+
+- **Grade + conviction fused into one verdict badge.** Before: a 20px letter chip and a
+  right-floated bare "76%" text were two disconnected scraps a member had to piece together.
+  After: one pill badge reading "A · 76%", colored by grade (emerald/amber/neutral), borrowing the
+  color-coded pill-badge idea from SPX Slayer's `SpxPlayVerdictBar`
+  (`src/features/spx/components/SpxPlayVerdictBar.tsx`) — its mode badge is exactly this pattern
+  (border+background+text in one tone) for a sibling product's "verdict at a glance" concept.
+  Structure was NOT copied 1:1 — SPX's bar is a collapsible header+body dialog with inline styles;
+  Vector's card stays a single static block using the repo's existing Tailwind `@apply` convention
+  in `globals.css`, since that's the format that fits how this card is already consumed (always
+  visible in the action rail, no expand/collapse need).
+- **Headline promoted to the card's most prominent element.** Before: headline and thesis were
+  visually almost the same weight (14px semibold vs 13px). After: headline is 17px bold, thesis
+  stays a secondary 13.5px — the one-line trade idea now reads first, matching "headline/thesis
+  most prominent" from the design brief.
+- **Entry/Targets/Invalidation stayed a `<dl>`** (it already was, not run-on prose) but gained a
+  left accent rule per row plus directional coloring: Targets green (favorable exit), Invalidation
+  rose/red (the stop) — so "where do I get out" is scannable without reading the sentence.
+- **Overall size increased**: `rounded-xl`→`rounded-2xl`, `px-3 py-2.5`→`px-4 py-3.5`, more
+  breathing room in the levels grid (`gap-0.5`→`gap-2`, `pt-1.5`→`pt-3`) — so the card reads as a
+  primary rail element rather than a cramped sidebar afterthought, per the literal "make it
+  bigger" ask, without simply scaling font-size uniformly (which the task brief explicitly warned
+  against as too literal a fix).
+- **Left deliberately unchanged**: the `starred` field on `VectorPlay` (the "watch this now" list
+  used internally by `vector-play-candidates.ts` for contract-pick ranking) is not surfaced here.
+  It isn't rendered by any current UI and adding a new information surface wasn't part of either
+  the operator's ask or the presentation-only scope of this PR — flagging it here as something a
+  future design pass could consider, not doing it opportunistically now.
+
+### Blast radius
+
+- `src/features/vector/components/VectorPlayCard.tsx` — markup + doc comment only.
+- `src/app/globals.css` — `.vector-play-card*` rule block only; no other component uses these
+  classes (`grep -rn "vector-play-card-grade\|vector-play-card-conviction" src` returns nothing
+  after the rename, confirming no stale references).
+- `vector-play-engine.ts`, `vector-play-candidates.ts`, and every other consumer of `VectorPlay`
+  are untouched.
+
+### Evidence
+
+- `npx tsc --noEmit` clean.
+- New `VectorPlayCard.test.ts` (5 assertions: every pre-existing `VectorPlay` field still read,
+  grade+conviction fused into one badge element, the levels stay a structured `<dl>`, the CSS
+  padding/radius/headline-size actually grew rather than just relabeling classes, and
+  targets/invalidation are color-coded) — all pass on Node 20.
+- Full `src/features/vector` test sweep: 1208/1215 pass, the 7 failures pre-existing/unrelated
+  (see the companion Alerts finding in this same PR wave for the list — none touch
+  `VectorPlayCard` or `vector-play-engine`).
+- Live before/after screenshots were not captured for the same reason noted in the companion
+  Alerts finding: no pre-prod render target exists since the 2026-07-25 staging decommission, and
+  `proxy-browser.cjs` can only reach the deployed production site, not this unmerged branch.
+
+## Vector pick "% vs pick" used WS last-trade mark while entry anchor was chain mid — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Component** | `contract-picks/live/route.ts`, `vector-pick-live-status.ts`, `use-vector-pick-live-monitor.ts` |
+| **Severity** | P2 — misleading premium drift on contract picks, not a ledger/accounting bug |
+
+### Root cause
+
+Rank-time `entryMid` comes from the option chain's bid/ask mid (`contractPremium` in
+`vector-play-candidates.ts`). The live poll path preferred `getLiveOptionMarkSync().mark`
+directly as `mid`, but the options WS stores `mark` as `midOf(bid, ask)` on quote frames and
+can fall back to **last trade** on trade-only frames while bid/ask are still live. That made
+"% vs pick" disagree with the visible bid–ask range and could swing tens of points on thin 0DTE
+names.
+
+A second UX bug: contract picks refresh every 45s in RTH; each refresh rewrote `entryMid` from
+the latest chain pass, resetting "% vs pick" even when the same OCC was still on screen.
+
+### Fix
+
+1. `resolveVectorPickLiveMid()` — prefer `resolveZeroDteMark(bid, ask, last|mark)` (same lane as
+   Night Hawk live marks).
+2. `premiumDriftPct()` — delegate to `pinnedLivePnlPct()` for one rounding formula.
+3. `pinVectorPickEntryMid()` — pin first-seen entry mid per OCC for the ticker session so 45s
+   refreshes do not reset drift.
+4. `scripts/audit/vector-pick-pnl-audit.mjs` — multi-ticker live cross-check harness.
+
+### Blast radius
+
+Vector contract picks card + live status chip only. Suggested Play (`buildVectorPlay`) unchanged.
+
+## 2026-08-27 — [FINDING, P2 Vector] `onSpotChange` fired during replay, leaking the live tape into the 0DTE matrix rail — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | The 0DTE matrix rail (`VectorOdteMatrixRail.tsx`, alongside the main Vector chart) kept tracking the LIVE market price during Replay mode, while the chart itself (candles, the GEX heatmap spot marker) correctly froze at the scrubbed cursor time — the rail visibly disagreed with the chart it sits next to. |
+| **Root cause** | The SSE tick handler's `onSpotChange?.(curSpot)` call (`VectorChart.tsx`) was left unconditional, three lines above the `gexHeatmapPrimitiveRef.current?.setSpot(curSpot)` call that the prior replay-freeze fix (PR #2957) correctly gated behind `if (!inReplay)`. `onSpotChange` carries the identical live-tick spot for the identical purpose, but nothing gated it. It's threaded through `VectorPageShell` (`onSpotChange={liveSession ? setLiveSpot : undefined}`) into `setLiveSpot`, and `VectorOdteMatrixRail` treats that `liveSpot` prop as its PRIMARY spot source (`liveSpot ?? data?.spot ?? initialSpot`) — driving the highlighted spot row, King-strike, and call/put-wall highlighting. Left ungated, every live SSE tick during replay (the tape deliberately stays open, by design, so re-entering live mode is instant) kept updating the rail's spot from the live market instead of the replay frame. |
+| **Why it matters** | A member scrubbing to an earlier point in the session sees the 0DTE matrix rail's spot row and King-strike computed from TODAY's live price while the chart next to it shows a frozen historical frame — the two panels visibly disagree about "where is spot right now," with no indication which one is correct (the chart is). |
+| **Fix** | Moved `onSpotChange?.(curSpot)` inside the same `if (!inReplay) { ... }` block that already gates `gexHeatmapPrimitiveRef.current?.setSpot(curSpot)`. `spotRef.current = curSpot` (the ref other live-view-only consumers still read) stays unconditional, unchanged. |
+| **Blast radius** | Single file (`VectorChart.tsx`), one call site. `VectorPageShell.tsx`'s `setLiveSpot`/`handleSpot` and `VectorOdteMatrixRail.tsx`'s consumption of the `liveSpot` prop are both unchanged — they simply stop receiving updates during replay, exactly as intended. A related, distinct bug (`liveSpot` not resetting on a ticker switch, found in the same audit round) is fixed separately in its own PR per this repo's one-issue-per-branch policy. |
+| **Regression guard** | No React rendering/hook test harness exists in this repo; added `VectorChart-replay-spot-callback.test.ts` (matching the `readFileSync` source-invariant pattern already established by `VectorChart-footer-labels.test.ts`) asserting `onSpotChange` and the heatmap spot marker are gated together behind the same `!inReplay` check. |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P2 Vector] Flipping the Nodes density selector during replay snapped the gamma-flip line and axis scale to live data — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Vector's Nodes density selector controls how many wall/bead rows are drawn and repaints immediately on change so the toggle feels instant. But changing it while in Replay mode caused the gamma-flip guide line and the price-axis auto-widening to snap to TODAY's live wall/flip levels, even though every other overlay (candles, beads) stayed correctly frozen at the replay cursor. |
+| **Root cause** | The repaint-on-`nodeDensity`-change effect (`VectorChart.tsx`) called `refreshOverlays(lensRef.current, liveGexWalls(), vexWallsRef.current, liveGammaFlip(), vexFlipRef.current, darkPoolRef.current)` unconditionally — no replay check at all — unlike the file's other repaint-on-selection-change effects. The indicator-toggle effect just above it already establishes the correct idiom for this exact situation: call `paintOverlays` unconditionally (cheap, bars-only), then branch — `applyFrame` for the current cursor time when replaying, `refreshTrails` otherwise. The node-density effect never adopted that branch; `liveGexWalls()`/`liveGammaFlip()`'s own doc comments explicitly say "replay/history paths use time-sliced recorded flips," which this call site violated. |
+| **Why it matters** | A member toggling node density while examining a replayed session would see the gamma-flip reference line and the visible price range jump to reflect today's current market structure, contradicting the frozen historical candles right next to it — a visible, confusing inconsistency, not merely a missed repaint. |
+| **Fix** | The effect now branches exactly like the indicator-toggle effect: when `replayModeRef.current` is true, it re-invokes `applyFrameRef.current` for the current cursor time (`timelineRef.current[cursorIndexRef.current]`), which redraws from the already-replay-scoped walls/flip/history `applyFrame` uses everywhere else; otherwise it keeps the original `refreshTrails`/`refreshOverlays` live-getter call. |
+| **Blast radius** | Single effect in `VectorChart.tsx`. `refreshOverlays`/`refreshTrails`/`applyFrame` themselves are unchanged — this was purely a caller-side omission of the replay branch already used one effect above it. Two related but distinct findings from the same audit round (the Suggested Play card's missing replay guard, and play/technicals state not resetting on ticker switch) are fixed separately in their own PRs per this repo's one-issue-per-branch policy. |
+| **Regression guard** | No React rendering/hook test harness exists in this repo; added `VectorChart-node-density-replay-guard.test.ts` (matching the `readFileSync` source-invariant pattern established by `VectorChart-footer-labels.test.ts`) asserting the effect branches on replay state and calls `applyFrameRef.current` when replaying. |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P2 Vector] `liveSpot` never reset on a ticker switch — 0DTE matrix rail could show a different ticker's price attributed to the new one — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Switching the active Vector ticker (e.g. A → B) could briefly leave the 0DTE matrix rail's spot row, King-strike, and call/put-wall highlighting computed against ticker A's price while the table itself shows ticker B's strikes/GEX data. |
+| **Root cause** | `liveSpot` (`VectorPageShell.tsx`), fed by the chart's SSE stream and threaded into `VectorOdteMatrixRail` as its PRIMARY spot source (`liveSpot ?? data?.spot ?? initialSpot`), was seeded once at mount from `initialBars` and only ever updated by live SSE ticks for whichever ticker is currently streaming — there was no effect resetting it on a ticker switch. The alert-rules state a few lines below it already resets correctly on `[activeTicker]`; `liveSpot` was the one piece of ticker-scoped state that didn't follow the same pattern. |
+| **Why it matters** | `VectorChart` remounts on ticker switch (`key={activeTicker}`) and starts a fresh SSE connection for the new ticker, but until that new ticker's first live tick arrives — a window of a fresh reconnect plus first candle, which can be several seconds — `liveSpot` kept holding the PREVIOUS ticker's last price. In that window the matrix rail's spot indicator, spot-row scroll target, and King/wall flags were computed against the old ticker's spot on the new ticker's strike/GEX data — a direct cross-ticker misattribution, not merely a blank/loading state. If the two tickers don't share a comparable strike range, the "spot" row pins to whatever real-but-meaningless strike happens to be closest to the leftover number. |
+| **Fix** | Added a `useEffect` that resets `liveSpot` back to the same `initialBars`-derived fallback used at mount, keyed on `[activeTicker]` — mirroring the existing alert-rules reset effect immediately below it. Once reset, the rail correctly falls back to its own ticker-scoped fetched spot (`data?.spot ?? initialSpot`) until the new ticker's own live tick arrives. |
+| **Blast radius** | Single file (`VectorPageShell.tsx`), one new effect. No change to `VectorOdteMatrixRail.tsx`'s consumption logic or the SWR fetch/cache scoping (already correctly keyed by ticker, per the same audit round). A related, distinct bug (`onSpotChange` not gating during replay, same audit round) is fixed separately in its own PR per this repo's one-issue-per-branch policy. |
+| **Regression guard** | No React rendering/hook test harness exists in this repo; added `VectorPageShell-livespot-ticker-reset.test.ts` (matching the `readFileSync` source-invariant pattern already established by `VectorChart-footer-labels.test.ts`) asserting a `liveSpot`-resetting effect keyed on `[activeTicker]` exists. |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P2 Vector] Contract-pick live quotes froze silently on repeated poll failure — no staleness signal — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `useVectorPickLiveMonitor` polls `fetchVectorPickLiveQuotes` every 1s to keep a ranked contract pick's bid/ask/greeks and Still-Buy/Caution/Don't-Buy `actionStatus` current. On repeated fetch failure (network blip, upstream 5xx), the poll's `.catch(() => { /* keep last good live read */ })` correctly avoided blanking the UI to empty — but nothing distinguished a genuinely live read from one frozen 10 minutes ago. The member sees the exact same bid/ask/action-status chip whether the feed updated one second ago or has been dead for the whole session. |
+| **Why this matters more than an ordinary stale-cache bug** | `actionStatus` ("Still buy" / "Caution" / "Don't buy") is a trade-management signal read directly off the frozen values — a stale "Still buy" during a real feed outage is not cosmetic, it's a wrong instruction presented with full confidence. |
+| **Root cause** | `liveByOcc` (React state) only updates inside the `.then()` success branch. On a run of failures, `.catch()` runs but changes no state, so nothing re-renders and nothing records that the feed stopped updating — the same class of bug fixed alongside this one in the Compare-mode SSE singleton (a frozen value presented with no indication it stopped updating). |
+| **Why not caught earlier** | This hook has zero prior test coverage — no rendering harness exists in this repo for React hooks (confirmed via grep: no `renderHook`/`@testing-library` usage anywhere), so nothing exercised its failure path at all. Found via a resilience-focused audit of Vector specifically, not a symptom report. |
+| **Fix** | Track `lastSuccessAtRef` (wall-clock time of the last SUCCESSFUL poll, not reset on failure) and a `pollTick` state bumped every poll cycle regardless of success/failure — forcing a re-render so staleness can be recomputed even during an unbroken run of failures. The staleness decision itself (`isLiveQuotesStale`) is a pure, exported, unit-tested function (`lastSuccessAtMs`, `nowMs`, `staleAfterMs = 10_000` — the same 10x-poll-cadence threshold `VectorPageShell` already uses for the chart's own candle staleness, `CANDLE_STALE_MS`) rather than inlined in the hook, matching this repo's established pattern of extracting the pure decision so it's testable without a rendering harness. A new `liveQuotesStale?: boolean` field on `VectorContractPick` (`src/lib/api.ts`) carries the flag to the UI; `VectorContractPicksCard.tsx` renders a `STALE` badge (reusing the existing `.vector-play-card-stale` style from the play-card staleness work earlier this session) next to the action chip in the pick list and the action banner in the drawer. |
+| **Deliberately unchanged** | The on-failure fallback itself (keep the last good read rather than blanking to empty) — that's still the correct behavior; this only adds the missing signal on TOP of it. Never stale before any successful read has ever happened (there's no live value being misrepresented as fresh when none has arrived yet). |
+| **Regression guard** | `src/features/vector/lib/use-vector-pick-live-monitor.test.ts` (6 tests): never stale pre-first-read, not stale inside threshold, exact-boundary is exclusive, stale once exceeded, a single missed poll tick stays non-stale (matches the 10x-cadence rationale), and a custom `staleAfterMs` override is honored. |
+| **Blast radius** | Single hook (`use-vector-pick-live-monitor.ts`), single consumer (`VectorContractPicksCard.tsx`), one new field on the shared `VectorContractPick` type. No other consumer of that type reads the new optional field, so nothing else is affected. |
+| **Not yet live-validated** | Same as the SSE singleton fix: this is live-polling UI behavior that needs a real deployed feed to exercise meaningfully (inducing a genuine sustained live-quotes outage isn't something this sandbox can do safely against prod). Will spot-check the STALE badge renders correctly (absent under normal conditions) via a live screenshot once deployed. |
+| **Status** | FIXED — pending PR merge + live post-deploy spot-check. |
+
+## Vector "Live Helix" rail showed 400+ day LEAPS prints as "Recent"/"Top by premium", plus verbose section wording — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Context.** Operator report, verbatim: *"can we remove extra wordings on Helix rail —
+'Recent · ranked by premium · 40 prints today' / 'Full Helix tape →' / 'Latest prints · by time' /
+'Session rank' — move the Full Helix Tape below LIVE with an icon that's it"* and separately *"we
+show random flows which is not needed — on Recent we show flows that expire 500 days from now, who
+cares?? we need to show nearby expiry flows. we only show 3? maybe Recent should be 0-30 DTE only
+and show more Recent, like 15 Recent and 15 Top by premium. Even Top By Premium shows contracts
+477d/400+ days out — needs fixing with some logic."*
+
+**Root cause — two distinct bugs, both in `src/features/vector/lib/vector-helix-flows.ts`.**
+
+1. **No DTE ceiling anywhere in the rail's ranking.** `pickVectorLiveHelixLayout` ranked "Top by
+   premium" by `compareLiveHelixByPremium` (premium desc) over the ENTIRE fetched pool, with zero
+   regard for days-to-expiry, and "Recent" sorted the same pool by time — also with no DTE bound.
+   A single large LEAPS print (which by definition carries much more premium per contract than a
+   near-dated one, since it prices in far more time value) could sit at rank #1 all session.
+
+2. **The pool itself was already crowded out, one layer up.** `trimVectorHelixFlowPool` (called
+   from `use-vector-helix-flows.ts`'s `applySessionPool`) trims a 200-row session fetch down to
+   `VECTOR_LIVE_HELIX_TAPE_CAP` (40) rows **sorted by premium only** — so even before
+   `pickVectorLiveHelixLayout` ran, far-dated whale prints could already have displaced every
+   near-dated print from the in-memory pool entirely. Fixing bug (1) alone would not have fixed the
+   reported behavior for a liquid ticker, because the near-dated prints would already be gone by
+   the time the rail's own filter ran.
+
+**Evidence — live, against production** (`/api/market/flows`, temp Clerk session via
+`scripts/audit/lib/prod-clerk-session.mjs`, read-only):
+
+- `GET /api/market/flows?ticker=SPX&limit=200&since_hours=24&min_premium=200000` — top 15 by
+  premium out of 200 rows were **all >45 DTE**: `$31.4M @ 85 DTE`, `$30.4M @ 113 DTE`, five prints
+  at `$5.2-16.3M @ 294 DTE`, `$7.4M @ 386 DTE`, etc. DTE distribution across the 200 rows:
+  `0-30: 40, 31-45: 0, 46-100: 45, 101+: 115`.
+- Confirming bug (2): sorting those same 200 rows by premium and taking the top 40 (exactly what
+  `trimVectorHelixFlowPool` does today) — **0 of the 40** were within 45 DTE, i.e. the shipped pool
+  trim already excludes every near-dated SPX print before any section-level filter runs.
+- Confirming the fallback need: `GET ...&ticker=ASTS...` returned only 3 rows all session, at 50,
+  141, and 568 DTE — an illiquid name can have genuinely *no* near-dated flow that day, so a bare
+  DTE ceiling with no fallback would blank the rail entirely for names like this.
+
+**Fix.**
+- New `filterByMaxDte(flows, maxDte, fallbackN)` in `vector-helix-flows.ts`: keeps flows within
+  `maxDte`; if that window matches **nothing at all**, returns the `fallbackN` nearest-DTE flows
+  instead of an empty list (mirrors the existing "return the nearest, never blank" rule
+  `expiriesForHorizon` already uses for wall expiries in `vector-dte-horizon.ts`, so this repo now
+  has one consistent honest-fallback convention for DTE windows, not two).
+- `trimVectorHelixFlowPool` now DTE-bounds the pool FIRST (`VECTOR_HELIX_POOL_MAX_DTE = 60`,
+  deliberately wider than either section ceiling below so it is never itself the bottleneck),
+  *then* sorts by premium — fixing bug (2) at the source instead of only downstream.
+- `pickVectorLiveHelixLayout` now DTE-bounds each section independently before ranking/sorting:
+  - Recent: `VECTOR_HELIX_RECENT_MAX_DTE = 30` (operator's exact number — "Recent should be 0-30
+    DTE only").
+  - Top by premium: `VECTOR_HELIX_RANKED_MAX_DTE = 45` — operator suggested "0-45 or 0-60"; 45 was
+    picked to give headroom above this repo's existing "monthly" DTE-horizon convention
+    (`vector-dte-horizon.ts`'s `HORIZON_MAX_DTE.monthly = 35`) without being as wide as 60, so a
+    legitimate few-weeks-out monthly print can still rank while pure LEAPS cannot.
+  - Both display caps raised `VECTOR_LIVE_HELIX_RECENT_N` and the new
+    `VECTOR_LIVE_HELIX_RANKED_DISPLAY_N` to 15 (was 3 for Recent; Top-by-premium's display was
+    implicitly capped at the 40-row pool cap, not a deliberate display count) per the operator's
+    "15 Recent and 15 Top by premium" ask. `VECTOR_LIVE_HELIX_TAPE_CAP` (40) is unchanged and still
+    governs the underlying in-memory pool size/fetch trim — only the two section DISPLAY caps
+    changed.
+- Wording/layout (`VectorHelixRail.tsx` + `globals.css`): removed the header subtitle line
+  (`vectorLiveHelixSubtitle`'s "Recent · ranked by premium · N prints today") and both per-section
+  kicker lines ("Latest prints · by time" / "Session rank") entirely — section labels ("Recent" /
+  "Top by premium") are unchanged, only the qualifier text under them is gone. Moved the
+  "Full Helix tape →" text link into a new `.vector-helix-head-actions` column directly under the
+  LIVE/STALE `FreshnessChip`, replaced with an icon-only `lucide-react` `ExternalLink` (the same
+  icon already used for this purpose elsewhere in the repo — `LearnSectionBlocks.tsx`,
+  `LargoSlashPromptsMenu.tsx`), keeping `aria-label`/`title` for accessibility without a visible
+  label.
+
+**Blast radius.**
+- `vector-helix-flows.ts`: `trimVectorHelixFlowPool`'s new third parameter has a default, so its
+  one call site (`use-vector-helix-flows.ts`'s `applySessionPool`) is unaffected without a code
+  change there. `pickVectorLiveHelixLayout`'s new `recentMaxDte`/`rankedMaxDte` opts are both
+  optional with defaults — its only call site (`VectorHelixRail.tsx`) needed no changes either.
+- The pool (`helixState.flows`) is shared with the Suggested Play engine
+  (`vector-play-candidates.ts`, via `VectorPageShell.tsx`'s `sessionHelixFlows` prop) — checked
+  before tightening the pool's DTE composition. That engine's own DTE windows top out at
+  `DTE_WINDOWS.monthly.maxDte = 35`; it never uses a flow beyond that regardless of what the pool
+  holds, so narrowing the pool to `<=60 DTE` cannot remove anything the Suggested Play engine could
+  have used — if anything it removes only dead weight that engine already ignored.
+- `vectorLiveHelixSubtitle` is left in place (still exported, still covered by its existing test)
+  in case another consumer wants it later; it is simply no longer called from the rail.
+
+**What was deliberately left unchanged.** `VECTOR_LIVE_HELIX_SESSION_FETCH_LIMIT` (200, the raw
+fetch size from the API) and `VECTOR_LIVE_HELIX_TAPE_CAP` (40, the pool size) were not touched —
+only the pool's *composition* (DTE-bounded-then-premium-sorted instead of premium-sorted-only) and
+the two section DISPLAY caps changed. A tighter Recent/Ranked DTE ceiling could theoretically show
+fewer than 15 rows for a thin ticker with few near-dated prints that day — that is the honest
+tradeoff named in the task and considered acceptable (matches the operator's own suggested
+fallback, "show fewer than 15 rather than showing nothing"); the nearest-DTE fallback in
+`filterByMaxDte` only engages when a section's window would otherwise be completely empty, not
+merely thin.
+
+**Verification.** `npx tsc --noEmit` clean (Node 20). New/changed tests in
+`vector-helix-flows.test.ts` (11 new cases covering `filterByMaxDte`'s window + honest-fallback
+behavior, `trimVectorHelixFlowPool`'s far-dated-whale exclusion, and
+`pickVectorLiveHelixLayout`'s per-section DTE bounds + raised display caps) and a new
+`VectorHelixRail.test.ts` (source-invariant, matching the existing `vector-ios-native.test.ts`
+idiom for this feature) covering the wording/layout change — both pass on Node 20
+(`npx tsx --test`). Full repo suite run on Node 20 as part of this PR (see PR description for the
+pass/fail count at time of merge).
+
+## 2026-08-27 — [FINDING, P3 Vector] 0DTE MATRIX rail — King node not visually called out, Δ% burned its own column — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Operator UI feedback on a screenshot of the Vector chart page's left-column 0DTE MATRIX rail (`VectorOdteMatrixRail.tsx`): "Why don't we paint the King node GEX value yellow?? and why don't we keep the Delta % on GEX itself rather than wasting space?? we can save a lot of space right?? for instance see the SPX Slayer GEX Grid — we do it there and it has better UI components. why can't we use the same?? like we only show 0dte on Vector though." Two distinct asks: (1) the King row's GEX value read the same green/red as every other row — only a white "anchor" box-shadow frame around the cell set it apart, easy to miss scanning quickly; (2) the table spent a whole third column (`STRIKE \| GEX \| Δ%`) on a per-strike drift % that only ever needed a few characters, when Vector's rail (unlike SPX's multi-expiry heatmap) shows a single 0DTE column and has no width to spare. |
+| **Root cause** | `MatrixRow` in `VectorOdteMatrixRail.tsx` rendered the King row via `row.isKing && "spx-odte-matrix-row--anchor"` alone, which only ever applies a `box-shadow` frame + background wash (`.spx-odte-matrix-row--anchor td` in `globals.css`) — it never touches the GEX value's own text color, so on a call-wall/put-wall row it partially blends into the yellow/purple wash and on a plain King row it's easy to scan past. Separately, Δ% (`row.driftLabel`) rendered in its own `<td>` sibling to the GEX `<td>`, forcing a dedicated table column even though the rail only ever has one expiry scope (0DTE) — SPX's `SpxGexMatrixHeatmap.tsx` doesn't have this problem because its per-column shift badge (`GexMatrixShiftBadge`) already lives *inside* the value cell, one badge per expiry column, not as a parallel column. |
+| **Evidence** | Read both components in full plus `vector-odte-matrix-rows.ts` (the row-building lib feeding the rail — `isKing`/`isCallWall`/`isPutWall`/`driftLabel`/`shiftDelta` are already computed per row, so no data-model change was needed, only the render). Grepped existing gold/king tokens instead of inventing a color: `--color-gold: #ffd23f` (`globals.css` `:root`, also `--sig-king` in `phosphor-tokens.css`) is the same token the rail's own King crown (`.vector-odte-matrix-crown { color: rgba(255, 214, 10, 0.95) }`) already uses. |
+| **Fix** | `VectorOdteMatrixRail.tsx`: (1) the GEX value is now wrapped in its own `<span>` carrying a new `.vector-odte-matrix-king-value` class (`color: var(--color-gold)` + a soft gold text-shadow) when `row.isKing`, applied in addition to the existing anchor frame/crown — not instead of them, so call-wall/put-wall King rows keep their wash and every King row additionally gets an unmissable gold value. (2) Δ% moved out of its own `<td>` into a `<span className="vector-odte-matrix-pct-inline">` appended right after the GEX value inside the same cell, rendered as an arrow (▲/▼ from `row.shiftDelta`'s sign) + the existing `driftLabel` with its own redundant leading sign glyph stripped (`driftLabel` already carries `+`/`−` from `fmtShiftPercentForStrike`, so the arrow alone now encodes direction, matching the operator's own example format `+$6.3B ▲189%`). (3) The header row dropped its third `<th>Δ%</th>` entirely — `<th>Strike</th><th>GEX · Δ%</th>` — reclaiming the column width for the two remaining columns. `pctTone` (`is-pct-pos`/`is-pct-neg`) is preserved unchanged so the positive/negative color-coding on the % reading survives the move. |
+| **Fix rationale** | Kept Vector's rail visually distinct from SPX's full heatmap grid rather than porting SPX's structure wholesale, per the operator's own caveat ("we only show 0dte on Vector though") — no per-expiry shift badge, no multi-column layout; only the *pattern* (fold the drift reading into the value cell instead of a parallel column) was borrowed. Reused the existing `--color-gold` token and the rail's own crown color rather than inventing a new hex, so the King's value, its ♛ crown, and the SPX King's ★ badge all read as "the same signal" across products. Left `.spx-odte-matrix-row--anchor`'s frame/wash entirely alone — the operator's ask was additive ("paint... yellow", not "replace the highlight"), and other rows/products (SPX itself, the call/put-wall coloring) still depend on that class unmodified. |
+| **Blast radius** | `src/features/vector/components/VectorOdteMatrixRail.tsx` (header + `MatrixRow`) and `src/app/globals.css` (two new rules: `.vector-odte-matrix-king-value`, `.vector-odte-matrix-pct-inline`). No change to `src/features/vector/lib/vector-odte-matrix-rows.ts` (row-building/data model untouched — `isKing`/`driftLabel`/`shiftDelta` were already there), no change to `SpxGexMatrixHeatmap.tsx` or any other product's matrix (SPX's heatmap, Thermal's, etc. are separate components with their own markup and were not touched). |
+| **Regression guard** | New `src/features/vector/components/VectorOdteMatrixRail.test.ts` (source-invariant `readFileSync` pattern, matching `VectorContractPicksCard.test.ts`'s idiom — this repo has no React render harness): asserts the `<thead>` now carries exactly two `<th>` columns (not three), asserts a standalone `Δ%` `<th>` no longer exists, asserts the King row's GEX-value span carries the gold class, and asserts the `Δ%` inline suffix renders *inside* the same `<td>` as the GEX value rather than a sibling cell. `npx tsx --test` on Node 20: 5/5 pass (this new test + the unmodified `vector-odte-matrix-rows.test.ts` suite). `npx tsc --noEmit` clean. Full `src/features/vector/**/*.test.ts` run: 1198/1205 pass, the 7 failures are pre-existing Redis/queue-infra tests (`vector-shared-universe-cache`, `vector-stream-hub`, `vector-universe`, `vector-wall-durable-queue`, `vector-wall-sample-server`, `vector-wall-write`, `vector-walls-warm`) unrelated to this change and untouched by this diff. |
+| **Status** | FIXED. Not yet deployed/live-verified — a live before/after screenshot via `proxy-browser.cjs` against `/vector` is the natural post-merge follow-up per this repo's "a merge is not a verification" note. |
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_
+
+## 2026-08-27 — [FINDING, P2 Vector] Expected-move band never re-fetched during a live session — could sit stale relative to spot for the rest of the session — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Vector's expected-move (options-implied ±1σ/2σ) flat band is drawn as fixed absolute price lines. `fetchExpectedMove` (`VectorChart.tsx`) was invoked exactly once per (ticker, DTE horizon) mount, with no polling interval — unlike its siblings `fetchGexHeatmap` (polls every `VECTOR_GEX_HEATMAP_POLL_MS`=5s) and `fetchScoped`/`fetchHistory` (poll every `wallTrailSec`). Once drawn, the band's absolute price lines never moved again until the member changed ticker or DTE horizon. |
+| **Concrete consequence** | At mount (e.g. spot=5900, ATM IV=0.15, 0DTE afternoon session), the computed 1σ band draws at 5874.6/5925.4. If spot then rallies to 5950 — a routine ~0.85% intraday move — the drawn band stays pinned at 5874.6/5925.4 for the rest of the session: spot is now outside its own displayed "expected move," with no visual indication the band is stale. |
+| **Compounding factor** | The EM cone (`vector-em-cone.ts`, a separate visualization of the same expected-move concept) DOES re-anchor to live spot every tick (`emConeFromExpectedMove` reads `spotRef.current` fresh each call) while reusing the SAME stale half-width from the one-time `fetchExpectedMove` result. So the flat band and the cone — meant to represent the same expected-move figure — visibly diverge from each other over the course of a session, not just from spot. |
+| **Why not caught earlier** | Found via a data-integrity-focused audit specifically targeting Vector's expected-move/DTE calculation path, not a symptom report — the visual staleness is easy to miss without deliberately watching one session run long enough for spot to drift meaningfully from its mount-time value. |
+| **Fix** | Added `VECTOR_EXPECTED_MOVE_POLL_MS` (30s — vs GEX heatmap's 5s, since ATM IV is the only input that can move this band and does not need sub-minute refresh; the goal is bounding staleness to a session-scale problem, not tick-level freshness) to `vector-cadence.ts`, and wired a `setInterval(() => void fetchExpectedMove(), expectedMovePollMs)` into `VectorChart.tsx`'s live-session effect, matching the existing `heatmapId` pattern exactly (same effect, same `liveSession` guard, cleared alongside `heatmapId` at all three of that effect's cleanup/early-return exit points). |
+| **Blast radius** | Single effect in `VectorChart.tsx`, one new cadence constant. No change to the underlying computation (`computeExpectedMove`, `getVectorExpectedMove`) — only how often it's called while a live session is active. |
+| **Honest limitation — not test-covered by execution** | This fix lives inside a large `useEffect` in a React component with no rendering/hook test harness in this repo (confirmed via grep for `renderHook`/`@testing-library` — same limitation already flagged on the Compare-mode error-boundary fix and the add-ticker-error fix earlier this session). Verified via `tsc --noEmit` and code review against the existing, already-tested `heatmapId` polling pattern it mirrors exactly — not via an executed test of the interval firing. |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P2 Vector] Switching draw tools mid-draft left a stale two-click anchor, producing wrong drawings on the next tool use — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Vector's drawing toolbar (trendline, ray, rectangle, fib) lets a member click a first point, then a second, to complete a two-click drawing. If the member instead abandons the draft — switches to "Select" or any other tool, or just navigates away from the chart mid-draft — nothing clears the pending state. |
+| **Root cause** | `draftAnchorRef` (the first-click anchor, `use-vector-chart-drawings.ts`) is only ever cleared on successful drawing completion (`addDrawing`) or on a ticker switch. The tool-selector callback is wired straight to the raw `setDrawTool` state setter with no side effect to clear the pending anchor, and the `drawTool`-sync effect only mirrored the new tool into a ref without touching `draftAnchorRef`. Two consequences: (1) the dashed draft-preview line (driven by `updateDraftCursor`, which runs unconditionally on every crosshair move regardless of the active tool) keeps following the cursor indefinitely after abandoning a draft; (2) selecting a two-click tool again later and clicking once is treated as the *second* click of the old, long-abandoned draft — silently producing a trendline/ray/rect/fib that spans from the stale old point to the new click, with no warning to the member that this happened. |
+| **Why it matters** | A member drawing a trendline who changes their mind (a very ordinary UI interaction) gets an incorrect drawing later with no visible cause — the bad drawing's start point is wherever they clicked minutes or tools ago, not where they intended. This is silent data corruption of a member-created artifact, not just a visual glitch. |
+| **Fix** | The `drawTool`-sync effect now also clears `draftAnchorRef.current` and calls `drawingsPrimitiveRef.current?.setDraft(null, null)` on every tool change, so any pending two-click draft is discarded the moment the active tool changes — matching the same reset already done on successful completion and on ticker switch. |
+| **Blast radius** | Single hook (`use-vector-chart-drawings.ts`). No change to drawing persistence, rendering, or the click-time resolution path (see the companion fix in the same audit round, `docs/audit/findings-staging/2026-08-27-vector-draw-click-time-wrong-bar-array.md`, for a distinct bug in that path). |
+| **Regression guard** | No React rendering/hook test harness exists in this repo (confirmed via repeated greps for `renderHook`/`@testing-library` across prior fixes this session), so `vector-drawings.test.ts` gains a source-invariant guard (matching the existing `readFileSync`-based pattern already used elsewhere in this test suite, e.g. `vector-key-levels.test.ts`) asserting the `drawTool`-sync effect clears both `draftAnchorRef` and the primitive's draft preview. |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P2 Vector] Drawing click-time resolution indexed raw minute bars at any coarsened timeframe, landing hours off from the actual click — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Vector's drawing tools (trendline, ray, rectangle, fib) let a member click anywhere on the chart, including in the empty margin before the first candle or past the last one — a normal gesture for projecting a level forward. At any chart timeframe other than 1 minute (3m/5m/15m/30m/60m or custom, per `vector-bar-timeframes.ts`), a click in that empty margin could silently anchor the drawing to a time many hours away from where the member actually clicked. |
+| **Root cause** | `resolveChartClickTime` (`vector-draw-click.ts`) has three resolution paths: `param.time` (set when the click lands directly on a bar), `chart.timeScale().coordinateToTime(x)`, and — when both of those return null, which is exactly the empty-margin case — a fallback that computes a logical index via `chart.timeScale().coordinateToLogical(x)` and indexes a caller-supplied bar array with it. `coordinateToLogical` returns an index into whatever series is **currently plotted** — the aggregated, timeframe-coarsened display series. But the caller (`use-vector-chart-drawings.ts`) was passing `minuteBarsRef.current`, the **raw 1-minute** session array, which is far longer than the displayed series at any timeframe above 1m (e.g. ~390 raw bars vs. ~26 displayed 15m bars over an RTH session). Indexing the wrong-granularity array with a displayed-series index silently resolved to a different, wrong bar — and therefore a wrong time, off by however many bars separate the two granularities at that index. |
+| **Why it matters** | The anchor time error is silent and can be large — hours off in the 15m example above. A trendline or ray drawn from the chart's empty margin (a common way to project a level forward) would render from the wrong point entirely, and for a ray, its slope/extension is computed from that wrong anchor, compounding the error visually. |
+| **Fix** | Renamed the hook's `minuteBarsRef` param to `displayBarsRef` and pointed the `VectorChart.tsx` call site at `lastDisplayBarsRef` — the ref that already holds the currently-displayed (timeframe-aggregated) bars, updated on every `paintOverlays` pass — instead of the raw minute-bar ref. `resolveChartClickTime` itself is unchanged; only what's passed to it changes, so it now indexes the same granularity `coordinateToLogical` returns an index into. |
+| **Blast radius** | `use-vector-chart-drawings.ts` (the one internal usage of the renamed ref) and its single call site in `VectorChart.tsx`. `resolveChartClickTime` (`vector-draw-click.ts`) and `vector-drawings-primitive.ts`'s rendering path are both unchanged — the render side already correctly projects via `chart.timeScale().timeToCoordinate()`, so this was purely a click-input bug. A companion bug from the same audit round (a stale draft anchor surviving a tool switch) is filed and fixed separately in its own PR per this repo's one-issue-per-branch policy. |
+| **Regression guard** | `vector-draw-click.test.ts` gains a test simulating a 15m-displayed / 390-raw-minute-bar mismatch at the same logical index, asserting the correct (displayed-bar) and buggy (raw-bar) results differ — proving the distinction matters — plus a source-invariant guard (matching this suite's existing `readFileSync` pattern) asserting the hook resolves click time against `displayBarsRef`, not a raw minute-bar ref. |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P2 Vector] Dark-pool "as-of" timestamp reached the client but was never surfaced — a 20+ minute-stale print rendered as live — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Vector's dark-pool concentration overlay (orange dashed price guides) has no staleness indication. The server-side cache (`vector-dark-pool-cache.ts`) has a 25-minute TTL ("tolerating one missed run"), and a failed refetch skips the write entirely — so during a sustained UW outage, the same snapshot's original `fetchedAt` timestamp keeps being served indefinitely, unbounded past 25 minutes. |
+| **Root cause** | The SSE stream payload has carried `darkPoolAsOf: number` (the cache's `fetchedAt`) since the dark-pool overlay shipped — declared on both the server snapshot type (`vector-snapshot.ts`) and the client-facing stream type (`src/lib/api.ts`). But `VectorChart.tsx`'s snapshot-apply block only ever read `snap.darkPoolLevels` into `darkPoolRef.current`; `snap.darkPoolAsOf` was read nowhere in the file (confirmed by repo-wide grep — the only two references were the two write sites, no consumer). Meanwhile `gexAsOf`/`vexAsOf` — the exact same "cache age" concept for the GEX/VEX wall lens — already had this wiring end-to-end: state, snapshot-apply read, passed to the toolbar, rendered as a live-ticking "· 5m" age chip next to the GEX/VEX toggle (`VectorLensToggle.tsx`). Dark pool was the one overlay that field never reached. |
+| **Why it matters** | Dark-pool prints are large institutional trades — a member reading "here's where the big money traded" has no way to know the print they're looking at could be from 20+ minutes ago (or, during an outage, arbitrarily older), same class of bug as the just-fixed expected-move staleness issue: a value computed correctly server-side, silently presented as fresh because nothing plumbed its age to the UI. |
+| **Fix** | Added a `darkPoolAsOf` state to `VectorChart.tsx` (mirroring `gexAsOf`/`vexAsOf` exactly), read from `snap.darkPoolAsOf` in the same snapshot-apply block. Wired it through `VectorToolbar.tsx` to `VectorDarkPoolToggle.tsx`, which now renders the same live-ticking "· Nm" age chip `VectorLensToggle` already shows for GEX/VEX — reusing the same 1s-tick pattern gated on `liveSession`. |
+| **Incidental cleanup** | The age-formatting logic (`asOf<=0`→null, `<60s`→seconds, else whole minutes) was a private function inside `VectorLensToggle.tsx`. Adding a second consumer of the identical rule would have duplicated it, so it's extracted to `src/features/vector/lib/vector-age-format.ts` (`formatVectorAge`) — both toggles now import the one implementation. No existing test referenced the old private name (confirmed via grep), so the extraction is behavior-preserving. |
+| **Regression guard** | `vector-age-format.test.ts` (4 tests, new file): null/undefined/zero/negative `asOf` or missing `now` → no chip; sub-minute renders whole seconds; a minute or more renders whole minutes; a future `asOf` clamps to `0s` rather than going negative. |
+| **Blast radius** | Two small presentational components + one new shared pure helper + a few prop-threading lines in `VectorChart.tsx`/`VectorToolbar.tsx`. No change to the underlying dark-pool fetch/cache logic — only how its known age is surfaced. |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P2 Vector] Crosshair legend fell back to live wall/flip data during an active zoom/pan gesture, mislabeling historical hovers — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Hovering the Vector chart's crosshair legend normally shows the gamma-flip and call/put wall levels as they stood AT the hovered bar's time (`wallsAtCrosshairTime`/`flipAtCrosshairTime`). But while wheel-zooming or drag-panning the chart (a ~600ms "gesture cooldown" window, repeatable indefinitely by continuing to pan), the legend's flip/wall values briefly switched to today's/right-now's live levels instead — in Replay mode this meant hovering a scrubbed historical bar mid-gesture showed live current-session data; in a live session it meant hovering an OLDER bar mid-session showed the CURRENT levels instead of that bar's own. |
+| **Root cause** | The crosshair-move handler's `interactionHot` branch (`VectorChart.tsx`) — a perf optimization that defers the heavier point-in-time lookup during an active gesture — substituted `wallsForActiveLens(activeLens, gexWallsRef.current, vexWallsRef.current)` and `flipForActiveLens(activeLens, gammaFlipRef.current, vexFlipRef.current)` (the LIVE refs, updated continuously by the SSE handler regardless of replay state) instead of skipping the lookup. `wallsAtCrosshairTime`/`flipAtCrosshairTime` (`vector-replay.ts`) carry an explicit doc comment warning against exactly this substitution — "falling back to live there would mislabel today's current walls as the historical state at the hovered time." Two sibling computations in the same handler — `gexCell` and the wall-event-glyph tooltip — already correctly suppress (render nothing) during `interactionHot` rather than substituting; the walls/flip branch was the one that didn't follow that pattern. |
+| **Why it matters** | A member reading the crosshair legend while actively navigating the chart (an extremely common gesture — zoom/pan is how anyone explores a chart) could see wall/flip levels that have nothing to do with the bar they're hovering, for as long as they keep gesturing. This is silent data mislabeling, not merely a rendering glitch — the legend presents the wrong levels as if they were measured at the hovered time. |
+| **Fix** | Changed both branches from substituting the live-ref lookup to `null` during `interactionHot`, matching the existing `gexCell`/wall-event-tooltip suppression pattern in the same handler. The consuming code already handles a null/absent walls value gracefully (`walls?.callWalls ?? []`), so no downstream change was needed. |
+| **Blast radius** | Single file (`VectorChart.tsx`), two ternaries in one handler. `wallsAtCrosshairTime`/`flipAtCrosshairTime` themselves are unchanged — this was purely a caller-side bypass of correct functions, not a flaw in them. `wallsForActiveLens`/`flipForActiveLens` remain used elsewhere in the file (live-tick structure-event detection, `refreshOverlays`) and are unaffected. |
+| **Regression guard** | No React rendering/hook test harness exists in this repo; added `VectorChart-crosshair-gesture-suppression.test.ts` (matching the `readFileSync` source-invariant pattern already established by `VectorChart-footer-labels.test.ts`) asserting both the walls and flip ternaries resolve to `null` during `interactionHot` rather than calling the live-ref helpers. |
+| **Status** | FIXED. |
+
+## Vector contract-picks card gave no signal between "still loading" and "no picks generated" — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `VectorContractPicksCard` returned `null` unconditionally whenever `picks.length === 0`
+(`src/features/vector/components/VectorContractPicksCard.tsx`), regardless of the `loading` prop it
+already receives. A member looking at a real, directional play with zero picks — every candidate
+contract missed `MIN_SHOW_SCORE` or the liquidity/premium gates in `rankVectorPlayCandidates` — saw
+exactly the same nothing as a member whose picks were simply still in flight on page load, or a
+member on a genuinely neutral-bias ticker where no play (and therefore no picks) is expected at all.
+Three distinct states collapsed into one blank space.
+
+**Fix.** The empty branch now distinguishes three cases:
+- `loading` → a lightweight "Scanning the chain for a contract worth showing…" card, so a member
+  mid-fetch doesn't read the blank space as "there's nothing here."
+- not loading, but a real directional play exists (`play.bias !== "neutral"`) with zero picks → an
+  explicit "No contract in the chain cleared our setup-quality bar for this play right now" card —
+  the honest, member-relevant explanation for the MIN_SHOW_SCORE/liquidity-gate case.
+- not loading, no play, or a neutral-bias play → still renders nothing, since there is genuinely no
+  play to report on.
+
+**Blast radius.** `VectorContractPicksCard` only — no change to `rankVectorPlayCandidates` or any
+ranking/gating logic. This is purely a "say what's actually happening" fix, not a change to which
+contracts qualify.
+
+**What was deliberately left unchanged.** The `MIN_SHOW_SCORE` threshold itself, and every OI/premium
+liquidity gate — changing those numbers would need the kind of measured evidence (a backtest or A/B
+harness) this repo's `docs/audit/INTENTIONAL-DESIGN.md` pattern requires before touching a calibrated
+threshold, not a guess made while fixing a UI-visibility gap.
+
+**Verification:** new regression test (`VectorContractPicksCard.test.ts`, source-text assertion
+pattern matching this repo's other component tests) guards that the empty-picks branch is a real
+conditional (not a bare `return null`), that `loading` is checked, and that a neutral/no-bias play
+still renders nothing. `tsc --noEmit` clean, full suite clean (11001 pass / 0 fail / 2 pre-existing
+skips), `npm run build` clean.
+
+## Vector contract picks: a bid-only-quoted contract was invisible at every liquidity tier — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `contractPremium()` in `src/features/vector/lib/vector-play-candidates.ts` computed
+a contract's premium as: mid if both bid and ask are live, else `ask` if only the ask is live, else
+`null`. There was no branch for "only the bid is live" — a real, common state for a thin or
+recently-crossed market where the ask has gone stale/dark before the bid does. That `null` return
+happens inside `pickContractNearTarget`'s per-row scan, at the very first gate (`if (premium == null)
+continue;`), before OI/premium-cap bucketing — so the contract was dropped before it could even
+reach the `anyQuoted` catch-all bucket that's supposed to be the last-resort "show *something*"
+tier. A real, high-conviction play could therefore render **zero** picks for a ticker/side that
+genuinely had a live, executable, bid-only-quoted contract.
+
+**Why it wasn't caught earlier.** All existing tests constructed rows with both `callAsk`/`callBid`
+(or `putAsk`/`putBid`) set, so the missing-ask branch was never exercised. The bug is silent by
+construction — a dropped contract just means one fewer candidate in the DTE-window scan, which
+looks identical to "no contract existed near that strike," not "a contract existed but was
+discarded."
+
+**Blast radius.** `contractPremium` is the single gate for every contract candidate considered by
+`pickContractNearTarget` (weekly/monthly windows, all roles: primary-long/short, fade-dip/rip,
+gex-king-pin, magnet-mean, flow-whale). It is not called by `pickChainContract` (the 0DTE picker in
+`deterministic-edition.ts`), which has its own independent premium logic — not touched by this fix,
+and worth checking separately (see the sibling finding on 0DTE `targetStrike` handling).
+
+**Fix.** `contractPremium` now falls back to `bid` when only the bid is live, mirroring the existing
+ask-only fallback. Mid-price is still preferred whenever both sides are quoted (unchanged), and the
+existing wide-spread rejection (`(ask-bid)/mid > 1.0`) still applies when both sides are present.
+Added test coverage: bid-only quote is picked, both-sides-missing still returns null, plus three
+previously-uncovered empty-input paths (empty chain rows, null chain, null context) all correctly
+return `[]` — `src/features/vector/lib/vector-play-candidates.test.ts`.
+
+**What was deliberately left unchanged.** The wide-spread rejection threshold, the OI/premium-cap
+bucketing (`strict`/`relaxedPremium`/`relaxedOi`/`anyQuoted`), and `pickChainContract`'s separate
+0DTE premium logic — none of those are implicated by this specific gap.
+
+## 2026-08-27 — [FINDING, P2 Vector] Confluence-zone score double-counted a kind repeated within a cluster, undermining the module's own "distinct kinds" guarantee — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `confluenceZones()` (`src/features/vector/lib/vector-confluence.ts`) is documented to require "≥2 DISTINCT kinds" before a price cluster counts as confluence — its own header comment states the rationale directly: "five fib lines on top of each other is one signal repeated, not five signals agreeing." The `kinds.length < 2` gate correctly enforces this at the cluster-admission level. But the SCORE computed for an admitted cluster summed the weight of every raw level in the cluster, not every distinct kind — so once a cluster had ANY 2nd kind present, an unlimited number of same-kind duplicates could keep adding to the score. |
+| **Where the duplicates come from** | Real, live caller behavior, not a hypothetical: `VectorChart.tsx` pushes the golden pocket's top AND bottom edges both tagged `kind: "golden-pocket"` (2 same-kind levels for 1 real signal), and pushes up to 3 ranked call-wall levels and 3 ranked put-wall levels, all sharing `kind: "call-wall"`/`"put-wall"` respectively (3 same-kind levels for what is really "the dealer wall structure on this side," not 3 independent signals). |
+| **Concrete consequence** | 3 ranked call walls (weight 3 each) clustering with 1 HOD (weight 1) scored `3+3+3+1=10` under the old code — passing the ≥2-kind gate (kinds = {call-wall, hod}) and outranking a genuine 3-distinct-kind stack like gamma-flip(2.5)+max-pain(2)+pdh(1.5)=6. A cluster that is mostly ONE signal (dealer wall levels) repeated three times outscored and outranked a cluster where three truly independent signals agree — the exact inversion the module's own design comment says it exists to prevent. This directly affects which zone gets picked as "strongest" (`topConfluenceBand`) and what score is quoted in the terminal's confluence callouts — both member-visible. |
+| **Fix** | Score now sums each distinct kind's STRONGEST instance once (`max` weight per kind, summed across distinct kinds), rather than summing every raw level regardless of repeats. The weighted-average CENTER calculation (where to draw the zone) is left summing across all raw levels — that's a genuine "where do these price points average to" computation, unaffected by which signal-counting the SCORE metric uses. |
+| **Blast radius** | Single function (`confluenceZones`). Two callers read `.score`: the terminal's `confluenceCallouts()` (quoted score text) and `topConfluenceBand()` (drives the chart's confluence-band overlay ranking) — both inherit the fix automatically, no caller-side change needed. |
+| **Regression guard** | `vector-confluence.test.ts` — new test constructs exactly the repeated-call-wall + HOD scenario, asserts the fixed score (4, not 10), and asserts a genuine 3-distinct-kind stack of lower nominal weight (6) now correctly outranks it. All 9 pre-existing tests still pass unmodified — none of them happened to exercise a same-kind-repeated-within-cluster scenario, so none needed updating. |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P3 Vector] Ticker comparison strip omitted the staleness/error disclosure its sibling scanner was just given for the identical snapshot — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `VectorTickerComparisonStrip` (a cross-ticker wall-structure comparison strip — SPY vs sector ETF vs peers) reads the same shared universe snapshot `VectorScanner` does, via the same `useVectorUniverseSnapshot` SWR hook, but neither surfaces the snapshot's age nor distinguishes a fetch error from "still loading" — it silently renders the last-cached rows (or nothing) with no visual difference between a few seconds old and tens of minutes old. |
+| **Root cause** | `VectorScanner.tsx` was fixed earlier in this same session's audit sweep to surface `data.updatedAt` (explicitly documented server-side as existing "for consumers to age-gate" against a 48-hour Redis TTL) after the field was found to reach the client but never render anywhere. `VectorTickerComparisonStrip.tsx` reuses the identical fetch (same SWR key, same snapshot shape) but was never given the same treatment — it destructured only `{ data, isLoading }` (no `error`) and had no age/staleness state at all. |
+| **Why it matters** | If the 5-minute universe-rebuild cron stops running, this strip would keep showing stale cross-ticker comparisons indefinitely with no indication, same failure mode as the scanner bug it mirrors. **Caveat**: this component is not currently mounted anywhere in the app (`grep` across `src/` finds no import site besides the file itself), so there is no live member-facing impact today — but it is complete, wired code that will ship this exact silent-staleness gap the moment it's integrated into a page. Fixing it now, while cheap and while the sibling fix is fresh, avoids re-discovering the identical bug after integration. |
+| **Fix** | Extracted the staleness threshold from `VectorScanner.tsx`'s local `VECTOR_SCANNER_STALE_MS` into a new shared `VECTOR_UNIVERSE_STALE_MS` export in `vector-age-format.ts` (alongside the already-shared `formatVectorAge` helper), so the two consumers of the same snapshot can't have their staleness thresholds drift apart. Added the same live-ticking age label + error state to `VectorTickerComparisonStrip`, reusing `formatVectorAge` and the shared threshold. |
+| **Blast radius** | `vector-age-format.ts` (new export, `formatVectorAge` itself unchanged), `VectorScanner.tsx` (switched to the shared constant, no behavior change), `VectorTickerComparisonStrip.tsx` (new state + error branch + age label), `globals.css` (three small rule additions). No change to the universe snapshot fetch/cache/merge logic or the comparison-row math (`buildTickerComparisonRows`). |
+| **Regression guard** | No React rendering/hook test harness exists in this repo; added `VectorTickerComparisonStrip.test.ts` (matching the `readFileSync` source-invariant pattern already used by `VectorScanner.test.ts`) asserting the component destructures `error`, reads `data.updatedAt`, formats it via the shared `formatVectorAge`/`VECTOR_UNIVERSE_STALE_MS`, and renders a distinct stale visual state. Re-ran `VectorScanner.test.ts` to confirm the constant-sharing refactor didn't regress it. |
+| **Status** | FIXED. |
+
+## Compare-mode "Sync zoom" broadcast can corrupt a replaying pane's viewport — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Component** | `VectorChart.tsx` (Compare-mode `compareSync?.zoomPreset` effect) |
+| **Severity** | P2 — visual/functional corruption of one pane's replay, no data-integrity impact |
+
+### Root cause
+
+The effect that applies a broadcast intraday-zoom preset in Compare mode had no replay guard:
+
+```ts
+useEffect(() => {
+  const payload = compareSync?.zoomPreset;
+  if (!chartReady || !payload) return;
+  handleIntradayZoomRef.current(payload.preset);
+}, [chartReady, compareSync?.zoomPreset?.tick]);
+```
+
+This is a **different call site of the same underlying bug** just fixed in `handleZoomReset`
+(#2969): `handleIntradayZoom` recomputes its viewport from
+`displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current)` with no `cursorTime` — the
+full, still-growing LIVE minute-bar buffer, not the replay-cursor-sliced one. Every other caller of
+this class of operation already guards against replay:
+
+- The per-pane toolbar zoom-preset selector (`VectorIntradayZoomControls`) is
+  `disabled={replayMode}`-gated at its `VectorToolbar` call site.
+- The keyboard shortcut for the same operation already has `if (replayMode) return;`.
+
+This `compareSync`-driven effect — the cross-pane broadcast path — was the one caller with no
+guard at all.
+
+### Concrete reproduction (confirmed by tracing the actual code, not assumed)
+
+1. Unlink Compare panes (`linked=false`). Each pane's own replay control becomes visible — it's
+   only hidden via `hideReplayControls={linked}` at the `VectorCompareDesk` call site.
+2. Manually enter replay on ONE pane (`toggleReplay` → `enterReplay`). This sets that pane's own
+   `replayModeRef.current = true`, with `linkedReplayControlledRef.current` left `false` since it
+   was entered manually, not via the linked-replay path.
+3. Re-link the panes (`linked=true`). The relink path only calls `exitReplay()` for panes it itself
+   put into replay (gated on `linkedReplayControlledRef`), so the manually-replaying pane's replay
+   state is left untouched.
+4. Click the shared "Sync zoom" command-bar control. It's gated only on `linked` (`disabled={!linked}`
+   in `VectorCompareCommandBar.tsx`), with no check on any pane's individual replay state, and bumps
+   `compareSync.zoomPreset.tick` for every pane.
+5. The still-replaying pane's `compareSync?.zoomPreset` effect fires unconditionally and calls
+   `handleIntradayZoom`, which recomputes the viewport off the full live buffer — corrupting that
+   pane's replay frame exactly like the pre-fix `handleZoomReset` did, just triggered by a sibling
+   pane's click instead of the member's own.
+
+### Fix
+
+Added `if (replayModeRef.current) return;` immediately after the existing early-returns in the
+effect, matching the keyboard shortcut's own guard for the identical operation. A member scrubbed
+into replay on one pane no longer has that pane's viewport clobbered by a zoom-sync broadcast from
+a sibling pane.
+
+### Blast radius
+
+Single effect, single file. Confirmed via a background investigation (dispatched after the #2969
+audit round flagged this as low-confidence/unreproduced) that traced `compareSync`'s origin
+(`vector-compare-sync.ts`, `VectorCompareDesk.tsx`), the linked-replay/per-pane-replay relationship,
+and the exact unlink→manual-replay→relink→broadcast trigger sequence — this is a real, reachable
+production bug, not merely theoretical.
+
+### Test
+
+`VectorChart-compare-sync-zoom-replay-guard.test.ts` — source-invariant guard (no React render
+harness in this repo) asserting the effect returns early when `replayModeRef.current` is true.
+
+## 2026-08-27 — [FINDING, P1 Vector] Compare mode's live SSE was a shared singleton — only the last-mounted pane ever stayed live — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Vector's Compare mode (`/vector?compare=A,B,C,D`, up to `VECTOR_COMPARE_MAX_PANES=4` linked chart panes) — once more than one pane was mounted, only the **most recently mounted** pane kept receiving live candles/wall updates. Every earlier pane silently froze on its last-received tick for the rest of the session: no visible error, no stale indicator, chart just stopped updating. |
+| **Root cause** | `createVectorEventSource` (`src/lib/api.ts`) kept a **module-level singleton** — `activeVectorStream`/`activeVectorStreamTicker` — and force-closed whichever stream it last tracked whenever a NEW call arrived for a different ticker (`if (activeVectorStream && activeVectorStreamTicker !== t) { activeVectorStream.close(); ... }`). That's the right behavior for exactly one concurrent caller: the single-pane desk switching ticker in the same box. It's wrong the moment more than one caller exists concurrently. `VectorComparePane`/`VectorChart` mounts one independent chart instance PER pane, and each instance calls `createVectorEventSource(ticker, ...)` with its own ticker. Pane 2 mounting with a different ticker than pane 1 closed pane 1's stream; pane 3 mounting closed pane 2's; and so on — the singleton design meant only whichever pane connected last could ever hold a live stream, for the rest of the app's lifetime (module state, not per-mount). |
+| **Why the freeze was permanent, not transient** | `createReconnectingEventSource`'s `.close()` sets an internal `closed=true` flag that permanently disables that same stream instance's own retry/reconnect loop (`connect()` early-returns `if (closed ...)`). Once a pane's stream was force-closed by a differently-ticker'd sibling, nothing ever reconnected it — `VectorChart`'s own reconnect guard (`if (!connRef.current) connectLive();`) never fired either, because `connRef.current` still held the now-permanently-closed object (non-null), not `null`. |
+| **Why not caught by the earlier Compare-mode audit (2026-08-27, PR #2945)** | That audit focused on the toolbar/remount/preset-label layer (missing zoom controls, a redundant full-pane remount on zoom-preset sync, a mislabeled ticker-count preset) — all things visible by inspecting the compare-mode component tree and its own state. This bug lives one layer down, in a shared client-side data-fetching helper (`src/lib/api.ts`) that both single-pane and compare-mode chart instances call — an audit scoped to the compare-mode components themselves wouldn't necessarily trace a shared helper's cross-instance side effects. Found by a follow-up resilience-focused audit specifically looking for SSE/reconnect/race-condition classes of bug across Vector. |
+| **Evidence** | Source-level: `git blame` traces the singleton to the commit that added multi-ticker support (`0cf49e009`, 2026-07-08) — added at the same time as the `ticker` param, clearly written for "the one visible chart's ticker changed," before Compare mode existed. Confirmed only one caller of `createVectorEventSource` exists in the app (`VectorChart.tsx`), and that caller already manages its OWN connection lifecycle independently per instance (`connRef.current?.close()` in both `connectLive()`'s own top and the chart-teardown effect's cleanup, on every ticker switch / unmount) — so the module-level singleton was fully redundant for the single-pane case it was built for, and only ever caused harm once a second concurrent caller (Compare mode) existed. |
+| **Fix** | Removed the module-level `activeVectorStream`/`activeVectorStreamTicker` singleton and its force-close-on-different-ticker branch from `createVectorEventSource` entirely. Each call now returns a fully independent connection, matching every sibling stream helper in the same file (`createFlowEventSource`, `createPulseEventSource`, `createSpotStreamEventSource` — none of which ever carried this pattern). No caller-side change needed: `VectorChart`'s own per-instance lifecycle management (already correct) is now the only thing managing these connections, for both the single-pane and Compare-mode cases. |
+| **Blast radius** | Single call site (`VectorChart.tsx`), so the fix has no other consumers to update. Benefits BOTH single-pane desk (removes a redundant, previously-harmless-by-luck code path) and Compare mode (removes the actual bug) uniformly. |
+| **Regression guard** | `src/lib/api-vector-stream.test.ts` (4 tests, new file) with a stubbed `EventSource`/`window`: opening a second ticker's stream must not close the first; all 4 of Compare mode's max concurrent panes stay independently open; closing one pane's stream must not close a sibling's; re-opening the same ticker still gets its own independent connection. Verified these tests correctly FAIL (2/4) against the pre-fix code by temporarily reverting the fix and re-running — confirms the tests catch the actual regression, not a vacuous pass. |
+| **Not yet live-validated** | This fix touches client-side SSE wiring, which can only be meaningfully validated against a real browser + deployed SSE endpoint, not from this sandbox pre-deploy. Will re-check via live Compare-mode UI capture (all 4 panes' candles/wall ticks over ~60s) once this PR is deployed to production. |
+| **Status** | FIXED — pending PR merge + live post-deploy validation. |
+
+## Vector Compare preset/add/rem tickers remounted every stable pane via bumpSync — lightweight-charts "Value is null" — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `vector-e2e-audit.mjs` `ui:console-errors` FAIL during Compare 4-up preset load — fourteen `Value is null` errors from lightweight-charts after clicking the Indices preset. Charts still rendered; failure was console noise + redundant full teardown of working panes. |
+| **Root cause** | `applyPreset`, `loadTicker`, and `removeTicker` in `VectorCompareDesk.tsx` all called `bumpSync()`, which increments `syncEpoch` folded into each linked pane's React `key`. That forces React to destroy and rebuild **every** `VectorChart` instance even when only the seed list changed — e.g. going 1-up → 4-up remounted the surviving SPX chart immediately after its first mount. Same anti-pattern already fixed for `applySyncZoomPreset` earlier the same day. |
+| **Fix** | Call `flashSync()` only (visual pulse) on seed composition changes; reserve `bumpSync()` for linked lens/timeframe/DTE changes that genuinely require a coordinated remount. Updated `zerodte-bie-consistency-validator.mjs` regex (`syncLedgerLiveState(read.rows)`) — stale static guard after ledger-read refactor. |
+| **Status** | FIXED |
+
+## 2026-08-27 — [FINDING, P2 Vector] Compare mode had no per-pane error isolation — one bad pane took down all 4 — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Vector's Compare mode renders up to `VECTOR_COMPARE_MAX_PANES=4` independent `VectorComparePane`/`VectorChart` instances (`VectorCompareDesk.tsx`, plain `seeds.map(...)`, no per-item error isolation). An uncaught render error thrown by ANY one pane — a bad ticker, a malformed live payload reaching an overlay that assumes a shape — unmounts the entire `(site)` route segment via the app-level `src/app/(site)/error.tsx` boundary (the nearest one above `/vector` — there is no route-level `error.tsx` under `/vector` itself, confirmed via `Glob **/error.tsx`), taking the other 3 working panes AND the desk chrome (nav, toolbar) down with them. |
+| **Why this compounds rather than just repeats the single-pane risk** | A single-pane desk hitting the same class of render error already loses the whole page — that's the existing baseline. Compare mode turns "1 broken thing breaks 1 thing" into "1 broken thing breaks 4 things," which is strictly worse blast radius for the exact same underlying defect class. |
+| **Root cause** | No error boundary existed anywhere under `src/features/vector/` (confirmed via grep for `ErrorBoundary`/`componentDidCatch`), and `VectorCompareDesk.tsx`'s pane list had no isolation wrapper — each pane's render errors propagate straight up to whatever boundary sits above the whole route. |
+| **Precedent already in the repo** | `SpxDashboard.tsx`'s `SpxPanelErrorBoundary` solves the identical problem for SPX dashboard panels — a class component (`getDerivedStateFromError`/render fallback), because React error boundaries have no hook equivalent. This fix mirrors that exact pattern rather than inventing a new one. |
+| **Fix** | New `VectorPaneErrorBoundary` (`src/features/vector/components/VectorPaneErrorBoundary.tsx`) wraps each `<VectorComparePane>` in `VectorCompareDesk.tsx`'s `seeds.map(...)`, keyed by ticker (moved from the pane itself to the boundary, since the key must sit on the outermost mapped element). On a caught render error it shows a small per-pane fallback naming the ticker ("`{TICKER} pane failed to render. The other panes are unaffected.`") with a "Remove pane" action wired to the same `removeTicker` callback the pane's own remove button already uses — so a member isn't stuck looking at a broken pane forever, and the other panes keep working. |
+| **Scope discipline** | Deliberately Compare-mode only. The single-pane desk (`VectorPageShell.tsx`) is a much higher-traffic, extensively live-validated path this session; wrapping it too would be a second, separate, lower-urgency change (the blast-radius argument for Compare mode — 1 breaks 4 — doesn't apply to a single chart), not bundled here to keep this PR's risk surface minimal. |
+| **Not yet live-validated** | React error boundaries only catch RENDER errors (not async/event-handler throws, which are out of scope here), and inducing a genuine uncaught render error live against production isn't something to do deliberately. Verified via `tsc --noEmit` + full suite + build (this repo has no React rendering test harness — confirmed via grep — so the boundary's actual catch behavior is validated by code review against the existing `SpxPanelErrorBoundary` precedent rather than an executed test). |
+| **Status** | FIXED — pending PR merge. |
+
+## Vector Compare mode audit — missing zoom controls, redundant sync-zoom remount, mislabeled preset — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+Compare mode (the 4-up chart grid) was deliberately left untouched during today's round of
+standalone-chart fixes except for the candle-floor bypass fix, so a dedicated audit was run to find
+what had drifted. Three real, verified findings, all fixed here.
+
+### FIXED — Compare panes had NO zoom in/out/reset controls at all
+**File:** `src/features/vector/components/VectorToolbar.tsx`
+
+`VectorChart.tsx` builds `handleZoomIn`/`handleZoomOut`/`handleZoomReset` and passes them to the
+toolbar unconditionally, and `VectorToolbar` even precomputes a `zoomControls` element from them —
+but only the non-compare branch ever rendered it. The `comparePane` early-return branch (taken for
+every Compare pane) rendered the indicator menu, bead-rail toggle, NODES toggle, draw tools, and
+replay controls, but never referenced `zoomControls`. Compare's own linked command bar
+(`VectorCompareCommandBar.tsx`) only wires Session/Structure/Live viewport *presets*, disabled
+entirely in "Per-pane" (unlinked) mode — so a member in per-pane mode had no way to zoom a single
+pane at all, and even in linked mode never got the discrete step-zoom feature that shipped
+standalone today.
+
+**Fix:** render a `VectorZoomControls` instance inside the `comparePane` branch, with
+`exposeTestIds={false}` (not the shared `zoomControls` variable, which defaults `true`) since up to
+4 panes render this row simultaneously — the same convention the NODES toggle right above it
+already follows for exactly this reason.
+
+### FIXED — every "Sync zoom" click forced a redundant full remount of all 4 panes
+**Files:** `VectorCompareDesk.tsx`, `VectorComparePane.tsx`
+
+`applySyncZoomPreset` called `bumpSync()`, which increments `syncEpoch` — folded into
+`VectorComparePane`'s React `key` whenever panes are linked. A `key` change forces React to fully
+destroy and rebuild the entire pane subtree: the lightweight-charts instance, the
+`WallRailPrimitive`, and the SSE connection, for all 4 panes at once. But `VectorChart.tsx` already
+has a reactive effect built specifically to apply a synced zoom preset **without** remounting
+(`compareSync?.zoomPreset` delivered via a tick counter, applied through the same cheap
+`setVisibleLogicalRange`-class path used by ordinary zoom). The remount was pure waste layered on
+top of a path that already worked — and it directly worked against today's wall-rail perf fix
+(#2939), discarding the very `WallRailPrimitive._derivedCache` that fix keeps warm across repaints,
+on every single sync-zoom click.
+
+**Fix:** split the flash-only visual feedback (`setSyncFlash`) out of `bumpSync()` into its own
+`flashSync()` helper, and have `applySyncZoomPreset` call `flashSync()` instead of `bumpSync()` — the
+member still sees the "synced" pulse, with none of the remount cost. Every other `bumpSync()` call
+site (adding/removing a ticker, applying a whole-grid preset, changing timeframe/lens/DTE) is
+untouched — those genuinely need the remount, since `VectorChart.tsx` only consumes those as
+`useState` initializers.
+
+### FIXED — the "Mag 7" compare preset only ever carried 4 tickers
+**File:** `src/features/vector/lib/vector-compare.ts`
+
+`{ id: "mag7", label: "Mag 7", tickers: ["NVDA", "AAPL", "MSFT", "AMZN"] }` — capped at 4 by
+`VECTOR_COMPARE_MAX_PANES`, 3 short of the real Magnificent Seven, while the label claimed 7.
+
+**Fix:** relabeled to "Big Tech" — a claim the preset can actually keep. The `id` field ("mag7") was
+deliberately left unchanged: `src/lib/x-intel/capture-catalog.ts` references it as a stable
+`preset=mag7` param for a capture recipe, and renaming the id would have silently broken that
+recipe. Only the member-facing label changed.
+
+**Verification:** new tests in `vector-chart-viewport.test.ts` (zoom controls present in the compare
+branch; sync-zoom preset no longer calls the remount path) and `vector-compare.test.ts` (no preset's
+label claims more tickers than it carries). `tsc --noEmit` clean, full suite clean (11004 pass / 0
+fail / 2 pre-existing skips), `npm run build` clean.
+
+## 2026-08-27 — [FINDING, P3 Vector] Compare mode's "add ticker" failed completely silently on a bad ticker — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Adding a single ticker to Vector Compare mode (`loadTicker` in `VectorCompareDesk.tsx`) — a bad/unknown ticker, or a transient API error — cleared the loading spinner and did nothing else. No pane appeared, no error message, no visible feedback at all. A member's click looked like it silently did nothing. |
+| **Root cause** | `loadTicker` wrapped `await fetchVectorClientSeed(ticker)` in `try {...} finally {...}` with **no `catch`**. A thrown rejection became an unhandled promise rejection; the `finally` still cleared the loading state, but nothing surfaced the failure. |
+| **Why this is the outlier, not the norm** | The SAME file's bulk preset path (`applyPreset` → `loadCompareSeedsBounded`) already solves this exact class of problem correctly — its own doc comment names the bug directly: *"a rejection here used to propagate out of the worker... so the grid sat on 'Loading Vector Compare…' FOREVER... One unreachable ticker is a fact about that ticker, not a reason to lose the others."* That fix (settle per item, never reject the batch, `null` slot for the failed one) shipped for the PRESET/bulk path but the single-add path (`loadTicker`) never got the equivalent treatment — the exact same defect class, missed on one of its two call sites. |
+| **Fix** | Added the missing `catch` to `loadTicker`, storing the failed ticker in a new `addTickerError` state. A small inline message ("Couldn't add {TICKER} — check the ticker and try again") renders under the command bar and auto-dismisses after 5s (mirroring the toast auto-dismiss pattern `VectorPageShell.tsx` already uses for fired alerts, so this isn't a new UI convention). |
+| **Blast radius** | Single function (`loadTicker`), single new piece of local component state. `loadCompareSeedsBounded`'s bulk-path behavior (already correct) is untouched. |
+| **Not test-covered by execution** | `loadCompareSeedsBounded` is unit-tested because it's a pure exported function that takes its fetcher as a dependency-injected parameter. `loadTicker` is a `useCallback` closure inside the component — extracting a testable unit here would mean inventing an abstraction around a 3-line try/catch whose entire behavior is "on failure, remember which ticker failed," which isn't meaningfully more real coverage than reading the diff. Noting this honestly rather than manufacturing a test for its own sake, consistent with the same limitation already noted on the Compare-mode error-boundary fix (#2951) — this repo has no React rendering harness. |
+| **Status** | FIXED — pending PR merge. |
+
+## Vector volume pane still clipped/below-fold at normal laptop heights, post-#2981 — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in `fix/vector-chart-height-budget-scroll-safe` |
+| **Severity** | P1 — desk UX, common laptop viewport (1280-1599px wide) |
+| **Surface** | `/vector` @ 1280-1599px wide (e.g. 1366×768/864/1080 — the ordinary laptop range) |
+
+### Follow-up to
+
+PR #2981 (merged) fixed the price/volume **share** — `PRICE_PANE_STRETCH`/`VOLUME_PANE_STRETCH`
+7:2.2 → 8:2 (80/20) — but its own write-up flagged an unaddressed second factor: "the grid's
+`calc(100dvh - 7rem)` budget... a budget deliberately shrunk on 2026-08-26." This finding is that
+second factor, confirmed live and fixed.
+
+### Symptom
+
+Operator report + live screenshot at a normal laptop window size: the volume histogram was not
+merely squeezed, it was **entirely below the fold inside the chart's own container** — only
+candles visible, nothing scrolled to reveal it. A prior attempt to fix a related issue had made
+the **whole page** scroll, which the operator explicitly does not want repeated.
+
+### Root cause
+
+`.vector-page-shell .vector-chart-terminal-grid` only ever carried `min-height:
+calc(100dvh - 7rem)` — a **floor, not a size**. Below 1600px wide (1280-1599px — an entirely
+ordinary laptop width bracket that includes 1366px, one of the most common laptop screen widths)
+that floor was **never capped or converted to a definite height**: the fix that does that already
+existed, but only inside `@media (min-width: 1600px)` (`#2936` and its wide-desktop follow-up).
+
+With no definite height, CSS Grid's default `grid-auto-rows: auto` sized the row to the
+**max-content of its tallest column** — completely independent of the viewport. At this
+breakpoint `.vector-gex-ladder` and `.vector-odte-matrix-scroll` both explicitly strip their own
+`max-height` (`max-height: none`, by design, so a tall rail's real scroll region can flex) and
+`.vector-desk-terminal` carries a `min-height: min(72vh, 640px)` floor — all of which, lacking a
+definite ancestor height to resolve `height: 100%` against, inflated the row's natural size
+instead of being constrained by it. The chart column's own `flex: 1 1 0` chain then stretched (or
+was clipped by its `overflow: hidden` ancestor) to match, at whatever height the ladder/terminal
+happened to want that render — **not** a function of the screen.
+
+Measured live at 1366×768 (two captures of the same page, same viewport, several seconds apart):
+chart column 823px → grid 1316px one run, chart column 1955px → grid 2448px the next. Either way
+the page scrolled 550-1680px past the fold before the volume sub-pane — at the very bottom of the
+chart canvas — ever entered view.
+
+### Blast radius
+
+Same root cause as the wide-desktop bug #2936/its follow-up already fixed at `>=1600px` — this is
+the **identical bug class**, just never extended down to the 1280-1599px breakpoint, which is a
+much more commonly-hit width bracket than >=1600px for a "normal laptop."
+
+### Fix
+
+Applied the same "cap the shell to one viewport, force the grid row to actually BE that height via
+`minmax(0, 1fr)`, let each rail scroll internally instead of inflating the page" technique used at
+`>=1600px`, down to `>=1280px` — with one structural difference: at this breakpoint the action
+rail (Play card / Technicals / Alerts) is still a full-width row **underneath** the 3-col section,
+not a 4th column, so it needs **two** explicit grid rows instead of one:
+
+```css
+.vector-chart-terminal-grid {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  overflow: hidden;
+  grid-template-rows: minmax(0, 1fr) minmax(0, min(34vh, 380px));
+}
+.vector-action-rail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+```
+
+Row 1 (`minmax(0, 1fr)`) takes whatever height remains after the shell cap and the capped action
+row — this is what makes the ladder/terminal/chart columns actually shrink to fit instead of
+inflating the page, the same mechanism `#2936`'s follow-up already proved for the single-row
+`>=1600px` case. Row 2 is capped at `min(34vh, 380px)` rather than left `auto`, and
+`.vector-action-rail` gets `overflow-y: auto`, so a long Play-card/Technicals/Alerts stack scrolls
+**inside its own row** instead of either being clipped or re-inflating the page — the exact
+purpose an unbounded `auto` row would have defeated.
+
+The `>=1600px` block still wins at wider viewports (later in cascade, same specificity) by
+overriding `grid-template-columns` to 4 columns and `grid-template-rows` back to a single
+`minmax(0, 1fr)` once the action rail earns its own column and no longer needs a reserved row —
+unchanged by this fix.
+
+**Deliberately left unchanged:** the base (<1280px, mobile/stacked) rule stays a plain `min-height`
+floor — that layout is a single column meant to scroll the whole page like any other stacked
+mobile view, which is not the bug here.
+
+### Evidence
+
+Reproduced BOTH on production (`blackouttrades.com/vector?ticker=SPX`, via `proxy-browser.cjs` +
+`mintClerkPremiumSession`) and locally (`next dev`, same auth flow, same viewport) at three
+heights: 768px, 864px, 1080px (all 1366px wide, desktop UA).
+
+**Before (bug reproduced live, both prod and local):**
+- 768px: `docScrollHeight` 927-2663 vs `innerHeight` 768 (page scrolls up to ~1900px past the
+  fold); `.vector-chart-stage` measured `clientHeight` 142 vs `scrollHeight` 320 — the chart's own
+  container clipping ~178px of its own canvas via `overflow: hidden`, i.e. the exact "volume
+  entirely below the fold inside the chart's own container" symptom reported.
+- 864px: `docScrollHeight` 967 vs `innerHeight` 864 — page scrolls; volume bar reduced to a single
+  visible sliver.
+- 1080px: `docScrollHeight` 1183 vs `innerHeight` 1080 — page scrolls; volume bar reduced to a
+  single visible sliver even at this taller height.
+
+**After (fix applied, local — same auth/viewport harness):**
+- 768px: `docScrollHeight` **768** = `innerHeight` 768. `pageHasVerticalScroll: false`. Grid capped
+  to 656px (`100dvh - 7rem` floor, now also the ceiling). Volume canvas 71px of a 383px chart
+  stage (~19%, inside the #2981 18-22% band). Action rail 261px with its own `overflow: auto`.
+- 864px: `docScrollHeight` **864** = `innerHeight` 864. `pageHasVerticalScroll: false`. Volume pane
+  fully visible with clear headroom.
+- 1080px: `docScrollHeight` **1080** = `innerHeight` 1080. `pageHasVerticalScroll: false`. Volume
+  pane fully visible; GEX ladder and action rail both visible and scroll internally.
+
+No page-level (document) scroll at any of the three tested heights, confirmed both by the
+`document.documentElement.scrollHeight` vs `window.innerHeight` measurement above and visually in
+the captured screenshots — the specific regression the operator flagged from "last time" and asked
+not to be repeated.
+
+### Tests
+
+`src/features/vector/components/vector-chart-viewport.test.ts` — new test
+`"VectorChart: 1280-1599px desk (before the 4-col breakpoint) also flex-fills, no document scroll"`
+asserts the shell-height cap, the grid's `flex`/`height: auto`/`overflow: hidden`, the two-row
+`grid-template-rows: minmax(0, 1fr) minmax(0, ...)`, and `.vector-action-rail`'s
+`height: 100%; overflow-y: auto` are all present in the vector-specific `1280px` block (anchored
+off the vector base rule, since `globals.css` has several unrelated `1280px` media blocks for other
+products) — and that the base `<1280px` rule is untouched. Full suite: 11094 pass / 0 fail (Node
+20). `npx tsc --noEmit` clean.
+
+## Vector wide-desktop grid still forced the page to scroll after the "definite height" fix — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** PR #2932 (same day) gave `.vector-chart-terminal-grid` an explicit `height` and
+`max-height` at the `>=1600px` breakpoint to fix the grid growing to fit content. That fix was
+**incomplete**. The grid has no `grid-template-rows` declared, so its single implicit row uses the
+CSS Grid default `grid-auto-rows: auto` — which sizes the row to the **max-content of whatever sits
+in it**, entirely independent of the grid container's own `height`/`max-height`. Those two
+properties bound the container's own box; they do nothing to the row track inside it. A grid
+container can have a fixed height and an `auto` row that is taller than that height at the same
+time — the row simply overflows the box (default `overflow: visible`), which is exactly what
+happened: the ladder/chart/terminal/action columns' natural content height pushed the row (and the
+whole page) taller than the viewport, and the member kept having to scroll to see the bottom of the
+chart.
+
+**Evidence.** Measured live on production (1920×1080, `/vector?ticker=SPX`), before this fix:
+- `.vector-chart-terminal-grid` (the container): top 132, bottom 1100, **height 968px** — exactly
+  matches `calc(100dvh - 7rem)` = 1080 − 112. The container-height fix WAS applying correctly.
+- `.vector-chart-terminal-chart` (one row-track child, inside that same container): top 132,
+  **bottom 2938, height 2806px** — nearly 3× the container's own height, extending 1838px past the
+  container's bottom edge.
+- `document.documentElement.scrollHeight`: **2938px** vs `window.innerHeight`: 1080px — confirms the
+  page was scrolling by almost exactly the overflow amount (2938 − 1100 ≈ 1838).
+
+This is why the member's fresh screenshot at the same width still showed the chart cut off at the
+bottom after PR #2932 shipped — the container-height fix was real and deployed, but a fixed-height
+grid container with an unconstrained `auto` row does not stop the row (and its children) from
+growing past it.
+
+**Fix.** Added `grid-template-rows: minmax(0, 1fr)` to the same `>=1600px` rule — this forces the
+single row to actually **be** the container's available height (`1fr`) while still letting content
+shrink below its own intrinsic size (the `0` floor), which is what finally lets the flex-column
+chain inside `.vector-chart-terminal-chart` (`min-height: 0` already set) and the `height: 100%` +
+`overflow-y: auto` internal scroll regions on the ladder/terminal/action rails (`.vector-odte-
+matrix-scroll`, `.vector-helix-scroll`, `.vector-action-rail` — all pre-existing, per PR #2932's own
+comment) actually get a real size to size against, instead of "auto" propagating "grow to fit
+content" all the way down. Added `overflow: hidden` on the same rule as defense-in-depth — if any
+descendant still doesn't shrink perfectly, it clips inside its own box rather than bleeding back
+into document flow and reproducing this exact bug again.
+
+**Verification — mechanical, not just re-reading the CSS.** Built a throwaway Next.js route
+(deleted before this commit) using the exact same `.vector-chart-terminal-grid` /
+`.vector-chart-terminal-chart` / `.vector-ladder-rail` / `.vector-terminal-rail` /
+`.vector-action-rail` classes with synthetic children sized 1800–3000px tall (matching the live
+measurement above), rendered through the real Tailwind-processed `globals.css` via `next dev`, and
+measured with Playwright at 1920×1080:
+- **Before this fix**: reproduced the exact live bug (columns overflow their row).
+- **After this fix**: all four columns measured **exactly 968px** (matching the grid container),
+  and `document.documentElement.scrollHeight` measured **1080px === window.innerHeight** — zero page
+  scroll, even with a synthetic 3000px-tall child.
+
+Added a regression test (`vector-chart-viewport.test.ts`) asserting the `>=1600px` grid rule carries
+both `grid-template-rows: minmax(0, 1fr)` and `overflow: hidden`.
+
+**Blast radius.** Only the `>=1600px` grid rule — the `<1280px` stacked-mobile rule intentionally
+stays `min-height` only (that layout is supposed to scroll the whole page), and the `1280-1599px`
+3-column-plus-action-row layout was never touched by either the container-height fix or this one.
+
+**What was deliberately left unchanged.** The `calc(100dvh - 7rem)` height/max-height values
+themselves (still correct — the container-height math was never the bug), and every rail's own
+internal scroll-region CSS (`.vector-odte-matrix-scroll`, `.vector-helix-scroll`) — those were
+already correctly built, per PR #2932's comment, and simply never had a real constraint to activate
+against until this fix.
+
+## Vector Alerts panel relocated to a bell icon popover (operator UI request) — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in `fix/vector-alerts-icon-and-play-card` |
+| **Severity** | P3 — desk UX (operator-requested, not a defect) |
+| **Surface** | `/vector` standalone page (chartOnly SPX Slayer embed unaffected — see below) |
+
+### Ask (verbatim, operator, 2026-08-27)
+
+> "I don't think anyone right now is using Alerts on Vector — we might as well remove it and just
+> add a clickable icon next to LIVE SESSION on the top and it gives us options."
+
+### What changed
+
+The standalone `VectorAlertsPanel` block (ticker/condition/threshold/"+ Add" form, rule list,
+notify toggle) was a persistent full-width row in the desktop action rail
+(`src/features/vector/components/VectorPageShell.tsx`'s `actionRail`), always taking up vertical
+space regardless of whether the member had any rules set up.
+
+It is now a bell-icon button anchored directly beside the "Live session" freshness chip near the
+top of the page (the badge the operator called "LIVE SESSION"), which opens the exact same
+controls in an anchored popover. Clicking away, clicking the bell again, or pressing Escape closes
+it. A small dot on the bell indicates at least one enabled rule, so the control still communicates
+state at a glance even collapsed.
+
+### Design decisions
+
+- **`VectorAlertsPanel.tsx` itself is untouched** — same props, same JSX, same add/toggle/remove/
+  notify logic. The only new file is `VectorAlertsBell.tsx`, which renders the unmodified panel
+  inside a popover shell. This was a deliberate scope boundary: the ask was "move where this
+  lives", not "rebuild how alerts work", and alert evaluation/firing code
+  (`vector-alerts-store.ts`, `vector-notify*.ts`, the chart's own rule evaluation) was not touched
+  at all.
+- **No existing generic Popover primitive to reuse** — checked `grep -rn Popover src/components
+  src/features`; the only hits are Clerk's `userButtonPopoverCard` theme keys (styling knobs for
+  Clerk's own `<UserButton>`, not a component). Rather than adding a new dependency for one
+  control, `VectorAlertsBell` composes two patterns already established in this repo: the
+  click-outside-to-close listener from `src/components/ui/Select.tsx`'s dropdown, and the shared
+  `useFocusTrap` hook (`src/components/ui/useFocusTrap.ts`) already used by every hand-rolled
+  dialog here, with `lockScroll: false` since a small anchored popover shouldn't freeze page
+  scroll the way a full modal does.
+- **The chartOnly SPX Slayer embed is intentionally excluded.** That embed already never rendered
+  the standalone Alerts panel (only the chart + toast), per a 2026-08-05 member directive keeping
+  it panel/terminal-free; wiring the bell only into the full standalone page's `trailSlot`
+  (`chartFreshnessWithAlerts`, kept separate from the plain `chartFreshness` the embed still uses)
+  preserves that untouched.
+
+### Blast radius
+
+- `src/features/vector/components/VectorPageShell.tsx`: `VectorAlertsPanel` import replaced with
+  `VectorAlertsBell`; `actionRail` no longer mounts it; a new `chartFreshnessWithAlerts` variable
+  groups the freshness chip + bell for the standalone page's chart `trailSlot` only.
+- `src/app/globals.css`: new `.vector-alerts-bell-*` / `.vector-freshness-alerts-group` rules; no
+  existing `.vector-alerts-*` rule was changed (the popover reuses the panel's own styling as its
+  surface, just adding a drop shadow and repositioning).
+- `src/features/vector/vector-ios-native.test.ts`: the pre-existing action-rail test asserted
+  exactly one `<VectorAlertsPanel` in the shell; updated to assert it is gone from the shell
+  entirely and `<VectorAlertsBell` is present instead (source-invariant test, no render harness
+  for this component family).
+
+### Evidence
+
+- `npx tsc --noEmit` clean.
+- New `VectorAlertsBell.test.ts` (6 assertions: unmodified panel rendered inside the popover with
+  every prop forwarded unchanged, click-outside/Escape wiring present, the panel's own
+  add/toggle/remove/notify logic untouched, the shell no longer imports/mounts the panel directly,
+  the bell is wired to the exact same alert state the old panel used, and the chartOnly embed's
+  `trailSlot` is unaffected) — all pass on Node 20.
+- Updated `vector-ios-native.test.ts` — all 8 tests in that file pass.
+- Full `src/features/vector` test sweep: 1208/1215 pass; the 7 failures
+  (`vector-shared-universe-cache`, `vector-stream-hub`, `vector-universe`,
+  `vector-wall-durable-queue`, `vector-wall-sample-server`, `vector-wall-write`,
+  `vector-walls-warm`) are pre-existing, untouched by this change, and reproduce identically on an
+  unmodified checkout (confirmed by re-running `vector-universe.test.ts` in isolation) —
+  infra-dependent (these hit a real Redis/DB connection this sandbox doesn't have), not a
+  regression from this PR.
+- Live before/after screenshots were not captured: the "after" state only exists on this unmerged
+  branch, and `proxy-browser.cjs` can only reach the deployed production site, not this worktree —
+  there is no pre-prod render target since the 2026-07-25 staging decommission (see
+  `CLAUDE.md`'s Vector E2E section). A post-deploy screenshot can confirm the popover visually
+  once this merges.
+
+## Vector 0DTE contract picks ignored targetStrike, collapsing distinct roles onto one contract — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `pickChainContract` (`src/features/nighthawk/lib/deterministic-edition.ts`) — Night
+Hawk's own 0DTE contract picker, reused by Vector's `rankVectorPlayCandidates` for the "0dte" DTE
+window — ranked every candidate purely by `dist: Math.abs(row.strike - spot)`. There was no way to
+target a strike other than spot itself. Night Hawk's own callers never needed one (its 0DTE picks are
+correctly ATM-nearest-to-spot by design), but Vector's role-specific specs
+(`primary-long`/`primary-short` target a wall, `gex-king-pin` targets the GEX king strike,
+`magnet-mean` targets a computed mean level) are supposed to each anchor to their own strike.
+Because `pickChainContract` had no `targetStrike` parameter, every one of those specs collapsed onto
+whichever 0DTE contract happened to be nearest **spot**, and the pick's "reason" text (built from the
+spec's role/target) went on to describe a targeting relationship that never actually happened in the
+picker.
+
+**Evidence.** Before the fix: with spot=100, put wall=98, GEX king strike=95, and 0DTE rows at
+strikes 98 and 95, both `primary-long` (should target the put wall, 98) and `gex-king-pin` (should
+target the king strike, 95) picked the **same** contract — whichever was nearer spot (98) — because
+`pickChainContract`'s distance calculation never saw either target strike. After the fix, they
+correctly diverge: `primary-long` → strike 98, `gex-king-pin` → strike 95.
+
+**Fix.** Added an optional 4th parameter, `targetStrike`, to `pickChainContract`. When present, the
+per-row `dist` is computed against it instead of spot; when omitted (every Night Hawk call site),
+behavior is byte-identical to before. Vector's 0DTE call site
+(`vector-play-candidates.ts`'s `rankVectorPlayCandidates`) now passes `spec.targetStrike`.
+
+**Blast radius.** `pickChainContract` has 5 call sites: 4 inside `deterministic-edition.ts` itself
+(Night Hawk's own edition-building pipeline — `scored.direction`/`contrarian.direction` +
+`params.maxDte`, no target-strike concept, all verified to still pass exactly 3 arguments and get
+the unchanged spot-distance behavior) and 1 in Vector's `rankVectorPlayCandidates` (now updated).
+`pickContractNearTarget` (the sibling function Vector already uses for weekly/monthly windows) was
+unaffected — it already had a `targetStrike` parameter; only the 0DTE picker was missing it.
+
+**What was deliberately left unchanged.** Night Hawk's own 0DTE contract selection is untouched — the
+new parameter is optional and defaults to the exact prior behavior, verified by the full existing
+`deterministic-edition.test.ts` suite (41/41 pass, unchanged assertions).
+
+**Verification:** two new regression tests in `deterministic-edition.test.ts` (targetStrike ranks by
+distance to that strike; two different target strikes pick different contracts) and one new test in
+`vector-play-candidates.test.ts` (`primary-long` and `gex-king-pin` target their own strikes in the
+0DTE window rather than collapsing). `tsc --noEmit` clean, full suite clean (11004 pass / 0 fail / 2
+pre-existing skips), `npm run build` clean.
+
+## trim_scale's shared breakeven floor preempted its own trim tranche — SLS/TSM round-tripped +22% peaks to flat — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in `fix/trim-scale-floor-dead-zone` |
+| **Severity** | P1 — real trade P&L, live 0DTE exit engine |
+| **Surface** | `src/lib/zerodte/exit-engine.ts` `decideTrimScale` (Night Hawk 0DTE, `trim_scale` exit mode — the A/B-tier default) |
+
+### Symptom
+
+Live 2026-08-27 session: 11 committed plays, all under `trim_scale` (`entry_context.exit_policy_at_commit`). SLS peaked at **+22.09%** P&L, TSM peaked at **+20.59%** — both round-tripped their **entire** position all the way back to exactly **0% (breakeven)**, exiting via reason `ratchet_breakeven_floor`. Neither ever banked a single trim tranche, defeating the whole point of `trim_scale` (E5: "don't scratch a momentum runner at breakeven").
+
+### Root cause
+
+`decideTrimScale`'s step 1 ("protective: plan stop OR the shared early/breakeven ratchet floor") reuses `ratchetFloorPct` — the SAME fixed-threshold table the legacy, C-tier-only `ratchet` mode uses (`ratchet_arm_pnl_pct: 20` arms a **breakeven** floor once peak ≥ 20%). `trim_scale`'s own first tranche trigger is a **separate, regime-conditioned** table (`TRIM_SCALE_RULES.tranches_by_regime`): `neutral: [20, 50]`, `range: [15, 40]`, `trend: [40, 80]`.
+
+Two independent threshold tables, checked in a fixed order, with **coincident or crossing** values:
+- **neutral**: `ratchet_arm_pnl_pct` (20) **exactly equals** `tranches_by_regime.neutral[0]` (20).
+- **range**: `ratchet_early_arm_pnl_pct` (15) **exactly equals** `tranches_by_regime.range[0]` (15).
+- **trend**: `ratchet_arm_pnl_pct` (20) sits **below** `tranches_by_regime.trend[0]` (40) — the widest gap, but structurally different (see "what this does NOT fix" below).
+
+Because the floor check (step 1) ran **before** the trim-tranche check (step 3) in code, whenever a peak was high enough to arm BOTH tables on the same tick, the floor always won and dumped the **whole** position at breakeven, even though the peak had already earned the first trim tranche. This is not a poll-cadence artifact that could be dismissed as "just poll faster" — the peak is a **latched** value tracked between ticks specifically so a retrace can't erase it, so the very first tick that observes both "peak crossed the tranche trigger" and "mark has since retraced to the floor" will always take this path, at any polling interval.
+
+### Evidence
+
+- Live 2026-08-27: SLS (peak 22.09%) and TSM (peak 20.59%) both closed flat via `ratchet_breakeven_floor`, confirmed via each row's `entry_context.exit_policy_at_commit: "trim_scale"` and 0 tranches banked.
+- Reproduced deterministically in `src/lib/zerodte/exit-engine.test.ts`: `evaluateExitState({ exitMode: "trim_scale", peakPremium: 4.8836 /* +22.09% */, currentMark: 4.0 /* 0% */, trimsTaken: 0 })` returned `{ action: "EXIT", reason: "ratchet_breakeven_floor" }` before the fix; now returns `{ action: "TRIM", reason: "trim_scale_first" }`.
+- `TRIM_SCALE_RULES.tranches_by_regime.neutral[0] === EXIT_RULES.ratchet_arm_pnl_pct` (both 20) and `.range[0] === EXIT_RULES.ratchet_early_arm_pnl_pct` (both 15) are now asserted directly in the test suite so this coincidence can't silently drift back into a bug undetected.
+
+### Blast radius
+
+Single call site: `decideTrimScale` is the only place `ratchetFloorPct` is invoked from the `trim_scale` path (`evaluateExitState` only calls it directly for `ratchet` mode, at a different line, which is untouched). No other consumer duplicates this precedence logic — `exit-sync.ts` and `zerodte-service.ts` both call `evaluateExitState`/`trimTranchesArmed`/`ratchetFloorPct` as pure functions and inherit the fix automatically; neither reimplements the ordering.
+
+### Fix
+
+`decideTrimScale` now computes `armed = trimTranchesArmed(peakPnlPct, regime)` **before** the floor check, and suppresses the floor's EXIT action (`trimAvailable = armed > taken`) whenever the peak has armed a tranche the caller hasn't banked yet — the trim fires instead (step 3, unchanged code, now guaranteed to run when applicable). Once the tranche is banked, the caller's next tick reports `trimmed: true`, which raises the shared floor to the **+50% runner floor** for the remainder — strictly better protection than what riding the breakeven floor to the finish would have given the whole position.
+
+**Rejected alternative**: deleting the shared floor entirely. It is not redundant — a peak that has genuinely **not** armed any tranche yet (e.g. `trend` regime at a 20-39% peak, where the first tranche needs +40%) still needs the breakeven/early-arm safety net; that path is untouched and still fires normally (asserted by a new regression test).
+
+**What this does NOT fix (documented, not a regression)**: `trend` regime's gap between its breakeven arm (peak +20%) and its own first tranche (peak +40%) is a genuinely **unarmed** window — no tranche exists to bank there, so this precedence fix has nothing to bypass to, and a `trend` peak sitting at 20-39% that retraces to breakeven still exits via the shared floor exactly as before. That is a calibration question (whether `trend`'s own trigger should sit closer to the ratchet arm), not an ordering bug, and is out of scope here — flagged for whoever next tunes the regime thresholds.
+
+**Ratchet mode is untouched**: the fix is entirely inside `decideTrimScale`; `evaluateExitState`'s `mode === "ratchet"` branch calls `ratchetFloorPct` directly at a different call site, never reached by this change. All pre-existing `ratchet`-mode tests pass unmodified.
+
+### Tests
+
+`src/lib/zerodte/exit-engine.test.ts`: 7 new tests — the exact live SLS/TSM shape (peak +22.09%/+20.59% round-tripping to 0%, now banks instead of dumping), the "already taken" case proving the bypass is one-tick-only (not an infinite suppression), the negative case proving a genuinely-unarmed peak still floors normally, and one regression test per regime (`neutral`/`range`/`trend`) pinning the exact numeric relationship between `EXIT_RULES` and `TRIM_SCALE_RULES.tranches_by_regime` so this class of bug can't return silently if either constant is tuned independently in the future.
+
+### Verification
+
+`node --import tsx --experimental-test-module-mocks --test src/lib/zerodte/exit-engine.test.ts src/lib/zerodte/scan.test.ts src/lib/zerodte/board.test.ts src/lib/platform/zerodte-service.test.ts src/lib/platform/zerodte-service-marks.test.ts src/lib/zerodte/exit-sync.test.ts` on Node 20.20.2 — **262/262 pass** (76 exit-engine incl. 7 new, 125 scan+board, 36 zerodte-service/exit-sync/marks + zero-diff on ratchet-mode assertions).
+
+## 0DTE hard-stop exits can lock in a phantom loss when a single bad/erroneous quote tick fires — MEASURED, OPEN
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | MEASURED — real evidence gathered live; no code change to exit logic yet (calibration-first, see below) |
+| **Component** | `src/lib/zerodte/exit-sync.ts` (`evaluateLedgerRowExit`) |
+| **Severity** | P2 — a real-money risk-logic gap, but rare by construction (requires a bad tick at the exact instant a play is checked) |
+
+### Discovery context
+
+Found live, mid-session, answering the user's direct question "why do we have losers and can we
+make the system stronger." Pulled all 11 of today's closed 0DTE ledger rows: 4 real winners, 3
+breakeven ratchet-floor exits, 2 small "flat is losing" scratches, and 2 hard stops (NVDA -52.9%,
+QQQ -77.06%). NVDA's stop overshot its ~-50% plan trigger by 2.9 points — ordinary slippage.
+QQQ's overshot by **27.1 points**, and did so **0.357 seconds** after the play was flagged
+(`first_flagged_at` and `exit_at` are 357ms apart). QQQ's own 1-minute bars for that exact window
+(`2026-08-27T14:12` UTC) show it trading 717.06–718.19 — a **0.15%** range.
+
+### Root cause
+
+`evaluateLedgerRowExit` picks "freshest mark wins" (lane mark if fresh, else the sync pass's own
+snapshot mark) and treats that mark as authoritative for a stop decision the moment it crosses the
+plan's stop level — there is no check of any kind on whether the mark's implied move is plausible
+given what the underlying itself did in the same window. A single bad/erroneous quote tick (a
+busted print, a crossed or momentarily-stale NBBO glitch) that happens to land at or below the stop
+level is indistinguishable, to this code, from a genuine market move — both trigger an immediate,
+irreversible "stop, printed stop is authoritative" exit. A 0.15% underlying move cannot legitimately
+reprice a 0DTE option -77% in a third of a second; there is no real-market mechanism for that
+disparity. This strongly indicates QQQ's -77.06% realized loss reflects a data artifact, not an
+actual tradeable price the market offered.
+
+### Why this is left OPEN rather than fixed now
+
+This touches live risk/exit logic on real capital. This repo's own established convention
+(`gex-depth-validate.mjs`, `discovery-recall-probe.mjs`, `INTENTIONAL-DESIGN.md`) is
+calibration-first: measure the real distribution before picking a threshold, rather than reacting
+to one incident with an untested guard that could just as easily suppress a genuine fast move and
+let a real loser run further before exiting (the opposite failure mode). One incident is a single
+data point, not a distribution.
+
+### What was built instead: a reusable measurement instrument
+
+- `scripts/audit/lib/stop-plausibility-eval.mjs` — pure, unit-tested (`stop-plausibility-eval.test.mjs`,
+  8 tests, including the exact QQQ/NVDA fixtures from today) verdict function: given a STOP-reason
+  ledger row and the underlying's concurrent high-low move %, flags SUSPECT only when ALL of —
+  overshoot past the plan stop ≥15pts, flag→exit latency ≤5s, underlying move <1% — hold together.
+  Every threshold is a documented first pass (see the file's own doc comments for the reasoning),
+  not a calibrated cutoff.
+- `scripts/audit/zerodte-stop-plausibility.mjs` — the live IO harness: fetches today's ledger,
+  cross-checks every STOP exit against real Polygon 1-minute bars for the underlying, applies the
+  pure evaluator. Read-only; one temp Clerk user, deleted in a `finally`. Exits non-zero when any
+  row is flagged, so it can gate a future scheduled check.
+- **First live run, 2026-08-27**: 2 stops checked, 1 SUSPECT (QQQ, exactly as measured above), 1
+  clean (NVDA).
+
+### Next step (not done here)
+
+Run this tool across more sessions to build a real distribution — how often a stop-reason exit is
+flagged SUSPECT, and by how much — before designing any guard on `evaluateLedgerRowExit` itself
+(e.g., requiring one corroborating tick before honoring an outlier-sized instantaneous move). A
+single session's evidence is a strong signal but not yet a calibrated policy.
+
+## 2026-08-27 — [FINDING, P1 Night Hawk 0DTE] Post-close mark drift flipped the sign of a member-visible "realized" P&L — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | A closed 0DTE ledger row's `live_pnl_pct` (the field `closedPnlDisplay`/`ZeroDteBoard.tsx` present to members as the trade's realized P&L) could disagree with — and even flip the sign of — the trade's actual, pinned exit outcome. Live example pulled from today's board: MSTR closed with `closed_reason: "thesis"`, a genuine first-write-wins `exit_pnl_pct` of **+1.61%**, but the board displayed `live_pnl_pct` of **-3.23%** — a member checking that trade after the fact saw a loser where a winner had actually closed. |
+| **Root cause** | `updateZeroDteLiveState` (`src/lib/db.ts`) makes `status` monotonic — once a row is `CLOSED` at the SQL level, no writer can move it backwards (the documented P0 one-way commit door). But `last_mark`, `last_mark_at`, `peak_premium`, and `trough_premium` had **no equivalent guard** — they were COALESCE/GREATEST/LEAST'd on every write regardless of status. The ~1s live-marks poller (`src/lib/zerodte/live-marks.ts`) refreshes its local `activeRowsByKey` snapshot only every `ACTIVE_SET_TTL_MS` (10s) and persists a heartbeat every `PERSIST_HEARTBEAT_MS` (10s) unconditionally. So for up to that ~10s window *after* a row is genuinely closed by the exit engine, this lane's stale local copy still treats the row as OPEN/HOLD, keeps fetching a fresh quote for the contract, and keeps latching `peak_premium`/`trough_premium` and overwriting `last_mark` — the SQL guard silently absorbed the `status` write (correct), but let the mark fields drift underneath it. `reconcileLedgerLivePnlPct` (`src/lib/zerodte/marks-math.ts`) reads `last_mark` directly for every `closed_reason` other than `"stopped"`/condor — i.e. every thesis/flat/ratchet close, which is most of them — so the DISPLAYED "realized" P&L kept tracking the market's post-close move instead of freezing at the actual exit. |
+| **Why it wasn't caught earlier** | Ratchet and stopped closes are threshold-triggered (a hard price level), so their `last_mark` at the moment of close is already at/past that level and further drift rarely crosses zero or flips a sign visibly. "Thesis" closes fire on an evidence re-evaluation, not a price level, so the mark at close can be anywhere — exactly the population most exposed to a race-window flip, and exactly the case a member would notice as "wrong." This session's board pull found the bug on the *first* thesis-closed row inspected (MSTR), with a second data point (ASST, thesis, entry 0.63 → app 41.27% vs pinned 42.86%) showing the same drift in a less dramatic (same-sign) form. |
+| **Fix** | `updateZeroDteLiveState`'s SQL now freezes `last_mark`, `last_mark_at`, `peak_premium`, and `trough_premium` the instant the row's own pre-update `status` is already `'CLOSED'` — the same "CLOSED is terminal" guard the `status` column already had, extended to the columns that feed the displayed P&L. Postgres evaluates every `SET` expression against the row's pre-statement values in a single `UPDATE`, so referencing `status = 'CLOSED'` in each new `CASE` is the same fact the existing status guard already tests, not a second read. |
+| **Blast radius** | Single function, single file (`src/lib/db.ts`). No other caller of `updateZeroDteLiveState` needs to change: the function's own closing write (the one that flips `status` from OPEN/HOLD/TRIM to CLOSED) still lands its final mark normally, because the row's pre-update status is not yet `'CLOSED'` at that moment — only *subsequent* writes against an already-closed row are now frozen. `reconcileLedgerLivePnlPct`, `closedPnlDisplay`, and every other consumer of `last_mark`/`peak_premium`/`trough_premium` needed no changes; they now simply receive values that stop moving once the row is done. |
+| **Fix rationale** | Considered gating in `reconcileLedgerLivePnlPct` instead (skip using `last_mark` once `status === "CLOSED"`), but that would leave the DB row itself still silently drifting — anything else reading `last_mark`/`peak_premium`/`trough_premium` directly (grading, calibration exports, future consumers) would inherit the same bug. Freezing at the write layer, where the `status` guard already lives, closes the gap at its actual source and matches the function's own documented intent ("CLOSED is TERMINAL"). |
+| **Regression guard** | `src/lib/db.test.ts`: updated the two existing source-inspection tests whose regexes matched the pre-fix SQL text (`updateZeroDteLiveState: SQL status CASE is monotonic...` and `both live-state writers stamp last_mark_at ONLY when a real mark arrives`), and added a new test — `updateZeroDteLiveState: last_mark/last_mark_at/peak_premium/trough_premium all freeze once status is already CLOSED` — asserting all four columns carry the `WHEN status = 'CLOSED' THEN <col>` short-circuit. No Postgres in CI, so this follows the file's existing source-inspection idiom rather than a live DB test. `npx tsx --test src/lib/db.test.ts`: 13/13 pass. Also re-ran `src/lib/zerodte/{live-marks,exit-sync,scan,marks-math}.test.ts` (142/142 pass) and a full `tsc --noEmit` (clean) to confirm no regression in the surrounding live-marks/exit-sync machinery that shares this write path. |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P2 Night Hawk 0DTE] Session realized-loss halt disabled by default (operator directive) — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | The board's session governor was correctly halting new 0DTE commits today after 5 realized losers (`governor_session_loss_halt`, session P&L -9.7%) — this was WORKING AS DESIGNED (the AUDIT SEV-3 realized-loss halt, added after the 7/13 uncapped-bleed incident). The operator explicitly asked for this channel to stop blocking new commits: the product is in a testing/pre-launch phase with no members trading 0DTE aggressively off it yet, and the operator wants the discovery/commit pipeline to keep producing plays every session regardless of realized losers or session drawdown, rather than go quiet for the rest of the day. |
+| **Context / discussion** | Before implementing, this was pushed back on explicitly (removing a risk-management circuit breaker on a live trading-signal product is not a routine UI fix) — the operator confirmed the pre-launch/no-aggressive-users context changes the calculus, and asked for full removal ("no cap, ever, regardless of how bad the session gets"), which was checked against three options (raise threshold / downgrade to warning / remove entirely) before implementing the operator's chosen option. |
+| **Fix** | Added `GOVERNOR_ENFORCE_LOSS_HALT` (`src/lib/zerodte/governor.ts`), an env-overridable flag defaulting to **false**, following this file's existing measure-first pattern (`GOVERNOR_ENFORCE_PREMIUM_BUDGET`, `GOVERNOR_ENFORCE_GAMMA_BUDGET`, both also off by default). `evaluateZeroDteGovernor`'s loss-halt block is now gated on this flag — `governorLossHaltReason(snap)` still computes the reason unconditionally (measurement/diagnostics preserved), but by default it no longer pushes a `governor_session_loss_halt` block, so new commits keep flowing regardless of realized-loser count or cumulative session P&L. `summarizeGovernorForBoard`'s `halted` field (which the board's "SESSION HALTED" banner gates on) was updated the same way — it no longer flips to `true` on loss evidence alone while the flag is off, so the UI doesn't claim the desk is halted while the pipeline is actually still committing underneath (the same display/reality-mismatch class PR #2973 fixed for a different field). |
+| **Blast radius** | The separate hard-stop-count halt (`GOVERNOR_MAX_SESSION_STOPS` = 3, code `governor_session_stops`) is **unchanged and still enforced unconditionally** — it was not part of this request and is a distinct, more mechanical circuit breaker (3 literal -50% stops, not "any losing exit"). Re-entry lock, concurrent-plan cap, correlated-concentration guard, and every other governor gate are untouched. `would_halt`, `realized_losers`, and `session_pnl_pct` remain populated on the board response exactly as before — a bad session is still visible to the operator, it just no longer stops new plays from committing. |
+| **Fix rationale** | Considered leaving the code as-is and just raising the threshold, or downgrading it to a display-only warning — landed on the flag-gated approach because it's reversible with a one-line env var flip (`GOVERNOR_ENFORCE_LOSS_HALT=1`) rather than requiring another code change if the operator's risk tolerance changes once the product is live with real members trading aggressively, and it matches an idiom this file already uses for exactly this "was mandatory, now optional pending more evidence" situation. |
+| **Regression guard** | `src/lib/zerodte/governor.test.ts`: updated the 4 existing tests that asserted the loss-halt blocked `evaluateZeroDteGovernor` by default — they now assert `governorLossHaltReason` still computes correctly (diagnostic preserved) while `evaluateZeroDteGovernor` returns `[]` (no block) at the same thresholds. Added a test pinning `GOVERNOR_ENFORCE_LOSS_HALT` to `false` by default, and updated the board-summary test so `s.halted` is asserted `false` on loss-only evidence (previously asserted `true`). The unchanged hard-stop-count test (`SEV-3: the existing 3× HARD-stop halt + re-entry lock still fire unchanged`) continues to pass untouched, confirming that channel wasn't affected. 56/56 `governor.test.ts` pass; 207/207 across `governor.test.ts` + `board.test.ts` + `ZeroDteBoard.test.ts`. `tsc --noEmit` clean. |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P1 Night Hawk] Ledger `entry_premium` had no ceiling against the live mark — an outlier flow fill manufactured fake instant stop-outs — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P1 — real financial-reporting defect: false losses counted toward the session governor's realized-loser halt and toward the strategy's own track record |
+
+**Symptom.** Live analysis of 2026-08-27's session (11 committed 0DTE plays) found two rows
+whose `plan_stop` exit fired essentially instantaneously after commit:
+
+- `QQQ 720C 0DTE` — flagged 14:12:30.000Z, `plan_stop` exit stamped 14:12:30.357Z (**357ms
+  later**), reported P&L **-77.06%** (entry_premium $3.27, mark $0.745 at the check).
+- `NVDA 225C 1DTE` — flagged 14:03:36.000Z, `plan_stop` exit stamped 14:03:37.248Z
+  (**1.2s later**), reported P&L **-52.9%** (entry_premium $5.86, mark $2.73/$2.76).
+
+A real intraday decay of 50-77% cannot happen in under two seconds without a violent
+underlying move. Cross-checked against real Polygon 1-minute bars for both the underlying
+and the exact OCC contract:
+
+- `QQQ` underlying was flat (717.83 → 718.19, **+0.05%**) at 14:12 UTC.
+- `O:QQQ260827C00720000` traded **$0.84–$0.94** the entire 14:00-14:29 UTC window and never
+  once reached $3.27 anywhere in the session (session max seen: $1.31 at 17:10 UTC).
+- `O:NVDA260828C00225000` traded **~$2.6–$3.1** through the same window — nowhere near $5.86.
+
+So `entry_premium` itself was wrong at commit, not the mark: the ledger recorded a "fill"
+roughly 2-4x the real, contemporaneous market price of the exact contract it committed.
+
+**Root cause.** `resolveLedgerEntryPremium` (`src/lib/zerodte/plan.ts`) resolves the
+ledger's tracked/graded basis as `planEntryMax ?? flowAvgFill`, then had exactly one
+correction: *if the live mark at flag time is HIGHER than that base, floor the basis up to
+the mark* (`markAtFlag > base → use markAtFlag`) — added earlier to stop a play from being
+graded off a stale-cheap flow fill nobody could still get. That guard only ever bounded the
+basis **upward**. There was no symmetric bound in the other direction: if the flow's
+reported average fill (`top_strike_avg_fill`, effectively "what the smart money paid") sits
+**far above** the live mark — because the print was stale, or upstream flow-aggregation
+matched the wrong strike/expiry to this ticker's row — the ledger adopted that inflated
+number wholesale, with nothing to catch it. The very next scan tick's exit check then finds
+the position instantly deep underwater against its own -50% hard stop, purely from the
+mispriced entry.
+
+**Evidence.** Live production board + record dump for 2026-08-27, cross-referenced against
+Polygon minute-bar history for both underlyings and the exact OCC contracts (see above).
+`exit_policy_at_commit` confirms both rows ran under `trim_scale` (not a ratchet artifact);
+`committed_at_et` / `first_flagged_at` vs `entry_context.exit.at` gives the ~0.02–0.35s
+gaps directly. This is a live, reproduced, dated instance — not a hypothetical.
+
+**Blast radius.** `resolveLedgerEntryPremium`'s output (`entry_premium`) feeds: the ledger's
+own live P&L display (`marks-math.ts` `pinnedLivePnlPct`), the plan grader
+(`gradePlanFromBars`), the governor's realized-loser count and premium-at-risk budget
+(`governor.ts`), and every downstream calibration/feature-store consumer that reads
+`plan_outcome`/`plan_pnl_pct`. A fake instant stop counts as a real loss everywhere in the
+system — it is exactly the kind of mistaken realized-loser that fed the session's loss-halt
+counter (`GOVERNOR_ENFORCE_LOSS_HALT`) before that channel was disabled earlier today.
+
+**Fix.** Symmetric completion of the existing floor: when the live mark sits far **below**
+the resolved base — by the same magnitude (`CHASE_PCT`, currently 55%) this same file
+already treats as "too extreme to trust" for the opposite (chasing a moved fill) direction
+— cap the ledger basis **down** to the mark instead of trusting the outlier fill:
+
+```ts
+if (markAtFlag != null && markAtFlag > 0) {
+  if (markAtFlag > base) return round2(markAtFlag);
+  const pctBelow = ((base - markAtFlag) / base) * 100;
+  if (pctBelow >= CHASE_PCT) return round2(markAtFlag);
+}
+return base;
+```
+
+**Fix rationale.** This reuses an already-calibrated constant (`CHASE_PCT`) rather than
+inventing a new threshold, and only fires on genuine outliers — an ordinary "CHEAPER" print
+(mark a few/some percent below the fill, real front-running, which this codebase explicitly
+treats as a *good* thing) is far inside the band and is completely untouched, as the new
+tests confirm. Deliberately left unchanged: the member-facing `entry_max`/`stop_premium`/
+`target_premium` (the printed "enter at or below" instruction) — only the ledger's own
+internal grading/tracking basis moves, exactly mirroring the existing floor's own stated
+boundary. Deliberately NOT attempted here: root-causing *why* `top_strike_avg_fill` was
+wrong for these two specific rows (a wrong-strike/expiry match inside the UW flow
+aggregation pipeline is the leading hypothesis, but confirming it needs a deeper trace
+through the flow-accumulation code than this fix's scope) — left as a follow-up; this fix
+makes the *symptom* (a false graded loss) impossible regardless of the upstream cause.
+
+**Regression guard.** `src/lib/zerodte/board.test.ts`: 8 new assertions reproducing the
+QQQ/comparable-NVDA shapes (capped to mark), the existing ordinary-CHEAPER case (untouched),
+the exact `CHASE_PCT` boundary (fires at `>=`, matching the existing `MOVED` boundary
+convention) and just inside it (does not fire), non-positive marks (never drag the basis
+down), and the no-mark-supplied legacy path (unaffected). 125/125 pass in
+`board.test.ts`; `plan.test.ts`/`exit-sync.test.ts`/`exit-engine.test.ts`/`scan.test.ts`
+(97 + 26 with `--experimental-test-module-mocks`) all still pass.
+
+## Night Hawk board shows the wrong halt reason when the AUDIT SEV-3 loss-halt fires — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Component** | `ZeroDteBoard.tsx` (`GovernorStrip`) |
+| **Severity** | P2 — misleading operator/member-facing information, no data-integrity impact |
+
+### Discovery context
+
+Found live, mid-session, in response to the direct question "why don't we have open plays on
+0DTE?" while running the standing market-hours monitoring pass. `zerodte-e2e-healthcheck.mjs`
+reported `governor HALTED (2 stop(s), -9.7% session P&L)`. 2 hard stops is below the 3-stop halt
+cap and -9.7% is nowhere near the -120% session-loss floor, so on those two numbers alone the halt
+looked unexplained. Fetching the live `/api/market/zerodte/board` payload directly resolved it:
+`realized_losers: 5` (exactly the `loss_halt_count` cap) with `would_halt` stating the real reason
+— 5 of the day's 11 closed rows were realized losers (any exit reason, not just -50% hard stops),
+tripping the AUDIT SEV-3 realized-loss halt channel (`src/lib/zerodte/governor.ts`), a channel
+that's *additive* to and *independent from* the hard-stop channel the summary line quotes.
+
+**The governor's decision to halt is correct and working as designed** — this is not a bug in risk
+management. The bug is that the live Night Hawk board was showing members/operators the WRONG
+explanation for it.
+
+### Root cause
+
+`GovernorStrip` in `ZeroDteBoard.tsx` hardcoded the halted banner to the hard-stop wording:
+
+```tsx
+{gov.halted && (
+  <p ...>
+    Session halted — {gov.stops.length} stops (max {gov.max_session_stops}). No new commits for
+    the rest of the session.
+  </p>
+)}
+```
+
+But `gov.halted` (`ZeroDteGovernorSummary.halted`, `src/lib/zerodte/governor.ts:738-740`) is true
+when EITHER the hard-stop channel fires (`stops.length >= max_session_stops`) OR the AUDIT SEV-3
+realized-loss channel fires (`realized_losers >= loss_halt_count` OR `session_pnl_pct <=
+session_loss_floor_pct`) — two independent, additive halt conditions with two different messages.
+The server already computes and sends the correct explanation as `would_halt`
+(`governorLossHaltReason`, `governor.ts:491-508`) — a complete sentence naming which condition
+fired and the actual numbers behind it. The client's `BoardGovernor` type never declared
+`would_halt`, `realized_losers`, `session_pnl_pct`, `loss_halt_count`, or `session_loss_floor_pct`
+at all (confirmed live: the actual JSON response already carries all five; only the client's type
+and the JSX were behind), so the component fell back to reconstructing a caption from the two
+fields it did know about — the hard-stop count — regardless of which channel actually fired.
+
+Live consequence measured today: the board displayed "Session halted — 2 stops (max 3)" — which
+reads as "we're NOT at the stop cap yet, so why is this halted?" — while the actual, correct
+explanation ("5 realized losers today (max 5)...") sat unused in the same API response.
+
+### Fix
+
+1. Added the five AUDIT SEV-3 fields to the client `BoardGovernor` type, mirroring
+   `ZeroDteGovernorSummary` exactly (all optional, so an older/stale payload shape still
+   type-checks).
+2. Changed the halted banner to render `gov.would_halt` directly when present — it's already a
+   complete, self-terminating sentence (ends in "...no new commits for the rest of the session.
+   7/13's bleed came the same way, uncapped (AUDIT SEV-3).") — falling back to the original
+   hard-stop sentence only when `would_halt` is absent (older payload shape) or null (the halt
+   really is the hard-stop channel, in which case the original wording is correct and unchanged).
+
+### Blast radius
+
+Single component, single banner. The separate "Stops X/Y" pill (`GovPill label="Stops"`,
+`ZeroDteBoard.tsx:504-513`) is unaffected and correct as-is — it reports the actual stop count,
+never claims to be *the* halt reason. No server-side change needed; the correct data was already
+being sent, just not read.
+
+### Test
+
+Added a source-invariant guard test to the existing `ZeroDteBoard.test.ts` (no React render
+harness in this repo, matching that file's own precedent of testing exported pure functions)
+asserting the halted-banner JSX prefers `gov.would_halt` over the hard-stop wording.
+
+## 2026-08-27 — [FINDING, P0 Night Hawk 0DTE] Moneyness cap (`SETUP_MAX_ITM_PCT`/`SETUP_MAX_OTM_PCT`) checked exactly once against a STALE underlying, never re-checked against the LIVE-refreshed one — real ITM stock-replacement plays committed past the cap — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live prod board pull today (2026-08-27, via a fresh temp Clerk session against `GET /api/market/zerodte/board`) shows **GAP short at 16.18% OTM** — past the 12% `SETUP_MAX_OTM_PCT` far-OTM lotto cap — sitting on the live board with `gate.blocks = ["late_afternoon","score_floor","earnings"]`: **no `max_otm_pct` block anywhere in the list.** Today's committed ledger (`GET /api/market/zerodte/record`) independently confirms **SNXX short** and **PATH long** both committed — the two real, money-committed rows a prior audit measured at 9.55% ITM and 4.11% ITM respectively (recomputed from each row's own pinned `underlying_at_flag`/`top_strike`/`direction`), both several multiples past the 2% `SETUP_MAX_ITM_PCT` stock-replacement cap. Confirmed those two tickers are in today's ledger directly from the live `record` response (`SNXX` short `expression_strike: 14`, `PATH` long, both `2026-08-27`). |
+| **Root cause** | `deriveZeroDteSetups` (`src/lib/zerodte/board.ts`) compares a candidate's `otm_pct` to `SETUP_MAX_ITM_PCT`/`SETUP_MAX_OTM_PCT` exactly **once**, at candidate-derivation time, using whatever `underlying_price` the flow print happened to carry. `attachContractPlans` → `refreshUnderlyingFromLiveSpot` (`board.ts`) later re-stamps `underlying_price`/`otm_pct` from a fresher live option snapshot (`scan.ts`, free — same batched unified-snapshot call already made for contract pricing) — and that function's own doc comment claimed *"The refresh runs BEFORE attachGateVerdicts, so the moneyness gate now judges the REAL moneyness."* That claim was **false**: `attachGateVerdicts` → `evaluateZeroDteGates` (`gates.ts`) never read `otm_pct` at all, in either ordering. `otm_pct` rode through the entire hard-gate stack as a passive audit field only — never compared against either cap a second time. So a candidate whose true (post-refresh) moneyness had drifted past a cap between candidate derivation and commit sailed straight through, with `otm_pct` correctly recorded on the row but nothing acting on it. This affects BOTH scan pipelines identically (the bug is the same either way, only the fix's plumbing differs): the ordinary pipeline runs `attachContractPlans` (refresh) *before* `attachGateVerdicts` (gates), so the gate stack was ignoring an already-fresh value; the thesis-first pipeline runs them in the opposite order, so the gate stack ran first against the *stale* value and the refresh afterward was never reconciled at all — the identical "deferred, never reconciled" shape `refreshPlanQualityGateBlocks`/`refreshGovernorPremiumBudgetBlocks` already exist to fix for G-8/G-9 and the premium budget, just never extended to moneyness. |
+| **Why it wasn't caught earlier** | The refresh function's own doc comment asserted the fix was already done ("the moneyness gate now judges the REAL moneyness"), which reads as a closed loop on inspection — nobody had traced the actual call graph from `refreshUnderlyingFromLiveSpot`'s patched `otm_pct` field through `evaluateZeroDteGates`'s input struct to confirm the gate function ever consumed it. It doesn't: `ZeroDteGateInput` had no `otmPct` field at all until this fix. No test exercised the refresh→re-gate path — every existing moneyness test lived in `board.test.ts` against the one-time evidence gate, and every existing gate test in `gates.test.ts` never supplied an `otm_pct`-shaped input because the field didn't exist to supply. |
+| **Fix** | Added `otmPct?: number | null` to `ZeroDteGateInput` (`gates.ts`) and a new pure `moneynessGateBlocks(otmPct, isCondor)` helper that re-applies the *same* `SETUP_MAX_ITM_PCT`/`SETUP_MAX_OTM_PCT` constants already used by board.ts's evidence gate (never a new, uncalibrated threshold), producing `max_itm_pct`/`max_otm_pct` blocks — codes that already existed in the `ZeroDteGateFailure` taxonomy for the one-time evidence gate, now reused for the re-check. `evaluateZeroDteGates` calls it unconditionally; the function itself no-ops (`isCondor` or `otmPct == null`) so it is a true no-op for every existing caller that doesn't supply the new field, and for a CONDOR (which has no single-strike moneyness — `hasSingleStrikeMoneyness=false` at the refresh call site pins its `otm_pct` to `null` anyway, so the CONDOR exemption holds even without the explicit `isCondor` short-circuit). It fails **open** on a missing `otmPct`, deliberately: it is a supplementary re-check layered on top of board.ts's own fail-closed evidence gate (`no_underlying_price` already blocks an unreadable underlying before a candidate ever reaches this function), not a replacement for it — mirrors the "a caller that simply omits VIX is never blocked" pattern already used for G-4/G-7/G-12 in this same file. `scan.ts`'s `attachGateVerdicts` now passes `s.otm_pct` (already the live-refreshed value in the ordinary pipeline, since `attachContractPlans` runs first there) directly as `otmPct`. For the thesis-first pipeline, a new `refreshMoneynessGateBlocks(gate, otmPct, isCondor)` — pure, mirrors `refreshPlanQualityGateBlocks` exactly (filters out stale `max_itm_pct`/`max_otm_pct` blocks and re-adds fresh ones) — is called in `scan.ts` right where `refreshPlanQualityGateBlocks` already runs, immediately after the deferred `attachContractPlans` (and its `refreshUnderlyingFromLiveSpot`) has actually run. Corrected the now-false doc comments on `refreshUnderlyingFromLiveSpot` (board.ts) and the `attachContractPlans` call site (scan.ts) to describe what actually happens post-fix instead of what was previously (incorrectly) asserted. |
+| **Blast radius** | Both scan orderings (ordinary and thesis-first) shared the identical root cause — the gate function's total blindness to `otm_pct` — so both needed a call site added; only ONE new code path (`moneynessGateBlocks`) backs both, avoiding a second, potentially-diverging re-implementation. No other consumer of `ZeroDteGateInput`/`evaluateZeroDteGates` is affected: the new field is optional and additive, so every other existing caller (persist-time re-checks, `firewall-rth-replay.mjs`, any fixture in `gates.test.ts`/`scan.test.ts` that doesn't supply it) is byte-for-byte unchanged — verified by re-running the full pre-existing `gates.test.ts` suite (129/129 pass unmodified) and `board.test.ts` (125/125 pass unmodified). |
+| **Fix rationale** | Considered re-running board.ts's *entire* evidence-gate loop a second time post-refresh instead of adding a single targeted check inside `gates.ts` — rejected as much larger blast radius (that loop also re-derives gross/dominance/aggression from the original flow tape, none of which needs re-checking against a refreshed *underlying price*, only the strike-vs-underlying relationship does) and it would duplicate logic across two files rather than reusing the existing `evaluateZeroDteGates`/`refreshPlanQualityGateBlocks` extension pattern this codebase already established for exactly this "deferred, never reconciled" shape. Also considered folding ITM/OTM into one `moneyness_drift` code as the task allowed — kept the two existing, already-descriptive `max_itm_pct`/`max_otm_pct` codes instead since they are the SAME semantic failure board.ts's evidence gate already names, and reusing them keeps `zerodte_scan_rejections` queryable by one consistent code regardless of which stage (evidence gate vs. hard-gate re-check) caught it. Deliberately did **not** retroactively re-grade or close the already-committed SNXX/PATH rows today — the standing rule (`gates.ts` module doc, "Already-committed ledger rows are NEVER retro-blocked or mutated — a printed play is managed to its exit, period") applies here exactly as it does to every other gate; this fix only prevents FUTURE fresh commits from repeating the failure. Did not invent new threshold constants — re-used `SETUP_MAX_ITM_PCT`/`SETUP_MAX_OTM_PCT` verbatim, per the standing instruction that a real trading gate's calibrated thresholds should not be duplicated or drift. |
+| **Live re-verification (2026-08-27, this session)** | Minted a fresh temp Clerk premium session (`scripts/audit/lib/prod-clerk-session.mjs`) and pulled BOTH `GET /api/market/zerodte/board` (21 live setups) and `GET /api/market/zerodte/record?days=1` (19 today+prior-session rows) directly against prod. Board: **GAP short, top_strike 20, underlying 23.86 → 16.18% OTM** (recomputed independently from the row's own `top_strike`/`underlying_price`/`direction`, matching the row's own `otm_pct` field to the cent) is past the 12% cap yet its `gate.blocks` is `["late_afternoon","score_floor","earnings"]` — no moneyness block, confirming the hole is live and unpatched in production right now. Record: confirmed **SNXX** (short, `expression_strike: 14`, committed `2026-08-27 10:08 ET`, `contract_horizon: ONE_DTE`) and **PATH** (long, committed `2026-08-27T14:28:14Z`) both appear as committed rows in today's ledger, consistent with the prior audit's SNXX 9.55% ITM / PATH 4.11% ITM measurement (the member-facing `record` endpoint does not expose the raw `underlying_at_flag` field needed to recompute that percentage from outside the DB, so this session did not re-derive the exact percentage independently, but the tickers' presence in the committed ledger and the board's live demonstration of the identical unfixed hole together corroborate the finding). |
+| **Regression guard** | `src/lib/zerodte/gates.test.ts`: 12 new tests — `moneynessGateBlocks` unit coverage (within-both-caps → no blocks; ITM breach → `max_itm_pct` with the correct threshold/reason; OTM breach → `max_otm_pct`; CONDOR exempt regardless of `otm_pct`; fails open on `null`/`undefined`); `evaluateZeroDteGates` integration (existing base fixture with no `otmPct` supplied is a byte-for-byte no-op; a refreshed `otm_pct` past the ITM cap BLOCKS; past the OTM cap BLOCKS; comfortably inside both caps does NOT block — no false positive; a CONDOR is exempt even with an extreme `otmPct`); `refreshMoneynessGateBlocks` (re-applies the caps after a simulated deferred thesis-first attach in both directions — a candidate that passed pre-refresh and breaches post-refresh BLOCKS, and one that was blocked pre-refresh and clears post-refresh UN-blocks; a CONDOR stays exempt through the refresh). Full run: `gates.test.ts` 129/129 pass (117 pre-existing + 12 new), `board.test.ts` 125/125 pass unmodified, `scan.test.ts` 26/26 pass unmodified (Node 20, `--experimental-test-module-mocks`). `tsc --noEmit` clean. |
+| **Status** | FIXED. |
+
+## 2026-08-27 — [FINDING, P3 audit tooling] `meridian-data-audit.mjs` reported all 6 Polygon/Benzinga probes RED — two config/symbol bugs in the script, not a real upstream outage — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 — audit-tooling only; the RED/AMBER readings were both false, but a coordinator reading this report cold would reasonably have escalated a "Polygon+Benzinga fully down" P0 |
+
+**Symptom.** `npm run validate:meridian` reported:
+
+```
+Polygon SPX daily bars            RED  http=0
+Polygon SPX minute bars           RED  http=0
+Benzinga economics headlines      RED  http=0
+Benzinga analyst ratings NVDA     RED  http=0
+Benzinga FDA catalysts            RED  http=0
+Benzinga structured earnings NVDA RED  http=0
+```
+while all 6 sibling UW probes in the SAME run were GREEN — an "everything Polygon-adjacent is
+down, everything UW is fine" split is a config-layer symptom, not a real simultaneous outage of
+two unrelated vendors.
+
+**Root cause #1 — `POLYGON_API_BASE` literal placeholder.** This sandbox ships
+`POLYGON_API_BASE` as the literal, unresolved string `"POLYGON_API_BASE"` (an unexpanded
+`${{shared.*}}` ref — documented in `CLAUDE.md`'s "Environment realities"). The script's base
+resolution was a plain `||` fallback (`process.env.POLYGON_API_BASE || "https://api.polygon.io"`),
+which does not catch this: the env var IS set (to a broken non-URL string), so the fallback never
+fires and every fetch (`${POLY_BASE}/...`) tries to hit a URL starting with the literal text
+`POLYGON_API_BASE`, throwing before any HTTP response — the `http: 0` is the tell. Benzinga rides
+the same `POLY_BASE` (per `CLAUDE.md`), so it broke identically. Several OTHER scripts in this repo
+already carry the fix for exactly this (`helix-score-signal.mjs`'s "SELF-DEFAULT THE PROVIDER BASE"
+comment) — this script simply predated that pattern and was never updated.
+
+**Root cause #2 (independent, found after fixing #1) — plain "SPX" is not a Polygon ticker.** With
+the base URL fixed, the two SPX bar probes still came back AMBER: HTTP 200, 0 rows. Confirmed live:
+`/v2/aggs/ticker/SPX/range/...` returns `resultsCount: 0` every time; `/v2/aggs/ticker/I:SPX/...`
+over the identical window returns 5. This is not a config typo — it's the same index-symbol
+distinction already discovered and documented in
+`src/lib/providers/flow-price-symbol.ts` (`INDEX_PRICE_SYMBOL`, `SPX -> "I:SPX"`) and
+`src/lib/zerodte/board.ts` (`POLYGON_INDEX_SPOT`). This audit script simply never picked up that
+mapping.
+
+**Evidence.** Live re-runs, same session: pre-fix `{"green":6,"amber":0,"red":6}`; after fixing
+root cause #1 alone, `{"green":10,"amber":2,"red":0}` (Benzinga all GREEN with real rows; SPX bars
+still AMBER at 0 rows); after fixing root cause #2, `{"green":12,"amber":0,"red":0}`.
+
+**Blast radius.** Both fixes are confined to `scripts/audit/meridian-data-audit.mjs`. Checked
+whether the plain-"SPX" bug reaches any member-facing code path: it does not —
+`flow-price-symbol.ts`'s header comment documents this exact Polygon behavior (verified live
+2026-08-19, independently of this finding) and already routes SPX/SPXW/NDX/etc through their `I:`
+prefix; this audit script was simply not using that existing helper.
+
+**Fix.** (1) Adopted the same `/^https?:\/\//`-guarded self-default pattern already used elsewhere
+in this repo for `POLYGON_API_BASE`. (2) Changed both SPX bar probe URLs from `ticker/SPX/...` to
+`ticker/I:SPX/...`.
+
+**Fix rationale.** Did not refactor this script to import `INDEX_PRICE_SYMBOL` from
+`flow-price-symbol.ts` — the script only ever probes SPX (never a general ticker), so a shared
+mapping import would be over-engineering for a two-line literal fix; if this script grows to probe
+other index roots, revisit.
+
+**Regression guard.** No unit test added — this file has no companion `.test.mjs` (a live-network
+audit instrument, consistent with `scripts/audit/`'s established convention). Verified by the live
+re-runs above.
+
+## 2026-08-27 — [FINDING, P2 Night Hawk] Governor's realized-loser/session-P&L diagnostics were invisible in the UI whenever the halt wasn't tripped — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P2 — a monitoring/visibility gap, not a trading-logic defect |
+
+**Symptom.** `GOVERNOR_ENFORCE_LOSS_HALT` (the AUDIT SEV-3 realized-loser session halt) was
+disabled earlier today by explicit operator directive, with governor.ts's own comment stating
+the intent that "the board keeps showing `realized_losers`/`session_pnl_pct`/`would_halt` as
+live diagnostics" during the disabled period. Live, this session (2026-08-27):
+
+```
+GET /api/market/zerodte/board
+governor.realized_losers = 5   (== the old halt threshold — the condition IS met)
+governor.session_pnl_pct = -9.7
+governor.would_halt = "Session governor: 5 realized losers today (max 5, ...) — no new
+                       commits for the rest of the session. 7/13's bleed came the same way,
+                       uncapped (AUDIT SEV-3)."
+governor.halted = false   (only 2/3 hard stops tripped, so the still-enforced hard-stop
+                          halt channel hasn't fired either)
+```
+
+A repo-wide grep for `summarizeGovernorForBoard`/`GovernorSummary` and `realized_losers`
+confirmed exactly one consumer of these fields across the whole member + admin surface:
+`ZeroDteBoard.tsx`'s `GovernorStrip`, and there they were rendered ONLY inside
+`{gov.halted && (...)}`. With `halted` now only reachable via the hard-stop channel, these
+values were live in the API payload but invisible everywhere in the product — a genuine
+"5 realized losers, -9.7% today" session was only visible to whoever thought to hit the raw
+API directly.
+
+**Root cause.** The diagnostics were computed unconditionally (correct, deliberate design),
+but the UI never had a code path to show them independent of the halt banner — the banner
+was the only renderer that ever read these fields.
+
+**Fix.** Two small, neutral-toned (non-alarm) `GovPill`s in `GovernorStrip`, shown whenever
+there's something to report, independent of `gov.halted`:
+- **Losers**: `realized_losers/loss_halt_count` (or just the count if the threshold field is
+  absent), toned `bear` only when actually halted, `sky` otherwise.
+- **Session P&L**: signed `session_pnl_pct`, toned by sign.
+
+**Fix rationale.** Additive only — no gate/commit/governor logic touched, and the existing
+halted-banner behavior (which already correctly prefers `would_halt` over the generic
+hard-stop sentence, per the 2026-08-27 fix documented in the same file) is completely
+unchanged. This restores exactly the visibility governor.ts's own doc comment already
+promised, nothing more.
+
+**Blast radius.** `ZeroDteBoard.tsx` only — a presentational component; no data-layer or
+governor-logic file touched.
+
+**Regression guard.** `ZeroDteBoard.test.ts`: new source-assertion test (matching this file's
+existing pattern — there's no React render harness in this repo) confirming the two new pills'
+conditions live in the pill strip, before the halted-banner block, so they can't regress back
+into being gated on `gov.halted`. 28/28 tests pass in the file.
+
+## 2026-08-27 — [FINDING, P1 Night Hawk] `top_strike_avg_fill` had no recency weighting — a single hours-stale print could dominate the flow's reported average fill — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P1 — root cause of the entry-premium mispricing PR #2986 papered over downstream |
+
+**Symptom.** PR #2986 (merged earlier today) fixed the *consequence* of this bug — a
+symmetric ceiling on `resolveLedgerEntryPremium` so an outlier flow fill can no longer drag
+the ledger's tracked entry basis far from the live mark — but explicitly left the *cause*
+as a documented follow-up:
+
+> Deliberately NOT attempted here: root-causing *why* `top_strike_avg_fill` was wrong for
+> these two specific rows (a wrong-strike/expiry match inside the UW flow aggregation
+> pipeline is the leading hypothesis, ...)
+
+This finding traces that cause. The two live rows from 2026-08-27:
+
+- `QQQ 720C 0DTE` — `top_strike_avg_fill` $3.27; the exact contract (`O:QQQ260827C00720000`)
+  traded $0.84–$0.94 the entire 14:00–14:29 UTC window and never once reached $3.27 all
+  session (session max $1.31 at 17:10 UTC).
+- `NVDA 225C 1DTE` — `top_strike_avg_fill` $5.86; the exact contract traded ~$2.6–$3.1
+  through the same window.
+
+**Root cause.** `deriveZeroDteSetups` (`src/lib/zerodte/board.ts`) accumulates every UW
+flow print at a given `(strike, expiry, side)` key over the ENTIRE query lookback (the
+live board's FLOW query is `since_hours: 7`), and computes `avgFill` as a straight
+premium-weighted average across the whole window:
+
+```ts
+const avgFill = top.fillW > 0 ? Math.round((top.fillPrem / top.fillW) * 100) / 100 : null;
+```
+
+There is no time weighting at all. A single early-session print with a large dollar
+premium — a real UW-reported fill, not a wrong-strike match — permanently anchors the
+average toward whatever price the contract traded at HOURS ago, even after the contract
+has since decayed (or rallied) far away from that level and dozens of smaller, more recent
+prints have come in at the current price. The bigger that one stale print's dollar
+premium, the more it dominates: a $2M print at $3.27 outweighs two $100k prints at $0.90
+by 10:1 in the weighted average, producing exactly the QQQ shape above (avg pulled to
+~$3.05 versus a true current price of ~$0.90).
+
+This is NOT a wrong-strike/expiry match (the leading hypothesis PR #2986 recorded) — the
+aggregation key (`${strike}|${expiry}|${isCall}`) is built from typed numbers/strings with
+no formatting ambiguity, and `fill_price` is UW's own reported per-print price for that
+exact alert (`raw_payload->>'price'`, cast once in `fetchRecentFlows`, `src/lib/db.ts`).
+The data is correct; the AGGREGATION has no concept of "how stale is this fill."
+
+**Evidence.** Traced the exact call chain: `board.ts`'s per-print loop
+(`cur.fillPrem += r.fill_price * prem; cur.fillW += prem;`) accumulates unconditionally
+across the whole `rows` array passed in by `scan.ts` (`fetchRecentFlows({ since_hours: 7,
+..., max_dte: 1 })`), with the resulting `avgFill` used directly as `top_strike_avg_fill`
+on the emitted setup. No existing test exercised a strike with prints spanning more than a
+few minutes apart, so this shape was untested. Reproduced with a synthetic tape (one $2M
+print at $3.27 seven-plus hours stale, two $100k prints at $0.90 in the last few minutes)
+— pre-fix this computed avgFill ≈ $3.05 (dominated by the stale print); the fix computes
+$0.90 (the two recent prints only).
+
+**Blast radius.** `top_strike_avg_fill` feeds `flow_avg_fill` throughout the pipeline
+(`scan.ts` → `resolveLedgerEntryPremium` in `plan.ts`), which in turn drives:
+- The ledger's own tracked/graded `entry_premium` (bounded by the #2986 ceiling, but a
+  correct avgFill means the ceiling should now fire far less often — this is a real fix,
+  not redundant with #2986).
+- The **member-facing** `entry_max`/`stop_premium`/`target_premium` printed as the "enter
+  at or below" instruction (`plan.ts` `buildContractPlan`) — #2986's ceiling deliberately
+  does NOT touch this member-facing basis, so a stale-print-skewed avgFill was reaching
+  members directly until this fix.
+- `vs_flow_pct` and the Largo "premium already ran past the flow's fill" MOVED reasoning
+  (`intel.ts`), which compares the live mark against this same average.
+
+**Fix.** Added a per-strike, per-print timestamp record (`fillEntries`) alongside the
+existing running `fillPrem`/`fillW` sums, and compute `avgFill` preferring only prints
+within the SAME recency window (`SPIKE_WINDOW_MS`, 30 minutes) the sudden-flow-spike read
+already uses just above it in the same function — reusing an already-calibrated constant
+rather than inventing a new one. Falls back to the full-window average when nothing at
+that strike is recent (a genuinely quiet/aged strike is unaffected, never goes null).
+
+**Fix rationale.** Recency-windowing the average (not changing which STRIKE wins "top",
+which is a separate, correctly-conviction-weighted decision) is the minimal change that
+fixes the actual defect: "what did the flow pay" should mean "recently," not "ever in the
+last several hours." Deliberately left unchanged: the `top` strike selection itself
+(`premAggr`-ranked, unaffected by this fix), and PR #2986's ceiling (kept as a second,
+independent line of defense — this fix reduces how often it needs to fire, it doesn't
+replace it).
+
+**Regression guard.** `src/lib/zerodte/board.test.ts`: 2 new tests — the QQQ-shaped stale-
+dominant-print case (asserts the fixed $0.90, not the old ~$3.05), and a fallback case
+confirming a strike with NO recent prints still returns the full-window average rather
+than null. 127/127 pass in `board.test.ts`; full `zerodte` suite (1065/1071, the remaining
+6 files require `--experimental-test-module-mocks` per `CLAUDE.md` and are unrelated to
+this change) passes with that flag (96/96 across the affected files).
+
+## 2026-08-27 — [FINDING, P3 audit tooling] `data-validator.mjs`'s single-name 0DTE underlying_price check used stale prev-close as "ground truth" during extended hours — false FAILs on real earnings moves — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED |
+| **Severity** | P3 — audit-tooling correctness only; no member-facing code touched, but a false-FAIL here wastes coordinator time chasing a phantom bug and, worse, teaches the fleet to distrust (or ignore) this check |
+
+**Symptom.** A live run of `npm run` (`node --import tsx scripts/audit/data-validator.mjs`)
+during today's extended-hours session reported 4 FAILs:
+
+```
+[FAIL] 0DTE live CRM: underlying_price vs Polygon — app=252.19 polygon(prev-close)=205.62 Δ=22.649%
+[FAIL] 0DTE live MRVL: underlying_price vs Polygon — app=222.77 polygon(prev-close)=245.11 Δ=9.114%
+[FAIL] 0DTE live MSTR: underlying_price vs Polygon — app=139 polygon(prev-close)=123.19 Δ=12.834%
+[FAIL] 0DTE live TSLA: underlying_price vs Polygon — app=354.51 polygon(prev-close)=345.82 Δ=2.513%
+```
+
+**Root cause.** `polygonSpotNow(ticker, isRth)` gates its ENTIRE ground-truth strategy on
+`isRth` (`pStatus.market === 'open'`): during RTH it fetches a live Polygon snapshot;
+otherwise — for BOTH a fully closed market AND an active extended-hours session — it falls
+back to yesterday's close. That conflates two very different states. SPX (a pure index)
+genuinely has no extended-hours quotes, so prev-close is the right fallback there. But
+single-name stocks/ETFs DO trade pre/post-market, and Polygon's own snapshot `lastTrade`
+reflects it — the fallback was needlessly discarding a real, available live price and
+comparing the app's current 0DTE board price against a stale yesterday's-close instead.
+
+Fetched a live last-trade quote directly to confirm: CRM $252.06, MRVL $223.20, MSTR
+$139.18, TSLA $354.53 — all within 0.3% of what the app was already showing. The app was
+correct; the validator's own ground truth was the stale one.
+
+**Evidence.** Live re-run after the fix, same session: all 4 previously-failing checks now
+read `polygon(live)` (not `prev-close`) and PASS at 0.03–0.32% Δ — `TOTALS
+{"PASS":53,"INFO":5}` vs the prior run's `{"PASS":49,"INFO":5,"FAIL":4}`.
+
+**Blast radius.** `polygonSpotNow` has exactly one call site (the 0DTE live-setups
+underlying-price check). The SPY/SPX/VIX top-level ground-truth block (lines ~411-429,
+also `isRth`-gated) is a SEPARATE code path with the same theoretical exposure — SPY is an
+ETF that also trades extended hours — but was NOT touched here: it didn't fail this run
+(VIX's off-hours %Δ happened to clear its wider index tolerance), and widening scope to a
+second, currently-passing code path in the same PR would blur what this fix is proven to
+fix. Flagged as a candidate follow-up, not fixed blind.
+
+**Fix.** `polygonSpotNow` now always tries the live snapshot for stock/ETF tickers
+(regardless of `isRth`), falling back to prev-close only when the snapshot has no usable
+price (fully closed market, or an illiquid name with no extended print at all). Returns
+`{ value, source }` so the PASS/FAIL log line's `polygon(live|prev-close)` label is now
+always accurate instead of assumed from `isRth`. SPX's index-only branch is untouched and
+stays `isRth`-gated, since it has no extended-hours quote to fall back to.
+
+**Fix rationale.** Minimal, single-call-site change. Did not touch the single-name
+tolerance widening (`nameTol`, 1.5% RTH / 2.5% off-hours) — that widening exists for a
+different, still-valid reason (the app's `underlying_price` is flow-derived and can lag a
+truly-live quote between UW flow bursts on sparse-flow names), unrelated to which ground-
+truth SOURCE this fix corrects.
+
+**Regression guard.** No unit test added — this file has no companion `.test.mjs` (it is a
+live-network-only validation instrument, consistent with every other script in
+`scripts/audit/`, several of which document the same "verified by re-running live" pattern
+rather than a mock-based test). Verified instead by the live re-run above, matching this
+file's own established practice (e.g. the SPXW `underlying_ticker` fix documented in the
+comment just above `polygonSpotNow`).
+
+## 2026-08-26 — Thesis-first live path left stale `plan_no_quote` on every setup — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in PR (cursor/zerodte-desk-evidence-fallback-3d11) |
+|---|---|
+
+**Symptom:** RTH board showed 27 live setups with valid bid/ask/mark plans but `gate.verdict=BLOCKED` with `plan_no_quote` on every name; 0 ledger commits all session.
+
+**Root cause:** When `ZERODTE_THESIS_FIRST=1`, `scan.ts` intentionally defers `attachContractPlans` until after `attachGateVerdicts`. Gates ran with `plan=null`, so `planQualityGateBlocks(null)` stamped `plan_no_quote` on every setup. Plans were attached afterward for display but gate blocks were never refreshed.
+
+**Fix:** `deferPlanQualityGates` on `evaluateZeroDteGates` + `refreshPlanQualityGateBlocks()` after thesis-first plan attach.
+
+**Evidence:** Live prod 2026-08-26 ~10:15 ET — 27/27 setups had quotes but `plan_no_quote`; META A-tier blocked solely by stale plan gate.
+
+## G-4 elevated-VIX floor wrongly re-imposed SPY-tape judgment on single names — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** G-1 (tape alignment) is explicitly scoped to index/ETF tickers only
+(`isIndexEtfG1 = INDEX_ETF_TICKERS.has(...)`, `gates.ts`) — its own comment states "single-name
+stocks move on their own catalysts... independently of SPY direction... single names bypass G-1
+entirely." But the elevated-VIX (17-20) score-floor branch a few lines below computed
+`tapeAlignedOrFlat` from `input.bias` vs `input.direction` **unconditionally**, with no
+index/ETF scoping at all — so a single name reaching G-4 with a disagreeing (or stale/null) SPY
+bias was silently held to the stricter 75-score floor instead of the standard 65, re-imposing
+almost exactly the SPY-tape constraint G-1 was written to exempt it from. The branch's own
+comment even claimed it was "effectively unreachable in normal flow" — true only for index ETFs;
+single names reach it constantly.
+
+**Evidence.** Confirmed via close reading: `gates.ts`'s G-1 block is gated
+`if (!isCondor && isIndexEtfG1)`; the elevated-VIX branch a few lines later has no equivalent
+`isIndexEtfG1` check on its `tapeAlignedOrFlat` computation. Every existing elevated-VIX test for
+a single name (`gates.test.ts`, NVDA cases) used `bias: "flat"`, which read as aligned under
+BOTH the buggy and fixed logic — so the bug shipped with zero test coverage of the actual
+diverging case (a single name with a *disagreeing* bias). The parallel "hardened G-4"
+calibration mirror in `computeGateCalibration` had the identical unscoped `aligned` computation.
+
+**Fix.** Scoped both computations to match G-1's own `isIndexEtfG1`/`INDEX_ETF_TICKERS` check:
+a non-index/ETF ticker now always reads as tape-aligned (standard 65 floor) regardless of
+`input.bias`, exactly mirroring G-1's exemption; index/ETF behavior is unchanged bit-for-bit
+(same null/flat/aligned/disagreeing handling as before).
+
+**Blast radius.** Two call sites shared the same unscoped comparison: the live gate
+(`evaluateZeroDteGates`'s elevated-VIX branch, which actually blocks commits) and
+`computeGateCalibration`'s "hardened G-4" mirror (evidence/logging only, not enforced — but used
+to reason about whether to promote the hardened variant, so it needed the same fix for the
+calibration data itself to be trustworthy).
+
+**Fix rationale.** Did not touch the 75-floor logic for index ETFs at all (that's the F-1
+evidence-backed constraint this gate exists to enforce, and it correctly gates the correlated
+instrument class the evidence was measured on). Did not touch G-1 itself. The regression test
+pins both branches: `evaluateZeroDteGates` commits an NVDA long against a disagreeing SPY tape at
+score 70/VIX 18 (previously blocked), while the identical scenario on QQQ still blocks via G-1's
+own `tape_alignment` code (confirming the fix doesn't loosen anything for the instrument class
+G-4's elevated floor actually protects). Confirmed both new tests fail against the pre-fix code
+and pass post-fix.
+
+## Vector contract picks cloned range legs at one conviction — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in `cursor/vector-play-candidates-rank-3d11` |
+|---|---|
+
+**Symptom:** META (and any range play) showed 575C 0DTE + 565P 0DTE both at 75% — contradictory legs, forced 0DTE via chart horizon, no per-pick justification.
+
+**Root cause:** `legsForBias("range")` priced call+put at the same `play.conviction`; `horizonMaxDte(chart toggle)` restricted all picks to 0DTE when the desk was on 0DTE.
+
+**Fix:** `rankVectorPlayCandidates` searches 0DTE / weekly / monthly independently, scores each pick (walls, spot proximity, HELIX flow, DTE fit, liquidity), returns top 1–3 with distinct confidence + reason bullets in the drawer.
+
+## Vector default viewport squished current candle; single-name beads sparse vs SPX — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED (pending deploy) |
+|------------|------------------------|
+| **Area** | Vector / viewport + node density |
+| **Severity** | P1 — desk unusable on load for NVDA/single names |
+
+### Root cause
+
+1. **Viewport:** `defaultChartViewport: "session"` fit the entire RTH day on first paint — the forming candle was a tiny sliver on the far right; members had to scroll/drag to see price action.
+2. **Bead parity:** SPX opened at **20 rows/side** while single names used **AUTO**, self-limiting NVDA to ~7 rows on coarse $2.50 strike ladders despite the server recording 20/side.
+
+### Fix
+
+- Default desk open → **`live`** centered window (~48 bars, latest candle mid-screen) via `centeredLiveVisibleLogicalRange` + `applyCenteredLiveViewport`.
+- **`defaultVectorNodeDensity` → 20 for every symbol** (SPX parity); AUTO floor raised to 12 for members who manually pick AUTO.
+- Gesture perf deferral from sibling change (`isMemberGesturing`) keeps wheel/drag responsive during repaints.
+
+### Verification
+
+- Unit: `vector-chart-viewport.test.ts`, `vector-ticker-default-horizon.test.ts`, `vector-candle-render.test.ts`
+- Post-deploy: `node scripts/audit/vector-chart-interaction-e2e.mjs` on `/vector?ticker=NVDA`
+
+## Vector chart mouse gestures blocked by heavy bead repaints — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED (pending deploy) |
+|------------|------------------------|
+| **Area** | Vector / `VectorChart.tsx` |
+| **Severity** | P1 — zoom/drag/clicks feel broken during RTH |
+
+### Root cause
+
+PR #2906 deferred SSE-driven `refreshTrails`/`refreshOverlays` using `memberViewportLocked`, which treats **any prior pan** (`chartUserPannedRef`) as permanently "hot". That was wrong for paint deferral — after the first drag, SSE correctly skipped heavy work, but **other paths kept calling `refreshTrails` every 5s** (horizon history stamp interval, wall-history poll `repaint()`, timeframe effect) with **no gesture guard**. Each call rebuilds bead markers + wall rail primitives over 1k+ history samples → 170–250ms long tasks stacking on the main thread during wheel/drag.
+
+### Fix
+
+- Split **permanent viewport lock** (`memberViewportLocked`) from **active gesture** (`isMemberGesturing` = pointer down OR wheel within 8s).
+- Guard `refreshTrails` / `refreshOverlays` during active gestures; queue deferred flush on pointerup / post-cooldown.
+- Track pointer down/up on chart container (was mousedown-only, never cleared).
+- SSE + crosshair simplified path now uses `isMemberGesturing`, so live bead updates resume after gestures end.
+
+### Evidence
+
+Prod probe pre-fix: `vector-chart-interaction-perf.mjs` — 80 long tasks / ~16s during 25 synthetic wheel events; event dispatch itself fast (~1ms).
+
+### Verification
+
+- `npx tsx --test src/features/vector/components/vector-chart-viewport.test.ts` — 37/37 pass
+- `node scripts/audit/vector-chart-interaction-e2e.mjs` — post-deploy on prod
+
+## `attachThesisFirstLive` could stamp rank_tier/archetype_gates from a discarded pre-merge thesis — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** In `attachThesisFirstLive` (`thesis/live-pipeline.ts`), each setup starts with
+`pipeline = runThesisPipelineForSetup(s, mergedExtras)` — a SINGLE-setup thesis/archetype_gates/
+rank_tier. `pipeline.thesis` is then swapped to the ticker-merged, multi-setup `merged` thesis
+(when one exists), but `archetype_gates`/`rank_tier` were only recomputed against that new
+`pipeline.thesis` **inside `if (nowEtMinutes != null)`**. Omitting `nowEtMinutes` left
+`archetype_gates`/`rank_tier` describing the DISCARDED single-setup thesis while `s.thesis_first`
+was stamped with the merged one — an internally inconsistent `ThesisPipelineResult`.
+
+**Live impact.** None observed — both current callers (`scan.ts`'s `attachThesisFirstShadow`
+call and the underlying `attachThesisFirstLive`) always supply `nowEtMinutes`. This was a latent
+contract gap: `nowEtMinutes` is an optional parameter that silently produces an inconsistent
+object when omitted, with no guard or comment marking the coupling — a landmine for any future
+shadow-mode or test caller that omits it.
+
+**Fix.** Moved the `archetype_gates`/`rank_tier` recomputation OUTSIDE the
+`nowEtMinutes != null` conditional — it now always runs against the current (possibly
+just-merged) `pipeline.thesis`. Safe because `evaluateArchetypeGates`'s `et_minutes` parameter is
+already optional (`et_minutes?: number`, only gates the `pre_1000_et` WATCH note) — passing
+`nowEtMinutes` through as possibly-`undefined` changes nothing for the current callers, which
+always supply it.
+
+**Regression test.** `thesis-first.test.ts`: "attachThesisFirstLive: rank_tier/archetype_gates
+reflect the MERGED thesis even when nowEtMinutes is omitted" — two same-ticker setups (FLOW-only,
+BREAKOUT-only, the same fixture as the existing `mergeScanPassTheses` merge test) run through
+`attachThesisFirstLive` with `nowEtMinutes` omitted; asserts the stamped `archetype_gates`/
+`rank_tier` match a fresh `evaluateArchetypeGates`/`resolveThesisRankTier` call against the
+actual merged thesis. Confirmed failing against the pre-fix code (`archetype_gates.verdict`
+came back `"BLOCK"` instead of the correct `"WATCH"`) and passing post-fix.
+
+## Unsanitized ticker/label values reached `console.warn` template literals in shared Polygon provider code — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `src/lib/providers/polygon.ts`'s `fetchStockSnapshot` and
+`src/lib/providers/polygon-options-gex.ts`'s `warnChainTruncated`/`polygonFetchUrl` interpolated a
+caller-supplied ticker/label/underlying/endpoint string (and, in one case, a caught error's
+`.message`) directly into a `console.warn` template literal, with no control-character stripping.
+A value containing a newline forges a second, indistinguishable log line — the exact
+`js/log-injection` class `src/lib/log-token.ts`'s `logToken()` helper already exists to close (it
+was built for the same defect in the Vector wall-persistence layer, per that file's own header
+comment). These three call sites predated that helper and were never retrofitted.
+
+**Evidence.** CodeQL flagged 7 new alerts (1 critical SSRF, 6 log-injection/format-string) on PR
+#2922 (a Vector feature PR) — "new" only because that PR's route was the first live-HTTP-request
+path to reach `resolveTickerChainRows` → these Polygon functions with a value CodeQL treats as
+tainted; every prior caller was a cron job with an internally-generated ticker list, so the same
+latent gap in the shared provider layer was never exercised from a request boundary before. Of
+the 7: the SSRF alert (`api-tracked-fetch.ts:153`) is a **false positive** — `trackedFetch`
+already enforces a hardcoded `ALLOWED_FETCH_HOSTS` allowlist and throws *before* calling `fetch()`
+if the destination host isn't on it, so a tainted path segment can never redirect the request to
+an attacker-controlled host; CodeQL's SSRF query doesn't recognize that allowlist (in a different
+function) as a sanitizer. The 6 log-injection alerts were real, in the 3 sites this PR fixes.
+
+**Fix.** Wrapped the tainted interpolations with the existing `logToken()` helper (control chars
+replaced with a visible marker, length-capped) at all 3 sites — no new sanitizer invented, reusing
+the one this repo already built and tested for exactly this defect class.
+
+**Blast radius.** `fetchStockSnapshot` (polygon.ts:130) and `warnChainTruncated`/`polygonFetchUrl`
+(polygon-options-gex.ts) are called from many places repo-wide (cron discovery jobs, dossier
+builders, and now the Vector contract-picks route from PR #2922) — the fix is at the log call
+site itself, so every caller is covered without touching call sites individually.
+
+**Fix rationale.** Did not touch the SSRF-flagged `trackedFetch`/`api-tracked-fetch.ts` — that
+control is already correct (host allowlist enforced before `fetch()`); "fixing" a false positive
+there would be pure churn. Did not attempt to make CodeQL's SSRF query recognize the existing
+allowlist as a sanitizer (out of scope, tool-configuration work, not a code defect). Per
+`log-token.ts`'s own documented tradeoff, `logToken()` uses `new RegExp(string)` rather than a
+regex literal (deliberately, to avoid raw control bytes sitting in the source file) — CodeQL may
+continue reporting some of these as MEDIUM `js/log-injection` blind spots even after this fix;
+that is an accepted, pre-existing analyser limitation this repo already carries at other
+`logToken()` call sites, not an unfixed bug.
+
+**Test.** New regression: `polygon-options-gex.test.ts`'s `warnChainTruncated: a newline-bearing
+underlying cannot forge a second log line` — pins that a newline-bearing `underlying` produces
+exactly one `console.warn` call with no raw newline in the message. `logToken()` itself was
+already exhaustively covered by `log-token.test.ts`; the one-line `polygon.ts` change reuses that
+same tested helper without new test surface (no cheap seam to unit-test `fetchStockSnapshot`'s
+network path without a mock harness this fix doesn't otherwise need).
+
+## `zerodte-e2e-healthcheck.mjs` stage-B governor note always printed "governor ?" — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `stageB_discovery()` in `scripts/audit/zerodte-e2e-healthcheck.mjs` built its
+governor note with `gov.state ?? gov.status ?? "?"`. The board's real governor payload is
+`ZeroDteGovernorSummary` (`src/lib/zerodte/governor.ts:733`), which has neither a `state` nor a
+`status` field — it carries `halted`, `open_plans`, `stops`, `realized_losers`, `session_pnl_pct`,
+`loss_halt_count`, etc. So the expression could never resolve to anything but the literal string
+`"?"` whenever `board.governor` was truthy, discarding every real signal (is the session
+loss-halted? how many stops? how many opens?) that this diagnostic exists to surface. This was
+never a live-market bug — the governor itself worked correctly — but the tool built to *diagnose*
+zero-commit/discovery-gated sessions was silently blind on the one field that would distinguish
+"gates are just strict today" from "the desk halted itself on realized losses."
+
+**Evidence.** Live run against production during today's RTH session (2026-08-26) consistently
+printed `... · governor ? · gates seen: ...` across multiple healthcheck invocations (0 committed
+plays, 27 live watch-only setups). Confirmed the type mismatch by reading `ZeroDteGovernorSummary`
+directly — no `state`/`status` field exists anywhere in `src/lib/zerodte/governor.ts`, and no API
+route (`src/app/api/market/zerodte/board/route.ts` → `getZeroDteBoardPayload`) ever attaches one.
+
+**Fix.** Added `formatGovernorNote(gov)` to `scripts/audit/lib/zerodte-healthcheck-eval.mjs` (pure,
+unit-tested) reading the real fields — `governor unavailable` when absent, `governor HALTED (N
+stop(s), X.X% session P&L)` when `halted`, else `governor live (N open, N stop(s))`. Wired into
+`zerodte-e2e-healthcheck.mjs` in place of the dead expression. Verified live: the same stage now
+prints `governor live (0 open, 0 stop(s))`.
+
+**Blast radius.** Single call site — `govNote` is only built and consumed within
+`stageB_discovery()`. No other script reads `board.governor.state`/`.status`.
+
+**Fix rationale.** Kept the fix as a pure, testable helper in the existing eval lib rather than
+inlining the field reads a second time, matching the file's stated purpose ("split out so ... logic
+is unit-testable with plain fixtures"). Left `ZeroDteGovernorSummary` itself untouched — it already
+carries everything needed; only the healthcheck's *reading* of it was wrong.
+
+## G-5 premium-budget check computed against a permanently-stale plan=null 0 in thesis-first mode — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `attachGateVerdicts` (`scan.ts`) calls `evaluateZeroDteGovernor` (G-5,
+`governor.ts`) with `entry_premium: input.plan?.entry_max ?? input.plan?.mark ?? null`. Under
+thesis-first (`ZERODTE_THESIS_FIRST=1`), `input.plan` is still `null` at that point — contract
+plans attach afterward (`attachThesisContractPlans`/`attachContractPlans`) — so the candidate's
+OWN contribution to the session premium-at-risk budget was permanently computed against `0`, for
+the entire life of that gate verdict. #2911 fixed the identical "deferred, never reconciled"
+shape for G-8/G-9 (`refreshPlanQualityGateBlocks`, run after plan attach) but did not touch G-5 —
+found while reviewing that fix for other order-dependency hazards.
+
+**Why this shipped invisibly.** `GOVERNOR_ENFORCE_PREMIUM_BUDGET` defaults `false` — the premium
+budget is currently a MEASURE-only path (`premiumBudgetReason` computes the reason string
+regardless, but `evaluateZeroDteGovernor` only pushes the block when the flag is on), so no live
+commit has ever actually been blocked by this. It would misfire the instant the flag is flipped
+on (a one-line env change, no code deploy) — every thesis-first commit would silently under-count
+its own premium against the cap.
+
+**Scope check:** `gamma_regime` (G-5's other budget check, `governor_gamma_budget`) is NOT
+similarly stale — it comes from discovery/positioning data already on the setup before gates run,
+not from the deferred plan — so only the premium-budget check needed a refresh.
+
+**Fix.** Added `refreshGovernorPremiumBudgetBlocks(gate, entryPremium, premiumAtRisk, enforce?)`
+(`gates.ts`), mirroring `refreshPlanQualityGateBlocks`: strips any stale
+`governor_premium_budget` block and recomputes it from the REAL post-attach premium. Threaded
+`governorPremiumAtRisk` out of `attachGateVerdicts`'s return value (previously `Promise<void>`,
+now `Promise<{ governorPremiumAtRisk: number }>`) so `scan.ts`'s thesis-first refresh loop can
+call it right after `refreshPlanQualityGateBlocks`, using the same real
+`s.plan?.entry_max ?? s.plan?.mark`.
+
+**Fix rationale.** `enforce` is an optional test-only override (defaults to the real
+`GOVERNOR_ENFORCE_PREMIUM_BUDGET` env flag) — the flag is read once at module load
+(`envFlag`), so a unit test cannot flip it at runtime; the default preserves the exact
+production behavior (dormant today) while letting the regression test exercise the
+would-block-if-enabled path directly. Left the flag itself untouched — flipping it on is a
+calibration decision for the ledger to graduate, not something this fix should force.
+
+**Regression test.** `gates.test.ts`: "refreshGovernorPremiumBudgetBlocks: recomputes the budget
+using the REAL post-attach premium, not the stale plan=null 0" — confirms a null (stale)
+entry_premium does NOT block a near-cap budget, a real post-attach premium DOES block it when
+`enforce: true`, and the current production default (`enforce: false`, i.e. the real flag) never
+blocks either way — pinning today's dormant behavior while proving the reconciliation logic is
+correct for whenever the flag graduates.
+
+## `disagreeing_rails` was structurally dead in the live 0DTE thesis path — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** Every discovery-rail scorer call in `railHitsFromLegacySetup`
+(`src/lib/zerodte/thesis/rails/legacy-bridge.ts`) passed the setup's single overall
+`direction` unconditionally, for FLOW, BREAKOUT, and PIN alike. But `mergeSameTickerDiscovery`
+(`src/lib/zerodte/board.ts`) already collapses same-ticker candidates from different discovery
+origins into ONE `EnrichedZeroDteSetup` with ONE winning `direction` before the thesis pipeline
+ever runs — so every `RailHit` the thesis layer ever saw for a ticker carried the identical
+direction. `buildMergedThesisFromHits`'s disagreement filter
+(`hits.filter(h => h.direction !== direction)`, `thesis/pipeline.ts`) was therefore comparing a
+set of hits that could never disagree — `disagreeing_rails.length` was always 0 for every real
+committed setup, regardless of whether the origins actually fought over direction.
+
+The real per-origin vote was never lost — `recordOriginContributionsOnMerge` already stamps each
+rail's own (direction, score) onto `setup.origin_contributions` at merge time (the WS-06
+mechanism backing `origin_direction_map`/`origin_score_map`). `legacyBridgeExtrasFromSetup` /
+`railHitsFromLegacySetup` simply never read it — the data existed on the setup object and was
+discarded by the one function meant to expose it as `disagreeing_rails`.
+
+**Blast radius.** `soloBreakoutNeedsCorroboration` (`thesis/live-pipeline.ts`) and the
+`thesis-board-sync.ts` conflict-surfacing both gate on `disagreeing_rails.length > 0` and could
+never fire from a real cross-rail conflict — only from a hand-built test fixture. The "Fracture"
+disagreement section on `ThesisRankCard` (#2908) was therefore unreachable in production for the
+three primary discovery rails (FLOW/BREAKOUT/PIN); it could only ever render empty.
+
+**Fix.** `railHitsFromLegacySetup` now reads each origin's own recorded direction —
+`setup.origin_contributions?.FLOW?.direction ?? direction` (and the same for BREAKOUT/PIN) —
+falling back to the setup's overall direction when no per-origin vote was recorded (the common
+single-origin case, and any legacy row predating `origin_contributions`). Verified safe against
+each rail scorer's own logic: `scoreFlowRail`'s score math is direction-agnostic (direction only
+labels call/put bias); `scoreBreakoutRail`/`scorePositioningRail` use `direction` to test
+structural levels (resistance/support/walls) — passing each origin's OWN voted direction makes
+those structural checks MORE correct, not less, since they now evaluate that origin's own claim
+against the levels rather than the (possibly different) kept direction.
+
+`buildMergedThesisFromHits` gained an optional `keptDirection` parameter — pinned to
+`setup.direction` by `runThesisPipelineForSetup` (the single-setup live path), so the thesis
+still always describes the direction the board actually committed/traded, and disagreement is
+reported AGAINST that direction rather than letting an independent score-weighted vote drift the
+thesis to a different direction than what's live. `mergeScanPassTheses` (the cross-setup,
+whole-scan-pass merge with no single pre-decided direction) is unaffected — it omits
+`keptDirection` and keeps its existing vote-based resolution.
+
+**Deliberately unchanged.** `crossProductCorroborationBoost` still uses the setup's overall
+`direction` (not each origin's) — that boost is about cross-PRODUCT (dark-pool/HELIX) alignment
+with the traded direction, a different question than cross-RAIL disagreement, and out of scope
+here. The 5 derived rails (MOMENTUM/RS/REVERSAL/CATALYST/VOL) still receive the setup's overall
+`direction` unchanged — they are not independent discovery origins with their own vote; they
+compute derived signals about the SAME instrument in the SAME traded direction, so echoing it is
+correct for them.
+
+**Regression test.** `thesis-first.test.ts`: "pipeline: a real cross-origin conflict surfaces in
+disagreeing_rails, not silently agrees" — FLOW argues long (kept), PIN argues short via
+`origin_contributions`; asserts `thesis.direction` stays `"long"` (still describes the traded
+direction) while PIN's opposing vote appears in `disagreeing_rails` and is excluded from
+`rail_scores`. Confirmed failing against the pre-fix code, passing after.
+
+## Three `midOf`/`zeroDteMidOf` copies fabricated a mid on a crossed book — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED |
+|---|---|
+
+**Root cause.** `zeroDteMidOf` (`src/lib/zerodte/marks-math.ts`) computed `(bid+ask)/2` from
+any `bid >= 0, ask > 0` pair with no check that `ask >= bid`. A transient crossed print (a stale
+bid update lagging a fast-moving thin 0DTE book, plausible near expiry on illiquid OTM contracts)
+would synthesize a fabricated "mid" instead of being rejected. This lane runs continuously on
+already-committed plays and feeds: `pinnedLivePnlPct` (member-facing live P&L), `advancePlayLatch`
+(the PERSISTED peak/trough that decides TRIM/CLOSED transitions), and `engineMark` (the real-time
+ratchet/thesis-break exit engine's own input). The pre-commit gate
+(`plan.ts`'s `evaluateQuoteValidity`) already refuses a crossed quote outright as `"crossed"` —
+this live-lane function had no equivalent guard.
+
+**Blast radius — same bug, two more copies.** `zeroDteMidOf`'s own doc comment says "IDENTICAL
+guard to the chain/WS midOf", and grep confirmed two more hand-duplicated copies sharing the
+identical gap: `options-snapshot.ts`'s `midOf` and `ws/options-socket.ts`'s `midOf`. Two
+*independently*-written sibling implementations elsewhere in the codebase
+(`horizon-fanout.ts`'s `midOf`, `execution/slippage.ts`'s `midOf`) already required `ask >= bid` —
+confirming this was an oversight in the three explicitly-synced copies, not a deliberate scope
+decision. `zeroDteMidOf`'s own sibling in the same file, `zeroDteHalfSpreadFrac`, also already
+rejected a crossed book — the asymmetry was isolated to the mid computation itself.
+
+**Fix.** Added `ask >= bid` to all three synced copies (`zeroDteMidOf`, `options-snapshot.ts`'s
+`midOf`, `options-socket.ts`'s `midOf`), preserving the "must stay identical" invariant the code
+comments already declare between them. A locked book (`ask == bid`) is still a valid quote and
+returns that price, matching `zeroDteHalfSpreadFrac`'s own locked-book handling (returns `0`, not
+`null`).
+
+**Also fixed alongside (same review pass): a one-minute clock mismatch.**
+`terminal-ladder.ts`'s `timeStopClock().past_time_stop` used `nowEtMinutes >= stop`, while
+`derivePlayStatus` (`plan.ts`) and every grader use strict `>` against the same
+`time_stop_et_minutes` constant (950 = 15:50 ET) — `plan.test.ts` explicitly pins the boundary
+minute itself as still-in-window ("inclusive"). So the displayed "TIME STOP" UI flag lit up a
+full minute before the play's actual lifecycle/grading boundary. Cosmetic only (nothing here
+grades a play), but a real, previously-undocumented inconsistency between the displayed clock and
+the mechanism it describes. Changed to strict `>` to match.
+
+**Regression tests.**
+- `marks-math.test.ts`: "zeroDteMidOf: a CROSSED book (ask < bid) must return null, not a
+  fabricated midpoint" — confirmed failing pre-fix (`zeroDteMidOf(1.2, 1.0)` returned `1.1`
+  instead of `null`), passing post-fix.
+- `terminal-ladder.test.ts`: "clock: past_time_stop matches derivePlayStatus's own boundary — AT
+  the stop minute is NOT past it" — confirmed failing pre-fix (`past_time_stop` was `true` at the
+  exact stop minute), passing post-fix.
+
+**Deliberately unchanged.** Did not add direct tests for the two sibling `midOf` copies
+(`options-snapshot.ts`, `options-socket.ts`) — both are private, unexported helpers with no
+existing test coverage of their own; the shared logic is now pinned by `zeroDteMidOf`'s test, and
+exporting two private helpers purely to duplicate that same test was judged disproportionate
+scope for this fix.
+
+## A committed condor's entry_premium was never persisted — governor blind to open condor risk — PARTIALLY FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | PARTIALLY FIXED — see "left open" below |
+|---|---|
+
+**Root cause.** Every ledger row's `entry_premium` (`scan.ts`'s commit-time row builder) was
+computed via `resolveLedgerEntryPremium(s.plan?.entry_max, s.top_strike_avg_fill, s.plan?.mark)`.
+A committed condor row always has `s.plan === null` (no single-leg plan — condor.ts:489's
+`buildCondorSetup` also sets `top_strike_avg_fill: null`), so this always resolved to `null` for
+every condor, permanently: the column is COALESCE-pinned first-write-wins (never rewritten on
+refresh ticks).
+
+**Impact.** `aggregatePremiumAtRisk` (`governor.ts`) sums `entry_premium` across every open
+(non-CLOSED) ledger row to build the session premium-at-risk budget the G-5 governor gate checks.
+A condor's real risk (`net_credit`) was therefore silently excluded from that aggregate for the
+entire time any condor was open — the governor had zero visibility into open condor exposure. This
+is a distinct, deeper bug than the already-fixed "G-5 governor premium-budget computed against a
+stale null plan" (#2916) — that fix addressed the GATE's read of `s.plan` at commit time; this is
+the LEDGER PERSISTENCE layer that feeds the ongoing aggregate, and it was never touched by #2916.
+
+**Fix.** `scan.ts`'s commit-time row builder now special-cases `s.play_type === "CONDOR"`:
+`entry_premium = s.condor_plan.net_credit / 100`. The division matters —
+`condor_plan.net_credit`'s own doc comment states it's priced "$×100-per-contract"
+(computed as `(shortMids − longMids) × 100`), while `entry_premium` is per-share throughout the
+rest of the ledger (a directional row's entry_premium looks like `0.57`, not `57`) — dividing by
+100 keeps the governor's aggregate summing apples to apples instead of overstating open condor
+risk 100×.
+
+**LEFT OPEN — this does NOT restore live condor P&L display.** `condorSellerPnlPct(entryCredit,
+mark)` (`marks-math.ts`) still needs a live `mark`, and the mark-fetch path
+(`syncLedgerLiveState`, `scan.ts`) keys strictly off a single-leg `plan_json.occ`, which a condor
+row never has — there is no multi-leg (4-leg) mark-fetch path anywhere in
+`scan.ts`/`live-marks.ts`. Building one (fetch all 4 legs' live bid/ask, recompute the net
+decay value, reconcile units against this fix's per-share convention) is a new feature, not a
+one-line correctness fix, and was judged out of scope for a same-day bug-fix PR. A committed
+condor's live status is therefore still only ever `HOLD` or `CLOSED (time_stop)` on the desk —
+an intraday range breach is invisible until the next day's `gradeZeroDteLedger` back-grades it.
+This entire live-condor-marking gap is flagged here as a real, scoped follow-on item, not silently
+left undocumented.
+
+**Regression test.** `scan.test.ts`: "persistZeroDteScan: a committed CONDOR row persists
+entry_premium from net_credit (was permanently null)" — a `play_type: "CONDOR"` setup with
+`net_credit: 80` ($80/contract) asserts the upserted row's `entry_premium === 0.8`. Confirmed
+failing against the pre-fix code (`entry_premium` was `null`) and passing post-fix.
+
+## 2026-08-25 — thesis-first G9 merge + evidence bundle + PIN positioning — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in PR (thesis-evidence-g9-fix) |
+|------------|--------------------------------------|
+
+**Root cause:** `buildMergedThesisFromHits` dropped opposing-direction rail hits after `resolveMergedDirection`, violating LARGO contract (disagreement must be represented). PIN setups from `buildPinSetup` never carried `gamma_regime`/walls, so POSITIONING rail could not fire. Thesis rails read only legacy setup fields, not Thermal/Vector cache snapshots.
+
+**Fix:** `disagreeing_rails` on `MergedThesis`; rank capped WATCH on conflict; `fetchThesisEvidenceForTickers` cache-reader bundle wired in `scan.ts`; `stampPinSetupPositioning` on PIN discovery path.
+
+**Evidence:** `src/lib/zerodte/thesis/evidence-g9.test.ts` — 21/21 thesis tests pass.
+
+## 2026-08-25 — [MEASUREMENT PLAN, P2 SPX Slayer/risk-controls] Data-quality guard fire-rate measurement setup
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | 2026-08-23 FINDING (P2, CHARACTERISED) blocked on measuring RTH fire rate of `liveDataQualityMode() === "severe"` — the measurement scheduled for 2026-08-24 did not run. This finding documents the measurement approach and readiness status. |
+| **Root cause** | Measurement blocked on: (1) authenticated session setup complexity in sandbox environment, (2) no standing measurement script in place for data-quality fire-rate tracking. |
+| **Evidence** | 2026-08-25 14:06 UTC — market live, RTH active. Data-quality measurement tool ready at `scripts/audit/dq-fire-rate-measurement.mjs`. The tool implements: (a) real `playbookDataQualityFlags()` derivation from desk API, (b) exact `liveDataQualityMode()` logic from `playbook-data-quality.ts`, (c) fire-rate aggregation over N polls with 10s intervals. No integration blocker. |
+| **Measurement parameters** | **Session requirement:** Authenticated `__session` JWT (any valid admin/premium tier). **Duration:** 1-2 hours RTH (120-180 polls at 10s intervals). **Decision threshold:** SEVERE fire rate <5% = safe to re-predicate on `playbookLiveGateEnabled()` | ≥5% = defer or add hysteresis. **Output:** Count distribution (severe/degraded/normal) + per-event logs when severe fires. |
+| **Deliberately deferred here** | **Why not run blind:** A desk-halting guard gated on an unmeasured frequency is not obviously safer than one that does not run. Measuring over a representative RTH window (full open-to-close) is necessary before flip. A partial-session measurement (e.g., first 30 minutes) reads locally correct but misses the tail (earnings surprises, market dislocations late session). |
+| **Next step** | **Run during next RTH:** Authenticate (via existing scripts in `scripts/audit/`), then: `CLERK_SESSION="__session=<jwt>" POLL_COUNT=180 node scripts/audit/dq-fire-rate-measurement.mjs`. Result gates the flip decision documented in 2026-08-23 FINDING. |
+| **Scope** | SPX Slayer product, trade-governor risk controls. No runtime change (measurement-only). |
+| **Status** | **OPEN** — measurement tool ready, awaiting authenticated session + RTH window execution during next market day. |
+
+## 2026-08-25 — [FINDING, P3 Meridian] Tier-2 UX polish bundle — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Six follow-on gaps from the CTO audit after tier-1 beast blockers: (1) every earnings event always opened on Summary despite readers who live on Positioning/History, (2) catalyst lane filter reset to `all` every visit, (3) History tab still triplicated the same track record (bar chart + open plain list), (4) halo dimension score `0` read as missing at small size, (5) ticker lookup re-derived `in_timeline` on every request without a full-response cache key, (6) no persisted desk prefs module — ad-hoc URL-only state. |
+| **Root cause** | `MeridianEventDetailPanel` hard-reset tab to `summary` on every `item.id`; `MeridianDesk` defaulted filter to `all` when URL omitted `filter`; PRINT TRACK list always expanded; `MeridianRing` rendered bare `0` without context; lookup cached Benzinga rows but not the shaped lookup payload including timeline membership. |
+| **Fix** | `meridian-desk-prefs` localStorage for default earnings tab + lane filter (URL still wins); PRINT TRACK wrapped in `<details>` default collapsed; halo rings label net-zero as `balanced`; lookup full-response `serverCache` keyed by ticker + ET day + timeline id set. |
+| **Status** | FIXED — `meridian-desk-prefs-core.test.ts`. |
+
+## 2026-08-25 — [FINDING, P3 Meridian] Live post-deploy re-check surfaced two more undersized/non-controls the original audit sample never sampled — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | After deploying and live-verifying `docs/audit/findings-staging/2026-08-25-meridian-earnings-tap-targets.md`'s fix (confirmed the fixed ladder-row/strike-row heights are no longer flagged live), a fresh `meridian-interaction-audit.mjs` desktop run against production — with a *different* ticker/live data than the original audit — surfaced **two controls the original 26-item sample never sampled**: a `"revisions"` toggle button (`79x21`, `MeridianRevisionMomentum`'s `.mv-rev-more`) and 7 dark-pool print markers (`11x11`–`18x18`, `MeridianDarkPoolTape`'s `.mv-tape-print`, on `Positioning:targets` this run). The original audit's `SMALL_TARGET_PROBE` is capped to the first 10 hits per tab (`scripts/audit/meridian-interaction-audit.mjs:194-209`, `.slice(0, 10)`), and which controls render at all depends on which analyst-revision/dark-pool data the current ticker actually has — so a control absent from one run's sample was never proven absent, only unsampled that run. |
+| **Root cause — two different defects, same two shapes already fixed once** | (1) `.mv-rev-more` (`desk-app.css`): no explicit height, ~21px of padding+content, same undersized-row shape as the already-fixed `.mv-strike-row`. Real, genuinely clickable (`onClick={onExpand}` in `meridian-viz.tsx`'s `MeridianRevisionMomentum`), not a non-control. (2) `MeridianDarkPoolTape`'s print markers (`meridian-viz.tsx`): identical pattern to `MeridianTargetRail`'s already-fixed price-target dots — neither current call site (`MeridianEarningsReportPanel.tsx:283`, `MeridianEarningsPositioningPanel.tsx:118`) passes `onPrintClick`, so these rendered as permanently-`disabled` `<button>`s: markup for a control that can never be clicked, focused, or activated by any means. Not a sizing bug, a non-control wearing interactive markup — same root cause as the target-dot fix, just not caught the first time because this component's disabled buttons happened to fall outside the original 10-item-per-tab sample. |
+| **Evidence** | Live re-run, 2026-08-25, post-deploy: `[P3] desktop/Report:targets — 10 controls under 24px` (8 intel-source orbs, unchanged confirmed-benign false positive, + the new `revisions 79x21` + one dark-pool print), `[P3] desktop/Positioning:targets — 7 controls under 24px` (all 7 are dark-pool prints, `18x18` down to `11x11`) — critically, **zero wall/pin-row or strike-row items appear in either list this run**, positive live confirmation the first fix is deployed and working. |
+| **Fix** | (1) `.mv-rev-more` gained `min-height: 24px; display: inline-flex; align-items: center;` — same `min-height`-only technique as `.mv-strike-row`, no collision-resolver coupling to disturb. (2) `MeridianDarkPoolTape`'s no-handler path now renders a plain `<span>` (same class, same area-proportional `width`/`height` — size is meaningful, area ∝ premium, explicitly documented in the component's own header comment) instead of a `disabled` button, exactly mirroring the `MeridianTargetRail` fix. CSS's `cursor`/`hover-scale` rules rescoped from `.mv-tape-print` to `.mv-tape-print[type="button"]`, same split already used for `.mv-target-dot`. |
+| **Fix rationale** | Same rationale as the first pass: the dark-pool markers' size is meaningful (area encodes premium, called out explicitly in the component's own comment — "mapping premium linearly to a diameter makes a 4x print look 16x"), so inflating the visible mark to hit 24px would misrepresent the data; removing the false interactivity claim instead is the honest fix, identical in shape to the target-dot fix. The revisions button is genuinely interactive with no such size-meaning constraint, so simply growing its box to 24px is correct with no tradeoff. |
+| **Blast radius** | `src/app/desk-app.css` (two rule blocks), `src/features/meridian/components/meridian-viz.tsx` (`MeridianDarkPoolTape`'s render branch). No panel-component changes — both fixes are internal to the shared viz primitives their call sites already use unmodified. |
+| **Regression guard** | `npx tsc --noEmit` clean; full meridian test set (119 tests: `meridian-viz-core.test.ts`, `meridian-ladder-inversion.test.ts`, `meridian-banner-css.test.ts`, `meridian-orbital-panel-fit.test.ts`) green on Node 20, including the accessible-name scan that already covers every self-closing `<button>` in `meridian-viz.tsx` (confirms the button/span split didn't drop `MeridianDarkPoolTape`'s `aria-label`). Not yet deployed/live-re-verified — same "a merge is not a verification" follow-up as the first pass. |
+| **Status** | FIXED. Not yet deployed. |
+
+**The broader lesson this pass adds, worth stating plainly:** a `SLICE(0, N)`-capped live probe against LIVE, per-run-varying market data can only prove "these N are undersized," never "no more than N are." Closing a P3 finding on one run's sample being clean is closing what was SAMPLED, not what exists — this round found exactly that gap by simply re-running the same probe against different live data.
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_
+
+## 2026-08-25 — [FINDING, P3 Meridian] History tab repeated the same track-record sentence verbatim — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live, DKS earnings (2026-08-25), History tab: `MeridianEarningsHistoryPanel`'s own "Summary" card and the "Track record" `MeridianAnalyticsBanner` immediately below it both rendered `enrichment.print_history_summary` — the identical string, twice, back to back. Found during a CTO-depth Meridian audit (`docs/audit/MERIDIAN-CTO-AUDIT-2026-08-25.md`). |
+| **Root cause** | `MeridianEarningsTabs.tsx`'s history-tab block rendered a `MeridianAnalyticsBanner` with `headline={enrichment.print_history_summary}` directly after `MeridianEarningsHistoryPanel`, which already renders that same field as its own "Summary" panel. Not two views of the data — the same sentence twice. |
+| **Fix** | Removed the duplicate `MeridianAnalyticsBanner` block. `MeridianAnalyticsBanner` remains in use elsewhere in the same file (Report/Positioning/Estimates tabs) — only this one redundant call site was removed. |
+| **Status** | FIXED — one-line removal (plus the surrounding block), no behavior change beyond the duplicate no longer rendering. `npx tsc --noEmit` clean. |
+
+## 2026-08-25 — [FINDING, P3 Meridian] "GUIDANCE" catalyst-brief tag was Benzinga's raw channel label, not corporate guidance — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live, DKS earnings (2026-08-25), Report tab: every item under "Catalyst briefs" read `GUIDANCE · <headline>`, but none of the six were the company's own forward outlook — e.g. "GUIDANCE · JP Morgan Maintains Overweight on Dick's Sporting Goods, Lowers Price Target to $245". All six were sell-side analyst rating/price-target actions. Found during a CTO-depth Meridian audit (`docs/audit/MERIDIAN-CTO-AUDIT-2026-08-25.md`). |
+| **Root cause** | `shapeCatalystBriefs` passed Benzinga's own `type` field through verbatim for any item on its "guidance" news channel — that channel is broader than the word implies. Corroborating evidence: a fresh fill-rate re-run (`meridian-earnings-data-inventory.mjs --min-importance=4`) found `enrichment.corporate_guidance` (the real guidance field) at **0% fill** even for mega-cap earnings, while the mislabeled Benzinga-channel tag is what members actually saw. The identical headline already appears, correctly labeled, under `analyst_revisions` elsewhere on the same tab. |
+| **Fix** | New `looksLikeAnalystAction(title)` in `meridian-feed-text.ts`, reusing `shapeAnalyst`'s existing action-keyword vocabulary (deliberately narrower than that function's own keywords — see its doc comment for why a bare "raises"/"lowers" would misclassify a real "raises guidance" headline). `shapeCatalystBriefs` (moved to a new pure `meridian-catalyst-enrich-core.ts` for testability — see below) now drops a "guidance"-typed item whose title matches, rather than relabeling it, since the same headline is already shown correctly elsewhere. |
+| **Blast radius / tooling note** | `meridian-catalyst-enrich.ts` carries `import "server-only"`, which throws unconditionally under `tsx --test` — nothing in that file was previously unit-testable. Extracted the pure shaping logic into `meridian-catalyst-enrich-core.ts` (no server-only import), matching the `-core.ts` split every other Meridian data layer in this repo already uses. |
+| **Status** | FIXED — tests added (`meridian-catalyst-enrich-core.test.ts`, `meridian-feed-text.test.ts`). `npx tsc --noEmit` clean, targeted suite green. |
+
+## 2026-08-25 — [FINDING, P3 Meridian] Meridian earnings detail — 26 interactive controls under the 24px tap-target minimum — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `meridian-interaction-audit.mjs` (live, isolated runs, 2026-08-24) measured real `button`/`a[href]`/`[role=button]` elements below 24px in both axes across three Meridian earnings tabs, confirmed on both desktop 1440×900 and tablet 1024×1100: **Report** (10 — wall/pin rows `470x20`, five `18x18` intel-source badges), **Estimates** (6 — analyst price-target dots, all `8x8`), **Positioning** (10 — wall/pin rows `561x20`/`301x20` plus GEX-strike pills). See `UI-UX-OPPORTUNITIES.md` item 13. |
+| **Root cause — four distinct components, three different actual defects** | (1) `MeridianStructureLadder`'s `.mv-ladder-row` (wall/pin rows) had its height PINNED to exactly 20px (`MV_LADDER_ROW_PX`/`--mv-ladder-row-h`), deliberately coupled to the collision resolver (`MV_LADDER_MIN_GAP = MV_LADDER_ROW_PX / MV_LADDER_HEIGHT_PX`) that keeps adjacent rows from overlapping — the row really was too short, no workaround available. (2) `MeridianStrikeProfile`'s `.mv-strike-row` (GEX-strike pills) had no explicit height at all and simply collapsed to ~20px of content — also a real undersized control, but with no collision-resolver coupling to work around. (3) `MeridianOrbital`'s `.ms-orb` (18×18 intel badges) is **not actually a defect** — it already carries a deliberate invisible `::after` hit-area pad (26×26) specifically so the visually-meaningful orb size (which encodes contribution) doesn't have to be inflated to hit 24px; the audit's `getBoundingClientRect()`-based probe cannot see a pseudo-element's painted area, so it produced a false positive on an already-correct control (verified live below). (4) `MeridianTargetRail`'s `.mv-target-dot` (8×8 analyst dots) renders as a `<button disabled>` at both current call sites (Report, Estimates) — neither passes `onTargetClick`, so these are **not undersized controls, they are non-controls**: a `disabled` button can never be clicked, focused, or activated by any means, so no tap-target size could ever make it usable. The audit's `button`/`[role=button]` selector matches `disabled` buttons regardless. |
+| **Evidence** | Full root-cause trace via source inspection: `meridian-viz.tsx` (`MeridianStructureLadder` L393-495, `MeridianStrikeProfile` L886-936, `MeridianTargetRail` L593-662), `meridian-spatial.tsx`'s `MeridianOrbital` (L218-328) and `meridian-spatial-core.ts`'s `orbitalLayout()` (L158, `size: clamp(sc/maxScore, 0.18, 1)` — the 0.18 floor is exactly where 18px comes from: `14 + 0.18*22 = 17.96px`), `desk-app.css` (`.mv-ladder-row` L1767-1783, `.mv-strike-row` L2406-2414, `.ms-orb`/`::after` L2236-2277, `.mv-target-dot` L1742-1749). **Live-verified the orb's existing `::after` hit-pad actually extends the real clickable area** (not just claimed by its own code comment): a minimal Playwright reproduction of the exact CSS (18px visible circle, 26px `::after` pad, no `pointer-events:none`) confirmed a click 12px from center — outside the 9px visible-circle radius, inside the 13px pad radius — registers on the button (`title` set by the click handler fired), proving pseudo-element hit-area extension is real in this browser, not merely intended. |
+| **Fix** | (1) `MV_LADDER_ROW_PX` raised 20→24 in `meridian-viz-core.ts`, mirrored in `--mv-ladder-row-h: 24px` in `desk-app.css` — both are cross-checked by existing tests (`meridian-viz-core.test.ts`, `meridian-ladder-inversion.test.ts`) that read the CSS and compare against the TS constant, so a drift between them fails loudly rather than silently re-introducing the 2026-08-21 overlap bug these same constants were built to prevent. `MV_LADDER_MIN_GAP` derives from the ratio, so the collision resolver automatically demands proportionally more separation for the taller rows — nothing else to update. (2) `.mv-strike-row` gained `min-height: 24px` (a plain min-height suffices — no collision-resolver coupling on this component to disturb). (3) `.ms-orb`/orbital badges: **no code change** — confirmed correct as shipped, documented as a known audit-tool blind spot rather than "fixed." (4) `MeridianTargetRail`: the no-handler path now renders a plain `<span>` (same class, same `title`/`aria-label`, same visual dot) instead of a `disabled` button, so a control that can never be activated stops being marked up as one; the CSS's `cursor`/`hover-scale`/hit-pad rules were rescoped from the bare `.mv-target-dot` class to `.mv-target-dot[type="button"]` so they apply only to the real (button) variant, never to the decorative span. The button variant (for a future caller that does pass `onTargetClick`) additionally gained the same `::after` 24×24 invisible hit-pad technique already proven on `.ms-orb`, since the rail can pack multiple 8px dots close together and inflating the visible dot would hide density information the same way inflating an orb would hide contribution. |
+| **Fix rationale** | Every fix chosen preserves the deliberate visual/design constraint each component already had (ladder-row collision spacing, orb size encoding contribution, dense dot rail) rather than working around it — the two components with a real sizing bug (ladder row, strike row) got their actual box enlarged since nothing depended on the small size; the orb, which already had the correct architecture, got documentation instead of a code change so its correct design isn't second-guessed by an audit blind spot; the target-dot's fix is a semantic correction (stop rendering permanently-`disabled` controls as controls), not a sizing workaround, because sizing a control that can never be activated doesn't make it more usable. |
+| **Blast radius** | `src/lib/meridian/meridian-viz-core.ts` (one constant), `src/app/desk-app.css` (three rule blocks), `src/features/meridian/components/meridian-viz.tsx` (`MeridianTargetRail`'s dot render branch). No change to `meridian-spatial.tsx`/`meridian-spatial-core.ts` (orb) or to either earnings panel component (`MeridianEarningsReportPanel.tsx`, `MeridianEarningsPositioningPanel.tsx`, `MeridianEarningsEstimatesPanel.tsx`) — all four fixes are internal to the shared viz components they already call. |
+| **Regression guard** | Existing tests already assert the ladder's CSS/constant agreement and the collision resolver's correctness (`meridian-viz-core.test.ts`, `meridian-ladder-inversion.test.ts`) — both re-ran green against the new 24px value with no changes needed, since they read the constant and CSS dynamically rather than hardcoding 20. The existing accessible-name test (`no control in the Meridian viz is left without an accessible name`) confirmed the target-dot's `aria-label` survived the button→span branch split. `npx tsc --noEmit` and the full meridian test set (119 tests across `meridian-viz-core.test.ts`, `meridian-ladder-inversion.test.ts`, `meridian-banner-css.test.ts`, `meridian-orbital-panel-fit.test.ts`) all green on Node 20. Live re-verification of the audit's own `SMALL_TARGET_PROBE` against the deployed build is the natural post-merge follow-up (same pattern as this file's other "confirmed on the deployed build" entries) — not done here since this fix hasn't shipped yet. |
+| **Status** | FIXED. Not yet deployed/live-verified — will be confirmed against production with `meridian-interaction-audit.mjs` once merged, per this repo's standing "a merge is not a verification" note. |
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_
+
+## 2026-08-25 — [FINDING, P2 Meridian] Quarterly Beat/Miss Streak read the forward calendar window instead of print_history — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live, DKS earnings (2026-08-25, real print), History tab: "Quarterly Beat/Miss Streak" card read *"No printed quarters on record for DKS"* directly beneath "Earnings Track Record — 7/8 EPS beats" and "Beat Rates — 88%/88%/88% over 8 graded prints" for the exact same ticker, same screen. Found during a CTO-depth Meridian audit (`docs/audit/MERIDIAN-CTO-AUDIT-2026-08-25.md`). |
+| **Root cause** | `MeridianEarningsHistoryPanel.tsx` fed `buildBeatMissStreak` (`meridian-earnings-analytics-core.ts`) from an `analyticsRows` prop tracing back to `data.earnings_analytics_rows` — built by `buildEarningsAnalyticsRows` from Benzinga's forward-looking earnings-calendar window (days-ahead, market-wide). That is a who's-reporting-when calendar, not a history of past prints, so `hasPrinted(row)` (`actual_eps != null`) essentially never matched. The neighboring panels correctly read `enrichment.print_history` — the real per-ticker historical print array. |
+| **Fix** | New `printHistoryToAnalyticsRows(ticker, prints)` adapter reshapes `print_history` into the `EarningsAnalyticsRow` shape `buildBeatMissStreak` expects. `MeridianEarningsHistoryPanel` now computes streak rows from `enrichment.print_history` (already in hand, already rendered correctly by the neighboring panels) instead of the mis-sourced prop. |
+| **Status** | FIXED — `printHistoryToAnalyticsRows` + wiring change, `meridian-earnings-analytics-core.test.ts` regression coverage. `npx tsc --noEmit` clean, targeted suite green. |
+
+## 2026-08-25 — [FINDING, P2 Meridian] Beast-blocker friction bundle — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Six polish/integration gaps blocked power use: (1) cold timeline load ~8–10s with blank analytics lane, (2) macro detail all-shimmer with no brief on slow fetch, (3) beat-streak copy contradicted track record (already fixed on main via `printHistoryToAnalyticsRows`), (4) analytics grid stacked above an orphaned timeline rail, (5) Largo `get_earnings_history` / `get_earnings_market` used UW close-to-close reactions instead of Meridian's BMO/AMC engine, (6) Largo could not reach Meridian's sector-peer cohort (`get_meridian_peer_cohort` missing — Positioning tab computed client-side only). |
+| **Root cause** | Monolithic timeline payload waited on Polygon expected-move batch + sector classify before first paint; macro panel gated all content on `loading`; analytics view stacked grids above the split-pane lane; Largo earnings tools bypassed `loadMeridianEarningsPrintHistory` / `stockReactionsForPrints`; peer cohort lived only in `MeridianPeerCohortPanel`'s client-side timeline filter with no server tool. |
+| **Fix** | Lite timeline (`skip_enrich=1`) + dual SWR in `MeridianDesk`; labeled loading skeletons; analytics view shows catalyst strip and hides split pane; progressive macro card shimmers + honest unavailable brief; Largo tools route history through Meridian print_history and attach `meridian_reaction_pct` to session lists; new `get_meridian_peer_cohort` reuses `buildCohortForTimelineItem` + `loadMeridianPeerReactions`. |
+| **Status** | FIXED — `meridian-timeline-lite.test.ts`, `meridian-earnings-for-largo-core.test.ts`, `meridian-peer-cohort-for-largo-core.test.ts`, existing beat-streak regression on main. |
+
+## 2026-08-25 — [FINDING, P3 Largo/UI] Terminal toolbar brand + composer glow-clip fix — LIVE-CONFIRMED
+
+> **kind:** `FINDING`
+
+**Status.** CONFIRMED live in production. This closes the "pending live validation" note on the
+2026-08-23 entry "Terminal toolbar brand collapsed to 'L…'; composer placeholder glow bled past
+its box — FIXED" (`FINDINGS.md`), which stated the composer glow-clip fix specifically could not
+be proven closed from a local repro alone (the bleed depended on the live page's own ancestor
+compositing context) and needed a live re-check post-deploy.
+
+**Evidence.** `/terminal` mobile (430×932), live production, temp Clerk premium session via
+`proxy-browser.cjs`'s CONNECT-tunnel technique, 2026-08-25:
+- **Toolbar**: full `"LARGO TERMINAL"` brand label renders (not truncated to `"L…"`), and both
+  answer-mode buttons render complete, un-clipped text — `"CONCRETE"` and `"DEEP DIVE"` — matching
+  the same-day follow-up fix (`docs/audit/findings-staging/2026-08-24-largo-toolbar-answer-mode-squish.md`,
+  now folded) that corrected the answer-mode row's own regression.
+- **Composer glow-clip**: a zoomed crop of the composer input shows the animated placeholder text
+  `"Type / For Desk Co…"` and its pink glow rendering entirely inside the composer's rounded
+  border — the glow fades cleanly at the box's own left inner edge, with no bleed into the page's
+  left margin (the exact defect shape the original finding measured: the glow starting ~13px left
+  of the clip container's boundary, in the margin).
+
+**No code change** — this entry records live confirmation only. See the original entry for the
+`clip-path: inset(0)` fix itself and its regression-guard tests.
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_
+
 ## 2026-08-25 — [FINDING, P2 audit-tooling] `proxy-browser.cjs --full` rendered scroll-triggered reveal content as large blank voids — FIXED
 
 > **kind:** `FINDING`
