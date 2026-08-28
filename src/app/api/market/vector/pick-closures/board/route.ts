@@ -50,16 +50,21 @@ export async function GET(req: NextRequest) {
   if (dbDenied) return dbDenied;
 
   try {
-    const limitRaw = Number(req.nextUrl.searchParams.get("limit") ?? "120");
-    const limit = Number.isFinite(limitRaw) ? Math.min(300, Math.max(1, Math.round(limitRaw))) : 120;
-    const rows = await fetchVectorPickClosureRows(limit);
+    const limitRaw = Number(req.nextUrl.searchParams.get("limit") ?? "300");
+    const limit = Number.isFinite(limitRaw) ? Math.min(500, Math.max(1, Math.round(limitRaw))) : 300;
+    const sessionDateRaw = req.nextUrl.searchParams.get("session_date")?.trim() ?? "";
+    const sessionDate = /^\d{4}-\d{2}-\d{2}$/.test(sessionDateRaw) ? sessionDateRaw : null;
+    const rows = await fetchVectorPickClosureRows(limit, sessionDate);
     const nowMs = Date.now();
     return NextResponse.json(
       roundFloats({
         available: true,
         as_of: etStamp(nowMs),
         session_date: etSessionDate(nowMs),
-        note: "Closed Vector contract picks — advisory Don't buy events for system analysis, not committed positions.",
+        note:
+          "Closed Vector contract picks — first Don't buy per contract while the Vector desk live-evaluates picks. Premium % is vs pick entry mid, not a graded trade P&L.",
+        coverage:
+          "Logged when /vector (or any client) polls live pick quotes — not every ticker in the universe is evaluated unless the desk is open.",
         closed: rows.map(toBoardRow),
       }),
       { headers: NO_STORE_HEADERS }
