@@ -20,6 +20,7 @@ import {
 } from "@/lib/vector/vector-pick-closures-db";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
+import { logToken } from "@/lib/log-token";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -240,7 +241,7 @@ export async function POST(req: NextRequest) {
           },
         });
       } catch (err) {
-        console.error("[vector/contract-picks/live] closure log failed", commitKey, err);
+        console.error("[vector/contract-picks/live] closure log failed", logToken(commitKey), err instanceof Error ? err.message : err);
       }
     }
   })();
