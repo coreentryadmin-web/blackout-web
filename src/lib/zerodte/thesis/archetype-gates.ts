@@ -88,7 +88,11 @@ export function evaluateArchetypeGates(input: ArchetypeGateInput): ArchetypeGate
       break;
     }
     case "FAILED_BREAKOUT": {
-      if (reversal(input.rail_scores) < 55) pushBlock("failed_break_reversal_floor");
+      // No separate `failed_break_reversal_floor < 55` check here — scoreReversalRail
+      // (rails/reversal.ts) starts at a base of 42 and only returns a hit once boosts push it
+      // to >=58, so a fired REVERSAL score is always >=58, always above 55. The check was dead
+      // code: it could never block anything the rail itself didn't already require. Removed
+      // rather than left in place implying protection it never provided.
       if (input.structural_state === "TRIGGERED") pushWatch("failed_break_still_triggered");
       break;
     }
@@ -96,7 +100,10 @@ export function evaluateArchetypeGates(input: ArchetypeGateInput): ArchetypeGate
       if (input.structural_state !== "COILED" && input.structural_state !== "TRIGGERED") {
         pushWatch("vol_expansion_no_compression");
       }
-      if ((input.rail_scores.VOL ?? 0) < 50) pushWatch("vol_rail_weak");
+      // No separate `vol_rail_weak < 50` note here — scoreVolRail (rails/vol.ts) starts at a
+      // base of 45 and only returns a hit once boosts push it to >=52, so a fired VOL score is
+      // always >=52, always above 50. Same dead-code pattern as failed_break_reversal_floor
+      // above — removed rather than left implying a check that never actually ran.
       break;
     }
     default:
