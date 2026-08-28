@@ -20731,7 +20731,10 @@ html.product-shell .nav-mega {
 .nh-deck-hdr-context--empty{flex:1 1 auto;min-width:8px}
 .nh-deck-context-strip--compact{margin:0;flex:0 0 auto}
 .nh-deck-funnel-compact{margin:0;font-size:9px;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;flex:0 1 auto;color:var(--dk-cyan)}
-.nh-deck-header-compact .nh-deck-chrome-row{display:flex;flex:0 0 auto;gap:4px;align-items:center;margin:0;border:0;background:transparent}
+/* Swings/LEAPS/Legacy chrome row (non-command-center path) — filter chips + search side by side,
+   wrapping onto a second line on narrow panes rather than clipping the search box. */
+.nh-deck-chrome-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 2px 6px}
+.nh-deck-header-compact .nh-deck-chrome-row{display:flex;flex:0 0 auto;gap:4px;align-items:center;margin:0;border:0;background:transparent;padding:0}
 .nh-deck-header-compact .nh-deck-filterbar,
 .nh-deck-header-compact .nh-deck-sortbar{padding:0;border:0;background:transparent;gap:3px;display:flex}
 .nh-deck-header-compact .nh-deck-filtbtn,
@@ -21315,6 +21318,21 @@ html.product-shell .nav-mega {
 .nh-deck-filtbtn:focus-visible{outline:none;border-color:var(--dk-green);box-shadow:0 0 0 1px var(--dk-green)}
 .nh-deck-filtbtn .cnt{opacity:.85;font-weight:700;margin-left:2px}
 
+/* Ticker quick-search — sits beside the status filter chips (DeckChromeRow) or the prominent
+   filter row (DeckCompactHeader/0DTE). Flat single-accent focus ring, no glow. */
+.nh-deck-search{display:flex;align-items:center;gap:6px;flex:0 1 160px;min-width:110px;
+  padding:5px 8px;border-radius:4px;border:1px solid var(--dk-border-subtle);background:rgba(255,255,255,.03)}
+.nh-deck-search:focus-within{border-color:var(--dk-bull)}
+.nh-deck-search__icon{font-size:12px;color:var(--dk-text-secondary);flex-shrink:0;line-height:1}
+.nh-deck-search__input{flex:1;min-width:0;background:transparent;border:0;outline:none;
+  color:var(--dk-text-primary);font-family:inherit;font-size:11px;font-weight:600}
+.nh-deck-search__input::placeholder{color:var(--dk-text-secondary);font-weight:500}
+.nh-deck-search__input::-webkit-search-cancel-button{display:none}
+.nh-deck-search__clear{flex-shrink:0;background:transparent;border:0;padding:0;cursor:pointer;
+  color:var(--dk-text-secondary);font-size:10px;line-height:1}
+.nh-deck-search__clear:hover{color:var(--dk-text-primary)}
+@media (max-width:820px){.nh-deck-search{flex:1 1 auto;width:100%}}
+
 
 /* Helix touch targets (FINDINGS 2026-08-07, measured live at 430px by HIT TEST).
    The flow tape's column-sort headers render 15px tall (`Time` 43x15, `Sym` 24x15, `Expiry`/`Strike`
@@ -21672,6 +21690,19 @@ html.product-shell .nav-mega {
 .nh-deck-play-pnl{font-size:14px;font-weight:800;white-space:nowrap}
 .nh-deck-play-empty{color:var(--dk-text-secondary);opacity:.6}
 .nh-deck-play-cell--status .nh-deck-status-pill{font-size:10px;padding:4px 8px;white-space:nowrap}
+/* Direction chip (L/S) + discovery-origin dot — compact row-level identity, omitted on a
+   condor row (chip) or a play with no recorded origin (dot). Origin is color-coded here even
+   though the detail panel's badge row (HeaderBadges) renders every origin in one flat color —
+   a bare dot carries no text, so the color IS the information; the panel already has the
+   origin's name spelled out and doesn't need the same distinction. */
+.nh-deck-dir-chip{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;
+  margin-right:5px;border-radius:3px;font-size:9px;font-weight:900;line-height:1;vertical-align:1px}
+.nh-deck-dir-chip.long{color:var(--dk-bull);background:rgba(0,217,163,.14)}
+.nh-deck-dir-chip.short{color:var(--dk-bear);background:rgba(240,99,124,.14)}
+.nh-deck-origin-dot{display:inline-block;width:5px;height:5px;margin-left:6px;border-radius:50%;vertical-align:2px}
+.nh-deck-origin-dot.is-flow{background:var(--dk-flow)}
+.nh-deck-origin-dot.is-breakout{background:var(--dk-bull)}
+.nh-deck-origin-dot.is-pin{background:var(--dk-ai)}
 .nh-deck-row-lifecycle-compact,.nh-deck-row-lifecycle{display:block;width:100%;text-align:left;padding:0;border-left-width:3px;border-left-color:transparent}
 .nh-deck-row-lifecycle-compact .nh-deck-lc-strip,.nh-deck-row-lifecycle .nh-deck-lc-strip{padding:10px 12px}
 .nh-deck-row-lifecycle{margin:2px 6px;border-radius:4px}
