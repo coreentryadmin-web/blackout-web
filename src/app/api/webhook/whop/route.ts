@@ -19,9 +19,13 @@ import {
   notifyScheduledCancellation,
   notifyCancellationReversed,
   notifyPaymentFailed,
+  notifyTrialEndingSoon,
 } from "@/lib/billing-lifecycle-email";
+import { resolveBillingKindFromMembership } from "@/lib/whop";
 import { wasSignupNudgeSent, markSignupNudgeSent } from "@/lib/whop-signup-nudge";
+import { wasTrialEndingNudgeSent, markTrialEndingNudgeSent } from "@/lib/whop-trial-nudge";
 import { completeSignupEmail } from "@/lib/email/templates/complete-signup";
+import { formatTrialEndLabel } from "@/lib/email/templates/trial-ending-soon";
 import { sendEmail } from "@/lib/email/resend-client";
 // #1895's OPS-facing Discord notification is a different consumer of the same event than
 // #1901's MEMBER-facing email — both stay.
@@ -439,6 +443,26 @@ export async function POST(req: NextRequest) {
       const { membershipId, email } = extractMembershipAndEmail(event.data);
       if (membershipId) await clearMembershipDunningGrace(membershipId);
       await syncEmailTier(email);
+    } else if (event.type === "membership.trial_ending_soon") {
+      const email = event.data.user?.email;
+      const membershipId = event.data.id;
+      if (email && membershipId && event.data.status === "trialing") {
+        const billingKind = resolveBillingKindFromMembership(event.data);
+        if (
+          (billingKind === "premium" || billingKind === "community") &&
+          !(await wasTrialEndingNudgeSent(membershipId))
+        ) {
+          const trialEndsLabel = formatTrialEndLabel(event.data.renewal_period_end);
+          const sent = await notifyTrialEndingSoon({ email, billingKind, trialEndsLabel });
+          if (sent) {
+            await markTrialEndingNudgeSent(membershipId);
+          }
+        }
+      } else if (!email) {
+        console.warn(
+          "[whop webhook] membership.trial_ending_soon: user.email is missing (null). Grant member:email:read on the Whop app."
+        );
+      }
     }
   } catch (error) {
     console.error("[whop webhook]", event.type, error);
