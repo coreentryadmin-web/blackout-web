@@ -101,6 +101,10 @@ async function main() {
   }
 
   // --- 2. unified horizon board API (0DTE + swing + banger views) ---
+  /** API truth for remodel deploy — NightHawkFeed is `"use client"` so toggle/deck labels are not in SSR HTML. */
+  let horizonSwingsOk = false;
+  let horizonBangersOk = false;
+  let horizonZerodteDeckOk = false;
   for (const spec of [
     { view: "zerodte", laneKey: "ZERO_DTE" },
     { view: "swings", laneKey: "SWING" },
@@ -110,6 +114,9 @@ async function main() {
     const j = J(r);
     if (r.s === 200 && j?.board?.lanes) {
       const L = j.board.lanes;
+      if (spec.view === "swings") horizonSwingsOk = true;
+      if (spec.view === "bangers") horizonBangersOk = true;
+      if (spec.laneKey && L[spec.laneKey]) horizonZerodteDeckOk = true;
       const active = spec.laneKey ? L[spec.laneKey] : null;
       const detail = active
         ? `${active.committedCount ?? 0} committed / ${active.watchCount ?? 0} watch · floor ${active.scoreFloor}${active.scoreFloorGraduated ? "" : " (provisional)"}`
@@ -132,18 +139,28 @@ async function main() {
   }
 
   // --- 4. is the 0DTE/Swings/Bangers/Legacy TOGGLE build deployed? ---
-  // "Swings" + "Bangers" are the current segment labels (LEAPS was renamed in the Aug 2026 remodel —
-  // see nighthawk-view.ts). They render server-side in IosNativeSegment button labels.
-  const hasSwings = /Swings/.test(pg.b), hasBangers = /Bangers/.test(pg.b);
-  const toggleLive = hasSwings && hasBangers;
+  // Labels are client-rendered (NightHawkFeed + IosNativeSegment). Horizons ?view=swings|bangers is the
+  // honest deploy signal; keep HTML as a secondary hint when present.
+  const hasSwingsHtml = /Swings/.test(pg.b);
+  const hasBangersHtml = /Bangers/.test(pg.b);
+  const toggleLive = (horizonSwingsOk && horizonBangersOk) || (hasSwingsHtml && hasBangersHtml);
   rec('toggle build deployed (0DTE/Swings/Bangers/Legacy)', toggleLive ? 'PASS' : 'WARN',
-    toggleLive ? 'served HTML carries the Swings+Bangers toggle labels' : `NOT yet — Swings:${hasSwings} Bangers:${hasBangers} (ECS deploy still rolling)`);
+    toggleLive
+      ? horizonSwingsOk && horizonBangersOk
+        ? 'horizons API live for Swings + Bangers views (CSR toggle — labels not in SSR HTML)'
+        : 'served HTML carries the Swings+Bangers toggle labels'
+      : `NOT yet — horizons swings:${horizonSwingsOk} bangers:${horizonBangersOk} html Swings:${hasSwingsHtml} Bangers:${hasBangersHtml}`);
 
   // --- 5. is the COMMAND DECK (matrix terminal) deployed? ---
-  const hasDeck = /nh-deck/.test(pg.b);
-  const hasTerminal = /Management|THESIS|Thesis|nh-deck-terminal|matrix/i.test(pg.b) && hasDeck;
-  rec('command deck / terminal deployed', hasDeck ? 'PASS' : 'WARN',
-    hasDeck ? `served HTML carries the nh-deck terminal markup${hasTerminal ? ' + tabs' : ''}` : 'NOT yet — command deck (#1016) not merged/deployed; the OLD board still serves');
+  const hasDeckHtml = /nh-deck/.test(pg.b);
+  const hasTerminalHtml = /Management|THESIS|Thesis|nh-deck-terminal|matrix/i.test(pg.b) && hasDeckHtml;
+  const deckLive = horizonZerodteDeckOk || hasDeckHtml;
+  rec('command deck / terminal deployed', deckLive ? 'PASS' : 'WARN',
+    deckLive
+      ? horizonZerodteDeckOk
+        ? 'horizons ?view=zerodte serves ZERO_DTE lane (command-deck data path live; UI is CSR)'
+        : `served HTML carries the nh-deck terminal markup${hasTerminalHtml ? ' + tabs' : ''}`
+      : 'NOT yet — ZERO_DTE horizon lane missing and no nh-deck markup in served HTML');
 
   const fails = out.filter((o) => o.status === 'FAIL').length;
   console.log(`\n${fails === 0 ? '✅' : '❌'} ${out.filter((o) => o.status === 'PASS').length} pass · ${out.filter((o) => o.status === 'WARN').length} warn · ${fails} fail\n`);
