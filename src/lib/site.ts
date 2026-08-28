@@ -12,6 +12,6 @@ export const SITE = {
   social: {
     x: { handle: "BlackOutTrade", url: "https://x.com/BlackOutTrade" },
     instagram: { handle: "blackouttrades", url: "https://www.instagram.com/blackouttrades" },
-    discord: { url: "https://discord.gg/5zSt7G34dw" },
+    discord: { url: "https://discord.gg/j9FNuBXfMH" },
   },
 } as const;
