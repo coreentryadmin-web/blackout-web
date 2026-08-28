@@ -805,6 +805,8 @@ export function VectorPageShell({
         picks={contractPicks}
         closedPicks={closedContractPicks}
         loading={contractPicksLoading}
+        spot={playEmit?.spot ?? liveSpot}
+        gammaFlip={playEmit?.gammaFlip ?? null}
         replayPaused={chartReplayMode}
         className="mb-2"
       />

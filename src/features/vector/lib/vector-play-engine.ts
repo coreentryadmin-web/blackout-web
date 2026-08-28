@@ -114,6 +114,8 @@ export type VectorPlayGrade = "A" | "B" | "C";
 export type VectorPlay = {
   style: VectorPlayStyle;
   bias: VectorPlayBias;
+  /** Branch that shaped headline/targets — pivot stays neutral in bias but still earns a PLYS rail. */
+  setup: PlaySetup;
   /** 0–100 blended conviction. */
   conviction: number;
   grade: VectorPlayGrade;
@@ -746,6 +748,7 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
   return {
     style,
     bias,
+    setup,
     conviction,
     grade,
     headline,

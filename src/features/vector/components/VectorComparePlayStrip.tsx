@@ -66,6 +66,8 @@ export function VectorComparePlayStrip({ ticker, snapshot, liveSession, replayPa
           picks={contractPicks}
           closedPicks={closedContractPicks}
           loading={contractPicksLoading}
+          spot={playEmit?.spot ?? null}
+          gammaFlip={playEmit?.gammaFlip ?? null}
           replayPaused={chartReplayMode}
         />
       </div>

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { fetchVectorContractPicks, type VectorContractPick } from "@/lib/api";
 import type { VectorPlayEmit } from "./vector-play-engine";
 import { vectorContractPickFetchKey } from "./vector-pick-context-key";
+import { effectivePickBias } from "./vector-pick-effective-bias";
 import type { FlowAlert } from "@/lib/api";
 
 const REFRESH_MS = 45_000;
@@ -27,7 +28,7 @@ export function useVectorContractPicks(
   const genRef = useRef(0);
 
   const play = emit?.play ?? null;
-  const bias = play?.bias ?? null;
+  const bias = play ? effectivePickBias(play, emit?.spot, emit?.gammaFlip) ?? play.bias : null;
   const contextKey = vectorContractPickFetchKey(emit, sessionFlows.length, excludeOccs);
 
   useEffect(() => {
