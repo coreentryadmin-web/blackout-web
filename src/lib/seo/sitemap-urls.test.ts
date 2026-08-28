@@ -11,6 +11,11 @@ describe("publicSitemapEntries", () => {
     }
   });
 
+  it("includes the public methodology / trust page", () => {
+    const paths = new Set(publicSitemapEntries().map((e) => e.path));
+    assert.ok(paths.has("/methodology"));
+  });
+
   it("does not include research gamma-levels paths while licensing is unresolved", () => {
     const paths = publicSitemapEntries().map((e) => e.path);
     const research = paths.filter((p) => p.startsWith("/research/gamma-levels"));

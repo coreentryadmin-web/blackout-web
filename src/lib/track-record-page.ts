@@ -78,7 +78,8 @@ export type TrackRecordPagePayload = {
   available?: boolean;
 };
 
-const METHODOLOGY =
+/** Shared anti-blend methodology paragraph — public /methodology page + member track record. */
+export const TRACK_RECORD_METHODOLOGY =
   "SPX Slayer results are graded from the closed play ledger (every opened play, no cherry-picking). " +
   "Night Hawk results are resolved target/stop outcomes from published editions. " +
   "Night Hawk returns reflect next-day underlying stock price movement from the published entry range midpoint — " +
@@ -261,7 +262,7 @@ export async function buildTrackRecordPagePayload(
         through: todayEt(),
         days: ZERODTE_WINDOW_DAYS,
       }),
-      methodology: METHODOLOGY,
+      methodology: TRACK_RECORD_METHODOLOGY,
       liveData: true,
     };
   } catch (error) {
@@ -279,7 +280,7 @@ export async function buildTrackRecordPagePayload(
         unresolved: 0,
         decided: 0,
       },
-      methodology: METHODOLOGY,
+      methodology: TRACK_RECORD_METHODOLOGY,
       liveData: false,
       available: false,
     };

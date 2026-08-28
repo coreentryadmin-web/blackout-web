@@ -851,6 +851,8 @@
   width:4px;height:4px;border-radius:50%;background:var(--g);box-shadow:0 0 6px var(--g);
   animation:chipPulse 2s ease-in-out infinite;
 }
+a.pipe-chip-link{text-decoration:none;color:inherit;cursor:pointer}
+a.pipe-chip-link:hover{background:rgba(163,230,53,.12);border-color:rgba(163,230,53,.22)}
 
 /* Canvas visual panel */
 .pipe-stage-visual{
