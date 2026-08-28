@@ -145,7 +145,12 @@ test("command center renders sortable play table column headers", async () => {
   assert.doesNotMatch(html, />TRIGGERED</);
 });
 
-test("CommandDeck command center renders stat strip for 0DTE", async () => {
+// Was "CommandDeck command center renders stat strip for 0DTE" — the Opps/Top/Edge stat strip +
+// engine heartbeat it asserted on were REMOVED from DeckCompactHeader per explicit product
+// direction (2026-08-28 page declutter): redundant with the view toggle above and the play list
+// itself, and they pushed the actual trade queue below the fold. This now pins the opposite: the
+// compact header renders ONLY the filter row, none of the removed chrome.
+test("CommandDeck command center header is filters-only — no stat strip, no engine heartbeat", async () => {
   const { CommandDeck } = await load();
   const html = renderToStaticMarkup(
     React.createElement(CommandDeck, {
@@ -160,13 +165,13 @@ test("CommandDeck command center renders stat strip for 0DTE", async () => {
     }),
   );
   assert.match(html, /nh-deck-header-compact/);
-  assert.match(html, /nh-deck-cmd/);
-  assert.match(html, />META \(A\+\)/);
-  assert.doesNotMatch(html, /Win Rate \(30d\)/);
-  assert.match(html, /nh-deck-engine-status/);
-  assert.match(html, />Engine</);
-  assert.match(html, />Monitoring</);
-  assert.match(html, />Updated</);
+  assert.match(html, /nh-deck-hdr-row--filters/);
+  assert.doesNotMatch(html, /nh-deck-cmd\b/);
+  assert.doesNotMatch(html, /nh-deck-cmd-lane/);
+  assert.doesNotMatch(html, />META \(A\+\)/);
+  assert.doesNotMatch(html, /nh-deck-engine-status/);
+  assert.doesNotMatch(html, />Engine</);
+  assert.doesNotMatch(html, />Updated</);
 });
 
 test("CommandDeck command center hides regime/funnel strips; prominent status filters", async () => {
