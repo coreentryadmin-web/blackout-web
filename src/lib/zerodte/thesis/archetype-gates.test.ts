@@ -51,3 +51,49 @@ test("FLOW_FOLLOWING: still blocks on its own FLOW floor", () => {
   assert.equal(result.verdict, "BLOCK");
   assert.ok(result.blocks.includes("flow_score_floor"));
 });
+
+test("FAILED_BREAKOUT: weak REVERSAL data with no other signal still reaches PASS (failed_break_reversal_floor was dead code)", () => {
+  // scoreReversalRail (rails/reversal.ts) starts at a base of 42 and only returns a hit once
+  // boosts push it to >=58, so a fired REVERSAL score is always >=58 — the removed
+  // `< 55` floor could never fire regardless of real signal quality.
+  const result = evaluateArchetypeGates({
+    archetype: "FAILED_BREAKOUT",
+    rail_scores: { REVERSAL: 58 },
+    structural_state: null,
+  });
+  assert.equal(result.verdict, "PASS");
+  assert.ok(!result.blocks.includes("failed_break_reversal_floor"));
+});
+
+test("FAILED_BREAKOUT: still watches when structural_state is still TRIGGERED", () => {
+  const result = evaluateArchetypeGates({
+    archetype: "FAILED_BREAKOUT",
+    rail_scores: { REVERSAL: 70 },
+    structural_state: "TRIGGERED",
+  });
+  assert.equal(result.verdict, "WATCH");
+  assert.ok(result.notes.includes("failed_break_still_triggered"));
+});
+
+test("VOL_EXPANSION: weak VOL data with COILED structure still reaches PASS (vol_rail_weak was dead code)", () => {
+  // scoreVolRail (rails/vol.ts) starts at a base of 45 and only returns a hit once boosts
+  // push it to >=52, so a fired VOL score is always >=52 — the removed `< 50` note could
+  // never fire regardless of real signal quality.
+  const result = evaluateArchetypeGates({
+    archetype: "VOL_EXPANSION",
+    rail_scores: { VOL: 52 },
+    structural_state: "COILED",
+  });
+  assert.equal(result.verdict, "PASS");
+  assert.ok(!result.notes.includes("vol_rail_weak"));
+});
+
+test("VOL_EXPANSION: still watches with no compression/trigger structural state", () => {
+  const result = evaluateArchetypeGates({
+    archetype: "VOL_EXPANSION",
+    rail_scores: { VOL: 80 },
+    structural_state: "EXTENDED",
+  });
+  assert.equal(result.verdict, "WATCH");
+  assert.ok(result.notes.includes("vol_expansion_no_compression"));
+});
