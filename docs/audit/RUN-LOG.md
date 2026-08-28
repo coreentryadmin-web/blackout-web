@@ -9,6 +9,21 @@ already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
 
+## 2026-08-28 (15:41 UTC) — RTH: Public surface validation (CLS, gamma-snapshot, GA4) — YELLOW
+
+**Severity.** P2 (CLS regression detected; public endpoint validation green; external Google Ads blocker remains)
+
+**Why it ran.** Scheduled RTH trigger (09:30-13:00 ET market hours validation). Homepage CLS measured post-Cloudflare purge.
+
+**Result.** 
+- **CLS regression detected** (1440×900px: 0.132 > 0.1 threshold) → `fix/homepage-cls-regression` branch opened, finding staged at `docs/audit/findings-staging/2026-08-28-homepage-cls-regression.md`. Desktop 1440px only; mobile (430×932), tablet (1024×768), and mid-range desktop (1300×900) all GOOD (CLS ≤0.001).
+- **Gamma-snapshot endpoint** LIVE and valid: serving real SPX data (spot 7747.9, call_wall 7800, put_wall 7500, flip 7761.89) with 5-second refresh cycle working.
+- **GA4 tag** live; Google Ads conversion tracking still blocked on operator provisioning `NEXT_PUBLIC_GOOGLE_ADS_ID` + label env vars to `blackout-production/app/env`.
+
+**Next step.** Coordinator review of `fix/homepage-cls-regression` PR when ready; investigate CLS root cause (font loading variance, client-side FX timing, CSS breakpoint reflow in 1200-1440px range, or asset cache interaction).
+
+---
+
 ## 2026-08-28 (01:09 UTC) — Outcome-grading cross-check re-run (`outcome-grading-audit.mjs --days=90`) — GREEN
 
 **Severity.** — (no defect found; confirms an earlier fix holds)
