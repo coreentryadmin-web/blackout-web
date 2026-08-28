@@ -15234,7 +15234,13 @@ pre-existing "**Status:**" line (colon inside bold, list-item) was not read by t
 
 ## 2026-07-21 — Wall / bead / matrix-drift end-to-end validation (live prod, RTH)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status.** FIXED — every sub-fix in this validation batch is individually marked "(FIXED, tested)" in
+its own sub-heading, and `cumulativeGammaFlip` (the central fix — one shared gamma-flip definition
+across heatmap/SPX-desk/reconstruct-rail/Nighthawk) is confirmed wired at
+`src/lib/providers/polygon-options-gex.ts:1404,3440` in `main` today. This entry-level line is added
+because the entry itself never carried one — the reconciler reads only the top-level status, not
+sub-heading outcomes.
 
 ### Live validation result: walls + beads + matrix % drift are numerically correct (PASS)
 - **Method:** minted one temp prod Clerk admin/premium user (deleted after), swept SPX/SPY/NVDA/ASTS ×
@@ -15292,7 +15298,11 @@ pre-existing "**Status:**" line (colon inside bold, list-item) was not read by t
 
 ## 2026-07-21 — SPX Slayer live CTO audit (99 samples, RTH) — fixes batch 1
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status.** FIXED — both sub-fixes confirmed present today: `gexStaleFromAge` and
+`roundPulseNumerics` in `src/features/spx/lib/spx-desk-numerics.ts:27,39`. This entry-level line is
+added because the entry itself never carried one — the reconciler reads only the top-level status,
+not sub-heading outcomes.
 
 Deep live audit of the SPX Slayer desk (poll every 15s, 18:54–19:35 UTC, cross-checked vs Polygon).
 No P0: 0 correctness violations across 99 samples (above_flip, flip/maxpain band, SPX≈10×SPY 10.032–10.035,
