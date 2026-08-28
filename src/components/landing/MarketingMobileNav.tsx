@@ -21,6 +21,24 @@ export function MarketingMobileNav({
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
 
+  /** Same-page hash links (/#protocol, /#modules) — Next client nav often drops the fragment. */
+  const onHashNavClick = useCallback(
+    (href: string) => (e: React.MouseEvent<HTMLAnchorElement>) => {
+      close();
+      const hashIdx = href.indexOf("#");
+      if (hashIdx === -1) return;
+      const hash = href.slice(hashIdx);
+      const pathPart = href.slice(0, hashIdx);
+      const isHomeHash = hash.startsWith("#") && (pathPart === "" || pathPart === "/");
+      if (!isHomeHash || typeof window === "undefined" || window.location.pathname !== "/") return;
+      e.preventDefault();
+      const id = hash.slice(1);
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      history.replaceState(null, "", `${window.location.pathname}${window.location.search}${hash}`);
+    },
+    [close],
+  );
+
   useEffect(() => {
     document.documentElement.classList.toggle("mkt-menu-open", open);
     return () => document.documentElement.classList.remove("mkt-menu-open");
@@ -96,7 +114,7 @@ export function MarketingMobileNav({
               href={l.href}
               prefetch={false}
               className={l.iosHide ? "hide-in-ios-app" : undefined}
-              onClick={close}
+              onClick={onHashNavClick(l.href)}
             >
               {l.label}
             </Link>
