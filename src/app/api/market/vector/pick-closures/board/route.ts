@@ -140,9 +140,18 @@ export async function GET(req: NextRequest) {
 
     const leadersAll = leaderRows.filter(leaderEligibleForBoard).map(toLeaderRow);
     const leaders = sortLeadersForBoard(leadersAll);
-    const leaderOccs = new Set(leaders.map((r) => r.contract.occ.trim().toUpperCase()));
+    // Dedupe only when the live leader row is already a winner — stale leader rows
+    // for the same OCC (e.g. MSFT closed at +50%, live row now −50%) must not hide
+    // the archived closure winner.
+    const leaderWinnerOccs = new Set(
+      leaders.filter((r) => r.is_winner).map((r) => r.contract.occ.trim().toUpperCase())
+    );
     const closedWinners = closedRows
-      .filter((row) => isVectorPickClosureWinner(row) && !leaderOccs.has(row.occ.trim().toUpperCase()))
+      .filter(
+        (row) =>
+          isVectorPickClosureWinner(row) &&
+          !leaderWinnerOccs.has(row.occ.trim().toUpperCase())
+      )
       .map(closureToWinnerLeader);
     const winners = sortLeadersForBoard([
       ...leaders.filter((r) => r.is_winner),

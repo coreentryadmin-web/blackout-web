@@ -53,6 +53,24 @@ describe("vector-pick-sweep-core", () => {
     assert.equal(isVectorPickClosureWinner({ premium_pct_from_entry: null }), false);
   });
 
+  test("closure winner not blocked by stale live leader on same OCC", () => {
+    const occ = "O:MSFT260828P00505000";
+    const leaders = [
+      {
+        contract: { occ },
+        is_winner: false,
+        premium_pct_from_entry: -50,
+        peak_premium_pct: -50,
+      },
+    ];
+    const leaderWinnerOccs = new Set(
+      leaders.filter((r) => r.is_winner).map((r) => r.contract.occ.trim().toUpperCase())
+    );
+    const closure = { occ, premium_pct_from_entry: 50 };
+    assert.equal(isVectorPickClosureWinner(closure), true);
+    assert.equal(leaderWinnerOccs.has(occ), false);
+  });
+
   test("sortLeadersForBoard orders by best pct", () => {
     const sorted = sortLeadersForBoard([
       { premium_pct_from_entry: 20, peak_premium_pct: 30 },
