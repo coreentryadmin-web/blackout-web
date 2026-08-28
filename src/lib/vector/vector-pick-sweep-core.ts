@@ -103,6 +103,14 @@ export function isVectorPickWinner(row: {
   return false;
 }
 
+/** Closed pick archived at/above winner floor — surfaces in Winners even after Don't buy. */
+export function isVectorPickClosureWinner(row: {
+  premium_pct_from_entry: number | null;
+}): boolean {
+  const pct = row.premium_pct_from_entry;
+  return pct != null && Number.isFinite(pct) && pct >= VECTOR_PICK_WINNER_PCT_FLOOR;
+}
+
 export function sortLeadersForBoard<
   T extends {
     premium_pct_from_entry: number | null;

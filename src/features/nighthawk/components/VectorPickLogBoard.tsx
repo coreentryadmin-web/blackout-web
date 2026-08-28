@@ -338,7 +338,10 @@ export function VectorPickLogBoard() {
             section === "closed" ? (
               <ClosureCard key={`c-${row.id}`} row={row as VectorClosurePlay} />
             ) : (
-              <LeaderCard key={`l-${row.id}`} row={row as VectorLeaderPlay} />
+              <LeaderCard
+                key={`${(row as VectorLeaderPlay).closed_winner ? "cw" : "l"}-${row.id}-${(row as VectorLeaderPlay).contract.occ}`}
+                row={row as VectorLeaderPlay}
+              />
             )
           )
         )}
