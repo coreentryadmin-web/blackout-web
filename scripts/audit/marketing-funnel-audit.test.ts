@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  cfPurgeTrustPagesGate,
   gammaLoadingFreshnessConflict,
   homepageH1AboveFold,
   methodologyPageGate,
   scanForbiddenMarketingCopy,
+  sitemapMethodologyGate,
   upgradeAnonSyncGate,
   whopScriptPriceParity,
 } from "./lib/marketing-funnel-eval.mjs";
@@ -56,4 +58,26 @@ test("upgradeAnonSyncGate: rejects paid sync in anonymous HTML", () => {
 test("methodologyPageGate: requires live trust copy", () => {
   assert.equal(methodologyPageGate("<html>Grading methodology — never blended</html>", 200).ok, true);
   assert.equal(methodologyPageGate("<html>404</html>", 404).ok, false);
+});
+
+test("sitemapMethodologyGate: requires methodology + learn URLs", () => {
+  const base = "https://blackouttrades.com";
+  assert.equal(
+    sitemapMethodologyGate(`<urlset><loc>${base}/methodology</loc><loc>${base}/learn</loc></urlset>`, base).ok,
+    true
+  );
+  assert.equal(sitemapMethodologyGate("<urlset><loc>https://blackouttrades.com/</loc></urlset>", base).ok, false);
+});
+
+test("cfPurgeTrustPagesGate: requires trust URLs in deploy purge list", () => {
+  assert.equal(
+    cfPurgeTrustPagesGate('"/methodology", "/sitemap.xml", "/why-blackout"').ok,
+    false
+  );
+  assert.equal(
+    cfPurgeTrustPagesGate(
+      '"/methodology", "/why-blackout", "/vs/others", "/tools/gamma-snapshot", "/sitemap.xml"'
+    ).ok,
+    true
+  );
 });
