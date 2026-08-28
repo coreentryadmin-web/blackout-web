@@ -38,15 +38,20 @@ export function useVectorActionablePicks(
 
   const play = emit?.play ?? null;
   const bias = play?.bias ?? null;
-  const contextKey = emit
-    ? `${emit.spot}|${emit.callWall}|${emit.putWall}|${play?.conviction}|${play?.headline}|${sessionFlows.length}|${bias}`
-    : "";
+  // SETUP key for the archive reset — deliberately narrower than useVectorContractPicks' own
+  // contextKey (which embeds live spot and re-fires on every price tick, by design, to trigger a
+  // re-rank). Using that same key here would clear excludeOccs/archivedClosed on nearly every
+  // tick — the exclusion never survives long enough to keep an invalidated pick out of the very
+  // next pool fetch, and the Closed strip would flicker empty and repopulate continuously. This
+  // key only changes on a genuinely NEW setup (new ticker, new directional bias, new thesis),
+  // which is the only time throwing away the archive is correct.
+  const setupKey = `${ticker}|${bias}|${play?.headline ?? ""}`;
 
   useEffect(() => {
     setExcludeOccs([]);
     setArchivedClosed([]);
     archivedOccsRef.current.clear();
-  }, [ticker, contextKey]);
+  }, [setupKey]);
 
   const { picks: pool, loading } = useVectorContractPicks(
     ticker,
