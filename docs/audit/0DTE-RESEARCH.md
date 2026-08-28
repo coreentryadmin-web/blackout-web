@@ -102,6 +102,41 @@ findings, both reproducible in `zerodte-sim.mjs`:
    universes over 352 plays (win-rate 32%→50%); it's the leading replacement, to graduate via the live
    counterfactual ledger per `exit-engine.ts`'s own "tune with data" design (FINDINGS 2026-07-23).
 
+**Follow-up scoped but BLOCKED (2026-08-28): does C-tier/untiered specifically benefit from
+trim-scale, or was "C stays ratchet" ever actually measured?** The E5 graduation (FINDINGS
+2026-08-xx, `resolveExitModeForTier`) shipped A/B on `trim_scale` and C on `ratchet` — but the 276/352
+-play E5 sweep above never split by tier at all, real or cosmetic (`convictionOf()` in
+`zerodte-sim.mjs` is explicitly labeled cosmetic; the real `assignZeroDteTier` was never invoked on
+the sim's plays). So "C-tier's signal quality doesn't justify the looser runway" (the comment in
+`exit-sync.ts`) is a plausible prior, not a measured result — exactly the gap Task tracking flagged as
+needing "a real E5-style backtest" before it's touched.
+
+Investigated building it and found **two real blockers, not just scope**:
+1. **No reachable data source carries real historical contract fields.** `GET
+   /api/market/zerodte/record` (the public API every other A/B script here reads) exposes grades
+   (`plan_outcome`/`managed_outcome`/`pnl_pct`) and `entry_context`, but NOT `entry_premium`,
+   `top_strike`, or `expiry` — those are separate DB columns (`scan.ts` writes them outside
+   `entry_context`) with no admin export route surfacing them per-play. Without entry premium/strike/
+   expiry, a real historical row can't be re-priced against the OCC option's own minute bars, so
+   `gradeThroughExitEngine` (the mark-faithful grader `zerodte-sim.mjs` already carries for exactly
+   this A/B) has nothing to replay.
+2. **`zerodte-sim.mjs`'s own simulated candidates can't be tiered correctly either.** `assignZeroDteTier`
+   needs `cortexScore`/`cortexVetoCount`/`cortexAbsentCount`/`vixOpen` — the sim runs real flow
+   accumulation and real chain/bar fetches but never runs Cortex or fetches VIX for its candidates, so
+   feeding its plays through the real tier function would cap most of them at B/C purely from missing-
+   evidence rules (`vixOpen == null` alone caps the ceiling at B) — a confound, not a genuine C-tier
+   sample. Forcing it through anyway would risk shipping a WRONG verdict on a real risk-management gate,
+   which is worse than leaving the question open.
+
+**What would unlock it:** either (a) an admin-scope `/record`-style export that includes
+`entry_premium`/`top_strike`/`expiry` per play (reusing the same auth pattern as the existing scripts,
+scoped read-only), letting the C-tier population be pulled from REAL committed rows and re-graded on
+real option bars — the higher-fidelity path since it uses real historical tier assignments
+(`tierFromEntryContext`, already computed correctly server-side); or (b) wiring a real VIX-open fetch +
+Cortex evaluation into `zerodte-sim.mjs`'s candidate loop so its own generated plays can be tiered
+correctly before grading. (a) is the smaller change and reuses more of what already exists. No gate
+touched; C-tier stays on `ratchet` pending real evidence either way.
+
 **The banger scale-out is the flagship, and it's the positive-skew spine both engines share.** Validated
 at scale (minute-bar realistic gap-fills, **7,086 movers / 500 sessions / 2 years / all sectors**):
 **+26% gross / ~+20% net-OOS** realized under the mechanical scale-out (0.5@2×, trail runner at 50% of
