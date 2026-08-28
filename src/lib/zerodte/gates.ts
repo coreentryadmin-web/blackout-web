@@ -289,11 +289,17 @@ export function scoreFloorForOrigins(origins: readonly string[] | null | undefin
   return ZERODTE_SCORE_FLOOR;
 }
 
-/** G-17 — single-rail whole-market commits (BREAKOUT-only or PIN-only) must clear the
- *  measured PRIME score band (75-84 ran 63.6% WR n=11, F-5) OR carry FLOW corroboration.
- *  Live 2026-08-25: every OPEN commit was BREAKOUT-only in the 53-68 band — momentum-only
- *  names with no whale-flow confirmation. FLOW-present setups (incl. FLOW+BREAKOUT merge +8)
- *  may commit at the unified 65 floor; this gate only fires on lone whole-market rails. */
+/** G-17 — the 65-74 score band requires the PRIME floor (75) UNLESS the setup clears it on its
+ *  own merits some other way. Originally (2026-08-06, n=11) scoped to single-rail whole-market
+ *  commits only — BREAKOUT-only or PIN-only — on the theory that FLOW/multi-rail corroboration
+ *  was itself enough evidence to skip the extra floor. EXTENDED 2026-08-28 (real n=152 over a
+ *  90-day window, /api/market/zerodte/record) after that theory stopped holding: multi-rail/FLOW
+ *  commits in the UNRESTRICTED 65-74 band graded 35.7% WR / -10.43% avg pnl (n=34) — WORSE than
+ *  single-rail-without-flow at the 75+ floor (41.0% WR / -3.76% avg pnl, n=89, the only single-rail
+ *  population that can even commit) and worse than multi-rail/FLOW itself at 75+ (42.3% WR /
+ *  -11.6% avg pnl, n=29). The 65-74 band is weak EV on its OWN score, independent of rail
+ *  composition — corroboration was never actually buying safety there, it was just exempting a
+ *  weak-score population from the floor that governs everyone else in that band. */
 export const ZERODTE_SINGLE_RAIL_PRIME_MIN = envInt("ZERODTE_SINGLE_RAIL_PRIME_MIN", 75);
 
 /** True when discovery_origin is exactly one non-FLOW rail (BREAKOUT or PIN alone). Pure. */
@@ -564,21 +570,25 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     });
   }
 
-  // G-17 — single-rail corroboration (BREAKOUT-only / PIN-only). Whole-market rails without a
-  // FLOW print must clear the prime band — the 65-74 bucket is positive EV for FLOW-backed
-  // setups but today's BREAKOUT-only commits clustered there with no independent confirmation.
+  // G-17 — the 65-74 band requires the PRIME floor (75) for EVERY origin combo, not just
+  // single-rail-without-flow. Extended 2026-08-28: multi-rail/FLOW commits in this band measured
+  // WORSE (35.7% WR, n=34) than single-rail-without-flow at the 75+ floor (41.0% WR, n=89) — the
+  // FLOW/multi-rail exemption was never buying safety, the whole 65-74 band is weak EV on its own
+  // score regardless of corroboration. See ZERODTE_SINGLE_RAIL_PRIME_MIN doc comment for the full
+  // measurement.
   if (
     !isCondor &&
-    isSingleRailWithoutFlow(input.discovery_origin) &&
+    input.score >= scoreFloorForOrigins(input.discovery_origin) &&
     input.score < ZERODTE_SINGLE_RAIL_PRIME_MIN
   ) {
-    const rail = (input.discovery_origin ?? [])[0] ?? "whole-market";
+    const single = isSingleRailWithoutFlow(input.discovery_origin);
+    const rail = single ? ((input.discovery_origin ?? [])[0] ?? "whole-market") : "multi-rail/FLOW";
     blocks.push({
       code: "single_rail_corroboration",
       reason:
-        `${rail}-only setup scored ${Math.round(input.score)} — needs ≥${ZERODTE_SINGLE_RAIL_PRIME_MIN} ` +
-        "without a FLOW corroborating print (prime band ran 63.6% WR vs 50% at 65-74). " +
-        "Multi-rail FLOW+BREAKOUT/PIN may commit at the 65 floor.",
+        `${rail} setup scored ${Math.round(input.score)} — the 65-74 band needs ≥${ZERODTE_SINGLE_RAIL_PRIME_MIN} ` +
+        "regardless of rail corroboration (measured 2026-08-28: multi-rail/FLOW in this band ran " +
+        "35.7% WR, worse than single-rail at the 75+ floor).",
       threshold: ZERODTE_SINGLE_RAIL_PRIME_MIN,
       unlock_et: null,
     });

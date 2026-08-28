@@ -259,7 +259,7 @@ const GATE_LABELS: Record<string, string> = {
   no_market_bias: "G-1 · tape unreadable",
   opening_window: "G-2 · opening window",
   score_floor: "G-3 · score floor",
-  single_rail_corroboration: "G-17 · single-rail prime band",
+  single_rail_corroboration: "G-17 · prime band floor (65-74)",
   governor_max_concurrent: "governor · plans cap",
   governor_session_stops: "governor · stop halt",
   governor_reentry_lock: "governor · re-entry lock",
