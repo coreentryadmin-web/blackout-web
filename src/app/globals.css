@@ -3301,6 +3301,51 @@ html.product-shell .nav-mega {
     color: #f0637c;
   }
 
+  /* Clickable rows — a click reveals the play's evidence (score/conviction/underlying move/
+     direction-hit) without leaving the table, i.e. a real "panel" in miniature rather than a
+     dead cell grid. */
+  .nh-history-row {
+    @apply cursor-pointer;
+  }
+
+  .nh-history-expand-caret {
+    @apply mr-1 inline-block text-[9px] text-sky-300/50 transition-transform;
+  }
+
+  .nh-history-expand-caret.is-open {
+    transform: rotate(90deg);
+  }
+
+  .nh-history-detail-row td {
+    @apply border-b p-0;
+    border-color: rgba(255, 255, 255, 0.04);
+  }
+
+  .nh-history-detail {
+    @apply flex flex-wrap gap-x-4 gap-y-1.5 px-2 py-2 font-mono text-[10px];
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .nh-history-detail-item {
+    @apply flex flex-col gap-0.5;
+  }
+
+  .nh-history-detail-label {
+    @apply text-[9px] font-bold uppercase tracking-[0.08em] text-sky-300/60;
+  }
+
+  .nh-history-detail-tone-is-up {
+    color: var(--dk-bull, #00d9a3);
+  }
+
+  .nh-history-detail-tone-is-down {
+    color: var(--dk-bear, #f0637c);
+  }
+
+  .nh-history-detail-tone-is-flat {
+    color: var(--dk-warn, #f0b94a);
+  }
+
   .nighthawk-market-context {
     @apply grid gap-2 shrink-0;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));

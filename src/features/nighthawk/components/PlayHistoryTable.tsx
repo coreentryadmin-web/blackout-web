@@ -16,7 +16,7 @@
 // ("flat") — never a red/amber/green ramp keyed to magnitude the way WinRateBar's tier bars
 // use elsewhere in this same panel. A history row is a single realized outcome, not a rate;
 // there is no "weak win" shade to earn here, only up, down, or flat.
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import type { ZeroDteRecordPlay } from "@/lib/zerodte/record";
 import type { ZeroDteTier } from "@/lib/zerodte/tiers";
@@ -64,6 +64,19 @@ function pnlTone(v: number | null | undefined): "is-up" | "is-down" | "is-flat" 
   return "is-flat";
 }
 
+/** direction_hit reuses the SAME three-tone vocabulary as pnlTone rather than a 4th color:
+ *  true -> up (the underlying moved the called way), false -> down, null -> flat (never
+ *  measured — an unresolved-underlying row is neutral evidence, not a miss). */
+function hitTone(hit: boolean | null): "is-up" | "is-down" | "is-flat" {
+  if (hit == null) return "is-flat";
+  return hit ? "is-up" : "is-down";
+}
+
+function fmtMovePct(v: number | null): string {
+  if (v == null || !Number.isFinite(v)) return EM_DASH;
+  return `${v >= 0 ? "+" : ""}${v}%`;
+}
+
 export const HISTORY_WINDOW_OPTIONS = [7, 30, 90] as const;
 export type HistoryWindowDays = (typeof HISTORY_WINDOW_OPTIONS)[number];
 
@@ -94,6 +107,7 @@ export function PlayHistoryTable({
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   // The calendar reflects the FULL window regardless of the ticker/direction/tier filters
   // below it — it's a second, independent axis to narrow by (same relationship the status
@@ -249,22 +263,73 @@ export function PlayHistoryTable({
               </tr>
             </thead>
             <tbody>
-              {sorted.map((p, i) => (
-                <tr key={`${p.session_date}-${p.ticker}-${p.flagged_at}-${i}`}>
-                  <td className="tabular-nums">{p.session_date}</td>
-                  <td className="nh-history-ticker">{p.ticker}</td>
-                  <td>
-                    <span className={clsx("nh-history-dir", p.direction === "long" ? "is-long" : "is-short")}>
-                      {p.direction === "long" ? "L" : "S"}
-                    </span>
-                  </td>
-                  <td>{p.tier ?? EM_DASH}</td>
-                  <td>{humanizeOutcome(p.managed_outcome)}</td>
-                  <td className={clsx("nh-history-col-num tabular-nums nh-history-pnl", pnlTone(p.managed_pnl_pct))}>
-                    {fmtSignedPct(p.managed_pnl_pct)}
-                  </td>
-                </tr>
-              ))}
+              {sorted.map((p, i) => {
+                const rowKey = `${p.session_date}-${p.ticker}-${p.flagged_at}-${i}`;
+                const isOpen = expandedKey === rowKey;
+                return (
+                  <Fragment key={rowKey}>
+                    <tr
+                      className="nh-history-row"
+                      onClick={() => setExpandedKey(isOpen ? null : rowKey)}
+                      aria-expanded={isOpen}
+                    >
+                      <td className="tabular-nums">
+                        <span className={clsx("nh-history-expand-caret", isOpen && "is-open")} aria-hidden>
+                          ▸
+                        </span>
+                        {p.session_date}
+                      </td>
+                      <td className="nh-history-ticker">{p.ticker}</td>
+                      <td>
+                        <span className={clsx("nh-history-dir", p.direction === "long" ? "is-long" : "is-short")}>
+                          {p.direction === "long" ? "L" : "S"}
+                        </span>
+                      </td>
+                      <td>{p.tier ?? EM_DASH}</td>
+                      <td>{humanizeOutcome(p.managed_outcome)}</td>
+                      <td className={clsx("nh-history-col-num tabular-nums nh-history-pnl", pnlTone(p.managed_pnl_pct))}>
+                        {fmtSignedPct(p.managed_pnl_pct)}
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="nh-history-detail-row">
+                        <td colSpan={6}>
+                          <div className="nh-history-detail">
+                            <div className="nh-history-detail-item">
+                              <span className="nh-history-detail-label">Flagged</span>
+                              <span className="tabular-nums">{p.flagged_et}</span>
+                            </div>
+                            <div className="nh-history-detail-item">
+                              <span className="nh-history-detail-label">Score</span>
+                              <span className="tabular-nums">{p.score}</span>
+                            </div>
+                            <div className="nh-history-detail-item">
+                              <span className="nh-history-detail-label">Conviction</span>
+                              <span>{p.conviction ?? EM_DASH}</span>
+                            </div>
+                            <div className="nh-history-detail-item">
+                              <span className="nh-history-detail-label">Underlying move</span>
+                              <span className={clsx("tabular-nums", `nh-history-detail-tone-${hitTone(p.direction_hit)}`)}>
+                                {fmtMovePct(p.move_pct)}
+                              </span>
+                            </div>
+                            <div className="nh-history-detail-item">
+                              <span className="nh-history-detail-label">Direction hit</span>
+                              <span className={`nh-history-detail-tone-${hitTone(p.direction_hit)}`}>
+                                {p.direction_hit == null ? "unresolved" : p.direction_hit ? "yes" : "no"}
+                              </span>
+                            </div>
+                            <div className="nh-history-detail-item">
+                              <span className="nh-history-detail-label">Graded via</span>
+                              <span>{p.managed_source ?? EM_DASH}</span>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>

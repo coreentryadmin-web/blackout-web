@@ -132,6 +132,13 @@ test("a session with plays but none graded yet still gets a calendar cell, toned
   assert.match(html, /nh-history-cal-cell is-flat/);
 });
 
+test("rows render collapsed by default — no detail drawer content on first render", () => {
+  const html = renderTable();
+  assert.match(html, /aria-expanded="false"/, "rows start collapsed");
+  assert.doesNotMatch(html, /Direction hit/, "the detail drawer content should not be in the initial DOM");
+  assert.match(html, /nh-history-expand-caret/, "a clickable affordance should still be visible");
+});
+
 test("P&L cells use exactly the three tone classes — no magnitude ramp", () => {
   const html = renderTable();
   assert.match(html, /nh-history-col-num tabular-nums nh-history-pnl is-up/);
