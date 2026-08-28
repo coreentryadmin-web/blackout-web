@@ -189,43 +189,66 @@
  * ("0DTESwingsBangersLegacy"). Structural rules mirrored from ios-native-pages.css so this page
  * doesn't depend on a bundle it never loads; the color/theme rules below are flat/single-accent.
  */
+/* Flat underline tabs (X Ads Manager reference: "Funding instruments | Campaigns | Ad groups |
+   Ads") replacing the old filled-pill segmented control (explicit direction, 2026-08-28: "see how
+   cool their tabs selection is .. ours is so horrible"). Left-aligned, content-width tabs — not
+   flex:1 stretched — with a thin 2px underline indicator (still the SAME framer-motion
+   `layoutId="ios-native-segment-indicator"` span from IosNativeSegment.tsx, just repositioned
+   from a full-button pill fill to a bottom-edge bar) and a real weight/color jump between active
+   and inactive rather than an inverted-background pill. No box, no border, no background — flat,
+   like the reference. */
 .nh-v2-page .ios-native-segment {
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  margin: 0.35rem 0 0.65rem;
-  border-radius: 10px;
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+  align-items: stretch;
+  gap: 22px;
+  padding: 0;
+  margin: 0 0 0.85rem;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
   box-shadow: none;
 }
 
 .nh-v2-page .ios-native-segment-btn {
-  flex: 1;
-  min-height: 2.625rem;
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 2.5rem;
+  padding: 0 2px 0.7rem;
   border: 0;
-  border-radius: 8px;
+  border-radius: 0;
   background: transparent;
-  color: var(--nh-label) !important;
-  font-weight: 700 !important;
-  font-size: 14px !important;
-  letter-spacing: 0.02em;
+  color: rgba(154, 163, 178, 0.75) !important;
+  font-weight: 600 !important;
+  font-size: 14.5px !important;
+  letter-spacing: 0.01em;
   -webkit-tap-highlight-color: transparent;
-  transition:
-    transform 0.15s ease,
-    background 0.15s ease,
-    color 0.15s ease;
+  transition: color 0.15s ease;
+}
+
+.nh-v2-page .ios-native-segment-btn:hover:not(.ios-native-segment-btn-active) {
+  color: rgba(224, 242, 254, 0.92) !important;
 }
 
 .nh-v2-page .ios-native-segment-btn:active {
-  transform: scale(0.97);
+  transform: none;
 }
 
 .nh-v2-page .ios-native-segment-btn-active {
-  color: #0b0c0f !important;
+  color: #f4f7fb !important;
   font-weight: 800 !important;
-  background: var(--segment-accent, var(--nh-accent));
+  background: transparent;
   box-shadow: none;
+}
+
+.nh-v2-page .ios-native-segment-indicator {
+  top: auto;
+  bottom: -1px;
+  left: 2px;
+  right: 2px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--segment-accent, var(--nh-accent));
+  box-shadow: 0 0 10px -1px var(--segment-accent, var(--nh-accent));
 }
 
 /* Kill muted utility classes inside the desk (keep intentional stale/pulled opacity) */
