@@ -17,6 +17,7 @@ import {
   VisualTrimLadder,
 } from "./TerminalPremiumPanels";
 import { CondorPanel, TimeStopClock } from "./play-terminal-shared";
+import { ThesisHealthPanel } from "./ThesisHealthPanel";
 
 const usd = (n: number | null | undefined): string => (n != null ? `$${n.toFixed(2)}` : "—");
 const signPct = (n: number | null | undefined): string =>
@@ -112,6 +113,25 @@ export function ZeroDteCommandPanel({
         )}
         {thesisLine && <span className="nh-deck-verdict-band__thesis">{thesisLine}</span>}
       </div>
+
+      {/* Thesis Integrity — "why did we enter, and is that reason still true right now?"
+          `ThesisHealthPanel` already existed on disk fully built and styled (per-pillar
+          commit-vs-current bars, health score, rung, "why health moved" lines) but was never
+          reachable — the last call site sat behind a dead `!premium` branch that was always
+          false for 0DTE plays (see the PlayTerminal.tsx comment where it was removed) and no
+          live-panel replacement was ever wired in. `play.thesisHealth` itself is unaffected by
+          that dead branch — it's computed server-side (thesis-health.ts) for every OPEN/HOLD/TRIM
+          0DTE play with a frozen entry_context, independent of any UI path. Rendering it here,
+          ahead of the static "why we picked it" evidence, surfaces the live entry-vs-now
+          comparison as the primary signal it should be, not a buried one-line advisory string. */}
+      {play.thesisHealth && (
+        <section className="nh-deck-command-section" aria-labelledby="nh-cmd-thesis-health">
+          <h3 id="nh-cmd-thesis-health" className="nh-deck-command-heading">
+            Thesis integrity
+          </h3>
+          <ThesisHealthPanel health={play.thesisHealth} liveRec={badge} />
+        </section>
+      )}
 
       <section className="nh-deck-command-section" aria-labelledby="nh-cmd-evidence">
         <h3 id="nh-cmd-evidence" className="nh-deck-command-heading">
