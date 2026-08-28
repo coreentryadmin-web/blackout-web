@@ -1,6 +1,7 @@
 import "server-only";
 
 import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
+import { fetchHotTickers } from "@/lib/bie/hot-tickers";
 import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import { buildRankedVectorPicks, VECTOR_CANDIDATE_POOL_SIZE } from "@/features/vector/lib/vector-contract-picks";
@@ -23,6 +24,7 @@ import {
 import { upsertVectorPickLeader } from "@/lib/vector/vector-pick-leaders-db";
 import {
   mergePeakPremiumPct,
+  mergeSweepTickerUniverse,
   pickContextFromFullState,
   vectorPickLeaderKey,
 } from "@/lib/vector/vector-pick-sweep-core";
@@ -164,6 +166,7 @@ export async function sweepVectorPickForTicker(
       premium: pick.premium,
       confidence: pick.confidence,
       caveat: pick.caveat,
+      tier: pick.tier ?? "standard",
       sweep: true,
     };
 
@@ -250,7 +253,12 @@ export async function runVectorPickUniverseSweep(): Promise<VectorPickSweepSumma
     };
   }
 
-  const tickers = vectorUniverseTickers();
+  const base = vectorUniverseTickers();
+  const hot = await fetchHotTickers(12).catch(() => []);
+  const tickers = mergeSweepTickerUniverse(
+    base,
+    hot.map((h) => h.ticker)
+  );
   const results: VectorPickSweepTickerResult[] = [];
 
   for (let i = 0; i < tickers.length; i += SWEEP_CONCURRENCY) {

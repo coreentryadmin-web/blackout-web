@@ -37,6 +37,7 @@ export type VectorLeaderPlay = {
   spot: number | null;
   updated_at: string;
   is_winner: boolean;
+  tier?: "elite" | "standard";
 };
 
 export type VectorPickBoardResponse = {

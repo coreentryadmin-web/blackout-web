@@ -206,6 +206,9 @@ export function VectorContractPicksCard({
             STALE
           </span>
         ) : null}
+        {pick.tier === "elite" ? (
+          <span className="vector-contract-pick-elite-tag">ELITE</span>
+        ) : null}
         {!opts?.closed && (pick.rank ?? i + 1) === 1 && !pick.actionStatus ? (
           <span className="vector-contract-pick-primary-tag">Primary</span>
         ) : null}

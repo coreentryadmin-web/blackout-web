@@ -4,6 +4,7 @@ import {
   isVectorPickWinner,
   leaderEligibleForBoard,
   mergePeakPremiumPct,
+  mergeSweepTickerUniverse,
   pickContextFromFullState,
   sortLeadersForBoard,
   VECTOR_PICK_WINNER_PCT_FLOOR,
@@ -50,6 +51,19 @@ describe("vector-pick-sweep-core", () => {
       { premium_pct_from_entry: 300, peak_premium_pct: 300 },
     ]);
     assert.equal(sorted[0]!.premium_pct_from_entry, 300);
+  });
+
+  test("sortLeadersForBoard floats elite tier first", () => {
+    const sorted = sortLeadersForBoard([
+      { premium_pct_from_entry: 400, peak_premium_pct: 400, tier: "standard" },
+      { premium_pct_from_entry: 50, peak_premium_pct: 50, tier: "elite" },
+    ]);
+    assert.equal(sorted[0]!.tier, "elite");
+  });
+
+  test("mergeSweepTickerUniverse hot-first dedupes", () => {
+    const merged = mergeSweepTickerUniverse(["SPY", "NVDA", "INTC"], ["INTC", "SMCI"], 10);
+    assert.deepEqual(merged.slice(0, 3), ["INTC", "SMCI", "SPY"]);
   });
 
   test("leaderEligibleForBoard includes active and high pct closed", () => {

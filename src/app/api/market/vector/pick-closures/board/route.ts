@@ -43,6 +43,9 @@ function toClosureRow(row: Awaited<ReturnType<typeof fetchVectorPickClosureRows>
 }
 
 function toLeaderRow(row: Awaited<ReturnType<typeof fetchVectorPickLeaderRows>>[number]) {
+  const pickCtx = row.pick_context;
+  const tierRaw = pickCtx && typeof pickCtx.tier === "string" ? pickCtx.tier : null;
+  const tier = tierRaw === "elite" ? "elite" : "standard";
   return {
     id: row.id,
     ticker: row.ticker,
@@ -66,6 +69,7 @@ function toLeaderRow(row: Awaited<ReturnType<typeof fetchVectorPickLeaderRows>>[
     spot: row.spot,
     play: row.vector_play,
     pick_context: row.pick_context,
+    tier,
     updated_at: row.updated_at,
     is_winner: isVectorPickWinner(row),
   };

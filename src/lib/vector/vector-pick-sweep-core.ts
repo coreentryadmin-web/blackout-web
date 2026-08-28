@@ -7,6 +7,27 @@ import type { VectorPickActionStatus } from "@/features/vector/lib/vector-pick-l
 
 export const VECTOR_PICK_WINNER_PCT_FLOOR = 50;
 export const VECTOR_PICK_LEADER_PCT_FLOOR = 15;
+/** Cap merged universe + hot-ticker sweep list (hot names first). */
+export const VECTOR_SWEEP_TICKER_CAP = 56;
+
+/** Hot HELIX names first, then the static Vector universe — deduped, capped. */
+export function mergeSweepTickerUniverse(
+  base: readonly string[],
+  hot: readonly string[],
+  maxTotal = VECTOR_SWEEP_TICKER_CAP
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (raw: string) => {
+    const u = raw.trim().toUpperCase();
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    out.push(u);
+  };
+  for (const t of hot) push(t);
+  for (const t of base) push(t);
+  return out.slice(0, Math.max(1, maxTotal));
+}
 
 export function vectorPickLeaderKey(sessionDate: string, ticker: string, occ: string): string {
   return `${sessionDate}:${ticker.trim().toUpperCase()}:${occ.trim().toUpperCase()}`;
@@ -82,10 +103,24 @@ export function isVectorPickWinner(row: {
   return false;
 }
 
-export function sortLeadersForBoard<T extends { premium_pct_from_entry: number | null; peak_premium_pct: number | null }>(
-  rows: T[]
-): T[] {
+export function sortLeadersForBoard<
+  T extends {
+    premium_pct_from_entry: number | null;
+    peak_premium_pct: number | null;
+    pick_context?: Record<string, unknown> | null;
+    tier?: string | null;
+  },
+>(rows: T[]): T[] {
+  const isElite = (r: T): boolean =>
+    r.tier === "elite" ||
+    Boolean(
+      r.pick_context &&
+        typeof r.pick_context.tier === "string" &&
+        r.pick_context.tier === "elite"
+    );
   return [...rows].sort((a, b) => {
+    const eliteDelta = Number(isElite(b)) - Number(isElite(a));
+    if (eliteDelta !== 0) return eliteDelta;
     const aPct = Math.max(a.premium_pct_from_entry ?? -Infinity, a.peak_premium_pct ?? -Infinity);
     const bPct = Math.max(b.premium_pct_from_entry ?? -Infinity, b.peak_premium_pct ?? -Infinity);
     return bPct - aPct;

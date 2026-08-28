@@ -12380,6 +12380,9 @@ html.product-shell .nav-mega {
   .vector-contract-pick-primary-tag {
     @apply rounded border border-violet-400/40 bg-violet-400/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-violet-300;
   }
+  .vector-contract-pick-elite-tag {
+    @apply rounded border border-amber-400/50 bg-amber-400/15 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide text-amber-200;
+  }
   .vector-contract-pick-dte {
     @apply text-[10px] font-normal text-white/45;
   }

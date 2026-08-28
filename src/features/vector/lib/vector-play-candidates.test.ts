@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { rankVectorPlayCandidates, pickContractNearTarget } from "./vector-play-candidates";
+import { rankVectorPlayCandidates, pickContractNearTarget, classifyVectorPickTier, minRankScoreToShow } from "./vector-play-candidates";
 import type { ChainStrikeRow, EditionChainData } from "@/features/nighthawk/lib/option-chain-prompt";
 import type { VectorPlayPickContext } from "./vector-play-candidates";
 import { todayEtYmd } from "@/lib/providers/spx-session";
@@ -320,4 +320,23 @@ test("pickContractNearTarget: chooses strike closest to target in DTE window", (
   };
   const picked = pickContractNearTarget(chain, "long", 98, 1, 7);
   assert.equal(picked?.strike, 98);
+});
+
+test("classifyVectorPickTier: mega whale surfaces elite", () => {
+  assert.equal(
+    classifyVectorPickTier({
+      playGrade: "B",
+      playConviction: 62,
+      role: "flow-whale",
+      rankScore: 74,
+      flowPremiumAtStrike: 2_500_000,
+      atKeyLevel: false,
+    }),
+    "elite"
+  );
+});
+
+test("minRankScoreToShow: whale role lowers bar", () => {
+  assert.equal(minRankScoreToShow("flow-whale", 600_000), 44);
+  assert.equal(minRankScoreToShow("primary-long", 600_000), 52);
 });

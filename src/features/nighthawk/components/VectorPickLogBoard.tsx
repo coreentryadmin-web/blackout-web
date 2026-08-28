@@ -60,6 +60,7 @@ function LeaderCard({ row }: { row: VectorLeaderPlay }) {
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-bold text-white">{row.ticker}</span>
             {statusBadge(row.action_status, row.is_winner)}
+            {row.tier === "elite" ? <Badge tone="accent">Elite</Badge> : null}
             {row.setup_invalidated ? <Badge tone="accent">Thesis stressed</Badge> : null}
           </div>
           <p className="mt-1 text-sm font-bold text-sky-100">
