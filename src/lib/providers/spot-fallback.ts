@@ -13,6 +13,24 @@ const mem = new Map<string, { at: number; quote: SpotQuote }>();
 const MEM_TTL_MS = 5_000;
 
 /**
+ * UW's `/stock-state` endpoint does not serve index tickers at all — confirmed live against
+ * production UW: SPX, VIX, NDX, and RUT all return HTTP 422 "Stock state data is not available
+ * for index ticker X" (SPY, a real ETF rather than an index, returns 200 normally). This function
+ * is called explicitly with index option roots (e.g. `I:SPX` from socket-cluster-health.ts) as a
+ * fallback for when Polygon's indices feed is down — so without this check, the fallback could
+ * never actually work for the exact ticker (SPX) it exists to protect, while still burning a
+ * network round-trip and polluting UW's error-rate metrics on every attempt. Measured live
+ * 2026-08-28: 13/31 UW calls errored in one 5-minute window, entirely this call for SPX.
+ * A real index-compatible spot source exists (`/spot-exposures/strike` carries a `price` field
+ * and IS index-compatible — used elsewhere in this file's siblings for GEX), but wiring it in
+ * here changes this function's cost profile and `change_pct` semantics (that endpoint carries no
+ * prior-close field), so it's left as a follow-up rather than folded into this fix.
+ */
+export function isUwStockStateUnsupportedIndex(optionsRoot: string): boolean {
+  return optionsRoot.toUpperCase().startsWith("I:");
+}
+
+/**
  * Best-effort spot from UW `/stock-state` when Polygon WS/REST/cluster snapshot are all cold.
  * Short in-process cache (5s) so burst callers (heatmap-warm, data-correctness) share one UW hit.
  */
@@ -20,6 +38,7 @@ export async function resolveSpotFromUwStockState(
   optionsRoot: string,
   now = Date.now()
 ): Promise<SpotQuote | null> {
+  if (isUwStockStateUnsupportedIndex(optionsRoot)) return null;
   const uwTicker = uwTickerFromOptionsRoot(optionsRoot);
   if (!uwTicker) return null;
 
