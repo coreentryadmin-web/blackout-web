@@ -1,0 +1,13 @@
+## 2026-08-28 — [FINDING, P3 cosmetic, ops noise] Data-correctness FLAG alerts printed the ticker twice ("MSTR MSTR $138 CALL...") — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Live, caught by eye in `#website-logs`: `Data-correctness FLAG ×1 (platform)` alert read "1 sampled play(s) are CONTRADICTED by the live chain (strike present but OI below the liquidity floor): MSTR MSTR $138 CALL @ $6.08 — Sep 4, entry prem ~$6.08." — the ticker appears twice. |
+| **Root cause** | `nighthawk-verifier.ts`'s cross-provider/strike check unconditionally built the alert detail as `` `${play.ticker} ${play.options_play}` ``. Every real generator of `options_play` — `formatOptionsPlay()` (`deterministic-edition.ts`), `grounding.ts`'s unconfirmed-contract fallback, and `play-backfill.ts` — already writes the ticker as the narrative's own leading word (e.g. `"MSTR $138 CALL @ $6.08 — Sep 4"`), so prepending `play.ticker` again duplicated it. |
+| **What this does NOT mean** | This is a message-formatting bug only — it does not affect the underlying check's correctness. The flag itself is real and means what it says: the sampled play's strike is genuinely present in the live Polygon chain (not a data error) but its open interest is below the platform's liquidity floor, i.e. a currently-published play recommends a contract too thin to be considered safely tradeable. |
+| **Fix** | Only prepend `play.ticker` when `options_play` doesn't already start with it (case-insensitive check) — defensive against any future/edge-case source that doesn't self-prefix, rather than assuming every caller behaves like the three generators audited here. |
+| **Evidence** | New regression test constructs a CONTRADICTED play and asserts the ticker appears exactly once in the resulting detail string; confirmed it fails (2 occurrences) against the pre-fix code and passes (1 occurrence) with the fix. Existing `nighthawk-verifier-chain-pulled.test.ts` and `nighthawk-verifier.test.ts` (10 tests) unaffected. `tsc --noEmit` clean. |
+| **What this does NOT fix** | The alert firing twice in the same minute (visible in the same screenshot) — traced the two `notifyOpsDiscord` call sites in `src/app/api/cron/data-correctness/route.ts` and confirmed they sit in mutually exclusive branches (async-full dispatch vs. synchronous path) within a single request, so this specific duplication is not a same-request double-fire. Left as an open question — likely an infra-level double-trigger (e.g. overlapping cron invocations) rather than an application bug; not reproducible from this sandbox without direct evidence of two near-simultaneous route invocations. |
+| **Status** | FIXED — `src/lib/correctness/nighthawk-verifier.ts`. |
