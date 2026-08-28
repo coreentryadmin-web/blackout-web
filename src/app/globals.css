@@ -21318,6 +21318,14 @@ html.product-shell .nav-mega {
 .nh-deck-filtbtn:focus-visible{outline:none;border-color:var(--dk-green);box-shadow:0 0 0 1px var(--dk-green)}
 .nh-deck-filtbtn .cnt{opacity:.85;font-weight:700;margin-left:2px}
 
+/* Direction filter (ALL/LONG/SHORT) — a second, visually distinct filter cluster: no live
+   counts (unlike the status bar), tighter padding, and a hairline left divider so the two
+   independent filter groups read as separate controls, not one continuous row of chips. */
+.nh-deck-filterbar--direction{flex:0 0 auto;padding-left:10px;border-left:1px solid var(--dk-border-subtle)}
+.nh-deck-filterbar--direction .nh-deck-filtbtn{flex:0 0 auto;padding:6px 8px}
+.nh-deck-header-compact .nh-deck-filterbar--direction{padding:0 0 0 8px;margin-left:2px}
+.nh-deck-header-compact .nh-deck-filterbar--direction .nh-deck-filtbtn{padding:8px 8px}
+
 /* Ticker quick-search — sits beside the status filter chips (DeckChromeRow) or the prominent
    filter row (DeckCompactHeader/0DTE). Flat single-accent focus ring, no glow. */
 .nh-deck-search{display:flex;align-items:center;gap:6px;flex:0 1 160px;min-width:110px;
