@@ -73,6 +73,26 @@ function repoScan() {
   }
 }
 
+/** Retry goto when a prior in-flight navigation races (Playwright "interrupted by another navigation"). */
+async function gotoStable(page, path) {
+  const sep = path.includes("?") ? "&" : "?";
+  const url = `${BASE}${path}${sep}_cb=${Date.now()}`;
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      await page.waitForTimeout(400);
+      return res;
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/interrupted by another navigation/i.test(msg) || attempt >= 2) throw e;
+      await page.waitForTimeout(1200);
+    }
+  }
+  throw lastErr;
+}
+
 async function liveScan() {
   log("\n=== LIVE — public funnel (Playwright) ===");
   let chromium;
@@ -85,67 +105,100 @@ async function liveScan() {
 
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
   const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
-  const page = await ctx.newPage();
+
+  async function withPage(run) {
+    const page = await ctx.newPage();
+    try {
+      return await run(page);
+    } finally {
+      await page.close();
+    }
+  }
 
   try {
-    await page.goto(`${BASE}/?_cb=${Date.now()}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await page.waitForTimeout(2500);
-    const h1Top = await page.evaluate(() => {
-      const h1 = document.querySelector(".hero-h h1, .rl .hero-h h1, h1");
-      if (!h1) return null;
-      return h1.getBoundingClientRect().top;
-    });
-    const fold = homepageH1AboveFold(h1Top);
-    add("LIVE-HOMEPAGE-H1-FOLD", fold.ok ? "GREEN" : "RED", fold.reason);
-
-    await page.goto(`${BASE}/pricing?_cb=${Date.now()}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    const phosphorOnNav = await page.locator(".pboot, .pboot-status").count();
-    add(
-      "LIVE-MARKETING-NO-PHOSPHOR",
-      phosphorOnNav === 0 ? "GREEN" : "RED",
-      phosphorOnNav ? "Phosphor boot visible on /pricing" : "no full-screen phosphor on marketing nav"
-    );
-
-    await page.goto(`${BASE}/tools/gamma-snapshot`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await page.waitForTimeout(3000);
-    const spxTab = page.locator('button:has-text("SPY")');
-    if ((await spxTab.count()) > 0) {
-      await spxTab.click();
-      await page.waitForTimeout(1500);
+    try {
+      await withPage(async (page) => {
+        await gotoStable(page, "/");
+        await page.waitForTimeout(2500);
+        const h1Top = await page.evaluate(() => {
+          const h1 = document.querySelector(".hero-h h1, .rl .hero-h h1, h1");
+          if (!h1) return null;
+          return h1.getBoundingClientRect().top;
+        });
+        const fold = homepageH1AboveFold(h1Top);
+        add("LIVE-HOMEPAGE-H1-FOLD", fold.ok ? "GREEN" : "RED", fold.reason);
+      });
+    } catch (e) {
+      add("LIVE-HOMEPAGE-H1-FOLD", "RED", e instanceof Error ? e.message : String(e));
     }
-    const gammaText = await page.locator('[id="gamma-snapshot-panel"]').innerText().catch(() => "");
-    const headerText = await page.locator(".rounded-2xl.border").first().innerText().catch(() => "");
-    const conflict = gammaLoadingFreshnessConflict(`${headerText}\n${gammaText}`);
-    add(
-      "LIVE-GAMMA-LOADING",
-      conflict ? "RED" : "GREEN",
-      conflict ? "Loading… shown alongside freshness levels" : "loading and data mutually exclusive"
-    );
 
-    await page.goto(`${BASE}/upgrade`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await page.waitForTimeout(2000);
-    const upgradeHtml = await page.content();
-    const upgradeGate = upgradeAnonSyncGate(upgradeHtml);
-    add(
-      "LIVE-UPGRADE-ANON-SYNC",
-      upgradeGate.ok ? "GREEN" : "RED",
-      upgradeGate.reason
-    );
+    try {
+      await withPage(async (page) => {
+        await gotoStable(page, "/pricing");
+        const phosphorOnNav = await page.locator(".pboot, .pboot-status").count();
+        add(
+          "LIVE-MARKETING-NO-PHOSPHOR",
+          phosphorOnNav === 0 ? "GREEN" : "RED",
+          phosphorOnNav ? "Phosphor boot visible on /pricing" : "no full-screen phosphor on marketing nav"
+        );
+      });
+    } catch (e) {
+      add("LIVE-MARKETING-NO-PHOSPHOR", "RED", e instanceof Error ? e.message : String(e));
+    }
 
-    const methodologyRes = await page.goto(`${BASE}/methodology?_cb=${Date.now()}`, {
-      waitUntil: "domcontentloaded",
-      timeout: 60_000,
-    });
-    const methodologyStatus = methodologyRes?.status() ?? 0;
-    const methodologyHtml = await page.content();
-    const methodologyGate = methodologyPageGate(methodologyHtml, methodologyStatus);
-    add(
-      "LIVE-METHODOLOGY-PAGE",
-      methodologyGate.ok ? "GREEN" : "RED",
-      methodologyGate.reason
-    );
-  } catch (e) {
-    add("LIVE-SCAN", "RED", e instanceof Error ? e.message : String(e));
+    try {
+      await withPage(async (page) => {
+        await gotoStable(page, "/tools/gamma-snapshot");
+        await page.waitForTimeout(3000);
+        const spxTab = page.locator('button:has-text("SPY")');
+        if ((await spxTab.count()) > 0) {
+          await spxTab.click();
+          await page.waitForTimeout(1500);
+        }
+        const gammaText = await page.locator('[id="gamma-snapshot-panel"]').innerText().catch(() => "");
+        const headerText = await page.locator(".rounded-2xl.border").first().innerText().catch(() => "");
+        const conflict = gammaLoadingFreshnessConflict(`${headerText}\n${gammaText}`);
+        add(
+          "LIVE-GAMMA-LOADING",
+          conflict ? "RED" : "GREEN",
+          conflict ? "Loading… shown alongside freshness levels" : "loading and data mutually exclusive"
+        );
+      });
+    } catch (e) {
+      add("LIVE-GAMMA-LOADING", "RED", e instanceof Error ? e.message : String(e));
+    }
+
+    try {
+      await withPage(async (page) => {
+        await gotoStable(page, "/upgrade");
+        await page.waitForTimeout(2000);
+        const upgradeHtml = await page.content();
+        const upgradeGate = upgradeAnonSyncGate(upgradeHtml);
+        add(
+          "LIVE-UPGRADE-ANON-SYNC",
+          upgradeGate.ok ? "GREEN" : "RED",
+          upgradeGate.reason
+        );
+      });
+    } catch (e) {
+      add("LIVE-UPGRADE-ANON-SYNC", "RED", e instanceof Error ? e.message : String(e));
+    }
+
+    try {
+      await withPage(async (page) => {
+        const methodologyRes = await gotoStable(page, "/methodology");
+        const methodologyStatus = methodologyRes?.status() ?? 0;
+        const methodologyHtml = await page.content();
+        const methodologyGate = methodologyPageGate(methodologyHtml, methodologyStatus);
+        add(
+          "LIVE-METHODOLOGY-PAGE",
+          methodologyGate.ok ? "GREEN" : "RED",
+          methodologyGate.reason
+        );
+      });
+    } catch (e) {
+      add("LIVE-METHODOLOGY-PAGE", "RED", e instanceof Error ? e.message : String(e));
+    }
   } finally {
     await browser.close();
   }
