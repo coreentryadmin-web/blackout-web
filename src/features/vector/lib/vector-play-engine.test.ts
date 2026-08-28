@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildVectorPlay, type VectorSnapshot , rangeMeanReference, stalenessConvictionDiscount } from "./vector-play-engine";
+import { buildVectorPlay, type VectorSnapshot , rangeMeanReference, stalenessConvictionDiscount, vectorPlayBieBucketKey } from "./vector-play-engine";
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 import type { GammaMagnet } from "./vector-gamma-magnet";
 import type { WallProximity } from "./vector-wall-proximity";
@@ -191,29 +191,17 @@ test("short-gamma no wall in range → follows the EMA trend", () => {
   assert.equal(down.bias, "short");
 });
 
-test("short-gamma, no wall, NO trend either (ema null/mixed): asymmetric momentum-short default — documented, not silently absent", () => {
-  // determineSetup's short-gamma branch has no genuine signal here (no wall in the proximity band,
-  // no EMA-stack trend) and still falls through to `momentum-short` off an asserted "asymmetry of a
-  // short-gamma regime" — unlike the equivalent long-gamma no-signal case, which correctly falls
-  // back to a neutral `range` bias instead of asserting a direction. This branch was previously
-  // untested (the sibling test above only covers explicit ema up/down), and unlike this repo's other
-  // documented design asymmetries (docs/audit/INTENTIONAL-DESIGN.md), it carries no A/B measurement
-  // behind it. Fixing the asymmetry itself would need real backtested evidence this repo doesn't yet
-  // have for Vector plays — this test exists so the assumption is at least visible and locked down,
-  // not silently untested, and so a future change to this default shows up here rather than as a
-  // surprise regression.
+test("short-gamma, no wall, NO trend either (ema null/mixed): stand aside — no fabricated direction", () => {
   const noEma = buildVectorPlay(
     base({ regime: { posture: "short" }, proximity: null, technicals: { emaStack: null } })
   )!;
-  assert.equal(noEma.bias, "short", "current behavior: defaults short even with zero directional signal");
+  assert.equal(noEma.bias, "neutral", "no wall and no trend → stand aside, not a guessed short");
 
   const mixedEma = buildVectorPlay(
     base({ regime: { posture: "short" }, proximity: null, technicals: { emaStack: "mixed" } })
   )!;
-  assert.equal(mixedEma.bias, "short", "current behavior: 'mixed' EMA still defaults short under short gamma");
+  assert.equal(mixedEma.bias, "neutral", "mixed EMA with no wall → stand aside");
 
-  // The one thing this default MUST do given it has no real signal: it must not read as confident.
-  // A real trend + wall setup (from the sibling test above) should clearly outscore this bare guess.
   const realSignal = buildVectorPlay(
     base({
       regime: { posture: "short" },
@@ -223,7 +211,7 @@ test("short-gamma, no wall, NO trend either (ema null/mixed): asymmetric momentu
   )!;
   assert.ok(
     realSignal.conviction > noEma.conviction,
-    `a real wall+trend setup (${realSignal.conviction}) should outscore the no-signal default (${noEma.conviction})`
+    `a real wall+trend setup (${realSignal.conviction}) should outscore the no-signal stand-aside (${noEma.conviction})`
   );
 });
 
@@ -460,6 +448,23 @@ test("missing expected-move / magnet / integrity: play still builds with real le
   assert.ok(play);
   assert.match(play.headline, /fade the 7,600 call wall/);
   assert.ok(play.targets.length > 0);
+});
+
+test("vectorPlayBieBucketKey: stable across spot-only drift", () => {
+  const keyA = vectorPlayBieBucketKey(
+    base({ spot: 7598, proximity: proximity("call", 7600, "at") })
+  );
+  const keyB = vectorPlayBieBucketKey(
+    base({ spot: 7601, proximity: proximity("call", 7600, "at") })
+  );
+  assert.equal(keyA, keyB);
+  assert.match(keyA, /^long\|scalp\|fade-call\|call-at$/);
+});
+
+test("vectorPlayBieBucketKey: differs when setup branch changes", () => {
+  const fade = vectorPlayBieBucketKey(base({ spot: 7598, proximity: proximity("call", 7600, "at") }));
+  const range = vectorPlayBieBucketKey(base({ spot: 7555, proximity: null, magnet: magnet(7555, "long", "at") }));
+  assert.notEqual(fade, range);
 });
 
 // ── Timeframe awareness ──────────────────────────────────────────────────────

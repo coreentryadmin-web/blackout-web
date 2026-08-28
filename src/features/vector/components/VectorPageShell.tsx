@@ -18,12 +18,12 @@ import { useVectorHelixFlows } from "@/features/vector/lib/use-vector-helix-flow
 import { flowAlertTimeSec } from "@/features/vector/lib/vector-flow-confluence";
 import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
 import { VectorContractPicksCard } from "@/features/vector/components/VectorContractPicksCard";
-import { useVectorContractPicks } from "@/features/vector/lib/use-vector-contract-picks";
-import { useVectorPickLiveMonitor } from "@/features/vector/lib/use-vector-pick-live-monitor";
+import { useVectorActionablePicks } from "@/features/vector/lib/use-vector-actionable-picks";
 import { VectorPlayIntelStrip } from "@/features/vector/components/VectorPlayIntelStrip";
 import { VectorPlayAnalyticsDrawer } from "@/features/vector/components/VectorPlayAnalyticsDrawer";
 import { VectorReplayPlayGate } from "@/features/vector/components/VectorReplayPlayGate";
 import type { VectorPlay, VectorPlayEmit } from "@/features/vector/lib/vector-play-engine";
+import { bootstrapVectorPlayEmit } from "@/features/vector/lib/vector-play-bootstrap";
 import type { VectorPlayDeskSnapshot } from "@/features/vector/lib/vector-play-desk-snapshot";
 import { VectorOdteMatrixRail } from "@/features/vector/components/VectorOdteMatrixRail";
 import { VectorRegimeBanner } from "@/features/vector/components/VectorRegimeBanner";
@@ -430,12 +430,33 @@ export function VectorPageShell({
 
   // BUG FIX (2026-08-27): playEmit/expectedMove/confluence are populated by VectorChart callbacks
   // but live in THIS parent — reset on ticker switch so the play card never shows stale levels.
+  // Seed immediately from bootstrap walls/spot so the play rail is not blank for 5–15s while
+  // lightweight-charts mounts (on-demand tickers, SPX index cold load).
   useEffect(() => {
-    setPlayEmit(null);
     setExpectedMove([]);
     setConfluence(null);
     setPlayAnalyticsOpen(false);
-  }, [activeTicker]);
+    const spot = initialBars.length ? initialBars[initialBars.length - 1]!.close : null;
+    setPlayEmit(
+      bootstrapVectorPlayEmit({
+        ticker: activeTicker,
+        horizon: dteHorizon,
+        timeframeMin: defaultTimeframe ?? 3,
+        spot,
+        walls: initialWalls,
+        gammaFlip: initialGammaFlip,
+        darkPoolLevels: initialDarkPoolLevels,
+      })
+    );
+  }, [
+    activeTicker,
+    initialBars,
+    initialWalls,
+    initialGammaFlip,
+    initialDarkPoolLevels,
+    dteHorizon,
+    defaultTimeframe,
+  ]);
 
   useEffect(() => {
     if (!onPlayDeskSnapshot) return;
@@ -685,17 +706,14 @@ export function VectorPageShell({
   // Hooks must run unconditionally on every render — this sits ABOVE the chartOnly early return
   // below (react-hooks/rules-of-hooks). The embed path never renders VectorContractPicksCard, but
   // the hook itself still has to fire every render regardless of which branch returns.
-  const { picks: contractPicks, loading: contractPicksLoading } = useVectorContractPicks(
+  const {
+    active: contractPicks,
+    closed: closedContractPicks,
+    loading: contractPicksLoading,
+  } = useVectorActionablePicks(
     activeTicker,
     playEmit,
     helixState.flows,
-    liveSession,
-    chartReplayMode
-  );
-  const monitoredPicks = useVectorPickLiveMonitor(
-    activeTicker,
-    playEmit,
-    contractPicks,
     liveSession,
     chartReplayMode
   );
@@ -806,8 +824,11 @@ export function VectorPageShell({
       <VectorContractPicksCard
         ticker={activeTicker}
         play={play}
-        picks={monitoredPicks}
+        picks={contractPicks}
+        closedPicks={closedContractPicks}
         loading={contractPicksLoading}
+        spot={playEmit?.spot ?? liveSpot}
+        gammaFlip={playEmit?.gammaFlip ?? null}
         replayPaused={chartReplayMode}
         className="mb-2"
       />

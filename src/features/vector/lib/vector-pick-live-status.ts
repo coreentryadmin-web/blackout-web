@@ -136,6 +136,21 @@ export function evaluateVectorPickLiveStatus(input: VectorPickLiveEvalInput): Ve
   );
 
   if (inv.invalidated) {
+    // Spot broke the play thesis but the contract can still be up big (measured INTC 2026-08-28:
+    // +275% while momentum_rs_floor blocked 0DTE — Vector/NH must not instant-close winners).
+    // Caution keeps the pick in the leaders lane; fresh entry is still blocked at dont_buy below.
+    if (premiumPct != null && premiumPct >= 15) {
+      return {
+        status: "caution",
+        reason:
+          inv.level != null
+            ? `Setup invalidated but premium +${premiumPct.toFixed(0)}% — manage exit, not fresh entry (spot ${spot.toFixed(2)} vs ${inv.level.toFixed(2)})`
+            : `Setup invalidated but premium +${premiumPct.toFixed(0)}% — manage exit, not fresh entry`,
+        premiumPctFromEntry: premiumPct,
+        invalidationLevel: inv.level,
+        setupInvalidated: true,
+      };
+    }
     return {
       status: "dont_buy",
       reason: inv.level != null ? `Setup invalidated — spot ${spot.toFixed(2)} vs ${inv.level.toFixed(2)}` : "Setup invalidated",

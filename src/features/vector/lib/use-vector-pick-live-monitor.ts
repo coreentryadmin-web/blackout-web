@@ -110,6 +110,7 @@ export function useVectorPickLiveMonitor(
         callWall: emit.callWall,
         putWall: emit.putWall,
         gammaFlip: emit.gammaFlip,
+        bieBucket: emit.bieBucket ?? null,
         picks: occPicks.map((p) => ({
           occ: p.occ!,
           side: p.side,
@@ -117,6 +118,11 @@ export function useVectorPickLiveMonitor(
           expiry: p.expiry,
           entryMid: resolveEntryMid(p),
           caveat: p.caveat,
+          rank: p.rank ?? null,
+          label: p.label ?? null,
+          role: p.role ?? null,
+          premium: p.premium ?? null,
+          confidence: p.confidence ?? null,
         })),
       })
         .then((res) => {

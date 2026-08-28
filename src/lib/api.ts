@@ -1035,6 +1035,8 @@ export type VectorContractPick = {
   actionReason?: string;
   premiumPctFromEntry?: number | null;
   setupInvalidated?: boolean;
+  /** Elite whale / A-grade wall pins — surfaced in PLYS + Night Hawk winners board. */
+  tier?: "elite" | "standard";
   /** True once the live-quote poll (use-vector-pick-live-monitor.ts) has gone LIVE_QUOTES_STALE_MS
    *  without a successful read — the bid/ask/greeks/actionStatus above are frozen at their last
    *  known-good value, not a live read, and the UI should say so rather than presenting them as
@@ -1081,16 +1083,21 @@ export type VectorContractPicksRequest = {
     strike?: number;
     expiry?: string;
   }>;
+  /** OCC symbols to omit after a pick invalidates — next rank surfaces replacements. */
+  excludeOccs?: string[];
 };
 
-/** Rank 1–3 strong contract picks using full play + wall + HELIX context. */
+/** Rank contract picks using full play + wall + HELIX context. Returns a deep pool for backfill. */
 export async function fetchVectorContractPicks(
   params: VectorContractPicksRequest
-): Promise<{ picks: VectorContractPick[] }> {
-  return marketFetch<{ picks: VectorContractPick[] }>(`/vector/contract-picks`, {
-    method: "POST",
-    body: JSON.stringify(params),
-  });
+): Promise<{ picks: VectorContractPick[]; pool?: VectorContractPick[] }> {
+  return marketFetch<{ picks: VectorContractPick[]; pool?: VectorContractPick[] }>(
+    `/vector/contract-picks`,
+    {
+      method: "POST",
+      body: JSON.stringify(params),
+    }
+  );
 }
 
 export async function fetchVectorPickLiveQuotes(params: {
@@ -1100,6 +1107,7 @@ export async function fetchVectorPickLiveQuotes(params: {
   callWall?: number | null;
   putWall?: number | null;
   gammaFlip?: number | null;
+  bieBucket?: string | null;
   picks: Array<{
     occ: string;
     side: "call" | "put";
@@ -1107,6 +1115,11 @@ export async function fetchVectorPickLiveQuotes(params: {
     expiry: string;
     entryMid?: number | null;
     caveat?: VectorContractPick["caveat"];
+    rank?: number | null;
+    label?: string | null;
+    role?: string | null;
+    premium?: number | null;
+    confidence?: number | null;
   }>;
 }): Promise<{
   live: Array<{
@@ -1126,6 +1139,31 @@ export async function fetchVectorPickLiveQuotes(params: {
   asOf: string;
 }> {
   return marketFetch(`/vector/contract-picks/live`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export type VectorPlayBieResponse = {
+  bucketKey: string;
+  bie: { favPct: number; samples: number; windowDays: number } | null;
+  insufficientSample: boolean;
+};
+
+/** Historical win-rate grounding for the current play bucket (vector_pick_closures). */
+export async function fetchVectorPlayBie(params: {
+  ticker: string;
+  horizon: string;
+  timeframeMin: number;
+  spot: number;
+  regime: { posture: string };
+  gexWalls?: unknown;
+  gammaFlip?: number | null;
+  magnet?: unknown;
+  proximity?: unknown;
+  technicals?: unknown;
+}): Promise<VectorPlayBieResponse> {
+  return marketFetch<VectorPlayBieResponse>(`/vector/play-bie`, {
     method: "POST",
     body: JSON.stringify(params),
   });

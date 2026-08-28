@@ -114,6 +114,8 @@ export type VectorPlayGrade = "A" | "B" | "C";
 export type VectorPlay = {
   style: VectorPlayStyle;
   bias: VectorPlayBias;
+  /** Branch that shaped headline/targets — pivot stays neutral in bias but still earns a PLYS rail. */
+  setup: PlaySetup;
   /** 0–100 blended conviction. */
   conviction: number;
   grade: VectorPlayGrade;
@@ -140,10 +142,12 @@ export type VectorPlayEmit = {
   technicals: PlayTechnicals | null;
   confluenceZones: ConfluenceZone[];
   darkPoolLevels: VectorDarkPoolLevel[];
+  /** BIE bucket key for closure logging + historical lookup. */
+  bieBucket?: string | null;
 };
 
 /** The core setup the regime + proximity resolve to — the branch that shapes everything downstream. */
-type PlaySetup =
+export type PlaySetup =
   | "fade-call" // long gamma, testing/at a call wall → fade short
   | "fade-put" // long gamma, testing/at a put wall → fade long
   | "range" // long gamma, open space → mean-revert to the magnet
@@ -302,7 +306,11 @@ function withinSigma(em: ExpectedMove | null | undefined, price: number | null, 
  * decision that everything else keys off, so the logic is spelled out per regime rather than
  * collapsed into a clever expression — the WHY has to survive a cold read of the diff.
  */
-function determineSetup(input: VectorPlayInput, style: VectorPlayStyle): { setup: PlaySetup; atWall?: { strike: number; side: "call" | "put" } } {
+/** Exported for BIE bucket keys — same branch the play engine keys off. */
+export function resolveVectorPlaySetup(
+  input: VectorPlayInput,
+  style: VectorPlayStyle
+): { setup: PlaySetup; atWall?: { strike: number; side: "call" | "put" } } {
   const posture = input.regime?.posture ?? "unknown";
   const prox = input.proximity ?? null;
   const ema = input.technicals?.emaStack ?? null;
@@ -336,15 +344,30 @@ function determineSetup(input: VectorPlayInput, style: VectorPlayStyle): { setup
     }
     if (ema === "up") return { setup: "momentum-long" };
     if (ema === "down") return { setup: "momentum-short" };
-    // Short gamma with no wall and no clear trend still leans downside (that's the asymmetry of a
-    // short-gamma regime), but it's a low-conviction read — the conviction model reflects that.
-    return { setup: "momentum-short" };
+    // No wall in range and no EMA trend — same fail-closed read as long-gamma open space (range),
+    // not an asserted direction with zero evidence.
+    return { setup: "stand-aside" };
   }
 
   // Unknown regime: fall back to the technical trend if there is one, else stand aside.
   if (spot != null && ema === "up") return { setup: "momentum-long" };
   if (spot != null && ema === "down") return { setup: "momentum-short" };
   return { setup: "stand-aside" };
+}
+
+/** Stable bucket key for historical BIE lookup — posture + style + setup + proximity band. */
+export function vectorPlayBieBucketKey(input: VectorPlayInput): string {
+  const style = styleForHorizon(input.horizon);
+  const { setup } = resolveVectorPlaySetup(input, style);
+  const posture = input.regime?.posture ?? "unknown";
+  const prox = input.proximity;
+  let proxBand = "open";
+  if (prox?.side === "flip") {
+    proxBand = "flip";
+  } else if (prox && prox.nearness !== "near") {
+    proxBand = `${prox.side}-${prox.nearness}`;
+  }
+  return `${posture}|${style}|${setup}|${proxBand}`;
 }
 
 function biasForSetup(setup: PlaySetup): VectorPlayBias {
@@ -527,7 +550,7 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
   if (spot == null || spot <= 0) return null;
 
   const style = styleForHorizon(input.horizon);
-  const { setup, atWall } = determineSetup(input, style);
+  const { setup, atWall } = resolveVectorPlaySetup(input, style);
   const bias = biasForSetup(setup);
   const cands = collectLevels(input);
   const flip = num(input.gammaFlip);
@@ -725,6 +748,7 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
   return {
     style,
     bias,
+    setup,
     conviction,
     grade,
     headline,

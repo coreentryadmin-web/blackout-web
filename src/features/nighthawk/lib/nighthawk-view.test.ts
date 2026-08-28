@@ -16,8 +16,8 @@ import {
   MAX_COMPACT_LANE_LABEL_LEN,
 } from "./nighthawk-view.ts";
 
-test("the toggle has exactly four views in fast→slow→banger→legacy order", () => {
-  assert.deepEqual([...NIGHTHAWK_VIEWS], ["ZERO_DTE", "SWING", "BANGER", "LEGACY"]);
+test("the toggle has five views in fast→slow→banger→vector→legacy order", () => {
+  assert.deepEqual([...NIGHTHAWK_VIEWS], ["ZERO_DTE", "SWING", "BANGER", "VECTOR", "LEGACY"]);
 });
 
 test("parseNightHawkView resolves aliases case-insensitively, else the default", () => {
@@ -27,6 +27,7 @@ test("parseNightHawkView resolves aliases case-insensitively, else the default",
   assert.equal(parseNightHawkView("banger"), "BANGER");
   assert.equal(parseNightHawkView("bangers"), "BANGER");
   assert.equal(parseNightHawkView("weekly"), "BANGER");
+  assert.equal(parseNightHawkView("vector"), "VECTOR");
   assert.equal(parseNightHawkView("playbook"), "LEGACY");
   assert.equal(parseNightHawkView("tonight"), "LEGACY");
   assert.equal(parseNightHawkView("nonsense"), DEFAULT_NIGHTHAWK_VIEW);
@@ -37,10 +38,11 @@ test("parseNightHawkView resolves aliases case-insensitively, else the default",
   assert.equal(parseNightHawkView("leap"), DEFAULT_NIGHTHAWK_VIEW);
 });
 
-test("horizonForView maps the two horizon views, and null for legacy/banger", () => {
+test("horizonForView maps the two horizon views, and null for legacy/banger/vector", () => {
   assert.equal(horizonForView("ZERO_DTE"), "ZERO_DTE");
   assert.equal(horizonForView("SWING"), "SWING");
   assert.equal(horizonForView("BANGER"), null);
+  assert.equal(horizonForView("VECTOR"), null);
   assert.equal(horizonForView("LEGACY"), null);
 });
 

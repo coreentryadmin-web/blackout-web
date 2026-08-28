@@ -1183,10 +1183,21 @@ export async function fetchPolygonFinancialRatios(ticker: string): Promise<Polyg
   try {
     const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
       "/stocks/financials/v1/ratios",
-      // The ratios endpoint filters on `tickers=` (plural) and returns the current snapshot.
-      // We also keep the legacy `ticker`/sort params as harmless extras for resilience if the
-      // upstream ever changes which alias it honors.
-      { tickers: sym, ticker: sym, limit: "1", sort: "period_end.desc" }
+      // CORRECTED 2026-08-28 (live-verified against production Polygon): the endpoint filters on
+      // the SINGULAR `ticker=` param — `tickers=` (plural) is silently ignored (confirmed live:
+      // `tickers=SPY` with no `ticker=` returned ticker "A", the alphabetically-first row of the
+      // WHOLE unfiltered dataset, not SPY). `sort=period_end.desc` is not a valid sort field for
+      // this endpoint at all — Polygon rejects it with a hard HTTP 400 ("Invalid query parameter:
+      // 'sort' ... found: 'period_end'"), for EVERY ticker, not just illiquid ones. Both bad
+      // params together meant this function has thrown on literally every call since whenever
+      // they were added, silently starving BIE/Largo's fundamentals tool (ticker-fundamentals.ts),
+      // Night Hawk's swing dossier scoring (dossier.ts), and the SPX/NDX/RUT heatmap dividend-yield
+      // resolver (polygon-options-gex.ts) of P/E, ROE, debt/equity, dividend yield, market cap,
+      // EPS and every other ratio — all three callers swallow the throw with `.catch(() => null)`,
+      // so nothing ever surfaced as an error, it just silently always returned null/0.
+      // A single row for one ticker has nothing to sort BY, so `sort` is dropped entirely rather
+      // than replaced with a valid-but-meaningless value.
+      { ticker: sym, limit: "1" }
     );
     const row = data.results?.[0];
     if (!row) return null;
@@ -1224,6 +1235,32 @@ export async function fetchPolygonFinancialRatios(ticker: string): Promise<Polyg
   } catch {
     return null;
   }
+}
+
+export type PolygonDividend = {
+  cash_amount: number;
+  ex_dividend_date: string;
+};
+
+/**
+ * Cash dividend history — GET /v3/reference/dividends?ticker=<SYM>. Unlike
+ * /stocks/financials/v1/ratios (companies only — SPY/QQQ/IWM/VOO/DIA all correctly return null
+ * there, live-verified 2026-08-28), this endpoint DOES carry real ETF distribution history, which
+ * is the fix for the SPX/NDX/RUT heatmap's ETF-proxy dividend-yield gap (resolveHeatmapDividendYield
+ * in polygon-options-gex.ts). Newest-first by ex-dividend date.
+ */
+export async function fetchPolygonDividends(ticker: string, limit = 8): Promise<PolygonDividend[]> {
+  const sym = ticker.toUpperCase();
+  const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
+    "/v3/reference/dividends",
+    { ticker: sym, limit: String(limit), sort: "ex_dividend_date", order: "desc" }
+  );
+  return (data.results ?? [])
+    .map((r) => ({
+      cash_amount: Number(r.cash_amount),
+      ex_dividend_date: String(r.ex_dividend_date ?? ""),
+    }))
+    .filter((d) => Number.isFinite(d.cash_amount) && d.ex_dividend_date.length > 0);
 }
 
 // ---------------------------------------------------------------------------

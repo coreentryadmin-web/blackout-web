@@ -21,10 +21,16 @@
 
 import { dteRangeLabel, type Horizon } from "@/lib/horizons";
 
-export type NightHawkView = "ZERO_DTE" | "SWING" | "BANGER" | "LEGACY";
+export type NightHawkView = "ZERO_DTE" | "SWING" | "BANGER" | "VECTOR" | "LEGACY";
 
-/** Toggle order, left → right: fastest horizon → slowest → Engine B → the legacy evening playbook. */
-export const NIGHTHAWK_VIEWS: readonly NightHawkView[] = ["ZERO_DTE", "SWING", "BANGER", "LEGACY"] as const;
+/** Toggle order, left → right: fastest horizon → Engine B → Vector analysis log → legacy playbook. */
+export const NIGHTHAWK_VIEWS: readonly NightHawkView[] = [
+  "ZERO_DTE",
+  "SWING",
+  "BANGER",
+  "VECTOR",
+  "LEGACY",
+] as const;
 
 /** The default the page opens on when nothing is selected/persisted — the flagship live board. */
 export const DEFAULT_NIGHTHAWK_VIEW: NightHawkView = "ZERO_DTE";
@@ -60,6 +66,12 @@ export const NIGHTHAWK_VIEW_META: Record<NightHawkView, NightHawkViewMeta> = {
     blurb: "Engine B — whole-market weekly-banger discovery with live scale-out tracking.",
     horizon: null,
   },
+  VECTOR: {
+    label: "Vector",
+    tag: "VECTOR",
+    blurb: "Closed Vector contract picks — Don't buy events logged for setup-quality analysis.",
+    horizon: null,
+  },
   LEGACY: {
     label: "Legacy",
     tag: "LEGACY",
@@ -92,6 +104,9 @@ export function parseNightHawkView(raw: unknown): NightHawkView {
     case "BANGERS":
     case "WEEKLY":
       return "BANGER";
+    case "VECTOR":
+    case "VECTOR_PICKS":
+      return "VECTOR";
     case "LEGACY":
     case "PLAYBOOK":
     case "TONIGHT":
@@ -131,6 +146,7 @@ export const KNOWN_NIGHTHAWK_VIEW_TOKENS = new Set([
   "ZERO_DTE", "0DTE", "ZERODTE",
   "SWING", "SWINGS",
   "BANGER", "BANGERS", "WEEKLY",
+  "VECTOR", "VECTOR_PICKS",
   "LEGACY", "PLAYBOOK", "TONIGHT",
 ]);
 
@@ -170,6 +186,7 @@ export const NIGHTHAWK_COMPACT_LANE_LABEL = {
   SWING: `Swings \u00b7 ${dteRangeLabel("SWING")}`,
   LEAPS: "LEAPS · ≤90 DTE",
   LEGACY: "Legacy · Playbook",
+  VECTOR: "Vector · closed",
 } as const;
 
 /** Longest length confirmed to render without overlap in `.nh-deck-cmd--inline` at the narrowest

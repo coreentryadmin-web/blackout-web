@@ -1844,19 +1844,49 @@ const HEATMAP_DIVIDEND_YIELD_PROXY: Record<string, string> = {
 };
 
 /**
+ * Trailing-12-month cash-dividend yield from raw distribution history — decimal (0.0098 = 0.98%),
+ * or `null` when there is nothing to compute from (no spot, or no dividends in the window; the
+ * latter is a real answer for a genuine non-payer, callers should treat it as 0, not as failure).
+ */
+export function trailingTwelveMonthDividendYield(
+  dividends: readonly { cash_amount: number; ex_dividend_date: string }[],
+  spot: number,
+  nowMs: number
+): number | null {
+  if (!(spot > 0)) return null;
+  const cutoffMs = nowMs - 365 * 24 * 60 * 60 * 1000;
+  const sum = dividends.reduce((acc, d) => {
+    const t = Date.parse(d.ex_dividend_date);
+    return Number.isFinite(t) && t >= cutoffMs ? acc + d.cash_amount : acc;
+  }, 0);
+  return sum > 0 ? sum / spot : 0;
+}
+
+/**
  * Inner resolve. THROWS rather than returning 0 when the yield is UNAVAILABLE — that is what keeps
  * a transient upstream blip out of the 1h cache below: `refreshCache` writes the store only on a
  * fulfilled loader, so a rejection leaves the key unset and the next call retries. A genuine
  * non-payer (`raw <= 0`) is a real answer and does get cached. The caller turns the throw into 0.
  */
-async function resolveHeatmapDividendYieldUncached(lookup: string): Promise<number> {
+async function resolveHeatmapDividendYieldUncached(lookup: string, spot: number): Promise<number> {
   const { fetchPolygonFinancialRatios } = await import("./polygon");
   const ratios = await fetchPolygonFinancialRatios(lookup);
   const raw = ratios?.dividend_yield;
-  if (raw == null || !Number.isFinite(raw)) throw new Error(`no dividend_yield for ${lookup}`);
-  if (raw <= 0) return 0;
-  // Guard percent-vs-decimal: yields above 100% are nonsense; above 1 likely percent notation.
-  return raw > 1 ? raw / 100 : raw;
+  if (raw != null && Number.isFinite(raw)) {
+    if (raw <= 0) return 0;
+    // Guard percent-vs-decimal: yields above 100% are nonsense; above 1 likely percent notation.
+    return raw > 1 ? raw / 100 : raw;
+  }
+  // /stocks/financials/v1/ratios covers companies, not funds — it structurally has no row for an
+  // ETF (SPY/QQQ/IWM/VOO/DIA all correctly return null here, live-verified 2026-08-28), which is
+  // why every SPX/NDX/RUT heatmap (proxied to SPY/QQQ/IWM below) always fell back to q=0 through
+  // this path alone. /v3/reference/dividends DOES carry real ETF distribution history — fall back
+  // to a trailing-12mo cash sum from that instead of giving up.
+  const { fetchPolygonDividends } = await import("./polygon");
+  const dividends = await fetchPolygonDividends(lookup, 8);
+  const fromDividends = trailingTwelveMonthDividendYield(dividends, spot, Date.now());
+  if (fromDividends == null) throw new Error(`no dividend_yield for ${lookup}`);
+  return fromDividends;
 }
 
 /**
@@ -1875,13 +1905,13 @@ async function resolveHeatmapDividendYieldUncached(lookup: string): Promise<numb
  * blip's q=0 for an hour would silently reinstate the exact 10–22% VEX/CHARM under-read this change
  * exists to fix, and would do it invisibly.
  */
-async function resolveHeatmapDividendYield(root: string): Promise<number> {
+async function resolveHeatmapDividendYield(root: string, spot: number): Promise<number> {
   const upper = root.toUpperCase();
   const lookup = HEATMAP_DIVIDEND_YIELD_PROXY[upper] ?? upper.replace(/^I:/, "");
   try {
     const { serverCache, TTL } = await import("../server-cache");
     const q = await serverCache(`heatmap-div-yield:${lookup}`, TTL.REFERENCE, () =>
-      resolveHeatmapDividendYieldUncached(lookup)
+      resolveHeatmapDividendYieldUncached(lookup, spot)
     );
     return Number.isFinite(q) && q > 0 ? q : 0;
   } catch {
@@ -3096,7 +3126,7 @@ async function buildGexHeatmapUncached(
   // Band sizing stays RELATIVE (% of spot) so it works for $5 and $900 names.
   const [chainResult, dividendYieldQ] = await Promise.all([
     fetchHeatmapBand(optionsRoot, spot, root),
-    resolveHeatmapDividendYield(root),
+    resolveHeatmapDividendYield(root, spot),
   ]);
   const contracts = chainResult.contracts;
   const chainTruncated = chainResult.truncated;

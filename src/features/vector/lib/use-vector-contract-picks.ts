@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchVectorContractPicks, type VectorContractPick } from "@/lib/api";
 import type { VectorPlayEmit } from "./vector-play-engine";
+import { vectorContractPickFetchKey } from "./vector-pick-context-key";
+import { effectivePickBias } from "./vector-pick-effective-bias";
 import type { FlowAlert } from "@/lib/api";
 
 const REFRESH_MS = 45_000;
@@ -17,17 +19,17 @@ export function useVectorContractPicks(
   emit: VectorPlayEmit | null,
   sessionFlows: readonly FlowAlert[],
   liveSession: boolean,
-  paused = false
+  paused = false,
+  excludeOccs: readonly string[] = [],
+  refetchToken = 0
 ): { picks: VectorContractPick[]; loading: boolean } {
   const [picks, setPicks] = useState<VectorContractPick[]>([]);
   const [loading, setLoading] = useState(false);
   const genRef = useRef(0);
 
   const play = emit?.play ?? null;
-  const bias = play?.bias ?? null;
-  const contextKey = emit
-    ? `${emit.spot}|${emit.callWall}|${emit.putWall}|${play?.conviction}|${play?.headline}|${sessionFlows.length}`
-    : "";
+  const bias = play ? effectivePickBias(play, emit?.spot, emit?.gammaFlip) ?? play.bias : null;
+  const contextKey = vectorContractPickFetchKey(emit, sessionFlows.length, excludeOccs);
 
   useEffect(() => {
     if (paused) {
@@ -60,6 +62,7 @@ export function useVectorContractPicks(
           kinds: z.kinds,
         })),
         darkPoolLevels: emit.darkPoolLevels,
+        excludeOccs: excludeOccs.length ? [...excludeOccs] : undefined,
         flows: sessionFlows.map((f) => ({
           option_type: f.option_type,
           premium: f.premium,
@@ -69,7 +72,7 @@ export function useVectorContractPicks(
       })
         .then((res) => {
           if (cancelled || genRef.current !== gen) return;
-          setPicks(res.picks ?? []);
+          setPicks(res.pool?.length ? res.pool : (res.picks ?? []));
         })
         .catch(() => {
           if (cancelled || genRef.current !== gen) return;
@@ -88,7 +91,7 @@ export function useVectorContractPicks(
       clearTimeout(debounce);
       if (interval) clearInterval(interval);
     };
-  }, [ticker, play, bias, contextKey, liveSession, emit, sessionFlows, paused]);
+  }, [ticker, play, bias, contextKey, liveSession, emit, sessionFlows, paused, excludeOccs, refetchToken]);
 
   return { picks, loading };
 }

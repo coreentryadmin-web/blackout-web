@@ -16,6 +16,28 @@ export type OpsConfigStatus = {
   pg_pooler_hint: string;
 };
 
+/**
+ * Recognizes a pooled DB host from `DATABASE_URL` alone (no network call). Two eras of hostname
+ * patterns matter here: the Railway-era PgBouncer patterns (`proxy.rlwy`, `-pool.`, `pooler`,
+ * `pgbouncer`) predate the 2026-07 migration to Amazon RDS + RDS Proxy — see
+ * docs/PGBOUNCER-SETUP.md's deprecation note — and were never updated to recognize an RDS Proxy
+ * endpoint, which follows AWS's own fixed shape `<proxy-name>.proxy-<id>.<region>.rds.amazonaws.com`
+ * (confirmed live: `blackout-production-proxy.proxy-c89mwake2by8.us-east-1.rds.amazonaws.com`).
+ * Without this, the admin health panel reported `database_via_pooler: false` with a "enable
+ * PgBouncer" hint even though RDS Proxy was already correctly wired — a false negative on a
+ * connection-pooling posture indicator pointing at a deprecated runbook.
+ */
+export function isPooledDbHost(host: string): boolean {
+  const lower = host.toLowerCase();
+  return (
+    lower.includes("pgbouncer") ||
+    lower.includes("pooler") ||
+    lower.includes("proxy.rlwy") ||
+    lower.includes("-pool.") ||
+    (lower.includes(".proxy-") && lower.endsWith(".rds.amazonaws.com"))
+  );
+}
+
 function databaseViaPooler(): { viaPooler: boolean; hint: string } {
   const raw =
     process.env.DATABASE_URL?.trim() ||
@@ -27,16 +49,12 @@ function databaseViaPooler(): { viaPooler: boolean; hint: string } {
   }
   try {
     const host = new URL(raw).hostname.toLowerCase();
-    const viaPooler =
-      host.includes("pgbouncer") ||
-      host.includes("pooler") ||
-      host.includes("proxy.rlwy") ||
-      host.includes("-pool.");
+    const viaPooler = isPooledDbHost(host);
     return {
       viaPooler,
       hint: viaPooler
         ? `pooler host (${host})`
-        : `direct Postgres host (${host}) — enable PgBouncer per docs/PGBOUNCER-SETUP.md`,
+        : `direct Postgres host (${host}) — enable RDS Proxy or PgBouncer (docs/PGBOUNCER-SETUP.md is the deprecated Railway-era version)`,
     };
   } catch {
     return { viaPooler: false, hint: "DATABASE_URL not parseable" };

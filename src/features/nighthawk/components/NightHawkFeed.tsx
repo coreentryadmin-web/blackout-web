@@ -36,12 +36,16 @@ const BangerBoard = dynamic(
   () => import("@/features/nighthawk/components/BangerBoard").then((m) => m.BangerBoard),
   { loading: () => <NightHawkLoadingSkeleton /> }
 );
+const VectorPickLogBoard = dynamic(
+  () => import("@/features/nighthawk/components/VectorPickLogBoard").then((m) => m.VectorPickLogBoard),
+  { loading: () => <NightHawkLoadingSkeleton /> }
+);
 
 /**
- * Night Hawk — one surface, four views (0DTE / Swings / Bangers / Legacy), single-select. ZERO_DTE/SWING/
- * LEGACY render the COMMAND DECK (a two-panel matrix terminal: plays left, live breakdown right); BANGER
- * renders BangerBoard — Engine B's standalone whole-market weekly-banger board (not part of the Command
- * Deck / horizon-ledger shape, see BangerBoard.tsx). Selecting a view scopes the ENTIRE desk to it and only
+ * Night Hawk — one surface, five views (0DTE / Swings / Bangers / Vector / Legacy), single-select.
+ * ZERO_DTE/SWING/LEGACY render the COMMAND DECK (a two-panel matrix terminal: plays left, live breakdown
+ * right); BANGER renders BangerBoard (Engine B); VECTOR renders VectorPickLogBoard (closed contract-pick
+ * analysis log). Selecting a view scopes the ENTIRE desk to it and only
  * that view's data is fetched. The choice persists in the URL (?view=).
  *
  * LEAPS was removed from this toggle 2026-08-04 (no live signal adapter fed it, so it only ever rendered an
@@ -115,6 +119,7 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
         )}
         {view === "SWING" && <HorizonDeck horizon="SWING" focusTicker={swingFocusTicker} />}
         {view === "BANGER" && <BangerBoard />}
+        {view === "VECTOR" && <VectorPickLogBoard />}
         {isLegacy && <LegacyDeck edition={edition} error={editionError} />}
       </div>
     </div>

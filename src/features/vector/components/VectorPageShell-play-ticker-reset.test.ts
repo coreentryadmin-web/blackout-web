@@ -5,14 +5,11 @@ import { join } from "node:path";
 
 const root = join(process.cwd(), "src/features/vector");
 
-test("VectorPageShell: playEmit/expectedMove/confluence reset on ticker switch, mirroring the alert-rules reset", () => {
-  // Regression guard for the 2026-08-27 fix: playEmit/expectedMove/confluence are populated by
-  // VectorChart callbacks but live in THIS parent — reset on ticker switch.
+test("VectorPageShell: playEmit bootstraps from seed on ticker switch (not blank until chart mounts)", () => {
   const src = readFileSync(join(root, "components/VectorPageShell.tsx"), "utf8");
-  const resetEffect = src.match(
-    /useEffect\(\(\) => \{\s*setPlayEmit\(null\);\s*setExpectedMove\(\[\]\);\s*setConfluence\(null\);\s*setPlayAnalyticsOpen\(false\);\s*\}, \[activeTicker\]\);/
-  );
-  assert.ok(resetEffect, "expected a useEffect resetting playEmit/expectedMove/confluence keyed on [activeTicker]");
+  assert.match(src, /bootstrapVectorPlayEmit/);
+  assert.match(src, /setPlayEmit\(\s*bootstrapVectorPlayEmit/);
+  assert.doesNotMatch(src, /setPlayEmit\(null\)/);
 });
 
 test("VectorPageShell: action rail is play-engine only — no Technicals panel", () => {

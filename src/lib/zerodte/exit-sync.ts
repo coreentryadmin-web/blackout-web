@@ -97,13 +97,16 @@ export function entryCortexScoreOf(entryContext: Record<string, unknown> | null)
 }
 
 /**
- * Live exit-mode selector — the CONFIG flag lives in the IO shell so the pure engine
- * (exit-engine.ts) never reads an env or a clock. Defaults to the shipped ratchet;
- * `ZERODTE_EXIT_MODE=trim_scale` flips the board to the E5 ⅓@+25% / ⅓@+50% / run
- * scale-out for an operator A/B. DEFAULT-OFF: unset ⇒ ratchet ⇒ live behavior is
- * byte-for-byte unchanged (this is the "keep the old ratchet behind a flag" the change
- * requires). The trim graduates on the live-ledger grader — this env is the operator's
- * post-sign-off switch, not an auto-flip.
+ * Legacy/unpinned-row exit-mode selector — superseded by resolveExitModeForTier() (the E5
+ * graduation) for every fresh commit; this one is now only a fallback for rows with no
+ * exit_policy_at_commit pin (readFrozenExitMode returned null). CORRECTED 2026-08-28 (this
+ * comment was stale): DEFAULT_EXIT_MODE (exit-engine.ts) is "trim_scale", not "ratchet" —
+ * unset/empty/`ZERODTE_EXIT_MODE=ratchet`/any other token all resolve to the default here
+ * (only an exact "trim_scale" is recognized, and it's now a no-op since that's the
+ * default) — this legacy fallback does NOT honor a "ratchet" override the way
+ * resolveExitModeForTier() does; that's deliberate and tested (see exit-sync.test.ts). The
+ * CONFIG flag lives in the IO shell so the pure engine (exit-engine.ts) never reads an env
+ * or a clock.
  */
 export function resolveExitMode(env: NodeJS.ProcessEnv = process.env): ZeroDteExitMode {
   return env.ZERODTE_EXIT_MODE === "trim_scale" ? "trim_scale" : DEFAULT_EXIT_MODE;
@@ -288,7 +291,24 @@ export async function evaluateLedgerRowExit(
     // OPERATIVE rails move, and they move to agree with the basis the row is graded on.
     const planEntryMax =
       typeof row.plan_json?.entry_max === "number" ? (row.plan_json.entry_max as number) : null;
-    const entryBasisDiverged = planEntryMax != null && planEntryMax > 0 && entry > planEntryMax;
+    // BOTH directions of basis divergence, not just the FLOOR one this check originally shipped
+    // for (2026-08-06, entry > planEntryMax). resolveLedgerEntryPremium's ACHIEVABILITY CEILING
+    // (plan.ts, 2026-08-27 / PR #2986) can also move `entry` the OTHER way — capped DOWN below
+    // planEntryMax when the flow fill sat far above a live market that never traded there. That
+    // case was unreachable when this line was first written (the ceiling didn't exist yet), so
+    // `entry > planEntryMax` silently missed it: a divergence with entry BELOW planEntryMax left
+    // entryBasisDiverged false, so the STALE pinned stop (computed from the pre-cap, much-higher
+    // planEntryMax) kept being used even though `entry` — the basis pnlPct/currentMark are
+    // actually measured against below — had already moved. Live 2026-08-28: AMD flow fill $3.8,
+    // ledger-capped entry $1.23 (real market never near $3.8), pinned stop 1.9 (=3.8×0.5) sat
+    // ABOVE the capped entry, so `mark <= planStop` was true on the FIRST evaluation after
+    // commit — both AMD and NVDA closed_reason="stop" within 1-3s of their own flag, at ~0% real
+    // P&L, and counted toward the session's stop tally that halted the desk. `!==` (not `<`)
+    // because ceiling and floor are now both live paths — either direction of divergence must
+    // re-derive the stop from the row's own (correct) ledger basis. A half-cent epsilon absorbs
+    // round2() noise between the two independently-rounded numbers.
+    const entryBasisDiverged =
+      planEntryMax != null && planEntryMax > 0 && Math.abs(entry - planEntryMax) > 0.005;
     const planStop =
       pinnedStop != null && !entryBasisDiverged ? pinnedStop : entry * (1 + stopPct / 100);
     const planTarget =

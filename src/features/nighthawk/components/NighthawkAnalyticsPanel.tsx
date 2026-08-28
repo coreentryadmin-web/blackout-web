@@ -13,7 +13,7 @@
 // in `analytics-panel.ts` (tier win-rate, same-session P&L curve) — nothing is invented client
 // side. Gated behind the same TRACK_RECORD_MIN_SAMPLE the legacy HawkRecordStrip uses, so a
 // thin sample never renders confident-looking bars off 2 plays.
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import useSWR from "swr";
 import { clsx } from "clsx";
@@ -163,6 +163,14 @@ function StatTile({ label, value, tone }: { label: string; value: string; tone?:
   );
 }
 
+// Member-facing preference: collapsed vs expanded. Collapsed is the default — the panel sits
+// ABOVE the live play ledger (CommandDeck), and on a phone-width viewport its stat tiles + two
+// bar columns + a chart run tall enough to push the ledger fully below the fold (member report
+// 2026-08-28, screenshot showed OPEN/WATCH/CLOSED and the play cards invisible without scrolling
+// past this panel first). The ledger is what a member opens the deck for; this panel is a
+// secondary "how's the session going" view, so it starts closed and expands on demand.
+const COLLAPSE_STORAGE_KEY = "nh-analytics-collapsed";
+
 export function NighthawkAnalyticsPanel() {
   const { data: record, isLoading } = useSWR<ZeroDteRecord>("/api/market/zerodte/record?days=30", json, {
     // The ledger updates as plays grade through the session, not tick-by-tick — 30s keeps the
@@ -170,6 +178,30 @@ export function NighthawkAnalyticsPanel() {
     refreshInterval: 30_000,
     revalidateOnFocus: true,
   });
+
+  // Defaults to collapsed on every render (incl. server-adjacent first client render, since this
+  // whole component is already ssr:false); a stored "0" (explicitly expanded) flips it open on
+  // mount. Read/write are both best-effort — private-mode/blocked storage just keeps the default.
+  const [collapsed, setCollapsed] = useState(true);
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(COLLAPSE_STORAGE_KEY);
+      if (stored === "0") setCollapsed(false);
+    } catch {
+      // storage unavailable — stay collapsed, the safe default
+    }
+  }, []);
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(COLLAPSE_STORAGE_KEY, next ? "1" : "0");
+      } catch {
+        // best-effort persistence only — the in-memory toggle still works this session
+      }
+      return next;
+    });
+  };
 
   const tierBuckets = useMemo(() => winRateByTier(record?.plays ?? []), [record?.plays]);
   const pnlCurve = useMemo(() => sessionPnlCurve(record?.plays ?? []), [record?.plays]);
@@ -203,55 +235,74 @@ export function NighthawkAnalyticsPanel() {
   }
 
   return (
-    <section className="nh-analytics-panel" aria-label="0DTE session analytics">
-      <div className="nh-analytics-header">
-        <span className="nh-analytics-panel-title">Session analytics</span>
-        <span className="nh-analytics-panel-sub">{record.window.days}d track record · {record.graded} graded</span>
-      </div>
-
-      <div className="nh-analytics-tiles">
-        <StatTile
-          label="Win rate"
-          value={fmtPct(record.win_rate_pct)}
-          tone={record.win_rate_pct == null ? "flat" : record.win_rate_pct >= 50 ? "up" : "down"}
-        />
-        <StatTile
-          label="Avg return"
-          value={fmtSignedPct(record.avg_pnl_pct)}
-          tone={record.avg_pnl_pct == null ? "flat" : record.avg_pnl_pct >= 0 ? "up" : "down"}
-        />
-        <StatTile label="Graded" value={String(record.graded)} tone="flat" />
-        <StatTile
-          label="Session P&L"
-          value={sessionNet == null ? EM_DASH : fmtSignedPct(sessionNet)}
-          tone={sessionNet == null ? "flat" : sessionNet >= 0 ? "up" : "down"}
-        />
-      </div>
-
-      <div className="nh-analytics-grid">
-        <div className="nh-analytics-col">
-          <span className="nh-analytics-col-title">By merit tier</span>
-          <TierRows buckets={tierBuckets} />
-        </div>
-        <div className="nh-analytics-col">
-          <span className="nh-analytics-col-title">By exit outcome</span>
-          <BucketRows buckets={record.by_outcome} />
-        </div>
-        <div className="nh-analytics-col nh-analytics-col-wide">
-          <span className="nh-analytics-col-title">
-            {curveIsToday ? "Today's session P&L" : "Latest session P&L"}
-            {pnlCurve.length > 0 ? ` · ${pnlCurve.length} resolved` : ""}
-            {!curveIsToday && curveDate ? ` · ${curveDate}` : ""}
+    <section className={clsx("nh-analytics-panel", collapsed && "nh-analytics-panel-collapsed")} aria-label="0DTE session analytics">
+      <button
+        type="button"
+        className="nh-analytics-header nh-analytics-toggle"
+        onClick={toggleCollapsed}
+        aria-expanded={!collapsed}
+        aria-controls="nh-analytics-body"
+      >
+        <span className="nh-analytics-panel-title">
+          <span className={clsx("nh-analytics-chevron", !collapsed && "nh-analytics-chevron-open")} aria-hidden>
+            ▸
           </span>
-          {pnlCurve.length > 0 ? (
-            <div className="nh-analytics-curve">
-              <SessionPnlChart points={pnlCurve} />
+          Session analytics
+        </span>
+        <span className="nh-analytics-panel-sub">
+          {collapsed
+            ? `Win ${fmtPct(record.win_rate_pct)} · ${fmtSignedPct(record.avg_pnl_pct)} avg · tap to expand`
+            : `${record.window.days}d track record · ${record.graded} graded`}
+        </span>
+      </button>
+
+      {!collapsed && (
+        <div id="nh-analytics-body">
+          <div className="nh-analytics-tiles">
+            <StatTile
+              label="Win rate"
+              value={fmtPct(record.win_rate_pct)}
+              tone={record.win_rate_pct == null ? "flat" : record.win_rate_pct >= 50 ? "up" : "down"}
+            />
+            <StatTile
+              label="Avg return"
+              value={fmtSignedPct(record.avg_pnl_pct)}
+              tone={record.avg_pnl_pct == null ? "flat" : record.avg_pnl_pct >= 0 ? "up" : "down"}
+            />
+            <StatTile label="Graded" value={String(record.graded)} tone="flat" />
+            <StatTile
+              label="Session P&L"
+              value={sessionNet == null ? EM_DASH : fmtSignedPct(sessionNet)}
+              tone={sessionNet == null ? "flat" : sessionNet >= 0 ? "up" : "down"}
+            />
+          </div>
+
+          <div className="nh-analytics-grid">
+            <div className="nh-analytics-col">
+              <span className="nh-analytics-col-title">By merit tier</span>
+              <TierRows buckets={tierBuckets} />
             </div>
-          ) : (
-            <p className="nh-analytics-empty">No plays have resolved yet today.</p>
-          )}
+            <div className="nh-analytics-col">
+              <span className="nh-analytics-col-title">By exit outcome</span>
+              <BucketRows buckets={record.by_outcome} />
+            </div>
+            <div className="nh-analytics-col nh-analytics-col-wide">
+              <span className="nh-analytics-col-title">
+                {curveIsToday ? "Today's session P&L" : "Latest session P&L"}
+                {pnlCurve.length > 0 ? ` · ${pnlCurve.length} resolved` : ""}
+                {!curveIsToday && curveDate ? ` · ${curveDate}` : ""}
+              </span>
+              {pnlCurve.length > 0 ? (
+                <div className="nh-analytics-curve">
+                  <SessionPnlChart points={pnlCurve} />
+                </div>
+              ) : (
+                <p className="nh-analytics-empty">No plays have resolved yet today.</p>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }

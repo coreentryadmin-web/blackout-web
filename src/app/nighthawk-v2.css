@@ -94,6 +94,12 @@
     scrollbar-color: rgba(50, 240, 138, 0.45) rgba(8, 8, 14, 0.85);
   }
 
+  /* Vector/Banger boards use Tailwind flex-col on .nh-deck-rows — without shrink:0 each Panel
+     collapses to the accent strip (~26px) while text remains in DOM (nh-v2 shell is 100svh). */
+  html:not(.ios-native-shell) .nh-v2-page .nh-deck-rows.flex-col > * {
+    flex-shrink: 0;
+  }
+
   html:not(.ios-native-shell) .nh-v2-page .nh-deck-rows::-webkit-scrollbar {
     width: 6px;
   }

@@ -295,8 +295,8 @@ export function BangerBoard() {
           because the desktop Night Hawk shell locks this tab's outer container to
           height:100svh/overflow:hidden (nighthawk-v2.css), so without an explicit internal
           scrollport, rows past the fold are clipped and unreachable (see file header). */}
-      <div className="nh-deck-rows flex min-h-0 flex-1 flex-col gap-2 pr-1">
-        <div className="flex flex-col gap-2">
+      <div className="nh-deck-rows min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+        <div className="space-y-2">
           <span className="text-xs font-bold uppercase tracking-wide text-white/60">Open ({open.length})</span>
           {open.length === 0 ? (
             <span className="text-sm text-white/50">No open banger positions.</span>
@@ -305,7 +305,7 @@ export function BangerBoard() {
           )}
         </div>
         {closed.length > 0 && (
-          <div className="flex flex-col gap-2">
+          <div className="space-y-2">
             <span className="text-xs font-bold uppercase tracking-wide text-white/60">
               Recently closed ({closed.length})
             </span>

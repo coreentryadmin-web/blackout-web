@@ -14,11 +14,10 @@ describe("Vector replay play-engine gate (Wave 2)", () => {
     assert.match(chart, /onReplayModeChange\?\.\(replayMode\)/);
   });
 
-  it("VectorPageShell pauses contract picks + live monitor during replay", () => {
+  it("VectorPageShell pauses actionable picks during replay", () => {
     const shell = read("src/features/vector/components/VectorPageShell.tsx");
     assert.match(shell, /chartReplayMode/);
-    assert.match(shell, /useVectorContractPicks\([\s\S]*chartReplayMode/);
-    assert.match(shell, /useVectorPickLiveMonitor\([\s\S]*chartReplayMode/);
+    assert.match(shell, /useVectorActionablePicks\([\s\S]*chartReplayMode/);
     assert.match(shell, /VectorReplayPlayGate/);
     assert.match(shell, /onReplayModeChange=\{handleReplayModeChange\}/);
   });

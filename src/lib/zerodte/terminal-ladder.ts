@@ -7,13 +7,15 @@
 // stop→target track for every 0DTE play — a rendered constant, not the row's actual policy.
 // The exit engine supports TWO families: ratchet (arm/lock/runner floors) and trim_scale
 // (bank ⅓@+25%, ⅓@+50%, run the last ⅓). Which one a row runs is FROZEN at commit in
-// entry_context.exit_policy_snapshot from ZERODTE_EXIT_MODE. IMPORTANT: prod runs the
-// RATCHET default deliberately — DEFAULT_EXIT_MODE is "ratchet" and ZERODTE_EXIT_MODE is
-// currently UNSET (exit-engine.ts "DEFAULT-OFF, DELIBERATELY"), so trim_scale is DORMANT in
-// prod today. This module resolves whichever policy the row actually froze — ratchet today,
-// trim_scale only if/when it is enabled — instead of hard-coding one. Each trim tranche's
-// premium LEVEL is priced off the pinned entry and FIRED when the latched peak reaches it, so
-// the ladder (when trim_scale IS the frozen policy) matches the strategy the engine ran.
+// entry_context.exit_policy_snapshot from ZERODTE_EXIT_MODE. CORRECTED 2026-08-28 (this
+// comment was stale): trim_scale is LIVE in prod, not dormant — DEFAULT_EXIT_MODE
+// (exit-engine.ts) is "trim_scale", and resolveExitModeForTier (exit-sync.ts, the E5
+// graduation) puts every A/B-tier commit on trim_scale by default regardless of the
+// ZERODTE_EXIT_MODE env var; only C-tier/untiered plays default to ratchet. This module
+// resolves whichever policy the row actually froze — trim_scale for A/B tier today, ratchet
+// for C/untiered — instead of hard-coding one. Each trim tranche's premium LEVEL is priced
+// off the pinned entry and FIRED when the latched peak reaches it, so the ladder (when
+// trim_scale IS the frozen policy) matches the strategy the engine ran.
 
 import { PLAN_RULES } from "./plan";
 

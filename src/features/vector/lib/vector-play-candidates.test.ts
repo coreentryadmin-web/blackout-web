@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { rankVectorPlayCandidates, pickContractNearTarget } from "./vector-play-candidates";
+import { rankVectorPlayCandidates, pickContractNearTarget, classifyVectorPickTier, minRankScoreToShow } from "./vector-play-candidates";
 import type { ChainStrikeRow, EditionChainData } from "@/features/nighthawk/lib/option-chain-prompt";
 import type { VectorPlayPickContext } from "./vector-play-candidates";
 import { todayEtYmd } from "@/lib/providers/spx-session";
@@ -36,11 +36,20 @@ function row(
 
 function basePlay(
   bias: "long" | "short" | "range" | "neutral",
-  conviction = 72
+  conviction = 72,
+  setup: VectorPlayPickContext["play"]["setup"] =
+    bias === "long"
+      ? "momentum-long"
+      : bias === "short"
+        ? "momentum-short"
+        : bias === "range"
+          ? "range"
+          : "stand-aside"
 ): VectorPlayPickContext["play"] {
   return {
     style: "swing",
     bias,
+    setup,
     conviction,
     grade: "A",
     headline: "test play",
@@ -215,6 +224,29 @@ test("neutral play returns no picks", () => {
   );
 });
 
+test("pivot play ranks once spot commits past gamma flip", () => {
+  const chain: EditionChainData = {
+    spot: 353,
+    rows: [
+      row(353, { expiry: ymdPlus(0), callAsk: 4, callBid: 3.6 }),
+      row(353, { expiry: ymdPlus(7), callAsk: 5, callBid: 4.6 }),
+      row(350, { expiry: ymdPlus(7), callAsk: 6, callBid: 5.5 }),
+    ],
+  };
+  const play = basePlay("neutral", 72, "pivot");
+  assert.deepEqual(
+    rankVectorPlayCandidates({ play, spot: 352.56, gammaFlip: 352.56 }, chain),
+    [],
+    "still on the flip → no ranked picks"
+  );
+  const picks = rankVectorPlayCandidates(
+    { play, spot: 353, gammaFlip: 352.56, putWall: 350 },
+    chain
+  );
+  assert.ok(picks.length > 0, "committed pivot side should surface ranked picks");
+  assert.equal(picks[0]?.side, "call");
+});
+
 test("bid-only quote (no ask) is still a visible, pickable contract", () => {
   // A contract whose ask has gone dark (thin/wide market, or simply stale) but whose bid is live
   // is real and executable — it must not be invisible to every liquidity tier.
@@ -254,6 +286,30 @@ test("null context returns no picks", () => {
   assert.deepEqual(rankVectorPlayCandidates(null, chain), []);
 });
 
+test("excludeOccs omits invalidated contracts from the ranked pool", () => {
+  const chain: EditionChainData = {
+    spot: 100,
+    rows: [
+      row(98, { expiry: ymdPlus(7), callAsk: 5, callBid: 4.5 }),
+      row(99, { expiry: ymdPlus(7), callAsk: 5, callBid: 4.5 }),
+    ],
+  };
+  const ctx: VectorPlayPickContext = {
+    play: basePlay("long", 70),
+    spot: 100,
+    putWall: 98,
+  };
+  const all = rankVectorPlayCandidates(ctx, chain, "SPY", { limit: 8 });
+  assert.ok(all.length >= 1);
+  const firstOcc = all[0]!.occ;
+  assert.ok(firstOcc);
+  const without = rankVectorPlayCandidates(ctx, chain, "SPY", {
+    limit: 8,
+    excludeOccs: [firstOcc],
+  });
+  assert.ok(!without.some((p) => p.occ === firstOcc));
+});
+
 test("pickContractNearTarget: chooses strike closest to target in DTE window", () => {
   const chain: EditionChainData = {
     spot: 100,
@@ -264,4 +320,23 @@ test("pickContractNearTarget: chooses strike closest to target in DTE window", (
   };
   const picked = pickContractNearTarget(chain, "long", 98, 1, 7);
   assert.equal(picked?.strike, 98);
+});
+
+test("classifyVectorPickTier: mega whale surfaces elite", () => {
+  assert.equal(
+    classifyVectorPickTier({
+      playGrade: "B",
+      playConviction: 62,
+      role: "flow-whale",
+      rankScore: 74,
+      flowPremiumAtStrike: 2_500_000,
+      atKeyLevel: false,
+    }),
+    "elite"
+  );
+});
+
+test("minRankScoreToShow: whale role lowers bar", () => {
+  assert.equal(minRankScoreToShow("flow-whale", 600_000), 44);
+  assert.equal(minRankScoreToShow("primary-long", 600_000), 52);
 });

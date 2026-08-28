@@ -104,6 +104,7 @@ export const VECTOR_FULL_STATE_FIXTURE: VectorFullState = {
   play: {
     style: "scalp",
     bias: "short",
+    setup: "fade-call",
     conviction: 68,
     grade: "B",
     headline: "SCALP · fade the 7,600 call wall — short back toward VWAP 7,558",
