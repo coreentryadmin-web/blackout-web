@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildVectorPlay, type VectorSnapshot , rangeMeanReference, stalenessConvictionDiscount } from "./vector-play-engine";
+import { buildVectorPlay, type VectorSnapshot , rangeMeanReference, stalenessConvictionDiscount, vectorPlayBieBucketKey } from "./vector-play-engine";
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 import type { GammaMagnet } from "./vector-gamma-magnet";
 import type { WallProximity } from "./vector-wall-proximity";
@@ -448,6 +448,23 @@ test("missing expected-move / magnet / integrity: play still builds with real le
   assert.ok(play);
   assert.match(play.headline, /fade the 7,600 call wall/);
   assert.ok(play.targets.length > 0);
+});
+
+test("vectorPlayBieBucketKey: stable across spot-only drift", () => {
+  const keyA = vectorPlayBieBucketKey(
+    base({ spot: 7598, proximity: proximity("call", 7600, "at") })
+  );
+  const keyB = vectorPlayBieBucketKey(
+    base({ spot: 7601, proximity: proximity("call", 7600, "at") })
+  );
+  assert.equal(keyA, keyB);
+  assert.match(keyA, /^long\|scalp\|fade-call\|call-at$/);
+});
+
+test("vectorPlayBieBucketKey: differs when setup branch changes", () => {
+  const fade = vectorPlayBieBucketKey(base({ spot: 7598, proximity: proximity("call", 7600, "at") }));
+  const range = vectorPlayBieBucketKey(base({ spot: 7555, proximity: null, magnet: magnet(7555, "long", "at") }));
+  assert.notEqual(fade, range);
 });
 
 // ── Timeframe awareness ──────────────────────────────────────────────────────

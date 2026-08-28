@@ -60,6 +60,7 @@ import { todayEtYmd } from "@/lib/providers/spx-session";
 import { roundFloats } from "@/lib/round-floats";
 import { VECTOR_FRACTION_DP } from "@/features/vector/lib/vector-response-rounding";
 import { readVectorFullStateCache, writeVectorFullStateCache } from "@/lib/bie/vector-full-state-cache";
+import { resolveVectorPlayBieContext } from "@/lib/bie/vector-play-bie";
 import { reportVectorAbsences, type VectorAbsenceReport } from "@/lib/bie/vector-absent-sections";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { describeVectorFreshness, type VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
@@ -197,6 +198,7 @@ export async function computeVectorFullState(
     const vexWalls = getVectorVexWalls(t);
     const vexFlip = getVectorVexFlip(t);
     const wallHistory = getVectorWallHistory(t);
+    const cachedForHyst = await readVectorFullStateCache(t, horizon).catch(() => null);
     // "Fadeness": building / fading / new / dissolved / shifted per strike, diffed across the rail
     // for the primary (gamma) lens — the same detector the desk terminal's wall-events feed uses.
     const wallEvents = eventsFromWallHistory(wallHistory, "gex");
@@ -224,7 +226,12 @@ export async function computeVectorFullState(
     // never describe a different regime/magnet/proximity than a member sees on the chart.
     const regime = deriveVectorRegime({ spot, gammaFlip, topCallWall, topPutWall });
     const magnet = deriveGammaMagnet({ spot, walls: gexWalls, posture: regime.posture });
-    const proximity = deriveWallProximity({ spot, walls: gexWalls, gammaFlip });
+    const proximity = deriveWallProximity({
+      spot,
+      walls: gexWalls,
+      gammaFlip,
+      prev: cachedForHyst?.proximity ?? null,
+    });
     // Wall integrity reads the SAME rail (persistence factor); an empty rail scores "unknown"
     // (neutral), never a fabricated "held all session" — see scoreWallIntegrity.
     const wallIntegrity = scoreTopWalls(gexWalls, wallHistory);
@@ -258,7 +265,7 @@ export async function computeVectorFullState(
         strike: p.strike,
       })) ?? [];
 
-    const snapshot: VectorSnapshot = {
+    const snapshotBase: VectorSnapshot = {
       ticker: t,
       horizon,
       timeframeMin,
@@ -284,7 +291,11 @@ export async function computeVectorFullState(
         sessionFlows,
         darkPoolLevels,
       },
+      dataAgeMs: 0,
     };
+
+    const bie = await resolveVectorPlayBieContext(snapshotBase).catch(() => null);
+    const snapshot: VectorSnapshot = { ...snapshotBase, bie };
 
     const play: VectorPlay | null = buildVectorPlay(snapshot);
 
@@ -399,8 +410,15 @@ function withReadContext(
   state: VectorFullState
 ): VectorFullState & VectorAbsenceReport & VectorFreshnessBlock {
   const observedAt = Date.parse(state.asOf);
+  const dataAgeMs = Number.isFinite(observedAt) ? Math.max(0, Date.now() - observedAt) : null;
+  // Rebuild play with read-time dataAgeMs so conviction staleness discount matches cache age.
+  const { play: _cachedPlay, ...snapshotFields } = state;
+  const play = buildVectorPlay({ ...snapshotFields, dataAgeMs, play: undefined });
+
   return {
     ...state,
+    dataAgeMs,
+    play,
     ...reportVectorAbsences({
       gexWalls: state.gexWalls,
       gammaFlip: state.gammaFlip,
@@ -413,7 +431,7 @@ function withReadContext(
       vexWalls: state.vexWalls,
       darkPoolLevels: state.darkPoolLevels,
       wallHistory: state.wallHistory,
-      play: state.play,
+      play: play,
       isRth: isEtCashRth(Number.isFinite(observedAt) ? new Date(observedAt) : new Date()),
     }),
     ...describeVectorFreshness(state.asOf, Date.now()),
