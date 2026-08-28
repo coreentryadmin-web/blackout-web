@@ -14761,7 +14761,6 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 
 ## 2026-07-23 — 0DTE entry-timing correction: unlock 9:45 → 10:00 + timeOfDayFactor recalibration (USER-AUTHORIZED)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 - **Root cause:** the G-2 opening-window unlock sat at **9:45 ET** (2026-07-13 directive) and
   `timeOfDayFactor` (`intraday.ts`) **rewarded** the 9:50–11:00 window (+5) while **penalizing** 11:00
@@ -14781,11 +14780,13 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
 - **Evidence:** gates + board + 7/13-replay suites updated and green (133/133); the 7/13 replay now
   shows G-2 catching the pre-10:00 entries (AMD 09:50, SPY/MU 09:55) as a corroborating guard while
   G-1 tape-alignment remains the primary killer (F-3 holds). tsc + eslint clean.
-- **Status:** SHIPPED (PR next).
+
+**Status.** FIXED — `OPENING_WINDOW_UNLOCK_ET_MINUTES = 10 * 60` confirmed present and gating in
+`src/lib/zerodte/gates.ts` in `main` today. Restamped, the pre-existing "**Status:**" line (colon
+inside bold, list-item) was not read by the reconciler.
 
 ## 2026-07-23 — Whole-market banger research + scanner tool (research + tooling)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### Research (docs/audit/0DTE-RESEARCH.md) — evidence-driven map for a top-tier system
 - **0DTE grinder:** multi-day vs single-day discovery is a WASH (32% vs 36% WR, n≈30); entry timing is
@@ -14805,8 +14806,11 @@ correctly reported no-weekly for optionless micro-cap movers. Two findings:
   measures maxRet vs hold-to-expiry vs REALIZED-under-scale-out. Read-only; secrets from env.
 - **Key product truth:** finding bangers is trivial; **exiting them mechanically is the whole edge** —
   where a system beats a human. This is the north star for the whole-market engine.
-- **Status:** research + tool committed (PR next). Prioritized plan in the research doc: P1 confluence
-  tier → P2 banger scanner→discovery → P3 exit-engine study → P4 regime → P5 timing → P6 learning loop.
+**Status.** FIXED — `scripts/audit/market-banger-scan.mjs` and `docs/audit/0DTE-RESEARCH.md` both
+confirmed present in `main` today (also listed in this file's own committed audit-toolkit section).
+Restamped, the pre-existing "**Status:**" line (colon inside bold, list-item) was not read by the
+reconciler. Prioritized plan in the research doc: P1 confluence tier → P2 banger scanner→discovery →
+P3 exit-engine study → P4 regime → P5 timing → P6 learning loop.
 
 ## 2026-07-22 — Multi-day flow accumulation wired into the LIVE 0DTE loop (feat, calibration-first)
 > **kind:** `FINDING`
