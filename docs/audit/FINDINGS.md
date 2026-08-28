@@ -4,6 +4,40 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
 ## Whop trial-ending-soon email — ADDED
 
 > **kind:** `FINDING`
@@ -8056,40 +8090,6 @@ production after deploy to confirm the `Allow: /api/og` lines are served.
 
 **Follow-up, not fixed here.** `ExpiryConcentration.tsx`'s `bucketLabel` tests `dte === 0`, so an already-expired print (negative DTE from the tape's SQL) renders under **"This week"**. Member-facing render change; separate branch.
 
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
-
 ## 2026-08-21 — [FINDING, P1 member-visible] `/heatmap` showed a green pulsing "Quote live" over SPY's 16:00 close at 20:41 ET — FIXED
 
 > **kind:** `FINDING`
@@ -9589,10 +9589,10 @@ module compares for bit-identity.
 
 ## 2026-08-08 - [P3, cleanup] Orphaned `track-record/opengraph-image.tsx` still executed a live data fetch on direct hit, behind a page that always redirects — REMOVED
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 | Field | Value |
 |-------|-------|
+| **Status** | FIXED — `src/app/track-record/opengraph-image.tsx` confirmed absent from `main` today; removal commit `643b74bc0` ("chore: remove orphaned track-record OG image generator"). Restamped, no status was ever recorded originally. |
 | **Severity** | P3, not a live SEO bug (the route is already `robots.ts`-disallowed), but real dead weight. `src/app/(site)/track-record/page.tsx` unconditionally calls `redirect("/admin?tab=track-record")` — it never renders HTML or serves metadata to a real visitor. `src/app/track-record/opengraph-image.tsx` (a sibling directory outside the `(site)` route group, mapping to the same `/track-record` URL segment for Next.js's special-file resolution) still existed, calling `buildPublicTrackRecord()` — a real data fetch — to render a 1200×630 PNG on every hit. |
 | **Investigation before deleting** | Checked git history: both files were introduced in the same commit (`62864d9a`, 2026-07-30) — this was never a working feature that regressed, it shipped already-orphaned. Checked `src/app/embed/track-record/page.tsx` (the other track-record-adjacent route): its own comment confirms the reclassification — `"Admin-only embed preview (formerly public social-proof iframe)"`, `requireAdmin()`-gated, `noindex`. The whole public track-record sharing feature was walked back to admin-only; this OG image generator is a leftover from when `/track-record` was still public. Grepped the entire `src/` tree for any reference to the file (imports, route generation, tests) — zero hits. |
 | **Fix** | Deleted `src/app/track-record/opengraph-image.tsx`. Since `(site)/track-record/page.tsx` already redirects before any metadata is served, and `robots.ts` already disallows `/track-record/`, removing the unreachable image generator has no SEO downside — it only removes a route that still executed a real DB-backed data fetch if hit directly (e.g. a stale cached link, or a bot resolving the synthesized image URL literally), with zero benefit to any real visitor. |
@@ -10707,7 +10707,6 @@ was >36h old by Monday pre-fire.
 
 ## 2026-08-03 — [SEO] Internal cross-link audit: 27 links added across 42 learn articles
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity:** Low (SEO / discoverability improvement, no runtime behavior change).
 
@@ -10737,7 +10736,9 @@ schema changes.
 **Test:** `src/lib/learn/articles.test.ts` — new test file validating minimum incoming (2),
 outgoing (3), no orphans, no broken links, and total link count >= 300.
 
-**Status:** SHIPPED via `fix/learn-internal-crosslinks`.
+**Status.** FIXED — `src/lib/learn/articles.ts` cross-links and `articles.test.ts` orphan/incoming-link
+regression test both confirmed present in `main` today (shipped via `fix/learn-internal-crosslinks`).
+Restamped, no status was ever recorded originally.
 
 ---
 
@@ -10821,7 +10822,6 @@ actually used, not silently ignored), and the no-prop fallback path still render
 
 ## 2026-08-01 — [Vector/SPX Slayer] SSR payload embedded up to 24h of prior-session wall history — 28-50MB HTML, 10-12s downloads
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 — perf/UX. Member-reported "the entire website feels slow"; traced to the highest-traffic
 authenticated surface (Vector standalone page + the SPX Slayer flagship dashboard embed).
@@ -10874,7 +10874,11 @@ input; no-op when the whole rail already belongs to the session). Full suite gre
 **Files.** `src/features/vector/lib/vector-wall-history.ts`, `src/features/vector/lib/vector-seed-props.ts`,
 `src/features/vector/lib/vector-wall-history.test.ts`.
 
-**Status.** `fix/vector-ssr-session-scope-payload` → PR.
+**Status.** FIXED — `trimHistoryToSession` present and wired into `loadVectorSeedProps` in `main`
+today (`src/features/vector/lib/vector-wall-history.ts:830`, called from
+`vector-seed-props.ts:117`); the surrounding code has since evolved further (dominant-wall enter
+rank tuning at `fa0be8d70`). Restamped from a mid-flight "PR pending" status that was never
+revisited.
 
 ## 2026-07-31 — [Grid/0DTE] Minimal board fallback hardcoded noon RTH heat post-close
 > **kind:** `FINDING`
@@ -10952,13 +10956,13 @@ now includes 503.
 
 ## 2026-07-31 — [spx] E2E cross-tool desk spot 0 while matrix live (P2 harness)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P2 — `validate:spx-e2e` FAIL `integration:spx-cross-tool` on transient `desk spot 0` while heatmap held 7489.72 (cold desk cache edge, same class as SPX-RTH-XEP-01).
 
 **Fix.** `spx-dashboard-e2e-audit.mjs`: retry desk + merged fetch when matrix spot live but desk price 0; only compare when `deskSpot > 0`.
 
-**Status.** `fix/spx-e2e-desk-spot-retry` → PR.
+**Status.** FIXED — the deskSpot>0 retry/skip logic is present today in `scripts/spx-dashboard-e2e-audit.mjs:275-288`.
+Restamped from a mid-flight hand-off note that was never revisited.
 
 ## 2026-07-31 — [spx] Matrix UI "unavailable" while API valid — client 10s fetch abort (P0)
 > **kind:** `FINDING`
@@ -11663,7 +11667,6 @@ overlays stay on the static allowlist (2 RPS). CORE SPY/SPX/QQQ still force-refr
 
 ## 2026-07-29 — [Thermal] Triple desk opens scrolled to top of strike band (not spot)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P2 — on `/heatmap` compare desk, SPY|SPX|QQQ ladders painted with spot
 highlighted (`is-spot`) but `scrollTop` stayed at 0, so traders had to manually scroll
@@ -11676,7 +11679,9 @@ each column to find price. SPX Slayer already auto-centers + has a ↻ refresh.
 rail ↻ (+ `R`) revalidates all three SWR keys and bumps a recenter epoch; programmatic
 centers suppress cross-panel scroll-sync so each ladder maps to its own spot.
 
-**Status.** `cursor/thermal-spot-recenter-3d11` → PR.
+**Status.** FIXED — `scrollRowIntoViewCenter` + `recenterEpoch` confirmed wired in `ThermalCompactMatrix.tsx`/`ThermalTripleDesk.tsx` in `main` today.
+Restamped from a mid-flight hand-off note that was never revisited (previously flagged UNPROVEN by
+`findings-verify-stale.mjs`, whose symbol search missed the actual shipped names).
 
 ## 2026-07-29 — [ops] x-replies cron STALE (EventBridge DISABLED)
 > **kind:** `OPS-NOTE`
@@ -11773,7 +11778,6 @@ strike. Tests cover the live regression.
 
 ## 2026-07-29 — [Thermal] Matrix asof 25–60s while SPX Slayer stays ~5s; SPY blanks
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — recorded mid-flight ("PR pending"/"auto-merge") and never revisited. Confirm the merge and restamp.
 
 **Severity.** P1 — Thermal compare desk (`/heatmap?compare=1`) showed `MATRIX · 25s` /
 `45s` on SPY/QQQ while SPX column + Slayer rail stayed ~4–5s; SPY sometimes flashed
@@ -11788,7 +11792,11 @@ EventBridge `heatmap-warm` = 1/min floor. Client polled 5s but served SWR withou
 **Fix.** Age-based force (>8s); last-good + session cache; heatmap-warm forces SPY/SPX/QQQ
 first; rth-warm-leader ~20s; refuse to display spot≤0; reject WS/REST spot≤0 before caching empty.
 
-**Status.** `cursor/thermal-matrix-fresh-3d11` → PR.
+**Status.** FIXED — `heatmapUsable = heatmap.spot > 0 && heatmap.strikes.length > 0` confirmed present in
+`src/app/api/market/gex-heatmap/route.ts:413` (the "refuse to display spot≤0" half of the fix); 8s
+server-side throttle also present at `route.ts:313`.
+Restamped from a mid-flight hand-off note that was never revisited (previously flagged UNPROVEN by
+`findings-verify-stale.mjs`, whose symbol search missed the actual shipped names).
 
 ## 2026-07-29 — [ops] ops-auto-fix #1247 — stale GitHub secrets + false cron failures
 > **kind:** `OPS-NOTE`
