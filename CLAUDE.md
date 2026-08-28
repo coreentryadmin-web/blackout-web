@@ -307,6 +307,24 @@ the conclusion. **Read the log.** Runs 32460029586 and 32461784083 are both gree
 `RATE LIMITED while listing PRs — exiting 0, next run retries.` As of this writing the workflow has
 never actually released a PR; that is still unproven, not proven.
 
+**`automerge.yml`'s own merge step is ALSO broken by a token-scope gap — every green agent PR now
+needs a MANUAL merge until it's fixed (found 2026-08-28, PR #3071).** The `enable-automerge` job
+runs `gh pr merge --auto --squash` with `AGENT_RELEASE_TOKEN` (chosen specifically so the merge
+event fires downstream CI/deploy — see the workflow's own header on the GITHUB_TOKEN silent-no-deploy
+bug it replaced). That call failed outright: `GraphQL: Resource not accessible by personal access
+token (mergePullRequest)`. `gh pr merge --auto` is GraphQL-only (`enablePullRequestAutoMerge` — there
+is no REST equivalent), so this isn't the listing-endpoint rate limit already documented in budget #4
+above; it's the PAT missing the scope/permission GraphQL's mutation checks, which REST calls with the
+same token don't hit. **Symptom looks identical to the draft deadlock**: `verify` green, CodeQL clean,
+mergeable — and the PR just sits, because the one automated path to merge silently errored and nothing
+downstream ever saw it. Confirmed the coordinator's own merge tool still works fine on the same token
+class (GitHub MCP `merge_pull_request`, which uses REST): #3071 merged clean seconds after the
+`gh pr merge --auto` failure. **Until the PAT's scope is fixed (needs org/account-owner action to
+regenerate it with GraphQL PR-write permission — not something achievable from this sandbox), sweep
+for `enable-automerge: failure` alongside the existing green-draft jam query** (`state=open AND
+verify=pass` is now necessary but not sufficient — also check the `enable-automerge` check run's own
+conclusion) **and merge manually via GitHub MCP** rather than trusting `automerge.yml` fired.
+
 ## Access reality — three DIFFERENT things, do not conflate (learned 2026-07-22)
 1. **Logging into the live site as a real member — WORKS, pure HTTP, no browser.** Mint a temp
    admin+premium user (Clerk Backend API) → `POST /sign_in_tokens` → FAPI ticket exchange
