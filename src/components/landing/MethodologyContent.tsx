@@ -7,6 +7,7 @@ import type { PublicTrackRecord } from "@/lib/track-record-public";
 import type { TrackRecordPagePayload } from "@/lib/track-record-page";
 import { TRACK_RECORD_METHODOLOGY } from "@/lib/track-record-page";
 import { ZERODTE_RECORD_METHODOLOGY } from "@/lib/zerodte/record";
+import { MethodologyLaneNav } from "@/components/landing/MethodologyLaneNav";
 
 const INTRO = `Most trading services show you the wins and quietly forget the rest. BlackOut does the opposite: **every setup is logged, graded, and timestamped** — winners and losers alike. This page is the receipts desk: how we grade outcomes, what each product measures, and the live aggregate numbers you can verify before you subscribe.
 
@@ -119,16 +120,21 @@ export function MethodologyContent({
         How BlackOut grades every setup — and the aggregate numbers behind the homepage claims.
       </p>
 
+      <MethodologyLaneNav />
+
       <div className="mt-12 space-y-10">
         <MarkdownBody content={INTRO} />
 
-        <div>
+        <div id="methodology-spx" className="methodology-lane-section scroll-mt-20">
           <TrackRecordEmbed record={spxRecord} className="w-full" />
         </div>
 
         <MarkdownBody content={SPX_DETAIL} />
 
-        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+        <div
+          id="methodology-nighthawk"
+          className="methodology-lane-section scroll-mt-20 rounded-xl border border-white/10 bg-white/[0.02] p-5"
+        >
           <p className="mb-4 font-mono text-[10px] uppercase tracking-[0.25em] text-cyan-300">
             Night Hawk · 90-day window
           </p>
@@ -139,7 +145,10 @@ export function MethodologyContent({
 
         {zd ? (
           <>
-            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+            <div
+              id="methodology-zerodte"
+              className="methodology-lane-section scroll-mt-20 rounded-xl border border-white/10 bg-white/[0.02] p-5"
+            >
               <p className="mb-4 font-mono text-[10px] uppercase tracking-[0.25em] text-cyan-300">
                 0DTE Command · {zd.windowDays}-day window
               </p>
@@ -149,7 +158,7 @@ export function MethodologyContent({
             <p className="font-mono text-xs leading-relaxed text-sky-300">{ZERODTE_RECORD_METHODOLOGY}</p>
           </>
         ) : (
-          <p className="font-mono text-sm text-sky-300">
+          <p id="methodology-zerodte" className="methodology-lane-section scroll-mt-20 font-mono text-sm text-sky-300">
             0DTE Command ledger warming up — aggregate stats populate as plays grade post-close.
           </p>
         )}
@@ -158,7 +167,9 @@ export function MethodologyContent({
           <p className="font-mono text-xs leading-relaxed text-sky-300">{TRACK_RECORD_METHODOLOGY}</p>
         </div>
 
-        <MarkdownBody content={DISCLAIM} />
+        <div id="methodology-disclaimer" className="methodology-lane-section scroll-mt-20">
+          <MarkdownBody content={DISCLAIM} />
+        </div>
       </div>
 
       <div className="mt-12 flex flex-wrap gap-4">

@@ -55,8 +55,16 @@ test("upgradeAnonSyncGate: rejects paid sync in anonymous HTML", () => {
   );
 });
 
-test("methodologyPageGate: requires live trust copy", () => {
-  assert.equal(methodologyPageGate("<html>Grading methodology — never blended</html>", 200).ok, true);
+test("methodologyPageGate: requires live trust copy + lane jump-nav", () => {
+  const html =
+    '<html class="methodology-lane-nav">Grading methodology — never blended' +
+    '<a href="#methodology-spx">SPX</a><a href="#methodology-nighthawk">NH</a>' +
+    '<a href="#methodology-zerodte">0DTE</a></html>';
+  assert.equal(methodologyPageGate(html, 200).ok, true);
+  assert.equal(
+    methodologyPageGate("<html>Grading methodology — never blended</html>", 200).ok,
+    false
+  );
   assert.equal(methodologyPageGate("<html>404</html>", 404).ok, false);
 });
 
