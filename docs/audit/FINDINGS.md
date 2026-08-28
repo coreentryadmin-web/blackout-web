@@ -16236,7 +16236,6 @@ distinction remains. Read as later recalibration, not as evidence the fix never 
 
 ## 2026-07-27 — [CTO AUDIT] Night Hawk 0DTE full-system hardening (27 findings, 4 workstreams)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** Mixed (4× HIGH, 8× MEDIUM, 15× LOW/additive). Full CTO-level audit of the entire Night
 Hawk 0DTE system — architecture, gates, discovery, exit engine, governor, data resilience, telemetry.
@@ -16332,7 +16331,23 @@ pass. 10/10 breakout-source tests pass.
 mode change is the highest-risk item — mitigated by operator kill-switch (`ZERODTE_EXIT_MODE=ratchet`)
 and per-play frozen exit policy (existing plays unaffected).
 
-**Status:** PR (pending)
+**Status.** FIXED — all 16 sub-fixes across all 4 workstreams confirmed present in `main` today,
+verified individually by symbol/constant:
+- **WS1 (data resilience):** `degradedKeys` in `server-cache.ts`; `console.warn` on Polygon
+  null-returns and `isPolygonCircuitOpen`-driven failover in `polygon-largo.ts`. (The originally-cited
+  `_lastVix`/`MAX_FALLBACK_AGE_MS` pair in `scan.ts` has since evolved into the more elaborate
+  `firewall-fallback.ts` module documented in this same file's 2026-07-27 flat-tape entry above —
+  same fail-closed-fallback intent, different implementation shape.)
+- **WS2 (discovery expansion):** `BREAKOUT_MAX_CANDIDATES` (raised 6→15, and since raised further
+  to a 40-floor per its own comment); `screenBreakdownMovers` wired in `breakout-discovery.ts`; PIN
+  universe expansion confirmed (`NFLX`/`CRM`/`AVGO`/... in `pin-discovery.ts`).
+- **WS3 (exit engine + governor):** `resolveExitModeForTier` in `exit-sync.ts`;
+  `governor_session_loss_halt` distinct code in `governor.ts`; `CONCENTRATION_POLICY_VERSION = "v2"`;
+  `src/app/api/cron/zerodte-grade/route.ts` present.
+- **WS4 (gate tests + docs):** `_nullConfluencePassCount`/`getNullConfluencePassCount` in `gates.ts`;
+  `condor_macro_block`/`condor_range_break` test cases present in `gates.test.ts`.
+
+This closes out the last of the original 32-entry UNRECONCILED backlog.
 
 ## 2026-07-28 — [UI/UX] Batch 5: keyboard shortcut conflict + stock-price flash + confirm polling + backfill score floor (PR #1176)
 > **kind:** `FINDING`
