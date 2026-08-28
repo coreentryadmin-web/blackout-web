@@ -14594,7 +14594,6 @@ unchanged. Lesson: a "clean" signal must be able to distinguish *checked-and-pas
 
 ## 2026-07-23 — [TOOLING] data-validator `--watch` = per-minute continuous validation (one auth)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **What:** added a `WATCH_SECONDS` loop to `scripts/audit/data-validator.mjs` so the full authed check
 battery (prices/indices, GEX/greeks, 0DTE live+ledger contract/underlying/entry-premium, track-record
@@ -14608,7 +14607,11 @@ clears `checks`, calls `mint()`, and appends a one-line `TOTALS + any FAIL/WARN`
 (verified: `TOTALS {"PASS":33,"INFO":3}` + cleanup 200/404 unchanged). Added SIGINT/SIGTERM cleanup so
 a killed watch still deletes the temp Clerk user (the unbounded loop bypasses `main().finally()`).
 **Evidence:** live multi-pass on one auth, no auth failure, entry_premium now PASSES live (3.74 ∈
-[0.99, 3.95]). Retired `validation-loop.sh` (superseded). Status: SHIPPED.
+[0.99, 3.95]). Retired `validation-loop.sh` (superseded).
+
+**Status.** FIXED — `WATCH_SECONDS`/`establishSession`/`ensureAuth`/`WATCH_LOG` confirmed present and
+wired in `scripts/audit/data-validator.mjs` in `main` today. Restamped, the pre-existing "Status:
+SHIPPED." phrasing sat mid-paragraph rather than as its own line and was not read by the reconciler.
 
 ## 2026-07-23 — [LOW] Live-open validation findings (RTH acid test of the shipped system)
 > **kind:** `FINDING`
