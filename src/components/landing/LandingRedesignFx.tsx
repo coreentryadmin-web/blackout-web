@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { mobileStickyBlockedByContent, shouldShowMobileStickyCta } from "@/lib/marketing/mobile-sticky-cta";
 
 export function LandingRedesignFx() {
   useEffect(() => {
@@ -2291,18 +2292,63 @@ export function LandingRedesignFx() {
       });
     });
 
-    // ── Mobile sticky CTA — show when hero CTA scrolls out of view ──
+    // ── Mobile sticky CTA — show when hero CTA scrolls out of view, but never
+    // over FAQ rows or the footer (expanded accordions push targets into the bar's
+    // fixed footprint — FINDINGS P2 #2799).
     const heroCta = document.querySelector(".hero .cta-row");
     const stickyCta = document.getElementById("mobile-sticky-cta");
     if (heroCta && stickyCta) {
+      let heroPast = false;
+
+      const readRects = () => {
+        const stickyRect = stickyCta.getBoundingClientRect();
+        const faqRects = Array.from(document.querySelectorAll(".sec-faq .faq-item")).map((el) =>
+          el.getBoundingClientRect()
+        );
+        const footer = document.querySelector(".footer");
+        const footerRect = footer ? footer.getBoundingClientRect() : null;
+        return { stickyRect, faqRects, footerRect };
+      };
+
+      const syncSticky = () => {
+        const { stickyRect, faqRects, footerRect } = readRects();
+        const blocked = mobileStickyBlockedByContent(stickyRect, faqRects, footerRect);
+        stickyCta.classList.toggle("visible", shouldShowMobileStickyCta(heroPast, blocked));
+      };
+
       const stickyObs = new IntersectionObserver(
         ([entry]) => {
-          stickyCta.classList.toggle("visible", !entry.isIntersecting);
+          heroPast = !entry.isIntersecting;
+          syncSticky();
         },
-        { threshold: 0 },
+        { threshold: 0 }
       );
       stickyObs.observe(heroCta);
-      cleanups.push(() => stickyObs.disconnect());
+
+      const onFaqToggle = (e: Event) => {
+        const t = e.target;
+        if (t instanceof HTMLElement && t.closest(".sec-faq .faq-item")) {
+          requestAnimationFrame(syncSticky);
+        }
+      };
+      document.addEventListener("toggle", onFaqToggle, true);
+
+      let scrollRaf = 0;
+      const onScroll = () => {
+        if (scrollRaf) return;
+        scrollRaf = requestAnimationFrame(() => {
+          scrollRaf = 0;
+          syncSticky();
+        });
+      };
+      window.addEventListener("scroll", onScroll, { passive: true });
+
+      cleanups.push(() => {
+        stickyObs.disconnect();
+        document.removeEventListener("toggle", onFaqToggle, true);
+        window.removeEventListener("scroll", onScroll);
+        if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      });
     }
 
     return () => {
