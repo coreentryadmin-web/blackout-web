@@ -15566,7 +15566,6 @@ Restamped, the pre-existing "**Status:**" line (colon inside bold) was not read 
 
 ## 2026-07-22 — EOD pin projected close + band drawn ON the price chart (feature)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### Move the EOD pin onto the chart (user chose "on-chart cone + slim panel")
 - **What:** the SPX Vector chart now draws the EOD pin's **projected 0DTE close** as a solid gold
@@ -15586,7 +15585,9 @@ Restamped, the pre-existing "**Status:**" line (colon inside bold) was not read 
   proven infra (worst case is a cosmetic misplacement, never a broken chart). Needs a glance on the
   deployed build.
 - **Verification:** `tsc --noEmit` clean; brand lint clean.
-- **Status:** DONE (levels); cone + panel-slim = follow-ups. Branch `claude/wall-beads-data-validation-4re5wo`.
+**Status.** FIXED (levels) — `applyPinProjection` confirmed present and wired in `VectorChart.tsx`
+in `main` today. Restamped, the pre-existing "**Status:**" line (colon inside bold) was not read by
+the reconciler. Cone + panel-slim were noted as follow-ups, not verified here.
 
 ## 2026-07-22 — Pinned bias prose named stale walls after a king migration (P3, FIXED)
 > **kind:** `FINDING`
@@ -15606,7 +15607,6 @@ Restamped, the pre-existing "**Status:**" line (colon inside bold) was not read 
 
 ## 2026-07-22 — SPX desk: 4-panel layout (EOD pin own rail) + drop chart max-pain line (member-directed)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### Layout — EOD pin split into its own 4th panel so the matrix gets full height
 - **Request:** "4 panels with EOD pin forecaster as the new panel so we can get full view of the
@@ -15623,11 +15623,12 @@ Restamped, the pre-existing "**Status:**" line (colon inside bold) was not read 
     the value is kept in `maxPainValueRef` so it still feeds the confluence zone stack.
 - **Verification:** `tsc --noEmit` clean. Client-canvas/layout change — needs a look on the deployed
   build (will capture via spx-live-check). Stylelint pre-existing error at :7945 is unrelated.
-- **Status:** DONE (branch `claude/wall-beads-data-validation-4re5wo`).
+**Status.** FIXED — `.spx-left-pin` grid area confirmed wired in `globals.css`/`SpxDashboard.tsx` in
+`main` today. Restamped, the pre-existing "**Status:**" line (colon inside bold) was not read by
+the reconciler.
 
 ## 2026-07-22 — On-chart pin → Monte-Carlo source + relax over-tight MC diffusion (member-directed)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### The on-chart pin now uses the Monte-Carlo projection; MC late-session cone widened to be honest
 - **Request:** "do the monte carlo EOD pin so it looks like a curve on chart instead of the analytic
@@ -15645,7 +15646,9 @@ Restamped, the pre-existing "**Status:**" line (colon inside bold) was not read 
   (>0.5× max); 8 pass. `tsc` clean.
 - **Follow-up (next PR):** the SHADED time→16:00 converging cone as a canvas primitive (needs future
   whitespace so it maps past the last candle) — this PR does the levels + honest width.
-- **Status:** DONE (levels + width). Branch `claude/wall-beads-data-validation-4re5wo`.
+**Status.** FIXED (levels + width) — `MC_BRIDGE_NOISE_FLOOR = 0.35` confirmed wired into the bridge
+diffusion formula in `spx-pin-forecast-core.ts:151,745` in `main` today. Restamped, the pre-existing
+"**Status:**" line (colon inside bold) was not read by the reconciler.
 
 ## 2026-07-24 — [HIGH] index-option underlying spot dropped in batched snapshot mapper — FIXED
 > **kind:** `FINDING`
