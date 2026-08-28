@@ -40,7 +40,23 @@ function record(route, check, verdict, detail) {
 
 async function checkRoute(page, path, signedInCookie) {
   const label = `${path}${signedInCookie ? " (signed-in cookie)" : ""}`;
-  const res = await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded", timeout: 30000 });
+  let res;
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      res = await page.goto(`${BASE}${path}?_cb=${Date.now()}`, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      break;
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/interrupted by another navigation|ERR_ABORTED/i.test(msg) || attempt >= 2) throw e;
+      await page.waitForTimeout(800);
+    }
+  }
+  if (!res) throw lastErr ?? new Error("navigation failed");
   const status = res?.status() ?? 0;
   if (status >= 500) {
     record(label, "http", "FAIL", `HTTP ${status}`);
