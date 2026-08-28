@@ -12,6 +12,8 @@ type Props = {
   ticker: string;
   play: VectorPlay | null;
   picks: VectorContractPick[];
+  /** Invalidated picks — shown below active slots with Don't buy status. */
+  closedPicks?: VectorContractPick[];
   loading: boolean;
   /** Session replay — last pick frame stays visible; live quotes do not refresh. */
   replayPaused?: boolean;
@@ -129,14 +131,83 @@ export function VectorContractPicksCard({
   ticker,
   play,
   picks,
+  closedPicks = [],
   loading,
   replayPaused = false,
   className,
 }: Props) {
-  const [openIdx, setOpenIdx] = useState<number | null>(null);
+  const [openPick, setOpenPick] = useState<VectorContractPick | null>(null);
   const [rail, setRail] = useState<DrawerRail>("desk");
 
-  if (!picks.length) {
+  const renderPickRow = (pick: VectorContractPick, i: number, opts?: { closed?: boolean }) => {
+    const liveRange =
+      formatPickPremiumRange(pick.liveBid ?? null, pick.liveAsk ?? null, pick.liveMid ?? null) ??
+      formatPickPremiumRange(pick.entryBid ?? null, pick.entryAsk ?? null, pick.entryMid ?? pick.premium);
+    const driftPct = formatPickPremiumDriftPct(pick.premiumPctFromEntry);
+    return (
+      <button
+        key={`${pick.side}-${pick.strike}-${pick.expiry}-${opts?.closed ? "closed" : "active"}`}
+        type="button"
+        className={clsx("vector-contract-pick-row", opts?.closed && "vector-contract-pick-row-closed")}
+        onClick={() => {
+          setOpenPick(pick);
+          setRail("desk");
+        }}
+      >
+        <span className="vector-contract-pick-rank">{pick.rank ?? i + 1}.</span>
+        <span className="vector-contract-pick-main">
+          <span
+            className={clsx(
+              "vector-contract-pick-label",
+              pick.side === "call" ? "vector-contract-pick-call" : "vector-contract-pick-put"
+            )}
+          >
+            {pick.label}
+            {pick.dte != null && pick.dte > 0 ? (
+              <span className="vector-contract-pick-dte"> · {pick.dte}D</span>
+            ) : pick.dte === 0 ? (
+              <span className="vector-contract-pick-dte"> · 0DTE</span>
+            ) : null}
+          </span>
+          {liveRange || driftPct ? (
+            <span className="vector-contract-pick-premium-row">
+              {liveRange ? <span className="vector-contract-pick-premium">{liveRange}</span> : null}
+              {driftPct ? (
+                <span
+                  className={clsx(
+                    "vector-contract-pick-drift",
+                    (pick.premiumPctFromEntry ?? 0) >= 0
+                      ? "vector-contract-pick-drift-up"
+                      : "vector-contract-pick-drift-down"
+                  )}
+                >
+                  {driftPct}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+        </span>
+        {pick.actionStatus ? (
+          <span className={clsx("vector-pick-action-chip", actionClass(pick.actionStatus))}>
+            {ACTION_LABEL[pick.actionStatus]}
+          </span>
+        ) : null}
+        {pick.liveQuotesStale && !replayPaused ? (
+          <span
+            className="vector-play-card-stale"
+            title="Live quote feed hasn't updated recently — bid/ask/status shown are the last known-good read"
+          >
+            STALE
+          </span>
+        ) : null}
+        {!opts?.closed && (pick.rank ?? i + 1) === 1 && !pick.actionStatus ? (
+          <span className="vector-contract-pick-primary-tag">Primary</span>
+        ) : null}
+      </button>
+    );
+  };
+
+  if (!picks.length && !closedPicks.length) {
     // A directional play with zero picks is a real, member-relevant state (every candidate
     // contract missed the quality/liquidity bar) — distinct from "still fetching" and from "no
     // directional play exists at all" (neutral bias / no play yet), neither of which needs a card.
@@ -170,7 +241,7 @@ export function VectorContractPicksCard({
     }
     return null;
   }
-  const open = openIdx != null ? picks[openIdx] : null;
+  const open = openPick;
   const partitioned = open?.evidence?.length ? partitionPickEvidence(open.evidence) : null;
 
   return (
@@ -185,83 +256,31 @@ export function VectorContractPicksCard({
             {replayPaused ? " · replay" : ""}
           </span>
         </div>
-        <p className="vector-contract-picks-sub">Buy-to-open contracts · ranked by setup quality</p>
-        <div className="vector-contract-picks-list">
-          {picks.map((pick, i) => {
-            const liveRange =
-              formatPickPremiumRange(pick.liveBid ?? null, pick.liveAsk ?? null, pick.liveMid ?? null) ??
-              formatPickPremiumRange(pick.entryBid ?? null, pick.entryAsk ?? null, pick.entryMid ?? pick.premium);
-            const driftPct = formatPickPremiumDriftPct(pick.premiumPctFromEntry);
-            return (
-            <button
-              key={`${pick.side}-${pick.strike}-${pick.expiry}`}
-              type="button"
-              className="vector-contract-pick-row"
-              onClick={() => {
-                setOpenIdx(i);
-                setRail("desk");
-              }}
-            >
-              <span className="vector-contract-pick-rank">{pick.rank ?? i + 1}.</span>
-              <span className="vector-contract-pick-main">
-                <span
-                  className={clsx(
-                    "vector-contract-pick-label",
-                    pick.side === "call" ? "vector-contract-pick-call" : "vector-contract-pick-put"
-                  )}
-                >
-                  {pick.label}
-                  {pick.dte != null && pick.dte > 0 ? (
-                    <span className="vector-contract-pick-dte"> · {pick.dte}D</span>
-                  ) : pick.dte === 0 ? (
-                    <span className="vector-contract-pick-dte"> · 0DTE</span>
-                  ) : null}
-                </span>
-                {liveRange || driftPct ? (
-                  <span className="vector-contract-pick-premium-row">
-                    {liveRange ? (
-                      <span className="vector-contract-pick-premium">{liveRange}</span>
-                    ) : null}
-                    {driftPct ? (
-                      <span
-                        className={clsx(
-                          "vector-contract-pick-drift",
-                          (pick.premiumPctFromEntry ?? 0) >= 0
-                            ? "vector-contract-pick-drift-up"
-                            : "vector-contract-pick-drift-down"
-                        )}
-                      >
-                        {driftPct}
-                      </span>
-                    ) : null}
-                  </span>
-                ) : null}
-              </span>
-              {pick.actionStatus ? (
-                <span className={clsx("vector-pick-action-chip", actionClass(pick.actionStatus))}>
-                  {ACTION_LABEL[pick.actionStatus]}
-                </span>
-              ) : null}
-              {pick.liveQuotesStale && !replayPaused ? (
-                <span
-                  className="vector-play-card-stale"
-                  title="Live quote feed hasn't updated recently — bid/ask/status shown are the last known-good read"
-                >
-                  STALE
-                </span>
-              ) : null}
-              {(pick.rank ?? i + 1) === 1 && !pick.actionStatus ? (
-                <span className="vector-contract-pick-primary-tag">Primary</span>
-              ) : null}
-            </button>
-            );
-          })}
-        </div>
+        {picks.length ? (
+          <>
+            <p className="vector-contract-picks-sub">Buy-to-open contracts · ranked by setup quality</p>
+            <div className="vector-contract-picks-list">{picks.map((pick, i) => renderPickRow(pick, i))}</div>
+          </>
+        ) : (
+          <p className="vector-contract-picks-empty">
+            No active contract cleared the bar — watching for a fresh rank after invalidations.
+          </p>
+        )}
+        {closedPicks.length ? (
+          <>
+            <p className="vector-contract-picks-sub vector-contract-picks-sub-closed">
+              Closed · setup invalidated or no longer buyable
+            </p>
+            <div className="vector-contract-picks-list vector-contract-picks-list-closed">
+              {closedPicks.map((pick, i) => renderPickRow(pick, i, { closed: true }))}
+            </div>
+          </>
+        ) : null}
       </div>
 
       <Drawer
         open={open != null}
-        onClose={() => setOpenIdx(null)}
+        onClose={() => setOpenPick(null)}
         title={open ? `${ticker} ${open.label}` : undefined}
         size="lg"
       >

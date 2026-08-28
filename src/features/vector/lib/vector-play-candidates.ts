@@ -52,7 +52,16 @@ export type VectorRankedPick = VectorContractPick & {
 const FLOW_WHALE = 500_000;
 const FLOW_CONFIRM = 200_000;
 const MIN_SHOW_SCORE = 52;
-const MAX_PICKS = 3;
+const DEFAULT_MAX_PICKS = 3;
+/** Deep pool ranked for live backfill when top slots go Don't buy. */
+export const VECTOR_CANDIDATE_POOL_SIZE = 8;
+
+export type RankVectorPlayCandidatesOptions = {
+  /** How many ranked picks to return (default 3; use VECTOR_CANDIDATE_POOL_SIZE for backfill pool). */
+  limit?: number;
+  /** OCC symbols to omit — used after a pick invalidates so the next rank can surface. */
+  excludeOccs?: readonly string[];
+};
 
 /** DTE windows searched independently — best contract per window, then ranked globally. */
 const DTE_WINDOWS: Array<{ id: string; minDte: number; maxDte: number }> = [
@@ -467,9 +476,16 @@ function chainQuotesForContract(
 export function rankVectorPlayCandidates(
   ctx: VectorPlayPickContext | null,
   chain: EditionChainData | null,
-  ticker = ""
+  ticker = "",
+  options: RankVectorPlayCandidatesOptions = {}
 ): VectorRankedPick[] {
   if (!ctx || !chain || ctx.play.bias === "neutral") return [];
+
+  const maxPicks = options.limit ?? DEFAULT_MAX_PICKS;
+  const excludeOccs = new Set(
+    (options.excludeOccs ?? []).map((o) => o.trim().toUpperCase()).filter(Boolean)
+  );
+  const root = ticker.trim().toUpperCase();
 
   const specs = specsForContext(ctx);
   if (!specs.length) return [];
@@ -520,13 +536,14 @@ export function rankVectorPlayCandidates(
     seen.add(key);
     const dte = dteOn(row.contract.expiry, today);
     const quotes = chainQuotesForContract(chain, row.contract);
-    const root = ticker.trim().toUpperCase();
+    const occ = root ? vectorPickOcc(root, row.contract.expiry, row.contract.side, row.contract.strike) : null;
+    if (occ && excludeOccs.has(occ.toUpperCase())) continue;
     out.push({
       side: row.contract.side,
       strike: row.contract.strike,
       expiry: row.contract.expiry,
       premium: row.contract.premium,
-      occ: root ? vectorPickOcc(root, row.contract.expiry, row.contract.side, row.contract.strike) : null,
+      occ,
       entryMid: row.contract.premium,
       entryBid: quotes.bid,
       entryAsk: quotes.ask,
@@ -562,7 +579,7 @@ export function rankVectorPlayCandidates(
         newsHeadline: ctx.enrichment?.newsHeadline ?? null,
       }),
     });
-    if (out.length >= MAX_PICKS) break;
+    if (out.length >= maxPicks) break;
   }
 
   // Re-number ranks after filter
