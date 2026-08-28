@@ -6,6 +6,7 @@ import { requireToolApi } from "@/lib/tool-access-server";
 import { fetchVectorPickClosureRows } from "@/lib/vector/vector-pick-closures-db";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 
 export const dynamic = "force-dynamic";
 
@@ -52,10 +53,12 @@ export async function GET(req: NextRequest) {
     const limitRaw = Number(req.nextUrl.searchParams.get("limit") ?? "120");
     const limit = Number.isFinite(limitRaw) ? Math.min(300, Math.max(1, Math.round(limitRaw))) : 120;
     const rows = await fetchVectorPickClosureRows(limit);
+    const nowMs = Date.now();
     return NextResponse.json(
       roundFloats({
         available: true,
-        as_of: new Date().toISOString(),
+        as_of: etStamp(nowMs),
+        session_date: etSessionDate(nowMs),
         note: "Closed Vector contract picks — advisory Don't buy events for system analysis, not committed positions.",
         closed: rows.map(toBoardRow),
       }),
