@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { isVectorTickerAllowed } from "@/features/vector/lib/vector-ticker";
-import { buildRankedVectorPicks, type VectorPlayPickContext } from "@/features/vector/lib/vector-contract-picks";
+import { buildRankedVectorPicks, VECTOR_CANDIDATE_POOL_SIZE, type VectorPlayPickContext } from "@/features/vector/lib/vector-contract-picks";
 import type { VectorPlay, VectorPlayBias, VectorPlayGrade, VectorPlayStyle, PlayTechnicals } from "@/features/vector/lib/vector-play-engine";
 import type { PlayPlatformInputs } from "@/features/vector/lib/vector-play-platform";
 import type { VectorRegimePosture } from "@/features/vector/lib/vector-regime";
@@ -159,10 +159,14 @@ function parseContext(body: Record<string, unknown>): VectorPlayPickContext | nu
   };
 }
 
-async function handlePicks(ctx: VectorPlayPickContext | null, ticker: string) {
+async function handlePicks(
+  ctx: VectorPlayPickContext | null,
+  ticker: string,
+  excludeOccs: readonly string[] = []
+) {
   const chain = await resolveTickerChainRows(ticker);
   if (!chain) {
-    return NextResponse.json({ picks: [] }, { headers: NO_STORE_HEADERS });
+    return NextResponse.json({ picks: [], pool: [] }, { headers: NO_STORE_HEADERS });
   }
   const enrichment = await loadVectorPickEnrichment(ticker);
   const enrichedCtx: VectorPlayPickContext | null = ctx
@@ -177,8 +181,12 @@ async function handlePicks(ctx: VectorPlayPickContext | null, ticker: string) {
         },
       }
     : null;
-  const picks = buildRankedVectorPicks(enrichedCtx, chain, ticker);
-  return NextResponse.json({ picks }, { headers: NO_STORE_HEADERS });
+  const pool = buildRankedVectorPicks(enrichedCtx, chain, ticker, {
+    limit: VECTOR_CANDIDATE_POOL_SIZE,
+    excludeOccs,
+  });
+  const picks = pool.slice(0, 3);
+  return NextResponse.json({ picks, pool }, { headers: NO_STORE_HEADERS });
 }
 
 export async function POST(req: NextRequest) {
@@ -205,7 +213,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid play context" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
-  return handlePicks(ctx, rawTicker!);
+  const excludeOccs = Array.isArray(body.excludeOccs)
+    ? body.excludeOccs.filter((o): o is string => typeof o === "string")
+    : [];
+
+  return handlePicks(ctx, rawTicker!, excludeOccs);
 }
 
 export async function GET(req: NextRequest) {

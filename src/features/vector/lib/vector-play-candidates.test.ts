@@ -254,6 +254,30 @@ test("null context returns no picks", () => {
   assert.deepEqual(rankVectorPlayCandidates(null, chain), []);
 });
 
+test("excludeOccs omits invalidated contracts from the ranked pool", () => {
+  const chain: EditionChainData = {
+    spot: 100,
+    rows: [
+      row(98, { expiry: ymdPlus(7), callAsk: 5, callBid: 4.5 }),
+      row(99, { expiry: ymdPlus(7), callAsk: 5, callBid: 4.5 }),
+    ],
+  };
+  const ctx: VectorPlayPickContext = {
+    play: basePlay("long", 70),
+    spot: 100,
+    putWall: 98,
+  };
+  const all = rankVectorPlayCandidates(ctx, chain, "SPY", { limit: 8 });
+  assert.ok(all.length >= 1);
+  const firstOcc = all[0]!.occ;
+  assert.ok(firstOcc);
+  const without = rankVectorPlayCandidates(ctx, chain, "SPY", {
+    limit: 8,
+    excludeOccs: [firstOcc],
+  });
+  assert.ok(!without.some((p) => p.occ === firstOcc));
+});
+
 test("pickContractNearTarget: chooses strike closest to target in DTE window", () => {
   const chain: EditionChainData = {
     spot: 100,

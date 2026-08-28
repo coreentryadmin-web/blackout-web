@@ -7,6 +7,8 @@ import type { VectorPlayBias } from "./vector-play-engine";
 import type { VectorDteHorizon } from "./vector-dte-horizon";
 import {
   rankVectorPlayCandidates,
+  VECTOR_CANDIDATE_POOL_SIZE,
+  type RankVectorPlayCandidatesOptions,
   type VectorPlayPickContext,
   type VectorRankedPick,
 } from "./vector-play-candidates";
@@ -55,14 +57,17 @@ export function legsForBias(bias: VectorPlayBias): Array<"long" | "short"> {
   return [];
 }
 
-/** Primary entry — ranks 1–3 strong picks with per-contract scoring. */
+/** Primary entry — ranks strong picks with per-contract scoring. */
 export function buildRankedVectorPicks(
   ctx: VectorPlayPickContext | null,
   chain: EditionChainData | null,
-  ticker = ""
+  ticker = "",
+  options?: RankVectorPlayCandidatesOptions
 ): VectorRankedPick[] {
-  return rankVectorPlayCandidates(ctx, chain, ticker);
+  return rankVectorPlayCandidates(ctx, chain, ticker, options);
 }
+
+export { VECTOR_CANDIDATE_POOL_SIZE, type RankVectorPlayCandidatesOptions };
 
 /** Legacy shim: bias-only input → ranked picks with synthetic play shell. */
 export function buildVectorContractPicks(

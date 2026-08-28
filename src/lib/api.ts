@@ -1081,16 +1081,21 @@ export type VectorContractPicksRequest = {
     strike?: number;
     expiry?: string;
   }>;
+  /** OCC symbols to omit after a pick invalidates — next rank surfaces replacements. */
+  excludeOccs?: string[];
 };
 
-/** Rank 1–3 strong contract picks using full play + wall + HELIX context. */
+/** Rank contract picks using full play + wall + HELIX context. Returns a deep pool for backfill. */
 export async function fetchVectorContractPicks(
   params: VectorContractPicksRequest
-): Promise<{ picks: VectorContractPick[] }> {
-  return marketFetch<{ picks: VectorContractPick[] }>(`/vector/contract-picks`, {
-    method: "POST",
-    body: JSON.stringify(params),
-  });
+): Promise<{ picks: VectorContractPick[]; pool?: VectorContractPick[] }> {
+  return marketFetch<{ picks: VectorContractPick[]; pool?: VectorContractPick[] }>(
+    `/vector/contract-picks`,
+    {
+      method: "POST",
+      body: JSON.stringify(params),
+    }
+  );
 }
 
 export async function fetchVectorPickLiveQuotes(params: {

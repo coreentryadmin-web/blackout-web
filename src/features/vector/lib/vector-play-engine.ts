@@ -336,9 +336,9 @@ function determineSetup(input: VectorPlayInput, style: VectorPlayStyle): { setup
     }
     if (ema === "up") return { setup: "momentum-long" };
     if (ema === "down") return { setup: "momentum-short" };
-    // Short gamma with no wall and no clear trend still leans downside (that's the asymmetry of a
-    // short-gamma regime), but it's a low-conviction read — the conviction model reflects that.
-    return { setup: "momentum-short" };
+    // No wall in range and no EMA trend — same fail-closed read as long-gamma open space (range),
+    // not an asserted direction with zero evidence.
+    return { setup: "stand-aside" };
   }
 
   // Unknown regime: fall back to the technical trend if there is one, else stand aside.

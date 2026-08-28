@@ -18,8 +18,7 @@ import { useVectorHelixFlows } from "@/features/vector/lib/use-vector-helix-flow
 import { flowAlertTimeSec } from "@/features/vector/lib/vector-flow-confluence";
 import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
 import { VectorContractPicksCard } from "@/features/vector/components/VectorContractPicksCard";
-import { useVectorContractPicks } from "@/features/vector/lib/use-vector-contract-picks";
-import { useVectorPickLiveMonitor } from "@/features/vector/lib/use-vector-pick-live-monitor";
+import { useVectorActionablePicks } from "@/features/vector/lib/use-vector-actionable-picks";
 import { VectorPlayIntelStrip } from "@/features/vector/components/VectorPlayIntelStrip";
 import { VectorPlayAnalyticsDrawer } from "@/features/vector/components/VectorPlayAnalyticsDrawer";
 import { VectorReplayPlayGate } from "@/features/vector/components/VectorReplayPlayGate";
@@ -685,17 +684,14 @@ export function VectorPageShell({
   // Hooks must run unconditionally on every render — this sits ABOVE the chartOnly early return
   // below (react-hooks/rules-of-hooks). The embed path never renders VectorContractPicksCard, but
   // the hook itself still has to fire every render regardless of which branch returns.
-  const { picks: contractPicks, loading: contractPicksLoading } = useVectorContractPicks(
+  const {
+    active: contractPicks,
+    closed: closedContractPicks,
+    loading: contractPicksLoading,
+  } = useVectorActionablePicks(
     activeTicker,
     playEmit,
     helixState.flows,
-    liveSession,
-    chartReplayMode
-  );
-  const monitoredPicks = useVectorPickLiveMonitor(
-    activeTicker,
-    playEmit,
-    contractPicks,
     liveSession,
     chartReplayMode
   );
@@ -806,7 +802,8 @@ export function VectorPageShell({
       <VectorContractPicksCard
         ticker={activeTicker}
         play={play}
-        picks={monitoredPicks}
+        picks={contractPicks}
+        closedPicks={closedContractPicks}
         loading={contractPicksLoading}
         replayPaused={chartReplayMode}
         className="mb-2"
