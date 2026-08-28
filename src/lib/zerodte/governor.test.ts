@@ -725,6 +725,40 @@ test("aggregatePremiumAtRisk sums open plan entry premiums", () => {
   );
 });
 
+// Found 2026-08-28: entry_premium for a CONDOR row is net_credit (income received, the
+// deliberately SMALL side of the trade — credit_to_risk floors at 10% of gross_wing_risk) so
+// it stays usable as condorSellerPnlPct's live P&L basis. Summing it here as if it were risk
+// understated a condor's true worst-case loss (max_loss = gross_wing_risk - net_credit) by up
+// to ~9-10x. The fix reads entry_context.condor.max_loss for a condor row instead.
+test("aggregatePremiumAtRisk: a CONDOR row contributes its real max_loss, not the small net_credit", () => {
+  const condorRow = row({
+    ticker: "SPY",
+    status: "OPEN",
+    entry_premium: 50, // net_credit, per-share — the SMALL side of the trade
+    entry_context: {
+      play_type: "CONDOR",
+      condor: { net_credit: 5000, max_loss: 45000, gross_wing_risk: 50000 }, // $x100-per-contract units
+    },
+  });
+  // 45000 / 100 = 450, not the net_credit-derived 50.
+  assert.equal(aggregatePremiumAtRisk([condorRow]), 450);
+});
+
+test("aggregatePremiumAtRisk: a directional row is unaffected by the condor branch", () => {
+  const directional = row({ ticker: "NVDA", status: "OPEN", entry_premium: 4.0, entry_context: { play_type: null } });
+  assert.equal(aggregatePremiumAtRisk([directional]), 4);
+});
+
+test("aggregatePremiumAtRisk: a CONDOR row with no max_loss pinned (pre-fix legacy row) contributes 0, never a fabricated number", () => {
+  const legacyCondor = row({
+    ticker: "QQQ",
+    status: "OPEN",
+    entry_premium: 30,
+    entry_context: { play_type: "CONDOR", condor: { net_credit: 3000 } }, // no max_loss field
+  });
+  assert.equal(aggregatePremiumAtRisk([legacyCondor]), 0);
+});
+
 test("timeOfDaySizingFactor reduces cap during lunch chop", () => {
   const lunch = timeOfDaySizingFactor(13 * 60);
   assert.ok(lunch.factor < 1);

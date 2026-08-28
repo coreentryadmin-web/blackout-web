@@ -233,14 +233,35 @@ export function maxCorrelatedSameDirection(
   return best;
 }
 
-/** Sum entry premium across open ledger rows (rounded). Pure. */
+/**
+ * One row's contribution to session premium-at-risk. For a directional play, `entry_premium`
+ * IS the capital at risk (premium paid; worst case ≈ total loss). For a CONDOR, `entry_premium`
+ * is stamped as `net_credit` (income RECEIVED, deliberately the SMALL side of the trade —
+ * `condor.ts` floors `credit_to_risk` at just 10% of `gross_wing_risk`) so it stays usable as
+ * the seller-framed live P&L basis (`condorSellerPnlPct`, `marks-math.ts`) — it cannot also be
+ * repurposed as the risk figure without breaking that. The condor's real defined-risk exposure
+ * is `max_loss = gross_wing_risk − net_credit`, pinned at commit as `entry_context.condor.max_loss`
+ * (same $×100-per-contract unit as `net_credit`, divided by 100 here to match `entry_premium`'s
+ * per-share convention). Found 2026-08-28: summing `net_credit` here understated a condor's true
+ * worst-case loss by up to ~9-10× at the credit floor — inert today (GOVERNOR_ENFORCE_PREMIUM_BUDGET
+ * defaults off, no position sizing wired to any play type yet) but would silently under-budget
+ * real exposure the moment either goes live. */
+function riskContribution(r: GovernorLedgerRow): number {
+  const ec = r.entry_context;
+  if (ec?.play_type === "CONDOR") {
+    const condor = ec.condor as Record<string, unknown> | null | undefined;
+    const maxLoss = typeof condor?.max_loss === "number" ? condor.max_loss : null;
+    return maxLoss != null && Number.isFinite(maxLoss) && maxLoss > 0 ? maxLoss / 100 : 0;
+  }
+  return r.entry_premium != null && Number.isFinite(r.entry_premium) && r.entry_premium > 0 ? r.entry_premium : 0;
+}
+
+/** Sum real risk-at-stake across open ledger rows (rounded). Pure. */
 export function aggregatePremiumAtRisk(rows: GovernorLedgerRow[]): number {
   let sum = 0;
   for (const r of rows) {
     if (r.status === "CLOSED") continue;
-    if (r.entry_premium != null && Number.isFinite(r.entry_premium) && r.entry_premium > 0) {
-      sum += r.entry_premium;
-    }
+    sum += riskContribution(r);
   }
   return Math.round(sum);
 }
@@ -415,6 +436,12 @@ export type GovernorLedgerRow = Pick<
   // not just the seeded entry premium (see db.ts).
   | "last_mark"
   | "last_mark_at"
+  // Needed by aggregatePremiumAtRisk to read a condor row's real defined-risk (max_loss),
+  // pinned at commit as entry_context.condor.max_loss — entry_premium alone is net_credit for
+  // a condor (income received, not risk; see the function's own doc for why they can't be the
+  // same field). Required (matches ZeroDteSetupLogRow) — every construction site must now pass
+  // entry_context explicitly (null for a row that predates it / a non-condor test fixture).
+  | "entry_context"
 >;
 
 /** Did this ledger row stop out? Two independent signals, either suffices:
