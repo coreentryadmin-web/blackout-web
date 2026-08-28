@@ -27,6 +27,17 @@ function CurveTooltip({ active, payload }: { active?: boolean; payload?: Array<{
   );
 }
 
+/** Only the LAST point gets a visible dot — an emphasized endpoint (today's running total),
+ *  not a dot on every session tick, which just adds noise to a line already showing the full
+ *  shape. Recharts calls this once per data point and passes that point's own array index. */
+function makeEndpointDot(color: string, lastIndex: number) {
+  return function EndpointDot(props: { cx?: number; cy?: number; index?: number }) {
+    const { cx, cy, index } = props;
+    if (cx == null || cy == null || index !== lastIndex) return <g key={index} />;
+    return <circle key={index} cx={cx} cy={cy} r={3.5} fill={color} stroke="none" />;
+  };
+}
+
 export function NighthawkSessionPnlChart({ points }: { points: PnlCurvePoint[] }) {
   const last = points[points.length - 1];
   // Bull/bear tokens match .nh-deck's --dk-bull/--dk-bear (globals.css) — the same
@@ -51,7 +62,7 @@ export function NighthawkSessionPnlChart({ points }: { points: PnlCurvePoint[] }
           stroke={color}
           strokeWidth={2}
           fill="url(#nhSessionPnlGrad)"
-          dot={{ r: 2.5, fill: color, strokeWidth: 0 }}
+          dot={makeEndpointDot(color, points.length - 1)}
           isAnimationActive={false}
         />
       </AreaChart>
