@@ -11,6 +11,7 @@ import { parseTier } from '@/lib/tiers';
 import type { BillingKind } from '@/lib/whop';
 import { notifyOpsDiscord } from '@/features/spx/lib/spx-play-notify';
 import { buildNewMemberNotificationFields } from '@/lib/clerk-new-member-notify';
+import { isInternalAuditEmail } from '@/lib/internal-audit-email';
 
 const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
@@ -144,12 +145,18 @@ export async function POST(req: Request) {
         // Same pattern as the Whop webhook's ops pings (membership activated/deactivated,
         // refund, payment failed) — a real-time "someone just showed up" signal, not a
         // billing alert, so severity is "info" and it never blocks/fails provisioning.
-        void notifyOpsDiscord({
-          title: "New member signed up",
-          body: "",
-          severity: "info",
-          fields: buildNewMemberNotificationFields({ email, firstName, lastName, clerkUserId: userId }),
-        }).catch(() => undefined);
+        // Internal audit/test accounts (scripts/audit/*.mjs mint dozens of these against
+        // PRODUCTION Clerk every day — see the findings doc) still get provisioned normally,
+        // just never page ops: this alert exists to tell a human a REAL customer showed up,
+        // and a channel that's >90% bot noise trains the reader to stop looking at it.
+        if (!isInternalAuditEmail(email)) {
+          void notifyOpsDiscord({
+            title: "New member signed up",
+            body: "",
+            severity: "info",
+            fields: buildNewMemberNotificationFields({ email, firstName, lastName, clerkUserId: userId }),
+          }).catch(() => undefined);
+        }
       } else {
         await dbQuery(
           `UPDATE users
