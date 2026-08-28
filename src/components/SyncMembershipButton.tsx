@@ -11,7 +11,9 @@ export function SyncMembershipButton() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  if (isLoaded && !isSignedIn) {
+  // Fail closed for anonymous visitors — including the pre-hydration window where
+  // isLoaded is false and the old code briefly exposed the paid sync button (audit P2).
+  if (!isLoaded || !isSignedIn) {
     return (
       <Link
         href="/sign-in?redirect_url=%2Fupgrade"

@@ -7,7 +7,6 @@ import { VectorPlayIntelStrip } from "@/features/vector/components/VectorPlayInt
 import { VectorContractPicksCard } from "@/features/vector/components/VectorContractPicksCard";
 import { VectorReplayPlayGate } from "@/features/vector/components/VectorReplayPlayGate";
 import { VectorPlayAnalyticsDrawer } from "@/features/vector/components/VectorPlayAnalyticsDrawer";
-import { useVectorHelixFlows } from "@/features/vector/lib/use-vector-helix-flows";
 import { useVectorContractPicks } from "@/features/vector/lib/use-vector-contract-picks";
 import { useVectorPickLiveMonitor } from "@/features/vector/lib/use-vector-pick-live-monitor";
 import type { VectorPlayDeskSnapshot } from "@/features/vector/lib/vector-play-desk-snapshot";
@@ -26,7 +25,7 @@ type Props = {
  */
 export function VectorComparePlayStrip({ ticker, snapshot, liveSession, replayPaused, className }: Props) {
   const [playAnalyticsOpen, setPlayAnalyticsOpen] = useState(false);
-  const helixState = useVectorHelixFlows(ticker, liveSession);
+  const helixFlows = snapshot?.helixFlows ?? [];
   const playEmit = snapshot?.playEmit ?? null;
   const play = playEmit?.play ?? null;
   const chartReplayMode = replayPaused || (snapshot?.chartReplayMode ?? false);
@@ -34,7 +33,7 @@ export function VectorComparePlayStrip({ ticker, snapshot, liveSession, replayPa
   const { picks: contractPicks, loading: contractPicksLoading } = useVectorContractPicks(
     ticker,
     playEmit,
-    helixState.flows,
+    helixFlows,
     liveSession,
     chartReplayMode
   );

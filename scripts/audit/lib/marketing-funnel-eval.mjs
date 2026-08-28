@@ -1,0 +1,69 @@
+/**
+ * Pure evaluators for marketing ↔ checkout commercial integrity.
+ * Used by marketing-funnel-audit.mjs and unit tests — keeps forbidden-copy
+ * guards testable without a live browser.
+ */
+
+/** Copy that must never ship again after the Aug 2026 P0 Whop mismatch. */
+export const FORBIDDEN_MARKETING_STRINGS = [
+  { id: "whop-excludes-spx", pattern: /Does not include SPX Slayer/i, scope: "whop-remodel + public copy" },
+  { id: "community-75", pattern: /Community.*\$75|\$75\/mo.*Discord-only|Discord-only.*\$75/i, scope: "pricing funnel" },
+  { id: "discord-community-title", pattern: /BlackOut Discord Community/i, scope: "Whop product title" },
+];
+
+/** @param {string} text @param {typeof FORBIDDEN_MARKETING_STRINGS[number]} rule */
+export function findForbiddenMatch(text, rule) {
+  const m = text.match(rule.pattern);
+  return m ? { id: rule.id, match: m[0], scope: rule.scope } : null;
+}
+
+/** @param {string} text */
+export function scanForbiddenMarketingCopy(text) {
+  /** @type {Array<{ id: string, match: string, scope: string }>} */
+  const hits = [];
+  for (const rule of FORBIDDEN_MARKETING_STRINGS) {
+    const found = findForbiddenMatch(text, rule);
+    if (found) hits.push(found);
+  }
+  return hits;
+}
+
+/** @param {{ community: number, monthly: number, yearly: number }} pricing */
+export function expectedWhopPriceMentions(pricing) {
+  return {
+    spx: `$${pricing.community}`,
+    monthly: `$${pricing.monthly}`,
+    yearly: `$${pricing.yearly}`,
+  };
+}
+
+/** @param {string} whopScript @param {{ community: number, monthly: number, yearly: number }} pricing */
+export function whopScriptPriceParity(whopScript, pricing) {
+  /** @type {string[]} */
+  const missing = [];
+  const want = expectedWhopPriceMentions(pricing);
+  if (!whopScript.includes(want.spx)) missing.push(`SPX ${want.spx}`);
+  if (!whopScript.includes(want.monthly)) missing.push(`monthly ${want.monthly}`);
+  const yearlyPlain = String(pricing.yearly);
+  const yearlyFormatted = pricing.yearly.toLocaleString("en-US");
+  if (!whopScript.includes(yearlyPlain) && !whopScript.includes(yearlyFormatted)) {
+    missing.push(`yearly ${yearlyPlain}`);
+  }
+  if (!/BlackOut SPX Slayer/i.test(whopScript)) missing.push("product title BlackOut SPX Slayer");
+  return missing;
+}
+
+/** @param {string} html — gamma widget region text must not show loading + freshness together */
+export function gammaLoadingFreshnessConflict(text) {
+  const lower = text.toLowerCase();
+  const hasLoading = /loading/.test(lower);
+  const hasLevels = /levels computed|updated/i.test(lower);
+  return hasLoading && hasLevels;
+}
+
+/** @param {number | null | undefined} h1TopPx — distance from viewport top */
+export function homepageH1AboveFold(h1TopPx, maxTopPx = 420) {
+  if (h1TopPx == null || !Number.isFinite(h1TopPx)) return { ok: false, reason: "H1 not measured" };
+  if (h1TopPx > maxTopPx) return { ok: false, reason: `H1 starts at ${Math.round(h1TopPx)}px (max ${maxTopPx})` };
+  return { ok: true, reason: `H1 at ${Math.round(h1TopPx)}px` };
+}
