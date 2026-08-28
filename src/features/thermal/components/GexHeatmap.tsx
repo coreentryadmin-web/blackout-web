@@ -60,7 +60,7 @@ import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
 import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
 import { todayEt } from "@/lib/et-date";
-import { forcedFlowBetween } from "@/lib/gex-depth";
+import { forcedFlowBetween, wallMarkerRowIndex } from "@/lib/gex-depth";
 import {
   fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
@@ -2259,12 +2259,10 @@ function GexDepthLadderView({
   const rungs = [...depth.levels].sort((a, b) => b.price - a.price);
   const spotIdx = rungs.findIndex((l) => l.price < spot);
   const bandUsd = spot * depth.step_pct;
-  const nearest = (target: number | null) =>
-    target != null && Math.abs(target - spot) <= spot * depth.range_pct
-      ? rungs.reduce((best, r) => (Math.abs(r.price - target) < Math.abs(best.price - target) ? r : best), rungs[0]!)
-      : null;
-  const callWallRung = nearest(callWall);
-  const putWallRung = nearest(putWall);
+  // Wall markers are drawn as their OWN row at their true price (same technique as the crossing
+  // marker below), never by tagging the closest existing rung — see wallMarkerRowIndex for why.
+  const callWallIdx = wallMarkerRowIndex(rungs, callWall, spot, depth.range_pct);
+  const putWallIdx = wallMarkerRowIndex(rungs, putWall, spot, depth.range_pct);
   // Where net dealer gamma changes sign as price moves — the ladder's own repriced flip, which is
   // NOT the same as the current gamma flip in Key Levels (that one is measured at today's spot;
   // this one is where the flip would move to). Rungs are descending, so the marker slots above the
@@ -2289,8 +2287,6 @@ function GexDepthLadderView({
   const Row = ({ l }: { l: (typeof rungs)[number] }) => {
     const w = Math.min(100, (Math.abs(l.notional) / scale) * 100);
     const buy = l.direction === "buy";
-    const tag =
-      l === callWallRung ? "call wall" : l === putWallRung ? "put wall" : null;
     return (
       <div className="flex items-center gap-1.5" key={l.price}>
         <span className="w-[3.75rem] shrink-0 text-right font-mono text-[10px] tabular-nums text-sky-300/70">
@@ -2318,9 +2314,7 @@ function GexDepthLadderView({
         >
           {l.direction === "flat" ? "·" : fmtMoney(Math.abs(l.notional))}
         </span>
-        <span className="hidden w-[4.75rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-sky-300/65 sm:inline">
-          {tag ?? ""}
-        </span>
+        <span className="hidden w-[4.75rem] shrink-0 sm:inline" />
       </div>
     );
   };
@@ -2416,6 +2410,48 @@ function GexDepthLadderView({
                 <span className="hidden w-[4.75rem] shrink-0 sm:inline" />
               </div>
             )}
+            {i === callWallIdx && i !== spotIdx && i !== crossingIdx && callWall != null && (
+              <div className="flex items-center gap-1.5 py-[3px]">
+                <span className="w-[3.75rem] shrink-0 text-right font-mono text-[10px] font-bold tabular-nums text-rose-300">
+                  {fmtStrike(callWall)}
+                </span>
+                <span
+                  aria-hidden
+                  className="h-px min-w-0 flex-1"
+                  style={{
+                    backgroundImage:
+                      "repeating-linear-gradient(to right, rgba(253,164,175,0.75) 0 5px, transparent 5px 9px)",
+                  }}
+                />
+                <span className="w-[4.5rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-rose-300/80">
+                  call wall
+                </span>
+                <span className="hidden w-[4.75rem] shrink-0 sm:inline" />
+              </div>
+            )}
+            {i === putWallIdx &&
+              i !== spotIdx &&
+              i !== crossingIdx &&
+              i !== callWallIdx &&
+              putWall != null && (
+                <div className="flex items-center gap-1.5 py-[3px]">
+                  <span className="w-[3.75rem] shrink-0 text-right font-mono text-[10px] font-bold tabular-nums text-emerald-300">
+                    {fmtStrike(putWall)}
+                  </span>
+                  <span
+                    aria-hidden
+                    className="h-px min-w-0 flex-1"
+                    style={{
+                      backgroundImage:
+                        "repeating-linear-gradient(to right, rgba(110,231,183,0.75) 0 5px, transparent 5px 9px)",
+                    }}
+                  />
+                  <span className="w-[4.5rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-emerald-300/80">
+                    put wall
+                  </span>
+                  <span className="hidden w-[4.75rem] shrink-0 sm:inline" />
+                </div>
+              )}
             <Row l={l} />
           </div>
         ))}

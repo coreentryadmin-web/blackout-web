@@ -9,6 +9,7 @@ import {
   forcedFlowBetween,
   netDollarGammaAt,
   normCdf,
+  wallMarkerRowIndex,
   yearsToExpiry,
   type DepthContract,
 } from "./gex-depth";
@@ -455,5 +456,44 @@ describe("forced flow between spot and a target", () => {
       .filter((x) => x.price > 100 && x.price <= target)
       .reduce((s2, x) => s2 + x.notional, 0);
     assert.ok(Math.abs(forcedFlowBetween(l.levels, 100, target).notional - viaBands) < 1e-6);
+  });
+});
+
+describe("wallMarkerRowIndex", () => {
+  // Descending, spaced 4pt apart — the exact live-SPY shape that produced the bug: a wall price
+  // that does not land on any rung boundary, with spot sitting between two rungs of its own.
+  const rungs = [{ price: 779 }, { price: 775 }, { price: 771 }, { price: 767 }, { price: 763 }];
+
+  it("returns an insertion index, not the nearest rung — the fix for the header/ladder mismatch", () => {
+    // Live case, 2026-08-27: spot 771, real call wall 770 (header said "CALL WALL 770"). The old
+    // nearest-rung logic tagged the 767 row — 3pts off AND on the wrong side of spot — because 767
+    // was closer to 770 than 771 was not true here, but the point is it never re-showed 770 at all.
+    // wallMarkerRowIndex must place the marker between 771 and 767 (index 3, where rungs[3]=767 is
+    // the first rung below 770) so the CALLER can draw the true price 770 on its own row instead.
+    const idx = wallMarkerRowIndex(rungs, 770, 771, 0.05);
+    assert.equal(idx, 3);
+    assert.notEqual(rungs[idx]!.price, 770, "the index must never be mistaken for the wall's own price");
+  });
+
+  it("a wall that lands exactly on a rung still resolves to the row just below it", () => {
+    const idx = wallMarkerRowIndex(rungs, 775, 771, 0.05);
+    assert.equal(idx, 2, "775 itself is not < 775, so the first strictly-lower rung is next (771)");
+  });
+
+  it("null target draws nothing", () => {
+    assert.equal(wallMarkerRowIndex(rungs, null, 771, 0.05), -1);
+  });
+
+  it("a wall beyond rangePct of spot draws nothing, mirroring every other wall consumer's gate", () => {
+    assert.equal(wallMarkerRowIndex(rungs, 900, 771, 0.05), -1);
+  });
+
+  it("non-finite spot or target is refused rather than producing a bogus index", () => {
+    assert.equal(wallMarkerRowIndex(rungs, 770, 0, 0.05), -1);
+    assert.equal(wallMarkerRowIndex(rungs, Number.NaN, 771, 0.05), -1);
+  });
+
+  it("a wall below every rung returns -1 (findIndex exhausted), same as 'off the ladder'", () => {
+    assert.equal(wallMarkerRowIndex(rungs, 760, 763, 0.5), -1);
   });
 });
