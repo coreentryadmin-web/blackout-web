@@ -28,6 +28,7 @@ import { gexCheatSheetEmail } from "@/lib/email/templates/gex-cheat-sheet";
 import { WELCOME_SEQUENCE } from "@/lib/email/templates/welcome-sequence";
 import { welcomeCommunityEmail } from "@/lib/email/templates/welcome-community";
 import { welcomePremiumEmail } from "@/lib/email/templates/welcome-premium";
+import { completeSignupEmail } from "@/lib/email/templates/complete-signup";
 import { downgradeEmail } from "@/lib/email/templates/downgrade";
 import { paymentFailedEmail } from "@/lib/email/templates/payment-failed";
 import { scheduledCancelEmail } from "@/lib/email/templates/scheduled-cancel";
@@ -79,6 +80,11 @@ const lifecycle = [
     "lifecycle · welcome-premium (SPX Slayer → Premium, annual)",
     "welcome-premium-upgrade",
     welcomePremiumEmail({ firstName: NAME, previousTier: "community", billingInterval: "annual" }),
+  ],
+  [
+    "lifecycle · complete-signup (paid on Whop, no BlackOut account yet)",
+    "complete-signup",
+    completeSignupEmail({ email: TO, billingKind: "premium" }),
   ],
   ["lifecycle · downgrade (Premium → SPX Slayer)", "downgrade", downgradeEmail({ firstName: NAME })],
   ["lifecycle · payment-failed (dunning)", "payment-failed", paymentFailedEmail({ firstName: NAME, graceDays: 7 })],

@@ -59,8 +59,15 @@ function routeExists(urlPath: string): boolean {
           walk(join(dir, e.name), depth); // contributes nothing to the URL
           continue;
         }
+        const isOptionalCatchAll = /^\[\[\.\.\..+\]\]$/.test(e.name);
         const isCatchAll = /^\[\.\.\..+\]$/.test(e.name);
-        const isDynamic = /^\[.+\]$/.test(e.name);
+        const isDynamic = /^\[[^[\].]+\]$/.test(e.name);
+        if (isOptionalCatchAll) {
+          // Matches zero-or-more segments — `/sign-up` is served by `sign-up/[[...sign-up]]/page.tsx`.
+          walk(join(dir, e.name), depth);
+          if (depth < want.length) walk(join(dir, e.name), depth + 1);
+          continue;
+        }
         if (isCatchAll) {
           // Matches the rest of the path, so anything at or past this depth resolves.
           if (depth < want.length) walk(join(dir, e.name), want.length);
@@ -95,6 +102,8 @@ test("the route resolver is not vacuously passing", () => {
   // directions against known-good and known-bad paths, including the exact path that broke.
   assert.ok(routeExists("/pricing"), "should find a (marketing) group route");
   assert.ok(routeExists("/account"), "should find a (site) group route");
+  assert.ok(routeExists("/sign-up"), "should resolve Clerk optional catch-all sign-up route");
+  assert.ok(routeExists("/sign-in"), "should resolve Clerk optional catch-all sign-in route");
   assert.ok(routeExists("/vs/others"), "should find a nested route");
   assert.ok(!routeExists("/account/billing"), "the route that caused this bug must NOT resolve");
   assert.ok(!routeExists("/definitely-not-a-real-route"), "arbitrary paths must not resolve");
