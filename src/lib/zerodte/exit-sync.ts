@@ -288,7 +288,24 @@ export async function evaluateLedgerRowExit(
     // OPERATIVE rails move, and they move to agree with the basis the row is graded on.
     const planEntryMax =
       typeof row.plan_json?.entry_max === "number" ? (row.plan_json.entry_max as number) : null;
-    const entryBasisDiverged = planEntryMax != null && planEntryMax > 0 && entry > planEntryMax;
+    // BOTH directions of basis divergence, not just the FLOOR one this check originally shipped
+    // for (2026-08-06, entry > planEntryMax). resolveLedgerEntryPremium's ACHIEVABILITY CEILING
+    // (plan.ts, 2026-08-27 / PR #2986) can also move `entry` the OTHER way — capped DOWN below
+    // planEntryMax when the flow fill sat far above a live market that never traded there. That
+    // case was unreachable when this line was first written (the ceiling didn't exist yet), so
+    // `entry > planEntryMax` silently missed it: a divergence with entry BELOW planEntryMax left
+    // entryBasisDiverged false, so the STALE pinned stop (computed from the pre-cap, much-higher
+    // planEntryMax) kept being used even though `entry` — the basis pnlPct/currentMark are
+    // actually measured against below — had already moved. Live 2026-08-28: AMD flow fill $3.8,
+    // ledger-capped entry $1.23 (real market never near $3.8), pinned stop 1.9 (=3.8×0.5) sat
+    // ABOVE the capped entry, so `mark <= planStop` was true on the FIRST evaluation after
+    // commit — both AMD and NVDA closed_reason="stop" within 1-3s of their own flag, at ~0% real
+    // P&L, and counted toward the session's stop tally that halted the desk. `!==` (not `<`)
+    // because ceiling and floor are now both live paths — either direction of divergence must
+    // re-derive the stop from the row's own (correct) ledger basis. A half-cent epsilon absorbs
+    // round2() noise between the two independently-rounded numbers.
+    const entryBasisDiverged =
+      planEntryMax != null && planEntryMax > 0 && Math.abs(entry - planEntryMax) > 0.005;
     const planStop =
       pinnedStop != null && !entryBasisDiverged ? pinnedStop : entry * (1 + stopPct / 100);
     const planTarget =
