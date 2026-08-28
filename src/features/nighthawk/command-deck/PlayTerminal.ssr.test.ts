@@ -69,12 +69,18 @@ test("0DTE single panel v2: verdict band, evidence stack, collapsed technicals",
       firstFlaggedAt: "2026-08-03T11:20:00-04:00",
       pnlPct: 35,
       peak: 87,
+      // Full ThesisHealthPayload shape required (not just the fields each test happens to
+      // assert on) now that ThesisHealthPanel actually renders it inside ZeroDteCommandPanel —
+      // `rung`/`moves` are read unconditionally (rung.replace, moves.map) with no null guard,
+      // since the real payload from thesis-health.ts always populates them.
       thesisHealth: {
         health: 82,
         currentIndex: 92,
         advisory: "Thesis intact",
         pillars: [{ id: "flow", label: "Flow", status: "intact" }],
         committedAtEt: "10:15",
+        rung: "INTACT",
+        moves: [],
       },
     }),
   );
@@ -126,12 +132,18 @@ test("premium thesis panels render for 0DTE", async () => {
   const html = await render(
     play({
       tierLabel: "A",
+      // Full ThesisHealthPayload shape required (not just the fields each test happens to
+      // assert on) now that ThesisHealthPanel actually renders it inside ZeroDteCommandPanel —
+      // `rung`/`moves` are read unconditionally (rung.replace, moves.map) with no null guard,
+      // since the real payload from thesis-health.ts always populates them.
       thesisHealth: {
         health: 82,
         currentIndex: 92,
         advisory: "Thesis intact",
         pillars: [{ id: "flow", label: "Flow", status: "intact" }],
         committedAtEt: "10:15",
+        rung: "INTACT",
+        moves: [],
       },
     }),
     { convictionRank: { rank: 1, total: 18, isHighestToday: true } },
@@ -157,12 +169,18 @@ test("hero: the live metrics tile shows the canonical 'Thesis Strength' label + 
   const html = await render(
     play({
       tierLabel: "A",
+      // Full ThesisHealthPayload shape required (not just the fields each test happens to
+      // assert on) now that ThesisHealthPanel actually renders it inside ZeroDteCommandPanel —
+      // `rung`/`moves` are read unconditionally (rung.replace, moves.map) with no null guard,
+      // since the real payload from thesis-health.ts always populates them.
       thesisHealth: {
         health: 82,
         currentIndex: 92,
         advisory: "Thesis intact",
         pillars: [{ id: "flow", label: "Flow", status: "intact" }],
         committedAtEt: "10:15",
+        rung: "INTACT",
+        moves: [],
       },
     }),
   );
