@@ -20,6 +20,11 @@ const PUBLIC_ROUTES = [
   "/sign-up",
   "/upgrade",
   "/track-record",
+  "/methodology",
+  "/why-blackout",
+  "/vs/others",
+  "/tools/gamma-snapshot",
+  "/about",
   "/dashboard",
   "/flows",
   "/nighthawk",
@@ -43,7 +48,7 @@ async function checkRoute(page, path, signedInCookie) {
   record(label, "http", status >= 400 && path !== "/dashboard" ? "WARN" : "PASS", `HTTP ${status} → ${page.url()}`);
 
   // Nav auth must never be empty on marketing pages
-  if (["/", "/pricing", "/faq", "/learn", "/upgrade"].some((p) => path === p || path.startsWith("/learn"))) {
+  if (["/", "/pricing", "/faq", "/learn", "/upgrade", "/methodology", "/why-blackout"].some((p) => path === p || path.startsWith("/learn"))) {
     await page.waitForTimeout(100);
     const nav = page.locator(".mkt-nav-auth").first();
     const html = (await nav.innerHTML().catch(() => "")).trim();
@@ -146,7 +151,7 @@ async function main() {
       { name: "__client_uat", value: String(Math.floor(Date.now() / 1000)), domain: "blackouttrades.com", path: "/" },
     ]);
     const page = await ctx.newPage();
-    for (const route of ["/", "/pricing", "/faq", "/upgrade", "/learn"]) {
+    for (const route of ["/", "/pricing", "/faq", "/upgrade", "/learn", "/methodology"]) {
       try {
         await checkRoute(page, route, true);
       } catch (e) {

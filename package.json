@@ -23,6 +23,7 @@
     "validate:homepage-perf": "node scripts/audit/homepage-perf-audit.mjs",
     "validate:marketing-funnel": "node scripts/audit/marketing-funnel-audit.mjs",
     "validate:marketing-funnel-live": "node scripts/audit/marketing-funnel-audit.mjs --live",
+    "validate:website-cta": "node scripts/audit/website-cta-sweep.mjs",
     "deploy:ecs": "node scripts/deploy/roll-ecs.mjs",
     "validate:ga4": "node scripts/audit/ga4-live-probe.mjs",
     "validate:seo": "node --import tsx scripts/audit/seo-visibility-audit.mjs",

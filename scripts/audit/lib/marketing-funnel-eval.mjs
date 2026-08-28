@@ -96,3 +96,33 @@ export function methodologyPageGate(html, status = 200) {
   }
   return { ok: false, reason: "methodology page missing expected trust copy" };
 }
+
+/** Live sitemap must list trust surfaces (stale CF edge cache is a common miss). */
+export function sitemapMethodologyGate(xml, baseUrl) {
+  if (!/<urlset/i.test(xml)) {
+    return { ok: false, reason: "not a sitemap urlset" };
+  }
+  const origin = baseUrl.replace(/\/$/, "");
+  const required = [`${origin}/methodology`, `${origin}/learn`];
+  const missing = required.filter((u) => !xml.includes(u));
+  if (missing.length) {
+    return { ok: false, reason: `missing URLs: ${missing.map((u) => u.replace(origin, "")).join(", ")}` };
+  }
+  return { ok: true, reason: "methodology + learn in sitemap" };
+}
+
+/** Deploy purge list must include new trust/marketing URLs or edge serves stale SEO. */
+export function cfPurgeTrustPagesGate(source) {
+  const required = [
+    "/methodology",
+    "/why-blackout",
+    "/vs/others",
+    "/tools/gamma-snapshot",
+    "/sitemap.xml",
+  ];
+  const missing = required.filter((p) => !source.includes(`"${p}"`) && !source.includes(`'${p}'`));
+  if (missing.length) {
+    return { ok: false, reason: `cf-purge missing: ${missing.join(", ")}` };
+  }
+  return { ok: true, reason: "cf-purge includes trust + sitemap URLs" };
+}

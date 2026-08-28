@@ -10,10 +10,12 @@
 import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import {
+  cfPurgeTrustPagesGate,
   gammaLoadingFreshnessConflict,
   homepageH1AboveFold,
   methodologyPageGate,
   scanForbiddenMarketingCopy,
+  sitemapMethodologyGate,
   upgradeAnonSyncGate,
   whopScriptPriceParity,
 } from "./lib/marketing-funnel-eval.mjs";
@@ -71,6 +73,10 @@ function repoScan() {
   } catch {
     add("REPO-PLAN-MATRIX-TESTS", "RED", "plan-matrix or FAQ test failed");
   }
+
+  const cfPurge = readFileSync("src/lib/cf-purge-on-deploy.ts", "utf8");
+  const purgeGate = cfPurgeTrustPagesGate(cfPurge);
+  add("REPO-CF-PURGE-TRUST", purgeGate.ok ? "GREEN" : "RED", purgeGate.reason);
 }
 
 /** Retry goto when a prior in-flight navigation races (Playwright "interrupted by another navigation"). */
@@ -198,6 +204,19 @@ async function liveScan() {
       });
     } catch (e) {
       add("LIVE-METHODOLOGY-PAGE", "RED", e instanceof Error ? e.message : String(e));
+    }
+
+    try {
+      const res = await fetch(`${BASE}/sitemap.xml`, { headers: { "cache-control": "no-cache" } });
+      const xml = await res.text();
+      const sitemapGate = sitemapMethodologyGate(xml, BASE);
+      add(
+        "LIVE-SITEMAP-METHODOLOGY",
+        sitemapGate.ok ? "GREEN" : "RED",
+        sitemapGate.reason
+      );
+    } catch (e) {
+      add("LIVE-SITEMAP-METHODOLOGY", "RED", e instanceof Error ? e.message : String(e));
     }
   } finally {
     await browser.close();
