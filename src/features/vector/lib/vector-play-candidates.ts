@@ -20,6 +20,7 @@ import type { VectorRegimePosture } from "./vector-regime";
 import type { ConfluenceZone } from "./vector-confluence";
 import { buildVectorPickEvidence, type VectorPickEvidenceSection } from "./vector-pick-evidence";
 import { rangeMeanReference } from "./vector-play-engine";
+import { effectivePickBias } from "./vector-pick-effective-bias";
 import type { VectorPickEnrichmentData } from "./vector-pick-types";
 import { strikeGexFromTotals, topGexPinStrikes } from "./strike-gex-lookup";
 import { vectorPickOcc } from "./vector-pick-occ";
@@ -479,7 +480,11 @@ export function rankVectorPlayCandidates(
   ticker = "",
   options: RankVectorPlayCandidatesOptions = {}
 ): VectorRankedPick[] {
-  if (!ctx || !chain || ctx.play.bias === "neutral") return [];
+  if (!ctx || !chain) return [];
+  const rankBias = effectivePickBias(ctx.play, ctx.spot, ctx.gammaFlip) ?? ctx.play.bias;
+  if (rankBias === "neutral") return [];
+  const ctxForRank =
+    rankBias === ctx.play.bias ? ctx : { ...ctx, play: { ...ctx.play, bias: rankBias } };
 
   const maxPicks = options.limit ?? DEFAULT_MAX_PICKS;
   const excludeOccs = new Set(
@@ -487,7 +492,7 @@ export function rankVectorPlayCandidates(
   );
   const root = ticker.trim().toUpperCase();
 
-  const specs = specsForContext(ctx);
+  const specs = specsForContext(ctxForRank);
   if (!specs.length) return [];
 
   const raw: Array<{ contract: PickedContract; spec: CandidateSpec; windowId: string; rankScore: number; reasons: string[] }> =
@@ -517,7 +522,7 @@ export function rankVectorPlayCandidates(
         );
       }
       if (!contract) continue;
-      const { rankScore, reasons } = rankPick(ctx, spec, contract, win.id);
+      const { rankScore, reasons } = rankPick(ctxForRank, spec, contract, win.id);
       raw.push({ contract, spec, windowId: win.id, rankScore, reasons });
     }
   }

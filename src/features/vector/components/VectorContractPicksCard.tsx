@@ -7,6 +7,7 @@ import type { VectorContractPick, VectorPickEvidenceSection } from "@/lib/api";
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
 import { partitionPickEvidence } from "@/features/vector/lib/vector-pick-evidence-rails";
 import { formatPickPremiumDriftPct, formatPickPremiumRange } from "@/features/vector/lib/vector-pick-live-status";
+import { pivotPickWaitingCopy } from "@/features/vector/lib/vector-pick-effective-bias";
 
 type Props = {
   ticker: string;
@@ -15,6 +16,9 @@ type Props = {
   /** Invalidated picks — shown below active slots with Don't buy status. */
   closedPicks?: VectorContractPick[];
   loading: boolean;
+  /** Spot + flip for pivot plays — ranks PLYS once spot commits past the flip. */
+  spot?: number | null;
+  gammaFlip?: number | null;
   /** Session replay — last pick frame stays visible; live quotes do not refresh. */
   replayPaused?: boolean;
   className?: string;
@@ -133,6 +137,8 @@ export function VectorContractPicksCard({
   picks,
   closedPicks = [],
   loading,
+  spot = null,
+  gammaFlip = null,
   replayPaused = false,
   className,
 }: Props) {
@@ -235,6 +241,20 @@ export function VectorContractPicksCard({
             <p className="vector-contract-picks-empty">
               No contract in the chain cleared our setup-quality bar for this play right now.
             </p>
+          </div>
+        </div>
+      );
+    }
+    const pivotWait = play ? pivotPickWaitingCopy(play, gammaFlip) : null;
+    if (play && pivotWait) {
+      return (
+        <div className={clsx("vp-intel vector-contract-picks-card", className)}>
+          <div className="vp-intel-card">
+            <div className="vp-intel-card-head">
+              <span className="vp-intel-card-code">PLYS</span>
+              <span className="vp-intel-card-title">{ticker} PLAYS · pivot</span>
+            </div>
+            <p className="vector-contract-picks-empty">{pivotWait}</p>
           </div>
         </div>
       );

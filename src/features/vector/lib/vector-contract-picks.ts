@@ -83,6 +83,14 @@ export function buildVectorContractPicks(
     play: {
       style: play.style ?? "swing",
       bias: play.bias,
+      setup:
+        play.bias === "long"
+          ? "momentum-long"
+          : play.bias === "short"
+            ? "momentum-short"
+            : play.bias === "range"
+              ? "range"
+              : "stand-aside",
       conviction: play.conviction,
       grade: play.grade ?? "B",
       headline: play.headline ?? `${play.bias} setup`,

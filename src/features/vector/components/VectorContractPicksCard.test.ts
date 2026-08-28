@@ -14,8 +14,8 @@ test("VectorContractPicksCard: loading and quality-bar-empty states are distinct
   assert.match(src, /if \(loading\)/, "loading state must be handled before falling through to the quality-bar-empty case");
   assert.match(
     src,
-    /play\.bias !== "neutral"/,
-    "a neutral/no-bias play still renders nothing — only a real directional play with zero picks gets the empty-state card"
+    /pivotPickWaitingCopy/,
+    "pivot plays show an honest PLYS waiting state instead of rendering nothing"
   );
   assert.match(src, /vector-contract-picks-list-closed/);
 });

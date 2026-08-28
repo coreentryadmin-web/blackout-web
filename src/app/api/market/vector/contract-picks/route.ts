@@ -37,6 +37,10 @@ function parsePlay(raw: Record<string, unknown>): VectorPlay | null {
   return {
     style,
     bias: bias as VectorPlayBias,
+    setup:
+      typeof raw.setup === "string"
+        ? (raw.setup as VectorPlay["setup"])
+        : "stand-aside",
     conviction: clampConviction(raw.conviction),
     grade,
     headline: typeof raw.headline === "string" ? raw.headline : "",
@@ -246,6 +250,14 @@ export async function GET(req: NextRequest) {
     play: {
       style: "swing",
       bias: bias as VectorPlayBias,
+      setup:
+        bias === "long"
+          ? "momentum-long"
+          : bias === "short"
+            ? "momentum-short"
+            : bias === "range"
+              ? "range"
+              : "stand-aside",
       conviction: clampConviction(req.nextUrl.searchParams.get("conviction")),
       grade: "B",
       headline: "",

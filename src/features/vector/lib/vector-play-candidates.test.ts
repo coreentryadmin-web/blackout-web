@@ -36,11 +36,20 @@ function row(
 
 function basePlay(
   bias: "long" | "short" | "range" | "neutral",
-  conviction = 72
+  conviction = 72,
+  setup: VectorPlayPickContext["play"]["setup"] =
+    bias === "long"
+      ? "momentum-long"
+      : bias === "short"
+        ? "momentum-short"
+        : bias === "range"
+          ? "range"
+          : "stand-aside"
 ): VectorPlayPickContext["play"] {
   return {
     style: "swing",
     bias,
+    setup,
     conviction,
     grade: "A",
     headline: "test play",
@@ -213,6 +222,29 @@ test("neutral play returns no picks", () => {
     rankVectorPlayCandidates({ play: basePlay("neutral"), spot: 100 }, { spot: 100, rows: [] }),
     []
   );
+});
+
+test("pivot play ranks once spot commits past gamma flip", () => {
+  const chain: EditionChainData = {
+    spot: 353,
+    rows: [
+      row(353, { expiry: ymdPlus(0), callAsk: 4, callBid: 3.6 }),
+      row(353, { expiry: ymdPlus(7), callAsk: 5, callBid: 4.6 }),
+      row(350, { expiry: ymdPlus(7), callAsk: 6, callBid: 5.5 }),
+    ],
+  };
+  const play = basePlay("neutral", 72, "pivot");
+  assert.deepEqual(
+    rankVectorPlayCandidates({ play, spot: 352.56, gammaFlip: 352.56 }, chain),
+    [],
+    "still on the flip → no ranked picks"
+  );
+  const picks = rankVectorPlayCandidates(
+    { play, spot: 353, gammaFlip: 352.56, putWall: 350 },
+    chain
+  );
+  assert.ok(picks.length > 0, "committed pivot side should surface ranked picks");
+  assert.equal(picks[0]?.side, "call");
 });
 
 test("bid-only quote (no ask) is still a visible, pickable contract", () => {
