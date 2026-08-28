@@ -50,8 +50,16 @@ async function checkRoute(page, path, signedInCookie) {
 
   // Nav auth must never be empty on marketing pages
   if (["/", "/pricing", "/faq", "/learn", "/upgrade", "/methodology", "/why-blackout"].some((p) => path === p || path.startsWith("/learn"))) {
-    await page.waitForTimeout(100);
     const nav = page.locator(".mkt-nav-auth").first();
+    if (signedInCookie) {
+      try {
+        await nav.getByRole("link", { name: /open desk/i }).first().waitFor({ state: "visible", timeout: 8000 });
+      } catch {
+        /* fall through — scored below */
+      }
+    } else {
+      await page.waitForTimeout(100);
+    }
     const html = (await nav.innerHTML().catch(() => "")).trim();
     const signIn = await nav.getByRole("link", { name: /^sign in$/i }).count();
     const openDesk = await nav.getByRole("link", { name: /open desk/i }).count();
