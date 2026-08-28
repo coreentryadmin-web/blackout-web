@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { PageShell, PageHeader, Button } from "@/components/ui";
@@ -18,7 +19,14 @@ import { useIosNativeShell } from "@/hooks/useIosNativeShell";
  * lives in the (marketing) route group. Two page frames would emit duplicate
  * `<main id="main">`, so exactly one owner renders the frame.
  */
-export function UpgradePageShell({ frame = true }: { frame?: boolean }) {
+export function UpgradePageShell({
+  frame = true,
+  syncSlot,
+}: {
+  frame?: boolean;
+  /** Server-rendered sync gate — defaults to client button for legacy callers. */
+  syncSlot?: ReactNode;
+}) {
   const nativeShell = useIosNativeShell();
 
   const body = (
@@ -80,7 +88,7 @@ export function UpgradePageShell({ frame = true }: { frame?: boolean }) {
           <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-white/30">
             Already paid?
           </span>
-          <SyncMembershipButton />
+          {syncSlot ?? <SyncMembershipButton />}
         </div>
 
         <div className="hide-in-ios-app">

@@ -40,7 +40,7 @@ const APPROACH = `## Our Approach
 
 **Data-driven, not opinion-driven.** Every number on the desk comes from verifiable market data feeds and our own models built on top of them. When the data says sit, we sit.
 
-**Transparent track records.** Every setup BlackOut flags is logged publicly, graded, and time-stamped — including the losers. No hindsight edits, no deleted trades, no cherry-picked screenshots. The record speaks for itself.
+**Transparent track records.** Every setup BlackOut flags is logged publicly, graded, and time-stamped — including the losers. See the [public grading methodology & live stats](/methodology) for how each product is scored. No hindsight edits, no deleted trades, no cherry-picked screenshots. The record speaks for itself.
 
 **Education-first.** Options are complex. We publish a full [Learning Academy](/learn) — from [getting started](/learn/getting-started) to a deep [dealer gamma and options flow guide](/learn/dealer-gamma-options-flow-guide) — because an informed trader makes better decisions than a subscriber who just follows alerts.`;
 
