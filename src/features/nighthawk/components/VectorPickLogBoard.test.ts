@@ -10,4 +10,6 @@ test("VectorPickLogBoard: scrollport must not flex-shrink closure rows (nh-v2 de
     "flex-col on nh-deck-rows collapses Panel rows to ~26px under 100svh shell"
   );
   assert.match(src, /vector-closure-row shrink-0/, "closure panels opt out of flex shrink");
+  assert.match(src, /formatPremiumPct/, "premium % must render prominently");
+  assert.match(src, /filterVectorClosureRows/, "board must support filter controls");
 });

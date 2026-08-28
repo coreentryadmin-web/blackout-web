@@ -64,8 +64,15 @@ export async function insertVectorPickClosure(payload: VectorPickClosurePayload)
   return (res.rows?.length ?? 0) > 0;
 }
 
-export async function fetchVectorPickClosureRows(limit = 120): Promise<VectorPickClosureRow[]> {
+export async function fetchVectorPickClosureRows(
+  limit = 120,
+  sessionDate: string | null = null
+): Promise<VectorPickClosureRow[]> {
   if (!dbConfigured()) return [];
+  const params: unknown[] = [limit];
+  const sessionClause = sessionDate
+    ? (params.push(sessionDate), `AND session_date = $2::date`)
+    : "";
   const res = await dbQuery<VectorPickClosureRow>(
     `SELECT
       id, commit_key, session_date::text AS session_date, ticker, occ, side,
@@ -75,9 +82,10 @@ export async function fetchVectorPickClosureRows(limit = 120): Promise<VectorPic
       close_reason, setup_invalidated, spot::float8 AS spot,
       vector_play, pick_context, closed_at::text AS closed_at
     FROM vector_pick_closures
+    WHERE TRUE ${sessionClause}
     ORDER BY closed_at DESC
     LIMIT $1`,
-    [limit]
+    params
   );
   return res.rows ?? [];
 }
