@@ -12725,7 +12725,6 @@ oracle aligned to cumulative definition (still independently re-derived). Docs p
 
 ## 2026-07-28 — [gate-calibration] Late-afternoon 0DTE entries (14:00-15:30) run 14.3% WR / −19% avg
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 — the late-afternoon window is the second-worst time bucket in the 90-day record
 (after the opening drive, already blocked by G-2). Responsible for ~7 losing plays that should
@@ -12745,7 +12744,13 @@ engine remodel PR). Condors remain exempt (want late theta).
 Condor-exempt: iron condors BENEFIT from late-session theta crush (credit seller). Persist-layer
 `NEW_PLAY_CUTOFF_ET_MINUTES` also moved from 15:00 → 14:00 as a backstop. Files:
 `gates.ts` (G-14 enforcement + constant), `board.ts` (failure type), `plan.ts` (cutoff constant).
-Tests: 3 new tests in `gates.test.ts` (boundary, condor exemption). **Status: MERGED.**
+Tests: 3 new tests in `gates.test.ts` (boundary, condor exemption).
+
+**Status.** FIXED — `late_afternoon` / G-14 gate confirmed present today in `src/lib/zerodte/board.ts`
+(cutoff has since moved further, to 15:30 ET, per the shipped comments at `board.ts:18,43,848` — the
+gate mechanism this entry describes is the thing that evolved, not a sign it never shipped).
+Restamped, the pre-existing "**Status: MERGED.**" mid-paragraph phrasing did not match the
+reconciler's status-line format.
 
 ## 2026-07-28 — [data-honesty] Legacy 0% WR caused by unfillable entry bands (PR #1186)
 > **kind:** `FINDING`
@@ -13713,9 +13718,12 @@ Registered the tools + INTENTIONAL-DESIGN.md in CLAUDE.md's audit-toolkit list.
 
 ## 2026-07-25 — [Hardening WS-14/15] 0DTE end-to-end latency telemetry + input-age manifest — ADDITIVE observability
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
-**Severity.** SEV-5 (observability; no behavior change). **Status.** Shipped.
+**Severity.** SEV-5 (observability; no behavior change).
+
+**Status.** FIXED — `src/lib/zerodte/latency-telemetry.ts` and `entry_context.input_age_manifest`
+both confirmed present in `main` today. Restamped, the pre-existing "**Status.** Shipped." phrasing
+sat mid-paragraph rather than as its own line and was not read by the reconciler.
 
 **What.** The 0DTE scan had no measure of HOW LONG each pipeline hop took, nor HOW STALE each input was
 AT THE INSTANT a play committed — so a slow board or a commit on aged data had no persisted evidence to
