@@ -209,9 +209,82 @@ async function runMobile(browser) {
   return { label: "mobile", issues, passes, perf };
 }
 
+/** Reproduce FINDINGS P2 #2799 — sticky bar must not block FAQ taps after opening items above. */
+async function runMobileFaqSticky(browser) {
+  /** @type {Issue[]} */
+  const issues = [];
+  /** @type {string[]} */
+  const passes = [];
+
+  const ctx = await browser.newContext({ ...devices["iPhone 13"] });
+  const page = await ctx.newPage();
+  await gotoHome(page);
+  await page.waitForTimeout(1200);
+
+  // Scroll past hero so sticky CTA becomes visible.
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(400);
+  await page.locator("#faq").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(600);
+
+  const faqItems = page.locator(".sec-faq .faq-item");
+  const count = await faqItems.count();
+  if (count < 3) {
+    issues.push({ severity: "P1", code: "FAQ_ITEMS_MISSING", detail: `Expected ≥3 FAQ items, got ${count}` });
+    await ctx.close();
+    return { label: "mobile-faq-sticky", issues, passes };
+  }
+
+  // Open first two items — grows page so item 3 lands in sticky footprint without fix.
+  for (let i = 0; i < 2; i++) {
+    await faqItems.nth(i).locator("summary").click();
+    await page.waitForTimeout(250);
+  }
+
+  const third = faqItems.nth(2);
+  const overlap = await page.evaluate(() => {
+    const bar = document.getElementById("mobile-sticky-cta");
+    const item = document.querySelectorAll(".sec-faq .faq-item")[2];
+    if (!bar || !item) return { visible: false, overlaps: false };
+    const a = bar.getBoundingClientRect();
+    const b = item.getBoundingClientRect();
+    const visible = bar.classList.contains("visible");
+    const overlaps = !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+    return { visible, overlaps };
+  });
+
+  if (overlap.visible && overlap.overlaps) {
+    issues.push({
+      severity: "P2",
+      code: "STICKY_FAQ_OVERLAP",
+      detail: "mobile sticky CTA overlaps FAQ item 3 while visible",
+    });
+  } else {
+    passes.push("sticky CTA suppressed before FAQ item 3 overlap");
+  }
+
+  const openBefore = await third.evaluate((el) => (el instanceof HTMLDetailsElement ? el.open : false));
+  await third.locator("summary").click({ timeout: 8000 });
+  await page.waitForTimeout(300);
+  const openAfter = await third.evaluate((el) => (el instanceof HTMLDetailsElement ? el.open : false));
+  if (openAfter === openBefore) {
+    issues.push({
+      severity: "P2",
+      code: "FAQ_TAP_BLOCKED",
+      detail: "FAQ item 3 summary click did not toggle (likely sticky intercept)",
+    });
+  } else {
+    passes.push("FAQ item 3 toggles after opening items 1–2");
+  }
+
+  await ctx.close();
+  return { label: "mobile-faq-sticky", issues, passes };
+}
+
 const browser = await chromium.launch({ headless: true });
 let desktop;
 let mobile;
+let mobileFaqSticky;
 try {
   desktop = await runDesktop(browser);
 } catch (e) {
@@ -233,6 +306,15 @@ try {
     perf: {},
   };
 }
+try {
+  mobileFaqSticky = await runMobileFaqSticky(browser);
+} catch (e) {
+  mobileFaqSticky = {
+    label: "mobile-faq-sticky",
+    issues: [{ severity: "P0", code: "FAQ_STICKY_CRASH", detail: e instanceof Error ? e.message : String(e) }],
+    passes: [],
+  };
+}
 await browser.close();
 
 const report = {
@@ -240,7 +322,8 @@ const report = {
   base: BASE,
   desktop,
   mobile,
-  issue_count: desktop.issues.length + mobile.issues.length,
+  mobileFaqSticky,
+  issue_count: desktop.issues.length + mobile.issues.length + mobileFaqSticky.issues.length,
 };
 writeFileSync(OUT, JSON.stringify(report, null, 2));
 console.log(JSON.stringify(report, null, 2));

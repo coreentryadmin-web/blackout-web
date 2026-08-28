@@ -4,6 +4,7 @@
  * Exits non-zero on any FAIL (broken link, empty nav auth, stale signed-in CTA).
  */
 import { chromium } from "playwright";
+import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
 
 const BASE = process.env.VALIDATE_BASE ?? "https://blackouttrades.com";
 
@@ -39,7 +40,23 @@ function record(route, check, verdict, detail) {
 
 async function checkRoute(page, path, signedInCookie) {
   const label = `${path}${signedInCookie ? " (signed-in cookie)" : ""}`;
-  const res = await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded", timeout: 30000 });
+  let res;
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      res = await page.goto(`${BASE}${path}?_cb=${Date.now()}`, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      break;
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/interrupted by another navigation|ERR_ABORTED/i.test(msg) || attempt >= 2) throw e;
+      await page.waitForTimeout(800);
+    }
+  }
+  if (!res) throw lastErr ?? new Error("navigation failed");
   const status = res?.status() ?? 0;
   if (status >= 500) {
     record(label, "http", "FAIL", `HTTP ${status}`);
@@ -49,8 +66,16 @@ async function checkRoute(page, path, signedInCookie) {
 
   // Nav auth must never be empty on marketing pages
   if (["/", "/pricing", "/faq", "/learn", "/upgrade", "/methodology", "/why-blackout"].some((p) => path === p || path.startsWith("/learn"))) {
-    await page.waitForTimeout(100);
     const nav = page.locator(".mkt-nav-auth").first();
+    if (signedInCookie) {
+      try {
+        await nav.getByRole("link", { name: /open desk/i }).first().waitFor({ state: "visible", timeout: 8000 });
+      } catch {
+        /* fall through — scored below */
+      }
+    } else {
+      await page.waitForTimeout(100);
+    }
     const html = (await nav.innerHTML().catch(() => "")).trim();
     const signIn = await nav.getByRole("link", { name: /^sign in$/i }).count();
     const openDesk = await nav.getByRole("link", { name: /open desk/i }).count();
@@ -144,21 +169,34 @@ async function main() {
     await ctx.close();
   }
 
-  // Signed-in cookie sweep (key routes)
+  // Signed-in sweep — real Clerk session (partial __client_uat-only cookies false-FAIL nav).
   {
-    const ctx = await browser.newContext();
-    await ctx.addCookies([
-      { name: "__client_uat", value: String(Math.floor(Date.now() / 1000)), domain: "blackouttrades.com", path: "/" },
-    ]);
-    const page = await ctx.newPage();
-    for (const route of ["/", "/pricing", "/faq", "/upgrade", "/learn", "/methodology"]) {
+    const session = await mintClerkPremiumSession({ appUrl: BASE });
+    if (session.skip) {
+      record("(signed-in sweep)", "auth-setup", "WARN", `skipped: ${session.reason}`);
+    } else {
       try {
-        await checkRoute(page, route, true);
-      } catch (e) {
-        record(`${route} (signed-in cookie)`, "exception", "FAIL", String(e));
+        const ctx = await browser.newContext();
+        const cookies = session.cookieHeader.split("; ").map((pair) => {
+          const eq = pair.indexOf("=");
+          const name = pair.slice(0, eq);
+          const value = pair.slice(eq + 1);
+          return { name, value, domain: "blackouttrades.com", path: "/" };
+        });
+        await ctx.addCookies(cookies);
+        const page = await ctx.newPage();
+        for (const route of ["/", "/pricing", "/faq", "/upgrade", "/learn", "/methodology"]) {
+          try {
+            await checkRoute(page, route, true);
+          } catch (e) {
+            record(`${route} (signed-in cookie)`, "exception", "FAIL", String(e));
+          }
+        }
+        await ctx.close();
+      } finally {
+        await session.cleanup();
       }
     }
-    await ctx.close();
   }
 
   await browser.close();
