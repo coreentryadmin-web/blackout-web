@@ -121,34 +121,40 @@ function replaySession(): Map<string, ZeroDteGateVerdict> {
   return verdicts;
 }
 
-test("7/13 replay: full verdict table matches the decision doc's §2 projection (G-2 attribution updated per user direction)", () => {
+test("7/13 replay: full verdict table matches the decision doc's §2 projection (G-2 attribution updated per user direction; G-17 extended 2026-08-28)", () => {
   const verdicts = replaySession();
 
-  // The doc's projection (§2, adjusted for hardened G-6 + G-1 index-ETF-only + score floor 65):
+  // The doc's projection (§2, adjusted for hardened G-6 + G-1 index-ETF-only + score floor 65
+  // + G-17's 2026-08-28 extension to a universal 75 floor in the 65-74 band):
   //   AMD  long  09:50 → BLOCKED  G-2 + G-3  (single stock — G-1 tape_alignment bypassed;
   //                                           score 58 < 65 floor; pre-10:00 → opening_window)
   //   SPY  long  09:55 → BLOCKED  G-1 + G-2  (index ETF, counter-tape; 93-score clears floor;
   //                                           pre-10:00 → opening_window)
-  //   MU   long  09:55 → BLOCKED  G-2        (single stock — G-1 bypassed; score 73 clears floor;
-  //                                           pre-10:00 → opening_window is the only block)
+  //   MU   long  09:55 → BLOCKED  G-2 + G-17 (single stock — G-1 bypassed; score 73 clears G-3's
+  //                                           65 floor but not G-17's 75; pre-10:00 → opening_window too)
   //   SPXW long  10:00 → BLOCKED  G-1        (index ETF, counter-tape; at unlock boundary)
-  //   QQQ  short 10:20 → COMMIT              (index ETF, aligned, ≥ 10:00, score 65 = floor)
-  //   META short 10:40 → COMMIT              (score 67 ≥ 65 new conflict floor — the G-6 conflict
-  //                                           with NH 7/10 LONG no longer blocks. Was blocked at
-  //                                           old floor 80; now passes. A loser that would have
-  //                                           been caught, but the relaxed floor is evidence-based.)
+  //   QQQ  short 10:20 → BLOCKED  G-17       (index ETF, aligned, ≥ 10:00 — clears G-3's 65 floor
+  //                                           but score 65 < G-17's 75. This is the REAL winner
+  //                                           (+76.57%) the tightened floor now also holds — the
+  //                                           65-74 band trade-off measured 2026-08-28: it costs
+  //                                           some real winners to also catch the real losers in
+  //                                           the same band (net positive over the 90d sample).)
+  //   META short 10:40 → BLOCKED  G-17       (score 67 < 75 — the G-6 conflict with NH 7/10 LONG
+  //                                           no longer even needs deciding; G-17 holds it first.
+  //                                           The real -50.11% loser this extension exists to catch.)
   //   NVDA long  12:40 → BLOCKED  G-3        (single stock — G-1 bypassed; score 40 < 65 floor)
-  //   INTC short 12:51 → BLOCKED  G-3        (score 61 < 65 floor)
+  //   INTC short 12:51 → BLOCKED  G-3        (score 61 < 65 — below G-17's own 65-74 band, so
+  //                                           only score_floor fires, not a redundant G-17 too)
   // 2026-07-23 (user-authorized): the opening-window unlock moved 9:45 → 10:00, so the pre-10:00
   // entries now ALSO collect G-2 (AMD 09:50, SPY/MU 09:55). SPXW at exactly 10:00 is unlocked
-  // (boundary inclusive). Block order is tape_alignment → opening_window → score_floor.
+  // (boundary inclusive). Block order is tape_alignment → opening_window → score_floor → G-17.
   const expected: Record<string, string[] | "COMMIT"> = {
     AMD: ["opening_window", "score_floor"],
     SPY: ["tape_alignment", "opening_window"],
-    MU: ["opening_window"],
+    MU: ["opening_window", "single_rail_corroboration"],
     SPXW: ["tape_alignment"],
-    QQQ: "COMMIT",
-    META: "COMMIT",
+    QQQ: ["single_rail_corroboration"],
+    META: ["single_rail_corroboration"],
     NVDA: ["score_floor"],
     INTC: ["score_floor"],
   };
@@ -182,11 +188,16 @@ test("7/13 replay: post-2026-07-23 the 10:00 unlock catches the pre-10:00 entrie
   }
 });
 
-test("7/13 replay: META short passes G-6 (score 67 >= 65 new conflict floor, despite opposing Night Hawk long)", () => {
+test("7/13 replay: META short clears G-6's OWN 65 floor (score 67 >= 65) despite opposing Night Hawk long — but is still held by G-17's separate 75 floor", () => {
   const meta = replaySession().get("META")!;
-  assert.equal(meta.verdict, "COMMIT");
-  assert.deepEqual(meta.blocks, []);
-  // Calibration still records the conflict for measurement, even though the gate no longer blocks.
+  // G-17 (extended 2026-08-28) now blocks first — score 67 < 75, no discovery_origin set in this
+  // historical replay. G-6's OWN conflict floor is a SEPARATE question, checked via calibration
+  // below (it still would NOT have blocked at 67 on its own — G-6 and G-17 are independent gates
+  // that both happen to reach the same real 2026-07-13 loser).
+  assert.equal(meta.verdict, "BLOCKED");
+  assert.deepEqual(meta.blocks.map((b) => b.code), ["single_rail_corroboration"]);
+  // Calibration still records the G-6 conflict for measurement, even though G-6 itself would not
+  // have blocked this score on its own — it's G-17 doing the blocking here.
   assert.equal(meta.calibration.g6_conflict.conflict, true);
   assert.deepEqual(meta.calibration.g6_conflict.against, ["nighthawk_edition"]);
   assert.equal(meta.calibration.g6_conflict.would_block, false);
@@ -201,19 +212,23 @@ test("7/13 replay: G-4 verdict is tier=normal at the dataset's 16.32 day-open VI
   }
 });
 
-test("7/13 replay: session economics — the gated desk prints 1W/1L (QQQ winner + META loser through relaxed G-6)", () => {
+test("7/13 replay: session economics — G-17's 2026-08-28 extension zeroes the session out (0 prints), trading away the real QQQ winner to also catch the real META loser", () => {
   const verdicts = replaySession();
   const printed = LEDGER_2026_07_13.filter((p) => verdicts.get(p.ticker)!.verdict === "COMMIT");
   const blocked = LEDGER_2026_07_13.filter((p) => verdicts.get(p.ticker)!.verdict === "BLOCKED");
 
-  assert.deepEqual(printed.map((p) => p.ticker), ["QQQ", "META"]);
-  // QQQ is the winner; META passes G-6 at the relaxed 65 floor (score 67) but is a loser.
-  assert.equal(printed.filter((p) => p.pnl > 0).length, 1);
-  assert.equal(printed.filter((p) => p.pnl < 0).length, 1);
-  assert.equal(blocked.length, 6);
-  assert.ok(blocked.every((p) => p.pnl < 0), "every blocked play was a real loser — no winner was gated away");
+  // Both QQQ (65) and META (67) now fall in G-17's universal 65-74/75-floor band and block —
+  // the session prints NOTHING. This is the honest cost side of the 2026-08-28 measurement: on
+  // this ONE real historical day, the tightened floor would have zeroed out a 1W/1L session
+  // rather than improving it, because it caught the real winner along with the real loser. The
+  // justification is the 90-day AGGREGATE (n=34 in-band multi-rail/FLOW commits graded 35.7% WR /
+  // -10.43% avg pnl, worse than the 75+ floor), not a claim that every single blocked play in
+  // this band was already a loser — it wasn't, and this fixture is the concrete counter-example.
+  assert.deepEqual(printed, []);
+  assert.equal(blocked.length, 8);
 
-  // Calibration context rides every verdict, committed or not (C-2 columns).
+  // Calibration context still rides every verdict, committed or not (C-2 columns) — even a
+  // blocked QQQ still reports what it WOULD have committed under, for the ledger's own record.
   const qqq = verdicts.get("QQQ")!;
   assert.equal(qqq.calibration.committed_at_et, "10:20");
   assert.equal(qqq.calibration.market_bias, "down");
@@ -225,6 +240,34 @@ test("7/13 replay: session economics — the gated desk prints 1W/1L (QQQ winner
 // on COMMIT, compose the Cortex verdict and fold it via cortexGateBlocks — a
 // non-empty block list flips the verdict to BLOCKED with the gate blocks REPLACED by
 // the Cortex blocks (gate blocks were necessarily empty on a COMMIT).
+//
+// These tests exercise the CORTEX layer specifically, not the gate stack — they need a
+// gate-COMMIT starting point to hand to Cortex. The real 2026-07-13 QQQ score (65) no longer
+// clears gates alone after G-17's 2026-08-28 extension (see the gate-only tests above, which
+// correctly assert QQQ now BLOCKS on single_rail_corroboration). So this synthetic fixture
+// reproduces the SAME market conditions (aligned short tape, that day's VIX, post-unlock flag
+// time) at a score high enough to clear every gate including G-17, purely so the Cortex-layer
+// assertions below still have a COMMIT to build on — it is not a claim about what QQQ's real
+// score would have done.
+const QQQ_COMMIT_GATE_SYNTHETIC: ZeroDteGateVerdict = evaluateZeroDteGates({
+  ticker: "QQQ",
+  direction: "short",
+  score: 90,
+  nowEtMinutes: 10 * 60 + 20,
+  nowMs: dayMs(10 * 60 + 20),
+  bias: "down",
+  biasAsOfMs: dayMs(10 * 60 + 20) - 60_000,
+  governor: { open_plans: [], stops: [] },
+  vixDayOpen: VIX_DAY_OPEN,
+  slayerLive: null,
+  nighthawkTake: null,
+  plan: REPLAY_PLAN,
+  intradayConflict: false,
+  halted: false,
+  earnings: null,
+  todayYmd: "2026-07-13",
+  macroEvents: [],
+});
 function applyCortex(gate: ZeroDteGateVerdict, inputs: CortexInputs) {
   assert.equal(gate.verdict, "COMMIT", "the Cortex only ever runs on gate survivors");
   const assessment = assessCortexVerdict(composeCortexEvidence(inputs));
@@ -247,7 +290,7 @@ const QQQ_REJECTION_SOURCE = {
 };
 
 test("7/13 full stack: QQQ short survives BOTH layers — gates COMMIT and the net-supportive fixture PASSES, evidence pinned for the ledger", () => {
-  const gate = replaySession().get("QQQ")!;
+  const gate = QQQ_COMMIT_GATE_SYNTHETIC;
   const { assessment, verdict } = applyCortex(gate, QQQ_SHORT_2026_07_13);
 
   assert.equal(verdict.verdict, "COMMIT", "the session's one real winner must still print");
@@ -267,7 +310,7 @@ test("7/13 full stack: QQQ short survives BOTH layers — gates COMMIT and the n
 });
 
 test("7/13 full stack: a gate-passing find dies on a Cortex VETO — blocked exactly like a gate block, rejection row carries cortex_veto:<source> + the evidence sentence", () => {
-  const gate = replaySession().get("QQQ")!;
+  const gate = QQQ_COMMIT_GATE_SYNTHETIC;
   // Same winner, alternate tape: an opposing bullish sweep cluster ($1.3M / 2
   // prints inside 15 min) crosses flow-quality's veto floor. Everything else
   // still argues FOR the short — one loud opposing fact kills it anyway (§0).
@@ -295,7 +338,7 @@ test("7/13 full stack: a gate-passing find dies on a Cortex VETO — blocked exa
 });
 
 test("7/13 full stack: a gate-passing find dies on NET-NEGATIVE evidence (no veto) — cortex_net_negative", () => {
-  const gate = replaySession().get("QQQ")!;
+  const gate = QQQ_COMMIT_GATE_SYNTHETIC;
   // Only readable evidence opposes the short (positive breadth + positive net VEX,
   // asOf = now so the raw −0.9 sum survives undecayed); nothing veto-grade.
   const { assessment, verdict } = applyCortex(gate, baseInputs({
@@ -325,7 +368,7 @@ test("7/13 full stack: a gate-passing find dies on NET-NEGATIVE evidence (no vet
 });
 
 test("7/13 full stack: a total Cortex outage ABSTAINS — the commit proceeds on gates alone and the abstain is recorded, not hidden", () => {
-  const gate = replaySession().get("QQQ")!;
+  const gate = QQQ_COMMIT_GATE_SYNTHETIC;
   // Every reader down/timed out → every slice null → every source absent.
   const { assessment, verdict } = applyCortex(
     gate,

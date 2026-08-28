@@ -78,7 +78,11 @@ function input(overrides: Partial<ZeroDteGateInput> = {}): ZeroDteGateInput {
   return {
     ticker: "QQQ",
     direction: "short",
-    score: 70,
+    // 80, not 70: G-17 (extended 2026-08-28) now requires >=75 in the 65-74 band regardless of
+    // discovery_origin, and most fixtures here don't set discovery_origin at all — a bare 70
+    // baseline would spuriously trip G-17 on tests that have nothing to do with score/origin
+    // interaction. Tests that specifically exercise the 65-74 band pass their own `score` override.
+    score: 80,
     nowEtMinutes: 11 * 60, // 11:00 ET
     nowMs: NOW_MS,
     bias: "down",
@@ -249,10 +253,11 @@ test("G-3: BREAKOUT at score 65 clears unified floor; G-17 blocks solo rail belo
     evaluateZeroDteGates(input({ score: 75, discovery_origin: ["BREAKOUT"] })).verdict,
     "COMMIT",
   );
-  assert.equal(
-    evaluateZeroDteGates(input({ score: 65, discovery_origin: ["FLOW"] })).verdict,
-    "COMMIT",
-  );
+  // G-17 (extended 2026-08-28) now requires >=75 for FLOW too in the 65-74 band — a FLOW-only
+  // setup at 65 clears G-3's OWN floor but is still BLOCKED overall by G-17.
+  const flow65 = evaluateZeroDteGates(input({ score: 65, discovery_origin: ["FLOW"] }));
+  assert.ok(!flow65.blocks.some((b) => b.code === "score_floor"));
+  assert.ok(flow65.blocks.some((b) => b.code === "single_rail_corroboration"));
 });
 
 
@@ -294,16 +299,24 @@ test("G-3: score 64 blocks, 65 commits (FLOW default floor)", () => {
   assert.equal(blocked.blocks[0]!.threshold, 65);
   assert.match(blocked.blocks[0]!.reason, /65 commit floor/);
 
-  assert.equal(evaluateZeroDteGates(input({ score: 65 })).verdict, "COMMIT");
+  // G-17 (extended 2026-08-28) also requires >=75 in the 65-74 band with no discovery_origin
+  // set here, so the OVERALL verdict at 65 is BLOCKED — check score_floor specifically clears.
+  const at65 = evaluateZeroDteGates(input({ score: 65 }));
+  assert.ok(!at65.blocks.some((b) => b.code === "score_floor"));
 });
 
 test("G-3: judged on the POST-edge-layer score — 7/13's INTC short (61) blocks even though aligned and mid-day", () => {
   const v = evaluateZeroDteGates(input({ ticker: "INTC", score: 61, nowEtMinutes: 12 * 60 + 51 }));
   assert.equal(v.verdict, "BLOCKED");
-  assert.deepEqual(v.blocks.map((b) => b.code), ["score_floor"]);
+  assert.ok(v.blocks.some((b) => b.code === "score_floor"));
 });
 
-test("G-17: BREAKOUT-only at 68 blocks; 75+ commits; FLOW+BREAKOUT at 68 commits", () => {
+test("G-17: the 65-74 band blocks REGARDLESS of rail corroboration; 75+ commits either way", () => {
+  // EXTENDED 2026-08-28 (real n=152, /api/market/zerodte/record 90d): multi-rail/FLOW commits
+  // in the unrestricted 65-74 band graded WORSE (35.7% WR) than single-rail at the 75+ floor
+  // (41.0% WR) — the FLOW/multi-rail exemption from this band was never buying safety, so it's
+  // gone. Every origin combo now needs the same 75 floor in this band; corroboration no longer
+  // buys an early commit at 65-74. See ZERODTE_SINGLE_RAIL_PRIME_MIN's doc comment for the numbers.
   assert.equal(isSingleRailWithoutFlow(["BREAKOUT"]), true);
   assert.equal(isSingleRailWithoutFlow(["FLOW", "BREAKOUT"]), false);
   assert.equal(isSingleRailWithoutFlow(["BREAKOUT", "PIN"]), false);
@@ -320,11 +333,19 @@ test("G-17: BREAKOUT-only at 68 blocks; 75+ commits; FLOW+BREAKOUT at 68 commits
   );
   assert.equal(soloPrime.verdict, "COMMIT");
 
-  const corroborated = evaluateZeroDteGates(
+  // Multi-rail (FLOW+BREAKOUT) at 68 NOW BLOCKS TOO — the corroboration exemption is gone.
+  const corroboratedMid = evaluateZeroDteGates(
     input({ score: 68, discovery_origin: ["FLOW", "BREAKOUT"], nowEtMinutes: 12 * 60 })
   );
-  assert.equal(corroborated.verdict, "COMMIT");
-  assert.ok(!corroborated.blocks.some((b) => b.code === "single_rail_corroboration"));
+  assert.equal(corroboratedMid.verdict, "BLOCKED");
+  assert.ok(corroboratedMid.blocks.some((b) => b.code === "single_rail_corroboration"));
+
+  // But 75+ still clears, same as before — the floor is universal, not a new higher bar.
+  const corroboratedPrime = evaluateZeroDteGates(
+    input({ score: 75, discovery_origin: ["FLOW", "BREAKOUT"], nowEtMinutes: 12 * 60 })
+  );
+  assert.equal(corroboratedPrime.verdict, "COMMIT");
+  assert.ok(!corroboratedPrime.blocks.some((b) => b.code === "single_rail_corroboration"));
 });
 
 // ── G-5 · session governor (wiring — the rules themselves live in governor.test.ts) ─
@@ -399,15 +420,19 @@ test("G-4: normal VIX (<17) commits freely, calibration tier logged", () => {
 });
 
 test("G-4: elevated VIX tape-aligned score 65–74 commits (G-1 already blocks counter-tape)", () => {
+  // G-17 (extended 2026-08-28, >=75 for every origin combo in the 65-74 band) also applies at
+  // score 70 with no discovery_origin set here — this test is about G-4's OWN floor, so check
+  // vix_elevated specifically clears rather than the overall verdict.
   const aligned = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 70 }));
-  assert.equal(aligned.verdict, "COMMIT");
+  assert.ok(!aligned.blocks.some((b) => b.code === "vix_elevated"));
   assert.equal(aligned.calibration.g4_vix.would_block, false);
 });
 
 test("G-4: elevated VIX with flat tape uses the standard 65 floor (flat = no directional opposition)", () => {
   // Flat tape clears G-1 (no counter-tape fight), so the elevated regime keeps the 65 floor.
+  // (G-17 also applies at this score with no discovery_origin — check vix_elevated, not overall verdict.)
   const flat70 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 70, bias: "flat" }));
-  assert.equal(flat70.verdict, "COMMIT");
+  assert.ok(!flat70.blocks.some((b) => b.code === "vix_elevated"));
   assert.equal(flat70.calibration.g4_vix.tier, "elevated");
   assert.equal(flat70.calibration.g4_vix.would_block, false);
   // Null bias (unknown tape — stale or unavailable) still requires 75 (belt-and-suspenders).
@@ -462,15 +487,15 @@ test("G-4 fail-closed: unavailable VIX does NOT block an index/ETF whose score c
   assert.equal(strong.verdict, "COMMIT");
   assert.equal(strong.blocks.some((b) => b.code === "vix_unavailable"), false);
   // Tape-aligned index at 70 clears too (aligned elevated floor is 65, G-3 guarantees ≥65).
+  // G-17 also applies at 70 with no discovery_origin set — check vix_unavailable specifically.
   const aligned = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, vixDayOpen: null, vixUnavailable: true }));
-  assert.equal(aligned.verdict, "COMMIT");
   assert.equal(aligned.blocks.some((b) => b.code === "vix_unavailable"), false);
 });
 
 test("G-4 fail-closed: unavailable VIX does NOT block an index/ETF with flat tape above the standard 65 floor (flat = aligned)", () => {
   // Flat tape is treated as aligned, so the 65 floor applies — 70 >= 65 → no present VIX could block.
+  // (G-17 also applies at 70 with no discovery_origin set — check vix_unavailable specifically.)
   const v = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
-  assert.equal(v.verdict, "COMMIT");
   assert.equal(v.blocks.some((b) => b.code === "vix_unavailable"), false);
   // Null bias (unknown tape) at 70 < 75 → DOES block (belt-and-suspenders for unknown tape).
   const nullBias = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, bias: null, vixDayOpen: null, vixUnavailable: true }));
@@ -1168,7 +1193,11 @@ function runFirewallScenario(scenario: "g4" | "g7" | "g11earn" | "g11halt", env:
 import { evaluateZeroDteGates } from ${JSON.stringify(GATES_PATH)};
 const nowMs = Date.parse("2026-07-13T15:00:00Z");
 const CLEAN_PLAN = { occ:"O:NVDA260713P00100000", flow_avg_fill:2, bid:1.9, ask:2.1, mark:2, entry_max:2, vs_flow_pct:0, entry_status:"IN_RANGE", spread_pct:10, illiquid:false, stop_premium:1, target_premium:4, time_stop_et:"15:30", underlying_target:null, underlying_invalid:null };
-const base = { ticker:"NVDA", direction:"short", score:70, nowEtMinutes:660, nowMs, bias:"down", biasAsOfMs: nowMs-60000, governor:{open_plans:[],stops:[]}, plan: CLEAN_PLAN, intradayConflict:false, halted:false, earnings:null, todayYmd:"2026-07-13", macroEvents:[] };
+// score:80, not 70: G-17 (extended 2026-08-28) requires >=75 in the 65-74 band for every
+// origin combo, and this scenario doesn't set discovery_origin — a bare 70 would make the
+// "off" case wrongly still show one block (single_rail_corroboration) instead of the clean
+// empty-blocks commit this test is asserting for the firewall-only scenario.
+const base = { ticker:"NVDA", direction:"short", score:80, nowEtMinutes:660, nowMs, bias:"down", biasAsOfMs: nowMs-60000, governor:{open_plans:[],stops:[]}, plan: CLEAN_PLAN, intradayConflict:false, halted:false, earnings:null, todayYmd:"2026-07-13", macroEvents:[] };
 const scenarios = {
   g4: { vixDayOpen:null, vixUnavailable:true },
   g7: { macroUnavailable:true },
@@ -1250,18 +1279,25 @@ test("G-2: 9:59 blocks, 10:00 commits — the unlock boundary is inclusive to th
 
 // ── G-3 score-floor EXACT boundary (raw comparison, not the rounded display) ──────────
 test("G-3: score 64.999 blocks, exactly 65 commits — the floor comparison is on the raw score", () => {
-  assert.equal(evaluateZeroDteGates(input({ score: 64.999 })).verdict, "BLOCKED");
-  assert.equal(evaluateZeroDteGates(input({ score: 65 })).verdict, "COMMIT");
+  const below = evaluateZeroDteGates(input({ score: 64.999 }));
+  assert.equal(below.verdict, "BLOCKED");
+  assert.ok(below.blocks.some((b) => b.code === "score_floor"));
+  // G-3's OWN floor clears at exactly 65 — G-17 (extended 2026-08-28, >=75 for every origin
+  // combo in the 65-74 band) also applies here with no discovery_origin set, so the OVERALL
+  // verdict is BLOCKED; score_floor specifically must be absent.
+  const at65 = evaluateZeroDteGates(input({ score: 65 }));
+  assert.ok(!at65.blocks.some((b) => b.code === "score_floor"));
 });
 
 // ── G-4 VIX tier EXACT boundaries (elevated 17, extreme 20) ──────────────────────────
 test("G-4: 16.999 is normal, exactly 17 is elevated, 19.999 is elevated, exactly 20 is extreme", () => {
   // 16.999 → normal regime, no floor bump; a flat-tape 70 commits.
   assert.equal(evaluateZeroDteGates(input({ vixDayOpen: 16.999, score: 70, bias: "flat" })).calibration.g4_vix.tier, "normal");
-  // Exactly 17 (>= elevated) → flat-tape 70 still commits (flat = aligned, 65 floor).
+  // Exactly 17 (>= elevated) → flat-tape 70 clears G-4's OWN floor (flat = aligned, 65 floor).
+  // (G-17 also applies at 70 with no discovery_origin set — check vix_elevated specifically.)
   const at17 = evaluateZeroDteGates(input({ vixDayOpen: 17, score: 70, bias: "flat" }));
   assert.equal(at17.calibration.g4_vix.tier, "elevated");
-  assert.equal(at17.verdict, "COMMIT");
+  assert.ok(!at17.blocks.some((b) => b.code === "vix_elevated"));
   // Exactly 17 with null bias (unknown tape) at 70 < 75 → blocked.
   const at17null = evaluateZeroDteGates(input({ vixDayOpen: 17, score: 70, bias: null }));
   assert.equal(at17null.calibration.g4_vix.tier, "elevated");
@@ -1279,8 +1315,9 @@ test("G-4: 16.999 is normal, exactly 17 is elevated, 19.999 is elevated, exactly
 test("G-4: elevated flat-tape score floor is 65 (same as aligned) — 64 blocks, 65 clears", () => {
   const at64 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 64, bias: "flat" }));
   assert.ok(at64.blocks.some((b) => b.code === "vix_elevated"));
+  // G-17 also applies at 65 with no discovery_origin set — check vix_elevated specifically.
   const at65 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 65, bias: "flat" }));
-  assert.equal(at65.verdict, "COMMIT");
+  assert.ok(!at65.blocks.some((b) => b.code === "vix_elevated"));
   // Null bias triggers G-1 no_market_bias first (can't reach G-4), so the 75 elevated
   // floor for unknown tape is tested via the calibration path and fail-closed tests.
 });
@@ -1293,11 +1330,12 @@ test("G-4: elevated flat-tape score floor is 65 (same as aligned) — 64 blocks,
 test("G-4: a single name with a DISAGREEING SPY bias still gets the standard 65 floor (G-1 exempts it from tape alignment)", () => {
   // NVDA long, SPY tape DOWN (disagreeing) — G-1 never fires for single names, so this
   // must reach G-4 and clear at the standard 65 floor, not the 75 elevated-counter-tape floor.
+  // (G-17 also applies at score 70 with no discovery_origin set — check vix_elevated specifically
+  // rather than the overall verdict.)
   const v = evaluateZeroDteGates(
     input({ ticker: "NVDA", direction: "long", bias: "down", score: 70, vixDayOpen: 18 })
   );
   assert.equal(v.calibration.g4_vix.tier, "elevated");
-  assert.equal(v.verdict, "COMMIT", "single names must not be judged against the SPY tape at all");
   assert.ok(!v.blocks.some((b) => b.code === "vix_elevated"));
 
   // The same score/VIX/disagreeing-bias combination on an INDEX ETF must still block —
@@ -1320,8 +1358,8 @@ test("computeGateCalibration: a single name's g4_vix.tier ignores SPY bias the s
 // ── G-4 fail-closed couldBlock narrowing: index/ETF flat at EXACTLY the 65 floor ──────
 test("G-4 fail-closed: an index/ETF flat-tape at 65+ could NOT have been blocked → unavailable VIX passes it", () => {
   // couldBlock = !isIndexEtf || (!tapeAlignedOrFlat && score < 75). QQQ flat → tapeAlignedOrFlat=true → couldBlock false.
+  // (G-17 also applies at 65 with no discovery_origin set — check vix_unavailable specifically.)
   const v = evaluateZeroDteGates(input({ ticker: "QQQ", score: 65, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
-  assert.equal(v.verdict, "COMMIT");
   assert.ok(!v.blocks.some((b) => b.code === "vix_unavailable"));
   // Null bias (unknown tape) at 74 < 75 → a present elevated VIX COULD have blocked it → fails closed.
   const vNull74 = evaluateZeroDteGates(input({ ticker: "QQQ", score: 74, bias: null, vixDayOpen: null, vixUnavailable: true }));
@@ -1358,9 +1396,12 @@ test("G-6: an SPX-correlated short (QQQ/NDX) opposing a live Slayer long conflic
     const conflict = evaluateZeroDteGates(input({ ticker, direction: "short", score: 64, slayerLive }));
     assert.equal(conflict.verdict, "BLOCKED", `${ticker} at 64 should block`);
     assert.ok(conflict.blocks.some((b) => b.code === "cross_system_conflict"));
-    // Exactly 65 overrides the conflict (CONFLICT_SCORE_FLOOR is 65, comparison is `< 65`).
+    // Exactly 65 overrides the conflict (CONFLICT_SCORE_FLOOR is 65, comparison is `< 65`). G-17
+    // (extended 2026-08-28, >=75 for every origin combo in the 65-74 band) also applies at this
+    // score since discovery_origin isn't set here, so the overall verdict is BLOCKED overall —
+    // check cross_system_conflict specifically clears rather than the full verdict.
     const cleared = evaluateZeroDteGates(input({ ticker, direction: "short", score: 65, slayerLive }));
-    assert.equal(cleared.verdict, "COMMIT", `${ticker} at 65 should override the conflict`);
+    assert.ok(!cleared.blocks.some((b) => b.code === "cross_system_conflict"), `${ticker} at 65 should override the conflict`);
     assert.equal(cleared.calibration.g6_conflict.conflict, true, "still FLAGGED as a conflict in calibration");
   }
 });
@@ -1588,7 +1629,9 @@ test("stack fix: VIX unavailable without regime_blind — index ETF flat at 70 c
       regimeBlockFreshCommits: false,
     }),
   );
-  assert.equal(v.verdict, "COMMIT");
+  // G-17 (extended 2026-08-28, >=75 for every origin combo in the 65-74 band) also fires at
+  // score 70 with no discovery_origin set here, so the overall verdict is BLOCKED — this test
+  // is about G-4's OWN narrowing, so check those two codes specifically clear instead.
   assert.ok(!v.blocks.some((b) => b.code === "regime_blind"));
   assert.ok(!v.blocks.some((b) => b.code === "vix_unavailable"));
 });
