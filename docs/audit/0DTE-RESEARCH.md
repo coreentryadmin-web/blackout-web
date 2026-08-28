@@ -137,6 +137,56 @@ Cortex evaluation into `zerodte-sim.mjs`'s candidate loop so its own generated p
 correctly before grading. (a) is the smaller change and reuses more of what already exists. No gate
 touched; C-tier stays on `ratchet` pending real evidence either way.
 
+---
+
+### Board status badge: the TRIM threshold bug is real, and the earlier deferral was correct (2026-08-28)
+
+**The bug** (Task tracking #60/#62): `derivePlayStatus` (`plan.ts:735`) flips a committed row's live
+lifecycle badge to `"TRIM"` only when `peak >= entryPremium * 2` — the shipped RATCHET's fixed +100%
+target — with no awareness that A/B-tier rows run under `exit_policy_at_commit === "trim_scale"`, whose
+real first-tranche threshold (`TRIM_SCALE_RULES.tranches_by_regime.neutral[0]`, currently +20%) is far
+below that. So a trim_scale row that has already banked a real tranche at +20-25% still shows
+`"OPEN"`/`"HOLD"` — not just a display bug, since `derivePlayStatus`'s output is PERSISTED to
+`zerodte_setup_log.status` via `advancePlayLatch` (marks-math.ts) and `syncLedgerLiveState` (scan.ts).
+
+**Ran a 34-agent consumer audit** (28-file discovery pipeline + a 5-pronged adversarial verify pass,
+`Workflow` tool) before touching anything, given the earlier deferral's stated reason ("real regression
+risk to a shared live state machine"). Verdict: **that caution was correct, and now precisely scoped.**
+
+Almost every consumer of persisted `status` (governor.ts's concurrency/premium/short-gamma/concentration
+checks, thesis-health.ts's compute-gate, scan.ts's live-quote/exit-eval row filters, the board API) only
+ever branches CLOSED-vs-not-CLOSED, or lumps OPEN+HOLD+TRIM into one undifferentiated "still live"
+bucket — genuinely unaffected by moving the TRIM threshold. But TWO real, TRIM-specific functional
+dependencies exist, both verified by direct read (not just the audit's claim):
+
+- `exit-sync.ts:349` — `trimmed: opts.status === "TRIM"`, feeding `evaluateExitState` → `ratchetFloorPct`.
+- `zerodte-service.ts:434` — `ratchetFloorPct(pinnedLivePnlPct(...), r.status === "TRIM")`, the served
+  `floor_pnl_pct` board field.
+
+Both call `ratchetFloorPct(peakPnlPct, trimmed)` (`exit-engine.ts:184`), which — when `trimmed` is true —
+forces the protective floor straight to `EXIT_RULES.runner_floor_pct` (+50%), **regardless of the actual
+peak**, on the assumption TRIM only ever fires at the ratchet's +100% target (where a +50% forced floor
+is exactly half the peak — sensible). Lowering the TRIM threshold to trim_scale's +20% for A/B-tier rows
+breaks that assumption: **a row peaking at +22% would get its floor forced to +50%, a level it never
+reached** — which can (a) trigger an immediate/incorrect stop-out in the live exit engine, or (b) serve
+members a `floor_pnl_pct` figure above the play's actual peak. Both are real financial-risk regressions,
+not a relabeled badge.
+
+One TRIM-specific consumer would actually IMPROVE with the fix (`intel.ts:142`'s Largo-facing narrative
+picks the right "already trimmed, house money now" line sooner) and one is display-only and safe
+(`ZeroDteBoard.tsx`'s trim-ladder banner). Neither blocks anything.
+
+**Verdict: the minimal 3-call-site `derivePlayStatus` fix alone is UNSAFE to ship — necessary but not
+sufficient.** A safe version needs to ALSO decouple the forced-runner-floor behavior at those two exact
+call sites from the raw `status === "TRIM"` literal — e.g. gate it on
+`exit_policy_at_commit !== "trim_scale"` (ratchet rows keep today's behavior byte-identical) or introduce
+a separate "ratchet-target-trim-occurred" signal distinct from the display status — before the TRIM
+threshold itself can move. Not attempted in this pass; this is now a precisely scoped two-part fix
+(threshold change + floor-forcing decoupling) rather than an open question, and it's real exit-engine
+surgery on a live risk-management path, so it should get a dedicated pass with its own test coverage of
+the exact regression scenario (a trim_scale A/B-tier row peaking between +20% and +100%), not be rushed
+in alongside something else.
+
 **The banger scale-out is the flagship, and it's the positive-skew spine both engines share.** Validated
 at scale (minute-bar realistic gap-fills, **7,086 movers / 500 sessions / 2 years / all sectors**):
 **+26% gross / ~+20% net-OOS** realized under the mechanical scale-out (0.5@2×, trail runner at 50% of
