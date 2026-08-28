@@ -127,6 +127,12 @@ export async function bangerBoardForLargo(limit = 40) {
     const openDisplayLimit = 3;
     const openShown = Math.min(open.length, openDisplayLimit);
     const openTruncated = open.length > openDisplayLimit;
+    // If 3 open + 12 closed still exceeds transport cap in production, reduce closed to 5.
+    // This is a staged cap: first we cap open from 12→6→3; if that still truncates, this
+    // cuts closed from 12→5 (5 rows × ~300 bytes ≈ 1.5k, down from 12 × ~300 ≈ 3.6k).
+    const closedDisplayLimit = 5;
+    const closedShown = Math.min(closed.length, closedDisplayLimit);
+    const closedTruncated = closed.length > closedDisplayLimit;
     return roundFloats({
       available: true,
       enabled: true,
@@ -147,16 +153,16 @@ export async function bangerBoardForLargo(limit = 40) {
       open_shown: openShown,
       open_truncated: openTruncated,
       // Combined truncation: either the true count exceeds page, or we capped the serialized display.
-      truncated: (trueOpenCount != null && trueOpenCount > open.length) || openTruncated,
-      // `closed` is capped at 12 rows. The open side now caps at 3 and states `open_truncated`
-      // so the model cannot mistake a page for a total; the closed side said nothing, and
-      // `closed_count` is itself page-limited — it counts the closed rows among the most recent
-      // `limit` of ALL statuses, not every closed row there is. Both facts are now stated.
+      truncated: (trueOpenCount != null && trueOpenCount > open.length) || openTruncated || closedTruncated,
+      // `closed` is capped at 5 rows (reduced from 12 due to persistent truncation even at 3 open).
+      // The open side caps at 3 and states `open_truncated` so the model cannot mistake a page for
+      // a total; the closed side now also caps and states `closed_truncated`.
       closed_count: closed.length,
       closed_count_is_page_limited: true,
-      closed_shown: Math.min(closed.length, 12),
+      closed_shown: closedShown,
+      closed_truncated: closedTruncated,
       open: open.slice(0, openDisplayLimit).map(mapRow),
-      closed: closed.slice(0, 12).map(mapRow),
+      closed: closed.slice(0, closedDisplayLimit).map(mapRow),
     });
   } catch (e) {
     return {
