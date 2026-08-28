@@ -890,6 +890,7 @@ export type ZeroDteGateFailure =
   | "cortex_veto_blind" // Cortex blind to BOTH veto-capable sources on a fresh commit → HOLD
   | "cortex_net_negative" // no veto, but the evidence score nets < 0 — doesn't print
   | "cortex_contested" // NH-R9: both a real support case and a real oppose case, net score below the A floor — unresolved internal fight, doesn't print
+  | "cortex_gex_walls_oppose_unresolved" // 2026-08-28: a real, active gex-walls oppose below the A floor — evidenced (90-day + same-week live) to grade worse even at net score >= 0
   // ── CONDOR play-type gates (Phase 4, gates.ts) — replace the DIRECTIONAL plan-quality /
   // tape / confluence gates for a delta-neutral iron condor. A condor is graded WIN=close-
   // inside-both-shorts / DEFINED-LOSS=breach, so it wants a CONTAINED, LOW-vol tape and a

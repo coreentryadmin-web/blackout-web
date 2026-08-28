@@ -97,6 +97,7 @@ const GATE_LABELS: Record<string, string> = {
   score_floor: "Score floor (G-3)",
   single_rail_corroboration: "Prime band floor 65-74 (G-17)",
   cortex_veto: "Cortex veto",
+  cortex_gex_walls_oppose_unresolved: "Cortex gex-walls oppose (unresolved)",
   governor_session_stops: "Session governor",
   correlated_conflict: "Correlated conflict",
   halt_feed_stale: "Halt feed stale",
