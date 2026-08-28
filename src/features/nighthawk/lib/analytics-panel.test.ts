@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { winRateByTier, sessionPnlCurve, latestSessionDate } from "./analytics-panel";
+import { winRateByTier, sessionPnlCurve, latestSessionDate, dailyPnlByDate } from "./analytics-panel";
 import type { ZeroDteRecordPlay } from "@/lib/zerodte/record";
 
 function play(overrides: Partial<ZeroDteRecordPlay>): ZeroDteRecordPlay {
@@ -94,4 +94,39 @@ test("sessionPnlCurve: empty input and all-ungraded session both return []", () 
     sessionPnlCurve([play({ managed_pnl_pct: null, managed_outcome: null })]),
     []
   );
+});
+
+test("dailyPnlByDate: one bucket per distinct date, newest first, net = sum of GRADED rows only", () => {
+  const plays: ZeroDteRecordPlay[] = [
+    play({ session_date: "2026-08-19", ticker: "A", managed_pnl_pct: 30 }),
+    play({ session_date: "2026-08-19", ticker: "B", managed_pnl_pct: -10 }),
+    play({ session_date: "2026-08-20", ticker: "C", managed_pnl_pct: -5 }),
+  ];
+  const buckets = dailyPnlByDate(plays);
+  assert.equal(buckets.length, 2);
+  assert.equal(buckets[0].session_date, "2026-08-20"); // newest first
+  assert.equal(buckets[0].net_pnl_pct, -5);
+  assert.equal(buckets[0].tone, "down");
+  assert.equal(buckets[1].session_date, "2026-08-19");
+  assert.equal(buckets[1].net_pnl_pct, 20); // 30 + -10
+  assert.equal(buckets[1].tone, "up");
+});
+
+test("dailyPnlByDate: a session with plays but none graded yet is 'flat', not silently dropped", () => {
+  const buckets = dailyPnlByDate([play({ session_date: "2026-08-21", managed_pnl_pct: null, managed_outcome: null })]);
+  assert.equal(buckets.length, 1);
+  assert.equal(buckets[0].graded, 0);
+  assert.equal(buckets[0].n, 1);
+  assert.equal(buckets[0].net_pnl_pct, 0);
+  assert.equal(buckets[0].tone, "flat");
+});
+
+test("dailyPnlByDate: a net-zero day is 'flat', never misread as up or down", () => {
+  const plays: ZeroDteRecordPlay[] = [
+    play({ session_date: "2026-08-22", ticker: "A", managed_pnl_pct: 10 }),
+    play({ session_date: "2026-08-22", ticker: "B", managed_pnl_pct: -10 }),
+  ];
+  const buckets = dailyPnlByDate(plays);
+  assert.equal(buckets[0].net_pnl_pct, 0);
+  assert.equal(buckets[0].tone, "flat");
 });

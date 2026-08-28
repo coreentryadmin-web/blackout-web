@@ -88,3 +88,53 @@ test("window buttons render all three options with the current one marked active
   assert.match(html, />7d</);
   assert.match(html, />30d</);
 });
+
+test("renders direction and tier filter pills plus sortable Date/P&L column headers", () => {
+  const html = renderTable();
+  assert.match(html, />Long</);
+  assert.match(html, />Short</);
+  assert.match(html, />All tiers</);
+  assert.match(html, />A</);
+  assert.match(html, />B</);
+  assert.match(html, />C</);
+  assert.match(html, /aria-sort="descending"[^>]*>\s*Date/, "date column sorts newest-first by default");
+});
+
+test("renders the calendar heat-strip with one cell per distinct session date", () => {
+  const html = renderTable();
+  assert.match(html, /Past sessions/);
+  assert.match(html, /2 sessions/);
+  assert.match(html, /nh-history-cal-cell is-up/, "NVDA's +84.2% day should render an up-toned cell");
+  assert.match(html, /nh-history-cal-cell is-down/, "TSLA's -48.5% day should render a down-toned cell");
+});
+
+test("a session with plays but none graded yet still gets a calendar cell, toned flat", () => {
+  const html = renderTable([
+    {
+      session_date: "2026-08-29",
+      ticker: "SPY",
+      direction: "long",
+      flagged_at: "2026-08-29T14:35:00.000Z",
+      flagged_et: "10:35 ET",
+      score: 55,
+      conviction: null,
+      plan_outcome: null,
+      plan_pnl_pct: null,
+      managed_outcome: null,
+      managed_pnl_pct: null,
+      managed_source: null,
+      direction_hit: null,
+      move_pct: null,
+      entry_context: null,
+      tier: null,
+    },
+  ]);
+  assert.match(html, /nh-history-cal-cell is-flat/);
+});
+
+test("P&L cells use exactly the three tone classes — no magnitude ramp", () => {
+  const html = renderTable();
+  assert.match(html, /nh-history-col-num tabular-nums nh-history-pnl is-up/);
+  assert.match(html, /nh-history-col-num tabular-nums nh-history-pnl is-down/);
+  assert.doesNotMatch(html, /is-mid|is-weak|is-strong/, "no magnitude-graded tone classes should exist");
+});

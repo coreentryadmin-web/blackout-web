@@ -127,3 +127,46 @@ export function sessionPnlCurve(plays: ZeroDteRecordPlay[]): PnlCurvePoint[] {
     };
   });
 }
+
+export type DailyPnlBucket = {
+  session_date: string;
+  /** Sum of graded managed_pnl_pct that session — equal-weighted, same "shape not
+   *  dollars" caveat as sessionPnlCurve above. */
+  net_pnl_pct: number;
+  graded: number;
+  n: number;
+  /** Three-way tone bucket ONLY — never a red/amber/green ramp. "flat" is a real,
+   *  distinct outcome (net exactly 0, or a session with plays but none yet graded),
+   *  not a weak positive or weak negative — conflating it into either would make a
+   *  scratch day read as a small win or a small loss. */
+  tone: "up" | "down" | "flat";
+};
+
+/**
+ * One bucket per DISTINCT session_date present in `plays`, newest first — the data
+ * behind the History calendar heat-strip (PlayHistoryCalendar.tsx). Every session that
+ * has at least one play appears, even if none are graded yet (net_pnl_pct: 0,
+ * tone: "flat") — a day with real activity should never silently vanish from the strip
+ * because grading hasn't landed.
+ */
+export function dailyPnlByDate(plays: ZeroDteRecordPlay[]): DailyPnlBucket[] {
+  const byDate = new Map<string, ZeroDteRecordPlay[]>();
+  for (const p of plays) {
+    const bucket = byDate.get(p.session_date);
+    if (bucket) bucket.push(p);
+    else byDate.set(p.session_date, [p]);
+  }
+  return [...byDate.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([session_date, rows]) => {
+      const graded = rows.filter(isGraded);
+      const net = round1(graded.reduce((acc, r) => acc + (r.managed_pnl_pct ?? 0), 0));
+      return {
+        session_date,
+        net_pnl_pct: net,
+        graded: graded.length,
+        n: rows.length,
+        tone: net > 0 ? "up" : net < 0 ? "down" : "flat",
+      };
+    });
+}
