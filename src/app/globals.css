@@ -3087,76 +3087,122 @@ html.product-shell .nav-mega {
 
   /* History table — browsable past plays (PlayHistoryTable.tsx), the piece the X Ads
      Manager reference had that this panel didn't: a date-range control over a real row
-     list, not just aggregate bars. */
+     list, not just aggregate bars.
+     PREMIUM PASS (explicit direction: "not boring, stale-looking... modern, stylish"):
+     everything below carries real depth (layered shadows, a soft top-sheen on the card),
+     a single consistent easing curve for every hover/active transition, and pill-shaped
+     controls — while keeping the exact same class names (no TSX changes needed) and the
+     exact same 3-tone discipline (green/red/amber-warn, nothing added). "Premium" here
+     means motion and depth quality, never a new color. */
   .nh-analytics-history-section {
-    @apply mt-3 flex min-w-0 flex-col gap-1.5 border-t pt-3;
-    border-color: rgba(56, 189, 248, 0.12);
+    @apply relative mt-3 flex min-w-0 flex-col gap-2.5 overflow-hidden rounded-xl border pt-3;
+    padding: 14px 14px 12px;
+    border-color: rgba(56, 189, 248, 0.14);
+    background: linear-gradient(180deg, rgba(14, 17, 26, 0.55), rgba(6, 7, 11, 0.35));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 10px 30px -18px rgba(0, 0, 0, 0.7);
+  }
+
+  /* A faint top-left glow — the one "premium card" cue every panel in this pass shares,
+     kept subtle enough to read as material rather than decoration. */
+  .nh-analytics-history-section::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(480px 120px at 8% 0%, rgba(0, 217, 163, 0.06), transparent 70%);
   }
 
   .nh-history {
-    @apply flex min-w-0 flex-col gap-2;
+    @apply relative flex min-w-0 flex-col gap-2.5;
   }
 
   .nh-history-controls {
-    @apply flex flex-wrap items-center justify-between gap-2;
+    @apply flex flex-wrap items-center gap-2;
   }
 
   .nh-history-window {
-    @apply flex items-center gap-1;
+    @apply flex items-center gap-1 rounded-full border p-0.5;
+    border-color: rgba(255, 255, 255, 0.06);
+    background: rgba(4, 4, 7, 0.35);
   }
 
   .nh-history-window-btn {
-    @apply rounded-md border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-sky-300/70 transition-colors;
-    border-color: rgba(56, 189, 248, 0.14);
-    background: rgba(4, 4, 7, 0.4);
+    @apply rounded-full px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-sky-300/60;
+    transition: color 0.18s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.18s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .nh-history-window-btn:hover {
     color: rgba(224, 242, 254, 0.95);
+    background: rgba(255, 255, 255, 0.04);
   }
 
   .nh-history-window-btn.is-active {
-    color: #00d9a3;
-    border-color: rgba(0, 217, 163, 0.4);
-    background: rgba(0, 217, 163, 0.1);
+    color: #04120d;
+    background: linear-gradient(180deg, #1fe9bb, #00d9a3);
+    box-shadow: 0 2px 10px -2px rgba(0, 217, 163, 0.55);
   }
 
   .nh-history-search {
-    @apply flex items-center gap-1.5 rounded-md border px-2 py-1;
-    border-color: rgba(56, 189, 248, 0.14);
-    background: rgba(4, 4, 7, 0.4);
+    @apply flex items-center gap-1.5 rounded-full border px-2.5 py-1;
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(4, 4, 7, 0.35);
+    transition: border-color 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .nh-history-search:focus-within {
+    border-color: rgba(0, 217, 163, 0.4);
+    box-shadow: 0 0 0 3px rgba(0, 217, 163, 0.08);
   }
 
   .nh-history-search-icon {
-    @apply text-[11px] text-sky-300/60;
+    @apply text-[11px] text-sky-300/50;
   }
 
   .nh-history-search-input {
-    @apply w-24 bg-transparent font-mono text-[11px] text-sky-100 outline-none placeholder:text-sky-300/40;
+    @apply w-24 bg-transparent font-mono text-[11px] text-sky-100 outline-none placeholder:text-sky-300/35;
   }
 
   .nh-history-tablewrap {
-    @apply max-h-64 w-full overflow-y-auto overflow-x-auto rounded-md border;
-    border-color: rgba(56, 189, 248, 0.12);
+    @apply max-h-64 w-full overflow-y-auto overflow-x-auto rounded-lg border;
+    border-color: rgba(255, 255, 255, 0.07);
+    background: rgba(3, 4, 6, 0.3);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 217, 163, 0.25) transparent;
+  }
+
+  .nh-history-tablewrap::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .nh-history-tablewrap::-webkit-scrollbar-thumb {
+    background: rgba(0, 217, 163, 0.25);
+    border-radius: 999px;
   }
 
   .nh-history-table {
-    @apply w-full min-w-[420px] border-collapse font-mono text-[11px];
+    @apply w-full min-w-[440px] border-collapse font-mono text-[11px];
   }
 
   .nh-history-table thead th {
-    @apply sticky top-0 border-b px-2 py-1.5 text-left text-[9px] font-bold uppercase tracking-[0.1em] text-sky-300/70;
-    background: rgba(9, 10, 14, 0.96);
-    border-color: rgba(56, 189, 248, 0.14);
+    @apply sticky top-0 z-10 border-b px-2.5 py-2 text-left text-[9px] font-bold uppercase tracking-[0.1em] text-sky-300/65;
+    background: linear-gradient(180deg, rgba(12, 14, 20, 0.98), rgba(9, 10, 14, 0.96));
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    border-color: rgba(255, 255, 255, 0.08);
   }
 
   .nh-history-table tbody td {
-    @apply border-b px-2 py-1.5 text-sky-100/90;
-    border-color: rgba(255, 255, 255, 0.04);
+    @apply border-b px-2.5 py-2 text-sky-100/85;
+    border-color: rgba(255, 255, 255, 0.035);
+    transition: background-color 0.15s ease;
   }
 
   .nh-history-table tbody tr:hover td {
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(255, 255, 255, 0.035);
   }
 
   .nh-history-col-num {
@@ -3164,19 +3210,21 @@ html.product-shell .nav-mega {
   }
 
   /* Bold key numbers (X reference cue) — the P&L cell is the single most-scanned value in
-     this table, so it carries weight the other cells don't. */
+     this table, so it carries weight and a touch more size than the rest of the row. */
   .nh-history-pnl {
-    @apply font-bold;
+    @apply text-[11.5px] font-extrabold;
   }
 
   /* Exactly three tones, everywhere in the history view (table cells, calendar cells): green
      up, red down, amber/warn flat. No fourth "neutral-info" blue and no magnitude ramp. */
   .nh-history-pnl.is-up {
     color: var(--dk-bull, #00d9a3);
+    text-shadow: 0 0 14px rgba(0, 217, 163, 0.28);
   }
 
   .nh-history-pnl.is-down {
     color: var(--dk-bear, #f0637c);
+    text-shadow: 0 0 14px rgba(240, 99, 124, 0.24);
   }
 
   .nh-history-pnl.is-flat {
@@ -3184,11 +3232,12 @@ html.product-shell .nav-mega {
   }
 
   .nh-history-ticker {
-    @apply font-bold text-sky-50;
+    @apply font-extrabold tracking-[0.01em] text-sky-50;
   }
 
   .nh-history-th-sortable {
     @apply cursor-pointer select-none;
+    transition: color 0.15s ease;
   }
 
   .nh-history-th-sortable:hover {
@@ -3200,30 +3249,33 @@ html.product-shell .nav-mega {
   }
 
   .nh-history-panel-sub {
-    @apply font-mono text-[9px] font-normal normal-case tracking-normal text-sky-300/50;
+    @apply font-mono text-[9px] font-normal normal-case tracking-normal text-sky-300/45;
   }
 
   /* Calendar heat-strip — click a day to filter the table below to just that session. */
   .nh-history-cal {
-    @apply flex flex-wrap gap-1;
+    @apply flex flex-wrap gap-1.5;
   }
 
   .nh-history-cal-cell {
-    @apply flex w-12 flex-col items-center gap-0.5 rounded-md border px-1.5 py-1 font-mono transition-colors;
-    border-color: rgba(255, 255, 255, 0.06);
-    background: rgba(4, 4, 7, 0.4);
+    @apply flex w-[52px] flex-col items-center gap-1 rounded-lg border px-1.5 py-1.5 font-mono;
+    border-color: rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, 0.02);
+    transition: border-color 0.18s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .nh-history-cal-cell:hover {
-    border-color: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
   }
 
   .nh-history-cal-day {
-    @apply text-[9px] font-bold uppercase tracking-[0.06em] text-sky-300/60;
+    @apply text-[9px] font-bold uppercase tracking-[0.06em] text-sky-300/55;
   }
 
   .nh-history-cal-net {
-    @apply text-[10px] font-bold;
+    @apply text-[10px] font-extrabold;
   }
 
   .nh-history-cal-cell.is-up .nh-history-cal-net {
@@ -3239,65 +3291,70 @@ html.product-shell .nav-mega {
   }
 
   .nh-history-cal-cell.is-up {
-    border-color: rgba(0, 217, 163, 0.22);
+    border-color: rgba(0, 217, 163, 0.2);
+    background: linear-gradient(180deg, rgba(0, 217, 163, 0.1), rgba(0, 217, 163, 0.02));
   }
 
   .nh-history-cal-cell.is-down {
-    border-color: rgba(240, 99, 124, 0.22);
+    border-color: rgba(240, 99, 124, 0.2);
+    background: linear-gradient(180deg, rgba(240, 99, 124, 0.1), rgba(240, 99, 124, 0.02));
   }
 
   .nh-history-cal-cell.is-selected {
-    border-color: rgba(0, 217, 163, 0.6);
-    background: rgba(0, 217, 163, 0.1);
-    box-shadow: 0 0 0 1px rgba(0, 217, 163, 0.35);
+    border-color: rgba(0, 217, 163, 0.65);
+    box-shadow: 0 0 0 1px rgba(0, 217, 163, 0.4), 0 6px 18px -8px rgba(0, 217, 163, 0.45);
+    transform: translateY(-1px);
   }
 
   /* Direction/tier filter pills — same visual family as the window buttons above, a
      distinct cluster per filter axis (matches how a labeled panel groups its own controls
      rather than running every toggle together as one undifferentiated row). */
   .nh-history-filterbar {
-    @apply flex items-center gap-1 border-l pl-2;
-    border-color: rgba(255, 255, 255, 0.08);
+    @apply flex items-center gap-1 rounded-full border p-0.5 pl-2;
+    border-color: rgba(255, 255, 255, 0.06);
+    background: rgba(4, 4, 7, 0.3);
   }
 
   .nh-history-filter-btn {
-    @apply rounded-md border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.06em] text-sky-300/70 transition-colors;
-    border-color: rgba(56, 189, 248, 0.14);
-    background: rgba(4, 4, 7, 0.4);
+    @apply rounded-full px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.06em] text-sky-300/60;
+    transition: color 0.18s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.18s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .nh-history-filter-btn:hover {
     color: rgba(224, 242, 254, 0.95);
+    background: rgba(255, 255, 255, 0.04);
   }
 
   .nh-history-filter-btn.is-active {
-    color: #00d9a3;
-    border-color: rgba(0, 217, 163, 0.4);
-    background: rgba(0, 217, 163, 0.1);
+    color: #04120d;
+    background: linear-gradient(180deg, #1fe9bb, #00d9a3);
+    box-shadow: 0 2px 10px -2px rgba(0, 217, 163, 0.5);
   }
 
   .nh-history-clear-btn {
-    @apply rounded-md border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.06em] transition-colors;
+    @apply rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.06em];
     color: var(--dk-warn, #f0b94a);
     border-color: rgba(240, 185, 74, 0.3);
     background: rgba(240, 185, 74, 0.08);
+    transition: background-color 0.18s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .nh-history-clear-btn:hover {
-    background: rgba(240, 185, 74, 0.14);
+    background: rgba(240, 185, 74, 0.16);
   }
 
   .nh-history-dir {
-    @apply inline-flex h-4 w-4 items-center justify-center rounded text-[9px] font-bold;
+    @apply inline-flex h-[18px] w-[18px] items-center justify-center rounded-md text-[9px] font-extrabold;
   }
 
   .nh-history-dir.is-long {
-    background: rgba(0, 217, 163, 0.14);
+    background: rgba(0, 217, 163, 0.16);
     color: #00d9a3;
   }
 
   .nh-history-dir.is-short {
-    background: rgba(240, 99, 124, 0.14);
+    background: rgba(240, 99, 124, 0.16);
     color: #f0637c;
   }
 
@@ -3309,21 +3366,45 @@ html.product-shell .nav-mega {
   }
 
   .nh-history-expand-caret {
-    @apply mr-1 inline-block text-[9px] text-sky-300/50 transition-transform;
+    @apply mr-1 inline-block text-[9px] text-sky-300/45;
+    transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), color 0.15s ease;
+  }
+
+  .nh-history-row:hover .nh-history-expand-caret {
+    color: rgba(0, 217, 163, 0.75);
   }
 
   .nh-history-expand-caret.is-open {
     transform: rotate(90deg);
+    color: #00d9a3;
   }
 
   .nh-history-detail-row td {
     @apply border-b p-0;
-    border-color: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.035);
+  }
+
+  @keyframes nh-history-detail-in {
+    from {
+      opacity: 0;
+      transform: translateY(-3px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .nh-history-detail {
-    @apply flex flex-wrap gap-x-4 gap-y-1.5 px-2 py-2 font-mono text-[10px];
-    background: rgba(255, 255, 255, 0.02);
+    @apply flex flex-wrap gap-x-5 gap-y-1.5 px-2.5 py-2.5 font-mono text-[10px];
+    background: linear-gradient(180deg, rgba(0, 217, 163, 0.045), rgba(255, 255, 255, 0.015));
+    animation: nh-history-detail-in 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nh-history-detail {
+      animation: none;
+    }
   }
 
   .nh-history-detail-item {
@@ -3331,7 +3412,7 @@ html.product-shell .nav-mega {
   }
 
   .nh-history-detail-label {
-    @apply text-[9px] font-bold uppercase tracking-[0.08em] text-sky-300/60;
+    @apply text-[9px] font-bold uppercase tracking-[0.08em] text-sky-300/55;
   }
 
   .nh-history-detail-tone-is-up {
