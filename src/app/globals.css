@@ -2963,6 +2963,25 @@ html.product-shell .nav-mega {
     @apply flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1;
   }
 
+  /* Collapsed state: the header IS the whole panel — a slim, tappable summary row instead of
+     the full tiles/grid, so it never eats the fold on mobile. Expanded state falls back to the
+     plain header layout above (no border/width/cursor override). */
+  .nh-analytics-toggle {
+    @apply w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left;
+  }
+
+  .nh-analytics-panel-collapsed {
+    gap: 0;
+  }
+
+  .nh-analytics-chevron {
+    @apply mr-1 inline-block text-cyan-300/70 transition-transform duration-150;
+  }
+
+  .nh-analytics-chevron-open {
+    transform: rotate(90deg);
+  }
+
   .nh-analytics-panel-title {
     @apply font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-cyan-300;
   }
