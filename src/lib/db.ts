@@ -1690,6 +1690,39 @@ async function runMigrations(): Promise<void> {
     CREATE INDEX IF NOT EXISTS vector_wall_history_lookup_idx ON vector_wall_history (ticker, session_ymd, bucket_time);
     CREATE INDEX IF NOT EXISTS vector_wall_history_updated_at_idx ON vector_wall_history (updated_at DESC);
   `);
+  // Vector contract-pick closures — advisory Don't buy events for system analysis (Night Hawk Vector tab).
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS vector_pick_closures (
+      id BIGSERIAL PRIMARY KEY,
+      commit_key TEXT NOT NULL,
+      session_date DATE NOT NULL,
+      ticker TEXT NOT NULL,
+      occ TEXT NOT NULL,
+      side TEXT NOT NULL,
+      strike NUMERIC NOT NULL,
+      expiry DATE NOT NULL,
+      rank INT,
+      label TEXT,
+      role TEXT,
+      entry_mid NUMERIC,
+      close_mid NUMERIC,
+      premium_pct_from_entry NUMERIC,
+      close_reason TEXT NOT NULL,
+      setup_invalidated BOOLEAN NOT NULL DEFAULT FALSE,
+      spot NUMERIC,
+      vector_play JSONB,
+      pick_context JSONB,
+      closed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await p.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_vector_pick_closures_commit_key
+    ON vector_pick_closures(commit_key);
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_vector_pick_closures_session
+    ON vector_pick_closures(session_date DESC, ticker);
+  `);
   await p.query(`
     ALTER TABLE largo_messages
     ADD COLUMN IF NOT EXISTS tool_results JSONB;
