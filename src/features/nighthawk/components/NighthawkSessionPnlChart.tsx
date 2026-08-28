@@ -29,7 +29,9 @@ function CurveTooltip({ active, payload }: { active?: boolean; payload?: Array<{
 
 export function NighthawkSessionPnlChart({ points }: { points: PnlCurvePoint[] }) {
   const last = points[points.length - 1];
-  const color = (last?.cumulative_pct ?? 0) >= 0 ? "#34d399" : "#fb7185";
+  // Bull/bear tokens match .nh-deck's --dk-bull/--dk-bear (globals.css) — the same
+  // win/loss palette used everywhere else on the desk, not a chart-local color.
+  const color = (last?.cumulative_pct ?? 0) >= 0 ? "#00D9A3" : "#F0637C";
   return (
     <ResponsiveContainer width="100%" height="100%">
       <AreaChart data={points} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
@@ -39,10 +41,10 @@ export function NighthawkSessionPnlChart({ points }: { points: PnlCurvePoint[] }
             <stop offset="100%" stopColor={color} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <ReferenceLine y={0} stroke="rgba(255,255,255,0.16)" strokeWidth={1} />
-        <XAxis dataKey="ticker" tick={{ fill: "#7dd3fc", fontSize: 10 }} axisLine={false} tickLine={false} interval={0} />
+        <ReferenceLine y={0} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+        <XAxis dataKey="ticker" tick={{ fill: "#9A9FAB", fontSize: 10 }} axisLine={false} tickLine={false} interval={0} />
         <YAxis hide domain={["auto", "auto"]} />
-        <Tooltip content={<CurveTooltip />} cursor={{ stroke: "rgba(125,211,252,0.25)" }} />
+        <Tooltip content={<CurveTooltip />} cursor={{ stroke: "rgba(154,159,171,0.25)" }} />
         <Area
           type="monotone"
           dataKey="cumulative_pct"

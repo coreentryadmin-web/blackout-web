@@ -656,7 +656,7 @@ function PaneHeader({
           className={clsx(
             "h-full rounded-full transition-[width] duration-700",
             hot
-              ? "bg-gradient-to-r from-sky-400 via-bull to-bull shadow-[0_0_12px_rgba(0,230,118,0.6)]"
+              ? "bg-gradient-to-r from-sky-400 via-bull to-bull"
               : "bg-gradient-to-r from-sky-500/60 to-sky-400"
           )}
           style={{ width: `${Math.max(2, Math.min(100, heat.heat_pct))}%` }}

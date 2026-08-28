@@ -590,7 +590,7 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
       )}
       <div
         className="nh-deck-break"
-        style={broke ? undefined : { borderColor: unknown ? "rgba(255,255,255,.14)" : "rgba(53,255,158,.2)" }}
+        style={broke ? undefined : { borderColor: unknown ? "rgba(255,255,255,.14)" : "rgba(0,217,163,.2)" }}
       >
         <div className="bh" style={broke ? undefined : { color: unknown ? "var(--dk-amber)" : "var(--dk-green)" }}>{monitorTitle}</div>
         <div className="nh-deck-feed">

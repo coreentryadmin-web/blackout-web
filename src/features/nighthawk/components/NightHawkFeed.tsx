@@ -98,7 +98,7 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
       <IosNativeSegment
         value={view}
         onChange={selectView}
-        accent="#ff2d55"
+        accent="#00D9A3"
         variant={nativeShell ? "compact" : "default"}
         aria-label="Night Hawk view"
         className="ios-native-desk-segment mb-3 shrink-0"
