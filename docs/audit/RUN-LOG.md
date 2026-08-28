@@ -1499,3 +1499,39 @@ Re-ran `cron-dst-audit.mjs` to verify the 2026-08-21 findings and catch any drif
 - Registry/manifest mismatches need reconciliation
 
 **No new infrastructure applied.** This is a measurement re-run to confirm drift status, not a remediation. The x-autopost fix from 2026-08-21 did not land.
+
+## 2026-08-28 — Meridian ESTIMATES/HISTORY re-check: the 2026-08-18 P1 no longer reproduces
+
+FINDINGS.md's 2026-08-18 entry ("Meridian ESTIMATES/HISTORY are empty on EVERY mega-cap") is marked
+OPEN with root cause unproven. Re-ran the exact instrument that found it —
+`scripts/audit/meridian-data-validator.mjs`, same coherence check (`pack.history` vs
+`enrichment.print_history` must agree) and same ground-truth check (Benzinga actuals vs served
+prints) — against the current top-8 importance-5 earnings events (DELL, PANW, MDT, AVGO, HPE, SNOW,
+CIEN, ORCL — 2026-09-01 through 2026-09-08).
+
+**Result: 0 FAIL on both checks, on all 8 events.** `coherence:print_history` and
+`coherence:beat_rates` — the two checks that fired on 8/8 mega-caps on 2026-08-18 — did not fire
+once. `truth:print_missing` and the per-field truth checks against live Benzinga data also came
+back clean. One unrelated WARN (`PANW · scope:max_pain_range`, a GEX strike-band cosmetic issue, not
+this finding).
+
+Also re-read `loadMeridianEarningsEnrichment` (`src/lib/meridian/meridian-earnings-enrich.ts`):
+it now carries a `calendar_error` field folded from `history.history_error ?? benzingaRes.error`,
+which is exactly the "surface the failure" fix the 2026-08-18 entry called for as a **design
+defect regardless of mechanism** — the six-way `Promise.all`'s `.catch(() => [])` no longer
+manufactures an indistinguishable-from-empty result silently; a real upstream failure now shows up
+as `calendar_error`, not a blank tab.
+
+**Not established:** which specific PR fixed this, or whether it was this `calendar_error` plumbing,
+an unrelated upstream/window fix, or the 8/8-mega-cap sample from 2026-08-18 having since rolled
+past whatever was cold/rate-limited that day. Re-running against the *original* 8 tickers (KEYS, HD,
+BHP, TJX, TGT, LOW, ADI, BABA) was not possible — none currently fall inside the validator's 21-day
+upcoming-events window (`/api/market/meridian/timeline?days=21`), since their earnings already
+happened. HD did resolve via the timeline in an earlier ad-hoc check this session with no failure,
+partially overlapping the original cohort.
+
+**Conclusion:** treating the 2026-08-18 P1 as stale — not fixed-and-verified against its original
+cohort, but not reproducible against fresh real data with the same instrument either. No code
+change made. Leaving the FINDINGS.md entry's status text as-is per the findings-staging policy
+(lanes do not hand-edit FINDINGS.md); this note is the record for whoever runs the next
+`findings-reconcile.mjs` pass.
