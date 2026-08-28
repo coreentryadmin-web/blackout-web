@@ -71,9 +71,9 @@ export function VectorPickLogBoard() {
 
   if (isLoading && !data) {
     return (
-      <div className="nh-deck-rows flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-20 w-full" />
+      <div className="nh-deck-rows min-h-0 flex-1 space-y-2 overflow-y-auto">
+        <Skeleton className="h-20 w-full shrink-0" />
+        <Skeleton className="h-20 w-full shrink-0" />
       </div>
     );
   }
@@ -96,13 +96,14 @@ export function VectorPickLogBoard() {
     );
   }
 
+  // Block scrollport — NOT flex-col: under nh-v2 viewport lock, flex children shrink to ~strip height.
   return (
-    <div className="nh-deck-rows flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-4">
+    <div className="nh-deck-rows min-h-0 flex-1 space-y-2 overflow-y-auto pb-4">
       {data?.note ? (
-        <p className="shrink-0 px-1 text-xs font-bold leading-snug text-sky-200">{data.note}</p>
+        <p className="px-1 text-xs font-bold leading-snug text-sky-200">{data.note}</p>
       ) : null}
       {closed.map((row) => (
-        <Panel key={row.id} className="vector-closure-row p-3">
+        <Panel key={row.id} className="vector-closure-row shrink-0 p-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <div className="flex flex-wrap items-center gap-2">
