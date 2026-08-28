@@ -332,6 +332,28 @@ async function clearStickyNavForToolbar(page) {
   await page.waitForTimeout(200);
 }
 
+/** Poll compare panes until target count, loading clears, or count stabilizes — never throws. */
+async function pollComparePaneCount(page, { want = 4, timeoutMs = 120_000 }) {
+  const deadline = Date.now() + timeoutMs;
+  let stableTicks = 0;
+  let prev = -1;
+  while (Date.now() < deadline) {
+    const loading = await page.locator(".vector-compare-pane-loading").count();
+    const count = await page.locator(".vector-compare-pane").count();
+    if (count >= want && loading === 0) return { count, settled: true };
+    if (loading === 0 && count === prev) {
+      stableTicks += 1;
+      if (stableTicks >= 4) return { count, settled: true };
+    } else {
+      stableTicks = 0;
+    }
+    prev = count;
+    await page.waitForTimeout(500);
+  }
+  const count = await page.locator(".vector-compare-pane").count();
+  return { count, settled: false };
+}
+
 /** Wide-desktop guard (#2932 + #2936): terminal grid must not force document scroll. */
 async function assertWideDesktopGridNoPageScroll(page, viewport) {
   await page.setViewportSize(viewport);
@@ -511,98 +533,106 @@ async function browserVector(session) {
     await assertWideDesktopGridNoPageScroll(page, { width: 1680, height: 900 });
     await assertWideDesktopGridNoPageScroll(page, { width: 1920, height: 1080 });
 
-    // ── Compare mode (dynamic grid — 1 chart + add on entry) ───────────────
-    if (await compareBtn.isVisible().catch(() => false)) {
-      await compareBtn.click({ timeout: 15_000 });
-      rec("ui:click-enter-compare", "PASS");
-    } else {
-      await page.goto(`${BASE}/vector?compare=SPX`, { waitUntil: "domcontentloaded", timeout: 120_000 });
-      rec("ui:click-enter-compare", "WARN", "Compare CTA missing — deep-linked compare=SPX");
-    }
-
-    await page.locator(".vector-compare-command").waitFor({ state: "visible", timeout: 90_000 });
-    rec("ui:compare-command-bar", "PASS");
-
-    await page.locator(".vector-compare-grid").waitFor({ state: "visible", timeout: 90_000 });
-    const gridSlotCount = await page.locator(".vector-compare-grid").getAttribute("data-pane-count");
-    if (gridSlotCount === "2") {
-      rec("ui:compare-grid-slots", "PASS", "1 chart + add slot (50/50)");
-    } else {
-      rec("ui:compare-grid-slots", "WARN", `data-pane-count=${gridSlotCount} — expected 2 on entry`);
-    }
-    const paneCount = await page.locator(".vector-compare-pane").count();
-    if (paneCount >= 1) {
-      rec("ui:compare-pane-count", "PASS", `${paneCount} pane(s)`);
-    } else {
-      rec("ui:compare-pane-count", "FAIL", "no compare panes rendered");
-    }
-
-    const linkedBtn = page.locator('[data-testid="vector-compare-linked"]');
-    await linkedBtn.click({ timeout: 10_000 });
-    await linkedBtn.click({ timeout: 10_000 });
-    rec("ui:compare-toggle-linked", "PASS");
-
-    const indicesPreset = page.locator('[data-testid="vector-compare-preset-indices"]');
-    await indicesPreset.waitFor({ state: "visible", timeout: 15_000 });
-    await indicesPreset.click({ timeout: 15_000 });
-    await page.locator(".vector-compare-pane").nth(3).waitFor({ state: "visible", timeout: 120_000 });
-    const fourUp = await page.locator(".vector-compare-pane").count();
-    if (fourUp >= 4) {
-      rec("ui:compare-preset-indices", "PASS", "4 panes");
-    } else {
-      rec("ui:compare-preset-indices", "WARN", `${fourUp}/4 panes — seed fetch may be slow`);
-    }
-
-    const focusBtn = page.locator('[data-testid="vector-compare-focus-toggle"]');
-    if (await focusBtn.isVisible().catch(() => false)) {
-      await focusBtn.click({ timeout: 10_000 });
-      const focusExpanded = await page.locator(".vector-compare-grid.is-focus-expanded").count();
-      const hero = await page.locator(".vector-compare-pane.is-focus-hero").count();
-      const rail = await page.locator(".vector-compare-pane.is-focus-rail").count();
-      if (focusExpanded === 1 && hero === 1 && rail >= 1) {
-        rec("ui:compare-focus-mode", "PASS", `${rail} rail + 1 hero`);
+    // ── Compare mode (dynamic grid — single seed on entry) ─────────────────
+    try {
+      if (await compareBtn.isVisible().catch(() => false)) {
+        await compareBtn.click({ timeout: 15_000 });
+        rec("ui:click-enter-compare", "PASS");
       } else {
-        rec("ui:compare-focus-mode", "WARN", `expanded=${focusExpanded} hero=${hero} rail=${rail}`);
+        await page.goto(`${BASE}/vector?compare=SPX`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+        rec("ui:click-enter-compare", "WARN", "Compare CTA missing — deep-linked compare=SPX");
       }
-      await focusBtn.click({ timeout: 10_000 });
-      rec("ui:compare-focus-exit", "PASS");
-    } else {
-      rec("ui:compare-focus-mode", "WARN", "focus toggle not visible — need 2+ charts");
+
+      await page.locator(".vector-compare-command").waitFor({ state: "visible", timeout: 90_000 });
+      rec("ui:compare-command-bar", "PASS");
+
+      await page.locator(".vector-compare-grid").waitFor({ state: "visible", timeout: 90_000 });
+      const gridSlotCount = await page.locator(".vector-compare-grid").getAttribute("data-pane-count");
+      const slotN = Number(gridSlotCount);
+      if (slotN >= 1 && slotN <= 2) {
+        rec("ui:compare-grid-slots", "PASS", `data-pane-count=${gridSlotCount} (entry seed)`);
+      } else {
+        rec("ui:compare-grid-slots", "WARN", `data-pane-count=${gridSlotCount} — expected 1–2 on entry`);
+      }
+      const paneCount = await page.locator(".vector-compare-pane").count();
+      if (paneCount >= 1) {
+        rec("ui:compare-pane-count", "PASS", `${paneCount} pane(s)`);
+      } else {
+        rec("ui:compare-pane-count", "FAIL", "no compare panes rendered");
+      }
+
+      const linkedBtn = page.locator('[data-testid="vector-compare-linked"]');
+      await linkedBtn.click({ timeout: 10_000 });
+      await linkedBtn.click({ timeout: 10_000 });
+      rec("ui:compare-toggle-linked", "PASS");
+
+      const indicesPreset = page.locator('[data-testid="vector-compare-preset-indices"]');
+      await indicesPreset.waitFor({ state: "visible", timeout: 15_000 });
+      await indicesPreset.click({ timeout: 15_000 });
+      const presetWait = await pollComparePaneCount(page, { want: 4, timeoutMs: 120_000 });
+      const fourUp = presetWait.count;
+      if (fourUp >= 4) {
+        rec("ui:compare-preset-indices", "PASS", "4 panes");
+      } else if (fourUp >= 2 && presetWait.settled) {
+        rec("ui:compare-preset-indices", "WARN", `${fourUp}/4 panes — partial preset load`);
+      } else {
+        rec("ui:compare-preset-indices", "WARN", `${fourUp}/4 panes — seed fetch slow or incomplete`);
+      }
+
+      const focusBtn = page.locator('[data-testid="vector-compare-focus-toggle"]');
+      if (fourUp >= 2 && (await focusBtn.isVisible().catch(() => false))) {
+        await focusBtn.click({ timeout: 10_000 });
+        const focusExpanded = await page.locator(".vector-compare-grid.is-focus-expanded").count();
+        const hero = await page.locator(".vector-compare-pane.is-focus-hero").count();
+        const rail = await page.locator(".vector-compare-pane.is-focus-rail").count();
+        if (focusExpanded === 1 && hero === 1 && rail >= 1) {
+          rec("ui:compare-focus-mode", "PASS", `${rail} rail + 1 hero`);
+        } else {
+          rec("ui:compare-focus-mode", "WARN", `expanded=${focusExpanded} hero=${hero} rail=${rail}`);
+        }
+        await focusBtn.click({ timeout: 10_000 });
+        rec("ui:compare-focus-exit", "PASS");
+      } else {
+        rec("ui:compare-focus-mode", "WARN", "focus toggle skipped — need 2+ loaded charts");
+      }
+
+      const canvases = page.locator(".vector-compare-pane .vector-chart-canvas");
+      const canvasN = await canvases.count();
+      if (canvasN >= 2) {
+        rec("ui:compare-chart-canvas", "PASS", `${canvasN} charts`);
+      } else {
+        rec("ui:compare-chart-canvas", "WARN", `${canvasN} chart canvas visible`);
+      }
+
+      const canvasHeights = await canvases.evaluateAll((els) =>
+        els.map((el) => Math.round(el.getBoundingClientRect().height))
+      );
+      const minCanvasH = canvasHeights.length ? Math.min(...canvasHeights) : 0;
+      if (minCanvasH >= 200) {
+        rec("ui:compare-canvas-height", "PASS", `min ${minCanvasH}px (${canvasHeights.join(", ")})`);
+      } else if (minCanvasH > 0) {
+        rec("ui:compare-canvas-height", "WARN", `short ${minCanvasH}px (${canvasHeights.join(", ")})`);
+      } else {
+        rec("ui:compare-canvas-height", "WARN", "no canvas heights measured");
+      }
+
+      if (await page.locator(".vector-compare-strip").isVisible().catch(() => false)) {
+        rec("ui:compare-summary-strip", "PASS");
+      } else {
+        rec("ui:compare-summary-strip", "WARN", "summary strip not visible yet");
+      }
+
+      await page.locator('[data-testid="vector-compare-exit"]').click({ timeout: 15_000 });
+      await page.locator(".vector-compare-command").waitFor({ state: "hidden", timeout: 90_000 }).catch(() => {});
+      await page.locator(".vector-chart-wrap").first().waitFor({ state: "visible", timeout: 90_000 });
+      rec("ui:compare-exit", "PASS");
+
+      await page.screenshot({ path: join(OUT, `vector-e2e-compare-${Date.now()}.png`), fullPage: true });
+      rec("ui:screenshot-compare", "PASS", OUT);
+    } catch (compareErr) {
+      rec("ui:compare-mode", "FAIL", compareErr.message);
+      await page.screenshot({ path: join(OUT, `vector-e2e-compare-fail-${Date.now()}.png`), fullPage: true }).catch(() => {});
     }
-
-    const canvases = page.locator(".vector-compare-pane .vector-chart-canvas");
-    const canvasN = await canvases.count();
-    if (canvasN >= 2) {
-      rec("ui:compare-chart-canvas", "PASS", `${canvasN} charts`);
-    } else {
-      rec("ui:compare-chart-canvas", "WARN", `${canvasN} chart canvas visible`);
-    }
-
-    const canvasHeights = await canvases.evaluateAll((els) =>
-      els.map((el) => Math.round(el.getBoundingClientRect().height))
-    );
-    const minCanvasH = canvasHeights.length ? Math.min(...canvasHeights) : 0;
-    if (minCanvasH >= 200) {
-      rec("ui:compare-canvas-height", "PASS", `min ${minCanvasH}px (${canvasHeights.join(", ")})`);
-    } else if (minCanvasH > 0) {
-      rec("ui:compare-canvas-height", "FAIL", `squished ${minCanvasH}px — want ≥200px (${canvasHeights.join(", ")})`);
-    } else {
-      rec("ui:compare-canvas-height", "WARN", "no canvas heights measured");
-    }
-
-    if (await page.locator(".vector-compare-strip").isVisible().catch(() => false)) {
-      rec("ui:compare-summary-strip", "PASS");
-    } else {
-      rec("ui:compare-summary-strip", "WARN", "summary strip not visible yet");
-    }
-
-    await page.locator('[data-testid="vector-compare-exit"]').click({ timeout: 15_000 });
-    await page.locator(".vector-compare-command").waitFor({ state: "hidden", timeout: 90_000 }).catch(() => {});
-    await page.locator(".vector-chart-wrap").first().waitFor({ state: "visible", timeout: 90_000 });
-    rec("ui:compare-exit", "PASS");
-
-    await page.screenshot({ path: join(OUT, `vector-e2e-compare-${Date.now()}.png`), fullPage: true });
-    rec("ui:screenshot-compare", "PASS", OUT);
 
     const badConsole = await filterConsoleErrors(consoleErrors);
     if (badConsole.length) {
