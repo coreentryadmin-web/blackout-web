@@ -32,6 +32,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guards";
 import { logCronRun } from "@/lib/cron-run";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
+import { sharedCacheSetNx } from "@/lib/shared-cache";
 import {
   runFullCorrectness,
   runHeatmapCorrectness,
@@ -66,6 +67,35 @@ export async function GET(req: NextRequest) {
   const asyncFull = force && !surface;
 
   if (asyncFull) {
+    // DEBOUNCE. This route has exactly one registered EventBridge cron, and it uses the
+    // SYNCHRONOUS path below (no ?force=1) — this branch is reached only via manual/agent-driven
+    // `?force=1` calls (rth-deep-audit.yml, scripts/gha-rth-audit.mjs, ad-hoc fleet audit
+    // scripts). With multiple independent Claude lane sessions each running their own health
+    // checks against the SAME production endpoint, two calls landing within seconds of each
+    // other dispatch two full, independent 8-surface sweeps — each posting its OWN
+    // notifyOpsDiscord alert on the SAME underlying flags, which is exactly the duplicate
+    // "Data-correctness FLAG" seen live in #website-logs (confirmed via CloudWatch: paired
+    // "[data-correctness] background done" lines seconds apart, each with a DIFFERENT elapsed
+    // time — proof of two independent process runs, not one duplicated log line). This is not a
+    // single call site's bug to fix; it's the absence of a lock across independent callers.
+    // 90s covers the measured sweep runtime (9–28s) plus buffer for the observed near-simultaneous
+    // window, without blocking a genuinely-spaced-out manual re-check. Fail-open on a Redis error
+    // (treat as acquired) — a cache outage must never silently stop every correctness sweep.
+    const acquired = await sharedCacheSetNx(
+      "cron:data-correctness:force-sweep-lock",
+      { startedAt: started },
+      90
+    ).catch(() => true);
+    if (!acquired) {
+      const payload = {
+        ok: true,
+        status: "debounced",
+        reason: "a full-platform correctness sweep is already in flight (or completed within the last 90s) — skipped to avoid a duplicate Discord alert",
+      };
+      await logCronRun("data-correctness", started, payload);
+      return NextResponse.json(payload, { status: 202 });
+    }
+
     const dispatchSweep = () => {
       void (async () => {
         try {
