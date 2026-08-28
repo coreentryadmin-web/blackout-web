@@ -89,6 +89,11 @@ const lifecycle = [
   ["lifecycle · downgrade (Premium → SPX Slayer)", "downgrade", downgradeEmail({ firstName: NAME })],
   ["lifecycle · payment-failed (dunning)", "payment-failed", paymentFailedEmail({ firstName: NAME, graceDays: 7 })],
   [
+    "lifecycle · trial-ending-soon",
+    "trial-ending-soon",
+    trialEndingSoonEmail({ firstName: NAME, billingKind: "premium", trialEndsLabel: "Monday, Sep 1" }),
+  ],
+  [
     "lifecycle · scheduled-cancel",
     "scheduled-cancel",
     scheduledCancelEmail({ firstName: NAME, accessUntil: new Date("2026-09-14T00:00:00Z") }),
