@@ -38,6 +38,8 @@ export type VectorLeaderPlay = {
   updated_at: string;
   is_winner: boolean;
   tier?: "elite" | "standard";
+  /** Archived closure that hit the winner floor — still shown on Winners tab. */
+  closed_winner?: boolean;
 };
 
 export type VectorPickBoardResponse = {

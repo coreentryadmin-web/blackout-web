@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
+  isVectorPickClosureWinner,
   isVectorPickWinner,
   leaderEligibleForBoard,
   mergePeakPremiumPct,
@@ -43,6 +44,13 @@ describe("vector-pick-sweep-core", () => {
     assert.equal(isVectorPickWinner({ premium_pct_from_entry: VECTOR_PICK_WINNER_PCT_FLOOR, peak_premium_pct: null, action_status: "caution" }), true);
     assert.equal(isVectorPickWinner({ premium_pct_from_entry: 10, peak_premium_pct: 60, action_status: "caution" }), true);
     assert.equal(isVectorPickWinner({ premium_pct_from_entry: 10, peak_premium_pct: 60, action_status: "dont_buy" }), false);
+  });
+
+  test("isVectorPickClosureWinner counts archived +50% runners", () => {
+    assert.equal(isVectorPickClosureWinner({ premium_pct_from_entry: VECTOR_PICK_WINNER_PCT_FLOOR }), true);
+    assert.equal(isVectorPickClosureWinner({ premium_pct_from_entry: 275 }), true);
+    assert.equal(isVectorPickClosureWinner({ premium_pct_from_entry: 49.9 }), false);
+    assert.equal(isVectorPickClosureWinner({ premium_pct_from_entry: null }), false);
   });
 
   test("sortLeadersForBoard orders by best pct", () => {
