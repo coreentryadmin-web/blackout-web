@@ -75,11 +75,18 @@ export type PaneCortexView =
   | { abstained: true; reason: string }
   | {
       abstained: false;
-      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED" | null;
+      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED" | "OPPOSE_UNRESOLVED" | null;
       verdict: CortexVerdictLike;
     };
 
-const CORTEX_DECISIONS = new Set(["PASS", "VETO", "VETO_BLIND", "NET_NEGATIVE", "CONTESTED"]);
+const CORTEX_DECISIONS = new Set([
+  "PASS",
+  "VETO",
+  "VETO_BLIND",
+  "NET_NEGATIVE",
+  "CONTESTED",
+  "OPPOSE_UNRESOLVED",
+]);
 
 /**
  * Normalize either cortex shape (nested assessment / flattened entry-context blob)
@@ -105,7 +112,7 @@ export function readCortexView(raw: unknown): PaneCortexView | null {
   }
   const decision =
     typeof a.decision === "string" && CORTEX_DECISIONS.has(a.decision)
-      ? (a.decision as "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED")
+      ? (a.decision as "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED" | "OPPOSE_UNRESOLVED")
       : null;
   return { abstained: false, decision, verdict };
 }
