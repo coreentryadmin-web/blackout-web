@@ -424,9 +424,9 @@ describe("bangerBoardForLargo — a closed position reports what it realized", (
         chars < MAX_TOOL_RESULT_CHARS,
         `banger board (${chars} chars) exceeded transport cap ${MAX_TOOL_RESULT_CHARS} — open capping is not working`
       );
-      // Open is capped at 12, closed at 12.
-      assert.equal(r.open_shown, Math.min(20, 12), "open_shown must cap at 12");
-      assert.equal(r.open_truncated, 20 > 12, "open_truncated must mark overflow");
+      // Open is capped at 6 (changed 2026-08-28 after 12-row cap still TRUNCATED in production).
+      assert.equal(r.open_shown, Math.min(20, 6), "open_shown must cap at 6");
+      assert.equal(r.open_truncated, 20 > 6, "open_truncated must mark overflow");
       assert.equal(r.closed_shown, Math.min(5, 12), "closed_shown respects its own cap");
     } finally {
       BANGER_ROWS = [];
