@@ -54,6 +54,7 @@
     "healthcheck:0dte": "node --import tsx scripts/audit/zerodte-e2e-healthcheck.mjs",
     "validate:thesis-first-live": "node scripts/audit/thesis-first-live-audit.mjs",
     "validate:nighthawk-thesis-ui": "node scripts/audit/nighthawk-thesis-ui-audit.mjs",
+    "validate:nighthawk-prod-check": "NODE_USE_ENV_PROXY=1 node scripts/audit/nighthawk-prod-check.mjs",
     "calibration:thesis-rank": "node scripts/audit/thesis-rank-calibration.mjs",
     "send:emails": "node --import tsx scripts/audit/email-template-send.mjs",
     "healthcheck:swing": "node --import tsx scripts/audit/swing-e2e-healthcheck.mjs",
