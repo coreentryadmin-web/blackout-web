@@ -120,9 +120,10 @@ export async function bangerBoardForLargo(limit = 40) {
       discovery_gain: row.discovery_gain,
     });
     const nowMs = Date.now();
-    // Cap open at 12 rows to match closed, preventing truncation under model's transport cap (16k chars).
+    // Cap open at 6 rows to stay well under model's transport cap (16k chars).
+    // 12-row cap still caused TRUNCATED in production 2026-08-28; 6 rows as conservative fallback.
     // `open.length` counts qualifying rows; `open_truncated` marks when we capped them.
-    const openDisplayLimit = 12;
+    const openDisplayLimit = 6;
     const openShown = Math.min(open.length, openDisplayLimit);
     const openTruncated = open.length > openDisplayLimit;
     return roundFloats({
