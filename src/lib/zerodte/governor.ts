@@ -147,21 +147,28 @@ export function correlationGroupOf(ticker: string): ReadonlySet<string> | null {
   return null;
 }
 
-// ── Q9 (design record) — SAME-DIRECTION concentration MEASURE (surfaced, NOT enforced) ──
+// ── Q9 (design record) — SAME-DIRECTION concentration, MEASURE-then-ENFORCE ──
 // The correlated-conflict rule above blocks OPPOSING plays on correlated names (SPY-long
 // + QQQ-short). It does NOT see same-DIRECTION concentration: SPY-long + QQQ-long +
 // IWM-long is 3× the same broad-market beta behind the 3-concurrent cap — one bad tape
 // takes all three. Q9 flagged this as a genuine gap.
 //
-// WHY MEASURE, NOT BLOCK (yet). Unlike the realized-loss halt (unambiguously good — you're
-// already down, stand down), concentration is ambiguous: three independent origins all
-// surfacing correlated longs can be CONVICTION, not reckless over-exposure. Enforcing a
+// WHY IT SHIPPED MEASURE-ONLY FIRST. Unlike the realized-loss halt (unambiguously good —
+// you're already down, stand down), concentration is ambiguous: three independent origins
+// all surfacing correlated longs can be CONVICTION, not reckless over-exposure. Enforcing a
 // cap could forgo the best trend days. So — per the house calibration-first rule ("evidence,
-// not gating; the ledger graduates it before it sizes") — this ships as a SURFACED measure:
-// the board reports the largest same-direction correlated cluster and a would-block reason,
-// the ledger accrues whether concentrated days win or lose, and a later PR flips it to an
-// enforced gate ONLY if the evidence says concentrated same-direction days underperform.
-// This channel changes NOTHING the board commits today.
+// not gating; the ledger graduates it before it sizes") — this shipped first as a SURFACED
+// measure: the board reported the largest same-direction correlated cluster and a
+// would-block reason, and the ledger accrued whether concentrated days won or lost.
+//
+// CORRECTED 2026-08-28 (this comment was stale): it IS now enforced by default
+// (GOVERNOR_ENFORCE_CONCENTRATION below). The flip was evidence-driven, not a guess — the
+// 2026-07-30 session (FINDINGS.md, "Wave A/B strongest-engines hardening") was a real P0/P1
+// incident (14 losers / 1 winner) where unmeasured same-direction concentration was one of
+// five named contributing root causes, alongside the regime-plane gap and a stale-BREAKOUT
+// score floor fixed in the same pass. GOVERNOR_MAX_CORRELATED_SAME_DIR=2 remains the
+// original conservative starting value from before that flip — it has not itself been
+// re-measured since enforcement began.
 
 /** Max same-direction correlated open plans before the concentration measure flags it.
  *  CONSERVATIVE starting value (calibration-first) — with the 3-concurrent cap, a cluster
