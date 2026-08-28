@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   cfPurgeTrustPagesGate,
+  mobileStickyFaqOverlapGate,
   gammaLoadingFreshnessConflict,
   homepageH1AboveFold,
   methodologyPageGate,
@@ -88,4 +89,12 @@ test("cfPurgeTrustPagesGate: requires trust URLs in deploy purge list", () => {
     ).ok,
     true
   );
+});
+
+test("mobileStickyFaqOverlapGate: requires overlap suppression in LandingRedesignFx", () => {
+  const ok =
+    'import { mobileStickyBlockedByContent, shouldShowMobileStickyCta } from "@/lib/marketing/mobile-sticky-cta";\n' +
+    'document.querySelectorAll(".faq-item").forEach((el) => el.addEventListener("toggle", refreshMobileStickyCta));';
+  assert.equal(mobileStickyFaqOverlapGate(ok).ok, true);
+  assert.equal(mobileStickyFaqOverlapGate("// missing guard").ok, false);
 });

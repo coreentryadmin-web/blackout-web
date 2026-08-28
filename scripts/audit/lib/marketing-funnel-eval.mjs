@@ -134,3 +134,15 @@ export function cfPurgeTrustPagesGate(source) {
   }
   return { ok: true, reason: "cf-purge includes trust + sitemap URLs" };
 }
+
+/** Home mobile sticky bar must suppress when FAQ/footer overlap (P2 #2799). */
+export function mobileStickyFaqOverlapGate(landingFxSource) {
+  const importsHelper =
+    /mobileStickyBlockedByContent/.test(landingFxSource) &&
+    /shouldShowMobileStickyCta/.test(landingFxSource);
+  const listensFaqToggle = /\.faq-item/.test(landingFxSource) && /addEventListener\s*\(\s*["']toggle["']/.test(landingFxSource);
+  if (importsHelper && listensFaqToggle) {
+    return { ok: true, reason: "LandingRedesignFx overlap suppression wired" };
+  }
+  return { ok: false, reason: "mobile sticky CTA missing FAQ/footer overlap guard" };
+}

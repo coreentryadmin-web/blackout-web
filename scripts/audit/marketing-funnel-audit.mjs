@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import {
   cfPurgeTrustPagesGate,
+  mobileStickyFaqOverlapGate,
   gammaLoadingFreshnessConflict,
   homepageH1AboveFold,
   methodologyPageGate,
@@ -77,6 +78,10 @@ function repoScan() {
   const cfPurge = readFileSync("src/lib/cf-purge-on-deploy.ts", "utf8");
   const purgeGate = cfPurgeTrustPagesGate(cfPurge);
   add("REPO-CF-PURGE-TRUST", purgeGate.ok ? "GREEN" : "RED", purgeGate.reason);
+
+  const landingFx = readFileSync("src/components/landing/LandingRedesignFx.tsx", "utf8");
+  const stickyGate = mobileStickyFaqOverlapGate(landingFx);
+  add("REPO-MOBILE-STICKY-FAQ", stickyGate.ok ? "GREEN" : "RED", stickyGate.reason);
 }
 
 /** Retry goto when a prior in-flight navigation races (Playwright "interrupted by another navigation"). */
