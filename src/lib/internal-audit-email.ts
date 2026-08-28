@@ -6,7 +6,8 @@
  * claude-nh-check, claude-simfeed-temp, ...) or an `-audit-` tag used by lanes that mint their
  * own timestamped addresses (seo-audit-<ts>@, largo-spx-audit-<ts>@). `@example.com` is the
  * third convention, used by a couple of harnesses (helix-interaction-audit.mjs) that don't hit
- * the real domain at all.
+ * the real domain at all. Playwright e2e harnesses mint `vector-e2e-<ts>@`, `ios-ui-e2e-<ts>@`,
+ * `spx-e2e-<ts>@`, etc. — measured live 2026-08-28 flooding Discord after #3025 deploy.
  *
  * A REAL member's email will not collide with any of these: `startsWith("claude-")` requires
  * the hyphen immediately after "claude", so "claude@gmail.com" or "claude.smith@yahoo.com" (a
@@ -18,5 +19,12 @@ export function isInternalAuditEmail(email: string | null | undefined): boolean 
   const lower = email.toLowerCase();
   if (lower.endsWith("@example.com")) return true;
   const local = lower.split("@")[0] ?? "";
-  return local.startsWith("claude-") || local.includes("-audit-");
+  if (local.startsWith("claude-") || local.includes("-audit-")) return true;
+  // Playwright / prod e2e harnesses — vector-e2e-<ts>, ios-ui-e2e-<ts>, spx-e2e-<ts>, claude-e2e-…
+  if (local.includes("-e2e-")) return true;
+  // Other one-off harness prefixes on @blackouttrades.com
+  if (/^(rth-sweep|rth-test|exhaustive|endpoint-audit|jwt-probe|e2e-subject|meridian-cap)-/.test(local)) {
+    return true;
+  }
+  return false;
 }
