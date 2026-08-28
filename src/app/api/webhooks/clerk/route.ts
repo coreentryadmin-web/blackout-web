@@ -10,7 +10,7 @@ import { startWelcomeSequence } from '@/lib/welcome-sequence';
 import { parseTier } from '@/lib/tiers';
 import type { BillingKind } from '@/lib/whop';
 import { notifyOpsDiscord } from '@/features/spx/lib/spx-play-notify';
-import { buildNewMemberNotificationBody } from '@/lib/clerk-new-member-notify';
+import { buildNewMemberNotificationFields } from '@/lib/clerk-new-member-notify';
 
 const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
@@ -146,8 +146,9 @@ export async function POST(req: Request) {
         // billing alert, so severity is "info" and it never blocks/fails provisioning.
         void notifyOpsDiscord({
           title: "New member signed up",
-          body: buildNewMemberNotificationBody({ email, firstName, lastName, clerkUserId: userId }),
+          body: "",
           severity: "info",
+          fields: buildNewMemberNotificationFields({ email, firstName, lastName, clerkUserId: userId }),
         }).catch(() => undefined);
       } else {
         await dbQuery(
