@@ -52,6 +52,20 @@ test("rthWriterOverdue: meridian-warm fresh at 4 min", () => {
   assert.equal(rthWriterOverdue("meridian-warm", last, "ok", null, now), false);
 });
 
+test("rthWriterOverdue: vector-pick-sweep overdue with no prior run", () => {
+  assert.equal(rthWriterOverdue("vector-pick-sweep", null, null, null, now), true);
+});
+
+test("rthWriterOverdue: vector-pick-sweep overdue after 5 min (4 min heal threshold)", () => {
+  const last = new Date(now - 5 * 60_000).toISOString();
+  assert.equal(rthWriterOverdue("vector-pick-sweep", last, "ok", null, now), true);
+});
+
+test("rthWriterOverdue: vector-pick-sweep fresh at 3 min", () => {
+  const last = new Date(now - 3 * 60_000).toISOString();
+  assert.equal(rthWriterOverdue("vector-pick-sweep", last, "ok", null, now), false);
+});
+
 test("rthWriterOverdue: unknown key never overdue", () => {
   assert.equal(rthWriterOverdue("db-cleanup", null, null, null, now), false);
 });
