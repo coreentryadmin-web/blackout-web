@@ -12,6 +12,34 @@ import {
 import { formatReturnPct, playGradeLabel, playQualityPct, tierStars } from "./play-card-display";
 import { StatusPill } from "./DeckStatusBadges";
 
+/** L/S direction chip — omitted on a condor row, where "direction" doesn't apply (a credit
+ *  spread profits from decay/range, not a directional move — see CondorCardChip). */
+function DirectionChip({ play }: { play: TerminalPlay }) {
+  if (play.isCondor) return null;
+  const long = play.direction === "LONG";
+  return (
+    <span className={clsx("nh-deck-dir-chip", long ? "long" : "short")} aria-label={long ? "Long" : "Short"}>
+      {long ? "L" : "S"}
+    </span>
+  );
+}
+
+/** Discovery-origin dot — which scan surfaced this play (FLOW/BREAKOUT/PIN). Shows only the
+ *  FIRST origin as a compact dot (the full list is in the detail panel's badge row on click —
+ *  the row stays scannable, the detail stays complete); omitted when the play carries none. */
+function OriginDot({ play }: { play: TerminalPlay }) {
+  const origins = play.discoveryOrigin;
+  if (!origins || origins.length === 0) return null;
+  const primary = origins[0]!.toLowerCase();
+  return (
+    <span
+      className={clsx("nh-deck-origin-dot", `is-${primary}`)}
+      title={`Discovered via ${origins.join(", ")}`}
+      aria-hidden
+    />
+  );
+}
+
 /** Table-row play card — columns align under DeckPlayTableHeader. */
 export function PlayLifecycleCardBody({
   play,
@@ -49,7 +77,9 @@ export function PlayLifecycleCardBody({
         <StatusPill label={status.label} tone={status.tone} />
       </span>
       <span className="nh-deck-play-cell nh-deck-play-cell--play" title={playSymbolLine(play)} role="cell">
+        <DirectionChip play={play} />
         {playSymbolLine(play)}
+        <OriginDot play={play} />
       </span>
       <span className="nh-deck-play-cell nh-deck-play-cell--rating" role="cell">
         {grade != null && (

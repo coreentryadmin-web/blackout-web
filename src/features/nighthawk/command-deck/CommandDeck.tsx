@@ -45,6 +45,9 @@ import { deriveEngineStatus } from "./deck-engine-status";
 /** Status filter mode: which plays to show in the list. */
 type StatusFilter = DeckStatusFilter;
 
+/** Direction filter — ALL (default) or narrow to one side. */
+type DirectionFilter = "ALL" | "LONG" | "SHORT";
+
 function filterByStatus(plays: TerminalPlay[], filter: StatusFilter): TerminalPlay[] {
   if (filter === "ALL") return plays;
   if (filter === "OPEN") return plays.filter((p) => p.status === "OPEN" || p.status === "HOLD" || p.status === "TRIM");
@@ -142,10 +145,30 @@ export function CommandDeck({
 
   const filtered = useMemo(() => filterByStatus(plays, statusFilter), [plays, statusFilter]);
 
+  // Ticker search — a second, independent narrowing on top of the status filter (never replaces
+  // it: typing "NVDA" while on the OPEN filter still only shows an open NVDA row, not every NVDA
+  // row regardless of status). Applies identically on every horizon since this is the one shared
+  // CommandDeck all four boards render through.
+  const [search, setSearch] = useState("");
+  const searched = useMemo(() => {
+    const q = search.trim().toUpperCase();
+    if (!q) return filtered;
+    return filtered.filter((p) => p.ticker.toUpperCase().includes(q));
+  }, [filtered, search]);
+
+  // Direction filter — third independent lens (status × search × direction), same compose-not-
+  // replace rule. Reads the play's real `direction` field only; a condor's direction value is
+  // whatever the adapter set it to (never fabricated here just to make the filter "work").
+  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>("ALL");
+  const directed = useMemo(() => {
+    if (directionFilter === "ALL") return searched;
+    return searched.filter((p) => p.direction === directionFilter);
+  }, [searched, directionFilter]);
+
   // Sort lens: the status banding (default) or the Wave-2 conviction ranking. Additive — the status
   // sort is unchanged; conviction is a second view over the SAME list (deck-sort.ts).
   const [sortMode, setSortMode] = useState<DeckSortMode>("status");
-  const sorted = useMemo(() => sortPlaysForDeckBy(filtered, sortMode), [filtered, sortMode]);
+  const sorted = useMemo(() => sortPlaysForDeckBy(directed, sortMode), [directed, sortMode]);
   // SWING only: split the flat sorted list into its seven serving.ts sections so the board renders them as
   // visually distinct rails (FINDINGS 2026-08-06 P2) instead of one undifferentiated concatenated list —
   // exactly the failure mode serving.ts's own header says it exists to prevent.
@@ -238,6 +261,10 @@ export function CommandDeck({
             setStatusFilter={setStatusFilter}
             playCounts={{ all: plays.length, open: counts.open, watch: counts.watch, closed: counts.closed }}
             spxSlayerBadge={deckHorizon === "ZERO_DTE" ? spxSlayerBadge : undefined}
+            search={search}
+            setSearch={setSearch}
+            directionFilter={directionFilter}
+            setDirectionFilter={setDirectionFilter}
           />
         ) : (
           <>
@@ -246,9 +273,9 @@ export function CommandDeck({
               <span>
                 {degraded
                   ? "data down"
-                  : statusFilter === "ALL"
+                  : statusFilter === "ALL" && !search.trim() && directionFilter === "ALL"
                     ? `${plays.length} plays`
-                    : `${filtered.length} of ${plays.length}`}
+                    : `${directed.length} of ${plays.length}`}
               </span>
             </div>
             {deckHorizon === "ZERO_DTE" && !degraded && (marketState || discoveryFunnel?.summary || spxSlayerBadge !== undefined) ? (
@@ -263,6 +290,10 @@ export function CommandDeck({
               statusFilter={statusFilter}
               setStatusFilter={setStatusFilter}
               playCounts={{ all: plays.length, open: counts.open, watch: counts.watch, closed: counts.closed }}
+              search={search}
+              setSearch={setSearch}
+              directionFilter={directionFilter}
+              setDirectionFilter={setDirectionFilter}
             />
           </>
         )}
@@ -286,6 +317,12 @@ export function CommandDeck({
           )}
           {!loading && plays.length > 0 && filtered.length === 0 && (
             <div className="nh-deck-empty">No {statusFilter.toLowerCase()} plays right now.</div>
+          )}
+          {!loading && filtered.length > 0 && searched.length === 0 && (
+            <div className="nh-deck-empty">No plays match &ldquo;{search.trim()}&rdquo;.</div>
+          )}
+          {!loading && searched.length > 0 && directed.length === 0 && (
+            <div className="nh-deck-empty">No {directionFilter.toLowerCase()} plays match your other filters.</div>
           )}
           {commandCenter && !loading && sorted.length > 0 && (
             <DeckPlayTableHeader sortMode={sortMode} setSortMode={setSortMode} />
@@ -353,17 +390,89 @@ function DeckStatusFilterBar({
   );
 }
 
-/** Filter chrome — status toggles; sort lives on table column headers in command center. */
+/** Ticker quick-search — narrows the play list by substring, independent of the status filter.
+ *  Clear button only renders once there's something to clear (never a dead control). */
+function DeckSearchBox({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="nh-deck-search">
+      <span className="nh-deck-search__icon" aria-hidden>
+        ⌕
+      </span>
+      <input
+        type="search"
+        inputMode="text"
+        autoComplete="off"
+        spellCheck={false}
+        placeholder="Search ticker…"
+        aria-label="Search plays by ticker"
+        className="nh-deck-search__input"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {value && (
+        <button
+          type="button"
+          className="nh-deck-search__clear"
+          aria-label="Clear search"
+          onClick={() => onChange("")}
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Direction filter — ALL / LONG / SHORT. Compact, same chip family as the status filter but a
+ *  visually distinct second group so the two independent lenses don't read as one control. */
+function DeckDirectionFilterBar({
+  directionFilter,
+  setDirectionFilter,
+}: {
+  directionFilter: DirectionFilter;
+  setDirectionFilter: (f: DirectionFilter) => void;
+}) {
+  return (
+    <div className="nh-deck-filterbar nh-deck-filterbar--direction" role="group" aria-label="Filter plays by direction">
+      <button type="button" className={clsx("nh-deck-filtbtn", directionFilter === "ALL" && "on")} onClick={() => setDirectionFilter("ALL")}>
+        L/S
+      </button>
+      <button type="button" className={clsx("nh-deck-filtbtn", directionFilter === "LONG" && "on")} onClick={() => setDirectionFilter("LONG")}>
+        LONG
+      </button>
+      <button type="button" className={clsx("nh-deck-filtbtn", directionFilter === "SHORT" && "on")} onClick={() => setDirectionFilter("SHORT")}>
+        SHORT
+      </button>
+    </div>
+  );
+}
+
+/** Filter chrome — status + direction toggles + ticker search; sort lives on table column
+ *  headers in command center. */
 function DeckChromeRow({
   statusFilter,
   setStatusFilter,
   playCounts,
   prominentFilters = false,
+  search,
+  setSearch,
+  directionFilter,
+  setDirectionFilter,
 }: {
   statusFilter: StatusFilter;
   setStatusFilter: (f: StatusFilter) => void;
   playCounts: { all: number; open: number; watch: number; closed: number };
   prominentFilters?: boolean;
+  search: string;
+  setSearch: (v: string) => void;
+  directionFilter: DirectionFilter;
+  setDirectionFilter: (f: DirectionFilter) => void;
 }) {
   return (
     <div className="nh-deck-chrome-row">
@@ -373,6 +482,8 @@ function DeckChromeRow({
         playCounts={playCounts}
         prominent={prominentFilters}
       />
+      <DeckDirectionFilterBar directionFilter={directionFilter} setDirectionFilter={setDirectionFilter} />
+      <DeckSearchBox value={search} onChange={setSearch} />
     </div>
   );
 }
@@ -389,6 +500,10 @@ function DeckCompactHeader({
   setStatusFilter,
   playCounts,
   spxSlayerBadge,
+  search,
+  setSearch,
+  directionFilter,
+  setDirectionFilter,
 }: {
   laneLabel: string;
   degraded: boolean;
@@ -401,6 +516,10 @@ function DeckCompactHeader({
   playCounts: { all: number; open: number; watch: number; closed: number };
   /** 0DTE only — SPX Slayer's own live play, read-only board badge (feat/nh-spx-badge). */
   spxSlayerBadge?: SpxSlayerBadge | null;
+  search: string;
+  setSearch: (v: string) => void;
+  directionFilter: DirectionFilter;
+  setDirectionFilter: (f: DirectionFilter) => void;
 }) {
   const topLine = stats?.topRated ? `${stats.topRated.ticker} (${stats.topRated.grade})` : "—";
   const edge = degraded ? null : stats?.edge ?? null;
@@ -438,6 +557,8 @@ function DeckCompactHeader({
           playCounts={playCounts}
           prominent
         />
+        <DeckDirectionFilterBar directionFilter={directionFilter} setDirectionFilter={setDirectionFilter} />
+        <DeckSearchBox value={search} onChange={setSearch} />
       </div>
     </div>
   );
