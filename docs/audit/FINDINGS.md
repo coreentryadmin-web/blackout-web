@@ -16064,7 +16064,6 @@ No other files reference `tapeAligned`. Tests updated in `gates.test.ts` (5 test
 
 ## 2026-07-27 — Condor VIX gate blocks at elevated (17) instead of extreme (20)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity:** CRITICAL — iron condors (the ONE structure designed for flat/range-bound markets)
 were hard-blocked on any day with VIX >= 17. Since VIX sits between 17-20 for ~40% of trading
@@ -16099,7 +16098,10 @@ existed and was used by the extreme-regime gate (G-4b). No other condor logic re
 elevated threshold.
 
 **File:line:** `src/lib/zerodte/gates.ts:425`
-**Status:** PR (pending, bundled with confluence fix below)
+
+**Status.** FIXED — the condor VIX gate (now `condor_vix_regime`) confirmed blocking at
+`VIX_EXTREME_THRESHOLD` (20), not the elevated 17 floor, in `gates.ts:648-660` in `main` today.
+Restamped, the pre-existing "**Status:**" line (colon inside bold) was not read by the reconciler.
 
 ---
 
@@ -16222,7 +16224,15 @@ plays where flow led a reversal) + Cortex veto_blind (fixed in PR #1155) = nothi
 `scan.ts` (3 module-level fallback stores + fallback logic at the firewall-signal derivation site).
 `board.ts` retains `intraday_conflict` field for display.
 
-**Status:** PR (pending)
+**Status.** FIXED (partially superseded) — two of three fix components confirmed present in `main`
+today: G-10 is demoted to score-only per the comment at `gates.ts:848` ("DEMOTED back to score-only
+(2026-07-27)" — matches this entry's date exactly), and the last-known-good fail-closed fallback is
+present, evolved into a dedicated `src/lib/zerodte/firewall-fallback.ts` module (Redis-backed
+`resolveFirewallNumeric`/`resolveFirewallMacro`/`resolveFirewallEarnings`, not the simple
+module-level `_lastVix` vars this entry describes). The third component — lowering the G-12 early
+floor from 2 to 1 — does NOT hold today: both `ZERODTE_CONFLUENCE_MIN` and
+`ZERODTE_CONFLUENCE_MIN_EARLY` default to 2 in `gates.ts:112-124`, i.e. no early/standard
+distinction remains. Read as later recalibration, not as evidence the fix never shipped.
 
 ## 2026-07-27 — [CTO AUDIT] Night Hawk 0DTE full-system hardening (27 findings, 4 workstreams)
 > **kind:** `FINDING`
