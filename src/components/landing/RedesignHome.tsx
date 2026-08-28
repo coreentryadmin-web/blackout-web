@@ -12,6 +12,7 @@ import { LandingRedesignFxLazy } from "./LandingRedesignFxLazy";
 import { MarketingAuthAnchor, MarketingAuthCta, MarketingAuthLabel } from "./MarketingAuthCta";
 import { HomeGammaHeroLink, HomeGammaPromo } from "./HomeGammaPromo";
 import { HomeCommunityRail } from "./HomeCommunityRail";
+import { MarketingHashLink } from "./MarketingHashLink";
 
 /** Redesigned homepage body — server-rendered content + one client FX layer (canvas, reveal, ticker). */
 export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot }) {
@@ -72,9 +73,9 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
               className="btn-p"
             />
             <HomeGammaHeroLink />
-            <Link href="#modules" prefetch={false} className="btn-g hero-btn-ghost">
+            <MarketingHashLink href="#modules" className="btn-g hero-btn-ghost">
               Explore the desk
-            </Link>
+            </MarketingHashLink>
           </div>
           <ul className="hero-creds">
             <li>6 live engines</li>
@@ -568,7 +569,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             >
               Open the desk <span className="cta-arrow">&rarr;</span>
             </MarketingAuthCta>
-            <Link href="#modules" prefetch={false} className="btn-g">See the desk</Link>
+            <MarketingHashLink href="#modules" className="btn-g">See the desk</MarketingHashLink>
           </div>
         </div>
       </section>
