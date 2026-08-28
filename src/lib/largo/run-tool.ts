@@ -751,9 +751,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         );
         return { indices: { ...trimmedIndices, ...trimmedEtfs }, market_tide: tide, market_status: status };
       });
+      // Apply the same SPX structure fitting as get_spx_structure to prevent truncation.
+      // spxDeskSummary also feeds Night Hawk and the platform snapshot (no caps), so the fit
+      // is applied only here at the Largo boundary, not in summarizeSpxDesk itself.
+      const spxSummary = desk ? spxDeskSummary(desk) : null;
+      const fittedSpx = spxSummary ? fitSpxStructureForModel(spxSummary).fitted : null;
       return {
         ...shared,
-        spx_desk: desk ? spxDeskSummary(desk) : null,
+        spx_desk: fittedSpx,
       };
     }
     case "get_market_breadth": {
