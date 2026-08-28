@@ -22084,7 +22084,7 @@ html.product-shell .nav-mega {
 .nh-deck-play-cell--pnl{text-align:right}
 .nh-deck-play-pnl{font-size:14px;font-weight:800;white-space:nowrap}
 .nh-deck-play-empty{color:var(--dk-text-secondary);opacity:.6}
-.nh-deck-play-cell--status .nh-deck-status-pill{font-size:10px;padding:4px 8px;white-space:nowrap}
+.nh-deck-play-cell--status .nh-deck-status-pill{font-size:10px;white-space:nowrap}
 /* Direction chip (L/S) + discovery-origin dot — compact row-level identity, omitted on a
    condor row (chip) or a play with no recorded origin (dot). Origin is color-coded here even
    though the detail panel's badge row (HeaderBadges) renders every origin in one flat color —
@@ -22110,7 +22110,7 @@ html.product-shell .nav-mega {
 .nh-deck-conf-inline{display:inline-flex;align-items:baseline;gap:3px;padding:2px 6px;border-radius:3px;border:1px solid rgba(0,217,163,.28);background:rgba(0,217,163,.06);white-space:nowrap}
 .nh-deck-conf-inline__grade{font-size:11px;font-weight:900;color:var(--dk-bull);letter-spacing:.04em}
 .nh-deck-conf-inline__score{font-size:11px;font-weight:800;color:var(--dk-text-primary);font-variant-numeric:tabular-nums}
-.nh-deck-status-pill{font-size:8px;padding:2px 5px}
+.nh-deck-status-pill{font-size:8px}
 .nh-deck-lc{display:flex;flex-direction:column;gap:8px;min-width:0}
 .nh-deck-lc-identity{position:relative;display:flex;align-items:flex-start;min-width:0}
 .nh-deck-lc-rank-corner{position:absolute;top:0;right:0;font-size:9px;font-weight:600;color:var(--dk-text-secondary);letter-spacing:.06em;opacity:.7}
@@ -22186,20 +22186,24 @@ html.product-shell .nav-mega {
 .nh-deck-conf-badge__label{font-size:9px;font-weight:700;color:var(--dk-text-secondary);letter-spacing:.1em;text-transform:uppercase}
 .nh-deck-conf-badge-list .nh-deck-conf-badge__score{font-size:18px;font-weight:900}
 .nh-deck-conf-badge-list .nh-deck-conf-badge__bar{height:6px}
-/* ── Status pills + age decay ── */
-.nh-deck-status-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:4px;
-  font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;border:1px solid transparent}
+/* ── Status pills + age decay ──
+   FLATTENED 2026-08-28 (X Ads Manager reference: "• Active" / "• Expired" — a colored dot plus
+   colored text, no box at all) from the earlier boxed pill (border + tinted background). Same
+   dot-plus-text structure, same per-status colors, same DOM/class names (TSX untouched) — just
+   the box removed, matching the reference's genuinely minimal treatment instead of a badge. */
+.nh-deck-status-pill{display:inline-flex;align-items:center;gap:5px;
+  font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
 .nh-deck-status-pill__dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-.nh-deck-status-pill.is-active{color:var(--dk-bull);border-color:rgba(0,217,163,.35);background:rgba(0,217,163,.08)}
+.nh-deck-status-pill.is-active{color:var(--dk-bull)}
 .nh-deck-status-pill.is-active .nh-deck-status-pill__dot{background:var(--dk-bull)}
-.nh-deck-status-pill.is-watch{color:var(--dk-warn);border-color:rgba(240,185,74,.35);background:rgba(240,185,74,.08)}
+.nh-deck-status-pill.is-watch{color:var(--dk-warn)}
 .nh-deck-status-pill.is-watch .nh-deck-status-pill__dot{background:var(--dk-warn)}
-.nh-deck-status-pill.is-closed{color:var(--dk-info);border-color:rgba(110,122,153,.35);background:rgba(110,122,153,.08)}
+.nh-deck-status-pill.is-closed{color:var(--dk-info)}
 .nh-deck-status-pill.is-closed .nh-deck-status-pill__dot{background:var(--dk-info)}
 /* PASSED = the desk declined the setup. Muted and neutral ON PURPOSE: this is a discipline
    outcome, not a loss, and bear-red on 61 of 67 rows made a working board look like a disaster.
    No glow either — a skipped candidate should recede behind the rows carrying real risk. */
-.nh-deck-status-pill.is-passed{color:var(--dk-muted,#8b93a7);border-color:rgba(139,147,167,.28);background:rgba(139,147,167,.07)}
+.nh-deck-status-pill.is-passed{color:var(--dk-muted,#8b93a7)}
 .nh-deck-status-pill.is-passed .nh-deck-status-pill__dot{background:var(--dk-muted,#8b93a7)}
 .nh-deck-age-decay{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;
   letter-spacing:.06em;font-variant-numeric:tabular-nums;padding:2px 7px;border-radius:4px;border:1px solid transparent}
