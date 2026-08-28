@@ -49,11 +49,25 @@ async function main() {
   await page.goto(`${BASE}/nighthawk?view=vector`, { waitUntil: "networkidle", timeout: 120_000 });
   await page.waitForTimeout(2000);
 
-  const closedBtn = page.getByRole("button", { name: /Closed/i });
-  if (await closedBtn.count()) {
+  const closedBtn = page.getByRole("button", { name: /^Closed$/i });
+  const winnersBtn = page.getByRole("button", { name: /^Winners$/i });
+  const liveBtn = page.getByRole("button", { name: /^Live$/i });
+  const hasWinnersTab = (await winnersBtn.count()) > 0;
+
+  if (hasWinnersTab) {
+    await winnersBtn.first().click();
+    await page.waitForTimeout(600);
+  } else if (await closedBtn.count()) {
     await closedBtn.first().click();
     await page.waitForTimeout(500);
   }
+
+  const tabState = await page.evaluate(() => {
+    const tabs = [...document.querySelectorAll("button")].filter((b) =>
+      /^(Winners|Live|Closed)$/i.test(b.textContent?.trim() ?? "")
+    );
+    return tabs.map((b) => ({ label: b.textContent?.trim(), pressed: b.getAttribute("aria-pressed") }));
+  });
 
   const apiJson = await page.evaluate(async (base) => {
     const r = await fetch(`${base}/api/market/vector/pick-closures/board`, { cache: "no-store" });
@@ -62,13 +76,17 @@ async function main() {
 
   const dom = await page.evaluate(() => {
     const scrollport = document.querySelector(".nh-deck-rows");
-    const rows = [...document.querySelectorAll(".vector-closure-row")];
+    const closureRows = [...document.querySelectorAll(".vector-closure-row")];
+    const leaderRows = [...document.querySelectorAll(".vector-leader-row")];
+    const rows = leaderRows.length ? leaderRows : closureRows;
     const first = rows[0];
     const rect = first?.getBoundingClientRect();
     const style = first ? getComputedStyle(first) : null;
     return {
       scrollportClass: scrollport?.className ?? null,
       rowCount: rows.length,
+      leaderRowCount: leaderRows.length,
+      closureRowCount: closureRows.length,
       firstText: first?.innerText?.slice(0, 200) ?? null,
       firstHeight: rect?.height ?? 0,
       firstFlexShrink: style?.flexShrink ?? null,
@@ -78,20 +96,29 @@ async function main() {
   await page.screenshot({ path: `${OUT}/nighthawk-vector-tab.png`, fullPage: false });
 
   const hasFlexCol = dom.scrollportClass?.includes("flex-col") ?? false;
+  const boardHasLeaders = Array.isArray(apiJson?.leaders);
   const report = {
     base: BASE,
     apiClosedCount: apiJson?.closed?.length ?? 0,
+    apiLeadersCount: apiJson?.leaders?.length ?? 0,
+    apiWinnersCount: apiJson?.winners?.length ?? 0,
+    boardHasLeaders,
+    tabState,
     dom,
     verdict:
-      dom.rowCount === 0 && (apiJson?.closed?.length ?? 0) > 0
-        ? "RED — API has rows but DOM empty"
-        : hasFlexCol
-          ? "RED — flex-col on scrollport (regression)"
-          : dom.rowCount > 0 && dom.firstHeight < 60
-            ? "RED — rows collapsed (layout bug)"
-            : dom.rowCount > 0
-              ? "GREEN — closure rows render full height"
-              : "AMBER — no closed picks today",
+      !boardHasLeaders && (apiJson?.closed?.length ?? 0) > 0
+        ? "AMBER — legacy board API (deploy rolling or pending)"
+        : dom.rowCount === 0 && (apiJson?.closed?.length ?? 0) > 0 && !hasWinnersTab
+          ? "RED — API has rows but DOM empty"
+          : hasFlexCol
+            ? "RED — flex-col on scrollport (regression)"
+            : dom.rowCount > 0 && dom.firstHeight < 60
+              ? "RED — rows collapsed (layout bug)"
+              : boardHasLeaders && hasWinnersTab
+                ? "GREEN — winners board + tabs shipped"
+                : dom.rowCount > 0
+                  ? "GREEN — closure rows render full height"
+                  : "AMBER — no picks visible today",
   };
 
   await writeFile(`${OUT}/report.json`, JSON.stringify(report, null, 2));

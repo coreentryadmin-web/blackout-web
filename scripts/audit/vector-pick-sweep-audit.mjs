@@ -15,15 +15,27 @@ async function main() {
   const verdicts = [];
 
   if (FORCE_SWEEP) {
-    const cron = await fetch(`${BASE}/api/cron/vector-pick-sweep?force=1`, {
-      headers: { Authorization: `Bearer ${process.env.CRON_SECRET || ""}` },
-    }).then((r) => r.json().catch(() => ({})));
+    const cronSecret = process.env.CRON_SECRET || "";
+    const cronRes = await fetch(`${BASE}/api/cron/vector-pick-sweep?force=1`, {
+      headers: { Authorization: `Bearer ${cronSecret}`, Accept: "application/json" },
+    });
+    const cron = await cronRes.json().catch(() => ({}));
+    const sweepOk =
+      cronRes.status === 202 ||
+      cron.ok === true ||
+      cron.status === "accepted" ||
+      cron.skipped === true;
     verdicts.push({
       stage: "CRON-SWEEP",
-      verdict: cron.ok || cron.status === "accepted" ? "GREEN" : "AMBER",
-      detail: cron.reason || cron.note || JSON.stringify(cron).slice(0, 120),
+      verdict: sweepOk ? "GREEN" : cronRes.status === 401 ? "AMBER" : "RED",
+      detail:
+        cron.reason ||
+        cron.note ||
+        cron.error ||
+        `HTTP ${cronRes.status} ${JSON.stringify(cron).slice(0, 100)}`,
+      httpStatus: cronRes.status,
     });
-    await new Promise((r) => setTimeout(r, 8000));
+    if (cronRes.status === 202) await new Promise((r) => setTimeout(r, 12_000));
   }
 
   const board = await fetchAuditJson(BASE, "/api/market/vector/pick-closures/board?limit=500");
