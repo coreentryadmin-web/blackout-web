@@ -49,22 +49,24 @@ async function main() {
   await page.goto(`${BASE}/nighthawk?view=vector`, { waitUntil: "networkidle", timeout: 120_000 });
   await page.waitForTimeout(2000);
 
-  const closedBtn = page.getByRole("button", { name: /^Closed$/i });
-  const winnersBtn = page.getByRole("button", { name: /^Winners$/i });
-  const liveBtn = page.getByRole("button", { name: /^Live$/i });
+  const winnersBtn = page.getByRole("button", { name: /Winners/i });
+  const closedBtn = page.getByRole("button", { name: /Closed/i });
   const hasWinnersTab = (await winnersBtn.count()) > 0;
 
   if (hasWinnersTab) {
     await winnersBtn.first().click();
     await page.waitForTimeout(600);
-  } else if (await closedBtn.count()) {
+  }
+
+  // Verify closed rows render on the Closed tab (labels include counts, e.g. "Closed (47)").
+  if (await closedBtn.count()) {
     await closedBtn.first().click();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(600);
   }
 
   const tabState = await page.evaluate(() => {
     const tabs = [...document.querySelectorAll("button")].filter((b) =>
-      /^(Winners|Live|Closed)$/i.test(b.textContent?.trim() ?? "")
+      /^(Winners|Live|Closed)(\s*\(\d+\))?$/i.test(b.textContent?.trim() ?? "")
     );
     return tabs.map((b) => ({ label: b.textContent?.trim(), pressed: b.getAttribute("aria-pressed") }));
   });
@@ -114,11 +116,13 @@ async function main() {
             ? "RED — flex-col on scrollport (regression)"
             : dom.rowCount > 0 && dom.firstHeight < 60
               ? "RED — rows collapsed (layout bug)"
-              : boardHasLeaders && hasWinnersTab
-                ? "GREEN — winners board + tabs shipped"
-                : dom.rowCount > 0
-                  ? "GREEN — closure rows render full height"
-                  : "AMBER — no picks visible today",
+              : boardHasLeaders && hasWinnersTab && dom.closureRowCount > 0
+                ? "GREEN — winners board + tabs shipped, closed rows render"
+                : boardHasLeaders && hasWinnersTab
+                  ? "GREEN — winners board + tabs shipped"
+                  : dom.rowCount > 0
+                    ? "GREEN — closure rows render full height"
+                    : "AMBER — no picks visible today",
   };
 
   await writeFile(`${OUT}/report.json`, JSON.stringify(report, null, 2));
