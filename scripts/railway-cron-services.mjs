@@ -35,6 +35,7 @@ export const CRON_SERVICE_NAMES = {
   "vector-universe-snapshot": "Vector-Universe-Snapshot",
   "vector-full-state-snapshot": "Vector-Full-State-Snapshot",
   "vector-dark-pool-warm": "Vector-Dark-Pool-Warm",
+  "vector-pick-sweep": "Vector-Pick-Sweep",
   "vector-walls-warm": "Vector-Walls-Warm",
   "vector-alerts": "Vector-Alerts",
   "vector-bead-record": "Vector-Bead-Record",
