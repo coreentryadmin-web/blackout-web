@@ -55,6 +55,14 @@ test("is case-insensitive", () => {
   assert.ok(isInternalAuditEmail("Claude-Audit-Temp@BlackoutTrades.com"));
 });
 
+// exhaustive-<ts> and endpoint-audit-<ts> (#3029's original explicit-prefix list) are covered by
+// the digit-suffix and -audit- checks above without needing their own prefix entries — verified:
+test("exhaustive- and endpoint-audit- (from #3029's original prefix list) still resolve, via the broader rules", () => {
+  assert.ok(isInternalAuditEmail("exhaustive-1787898161119@blackouttrades.com"), "digit-suffix rule");
+  assert.ok(isInternalAuditEmail("endpoint-audit-1787898161119@blackouttrades.com"), "-audit- rule");
+  assert.ok(isInternalAuditEmail("claude-e2e-premium-482913@blackouttrades.com"), "claude- rule");
+});
+
 test("does not flag a real member's email that merely contains similar substrings", () => {
   assert.ok(!isInternalAuditEmail("claude@gmail.com"), "a real person literally named Claude");
   assert.ok(!isInternalAuditEmail("claude.smith@yahoo.com"), "dot, not the claude- hyphen prefix");

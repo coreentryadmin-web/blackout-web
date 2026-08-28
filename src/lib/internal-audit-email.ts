@@ -3,9 +3,13 @@
  * PRODUCTION Clerk. `scripts/audit/lib/clerk-audit-user.mjs` is the shared entry point, but
  * ~30 older/ad-hoc harnesses each mint their own address inline instead of going through it —
  * see `docs/audit/findings-staging/2026-08-28-ops-alert-audit-account-noise.md` (the original
- * fix) and `docs/audit/findings-staging/2026-08-28-e2e-audit-emails-not-recognized.md` (this
- * widening — found live: `vector-e2e-<ts>@` and `ios-ui-e2e-<ts>@` posting real "New member
- * signed up" alerts to ops Discord, neither caught by the original two rules).
+ * fix), `docs/audit/findings-staging/2026-08-28-ops-e2e-harness-signup-noise.md` (#3029's
+ * first-pass widening — live-caught `vector-e2e-<ts>@`/`ios-ui-e2e-<ts>@` alerts, fixed with an
+ * `-e2e-` substring check plus an explicit prefix list), and
+ * `docs/audit/findings-staging/2026-08-28-e2e-audit-emails-not-recognized.md` (this widening —
+ * a full `scripts/**` sweep found the explicit-prefix approach was still missing real generators:
+ * `e2e-subject-` starts with "e2e-", not "-e2e-"; `nh-deploy-`, `cto-free-`, `admin-ui-`,
+ * `nav-soak-`, `desk-ui-` etc. carry no e2e/audit keyword at all).
  *
  * Every convention observed across those ~30 scripts reduces to five shapes:
  *  1. This repo's own `claude-` prefix (claude-audit-temp+..., claude-nh-check, claude-e2e-...).
@@ -13,8 +17,8 @@
  *  3. `e2e` as its own hyphen-delimited segment (vector-e2e-, spx-e2e-, ios-ui-e2e-,
  *     e2e-subject-, e2e-subject-fb-, zerodte-e2e-).
  *  4. A hyphen immediately followed by 9+ digits — a `Date.now()` (Unix-ms) suffix, the
- *     dominant convention for the rest (rth-sweep-, jwt-probe-, nh-deploy-,
- *     deep-security-audit's `${label}-${Date.now()}-...`, premium-security-audit's
+ *     dominant convention for the rest (rth-sweep-, rth-test-, exhaustive-, jwt-probe-,
+ *     nh-deploy-, deep-security-audit's `${label}-${Date.now()}-...`, premium-security-audit's
  *     `${label}-${Date.now()}`, ...). Anchored to a hyphen so a genuine phone-number-style
  *     local part ("5551234567@...") cannot false-positive.
  *  5. A hyphen immediately followed by exactly 8 lowercase hex chars — the shape of
