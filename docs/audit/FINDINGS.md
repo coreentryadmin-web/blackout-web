@@ -16368,11 +16368,15 @@ enforces `MIN_PUBLISH_SCORE = 42`.
 **Fix:** Added `DIVERSITY_HEDGE_FLOOR = 20` as the minimum score for backfill candidates.
 File: `play-backfill.ts:87`.
 
-**Status:** COMMITTED (PR #1176, batch 5)
+**Status.** FIXED — all four sub-fixes confirmed present in `main` today: the input-guard on
+`PlayTerminal.tsx`'s keydown handler and `stockFlash`/`useFlash(play?.stockPrice)` both present
+(command-deck/PlayTerminal.tsx), and `DIVERSITY_HEDGE_FLOOR` wired into `deterministic-edition.ts`
+(value has since been recalibrated 20→35 per a later PR-N31 diversity-swap change — the mechanism
+is what this entry verifies, not the exact original number). Restamped, the pre-existing
+"**Status:**" line (colon inside bold) was not read by the reconciler.
 
 ## 2026-07-28 — [correctness] "no dominant pattern" sentinel leaks into thesis text + compounding option-coherence push inflates R:R (P1×2)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Severity.** P1 (sentinel leak) / P1 (R:R inflation).
 
@@ -16422,7 +16426,10 @@ bound the compounding effect.
 change for a P1 fix. Capping relative to the already-computed entry-to-target distance achieves the
 same goal (bound the total push) without a signature change.
 
-**Status:** FIXED (branch `fix/nighthawk-sentinel-and-rr-inflation`, PR pending).
+**Status.** FIXED — both fixes confirmed present in `main` today: the sentinel no longer leaks
+(`technicals.ts:121-122`), and the 1.25× compounding-target cap is wired in
+`deterministic-edition.ts:528-538`. Restamped, the pre-existing "**Status:**" line (colon inside
+bold) was not read by the reconciler.
 
 ## 2026-07-28 — [correctness] "ambiguous" both-hit outcome deflates Night Hawk win rate (PR #1181)
 > **kind:** `FINDING`
@@ -17637,7 +17644,6 @@ staleness errors are present on `main` too, unrelated to this change).
 
 ## 2026-08-03 — [Night Hawk] Closed play row hid the real peak excursion + entry time — added
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Trigger.** User flagged a UX issue with a screenshot: a CLOSED play (META 592.5C, entered $3.15,
 stopped out at $1.57/-50%) reads as a pure loser on the left-side play list row, which shows only
@@ -17678,9 +17684,12 @@ a stray `+`; time chip shows the ET-formatted flag time when present; absent whe
 is null. All pass. Existing `PlayTerminal.ssr.test.ts` (9 cases) re-run clean after the `etClock`
 export change. `npx tsc --noEmit` clean on all three changed files.
 
-**Status:** PR pending → CI → auto-merge per standing policy. T1/T2/T3 trim-tier markers
-deliberately NOT included — logged here as a known follow-up gated on either enabling `trim_scale`
-in prod or building tier-hit tracking under `ratchet`, whichever the team decides.
+**Status.** FIXED — `firstFlaggedAt`/`etClock` and the CLOSED-row `peak` display confirmed present
+and wired in `CommandDeck.tsx:689,698-708` in `main` today (the peak display has since evolved
+further per the immediately-following entry, "Row simplified further", already confirmed merged via
+PR #1604). Restamped, the pre-existing "**Status:**" line was not read by the reconciler
+(`STALE_STATUS` matched "→ CI →" — genuinely stale phrasing, now confirmed shipped). T1/T2/T3
+trim-tier markers remain deliberately NOT included, per the entry's own scope note.
 
 ## 2026-08-03 — [Night Hawk] Row simplified further — peak/pnl% is now the PRIMARY number, badge clutter moved to the right pane
 > **kind:** `FINDING`
@@ -18370,7 +18379,6 @@ once CI's `verify` gate is green.
 
 ## 2026-08-05 — NH-R7 "Morning revalidation stage + play lifecycle" — already substantially implemented, closing as DONE (no code change)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **Context.** NH-R7 was flagged NEEDS CLARIFICATION by a prior research pass: the task doc
 (`docs/audit/NIGHTHAWK-OVERNIGHT-DECISION.md`, dated 2026-07-14) proposed a broad morning-revalidation
@@ -18440,7 +18448,11 @@ every PR-N cross-reference (all resolved to shipped, dated entries); confirmed b
 actually `import`ed/called from the live cron route (not orphaned); re-ran the three modules'
 `*.test.ts` files (41/41 pass, `npx tsx --test`).
 
-**Status:** CLOSED — DONE, no code change. Docs-only PR → `main`, auto-merge per standing policy.
+**Status.** FIXED — re-confirmed today: `computePlayVerdict`/`applyCortexMorningReveto`/
+`persistNighthawkMorningVerdicts` all still imported and called from
+`src/app/api/cron/nighthawk-morning-confirm/route.ts:36-41,361,408,455` in `main`. Original
+conclusion (CLOSED — DONE, no code change) holds. Restamped, the pre-existing "**Status:**" line
+(colon inside bold) was not read by the reconciler.
 
 ## 2026-08-05 — [NH-R2, 0DTE intelligence layer, additive-only] Structured score attribution added to the unconsumed feature-vector keystone row
 > **kind:** `FINDING`
@@ -18552,7 +18564,6 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 
 ## 2026-08-05 — [bug, live member-reported] Vector bead rails sparse/absent for the shared universe (SPY/QQQ/NVDA/~100 names) vs SPX — fix/vector-bead-density-universe
 > **kind:** `NEGATIVE-RESULT`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 | Field | Value |
 |-------|-------|
@@ -18565,6 +18576,7 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Extended fix (2nd cherry-pick, mid-review)** | While this PR was in review, Cursor pushed a follow-up commit to the original draft #1707: `feat(vector): 15s beads for non-universe tickers (not 5-min)`. Closes the LAST remaining gap — a ticker with an active live Vector SSE viewer but not yet in the ~100-name shared universe (e.g. a member's first-ever view of an obscure symbol) previously still relied on the 5-min cron only. New `recordActiveNonUniverseWallSamples` gives such tickers their own dedicated 15s recording tick (leader-gated, only runs on the elected leader), and `vector-cadence.ts` gained ticker-aware polling helpers (`vectorWallsScopePollMs`) so client-side scoped polling cadence matches server recording cadence across all three tiers (oracle 5s / universe 5s / on-demand 15s). Cherry-picked this commit onto the same clean branch (applied without conflict) and re-ran the full verification pass (tsc, 529/529 vector tests, eslint, `next build`) — all clean again. |
 | **Evidence** | `npx tsc --noEmit -p .` clean (both before and after the 2nd cherry-pick). `node --import tsx --experimental-test-module-mocks --test` on the full `src/features/vector/**/*.test.ts` suite: 529/529 pass both times (includes the new `vector-bead-recorder-core.test.ts`, `vector-bead-record/route.test.ts`, and the pre-existing `vector-walls-warm.test.ts`, which needs the project's `--experimental-test-module-mocks` flag — a first pass without it crashed the whole file with a misleading `mock.module is not a function` error, confirmed as a missing-flag artifact by rerunning with the flag, same false-alarm class documented in this session's continuous-monitor notes). `npx eslint` on every touched file: 0 errors both times (4 `react-hooks/exhaustive-deps` warnings on `VectorChart.tsx` after the 2nd commit, up from 3 — confirmed same warning CLASS already present on `origin/main` before this diff, the 4th is one more instance from the new ticker-aware cadence hook, non-blocking). `npx next build` — full production build succeeds, re-verified after the 2nd commit. |
 | **Blast radius** | New files: `src/lib/vector-bead-recorder-leader.ts`, `src/features/vector/lib/vector-bead-recorder-core.ts` (+test), `vector-bead-recorder-logic.ts`, `src/app/api/cron/vector-bead-record/route.ts` (+test), `scripts/audit/vector-bead-probe.mjs`, `railway.vector-bead-record.toml`. Modified: `vector-universe.ts` (extracted `recordVectorUniverseWallSample` as a shared single-ticker recorder used by both the 5s leader and the existing 5-min cron), `vector-walls-warm.ts` (bead-recording removed, cache-priming only), `vector-snapshot.ts` (client-side narrowed-horizon accumulator), `vector-cadence.ts` (ticker-aware polling constants), `vector-wall-sample.ts`, `VectorChart.tsx`/`VectorGexLadder.tsx`, `(site)/vector/page.tsx` (SPY/QQQ default-0DTE), `process-role.ts`/`web-boot-warm.ts`/`init-data-sockets.ts` (boot wiring, mirrors `rth-warm-leader` exactly), `cron-registry.ts`/`cron-dispatch.ts` (new cron entry). No changes to 0DTE/Swing/Banger grading, ledger, or commit logic — Vector-only. |
+| **Status** | FIXED — BUILT, VERIFIED (twice — original + Cursor's mid-review follow-up), PR #1708 → `main`, CI green, merged 2026-08-05 16:02:48 UTC. Deploy (`ecr-push-production.yml`) completed for the merge commit (`31b67d35`). Post-deploy live verification via `scripts/audit/vector-bead-probe.mjs`: SPY/QQQ/NVDA sample density all improved 6-30x. Re-confirmed today: `src/lib/vector-bead-recorder-leader.ts` and `vectorWallsScopePollMs` (`vector-cadence.ts:79`) both still present in `main`. (This status row was previously misplaced under the following "Vector Daily/Weekly" entry's own table, one entry too late — moved here to its correct entry, restamped in the process.) |
 
 ## 2026-08-05 — [enhancement, CTO audit P2] Vector Daily/Weekly historical chart view
 > **kind:** `FINDING`
@@ -18580,7 +18592,6 @@ actually `import`ed/called from the live cron route (not orphaned); re-ran the t
 | **Evidence** | `npx tsc --noEmit -p .` clean. `node --import tsx --test src/features/vector/lib/vector-daily-bars.test.ts`: 6/6 pass (empty input, full Mon-Fri week, holiday-shortened week, two-week ordering, volume-preservation-without-fabrication, unit-type guard). `npx eslint` on all four touched/new files: 0 errors. `rm -rf .next && npx next build`: clean production build; `/api/market/vector/daily-bars` route builds; local `next start` smoke-check returns the expected 401 (auth-gated, same as every other Vector market route) rather than a 500/crash. |
 | **Blast radius** | New files: `vector-daily-bars.ts` (+test), `VectorDailyChart.tsx`, `daily-bars/route.ts`. Modified: `VectorPageShell.tsx` (new toggle + state, standalone page only), `globals.css` (new `.vector-daily-chart*`/`.vector-chart-view-*` rules). Zero changes to `VectorChart.tsx`, `vector-bar-timeframes.ts`, or any intraday/live/replay/wall-history code path. |
 | **Status** | FIXED — shipped and verified present in `main` on 2026-08-08 by `scripts/audit/findings-verify-stale.mjs` (found: `fetchStockDailyBars`, `fetchIndexDailyBars`, `smaSeries`). Restamped from a mid-flight status that was never revisited. |
-| **Status** | BUILT, VERIFIED (twice — original + Cursor's mid-review follow-up), PR #1708 → `main`, CI green, merged 2026-08-05 16:02:48 UTC. Deploy (`ecr-push-production.yml`) completed successfully for the merge commit (`31b67d35`) at 16:02:51 UTC. **Post-deploy live verification (16:37 UTC, ~35min after deploy) via `scripts/audit/vector-bead-probe.mjs` against prod**: SPX 5760 samples/medianGapSec 5 (unchanged, was always fine); **SPY 743 samples (up from the pre-fix ~515) medianGapSec 5; QQQ 307 (up from ~53) medianGapSec 5; NVDA 157 (up from ~50) medianGapSec 10** (on-demand tier, still ~30-90x denser than the pre-fix 5-15min gaps). All four tickers' most-recent gap sequences are tight and consistent — the large `maxGapSec` values reported are the historical pre-deploy gap baked into the same-session average, not a current issue. Fix confirmed working live. Original mixed draft PR #1707 left untouched/unmerged (its Thermal Discord content needed its own separate PR — see the next FINDINGS entry). |
 
 ## 2026-08-05 — [enhancement, CTO audit P0] Vector Suggested Play card + GEX ladder stale-TODO correction
 > **kind:** `FINDING`
@@ -19001,7 +19012,14 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 
 ## 2026-08-06 — [P1, Night Hawk LEGACY] The 0% win rate is REAL, the 3.5× gate is NOT its cause, and the measurement layer is what is actually broken — PRESENTATION-ONLY recalibration (5 PRs, geometry PARKED)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status.** FIXED (presentation-only recalibration, as scoped — the underlying geometry defect
+this campaign deliberately did NOT touch remains OPEN, per the entry's own framing). Confirmed
+today: PR 3's fill-edge-basis `computeRiskReward` is live (`play-levels.ts`, tested against the
+band-mid in `play-levels.test.ts`), PR 4's `target_atr_multiple` is surfaced on the play card
+(`PlaybookBriefingPanel.tsx:25`, `adapters.ts:655,849`), and PR 5's edge-basis parallel series /
+"target-hit rate" relabeling is present in `analytics.ts:210,649` (`edge < mid` invariant tested in
+`analytics.test.ts:75`). Headline win rate is unaffected by design, as the entry states.
 
 | Field | Value |
 |-------|-------|
