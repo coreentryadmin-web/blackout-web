@@ -8,6 +8,39 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-08-28 (12:20 UTC) — [SEO] Lane heartbeat: Repeat validation cycle — state STABLE
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Scheduled SEO lane heartbeat (routine 6-hour validation cycle).
+
+**Result — `OVERALL: PASS`, `EXIT=0` — IDENTICAL to 06:20 UTC cycle:**
+
+1. **Homepage CLS (post-Cloudflare purge):**
+   - Desktop 1440×900: **0.0007** (65/65 assets routed ok)
+   - Verdict: **GOOD** (well under 0.1 threshold; fixes holding)
+
+2. **OG image crawlability (`/api/og`):**
+   - HTTP 200, content-type: image/png
+   - Unauthenticated (crawlable by search engines)
+   - Verdict: **LIVE** (OG crawlability confirmed)
+
+3. **PR sweep (`agent-pr-sweep.mjs`):**
+   - 1 open agent PR (not SEO-related; #3047 heatmap gamma_flip verifier, CI-RUNNING)
+   - 0 conflicted — no rebases needed
+   - 0 red CI blocking SEO work
+   - Verdict: **CLEAR** (no SEO-lane blockers)
+
+4. **GA4→Google Ads conversion integration (`google-ads-conversion-verify.mjs`):**
+   - Code ready: fail-closed validation, all three actions wired
+   - Config check: 4 FAIL, 1 WARN (NEXT_PUBLIC_GOOGLE_ADS_ID + labels not provisioned)
+   - Deployed tag: No AW- config in HTML (env vars not in ECS task definition)
+   - Verdict: **BLOCKED ON OPERATOR** (code complete, awaiting provisioning — same as 06:20)
+
+**Interpretation:**
+Production state is **STABLE AND UNCHANGED** across morning/midday cycles. All deployed fixes hold. No on-page SEO work available; all lanes awaiting out-of-lane blockers: authority/backlinks and GA4 operator provisioning (NEXT_PUBLIC_GOOGLE_ADS_ID + labels to blackout-production/app/env).
+
+---
 ## 2026-08-28 (06:20 UTC) — [SEO] Lane heartbeat: Morning validation cycle — state STABLE
 
 **Severity.** — (no defect found)
@@ -70,6 +103,21 @@ Production state is **STABLE**. All published fixes hold (CLS, OG crawlability).
 
 **Interpretation:**
 The CLS regression fix (#2453) holds in production under live RTH data rendering. All five measurements across this RTH window (09:35, 11:33, 12:33 ET) show CLS=0 with active data refresh every 5 seconds. No defects found. /tools/gamma-snapshot is production-ready and serving correct real-time data.
+=======
+   - 1 open agent PR (not SEO-related; #3047 heatmap gamma_flip verifier, CI-RUNNING)
+   - 0 conflicted — no rebases needed
+   - 0 red CI blocking SEO work
+   - Verdict: **CLEAR** (no SEO-lane blockers)
+
+4. **GA4→Google Ads conversion integration (`google-ads-conversion-verify.mjs`):**
+   - Code ready: fail-closed validation, all three actions wired
+   - Config check: 4 FAIL, 1 WARN (NEXT_PUBLIC_GOOGLE_ADS_ID + labels not provisioned)
+   - Deployed tag: No AW- config in HTML (env vars not in ECS task definition)
+   - Verdict: **BLOCKED ON OPERATOR** (code complete, awaiting provisioning — same as 06:20)
+
+**Interpretation:**
+Production state is **STABLE AND UNCHANGED** across morning/midday cycles. All deployed fixes hold. No on-page SEO work available; all lanes awaiting out-of-lane blockers: authority/backlinks and GA4 operator provisioning (NEXT_PUBLIC_GOOGLE_ADS_ID + labels to blackout-production/app/env).
+>>>>>>> f7af1b73f (Log 2026-08-28 12:20 UTC SEO heartbeat validation)
 
 ---
 ## 2026-08-24 (12:20 UTC) — [SEO] Lane heartbeat: Repeat validation cycle — state STABLE
