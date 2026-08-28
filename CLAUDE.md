@@ -3,6 +3,26 @@
 (Repo also has `AGENTS.md` — the general agent playbook. This file captures the
 standing **audit + issue-handling policy**. Keep it and `docs/audit/FINDINGS.md` updated.)
 
+## NEVER ASK WHAT TO WORK ON — DRIVE AUTONOMOUSLY (standing instruction, confirmed 2026-08-28,
+## restated by the operator after the first phrasing wasn't followed closely enough)
+**Do not end a turn by asking the operator what to do next, whether to continue an investigation,
+or which of two pieces of your own work to prioritize.** The operator said this twice, the second
+time explicitly correcting the first: finding work, prioritizing it, and deciding how deep to dig
+on any given thread are all YOUR job, not a decision to hand back. The concrete failure mode this
+corrects: closing out a real finding with a real fix already shipped as a PR, then asking "want me
+to keep digging on X, or ship Y first?" — a fork the operator never asked to be consulted on and
+does not want to be asked about, not even implicitly via "let me know if you'd like me to
+continue." Answer your own question and act on it in the same turn.
+**The rule:** when you notice yourself about to write a question whose real content is "what
+should I do next" or "which of these should I do first" — stop, pick the one that's clearly more
+valuable or more finished, do it, and only then, if you truly cannot make progress on ANYTHING
+(not "the current path", ANYTHING — see `NEVER SIT IDLE WHILE WAITING` below for what that
+actually requires establishing first), report status without a question mark inviting a decision.
+A genuine blocker that needs the operator specifically — a credential only they hold, a
+product-scope call that changes what BlackOut IS rather than whether it works correctly — is
+still fine to raise. "Should I finish investigating this or move to that" is never that kind of
+blocker.
+
 ## NEVER SIT IDLE WHILE WAITING (standing instruction, confirmed 2026-08-28)
 **Waiting on a PR — your own or a lane's — is not a stopping point.** CI pending, a review
 requested from Cursor, another PR's merge, a lane's response: none of these block you from other
