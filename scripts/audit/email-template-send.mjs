@@ -31,6 +31,7 @@ import { welcomePremiumEmail } from "@/lib/email/templates/welcome-premium";
 import { completeSignupEmail } from "@/lib/email/templates/complete-signup";
 import { downgradeEmail } from "@/lib/email/templates/downgrade";
 import { paymentFailedEmail } from "@/lib/email/templates/payment-failed";
+import { trialEndingSoonEmail } from "@/lib/email/templates/trial-ending-soon";
 import { scheduledCancelEmail } from "@/lib/email/templates/scheduled-cancel";
 import { cancelReversedEmail } from "@/lib/email/templates/cancel-reversed";
 import { accessEndedEmail } from "@/lib/email/templates/access-ended";
