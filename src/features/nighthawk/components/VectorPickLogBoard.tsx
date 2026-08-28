@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { Badge, EmptyState, Panel, Skeleton } from "@/components/ui";
 import { etDateTimeShort } from "@/lib/et-clock";
@@ -12,6 +12,7 @@ import type {
 import {
   filterVectorClosureRows,
   formatPremiumPct,
+  preferredVectorBoardSection,
   premiumPctTone,
   sortVectorClosureRows,
 } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
@@ -142,6 +143,7 @@ export function VectorPickLogBoard() {
   const todaySession = etSessionDate(Date.now()) ?? "";
   const [sessionFilter, setSessionFilter] = useState<"today" | "all">("today");
   const [section, setSection] = useState<BoardSection>("winners");
+  const sectionUserPicked = useRef(false);
   const [reasonFilter, setReasonFilter] = useState<VectorClosureReasonFilter>("all");
   const [sort, setSort] = useState<VectorClosureSort>("pct_desc");
   const [tickerQuery, setTickerQuery] = useState("");
@@ -158,6 +160,12 @@ export function VectorPickLogBoard() {
   const winners = data?.winners ?? [];
   const leaders = data?.leaders ?? [];
   const closed = data?.closed ?? [];
+
+  useEffect(() => {
+    if (sectionUserPicked.current || !data) return;
+    const next = preferredVectorBoardSection(winners.length, leaders.length);
+    setSection((cur) => (cur === next ? cur : next));
+  }, [data, winners.length, leaders.length]);
 
   const filteredClosed = useMemo(() => {
     const filtered = filterVectorClosureRows(closed, {
@@ -241,7 +249,10 @@ export function VectorPickLogBoard() {
                     ? "rounded border border-cyan-400/60 bg-cyan-400/10 px-2 py-1 text-xs font-bold text-white"
                     : "rounded border border-white/10 px-2 py-1 text-xs font-bold text-sky-200"
                 }
-                onClick={() => setSection(id)}
+                onClick={() => {
+                  sectionUserPicked.current = true;
+                  setSection(id);
+                }}
               >
                 {label}
               </button>
