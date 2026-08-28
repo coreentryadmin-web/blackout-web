@@ -91,8 +91,16 @@ export function methodologyPageGate(html, status = 200) {
   }
   const hasTitle = /Grading methodology|Public record/i.test(html);
   const hasAntiBlend = /never blended|three methodologies/i.test(html);
-  if (hasTitle && hasAntiBlend) {
-    return { ok: true, reason: "methodology page live with anti-blend copy" };
+  const hasLaneNav =
+    /methodology-lane-nav/i.test(html) &&
+    /#methodology-spx/i.test(html) &&
+    /#methodology-nighthawk/i.test(html) &&
+    /#methodology-zerodte/i.test(html);
+  if (hasTitle && hasAntiBlend && hasLaneNav) {
+    return { ok: true, reason: "methodology page live with anti-blend copy + lane nav" };
+  }
+  if (!hasLaneNav) {
+    return { ok: false, reason: "methodology page missing lane jump-nav anchors" };
   }
   return { ok: false, reason: "methodology page missing expected trust copy" };
 }
