@@ -9,6 +9,36 @@ already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
 
+## 2026-08-28 — Meridian data validator re-run (`meridian-data-validator.mjs`) — GREEN, confirms a 2026-08-18 fix holds
+
+**Why this ran.** FINDINGS.md's 2026-08-18 P1 entry "Meridian ESTIMATES/HISTORY are empty on EVERY
+mega-cap while the same payload claims history" was still marked OPEN with its root cause
+explicitly recorded as an unproven hypothesis: `loadBenzingaTickerEarnings` cached a FAILED fetch
+as `{rows: []}` for 10 minutes, so one bad upstream request read as "this company has no earnings
+history" on every panel fed from that loader. Reading `src/lib/meridian/meridian-benzinga-earnings.ts`
+today shows that fix already in the tree (`loadBenzingaTickerEarnings` now THROWS on `res.error`
+so the cache stores nothing, with a comment citing this exact finding) — but nothing had re-run the
+validator that originally caught it to confirm the fix actually resolves the symptom, as opposed to
+just changing the code around the hypothesized cause.
+
+**What ran.** `node --import tsx scripts/audit/meridian-data-validator.mjs --tickers=KEYS,HD,BHP,TJX,TGT,LOW,ADI,BABA`
+(the original 8 tickers) first — **0 events**, because none of those 8 currently sit in an earnings
+window (the finding is 10 days old; the calendar has moved on). Re-ran unfiltered
+(`--max=12`) to let it auto-discover whichever mega-caps have real upcoming earnings today:
+**12 events** — DELL, PANW, MDT, AVGO, HPE, SNOW, CIEN, ORCL, CRDO, NIO, MDB, BF.B (2026-09-01
+through 2026-09-08, importance 4-5).
+
+**Result.** `0 FAIL · 1 WARN`. The WARN is unrelated (PANW max-pain-range scope mismatch, a
+different check). Critically, **the exact coherence check that originally caught this bug** —
+`enrichment.print_history` vs `pack.history` self-contradiction, the one no ground-truth check
+could see — did not fire on any of the 12 live names. That is direct, live evidence the fix holds,
+not just that the hypothesized code path changed.
+
+**Not corrected here.** The FINDINGS.md entry's own OPEN status was left as-is — this repo's
+policy is that lanes never hand-edit FINDINGS.md directly (see `findings-staging/README.md`), and
+a live-verification restamp like this one is exactly the kind of thing `findings-reconcile.mjs` /
+a coordinator pass is built to fold in, not a one-off edit from this run.
+
 ## 2026-08-28 (01:09 UTC) — Outcome-grading cross-check re-run (`outcome-grading-audit.mjs --days=90`) — GREEN
 
 **Severity.** — (no defect found; confirms an earlier fix holds)
