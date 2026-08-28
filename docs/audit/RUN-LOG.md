@@ -8,6 +8,23 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+
+## 2026-08-28 (01:09 UTC) — Outcome-grading cross-check re-run (`outcome-grading-audit.mjs --days=90`) — GREEN
+
+**Severity.** — (no defect found; confirms an earlier fix holds)
+
+**Why it ran.** The 2026-08-05 run of this same script found 4 real disagreements between
+`feature-store.ts`'s `labelFromPlanOutcome` and `record.ts`'s `isZeroDteWin` (MU/SPXW/META,
+OKLO), caused by the WS-11 trim-scale reconstruction silently overriding a real terminal
+`thesis_break`/`ratchet_*`/`flat_theta_bleed` exit. That root cause was fixed earlier this session
+(`realExitIsBarWalkReproducible`/`officialOverridingRealExit` in `record.ts`, logged separately in
+`docs/audit/findings-staging/2026-08-27-ws11-reconstruction-overrides-real-exit.md`). This re-run
+confirms the fix holds against the live population rather than only against its own unit fixtures.
+
+**Result.** 344 plays scanned (122 legacy/pre-WS10, 222 WS-10 executable-graded), 322 with evidence
+on both sides, **322/322 agreement (100%), 0 disagreements** — up from 126/130 (96.9%) pre-fix.
+
+---
 ## 2026-08-27 (18:18 UTC) — [SEO] Lane heartbeat: STEP 1–3 validation — fixes verified, GA4 blocking on env vars
 
 **Severity.** — (no defect found; external blocker identified)
