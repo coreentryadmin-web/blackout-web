@@ -80,13 +80,32 @@ test("empty plays array renders the empty state, not an empty table", () => {
   assert.doesNotMatch(html, /<table/);
 });
 
-test("window buttons render all three options with the current one marked active", () => {
+test("range dropdown trigger shows the current window's label and starts closed", () => {
   const html = renderToStaticMarkup(
     React.createElement(PlayHistoryTable, { plays: PLAYS, windowDays: 90, onWindowDaysChange: () => {} })
   );
-  assert.match(html, /aria-pressed="true"[^>]*>90d/);
-  assert.match(html, />7d</);
-  assert.match(html, />30d</);
+  assert.match(html, /nh-history-range-trigger/);
+  assert.match(html, /Last 90 days/);
+  assert.match(html, /aria-expanded="false"/);
+  // The preset panel is unmounted (not just hidden) until the trigger is clicked — no
+  // "Last 7 days"/"Last 30 days" option text should reach the first render.
+  assert.doesNotMatch(html, /Last 7 days/);
+  assert.doesNotMatch(html, /Last 30 days/);
+});
+
+test("range dropdown shows a distinct label per window size, all within the API's real 90-day cap", () => {
+  for (const [days, label] of [
+    [7, "Last 7 days"],
+    [14, "Last 14 days"],
+    [30, "Last 30 days"],
+    [60, "Last 60 days"],
+    [90, "Last 90 days"],
+  ] as const) {
+    const html = renderToStaticMarkup(
+      React.createElement(PlayHistoryTable, { plays: PLAYS, windowDays: days, onWindowDaysChange: () => {} })
+    );
+    assert.match(html, new RegExp(label), `windowDays=${days} should show "${label}"`);
+  }
 });
 
 test("renders direction and tier filter pills plus sortable Date/P&L column headers", () => {

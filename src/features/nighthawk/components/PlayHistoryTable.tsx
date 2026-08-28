@@ -16,7 +16,7 @@
 // ("flat") — never a red/amber/green ramp keyed to magnitude the way WinRateBar's tier bars
 // use elsewhere in this same panel. A history row is a single realized outcome, not a rate;
 // there is no "weak win" shade to earn here, only up, down, or flat.
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import type { ZeroDteRecordPlay } from "@/lib/zerodte/record";
 import type { ZeroDteTier } from "@/lib/zerodte/tiers";
@@ -77,8 +77,100 @@ function fmtMovePct(v: number | null): string {
   return `${v >= 0 ? "+" : ""}${v}%`;
 }
 
-export const HISTORY_WINDOW_OPTIONS = [7, 30, 90] as const;
+// Widened from the original [7, 30, 90] to a fuller preset set (matching the density of a real
+// range-picker dropdown) — every value is still well inside the API's own MAX_DAYS=90 cap
+// (src/app/api/market/zerodte/record/route.ts), so this is a UI-only richness change, not a new
+// capability claim.
+export const HISTORY_WINDOW_OPTIONS = [7, 14, 30, 60, 90] as const;
 export type HistoryWindowDays = (typeof HISTORY_WINDOW_OPTIONS)[number];
+
+const HISTORY_WINDOW_LABEL: Record<HistoryWindowDays, string> = {
+  7: "Last 7 days",
+  14: "Last 14 days",
+  30: "Last 30 days",
+  60: "Last 60 days",
+  90: "Last 90 days",
+};
+
+/**
+ * Range-picker dropdown — visually modeled on the X Ads Manager reference (a trigger button
+ * showing the current range, opening a panel of presets) but scoped to what the API actually
+ * supports: a rolling "last N days ending today" window (`?days=N`, capped at 90). Deliberately
+ * NOT an arbitrary start/end calendar picker — the backend has no arbitrary-range endpoint, and
+ * building that control without the capability behind it would show a picker that silently does
+ * something other than what it displays. Single-day drill-down (the actual date-range analog)
+ * is the calendar strip below this, which IS real (dailyPnlByDate over the fetched window).
+ */
+function HistoryRangeDropdown({
+  windowDays,
+  onWindowDaysChange,
+}: {
+  windowDays: HistoryWindowDays;
+  onWindowDaysChange: (days: HistoryWindowDays) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="nh-history-range" ref={rootRef}>
+      <button
+        type="button"
+        className={clsx("nh-history-range-trigger", open && "is-open")}
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="nh-history-range-icon" aria-hidden>
+          🗓
+        </span>
+        {HISTORY_WINDOW_LABEL[windowDays]}
+        <span className="nh-history-range-chevron" aria-hidden>
+          {open ? "▲" : "▼"}
+        </span>
+      </button>
+      {open && (
+        <div className="nh-history-range-panel" role="listbox" aria-label="History window">
+          {HISTORY_WINDOW_OPTIONS.map((d) => (
+            <button
+              key={d}
+              type="button"
+              role="option"
+              aria-selected={windowDays === d}
+              className={clsx("nh-history-range-opt", windowDays === d && "is-active")}
+              onClick={() => {
+                onWindowDaysChange(d);
+                setOpen(false);
+              }}
+            >
+              {HISTORY_WINDOW_LABEL[d]}
+              {windowDays === d && (
+                <span className="nh-history-range-check" aria-hidden>
+                  ✓
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 type DirectionFilter = "ALL" | "long" | "short";
 type TierFilter = "ALL" | ZeroDteTier;
@@ -160,19 +252,7 @@ export function PlayHistoryTable({
       <PlayHistoryCalendar buckets={dailyBuckets} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
 
       <div className="nh-history-controls">
-        <div className="nh-history-window" role="group" aria-label="History window">
-          {HISTORY_WINDOW_OPTIONS.map((d) => (
-            <button
-              key={d}
-              type="button"
-              className={clsx("nh-history-window-btn", windowDays === d && "is-active")}
-              onClick={() => onWindowDaysChange(d)}
-              aria-pressed={windowDays === d}
-            >
-              {d}d
-            </button>
-          ))}
-        </div>
+        <HistoryRangeDropdown windowDays={windowDays} onWindowDaysChange={onWindowDaysChange} />
 
         <div className="nh-history-filterbar" role="group" aria-label="Direction">
           {(["ALL", "long", "short"] as const).map((d) => (
