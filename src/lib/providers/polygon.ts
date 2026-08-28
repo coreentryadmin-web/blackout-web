@@ -969,7 +969,7 @@ export async function fetchBenzingaPriceTarget(
 
 // ── SPX structure (indices) ───────────────────────────────────────────────────
 
-type AggBar = { t?: number; o: number; h: number; l: number; c: number; v?: number };
+export type AggBar = { t?: number; o: number; h: number; l: number; c: number; v?: number };
 
 function mapAggBars(results: Array<Record<string, unknown>> | undefined): AggBar[] {
   return (results ?? []).map((r) => ({
@@ -997,6 +997,26 @@ export async function fetchStockMinuteBars(symbol: string, from: string, to: str
   const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
     `/v2/aggs/ticker/${sym}/range/1/minute/${from}/${to}`,
     { limit: "5000", sort: "asc" }
+  );
+  return mapAggBars(data.results);
+}
+
+/**
+ * Option-contract minute aggs — same `/v2/aggs/ticker` endpoint the stock/index helpers above
+ * use, just given an OCC symbol (e.g. `O:NVDA260828C00190000`) instead of a plain ticker; Polygon
+ * treats it identically. Precedented offline in the audit scripts (gate-smallcap-sensitivity.mjs)
+ * but this is the first PRODUCTION request-time caller — an OCC symbol contains `:` and other
+ * characters a raw URL path segment can't carry, so (unlike the plain-ticker helpers above, whose
+ * symbols never needed it) the symbol MUST be `encodeURIComponent`-ed before it goes into the path;
+ * `polygonGet` does no encoding of its own. `from`/`to` are `YYYY-MM-DD` (Polygon's day-range form,
+ * not a timestamp) — a 0DTE contract's whole tradable life is one calendar day, so both are always
+ * the same date.
+ */
+export async function fetchOptionMinuteBars(occ: string, from: string, to: string) {
+  const sym = encodeURIComponent(occ.toUpperCase());
+  const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
+    `/v2/aggs/ticker/${sym}/range/1/minute/${from}/${to}`,
+    { limit: "1000", sort: "asc" }
   );
   return mapAggBars(data.results);
 }

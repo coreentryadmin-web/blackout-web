@@ -8,6 +8,7 @@
 // decorative animation).
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer } from "recharts";
 import type { PnlCurvePoint } from "@/features/nighthawk/lib/analytics-panel";
+import { makeEndpointDot } from "@/features/nighthawk/lib/recharts-endpoint-dot";
 
 function CurveTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: PnlCurvePoint }> }) {
   if (!active || !payload?.length) return null;
@@ -25,17 +26,6 @@ function CurveTooltip({ active, payload }: { active?: boolean; payload?: Array<{
       </div>
     </div>
   );
-}
-
-/** Only the LAST point gets a visible dot — an emphasized endpoint (today's running total),
- *  not a dot on every session tick, which just adds noise to a line already showing the full
- *  shape. Recharts calls this once per data point and passes that point's own array index. */
-function makeEndpointDot(color: string, lastIndex: number) {
-  return function EndpointDot(props: { cx?: number; cy?: number; index?: number }) {
-    const { cx, cy, index } = props;
-    if (cx == null || cy == null || index !== lastIndex) return <g key={index} />;
-    return <circle key={index} cx={cx} cy={cy} r={3.5} fill={color} stroke="none" />;
-  };
 }
 
 export function NighthawkSessionPnlChart({ points }: { points: PnlCurvePoint[] }) {

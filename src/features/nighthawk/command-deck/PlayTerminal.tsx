@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
 import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
@@ -25,6 +26,11 @@ import {
   TradeSummaryHero,
   VisualTrimLadder,
 } from "./TerminalPremiumPanels";
+
+const PlayMarkHistoryChart = dynamic(
+  () => import("@/features/nighthawk/components/PlayMarkHistoryChart").then((m) => m.PlayMarkHistoryChart),
+  { ssr: false }
+);
 
 type Tab = "thesis" | "manage" | "pnl" | "timeline";
 
@@ -797,6 +803,13 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
         <>
           <TradeOutcomePanel play={play} />
           <TradeExcursionGraphic play={play} markFlash={markFlash} />
+          {play.horizon === "ZERO_DTE" && (
+            <PlayMarkHistoryChart
+              occ={play.occ}
+              since={play.committedAt ?? play.firstFlaggedAt}
+              entry={play.entry}
+            />
+          )}
         </>
       )}
       {!premium && (
