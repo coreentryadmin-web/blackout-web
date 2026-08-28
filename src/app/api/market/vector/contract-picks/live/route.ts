@@ -10,6 +10,14 @@ import {
   resolveVectorPickLiveMid,
   type VectorPickLiveQuote,
 } from "@/features/vector/lib/vector-pick-live-status";
+import {
+  shouldPersistVectorPickClosure,
+  vectorPickClosureCommitKey,
+} from "@/lib/vector/vector-pick-closure-log";
+import {
+  insertVectorPickClosure,
+  vectorPickClosureExists,
+} from "@/lib/vector/vector-pick-closures-db";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 
@@ -23,6 +31,11 @@ type PickLiveInput = {
   expiry: string;
   entryMid?: number | null;
   caveat?: "premium_high" | "low_liquidity" | "premium_high_low_liquidity";
+  rank?: number | null;
+  label?: string | null;
+  role?: string | null;
+  premium?: number | null;
+  confidence?: number | null;
 };
 
 function quoteFromSources(
@@ -95,7 +108,7 @@ export async function POST(req: NextRequest) {
   }
 
   const picks: PickLiveInput[] = [];
-  for (const p of picksRaw.slice(0, 3)) {
+  for (const p of picksRaw.slice(0, 8)) {
     const row = p as Record<string, unknown>;
     const occ = typeof row.occ === "string" ? row.occ : null;
     const side = row.side === "call" || row.side === "put" ? row.side : null;
@@ -114,6 +127,11 @@ export async function POST(req: NextRequest) {
         row.caveat === "premium_high_low_liquidity"
           ? row.caveat
           : undefined,
+      rank: typeof row.rank === "number" ? row.rank : null,
+      label: typeof row.label === "string" ? row.label : null,
+      role: typeof row.role === "string" ? row.role : null,
+      premium: typeof row.premium === "number" ? row.premium : null,
+      confidence: typeof row.confidence === "number" ? row.confidence : null,
     });
   }
 
@@ -154,6 +172,7 @@ export async function POST(req: NextRequest) {
     });
 
     return {
+      pick,
       occ: pick.occ,
       bid: quote.bid,
       ask: quote.ask,
@@ -170,8 +189,68 @@ export async function POST(req: NextRequest) {
   });
 
   const nowMs = Date.now();
+  const sessionDate = etSessionDate(nowMs);
+  const ticker = rawTicker!;
+  const playJson =
+    play && typeof play === "object"
+      ? {
+          bias: play.bias,
+          conviction: play.conviction,
+          grade: play.grade,
+          headline: play.headline,
+          thesis: play.thesis,
+          invalidation: play.invalidation,
+          style: play.style,
+        }
+      : null;
+
+  void (async () => {
+    if (!sessionDate) return;
+    for (const row of live) {
+      if (row.actionStatus !== "dont_buy") continue;
+      const commitKey = vectorPickClosureCommitKey(sessionDate, ticker, row.occ);
+      try {
+        const exists = await vectorPickClosureExists(commitKey);
+        if (!shouldPersistVectorPickClosure(row.actionStatus, exists)) continue;
+        await insertVectorPickClosure({
+          commitKey,
+          sessionDate,
+          ticker,
+          occ: row.occ,
+          side: row.pick.side,
+          strike: row.pick.strike,
+          expiry: row.pick.expiry,
+          rank: row.pick.rank ?? null,
+          label: row.pick.label ?? null,
+          role: row.pick.role ?? null,
+          entryMid: row.pick.entryMid ?? row.pick.premium ?? null,
+          closeMid: row.mid,
+          premiumPctFromEntry: row.premiumPctFromEntry,
+          closeReason: row.actionReason,
+          setupInvalidated: row.setupInvalidated,
+          spot,
+          playJson,
+          pickJson: {
+            rank: row.pick.rank,
+            label: row.pick.label,
+            role: row.pick.role,
+            premium: row.pick.premium,
+            confidence: row.pick.confidence,
+            caveat: row.pick.caveat,
+          },
+        });
+      } catch (err) {
+        console.error("[vector/contract-picks/live] closure log failed", commitKey, err);
+      }
+    }
+  })();
+
   return NextResponse.json(
-    { live, asOf: etStamp(nowMs), session_date: etSessionDate(nowMs) },
+    {
+      live: live.map(({ pick: _pick, ...row }) => row),
+      asOf: etStamp(nowMs),
+      session_date: sessionDate,
+    },
     { headers: NO_STORE_HEADERS }
   );
 }

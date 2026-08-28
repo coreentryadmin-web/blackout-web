@@ -1112,6 +1112,11 @@ export async function fetchVectorPickLiveQuotes(params: {
     expiry: string;
     entryMid?: number | null;
     caveat?: VectorContractPick["caveat"];
+    rank?: number | null;
+    label?: string | null;
+    role?: string | null;
+    premium?: number | null;
+    confidence?: number | null;
   }>;
 }): Promise<{
   live: Array<{
