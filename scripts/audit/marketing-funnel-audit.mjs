@@ -12,7 +12,9 @@ import { execSync } from "node:child_process";
 import {
   gammaLoadingFreshnessConflict,
   homepageH1AboveFold,
+  methodologyPageGate,
   scanForbiddenMarketingCopy,
+  upgradeAnonSyncGate,
   whopScriptPriceParity,
 } from "./lib/marketing-funnel-eval.mjs";
 
@@ -122,13 +124,25 @@ async function liveScan() {
 
     await page.goto(`${BASE}/upgrade`, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.waitForTimeout(2000);
-    const signInSync = page.locator('a[href*="/sign-in"][href*="upgrade"], a:has-text("Sign in to sync")');
-    const paidSync = page.locator('button:has-text("refresh my access"), button:has-text("I paid")');
-    const anonOk = (await signInSync.count()) > 0 && (await paidSync.count()) === 0;
+    const upgradeHtml = await page.content();
+    const upgradeGate = upgradeAnonSyncGate(upgradeHtml);
     add(
       "LIVE-UPGRADE-ANON-SYNC",
-      anonOk ? "GREEN" : "RED",
-      anonOk ? "anonymous visitors see sign-in sync path" : "paid sync exposed while signed out"
+      upgradeGate.ok ? "GREEN" : "RED",
+      upgradeGate.reason
+    );
+
+    const methodologyRes = await page.goto(`${BASE}/methodology?_cb=${Date.now()}`, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
+    const methodologyStatus = methodologyRes?.status() ?? 0;
+    const methodologyHtml = await page.content();
+    const methodologyGate = methodologyPageGate(methodologyHtml, methodologyStatus);
+    add(
+      "LIVE-METHODOLOGY-PAGE",
+      methodologyGate.ok ? "GREEN" : "RED",
+      methodologyGate.reason
     );
   } catch (e) {
     add("LIVE-SCAN", "RED", e instanceof Error ? e.message : String(e));

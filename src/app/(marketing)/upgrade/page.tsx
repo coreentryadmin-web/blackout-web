@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { MarketingPageShell } from "@/components/landing/MarketingPageShell";
+import { MarketingClerkBridge } from "@/components/marketing/MarketingClerkBridge";
 import { UpgradePageShell } from "@/components/upgrade/UpgradePageShell";
+import { SyncMembershipSection } from "@/components/upgrade/SyncMembershipSection";
 import { publicPageMetadata } from "@/lib/page-metadata";
 // /upgrade now lives in the (marketing) group and wears the marketing chrome
 // (was the authenticated app shell). Import the app component styles it still
@@ -17,14 +19,14 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function UpgradePage() {
+export default async function UpgradePage() {
   return (
     <MarketingPageShell showChart={false}>
-      {/* Clear the fixed marketing nav; the marketing chrome owns the frame, so
-          UpgradePageShell renders frameless (no inner PageShell / duplicate main). */}
-      <div style={{ paddingTop: "var(--nav-offset)" }}>
-        <UpgradePageShell frame={false} />
-      </div>
+      <MarketingClerkBridge>
+        <div style={{ paddingTop: "var(--nav-offset)" }}>
+          <UpgradePageShell frame={false} syncSlot={<SyncMembershipSection />} />
+        </div>
+      </MarketingClerkBridge>
     </MarketingPageShell>
   );
 }

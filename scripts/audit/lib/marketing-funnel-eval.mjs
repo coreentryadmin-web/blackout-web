@@ -67,3 +67,32 @@ export function homepageH1AboveFold(h1TopPx, maxTopPx = 420) {
   if (h1TopPx > maxTopPx) return { ok: false, reason: `H1 starts at ${Math.round(h1TopPx)}px (max ${maxTopPx})` };
   return { ok: true, reason: `H1 at ${Math.round(h1TopPx)}px` };
 }
+
+/** Anonymous /upgrade HTML must not SSR the paid-sync CTA before Clerk hydrates. */
+export function upgradeAnonSyncGate(html) {
+  const hasSignIn = /Sign in to sync/i.test(html);
+  const hasPaidButton = /I paid|refresh my access/i.test(html);
+  if (hasSignIn && !hasPaidButton) {
+    return { ok: true, reason: "anonymous upgrade shows sign-in sync path" };
+  }
+  if (!hasSignIn && hasPaidButton) {
+    return { ok: false, reason: "paid sync exposed in anonymous HTML" };
+  }
+  if (hasSignIn && hasPaidButton) {
+    return { ok: false, reason: "both sign-in and paid sync CTAs present" };
+  }
+  return { ok: false, reason: "no sync CTA found" };
+}
+
+/** Public methodology trust page must be live with grading copy. */
+export function methodologyPageGate(html, status = 200) {
+  if (status !== 200) {
+    return { ok: false, reason: `HTTP ${status}` };
+  }
+  const hasTitle = /Grading methodology|Public record/i.test(html);
+  const hasAntiBlend = /never blended|three methodologies/i.test(html);
+  if (hasTitle && hasAntiBlend) {
+    return { ok: true, reason: "methodology page live with anti-blend copy" };
+  }
+  return { ok: false, reason: "methodology page missing expected trust copy" };
+}

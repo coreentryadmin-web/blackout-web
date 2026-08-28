@@ -268,7 +268,7 @@ const seoChecks = [
   {
     path: "/sitemap.xml",
     expect: 200,
-    test: (text) => text.includes("<urlset") && text.includes(`${BASE}/learn`),
+    test: (text) => text.includes("<urlset") && text.includes(`${BASE}/learn`) && text.includes(`${BASE}/methodology`),
   },
 ];
 
@@ -281,6 +281,35 @@ for (const c of seoChecks) {
   } catch (e) {
     fail(`${c.path} fetch failed: ${e.message}`);
   }
+}
+
+// Marketing trust surfaces — anonymous HTML must not expose paid-sync before Clerk hydrates.
+console.log("\n2a. Marketing funnel gates");
+try {
+  const { status: upgradeStatus, text: upgradeHtml } = await fetchText("/upgrade");
+  if (upgradeStatus !== 200) {
+    fail(`/upgrade → ${upgradeStatus} (expected 200)`);
+  } else {
+    const hasSignIn = /Sign in to sync/i.test(upgradeHtml);
+    const hasPaid = /I paid|refresh my access/i.test(upgradeHtml);
+    if (hasSignIn && !hasPaid) ok("/upgrade anonymous HTML → sign-in sync only");
+    else fail(`/upgrade anonymous HTML exposes paid sync (signIn=${hasSignIn} paid=${hasPaid})`);
+  }
+} catch (e) {
+  fail(`/upgrade marketing gate failed: ${e.message}`);
+}
+
+try {
+  const { status: methStatus, text: methHtml } = await fetchText("/methodology");
+  if (methStatus !== 200) {
+    warn(`/methodology → ${methStatus} (expected 200 after deploy)`);
+  } else if (/Grading methodology|Public record/i.test(methHtml) && /never blended|three methodologies/i.test(methHtml)) {
+    ok("/methodology → trust copy present");
+  } else {
+    fail("/methodology → missing expected trust copy");
+  }
+} catch (e) {
+  warn(`/methodology gate skipped: ${e.message}`);
 }
 
 // ── 2b. Desk cache warm (post-deploy cold-path guard) ───────────────────────
