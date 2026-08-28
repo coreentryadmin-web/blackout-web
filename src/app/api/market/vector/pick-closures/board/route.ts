@@ -4,13 +4,19 @@ import { requireDatabaseInProduction } from "@/lib/db";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { fetchVectorPickClosureRows } from "@/lib/vector/vector-pick-closures-db";
+import { fetchVectorPickLeaderRows } from "@/lib/vector/vector-pick-leaders-db";
+import {
+  isVectorPickWinner,
+  leaderEligibleForBoard,
+  sortLeadersForBoard,
+} from "@/lib/vector/vector-pick-sweep-core";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 
 export const dynamic = "force-dynamic";
 
-function toBoardRow(row: Awaited<ReturnType<typeof fetchVectorPickClosureRows>>[number]) {
+function toClosureRow(row: Awaited<ReturnType<typeof fetchVectorPickClosureRows>>[number]) {
   return {
     id: row.id,
     ticker: row.ticker,
@@ -36,7 +42,36 @@ function toBoardRow(row: Awaited<ReturnType<typeof fetchVectorPickClosureRows>>[
   };
 }
 
-/** Night Hawk Vector tab — read-only log of closed (Don't buy) Vector contract picks. */
+function toLeaderRow(row: Awaited<ReturnType<typeof fetchVectorPickLeaderRows>>[number]) {
+  return {
+    id: row.id,
+    ticker: row.ticker,
+    session_date: row.session_date,
+    contract: {
+      occ: row.occ,
+      side: row.side,
+      strike: row.strike,
+      expiry: row.expiry,
+      label: row.label,
+    },
+    rank: row.rank,
+    role: row.role,
+    entry_mid: row.entry_mid,
+    live_mid: row.live_mid,
+    premium_pct_from_entry: row.premium_pct_from_entry,
+    peak_premium_pct: row.peak_premium_pct,
+    action_status: row.action_status,
+    action_reason: row.action_reason,
+    setup_invalidated: row.setup_invalidated,
+    spot: row.spot,
+    play: row.vector_play,
+    pick_context: row.pick_context,
+    updated_at: row.updated_at,
+    is_winner: isVectorPickWinner(row),
+  };
+}
+
+/** Night Hawk Vector tab — live leaders (winners) + closed Don't buy picks. */
 export async function GET(req: NextRequest) {
   const authResult = await authorizeCronOrTierApi(req, "premium");
   if (authResult instanceof Response) return authResult;
@@ -50,22 +85,39 @@ export async function GET(req: NextRequest) {
   if (dbDenied) return dbDenied;
 
   try {
-    const limitRaw = Number(req.nextUrl.searchParams.get("limit") ?? "300");
-    const limit = Number.isFinite(limitRaw) ? Math.min(500, Math.max(1, Math.round(limitRaw))) : 300;
+    const limitRaw = Number(req.nextUrl.searchParams.get("limit") ?? "500");
+    const limit = Number.isFinite(limitRaw) ? Math.min(500, Math.max(1, Math.round(limitRaw))) : 500;
     const sessionDateRaw = req.nextUrl.searchParams.get("session_date")?.trim() ?? "";
-    const sessionDate = /^\d{4}-\d{2}-\d{2}$/.test(sessionDateRaw) ? sessionDateRaw : null;
-    const rows = await fetchVectorPickClosureRows(limit, sessionDate);
     const nowMs = Date.now();
+    const todaySession = etSessionDate(nowMs);
+    const sessionDate = /^\d{4}-\d{2}-\d{2}$/.test(sessionDateRaw) ? sessionDateRaw : todaySession;
+
+    const [leaderRows, closedRows] = await Promise.all([
+      fetchVectorPickLeaderRows({ sessionDate, limit }),
+      fetchVectorPickClosureRows(limit, sessionDate),
+    ]);
+
+    const leadersAll = leaderRows.filter(leaderEligibleForBoard).map(toLeaderRow);
+    const leaders = sortLeadersForBoard(leadersAll);
+    const winners = leaders.filter((r) => r.is_winner);
+    const closed = closedRows.map(toClosureRow);
+
     return NextResponse.json(
       roundFloats({
         available: true,
         as_of: etStamp(nowMs),
-        session_date: etSessionDate(nowMs),
+        session_date: sessionDate,
         note:
-          "Closed Vector contract picks — first Don't buy per contract while the Vector desk live-evaluates picks. Premium % is vs pick entry mid, not a graded trade P&L.",
-        coverage:
-          "Logged when /vector (or any client) polls live pick quotes — not every ticker in the universe is evaluated unless the desk is open.",
-        closed: rows.map(toBoardRow),
+          "Premium % is option mid vs pick entry — not Night Hawk 0DTE trade P&L. Leaders refresh via vector-pick-sweep cron (~2 min RTH).",
+        coverage: {
+          leaders: leaders.length,
+          winners: winners.length,
+          closed: closed.length,
+          note: "Universe sweep evaluates every Vector ticker — no /vector viewer required.",
+        },
+        leaders,
+        winners,
+        closed,
       }),
       { headers: NO_STORE_HEADERS }
     );

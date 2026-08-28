@@ -50,7 +50,7 @@ test("evaluateVectorPickLiveStatus: dont_buy when premium extended", () => {
   assert.match(r.reason, /extended/i);
 });
 
-test("evaluateVectorPickLiveStatus: dont_buy when setup invalidated", () => {
+test("evaluateVectorPickLiveStatus: dont_buy when setup invalidated and premium not favorable", () => {
   const r = evaluateVectorPickLiveStatus({
     spot: 568,
     side: "call",
@@ -62,6 +62,21 @@ test("evaluateVectorPickLiveStatus: dont_buy when setup invalidated", () => {
   });
   assert.equal(r.status, "dont_buy");
   assert.equal(r.setupInvalidated, true);
+});
+
+test("evaluateVectorPickLiveStatus: caution when setup invalidated but premium still +15%", () => {
+  const r = evaluateVectorPickLiveStatus({
+    spot: 568,
+    side: "put",
+    entryMid: 1.0,
+    quote: { bid: 3.4, ask: 3.8, mid: 3.6, delta: -0.4 },
+    invalidation: "5m close < 570",
+    bias: "long",
+    putWall: 570,
+  });
+  assert.equal(r.status, "caution");
+  assert.equal(r.setupInvalidated, true);
+  assert.match(r.reason, /manage exit/i);
 });
 
 test("resolveVectorPickLiveMid: prefers bid/ask mid over a stale last-trade mark", () => {
