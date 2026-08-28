@@ -20,6 +20,7 @@ import { GET as vectorFullStateSnapshotGet } from "@/app/api/cron/vector-full-st
 import { GET as vectorWallsWarmGet } from "@/app/api/cron/vector-walls-warm/route";
 import { GET as vectorBeadRecordGet } from "@/app/api/cron/vector-bead-record/route";
 import { GET as vectorDarkPoolWarmGet } from "@/app/api/cron/vector-dark-pool-warm/route";
+import { GET as vectorPickSweepGet } from "@/app/api/cron/vector-pick-sweep/route";
 import { GET as coachingAlertsGet } from "@/app/api/cron/coaching-alerts/route";
 import { GET as bieFullStateSnapshotGet } from "@/app/api/cron/bie-full-state-snapshot/route";
 import { GET as swingActiveRefreshGet } from "@/app/api/cron/swing-active-refresh/route";
@@ -56,6 +57,9 @@ export const CRON_DISPATCH: Record<string, { handler: CronHandler; force: boolea
   "vector-walls-warm": { handler: vectorWallsWarmGet, force: false },
   "vector-bead-record": { handler: vectorBeadRecordGet, force: false },
   "vector-dark-pool-warm": { handler: vectorDarkPoolWarmGet, force: true },
+  // Vector pick universe sweep — idempotent Redis/Postgres writers for leaders + closures (#3066).
+  // Self-heal covers the gap until blackout-infra syncs railway.vector-pick-sweep.toml to EventBridge.
+  "vector-pick-sweep": { handler: vectorPickSweepGet, force: false },
   // RTH alert/snapshot writers — append-only or idempotent Redis/PG writes (#1343).
   "coaching-alerts": { handler: coachingAlertsGet, force: true },
   "bie-full-state-snapshot": { handler: bieFullStateSnapshotGet, force: true },

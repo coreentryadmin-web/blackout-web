@@ -468,6 +468,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     kind: "http",
     path: "/api/cron/vector-pick-sweep",
     schedule_label: "~Every 2 min (market hours)",
+    schedule_cron_utc: "1-59/2 11-21 * * 1-5",
     stale_after_min: 8,
     weekdays_only: true,
     market_hours_only: true,
