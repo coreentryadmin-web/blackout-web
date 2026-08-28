@@ -227,7 +227,6 @@ async function runMobileFaqSticky(browser) {
   await page.locator("#faq").scrollIntoViewIfNeeded();
   await page.waitForTimeout(600);
 
-  const sticky = page.locator("#mobile-sticky-cta");
   const faqItems = page.locator(".sec-faq .faq-item");
   const count = await faqItems.count();
   if (count < 3) {
