@@ -26,8 +26,11 @@ const MEM_TTL_MS = 5_000;
  * here changes this function's cost profile and `change_pct` semantics (that endpoint carries no
  * prior-close field), so it's left as a follow-up rather than folded into this fix.
  */
+const UW_STOCK_STATE_UNSUPPORTED_TICKERS = new Set(["SPX", "VIX", "NDX", "RUT"]);
+
 export function isUwStockStateUnsupportedIndex(optionsRoot: string): boolean {
-  return optionsRoot.toUpperCase().startsWith("I:");
+  const ticker = uwTickerFromOptionsRoot(optionsRoot);
+  return UW_STOCK_STATE_UNSUPPORTED_TICKERS.has(ticker);
 }
 
 /**
