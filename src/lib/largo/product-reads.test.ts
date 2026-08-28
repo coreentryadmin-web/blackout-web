@@ -379,6 +379,61 @@ describe("bangerBoardForLargo — a closed position reports what it realized", (
       else process.env.BANGER_ENGINE_ENABLED = prev;
     }
   });
+
+  it("fits the transport cap when mostly open rows (the 2026-08-25 truncation failure)", async () => {
+    const prev = process.env.BANGER_ENGINE_ENABLED;
+    process.env.BANGER_ENGINE_ENABLED = "1";
+    // Synthetic payload: 25 fetched rows, 20 OPEN with full detail (trigger the overweight scenario).
+    // Each open row carries id/ticker/session_date/strike/expiry/entry_premium/last_mark/status/scaled/pnl/scale_action/discovery.
+    BANGER_ROWS = [
+      ...Array.from({ length: 20 }, (_, i) => ({
+        id: 1000 + i,
+        ticker: `TK${String(i).padStart(3, "0")}`,
+        session_date: "2026-08-25",
+        contract_strike: 100 + i,
+        contract_expiry: "2026-08-29",
+        entry_premium: 2.5 + i * 0.1,
+        last_mark: 3.2 + i * 0.15,
+        status: "OPEN",
+        scaled_already: false,
+        realized_pnl_pct: null,
+        live_pnl_pct: 15.5 + i,
+        scale_out_action: null,
+        discovery_gain: 0.8,
+      })),
+      ...Array.from({ length: 5 }, (_, i) => ({
+        id: 2000 + i,
+        ticker: `CL${String(i).padStart(3, "0")}`,
+        session_date: "2026-08-25",
+        contract_strike: 110 + i,
+        contract_expiry: "2026-08-29",
+        entry_premium: 1.5,
+        last_mark: 0.5,
+        status: "CLOSED_RUNNER",
+        scaled_already: true,
+        realized_pnl_pct: 25.5 + i,
+        live_pnl_pct: null,
+        scale_out_action: "CLOSE_RUNNER",
+        discovery_gain: 0.4,
+      })),
+    ];
+    try {
+      const r = (await bangerBoardForLargo(25)) as Record<string, unknown>;
+      const chars = JSON.stringify(r).length;
+      assert.ok(
+        chars < MAX_TOOL_RESULT_CHARS,
+        `banger board (${chars} chars) exceeded transport cap ${MAX_TOOL_RESULT_CHARS} — open capping is not working`
+      );
+      // Open is capped at 12, closed at 12.
+      assert.equal(r.open_shown, Math.min(20, 12), "open_shown must cap at 12");
+      assert.equal(r.open_truncated, 20 > 12, "open_truncated must mark overflow");
+      assert.equal(r.closed_shown, Math.min(5, 12), "closed_shown respects its own cap");
+    } finally {
+      BANGER_ROWS = [];
+      if (prev === undefined) delete process.env.BANGER_ENGINE_ENABLED;
+      else process.env.BANGER_ENGINE_ENABLED = prev;
+    }
+  });
 });
 
 describe("thermalCompareRow — a reading carries the session it belongs to", () => {
