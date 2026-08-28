@@ -15341,7 +15341,11 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
 
 ## 2026-07-21 — SPX Slayer audit fixes batch 2
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
+
+**Status.** FIXED — `resolveDeskGap`'s `rth_open`-basis fix confirmed present in
+`src/lib/providers/gap-proxy.ts:70-86` in `main` today. This entry-level line is added because the
+entry itself never carried one — the reconciler reads only the top-level status, not sub-heading
+outcomes (each sub-fix here was already individually marked "(FIXED, tested)").
 
 ### P2 — gap_pct was the live change, not a gap, during RTH (FIXED, tested)
 - **Root cause:** `gap-proxy.ts:resolveDeskGap` RTH branch used `gapFromPrice(spx_price, prior_close)`
@@ -15467,11 +15471,15 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
   aggregate. First step of the broader "unify every SPX value" mandate.
 - **Tests:** `spx-pin-forecast-core.test.ts` — new OI-only invariance test (lopsided put volume must
   not move the flip); 8 pass. `tsc --noEmit` clean.
-- **Status:** FIXED (branch `claude/wall-beads-data-validation-4re5wo`).
+**Status.** FIXED — both fix components confirmed present in `main` today: `pinLadderAtSpot`
+(`spx-pin-forecast-core.ts:228`) uses `positioning = c.openInterest` only (OI-only, per its own
+comment block at lines 216-224), and `SpxGexMatrixHeatmap.tsx:302-310` uses live `overlaySpot`, not
+the stale `matrixSpot`. Restamped, the pre-existing "**Status:**" line (colon inside bold) was not
+read by the reconciler. (This entry's original branch name happens to match this session's own
+designated branch — coincidental branch-name reuse across unrelated agent runs, not a self-reference.)
 
 ## 2026-07-22 — Full GEX/VEX matrix table (feature — SPX desk)
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 ### Dealer Gamma Map was truncated to 6 expiry columns; user wants the full table
 - **Request:** show the complete GEX/VEX matrix (every expiry as a column), not the shortened rail.
@@ -15493,7 +15501,9 @@ price-vs-matrix ≤1.61pt). Cadence healthy (desk/matrix as_of advance ~every po
   per strike, so once far columns are visible it is not the sum of the on-screen cells — a labeled
   follow-up if members find it confusing.
 - **Verification:** `tsc --noEmit` clean; brand lint clean.
-- **Status:** DONE (branch `claude/wall-beads-data-validation-4re5wo`).
+**Status.** FIXED — `MAX_EXPIRY_COLS`/`nearPeak`/`farPeak`/`near_term_expiries` (the Near/Full toggle
++ two-tier color peak) all confirmed present and wired in `SpxGexMatrixHeatmap.tsx` in `main` today.
+Restamped, the pre-existing "**Status:**" line (colon inside bold) was not read by the reconciler.
 
 ## 2026-07-22 — Header label collisions + VWAP tone/value split (P2, FIXED — consistency)
 > **kind:** `FINDING`
