@@ -448,6 +448,7 @@ export function VectorPageShell({
       magnet,
       proximity,
       chartReplayMode,
+      helixFlows: helixState.flows,
     });
   }, [
     onPlayDeskSnapshot,
@@ -459,6 +460,7 @@ export function VectorPageShell({
     magnet,
     proximity,
     chartReplayMode,
+    helixState.flows,
   ]);
 
   // Auto-dismiss the toast a few seconds after the newest fire.

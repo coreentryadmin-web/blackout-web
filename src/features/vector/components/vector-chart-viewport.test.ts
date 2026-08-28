@@ -652,4 +652,6 @@ test("VectorComparePlayStrip: renders play card, intel, and contract picks", () 
   assert.match(strip, /VectorPlayIntelStrip/);
   assert.match(strip, /VectorContractPicksCard/);
   assert.match(strip, /VectorReplayPlayGate/);
+  assert.doesNotMatch(strip, /useVectorHelixFlows/, "must reuse pane Helix tape via snapshot, not a second SSE");
+  assert.match(strip, /helixFlows/);
 });
