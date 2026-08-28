@@ -28,6 +28,7 @@ test("recognizes every index root UW's stock-state rejects", () => {
 
 test("does not flag a real equity/ETF root", () => {
   assert.ok(!isUwStockStateUnsupportedIndex("SPY"));
+  assert.ok(!isUwStockStateUnsupportedIndex("I:SPY"));
   assert.ok(!isUwStockStateUnsupportedIndex("AAPL"));
 });
 
