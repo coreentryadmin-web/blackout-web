@@ -21114,6 +21114,11 @@ html.product-shell .nav-mega {
 .nh-deck-excursion-graphic__journey-dot{fill:var(--dk-bull);stroke:var(--dk-bg-panel);stroke-width:2}
 .nh-deck-excursion-graphic__journey-lab{fill:var(--dk-info);font-size:8px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;font-family:var(--dk-mono)}
 .nh-deck-excursion-graphic__journey-val{fill:var(--dk-text-primary);font-size:10px;font-weight:900;font-family:var(--dk-mono)}
+/* Real per-minute mark-history chart (PlayMarkHistoryChart) — sits below the excursion bar,
+   additive to it, not a replacement (the excursion bar's #1575 predecessor was a 3-point
+   Entry/Peak/Current interpolation, replaced for being "underwhelming"; this instead plots
+   real Polygon minute bars, so it isn't the same shape being reintroduced). */
+.nh-deck-mark-history{margin-top:14px}
 .nh-deck-excursion-graphic__note{font-size:9px;font-weight:600;color:var(--dk-text-secondary);margin:8px 0 0;line-height:1.35}
 .nh-deck-row-enhanced{position:relative;padding-left:16px}
 .nh-deck-row-enhanced::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;
