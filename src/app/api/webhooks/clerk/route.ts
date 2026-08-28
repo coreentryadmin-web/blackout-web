@@ -141,7 +141,13 @@ export async function POST(req: Request) {
         console.log(`[clerk-webhook] Provisioned user: ${userId} (${email})`);
         // Self-guards internally (never throws) — a welcome-email hiccup must not
         // fail user provisioning or trigger a Clerk retry of the whole webhook.
-        if (email) void startWelcomeSequence({ userId, email, firstName });
+        // Skip internal audit/test accounts: measured live via /api/admin/email-events,
+        // welcome-step-1 bounced 1860/1862 (99.9%) over a 14-day window — almost entirely
+        // these disposable addresses, which either don't exist as real mailboxes or get
+        // deleted before Resend's next attempt. A 99.9% bounce rate on a transactional
+        // template is a real sender-reputation risk (Gmail/Yahoo suspend bulk senders on
+        // complaint/bounce rate), not just wasted send volume.
+        if (email && !isInternalAuditEmail(email)) void startWelcomeSequence({ userId, email, firstName });
         // Same pattern as the Whop webhook's ops pings (membership activated/deactivated,
         // refund, payment failed) — a real-time "someone just showed up" signal, not a
         // billing alert, so severity is "info" and it never blocks/fails provisioning.
