@@ -463,6 +463,71 @@ test("entry-basis coherence: a ledger basis above entry_max re-bases the stop �
   lane._resetZeroDteLiveMarksForTest();
 });
 
+// ── ACHIEVABILITY CEILING (2026-08-27, plan.ts PR #2986) is the SYMMETRIC counterpart of the
+//    FLOOR case above: resolveLedgerEntryPremium can also move the ledger basis DOWN, capping a
+//    flow fill that sat far above a live market that never traded there. `entryBasisDiverged`
+//    was written for the floor direction only (`entry > planEntryMax`) and never updated when the
+//    ceiling shipped, so a ceiling-capped row kept using the STALE pinned stop — which, being
+//    entry_max×0.5 off the OLD (much higher) entry_max, sits ABOVE the new (lower) ledger entry.
+//    Reproduces the live production defect measured 2026-08-28: AMD flow fill $3.80, ledger-
+//    capped entry $1.23 (real market never near $3.80), pinned stop 1.90 — every mark from that
+//    point on reads "at/below 1.90" trivially, so the row closed_reason="stop" within ~1s of its
+//    own commit at ~0% real P&L. Two such phantom stops (AMD, NVDA) contributed to the session's
+//    stop tally and the desk halting for the rest of the day.
+test("entry-basis coherence: a ledger basis BELOW entry_max (achievability ceiling) also re-bases the stop — no instant phantom stop", async () => {
+  const { lane, syncLedgerLiveState } = await mods();
+  resetState();
+  lane._resetZeroDteLiveMarksForTest();
+
+  const entryMax = 3.82; // the flow's own fill — the market never actually traded this high
+  const ledgerEntry = 1.24; // resolveLedgerEntryPremium capped DOWN to the flag-time mark
+  const pinnedStop = 1.91; // = entryMax × 0.5 — stale once the ceiling capped the basis down
+
+  state.ledgerRows = [
+    baseRow({
+      entry_premium: ledgerEntry,
+      flow_avg_fill: entryMax,
+      peak_premium: ledgerEntry,
+      trough_premium: ledgerEntry,
+      last_mark: ledgerEntry,
+      entry_context: { exit_policy_at_commit: "ratchet" },
+      plan_json: { occ: OCC, entry_max: entryMax, stop_premium: pinnedStop, target_premium: 7.6 },
+    }),
+  ];
+  // The live AMD tick: barely below the STALE pinned stop (1.91) but nowhere near the real
+  // −50% ledger stop (1.24 × 0.5 = 0.62). Pre-fix this closed instantly; post-fix it must hold.
+  state.snapMark = 1.225;
+
+  const rows = await syncLedgerLiveState(state.ledgerRows as never);
+
+  assert.notEqual(
+    rows[0]!.status,
+    "CLOSED",
+    "a mark of 1.225 is far above the real ledger-basis stop of 0.62 — must not phantom-stop off the stale pre-ceiling pinned stop of 1.91"
+  );
+
+  // And the correct ledger-basis stop DOES still fire, once the mark actually gets there.
+  resetState();
+  lane._resetZeroDteLiveMarksForTest();
+  state.ledgerRows = [
+    baseRow({
+      entry_premium: ledgerEntry,
+      flow_avg_fill: entryMax,
+      peak_premium: ledgerEntry,
+      trough_premium: ledgerEntry,
+      last_mark: ledgerEntry,
+      entry_context: { exit_policy_at_commit: "ratchet" },
+      plan_json: { occ: OCC, entry_max: entryMax, stop_premium: pinnedStop, target_premium: 7.6 },
+    }),
+  ];
+  state.snapMark = ledgerEntry * 0.5; // exactly the re-derived ledger-basis stop
+  const stoppedRows = await syncLedgerLiveState(state.ledgerRows as never);
+  assert.equal(stoppedRows[0]!.status, "CLOSED");
+  assert.equal((state.stampCalls[0]!.exit as { reason: string; pnl_pct: number }).reason, "plan_stop");
+  assert.equal((state.stampCalls[0]!.exit as { reason: string; pnl_pct: number }).pnl_pct, -50);
+  lane._resetZeroDteLiveMarksForTest();
+});
+
 test("entry-basis coherence: when the bases AGREE the pinned rails are used byte-identically", async () => {
   const { lane, syncLedgerLiveState } = await mods();
   resetState();
