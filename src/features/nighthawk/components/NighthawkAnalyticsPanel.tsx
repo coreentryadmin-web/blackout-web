@@ -26,6 +26,7 @@ import {
   latestSessionDate,
   type TierWinRateBucket,
 } from "@/features/nighthawk/lib/analytics-panel";
+import { PlayHistoryTable, type HistoryWindowDays } from "./PlayHistoryTable";
 
 // Humanizes the raw `by_outcome` bucket labels (record.ts stamps the literal engine exit
 // reason — thesis_break:gex-walls, ratchet_breakeven_floor, flat_theta_bleed, etc). Distinct
@@ -172,7 +173,12 @@ function StatTile({ label, value, tone }: { label: string; value: string; tone?:
 const COLLAPSE_STORAGE_KEY = "nh-analytics-collapsed";
 
 export function NighthawkAnalyticsPanel() {
-  const { data: record, isLoading } = useSWR<ZeroDteRecord>("/api/market/zerodte/record?days=30", json, {
+  // History-window selection (7/30/90d) drives BOTH the tier/outcome/curve breakdowns above
+  // and the play-by-play history table below — one range, one fetch, same shape as the X Ads
+  // Manager reference's date picker driving both its chart and its table. 30 stays the
+  // default (unchanged behavior for anyone who never touches the control).
+  const [windowDays, setWindowDays] = useState<HistoryWindowDays>(30);
+  const { data: record, isLoading } = useSWR<ZeroDteRecord>(`/api/market/zerodte/record?days=${windowDays}`, json, {
     // The ledger updates as plays grade through the session, not tick-by-tick — 30s keeps the
     // panel fresh without adding load next to the board's own 1s RTH poll.
     refreshInterval: 30_000,
@@ -300,6 +306,11 @@ export function NighthawkAnalyticsPanel() {
                 <p className="nh-analytics-empty">No plays have resolved yet today.</p>
               )}
             </div>
+          </div>
+
+          <div className="nh-analytics-history-section">
+            <span className="nh-analytics-col-title">History · {record.window.days}d · {record.window.sessions} sessions</span>
+            <PlayHistoryTable plays={record.plays} windowDays={windowDays} onWindowDaysChange={setWindowDays} />
           </div>
         </div>
       )}
