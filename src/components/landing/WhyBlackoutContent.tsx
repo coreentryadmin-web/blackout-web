@@ -20,7 +20,7 @@ Our engine scans **12,400+ contracts daily** and grades every setup **A–F**. O
 
 ## 3. We log every trade publicly
 
-This is the one most tools won't do. Every setup BlackOut flags is logged publicly, with full transparency — **including the ones that don't work.** No hindsight edits, no quietly deleted losers, no cherry-picked wins in a screenshot. If you want to know how the calls actually played out, the record is right there. That accountability is rare in this space, and it's on purpose.
+This is the one most tools won't do. Every setup BlackOut flags is logged publicly, with full transparency — **including the ones that don't work.** No hindsight edits, no quietly deleted losers, no cherry-picked wins in a screenshot. If you want to know how the calls actually played out, the record is right there — see the [public grading methodology & live stats](/methodology). That accountability is rare in this space, and it's on purpose.
 
 ## 4. No lock-in, no routing
 

@@ -17,6 +17,7 @@ export function publicSitemapEntries(): SitemapEntry[] {
     { path: "/tools/gamma-snapshot", changeFrequency: "daily", priority: 0.8 },
     { path: "/faq", changeFrequency: "monthly", priority: 0.7 },
     { path: "/why-blackout", changeFrequency: "monthly", priority: 0.8 },
+    { path: "/methodology", changeFrequency: "weekly", priority: 0.85 },
     { path: "/about", changeFrequency: "monthly", priority: 0.7 },
     { path: "/contact", changeFrequency: "yearly", priority: 0.5 },
     { path: "/learn", changeFrequency: "weekly", priority: 0.8 },

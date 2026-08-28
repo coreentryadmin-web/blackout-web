@@ -81,6 +81,11 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             <li>12,400+ contracts scanned daily</li>
             <li>Every setup graded A–F</li>
             <li>
+              <Link href="/methodology" prefetch={false} className="hero-cred-link">
+                Public track record
+              </Link>
+            </li>
+            <li>
               <Link href="/tools/gamma-snapshot" prefetch={false} className="hero-cred-link">
                 Free gamma snapshot
               </Link>
@@ -315,7 +320,9 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
                     <span className="pipe-chip live">LOGGED</span>
                     <span className="pipe-chip">GRADED A&ndash;F</span>
                     <span className="pipe-chip">TIMESTAMPED</span>
-                    <span className="pipe-chip">PUBLIC RECORD</span>
+                    <Link href="/methodology" prefetch={false} className="pipe-chip pipe-chip-link">
+                      PUBLIC RECORD
+                    </Link>
                   </div>
                 </div>
               </div>
