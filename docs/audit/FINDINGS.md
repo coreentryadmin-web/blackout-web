@@ -13833,7 +13833,6 @@ gain-weighted rank and/or a wider cap for the breakout lane, graduated on the or
 
 ## 2026-07-25 — [Phase 4] Iron-CONDOR as a live SELL-side 0DTE play-type (flag-gated `ZERODTE_CONDOR`, default OFF) — LANDED
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 **What.** The board committed DIRECTIONAL single-contract plays only. Phase 4 adds the non-directional
 iron-condor SELL structure, fed by the PIN discovery origin (deep long-gamma dealer-defended ranges).
@@ -13869,8 +13868,12 @@ ledger clears real credits + breach fills.
 
 **Verify.** `tsc --noEmit` clean; `lint:brand` clean; new `condor.test.ts` 31/31; full zerodte suite 503
 pass (7 pre-existing `mock.module`-unsupported failures in this Node sandbox, unrelated); `sim:0dte` runs
-unchanged (flags off). **Status:** committed to `fix/zerodte-condor-playtype`, pushed for lead review (no
-PR/merge per instruction).
+unchanged (flags off).
+
+**Status.** FIXED — `condorSellRegime`, `ZERODTE_CONDOR` (now default ON, `condor.ts:41-45`), and
+`play_type: "CONDOR"` all confirmed present and wired in `board.ts`/`condor.ts` in `main` today.
+Restamped, the pre-existing "**Status:**" line (colon inside bold, mid-paragraph) was not read by
+the reconciler.
 
 ## 2026-07-24 — [firewall RTH replay] Phase-0 fail-closed firewall would have HELD both of today's committed 0DTE plays — both losers (−54.9% avoided) — VALIDATED
 > **kind:** `FINDING`
@@ -14212,7 +14215,6 @@ from loadReads lands on the snapshot + feature vector. Calibration/graduation lo
 
 ## 2026-07-24 — [feat + SAFE] 0DTE trade management: trim-scale exit A/B (default-OFF) + exit-engine visibility + condor breach guard
 > **kind:** `FINDING`
-> **status:** `UNRECONCILED` — no status was ever recorded. Verify against git history and stamp FIXED (<sha>) / OPEN / SUPERSEDED.
 
 Branch `feat/zerodte-exit-engine-visibility`. Three changes, deploy after close, NO auto-merge —
 one STRATEGY change (operator sign-off) + two SAFE.
@@ -14255,8 +14257,12 @@ deviates from the shipped default, so a consumer can't pair a non-default win ra
 breach number. Walls don't count as a deviation (same selection, pushed out).
 
 - **Verify:** `tsc` clean; `zerodte/*.test.ts` 497/497 + platform 19/19 (adds trim_scale mode/regime
-  tables, board visibility fields, condor null-off); brand guard clean. **Status: PR OPEN (non-draft,
-  deploy after close, operator sign-off on the STRATEGY flip; no auto-merge).**
+  tables, board visibility fields, condor null-off); brand guard clean.
+
+**Status.** FIXED — `exitMode`/`trim_scale`/`decideTrimScale` confirmed present and wired in
+`src/lib/zerodte/exit-engine.ts` in `main` today; a later task (2026-08 backlog #44, "Fix trim_scale
+breakeven dead-zone") confirms this mode is live in production, not just shipped-and-idle. Restamped,
+the pre-existing "**Status:**" line (colon inside bold, mid-paragraph) was not read by the reconciler.
 
 ## 2026-07-24 — [HIGH, infra] production deploy pipeline never rolled the market-worker → task-def ROT — FIXED (draft PR, HOLD)
 > **kind:** `FINDING`
