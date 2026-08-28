@@ -23,6 +23,7 @@ import { VectorPlayIntelStrip } from "@/features/vector/components/VectorPlayInt
 import { VectorPlayAnalyticsDrawer } from "@/features/vector/components/VectorPlayAnalyticsDrawer";
 import { VectorReplayPlayGate } from "@/features/vector/components/VectorReplayPlayGate";
 import type { VectorPlay, VectorPlayEmit } from "@/features/vector/lib/vector-play-engine";
+import { bootstrapVectorPlayEmit } from "@/features/vector/lib/vector-play-bootstrap";
 import type { VectorPlayDeskSnapshot } from "@/features/vector/lib/vector-play-desk-snapshot";
 import { VectorOdteMatrixRail } from "@/features/vector/components/VectorOdteMatrixRail";
 import { VectorRegimeBanner } from "@/features/vector/components/VectorRegimeBanner";
@@ -429,12 +430,33 @@ export function VectorPageShell({
 
   // BUG FIX (2026-08-27): playEmit/expectedMove/confluence are populated by VectorChart callbacks
   // but live in THIS parent — reset on ticker switch so the play card never shows stale levels.
+  // Seed immediately from bootstrap walls/spot so the play rail is not blank for 5–15s while
+  // lightweight-charts mounts (on-demand tickers, SPX index cold load).
   useEffect(() => {
-    setPlayEmit(null);
     setExpectedMove([]);
     setConfluence(null);
     setPlayAnalyticsOpen(false);
-  }, [activeTicker]);
+    const spot = initialBars.length ? initialBars[initialBars.length - 1]!.close : null;
+    setPlayEmit(
+      bootstrapVectorPlayEmit({
+        ticker: activeTicker,
+        horizon: dteHorizon,
+        timeframeMin: defaultTimeframe ?? 3,
+        spot,
+        walls: initialWalls,
+        gammaFlip: initialGammaFlip,
+        darkPoolLevels: initialDarkPoolLevels,
+      })
+    );
+  }, [
+    activeTicker,
+    initialBars,
+    initialWalls,
+    initialGammaFlip,
+    initialDarkPoolLevels,
+    dteHorizon,
+    defaultTimeframe,
+  ]);
 
   useEffect(() => {
     if (!onPlayDeskSnapshot) return;

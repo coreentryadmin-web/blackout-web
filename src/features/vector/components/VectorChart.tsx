@@ -3614,6 +3614,13 @@ export function VectorChart({
     emitPlay();
   }, [sessionHelixFlows, emitPlay]);
 
+  // Seed the suggested play from initial bars/walls as soon as props land — do not wait for
+  // lightweight-charts seriesRef or the first SSE tick (on-demand tickers were blank for 10s+).
+  useEffect(() => {
+    lastPlayKeyRef.current = "";
+    emitPlay();
+  }, [ticker, initialWalls, initialGammaFlip, initialBars, emitPlay]);
+
   // Evaluate the member's alert rules against the CURRENT live tick (spot + horizon-scoped walls +
   // flip). The pure engine does the dedupe/cooldown/hysteresis; we just persist its state + the prior
   // spot (for flip-cross) and forward any fired alerts. No-op when there are no rules or no callback.
