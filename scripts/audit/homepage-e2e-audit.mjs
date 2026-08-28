@@ -91,7 +91,7 @@ async function runDesktop(browser) {
   const explore = page.locator('a.btn-g[href="#modules"], a[href="#modules"]').first();
   if ((await explore.count()) > 0) {
     await explore.click();
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(1200);
     const y = await page.evaluate(() => {
       const el = document.getElementById("modules");
       if (!el) return null;
