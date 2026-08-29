@@ -1403,33 +1403,32 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       // never an array of per-group summaries, so `Array.isArray(summary)` is always false and that
       // branch is a no-op — the unbounded `greek_flow: rows` field was the entire payload weight in
       // both branches, every call, regardless of `group`.
-      const { fitGroupGreekFlowForModel, fitGroupGreekFlowRowsForModel } = await import("@/lib/largo/market-data-fits");
+      const { fitGroupGreekFlowForModel, fitGroupGreekFlowToolResultForModel } = await import("@/lib/largo/market-data-fits");
       const group = String(input.group ?? "mag7").toLowerCase();
       const exp = input.expiry ? String(input.expiry) : undefined;
       const rows = await fetchUwGroupGreekFlow(group, exp);
       const summary = summarizeGroupGreekFlow(group, rows as Record<string, unknown>[]);
-      const cappedRows = fitGroupGreekFlowRowsForModel(rows as Record<string, unknown>[]);
       // For market-wide query (group="all" or default), cap the summary groups too, in case
       // summarizeGroupGreekFlow ever returns a per-group array for that case.
       if (group === "all" || !group) {
         const cappedSummary = Array.isArray(summary) ? fitGroupGreekFlowForModel(summary).fitted : summary;
-        return {
+        return fitGroupGreekFlowToolResultForModel({
           group,
           expiry: exp,
           source: "unusual_whales",
           note: UW_EXCLUSIVE_NOTE,
-          ...cappedRows,
           summary: cappedSummary,
-        };
+          rows: rows as Record<string, unknown>[],
+        });
       }
-      return {
+      return fitGroupGreekFlowToolResultForModel({
         group,
         expiry: exp,
         source: "unusual_whales",
         note: UW_EXCLUSIVE_NOTE,
-        ...cappedRows,
         summary,
-      };
+        rows: rows as Record<string, unknown>[],
+      });
     }
     case "get_macro_indicator": {
       const indicator = String(input.indicator ?? "CPI").toUpperCase();

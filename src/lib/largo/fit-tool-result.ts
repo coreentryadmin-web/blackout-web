@@ -79,6 +79,41 @@ export function fitRowsToBudget<Row>(
   return { kept, total: rows.length, chars };
 }
 
+export type FitEnvelopeResult<Row> = FitRowsResult<Row> & {
+  /** The exact object the tool will return, measured byte-for-byte. */
+  envelope: Record<string, unknown>;
+};
+
+/**
+ * Grow `rows` inside `build(kept, total)` until the serialized envelope hits `budget`.
+ *
+ * Unlike `fitRowsToBudget`, the caller owns the FULL return shape — metadata fields
+ * (`shown`, `truncated`, `source`, `note`, `summary`, …) are included in every size
+ * check. #3166's first budget pass measured only `{ [key]: rows }`, so tools that
+ * return a wider envelope (or even `{ changes, shown, truncated, max_shown }`) could
+ * still live-truncate despite passing unit tests on the inner slice alone.
+ */
+export function fitEnvelopeToBudget<Row>(
+  rows: readonly Row[],
+  build: (kept: Row[], total: number) => Record<string, unknown>,
+  { budget = LARGO_RESULT_CHAR_BUDGET, maxRows = Number.POSITIVE_INFINITY } = {}
+): FitEnvelopeResult<Row> {
+  const ceiling = Math.min(rows.length, maxRows);
+  const kept: Row[] = [];
+  let envelope = build([], rows.length);
+  let chars = JSON.stringify(envelope).length;
+  for (let i = 0; i < ceiling; i++) {
+    const next = [...kept, rows[i]];
+    const candidate = build(next, rows.length);
+    const nextChars = JSON.stringify(candidate).length;
+    if (nextChars > budget) break;
+    kept.push(rows[i]);
+    envelope = candidate;
+    chars = nextChars;
+  }
+  return { kept, total: rows.length, chars, envelope };
+}
+
 /**
  * The sentence the model reads so a sample is never mistaken for the universe.
  *
