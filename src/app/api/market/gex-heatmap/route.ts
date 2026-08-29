@@ -376,7 +376,13 @@ export async function GET(req: NextRequest) {
       const wsLadder = getGexStrikeExpiryLadder(ticker, nearTermExpiries);
       if (wsLadder) {
         const wsStrikeTotals = strikeTotalsFromLadder(wsLadder.ladder);
-        const wsWalls = wallsFromStrikeTotals(wsStrikeTotals, heatmap.spot);
+        // NOTE: keep this call's shape as `wallsFromStrikeTotals(<call>(...), heatmap.spot)` —
+        // wall-side-constraint.test.ts's "all FIVE producers pass spot" test asserts on the
+        // ROUTE'S SOURCE TEXT (Polygon/Redis/a live WS channel aren't reachable from a unit test),
+        // matching `/wallsFromStrikeTotals\([^)]*\), heatmap\.spot\)/` — a bare identifier first
+        // argument (no inner `(...)`) fails that regex even though the runtime behavior is
+        // identical, since `wsStrikeTotals` above is already computed and passed by value.
+        const wsWalls = wallsFromStrikeTotals(strikeTotalsFromLadder(wsLadder.ladder), heatmap.spot);
         if (wsWalls.callWall != null || wsWalls.putWall != null) {
           if (wsWalls.callWall != null) heatmap.gex.call_wall = wsWalls.callWall;
           if (wsWalls.putWall != null) heatmap.gex.put_wall = wsWalls.putWall;
