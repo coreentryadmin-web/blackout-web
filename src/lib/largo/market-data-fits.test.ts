@@ -5,6 +5,7 @@ import {
   fitScreenerForModel,
   fitGroupGreekFlowForModel,
   fitGroupGreekFlowRowsForModel,
+  fitEarningsRelatedNewsForModel,
 } from "./market-data-fits";
 
 const TRANSPORT_CAP = 16_384;
@@ -98,4 +99,52 @@ test("fitGroupGreekFlowRowsForModel: empty/undefined input never throws and repo
     rows_truncated: false,
     rows_max_shown: 8,
   });
+});
+
+// A real Benzinga news article, shaped like fetchBenzingaNews's return (providers/polygon.ts):
+// body up to 2000 chars, teaser up to 400 — MEASURED at that shape, not guessed.
+const benzingaArticle = (i: number) => ({
+  id: `art-${i}`,
+  title: `Ticker ${i} earnings preview`,
+  teaser: "x".repeat(400),
+  body: "x".repeat(2000),
+  published: "2026-08-29T12:00:00Z",
+  tickers: ["NVDA"],
+  channels: ["earnings"],
+  tags: ["preview"],
+  url: `https://example.com/article-${i}`,
+  author: "staff",
+});
+
+test("fitEarningsRelatedNewsForModel: 5-article cap drops `body` and stays tiny even at 15 real-shaped articles", () => {
+  const raw = Array.from({ length: 15 }, (_, i) => benzingaArticle(i));
+  // Sanity: the OLD unbounded field (`related_news: related`) at this real shape blows the cap
+  // more than 2x over on its own, before anything else in get_earnings's payload is counted.
+  assert.ok(JSON.stringify(raw).length > TRANSPORT_CAP * 2, "sanity: 15 full articles must dwarf the transport cap");
+
+  const fitted = fitEarningsRelatedNewsForModel(raw);
+  assert.equal(fitted.related_news_shown, 5);
+  assert.equal(fitted.related_news_truncated, true);
+  assert.equal(fitted.related_news_max_shown, 5);
+  assert.equal(fitted.related_news.length, 5);
+  for (const item of fitted.related_news) {
+    assert.equal("body" in item, false, "body must be dropped entirely, not just capped");
+    assert.ok(item.teaser.length <= 200);
+  }
+  assert.ok(
+    JSON.stringify(fitted).length < TRANSPORT_CAP,
+    `fitted related_news alone ${JSON.stringify(fitted).length} must leave headroom for the rest of get_earnings's payload`
+  );
+});
+
+test("fitEarningsRelatedNewsForModel: under-cap input passes through untruncated", () => {
+  const raw = Array.from({ length: 2 }, (_, i) => benzingaArticle(i));
+  const fitted = fitEarningsRelatedNewsForModel(raw);
+  assert.equal(fitted.related_news_shown, 2);
+  assert.equal(fitted.related_news_truncated, false);
+});
+
+test("fitEarningsRelatedNewsForModel: empty/undefined input never throws", () => {
+  assert.deepEqual(fitEarningsRelatedNewsForModel([]).related_news, []);
+  assert.deepEqual(fitEarningsRelatedNewsForModel(undefined as unknown as Record<string, unknown>[]).related_news, []);
 });
