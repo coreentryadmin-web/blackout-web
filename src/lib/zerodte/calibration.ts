@@ -127,7 +127,23 @@ export type BlockedValueLine = {
   would_have_won_rate_pct: number | null;
   by_basis: { premium: number; underlying: number };
   low_n: boolean;
+  /** Top ungradeable reasons for THIS gate, most-frequent first (cap {@link UNGRADEABLE_REASON_CAP}).
+   *  Added 2026-08-29: a live run against production found EVERY gate's `n` at 0 and `ungradeable`
+   *  covering the full row count (e.g. score_floor 72/72, opening_window 61/61) — the report answers
+   *  "did this gate cost us winners" with "we don't know" for literally every gate, and until now the
+   *  `reason` string skip-grading.ts already writes onto every ungradeable verdict (gradeSkippedPlay's
+   *  `ungradeable()` helper) was read off the DB, held in `GradedSkipInput.counterfactual`, and then
+   *  silently discarded here — the operator-facing report had no way to tell "no underlying bars" from
+   *  "no direction on the row" from "blocked after the hard exit", so the SAME silent-absence-as-fact
+   *  trap this codebase's own CLAUDE.md names elsewhere (empty GSC domain-property query, absent AWS
+   *  creds) was live inside its own calibration tool. */
+  ungradeable_reasons: Array<{ reason: string; n: number }>;
 };
+
+/** Cap on how many distinct ungradeable reasons surface per gate — a long tail of one-off parse
+ *  quirks would otherwise bury the handful of reasons that actually explain the bulk of a gate's
+ *  ungradeable count. */
+const UNGRADEABLE_REASON_CAP = 5;
 
 export type CalibrationReport = {
   methodology: string;
@@ -1102,6 +1118,12 @@ function blockedValueLines(skips: GradedSkipInput[]): BlockedValueLine[] {
     .map(([gate, cfs]) => {
       const graded = cfs.filter((c) => c.verdict !== "ungradeable");
       const won = graded.filter((c) => c.verdict === "would_have_won").length;
+      const ungradeableCfs = cfs.filter((c) => c.verdict === "ungradeable");
+      const reasonCounts = new Map<string, number>();
+      for (const c of ungradeableCfs) {
+        const r = c.reason ?? "(no reason recorded)";
+        reasonCounts.set(r, (reasonCounts.get(r) ?? 0) + 1);
+      }
       return {
         gate_failed: gate,
         n: graded.length,
@@ -1113,6 +1135,10 @@ function blockedValueLines(skips: GradedSkipInput[]): BlockedValueLine[] {
           underlying: graded.filter((c) => c.basis === "underlying").length,
         },
         low_n: graded.length < LOW_N_THRESHOLD,
+        ungradeable_reasons: Array.from(reasonCounts.entries())
+          .map(([reason, n]) => ({ reason, n }))
+          .sort((a, b) => b.n - a.n || a.reason.localeCompare(b.reason))
+          .slice(0, UNGRADEABLE_REASON_CAP),
       };
     })
     // Most-material first (largest graded sample), name as the deterministic tiebreak.
