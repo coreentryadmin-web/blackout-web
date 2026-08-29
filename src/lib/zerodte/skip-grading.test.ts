@@ -28,11 +28,13 @@ mock.module("../db", {
 const polyState = {
   calls: [] as Array<{ symbol: string; from: string }>,
   bars: [] as Array<Record<string, number>>,
+  throwMessage: null as string | null,
 };
 mock.module("../providers/polygon-largo", {
   namedExports: {
     fetchAggBars: async (symbol: string, _m: number, _ts: string, from: string) => {
       polyState.calls.push({ symbol, from });
+      if (polyState.throwMessage != null) throw new Error(polyState.throwMessage);
       return polyState.bars;
     },
   },
@@ -311,6 +313,43 @@ test("runSkipGrading: idempotent column ALTER, finished-sessions-only SELECT, ve
   const ungr = JSON.parse(updates[1]!.values![0] as string);
   assert.equal(updates[1]!.values![1], 8);
   assert.equal(ungr.verdict, "ungradeable");
+});
+
+// REGRESSION (2026-08-29 audit finding): a live run against production found EVERY one of 200+
+// real rejections graded ungradeable with the SAME generic "no bar data available" reason — and
+// there was no way to tell from that reason whether Polygon genuinely had nothing for that
+// ticker/session, or the underlying bar fetch itself was silently failing (a dynamic-import bug,
+// a bad symbol mapping, anything). This pins that runSkipGrading now distinguishes the two: an
+// actual thrown fetch error overrides the generic reason with the real exception message.
+test("runSkipGrading: an underlying bar fetch that THROWS is surfaced with the real error, not the generic 'no bar data' reason", async () => {
+  const { runSkipGrading } = await mod();
+  dbState.queries = [];
+  dbState.selectRows = [
+    {
+      id: 9,
+      observed_at: new Date(et("10:00")).toISOString(),
+      session_date: "2026-07-10",
+      ticker: "NVDA",
+      gate_failed: "score_floor",
+      direction: "long",
+    },
+  ];
+  polyState.calls = [];
+  polyState.bars = [];
+  polyState.throwMessage = "ECONNRESET: fetch failed";
+  try {
+    const summary = await runSkipGrading({ days: 3, nowMs: NOW });
+    assert.equal(summary.scanned, 1);
+    assert.equal(summary.ungradeable, 1, "still counted as ungradeable — a thrown fetch is not a graded win/loss");
+    assert.equal(summary.errors, 0, "the row itself is not an errored row — it persisted a verdict");
+    const updates = dbState.queries.filter((q) => /^UPDATE zerodte_scan_rejections/.test(q.text));
+    assert.equal(updates.length, 1);
+    const verdict = JSON.parse(updates[0]!.values![0] as string);
+    assert.equal(verdict.verdict, "ungradeable");
+    assert.match(verdict.reason, /underlying bar fetch threw: ECONNRESET: fetch failed/);
+  } finally {
+    polyState.throwMessage = null;
+  }
 });
 
 test("runSkipGrading / fetchGradedSkips fail soft — a dead DB is a structured summary / empty list, never a throw", async () => {
