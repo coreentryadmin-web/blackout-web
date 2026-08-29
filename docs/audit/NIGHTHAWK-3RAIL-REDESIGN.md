@@ -177,6 +177,32 @@ require inventing data. Full findings live in this session's transcript; the loa
   endpoint. This is why the shipped range picker (PR #3091) is a PRESET dropdown, not an X-style
   arbitrary calendar, and why a real per-day drill-down (the calendar heat-strip, PR #3088) is the
   honest analog instead.
+- **The CLOSED-row RESULT vocabulary in §1's plays-table brief only half matches real data —
+  checked directly against `plan.ts`'s grader (2026-08-29).** The 0DTE grader's real
+  `exit_reason` enum is exactly `"trim_scale_first" | "trim_scale_second" | "doubled" | "stopped"
+  | "time_stop"` (grep-verified against every `exit_reason:`/`closed_reason:` literal across
+  `src/lib/zerodte/*.ts`, including `iron-condor.ts` — no `"target"`, `"ratchet"`, or
+  `"thesis_break"` value exists anywhere in the real 0DTE grading code). So:
+  - `TARGET` → real, maps to `"doubled"` (the +100% target-hit case).
+  - `STOPPED` → real, maps to `"stopped"` directly.
+  - `EOD EXIT` → real, maps to `"time_stop"` directly.
+  - `THESIS BROKE`, `TRAIL EXIT`, `SCRATCH` → **no corresponding field.** `play-timeline.ts`'s
+    `closeLabel()` helper does reference `exitReason === "target"` and `closedReason === "ratchet"`
+    in its own logic, but those values are never actually produced by `plan.ts` — they read as
+    dead/legacy branches (or cover a different, now-removed engine), not evidence the values are
+    real today. Implementing these three literally as distinct outcomes would fabricate data the
+    backend doesn't emit. If the desk wants them, they need either a genuine new backend
+    classification (e.g. deriving "thesis broke" from `play.thesisBreak.level === "break"` at
+    close time, which IS real but is a different signal than `exit_reason`) or should be dropped
+    from the vocabulary — a decision for whoever picks up the ACTION-column item, not something to
+    silently paper over with a fabricated label.
+  - The OPEN-row vocabulary (`HOLD`/`TRIM 25%`/`TRIM 50%`/`EXIT`/`RUNNER`) fares better: `HOLD`
+    maps to the real `Recommendation` type's `"HOLD"`; `EXIT` maps to `"SELL"`; `RUNNER` is
+    **already a real label** used by `trimLadderVisual()` in `terminal-display.ts` for the
+    post-all-trims-fired ladder rung. The literal `TRIM 25%`/`TRIM 50%` split is not guaranteed —
+    real trim tranches carry their own `trigger_pct` field
+    (`exitPolicy.trim_levels[i].trigger_pct`), so an honest version reads `TRIM {trigger_pct}%`
+    off that real field rather than hardcoding 25/50.
 
 ---
 
@@ -184,6 +210,16 @@ require inventing data. Full findings live in this session's transcript; the loa
 
 Legend: ✅ shipped & merged · 🟡 open PR (not yet merged) · ⬜ not started · 🔬 deliberately scoped
 back with a stated reason (not silently dropped)
+
+**Consolidation note (2026-08-29):** PRs #3089/#3090/#3091/#3093/#3094/#3095/#3096 were all green
+and stuck in draft behind the `AGENT_RELEASE_TOKEN` PAT rate limit (see `CLAUDE.md`'s GitHub API
+budgets section — that limiter is on the SAME account the whole fleet shares, so it starves exactly
+when there's a backlog). Rather than wait on six separate undrafts, all 7 commits were
+cherry-picked verbatim (in dependency order, thesis-integrity before the 3-column split that
+depends on it) onto one branch, re-verified in full from scratch (tsc/eslint/stylelint/1209 tests,
+all clean), and opened as **PR #3099**. The 7 rows below marked ✅ are shipped in content and
+verified, but as of this writing are physically merged via #3099 rather than their original PR
+numbers — the originals will be closed as superseded once #3099 merges, not before.
 
 | Item | Status | PR / note |
 |---|---|---|
@@ -197,8 +233,9 @@ back with a stated reason (not silently dropped)
 | Real date-range PRESET dropdown for History (scoped honestly — see §2) | ✅ | #3091 |
 | Flat underline tabs for the top-level view switcher | ✅ | #3093 |
 | Flat dot+text status pills (no box) | ✅ | #3094 |
-| **Full 3-column structural layout** (Trade Queue \| Trade Command \| Thesis Intelligence as separate always-visible rails, fitting without page scroll) | ⬜ | Biggest remaining item — restructures `CommandDeck.tsx`'s outer container + splits `ZeroDteCommandPanel.tsx` into rail-2 vs rail-3 content. Not yet started. |
-| Rename `STATUS` column → `ACTION`, with lifecycle-specific vocabulary (WAIT/ARMED/ENTRY VALID/ENTRY EXTENDED/SKIP for WATCH; HOLD/TRIM 25%/TRIM 50%/EXIT/RUNNER for OPEN; no action column + RESULT vocabulary for CLOSED) | ⬜ | Depends on the 3-rail layout landing first, or can be done independently on the current board's status pill — needs a design decision on which. |
+| 2-column split of the command panel (Trade Command \| Thesis Intelligence, side by side, collapsing to one column under 1400px) | 🟡 | #3096 → folded into consolidated PR #3099 (see note below). Splits `ZeroDteCommandPanel.tsx`'s existing content into the two rails via a CSS grid; does NOT yet touch `CommandDeck.tsx`'s outer container, so Rail 1 (the play queue) is still a `<PlayTerminal>` sibling, not a third persistent column — see the next row. |
+| **Full 3-column PERSISTENT layout** (Trade Queue always visible alongside Trade Command + Thesis Intelligence, not just the 2 inner rails split) | ⬜ | Still the single largest remaining structural item — restructures `CommandDeck.tsx`'s outer `.nh-deck-left`/`.nh-deck-right` container itself. Not started. |
+| Rename `STATUS` column → `ACTION`, with lifecycle-specific vocabulary (WAIT/ARMED/ENTRY VALID/ENTRY EXTENDED/SKIP for WATCH; HOLD/TRIM 25%/TRIM 50%/EXIT/RUNNER for OPEN; no action column + RESULT vocabulary for CLOSED) | ⬜ | **Grounded, not yet built (2026-08-29) — see §2.** Real-data support is uneven: OPEN vocabulary maps cleanly to real fields (`Recommendation`, `trim_levels[i].trigger_pct`, the existing `RUNNER` label). CLOSED vocabulary is only half-real — `TARGET`/`STOPPED`/`EOD EXIT` map to real `exit_reason` values, but `THESIS BROKE`/`TRAIL EXIT`/`SCRATCH` do not exist as distinct backend outcomes and must not be implemented as literal labels without a real derivation first (or should be dropped). WATCH vocabulary (WAIT/ARMED/ENTRY VALID/ENTRY EXTENDED/SKIP) has not yet been checked against `archetype-gates.ts`'s real verdict/reason-code taxonomy — do that check before implementing, same discipline. |
 | WATCH-specific "Entry Readiness" rail (now vs. required per factor, `N/M conditions met`, explicit "what's missing" line) | ⬜ | Needs the archetype-gate reason-code taxonomy (`archetype-gates.ts`) turned into a real readiness UI — the gate verdicts exist, the UI doesn't. |
 | CLOSED-specific "Post-Trade Attribution" rail (what worked / what ended it / capture % / thesis evolution entry→peak→exit) | ⬜ | `exitPnlPct/peak` capture-% derivation is honest and ready to build; the entry→peak→exit per-factor evolution table needs a 3-snapshot comparison the current `thesisHealth` (2-snapshot: commit vs. now) doesn't carry — would need either a peak-time snapshot to be stored, or an honest 2-column (entry→exit) version instead of 3. |
 | "Visual intelligence" dot-bar strength display + explicit NO DATA / NEUTRAL / OPPOSED distinction, replacing the debug-log-style evidence block | ⬜ | Not started. The underlying per-source read already exists (`DeskEvidenceStack`/`entry_context.cortex` sources) — this is a presentation rebuild, same "surface what's real" pattern as PR #3089. |
@@ -208,5 +245,7 @@ back with a stated reason (not silently dropped)
 | Light/dark theme toggle | 🔬 | Explicitly scoped back as its own project — the color system is hardcoded dark values throughout, not CSS custom properties; doing this right means a token-conversion pass first, then a real light palette, not a quick add alongside everything else. |
 
 **Reading this table**: every ⬜ row above is real, scoped, buildable work — none of it was silently
-dropped. The 3-column structural layout is the single highest-leverage next item (several other
-rows are blocked on it or made easier by it landing first).
+dropped. The full 3-column PERSISTENT layout (Rail 1 always visible alongside 2+3, not just the
+2-column split already shipped) is the single highest-leverage next item. The ACTION-column
+vocabulary item's grounding work is done (see its row and §2) — implementing it should read fields,
+not invent them, for exactly the labels flagged there as unsupported.
