@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { requireAdmin } from "@/lib/admin-access";
 import "../../styles/admin-console.css";
 
