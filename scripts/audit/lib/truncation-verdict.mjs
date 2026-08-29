@@ -88,7 +88,12 @@ export function probeQuestion(tool, args = "") {
   const call = args ? `${tool} with ${args}` : tool;
   return (
     `Call ${call} and nothing else. Do not answer any other question. ` +
-    `Does the raw tool result you received end with the literal characters …[truncated] ? ` +
+    `Does the raw tool result STRING you received end with the exact transport cut marker ` +
+    `…[truncated] (ellipsis + bracket + the word truncated + closing bracket)? ` +
+    `IMPORTANT: boolean JSON fields named truncated, rows_truncated, related_news_truncated, ` +
+    `or similar metadata are NORMAL and do NOT count — only the literal …[truncated] suffix ` +
+    `appended when the payload was byte-cut counts. If the JSON ends with } or ] and does NOT ` +
+    `end with …[truncated], answer COMPLETE even when truncated is true inside the JSON. ` +
     `Reply with exactly one word, TRUNCATED or COMPLETE, then on the next line name the LAST ` +
     `top-level key you can actually see in that result.`
   );
