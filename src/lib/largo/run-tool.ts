@@ -657,7 +657,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       // Apply fitting to cap shown entries for Largo; product uses full data.
       const { fitMarketOiChangeForModel } = await import("@/lib/largo/market-data-fits");
       const raw = await fetchUwMarketOiChange(30);
-      return fitMarketOiChangeForModel(raw, 15).fitted;
+      return fitMarketOiChangeForModel(raw, 8).fitted;
     }
     case "get_top_net_impact":
       return fetchUwMarketTopNetImpact(20);
@@ -1002,7 +1002,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       else if (type === "dark_pool") raw = await fetchUwDarkPoolRecent(25);
       else if (type === "analysts") raw = await fetchUwScreenerAnalysts(25);
       else raw = await fetchUwScreenerStocks(25);
-      return fitScreenerForModel(raw, 6).fitted;
+      return fitScreenerForModel(raw, 3).fitted;
     }
 
     case "get_spx_structure": {
@@ -1404,7 +1404,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       // For market-wide query (group="all" or default), cap the summary groups too, in case
       // summarizeGroupGreekFlow ever returns a per-group array for that case.
       if (group === "all" || !group) {
-        const cappedSummary = Array.isArray(summary) ? fitGroupGreekFlowForModel(summary, 15).fitted : summary;
+        const cappedSummary = Array.isArray(summary) ? fitGroupGreekFlowForModel(summary, 8).fitted : summary;
         return {
           group,
           expiry: exp,
