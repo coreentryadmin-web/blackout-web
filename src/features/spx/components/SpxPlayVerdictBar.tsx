@@ -243,7 +243,82 @@ export function SpxPlayVerdictBar({
             </div>
           )}
 
-          {model.gateLine && model.mode !== "open" && (
+          {model.gateCategories && model.mode !== "open" && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: "8px 0",
+                borderRadius: 8,
+                fontFamily: C.mono,
+                fontSize: 10,
+              }}
+            >
+              <div style={{ marginBottom: 8 }}>
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 600,
+                    color: C.ink,
+                    marginBottom: 6,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  Gate Breakdown
+                </div>
+                {(["operational", "playbook_validity", "risk", "quality"] as const).map((cat) => {
+                  const blocks = model.gateCategories![cat];
+                  const catLabel =
+                    cat === "operational"
+                      ? "Market / Session"
+                      : cat === "playbook_validity"
+                        ? "Playbook Rules"
+                        : cat === "risk"
+                          ? "Risk Controls"
+                          : "Data Quality";
+                  const catColor =
+                    cat === "operational"
+                      ? C.warn
+                      : cat === "playbook_validity"
+                        ? C.put
+                        : cat === "risk"
+                          ? C.pin
+                          : C.muted;
+
+                  return (
+                    <div
+                      key={cat}
+                      style={{
+                        marginBottom: 6,
+                        paddingLeft: 8,
+                        borderLeft: `2px solid ${blocks.length > 0 ? catColor : "rgba(255,255,255,0.1)"}`,
+                      }}
+                    >
+                      <div style={{ color: blocks.length > 0 ? catColor : C.muted, fontSize: 9.5, fontWeight: 600 }}>
+                        {catLabel}
+                        {blocks.length > 0 && ` (${blocks.length})`}
+                      </div>
+                      {blocks.map((msg, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            fontSize: 9,
+                            color: C.muted,
+                            marginTop: 3,
+                            lineHeight: 1.3,
+                          }}
+                        >
+                          • {msg}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {model.gateLine && model.mode !== "open" && !model.gateCategories && (
             <div
               style={{
                 marginTop: 10,
