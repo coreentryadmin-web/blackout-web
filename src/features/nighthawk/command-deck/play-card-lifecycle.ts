@@ -393,6 +393,23 @@ export function closedRealizedPct(play: TerminalPlay): number | null {
   return null;
 }
 
+/**
+ * "% of the trade's best-ever return that was actually banked at close" — the roadmap brief's
+ * Post-Trade Attribution framing ("Captured 91% of maximum available P&L"). A light, honest
+ * derivation from two already-real fields (`closedRealizedPct` and `peak`), not a new stored
+ * metric — omitted (null) whenever either side is unusable, rather than showing a misleading
+ * number: `peak` must be a genuine positive excursion (a trade that never went positive has no
+ * "available P&L" to have captured a % of), and the realized figure must be finite.
+ */
+export function closedCapturePct(play: TerminalPlay): number | null {
+  if (play.status !== "CLOSED") return null;
+  const realized = closedRealizedPct(play);
+  if (realized == null || !Number.isFinite(realized)) return null;
+  if (play.peak == null || !Number.isFinite(play.peak) || play.peak <= 0) return null;
+  const pct = (realized / play.peak) * 100;
+  return Number.isFinite(pct) ? pct : null;
+}
+
 /** Open-row primary metric labels — legacy uses stock progress, others use option P&L. */
 export function openMetricsLabels(play: TerminalPlay): { current: string; peak: string } {
   if (play.horizon === "LEGACY") {

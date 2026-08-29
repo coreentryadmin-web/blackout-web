@@ -19,6 +19,7 @@ import {
   playListReturnPct,
   playTriggeredAtMs,
   zeroDteActionDisplay,
+  closedCapturePct,
 } from "./play-card-lifecycle.ts";
 import type { TerminalPlay } from "./types.ts";
 
@@ -342,5 +343,39 @@ describe("zeroDteActionDisplay — grounded ACTION vocabulary (2026-08-29)", () 
   it("CLOSED: an unrecognized/missing closedReason never fabricates a label — falls back to null", () => {
     assert.equal(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: null })), null);
     assert.equal(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "trim_scale_first" })), null);
+  });
+});
+
+describe("closedCapturePct — honest post-trade attribution (2026-08-29)", () => {
+  it("captures the real ratio of realized to peak, as a percentage", () => {
+    // exitPnlPct 45.5, peak 91 → banked exactly half the best-ever excursion.
+    assert.equal(
+      closedCapturePct(base({ status: "CLOSED", exitPnlPct: 45.5, peak: 91 })),
+      50,
+    );
+  });
+
+  it("non-CLOSED rows never get a capture %, even with entry/peak present", () => {
+    assert.equal(closedCapturePct(base({ status: "OPEN", exitPnlPct: 40, peak: 80 })), null);
+  });
+
+  it("no peak (or a non-positive one) → null, never a divide-by-zero or negative-denominator number", () => {
+    assert.equal(closedCapturePct(base({ status: "CLOSED", exitPnlPct: 40, peak: null })), null);
+    assert.equal(closedCapturePct(base({ status: "CLOSED", exitPnlPct: 40, peak: 0 })), null);
+    assert.equal(closedCapturePct(base({ status: "CLOSED", exitPnlPct: 40, peak: -10 })), null);
+  });
+
+  it("no usable realized figure anywhere on the row → null, not a fabricated 0%", () => {
+    assert.equal(
+      closedCapturePct(base({ status: "CLOSED", exitPnlPct: null, pnlPct: null, peak: 80, closedReason: null })),
+      null,
+    );
+  });
+
+  it("a stopped-out row still gets a capture % via the trim-scale-blended stop estimate", () => {
+    const pct = closedCapturePct(
+      base({ status: "CLOSED", exitPnlPct: null, pnlPct: null, closedReason: "stopped", peak: 60 }),
+    );
+    assert.ok(pct != null, "expected a real number, not null, once closedRealizedPct has a stop-blend fallback");
   });
 });
