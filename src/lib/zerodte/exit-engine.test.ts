@@ -637,6 +637,55 @@ test("trim_scale DEAD ZONE — KNOWN GAP: via exit-sync.ts's REAL trimsTaken der
   assert.equal(d.reason, "ratchet_breakeven_floor");
 });
 
+// ── ADDENDUM (2026-08-29 audit, follow-up to the KNOWN GAP above) ──────────────────────────
+// The 2026-08-27 dead-zone patch added `!trimAvailable` to trim_scale's floorBreached — a term
+// ratchet mode's own protective-exit gate does NOT have (ratchet's is a plain
+// `stopBreached || floorBreached` OR, so a real plan-stop breach ALWAYS forces an EXIT one way
+// or another). trim_scale's plan-stop branch additionally requires `!floorBreached`, so if
+// trimAvailable were ever true, a real plan-stop breach can fall through BOTH exit-returning
+// blocks and land on the trim-ladder step instead — banking a tranche while the position keeps
+// falling, with no exit at all. This is UNREACHABLE today (proven below) because exit-sync.ts's
+// real trimsTaken derivation makes armed===taken always, so trimAvailable is always false — but
+// it is a live requirement for whoever eventually builds the persisted trim-tranche counter that
+// the original dead-zone finding named as the real fix: that redesign must not let trimAvailable
+// become true across a plan-stop breach.
+test("KNOWN GAP (unreachable in production today): if trimsTaken were ever independently 0 while a tranche is armed, a real plan-stop breach falls through to TRIM instead of EXIT", () => {
+  const d = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      regime: "neutral",
+      peakPremium: 4.85, // peak +21.25%, arms trim tranche 1 under neutral [20,50]
+      trimsTaken: 0, // artificial — NOT what the real caller (exit-sync.ts) ever sends; see below
+      currentMark: 1.5, // -62.5%, well past the -50% plan stop (2.0)
+    })
+  );
+  assert.equal(d.action, "TRIM", "the gap: a real stop breach silently becomes a TRIM, not an EXIT");
+});
+
+test("production-safe today: the real trimsTaken derivation (armed===taken always) still forces an EXIT on the same stop breach, just via the floor reason rather than plan_stop", () => {
+  const entry = ENTRY;
+  const regime = "neutral" as const;
+  const peakPremium = 4.85; // peak +21.25%
+  const peakPnlPct = ((peakPremium - entry) / entry) * 100;
+  const trimsTakenAsRealCallerDerivesIt = trimTranchesArmed(peakPnlPct, regime);
+  assert.equal(trimsTakenAsRealCallerDerivesIt, 1, "sanity: same formula as `armed` -> always equal in production");
+
+  const d = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      regime,
+      peakPremium,
+      trimsTaken: trimsTakenAsRealCallerDerivesIt,
+      currentMark: 1.5, // -62.5%, past the plan stop
+    })
+  );
+  // Still exits — trimAvailable is always false in production, so floorBreached fires instead —
+  // but via the shared "higher protection wins" design ratchet mode already documents explicitly
+  // (evaluateExitState's non-trim_scale branch), not a newly-discovered discrepancy.
+  assert.equal(d.action, "EXIT");
+  assert.notEqual(d.reason, "hold");
+});
+
 test("trim_scale DEAD ZONE: an unarmed peak still uses the shared floor untouched (no tranche to bank yet)", () => {
   // Peak +15% in neutral regime arms the EARLY floor (+5%) but no tranche (neutral's
   // first trigger is +20%) — the dead-zone guard must not suppress a legitimate floor
