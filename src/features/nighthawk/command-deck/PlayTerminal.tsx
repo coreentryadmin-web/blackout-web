@@ -133,8 +133,12 @@ export function PlayTerminal({
   nowMs: nowMsProp,
   convictionRank = null,
   initialTab,
+  onBack,
 }: {
   play: TerminalPlay | null;
+  /** Mobile-only "‹ back to plays" affordance — CSS hides the button entirely above the
+   *  `.nh-deck` stacked-layout breakpoint (see globals.css), so passing it is a no-op on desktop. */
+  onBack?: () => void;
   /** Board heat.state === CLOSED — right-rail must not claim LIVE/greeks after the session. */
   sessionClosed?: boolean;
   /**
@@ -179,7 +183,16 @@ export function PlayTerminal({
   const nowMs = nowMsProp ?? internalNowMs;
 
   if (!play) {
-    return <div className="nh-deck-right"><div className="nh-deck-empty">◂ select a play to break it down</div></div>;
+    return (
+      <div className="nh-deck-right">
+        {onBack && (
+          <button type="button" className="nh-deck-mobile-back" onClick={onBack}>
+            ‹ Plays
+          </button>
+        )}
+        <div className="nh-deck-empty">◂ select a play to break it down</div>
+      </div>
+    );
   }
   const g = play.greeks;
   // A CONDOR is a CREDIT structure closed by BUYING back — the directional "sell into the BID" fill
@@ -223,6 +236,11 @@ export function PlayTerminal({
 
   return (
     <div className={clsx("nh-deck-right", premium && "nh-deck-right-premium", (stale || streamKind === "CLOSED") && "nh-deck-dim")}>
+      {onBack && (
+        <button type="button" className="nh-deck-mobile-back" onClick={onBack}>
+          ‹ Plays
+        </button>
+      )}
       {premium ? (
         <>
           <TradeSummaryHero

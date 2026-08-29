@@ -218,3 +218,25 @@ test("CommandDeck command center hides regime/funnel strips; prominent status fi
   assert.match(html, />WATCH /);
   assert.match(html, />CLOSED /);
 });
+
+// REGRESSION 2026-08-29: member report — on a phone-width viewport the right rail rendered
+// unconditionally (initially a "select a play" placeholder, then real detail once a play
+// auto-selects), permanently squeezing the list; ticker/strike/expiry text truncated hard
+// against the fixed-pixel column widths. `data-mobile-view` (CSS-scoped to the mobile
+// breakpoint — a no-op on desktop) makes the list the default view; the detail rail only takes
+// over once the member taps a play. First render (before any effect/click) must be "list".
+test("mobile-view starts on the list, not the detail rail — a member never opens on a squeezed board", async () => {
+  const { CommandDeck } = await load();
+  const html = renderToStaticMarkup(
+    React.createElement(CommandDeck, {
+      plays: [play()],
+      laneLabel: "0DTE · same-day",
+      commandCenter: true,
+    }),
+  );
+  assert.match(html, /data-mobile-view="list"/);
+  assert.doesNotMatch(html, /data-mobile-view="detail"/);
+  // The mobile "back to plays" affordance is always in the tree (CSS-gated to mobile widths only)
+  // so a member who does tap into the detail rail on a phone has a way back.
+  assert.match(html, /nh-deck-mobile-back/);
+});
