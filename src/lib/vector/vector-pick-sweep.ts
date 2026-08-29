@@ -83,13 +83,17 @@ export async function sweepVectorPickForTicker(
   sessionDate: string
 ): Promise<VectorPickSweepTickerResult> {
   const state = await fetchVectorFullState(ticker, VECTOR_DEFAULT_DTE_HORIZON);
-  if (!state?.spot || !state.play || state.play.bias === "neutral") {
+  if (!state?.spot || !state.play) {
     return { ticker, verdict: "SKIP", detail: "no directional play", picksRanked: 0, leadersWritten: 0, closuresLogged: 0 };
   }
 
+  // pickContextFromFullState re-derives the COMMITTED bias (effectivePickBias) rather than
+  // trusting the raw card bias, which stays "neutral" for a pivot play until spot commits —
+  // this used to be checked with the raw field here too, silently skipping every committed
+  // pivot ticker before it ever reached ranking (2026-08-29 audit finding).
   const ctxBase = pickContextFromFullState(state);
   if (!ctxBase) {
-    return { ticker, verdict: "SKIP", detail: "no pick context", picksRanked: 0, leadersWritten: 0, closuresLogged: 0 };
+    return { ticker, verdict: "SKIP", detail: "no directional play", picksRanked: 0, leadersWritten: 0, closuresLogged: 0 };
   }
 
   const chain = await resolveTickerChainRows(ticker);
@@ -140,7 +144,7 @@ export async function sweepVectorPickForTicker(
       entryMid: pick.entryMid ?? pick.premium ?? null,
       caveat: pick.caveat,
       invalidation: play.invalidation ?? null,
-      bias: play.bias,
+      bias: ctx.play.bias, // the COMMITTED bias (ctx.play already carries it, not the raw card bias)
       callWall: ctx.callWall ?? null,
       putWall: ctx.putWall ?? null,
       gammaFlip: ctx.gammaFlip ?? null,

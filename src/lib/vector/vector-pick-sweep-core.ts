@@ -4,6 +4,7 @@
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
 import type { VectorPlayPickContext } from "@/features/vector/lib/vector-play-candidates";
 import type { VectorPickActionStatus } from "@/features/vector/lib/vector-pick-live-status";
+import { effectivePickBias } from "@/features/vector/lib/vector-pick-effective-bias";
 
 export const VECTOR_PICK_WINNER_PCT_FLOOR = 50;
 export const VECTOR_PICK_LEADER_PCT_FLOOR = 15;
@@ -36,13 +37,21 @@ export function vectorPickLeaderKey(sessionDate: string, ticker: string, occ: st
 export function pickContextFromFullState(state: VectorFullState): VectorPlayPickContext | null {
   const play = state.play;
   const spot = state.spot;
-  if (!play || play.bias === "neutral" || spot == null || spot <= 0) return null;
+  if (!play || spot == null || spot <= 0) return null;
+  // A committed `pivot` play's raw card bias stays "neutral" by design (long above / short
+  // below, until spot commits) — gating on the raw field here silently skipped the whole
+  // ticker for every committed pivot play (2026-08-29 audit finding, same root cause as the
+  // already-fixed contract-picks/live/route.ts bug, in this server sweep's own call site).
+  // Re-derive the committed direction the same way vector-play-candidates.ts ranks picks;
+  // `bias == null` covers both a genuinely neutral non-pivot play and an uncommitted pivot.
+  const bias = effectivePickBias(play, spot, state.gammaFlip);
+  if (bias == null) return null;
 
   const numOrNull = (v: number | null | undefined) =>
     typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null;
 
   return {
-    play,
+    play: bias === play.bias ? play : { ...play, bias },
     spot,
     callWall: numOrNull(state.gexWalls?.callWalls?.[0]?.strike),
     putWall: numOrNull(state.gexWalls?.putWalls?.[0]?.strike),
