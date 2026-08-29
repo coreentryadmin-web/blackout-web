@@ -84,7 +84,11 @@ test("open compact row shows active status and the CURRENT return, not the peak"
   assert.match(html, />11:58</);
   assert.match(html, />\+42%/);
   assert.doesNotMatch(html, />\+87%/, "the peak must not be rendered as the row's PNL");
-  assert.match(html, />ACTIVE</);
+  // The lifecycle STATUS pill shows the grounded ACTION vocabulary when real fields support it —
+  // HOLD here, from the fixture's `recommendation: "HOLD"` (play-card-lifecycle.ts's
+  // zeroDteActionDisplay, 2026-08-29) — not the coarse ACTIVE label this test asserted before that
+  // landed. The pill's tone/class is unchanged (still `is-active`); only the label got sharper.
+  assert.match(html, />HOLD</);
   assert.match(html, /nh-deck-status-pill is-active/);
 });
 

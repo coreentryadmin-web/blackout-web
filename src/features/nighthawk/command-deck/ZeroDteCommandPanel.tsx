@@ -18,6 +18,7 @@ import {
 } from "./TerminalPremiumPanels";
 import { CondorPanel, TimeStopClock } from "./play-terminal-shared";
 import { ThesisHealthPanel } from "./ThesisHealthPanel";
+import { closedCapturePct, closedRealizedPct } from "./play-card-lifecycle";
 
 const usd = (n: number | null | undefined): string => (n != null ? `$${n.toFixed(2)}` : "—");
 const signPct = (n: number | null | undefined): string =>
@@ -94,6 +95,9 @@ export function ZeroDteCommandPanel({
   const hasEntry = play.entry != null;
   const pnlPct = play.pnlPct;
   const technicalsOpen = !isWorking;
+  const isClosed = play.status === "CLOSED";
+  const realizedPct = isClosed ? closedRealizedPct(play) : null;
+  const capturePct = isClosed ? closedCapturePct(play) : null;
 
   return (
     <div className="nh-deck-command-panel nh-deck-command-panel-v2 nh-deck-body">
@@ -124,6 +128,54 @@ export function ZeroDteCommandPanel({
           globals.css) — this is a desktop-width affordance, not a mobile requirement. */}
       <div className="nh-deck-command-columns">
         <div className="nh-deck-command-col nh-deck-command-col--trade" aria-label="Trade command">
+          {/* Post-Trade Attribution — roadmap brief §1's CLOSED "what happened" framing
+              (docs/audit/NIGHTHAWK-3RAIL-REDESIGN.md). `capturePct` is an honest derivation from
+              two already-real fields (closedRealizedPct / peak, see play-card-lifecycle.ts's own
+              doc on why it's null rather than a misleading number whenever either side is
+              unusable) — not a new stored metric, so this section is additive and never
+              fabricates a number the backend didn't produce. */}
+          {isClosed && (
+            <section className="nh-deck-command-section nh-deck-command-outcome" aria-labelledby="nh-cmd-outcome">
+              <h3 id="nh-cmd-outcome" className="nh-deck-command-heading">
+                Trade outcome
+              </h3>
+              <div className="nh-deck-meta nh-deck-command-meta">
+                {hasEntry && (
+                  <div>
+                    <span className="k">Entry</span>
+                    <span className="v">{usd(play.entry)}</span>
+                  </div>
+                )}
+                {realizedPct != null && (
+                  <div>
+                    <span className="k">Realized</span>
+                    <span
+                      className={clsx(
+                        "v",
+                        realizedPct > 0 && "nh-deck-pos",
+                        realizedPct < 0 && "nh-deck-neg",
+                      )}
+                    >
+                      {signPct(realizedPct)}
+                    </span>
+                  </div>
+                )}
+                {play.peak != null && (
+                  <div>
+                    <span className="k">Peak</span>
+                    <span className="v nh-deck-pos">{signPct(play.peak)}</span>
+                  </div>
+                )}
+                {capturePct != null && (
+                  <div>
+                    <span className="k">Captured</span>
+                    <span className="v">{Math.round(capturePct)}% of peak</span>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
           <section className="nh-deck-command-section nh-deck-command-live" aria-labelledby="nh-cmd-live">
             <h3 id="nh-cmd-live" className="nh-deck-command-heading">
               Live · management

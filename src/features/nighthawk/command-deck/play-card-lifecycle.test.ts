@@ -18,6 +18,8 @@ import {
   playTimeRangeCompact,
   playListReturnPct,
   playTriggeredAtMs,
+  zeroDteActionDisplay,
+  closedCapturePct,
 } from "./play-card-lifecycle.ts";
 import type { TerminalPlay } from "./types.ts";
 
@@ -264,5 +266,116 @@ describe("list PNL column — current, not peak", () => {
 
   it("WATCH rows keep trackPct — they hold no position, so there is no P&L", () => {
     assert.equal(playListReturnPct(lcPlay({ status: "WATCH", trackPct: 56, pnlPct: null, peak: null })), 56);
+  });
+});
+
+describe("zeroDteActionDisplay — grounded ACTION vocabulary (2026-08-29)", () => {
+  it("non-0DTE horizons never get the ACTION vocabulary", () => {
+    assert.equal(zeroDteActionDisplay(base({ horizon: "SWING", status: "OPEN" })), null);
+    assert.equal(zeroDteActionDisplay(base({ horizon: "LEGACY", status: "OPEN" })), null);
+  });
+
+  it("WATCH/SKIP stay null — no real data path for readiness state (deliberate, see roadmap doc)", () => {
+    assert.equal(zeroDteActionDisplay(base({ status: "WATCH" })), null);
+    assert.equal(zeroDteActionDisplay(base({ status: "SKIP" })), null);
+  });
+
+  it("OPEN + recommendation HOLD, no trims fired yet → HOLD", () => {
+    assert.deepEqual(zeroDteActionDisplay(base({ status: "OPEN", recommendation: "HOLD" })), {
+      label: "HOLD",
+      tone: "active",
+    });
+  });
+
+  it("recommendation SELL → EXIT regardless of trim state", () => {
+    assert.deepEqual(zeroDteActionDisplay(base({ status: "HOLD", recommendation: "SELL" })), {
+      label: "EXIT",
+      tone: "active",
+    });
+  });
+
+  it("recommendation TRIM reads the real next-unfired tranche's trigger_pct — never a hardcoded 25/50", () => {
+    const play = base({
+      status: "TRIM",
+      recommendation: "TRIM",
+      exitPolicy: {
+        policy: "trim_scale",
+        trim_levels: [
+          { trigger_pct: 60, fraction: 0.5, premium: null, fired: true },
+          { trigger_pct: 120, fraction: 0.5, premium: null, fired: false },
+        ],
+      } as TerminalPlay["exitPolicy"],
+    });
+    assert.deepEqual(zeroDteActionDisplay(play), { label: "TRIM 120%", tone: "active" });
+  });
+
+  it("any tranche fired + recommendation HOLD → RUNNER (matches trimLadderVisual's own semantics)", () => {
+    const play = base({
+      status: "HOLD",
+      recommendation: "HOLD",
+      exitPolicy: {
+        policy: "trim_scale",
+        trim_levels: [{ trigger_pct: 60, fraction: 1, premium: null, fired: true }],
+      } as TerminalPlay["exitPolicy"],
+    });
+    assert.deepEqual(zeroDteActionDisplay(play), { label: "RUNNER", tone: "active" });
+  });
+
+  it("condor rows never get the directional ACTION vocabulary — coarse pill stays honest", () => {
+    assert.equal(zeroDteActionDisplay(base({ status: "OPEN", recommendation: "HOLD", isCondor: true })), null);
+  });
+
+  it("CLOSED: real exit_reason values map to real labels", () => {
+    assert.deepEqual(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "doubled" })), {
+      label: "TARGET",
+      tone: "closed",
+    });
+    assert.deepEqual(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "stopped" })), {
+      label: "STOPPED",
+      tone: "closed",
+    });
+    assert.deepEqual(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "time_stop" })), {
+      label: "EOD EXIT",
+      tone: "closed",
+    });
+  });
+
+  it("CLOSED: an unrecognized/missing closedReason never fabricates a label — falls back to null", () => {
+    assert.equal(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: null })), null);
+    assert.equal(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "trim_scale_first" })), null);
+  });
+});
+
+describe("closedCapturePct — honest post-trade attribution (2026-08-29)", () => {
+  it("captures the real ratio of realized to peak, as a percentage", () => {
+    // exitPnlPct 45.5, peak 91 → banked exactly half the best-ever excursion.
+    assert.equal(
+      closedCapturePct(base({ status: "CLOSED", exitPnlPct: 45.5, peak: 91 })),
+      50,
+    );
+  });
+
+  it("non-CLOSED rows never get a capture %, even with entry/peak present", () => {
+    assert.equal(closedCapturePct(base({ status: "OPEN", exitPnlPct: 40, peak: 80 })), null);
+  });
+
+  it("no peak (or a non-positive one) → null, never a divide-by-zero or negative-denominator number", () => {
+    assert.equal(closedCapturePct(base({ status: "CLOSED", exitPnlPct: 40, peak: null })), null);
+    assert.equal(closedCapturePct(base({ status: "CLOSED", exitPnlPct: 40, peak: 0 })), null);
+    assert.equal(closedCapturePct(base({ status: "CLOSED", exitPnlPct: 40, peak: -10 })), null);
+  });
+
+  it("no usable realized figure anywhere on the row → null, not a fabricated 0%", () => {
+    assert.equal(
+      closedCapturePct(base({ status: "CLOSED", exitPnlPct: null, pnlPct: null, peak: 80, closedReason: null })),
+      null,
+    );
+  });
+
+  it("a stopped-out row still gets a capture % via the trim-scale-blended stop estimate", () => {
+    const pct = closedCapturePct(
+      base({ status: "CLOSED", exitPnlPct: null, pnlPct: null, closedReason: "stopped", peak: 60 }),
+    );
+    assert.ok(pct != null, "expected a real number, not null, once closedRealizedPct has a stop-blend fallback");
   });
 });
