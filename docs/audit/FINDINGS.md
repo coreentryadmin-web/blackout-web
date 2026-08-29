@@ -4,6 +4,574 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## C-tier/untiered exit-mode A/B measured — shipped RATCHET beats DEFAULT-OFF trim_scale on this population
+
+> **kind:** `FINDING`
+
+| **Status** | MEASURED — ratchet outperforms trim_scale for C-tier/untiered on this 90-day sample (111 plays, 99 graded); no gate changed |
+| **Severity** | P3 — calibration evidence, no production behavior changed |
+| **Surface** | `src/lib/zerodte/exit-sync.ts` `resolveExitModeForTier`; new `scripts/audit/tier-exit-mode-ab.mjs` |
+
+### What was measured
+
+Task #59 (`docs/audit/0DTE-RESEARCH.md`'s 2026-08-28 "Follow-up scoped but BLOCKED" note): does
+the shipped policy — C-tier and untiered 0DTE plays exit via `ratchet` (`resolveExitModeForTier`,
+`src/lib/zerodte/exit-sync.ts`) — actually outperform the DEFAULT-OFF `trim_scale` exit (the E5
+⅓@+25%/⅓@+50%/run-the-last-⅓ scale-out already shipped for A/B-tier), or is C/untiered just
+inheriting ratchet by default without ever being measured on its own population? That measurement
+was blocked until PR #3112 (the admin `tier-export` route) exposed `entry_premium`/`top_strike`/
+`expiry` per historical row — the public `/api/market/zerodte/record` route only ever returns
+aggregates, so a real historical play could never be re-priced against its own option minute bars.
+
+### Evidence
+
+New script `scripts/audit/tier-exit-mode-ab.mjs` (`npm run ab:tier-exit-mode`), first live run
+against production, 90-day window:
+
+- Population (tier `C` or untiered): **111** plays, **111** re-priceable, 1 dropped for missing
+  Polygon bars, 99 successfully graded through the exit engine under both modes.
+- **RATCHET** (shipped): win rate **45.5%**, avg P&L **+5.5%**. Outcome mix: 43 `runner_close`,
+  44 `stopped`, 8 `flat_scratch`, 4 `ratchet`-floor exits.
+- **TRIM_SCALE** (the alternative): win rate **38.4%**, avg P&L **−7.3%**. Outcome mix: 29
+  `doubled`, 18 `runner_close`, 44 `stopped`, 8 `flat_scratch`.
+- **Delta (trim_scale − ratchet): −12.8pp avg P&L, −7.1pp win rate.** trim_scale is measurably
+  WORSE on this specific population, the opposite of what its A/B-tier result might suggest.
+
+Both modes are graded through the SAME real minute bars per play and the SAME shipped
+`evaluateExitState`/`TRIM_SCALE_RULES` — only the harness (bar-replay loop) is
+script-local, copied verbatim from `zerodte-sim.mjs`'s own precedent (never re-implementing the
+graded decision logic itself, only the offline bar-replay wrapper around it).
+
+### Blast radius
+
+None — this is a read-only measurement script. No gate, exit mode, or `resolveExitModeForTier`
+routing was touched. The shipped `ratchet` default for C-tier/untiered is now empirically supported
+by this result rather than merely inherited from A/B's own trim_scale preference. The 43
+`runner_close` rows under ratchet (vs only 18 under trim_scale) are the likely driver: ratchet lets
+a runner ride uninterrupted past +50% toward the close far more often for this population, while
+trim_scale's earlier ⅓@+25%/⅓@+50% banking locks in smaller gains on names that would have run
+further — and the `doubled` bucket (29 rows hitting the trim_scale runner-target) isn't enough to
+offset that.
+
+### Fix rationale
+
+N/A — no fix. Per this repo's calibration-first discipline (same as `cortex-oppose-magnitude-ab.mjs`,
+`veto-flicker-rate.mjs`): this is evidence, not a switch. A single 90-day/111-play sample is not
+enough to declare the question permanently closed — a larger window or a second sampling period
+would strengthen it — but it does answer the specific, previously-open question: extending
+trim_scale to C/untiered is NOT supported by this measurement, so the shipped ratchet default
+should stay as-is pending a larger or repeated sample.
+
+## The server-side Vector pick sweep skipped every committed pivot play entirely — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in `fix/vector-pick-sweep-pivot-bias-gate` |
+| **Severity** | P1 — real trade decision surface, server-side Vector pick sweep (cron) |
+| **Surface** | `src/lib/vector/vector-pick-sweep-core.ts` `pickContextFromFullState`, `src/lib/vector/vector-pick-sweep.ts` `sweepVectorPickForTicker` |
+
+### Root cause
+
+Same root cause as the already-fixed `contract-picks/live/route.ts` bug (2026-08-29,
+`fix/vector-pivot-pick-bias-live-status`), in a second, independent call site: a committed
+`pivot` play's raw card bias stays `"neutral"` by design (long above the gamma flip / short
+below, until spot commits) — but two places in the server-side Vector pick sweep gated on that
+raw field directly instead of the committed direction:
+
+1. `sweepVectorPickForTicker` (`vector-pick-sweep.ts:86`): `if (!state?.spot || !state.play ||
+   state.play.bias === "neutral")` returned `SKIP` before the ticker ever reached ranking —
+   silently treating **every** committed pivot ticker as "no directional play," regardless of
+   whether spot had actually cleared the flip and a real direction existed.
+2. `pickContextFromFullState` (`vector-pick-sweep-core.ts`): the same raw-field check
+   (`play.bias === "neutral"`) inside the pure context builder, currently unreachable via its one
+   caller (which already filtered the same case one line earlier) but duplicating the same wrong
+   logic — left uncorrected, it would reproduce the identical bug for any future second caller.
+
+Additionally, once past the (buggy) gate, `evaluateVectorPickLiveStatus`'s `bias` input
+(`vector-pick-sweep.ts:143`) was fed the raw `play.bias` directly — the exact same
+live-status pivot-bias bug already fixed in the `contract-picks/live/route.ts` call site,
+unfixed here.
+
+Note `rankVectorPlayCandidates` (`vector-play-candidates.ts:526`, called via
+`buildRankedVectorPicks`) already correctly re-derives the effective bias internally — but that
+correctness never mattered here, because the sweep never called it at all for a committed pivot
+ticker; execution stopped at the gate before ranking could run.
+
+### Evidence
+
+New tests in `vector-pick-sweep-core.test.ts`:
+- `pickContextFromFullState` with a `pivot` play, raw `bias: "neutral"`, and spot 0.3% above the
+  gamma flip (a real commitment) returned `null` before the fix — now returns a context whose
+  `play.bias` is `"long"` (the committed direction).
+- The uncommitted case (spot sitting exactly on the flip) still correctly returns `null`.
+
+13/13 tests pass in `vector-pick-sweep-core.test.ts`, `npx tsc --noEmit` clean across the repo.
+
+### Blast radius
+
+Two files, three call sites, one root cause: `sweepVectorPickForTicker`'s early-return gate,
+`pickContextFromFullState`'s internal gate, and the `bias` fed into `evaluateVectorPickLiveStatus`
+downstream in the same function. `playJson.bias` (the persisted display/audit snapshot of the
+play card) is deliberately left as the raw bias — it mirrors what the play card itself shows,
+not a ranking/status computation input.
+
+### Fix rationale
+
+`pickContextFromFullState` now computes `effectivePickBias(play, spot, gammaFlip)` once and
+substitutes it into the returned context's `play.bias` (mirroring exactly what
+`rankVectorPlayCandidates` already does internally for ranking), returning `null` only when there
+is genuinely no committed direction — covering both a truly neutral non-pivot play and an
+uncommitted pivot in one check. `sweepVectorPickForTicker`'s early-return no longer duplicates the
+bias check (removed, now redundant and a correctness risk if it drifted from the real gate); it
+relies on `pickContextFromFullState`'s own (now-correct) null return as the single source of
+truth. The live-status call now reads `ctx.play.bias` (already the committed bias) instead of the
+raw `play.bias`.
+
+## Vector's invalidation-level parser silently dropped any real level under $10 — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in `fix/vector-invalidation-level-sub10-floor` |
+| **Severity** | P1 — real trade decision surface, Vector live contract-pick status |
+| **Surface** | `src/features/vector/lib/vector-pick-live-status.ts` `parseInvalidationLevel` (feeds `isSetupInvalidated` / `evaluateVectorPickLiveStatus`) |
+
+### Root cause
+
+`parseInvalidationLevel` walks every numeric substring in a play's invalidation string (e.g.
+`"5m close > 7,600 (wall breaks)"`), skipping the ones immediately followed by a timeframe suffix
+(`m`/`M`/`H`, matching `tfLabel`'s own output format in `vector-play-engine.ts`: `"5m"`, `"15m"`,
+`"1H"`), and returns the first remaining number as the invalidation price level. It also required
+`n >= 10` before accepting a match — a floor with no comment explaining it and no relationship to
+the timeframe-token skip logic, which is already handled correctly by the tail-character check.
+
+Vector is explicitly **not** restricted to a preset ticker universe —
+`isVectorTickerAllowed` (`src/features/vector/lib/vector-ticker.ts:37`) accepts any well-formed,
+optionable symbol by design ("any optionable symbol works... this gate exists purely to reject
+junk/injection"). Plenty of real, actively-traded optionable tickers sit under $10. For any such
+ticker, a legitimate invalidation string like `"5m close < 8.50 (wall breaks → support lost)"`
+parsed to `null` (the `8.5 < 10` check rejected the only real number in the string), which meant
+`isSetupInvalidated`'s `level`-gated branches (`"close >"`, `"close <"`, `"back through"`) could
+never fire — the pick's setup-invalidation status was silently stuck at "not invalidated"
+regardless of what spot actually did, for the entire class of sub-$10 tickers.
+
+### Evidence
+
+Two new regression tests in `vector-pick-live-status.test.ts`:
+- `parseInvalidationLevel("5m close < 8.50 ...")` returned `null` before the fix (now returns
+  `8.5`); `parseInvalidationLevel("15m close > 3.25")` likewise.
+- `isSetupInvalidated(8.6, "5m close > 8.50 (wall breaks → fade void)", "short", null, null, null)`
+  returned `{ invalidated: false, level: null }` before the fix (spot at 8.6 is above the 8.50
+  ceiling, which should invalidate a short fade) — now correctly returns
+  `{ invalidated: true, level: 8.5 }`.
+
+16/16 tests pass in the affected file, `npx tsc --noEmit` clean.
+
+### Blast radius
+
+Single function, single call site chain: `parseInvalidationLevel` is only called from
+`isSetupInvalidated` (same file), which is only called from `evaluateVectorPickLiveStatus` (same
+file) and directly by its own test suite. No other consumer duplicates this parsing logic.
+
+### Fix rationale
+
+Removed the `n >= 10` condition, keeping only `Number.isFinite(n)`. The timeframe-token exclusion
+this floor was seemingly guarding against is already fully handled by the tail-character check
+(`tail === "m" || tail === "M" || tail === "H"`) a few lines above — every timeframe string
+`tfLabel` can produce (`"5m"`, `"15m"`, `"1H"`, `"1.5H"`, etc.) is caught by that check on its own,
+so the extra numeric floor served no purpose except rejecting genuine low-priced levels. No
+alternative considered: there is no legitimate reason to reject a finite parsed number here once
+the timeframe-token case is excluded.
+
+## ADDENDUM to the trim_scale dead-zone reopening — the same root cause can (once fixed) let a real plan-stop breach fall through to a TRIM instead of an EXIT — DOCUMENTED, NOT SHIPPED (unreachable today)
+
+> **kind:** `FINDING`
+
+| **Status** | DOCUMENTED — pinning regression test added; no code change (the gap is unreachable in production today, and there is nothing safe to change without the persisted-counter redesign this addendum requires) |
+| **Severity** | P1 — latent risk-management defect, currently dormant |
+| **Surface** | `src/lib/zerodte/exit-engine.ts` `decideTrimScale`, companion to `docs/audit/findings-staging/2026-08-29-trim-scale-dead-zone-reopened.md` |
+
+### Root cause
+
+This is a follow-up to the 2026-08-29 reopening of the trim_scale breakeven-floor dead zone
+(`2026-08-29-trim-scale-dead-zone-reopened.md`), which established that `exit-sync.ts` derives
+`trimsTaken` as `trimTranchesArmed(pinnedLivePnlPct(entry, peak), regime)` — the exact same formula
+`decideTrimScale` uses internally to compute `armed` — so `armed === taken` always in production,
+and `trimAvailable = armed > taken` is always `false`.
+
+A deeper audit of the same code turned up a second, more severe consequence of that same
+structural gap. Compare the two exit modes' protective-exit precedence:
+
+- **`ratchet` mode** (`evaluateExitState`'s non-`trim_scale` branch): `const stopBreached =
+  planStop != null && currentMark <= planStop; const floorBreached = floor != null && pnlPct <=
+  floor; if (stopBreached || floorBreached) { ... }` — a plain OR. A real plan-stop breach
+  (`stopBreached`) ALWAYS enters the EXIT-returning block, no matter what the floor is doing; the
+  only question the block still resolves is which REASON label wins.
+- **`decideTrimScale`**: the 2026-08-27 dead-zone patch added a `!trimAvailable` term to its
+  `floorBreached`, and its plan-stop branch additionally requires `!floorBreached` before firing.
+  If `trimAvailable` were ever `true` (which it is not today, but is exactly what the persisted
+  trim-tranche counter named as the real fix would make possible), a real plan-stop breach can
+  satisfy `stopBreached` yet fail BOTH `(stopIsHigher && !floorBreached)` and `(floorBreached &&
+  sharedFloor != null)` simultaneously — falling through to the trim-ladder step, which returns a
+  `TRIM` action (banking a tranche) with **no exit at all**, while the position keeps losing value.
+  `ratchet` mode has no code path that can produce this outcome; `trim_scale`'s does, purely as a
+  side effect of the dead-zone patch's added term having no equivalent safety net.
+
+### Evidence
+
+Two new regression tests in `exit-engine.test.ts`, immediately after the existing "KNOWN GAP" test
+for the original dead-zone reopening:
+
+- `"KNOWN GAP (unreachable in production today): if trimsTaken were ever independently 0 while a
+  tranche is armed, a real plan-stop breach falls through to TRIM instead of EXIT"` — with an
+  artificial `trimsTaken: 0` (not what the real caller ever sends) at peak +21.25% (arms tranche 1)
+  and a mark crashed to -62.5% (well past the -50% plan stop), `evaluateExitState` returns
+  `action: "TRIM"`, not `"EXIT"`.
+- `"production-safe today: the real trimsTaken derivation (armed===taken always) still forces an
+  EXIT on the same stop breach, just via the floor reason rather than plan_stop"` — the identical
+  scenario, but with `trimsTaken` derived via `trimTranchesArmed(peakPnlPct, regime)` (exit-sync.ts's
+  real formula) confirms `action: "EXIT"` still fires (via the floor reason, matching ratchet
+  mode's own documented "higher protection wins" design — not a new discrepancy), proving the
+  gap above cannot fire via the only real production call path today.
+
+79/79 tests pass in `exit-engine.test.ts`, `npx tsc --noEmit` clean.
+
+### Blast radius
+
+Same as the original reopened finding: `decideTrimScale`, reached only via `evaluateExitState`
+from `exit-sync.ts`'s live ledger tick. `ratchet` mode (the C-tier/untiered default and the mode
+every non-`trim_scale` play uses) is structurally immune — its protective-exit gate is a plain OR
+with no `trimAvailable`-style suppression term, so this addendum is `trim_scale`-specific.
+
+### Fix rationale — no code change shipped, and why that is correct here
+
+There is nothing safe to fix in isolation: the guard this addendum is warning about
+(`!trimAvailable` on `floorBreached`, and `!floorBreached` on the plan-stop branch) never actually
+executes differently today, because `trimAvailable` is always `false`. Removing or altering it now
+would be a no-op at best (since the branch it guards is unreachable) and, at worst, could interact
+unpredictably with the parts of `decideTrimScale` that DO execute in production (the floor-vs-
+thesis-break precedence) if changed carelessly. The correct fix is not a patch to today's code — it
+is a REQUIREMENT on the eventual persisted trim-tranche counter (the real fix the original
+dead-zone reopening named as future work): whatever replaces `trimsTaken`'s peak-rederived value
+must guarantee a real plan-stop breach can never be suppressed by an armed-but-unbanked tranche,
+matching ratchet mode's unconditional stop-always-exits guarantee. This pinning test is written so
+that redesign is forced to confront this scenario directly rather than silently reintroducing it.
+
+## trim_scale's breakeven-floor dead zone is NOT fixed in production — the 2026-08-27 fix was verified with an input the real caller never produces — REOPENED
+
+> **kind:** `FINDING`
+
+| **Status** | REOPENED — `fix/trim-scale-floor-dead-zone` (merged 2026-08-27) does not change production behavior; the underlying SLS/TSM bug (breakeven-floor dump preempting an armed trim tranche) is still live |
+| **Severity** | P1 — real trade P&L, live 0DTE exit engine, same defect class as the original finding |
+| **Surface** | `src/lib/zerodte/exit-engine.ts` `decideTrimScale` (Night Hawk 0DTE, `trim_scale` exit mode) + `src/lib/zerodte/exit-sync.ts` (the only real caller) |
+
+### Root cause
+
+The 2026-08-27 fix made `decideTrimScale` suppress the shared breakeven-floor EXIT whenever
+`trimAvailable = armed > taken`, where `armed = trimTranchesArmed(peakPnlPct, regime)` and `taken`
+is `input.trimsTaken` (clamped/floored). That guard is correct **in isolation** — but its own
+regression test proved it with `trimsTaken: 0`, a value the real production caller can never send.
+
+`exit-sync.ts` (the only place that calls `evaluateExitState` for a live ledger row) derives
+`trimsTaken` as:
+
+```ts
+const trimsTaken = exitMode === "trim_scale"
+  ? trimTranchesArmed(pinnedLivePnlPct(entry, peak), regime ?? "neutral")
+  : 0;
+```
+
+That is **the exact same function, on the exact same peak/regime**, that `decideTrimScale`
+independently uses to compute `armed`. There is no persisted trim-tranche counter anywhere in the
+ledger row — `taken` is re-derived from the peak on every tick instead of reflecting how many
+tranches were actually banked. So on the real call path, `taken === armed` on every single tick,
+`trimAvailable = armed > taken` is **always false**, and the dead-zone guard the fix added can
+never fire. The comment in `exit-sync.ts` already flags this as an intentional simplification
+("the graduation follow-up — FINDINGS 2026-07-23", i.e. a persisted trim-tranche counter was always
+known to be needed) — but the 2026-08-27 finding's "FIXED" status did not account for it, so the
+fix reads as closing the SLS/TSM bug when it does not touch the code path that actually runs.
+
+### Evidence
+
+New regression test in `src/lib/zerodte/exit-engine.test.ts` ("trim_scale DEAD ZONE — KNOWN GAP"),
+which pins `trimsTaken` using the real caller's own formula (`trimTranchesArmed`) instead of the
+hand-picked `0` the original fix's test used:
+
+```ts
+const peakPremium = 4.8836; // peak +22.09%, the live SLS shape
+const trimsTakenAsRealCallerDerivesIt = trimTranchesArmed(peakPnlPct, "neutral"); // === 1
+const d = evaluateExitState(input({
+  exitMode: "trim_scale", regime: "neutral", peakPremium,
+  currentMark: 4.0, // round-tripped to 0%
+  trimsTaken: trimsTakenAsRealCallerDerivesIt,
+}));
+// d.action === "EXIT", d.reason === "ratchet_breakeven_floor"  <-- still dumps to breakeven
+```
+
+Run: `npx tsx --test src/lib/zerodte/exit-engine.test.ts` → 77/77 pass, including this test —
+i.e. the current shipped behavior for the exact SLS/TSM shape (peak +22.09%, round-tripped to
+breakeven, `neutral` regime) is still `ratchet_breakeven_floor`, not `trim_scale_first`. The
+original fix's own test (`trimsTaken: 0`) still also passes and still returns `TRIM` — both tests
+are correct about what they each input; the point is that `trimsTaken: 0` is not a value the real
+ledger sync path ever sends.
+
+### Blast radius
+
+Same single call site as the original finding — `decideTrimScale`, reached only via
+`evaluateExitState` from `exit-sync.ts`'s live ledger tick and from `zerodte-sim.mjs`'s offline
+replay harness (which passes its own hand-computed `trimsTaken`, so the simulator's numbers for
+this scenario do not reflect what production actually does). Any future SLS/TSM-shaped peak under
+`trim_scale` (neutral or range regime, since those are the two where the floor and the first
+tranche threshold coincide/cross) will still round-trip to breakeven in production exactly as
+before 2026-08-27.
+
+### Fix rationale — NOT shipped now, scoped as future work
+
+The real fix needs a **persisted trim-tranche counter** on the ledger row (a genuine "how many
+thirds has this specific position banked" fact), not a value re-derived from the peak every tick —
+because re-deriving it from the same formula `armed` uses makes the two values structurally
+identical by construction, no matter how the comparison inside `decideTrimScale` is written. That
+requires a DB column + write path in `exit-sync.ts` at the point a TRIM action is actually taken,
+which is schema/migration work with real live-risk-management blast radius. Given the repo's
+existing "graduation follow-up" note already flagged this and given the risk of a rushed schema
+change to code that manages real position P&L, this finding stops at correcting the record and
+adding a regression test that pins the current (still-buggy) behavior so it cannot silently regress
+further or be re-claimed as fixed — it does not attempt the schema change in this PR.
+
+**What was done here:** reopened the record (this file) + the pinning regression test above.
+**What is NOT done:** the persisted-counter fix itself, left as documented future work.
+
+## Counterfactual skip-grading's bar fetch swallowed every thrown error into the same generic "no bar data" reason — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in `feat/scenario-corpus-harness` |
+| **Severity** | P2 — desk-operations calibration surface, not member-facing |
+| **Surface** | `src/lib/zerodte/skip-grading.ts` `runSkipGrading`'s `barsFor` |
+
+### Root cause
+
+Following up the previous finding in this same PR (the `blocked_value` reason-aggregation fix):
+once the ungradeable `reason` strings actually became visible in the calibration report, a live
+run against production showed **194 of 206 real ungradeable rejections** carrying the identical
+generic reason — `"no bar data available for the session — neither contract nor underlying path
+reconstructable"` — across 11 different gate codes and, necessarily, many different tickers and
+session dates over a 30-day window.
+
+`barsFor`'s bar fetch already had a `.catch(() => [] as SkipGradeBar[])` around the whole dynamic
+import + Polygon call. That catch makes NO distinction between two very different situations: (1)
+the fetch succeeded and Polygon genuinely had zero minute bars for that ticker/session (a quiet
+name, an untradeable index root, etc.), and (2) the fetch itself threw — a dynamic-import failure,
+a bug in the response mapping, an unexpected exception — and the resulting empty array is not
+evidence of anything except that the code never got a chance to try. `gradeSkippedPlay` (the pure
+grader) then reports the same generic "no bar data available" message for both cases, because it
+only ever sees an empty array, never the fact that fetching it failed outright.
+
+Manually replaying the exact Polygon call `barsFor` makes (`fetchAggBars` for SPY on a recent real
+session date, same endpoint/params) from this environment returned 797 real minute bars with
+HTTP 200 — proving Polygon data is genuinely available for at least some of the population this
+report scores, which rules out "Polygon simply never has bars for anything scored here" as an
+explanation for a 94% ungradeable rate. Whether production's specific ungradeable rows are hitting
+a real Polygon gap, a symbol-mapping issue, or an outright exception could not be told apart from
+the report alone — the fix in this file makes that distinguishable going forward without needing
+to reason about it from first principles again.
+
+### Evidence
+
+New test in `skip-grading.test.ts`: `runSkipGrading: an underlying bar fetch that THROWS is
+surfaced with the real error, not the generic 'no bar data' reason` — a rejection whose bar fetch
+mock throws now persists a counterfactual with `reason: "underlying bar fetch threw: <the actual
+message>"` instead of one of the four generic bar-empty reasons `gradeSkippedPlay` emits.
+
+### Blast radius
+
+Only `runSkipGrading`'s own bar-fetch loop; `gradeSkippedPlay` (the pure core) and its existing
+callers/tests are unchanged — the swap happens in the data layer, after the verdict is computed,
+only when the verdict landed on one of the four known generic bar-empty reasons AND a fetch error
+was actually captured for that (ticker, session) pair.
+
+### Fix rationale
+
+Kept the fail-soft contract (`barsFor` still never lets a single row's fetch failure abort the
+whole batch — the promise still resolves, never rejects, for the loop above it) while adding a
+side-channel (`fetchThrew: string | null`) that the per-row loop consults to override the persisted
+reason ONLY when it lands on one of the generic bar-empty messages the pure grader would otherwise
+emit. This is deliberately narrower than rewriting `gradeSkippedPlay` to accept an error parameter
+directly — the pure core's contract (bars in, verdict out) stays intact and testable in isolation;
+only the data layer, which already owns the fetch and its failure modes, gains the extra context.
+Next run of `?grade_skips=1` against production will show whether the dominant reason shifts from
+the generic message to a specific thrown-error string, which is the concrete next diagnostic step
+this fix unlocks (not something this PR concludes on its own).
+
+## Polygon's own fetch layer swallowed every failure (including a circuit-breaker throw) into a bare empty result — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in `fix/polygon-fetch-swallowed-failure-reason` |
+| **Severity** | P2 — desk-operations calibration surface, follow-up to the `blocked_value` reason-surfacing fix in the same audit pass |
+| **Surface** | `src/lib/providers/polygon-largo.ts` `polygonGet`/`fetchAggBars`; consumed by `src/lib/zerodte/skip-grading.ts` |
+
+### Root cause
+
+The prior fix in this same pass (surfacing `ungradeable_reasons` in the calibration report,
+plus capturing a thrown error in `skip-grading.ts`'s `barsFor`) assumed the underlying-bar fetch
+would THROW on failure and get caught. A fresh production run after that fix deployed showed the
+exact same generic reason ("no bar data available for the session...") on every one of a new
+400-row batch, with `fetchThrew` never populated — meaning `fetchAggBars` genuinely never rejects.
+
+Tracing one level deeper: `polygon-largo.ts`'s `polygonGet` wraps the whole request (not
+configured, non-2xx status, or a caught exception) in a try/catch that returns a bare `null` in
+every case, logging only a `console.warn` (server logs, never surfaced to this or any audit tool).
+Critically, `polygonTrackedFetch` (`polygon-rate-limiter.ts`) DOES throw a real `Error` when the
+Polygon circuit breaker is open (`"[polygon] Circuit open — rate limited, pausing Xs"`) — but
+`polygonGet`'s own catch swallows that throw identically to a plain 404. So even the one failure
+mode that already surfaces as a real exception elsewhere in the codebase never escaped this
+function. `fetchAggBars` maps `polygonGet`'s `null` to a plain empty array, and by the time
+`skip-grading.ts` sees it, an HTTP error, a network failure, a circuit-breaker trip, and a
+genuinely-empty-but-successful response are all identically an empty array — the actual failure
+mode was invisible everywhere: this app's own logs, the calibration report, and this session's
+first-pass fix all missed it, because the swallow happens inside the shared provider function
+every other caller in this file also depends on staying null-on-failure.
+
+### Evidence
+
+Manually replaying the exact Polygon endpoint outside the app (same params, real recent session
+date) returned 797 real minute bars over HTTP 200 — ruling out "Polygon has nothing" a second time,
+independently of the first pass's version of this same check. New tests in `skip-grading.test.ts`
+pin both failure shapes: an actually-thrown exception (dynamic import failure) and the realistic
+shape (`fetchAggBarsWithDiagnostics` returning a captured `failureReason` string with no throw at
+all, modeling a circuit-breaker-open trip) both now surface as `"underlying bar fetch threw: <the
+real reason>"` in the persisted counterfactual instead of the generic bar-empty message.
+
+### Blast radius
+
+`polygonGet` is called by several other functions in `polygon-largo.ts` (`fetchPreviousDayBar`,
+`fetchPolygonMacd`, indicator resolvers). None of them are touched: the new `onFailure` parameter
+is optional and defaults to a no-op, so every existing caller's behavior (return `null`/empty on
+any failure, nothing more) is byte-for-byte unchanged. Only the new `fetchAggBarsWithDiagnostics`
+sibling function (used solely by `skip-grading.ts`) opts into the diagnostic.
+
+### Fix rationale
+
+Added an additive `onFailure` hook to `polygonGet` rather than changing its return contract —
+every other caller in this shared provider file depends on the plain `T | null` shape, and
+widening that risked a much larger, riskier PR for a fix that only one caller actually needs.
+`fetchAggBarsWithDiagnostics` is a new sibling to `fetchAggBars` (unchanged) rather than a
+modification, so no other consumer of `fetchAggBars` is affected. This is now the second layer of
+the same silent-absence-as-fact bug found and fixed in one pass — first in the report's own
+aggregation, now in the fetch layer feeding it — and the next `?grade_skips=1` run against
+production should finally show a real, specific reason (an HTTP status, a circuit-breaker pause,
+or a genuinely empty range) instead of the generic message, which is the concrete next diagnostic
+step once this deploys.
+
+## A closed 0DTE play could be silently re-rendered COMMIT on the unified board — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in `fix/horizon-adapter-closed-status-stale-commit` |
+| **Severity** | P1 — real position status shown on the unified Night Hawk board |
+| **Surface** | `src/lib/zerodte/horizon-adapter.ts` `zeroDteCommitStatus` |
+
+### Root cause
+
+`zeroDteCommitStatus` decides COMMIT vs WATCH in priority order: (1) a persisted live status of
+OPEN/HOLD/TRIM, (2) else the fresh gate verdict, (3) else an ungated score-vs-floor fallback for
+"an already-seen refresh ticker whose gate wasn't re-run" (per the function's own doc comment).
+
+`CLOSED` is deliberately **not** a member of `COMMITTED_STATUSES` (`{OPEN, HOLD, TRIM}`), so a
+`persistedStatus` of `"CLOSED"` fails step 1's check — but the code then fell straight through to
+steps 2/3 exactly as if no persisted status existed at all, losing the fact that this ticker's
+position is **already closed**. If a closed ticker got re-flagged by a later scan pass with no
+fresh gate context (real: the exact case the fallback's own comment describes) and its raw score
+happened to sit at or above the lane floor, step 3's ungated fallback had no way to know the
+position was closed and rendered it `COMMIT` again — falsely showing a real, already-closed
+position as freshly committed on the unified board.
+
+The existing test suite never caught this because its one CLOSED-status test
+(`horizon-adapter.test.ts`, "a persisted live status... reads as COMMIT even when the gate context
+has aged out") used a score *below* the lane floor for the CLOSED case, so it passed by coincidence
+of the score check rather than because CLOSED was actually handled.
+
+### Evidence
+
+New test: `setup({ score: 78, gate: null })` (score ≥ the 65 floor, no fresh gate context) with
+`persistedStatus: "CLOSED"` returned `status: "COMMIT"` before the fix (confirmed by running the
+old code against this exact input) — now correctly returns `"WATCH"`. 10/10 tests pass in
+`horizon-adapter.test.ts`, `npx tsc --noEmit` clean.
+
+### Blast radius
+
+Single function, single call site chain: `zeroDteCommitStatus` is only called from
+`zeroDteSetupToHorizonPlay` (same file), which is the sole path `zeroDteSetupsToHorizonPlays` and
+`horizon-board-from-payload.ts` use to build the unified ZERO_DTE lane. `PlayStatus` only has two
+values (`COMMIT` | `WATCH`), so `WATCH` is the correct terminal rendering for a closed position —
+there is no third "closed/historical" state on this board today.
+
+### Fix rationale
+
+Added an explicit `if (upperStatus === "CLOSED") return "WATCH";` check between the committed-status
+check and the gate/score fallback, so a closed position is never re-evaluated by gate or score —
+it is terminal. No alternative considered: `CLOSED` carries strictly more information than "unknown
+status" and must never be treated as equivalent to it.
+
+## The 0DTE gate-calibration tool discards WHY every rejection is ungradeable — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in `feat/scenario-corpus-harness` |
+| **Severity** | P2 — desk-operations calibration surface (admin-only `/api/market/zerodte/calibration`), not member-facing |
+| **Surface** | `src/lib/zerodte/calibration.ts` `blockedValueLines` |
+
+### Root cause
+
+`skip-grading.ts`'s counterfactual grader (`gradeSkippedPlay`) already writes a specific `reason`
+string onto every `ungradeable` verdict ("no long/short direction on the rejection row", "block
+time unreadable", "no underlying bar at/after the block time inside the plan window", etc.) — the
+whole point of the module's own comment: *"Nothing reconstructable → verdict 'ungradeable' WITH
+the reason, persisted, so the same row is never re-ground every run and the gap is visible, not
+silent."*
+
+But `calibration.ts`'s `blockedValueLines` — the function that turns graded rejections into the
+report's `blocked_value` lines, the ONLY consumer of `GradedSkipInput.counterfactual` for this
+purpose — only ever read `.verdict` and `.basis` off each counterfactual. `.reason` was fetched
+from the DB (it lives inside the same JSONB blob), held in memory, and then dropped on the floor:
+never aggregated, never surfaced, never returned. An operator reading the report saw `n: 0,
+ungradeable: 72` for `score_floor` and had zero way to tell "no bar data at all" from "block time
+unreadable" from any other cause — the exact silent-absence-as-fact trap this repo's own CLAUDE.md
+names repeatedly elsewhere (empty GSC domain-property query, absent AWS creds misread as a product
+fault) was live inside its own calibration instrument.
+
+### Evidence
+
+A live run against production (`scripts/audit/gate-calibration-live-report.mjs`, new this pass)
+found **every one of 11 gate codes at n=0 graded / 100% ungradeable** over a 30-day, 236-row
+window (`score_floor` 72/72, `opening_window` 61/61, `plan_illiquid` 28/28, `vix_unavailable`
+12/12, `cortex_veto:gex-walls` 6/6, etc.) — the counterfactual skip-grading machinery has
+apparently never successfully graded a single rejection in production, and until this fix there
+was no way to read why from the report itself. (Root-causing WHY every row is ungradeable is a
+separate follow-up once this fix is deployed and the reasons are actually visible in the report —
+this finding is about the visibility gap, not yet the underlying grading failure itself.)
+
+New tests in `calibration.test.ts` (`blocked-value lines: ungradeable reasons are aggregated...`)
+pin: most-frequent-reason-first ordering, a cap of 5 distinct reasons per gate (so one gate's long
+tail of one-off parse quirks can't crowd out another gate's dominant cause), a `null` reason
+labeled `"(no reason recorded)"` rather than silently vanishing, and alphabetical tiebreak on equal
+counts for determinism.
+
+### Blast radius
+
+`blockedValueLines` is the sole writer of `CalibrationReport.blocked_value`
+(`buildZeroDteCalibrationReport` → `analyzeGateCalibration`), consumed only by the admin-gated
+`GET /api/market/zerodte/calibration` route — no member-facing surface reads it. No other call
+site duplicates this logic.
+
+### Fix rationale
+
+Aggregate `reason` the same way `verdict`/`basis` already are — grouped by gate, most-frequent
+first, capped — rather than exposing the raw per-row list (which could run into the hundreds and
+bury the signal). Left the underlying "why is grading 0-for-N in production" question open
+deliberately: that requires seeing the actual reason text this fix now surfaces, so it is the
+correct next step, not something to guess at and patch blind.
+
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
