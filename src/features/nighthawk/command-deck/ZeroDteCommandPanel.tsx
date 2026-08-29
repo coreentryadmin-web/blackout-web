@@ -114,150 +114,87 @@ export function ZeroDteCommandPanel({
         {thesisLine && <span className="nh-deck-verdict-band__thesis">{thesisLine}</span>}
       </div>
 
-      {/* Thesis Integrity — "why did we enter, and is that reason still true right now?"
-          `ThesisHealthPanel` already existed on disk fully built and styled (per-pillar
-          commit-vs-current bars, health score, rung, "why health moved" lines) but was never
-          reachable — the last call site sat behind a dead `!premium` branch that was always
-          false for 0DTE plays (see the PlayTerminal.tsx comment where it was removed) and no
-          live-panel replacement was ever wired in. `play.thesisHealth` itself is unaffected by
-          that dead branch — it's computed server-side (thesis-health.ts) for every OPEN/HOLD/TRIM
-          0DTE play with a frozen entry_context, independent of any UI path. Rendering it here,
-          ahead of the static "why we picked it" evidence, surfaces the live entry-vs-now
-          comparison as the primary signal it should be, not a buried one-line advisory string. */}
-      {play.thesisHealth && (
-        <section className="nh-deck-command-section" aria-labelledby="nh-cmd-thesis-health">
-          <h3 id="nh-cmd-thesis-health" className="nh-deck-command-heading">
-            Thesis integrity
-          </h3>
-          <ThesisHealthPanel health={play.thesisHealth} liveRec={badge} />
-        </section>
-      )}
-
-      <section className="nh-deck-command-section" aria-labelledby="nh-cmd-evidence">
-        <h3 id="nh-cmd-evidence" className="nh-deck-command-heading">
-          Why we picked it
-        </h3>
-        {play.thesisFirst ? (
-          <>
-            <DeskEvidenceStack thesis={play.thesisFirst} />
-            {play.thesisFirst.expression?.contract && (
-              <p className="nh-deck-command-contract">
-                {fmtStrike(play.thesisFirst.expression.contract.strike)}
-                {play.thesisFirst.expression.contract.side === "call" ? "C" : "P"} ·{" "}
-                {play.thesisFirst.expression.dte_target}DTE
-                {play.thesisFirst.expression.rationale ? ` — ${play.thesisFirst.expression.rationale}` : ""}
-              </p>
-            )}
-            <p className="nh-deck-command-archetype">
-              {ARCHETYPE_LABEL[play.thesisFirst.thesis.trade_archetype]} · tier{" "}
-              {play.thesisFirst.rank_tier}
-              {play.confluence != null ? ` · confluence ${play.confluence}/2` : ""}
-            </p>
-          </>
-        ) : (
-          <p className="nh-deck-recnote">
-            Cross-desk evidence not stored for this row — score {play.score}
-            {play.thesis ? `: ${play.thesis}` : ""}
-          </p>
-        )}
-        {play.whyNow && (
-          <div className="nh-deck-whynow" title="Scan trigger at discovery">
-            <span className="ic" aria-hidden>
-              ⚡
-            </span>
-            <span className="lb">triggered by:</span>
-            <span className="rs">{play.whyNow.label}</span>
-            {whyAt && <span className="at"> · {whyAt} ET</span>}
-          </div>
-        )}
-      </section>
-
-      <section className="nh-deck-command-section nh-deck-command-live" aria-labelledby="nh-cmd-live">
-        <h3 id="nh-cmd-live" className="nh-deck-command-heading">
-          Live · management
-        </h3>
-        {isCandidate && <div className="nh-deck-recnote nh-deck-premium-note">{recNote}</div>}
-        {premium && !isCondor && !isCandidate && (
-          <div className="nh-deck-premium-stack">
-            <ManagementActionCard play={play} recommendation={badge} progress={mgmt.progress} />
-            <VisualTrimLadder play={play} />
-          </div>
-        )}
-        {!premium && !isCandidate && (
-          <div className="nh-deck-rec">
-            <span className={clsx("nh-deck-recb", badge)}>{badge}</span>
-            <span className="nh-deck-recnote">{recNote}</span>
-          </div>
-        )}
-        {premium && recNote && !isCandidate && (
-          <div className="nh-deck-recnote nh-deck-premium-note">{recNote}</div>
-        )}
-        {distLine && !isCondor && !isCandidate && (
-          <div className="nh-deck-dist" title="Distance from live mark to plan rails">
-            <span className="k">Rails</span>
-            <span className="v">{distLine}</span>
-          </div>
-        )}
-        {hasEntry && !isCandidate && (
-          <TradeExcursionGraphic play={play} markFlash={markFlash} />
-        )}
-        {showsTimeStopClock(play) && <TimeStopClock nowMs={nowMs} />}
-        {isCondor && <CondorPanel play={play} />}
-        {showsRatchetTrack(play) && !isCandidate && (
-          <>
-            <div className="nh-deck-track">
-              <span className="lo">STOP −50%</span>
-              <span className="hi">TARGET +100%</span>
-              <span className="mk" style={{ left: `${Math.round((mgmt.progress ?? 0) * 100)}%` }} />
-            </div>
-            <div className="nh-deck-recnote">
-              Ratchet: fast 0DTE exit — marker = distance stop→target.
-            </div>
-          </>
-        )}
-        {showsTrimScaleLadder(play) && !premium && !isCandidate && (
-          <div className="nh-deck-recnote">Trim-scale ladder active — see frozen policy on board.</div>
-        )}
-      </section>
-
-      <details className="nh-deck-command-technicals" open={technicalsOpen}>
-        <summary className="nh-deck-command-heading">Technicals · gates · factors</summary>
-        <div className="nh-deck-command-technicals__body">
-          {premium && <ThesisExpectedMove play={play} />}
-          {play.gates.length > 0 && (
-            <>
-              <div className="nh-deck-lab">Gates at commit</div>
-              <div className="nh-deck-gaterow">
-                {play.gates.map((g) => (
-                  <span key={g.label} className={clsx("nh-deck-gate", g.ok ? "ok" : "no")}>
-                    {g.ok ? "✓" : "✗"} {g.label}
-                  </span>
-                ))}
+      {/* Two always-visible rails below the verdict band, not one long scroll — the 3-rail
+          brief's Rail 2 vs Rail 3 split: "should I hold/trim/exit?" (trade command: live
+          management, technicals, session log) is a DIFFERENT question from "why did we enter,
+          and is that reason still true right now?" (thesis intelligence: entry-vs-now health,
+          the evidence that drove the entry). They used to be one linear stack, which forced a
+          scroll past management controls to reach the thesis evidence or vice versa. Collapses
+          back to a single column under nh-deck-command-columns's own narrow-viewport rule (see
+          globals.css) — this is a desktop-width affordance, not a mobile requirement. */}
+      <div className="nh-deck-command-columns">
+        <div className="nh-deck-command-col nh-deck-command-col--trade" aria-label="Trade command">
+          <section className="nh-deck-command-section nh-deck-command-live" aria-labelledby="nh-cmd-live">
+            <h3 id="nh-cmd-live" className="nh-deck-command-heading">
+              Live · management
+            </h3>
+            {isCandidate && <div className="nh-deck-recnote nh-deck-premium-note">{recNote}</div>}
+            {premium && !isCondor && !isCandidate && (
+              <div className="nh-deck-premium-stack">
+                <ManagementActionCard play={play} recommendation={badge} progress={mgmt.progress} />
+                <VisualTrimLadder play={play} />
               </div>
-            </>
-          )}
-          {play.factors.length > 0 && (
-            <details className="nh-deck-why" open={play.factors.length <= 2}>
-              <summary className="nh-deck-lab nh-deck-why-sum">
-                Factor breakdown
-                <span className="nh-deck-why-n"> · {play.factors.length} factors</span>
-              </summary>
-              {topFactors.map((f) => (
-                <div key={f.label} className={clsx("nh-deck-fac", f.points < 0 && "neg")}>
-                  <div>
-                    {f.label}
-                    {f.points > 0 && <Bar pts={f.points} />}
-                  </div>
-                  <div className="pts">
-                    {f.points > 0 ? "+" : ""}
-                    {f.points}
-                  </div>
+            )}
+            {!premium && !isCandidate && (
+              <div className="nh-deck-rec">
+                <span className={clsx("nh-deck-recb", badge)}>{badge}</span>
+                <span className="nh-deck-recnote">{recNote}</span>
+              </div>
+            )}
+            {premium && recNote && !isCandidate && (
+              <div className="nh-deck-recnote nh-deck-premium-note">{recNote}</div>
+            )}
+            {distLine && !isCondor && !isCandidate && (
+              <div className="nh-deck-dist" title="Distance from live mark to plan rails">
+                <span className="k">Rails</span>
+                <span className="v">{distLine}</span>
+              </div>
+            )}
+            {hasEntry && !isCandidate && (
+              <TradeExcursionGraphic play={play} markFlash={markFlash} />
+            )}
+            {showsTimeStopClock(play) && <TimeStopClock nowMs={nowMs} />}
+            {isCondor && <CondorPanel play={play} />}
+            {showsRatchetTrack(play) && !isCandidate && (
+              <>
+                <div className="nh-deck-track">
+                  <span className="lo">STOP −50%</span>
+                  <span className="hi">TARGET +100%</span>
+                  <span className="mk" style={{ left: `${Math.round((mgmt.progress ?? 0) * 100)}%` }} />
                 </div>
-              ))}
-              {moreFactors.length > 0 && (
-                <details className="nh-deck-why-more">
-                  <summary className="nh-deck-recnote">Show {moreFactors.length} more factors</summary>
-                  {moreFactors.map((f) => (
+                <div className="nh-deck-recnote">
+                  Ratchet: fast 0DTE exit — marker = distance stop→target.
+                </div>
+              </>
+            )}
+            {showsTrimScaleLadder(play) && !premium && !isCandidate && (
+              <div className="nh-deck-recnote">Trim-scale ladder active — see frozen policy on board.</div>
+            )}
+          </section>
+
+          <details className="nh-deck-command-technicals" open={technicalsOpen}>
+            <summary className="nh-deck-command-heading">Technicals · gates · factors</summary>
+            <div className="nh-deck-command-technicals__body">
+              {premium && <ThesisExpectedMove play={play} />}
+              {play.gates.length > 0 && (
+                <>
+                  <div className="nh-deck-lab">Gates at commit</div>
+                  <div className="nh-deck-gaterow">
+                    {play.gates.map((g) => (
+                      <span key={g.label} className={clsx("nh-deck-gate", g.ok ? "ok" : "no")}>
+                        {g.ok ? "✓" : "✗"} {g.label}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              )}
+              {play.factors.length > 0 && (
+                <details className="nh-deck-why" open={play.factors.length <= 2}>
+                  <summary className="nh-deck-lab nh-deck-why-sum">
+                    Factor breakdown
+                    <span className="nh-deck-why-n"> · {play.factors.length} factors</span>
+                  </summary>
+                  {topFactors.map((f) => (
                     <div key={f.label} className={clsx("nh-deck-fac", f.points < 0 && "neg")}>
                       <div>
                         {f.label}
@@ -269,57 +206,131 @@ export function ZeroDteCommandPanel({
                       </div>
                     </div>
                   ))}
+                  {moreFactors.length > 0 && (
+                    <details className="nh-deck-why-more">
+                      <summary className="nh-deck-recnote">Show {moreFactors.length} more factors</summary>
+                      {moreFactors.map((f) => (
+                        <div key={f.label} className={clsx("nh-deck-fac", f.points < 0 && "neg")}>
+                          <div>
+                            {f.label}
+                            {f.points > 0 && <Bar pts={f.points} />}
+                          </div>
+                          <div className="pts">
+                            {f.points > 0 ? "+" : ""}
+                            {f.points}
+                          </div>
+                        </div>
+                      ))}
+                    </details>
+                  )}
                 </details>
               )}
-            </details>
-          )}
-          {play.thesis && (
-            <div className="nh-deck-recnote nh-deck-command-thesis-prose">{play.thesis}</div>
-          )}
-          {play.keySignal && (
-            <div className="nh-deck-recnote">Key signal: {play.keySignal}</div>
-          )}
-          <div className="nh-deck-meta nh-deck-command-meta">
-            {play.regime && (
-              <div>
-                <span className="k">Regime</span>
-                <span className="v">{play.regime}</span>
+              {play.thesis && (
+                <div className="nh-deck-recnote nh-deck-command-thesis-prose">{play.thesis}</div>
+              )}
+              {play.keySignal && (
+                <div className="nh-deck-recnote">Key signal: {play.keySignal}</div>
+              )}
+              <div className="nh-deck-meta nh-deck-command-meta">
+                {play.regime && (
+                  <div>
+                    <span className="k">Regime</span>
+                    <span className="v">{play.regime}</span>
+                  </div>
+                )}
+                {play.rrRatio != null && (
+                  <div>
+                    <span className="k">Risk : Reward</span>
+                    <span
+                      className={clsx(
+                        "v",
+                        play.rrRatio >= 2 && "nh-deck-pos",
+                        play.rrRatio < 1 && "nh-deck-neg",
+                      )}
+                    >
+                      {play.rrRatio.toFixed(1)}:1
+                    </span>
+                  </div>
+                )}
+                {play.peak != null && (
+                  <div>
+                    <span className="k">Peak</span>
+                    <span className="v nh-deck-pos">{signPct(play.peak)}</span>
+                  </div>
+                )}
+                {play.trough != null && (
+                  <div>
+                    <span className="k">Trough</span>
+                    <span className="v nh-deck-neg">{signPct(play.trough)}</span>
+                  </div>
+                )}
               </div>
-            )}
-            {play.rrRatio != null && (
-              <div>
-                <span className="k">Risk : Reward</span>
-                <span
-                  className={clsx(
-                    "v",
-                    play.rrRatio >= 2 && "nh-deck-pos",
-                    play.rrRatio < 1 && "nh-deck-neg",
-                  )}
-                >
-                  {play.rrRatio.toFixed(1)}:1
-                </span>
-              </div>
-            )}
-            {play.peak != null && (
-              <div>
-                <span className="k">Peak</span>
-                <span className="v nh-deck-pos">{signPct(play.peak)}</span>
-              </div>
-            )}
-            {play.trough != null && (
-              <div>
-                <span className="k">Trough</span>
-                <span className="v nh-deck-neg">{signPct(play.trough)}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </details>
+            </div>
+          </details>
 
-      <details className="nh-deck-command-log">
-        <summary className="nh-deck-command-heading">Session log</summary>
-        <PlayTimelinePanel play={play} nowMs={nowMs} />
-      </details>
+          <details className="nh-deck-command-log">
+            <summary className="nh-deck-command-heading">Session log</summary>
+            <PlayTimelinePanel play={play} nowMs={nowMs} />
+          </details>
+        </div>
+
+        <div className="nh-deck-command-col nh-deck-command-col--intel" aria-label="Thesis intelligence">
+          {/* `ThesisHealthPanel` already existed on disk fully built and styled (per-pillar
+              commit-vs-current bars, health score, rung, "why health moved" lines) but was never
+              reachable — the last call site sat behind a dead `!premium` branch that was always
+              false for 0DTE plays (see the PlayTerminal.tsx comment where it was removed) and no
+              live-panel replacement was ever wired in. `play.thesisHealth` itself is unaffected
+              by that dead branch — it's computed server-side (thesis-health.ts) for every
+              OPEN/HOLD/TRIM 0DTE play with a frozen entry_context, independent of any UI path. */}
+          {play.thesisHealth && (
+            <section className="nh-deck-command-section" aria-labelledby="nh-cmd-thesis-health">
+              <h3 id="nh-cmd-thesis-health" className="nh-deck-command-heading">
+                Thesis integrity
+              </h3>
+              <ThesisHealthPanel health={play.thesisHealth} liveRec={badge} />
+            </section>
+          )}
+
+          <section className="nh-deck-command-section" aria-labelledby="nh-cmd-evidence">
+            <h3 id="nh-cmd-evidence" className="nh-deck-command-heading">
+              Why we picked it
+            </h3>
+            {play.thesisFirst ? (
+              <>
+                <DeskEvidenceStack thesis={play.thesisFirst} />
+                {play.thesisFirst.expression?.contract && (
+                  <p className="nh-deck-command-contract">
+                    {fmtStrike(play.thesisFirst.expression.contract.strike)}
+                    {play.thesisFirst.expression.contract.side === "call" ? "C" : "P"} ·{" "}
+                    {play.thesisFirst.expression.dte_target}DTE
+                    {play.thesisFirst.expression.rationale ? ` — ${play.thesisFirst.expression.rationale}` : ""}
+                  </p>
+                )}
+                <p className="nh-deck-command-archetype">
+                  {ARCHETYPE_LABEL[play.thesisFirst.thesis.trade_archetype]} · tier{" "}
+                  {play.thesisFirst.rank_tier}
+                  {play.confluence != null ? ` · confluence ${play.confluence}/2` : ""}
+                </p>
+              </>
+            ) : (
+              <p className="nh-deck-recnote">
+                Cross-desk evidence not stored for this row — score {play.score}
+                {play.thesis ? `: ${play.thesis}` : ""}
+              </p>
+            )}
+            {play.whyNow && (
+              <div className="nh-deck-whynow" title="Scan trigger at discovery">
+                <span className="ic" aria-hidden>
+                  ⚡
+                </span>
+                <span className="lb">triggered by:</span>
+                <span className="rs">{play.whyNow.label}</span>
+                {whyAt && <span className="at"> · {whyAt} ET</span>}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
     </div>
   );
 }
