@@ -80,7 +80,7 @@ export function LandingBackdrop({ showChart = true }: { showChart?: boolean }) {
       />
       {/* top hairline */}
       <div
-        className="absolute top-0 left-0 right-0 h-px"
+        className="absolute top-0 inset-x-0 h-px"
         style={{ background: "linear-gradient(90deg, transparent, rgba(0,230,118,0.4), transparent)" }}
       />
     </div>

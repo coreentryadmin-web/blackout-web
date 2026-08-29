@@ -54,7 +54,7 @@ export const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
           <span
             aria-hidden
             className={clsx(
-              "h-1.5 w-1.5 rounded-full animate-pulse motion-reduce:animate-none",
+              "size-1.5 rounded-full animate-pulse motion-reduce:animate-none",
               DOT[tone]
             )}
           />

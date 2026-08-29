@@ -14,7 +14,7 @@ export function ComingSoon({ toolKey }: { toolKey: ToolKey }) {
         <div className="relative">
           {meta ? <ProductMark product={meta.product} size={76} /> : null}
           <span
-            className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-[#040407] text-secondary"
+            className="absolute -bottom-1 -right-1 flex size-7 items-center justify-center rounded-full border border-white/15 bg-[#040407] text-secondary"
             aria-hidden
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">

@@ -40,7 +40,7 @@ export function NighthawkPageShell({ seed }: { seed?: NightHawkSeedProps | null 
           "nighthawk-page-root flex max-w-none flex-col",
           nativeShell
             ? "nighthawk-page-inner-native min-h-[calc(100dvh-var(--ios-header-offset)-var(--ios-tab-offset))]"
-            : "min-h-0 flex-1 px-2 pb-4 pt-4 md:px-3"
+            : "min-h-0 flex-1 px-2 py-4 md:px-3"
         )}
       >
         {/* PageHeader (kicker "Overnight playbook" + duplicate "Night Hawk" title + a THIRD
