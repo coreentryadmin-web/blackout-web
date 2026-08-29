@@ -61,8 +61,10 @@ test("closed compact row shows symbol line, times, peak", async () => {
   assert.match(html, />CLOSED</);
   assert.match(html, /nh-deck-play-grade/);
   assert.match(html, />A\+</);
-  assert.match(html, /★{5}/);
-  assert.match(html, />96</);
+  // Rating cell shows grade + entry premium (2026-08-29) — the star rating and raw 0-100 score
+  // were removed as visual noise with no actionable meaning; entry premium is real and useful.
+  assert.match(html, /nh-deck-play-entry/);
+  assert.match(html, />\$3\.15</);
 });
 
 // UPDATED 2026-08-07: this asserted the PEAK (+87%) on a row whose CURRENT read is +42% — the
@@ -141,7 +143,7 @@ test("command center renders sortable play table column headers", async () => {
   assert.match(html, /nh-deck-play-th--sort/);
   assert.match(html, />Status</);
   assert.match(html, />Play</);
-  assert.match(html, />Rating</);
+  assert.match(html, />Grade</);
   assert.match(html, />Time</);
   assert.match(html, />PnL</);
   assert.match(html, /aria-sort="descending"/);

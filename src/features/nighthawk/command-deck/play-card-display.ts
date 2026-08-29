@@ -20,6 +20,13 @@ export function playGradeLabel(play: TerminalPlay): string | null {
   return t || null;
 }
 
+/** Entry premium (0DTE per-contract, or condor net credit) for the list row — compact $ form.
+ *  Null when the play carries no entry field rather than showing a fabricated $0.00. */
+export function playEntryDisplay(play: TerminalPlay): string | null {
+  if (play.entry == null || !Number.isFinite(play.entry)) return null;
+  return `$${play.entry.toFixed(2)}`;
+}
+
 /** 1–5 star count from merit tier (A+ → 5, F → 0). */
 export function tierStarCount(tier: string | null | undefined): number {
   const r = tierRank(tier);

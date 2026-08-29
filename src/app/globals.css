@@ -22078,8 +22078,7 @@ html.product-shell .nav-mega {
 .nh-deck-play-cell--play{font-size:14px;font-weight:800;color:var(--dk-text-primary);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nh-deck-play-cell--rating{display:flex;align-items:center;gap:8px;white-space:nowrap}
 .nh-deck-play-grade{font-size:13px;font-weight:900;color:var(--dk-bull);letter-spacing:.04em}
-.nh-deck-play-stars{font-size:11px;font-weight:700;color:var(--dk-warn);letter-spacing:.04em;line-height:1}
-.nh-deck-play-score{font-size:14px;font-weight:800;color:var(--dk-text-primary)}
+.nh-deck-play-entry{font-size:12px;font-weight:700;color:var(--dk-text-secondary);font-variant-numeric:tabular-nums}
 .nh-deck-play-cell--time{font-size:13px;font-weight:700;color:var(--dk-cyan);white-space:nowrap}
 .nh-deck-play-cell--pnl{text-align:right}
 .nh-deck-play-pnl{font-size:14px;font-weight:800;white-space:nowrap}
