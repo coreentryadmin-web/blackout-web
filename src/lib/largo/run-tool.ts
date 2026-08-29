@@ -657,7 +657,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       // Apply fitting to cap shown entries for Largo; product uses full data.
       const { fitMarketOiChangeForModel } = await import("@/lib/largo/market-data-fits");
       const raw = await fetchUwMarketOiChange(30);
-      return fitMarketOiChangeForModel(raw, 20).fitted;
+      return fitMarketOiChangeForModel(raw, 15).fitted;
     }
     case "get_top_net_impact":
       return fetchUwMarketTopNetImpact(20);
@@ -1002,7 +1002,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       else if (type === "dark_pool") raw = await fetchUwDarkPoolRecent(25);
       else if (type === "analysts") raw = await fetchUwScreenerAnalysts(25);
       else raw = await fetchUwScreenerStocks(25);
-      return fitScreenerForModel(raw, 15).fitted;
+      return fitScreenerForModel(raw, 6).fitted;
     }
 
     case "get_spx_structure": {
@@ -1388,15 +1388,21 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return { ...consensus, note: UW_EXCLUSIVE_NOTE };
     }
     case "get_group_greek_flow": {
-      // MEASURED TRUNCATED 2026-08-29 — when called market-wide (no group filter),
-      // greek flow aggregation for 20+ groups exceeds 16k transport cap.
-      // Apply fitting to cap top groups for Largo; product uses full data.
-      const { fitGroupGreekFlowForModel } = await import("@/lib/largo/market-data-fits");
+      // MEASURED TRUNCATED 2026-08-29, including at the tool's own DEFAULT call (group unset →
+      // "mag7"), not just market-wide: fetchUwGroupGreekFlow("mag7") returns 391 raw rows / ~277KB
+      // — 17x the 16k cap by itself. The "cap the summary groups" branch below never touched this:
+      // summarizeGroupGreekFlow returns ONE aggregate object (net_delta/net_gamma/bias/headline),
+      // never an array of per-group summaries, so `Array.isArray(summary)` is always false and that
+      // branch is a no-op — the unbounded `greek_flow: rows` field was the entire payload weight in
+      // both branches, every call, regardless of `group`.
+      const { fitGroupGreekFlowForModel, fitGroupGreekFlowRowsForModel } = await import("@/lib/largo/market-data-fits");
       const group = String(input.group ?? "mag7").toLowerCase();
       const exp = input.expiry ? String(input.expiry) : undefined;
       const rows = await fetchUwGroupGreekFlow(group, exp);
       const summary = summarizeGroupGreekFlow(group, rows as Record<string, unknown>[]);
-      // For market-wide query (group="all" or default), cap the summary groups
+      const cappedRows = fitGroupGreekFlowRowsForModel(rows as Record<string, unknown>[]);
+      // For market-wide query (group="all" or default), cap the summary groups too, in case
+      // summarizeGroupGreekFlow ever returns a per-group array for that case.
       if (group === "all" || !group) {
         const cappedSummary = Array.isArray(summary) ? fitGroupGreekFlowForModel(summary, 15).fitted : summary;
         return {
@@ -1404,7 +1410,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
           expiry: exp,
           source: "unusual_whales",
           note: UW_EXCLUSIVE_NOTE,
-          greek_flow: rows,
+          ...cappedRows,
           summary: cappedSummary,
         };
       }
@@ -1413,7 +1419,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         expiry: exp,
         source: "unusual_whales",
         note: UW_EXCLUSIVE_NOTE,
-        greek_flow: rows,
+        ...cappedRows,
         summary,
       };
     }

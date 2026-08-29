@@ -9,7 +9,10 @@ export interface OiChangeFittedResult {
   max_shown: number;
 }
 
-export function fitMarketOiChangeForModel(raw: any[], maxShown = 20): { fitted: OiChangeFittedResult } {
+// MEASURED live (fetchUwMarketOiChange, 2026-08-29): ~635 bytes/entry, not the ~300 originally
+// estimated — the 20-entry cap this shipped with (#3155) still truncated. 15 entries stays under
+// budget with headroom for the rest of the response.
+export function fitMarketOiChangeForModel(raw: any[], maxShown = 15): { fitted: OiChangeFittedResult } {
   const shown = Math.min(raw?.length || 0, maxShown);
   const changes = raw?.slice(0, shown);
   return {
@@ -76,6 +79,32 @@ export function fitGroupGreekFlowForModel(raw: any[], maxShown = 15): { fitted: 
   };
 }
 
+// ============ get_group_greek_flow raw rows ============
+// The un-summarized per-contract/per-ticker rows behind the group summary. MEASURED live
+// (fetchUwGroupGreekFlow, 2026-08-29): group="mag7" (the tool's own default) returns 391 rows /
+// ~277KB — 17x the 16k transport cap on its own, before anything else in the payload. Average
+// ~708 bytes/row; 15 rows leaves headroom for the rest of the response under the cap.
+export interface GroupGreekFlowRowsFittedResult {
+  rows?: Record<string, unknown>[];
+  rows_shown: number;
+  rows_truncated: boolean;
+  rows_max_shown: number;
+}
+
+export function fitGroupGreekFlowRowsForModel(
+  raw: Record<string, unknown>[],
+  maxShown = 15
+): GroupGreekFlowRowsFittedResult {
+  const shown = Math.min(raw?.length || 0, maxShown);
+  const rows = raw?.slice(0, shown);
+  return {
+    rows: rows?.length > 0 ? rows : undefined,
+    rows_shown: shown,
+    rows_truncated: (raw?.length || 0) > maxShown,
+    rows_max_shown: maxShown,
+  };
+}
+
 // ============ get_screener ============
 export interface ScreenerFittedResult {
   candidates?: any[];
@@ -84,7 +113,10 @@ export interface ScreenerFittedResult {
   max_shown: number;
 }
 
-export function fitScreenerForModel(raw: any[], maxShown = 15): { fitted: ScreenerFittedResult } {
+// MEASURED live (fetchUwScreenerStocks, 2026-08-29): ~1956 bytes/entry with technicals attached
+// (the PR that shipped this cap estimated ~300-400) — the 15-entry cap still truncated by a wide
+// margin. 6 entries stays under budget with headroom for the rest of the response.
+export function fitScreenerForModel(raw: any[], maxShown = 6): { fitted: ScreenerFittedResult } {
   const shown = Math.min(raw?.length || 0, maxShown);
   const candidates = raw?.slice(0, shown);
   return {
