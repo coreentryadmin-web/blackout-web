@@ -119,6 +119,7 @@
     "validate:endpoint-audit-all": "node scripts/comprehensive-endpoint-audit.mjs && node scripts/audit/data-validator.mjs && node scripts/probe-docs-endpoints.mjs --uw-only",
     "validate:e2e": "node scripts/audit/zerodte-e2e-suite.mjs",
     "validate:vector-rth": "node scripts/vector-rth-minute-audit.mjs --wait-open",
+    "validate:vector-rth-quick": "node scripts/audit/vector-rth-quick-check.mjs",
     "validate:member-dashboard": "node scripts/member-dashboard-live-check.mjs",
     "validate:site-latency": "node scripts/site-latency-audit.mjs",
     "validate:full-stack-audit": "node --import tsx scripts/audit/full-stack-production-audit.mjs",
