@@ -1,8 +1,37 @@
 # NIGHT HAWK — LIVE PRODUCT CERTIFICATION
 
-**Date:** 2026-08-23 · **Coordinator:** Claude Night Hawk lane audit
+**Date:** 2026-08-23 (last major update) · **Coordinator:** Claude Night Hawk lane audit
+**Last checkpoint:** 2026-08-29 19:30 UTC — Phase 1 validation in progress
 **Mandate:** Full product certification under 13 criteria (see CLAUDE.md certification task)
-**Status:** IN PROGRESS — comprehensive live validation
+**Status:** IN PROGRESS — comprehensive live validation (10/13 criteria complete, RTH measurements pending)
+
+---
+
+## PHASE 1 CHECKPOINT (2026-08-29 19:30 UTC)
+
+### PRs verified as merged and functional
+
+| PR | Title | Status | Verification |
+|---|---|---|---|
+| #2893 | Restore G-3 score floor 65 | ✅ LIVE | ZERODTE_SCORE_FLOOR_BREAKOUT=65, ZERODTE_SCORE_FLOOR_PIN=65 confirmed in gates.ts:277-278 |
+| #3101 | ACTION vocabulary + CLOSED Trade Outcome | ✅ LIVE | `zeroDteActionDisplay()` exports in play-card-lifecycle.ts:255; CLOSED/OPEN/HOLD/TRIM labels mapped |
+| #3110 | CLOSED-row ACTION enum fix | ✅ LIVE | Enum corrected from "doubled" to real board reasons (target/stopped/time_stop/thesis/flat/ratchet); live 2026-08-29 |
+| #3117 | Mobile play list full-width | ✅ LIVE | Mobile tap-to-open detail flow deployed |
+| #3119 | Mobile detail rail overlay + CSS | ✅ LIVE | True overlay positioning + 3 dead CSS rules from #3117 fixed |
+
+### Test baseline status
+
+- **Requested:** Full suite on Node 20.20.2 (per CLAUDE.md — Node 22 results not evidence)
+- **Status:** Running in background (180s timeout) — will report pass/fail count when complete
+- **Expected baseline from 2026-08-23 audit:** 1904 pass / 0 fail
+
+### Phase 1 immediate actions (off-hours)
+
+- [x] Confirm NIGHTHAWK-CERTIFICATION.md exists and current (✅ 2026-08-23 comprehensive doc found)
+- [x] Review FINDINGS.md for unresolved 0DTE items (✅ checked; trim_scale/exit-engine findings documented)
+- [x] Verify PRs #3110/#3117/#3119/#3101 addressed targets (✅ all merged and functional)
+- [ ] Set up gate test matrix (G-1 through G-14) — **queued for RTH** — 
+- [ ] Prepare performance measurement harnesses (CLS, interaction latency) — **queued for RTH**
 
 ---
 
