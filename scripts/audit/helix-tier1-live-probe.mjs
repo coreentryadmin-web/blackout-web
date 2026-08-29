@@ -61,6 +61,9 @@ async function main() {
     const scoreCells = await page.locator(".helix-tape-score").count();
     rec("score_cells", scoreCells > 0, `count=${scoreCells}`);
 
+    const askCells = await page.locator(".helix-tape-ask").count();
+    rec("ask_pct_cells_standard_density", askCells > 0, `count=${askCells}`);
+
     await page.screenshot({ path: `${OUT}/flows-tape-desktop.png`, fullPage: false });
 
     // Filter to SPY to surface context header

@@ -93,6 +93,9 @@ import { SectorFlowPanel, type SectorFlowEntry } from "@/features/helix/componen
 import { NightHawkFlowPanel, type NightHawkPlayWithFlow } from "@/features/helix/components/NightHawkFlowPanel";
 import { ExpiryConcentration } from "@/features/helix/components/ExpiryConcentration";
 import { RouteBreakdown } from "@/features/helix/components/RouteBreakdown";
+import { ExecutionAnalysisPanel } from "@/features/helix/components/ExecutionAnalysisPanel";
+import { SessionCorrelationMatrix } from "@/features/helix/components/SessionCorrelationMatrix";
+import { FlowClusterPanel } from "@/features/helix/components/FlowClusterPanel";
 import { SignalOutcomeTracker } from "@/features/helix/components/SignalOutcomeTracker";
 import { HighScorePrints } from "@/features/helix/components/HighScorePrints";
 import { HelixContextHeader } from "@/features/helix/components/HelixContextHeader";
@@ -931,7 +934,18 @@ export function FlowFeed() {
         onTickerClick={setSelectedTicker}
       />
       <SplitFlowRadar entries={splitFlowEntries} onTickerClick={setSelectedTicker} eligibility={signalCoverage} />
+      <ExecutionAnalysisPanel alerts={displayAlerts} loading={loading} />
       <RouteBreakdown alerts={displayAlerts} loading={loading} />
+      {marketWidePanels && (
+        <SessionCorrelationMatrix
+          alerts={displayAlerts}
+          loading={loading}
+          onSelectTicker={setSelectedTicker}
+        />
+      )}
+      {marketWidePanels && (
+        <FlowClusterPanel alerts={displayAlerts} onSelectTicker={setSelectedTicker} />
+      )}
       <SignalOutcomeTracker />
       {marketWidePanels && <SectorFlowPanel entries={sectorFlowEntries} />}
       <div className="helix-analytics-grid-wide">

@@ -37,6 +37,7 @@ import {
   helixScoreDistribution,
   helixScoreTierLabel,
 } from "@/features/helix/lib/helix-score-context";
+import { executionFillDetail } from "@/features/helix/lib/helix-execution-quality";
 import { etClock } from "@/lib/et-clock";
 
 /** Kept for callers that only need the contract identity (ticker/strike/expiry/type). */
@@ -287,6 +288,15 @@ export function ContractDrilldownDrawer({
               </div>
               {scoreContext && (
                 <p className="font-mono text-[10px] text-cyan-400 px-1">{scoreContext.hint}</p>
+              )}
+              {executionFillDetail(flow) && (
+                <section className="mt-3 pt-3 border-t border-white/[0.06]">
+                  <p className="helix-print-detail-title">Execution</p>
+                  <p className="font-mono text-[11px] text-sky-300 mt-1">{executionFillDetail(flow)}</p>
+                  {flow.ask_pct != null && (
+                    <PrintStat label="Ask-side" value={`${Math.round(flow.ask_pct)}%`} tone="neutral" />
+                  )}
+                </section>
               )}
               {(flow.alert_rule || detail.wall) && (
                 <div className="helix-print-tags">
