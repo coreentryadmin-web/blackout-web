@@ -44,6 +44,10 @@ import {
   helixScoreTierLabel,
   helixScoreTierTone,
 } from "@/features/helix/lib/helix-score-context";
+import {
+  askPctTone,
+  executionQualityHint,
+} from "@/features/helix/lib/helix-execution-quality";
 
 type SignalTone = "bull" | "bear" | "gold" | "sky" | "purple" | "ember";
 
@@ -212,8 +216,19 @@ function renderCell(
       );
     case "spot":
       return <span className="helix-tape-muted tabular-nums">{fmtSpot(flow.underlying_price)}</span>;
-    case "ask":
-      return <span className="helix-tape-muted tabular-nums">{fmtAskPct(flow.ask_pct)}</span>;
+    case "ask": {
+      const tone = askPctTone(flow.ask_pct);
+      const label = fmtAskPct(flow.ask_pct);
+      return (
+        <span
+          className="helix-tape-ask tabular-nums font-semibold"
+          style={tone ? { color: tone } : undefined}
+          title={flow.ask_pct != null ? executionQualityHint(flow.ask_pct) : "No ask-side data on this print"}
+        >
+          {label}
+        </span>
+      );
+    }
     case "oi":
       return <span className="helix-tape-muted tabular-nums">{fmtOi(flow.open_interest)}</span>;
     case "iv":
