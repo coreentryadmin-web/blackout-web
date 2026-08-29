@@ -38,7 +38,7 @@ export function fitMarketOiChangeForModel(raw: any[], maxShown = 20): { fitted: 
     }),
     { maxRows: maxShown }
   );
-  return { fitted: envelope as OiChangeFittedResult };
+  return { fitted: envelope as unknown as OiChangeFittedResult };
 }
 
 // ============ get_market_stats ============
