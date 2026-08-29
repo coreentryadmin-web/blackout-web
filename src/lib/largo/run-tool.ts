@@ -978,7 +978,8 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       else if (type === "dark_pool") raw = await fetchUwDarkPoolRecent(25);
       else if (type === "analysts") raw = await fetchUwScreenerAnalysts(25);
       else raw = await fetchUwScreenerStocks(25);
-      return fitScreenerForModel(raw, 15).fitted;
+      // Reduced cap from 15 to 10 to ensure Largo payload stays under 16k
+      return fitScreenerForModel(raw, 10).fitted;
     }
 
     case "get_spx_structure": {
@@ -1364,15 +1365,17 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const exp = input.expiry ? String(input.expiry) : undefined;
       const rows = await fetchUwGroupGreekFlow(group, exp);
       const summary = summarizeGroupGreekFlow(group, rows as Record<string, unknown>[]);
-      // For market-wide query (group="all" or default), cap the summary groups
+      // For market-wide query (group="all" or default), cap both rows and summary
       if (group === "all" || !group) {
         const cappedSummary = Array.isArray(summary) ? fitGroupGreekFlowForModel(summary, 15).fitted : summary;
+        // Cap rows array as well to fit within transport limit
+        const cappedRows = Array.isArray(rows) ? rows.slice(0, 15) : rows;
         return {
           group,
           expiry: exp,
           source: "unusual_whales",
           note: UW_EXCLUSIVE_NOTE,
-          greek_flow: rows,
+          greek_flow: cappedRows,
           summary: cappedSummary,
         };
       }
