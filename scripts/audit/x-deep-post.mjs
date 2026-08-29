@@ -12,6 +12,7 @@ import { mintIosPlaywrightSession } from "./lib/ios-playwright-auth.mjs";
 import { releaseAuditClerkSession } from "./lib/audit-auth-fetch.mjs";
 import { captureByCatalogId } from "./lib/x-capture-runner.mjs";
 import { assemblePost } from "./lib/x-social-post-kit.mjs";
+import { commitXIntelStateIfChanged } from "./lib/x-intel-state-git.mjs";
 
 const BASE = "https://blackouttrades.com";
 const OUT = "/opt/cursor/artifacts/x-posts/deep-desk-4";
@@ -133,9 +134,11 @@ async function main() {
 
   console.log("\n--- COPY ---\n", copy);
   console.log(`\n${captured.filter((c) => c.ok).length}/4 → ${OUT}/`);
+  commitXIntelStateIfChanged();
 }
 
 main().catch((e) => {
   console.error(e);
+  commitXIntelStateIfChanged();
   process.exit(1);
 });
