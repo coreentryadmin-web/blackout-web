@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Live prod probe — HELIX Tier 1 + Tier 2 tape wiring (score tier, context header, Ask% column).
+ * Live prod probe — HELIX Tier 1 tape + Tier 2 analytics panels (More panels overlay).
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium } from "playwright";
@@ -89,6 +89,28 @@ async function main() {
       const drawerScore = await page.getByText(/Score/i).count();
       rec("drilldown_opens", drawerScore > 0);
       await page.screenshot({ path: `${OUT}/flows-drilldown-score.png`, fullPage: false });
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(500);
+    }
+
+    // Tier 2 panels live in the "More panels" overlay (market-wide analytics)
+    if (await tickerSearch.count()) {
+      await tickerSearch.fill("");
+      await page.waitForTimeout(500);
+    }
+    const moreBtn = page.getByRole("button", { name: /more panels/i });
+    if (await moreBtn.count()) {
+      await moreBtn.click();
+      await page.waitForTimeout(1500);
+      const fillQuality = await page.getByText("Fill quality", { exact: true }).count();
+      const flowCorr = await page.getByText("Flow correlation", { exact: true }).count();
+      const flowCampaigns = await page.getByText("Flow campaigns", { exact: true }).count();
+      rec("tier2_execution_panel", fillQuality > 0, `count=${fillQuality}`);
+      rec("tier2_correlation_panel", flowCorr > 0, `count=${flowCorr}`);
+      rec("tier2_cluster_panel", flowCampaigns > 0, `count=${flowCampaigns}`);
+      await page.screenshot({ path: `${OUT}/flows-tier2-more-panels.png`, fullPage: false });
+    } else {
+      rec("tier2_more_panels_button", false, "More panels control not found");
     }
 
     await writeFile(`${OUT}/report.json`, JSON.stringify(report, null, 2));
