@@ -28,6 +28,16 @@ function pct(n) {
   return n == null || !Number.isFinite(n) ? "—" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
 }
 
+function contractFields(r) {
+  const c = r.contract ?? r;
+  return {
+    occ: c.occ ?? r.occ ?? "—",
+    side: c.side ?? r.side ?? "—",
+    strike: c.strike ?? r.strike ?? "—",
+    label: c.label ?? r.label ?? "",
+  };
+}
+
 function summarizeVectorBoard(board) {
   const leaders = board?.leaders ?? [];
   const winners = board?.winners ?? [];
@@ -65,7 +75,7 @@ async function main() {
     const [vectorRes, zerodteRes, horizonsRes] = await Promise.all([
       authFetch(session, "/api/market/vector/pick-closures/board"),
       authFetch(session, "/api/market/zerodte/board"),
-      authFetch(session, "/api/market/zerodte/horizons"),
+      authFetch(session, "/api/market/nighthawk/horizons?view=zerodte"),
     ]);
 
     const vector = summarizeVectorBoard(vectorRes.json);
@@ -79,12 +89,14 @@ async function main() {
     lines.push(`## Vector pick board (HTTP ${vectorRes.status})`);
     lines.push(`leaders=${vector.leaders} winners=${vector.winners} closed=${vector.closed}`);
     for (const r of vector.topClosed) {
+      const c = contractFields(r);
       lines.push(
-        `  CLOSED ${r.ticker} ${r.side} ${r.strike} ${pct(r.premium_pct_from_entry)} occ=${r.occ ?? r.contract?.occ ?? "—"}`
+        `  CLOSED ${r.ticker} ${c.side} ${c.strike} ${pct(r.premium_pct_from_entry)} occ=${c.occ}`
       );
     }
     for (const w of (vectorRes.json?.winners ?? []).slice(0, 5)) {
-      lines.push(`  WINNER ${w.ticker} ${pct(w.premium_pct_from_entry)} ${w.label ?? ""}`);
+      const c = contractFields(w);
+      lines.push(`  WINNER ${w.ticker} ${c.side} ${c.strike} ${pct(w.premium_pct_from_entry)} ${c.label}`);
     }
 
     lines.push("");
@@ -97,16 +109,22 @@ async function main() {
     }
 
     lines.push("");
-    lines.push(`## 0DTE horizons (HTTP ${horizonsRes.status})`);
-    const hz = horizonsRes.json?.horizons ?? horizonsRes.json;
-    lines.push(typeof hz === "object" ? JSON.stringify(hz).slice(0, 500) : String(hz).slice(0, 200));
+    lines.push(`## Night Hawk 0DTE horizon (HTTP ${horizonsRes.status})`);
+    const lanes = horizonsRes.json?.board?.lanes;
+    if (lanes?.ZERO_DTE) {
+      const z = lanes.ZERO_DTE;
+      lines.push(
+        `ZERO_DTE committed=${z.committedCount ?? 0} watch=${z.watchCount ?? 0} floor=${z.scoreFloor ?? "—"}`
+      );
+    } else {
+      lines.push(typeof horizonsRes.json === "object" ? JSON.stringify(horizonsRes.json).slice(0, 500) : String(horizonsRes.json).slice(0, 200));
+    }
 
     lines.push("");
     lines.push("## Gaps / next engine work");
-    lines.push("- Expand Vector sweep with Night Hawk discovery tickers (zerodte_discovery_events)");
-    lines.push("- Surface closure winners even when live leader row is stale (same OCC)");
     lines.push("- Bridge exit-engine semantics to Vector pick live status");
     lines.push("- Rank Vector picks with thesis/Cortex overlay on committed 0DTE names");
+    lines.push("- Surface +15% runner leaders tab (VECTOR_PICK_LEADER_PCT_FLOOR)");
 
     const report = lines.join("\n");
     const outPath = `${OUT}/report.txt`;
