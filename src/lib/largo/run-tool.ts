@@ -653,11 +653,12 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     case "get_unusual_trades":
       return fetchUwUnusualTrades(input.ticker ? uwTicker(String(input.ticker)) : undefined, 25);
     case "get_market_oi_change": {
-      // MEASURED TRUNCATED 2026-08-29 — OI change array exceeds 16k transport cap.
-      // Apply fitting to cap shown entries for Largo; product uses full data.
+      // MEASURED TRUNCATED 2026-08-29 — OI change array exceeds 16k transport cap. Fitting is
+      // budget-bound (fitRowsToBudget), not a fixed count — see market-data-fits.ts's comment on
+      // fitMarketOiChangeForModel for why three rounds of fixed-count guessing all failed live.
       const { fitMarketOiChangeForModel } = await import("@/lib/largo/market-data-fits");
       const raw = await fetchUwMarketOiChange(30);
-      return fitMarketOiChangeForModel(raw, 8).fitted;
+      return fitMarketOiChangeForModel(raw).fitted;
     }
     case "get_top_net_impact":
       return fetchUwMarketTopNetImpact(20);
@@ -1009,7 +1010,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       else if (type === "dark_pool") raw = await fetchUwDarkPoolRecent(25);
       else if (type === "analysts") raw = await fetchUwScreenerAnalysts(25);
       else raw = await fetchUwScreenerStocks(25);
-      return fitScreenerForModel(raw, 3).fitted;
+      return fitScreenerForModel(raw).fitted;
     }
 
     case "get_spx_structure": {
@@ -1411,7 +1412,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       // For market-wide query (group="all" or default), cap the summary groups too, in case
       // summarizeGroupGreekFlow ever returns a per-group array for that case.
       if (group === "all" || !group) {
-        const cappedSummary = Array.isArray(summary) ? fitGroupGreekFlowForModel(summary, 8).fitted : summary;
+        const cappedSummary = Array.isArray(summary) ? fitGroupGreekFlowForModel(summary).fitted : summary;
         return {
           group,
           expiry: exp,

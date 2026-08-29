@@ -10,18 +10,25 @@ export interface OiChangeFittedResult {
   max_shown: number;
 }
 
-// MEASURED live (fetchUwMarketOiChange, 2026-08-29): ~635 bytes/entry, not the ~300 originally
-// estimated — the 20-entry cap this shipped with (#3155) still truncated, and 15-entry cap
-// (#3159) also still truncated when measured in production. Reduced to 8 to account for JSON
-// overhead + wrapper overhead.
-export function fitMarketOiChangeForModel(raw: any[], maxShown = 8): { fitted: OiChangeFittedResult } {
-  const shown = Math.min(raw?.length || 0, maxShown);
-  const changes = raw?.slice(0, shown);
+// THIRD ROUND, switching strategy rather than re-guessing a smaller number again. #3155 shipped
+// a 20-entry fixed cap ("should fit" off a sandbox estimate); live-truncated. #3159 re-measured
+// and shipped 15; live-truncated again. #3162 cut to 8; live-truncated a THIRD time (probed
+// 2026-08-29 22:15 UTC, post-deploy, ECS confirmed 8/8 tasks on that exact commit — not a
+// propagation artifact). Three fixed-count guesses in one day, all wrong in the same direction,
+// is a pattern: a static row count is a bet that some point-in-time entry-size measurement holds
+// everywhere and always, and that bet keeps losing for reasons not fully pinned down (possibly
+// larger real entries than any sandbox sample caught). `fitRowsToBudget` (fit-tool-result.ts,
+// already used by get_earnings's related_news fix and by spx-structure-fit.ts) measures the
+// ACTUAL serialized bytes at runtime instead of trusting an estimate, so it cannot go stale
+// relative to its own measurement — this is the last time this comment should need updating.
+export function fitMarketOiChangeForModel(raw: any[], maxShown = 20): { fitted: OiChangeFittedResult } {
+  const rows = raw ?? [];
+  const { kept, total } = fitRowsToBudget({}, "changes", rows, { maxRows: maxShown });
   return {
     fitted: {
-      changes: changes?.length > 0 ? changes : undefined,
-      shown,
-      truncated: (raw?.length || 0) > maxShown,
+      changes: kept.length > 0 ? kept : undefined,
+      shown: kept.length,
+      truncated: total > kept.length,
       max_shown: maxShown,
     },
   };
@@ -68,14 +75,14 @@ export interface GroupGreekFlowFittedResult {
   max_shown: number;
 }
 
-export function fitGroupGreekFlowForModel(raw: any[], maxShown = 8): { fitted: GroupGreekFlowFittedResult } {
-  const shown = Math.min(raw?.length || 0, maxShown);
-  const groups = raw?.slice(0, shown);
+export function fitGroupGreekFlowForModel(raw: any[], maxShown = 15): { fitted: GroupGreekFlowFittedResult } {
+  const rows = raw ?? [];
+  const { kept, total } = fitRowsToBudget({}, "groups", rows, { maxRows: maxShown });
   return {
     fitted: {
-      groups: groups?.length > 0 ? groups : undefined,
-      shown,
-      truncated: (raw?.length || 0) > maxShown,
+      groups: kept.length > 0 ? kept : undefined,
+      shown: kept.length,
+      truncated: total > kept.length,
       max_shown: maxShown,
     },
   };
@@ -84,10 +91,9 @@ export function fitGroupGreekFlowForModel(raw: any[], maxShown = 8): { fitted: G
 // ============ get_group_greek_flow raw rows ============
 // The un-summarized per-contract/per-ticker rows behind the group summary. MEASURED live
 // (fetchUwGroupGreekFlow, 2026-08-29): group="mag7" (the tool's own default) returns 391 rows /
-// ~277KB — 17x the 16k transport cap on its own, before anything else in the payload. Average
-// ~708 bytes/row; 15 rows leaves headroom for the rest of the response under the cap.
-// However, live production probe (2026-08-29 21:30 ET) confirmed 15-row cap still truncates.
-// Reduced to 8 rows to account for JSON overhead.
+// ~277KB — 17x the 16k transport cap on its own, before anything else in the payload. Row-count
+// caps here went 15 → 8, live-truncating both times — see fitMarketOiChangeForModel's comment
+// for the full three-round history. Budget-bound now for the same reason.
 export interface GroupGreekFlowRowsFittedResult {
   rows?: Record<string, unknown>[];
   rows_shown: number;
@@ -97,14 +103,14 @@ export interface GroupGreekFlowRowsFittedResult {
 
 export function fitGroupGreekFlowRowsForModel(
   raw: Record<string, unknown>[],
-  maxShown = 8
+  maxShown = 15
 ): GroupGreekFlowRowsFittedResult {
-  const shown = Math.min(raw?.length || 0, maxShown);
-  const rows = raw?.slice(0, shown);
+  const rowsIn = raw ?? [];
+  const { kept, total } = fitRowsToBudget({}, "rows", rowsIn, { maxRows: maxShown });
   return {
-    rows: rows?.length > 0 ? rows : undefined,
-    rows_shown: shown,
-    rows_truncated: (raw?.length || 0) > maxShown,
+    rows: kept.length > 0 ? kept : undefined,
+    rows_shown: kept.length,
+    rows_truncated: total > kept.length,
     rows_max_shown: maxShown,
   };
 }
@@ -118,17 +124,17 @@ export interface ScreenerFittedResult {
 }
 
 // MEASURED live (fetchUwScreenerStocks, 2026-08-29): ~1956 bytes/entry with technicals attached
-// (the PR that shipped this cap estimated ~300-400) — the 15-entry cap still truncated by a wide
-// margin, and 6-entry cap (#3159) also still truncated when measured in production. Reduced to 3
-// entries to account for JSON overhead + wrapper overhead.
-export function fitScreenerForModel(raw: any[], maxShown = 3): { fitted: ScreenerFittedResult } {
-  const shown = Math.min(raw?.length || 0, maxShown);
-  const candidates = raw?.slice(0, shown);
+// (the PR that shipped the first cap estimated ~300-400). Row-count caps here went
+// 15 → 6 → 3, live-truncating every time — see fitMarketOiChangeForModel's comment for the full
+// three-round history. Budget-bound now for the same reason.
+export function fitScreenerForModel(raw: any[], maxShown = 15): { fitted: ScreenerFittedResult } {
+  const rows = raw ?? [];
+  const { kept, total } = fitRowsToBudget({}, "candidates", rows, { maxRows: maxShown });
   return {
     fitted: {
-      candidates: candidates?.length > 0 ? candidates : undefined,
-      shown,
-      truncated: (raw?.length || 0) > maxShown,
+      candidates: kept.length > 0 ? kept : undefined,
+      shown: kept.length,
+      truncated: total > kept.length,
       max_shown: maxShown,
     },
   };
