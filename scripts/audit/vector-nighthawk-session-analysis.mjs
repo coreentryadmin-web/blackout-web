@@ -124,7 +124,6 @@ async function main() {
     lines.push("## Gaps / next engine work");
     lines.push("- Bridge exit-engine semantics to Vector pick live status");
     lines.push("- Rank Vector picks with thesis/Cortex overlay on committed 0DTE names");
-    lines.push("- Surface +15% runner leaders tab (VECTOR_PICK_LEADER_PCT_FLOOR)");
 
     const report = lines.join("\n");
     const outPath = `${OUT}/report.txt`;
