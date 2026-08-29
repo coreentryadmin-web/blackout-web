@@ -146,6 +146,18 @@ contract's OCC minute bars, and re-grading C-tier/untiered rows through `gradeTh
 under `ratchet` vs `trim_scale` — is still not built.** That remains the next concrete step before
 this item can close; `resolveExitModeForTier`'s C-tier→ratchet policy is unchanged.
 
+**Update 2026-08-29 (later) — MEASURED, item closed.** Built `scripts/audit/tier-exit-mode-ab.mjs`
+(`npm run ab:tier-exit-mode`) per the plan above. First live run, 90-day window: 111 real C-tier/
+untiered plays, 99 graded through both modes on real minute bars via the same shipped
+`evaluateExitState`/`TRIM_SCALE_RULES`. **RATCHET wins**: 45.5% win-rate / +5.5% avg P&L vs
+trim_scale's 38.4% / −7.3% — a −12.8pp avg-P&L, −7.1pp win-rate delta AGAINST trim_scale for this
+population, the opposite of the A/B-tier E5 result above. Likely driver: ratchet let 43/99 rows
+run to `runner_close` vs only 18/99 under trim_scale, and trim_scale's earlier ⅓-banking didn't
+make up the difference even with 29 `doubled` hits. See
+`docs/audit/findings-staging/2026-08-29-c-tier-exit-mode-ab-measured.md` for the full breakdown.
+**No gate changed** — `resolveExitModeForTier`'s C-tier/untiered→ratchet default is now empirically
+supported rather than merely inherited, and a single 90-day sample argues to LEAVE IT, not flip it.
+
 ---
 
 ### Board status badge: the TRIM threshold bug is real, and the earlier deferral was correct (2026-08-28)
