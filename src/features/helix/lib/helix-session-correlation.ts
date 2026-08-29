@@ -89,9 +89,13 @@ export function computeSessionFlowCorrelations(
     for (const follower of tickers) {
       if (follower === leader) continue;
       const followerList = byTicker.get(follower)!;
-      let followerIdx = 0;
 
       for (const lagMin of lags) {
+        // Each lag re-walks leaderList from its start, so followerIdx must start fresh here too
+        // — a pointer shared across lag passes (declared once per pair, above this loop) carries
+        // state from the previous, shorter lag into the next, larger one, skipping past follower
+        // prints that occurred earlier in time but are still valid matches for the wider window.
+        let followerIdx = 0;
         const lagMs = lagMin * 60 * 1000;
         let hits = 0;
         let leaders = 0;
