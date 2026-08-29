@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
   isVectorPickClosureWinner,
+  isVectorPickRunner,
   isVectorPickWinner,
   leaderEligibleForBoard,
+  VECTOR_PICK_LEADER_PCT_FLOOR,
   mergePeakPremiumPct,
   mergeSweepTickerUniverse,
   pickContextFromFullState,
@@ -96,5 +98,40 @@ describe("vector-pick-sweep-core", () => {
     assert.equal(leaderEligibleForBoard({ premium_pct_from_entry: 5, peak_premium_pct: 5, action_status: "still_buy" }), true);
     assert.equal(leaderEligibleForBoard({ premium_pct_from_entry: 20, peak_premium_pct: 20, action_status: "dont_buy" }), true);
     assert.equal(leaderEligibleForBoard({ premium_pct_from_entry: 2, peak_premium_pct: 2, action_status: "dont_buy" }), false);
+  });
+
+  test("isVectorPickRunner is +15%…+49% band excluding winners", () => {
+    assert.equal(
+      isVectorPickRunner({
+        premium_pct_from_entry: VECTOR_PICK_LEADER_PCT_FLOOR,
+        peak_premium_pct: null,
+        action_status: "caution",
+      }),
+      true
+    );
+    assert.equal(
+      isVectorPickRunner({
+        premium_pct_from_entry: VECTOR_PICK_WINNER_PCT_FLOOR - 0.1,
+        peak_premium_pct: null,
+        action_status: "caution",
+      }),
+      true
+    );
+    assert.equal(
+      isVectorPickRunner({
+        premium_pct_from_entry: VECTOR_PICK_WINNER_PCT_FLOOR,
+        peak_premium_pct: null,
+        action_status: "caution",
+      }),
+      false
+    );
+    assert.equal(
+      isVectorPickRunner({
+        premium_pct_from_entry: 10,
+        peak_premium_pct: 40,
+        action_status: "dont_buy",
+      }),
+      true
+    );
   });
 });

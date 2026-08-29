@@ -144,3 +144,17 @@ export function leaderEligibleForBoard(row: {
   const pct = row.premium_pct_from_entry ?? row.peak_premium_pct;
   return pct != null && pct >= VECTOR_PICK_LEADER_PCT_FLOOR;
 }
+
+/** +15%…+49% live names building toward the +50% winner floor — not yet archived as winners. */
+export function isVectorPickRunner(row: {
+  premium_pct_from_entry: number | null;
+  peak_premium_pct: number | null;
+  action_status: string;
+}): boolean {
+  if (isVectorPickWinner(row)) return false;
+  const best = Math.max(
+    row.premium_pct_from_entry ?? Number.NEGATIVE_INFINITY,
+    row.peak_premium_pct ?? Number.NEGATIVE_INFINITY
+  );
+  return best >= VECTOR_PICK_LEADER_PCT_FLOOR && best < VECTOR_PICK_WINNER_PCT_FLOOR;
+}

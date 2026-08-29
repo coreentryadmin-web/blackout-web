@@ -11,6 +11,7 @@ import type {
 } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
 import {
   filterVectorClosureRows,
+  filterVectorRunnerLeaders,
   formatPremiumPct,
   preferredVectorBoardSection,
   premiumPctTone,
@@ -22,7 +23,7 @@ import type {
   VectorPickBoardResponse,
 } from "@/features/nighthawk/components/VectorPickLogBoard.types";
 
-type BoardSection = "winners" | "leaders" | "closed";
+type BoardSection = "winners" | "runners" | "leaders" | "closed";
 
 async function fetchVectorBoard(url: string): Promise<VectorPickBoardResponse> {
   const res = await fetch(url, { cache: "no-store" });
@@ -161,11 +162,18 @@ export function VectorPickLogBoard() {
   const leaders = data?.leaders ?? [];
   const closed = data?.closed ?? [];
 
+  const filteredRunners = useMemo(() => {
+    const q = tickerQuery.trim().toUpperCase();
+    const runners = filterVectorRunnerLeaders(leaders);
+    if (!q) return runners;
+    return runners.filter((r) => r.ticker.toUpperCase().includes(q));
+  }, [leaders, tickerQuery]);
+
   useEffect(() => {
     if (sectionUserPicked.current || !data) return;
-    const next = preferredVectorBoardSection(winners.length, leaders.length);
+    const next = preferredVectorBoardSection(winners.length, filteredRunners.length, leaders.length);
     setSection((cur) => (cur === next ? cur : next));
-  }, [data, winners.length, leaders.length]);
+  }, [data, winners.length, filteredRunners.length, leaders.length]);
 
   const filteredClosed = useMemo(() => {
     const filtered = filterVectorClosureRows(closed, {
@@ -190,9 +198,10 @@ export function VectorPickLogBoard() {
 
   const visibleRows = useMemo(() => {
     if (section === "winners") return filteredWinners;
+    if (section === "runners") return filteredRunners;
     if (section === "leaders") return filteredLeaders;
     return filteredClosed;
-  }, [section, filteredWinners, filteredLeaders, filteredClosed]);
+  }, [section, filteredWinners, filteredRunners, filteredLeaders, filteredClosed]);
 
   if (isLoading && !data) {
     return (
@@ -224,8 +233,8 @@ export function VectorPickLogBoard() {
             </Badge>
             {coverage ? (
               <span className="text-xs font-bold text-sky-100">
-                {coverage.winners} winner{coverage.winners === 1 ? "" : "s"} · {coverage.leaders} live ·{" "}
-                {coverage.closed} closed
+                {coverage.winners} winner{coverage.winners === 1 ? "" : "s"} · {filteredRunners.length} runner
+                {filteredRunners.length === 1 ? "" : "s"} · {coverage.leaders} live · {coverage.closed} closed
               </span>
             ) : null}
           </div>
@@ -237,6 +246,7 @@ export function VectorPickLogBoard() {
             {(
               [
                 ["winners", `Winners (${winners.length})`],
+                ["runners", `Runners (${filteredRunners.length})`],
                 ["leaders", `Live (${leaders.length})`],
                 ["closed", `Closed (${closed.length})`],
               ] as const
@@ -321,16 +331,20 @@ export function VectorPickLogBoard() {
             title={
               section === "winners"
                 ? "No winning Vector picks yet"
-                : section === "leaders"
-                  ? "No live Vector leaders"
-                  : "No closed Vector picks match"
+                : section === "runners"
+                  ? "No +15% runners yet"
+                  : section === "leaders"
+                    ? "No live Vector leaders"
+                    : "No closed Vector picks match"
             }
             description={
               section === "winners"
                 ? "Winners are +50% vs pick (or peak) from the universe sweep — INTC-class runners land here after deploy."
-                : section === "leaders"
-                  ? "Every Vector universe ticker is evaluated every ~2 min during RTH."
-                  : "Try All sessions or clear filters."
+                : section === "runners"
+                  ? "Runners are live names between +15% and +49% premium vs pick entry — the building phase before the +50% winner floor."
+                  : section === "leaders"
+                    ? "Every Vector universe ticker is evaluated every ~2 min during RTH."
+                    : "Try All sessions or clear filters."
             }
           />
         ) : (

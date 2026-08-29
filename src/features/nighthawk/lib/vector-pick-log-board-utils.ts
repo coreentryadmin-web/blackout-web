@@ -1,4 +1,5 @@
 import type { VectorClosurePlay } from "@/features/nighthawk/components/VectorPickLogBoard.types";
+import { isVectorPickRunner } from "@/lib/vector/vector-pick-sweep-core";
 
 export type VectorClosureReasonFilter =
   | "all"
@@ -9,16 +10,35 @@ export type VectorClosureReasonFilter =
 
 export type VectorClosureSort = "newest" | "oldest" | "pct_desc" | "pct_asc" | "ticker";
 
-export type VectorBoardSection = "winners" | "leaders" | "closed";
+export type VectorBoardSection = "winners" | "runners" | "leaders" | "closed";
 
-/** First paint tab — show Live when Winners is empty but the sweep has leaders. */
+/** First paint tab — winners first, then +15% runners, then full live board. */
 export function preferredVectorBoardSection(
   winnersCount: number,
+  runnersCount: number,
   leadersCount: number
 ): VectorBoardSection {
   if (winnersCount > 0) return "winners";
+  if (runnersCount > 0) return "runners";
   if (leadersCount > 0) return "leaders";
   return "winners";
+}
+
+export function filterVectorRunnerLeaders<
+  T extends {
+    premium_pct_from_entry: number | null;
+    peak_premium_pct: number | null;
+    action_status: string;
+    is_winner?: boolean;
+  },
+>(rows: readonly T[]): T[] {
+  return rows.filter((row) =>
+    isVectorPickRunner({
+      premium_pct_from_entry: row.premium_pct_from_entry,
+      peak_premium_pct: row.peak_premium_pct,
+      action_status: row.action_status,
+    })
+  );
 }
 
 export function classifyVectorClosureReason(row: Pick<VectorClosurePlay, "close_reason" | "setup_invalidated">): Exclude<
