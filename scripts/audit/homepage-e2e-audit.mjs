@@ -61,6 +61,31 @@ async function scrollClickStable(page, locator) {
   }
 }
 
+/** Smooth-scroll anchors can take >1.2s — poll until the target id sits under the fixed nav band. */
+async function waitForHashAnchor(
+  page,
+  id,
+  { topMin = -80, topMax = 120, timeoutMs = 5_000, pollMs = 100 } = {},
+) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const y = await page.evaluate((anchorId) => {
+      const el = document.getElementById(anchorId);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { top: r.top, id: el.id };
+    }, id);
+    if (y && y.top >= topMin && y.top <= topMax) return y;
+    await page.waitForTimeout(pollMs);
+  }
+  return page.evaluate((anchorId) => {
+    const el = document.getElementById(anchorId);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { top: r.top, id: el.id };
+  }, id);
+}
+
 /** @typedef {{ severity: string, code: string, detail: string }} Issue */
 
 /** @param {import('playwright').Page} page */
@@ -117,18 +142,17 @@ async function runDesktop(browser) {
     await page.goBack({ waitUntil: "domcontentloaded" });
   }
 
-  // In-page anchor from hero
+  // In-page anchor from hero — smooth scroll can exceed a fixed sleep; poll viewport position.
   await gotoHome(page);
   const explore = page.locator('a.btn-g[href="#modules"], a[href="#modules"]').first();
   if ((await explore.count()) > 0) {
-    await explore.click();
-    await page.waitForTimeout(1200);
-    const y = await page.evaluate(() => {
-      const el = document.getElementById("modules");
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      return { top: r.top, id: el.id };
-    });
+    let y = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await explore.click();
+      y = await waitForHashAnchor(page, "modules");
+      if (y && y.top <= 120 && y.top >= -80) break;
+      if (attempt === 0) await page.waitForTimeout(400);
+    }
     if (!y || y.top > 120 || y.top < -80) {
       issues.push({
         severity: "P1",
