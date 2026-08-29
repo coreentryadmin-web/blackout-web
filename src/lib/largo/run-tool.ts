@@ -1044,8 +1044,16 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         limit: Number(input.limit ?? 25),
         ticker: input.ticker ? uwTicker(String(input.ticker)) : undefined,
       });
-    case "get_signal_log":
-      return marketPlatform.spx.getSpxSignalLog(Number(input.limit ?? 20));
+    case "get_signal_log": {
+      // spx-signal-log.ts persists the SAME uncalibrated formula as get_spx_play/get_spx_confluence
+      // but under the key `confidence` (not `rawScore`) — see insertSpxSignalLog's
+      // `confidence: play.rawScore`. This tool served that shape completely unwrapped for as long
+      // as it existed: no other get_signal_log call site applied the Largo confidence boundary, so
+      // every row's fabricated conviction reached the model verbatim. Map each row through the same
+      // boundary the other two call sites use — see spx-confidence-boundary.ts.
+      const rows = await marketPlatform.spx.getSpxSignalLog(Number(input.limit ?? 20));
+      return rows.map((row) => omitUncalibratedSpxConfidence(row));
+    }
     case "get_spx_engine_snapshots":
       return marketPlatform.spx.getSpxEngineSnapshots(Number(input.limit ?? 20));
     case "get_lotto_state":
