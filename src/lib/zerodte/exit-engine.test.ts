@@ -600,6 +600,43 @@ test("trim_scale DEAD ZONE: once the pending tranche is already taken, the floor
   assert.equal(d.reason, "runner_floor", "the POST-TRIM +50% runner floor protects the remainder, not breakeven");
 });
 
+// ── KNOWN GAP (2026-08-29 audit finding): the dead-zone guard above is proven correct in
+// isolation (trimsTaken passed as an independent, LOWER value than what the peak has armed),
+// but exit-sync.ts — the only production caller in trim_scale mode — cannot actually produce
+// that input shape. It derives `trimsTaken` with the IDENTICAL formula the engine itself uses
+// for `armed` (both are `trimTranchesArmed(peakPnlPct, regime)` off the same entry/peak), so in
+// every real invocation `taken === armed` and `trimAvailable` (`armed > taken`) is always false.
+// This test drives the engine through that REAL derivation (not an independently-chosen
+// trimsTaken) to pin what live rows actually see today: the guard does not engage, and a
+// peak-then-retrace to the shared floor still dumps the whole position at breakeven — the exact
+// SLS/TSM shape the 2026-08-27 fix intended to close. See
+// docs/audit/findings-staging/2026-08-29-trim-scale-dead-zone-reopened.md for the full
+// root-cause and why a real fix needs a persisted trim-tranche counter (not shipped here).
+test("trim_scale DEAD ZONE — KNOWN GAP: via exit-sync.ts's REAL trimsTaken derivation (taken := armed), the SLS shape still dumps to breakeven instead of banking", () => {
+  const entry = ENTRY;
+  const peakPremium = 4.8836; // peak +22.09%, the live SLS shape
+  const peakPnlPct = ((peakPremium - entry) / entry) * 100;
+  const regime = "neutral" as const;
+  // This is EXACTLY exit-sync.ts's derivation: `trimTranchesArmed(pinnedLivePnlPct(entry, peak), regime)`.
+  const trimsTakenAsRealCallerDerivesIt = trimTranchesArmed(peakPnlPct, regime);
+  assert.equal(trimsTakenAsRealCallerDerivesIt, 1, "sanity: this peak arms exactly tranche 1");
+
+  const d = evaluateExitState(
+    input({
+      exitMode: "trim_scale",
+      regime,
+      peakPremium,
+      currentMark: 4.0, // round-tripped to 0%
+      trimsTaken: trimsTakenAsRealCallerDerivesIt,
+    })
+  );
+  // KNOWN GAP: this is "ratchet_breakeven_floor" (the pre-2026-08-27 behavior), not "trim_scale_first"
+  // — because trimAvailable = armed > taken = 1 > 1 = false through the real derivation, the guard
+  // added 2026-08-27 never engages via the only path that reaches it in production.
+  assert.equal(d.action, "EXIT");
+  assert.equal(d.reason, "ratchet_breakeven_floor");
+});
+
 test("trim_scale DEAD ZONE: an unarmed peak still uses the shared floor untouched (no tranche to bank yet)", () => {
   // Peak +15% in neutral regime arms the EARLY floor (+5%) but no tranche (neutral's
   // first trigger is +20%) — the dead-zone guard must not suppress a legitimate floor
