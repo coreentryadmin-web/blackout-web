@@ -71,7 +71,13 @@ test("the collapsed row still surfaces a compact win-rate summary and an expand 
 
   assert.match(html, /Session analytics/);
   assert.match(html, /53\.8%/, "win rate should be visible in the collapsed summary");
-  assert.match(html, /tap to expand/i);
+  assert.match(html, /tap for history/i);
+});
+
+test("REGRESSION 2026-08-29: the collapsed row hints that History (with its date-range picker) is nested inside — otherwise it has zero visible affordance until expanded", () => {
+  const html = renderPanel();
+
+  assert.match(html, /nh-analytics-panel-history-hint/, "the history hint icon should render while collapsed");
 });
 
 test("the collapsed toggle is a real button with aria-expanded, not a bare div", () => {

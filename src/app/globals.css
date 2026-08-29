@@ -2986,6 +2986,10 @@ html.product-shell .nav-mega {
     @apply font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-cyan-300;
   }
 
+  .nh-analytics-panel-history-hint {
+    @apply ml-1.5 text-[11px] normal-case tracking-normal opacity-70;
+  }
+
   .nh-analytics-panel-sub {
     @apply font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-sky-300/70;
   }

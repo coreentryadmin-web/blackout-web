@@ -254,10 +254,17 @@ export function NighthawkAnalyticsPanel() {
             ▸
           </span>
           Session analytics
+          {/* History (with its date-range picker) is nested inside this collapsed panel and
+              otherwise has zero visible affordance — this hints it's in here before a click. */}
+          {collapsed && (
+            <span className="nh-analytics-panel-history-hint" aria-hidden>
+              🗓
+            </span>
+          )}
         </span>
         <span className="nh-analytics-panel-sub">
           {collapsed
-            ? `Win ${fmtPct(record.win_rate_pct)} · ${fmtSignedPct(record.avg_pnl_pct)} avg · tap to expand`
+            ? `Win ${fmtPct(record.win_rate_pct)} · ${fmtSignedPct(record.avg_pnl_pct)} avg · tap for history`
             : `${record.window.days}d track record · ${record.graded} graded`}
         </span>
       </button>
