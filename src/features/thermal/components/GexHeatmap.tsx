@@ -25,6 +25,7 @@ import ThermalTripleDesk, {
   type ThermalTripleDeskHandle,
 } from "@/features/thermal/components/ThermalTripleDesk";
 import { ThermalGridSectorPicker } from "@/features/thermal/components/ThermalGridSectorPicker";
+import { GreeksDistributionPanel } from "@/features/thermal/components/GreeksDistributionPanel";
 import {
   buildThermalUrlSearch,
   keyLevelsKicker,
@@ -2576,7 +2577,7 @@ export function GexHeatmap({
   // Tab A is now the Matrix ALONE (full content width so the far-dated monthly columns
   // breathe); the Gamma Profile moved into Tab B alongside the Curve + Shift (all three
   // are strike-axis profile views, so they group naturally).
-  const [pairView, setPairView] = useState<"pair-a" | "pair-b" | "pair-c">("pair-a");
+  const [pairView, setPairView] = useState<"pair-a" | "pair-b" | "pair-c" | "pair-d">("pair-a");
   // Cross-tool overlay toggles (default on; auto-hidden when the overlay is null).
   const [showFlow, setShowFlow] = useState(true);
   const [showDarkPool, setShowDarkPool] = useState(true);
@@ -4135,7 +4136,7 @@ export function GexHeatmap({
         {/* View tabs — Matrix | Profile + Curve + Shift. Controlled mirror of the body
             TabPanels (both driven by `pairView`). Only meaningful with a real block. */}
         {showMatrixTabs && (
-          <Tabs value={pairView} onValueChange={(v) => setPairView(v as "pair-a" | "pair-b" | "pair-c")}>
+          <Tabs value={pairView} onValueChange={(v) => setPairView(v as "pair-a" | "pair-b" | "pair-c" | "pair-d")}>
             <TabList
               aria-label={`${lensUpper} views`}
               className="thermal-desk-view-tabs max-w-full overflow-x-auto"
@@ -4153,6 +4154,11 @@ export function GexHeatmap({
                   <span className="hidden sm:inline">Forced Flow (Depth)</span>
                 </Tab>
               )}
+              {/* Greeks Distribution is available for all lenses */}
+              <Tab value="pair-d">
+                <span className="sm:hidden">Distribution</span>
+                <span className="hidden sm:inline">Greeks Distribution</span>
+              </Tab>
             </TabList>
           </Tabs>
         )}
@@ -4477,7 +4483,7 @@ export function GexHeatmap({
                 • "Profile + Curve + Shift" — 3 equal columns (lg:grid-cols-3), shared
                   ExpiryScopeBar + overlay toggles above, no flow rail.
               ──────────────── */}
-          <Tabs value={pairView} onValueChange={(v) => setPairView(v as "pair-a" | "pair-b" | "pair-c")} className="mt-3">
+          <Tabs value={pairView} onValueChange={(v) => setPairView(v as "pair-a" | "pair-b" | "pair-c" | "pair-d")} className="mt-3">
             <TabPanels>
               <TabPanel value="pair-a">{matrixPanel}</TabPanel>
               <TabPanel value="pair-b">
@@ -4513,6 +4519,13 @@ export function GexHeatmap({
                     matrix refresh.
                   </p>
                 )}
+              </TabPanel>
+              <TabPanel value="pair-d">
+                <GreeksDistributionPanel
+                  cells={gexBlock?.cells ?? null}
+                  spot={data?.spot ?? null}
+                  ticker={ticker}
+                />
               </TabPanel>
             </TabPanels>
           </Tabs>
