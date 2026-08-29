@@ -1,54 +1,72 @@
 #!/usr/bin/env node
 
 /**
- * Quick Vector RTH validation — wall payloads + full-state size (read-only HTTP).
+ * Quick Vector RTH validation — authenticated wall payloads + gex-ladder size (read-only HTTP).
+ * Uses audit-auth-fetch (Clerk temp admin+premium) because vector routes are tier-gated.
  */
+
+import { fetchAuditJson, releaseAuditClerkSession } from "./lib/audit-auth-fetch.mjs";
 
 const base = (process.env.VALIDATE_BASE || "https://blackouttrades.com").replace(/\/$/, "");
 const tickers = ["SPX", "SPY", "QQQ", "META"];
-const TIMEOUT_MS = 5000;
+/** @type {string[]} */
+const failures = [];
 
-async function fetchJson(path) {
-  const res = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-  if (!res.ok) return { ok: false, status: res.status };
-  return { ok: true, data: await res.json() };
+function noteFail(label, detail) {
+  failures.push(`${label}: ${detail}`);
+  console.log(`  fail ${label}: ${detail}`);
 }
 
 async function checkWalls() {
-  console.log("Checking wall freshness...");
+  console.log("Checking wall freshness (authenticated)...");
   for (const ticker of tickers) {
     try {
-      const out = await fetchJson(`/api/market/vector/walls?ticker=${ticker}`);
-      if (!out.ok) {
-        console.log(`  warn ${ticker}: HTTP ${out.status}`);
+      const res = await fetchAuditJson(base, `/api/market/vector/walls?ticker=${ticker}&dte=0dte`);
+      if (!res.ok) {
+        const msg = res.status === 401 || res.status === 403 ? `HTTP ${res.status} (auth)` : `HTTP ${res.status}`;
+        console.log(`  warn ${ticker}: ${msg}`);
+        if (res.status === 401 || res.status === 403) noteFail(ticker, msg);
         continue;
       }
-      const hasCall = out.data.callWalls?.length > 0;
-      const hasPut = out.data.putWalls?.length > 0;
-      console.log(`  ok ${ticker}: call=${hasCall} put=${hasPut}`);
+      const body = res.json && typeof res.json === "object" ? res.json : {};
+      const walls = body.walls ?? body;
+      const hasCall = Array.isArray(walls.callWalls) && walls.callWalls.length > 0;
+      const hasPut = Array.isArray(walls.putWalls) && walls.putWalls.length > 0;
+      console.log(`  ok ${ticker}: call=${hasCall} put=${hasPut} via=${res.via ?? "?"}`);
+      if (!hasCall && !hasPut) {
+        console.log(`  warn ${ticker}: empty walls (off-hours cache may be cold)`);
+      }
     } catch (e) {
-      console.log(`  fail ${ticker}: ${e instanceof Error ? e.message : String(e)}`);
+      noteFail(ticker, e instanceof Error ? e.message : String(e));
     }
   }
 }
 
-async function checkFullState() {
-  console.log("\nChecking full-state fit...");
+async function checkGexLadderFit() {
+  console.log("\nChecking gex-ladder payload fit (SPX 0DTE)...");
   try {
-    const out = await fetchJson("/api/market/vector/full-state");
-    if (!out.ok) {
-      console.log(`  warn full-state: HTTP ${out.status}`);
+    const res = await fetchAuditJson(base, "/api/market/vector/gex-ladder?ticker=SPX&dte=0dte");
+    if (!res.ok) {
+      const msg = res.status === 404 ? "route missing" : `HTTP ${res.status}`;
+      console.log(`  warn gex-ladder: ${msg}`);
+      if (res.status !== 404) noteFail("gex-ladder", msg);
       return;
     }
-    const chars = JSON.stringify(out.data).length;
+    const chars = JSON.stringify(res.json).length;
     const pct = ((chars / 16000) * 100).toFixed(1);
-    console.log(`  ok full-state: ${chars} chars (${pct}% of 16k)`);
+    console.log(`  ok gex-ladder: ${chars} chars (${pct}% of 16k Largo cap reference)`);
   } catch (e) {
-    console.log(`  fail full-state: ${e instanceof Error ? e.message : String(e)}`);
+    noteFail("gex-ladder", e instanceof Error ? e.message : String(e));
   }
 }
 
 console.log(`\nVector RTH quick check — ${base} — ${new Date().toISOString()}\n`);
-await checkWalls();
-await checkFullState();
-console.log("\nDone.\n");
+try {
+  await checkWalls();
+  await checkGexLadderFit();
+} finally {
+  await releaseAuditClerkSession();
+}
+
+console.log(failures.length ? `\n${failures.length} hard failure(s).\n` : "\nDone.\n");
+process.exit(failures.length > 0 ? 1 : 0);
