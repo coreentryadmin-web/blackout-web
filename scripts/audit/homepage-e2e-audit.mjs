@@ -29,6 +29,22 @@ async function gotoHome(page, opts = {}) {
   }
 }
 
+/** Auth/footer navigations can miss the load event during edge churn — retry with domcontentloaded. */
+async function clickAndWaitForPath(page, locator, pathPattern, { timeout = 20_000, retries = 3 } = {}) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      await locator.click({ timeout: 12_000 });
+      await page.waitForURL(pathPattern, { timeout, waitUntil: "domcontentloaded" });
+      return;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (attempt === retries - 1) throw e;
+      if (!/Timeout|timeout|interrupted|detached|Target closed/i.test(msg)) throw e;
+      await page.waitForTimeout(600);
+    }
+  }
+}
+
 /** Footer links can detach mid-scroll during hydration — retry before failing the desktop suite. */
 async function scrollClickStable(page, locator) {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -87,17 +103,16 @@ async function runDesktop(browser) {
   if ((await signIn.count()) === 0) {
     issues.push({ severity: "P0", code: "SIGN_IN_MISSING", detail: "No Sign in link in header" });
   } else {
-    await signIn.click();
-    await page.waitForURL(/\/sign-in/, { timeout: 15_000 });
+    await clickAndWaitForPath(page, signIn, /\/sign-in/);
     passes.push("Sign in → /sign-in");
     await page.goBack({ waitUntil: "domcontentloaded" });
+    await page.waitForURL(/\/?(\?_cb=|$)/, { timeout: 15_000, waitUntil: "domcontentloaded" });
     passes.push("back from sign-in → homepage");
   }
 
   const getAccess = page.locator('.mkt-nav-auth a.nav-join[href="/sign-up"]');
   if ((await getAccess.count()) > 0) {
-    await getAccess.click();
-    await page.waitForURL(/\/sign-up/, { timeout: 15_000 });
+    await clickAndWaitForPath(page, getAccess, /\/sign-up/);
     passes.push("Get access → /sign-up");
     await page.goBack({ waitUntil: "domcontentloaded" });
   }
@@ -140,7 +155,10 @@ async function runDesktop(browser) {
       continue;
     }
     await scrollClickStable(page, link);
-    await page.waitForURL(new RegExp(`${path.replace("/", "\\/")}(\\?|$)`), { timeout: 15_000 });
+    await page.waitForURL(new RegExp(`${path.replace("/", "\\/")}(\\?|$)`), {
+      timeout: 20_000,
+      waitUntil: "domcontentloaded",
+    });
     passes.push(`footer ${label} → ${path}`);
   }
 
