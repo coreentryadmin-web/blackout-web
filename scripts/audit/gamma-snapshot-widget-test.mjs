@@ -16,12 +16,6 @@ function fmtLevel(n) {
   return Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
-function wallRoleDescription(role) {
-  if (!role) return "no label";
-  if (role === "concentration") return "concentration (amber, with tooltip)";
-  return role === "call" || role === "call_wall_role" ? "unknown" : `${role} (sky-300/45)`;
-}
-
 // Test data from the audit
 const testCases = [
   {
