@@ -1,5 +1,6 @@
 // Fitting functions for multiple market data Largo tools that exceed 16k transport cap.
 // Product-first design: all native data available to products; fitting applied only at Largo boundary.
+import { fitRowsToBudget } from "@/lib/largo/fit-tool-result";
 
 // ============ get_market_oi_change ============
 export interface OiChangeFittedResult {
@@ -141,9 +142,16 @@ export function fitScreenerForModel(raw: any[], maxShown = 3): { fitted: Screene
 // field on its own, more than double the 16k transport cap before the structured earnings
 // calendar/history/estimates fields (the tool's actual primary answer, per its own header
 // comment) are even reached. This field is explicitly SECONDARY — "stories mentioning this
-// ticker in the earnings channel, NOT its own results" — so it is trimmed hard rather than
-// generously: 5 items, dropping `body` (the field never needed for a headline-level mention)
-// and truncating `teaser` further.
+// ticker in the earnings channel, NOT its own results" — so `body` is dropped entirely
+// regardless of budget (never needed for a headline-level mention) and `teaser` is trimmed
+// further, before the remaining, already-small rows go through `fitRowsToBudget` rather than a
+// bare row-count cap. WHY A BUDGET BOUND, NOT A FIXED COUNT: a companion same-day fix
+// (#3159/market-data-fits.ts) originally capped get_market_oi_change/get_screener/
+// get_group_greek_flow to a fixed row count sized off a one-time sandbox measurement of average
+// entry bytes — deployed, all three were STILL live-truncated (see #3162's follow-up fix). A
+// fixed count is a bet that a point-in-time entry-size measurement holds everywhere and always;
+// `fitRowsToBudget` measures the actual serialized bytes at runtime instead, so it cannot go
+// stale relative to its own measurement.
 export interface EarningsRelatedNewsFittedResult {
   related_news: Array<{ title: string; teaser: string; published: string; url: string }>;
   related_news_shown: number;
@@ -155,17 +163,17 @@ export function fitEarningsRelatedNewsForModel(
   raw: Array<Record<string, unknown>>,
   maxShown = 5
 ): EarningsRelatedNewsFittedResult {
-  const shown = Math.min(raw?.length || 0, maxShown);
-  const related_news = (raw ?? []).slice(0, shown).map((a) => ({
+  const trimmed = (raw ?? []).map((a) => ({
     title: String(a.title ?? ""),
     teaser: String(a.teaser ?? "").slice(0, 200),
     published: String(a.published ?? ""),
     url: String(a.url ?? ""),
   }));
+  const { kept, total } = fitRowsToBudget({}, "related_news", trimmed, { maxRows: maxShown });
   return {
-    related_news,
-    related_news_shown: shown,
-    related_news_truncated: (raw?.length || 0) > maxShown,
+    related_news: kept,
+    related_news_shown: kept.length,
+    related_news_truncated: total > kept.length,
     related_news_max_shown: maxShown,
   };
 }
