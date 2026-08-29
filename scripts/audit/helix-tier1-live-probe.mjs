@@ -64,7 +64,6 @@ async function main() {
     await page.screenshot({ path: `${OUT}/flows-tape-desktop.png`, fullPage: false });
 
     // Filter to SPY to surface context header
-    const symInput = page.locator('input[placeholder*="Symbol"], input[aria-label*="Symbol"], .helix-tape-chip').first();
     const tickerInputs = page.locator('input[type="text"]');
     const inputCount = await tickerInputs.count();
     for (let i = 0; i < inputCount; i++) {
