@@ -70,12 +70,25 @@ NODE_USE_ENV_PROXY=1 node scripts/audit/helix-interaction-audit.mjs \
 
 ---
 
-## Item 8: RTH Tape Inventory Re-measurement ✅ FRAMEWORK READY
+## Item 8: RTH Tape Inventory Re-measurement ✅ REAL, VERIFIED IMPLEMENTATION
 
 **File**: `scripts/audit/helix-rth-measurement.mjs`  
-**PR**: #2841  
-**Status**: Code-complete, ready for market-hours execution  
-**Completion**: 2026-08-24
+**PR**: #2841 (original), fixed in a follow-up to #3169  
+**Status**: Working — spawns the real `helix-tape-inventory.mjs`, verified live off-hours 2026-08-29  
+**Completion**: 2026-08-24 (claim only) → 2026-08-29 (actually implemented)
+
+**Correction (2026-08-29)**: the version merged 2026-08-24 was a **stub** — `measureHelix()`
+returned an empty object and printed a suggestion of the command a human could run; `--compare`
+printed a warning and compared nothing; the script always exited 0. It looked identical whether
+HELIX was healthy, broken, or simply never implemented, because it was never implemented. Found
+while attempting to actually execute it per a coordinator check-in on Item 7/8 status. The current
+version spawns the real `helix-tape-inventory.mjs --json`, parses its output, and reports genuine
+live numbers — verified end-to-end 2026-08-29 (off-hours; the run honestly labels itself
+`WEEKEND`/`OFF-HOURS` rather than claiming RTH validation it didn't do). The route-breakdown
+baseline below is now historical only — #2647 replaced its `OTHER` bucket with `UNREPORTED` and
+added `REPEAT`, so the current script reports the live breakdown standalone rather than diffing
+against retired bucket names. `--compare` is no longer a separate flag: the script always fetches
+and compares live data, since there was never a meaningful "measure without comparing" mode.
 
 ### Purpose
 Re-measures HELIX tape inventory during Regular Trading Hours to confirm weekend baseline holds under live market conditions.
@@ -95,19 +108,18 @@ Re-measures HELIX tape inventory during Regular Trading Hours to confirm weekend
 - Route vocabulary: REPEAT may appear (frequency TBD)
 
 ### Execution Checklist
-- [ ] Schedule for next market-open session (9:30 AM - 4:00 PM ET, weekdays only)
-- [ ] Run from REPO ROOT with NODE_USE_ENV_PROXY=1
-- [ ] Capture output for comparison against baseline
+- [x] Implemented and verified — code-complete, no longer a stub
+- [ ] Schedule for next market-open session (9:30 AM - 4:00 PM ET, weekdays only) for an actual RTH run — the 2026-08-29 verification run was WEEKEND/off-hours, which the script itself labels honestly rather than claiming RTH validation
+- [x] Run from REPO ROOT with NODE_USE_ENV_PROXY=1 (Node 20 — spawns a `--import tsx` child)
 
 ### Command
 ```bash
 NODE_USE_ENV_PROXY=1 node scripts/audit/helix-rth-measurement.mjs \
-  --compare \
   --json > helix-rth-2026-08-XX.json
 ```
 
 ### Expected Output
-Measurement report with live metrics compared to 2026-08-22 baseline. **Critical success metric**: signal_eligible_pct ≥ 98%.
+Measurement report with live metrics vs. the 2026-08-22 baseline (signal eligibility and writer-split fields only — route breakdown is reported standalone, see the correction note above). Signal eligibility is a settled question (fixed by #2723, confirmed 100% and documented via #2744) — the script reports it for the historical record, not as something an RTH run is testing.
 
 ---
 
@@ -171,8 +183,8 @@ The `helix-signal-outcomes` cron (registered in `src/lib/cron-registry.ts`) was 
 | 4 | GEX proximity flags | ✅ Fixed | PR #2815 |
 | 5 | Expired contracts | ✅ Fixed | PR #2815 |
 | 6 | Truncation handling | ✅ Fixed | PR #2815 |
-| 7 | Interaction Harness | ✅ Framework ready | PR #2841, needs deployment |
-| 8 | RTH Measurement | ✅ Framework ready | PR #2841, needs execution |
+| 7 | Interaction Harness | ✅ Fixed & verified GREEN live | PR #2841 (was non-functional — 8 bugs, see PR #3169) |
+| 8 | RTH Measurement | ✅ Implemented & verified live (off-hours) | PR #2841 (was a stub — see correction above); needs an actual RTH-hours run |
 | 9a | Score caveat | ✅ Implemented | PR #2849 |
 | 9b | Cron scheduling | ✅ Deployed | blackout-infra #48 |
 
@@ -181,13 +193,13 @@ The `helix-signal-outcomes` cron (registered in `src/lib/cron-registry.ts`) was 
 ## What's Ready Now
 
 ### For Immediate Deployment
-- **Item 7 Framework**: Ready to add to blackout-infra scheduler (no code changes needed)
-- **Item 8 Framework**: Ready to execute during next market-open session (no code changes needed)
+- **Item 7**: Fixed and verified GREEN against production (2026-08-29) — ready to add to blackout-infra scheduler for recurring runs
+- **Item 8**: Fixed and verified live (2026-08-29, off-hours) — ready to run during the next market-open session for an actual RTH validation
 - **Score Documentation**: Live and protecting Largo data quality
 - **Signal Cron**: Already deployed and collecting data
 
 ### No Code Changes Remaining
-All HELIX Phase 1 certification items are code-complete. Items 7-8 require only infrastructure scheduling and runtime execution.
+All HELIX Phase 1 certification items are code-complete AND verified functional. Items 7-8 previously claimed "framework ready" without ever having been executed — both are now fixed and confirmed working against live production. Item 8 still needs one run during actual RTH hours (9:30 AM-4:00 PM ET, weekday) to complete its original purpose; Item 7 needs only infrastructure scheduling.
 
 ---
 
