@@ -4524,12 +4524,12 @@ export function GexHeatmap({
                 <GreeksDistributionPanel
                   cells={
                     lens === "gex"
-                      ? data?.gex?.cells
+                      ? data?.gex?.cells ?? null
                       : lens === "vex"
-                        ? data?.vex?.cells
+                        ? data?.vex?.cells ?? null
                         : lens === "dex"
-                          ? data?.dex?.cells
-                          : data?.charm?.cells
+                          ? data?.dex?.cells ?? null
+                          : data?.charm?.cells ?? null
                   }
                   spot={data?.spot ?? null}
                   ticker={ticker}
