@@ -125,6 +125,24 @@ test("tie-break never overrides a clearly higher fit (margin beyond EPS ⇒ nume
   assert.equal(v.archetype, "BREAKOUT");
 });
 
+test("tie-break winner must ALSO clear the evidence floor — a topFit above the floor cannot carry a below-floor winner across it", () => {
+  // BREAKOUT cluster averages to 0.36 (just above the 0.35 floor) and sets topFit. EVENT_DRIVEN's
+  // own fit is 0.32 (below the floor) but sits within MARGIN_EPS (0.05) of topFit, so it becomes a
+  // tie-break contender — and EVENT_DRIVEN precedes BREAKOUT in ARCHETYPE_PRIORITY, so it wins the
+  // tie-break. Checking topFit (BREAKOUT's 0.36) against the floor would let this classify as
+  // EVENT_DRIVEN at confidence 0.32 — a label whose own fit never cleared EVIDENCE_FLOOR, riding an
+  // unrelated archetype's higher fit across the line. The floor must gate winnerFit, not topFit.
+  const v = classifyArchetype({
+    direction: "LONG",
+    nearRangeExtreme01: 0.36,
+    breakoutQuality01: 0.36,
+    volumeExpansion01: 0.36, // BREAKOUT = 0.36 → topFit
+    catalystInWindow01: 0.32, // EVENT_DRIVEN = 0.32 → wins the tie-break, but below the floor
+  });
+  assert.equal(v.archetype, null, `expected unclassified, got ${v.archetype} at confidence ${v.confidence}`);
+  assert.match(v.reason, /[Tt]hin|floor/);
+});
+
 test("thin data → archetype null (no grounded fit, or no fit clears the evidence floor)", () => {
   // Zero inputs → no present fit at all.
   assert.equal(classifyArchetype(EMPTY).archetype, null);
