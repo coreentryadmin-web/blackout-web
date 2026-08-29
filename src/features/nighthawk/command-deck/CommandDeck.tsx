@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import { PlayTerminal, etClock } from "./PlayTerminal";
 import { DiscoveryFunnelStrip, MarketStateStrip, SpxSlayerBadgeStrip } from "@/features/nighthawk/components/zerodte-board-strips";
@@ -191,9 +191,24 @@ export function CommandDeck({
   const tape = useMemo(() => sessionTape(plays), [plays]);
 
   const [selId, setSelId] = useState<string | null>(null);
+  // Mobile-only (see the `@media (max-width:820px)` rule in globals.css, which is what makes
+  // this state meaningful at all — on desktop both nh-deck-left/right show unconditionally and
+  // this attribute is inert): whether the member has EXPLICITLY asked to see a play's detail on
+  // a narrow viewport, vs. the board's own on-load/on-poll auto-selection. Before this, the two
+  // rails always rendered stacked full-height on mobile the instant any play existed — the list
+  // never got to be the default view, and its columns (STATUS/PLAY/GRADE/TIME/PNL) had to share
+  // a squeezed row width, truncating the ticker/strike/expiry text (member report 2026-08-29).
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const selectPlay = useCallback((id: string) => {
+    setSelId(id);
+    setMobileDetailOpen(true);
+  }, []);
+  const closeMobileDetail = useCallback(() => setMobileDetailOpen(false), []);
 
   // Keep a valid selection as the polled list changes: prefer working → watch → closed on first
-  // pick so a CLOSED row doesn't monopolize the right rail when WATCH setups exist.
+  // pick so a CLOSED row doesn't monopolize the right rail when WATCH setups exist. Deliberately
+  // does NOT open the mobile detail view — this is the board choosing a default, not the member
+  // asking to see one.
   useEffect(() => {
     if (sorted.length === 0) {
       if (selId !== null) setSelId(null);
@@ -208,13 +223,18 @@ export function CommandDeck({
   // that ticker's row as soon as it's present (it may take a poll cycle for the freshly-promoted
   // name to appear in this lane's fetched data). Re-fires on every focusTicker/sorted change but
   // is a no-op once selId already matches, so it doesn't fight the member's own subsequent clicks.
+  // This IS an explicit "go look at this play" navigation (unlike the default-selection effect
+  // above), so it opens the mobile detail view too.
   useEffect(() => {
     if (!focusTicker) return;
     // The status filter can hide the freshly-promoted row (e.g. filter=OPEN, name lands in WATCH)
     // — widen to ALL so a focus navigation is never silently invisible.
     setStatusFilter("ALL");
     const match = plays.find((p) => p.ticker.toUpperCase() === focusTicker.toUpperCase());
-    if (match && selId !== match.id) setSelId(match.id);
+    if (match && selId !== match.id) {
+      setSelId(match.id);
+      setMobileDetailOpen(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusTicker, plays, selId]);
 
@@ -247,7 +267,7 @@ export function CommandDeck({
   );
 
   return (
-    <div className="nh-deck nh-deck-fill">
+    <div className="nh-deck nh-deck-fill" data-mobile-view={mobileDetailOpen ? "detail" : "list"}>
       <div className="nh-deck-left">
         {commandCenter ? (
           <DeckCompactHeader
@@ -328,13 +348,13 @@ export function CommandDeck({
                   <span className="nh-deck-section-count">{g.plays.length}</span>
                 </div>
                 {g.plays.map((p) => (
-                  <PlayCard key={p.id} play={p} rank={rankById.get(p.id) ?? 1} selected={p.id === selId} onSelect={setSelId} nowMs={nowMs} />
+                  <PlayCard key={p.id} play={p} rank={rankById.get(p.id) ?? 1} selected={p.id === selId} onSelect={selectPlay} nowMs={nowMs} />
                 ))}
               </div>
             ))
           ) : (
             sorted.map((p, i) => (
-              <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={setSelId} nowMs={nowMs} />
+              <PlayCard key={p.id} play={p} rank={i + 1} selected={p.id === selId} onSelect={selectPlay} nowMs={nowMs} />
             ))
           )}
         </div>
@@ -344,6 +364,7 @@ export function CommandDeck({
         sessionClosed={sessionClosed}
         nowMs={nowMs}
         convictionRank={convictionRank}
+        onBack={closeMobileDetail}
       />
     </div>
   );
