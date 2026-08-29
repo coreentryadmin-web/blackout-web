@@ -255,9 +255,25 @@ export function playStatusDisplay(status: DeckStatus): { label: string; tone: St
 export function zeroDteActionDisplay(play: TerminalPlay): { label: string; tone: StatusTone } | null {
   if (play.horizon !== "ZERO_DTE") return null;
   if (play.status === "CLOSED") {
-    if (play.closedReason === "doubled") return { label: "TARGET", tone: "closed" };
-    if (play.closedReason === "stopped") return { label: "STOPPED", tone: "closed" };
+    // FIXED 2026-08-29 (shipped wrong in #3101): the LIVE board's closed_reason is
+    // NEVER "doubled" — that literal belongs to a different system entirely (plan.ts's
+    // POST-HOC backtest grader / record.ts's track-record enum). The live board
+    // (zerodte-service.ts's boardClosedReason) emits the literal "stopped", or one of
+    // categorizeExitReason's real categories — "target"/"thesis"/"flat"/"ratchet"/"stop" —
+    // or falls back to "time_stop". Checking "doubled" here meant every real profit-taking,
+    // thesis-break, flat-theta, or ratchet-floor close silently fell through to the coarse
+    // CLOSED pill instead of a real label — confirmed live 2026-08-29 (several winning/flat
+    // rows on production showed generic CLOSED).
+    if (play.closedReason === "target") return { label: "TARGET", tone: "closed" };
+    if (play.closedReason === "stopped" || play.closedReason === "stop") {
+      return { label: "STOPPED", tone: "closed" };
+    }
     if (play.closedReason === "time_stop") return { label: "EOD EXIT", tone: "closed" };
+    if (play.closedReason === "thesis") return { label: "THESIS BROKE", tone: "closed" };
+    if (play.closedReason === "flat") return { label: "SCRATCH", tone: "closed" };
+    // A ratchet-floor exit is a locked-in trailing stop on a runner — the brief's own
+    // "TRAIL EXIT" vocabulary (NIGHTHAWK-3RAIL-REDESIGN.md §1's plays-table brief).
+    if (play.closedReason === "ratchet") return { label: "TRAIL EXIT", tone: "closed" };
     return null;
   }
   if (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM") {
