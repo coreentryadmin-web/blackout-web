@@ -94,7 +94,7 @@ export function fitGroupGreekFlowForModel(raw: any[], maxShown = 15): { fitted: 
     }),
     { maxRows: maxShown }
   );
-  return { fitted: envelope as GroupGreekFlowFittedResult };
+  return { fitted: envelope as unknown as GroupGreekFlowFittedResult };
 }
 
 // ============ get_group_greek_flow raw rows ============
@@ -125,7 +125,7 @@ export function fitGroupGreekFlowRowsForModel(
     }),
     { maxRows: maxShown }
   );
-  return envelope as GroupGreekFlowRowsFittedResult;
+  return envelope as unknown as GroupGreekFlowRowsFittedResult;
 }
 
 // ============ get_screener ============
@@ -152,7 +152,7 @@ export function fitScreenerForModel(raw: any[], maxShown = 15): { fitted: Screen
     }),
     { maxRows: maxShown }
   );
-  return { fitted: envelope as ScreenerFittedResult };
+  return { fitted: envelope as unknown as ScreenerFittedResult };
 }
 
 export type GroupGreekFlowToolResult = {
@@ -190,7 +190,7 @@ export function fitGroupGreekFlowToolResultForModel(input: {
     summary: input.summary,
   });
   const { envelope } = fitEnvelopeToBudget(input.rows ?? [], shell, { maxRows });
-  return envelope as GroupGreekFlowToolResult;
+  return envelope as unknown as GroupGreekFlowToolResult;
 }
 
 // ============ get_earnings related_news ============
