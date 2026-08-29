@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Live prod probe — HELIX Tier 1 (score tier, context header, CSV export wiring).
+ * Live prod probe — HELIX Tier 1 + Tier 2 tape wiring (score tier, context header, Ask% column).
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium } from "playwright";
@@ -66,16 +66,12 @@ async function main() {
 
     await page.screenshot({ path: `${OUT}/flows-tape-desktop.png`, fullPage: false });
 
-    // Filter to SPY to surface context header
-    const tickerInputs = page.locator('input[type="text"]');
-    const inputCount = await tickerInputs.count();
-    for (let i = 0; i < inputCount; i++) {
-      const ph = await tickerInputs.nth(i).getAttribute("placeholder");
-      if (ph && /symbol|ticker|sym/i.test(ph)) {
-        await tickerInputs.nth(i).fill("SPY");
-        await tickerInputs.nth(i).press("Enter");
-        break;
-      }
+    // Filter to SPY to surface context header (#helix-ticker-search — placeholder is "SPX", not "Symbol")
+    const tickerSearch = page.locator("#helix-ticker-search");
+    if (await tickerSearch.count()) {
+      await tickerSearch.fill("SPY");
+    } else {
+      await page.getByLabel(/filter by ticker/i).fill("SPY");
     }
     await page.waitForTimeout(2000);
 
