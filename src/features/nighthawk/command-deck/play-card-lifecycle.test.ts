@@ -325,8 +325,15 @@ describe("zeroDteActionDisplay — grounded ACTION vocabulary (2026-08-29)", () 
     assert.equal(zeroDteActionDisplay(base({ status: "OPEN", recommendation: "HOLD", isCondor: true })), null);
   });
 
-  it("CLOSED: real exit_reason values map to real labels", () => {
-    assert.deepEqual(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "doubled" })), {
+  // CORRECTED 2026-08-29: this block previously asserted closedReason "doubled" -> TARGET,
+  // matching what #3101 shipped. That was wrong — "doubled" is plan.ts's POST-HOC backtest
+  // grading enum, a completely different system from the LIVE board's closed_reason, which
+  // zerodte-service.ts derives from categorizeExitReason() (exit-engine.ts): the literal
+  // "stopped", or "target"/"thesis"/"flat"/"ratchet"/"stop", falling back to "time_stop".
+  // Confirmed live 2026-08-29: real production rows closing via target/thesis/flat/ratchet
+  // all fell through to the generic CLOSED pill under the old (wrong) check.
+  it("CLOSED: the LIVE BOARD's real closed_reason values map to real labels", () => {
+    assert.deepEqual(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "target" })), {
       label: "TARGET",
       tone: "closed",
     });
@@ -334,14 +341,33 @@ describe("zeroDteActionDisplay — grounded ACTION vocabulary (2026-08-29)", () 
       label: "STOPPED",
       tone: "closed",
     });
+    assert.deepEqual(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "stop" })), {
+      label: "STOPPED",
+      tone: "closed",
+    });
     assert.deepEqual(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "time_stop" })), {
       label: "EOD EXIT",
+      tone: "closed",
+    });
+    assert.deepEqual(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "thesis" })), {
+      label: "THESIS BROKE",
+      tone: "closed",
+    });
+    assert.deepEqual(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "flat" })), {
+      label: "SCRATCH",
+      tone: "closed",
+    });
+    assert.deepEqual(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "ratchet" })), {
+      label: "TRAIL EXIT",
       tone: "closed",
     });
   });
 
   it("CLOSED: an unrecognized/missing closedReason never fabricates a label — falls back to null", () => {
     assert.equal(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: null })), null);
+    // "doubled"/"trim_scale_first" are real values in OTHER systems (plan.ts's backtest
+    // grader) but never appear on the live board's closed_reason — correctly null here.
+    assert.equal(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "doubled" })), null);
     assert.equal(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "trim_scale_first" })), null);
   });
 });

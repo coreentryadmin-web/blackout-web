@@ -190,25 +190,26 @@ require inventing data. Full findings live in this session's transcript; the loa
   endpoint. This is why the shipped range picker (PR #3091) is a PRESET dropdown, not an X-style
   arbitrary calendar, and why a real per-day drill-down (the calendar heat-strip, PR #3088) is the
   honest analog instead.
-- **The CLOSED-row RESULT vocabulary in §1's plays-table brief only half matches real data —
-  checked directly against `plan.ts`'s grader (2026-08-29).** The 0DTE grader's real
-  `exit_reason` enum is exactly `"trim_scale_first" | "trim_scale_second" | "doubled" | "stopped"
-  | "time_stop"` (grep-verified against every `exit_reason:`/`closed_reason:` literal across
-  `src/lib/zerodte/*.ts`, including `iron-condor.ts` — no `"target"`, `"ratchet"`, or
-  `"thesis_break"` value exists anywhere in the real 0DTE grading code). So:
-  - `TARGET` → real, maps to `"doubled"` (the +100% target-hit case).
-  - `STOPPED` → real, maps to `"stopped"` directly.
-  - `EOD EXIT` → real, maps to `"time_stop"` directly.
-  - `THESIS BROKE`, `TRAIL EXIT`, `SCRATCH` → **no corresponding field.** `play-timeline.ts`'s
-    `closeLabel()` helper does reference `exitReason === "target"` and `closedReason === "ratchet"`
-    in its own logic, but those values are never actually produced by `plan.ts` — they read as
-    dead/legacy branches (or cover a different, now-removed engine), not evidence the values are
-    real today. Implementing these three literally as distinct outcomes would fabricate data the
-    backend doesn't emit. If the desk wants them, they need either a genuine new backend
-    classification (e.g. deriving "thesis broke" from `play.thesisBreak.level === "break"` at
-    close time, which IS real but is a different signal than `exit_reason`) or should be dropped
-    from the vocabulary — a decision for whoever picks up the ACTION-column item, not something to
-    silently paper over with a fabricated label.
+- **CORRECTED AGAIN (2026-08-29, after live production evidence) — the previous correction below
+  was itself wrong.** It grepped only `plan.ts` (a POST-HOC backtest grading system, unrelated to
+  what the live board actually serves) and concluded `THESIS BROKE`/`TRAIL EXIT`/`SCRATCH` had "no
+  corresponding field" and would be fabrication. **They are real.** The LIVE board's `closed_reason`
+  (what `TerminalPlay.closedReason` actually carries, wired from `zerodte-service.ts`'s
+  `boardClosedReason`) is derived from `categorizeExitReason()` (`exit-engine.ts`) — a completely
+  different, completely real enum from `plan.ts`'s: the literal `"stopped"`, or one of `"target"` /
+  `"thesis"` / `"flat"` / `"ratchet"` / `"stop"`, falling back to `"time_stop"`. `"doubled"` (what
+  #3101 originally shipped a check for) **never appears on the live board at all** — it's `plan.ts`'s
+  own separate world. This was caught by live-screenshot validation (2026-08-29): several real
+  production CLOSED rows with winning/flat P&L rendered the generic coarse pill instead of a real
+  label, which traced to exactly this wrong-enum bug. Fixed same-day: `zeroDteActionDisplay()` now
+  maps `"target"`→`TARGET`, `"stopped"`/`"stop"`→`STOPPED`, `"time_stop"`→`EOD EXIT`,
+  `"thesis"`→`THESIS BROKE`, `"flat"`→`SCRATCH`, `"ratchet"`→`TRAIL EXIT` — the brief's ENTIRE
+  original CLOSED vocabulary is real, none of it needed dropping. **Lesson for future greps in this
+  file: grep the actual serving path (`zerodte-service.ts` board build), not whichever `*.ts` file
+  happens to define a similarly-named enum** — two unrelated systems (live board vs. post-hoc
+  backtest grader) share overlapping field names (`exit_reason`/`closed_reason`) with disjoint
+  value sets, and a grep across `src/lib/zerodte/*.ts` without checking which system actually reaches
+  the wire silently picked the wrong one.
   - The OPEN-row vocabulary (`HOLD`/`TRIM 25%`/`TRIM 50%`/`EXIT`/`RUNNER`) fares better: `HOLD`
     maps to the real `Recommendation` type's `"HOLD"`; `EXIT` maps to `"SELL"`; `RUNNER` is
     **already a real label** used by `trimLadderVisual()` in `terminal-display.ts` for the
@@ -247,8 +248,10 @@ numbers — the originals will be closed as superseded once #3099 merges, not be
 | Flat underline tabs for the top-level view switcher | ✅ | #3093 |
 | Flat dot+text status pills (no box) | ✅ | #3094 |
 | 2-column split of the command panel (Trade Command \| Thesis Intelligence, side by side, collapsing to one column under 1400px) | ✅ | #3096, merged via #3099. |
-| **Full 3-rail layout, corrected assessment (2026-08-29)** — this row previously read ⬜/"not started"; that was too pessimistic. `CommandDeck.tsx`'s pre-existing `.nh-deck-left`(queue, 37%)/`.nh-deck-right`(detail) split, combined with the 2-column detail split above, already composes to Rail 1 \| Rail 2 \| Rail 3 rendering **simultaneously** for a selected 0DTE play — verified by reading `PlayTerminal.tsx`: `ZeroDteCommandPanel` renders directly with no tab wrapper hiding either inner rail. | ✅ (0DTE, ≥1400px) | Live-screenshot verification still pending (see current session). Below 1400px total viewport the inner split still collapses to one column (Rail 2+3 stacked) — that narrower-viewport case is real remaining polish, not a structural gap. |
-| ACTION vocabulary — **OPEN** (HOLD/TRIM {real %}/EXIT/RUNNER) and **CLOSED** (TARGET/STOPPED/EOD EXIT, real `exit_reason` values only) | 🟡 | #3101 — `zeroDteActionDisplay()` in `play-card-lifecycle.ts`, 9 unit tests, full suite green. Falls back to the coarse ACTIVE/CLOSED pill for condors, non-0DTE horizons, and any unrecognized `closedReason`. |
+| **Full 3-rail layout, corrected assessment (2026-08-29)** — this row previously read ⬜/"not started"; that was too pessimistic. `CommandDeck.tsx`'s pre-existing `.nh-deck-left`(queue, 37%)/`.nh-deck-right`(detail) split, combined with the 2-column detail split above, already composes to Rail 1 \| Rail 2 \| Rail 3 rendering **simultaneously** for a selected 0DTE play — verified by reading `PlayTerminal.tsx`: `ZeroDteCommandPanel` renders directly with no tab wrapper hiding either inner rail. | ✅ (0DTE, ≥1400px) | Live-screenshot verification COMPLETE (2026-08-29, post #3096/#3101 deploys, `proxy-browser.cjs` desktop 1440) — confirmed the 2-column split (LIVE·MANAGEMENT / WHY WE PICKED IT) genuinely renders side-by-side on production, not just in the diff. Below 1400px total viewport the inner split still collapses to one column (Rail 2+3 stacked) — that narrower-viewport case is real remaining polish, not a structural gap. |
+| ACTION vocabulary — **OPEN** (HOLD/TRIM {real %}/EXIT/RUNNER) and **CLOSED** (TARGET/STOPPED/EOD EXIT, real `exit_reason` values only) | ✅ | #3101, merged + deployed + live-screenshot-verified 2026-08-29. `zeroDteActionDisplay()` in `play-card-lifecycle.ts`, 9 unit tests, full suite green. Falls back to the coarse ACTIVE/CLOSED pill for condors, non-0DTE horizons, and any unrecognized `closedReason` — confirmed live: STOPPED rows show correctly, but rows whose `closedReason` isn't `"doubled"`/`"time_stop"` still fall back to generic CLOSED (open follow-up, not a regression — see below). |
+| Play-card row: entry premium instead of star rating + raw score | ✅ | #3105, merged + deployed + live-screenshot-verified 2026-08-29. `playEntryDisplay()` in `play-card-display.ts`; header relabeled Rating→Grade. |
+| Follow-up: winning/breakeven CLOSED rows show generic "CLOSED" instead of TARGET/EOD EXIT | ✅ | Root-caused (2026-08-29): `zeroDteActionDisplay()` checked for `closedReason === "doubled"`, but the live board never emits that literal — it's a different system's (`plan.ts`) enum. The real live-board values are `categorizeExitReason()`'s `target`/`thesis`/`flat`/`ratchet`/`stop`, or the literal `stopped`, falling back to `time_stop`. Fixed same-day — see §2's corrected note above. All 6 of the brief's original CLOSED labels (TARGET/STOPPED/EOD EXIT/THESIS BROKE/TRAIL EXIT/SCRATCH) are now real and wired, none needed dropping. |
 | ACTION vocabulary — **WATCH** (WAIT/ARMED/ENTRY VALID/ENTRY EXTENDED/SKIP) | ⬜ | Confirmed NOT buildable without new plumbing: `archetype-gates.ts`'s real verdict+reason-code taxonomy is consumed only inside `pipeline.ts`/`live-pipeline.ts`, never piped to `TerminalPlay`. `play.gates` is a same-named-but-unrelated commit-time field (Hard gate/Tape align), so reusing it would be a silent bug, not a shortcut. Needs a genuine new field on the board payload before any UI work. |
 | WATCH-specific "Entry Readiness" rail (now vs. required per factor, `N/M conditions met`, explicit "what's missing" line) | ⬜ | Needs the archetype-gate reason-code taxonomy (`archetype-gates.ts`) turned into a real readiness UI — the gate verdicts exist, the UI doesn't. |
 | CLOSED-specific "Post-Trade Attribution" rail (what worked / what ended it / capture % / thesis evolution entry→peak→exit) | ⬜ | `exitPnlPct/peak` capture-% derivation is honest and ready to build; the entry→peak→exit per-factor evolution table needs a 3-snapshot comparison the current `thesisHealth` (2-snapshot: commit vs. now) doesn't carry — would need either a peak-time snapshot to be stored, or an honest 2-column (entry→exit) version instead of 3. |
