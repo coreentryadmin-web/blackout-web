@@ -4,6 +4,276 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## PIN's contract picker never got the NH-R5 liquidity-quality tie-break BREAKOUT's picker got — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/pin-picker-liquidity-quality-parity) |
+|---|---|
+
+**Symptom:** Deep audit of contract/strike selection quality across all three discovery origins
+(FLOW, BREAKOUT, PIN) as part of the continuous-improvement pass. No live symptom was reported for
+this specifically — found by code comparison.
+
+**Root cause:** NH-R5 (2026-08-03, `docs/audit/FINDINGS.md`) found that `breakout-source.ts`'s
+`pickAtmZeroDteContract` ranked liquidity-admitted candidates purely on raw distance-to-spot: a
+strike with a razor-thin 1-lot quote and a huge spread could out-rank an equally-close strike with
+a tight two-sided market and real depth, because `sideHasLiquidity` is a binary admission gate
+(any non-zero bid/ask/OI passes) with no further quality signal feeding the sort. The fix added
+`liquidityQualityScore` (spread-tightness + OI-depth composite, capped 0-2) and re-sorted on
+`effectiveDist = dist - quality * 0.15`, only breaking genuine near-ties.
+
+`pin-source.ts`'s `pickAtmPinContract` — the PIN discovery origin's parallel picker, default-ON in
+production (`ZERODTE_SRC_PIN`) — has an identical `sideHasLiquidity` predicate feeding a pure
+`dist`-only sort. This is the exact same code shape BREAKOUT had before the fix; the NH-R5 fix was
+never ported to its sibling. The original FINDINGS entry scoped the fix to `breakout-source.ts`
+and explicitly noted the edition picker (`pickChainContract`) already had a real ladder — it did
+not check PIN's picker, which shares the defect.
+
+**Fix:** `pin-source.ts` now imports `liquidityQualityScore` and
+`LIQUIDITY_TIE_BREAK_DOLLARS_PER_POINT` directly from `breakout-source.ts` (both exported for the
+first time) rather than duplicating the logic — a single source of truth so the two pickers can't
+drift apart again the way they did. `pickAtmPinContract`'s candidate sort now uses the same
+`effectiveDist = dist - quality * LIQUIDITY_TIE_BREAK_DOLLARS_PER_POINT` NH-R5 uses.
+
+**Blast radius:**
+- `src/lib/zerodte/breakout-source.ts` — `LIQUIDITY_TIE_BREAK_DOLLARS_PER_POINT` exported (was
+  module-private); no behavior change to BREAKOUT itself.
+- `src/lib/zerodte/pin-source.ts` — `pickAtmPinContract`'s ranking logic, doc comment.
+- `src/lib/zerodte/pin-source.test.ts` — 2 new tests mirroring `breakout-source.test.ts`'s NH-R5
+  coverage: materially-better liquidity wins a close tie; ATM proximity still dominates over a
+  distant higher-quality strike.
+
+**Evidence of correctness:** `src/lib/zerodte/pin-source.test.ts` + `breakout-source.test.ts`:
+30/30 pass. Full `src/lib/zerodte/*.test.ts` + `src/lib/zerodte/thesis/*.test.ts`: 1237/1237 pass
+(1 pre-existing skip). `npx tsc --noEmit` clean. Node 20.
+
+## `momentum_rs_floor` blocked 100% of MOMENTUM_CONTINUATION setups since it shipped (RS rail structurally unable to fire) — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/momentum-rs-floor-tautology) |
+|---|---|
+
+**Symptom:** Member observed several high-scoring WATCH plays on the live Night Hawk board that
+would have been large winners (INTC 92P +275%, TSLA 355P +98%, IWM 297P +56%) never promoted to
+OPEN. The INTC 92P detail panel showed rating 46, gate block `momentum_rs_floor`, note "Momentum
+Continuation - tier REJECT - confluence 2/2".
+
+**Root cause — a tautological gate, not a calibration issue:**
+`archetype-gates.ts`'s `MOMENTUM_CONTINUATION` case blocked whenever `rail_scores.RS < 55`
+(`momentum_rs_floor`). But `scoreRsRail` (`rails/rs.ts`) only ever returns a hit once its own
+internal score (base 45 + up to 30 for aligned session alpha + up to 15 for d10 alpha) already
+clears 55 — `if (score < 55) return null;`. So a "fired" RS score can never be below 55 by
+construction: `rail_scores.RS` in production is either `>=55` (fired) or `undefined` (never fired,
+read as `0` via `?? 0`). A floor of `< 55` is therefore mathematically identical to "RS never
+fired" — not "RS fired and was weak."
+
+Traced the full data-wiring chain to confirm RS never fires in production, not just in theory:
+- `legacyBridgeExtrasFromSetup` (`rails/legacy-bridge.ts`, the real mapper from
+  `EnrichedZeroDteSetup`) never sets `stock_session_pct`/`qqq_session_pct`/`sector_session_pct`.
+- `thesisEvidenceToLegacyExtras` (`evidence-bundle-map.ts`) reads from `ThesisEvidenceSnapshot`,
+  whose type has **no session-% fields at all** — there was never anywhere for this data to come
+  from.
+- `attachThesisFirstLive` (`live-pipeline.ts`) is the real, unconditional live gating path (not a
+  shadow-only comparison utility — confirmed by tracing `scan.ts` → `scan-shadow.ts` →
+  `live-pipeline.ts`), and it calls `evaluateArchetypeGates` on every setup every pass.
+- `resolveThesisRankTier` returns `"REJECT"` directly whenever `archetype_gates.verdict === "BLOCK"`,
+  regardless of the underlying `archetype_score` — so a `momentum_rs_floor` block always produced
+  tier REJECT, matching the exact live evidence (INTC 92P, tier REJECT, later +275%).
+
+**The whole MOMENTUM_CONTINUATION archetype has been permanently blocked since this gate shipped** —
+not "harder to clear," unconditionally impossible to pass, independent of how good the setup was.
+
+**Same defect, second location:** `FLOW_FOLLOWING`'s `flow_rs_weak` (`rs(input.rail_scores) < 50`
+→ `pushWatch`) is the identical RS-absence tautology, one severity level down — it always fired,
+demoting every FLOW_FOLLOWING setup from tier `"A"` to `"WATCH"` via `resolveThesisRankTier`'s
+`verdict === "PASS"` requirement (a `WATCH`-verdict archetype-gate result can never reach `"A"`,
+only `"B"` or `"WATCH"`). Directly matches the reported "best plays stuck on Watch" pattern.
+
+**Fix:** Removed both checks rather than gating them, because there is currently no way to
+distinguish "RS genuinely fetched and scored low" from "RS never fetched" — the rail's own
+construction makes the two states unobservable from the caller. `MOMENTUM_CONTINUATION` keeps its
+absolute `momentum_abs_floor` (`MOMENTUM >= 60`) as its real quality gate. `FLOW_FOLLOWING` keeps
+its `flow_score_floor` (`FLOW >= 65`).
+
+**Not done (separate, larger undertaking):** properly wiring real
+`stock_session_pct`/`qqq_session_pct`/`sector_session_pct`/`d10_alpha` inputs into the RS rail so it
+can score meaningfully. Confirmed no existing field in `EnrichedZeroDteSetup` (`board.ts`) or
+`IntradayRead` (`intraday.ts`) carries a reusable day-open/session-% value — this needs new
+data-fetching infrastructure, not a rewire, and is out of scope for this fix.
+
+**Blast radius:**
+- `src/lib/zerodte/thesis/archetype-gates.ts` — both checks removed, `rs()` helper deleted (now
+  unused).
+- `src/lib/zerodte/thesis/archetype-gates.test.ts` — new file (none existed before). 4 tests:
+  MOMENTUM_CONTINUATION passes on strong MOMENTUM with no RS data; still blocks on
+  `momentum_abs_floor`; FLOW_FOLLOWING passes on strong FLOW with no RS data; still blocks on
+  `flow_score_floor`.
+- No other call site references `momentum_rs_floor`/`flow_rs_weak` outside tests.
+
+**Evidence of correctness:** `src/lib/zerodte/thesis/*.test.ts` + `src/lib/zerodte/*.test.ts`:
+1231/1231 pass (1 pre-existing skip). `npx tsc --noEmit` clean. Both on Node 20.
+
+## `vol_rail_weak` and `failed_break_reversal_floor` were dead code — the rail's own internal floor already exceeded the threshold — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/dead-archetype-gate-thresholds) |
+|---|---|
+
+**Symptom:** While fixing the `momentum_rs_floor` tautology (see the 2026-08-28
+momentum-rs-floor-tautology finding), audited every other rail-threshold check in
+`archetype-gates.ts` for the same failure class and found two more — the mirror-image bug.
+
+**Root cause:** Each rail scorer only returns a hit once its internal score clears its own
+floor:
+- `scoreReversalRail` (`rails/reversal.ts`) starts at base 42, returns `null` below 58.
+- `scoreVolRail` (`rails/vol.ts`) starts at base 45, returns `null` below 52.
+
+`FAILED_BREAKOUT`'s `failed_break_reversal_floor` checked `REVERSAL < 55` — always false, since a
+fired REVERSAL score is never below 58. `VOL_EXPANSION`'s `vol_rail_weak` checked `VOL < 50` —
+always false, since a fired VOL score is never below 52. Both checks were dead code: they could
+never block/note anything the rail's own construction didn't already guarantee.
+
+Unlike `momentum_rs_floor` (which always fired, unconditionally blocking an entire archetype),
+these are the opposite failure mode — checks that never fire, providing no real protection while
+implying they do. Lower severity (no plays were being wrongly blocked), but worth removing so the
+code doesn't claim a check it never runs.
+
+**Fix:** Removed both. `FAILED_BREAKOUT` keeps its `failed_break_still_triggered` watch note.
+`VOL_EXPANSION` keeps its `vol_expansion_no_compression` watch note.
+
+**Blast radius:** `src/lib/zerodte/thesis/archetype-gates.ts` only. New test file
+`src/lib/zerodte/thesis/archetype-gates.test.ts` (created in the momentum-rs-floor-tautology PR;
+this PR is based on `main` before that one merges, so it creates the same file — will need a
+rebase/merge reconciliation, not a functional conflict, since the two PRs touch different
+`switch` cases in the same file).
+
+**Evidence of correctness:** `src/lib/zerodte/thesis/*.test.ts` + `src/lib/zerodte/*.test.ts`:
+1231/1231 pass (1 pre-existing skip). `npx tsc --noEmit` clean. Node 20.
+
+## Cortex now blocks on a real, live gex-walls oppose below the decisive floor — a measured signal that was sitting unused — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/cortex-gex-walls-oppose-presence) |
+|---|---|
+
+**Symptom:** Deep-dive into "why are we still getting losses" pulled this week's real graded
+record (`GET /api/market/zerodte/record?days=7`, 66 graded plays across 6 sessions): 34.8% win
+rate, avg P&L −4.82%. Of 32 losing/losing-adjacent rows, **22 had an active Cortex `gex-walls`
+oppose present at commit** — the setup was taken anyway because the net Cortex score still cleared
+the PASS floor. Score-decile of losers skewed HIGH (80s/90s/100 = 20 of 32) — nominal setup score
+was not protecting against this pattern.
+
+**Root cause:** `docs/audit/INTENTIONAL-DESIGN.md` item #6 (`cortex-oppose-magnitude-ab.mjs`,
+341 graded plays, 90-day window, also run 2026-08-28) had already measured this shape and reached
+a real, evidenced conclusion: the MAGNITUDE-graduated theory ("bigger oppose = worse") was **NOT
+monotonic** (the [0.40,0.60) weight band graded *better* than [0.20,0.40)), but a coarser PRESENCE
+finding held cleanly — **any active `gex-walls` oppose in [0.20,0.60) graded 31-43% WR, worse than
+the 48.3% WR clean-signal baseline** — independent of whether the net Cortex score stayed
+non-negative. That doc explicitly concluded "no gate changed" at the time, framing the open
+question narrowly as magnitude-vs-no-change and not considering a presence-based gate.
+
+`assessCortexVerdict` (`cortex-gate.ts`) only ever blocked on the NET score (`< 0` → NET_NEGATIVE)
+or on CONTESTED (both sides individually clearing `CONTESTED_MIN_MAGNITUDE = 0.75`). A gex-walls
+oppose at 0.2-0.6 is invisible to both checks: too small to trip CONTESTED, and easily outweighed
+by supports so the net score stays positive. The measured evidence was sitting unused — this
+week's live record independently reproduced the same pattern the 90-day sample found, which is
+what crossed the bar for acting on it now (two independent samples agreeing, not one).
+
+**Fix:** New decision `OPPOSE_UNRESOLVED` in `cortex-gate.ts`: when an active `gex-walls` oppose
+item (weight ≥ `GEX_WALLS_OPPOSE_PRESENCE_MIN_WEIGHT = 0.2`, the AB script's own lower bucket
+boundary) is present AND the net score is below `CONVICTION_A_MIN_SCORE` (the same "decisive floor"
+CONTESTED already uses), the commit blocks with `cortex_gex_walls_oppose_unresolved` instead of
+silently passing. Mirrors CONTESTED's own philosophy ("below the decisive floor, don't let
+unresolved opposition pass silently") at a lower bar, because this specific source is now
+evidenced to matter at a lower bar. A setup whose support has already decisively won (score ≥
+CONVICTION_A_MIN_SCORE) still PASSes — same as CONTESTED — because residual opposition at that
+point is expected noise, not evidence of a real risk.
+
+**Deliberately NOT done:** a full VETO (this is a "grades worse," not "never wins" finding —
+31-43% WR is degraded, not zero) or a magnitude-graduated threshold (the AB script's own
+conclusion: the pattern is not monotonic, so a magnitude-scaled gate would be fitting noise). Also
+did not touch NET_NEGATIVE's existing `score < 0` check — the two are independent and can both
+apply to the same score band from different directions.
+
+**Blast radius:**
+- `src/lib/zerodte/cortex-gate.ts` — new decision `OPPOSE_UNRESOLVED`, new constant
+  `GEX_WALLS_OPPOSE_PRESENCE_MIN_WEIGHT`, new block-rendering branch in `cortexGateBlocks`, module
+  doc updated.
+- `src/lib/zerodte/board.ts` — `ZeroDteGateFailure` union extended with
+  `cortex_gex_walls_oppose_unresolved`.
+- `src/lib/zerodte/thesis-health.ts` — `cortexScore`'s decision-to-health-score mapping now
+  recognizes the new decision (scores it 0, same as VETO/NET_NEGATIVE/CONTESTED).
+- `src/lib/zerodte/pane.ts` — `PaneCortexView`'s decision union + `CORTEX_DECISIONS` set extended
+  so the pane doesn't silently drop the new decision to `null`.
+- `src/lib/admin-zerodte-funnel.ts` — friendly gate label added.
+- `src/lib/zerodte/cortex-gate.test.ts` — 4 new tests: fires at weight ≥ 0.2 below the decisive
+  floor; does NOT fire below 0.2 (never measured that small); does NOT fire once score clears the
+  decisive floor; does NOT generalize to a same-weight oppose from a different source (the
+  evidence is gex-walls-specific).
+
+**Evidence of correctness:** `src/lib/zerodte/*.test.ts` + `src/lib/zerodte/thesis/*.test.ts` +
+`src/lib/nighthawk/cortex/*.test.ts` + `src/lib/admin-zerodte-funnel.test.ts`: 1279/1279 pass (1
+pre-existing skip). `npx tsc --noEmit` clean. Node 20.
+
+## Governor's session premium-at-risk aggregate summed a condor's net_credit (income) instead of max_loss (risk) — understated exposure by up to ~9-10x — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (fix/condor-governor-risk-aggregate) |
+|---|---|
+
+**Symptom:** None live-reported — found during a deep audit of iron condor selection quality and
+gate calibration, checking whether position sizing/risk aggregation respects the condor's
+asymmetric payoff (many small wins, occasional large loss).
+
+**Root cause:** `scan.ts`'s ledger-row builder stamps a committed condor row's `entry_premium` as
+`s.condor_plan.net_credit / 100` — the credit RECEIVED for selling the spread (a 2026-08-26 fix
+that made condor rows visible to the governor at all, after `entry_premium` was previously always
+null for condors). `governor.ts`'s `aggregatePremiumAtRisk` sums `entry_premium` across every open
+ledger row to build the session-wide risk figure `GOVERNOR_MAX_PREMIUM_AT_RISK` gates on.
+
+For a directional play, `entry_premium` (premium paid) IS the capital at risk. For a condor,
+`net_credit` is deliberately the SMALL side of the trade — `condor.ts` floors `credit_to_risk` at
+just 10% of `gross_wing_risk` — so the aggregate was summing a number that can be **~9-10x smaller**
+than the condor's actual defined-risk exposure (`max_loss = gross_wing_risk − net_credit`). This
+directly contradicts `iron-condor.ts`'s own header warning ("profitability needs the credit priced
+right + a breach stop + small size") — the one place meant to size against the tail was sizing
+against the wrong number.
+
+**Why this wasn't simply "use max_loss instead of net_credit" as `entry_premium`:** `entry_premium`
+is also load-bearing for condor P&L display — `marks-math.ts`'s `condorSellerPnlPct(entryCredit,
+mark)` computes seller-framed live P&L as `(entry − mark)/entry`, which requires the CREDIT
+(income) as the denominator, not the max loss. Changing `entry_premium`'s meaning would have broken
+the live P&L badge.
+
+**Fix:** `aggregatePremiumAtRisk` now reads a condor row's real defined risk from
+`entry_context.condor.max_loss` (already pinned at commit, just never read for this purpose) when
+`entry_context.play_type === "CONDOR"`, and falls back to `entry_premium` for every other row type
+unchanged. `entry_premium` itself is untouched — condor P&L display is unaffected.
+
+**Currently inert, not a live incident:** `GOVERNOR_ENFORCE_PREMIUM_BUDGET` defaults to `false`
+(measure-only) and no position sizing (`position-sizing.ts`, fractional-Kelly, explicitly
+"STANDALONE + UNWIRED") is connected to any play type yet — every committed play, condor included,
+is implicitly one unit. So nothing was actually mis-gated live. This fix matters because it will
+silently under-budget real exposure the instant either the budget flag is flipped on or Kelly
+sizing gets wired to condors — better to have the number right before either happens.
+
+**Blast radius:**
+- `src/lib/zerodte/governor.ts` — `GovernorLedgerRow` type widened with `entry_context` (matches
+  `ZeroDteSetupLogRow`); new `riskContribution` helper; `aggregatePremiumAtRisk` now calls it
+  instead of reading `entry_premium` directly.
+- `src/lib/zerodte/governor.test.ts` — 3 new tests: condor contributes `max_loss` not
+  `net_credit`; directional rows unaffected; a legacy condor row with no `max_loss` pinned
+  contributes 0 (never a fabricated number).
+
+**Evidence of correctness:** `governor.test.ts`: 59/59 pass. Full `src/lib/zerodte/*.test.ts` +
+`src/lib/zerodte/thesis/*.test.ts`: 1244/1244 pass (1 pre-existing skip). `npx tsc --noEmit`
+clean. Node 20.
+
 ## Night Hawk session-analytics panel pushed the whole play ledger below the fold on mobile — FIXED
 
 > **kind:** `FINDING`
