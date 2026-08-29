@@ -1,11 +1,6 @@
 // Fitting functions for multiple market data Largo tools that exceed 16k transport cap.
 // Product-first design: all native data available to products; fitting applied only at Largo boundary.
-import {
-  LARGO_RESULT_CHAR_BUDGET,
-  fitRowsToBudget,
-  fitEnvelopeToBudget,
-  sampleNote,
-} from "@/lib/largo/fit-tool-result";
+import { fitRowsToBudget, fitEnvelopeToBudget } from "@/lib/largo/fit-tool-result";
 
 // ============ get_market_oi_change ============
 export interface OiChangeFittedResult {
