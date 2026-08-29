@@ -155,10 +155,23 @@ require inventing data. Full findings live in this session's transcript; the loa
   (`src/lib/zerodte/thesis/archetype-gates.ts`) that isn't the same taxonomy as `discoveryOrigin`
   — reconciling which one Rail 3 should read from is unresolved, flagged below.
 - **A numeric "distance to trigger" for WATCH plays does NOT exist as a stored field.**
-  `ArchetypeGateResult` carries a real `verdict: PASS|WATCH|BLOCK` + string reason codes (e.g.
-  `"breakout_coiled_pre_trigger"`) — a real, archetype-aware "what's missing" taxonomy, but not a
-  numeric distance. Turning it into "$X away from trigger" needs a real derivation from rail
+  `ArchetypeGateResult` (`archetype-gates.ts`) carries a real `verdict: PASS|WATCH|BLOCK` + string
+  reason codes per archetype (e.g. `"breakout_coiled_pre_trigger"`, `"flow_event_not_campaign"`,
+  `"gamma_no_structure"`, `"pre_1000_et"`) — a real, archetype-aware "what's missing" taxonomy, but
+  not a numeric distance. Turning it into "$X away from trigger" needs a real derivation from rail
   scores, not already computed.
+  **Correction (2026-08-29), checked directly against `evaluateArchetypeGates`'s call sites:**
+  those `blocks`/`notes` reason codes are consumed ONLY inside the discovery/scoring pipeline
+  (`src/lib/zerodte/thesis/pipeline.ts` and `live-pipeline.ts`) — grep-verified as the sole two
+  call sites outside the gate file itself. **They never reach `TerminalPlay`.** The `gates` field
+  `TerminalPlay` DOES already carry (`Array<{label, ok}>`, rendered today in "Gates at commit") is
+  a completely different, unrelated concept — commit-time "Hard gate"/"Tape align" pass/fail
+  checks (`adapters.ts` ~line 279), not the archetype-specific WATCH reason codes. So the WATCH
+  ACTION vocabulary item (`WAIT`/`ARMED`/`ENTRY VALID`/`ENTRY EXTENDED`/`SKIP`) is not just a UI
+  build — it needs a NEW data path piping `evaluateArchetypeGates`'s real verdict+codes from the
+  pipeline into the board payload / `TerminalPlay` first, or it will end up either fabricating the
+  distinction or (worse) silently reusing the wrong `gates` field and mislabeling commit-time
+  checks as WATCH-lifecycle readiness.
 - **"Exit quality" / "% of peak captured" is NOT a stored field**, but the ingredients are real
   (`peak`, `exitPnlPct` both on `TerminalPlay`) — `exitPnlPct / peak × 100` is an honest, light
   client-side derivation, not fabrication, as long as it's labeled as derived.
@@ -235,7 +248,7 @@ numbers — the originals will be closed as superseded once #3099 merges, not be
 | Flat dot+text status pills (no box) | ✅ | #3094 |
 | 2-column split of the command panel (Trade Command \| Thesis Intelligence, side by side, collapsing to one column under 1400px) | 🟡 | #3096 → folded into consolidated PR #3099 (see note below). Splits `ZeroDteCommandPanel.tsx`'s existing content into the two rails via a CSS grid; does NOT yet touch `CommandDeck.tsx`'s outer container, so Rail 1 (the play queue) is still a `<PlayTerminal>` sibling, not a third persistent column — see the next row. |
 | **Full 3-column PERSISTENT layout** (Trade Queue always visible alongside Trade Command + Thesis Intelligence, not just the 2 inner rails split) | ⬜ | Still the single largest remaining structural item — restructures `CommandDeck.tsx`'s outer `.nh-deck-left`/`.nh-deck-right` container itself. Not started. |
-| Rename `STATUS` column → `ACTION`, with lifecycle-specific vocabulary (WAIT/ARMED/ENTRY VALID/ENTRY EXTENDED/SKIP for WATCH; HOLD/TRIM 25%/TRIM 50%/EXIT/RUNNER for OPEN; no action column + RESULT vocabulary for CLOSED) | ⬜ | **Grounded, not yet built (2026-08-29) — see §2.** Real-data support is uneven: OPEN vocabulary maps cleanly to real fields (`Recommendation`, `trim_levels[i].trigger_pct`, the existing `RUNNER` label). CLOSED vocabulary is only half-real — `TARGET`/`STOPPED`/`EOD EXIT` map to real `exit_reason` values, but `THESIS BROKE`/`TRAIL EXIT`/`SCRATCH` do not exist as distinct backend outcomes and must not be implemented as literal labels without a real derivation first (or should be dropped). WATCH vocabulary (WAIT/ARMED/ENTRY VALID/ENTRY EXTENDED/SKIP) has not yet been checked against `archetype-gates.ts`'s real verdict/reason-code taxonomy — do that check before implementing, same discipline. |
+| Rename `STATUS` column → `ACTION`, with lifecycle-specific vocabulary (WAIT/ARMED/ENTRY VALID/ENTRY EXTENDED/SKIP for WATCH; HOLD/TRIM 25%/TRIM 50%/EXIT/RUNNER for OPEN; no action column + RESULT vocabulary for CLOSED) | ⬜ | **Fully grounded, not yet built (2026-08-29) — see §2.** OPEN vocabulary maps cleanly to real fields (`Recommendation`, `trim_levels[i].trigger_pct`, the existing `RUNNER` label) — buildable as-is. CLOSED vocabulary is only half-real: `TARGET`/`STOPPED`/`EOD EXIT` map to real `exit_reason` values (`doubled`/`stopped`/`time_stop`), but `THESIS BROKE`/`TRAIL EXIT`/`SCRATCH` don't exist as distinct backend outcomes — implement only the 3 real ones, or add a genuine derivation for the rest, never fabricate literal labels for them. WATCH vocabulary is the hardest of the three: `archetype-gates.ts`'s real verdict+reason-code taxonomy exists but is confirmed NOT wired to `TerminalPlay` at all (consumed only inside `pipeline.ts`/`live-pipeline.ts`) — this item needs a new data path added before any UI work, not just a rendering pass. |
 | WATCH-specific "Entry Readiness" rail (now vs. required per factor, `N/M conditions met`, explicit "what's missing" line) | ⬜ | Needs the archetype-gate reason-code taxonomy (`archetype-gates.ts`) turned into a real readiness UI — the gate verdicts exist, the UI doesn't. |
 | CLOSED-specific "Post-Trade Attribution" rail (what worked / what ended it / capture % / thesis evolution entry→peak→exit) | ⬜ | `exitPnlPct/peak` capture-% derivation is honest and ready to build; the entry→peak→exit per-factor evolution table needs a 3-snapshot comparison the current `thesisHealth` (2-snapshot: commit vs. now) doesn't carry — would need either a peak-time snapshot to be stored, or an honest 2-column (entry→exit) version instead of 3. |
 | "Visual intelligence" dot-bar strength display + explicit NO DATA / NEUTRAL / OPPOSED distinction, replacing the debug-log-style evidence block | ⬜ | Not started. The underlying per-source read already exists (`DeskEvidenceStack`/`entry_context.cortex` sources) — this is a presentation rebuild, same "surface what's real" pattern as PR #3089. |
