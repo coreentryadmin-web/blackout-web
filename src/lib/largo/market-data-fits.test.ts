@@ -40,12 +40,12 @@ const greekRow = (i: number) => ({
   blob: "x".repeat(550), // ~708 bytes/entry, matching the live mag7 measurement (277KB / 391 rows)
 });
 
-test("fitMarketOiChangeForModel: 15-entry cap stays under the transport budget at MEASURED entry size", () => {
+test("fitMarketOiChangeForModel: 8-entry cap stays under the transport budget at MEASURED entry size", () => {
   const raw = Array.from({ length: 30 }, (_, i) => oiEntry(i));
   const { fitted } = fitMarketOiChangeForModel(raw);
-  assert.equal(fitted.shown, 15);
+  assert.equal(fitted.shown, 8);
   assert.equal(fitted.truncated, true);
-  assert.equal(fitted.max_shown, 15);
+  assert.equal(fitted.max_shown, 8);
   assert.ok(JSON.stringify(fitted).length < TRANSPORT_CAP, `fitted payload ${JSON.stringify(fitted).length} must be under ${TRANSPORT_CAP}`);
 });
 
@@ -56,10 +56,10 @@ test("fitMarketOiChangeForModel: under-cap input passes through untruncated", ()
   assert.equal(fitted.truncated, false);
 });
 
-test("fitScreenerForModel: 6-entry cap stays under the transport budget at MEASURED entry size (~1956B, not the ~300-400B originally assumed)", () => {
+test("fitScreenerForModel: 3-entry cap stays under the transport budget at MEASURED entry size (~1956B, not the ~300-400B originally assumed)", () => {
   const raw = Array.from({ length: 25 }, (_, i) => screenerEntry(i));
   const { fitted } = fitScreenerForModel(raw);
-  assert.equal(fitted.shown, 6);
+  assert.equal(fitted.shown, 3);
   assert.equal(fitted.truncated, true);
   assert.ok(JSON.stringify(fitted).length < TRANSPORT_CAP, `fitted payload ${JSON.stringify(fitted).length} must be under ${TRANSPORT_CAP}`);
   // The regression this guards: the ORIGINAL 15-entry cap (#3155) at this real entry size is
@@ -72,16 +72,16 @@ test("fitScreenerForModel: 6-entry cap stays under the transport budget at MEASU
 test("fitGroupGreekFlowForModel: unchanged behavior (array-shaped input, e.g. a future per-group summary list)", () => {
   const raw = Array.from({ length: 20 }, (_, i) => ({ group: `g${i}`, net_delta: i }));
   const { fitted } = fitGroupGreekFlowForModel(raw);
-  assert.equal(fitted.shown, 15);
+  assert.equal(fitted.shown, 8);
   assert.equal(fitted.truncated, true);
 });
 
-test("fitGroupGreekFlowRowsForModel: 15-row cap stays under budget at MEASURED row size (mag7 default: 391 rows / ~277KB live)", () => {
+test("fitGroupGreekFlowRowsForModel: 8-row cap stays under budget at MEASURED row size (mag7 default: 391 rows / ~277KB live)", () => {
   const raw = Array.from({ length: 391 }, (_, i) => greekRow(i));
   const fitted = fitGroupGreekFlowRowsForModel(raw);
-  assert.equal(fitted.rows_shown, 15);
+  assert.equal(fitted.rows_shown, 8);
   assert.equal(fitted.rows_truncated, true);
-  assert.equal(fitted.rows_max_shown, 15);
+  assert.equal(fitted.rows_max_shown, 8);
   assert.ok(JSON.stringify(fitted).length < TRANSPORT_CAP, `fitted payload ${JSON.stringify(fitted).length} must be under ${TRANSPORT_CAP}`);
 });
 
@@ -90,12 +90,12 @@ test("fitGroupGreekFlowRowsForModel: empty/undefined input never throws and repo
     rows: undefined,
     rows_shown: 0,
     rows_truncated: false,
-    rows_max_shown: 15,
+    rows_max_shown: 8,
   });
   assert.deepEqual(fitGroupGreekFlowRowsForModel(undefined as unknown as Record<string, unknown>[]), {
     rows: undefined,
     rows_shown: 0,
     rows_truncated: false,
-    rows_max_shown: 15,
+    rows_max_shown: 8,
   });
 });

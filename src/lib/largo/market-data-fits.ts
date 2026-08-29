@@ -10,9 +10,10 @@ export interface OiChangeFittedResult {
 }
 
 // MEASURED live (fetchUwMarketOiChange, 2026-08-29): ~635 bytes/entry, not the ~300 originally
-// estimated — the 20-entry cap this shipped with (#3155) still truncated. 15 entries stays under
-// budget with headroom for the rest of the response.
-export function fitMarketOiChangeForModel(raw: any[], maxShown = 15): { fitted: OiChangeFittedResult } {
+// estimated — the 20-entry cap this shipped with (#3155) still truncated, and 15-entry cap
+// (#3159) also still truncated when measured in production. Reduced to 8 to account for JSON
+// overhead + wrapper overhead.
+export function fitMarketOiChangeForModel(raw: any[], maxShown = 8): { fitted: OiChangeFittedResult } {
   const shown = Math.min(raw?.length || 0, maxShown);
   const changes = raw?.slice(0, shown);
   return {
@@ -66,7 +67,7 @@ export interface GroupGreekFlowFittedResult {
   max_shown: number;
 }
 
-export function fitGroupGreekFlowForModel(raw: any[], maxShown = 15): { fitted: GroupGreekFlowFittedResult } {
+export function fitGroupGreekFlowForModel(raw: any[], maxShown = 8): { fitted: GroupGreekFlowFittedResult } {
   const shown = Math.min(raw?.length || 0, maxShown);
   const groups = raw?.slice(0, shown);
   return {
@@ -84,6 +85,8 @@ export function fitGroupGreekFlowForModel(raw: any[], maxShown = 15): { fitted: 
 // (fetchUwGroupGreekFlow, 2026-08-29): group="mag7" (the tool's own default) returns 391 rows /
 // ~277KB — 17x the 16k transport cap on its own, before anything else in the payload. Average
 // ~708 bytes/row; 15 rows leaves headroom for the rest of the response under the cap.
+// However, live production probe (2026-08-29 21:30 ET) confirmed 15-row cap still truncates.
+// Reduced to 8 rows to account for JSON overhead.
 export interface GroupGreekFlowRowsFittedResult {
   rows?: Record<string, unknown>[];
   rows_shown: number;
@@ -93,7 +96,7 @@ export interface GroupGreekFlowRowsFittedResult {
 
 export function fitGroupGreekFlowRowsForModel(
   raw: Record<string, unknown>[],
-  maxShown = 15
+  maxShown = 8
 ): GroupGreekFlowRowsFittedResult {
   const shown = Math.min(raw?.length || 0, maxShown);
   const rows = raw?.slice(0, shown);
@@ -115,8 +118,9 @@ export interface ScreenerFittedResult {
 
 // MEASURED live (fetchUwScreenerStocks, 2026-08-29): ~1956 bytes/entry with technicals attached
 // (the PR that shipped this cap estimated ~300-400) — the 15-entry cap still truncated by a wide
-// margin. 6 entries stays under budget with headroom for the rest of the response.
-export function fitScreenerForModel(raw: any[], maxShown = 6): { fitted: ScreenerFittedResult } {
+// margin, and 6-entry cap (#3159) also still truncated when measured in production. Reduced to 3
+// entries to account for JSON overhead + wrapper overhead.
+export function fitScreenerForModel(raw: any[], maxShown = 3): { fitted: ScreenerFittedResult } {
   const shown = Math.min(raw?.length || 0, maxShown);
   const candidates = raw?.slice(0, shown);
   return {
