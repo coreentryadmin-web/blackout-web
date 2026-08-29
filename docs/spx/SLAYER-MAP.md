@@ -402,7 +402,6 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
    was wrong by 50% on the desk lane; assuming the live gate matched its `false` default understated
    a P1. **Anywhere this product's behaviour is env-tunable, the deployed value is the fact and the
    default is a decoy.** No file in the repo lists which keys are actually set.
-
 1. **Line-audit the eleven `docs/spx/PLAYBOOK-*.md` documents** and mark what is now wrong (§6.4).
    Largest remaining gap.
 2. **Trace the `spx:pulse:snapshot` writer** in the market-worker lane and record its `change_pct`
