@@ -189,9 +189,13 @@ export function classifyArchetype(inputs: ArchetypeInputs): ArchetypeVerdict {
   const winner = ARCHETYPE_PRIORITY.find((a) => contenders.has(a)) ?? sorted[0].a;
   const winnerFit = fits[winner] ?? topFit;
 
-  // Null-when-thin: too few grounded inputs, or the best fit is below the minimal evidence floor.
+  // Null-when-thin: too few grounded inputs, or the WINNER's own fit is below the minimal evidence
+  // floor. Must check winnerFit, not topFit: the tie-break above can hand the label to a
+  // lower-fit archetype (riding another contender's higher fit within MARGIN_EPS), and the floor
+  // exists to gate what gets RETURNED — checking topFit let a winner whose own fit never cleared
+  // EVIDENCE_FLOOR still get classified, because the unrelated archetype that set topFit did.
   const inputCount = presentInputCount(inputs);
-  if (inputCount < MIN_INPUTS_PRESENT || topFit < EVIDENCE_FLOOR) {
+  if (inputCount < MIN_INPUTS_PRESENT || winnerFit < EVIDENCE_FLOOR) {
     return {
       archetype: null,
       confidence: round2(winnerFit),
