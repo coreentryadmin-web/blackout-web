@@ -10,6 +10,8 @@ import {
   resolveVectorPickLiveMid,
   type VectorPickLiveQuote,
 } from "@/features/vector/lib/vector-pick-live-status";
+import { effectivePickBias } from "@/features/vector/lib/vector-pick-effective-bias";
+import type { PlaySetup } from "@/features/vector/lib/vector-play-engine";
 import {
   shouldPersistVectorPickClosure,
   vectorPickClosureCommitKey,
@@ -144,17 +146,29 @@ export async function POST(req: NextRequest) {
         )
       : new Map();
 
-  const play = body.play && typeof body.play === "object" ? (body.play as Record<string, unknown>) : {};
-  const invalidation = typeof play.invalidation === "string" ? play.invalidation : null;
-  const bias =
-    play.bias === "long" || play.bias === "short" || play.bias === "range" || play.bias === "neutral"
-      ? play.bias
-      : undefined;
-
   const numOrNull = (v: unknown) => {
     const n = Number(v);
     return Number.isFinite(n) && n > 0 ? n : null;
   };
+
+  const play = body.play && typeof body.play === "object" ? (body.play as Record<string, unknown>) : {};
+  const invalidation = typeof play.invalidation === "string" ? play.invalidation : null;
+  const rawBias =
+    play.bias === "long" || play.bias === "short" || play.bias === "range" || play.bias === "neutral"
+      ? play.bias
+      : undefined;
+  const playSetup = typeof play.setup === "string" ? (play.setup as PlaySetup) : undefined;
+  // A committed `pivot` play's card bias stays "neutral" by design (long above / short below
+  // until spot commits) — but the invalidation checks below are gated on bias === "long"/"short",
+  // so passing the raw card bias through makes every one of them unreachable for a pivot play
+  // that HAS committed and generated real directional picks (2026-08-29 audit finding). Re-derive
+  // the committed direction the same way vector-play-candidates.ts already does for ranking,
+  // rather than trusting whatever the client posted.
+  const bias =
+    rawBias !== undefined
+      ? (effectivePickBias({ bias: rawBias, setup: playSetup ?? "stand-aside" }, spot, numOrNull(body.gammaFlip)) ??
+        rawBias)
+      : undefined;
 
   const live = picks.map((pick) => {
     const snap = snaps.get(pick.occ);
