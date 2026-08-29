@@ -423,4 +423,66 @@ describe("/api/market/gex-heatmap WS wall override near-term scope", () => {
     assert.equal(body.gex.put_wall, 95);
     mockWsLadder = null;
   });
+
+  // Regression (docs/audit/FINDINGS.md, P0, 2026-08-29): live scripts/full-site-deep-audit.mjs
+  // caught prod serving `call_wall: 330` while independently re-deriving 320 as the tallest
+  // strike from the SAME response's `strike_totals` — twice, 22 minutes apart. Root cause: the
+  // WS override replaced `call_wall`/`put_wall` with a pick from the LIVE UW ladder, but left
+  // `strike_totals` (what actually paints the Thermal heatmap bars) on the stale Polygon values,
+  // so the labeled wall and the tallest rendered bar could point at two different strikes.
+  test("when the live WS ladder disagrees with Polygon's strike_totals, the served call_wall/put_wall and strike_totals stay mutually consistent", async () => {
+    mockMarketOpen = true;
+    mockWsLive = true;
+    // Polygon (cached) heatmap: cells/strike_totals say the wall is 320.
+    mockHeatmap = liveHeatmap({
+      underlying: "AAPL",
+      spot: 322,
+      expiries: ["2026-08-29"],
+      near_term_expiries: ["2026-08-29"],
+      gex: {
+        cells: { "320": { "2026-08-29": 20_000_000 }, "310": { "2026-08-29": -8_000_000 } },
+        strike_totals: { "320": 20_000_000, "310": -8_000_000 },
+        call_wall: 320,
+        put_wall: 310,
+        total: 12_000_000,
+        flip: 315,
+        regime: { flip: 315, posture: "long", read: "ok" },
+      },
+    });
+    // Live UW WS ladder disagrees: it says the wall is 330, not 320.
+    mockWsLadder = {
+      ladder: new Map([
+        [330, 25_000_000],
+        [310, -8_000_000],
+      ]),
+      updatedAt: Date.now(),
+    };
+
+    const res = await GET(new NextRequest("http://localhost/api/market/gex-heatmap?ticker=AAPL"));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+
+    // The label must be the WS pick (fresher, matches Vector/Slayer)...
+    assert.equal(body.gex.call_wall, 330);
+    // ...and strike_totals — what full-site-deep-audit.mjs (and GexHeatmap.tsx's bars) actually
+    // read — must agree: the tallest strike in strike_totals must be the SAME strike as call_wall,
+    // not the stale Polygon 320.
+    const strikeTotals: Record<string, number> = body.gex.strike_totals;
+    let derivedCallWall: number | null = null;
+    let maxPos = 0;
+    for (const [s, g] of Object.entries(strikeTotals)) {
+      if (Number(g) > maxPos) {
+        maxPos = Number(g);
+        derivedCallWall = Number(s);
+      }
+    }
+    assert.equal(derivedCallWall, body.gex.call_wall, "strike_totals must re-derive the same call_wall the response reports");
+    // total must still equal the sum of strike_totals (the OTHER invariant the deep audit
+    // checks) — not left over from the pre-override Polygon total.
+    const sum = Object.values(strikeTotals).reduce((s: number, g) => s + Number(g), 0);
+    assert.equal(body.gex.total, sum);
+
+    mockWsLive = false;
+    mockWsLadder = null;
+  });
 });
