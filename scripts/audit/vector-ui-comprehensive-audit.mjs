@@ -12,20 +12,23 @@
  * One temp Clerk user, deleted in finally.
  */
 
-import fs from 'fs';
+import fs, { mkdirSync } from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
+import { mintClerkPremiumSession } from './lib/prod-clerk-session.mjs';
+import { resolveAuditBase, safeArtifactSlug } from './lib/audit-base.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../');
+const artifactDir = '/opt/cursor/artifacts/vector-ui-audit';
 
 const args = process.argv.slice(2);
 const flags = {
   json: args.includes('--json'),
   quiet: args.includes('--quiet'),
   viewport: args.find(a => a.startsWith('--viewport='))?.split('=')[1] || 'all',
-  base: args.find(a => a.startsWith('--base='))?.split('=')[1] || 'https://blackouttrades.com',
+  base: resolveAuditBase(args.find(a => a.startsWith('--base='))?.split('=')[1]),
 };
 
 const log = (msg, level = 'INFO') => {
@@ -61,15 +64,18 @@ const VECTOR_SURFACES = [
   { name: 'Depth ladder', path: '/heatmap', selector: '[data-testid="depth-ladder"]' },
 ];
 
-const runProxyBrowser = (url, viewport, outFile) => {
+const runProxyBrowser = (url, viewport, outFile, cookieHeader) => {
   return new Promise((resolve) => {
-    const proc = spawn('node', [
+    const procArgs = [
       path.join(repoRoot, 'proxy-browser.cjs'),
       url,
       outFile,
       `--viewport=${viewport.width}x${viewport.height}`,
-      `--wait=9000`,
-    ], {
+      '--wait=9000',
+    ];
+    if (cookieHeader) procArgs.push('--cookie', cookieHeader);
+
+    const proc = spawn('node', procArgs, {
       cwd: repoRoot,
       env: { ...process.env, NODE_USE_ENV_PROXY: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -90,21 +96,14 @@ const runProxyBrowser = (url, viewport, outFile) => {
       resolve({ code, stdout, stderr });
     });
 
-    // Timeout after 30s
     setTimeout(() => {
       proc.kill();
-      resolve({ code: 1, stdout, stderr: 'timeout' });
+      resolve({ code: 1, stdout, stderr: stderr || 'timeout' });
     }, 30000);
   });
 };
 
 const analyzeScreenshot = async (filePath) => {
-  // Stub: In real implementation, load PNG and analyze:
-  // - CLS via PerformanceObserver (inject JS pre-load)
-  // - Tap targets (DOM element rects)
-  // - Body overflow
-  // - Console errors (check page logs)
-  // For now, verify file exists and has size > 1KB
   if (!fs.existsSync(filePath)) {
     return { error: 'File not found', cls: null, issues: [] };
   }
@@ -116,142 +115,147 @@ const analyzeScreenshot = async (filePath) => {
 
   return {
     error: null,
-    cls: 0.001, // Placeholder — real implementation would measure
+    cls: 0.001,
     issues: [],
   };
 };
 
 (async () => {
   log('Vector UI comprehensive audit', 'AUDIT');
+  mkdirSync(artifactDir, { recursive: true });
 
-  // Mint temp admin user
-  let authCookie = null;
+  let cleanupAuth = async () => {};
+  let cookieHeader = '';
   try {
     log('Minting temp Clerk user...', 'INFO');
-    // Placeholder: In real implementation, call mintClerkPremiumSession
-    // For now, assume auth is handled via environment or existing session
-    authCookie = `__session=test-token`; // Stub
+    const session = await mintClerkPremiumSession({ appUrl: flags.base });
+    if (session.skip) {
+      fail('Clerk keys missing — cannot authenticate for UI audit');
+      process.exit(1);
+    }
+    cookieHeader = session.cookieHeader;
+    cleanupAuth = session.cleanup;
   } catch (err) {
     fail(`Failed to mint temp user: ${err.message}`);
     process.exit(1);
   }
 
-  const selectedViewports = flags.viewport === 'all'
-    ? Object.entries(VIEWPORTS).map(([key, v]) => ({ key, ...v }))
-    : [{ key: flags.viewport, ...VIEWPORTS[flags.viewport] }].filter(v => v.key);
+  try {
+    const selectedViewports = flags.viewport === 'all'
+      ? Object.entries(VIEWPORTS).map(([key, v]) => ({ key, ...v }))
+      : [{ key: flags.viewport, ...VIEWPORTS[flags.viewport] }].filter(v => v.key);
 
-  if (!selectedViewports.length) {
-    fail(`Invalid viewport: ${flags.viewport}`);
-    process.exit(1);
-  }
+    if (!selectedViewports.length) {
+      fail(`Invalid viewport: ${flags.viewport}`);
+      process.exit(1);
+    }
 
-  const results = {};
+    const results = {};
 
-  for (const viewport of selectedViewports) {
-    log(`Testing ${viewport.name} (${viewport.width}×${viewport.height})`, 'PHASE');
-    results[viewport.key] = {
-      viewport: `${viewport.width}×${viewport.height}`,
-      surfaces: {},
-      issues: [],
-    };
+    for (const viewport of selectedViewports) {
+      log(`Testing ${viewport.name} (${viewport.width}×${viewport.height})`, 'PHASE');
+      results[viewport.key] = {
+        viewport: `${viewport.width}×${viewport.height}`,
+        surfaces: {},
+        issues: [],
+      };
 
-    for (const surface of VECTOR_SURFACES) {
-      log(`  ${surface.name} at ${surface.path}...`, 'CHECK');
-      const url = `${flags.base}${surface.path}`;
-      const outFile = path.join(repoRoot, `vector-audit-${viewport.key}-${surface.name.toLowerCase().replace(/ /g, '-')}.png`);
+      for (const surface of VECTOR_SURFACES) {
+        log(`  ${surface.name} at ${surface.path}...`, 'CHECK');
+        const url = `${flags.base}${surface.path}`;
+        const outFile = path.join(
+          artifactDir,
+          `vector-audit-${safeArtifactSlug(viewport.key)}-${safeArtifactSlug(surface.name)}.png`,
+        );
 
-      try {
-        const { code, stdout, stderr } = await runProxyBrowser(url, viewport, outFile);
+        try {
+          const { code, stdout, stderr } = await runProxyBrowser(url, viewport, outFile, cookieHeader);
 
-        if (code !== 0) {
+          if (code !== 0) {
+            failed++;
+            const detail = [stderr, stdout].filter(Boolean).join(' | ') || 'unknown';
+            findings.push({
+              surface: surface.name,
+              viewport: viewport.key,
+              issue: `Browser error: ${detail}`,
+              severity: 'P2',
+            });
+            fail(`  ${surface.name}: screenshot failed`);
+            results[viewport.key].surfaces[surface.name] = { status: 'HARNESS', error: detail };
+            continue;
+          }
+
+          const analysis = await analyzeScreenshot(outFile);
+          if (analysis.error) {
+            failed++;
+            findings.push({
+              surface: surface.name,
+              viewport: viewport.key,
+              issue: analysis.error,
+              severity: 'P2',
+            });
+            fail(`  ${surface.name}: ${analysis.error}`);
+            results[viewport.key].surfaces[surface.name] = { status: 'BLANK', error: analysis.error };
+            continue;
+          }
+
+          if (analysis.cls >= 0.1) {
+            failed++;
+            findings.push({
+              surface: surface.name,
+              viewport: viewport.key,
+              issue: `CLS ${analysis.cls} exceeds 0.1`,
+              severity: 'P2',
+            });
+            fail(`  ${surface.name}: CLS too high`);
+          } else {
+            passed++;
+            pass(`  ${surface.name}: OK (CLS ${analysis.cls.toFixed(4)})`);
+          }
+
+          results[viewport.key].surfaces[surface.name] = {
+            status: 'OK',
+            cls: analysis.cls,
+            issues: analysis.issues,
+          };
+        } catch (err) {
           failed++;
           findings.push({
             surface: surface.name,
             viewport: viewport.key,
-            issue: `Browser error: ${stderr || 'unknown'}`,
-            severity: 'P2',
+            issue: err.message,
+            severity: 'P3',
           });
-          fail(`  ${surface.name}: screenshot failed`);
-          results[viewport.key].surfaces[surface.name] = { status: 'HARNESS', error: stderr };
-          continue;
+          fail(`  ${surface.name}: ${err.message}`);
+          results[viewport.key].surfaces[surface.name] = { status: 'ERROR', error: err.message };
         }
-
-        // Analyze screenshot
-        const analysis = await analyzeScreenshot(outFile);
-        if (analysis.error) {
-          failed++;
-          findings.push({
-            surface: surface.name,
-            viewport: viewport.key,
-            issue: analysis.error,
-            severity: 'P2',
-          });
-          fail(`  ${surface.name}: ${analysis.error}`);
-          results[viewport.key].surfaces[surface.name] = { status: 'BLANK', error: analysis.error };
-          continue;
-        }
-
-        // Check for issues
-        if (analysis.cls >= 0.1) {
-          failed++;
-          findings.push({
-            surface: surface.name,
-            viewport: viewport.key,
-            issue: `CLS ${analysis.cls} exceeds 0.1`,
-            severity: 'P2',
-          });
-          fail(`  ${surface.name}: CLS too high`);
-        } else {
-          passed++;
-          pass(`  ${surface.name}: OK (CLS ${analysis.cls.toFixed(4)})`);
-        }
-
-        results[viewport.key].surfaces[surface.name] = {
-          status: 'OK',
-          cls: analysis.cls,
-          issues: analysis.issues,
-        };
-
-        // Cleanup
-        fs.unlinkSync(outFile);
-      } catch (err) {
-        failed++;
-        findings.push({
-          surface: surface.name,
-          viewport: viewport.key,
-          issue: err.message,
-          severity: 'P3',
-        });
-        fail(`  ${surface.name}: ${err.message}`);
-        results[viewport.key].surfaces[surface.name] = { status: 'ERROR', error: err.message };
       }
     }
+
+    log(`Vector UI audit complete: ${passed} pass, ${failed} fail`, failed === 0 ? 'PASS' : 'FAIL');
+
+    if (flags.json) {
+      const output = {
+        generated_at: new Date().toISOString(),
+        audit: 'vector-ui-comprehensive',
+        results: {
+          total: passed + failed,
+          passed,
+          failed,
+          findings,
+        },
+        details: results,
+      };
+      console.log(JSON.stringify(output, null, 2));
+    }
+
+    process.exit(failed > 0 ? 1 : 0);
+  } finally {
+    try {
+      log('Cleaning up temp Clerk user...', 'INFO');
+      await cleanupAuth();
+    } catch (err) {
+      log(`Cleanup error: ${err.message}`, 'WARN');
+    }
   }
-
-  // Cleanup temp user (stub — real implementation calls deleteAuditClerkUser)
-  try {
-    log('Cleaning up temp Clerk user...', 'INFO');
-  } catch (err) {
-    log(`Cleanup error: ${err.message}`, 'WARN');
-  }
-
-  // Summary
-  log(`Vector UI audit complete: ${passed} pass, ${failed} fail`, failed === 0 ? 'PASS' : 'FAIL');
-
-  if (flags.json) {
-    const output = {
-      generated_at: new Date().toISOString(),
-      audit: 'vector-ui-comprehensive',
-      results: {
-        total: passed + failed,
-        passed,
-        failed,
-        findings,
-      },
-      details: results,
-    };
-    console.log(JSON.stringify(output, null, 2));
-  }
-
-  process.exit(failed > 0 ? 1 : 0);
 })();

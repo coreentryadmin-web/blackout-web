@@ -12,7 +12,6 @@
  * Requires live market data during RTH.
  */
 
-import crypto from 'crypto';
 import redis from 'redis';
 
 const args = process.argv.slice(2);
@@ -180,7 +179,7 @@ const findings = [];
 
   if (flags.json) {
     const output = {
-      generated_at: new Date().toISOString(),
+      generated_at: startTime,
       audit: 'vector-rail-accumulation',
       date: ymd,
       tickers_audited: flags.tickers,

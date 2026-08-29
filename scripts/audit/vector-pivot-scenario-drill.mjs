@@ -13,12 +13,14 @@
  * Second phase: live RTH validation against /vector API
  */
 
+import { resolveAuditBase } from './lib/audit-base.mjs';
+
 const args = process.argv.slice(2);
 const flags = {
   json: args.includes('--json'),
   quiet: args.includes('--quiet'),
   live: args.includes('--live'),
-  base: args.find(a => a.startsWith('--base='))?.split('=')[1] || 'https://blackouttrades.com',
+  base: resolveAuditBase(args.find(a => a.startsWith('--base='))?.split('=')[1]),
 };
 
 const log = (msg, level = 'INFO') => {
