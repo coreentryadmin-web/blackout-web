@@ -306,18 +306,22 @@ export async function runSkipGrading(opts: { days?: number; nowMs: number }): Pr
 
   // One underlying bar fetch per (ticker, session) — many rejections share a name/day.
   //
-  // fetchThrew below distinguishes "the fetch call itself rejected" (dynamic import
-  // failure, a bug in mapBars, an unexpected exception) from "the fetch succeeded and
-  // Polygon legitimately returned zero bars" (a genuinely quiet session, an
-  // untradeable index-root ticker, etc.) — a distinction the code used to erase
-  // entirely: fetchAggBars's own internal polygonGet already swallows HTTP/network
-  // failures into a bare [] (only a console.warn nobody reads marks it happened), and
-  // this function's own `.catch(() => [])` used to erase the SECOND layer too, so an
-  // outright exception and a clean empty result were indistinguishable by the time
-  // gradeSkippedPlay ever saw them — both just read "no bar data" (2026-08-29 audit
-  // finding: every one of 200+ live rejections graded ungradeable with that exact
-  // generic reason, and there was no way from the report alone to tell whether Polygon
-  // was actually failing or genuinely had nothing for that ticker/session).
+  // fetchThrew below distinguishes "the fetch failed" (not configured, a non-2xx HTTP status,
+  // a thrown error — dynamic import failure, the Polygon circuit breaker being open, a network
+  // error) from "the fetch succeeded and Polygon legitimately returned zero bars" (a genuinely
+  // quiet session, an untradeable index-root ticker, etc.) — a distinction the code used to
+  // erase entirely. `fetchAggBars`'s own internal `polygonGet` swallowed EVERY one of those
+  // failure modes into a bare `[]`, including a circuit-breaker-open THROW from
+  // `polygonTrackedFetch` (polygon-rate-limiter.ts) that its own try/catch caught silently —
+  // only a `console.warn` server logs nobody here reads marked it happened. This function's own
+  // `.catch()` around the fetch call was therefore dead code: `fetchAggBars` never actually
+  // rejects, so nothing ever reached it. `fetchAggBarsWithDiagnostics` (polygon-largo.ts) is the
+  // real fix — it surfaces the swallowed reason from inside `polygonGet` without changing
+  // `fetchAggBars`'s behavior for its many other callers.
+  // (2026-08-29 audit finding: a live run found every one of 200+ rejections graded ungradeable
+  // with the identical generic "no bar data" reason across many distinct tickers/session-dates,
+  // and manually replaying the same Polygon call outside the app returned real bars — ruling out
+  // "Polygon has nothing" and pointing at a swallowed failure inside the app's own fetch path.)
   const barCache = new Map<string, Promise<{ bars: SkipGradeBar[]; fetchThrew: string | null }>>();
   const barsFor = (ticker: string, sessionDate: string): Promise<{ bars: SkipGradeBar[]; fetchThrew: string | null }> => {
     const key = `${ticker}:${sessionDate}`;
@@ -326,13 +330,20 @@ export async function runSkipGrading(opts: { days?: number; nowMs: number }): Pr
       cached = (async () => {
         // Dynamic RELATIVE import (never "@/" — CI's tsx loader can't resolve the
         // alias in dynamic positions): keeps the provider out of the static graph.
-        const { fetchAggBars } = await import("../providers/polygon-largo");
-        const bars = await fetchAggBars(polygonSpotTicker(ticker), 1, "minute", sessionDate, sessionDate, "50000");
+        const { fetchAggBarsWithDiagnostics } = await import("../providers/polygon-largo");
+        const { bars, failureReason } = await fetchAggBarsWithDiagnostics(
+          polygonSpotTicker(ticker),
+          1,
+          "minute",
+          sessionDate,
+          sessionDate,
+          "50000"
+        );
         return {
           bars: bars
             .filter((b) => b.t != null && Number.isFinite(b.t))
             .map((b) => ({ t: b.t as number, h: b.h, l: b.l, c: b.c })),
-          fetchThrew: null,
+          fetchThrew: failureReason,
         };
       })().catch((err) => ({
         bars: [] as SkipGradeBar[],

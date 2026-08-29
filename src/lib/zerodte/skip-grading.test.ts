@@ -29,13 +29,14 @@ const polyState = {
   calls: [] as Array<{ symbol: string; from: string }>,
   bars: [] as Array<Record<string, number>>,
   throwMessage: null as string | null,
+  failureReason: null as string | null,
 };
 mock.module("../providers/polygon-largo", {
   namedExports: {
-    fetchAggBars: async (symbol: string, _m: number, _ts: string, from: string) => {
+    fetchAggBarsWithDiagnostics: async (symbol: string, _m: number, _ts: string, from: string) => {
       polyState.calls.push({ symbol, from });
       if (polyState.throwMessage != null) throw new Error(polyState.throwMessage);
-      return polyState.bars;
+      return { bars: polyState.bars, failureReason: polyState.failureReason };
     },
   },
 });
@@ -349,6 +350,39 @@ test("runSkipGrading: an underlying bar fetch that THROWS is surfaced with the r
     assert.match(verdict.reason, /underlying bar fetch threw: ECONNRESET: fetch failed/);
   } finally {
     polyState.throwMessage = null;
+  }
+});
+
+// REGRESSION (2026-08-29 audit finding, follow-up): the realistic failure path never actually
+// THROWS — fetchAggBarsWithDiagnostics's own polygonGet swallows a circuit-breaker-open error,
+// an HTTP status, or a network failure into a `failureReason` string alongside an empty bars
+// array, exactly the way a live run against production showed (100+ real rejections all landed
+// on the generic reason with no thrown exception anywhere in the chain). This pins that path.
+test("runSkipGrading: a captured Polygon failureReason (no thrown exception) is surfaced the same way a thrown error is", async () => {
+  const { runSkipGrading } = await mod();
+  dbState.queries = [];
+  dbState.selectRows = [
+    {
+      id: 10,
+      observed_at: new Date(et("10:00")).toISOString(),
+      session_date: "2026-07-10",
+      ticker: "TSLA",
+      gate_failed: "opening_window",
+      direction: "short",
+    },
+  ];
+  polyState.calls = [];
+  polyState.bars = [];
+  polyState.failureReason = "[polygon] Circuit open — rate limited, pausing 42s";
+  try {
+    const summary = await runSkipGrading({ days: 3, nowMs: NOW });
+    assert.equal(summary.ungradeable, 1);
+    const updates = dbState.queries.filter((q) => /^UPDATE zerodte_scan_rejections/.test(q.text));
+    const verdict = JSON.parse(updates[0]!.values![0] as string);
+    assert.equal(verdict.verdict, "ungradeable");
+    assert.match(verdict.reason, /underlying bar fetch threw: \[polygon\] Circuit open — rate limited, pausing 42s/);
+  } finally {
+    polyState.failureReason = null;
   }
 });
 
