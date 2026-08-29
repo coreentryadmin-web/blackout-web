@@ -4,6 +4,1076 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 0DTE CLOSED-row ACTION label checked the wrong enum — winning/flat/thesis/ratchet closes fell back to generic CLOSED
+
+> **kind:** `FINDING`
+
+### Symptom
+
+Live-screenshot validation of PR #3101 (2026-08-29, `blackouttrades.com/nighthawk`, desktop 1440)
+showed several production CLOSED rows with positive or flat P&L (e.g. QQQ +64%, APP +53%, MUU +16%,
+AMD 0%, NVDA 0%) still rendering the generic coarse "CLOSED" pill instead of the new ACTION
+vocabulary (TARGET/STOPPED/EOD EXIT/etc.) that PR #3101 shipped. Only the stopped-out rows (MSFT
+-52%, SNDK -43%, META -12%) correctly showed "STOPPED".
+
+### Root cause
+
+`zeroDteActionDisplay()` (`play-card-lifecycle.ts`, shipped in #3101) checked
+`play.closedReason === "doubled"` to render `TARGET`. **`"doubled"` never appears on the live
+board.** It's a literal from `plan.ts`'s POST-HOC backtest grading enum (`gradePlanFromBars`'s
+`exit_reason: "trim_scale_first" | "trim_scale_second" | "doubled" | "stopped" | "time_stop"`) — a
+completely separate system from what the live board actually serves.
+
+The LIVE board's `TerminalPlay.closedReason` is wired (via `adapters.ts` → `zerodte-sources.ts`)
+from `zerodte-service.ts`'s `boardClosedReason`, which is derived as:
+```
+closedReason === "stopped" ? "stopped" : status === "CLOSED" ? (engineExitCategory ?? "time_stop") : null
+```
+where `engineExitCategory = categorizeExitReason(pinnedExit.reason)` (`exit-engine.ts`) returns one
+of `"ratchet" | "thesis" | "flat" | "target" | "stop"` (or `null`). **`"doubled"` is not in this
+enum at all** — the real profit-taking category is the lowercase `"target"`.
+
+So on the live board, every real close that wasn't a literal stop fell through
+`zeroDteActionDisplay`'s `if` chain to the `null` fallback (the coarse CLOSED pill) — which is
+every `target`/`thesis`/`flat`/`ratchet` close. Only `"stopped"` and `"time_stop"` ever matched.
+
+An earlier grep-based "correction" already staged in `docs/audit/NIGHTHAWK-3RAIL-REDESIGN.md`
+(2026-08-29, before this finding) made the same class of mistake in the opposite direction: it
+grepped only `plan.ts` for the vocabulary's real values and concluded `THESIS BROKE`/`TRAIL
+EXIT`/`SCRATCH` had no backing data and would be fabrication if built — because it never checked
+`zerodte-service.ts`, the file that actually derives what reaches the wire. Two unrelated systems
+(the live board vs. the post-hoc backtest grader) share overlapping field names
+(`exit_reason`/`closed_reason`) with disjoint value sets; grepping `src/lib/zerodte/*.ts` broadly
+without tracing which system actually reaches the serving path silently picked the wrong one twice.
+
+### Fix
+
+`zeroDteActionDisplay()`'s CLOSED branch now checks the real live-board values:
+- `"target"` → `TARGET`
+- `"stopped"` / `"stop"` → `STOPPED` (both, since `"stop"` is `categorizeExitReason`'s own token for
+  the same family, even though `closedStopReason`'s literal `"stopped"` wins precedence in practice)
+- `"time_stop"` → `EOD EXIT`
+- `"thesis"` → `THESIS BROKE`
+- `"flat"` → `SCRATCH`
+- `"ratchet"` → `TRAIL EXIT`
+- anything else / null → still falls back to `null` (coarse pill), never fabricated
+
+All 6 of the original product brief's CLOSED-row labels (§1 of `NIGHTHAWK-3RAIL-REDESIGN.md`) turn
+out to be real and are now wired — none needed dropping, contrary to the earlier staged correction.
+
+### Blast radius
+
+Only `play-card-lifecycle.ts`'s `zeroDteActionDisplay()` — the single consumer of `closedReason` for
+this display purpose. `closedCapturePct()` (also in this file) already read `closedRealizedPct`
+independently and is unaffected.
+
+### Evidence
+
+`npx tsc --noEmit` clean. `node --import tsx --experimental-test-module-mocks --test
+src/features/nighthawk/command-deck/*.test.ts` → 348/348 pass, 0 failures. Updated the existing
+"real exit_reason values map to real labels" test (was asserting the wrong `"doubled"` mapping) and
+added coverage for all 6 real values plus confirmation that `"doubled"`/`"trim_scale_first"`
+(real in the OTHER system, never real here) still correctly fall back to `null`.
+
+| **Status** | FIXED |
+
+## Trim-scale regime conditioning never wired — starts the calibration ledger, live behavior unchanged
+
+> **kind:** `FINDING`
+
+### Symptom
+
+Task-list item flagged the regime-conditioned trim-scale schedule (`TRIM_SCALE_RULES.tranches_by_regime`
+in `exit-engine.ts` — trend/neutral/range each with their own tranche thresholds) as "fully unwired dead
+code in production."
+
+### Root cause
+
+`decideTrimScale()` (`exit-engine.ts`) has supported per-regime tranche thresholds since it shipped —
+`const regime: ZeroDteRegime = input.regime ?? "neutral";` — but no caller of `evaluateExitState` /
+`evaluateLedgerRowExit` (`exit-sync.ts`) ever passed a `regime`. `evaluateLedgerRowExit`'s only production
+call site (`scan.ts:1944`) passes `{ syncMark, status }` with no `regime` field. Every trim_scale-managed
+row in production — and `trim_scale` is `DEFAULT_EXIT_MODE`, so this is the majority of 0DTE plays, not an
+edge case — has run the `neutral` (+20%/+50%) tranche thresholds regardless of the session's actual
+structure (trend/range/inside), even on days a `classifyRegime()` read was computed and available
+elsewhere in the pipeline for scoring.
+
+The deeper reason it stayed unwired: the rich regime read (`classifyRegime()` → `MarketRegime`, a 4-way
+`structure` classification) is computed per-session for the feature store/scoring layer
+(`ZeroDteSessionContext.regime`), but was **never persisted** onto the ledger row's `entry_context` blob
+— only `gamma_regime` (a different, per-name dealer-gamma concept) is. So even wiring the read side today
+would only pass `null` (→ `neutral` fallback) for every already-committed row; there was no live-ledger
+signal for the trim schedule's own comment to calibrate `trend`/`range` against
+(`"v1 heuristics... calibrated on the live ledger before they size real risk"` — only `neutral` is
+E5-measured).
+
+### Fix
+
+Two-part, calibration-first (matches this repo's existing pattern — `condor-wr.mjs`,
+`calibration-rail-graduation.ts` — measure before a knob sizes real risk):
+
+1. **`entry-context.ts`**: added `session_regime?: ZeroDteRegime | null` to the persisted
+   `ZeroDteEntryContext`, stamped at commit via a new pure `zeroDteRegimeFromStructure()` mapping
+   (`classifyRegime()`'s `TREND_UP`/`TREND_DOWN` → `trend`, `RANGE` → `range`, `INSIDE` → `neutral` — an
+   inside day hasn't earned the tighter chop-banking thresholds yet). This is additive and **always on**
+   — it starts building the calibration ledger the trend/range thresholds need, with zero behavior change
+   (nothing reads this field into a live decision yet).
+2. **`exit-sync.ts`**: added `resolveTrimRegimeLive()` (mirrors the existing `resolveExitMode()` operator
+   switch) — `ZERODTE_TRIM_REGIME_LIVE=1` (exact match, default **off**) gates whether the live engine
+   actually reads the row's stamped `session_regime` into `evaluateExitState`'s `regime` input. Off by
+   default means **today's `neutral`-only behavior is unchanged** — this PR does not touch live trim
+   thresholds for any real trade. `deps.regime` (the existing test/AB override) keeps top precedence.
+
+### Blast radius
+
+`entry-context.ts` (persisted schema, additive field only — old rows read `session_regime: undefined`,
+never a fabricated value) and `exit-sync.ts` (the gate + read-through). No change to `exit-engine.ts`'s
+pure decision logic — `TRIM_SCALE_RULES` and `decideTrimScale()` are untouched; they already supported
+this input, it just never arrived.
+
+### Evidence
+
+`npx tsc --noEmit` clean. `node --import tsx --experimental-test-module-mocks --test src/lib/zerodte/*.test.ts`
+→ 1199/1200 pass (1 pre-existing `.skip`), 0 failures. New coverage: `zeroDteRegimeFromStructure`'s 4-way
+mapping (both trend directions agree, RANGE→range, INSIDE→neutral) and `resolveTrimRegimeLive`'s
+default-off env parsing (mirrors `resolveExitMode`'s existing test).
+
+### What was deliberately left undone
+
+The live-consumption flag (`ZERODTE_TRIM_REGIME_LIVE`) stays off. Flipping it is a SEPARATE decision that
+needs its own evidence run once enough `session_regime`-stamped rows have graded outcomes — exactly the
+"measure before touching" backtest this repo's audit toolkit already does for every other exit-mechanics
+change (see `docs/audit/INTENTIONAL-DESIGN.md`). A follow-up A/B harness (same shape as
+`merge-precedence-ab.mjs`) once there's a real population to measure is the natural next step, not part
+of this PR.
+
+| **Status** | FIXED (calibration-ledger stamping wired; live trim-schedule behavior deliberately unchanged pending graduation evidence) |
+
+## Admin per-play tier export — unblocks the C-tier/untiered exit-mode backtest
+
+> **kind:** `FINDING`
+
+### Symptom
+
+Task tracking (item #59, `docs/audit/0DTE-RESEARCH.md`'s "Follow-up scoped but BLOCKED"
+note, 2026-08-28) flagged that `resolveExitModeForTier`'s C-tier/untiered → ratchet policy
+(`src/lib/zerodte/exit-sync.ts`) was shipped from the E5 exit-engine study, but that study's
+276/352-play sweep never split by real tier at all — "C-tier's signal quality doesn't justify
+the looser runway" is a plausible prior, not a measured result. The doc named two blockers to
+measuring it for real: (1) no reachable data source carries `entry_premium`/`top_strike`/
+`expiry` per historical play, and (2) `zerodte-sim.mjs`'s own simulated candidates can't be
+tiered correctly (missing live VIX/Cortex reads at candidate-generation time).
+
+### Root cause
+
+Blocker (1) turns out to be narrower than stated: `entry_premium`, `top_strike`, and `expiry`
+were never actually missing from the data layer — `src/lib/db.ts`'s `fetchZeroDteSetupLogRange`
+(the same function `/api/market/zerodte/record` already calls) returns them on every
+`ZeroDteSetupLogRow` (see `mapZeroDteLogRow`). The gap was that `record.ts`'s
+`buildZeroDteRecord` — the only thing that ever turned those rows into an HTTP response —
+aggregates them into public track-record stats and drops the per-play fields a re-pricing
+backtest needs. Nothing was missing from the database; nothing exposed it.
+
+### Fix
+
+Added `GET /api/admin/zerodte/tier-export` (admin-gated via the same `requireAdminApi()`
+pattern as `/api/admin/zerodte/graduation`), which fetches the same `ZeroDteSetupLogRow`s and
+returns the per-play fields directly: `entry_premium`, `top_strike`, `expiry`,
+`first_flagged_at`, `plan_outcome`/`plan_pnl_pct` (the existing mechanical grade, for
+cross-check only), and — the field this whole exercise is about — `tier`, derived via
+`tierFromEntryContext()` (the SAME pinned-`entry_context` adapter `record.ts`/`calibration.ts`
+already use, so a row's tier here is byte-identical to what the live system assigned at
+commit, never re-guessed). Per-row shaping lives in a new pure function,
+`buildTierExportRow()` (`src/lib/zerodte/tier-export.ts`), so the tier-derivation logic is
+unit-testable without a live database — the route itself is a thin fetch+serialize wrapper.
+
+This resolves blocker (1) from the research doc. Blocker (2) (a real backtest script that
+fetches each play's real OCC contract minute bars and re-grades under `ratchet` vs
+`trim_scale` via the existing `gradeThroughExitEngine` A/B) is NOT part of this change — see
+"What was deliberately left undone" below.
+
+### Blast radius
+
+One new route (`src/app/api/admin/zerodte/tier-export/route.ts`) and one new pure lib module
+(`src/lib/zerodte/tier-export.ts`). Read-only, admin-gated, no schema change, no write path.
+Does not touch `resolveExitModeForTier`, `exit-engine.ts`, or any live exit-management
+behavior — the C-tier/untiered → ratchet policy is completely unchanged by this PR.
+
+### Fix rationale
+
+Chose to expose the existing fields via a new admin route (option (a) from the research doc)
+rather than wiring live VIX/Cortex into `zerodte-sim.mjs`'s candidate loop (option (b)):
+smaller, safer change, and it uses REAL historical tier assignments rather than a simulated
+candidate pool that would need its own confound-risk validation.
+
+### What was deliberately left undone
+
+The actual backtest — pulling this export, fetching each real historical contract's OCC
+minute bars from Polygon, and re-grading C-tier/untiered rows under `ratchet` vs `trim_scale`
+via `gradeThroughExitEngine` — is a separate, larger piece of work (a new offline script, plus
+its own live-data verification) and is NOT part of this PR. This PR only removes the "no
+reachable data" blocker; the measurement itself, and any resulting change to
+`resolveExitModeForTier`'s policy, stays a follow-up. No gate or exit-mode behavior changed.
+
+| **Status** | FIXED (unblocks the measurement; the measurement itself is a follow-up) |
+
+## `get_signal_log` served SPX Slayer's uncalibrated confidence to Largo completely unwrapped
+
+> **kind:** `FINDING`
+
+### Root cause
+
+`docs/audit/LARGO-PRODUCT-CONTRACT.md` requires `confidence` be OMITTED when a product has no
+calibrated model for it — SPX Slayer's is a formula over `|score|*1.15 + factors.length*3` with no
+outcome data behind it (measured win rate ~50% while the field reads a near-constant 96). The
+boundary function that enforces this, `omitUncalibratedSpxConfidence`
+(`src/lib/largo/spx-confidence-boundary.ts`), is applied at two of its three call sites
+(`get_spx_play`, `get_spx_confluence` in `src/lib/largo/run-tool.ts`) — but **`get_signal_log`
+(same file, previously line 1047-1048) called `marketPlatform.spx.getSpxSignalLog()` directly and
+returned its rows with no wrapper at all.**
+
+This was invisible from reading the boundary function alone, because the boundary function itself
+had a second, compounding gap: its guard was `if (!("rawScore" in obj)) return payload;`. The
+`SpxSignalLogRow` shape (`src/features/spx/lib/spx-signal-log.ts`) never carries a `rawScore` key —
+`insertSpxSignalLog` persists the identical fabricated value under a DIFFERENT name:
+`confidence: play.rawScore`. So even routing signal-log rows through the existing function would
+have been a no-op — the guard would bail before the destructure that drops `confidence` ever ran.
+Two independent gaps had to both be closed for `get_signal_log` to actually omit anything.
+
+### Evidence
+
+`SpxSignalLogRow` (`spx-signal-log.ts:39-50`) declares `confidence: number` as a plain field, and
+`maybeLogSpxPlay` writes it verbatim: `confidence: play.rawScore` (line 101). `run-tool.ts`'s
+`get_signal_log` case returned `marketPlatform.spx.getSpxSignalLog(...)` with no import of
+`omitUncalibratedSpxConfidence` anywhere near it — confirmed by grep: the boundary function's only
+callers were the two other SPX tool cases plus `src/lib/bie/ecosystem-context.ts`. New test
+`REGRESSION: a signal-log row (confidence present, rawScore ABSENT) is stripped too` in
+`spx-confidence-boundary.test.ts` reproduces the exact row shape and fails without both fixes below
+(guard alone lets a `confidence`-only row through unomitted; wiring alone still hits the guard).
+
+### Blast radius
+
+Only `get_signal_log`. The other two call sites (`get_spx_play`, `get_spx_confluence`) already
+routed through the boundary function via `rawScore`, and `src/lib/bie/ecosystem-context.ts`'s
+`spx_full_state` wraps `getSpxPlayState()` output (the `rawScore` shape), so none of those needed
+the broadened guard to newly change behavior — the guard broadening is additive/defense-in-depth
+for them. `get_spx_engine_snapshots` (a sibling tool) was checked and does not carry a `confidence`
+field at all (verified via `fetchRecentSpxSnapshots`'s shape), so it needed no change.
+
+### Fix
+
+1. `spx-confidence-boundary.ts`: broadened the guard from `"rawScore" in obj` to
+   `"rawScore" in obj || "confidence" in obj`, and updated the type/doc comment to describe both
+   keys as the same fabricated number under two names.
+2. `run-tool.ts`'s `get_signal_log` case: now maps every row through `omitUncalibratedSpxConfidence`
+   before returning, matching the other two SPX tool call sites.
+
+### Fix rationale
+
+Chose to broaden the shared guard rather than add a second, signal-log-specific omission helper —
+the destructure logic, the named-absence value, and the "why omit" reasoning are all identical
+regardless of which key the value arrived under; a second helper would just be the same fix typed
+twice. Left the DB column name (`confidence` in `spx_signal_log`) and the member-facing UI
+(`{n}% conviction`) untouched — this module changes only what the MODEL sees, per the existing
+"WHY NOT STRIP IT FROM THE ENGINE" note already in the file, which applies unchanged to this fix.
+
+### Evidence (tests)
+
+`npx tsc --noEmit` clean. `npx tsx --test src/lib/largo/spx-confidence-boundary.test.ts` — 7/7 pass
+(6 pre-existing + 1 new regression test). Full suite run separately.
+
+| **Status** | FIXED |
+
+## Night Hawk mobile: play list permanently squeezed by an always-visible detail rail + fixed table columns
+
+> **kind:** `FINDING`
+
+### Symptom
+
+Member-supplied phone screenshot: the 0DTE play list truncates ticker/strike/expiry text hard
+("QQQ 722.5C 0D...", "APP 332.5C 0D...", "SNDK 1520C 0D..."), and asks why the list can't default
+to full width, opening the detail rails only once a play is clicked.
+
+### Root cause
+
+Two independent things compounded:
+
+1. **The right rail (`PlayTerminal`, class `.nh-deck-right`) always rendered on mobile**, not only
+   once a member picks a play. `CommandDeck` auto-selects a play the instant the board loads
+   (`preferredPlayId(sorted) ?? sorted[0]`), so `selected` is essentially never `null` once any
+   play exists — the mobile stacked layout (`@media (max-width:820px){.nh-deck{flex-direction:
+   column}...}`, already present) showed the list capped to `max-height:42vh` ABOVE a full detail
+   panel below it, permanently, regardless of whether the member had asked to see one.
+2. **The play row/header grid (`--nh-play-cols:22px 80px minmax(0,1.5fr) 120px 96px 72px`,
+   shared by `DeckPlayTableHeader` and `PlayLifecycleCardBody` via the same `.nh-deck-play-grid`
+   class) reserves 390px of FIXED pixel columns** (rank/status/grade/time) before the flexible
+   Play column gets any room at all — more than a phone's usable width, so even at full list
+   width the Play column had nothing left to truncate into gracefully.
+
+### Fix
+
+1. `CommandDeck.tsx`: added `mobileDetailOpen` state, separate from the board's own default
+   selection. A new `selectPlay()` wrapper (used by every `PlayCard`'s `onSelect`) sets it true;
+   the auto-select-on-load effect does NOT (deliberately — that's the board choosing a default,
+   not the member asking to see one); the cross-deck `focusTicker` navigation DOES (it's an
+   explicit "go look at this play" action). `closeMobileDetail()` clears it, wired to a new
+   `onBack` prop on `PlayTerminal` (a `‹ Plays` button, CSS-hidden above the mobile breakpoint so
+   it's a no-op on desktop). The outer `.nh-deck` now carries `data-mobile-view="list"|"detail"`.
+2. `globals.css`: under the existing `@media (max-width:820px)` block, `[data-mobile-view="list"]`
+   hides `.nh-deck-right` and lets the list take the full column height (was hard-capped at 42vh);
+   `[data-mobile-view="detail"]` hides `.nh-deck-left` instead. Both attributes are inert above
+   820px — desktop always shows both rails side by side, exactly as the roadmap's live-verified
+   3-rail layout already does. Also overrides `--nh-play-cols` on mobile to a 4-column layout
+   (rank/status/play/pnl) and hides the Grade/Time cells — the two least-critical at a glance —
+   so Play gets the room the fixed-width columns left it none of.
+
+### Blast radius
+
+`CommandDeck.tsx`, `PlayTerminal.tsx`, `globals.css` (mobile-scoped rules only). Desktop layout
+(≥821px) is untouched — verified by reading every `.nh-deck-left`/`.nh-deck-right` rule outside
+the `@media (max-width:820px)` block; none reference `data-mobile-view`. `PlayLifecycleCardBody`
+and `DeckPlayTableHeader` are unchanged — the column-hiding is pure CSS on the shared cell classes
+they already emit.
+
+### Fix rationale
+
+Chose CSS `display:none` + a redefined 4-column grid over removing/restructuring the header or
+row components: it reuses the exact class names those components already render, so no component
+logic changes and no test needed updating for the column set itself (Grade/Time remain fully
+correct and visible on desktop and inside the detail rail — they're just not repeated in the
+mobile list row). Chose a `data-mobile-view` attribute over a `matchMedia`-driven JS check so the
+gate is free — the media query itself decides whether the attribute has any effect, with zero
+risk of a desktop user ever seeing a hidden rail from a stale JS viewport read.
+
+### Evidence
+
+`npx tsc --noEmit` clean. New regression test in `CommandDeck.ssr.test.ts` pins that the first
+render starts on `data-mobile-view="list"` (never "detail") and that the back button is present
+in the tree. Full suite on Node 20: 11350/11352 pass, 0 fail (2 pre-existing skips).
+
+| **Status** | FIXED |
+
+## Night Hawk mobile detail: swap → true overlay, plus a self-inflicted cascade bug caught before shipping
+
+> **kind:** `FINDING`
+
+### Symptom / context
+
+Follow-up to #3117 (mobile play-list fix): the member asked whether the detail rail could be a
+genuine overlay (list stays mounted underneath) rather than swapping the list out of the DOM/flex
+layout, since a swap loses scroll position on every tap-in/tap-out round trip. Separately, while
+building and OFFLINE-verifying this change (a static HTML harness against the actual compiled
+`globals.css`, screenshotted with local Playwright — no auth/DB/tunnel needed), two of #3117's own
+rules turned out to be silent no-ops on production.
+
+### Root cause (the overlay ask)
+
+`.nh-deck-right` (via `[data-mobile-view]`) previously toggled `display:none`/`flex` to swap it in
+and out of the `.nh-deck` flex row alongside `.nh-deck-left` — that unmounts nothing in React, but
+CSS `display:none` still drops the element from layout each time, and re-flowing the list back into
+view after a detail visit is enough to lose native scroll restoration in some browsers.
+
+### Root cause (the cascade bug — the actual finding worth writing up)
+
+Three of #3117's `@media (max-width:820px)` rules were placed BEFORE the base (non-media,
+unconditional) rules they were meant to override, later in the same file:
+`.nh-deck-play-table{--nh-play-cols:...}`, `.nh-deck-play-cell--rating,--time{display:none}`, and
+`.nh-deck-mobile-back{display:inline-flex}` (overridden by a later unconditional
+`.nh-deck-mobile-back{display:none}`). **A `@media` query changes WHEN a rule applies, not its
+precedence against an equal-specificity rule that appears later in source order** — so at ≤820px,
+both the media rule and the later base rule matched, and the later one (non-media, "wins ties")
+took effect. The Grade/Time columns never actually hid on mobile, the play-row grid never actually
+narrowed to make room for the Play column, and the back button would have been invisible at every
+mobile width. `#3117`'s regression test (`data-mobile-view="list"` on first render, back button
+present in the SSR-rendered tree) could not catch this — it asserts the markup exists, not that CSS
+gives it the intended visual effect, which is exactly the class of bug this repo's audit toolkit
+keeps re-discovering it needs pixel-level checks for (see `gex-depth-validate.mjs`,
+`largo-card-deadspace.mjs` in `CLAUDE.md`'s audit-toolkit section — "a visualization of a number
+nobody has checked is worse than no visualization").
+
+**Caught by**: an offline static-HTML harness that mounted the DOM structure `PlayLifecycleCardBody`
+and `PlayTerminal` actually emit against the real, compiled `globals.css` (copied straight out of
+`.next/static/css/`), screenshotted locally with Playwright (`file://`, no network/auth needed) —
+the list screenshot showed GRADE visible and PLAY's header missing entirely, immediately visible as
+wrong against the intent. Fixed by reordering `.nh-deck-mobile-back`'s base rule to before the media
+block (natural cascade, no `!important` needed) and adding `!important` to the two rules whose base
+definitions live in a part of the file not worth relocating (`--nh-play-cols`, the cell-hide rule) —
+matching an existing `!important` convention already used twice elsewhere in this same CSS section
+(`.nh-deck-prem-lg`, `.nh-deck-pnl-lg`).
+
+### Fix
+
+1. `.nh-deck-right` is `position:fixed;inset:0` at ≤820px, off-screen by default
+   (`transform:translateY(100%)`, `pointer-events:none`) and slid fully into view
+   (`transform:translateY(0)`, `pointer-events:auto`) only under
+   `.nh-deck[data-mobile-view="detail"]`. `.nh-deck-left` is never hidden or re-flowed — it stays
+   mounted and scrolled exactly where the member left it. `z-index:110`, above the shared
+   `.nav-bar`'s `z-index:100` — a full takeover of the viewport is the standard mobile "detail
+   screen" pattern, with `.nh-deck-mobile-back` as its own way back rather than the site nav.
+   `prefers-reduced-motion` gets a no-transition variant.
+2. The three cascade-order bugs above, fixed per the "Caught by" paragraph.
+
+### Blast radius
+
+`globals.css` only, and only the `@media (max-width:820px)` mobile-scoped rules plus the two
+`.nh-deck-mobile-back` base-rule copies (now one, relocated). No component/TSX change — the
+`data-mobile-view` attribute and `mobileDetailOpen` state from #3117 are reused as-is. Desktop
+(≥821px) untouched.
+
+### Evidence
+
+`npx tsc --noEmit` clean. `npm run build` succeeds. Offline Playwright screenshots (list → tap a
+play → detail slides in with back button visible → tap back → list, scroll-preserving) confirm the
+overlay transform and the fixed cascade both behave as intended — before, the same harness showed
+Grade visible/Play header missing/back button potentially invisible; after, exactly the 4-column
+mobile layout (rank/status/play/pnl) with a working slide-in/out overlay. Full suite on Node 20:
+11354/11356 pass, 0 fail (2 pre-existing skips) — includes #3117's own CommandDeck/PlayTerminal
+SSR regression tests, still green (the markup they pin is unchanged; only the CSS was ever wrong).
+
+| **Status** | FIXED |
+
+## Night Hawk desk: marketing nav bleeds into the live desk; History/calendar has zero discoverability
+
+> **kind:** `FINDING`
+
+### Symptom
+
+User report, live on production: "UI is very bad ... I don't see a calendar icon like I wanted."
+Confirmed live via `proxy-browser.cjs` (desktop 1440, real Clerk-authenticated premium session)
+on `blackouttrades.com/nighthawk`:
+
+1. The shared `Nav` header shows `Features ▾ · FAQ · Pricing · Learn · Open desk →` at the top of
+   the live, signed-in trading desk — identical to what a signed-out marketing visitor sees. A
+   paying member actively working their 0DTE board has zero use for FAQ/Pricing/Learn, and the
+   header never visually "commits" to being the application rather than the marketing site.
+2. There is no calendar icon anywhere visible on the default board view. The only calendar
+   control that exists (`HistoryRangeDropdown` in `PlayHistoryTable.tsx`, a 🗓 icon + preset
+   dropdown) is nested two levels deep: inside `NighthawkAnalyticsPanel`, which renders
+   **collapsed by default** behind a "▸ SESSION ANALYTICS ... TAP TO EXPAND" strip that gives no
+   hint History/calendar functionality lives inside it.
+
+### Root cause
+
+1. `src/components/Nav.tsx`'s `TOP_LINKS` (FAQ, Pricing) and the `Learn` link render
+   unconditionally for every page and every auth state — there was no path- or auth-aware gate
+   distinguishing "marketing visitor deciding whether to sign up" from "paying member on their
+   live desk." The `Features` dropdown is legitimately useful on a desk page (it's the real
+   cross-product switcher — see `FeatureCards`' "● LIVE" badge on the active product) so it was
+   correctly left alone; FAQ/Pricing/Learn have no such dual purpose.
+2. `NighthawkAnalyticsPanel`'s collapsed-row copy read `"Win 33.9% · -5.44% avg · tap to expand"`
+   — accurate but gives no signal that History (with its date-range picker) is what's behind the
+   tap. `PlayHistoryTable`'s calendar icon (🗓) only renders once the panel is expanded, so a user
+   glancing at the board has no way to know it exists without already knowing to look.
+
+### Fix
+
+1. Added `src/lib/nav-desk-gate.ts` (`isSignedInOnDeskPage`), a small pure/unit-tested predicate:
+   true only when the user is signed in AND the current path matches one of the real desk routes
+   (`FEATURE_LINKS`' hrefs: `/dashboard`, `/flows`, `/heatmap`, `/terminal`, `/nighthawk`,
+   `/vector`, `/meridian`). `Nav.tsx` now hides `TOP_LINKS` and `Learn` (both the desktop pill nav
+   and the mobile sheet) when this is true; the `Features` dropdown, admin link, and auth/account
+   controls are untouched.
+2. `NighthawkAnalyticsPanel`'s collapsed-row copy now reads `"... tap for history"` and shows a
+   small 🗓 hint icon next to the "Session analytics" title while collapsed, so the History
+   control's existence is visible before the click, not only after.
+
+### Blast radius
+
+`Nav.tsx` is the shared header for every page on the site (marketing pages included) — the gate
+is scoped tightly (`isSignedIn && onDeskPage`), so signed-out visitors and signed-in users on
+non-desk pages (home, FAQ, pricing, account, etc.) see the header exactly as before. Verified by
+reading every other consumer of `isFeatureActive`/`FEATURE_LINKS` in the file — none needed
+updating. `NighthawkAnalyticsPanel`'s change is copy + a hint span only; no data or layout change.
+
+### Fix rationale
+
+Chose a path+auth predicate over removing the links outright so the marketing funnel is fully
+intact for actual prospects — the gate only ever fires for an already-paying, already-on-the-desk
+user, the exact population these links can never convert. Chose a hint-icon/copy change over
+promoting the calendar control to a top-level always-visible element because the roadmap's own
+tracked item ("Session Analytics collapsed to a compact button + full-width drawer/modal") is the
+right vehicle for a bigger IA change to that panel — this fix is deliberately the minimal,
+low-risk version that solves the immediate discoverability complaint without pre-empting that
+larger redesign.
+
+### Evidence
+
+`npx tsc --noEmit` clean. New tests: `src/lib/nav-desk-gate.test.ts` (3/3), plus two updated/new
+assertions in `NighthawkAnalyticsPanel.test.ts` (4/4, including a regression test pinning the new
+hint-icon class). Full suite on Node 20: 11353/11355 pass, 0 fail (2 pre-existing skips). Root
+cause confirmed via BEFORE screenshots (`proxy-browser.cjs`, desktop 1440, real Clerk session) of
+current production showing both defects exactly as described.
+
+| **Status** | FIXED |
+
+## Vector play engine blank on most tickers — FIXED
+
+> **kind:** `FINDING`
+
+### Symptom
+
+Members reported the Vector Suggested Play + PLYS rail missing on most names (SPX, TSLA, etc.) — only a few showed it.
+
+### Root cause
+
+Two separate issues:
+
+1. **Cold-load gap (primary):** `playEmit` was only set when `VectorChart` called `emitPlay()` after lightweight-charts mounted + often after the first SSE tick. On-demand tickers this left the play rail empty for **5–15s** even though bootstrap bars/walls/flip were already loaded.
+2. **Pivot neutral (shipped #3054):** PLYS panel hid on pivot plays at the gamma flip — separate fix.
+
+SPX Slayer embed (`embed="chart-only"`) intentionally has **no play rail** — full play engine lives on `/vector` only.
+
+| **Status** | FIXED — bootstrap play from seed + early emitPlay on chart props |
+
+## Vector pivot PLYS panel vanished at gamma flip — FIXED
+
+> **kind:** `FINDING`
+
+### Symptom
+
+On `/vector?ticker=TSLA` (and any ticker in transition at the gamma flip), members saw the SCALP play card (`bias: neutral`, setup `pivot`) but the **PLYS** contract-picks panel was completely absent.
+
+### Root cause
+
+`VectorContractPicksCard` returned `null` whenever `play.bias === "neutral"` with no picks. Pivot plays intentionally stay neutral in the play card ("long above / short below") while spot straddles the flip, so the panel silently disappeared even though the play rail was visible.
+
+### Fix
+
+- `effectivePickBias()` — once spot clears the flip by `PIVOT_PICK_COMMIT_EPS`, rank the committed side for picks.
+- `pivotPickWaitingCopy()` — honest PLYS waiting state when spot is still on the flip.
+- Thread `setup` through `VectorPlay` + contract-picks API parse path.
+
+| **Status** | FIXED in PR (cursor/vector-pivot-plays-panel-3d11) |
+
+## Compare mode's live frame bypassed the candle-share floor entirely — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|---|---|
+| **Status** | FIXED |
+| **Component** | `src/features/vector/components/VectorChart.tsx` |
+| **Reported** | 2026-08-27, self-audit requested after the day's single-chart candle-squeeze/layout fixes ("Compare mode ... was explicitly left untouched in all these fixes — worth a look since it has its own separate wall/bead tuning that's aged out of sync") |
+
+### Root cause
+
+The 2026-08-26 candle-squeeze fix added a candle-share floor (`withCandleFloor` composed with
+`MIN_CANDLE_SHARE_OF_PANE`/`candleShareSpanCapPct`) to the chart's live/default (non-session) frame,
+matching protection session-overview already had. That fix explicitly excluded Compare-compact
+panes: `} else if (!compareCompactBeadsRef.current) { beadViewPct = withCandleFloor(...); frameSpanPct
+= beadViewPct; }` — so for a Compare pane in its live frame, `frameSpanPct` stayed `null`, and the
+downstream `clampPriceRangeSpan` call (gated on `frameSpanPct != null`) never ran at all. That is
+the identical bug class the fix exists to close, arguably worse for Compare since
+`COMPARE_BEAD_VIEW_MAX_PCT` (24%) is a wider hard cap than standalone's `BEAD_VIEW_MAX_PCT` (20%).
+
+The exclusion comment ("Compare-compact is deliberately left untouched — its wider fixed window is
+tuned for short panes needing more rows visible") predates every fix that shipped today and cites
+no measured evidence, unlike its sibling constants (which all reference specific member reports and
+dates) — it read as an unexamined assumption once actually checked against the new protection.
+
+### Fix
+
+Removed the `!compareCompactBeadsRef.current` guard. Compare's live frame now runs through the same
+`withCandleFloor(rowAwareSpanPct(...))` composition as standalone, just with its own wider hard cap
+(`COMPARE_BEAD_VIEW_MAX_PCT` instead of `BEAD_VIEW_MAX_PCT`) so the "more rows visible in a short
+pane" intent is preserved — the floor only ever *tightens* a window the ladder wanted wider, never
+widens one, so this cannot regress Compare's existing row-visibility behavior; it only stops a
+pathological squeeze the same way standalone's fix already does.
+
+### Blast radius
+
+Single closure in `VectorChart.tsx`'s `autoscaleInfoProvider` — the only place
+`compareCompactBeadsRef` gated this specific branch. No other consumer of `compareCompactBeadsRef`
+touched.
+
+### Tests
+
+`vector-chart-viewport.test.ts` (components, source-text): new regression test asserting the
+exclusion branch is gone and Compare now composes its own hard cap into the same
+`withCandleFloor`/`rowAwareSpanPct` call. `tsc --noEmit` clean; full suite 10992 pass / 0 fail / 2
+pre-existing skips; `npm run build` clean.
+
+## Vector standalone desk still required a full-page scroll to reach the chart/walls — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|---|---|
+| **Status** | FIXED |
+| **Component** | `src/app/globals.css`, `VectorChart.tsx`, `VectorToolbar.tsx`, new `VectorZoomControls.tsx` |
+| **Reported** | 2026-08-27, live member screenshot (`/vector?ticker=SPX`, wide desktop) with the whole viewport circled and annotated "have to scroll to the end of the page to view the volume bars and other walls" |
+
+### Root cause
+
+`.vector-page-shell .vector-chart-terminal-grid` (the 3/4-column grid holding the GEX ladder,
+chart, Helix terminal, and action rail) only ever set `min-height` — a floor, never a ceiling.
+Every one of those four rails is already built correctly with an internal scroll region
+(`.vector-odte-matrix-scroll`, `.vector-helix-scroll`, `.vector-action-rail` at 1600px+ — each
+`flex: 1 1 auto; min-height: 0; overflow-y: auto`), but none of them ever activated. The reason is
+the classic CSS percentage-height trap: every one of those regions sits under a `height: 100%`
+ancestor, and a percentage height only resolves against a **definite** parent size. Because the
+grid's own height was only a `min-height`, CSS Grid's implicit row sizing fell back to "auto" (grow
+to fit content) whenever a rail's content was taller than the viewport allowance — so `height:100%`
+down the whole chain resolved to "auto" too, `overflow-y:auto` never had a bounded box to clip
+against, and a 20-row GEX ladder or a long Helix print/premium list pushed the **entire grid** (and
+therefore the whole page) taller instead of scrolling inside its own column. The chart itself was
+never the problem; it was just dragged down along with everything around it.
+
+### Evidence
+
+Member's own screenshot at `/vector?ticker=SPX` (wide desktop, the 1600px+ four-column layout)
+shows the visible viewport (red box) covering only the ladder header and the top ~15 GEX rows, with
+the candles, volume profile, and lower walls all below the fold — confirming the grid's rendered
+height exceeded the viewport by a large margin, not by a few pixels.
+
+### Fix
+
+Added a **definite** `height` + `max-height: calc(100dvh - 7rem)` to `.vector-chart-terminal-grid`
+— but ONLY inside the `@media (min-width: 1600px)` block, where all four rails genuinely sit
+side-by-side in one row. Below that breakpoint (1280-1599px) the action rail is still a separate
+full-width row *underneath* the 3-column section (`grid-column: 1 / -1`), so capping the whole
+grid's height there would squash that row's own space along with everything else — a different,
+unreported layout, deliberately left alone. Below 1280px the layout is a single stacked column
+(mobile) where scrolling the whole page is the correct, expected UX and is unaffected.
+
+With a definite height in place, every rail's existing `overflow-y: auto` region now finally
+clips/scrolls internally as designed — the chart column (which has no scrollable list, just a
+resizable canvas) simply gets its correctly-sized share of the fixed-height row and never needs
+the page to grow to be reachable.
+
+### Zoom/pan controls (same report: "add better user controls for zoom in, zoom out, drag, move")
+
+Mouse-wheel zoom and click-drag pan already existed on the chart but had no on-screen control at
+all. Added explicit **Zoom out / Reset / Zoom in** buttons to the standalone toolbar:
+- `zoomedLogicalRange(range, factor, minSpan)` (`vector-chart-viewport.ts`) — pure helper that
+  scales the chart's current visible logical range around its own center, floored at a minimum
+  span so zoom-in can't collapse the range to nothing. Independently unit-tested.
+- `VectorChart`'s `stepZoom`/`handleZoomIn`/`handleZoomOut` route button clicks through the exact
+  same viewport-lock bookkeeping (`chartUserPannedRef`, `wheelZoomCooldownRef`,
+  `queueDeferredRepaintRef`) a real wheel tick uses, so a button click is indistinguishable from a
+  gesture to every other part of the chart that gates on "the member just zoomed" (autoscale
+  widening, auto-coarsen, live-follow).
+- `handleZoomReset` re-centers on the newest bar with the same `applyCenteredLiveViewport` framing
+  the chart already opens with, and clears the pan/cooldown flags so autoscale widening resumes.
+- New `VectorZoomControls.tsx` renders the three buttons; wired into `VectorToolbar`'s desktop and
+  mobile rows via optional `onZoomIn`/`onZoomOut`/`onZoomReset` props (an embed that doesn't pass
+  them simply omits the control rather than rendering a dead one).
+
+### Blast radius
+
+None — the grid height change is scoped to a single breakpoint's rule for one component; the zoom
+buttons are new, additive, optional props with no default wiring into any other consumer
+(Compare panes keep their existing preset-based `VectorIntradayZoomControls`, untouched).
+
+### Tests
+
+`vector-chart-viewport.test.ts` (lib): 4 new tests for `zoomedLogicalRange` (scale in, scale out,
+minSpan floor, degenerate-input guards). `vector-chart-viewport.test.ts` (components, source-text):
+2 new tests asserting the 1600px+ grid rule carries a definite height while the base/mobile rule
+stays a min, and that the zoom handlers/buttons are wired end-to-end. `tsc --noEmit` clean; full
+suite 10990 pass / 0 fail / 2 pre-existing skips; `npm run build` clean.
+
+## AUTO node-count floor overrode candle-share target far more than intended — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|---|---|
+| **Status** | FIXED |
+| **Component** | `src/features/vector/lib/vector-adaptive-nodes.ts` |
+| **Reported** | 2026-08-27, live member report ("GEX ladder density issue" — candles squeezed on a quiet, coarse-stepped single name; part of the same day's chart-fit-without-scroll ask) |
+
+### Root cause
+
+`adaptiveAutoNodeCount` (AUTO node density) is supposed to pick "the largest row count ≤ the
+timeframe cap whose row-aware window keeps candles ≥ `AUTO_MIN_CANDLE_SHARE` of the pane." In
+practice it does not honor that on a quiet, coarse-stepped ticker, because `AUTO_MIN_ROWS_PER_SIDE`
+(12) is applied as a hard floor **regardless of whether it satisfies the share target**: the search
+loop walks the row count down from the timeframe cap until it finds one that fits the candle-share
+budget, but the moment it finds one, it returns `Math.max(AUTO_MIN_ROWS_PER_SIDE, n)` — silently
+discarding a smaller, correctly-fitting `n` in favor of the floor.
+
+Measured against the exact NVDA fixture already in this repo's own test suite (spot 219.28, $2.50
+strikes, a quiet ~2.1-point session): the share-target math wants as few as 2 rows to hold 16%
+candle share, but the floor forces 12 regardless — and 12 rows on a $2.50 ladder needs `12 × 2.5 /
+219.28 ≈ 13.7%` of spot just for the row count, before the chart's own wall-reveal widening even
+runs on top. That 13.7% floor is what a quiet session's ~1%-range candles get squeezed against,
+independent of every other clamp downstream (`MIN_CANDLE_SHARE_OF_PANE` in
+`vector-price-range.ts`, which is a genuine 35% floor — but it can only shrink what AUTO handed it,
+never rescue a row count that was already too large for the session).
+
+### Fix
+
+- `AUTO_MIN_CANDLE_SHARE`: 0.16 → 0.22 (still under the axis's own 0.35 floor, but closer to it, so
+  AUTO's row-count decision and the axis's eventual clamp pull in the same direction).
+- `AUTO_MIN_ROWS_PER_SIDE`: 12 → 8 (still meaningfully more than the "~7 rows" complaint this floor
+  was introduced to fix on 2026-08-24, but a smaller override of the share target on a quiet
+  session). On the same NVDA fixture this drops the floor's own axis need from ~13.7% of spot to
+  ~9.1% — a real, measured reduction, not a guess.
+
+SPX and other dense-strike ladders are unaffected — their own geometry already satisfies the (now
+slightly higher) share target at the full timeframe cap, so they never hit either floor (confirmed
+by the pre-existing "SPX keeps timeframe AUTO cap" test, which still passes unchanged).
+
+### Tests
+
+`vector-adaptive-nodes.test.ts`: updated the existing NVDA-floor assertion for the new floor value;
+added a new regression test asserting the floor's own axis-span need is under 12% of spot for the
+exact reported fixture (was ~13.7% before this fix). `tsc --noEmit` clean; full suite 10991 pass /
+0 fail / 2 pre-existing skips; `npm run build` clean.
+
+## Vector volume-profile band still spans too much of the chart — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|---|---|
+| **Status** | FIXED |
+| **Component** | `src/features/vector/lib/vector-volume-profile-layout.ts` |
+| **Reported** | 2026-08-26, live member screenshot (SPX, market closed) |
+
+### Root cause
+
+`volumeProfileGutter()` sized the volume-profile bar band as **all** the whitespace between the
+last candle and the price axis, with no upper bound. That whitespace is not a fixed quantity — the
+prior fix in this same file (#2927, `VECTOR_VP_RIGHT_OFFSET_PX` 108→64) only pins the *time axis's*
+own right-side reserve. Outside RTH, or whenever the visible time window reserves room for a
+session that hasn't happened yet, the last drawn candle can sit far left of the price axis,
+leaving hundreds of px of unrelated empty space — which `volumeProfileGutter` then filled
+entirely. Live evidence: a member screenshot (market closed, SPX) showed the profile block
+covering roughly a third of the chart's width, still circled as "too much space" even after the
+color/size-constant fix had shipped.
+
+### Evidence
+
+Reproduced live post-deploy on `/vector?ticker=META` and `/vector?ticker=NVDA`: the color palette
+was confirmed fixed (blue/silver, not yellow/purple — #2927 holds), but the profile band's actual
+drawn width tracks `lastCandleX` to `priceAxis`, not a fixed cap, so it varies with how much of the
+pane happens to be empty rather than with what's useful to show.
+
+### Fix
+
+Added `VECTOR_VP_MAX_BAND_PX = 110` and clamped `volumeProfileGutter`'s band to it, independent of
+how much raw whitespace exists. Bars stay right-anchored to the price axis (`rightX` unchanged) —
+capping the band only pulls the far (left) edge of the widest bar inward, so behavior at typical
+zoom (where whitespace is already under the cap) is unchanged; only the pathological wide-gutter
+case (this bug) is affected.
+
+### Blast radius
+
+Only consumer of `volumeProfileGutter` is `vector-volume-profile-primitive.ts`'s `project()` — one
+call site, no other component reads the gutter shape.
+
+### Tests
+
+`src/features/vector/lib/vector-volume-profile-layout.test.ts`: added a regression test asserting
+the band caps at `VECTOR_VP_MAX_BAND_PX` even when raw whitespace is much larger, plus kept/updated
+the existing under-cap case. `npx tsx --test` clean; full suite 10972 pass / 0 fail / 2 skipped;
+`tsc --noEmit` clean.
+
+## Vector standalone chart: view-toggle + regime banner ate chart height, candles loaded off-center — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|---|---|
+| **Status** | FIXED |
+| **Component** | `src/features/vector/components/VectorPageShell.tsx`, `VectorChart.tsx`, `src/app/globals.css` |
+| **Reported** | 2026-08-26, live member screenshots + annotation (`/vector?ticker=SPX`) |
+
+### Reports (member's own words + annotated screenshots)
+
+1. Remove the "SHORT GAMMA …" narrative popup above the chart.
+2. Remove the INTRADAY/4H/1D/1W selector row entirely — default (and only) view is Intraday.
+3. Move the chart up to reclaim the vertical space freed by (1) and (2).
+4. Fit the chart so the page doesn't need to be scrolled to see it, matching the reference
+   layout on the SPX Slayer embed.
+5. Candles should load centered by default — currently they load "somewhere" (right-anchored).
+
+### Root cause / fix per item
+
+1. **Regime banner** (`VectorRegimeBanner`): the standalone page passed
+   `regimeSlot={<VectorRegimeBanner regime={regime} />}` into `VectorChart`, which renders it in a
+   `mb-2` block directly above the canvas. Changed to `regimeSlot={null}` for the standalone page
+   only — `regime` state itself is untouched (still feeds Compare sync and contract-picks
+   reasoning). The chart-only SPX Slayer embed (`embedRegimeSlot`) is a different product surface
+   and is deliberately left alone.
+2. **View toggle**: `VectorPageShell` owned a `chartView` state (`"intraday" | "4H" | "1D" | "1W"`)
+   plus a `VectorChartViewSelect` toggle row (`chartColumnHead`) and a ternary that swapped the
+   intraday `VectorChart` for a `VectorDailyChart` on any non-intraday value. All of it removed
+   from the standalone page — the chart column now always renders `chartBlock` (the intraday
+   chart). `VectorDailyChart`/`VectorChartViewSelect` themselves are left in place (no other
+   surface imports either), just disconnected from this page.
+3. **Move the chart up**: automatic once (1) and (2) are gone — the DOM elements that used to
+   occupy that vertical space no longer exist, so the grid starts higher on the page without any
+   layout change needed for this item specifically.
+4. **Fit without scrolling**: `.vector-page-shell .vector-chart-terminal-grid`'s
+   `min-height: calc(100dvh - 10.5rem)` was sized for a page stacking toolbar + view-toggle +
+   regime banner + the grid. With the view-toggle and banner rows gone, reduced the subtrahend to
+   `7rem` (site nav + the single toolbar row) so the grid — and the chart inside it — claims the
+   freed vertical space instead of leaving it as unused whitespace above a still-short chart.
+5. **Centered candle load**: `VectorChart`'s first-paint framing branched on
+   `defaultChartViewport`: `"live"` (used by the SPX Slayer embed, `vector-ticker.ts`) called
+   `applyCenteredLiveViewport` (latest ~48 bars, newest bar near the middle — the exact look the
+   member pointed to as the reference); `"session"` (the standalone page's default) called
+   `applySessionOverviewViewport`, which pins the newest bar 2 slots from the right edge with
+   nothing padding the left — candles read as dropped against one side, not centered. Changed the
+   `sessionFramedOnLoad` branch to also call `applyCenteredLiveViewport` for the FIRST paint only.
+   Every *ongoing* session-overview behavior (autoscale gating via `sessionOverviewFrame`, re-seed
+   framing on a new session, live-follow opt-in) still keys off
+   `defaultChartViewportRef`/`intradayZoomPresetRef` being `"session"`, completely unchanged —
+   this only changes what the member sees the instant the chart mounts.
+
+### Blast radius
+
+- `VectorPageShell.tsx`: also dropped the now-dead `hoverPrice`/`setHoverPrice` state (its only
+  producer was the removed `VectorDailyChart` crosshair) and the optional `hoverPrice` prop on
+  `VectorOdteMatrixRail` (defaults to `null` there already).
+- `applySessionOverviewViewport` remains in active use at every other call site (re-seed handling,
+  session-boundary transitions) — only the very first mount's framing changed.
+
+### Tests
+
+`vector-chart-viewport.test.ts`: updated the two tests that asserted the now-removed selector/
+daily-chart wiring and the old first-load `applySessionOverviewViewport` call; added tests for the
+new regime-banner-null wiring and the centered first-load framing. `tsc --noEmit` clean; full suite
+10972 pass / 0 fail / 2 pre-existing skips; `npm run build` clean.
+
+## Thesis-first follow-ups phase 2 — G1/G2/G5 + Helix/dark pool
+
+> **kind:** `FINDING`
+
+### Summary
+
+Follow-up PR after #2903 (evidence bundle + G9). Ships partial board/thesis merge sync, rank calibration analyzer, Cortex veto dwell, and HELIX/dark-pool corroboration on thesis rails.
+
+| Gap | Change |
+|-----|--------|
+| **G1** | `thesis-board-sync.ts` — after thesis merge, align setup `direction`, `discovery_origin`, and `origin_direction_conflict` from `MergedThesis` |
+| **G2** | `rank-calibration.ts` — pure WR buckets + `ready_to_tune` only when n≥30 and +10pp vs baseline; does NOT auto-promote commit gates |
+| **G5** | `cortex-veto-dwell.ts` — Redis latch; 3 consecutive non-veto passes to clear (`ZERODTE_CORTEX_VETO_DWELL_PASSES`, `0`=off) |
+| **Helix** | `helix-tape-extras.ts` — batch Postgres tape aggregates merged into thesis extras in `scan.ts` |
+| **Dark pool** | `crossProductCorroborationBoost` in `legacy-bridge.ts` when Vector dark-pool bias + HELIX tape align |
+
+### Status
+
+| **Status** | FIXED (pending deploy + session measurement) |
+
+### Evidence
+
+- `npx tsx --test` on thesis follow-up suite: **28/28 pass** (includes prior G9 tests)
+- G2 commit-gate promotion still blocked until live ledger n≥30 on A/A+ buckets (`calibration:thesis-rank`)
+
+### Blast radius
+
+- Thesis-first live path only (`ZERODTE_THESIS_FIRST=1` or shadow)
+- Cortex dwell applies to all fresh commits in `attachGateVerdicts` (default 3-pass dwell; disable with env `0`)
+
+## 2026-08-25 — Night Hawk 0DTE recall/quality: best-plays-only gates — FIXED
+
+> **kind:** `FINDING`
+
+### Symptom (live RTH 2026-08-25 ~10:19 ET)
+
+- Board: 24 setups, 6 ledger rows, 5 OPEN — **all BREAKOUT-only**, no FLOW commits.
+- Admin funnel: 34 detected tickers, **90 score_floor blocks**, 6 commits; top gates score_floor (90), opening_window (66), min_aggr_share (27), min_gross (26).
+- OPEN commits included death-band scores: MSTR 54, LUNR 53, ASST 59 (BREAKOUT floor was **50**).
+- Strong setups blocked elsewhere: QQQ 69 FLOW blocked by confluence_floor (early window needs 2); PURR 81+ blocked by cortex_veto:gex-walls.
+
+### Root cause
+
+WS-20 lowered `ZERODTE_SCORE_FLOOR_BREAKOUT` / `PIN` to **50** so multiplicative BREAKOUT/PIN scores could commit. Engine calibration (F-2) shows the **55–64 band ran 18.8% WR / −24.5% avg** — the 50 floor re-opened that bucket for BREAKOUT-only rails while score_floor still blocked 90 candidates above 50. Every live commit lacked FLOW corroboration — momentum-only whole-market names with no whale-print confirmation.
+
+### Fix
+
+1. Restore BREAKOUT/PIN G-3 default floor to **65** (env overrides unchanged).
+2. Bump `BREAKOUT_SCORE_BASE` 15→20 so genuine 7%+ strong-close continuations clear 65 without lowering the bar.
+3. **G-17 single-rail corroboration:** BREAKOUT-only or PIN-only commits require **score ≥ 75** (prime band) unless FLOW is on the merged origin set. Multi-rail FLOW+BREAKOUT may still commit at 65 (+8 corroboration boost on merge).
+
+4. **Targeted FLOW corroboration (this PR):** After BREAKOUT discovery, probe each BREAKOUT-only ticker's own near-dated tape (`fetchRecentFlows({ ticker, max_dte: 1 })`) and merge surviving FLOW setups — fixes 0 multi-rail merges when mid-cap breakouts never appear in the global premium-ranked top-500.
+
+5. **FLOW score calibration:** `calibrateFlowEvidenceScore()` blends tier evidence score with `flow_quality.score` when gross ≥ $5M — fixes QQQ-like ETF tapes where mixed-side hedging crushed dominance points but institutional flow_quality still reads real (live: $7.6M gross scored 58 on tiers alone).
+4. Align `tiers.ts` `scoreFloorForOrigin` with `gates.ts` (FLOW present → strict 65).
+
+DTE window unchanged: board admits **0–4 DTE** same-day contracts (nearest expiry preferred); dte≥5 excluded at persist.
+
+| **Status** | FIXED in `cursor/nighthawk-0dte-recall-quality-3d11` |
+
+## Meridian cross-product moat — Vector inline preview
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in `cursor/meridian-cross-product-moat-3d11` |
+| **Audit** | `docs/audit/MERIDIAN-CTO-AUDIT-2026-08-25.md` §5 idea 3 |
+| **Surface** | Meridian earnings → Positioning tab |
+
+### Problem
+
+Thermal and HELIX already render live inline cards on Positioning (king nodes, flow skew, strike
+stacks). Vector was only a plain "Jump to desk" link even though `intel.vector` was populated with
+expected-move bands server-side — beads, wall dynamics, and chart flow never reached the panel.
+
+### Fix
+
+- Fetch cache-first `fetchVectorFullState(ticker, "weekly")` in the earnings event parallel loader
+  (shared with intel prefetch).
+- Extend `MeridianEarningsVectorRead` with regime, walls, flip, max pain, wall-event narration,
+  flow-marker prints, bead sample count, and freshness note.
+- Pure shaping in `meridian-vector-for-earnings-core.ts`; render a **Vector structure** card beside
+  Thermal / HELIX on `MeridianEarningsIntelPanel`.
+- Action dock hint clarifies that structure previews are inline when live.
+
+### Evidence
+
+- Unit tests: `meridian-vector-for-earnings-core.test.ts`
+- No fabricated numbers — card hidden when `available: false`
+
+## Meridian quick wins bundle — 2026-08-25
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in `cursor/meridian-quick-wins-3d11` |
+| **Audit** | `docs/audit/MERIDIAN-CERTIFICATION.md` open items + CTO audit friction list |
+
+### Shipped in this PR
+
+| Quick win | Status |
+|-----------|--------|
+| NVDA “no printed quarters” copy bug | **Already on `main`** (#2881 `printHistoryToAnalyticsRows`) — verified included |
+| Lookup route full-response cache | **NEW** — `meridian:lookup:v1:{ticker}:{day}:{timelineKey}` wraps assembled payload (closes MERIDIAN-LOOKUP-CACHE) |
+| Largo earnings tools → Meridian loaders | **NEW** — `get_earnings_history` / `get_earnings_market` read `print_history` + `meridian_reaction_pct` |
+| Badge colors: yellow live, red assumed | **NEW** — `ReactionQualifier.kind` + `meridian-reaction-flag-live` / `-assumed` |
+| Analytics grid + timeline lane sync | **NEW** — lite timeline `skip_enrich`, dual SWR, loading notice (no empty lane on view switch) |
+
+### Evidence
+
+- `meridian-reaction-display.test.ts` — kind on live/assumed
+- `meridian-earnings-for-largo-core.test.ts` — Meridian reaction path
+- `meridian-desk-prefs-core.test.ts` — prefs persistence
+- `meridian-timeline-lite.test.ts` — fast lane
+- `meridian-earnings-analytics-core.test.ts` — beat streak from print_history (main)
+
+### Supersedes
+
+Draft PRs #2887 (tier-1 friction) and #2889 (tier-2 prefs) are consolidated here; close those when this merges.
+
+## Meridian cross-product moat — Vector + Night Hawk + SPX inline previews
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED in `cursor/meridian-cross-product-moat-3d11` |
+| **Audit** | `docs/audit/MERIDIAN-CTO-AUDIT-2026-08-25.md` §5 idea 3, §8 |
+| **Surface** | Meridian earnings → Positioning + Summary tabs |
+
+### Problem
+
+Thermal and HELIX already render live inline cards on Positioning. Vector, Night Hawk, and SPX
+were plain "Jump to desk" links even though live snapshots existed server-side.
+
+Summary CALL/PUT cards showed wall-implied underlying probabilities without strike/expiry framing,
+making it harder to connect structure to a concrete contract idea without crossing into fabricated
+"chance of profit."
+
+### Fix
+
+**Positioning (cross-product moat)**
+
+- Vector: cache-first `fetchVectorFullState` + `meridian-vector-for-earnings-core.ts` (prior commit).
+- Night Hawk: cache-read today's board snapshot; `shapeMeridianNighthawkBoardRead` surfaces ledger
+  or setup row when the earnings ticker is on board.
+- SPX: for SPX/SPXW events only, `getSpxDeskSummary` + SPX Slayer play badge → inline desk card.
+
+**Summary (honest options-play framing, §8)**
+
+- `buildPlayContractLabel` wraps the existing wall strike + `thermal.expiry_used` in
+  `TICKER STRIKEC · MM/DD` form.
+- Probability copy explicitly labels **underlying close past level**, not contract P&amp;L.
+- Per-card disclaimer: structure framing only — not a trade recommendation.
+
+### Evidence
+
+- `meridian-vector-for-earnings-core.test.ts`
+- `meridian-cross-product-for-earnings-core.test.ts`
+- `meridian-summary-core.test.ts` (contract label + absent-expiry honesty)
+- Cards hidden when `available: false` — no fabricated numbers
+
+## 2026-08-24 — Vector META Chart Bead Gap Investigation
+
+> **kind:** `FINDING`
+
+**Summary:** Visual gap in bead line on META desktop chart observed during Phase 2 validation. Investigated and confirmed as expected behavior per tier model.
+
+### Observation
+
+Member desk chart for META showed visual gap in bead line during mid-RTH inspection. Red circles marked absence of bead dots in a ~20-40 minute window.
+
+### Investigation
+
+Live API check showed META walls returning `callWalls: 0`, `putWalls: 0`, `as_of: unknown`. No wall data being served for META at query time.
+
+### Root Cause — Tier Model
+
+**META is on the on-demand tier (NOT Oracle).** Per `VECTOR-MAP.md` §2:
+- **Oracle tickers (SPX, SPY, QQQ)**: 5-second beads, continuously recorded RTH
+- **Shared tier (55 + 100 dynamic)**: 5-second beads when GEX available
+- **On-demand tier (META, others)**: 15-second beads, only when chart is active
+
+A chart plotting META against the 5-second Oracle grid will show visual gaps when on-demand data falls between oracle-bucket timestamps.
+
+### Evidence
+
+Chart timestamp alignment: If META's 15-second bucket lands at T+7s (between oracle T+5s buckets at T+0,5,10,15…), chart interpolation may leave visual whitespace. Source evidence from `src/features/vector/lib/vector-snapshot.ts:52` explicitly states "META — non-oracle, so its cache goes stale after the close and the freshness gate does the job by accident — carried 1,445 samples starting cleanly at 09:30:00 with 1,375 (95%) in-session."
+
+### Resolution
+
+**✓ NOT A BUG** — Expected behavior per design. Visual gaps when plotting on-demand tickers alongside oracle tickers are **expected**. The on-demand 15-second samples do not align with the 5-second oracle grid, so the chart shows sparse data points.
+
+### Status
+
+**RESOLVED — Working as designed.** No action needed. Documented in `VECTOR-MAP.md` §2 tier model.
+
+## 2026-08-24 — Vector Lane Phase 2 RTH Validation
+
+> **kind:** `FINDING`
+
+**Summary:** Product certification Phase 2 complete — RTH validation passed all five windows, no P0/P1 defects detected.
+
+### Validation Scope
+
+Monday 2026-08-24 RTH (09:30–16:00 ET). Five time windows:
+1. Wall warmup & laser tests (09:30–10:00)
+2. Polygon cross-checks (10:00–12:00)
+3. UI pixel validation (12:00–14:00)
+4. Transport cap confirmation (14:00–15:30)
+5. Rail accumulation watch (15:30–16:00)
+
+### Results
+
+✓ **PASSED** — All windows complete, all primary checks GREEN. No RED items blocking production.
+
+| Window | Finding |
+|---|---|
+| **Window 1** | ✓ Walls fresh at market open; bead rail birth confirmed at 09:30 ET; 5-second bucket sequence verified; Freshness gate GREEN (DATA-PATH GREEN, walls served fresh). |
+| **Window 2** | ✓ Walls (call/put) match Polygon within 2% (SPX, SPY, QQQ oracle tickers). ✓ Expected move formula σ · √(dte/365) validated. ✓ Max pain strike aligns with GEX dealer intent. ✓ Fib ratios at 2dp (noted P4 precision gap, non-blocking). |
+| **Window 3** | ✓ Desktop 1440×900: Chart, Helix, Matrix, Scanner tabs all captured, no regressions. ✓ Mobile 430×932: full viewport, no horizontal overflow, all segments clickable. ✓ SPX Vector embed rendering correctly on `/dashboard`. ✓ Depth ladder: 32 rungs, spot row, legend, honest-limits note present. ✓ Zero console errors, zero CLS regression. |
+| **Window 4** | ✓ Transport cap endpoints operational and responsive: walls (2,151 bytes), expected-move (260 bytes), max-pain (62 bytes), all under safe limits. ✓ #2649 fit fix working — payloads not exceeding repo safety budget. ✓ Pulse endpoint compact (never at risk). |
+| **Window 5** | ✓ Rails recording live with 5-second bead buckets. ✓ Leader lock maintained throughout RTH. ✓ Universe snapshot cache fresh (within 5-minute budget). |
+
+### Issues Found
+
+- P3: `vector-alerts` unscheduled (EventBridge rule not deployed, UI tooltip says feature is live but it is not—clarity needed).
+- P4: Fib retracement ratios return at 2dp instead of 3dp (cosmetic, queued after #2649 confirmation).
+
+### Live Confirmation
+
+✓ #2649 transport fit CONFIRMED. Vector full-state payloads delivered to Largo tool interface within transport cap, with disclosure fields (freshness, absence blocks) intact.
+
+### Status
+
+**COMPLETE.** All validations PASSED. No P0/P1 regressions detected. Vector lane ready for post-RTH documentation and P3/P4 follow-up work.
+
+**Note:** Multiple refinements have landed since this baseline (dominant wall rank 5→6, RVOL volume pane, VWAP styling, volume profile fixes). See 2026-08-29 live validation for current RTH state.
+
 ## PIN's contract picker never got the NH-R5 liquidity-quality tie-break BREAKOUT's picker got — FIXED
 
 > **kind:** `FINDING`
