@@ -49,6 +49,7 @@
     "scan:swing": "node --import tsx scripts/audit/swing-discovery-scan.mjs",
     "sim:swing-portfolio": "node --import tsx scripts/audit/swing-portfolio-sim.mjs",
     "wr:condor": "node --import tsx scripts/audit/condor-wr.mjs",
+    "ab:tier-exit-mode": "node --import tsx scripts/audit/tier-exit-mode-ab.mjs",
     "calibration:nighthawk": "node --import tsx scripts/audit/nighthawk-calibration-table.mjs",
     "capture:veto-flicker": "node --import tsx scripts/audit/veto-flicker-capture.mjs",
     "healthcheck:0dte": "node --import tsx scripts/audit/zerodte-e2e-healthcheck.mjs",
