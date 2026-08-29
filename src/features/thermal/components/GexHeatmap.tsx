@@ -579,6 +579,9 @@ function recomputeLevels(
   totals: Record<string, number>,
   spot: number
 ): { posWall: number | null; negWall: number | null; flip: number | null } {
+  // Guard against invalid spot (NaN, infinite, or ≤0) that could corrupt the flip calculation.
+  if (!Number.isFinite(spot) || spot <= 0) return { posWall: null, negWall: null, flip: null };
+
   const entries = Object.entries(totals)
     .map(([s, v]) => ({ strike: Number(s), value: v }))
     .filter((e) => Number.isFinite(e.strike))
