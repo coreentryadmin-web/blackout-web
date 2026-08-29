@@ -132,3 +132,40 @@ export function fitScreenerForModel(raw: any[], maxShown = 3): { fitted: Screene
     },
   };
 }
+
+// ============ get_earnings related_news ============
+// MEASURED TRUNCATED live 2026-08-29 (largo-truncation-probe.mjs, control PROVEN, truncation
+// point reported at `related_news`). `fetchBenzingaEarnings(sym, 15)` returns up to 15 news
+// items, each carrying `body` (up to 2000 chars) + `teaser` (up to 400 chars) + title/url/
+// author/tickers/channels/tags (fetchBenzingaNews, providers/polygon.ts) — up to ~37KB for the
+// field on its own, more than double the 16k transport cap before the structured earnings
+// calendar/history/estimates fields (the tool's actual primary answer, per its own header
+// comment) are even reached. This field is explicitly SECONDARY — "stories mentioning this
+// ticker in the earnings channel, NOT its own results" — so it is trimmed hard rather than
+// generously: 5 items, dropping `body` (the field never needed for a headline-level mention)
+// and truncating `teaser` further.
+export interface EarningsRelatedNewsFittedResult {
+  related_news: Array<{ title: string; teaser: string; published: string; url: string }>;
+  related_news_shown: number;
+  related_news_truncated: boolean;
+  related_news_max_shown: number;
+}
+
+export function fitEarningsRelatedNewsForModel(
+  raw: Array<Record<string, unknown>>,
+  maxShown = 5
+): EarningsRelatedNewsFittedResult {
+  const shown = Math.min(raw?.length || 0, maxShown);
+  const related_news = (raw ?? []).slice(0, shown).map((a) => ({
+    title: String(a.title ?? ""),
+    teaser: String(a.teaser ?? "").slice(0, 200),
+    published: String(a.published ?? ""),
+    url: String(a.url ?? ""),
+  }));
+  return {
+    related_news,
+    related_news_shown: shown,
+    related_news_truncated: (raw?.length || 0) > maxShown,
+    related_news_max_shown: maxShown,
+  };
+}

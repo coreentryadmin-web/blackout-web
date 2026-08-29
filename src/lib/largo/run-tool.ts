@@ -850,6 +850,13 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         ]);
         const next_report = parseNextEarningsFromBenzinga(sym, calendar.rows, todayEtYmd());
         const calendar_error = (calendar as { error?: string | null }).error ?? null;
+        // MEASURED TRUNCATED live 2026-08-29 — `related` alone (up to 15 full articles, each
+        // carrying up to 2000 chars of body text) can run to ~37KB, more than double the 16k
+        // transport cap, before the structured fields below are even reached. Capped at the
+        // Largo boundary; `related.length` below still reads the FULL fetch for source
+        // detection, since fitting must never change what "no Benzinga news at all" means.
+        const { fitEarningsRelatedNewsForModel } = await import("@/lib/largo/market-data-fits");
+        const fittedRelatedNews = fitEarningsRelatedNewsForModel(related);
         // UW serves its side of this payload as STRINGS, with moves/returns as unlabelled
         // fractions — `reaction: "-0.0915"` is -9.15%, not -0.09%. See uw-earnings-normalize.ts.
         return normalizeUwEarnings({
@@ -864,7 +871,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
           calendar_error: calendar_error ?? history.history_error ?? null,
           // Renamed from `benzinga_news`: these are stories mentioning this ticker in the earnings
           // channel, NOT its own results. The old name invited exactly the wrong reading.
-          related_news: related,
+          ...fittedRelatedNews,
           unusual_whales: uw,
           estimates,
         });
