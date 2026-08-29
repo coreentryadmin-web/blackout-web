@@ -145,6 +145,7 @@
     "probe:docs": "node scripts/analyze-api-usage.mjs && node scripts/probe-docs-endpoints.mjs",
     "probe:helix-apis": "node scripts/helix-live-api-survey.mjs",
     "validate:helix-ui": "node scripts/helix-ui-audit.mjs",
+    "validate:helix-tier1-live": "NODE_USE_ENV_PROXY=1 node scripts/audit/helix-tier1-live-probe.mjs",
     "validate:admin-users-e2e": "node scripts/validate-admin-users-e2e.mjs",
     "validate:admin-console-e2e": "node scripts/validate-admin-console-e2e.mjs",
     "validate:admin-e2e": "node scripts/validate-admin-e2e.mjs",

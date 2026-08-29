@@ -6,6 +6,7 @@
  * Run: node --import tsx scripts/audit/vector-pick-sweep-audit.mjs [--force-sweep] [--json]
  */
 import { fetchAuditJson, releaseAuditClerkSession } from "./lib/audit-auth-fetch.mjs";
+import { isVectorPickRunner } from "../../src/lib/vector/vector-pick-sweep-core.ts";
 
 const BASE = (process.env.VALIDATE_BASE || "https://blackouttrades.com").replace(/\/$/, "");
 const JSON_OUT = process.argv.includes("--json");
@@ -46,14 +47,22 @@ async function main() {
     const leaders = j.leaders?.length ?? 0;
     const winners = j.winners?.length ?? 0;
     const closed = j.closed?.length ?? 0;
+    const runners = (j.leaders ?? []).filter((r) =>
+      isVectorPickRunner({
+        premium_pct_from_entry: r.premium_pct_from_entry ?? null,
+        peak_premium_pct: r.peak_premium_pct ?? null,
+        action_status: r.action_status ?? "dont_buy",
+      })
+    ).length;
     const hasShape = Array.isArray(j.leaders) && Array.isArray(j.winners) && j.coverage != null;
     verdicts.push({
       stage: "BOARD",
       verdict: hasShape ? "GREEN" : Array.isArray(j.closed) ? "AMBER" : "RED",
       detail: hasShape
-        ? `leaders=${leaders} winners=${winners} closed=${closed}`
+        ? `leaders=${leaders} runners=${runners} winners=${winners} closed=${closed}`
         : `legacy board (deploy pending) closed=${closed}`,
       leaders,
+      runners,
       winners,
       closed,
     });
