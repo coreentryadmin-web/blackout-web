@@ -21,9 +21,23 @@ test("parseInvalidationLevel extracts numeric level", () => {
   assert.equal(parseInvalidationLevel("5m close > 7,600 (wall breaks)"), 7600);
 });
 
+// REGRESSION (2026-08-29 audit finding): Vector is not restricted to a preset ticker
+// universe (isVectorTickerAllowed accepts any optionable symbol), so a real sub-$10 spot
+// price is a reachable case, not noise — the old `n >= 10` floor silently dropped it.
+test("parseInvalidationLevel: a sub-$10 level parses (no arbitrary floor beyond timeframe tokens)", () => {
+  assert.equal(parseInvalidationLevel("5m close < 8.50 (wall breaks → support lost)"), 8.5);
+  assert.equal(parseInvalidationLevel("15m close > 3.25"), 3.25);
+});
+
 test("isSetupInvalidated: spot above ceiling invalidates fade", () => {
   const r = isSetupInvalidated(7610, "5m close > 7,600", "short", 7600, 7500, null);
   assert.equal(r.invalidated, true);
+});
+
+test("isSetupInvalidated: a sub-$10 ticker's invalidation level still fires (was silently unreachable)", () => {
+  const r = isSetupInvalidated(8.6, "5m close > 8.50 (wall breaks → fade void)", "short", null, null, null);
+  assert.equal(r.invalidated, true);
+  assert.equal(r.level, 8.5);
 });
 
 test("evaluateVectorPickLiveStatus: still_buy on fresh quote near entry", () => {

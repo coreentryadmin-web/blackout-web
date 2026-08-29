@@ -48,7 +48,14 @@ export function parseInvalidationLevel(invalidation: string | null | undefined):
     const tail = invalidation.slice(idx + m[0].length, idx + m[0].length + 1);
     if (tail === "m" || tail === "M" || tail === "H") continue;
     const n = Number(m[1].replace(/,/g, ""));
-    if (Number.isFinite(n) && n >= 10) return n;
+    // No floor beyond finiteness — Vector is not restricted to a preset ticker universe
+    // (isVectorTickerAllowed accepts any optionable symbol), so a legitimate invalidation
+    // level under $10 is a real, reachable case (2026-08-29 audit finding), not noise to
+    // filter out. The timeframe tokens ("5m", "1H") this loop must skip are already excluded
+    // by the tail check above; an arbitrary n>=10 floor served no purpose except silently
+    // dropping real low-priced levels, which left isSetupInvalidated's "close >"/"close <"
+    // branches permanently unreachable (level stayed null) for any such ticker.
+    if (Number.isFinite(n)) return n;
   }
   return null;
 }
