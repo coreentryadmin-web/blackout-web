@@ -113,6 +113,22 @@ export function resolveExitMode(env: NodeJS.ProcessEnv = process.env): ZeroDteEx
 }
 
 /**
+ * Trim-scale regime-conditioning kill-switch (FINDING 2026-08-29, off by default). The
+ * `neutral` tranche thresholds are E5-measured; `trend`/`range` are documented as "v1
+ * heuristics... calibrated on the live ledger before they size real risk" (exit-engine.ts's
+ * own TRIM_SCALE_RULES comment) — they have never had a live row to calibrate against,
+ * because no caller ever passed a `regime` into evaluateExitState. entry-context.ts now
+ * stamps `session_regime` at commit (additive, always on), which starts building that
+ * ledger; this flag is the separate decision of whether to let the LIVE exit engine
+ * actually condition real trims on it, and defaults to false so today's `neutral`-only
+ * behavior is unchanged until a backtest against the accumulated session_regime rows
+ * justifies flipping it (see docs/audit/INTENTIONAL-DESIGN.md's calibration-first pattern).
+ */
+export function resolveTrimRegimeLive(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.ZERODTE_TRIM_REGIME_LIVE === "1";
+}
+
+/**
  * Tier-aware exit-mode resolver (CTO audit E5 graduation). The E5 study proved
  * trim-scale dominates ratchet in EVERY backtest window — it is now the DEFAULT for
  * A-tier and B-tier plays. C-tier plays stay on the conservative ratchet (their signal
@@ -327,7 +343,16 @@ export async function evaluateLedgerRowExit(
     // FROZEN on the row at commit, else the live env. So a committed play manages itself
     // under its own commit-time policy — the env flip only steers plays committed AFTER it.
     const exitMode = deps.exitMode ?? readFrozenExitMode(row.entry_context) ?? resolveExitMode();
-    const regime = deps.regime ?? null;
+    // Regime-conditioned trim thresholds (FINDING 2026-08-29): the row's own commit-time
+    // session_regime (entry-context.ts) is real, but only reaches the live engine when
+    // ZERODTE_TRIM_REGIME_LIVE is explicitly on — see resolveTrimRegimeLive's own doc for
+    // why this stays off by default (trend/range thresholds are uncalibrated v1 heuristics).
+    // deps.regime (test/AB override) always wins, same precedence as deps.exitMode above.
+    const stampedRegime = (row.entry_context as Record<string, unknown> | null)?.session_regime as
+      | ZeroDteRegime
+      | null
+      | undefined;
+    const regime = deps.regime ?? (resolveTrimRegimeLive() ? (stampedRegime ?? null) : null);
     const trimsTaken =
       exitMode === "trim_scale" ? trimTranchesArmed(pinnedLivePnlPct(entry, peak), regime ?? "neutral") : 0;
 

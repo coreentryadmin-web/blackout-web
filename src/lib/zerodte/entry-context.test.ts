@@ -47,6 +47,7 @@ test("buildZeroDteEntryContext: rounds at the data layer, passes per-name fields
     score: 68,
     committed_at_et: "2026-07-13 09:55 ET",
     cortex: null, // pre-wire-in call shape (no cortex arg) → null, never a fabricated blob
+    session_regime: null, // fixture's session has no .regime — never fabricated
   });
   // PR-F: the merit tier is pinned alongside, computed from the SAME values just
   // pinned above (score 68 mid-band +1, VIX 17.23 elevated −2, no Cortex → A capped
@@ -62,6 +63,60 @@ test("buildZeroDteEntryContext: rounds at the data layer, passes per-name fields
       ["Cortex evidence missing", "down"],
     ]
   );
+});
+
+test("buildZeroDteEntryContext: stamps session_regime from classifyRegime's structure — FINDING 2026-08-29's calibration-ledger fix", async () => {
+  const { buildZeroDteEntryContext, zeroDteRegimeFromStructure } = await mod();
+  const regimeFixture = (structure: "TREND_UP" | "TREND_DOWN" | "RANGE" | "INSIDE") => ({
+    structure,
+    gap: "FLAT" as const,
+    vol: "NORMAL_IV" as const,
+    calendar: { opex: false, quarterlyOpex: false, fedDay: false, monthEnd: false, quarterEnd: false },
+    tags: [],
+    label: structure,
+  });
+  // Both trend directions map to the SAME trim-scale day-type — a trim schedule cares
+  // whether the day is trending, not which way (direction already lives in the play's
+  // own LONG/SHORT), so TREND_UP and TREND_DOWN must agree.
+  assert.equal(
+    buildZeroDteEntryContext(
+      { score: 50, gamma_regime: null },
+      { vix_open: 15, spy_bias: "up", regime: regimeFixture("TREND_UP") },
+      FLAG_MS
+    ).session_regime,
+    "trend"
+  );
+  assert.equal(
+    buildZeroDteEntryContext(
+      { score: 50, gamma_regime: null },
+      { vix_open: 15, spy_bias: "down", regime: regimeFixture("TREND_DOWN") },
+      FLAG_MS
+    ).session_regime,
+    "trend"
+  );
+  assert.equal(
+    buildZeroDteEntryContext(
+      { score: 50, gamma_regime: null },
+      { vix_open: 15, spy_bias: "flat", regime: regimeFixture("RANGE") },
+      FLAG_MS
+    ).session_regime,
+    "range"
+  );
+  // INSIDE (a still-resolving narrow day) defaults to `neutral`, not `range` — it hasn't
+  // earned the tighter chop-banking thresholds yet (see zeroDteRegimeFromStructure's doc).
+  assert.equal(
+    buildZeroDteEntryContext(
+      { score: 50, gamma_regime: null },
+      { vix_open: 15, spy_bias: "flat", regime: regimeFixture("INSIDE") },
+      FLAG_MS
+    ).session_regime,
+    "neutral"
+  );
+  // Direct unit coverage of the mapping function itself.
+  assert.equal(zeroDteRegimeFromStructure("TREND_UP"), "trend");
+  assert.equal(zeroDteRegimeFromStructure("TREND_DOWN"), "trend");
+  assert.equal(zeroDteRegimeFromStructure("RANGE"), "range");
+  assert.equal(zeroDteRegimeFromStructure("INSIDE"), "neutral");
 });
 
 test("buildZeroDteEntryContext: pins the commit-time merit tier — strong pinned evidence grades A from the same blob (PR-F)", async () => {
@@ -170,6 +225,7 @@ test("buildZeroDteEntryContext: null session context never blocks a commit blob"
     score: null,
     committed_at_et: "2026-07-13 09:55 ET",
     cortex: null,
+    session_regime: null,
   });
   // All-null evidence still tiers (rule 3: gaps degrade) — score missing caps at C.
   assert.equal(tier?.tier, "C");
