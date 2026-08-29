@@ -1,6 +1,11 @@
 // Fitting functions for multiple market data Largo tools that exceed 16k transport cap.
 // Product-first design: all native data available to products; fitting applied only at Largo boundary.
-import { fitRowsToBudget } from "@/lib/largo/fit-tool-result";
+import {
+  LARGO_RESULT_CHAR_BUDGET,
+  fitRowsToBudget,
+  fitEnvelopeToBudget,
+  sampleNote,
+} from "@/lib/largo/fit-tool-result";
 
 // ============ get_market_oi_change ============
 export interface OiChangeFittedResult {
@@ -23,15 +28,17 @@ export interface OiChangeFittedResult {
 // relative to its own measurement — this is the last time this comment should need updating.
 export function fitMarketOiChangeForModel(raw: any[], maxShown = 20): { fitted: OiChangeFittedResult } {
   const rows = raw ?? [];
-  const { kept, total } = fitRowsToBudget({}, "changes", rows, { maxRows: maxShown });
-  return {
-    fitted: {
+  const { envelope } = fitEnvelopeToBudget(
+    rows,
+    (kept, total) => ({
       changes: kept.length > 0 ? kept : undefined,
       shown: kept.length,
       truncated: total > kept.length,
       max_shown: maxShown,
-    },
-  };
+    }),
+    { maxRows: maxShown }
+  );
+  return { fitted: envelope as OiChangeFittedResult };
 }
 
 // ============ get_market_stats ============
@@ -77,15 +84,17 @@ export interface GroupGreekFlowFittedResult {
 
 export function fitGroupGreekFlowForModel(raw: any[], maxShown = 15): { fitted: GroupGreekFlowFittedResult } {
   const rows = raw ?? [];
-  const { kept, total } = fitRowsToBudget({}, "groups", rows, { maxRows: maxShown });
-  return {
-    fitted: {
+  const { envelope } = fitEnvelopeToBudget(
+    rows,
+    (kept, total) => ({
       groups: kept.length > 0 ? kept : undefined,
       shown: kept.length,
       truncated: total > kept.length,
       max_shown: maxShown,
-    },
-  };
+    }),
+    { maxRows: maxShown }
+  );
+  return { fitted: envelope as GroupGreekFlowFittedResult };
 }
 
 // ============ get_group_greek_flow raw rows ============
@@ -106,13 +115,17 @@ export function fitGroupGreekFlowRowsForModel(
   maxShown = 15
 ): GroupGreekFlowRowsFittedResult {
   const rowsIn = raw ?? [];
-  const { kept, total } = fitRowsToBudget({}, "rows", rowsIn, { maxRows: maxShown });
-  return {
-    rows: kept.length > 0 ? kept : undefined,
-    rows_shown: kept.length,
-    rows_truncated: total > kept.length,
-    rows_max_shown: maxShown,
-  };
+  const { envelope } = fitEnvelopeToBudget(
+    rowsIn,
+    (kept, total) => ({
+      rows: kept.length > 0 ? kept : undefined,
+      rows_shown: kept.length,
+      rows_truncated: total > kept.length,
+      rows_max_shown: maxShown,
+    }),
+    { maxRows: maxShown }
+  );
+  return envelope as GroupGreekFlowRowsFittedResult;
 }
 
 // ============ get_screener ============
@@ -129,15 +142,55 @@ export interface ScreenerFittedResult {
 // three-round history. Budget-bound now for the same reason.
 export function fitScreenerForModel(raw: any[], maxShown = 15): { fitted: ScreenerFittedResult } {
   const rows = raw ?? [];
-  const { kept, total } = fitRowsToBudget({}, "candidates", rows, { maxRows: maxShown });
-  return {
-    fitted: {
+  const { envelope } = fitEnvelopeToBudget(
+    rows,
+    (kept, total) => ({
       candidates: kept.length > 0 ? kept : undefined,
       shown: kept.length,
       truncated: total > kept.length,
       max_shown: maxShown,
-    },
-  };
+    }),
+    { maxRows: maxShown }
+  );
+  return { fitted: envelope as ScreenerFittedResult };
+}
+
+export type GroupGreekFlowToolResult = {
+  group: string;
+  expiry?: string;
+  source: string;
+  note: string;
+  rows?: Record<string, unknown>[];
+  rows_shown: number;
+  rows_truncated: boolean;
+  rows_max_shown: number;
+  summary: unknown;
+};
+
+/** Budget the FULL get_group_greek_flow return — rows plus summary/metadata/note. */
+export function fitGroupGreekFlowToolResultForModel(input: {
+  group: string;
+  expiry?: string;
+  source: string;
+  note: string;
+  summary: unknown;
+  rows: Record<string, unknown>[];
+  maxRows?: number;
+}): GroupGreekFlowToolResult {
+  const maxRows = input.maxRows ?? 15;
+  const shell = (kept: Record<string, unknown>[], total: number) => ({
+    group: input.group,
+    expiry: input.expiry,
+    source: input.source,
+    note: input.note,
+    rows: kept.length > 0 ? kept : undefined,
+    rows_shown: kept.length,
+    rows_truncated: total > kept.length,
+    rows_max_shown: maxRows,
+    summary: input.summary,
+  });
+  const { envelope } = fitEnvelopeToBudget(input.rows ?? [], shell, { maxRows });
+  return envelope as GroupGreekFlowToolResult;
 }
 
 // ============ get_earnings related_news ============

@@ -6,6 +6,7 @@ import {
   fitGroupGreekFlowForModel,
   fitGroupGreekFlowRowsForModel,
   fitEarningsRelatedNewsForModel,
+  fitGroupGreekFlowToolResultForModel,
 } from "./market-data-fits";
 
 const TRANSPORT_CAP = 16_384;
@@ -132,6 +133,30 @@ const benzingaArticle = (i: number) => ({
   tags: ["preview"],
   url: `https://example.com/article-${i}`,
   author: "staff",
+});
+
+test("fitGroupGreekFlowToolResultForModel budgets the full tool envelope (rows + summary + note)", () => {
+  const summary = {
+    group: "mag7",
+    net_delta: 1_200_000,
+    net_gamma: 500,
+    call_delta: 800_000,
+    put_delta: 400_000,
+    bias: "supportive" as const,
+    headline: "Mag7 dealer gamma supportive — net 1.20M delta",
+    row_count: 391,
+  };
+  const raw = Array.from({ length: 391 }, (_, i) => greekRow(i));
+  const fitted = fitGroupGreekFlowToolResultForModel({
+    group: "mag7",
+    source: "unusual_whales",
+    note: "Unusual Whales exclusive — not available on free tiers.",
+    summary,
+    rows: raw,
+  });
+  assert.equal(fitted.rows_truncated, true);
+  assert.ok((fitted.rows_shown ?? 0) > 0);
+  assert.ok(JSON.stringify(fitted).length < TRANSPORT_CAP);
 });
 
 test("fitEarningsRelatedNewsForModel: drops `body` and stays tiny even at 15 real-shaped articles", () => {
