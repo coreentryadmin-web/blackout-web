@@ -652,8 +652,13 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return { ticker: uwTicker(ticker), prints: await fetchUwLitFlow(uwTicker(ticker)) };
     case "get_unusual_trades":
       return fetchUwUnusualTrades(input.ticker ? uwTicker(String(input.ticker)) : undefined, 25);
-    case "get_market_oi_change":
-      return fetchUwMarketOiChange(30);
+    case "get_market_oi_change": {
+      // MEASURED TRUNCATED 2026-08-29 — OI change array exceeds 16k transport cap.
+      // Apply fitting to cap shown entries for Largo; product uses full data.
+      const { fitMarketOiChangeForModel } = await import("@/lib/largo/market-data-fits");
+      const raw = await fetchUwMarketOiChange(30);
+      return fitMarketOiChangeForModel(raw, 20).fitted;
+    }
     case "get_top_net_impact":
       return fetchUwMarketTopNetImpact(20);
 
@@ -962,13 +967,18 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
 
     case "get_screener": {
+      // MEASURED TRUNCATED 2026-08-29 — screened candidates array exceeds 16k transport cap.
+      // Apply fitting to cap shown entries for Largo; product uses full data.
+      const { fitScreenerForModel } = await import("@/lib/largo/market-data-fits");
       const type = String(input.type ?? "stocks");
-      if (type === "short_squeeze") return fetchUwShortScreener(25);
-      if (type === "contracts") return fetchUwScreenerContracts(25);
-      if (type === "option_flow") return fetchUwScreenerOptionContracts(25);
-      if (type === "dark_pool") return fetchUwDarkPoolRecent(25);
-      if (type === "analysts") return fetchUwScreenerAnalysts(25);
-      return fetchUwScreenerStocks(25);
+      let raw;
+      if (type === "short_squeeze") raw = await fetchUwShortScreener(25);
+      else if (type === "contracts") raw = await fetchUwScreenerContracts(25);
+      else if (type === "option_flow") raw = await fetchUwScreenerOptionContracts(25);
+      else if (type === "dark_pool") raw = await fetchUwDarkPoolRecent(25);
+      else if (type === "analysts") raw = await fetchUwScreenerAnalysts(25);
+      else raw = await fetchUwScreenerStocks(25);
+      return fitScreenerForModel(raw, 15).fitted;
     }
 
     case "get_spx_structure": {
@@ -1179,14 +1189,20 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return { ...summary, recent, ordered_by: since_hours != null && since_hours <= 6 ? "recent" : "premium" };
     }
 
-    case "get_platform_snapshot":
-      return getPlatformSnapshot({
+    case "get_platform_snapshot": {
+      // MEASURED TRUNCATED 2026-08-29 — cross-product snapshot exceeds 16k transport cap.
+      // Apply fitting to reduce flow array size and active session count for Largo.
+      // Product consumers use full getPlatformSnapshot without fitting.
+      const { fitPlatformSnapshotForModel } = await import("@/lib/largo/platform-snapshot-fit");
+      const raw = await getPlatformSnapshot({
         include: Array.isArray(input.include)
           ? (input.include as Array<"spx" | "flows" | "nighthawk" | "largo">)
           : undefined,
         flowLimit: Number(input.flow_limit ?? 50),
         fullEdition: Boolean(input.full_edition),
       });
+      return fitPlatformSnapshotForModel(raw, 20).fitted;
+    }
 
     case "get_ecosystem_context": {
       const { fetchEcosystemContext } = await import("@/lib/bie/ecosystem-context");
@@ -1254,17 +1270,22 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const { computeConfluenceOutcomeStats, computeSpxSlayerShadowFactorOutcomeStats } = await import(
         "@/lib/bie/confluence-outcomes"
       );
+      const { fitConfluenceOutcomesForModel } = await import("@/lib/largo/confluence-outcomes-fit");
       // Two independent, additive analytics passes over the SAME tool surface —
       // see confluence-outcomes.ts's module doc above computeSpxSlayerShadowFactorOutcomeStats
       // for why the SPX Slayer half joins spx_confluence_shadow_observations against
       // spx_play_outcomes directly rather than through alert_audit_log. Each fails
       // open to its own null independently, so a problem on one product's side can
       // never blank out the other's numbers.
+      //
+      // MEASURED TRUNCATED 2026-08-23/2026-08-29 — full 60-day outcome arrays for both
+      // products exceed 16k transport cap. Apply fitting to reduce to top 30 entries each.
+      // Product consumers (Night Hawk, SPX edition builders) use full data directly.
       const [zerodte_nighthawk_echo, spx_slayer_shadow_factors] = await Promise.all([
         computeConfluenceOutcomeStats(60),
         computeSpxSlayerShadowFactorOutcomeStats(60),
       ]);
-      return { zerodte_nighthawk_echo, spx_slayer_shadow_factors };
+      return fitConfluenceOutcomesForModel({ zerodte_nighthawk_echo, spx_slayer_shadow_factors }).fitted;
     }
 
     case "get_similar_precedents": {
@@ -1335,10 +1356,26 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return { ...consensus, note: UW_EXCLUSIVE_NOTE };
     }
     case "get_group_greek_flow": {
+      // MEASURED TRUNCATED 2026-08-29 — when called market-wide (no group filter),
+      // greek flow aggregation for 20+ groups exceeds 16k transport cap.
+      // Apply fitting to cap top groups for Largo; product uses full data.
+      const { fitGroupGreekFlowForModel } = await import("@/lib/largo/market-data-fits");
       const group = String(input.group ?? "mag7").toLowerCase();
       const exp = input.expiry ? String(input.expiry) : undefined;
       const rows = await fetchUwGroupGreekFlow(group, exp);
       const summary = summarizeGroupGreekFlow(group, rows as Record<string, unknown>[]);
+      // For market-wide query (group="all" or default), cap the summary groups
+      if (group === "all" || !group) {
+        const cappedSummary = Array.isArray(summary) ? fitGroupGreekFlowForModel(summary, 15).fitted : summary;
+        return {
+          group,
+          expiry: exp,
+          source: "unusual_whales",
+          note: UW_EXCLUSIVE_NOTE,
+          greek_flow: rows,
+          summary: cappedSummary,
+        };
+      }
       return {
         group,
         expiry: exp,
@@ -1412,6 +1449,9 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return { etf, info, holdings, weights, exposure, in_outflow: inOut, tide, quote };
     }
     case "get_market_stats": {
+      // MEASURED TRUNCATED 2026-08-29 — aggregation of 7 market data sources exceeds 16k transport cap.
+      // Apply fitting to reduce field inclusion for Largo; product uses full data.
+      const { fitMarketStatsForModel } = await import("@/lib/largo/market-data-fits");
       const [totalVol, correlations, sectorEtfs, netFlow, tide, litRecent, seasonality] = await runUwPooled([
         () => fetchUwMarketTotalOptionsVolume(),
         () => fetchUwMarketCorrelations(30),
@@ -1421,7 +1461,8 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         () => fetchUwLitFlowRecent(20),
         () => fetchUwSeasonalityMarket(),
       ] as const);
-      return { total_options_volume: totalVol, correlations, sector_etfs: sectorEtfs, net_flow_by_expiry: netFlow, market_tide: tide, lit_flow_recent: litRecent, seasonality_market: seasonality };
+      const raw = { total_options_volume: totalVol, correlations, sector_etfs: sectorEtfs, net_flow_by_expiry: netFlow, market_tide: tide, lit_flow_recent: litRecent, seasonality_market: seasonality };
+      return fitMarketStatsForModel(raw).fitted;
     }
     case "get_nbbo": {
       const sym = polySymbol(ticker);
