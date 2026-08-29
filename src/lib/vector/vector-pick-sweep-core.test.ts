@@ -37,6 +37,29 @@ describe("vector-pick-sweep-core", () => {
     assert.equal(ctx!.putWall, 90);
   });
 
+  // REGRESSION (2026-08-29 audit finding): a committed `pivot` play's raw card bias stays
+  // "neutral" by design, so the old raw-field check silently treated every committed pivot
+  // ticker as "no directional play" — never even reaching ranking. Same root cause as the
+  // already-fixed contract-picks/live/route.ts bug, in this server sweep's own call site.
+  test("pickContextFromFullState re-derives a COMMITTED pivot play's effective bias instead of rejecting it as neutral", () => {
+    const ctx = pickContextFromFullState({
+      spot: 7517, // 0.3% above the flip -- effectivePickBias commits "long"
+      play: { bias: "neutral", conviction: 70, grade: "A", style: "scalp", setup: "pivot", headline: "h", thesis: "t", targets: [], starred: [] },
+      gammaFlip: 7495.51,
+    } as never);
+    assert.ok(ctx, "a committed pivot play must produce a pick context, not null");
+    assert.equal(ctx!.play.bias, "long", "ctx.play.bias must carry the COMMITTED direction, not the raw neutral card bias");
+  });
+
+  test("pickContextFromFullState still rejects an UNCOMMITTED pivot play (spot sitting on the flip)", () => {
+    const ctx = pickContextFromFullState({
+      spot: 7495.51, // exactly on the flip -- no commitment yet
+      play: { bias: "neutral", conviction: 70, grade: "A", style: "scalp", setup: "pivot", headline: "h", thesis: "t", targets: [], starred: [] },
+      gammaFlip: 7495.51,
+    } as never);
+    assert.equal(ctx, null);
+  });
+
   test("mergePeakPremiumPct keeps max", () => {
     assert.equal(mergePeakPremiumPct(120, 80), 120);
     assert.equal(mergePeakPremiumPct(null, 275), 275);
