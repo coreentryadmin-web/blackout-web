@@ -22,6 +22,7 @@ import {
 } from "./lib/x-social-post-kit.mjs";
 import { composeCreativePack, pickHotTicker } from "./lib/x-social-creative.mjs";
 import { pickStoryPack, scanStoryCandidates } from "./lib/x-social-story-data.mjs";
+import { commitXIntelStateIfChanged } from "./lib/x-intel-state-git.mjs";
 
 const args = process.argv.slice(2);
 const opt = (k, def) => {
@@ -196,6 +197,7 @@ async function main() {
   console.log("\n--- COPY ---\n", copy);
   console.log(`\nweighted=${weighted} · ${captured.filter((c) => c.ok).length}/${shots.length} captures → ${OUT}/`);
   if (captured.filter((c) => c.ok).length < shots.length) process.exitCode = 1;
+  commitXIntelStateIfChanged();
 }
 
 function fmtPremShort(n) {
@@ -208,5 +210,6 @@ function fmtPremShort(n) {
 
 main().catch((e) => {
   console.error(e);
+  commitXIntelStateIfChanged();
   process.exit(1);
 });

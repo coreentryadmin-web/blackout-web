@@ -10,6 +10,7 @@ import { mintIosPlaywrightSession } from "./lib/ios-playwright-auth.mjs";
 import { fetchAuditJson, releaseAuditClerkSession } from "./lib/audit-auth-fetch.mjs";
 import { captureByCatalogId } from "./lib/x-capture-runner.mjs";
 import { assemblePost } from "./lib/x-social-post-kit.mjs";
+import { commitXIntelStateIfChanged } from "./lib/x-intel-state-git.mjs";
 
 const args = process.argv.slice(2);
 const opt = (k, def) => {
@@ -258,9 +259,11 @@ async function main() {
   console.log("\n--- COPY ---\n");
   console.log(copy);
   console.log(`\n→ ${OUT}/`);
+  commitXIntelStateIfChanged();
 }
 
 main().catch((e) => {
   console.error(e);
+  commitXIntelStateIfChanged();
   process.exit(1);
 });
