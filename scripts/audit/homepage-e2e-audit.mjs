@@ -148,7 +148,7 @@ async function runDesktop(browser) {
   if ((await explore.count()) > 0) {
     let y = null;
     for (let attempt = 0; attempt < 2; attempt++) {
-      await explore.click();
+      await scrollClickStable(page, explore);
       y = await waitForHashAnchor(page, "modules");
       if (y && y.top <= 120 && y.top >= -80) break;
       if (attempt === 0) await page.waitForTimeout(400);
@@ -322,7 +322,17 @@ async function runMobileFaqSticky(browser) {
   }
 
   const openBefore = await third.evaluate((el) => (el instanceof HTMLDetailsElement ? el.open : false));
-  await third.locator("summary").click({ timeout: 8000 });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await third.locator("summary").scrollIntoViewIfNeeded({ timeout: 8000 });
+      await third.locator("summary").click({ timeout: 8000 });
+      break;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (attempt === 2 || !/not attached|detached|stable|intercept/i.test(msg)) throw e;
+      await page.waitForTimeout(400);
+    }
+  }
   await page.waitForTimeout(300);
   const openAfter = await third.evaluate((el) => (el instanceof HTMLDetailsElement ? el.open : false));
   if (openAfter === openBefore) {

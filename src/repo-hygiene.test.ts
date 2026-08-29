@@ -38,6 +38,19 @@ test("no dependency or build directory is tracked in git", () => {
   );
 });
 
+test("data-correctness cron's markdown scorecard is never tracked in git", () => {
+  // docs/auto/data-correctness-<date>.md is best-effort local convenience output (the durable
+  // record is logCronRun's structured payload, per docs/DATA_CORRECTNESS.md). Tracking it meant
+  // a recurring no-op "chore: commit stray placeholder" PR every time a sandbox session's local
+  // run happened to produce one (#3087, #3113, #3132) — see .gitignore for the full writeup.
+  const bad = tracked().filter((p) => /^docs\/auto\/data-correctness-.*\.md$/.test(p));
+  assert.deepEqual(
+    bad,
+    [],
+    `these must stay gitignored, not committed:\n  ${bad.join("\n  ")}`
+  );
+});
+
 test("gitignore entries for node_modules have no trailing slash", () => {
   // A trailing slash restricts the pattern to directories, leaving a same-named symlink or file
   // un-ignored. Every node_modules rule must match regardless of file type.

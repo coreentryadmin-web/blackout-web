@@ -35,13 +35,20 @@ const midOf = (bid: number | null, ask: number | null): number | null =>
 /**
  * The engine's REAL commit decision, in priority order:
  *   1. a persisted live status of OPEN/HOLD/TRIM — it's already a working committed play;
- *   2. else the fresh-find hard-gate verdict (gate.verdict === "COMMIT") — the engine's own gate stack;
- *   3. else (no gate context — an already-seen refresh ticker whose gate wasn't re-run) fall back to the
- *      lane floor on the committed score.
+ *   2. a persisted CLOSED status is terminal — WATCH, never re-promoted by a later, ungated
+ *      score alone (2026-08-29 audit finding: a closed play re-flagged by a later scan pass
+ *      with no fresh gate context used to fall all the way to the score-floor fallback below,
+ *      which has no way to know the position already closed, and would silently render it
+ *      COMMIT again on any high enough score);
+ *   3. else the fresh-find hard-gate verdict (gate.verdict === "COMMIT") — the engine's own gate stack;
+ *   4. else (no gate context — an already-seen refresh ticker whose gate wasn't re-run, and no
+ *      persisted status at all) fall back to the lane floor on the committed score.
  * This mirrors the 0DTE Command board exactly — a gate-blocked setup is WATCH, never silently promoted.
  */
 function zeroDteCommitStatus(setup: EnrichedZeroDteSetup, persistedStatus?: string | null): PlayStatus {
-  if (persistedStatus && COMMITTED_STATUSES.has(persistedStatus.toUpperCase())) return "COMMIT";
+  const upperStatus = persistedStatus ? persistedStatus.toUpperCase() : null;
+  if (upperStatus && COMMITTED_STATUSES.has(upperStatus)) return "COMMIT";
+  if (upperStatus === "CLOSED") return "WATCH";
   if (setup.gate) return setup.gate.verdict === "COMMIT" ? "COMMIT" : "WATCH";
   return setup.score >= ZERO_DTE_FLOOR ? "COMMIT" : "WATCH";
 }

@@ -42,8 +42,26 @@ const KEY = process.env.POLYGON_API_KEY ?? "";
 
 export type AggBar = { t?: number; o: number; h: number; l: number; c: number; v?: number };
 
-async function polygonGet<T>(path: string, params: Record<string, string> = {}): Promise<T | null> {
-  if (!polygonConfigured()) return null;
+/**
+ * `onFailure` is an additive diagnostic hook — optional, defaults to a no-op — so every existing
+ * caller of `polygonGet` (there are many in this file) keeps its exact current behavior: null on
+ * any failure, nothing more. It exists because that failure mode used to be COMPLETELY invisible
+ * outside a `console.warn` server logs nobody reads: not configured, a circuit-breaker-open throw
+ * (`polygonTrackedFetch` DOES throw when the breaker is open — see polygon-rate-limiter.ts — but
+ * this function's own try/catch swallowed that throw into the same bare `null` as a plain HTTP
+ * 404), a non-2xx status, or a network error were all indistinguishable to any caller. A caller
+ * that actually needs to know WHY (see `fetchAggBarsWithDiagnostics` below) can now find out
+ * without this function's plain callers changing at all.
+ */
+async function polygonGet<T>(
+  path: string,
+  params: Record<string, string> = {},
+  onFailure?: (reason: string) => void
+): Promise<T | null> {
+  if (!polygonConfigured()) {
+    onFailure?.("Polygon not configured (missing POLYGON_API_KEY)");
+    return null;
+  }
   const qs = new URLSearchParams({ ...params, apiKey: KEY });
   try {
     const res = await polygonTrackedFetch(path, `${getPolygonBase()}${path}?${qs}`, {
@@ -52,12 +70,14 @@ async function polygonGet<T>(path: string, params: Record<string, string> = {}):
     });
     if (!res.ok) {
       console.warn(`[polygon-largo] ${path.replace(/[\r\n]/g, "")} returned ${res.status}`);
+      onFailure?.(`HTTP ${res.status}`);
       return null;
     }
     return (await res.json()) as T;
   } catch (err) {
     const msg = (err instanceof Error ? err.message : String(err)).replace(/[\r\n]/g, "");
     console.warn(`[polygon-largo] ${path.replace(/[\r\n]/g, "")} failed: ${msg}`);
+    onFailure?.(msg);
     return null;
   }
 }
@@ -87,6 +107,37 @@ export async function fetchAggBars(
     { limit, sort: "asc" }
   );
   return mapBars(data?.results);
+}
+
+/**
+ * Same call as {@link fetchAggBars}, plus WHY it came back empty when it did — not configured,
+ * an HTTP status, a thrown error (circuit breaker open, network failure), or null (a genuinely
+ * empty `results` array: the request succeeded and Polygon just had nothing for that range).
+ * Built for `skip-grading.ts`'s counterfactual grader, which used to report every empty result
+ * as the same generic "no bar data" regardless of cause (2026-08-29 audit finding) — a live run
+ * showed 100% of graded rejections landing on that one reason, and there was no way to tell a
+ * real Polygon gap from the circuit breaker being open from a bug, without this.
+ */
+export async function fetchAggBarsWithDiagnostics(
+  symbol: string,
+  multiplier: number,
+  timespan: "minute" | "hour" | "day" | "week",
+  from: string,
+  to: string,
+  limit = "500"
+): Promise<{ bars: AggBar[]; failureReason: string | null }> {
+  const sym = symbol.toUpperCase();
+  let failureReason: string | null = null;
+  const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
+    `/v2/aggs/ticker/${sym}/range/${multiplier}/${timespan}/${from}/${to}`,
+    { limit, sort: "asc" },
+    (reason) => {
+      failureReason = reason;
+    }
+  );
+  // data === null means polygonGet itself failed (onFailure already ran); data present but
+  // results empty/absent is a genuinely empty range, not a failure — never conflate the two.
+  return { bars: mapBars(data?.results), failureReason: data == null ? failureReason : null };
 }
 
 export async function fetchPreviousDayBar(symbol: string): Promise<AggBar | null> {

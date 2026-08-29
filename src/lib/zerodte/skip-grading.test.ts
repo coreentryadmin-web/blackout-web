@@ -28,12 +28,15 @@ mock.module("../db", {
 const polyState = {
   calls: [] as Array<{ symbol: string; from: string }>,
   bars: [] as Array<Record<string, number>>,
+  throwMessage: null as string | null,
+  failureReason: null as string | null,
 };
 mock.module("../providers/polygon-largo", {
   namedExports: {
-    fetchAggBars: async (symbol: string, _m: number, _ts: string, from: string) => {
+    fetchAggBarsWithDiagnostics: async (symbol: string, _m: number, _ts: string, from: string) => {
       polyState.calls.push({ symbol, from });
-      return polyState.bars;
+      if (polyState.throwMessage != null) throw new Error(polyState.throwMessage);
+      return { bars: polyState.bars, failureReason: polyState.failureReason };
     },
   },
 });
@@ -311,6 +314,76 @@ test("runSkipGrading: idempotent column ALTER, finished-sessions-only SELECT, ve
   const ungr = JSON.parse(updates[1]!.values![0] as string);
   assert.equal(updates[1]!.values![1], 8);
   assert.equal(ungr.verdict, "ungradeable");
+});
+
+// REGRESSION (2026-08-29 audit finding): a live run against production found EVERY one of 200+
+// real rejections graded ungradeable with the SAME generic "no bar data available" reason — and
+// there was no way to tell from that reason whether Polygon genuinely had nothing for that
+// ticker/session, or the underlying bar fetch itself was silently failing (a dynamic-import bug,
+// a bad symbol mapping, anything). This pins that runSkipGrading now distinguishes the two: an
+// actual thrown fetch error overrides the generic reason with the real exception message.
+test("runSkipGrading: an underlying bar fetch that THROWS is surfaced with the real error, not the generic 'no bar data' reason", async () => {
+  const { runSkipGrading } = await mod();
+  dbState.queries = [];
+  dbState.selectRows = [
+    {
+      id: 9,
+      observed_at: new Date(et("10:00")).toISOString(),
+      session_date: "2026-07-10",
+      ticker: "NVDA",
+      gate_failed: "score_floor",
+      direction: "long",
+    },
+  ];
+  polyState.calls = [];
+  polyState.bars = [];
+  polyState.throwMessage = "ECONNRESET: fetch failed";
+  try {
+    const summary = await runSkipGrading({ days: 3, nowMs: NOW });
+    assert.equal(summary.scanned, 1);
+    assert.equal(summary.ungradeable, 1, "still counted as ungradeable — a thrown fetch is not a graded win/loss");
+    assert.equal(summary.errors, 0, "the row itself is not an errored row — it persisted a verdict");
+    const updates = dbState.queries.filter((q) => /^UPDATE zerodte_scan_rejections/.test(q.text));
+    assert.equal(updates.length, 1);
+    const verdict = JSON.parse(updates[0]!.values![0] as string);
+    assert.equal(verdict.verdict, "ungradeable");
+    assert.match(verdict.reason, /underlying bar fetch threw: ECONNRESET: fetch failed/);
+  } finally {
+    polyState.throwMessage = null;
+  }
+});
+
+// REGRESSION (2026-08-29 audit finding, follow-up): the realistic failure path never actually
+// THROWS — fetchAggBarsWithDiagnostics's own polygonGet swallows a circuit-breaker-open error,
+// an HTTP status, or a network failure into a `failureReason` string alongside an empty bars
+// array, exactly the way a live run against production showed (100+ real rejections all landed
+// on the generic reason with no thrown exception anywhere in the chain). This pins that path.
+test("runSkipGrading: a captured Polygon failureReason (no thrown exception) is surfaced the same way a thrown error is", async () => {
+  const { runSkipGrading } = await mod();
+  dbState.queries = [];
+  dbState.selectRows = [
+    {
+      id: 10,
+      observed_at: new Date(et("10:00")).toISOString(),
+      session_date: "2026-07-10",
+      ticker: "TSLA",
+      gate_failed: "opening_window",
+      direction: "short",
+    },
+  ];
+  polyState.calls = [];
+  polyState.bars = [];
+  polyState.failureReason = "[polygon] Circuit open — rate limited, pausing 42s";
+  try {
+    const summary = await runSkipGrading({ days: 3, nowMs: NOW });
+    assert.equal(summary.ungradeable, 1);
+    const updates = dbState.queries.filter((q) => /^UPDATE zerodte_scan_rejections/.test(q.text));
+    const verdict = JSON.parse(updates[0]!.values![0] as string);
+    assert.equal(verdict.verdict, "ungradeable");
+    assert.match(verdict.reason, /underlying bar fetch threw: \[polygon\] Circuit open — rate limited, pausing 42s/);
+  } finally {
+    polyState.failureReason = null;
+  }
 });
 
 test("runSkipGrading / fetchGradedSkips fail soft — a dead DB is a structured summary / empty list, never a throw", async () => {

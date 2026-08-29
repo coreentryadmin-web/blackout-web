@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   assessGroupedBarFreshness,
+  classifyContractMiss,
   discoverBreakoutSetups,
   rankMoversForChainFetch,
   BREAKOUT_MAX_BAR_AGE_MS,
@@ -336,4 +337,21 @@ test("discoverBreakoutSetups: thin day still fills up to the static floor (no re
   });
   assert.equal(out.status, "ok");
   assert.equal(out.setups.length, BREAKOUT_MAX_CANDIDATES, "thin day must still hit the floor, unchanged from pre-dynamic behavior");
+});
+
+// ── classifyContractMiss (2026-08-29 audit finding — dead conditional made no_0dte_contract unreachable) ──
+
+test("classifyContractMiss: a wider contract exists but 0DTE does not -> no_0dte_contract", () => {
+  assert.equal(classifyContractMiss(false, true), "no_0dte_contract");
+});
+
+test("classifyContractMiss: nothing exists at any horizon -> no_same_day_contract", () => {
+  assert.equal(classifyContractMiss(false, false), "no_same_day_contract");
+});
+
+test("classifyContractMiss: a 0DTE contract exists (pickContract failing must be liquidity/side, not horizon) -> no_same_day_contract", () => {
+  // has0=true would mean pickContract SHOULD have found something at dte=0, so this call site is
+  // only reached when pickContract already failed — has0=true here is a defensive default, not a
+  // real production path, but the classifier must still resolve to something sane.
+  assert.equal(classifyContractMiss(true, true), "no_same_day_contract");
 });

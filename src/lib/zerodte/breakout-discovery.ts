@@ -28,7 +28,6 @@ import {
   buildBreakoutSetup,
   pickBreakoutContractWithFallback,
   pickAtmZeroDteContract,
-  breakoutAllow1DteFallback,
   type BreakoutChainRow,
 } from "./breakout-source";
 import type { EnrichedZeroDteSetup } from "./board";
@@ -190,6 +189,23 @@ export type BreakoutDiscoveryDeps = {
   /** Wave C1 — optional minute bar fetch for intraday breadth refresh (tests inject fakes). */
   fetchMinuteBars?: (ticker: string, from: string, to: string) => Promise<MinuteBarLike[]>;
 };
+
+/**
+ * Classify why `pickContract` (pickBreakoutContractWithFallback) came back empty, for the
+ * per-cycle funnel diagnostic only (never changes whether the candidate is dropped — it always
+ * is). `hasWidened` should be computed UNCONDITIONALLY (regardless of ZERODTE_BREAKOUT_ALLOW_1DTE)
+ * so this can distinguish "no contract exists at ANY horizon" from "a wider contract exists but
+ * the operator's flag withheld it" — conflating the two into one counter (`no_same_day_contract`)
+ * was a real regression: a prior version gated the `hasWidened` COMPUTATION itself behind the same
+ * flag, so it could only ever be non-null when the flag was ON, making the `no_0dte_contract`
+ * branch permanently unreachable (2026-08-29 audit finding — see breakout-discovery.test.ts).
+ */
+export function classifyContractMiss(
+  has0: boolean,
+  hasWidened: boolean
+): "no_0dte_contract" | "no_same_day_contract" {
+  return !has0 && hasWidened ? "no_0dte_contract" : "no_same_day_contract";
+}
 
 const DEFAULT_DEPS: BreakoutDiscoveryDeps = {
   fetchSummary: fetchDailyMarketSummary,
@@ -354,13 +370,14 @@ export async function discoverBreakoutSetups(opts: {
       const side = direction === "long" ? ("call" as const) : ("put" as const);
       const picked = pickContract(rows, chain.spot, today, side);
       if (!picked) {
+        // Diagnostic re-query, not a re-pick: `picked` above already tried the widened window
+        // when ZERODTE_BREAKOUT_ALLOW_1DTE allows it, so a wider contract existing here only ever
+        // means the FLAG withheld it — never that `picked` missed something available. Compute
+        // `hasWidened` unconditionally (cheap: pure filter over `rows`, no I/O) so that case is
+        // distinguishable from a genuine no-contract-at-any-horizon miss — see classifyContractMiss.
         const has0 = pickAtmZeroDteContract(rows, chain.spot, today, 0, side);
-        const hasWidened =
-          breakoutAllow1DteFallback() ? pickAtmZeroDteContract(rows, chain.spot, today, ZERODTE_MAX_DTE, side) : null;
-        if (!has0 && hasWidened && !breakoutAllow1DteFallback()) {
-          return { setup: null, miss: "no_0dte_contract" as const };
-        }
-        return { setup: null, miss: "no_same_day_contract" as const };
+        const hasWidened = pickAtmZeroDteContract(rows, chain.spot, today, ZERODTE_MAX_DTE, side);
+        return { setup: null, miss: classifyContractMiss(has0 != null, hasWidened != null) };
       }
       const { used_1dte_fallback, ...contract } = picked;
       const dollarNorm = maxDollar > 0 ? mover.dollar / maxDollar : 0;

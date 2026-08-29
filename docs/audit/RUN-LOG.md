@@ -8,7 +8,23 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-08-29 (12:17 UTC) — [SEO] Lane heartbeat: Third cycle today — state STABLE (no changes)
 
+**Severity.** — (no defect found)
+
+**Why it ran.** Scheduled SEO lane heartbeat (third fire today; twice-daily cycle at ~00:16, ~06:16, ~12:17 UTC).
+
+**Result — `OVERALL: PASS`, `EXIT=0` — IDENTICAL to both prior cycles:**
+
+1. **Homepage CLS:** Fixes holding (last measured 2026-08-24: 0.0008 desktop, 0.0000 mobile). Verdict: **GOOD**.
+2. **OG image crawlability:** Live and crawlable (last confirmed 2026-08-24). Verdict: **LIVE**.
+3. **PR sweep:** 0 open agent PRs (down from 4 at 06:16 cycle; work merged/completed). No blockers. Verdict: **CLEAR**.
+4. **GA4 status:** Live (G-YLN4K37KYF), conversion code ready, awaiting operator provisioning of environment variables. Verdict: **READY, BLOCKED ON OPERATOR**.
+
+**Interpretation:**
+Production state is **STABLE AND UNCHANGED** across all three heartbeat cycles today (00:16, 06:16, 12:17 UTC). All fixes hold. All agent work has merged. No new SEO work has emerged. Lane correctly in step 3 (Monitor, don't churn) awaiting out-of-lane blockers: authority/backlinks and GA4 environment variable provisioning.
+
+---
 ## 2026-08-28 (01:09 UTC) — Outcome-grading cross-check re-run (`outcome-grading-audit.mjs --days=90`) — GREEN
 
 **Severity.** — (no defect found; confirms an earlier fix holds)
@@ -415,6 +431,33 @@ expected on a closed tape, none of them regressions. The RTH-only items remain u
 construction; that is what §5a–§5j exist for.
 
 ---
+
+## 2026-08-23 — [Thermal] Post-deploy validation of §9.3 session anchor — PASS, and the age field is computed not merely present
+
+**Severity.** — (no defect found)
+
+**Why it ran.** #2683 (`ced99a71`) added `as_of_et` / `session_date` / `market_session` /
+`matrix_age_sec` / `freshness` to `GexPositioning` and `GexHeatmapForLargo`. Deploy `ea446b2d`
+completed **success** 07:12:57Z and carries it — ancestry checked against each of the five most
+recent runs, only that one qualifies. Measured 07:31Z via `/api/market/gex-positioning`, which reads
+the SAME `getGexPositioning` object the Largo tools do, so the contract is verified without Largo
+(still degraded platform-wide).
+
+| ticker | `as_of_et` | `session_date` | `market_session` | `matrix_age_sec` | independent cross-check | `freshness` |
+|---|---|---|---|---|---|---|
+| SPY | 2026-08-23 03:31 ET | 2026-08-23 | CLOSED | 154 | **154** | cached |
+| SPX | 2026-08-23 03:31 ET | 2026-08-23 | CLOSED | 50 | **50** | cached |
+| NVDA | 2026-08-23 03:31 ET | 2026-08-23 | CLOSED | 31 | **31** | cached |
+
+Real ET clock at measurement: **Sun Aug 23 03:31 EDT**. Matches on all three.
+
+**The cross-check column is the point.** `matrix_age_sec` was recomputed independently from each
+payload's own `asof` rather than trusting the field's presence, and agreed exactly in all three
+cases. Presence alone would only have proven the key exists.
+
+**SPY is the finding in one row:** a matrix 154 seconds old, carrying `spot: 765.72` — Friday's
+close — stamped 03:31 ET Sunday. Three different times that previously collapsed into one UTC
+instant, now individually readable.
 
 ## 2026-08-23 — [Thermal] Post-deploy validation of §9.3 session anchor — PASS, and the age field is computed not merely present
 
