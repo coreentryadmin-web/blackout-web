@@ -284,7 +284,7 @@ function VitalRow({
         <span className="font-mono text-[11px] font-bold text-sky-200">{value}</span>
         <span
           className={clsx(
-            "w-2 h-2 rounded-full flex-shrink-0",
+            "size-2 rounded-full flex-shrink-0",
             ok === true
               ? "bg-bull shadow-[0_0_6px_rgba(0,230,118,0.7)]"
               : ok === false
@@ -355,7 +355,7 @@ function PipelineRow({
         <span className="font-mono text-[11px] font-bold text-sky-200">{age.label}</span>
         <span
           className={clsx(
-            "w-2 h-2 rounded-full flex-shrink-0",
+            "size-2 rounded-full flex-shrink-0",
             ok === true
               ? "bg-bull shadow-[0_0_6px_rgba(0,230,118,0.7)]"
               : ok === false
@@ -428,7 +428,7 @@ function DataPipelineHealthTile({ health }: { health: AdminHealthPayload | null 
                 </span>
                 <span
                   className={clsx(
-                    "w-2 h-2 rounded-full flex-shrink-0",
+                    "size-2 rounded-full flex-shrink-0",
                     uw == null
                       ? "bg-white/20"
                       : uwAuthOk
@@ -450,7 +450,7 @@ function DataPipelineHealthTile({ health }: { health: AdminHealthPayload | null 
                 </span>
                 <span
                   className={clsx(
-                    "w-2 h-2 rounded-full flex-shrink-0",
+                    "size-2 rounded-full flex-shrink-0",
                     (stores?.active_halts?.length ?? 0) === 0
                       ? "bg-bull shadow-[0_0_6px_rgba(0,230,118,0.7)]"
                       : "bg-bear shadow-[0_0_6px_rgba(255,45,85,0.7)] animate-pulse"
@@ -472,7 +472,7 @@ function DataPipelineHealthTile({ health }: { health: AdminHealthPayload | null 
                 </span>
                 <span
                   className={clsx(
-                    "w-2 h-2 rounded-full flex-shrink-0",
+                    "size-2 rounded-full flex-shrink-0",
                     luld == null || !luld.luld_enabled
                       ? "bg-white/20"
                       : luldLive
@@ -494,7 +494,7 @@ function DataPipelineHealthTile({ health }: { health: AdminHealthPayload | null 
                 </span>
                 <span
                   className={clsx(
-                    "w-2 h-2 rounded-full flex-shrink-0",
+                    "size-2 rounded-full flex-shrink-0",
                     uwAuthOk
                       ? "bg-bull shadow-[0_0_6px_rgba(0,230,118,0.7)]"
                       : health != null

@@ -33,7 +33,7 @@ export const EmptyState = forwardRef<HTMLDivElement, EmptyStateProps>(function E
       {...rest}
     >
       {icon != null && (
-        <div className="grid h-12 w-12 place-items-center rounded-xl border border-bull/25 bg-bull/[0.08] text-2xl text-bull">
+        <div className="grid size-12 place-items-center rounded-xl border border-bull/25 bg-bull/[0.08] text-2xl text-bull">
           {icon}
         </div>
       )}

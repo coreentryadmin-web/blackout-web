@@ -115,7 +115,7 @@ export function PushNotificationToggle({ className = "", compact = false }: Push
     isOn ? (
       // Filled bell (subscribed)
       <svg
-        className="w-4 h-4 shrink-0"
+        className="size-4 shrink-0"
         viewBox="0 0 20 20"
         fill="currentColor"
         aria-hidden="true"
@@ -125,7 +125,7 @@ export function PushNotificationToggle({ className = "", compact = false }: Push
     ) : (
       // Outline bell (unsubscribed / error)
       <svg
-        className="w-4 h-4 shrink-0"
+        className="size-4 shrink-0"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"

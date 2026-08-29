@@ -100,7 +100,7 @@ export function CumulativeNetPremiumChart({ alerts }: { alerts: FlowAlert[] }) {
         ) : undefined
       }
     >
-      <div className="px-1 pt-1 pb-1">
+      <div className="p-1">
         {points.length < 2 ? (
           <div className="h-[72px] flex items-center justify-center">
             <Skeleton width="100%" height={72} rounded="md" />

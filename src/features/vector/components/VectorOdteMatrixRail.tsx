@@ -320,7 +320,7 @@ const MatrixRow = memo(function MatrixRow({
       <th
         scope="row"
         className={clsx(
-          "py-0.5 pl-1 pr-1 text-left font-bold",
+          "py-0.5 px-1 text-left font-bold",
           isSpot && "text-cyan-300"
         )}
       >
