@@ -72,7 +72,7 @@ export function FlowClusterPanel({
                 </span>
               </div>
               <p className="font-mono text-[10px] text-cyan-400 mt-0.5">
-                {c.printCount} prints · {Math.round(c.strike)}
+                {c.printCount} prints · {c.strike}
                 {isCall ? "C" : "P"} · exp {fmtExpiryShort(c.expiry)}
                 {aggr ? ` · ${aggr.label}` : ""}
               </p>
