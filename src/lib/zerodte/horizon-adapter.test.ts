@@ -58,6 +58,17 @@ test("a persisted live status (OPEN/HOLD/TRIM) reads as COMMIT even when the gat
   assert.equal(zeroDteSetupToHorizonPlay(s, "CLOSED")!.status, "WATCH"); // closed is not a working play
 });
 
+// REGRESSION (2026-08-29 audit finding): the test above only exercised CLOSED with a score
+// BELOW the lane floor, so it passed by coincidence of the score check, not because CLOSED
+// was actually handled. A ticker whose play already CLOSED today but gets re-flagged by a
+// later scan pass with no fresh gate context (real: an already-seen refresh ticker) used to
+// fall through to the ungated score-floor fallback, which has no way to know the position is
+// closed — a high enough score silently rendered it COMMIT again.
+test("a CLOSED persisted status stays WATCH even with a high, ungated score (was silently re-promoted to COMMIT)", () => {
+  const s = setup({ score: 78, gate: null }); // >= the 65 floor, no fresh gate context
+  assert.equal(zeroDteSetupToHorizonPlay(s, "CLOSED")!.status, "WATCH");
+});
+
 test("no gate context → falls back to the lane floor on the committed score", () => {
   assert.equal(zeroDteSetupToHorizonPlay(setup({ score: 70, gate: null }))!.status, "COMMIT"); // ≥ 65
   assert.equal(zeroDteSetupToHorizonPlay(setup({ score: 64, gate: null }))!.status, "WATCH"); // < 65
