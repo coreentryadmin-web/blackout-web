@@ -12,7 +12,6 @@
  */
 
 import https from "https";
-import { URL } from "url";
 
 const BASE = process.env.VALIDATE_BASE || "https://blackouttrades.com";
 const TICKERS = ["SPX", "SPY", "QQQ"];
