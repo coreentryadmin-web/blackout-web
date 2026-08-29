@@ -22067,29 +22067,49 @@ html.product-shell .nav-mega {
    before the flexible Play column gets ANY room) truncated ticker/strike/expiry text hard on a
    phone — "QQQ 722.5C 0D...", "APP 332.5C 0D..."). Two independent fixes:
    1. `data-mobile-view` (set by CommandDeck from an explicit tap, never the board's own default
-      selection — see selectPlay/closeMobileDetail there) makes the list the FULL default view;
-      the detail rail only takes over once the member taps a play, with a `.nh-deck-mobile-back`
-      button to return. Inert above this breakpoint — both rails always show side by side there.
+      selection — see selectPlay/closeMobileDetail there) makes the list the FULL default view.
+      The detail rail is a full-screen OVERLAY (`position:fixed`, slid in via `transform`) rather
+      than swapping it in for the list in the flex layout — the list stays mounted underneath the
+      whole time, so its scroll position survives a tap-in/tap-out round trip instead of losing it
+      on every return. `.nh-deck-mobile-back` is the way back. Inert above this breakpoint — both
+      rails always show side by side there, and `.nh-deck-right` is never `position:fixed`.
    2. Grade and Time are the two least-critical columns at a glance (grade is visible again once
       a play is opened; time is secondary to knowing WHICH play and its P&L) — hidden here so the
       Play column gets the room the fixed-width columns were leaving it none of. */
-@media (max-width:820px){
-  .nh-deck{flex-direction:column}
-  .nh-deck-left{width:100%}
-  .nh-deck-right{border-top:1px solid var(--dk-line)}
-  .nh-deck-play-table{--nh-play-cols:20px 56px minmax(0,1fr) 64px}
-  .nh-deck-play-cell--rating,.nh-deck-play-cell--time{display:none}
-  .nh-deck[data-mobile-view="list"] .nh-deck-left{max-height:none;flex:1;min-height:0}
-  .nh-deck[data-mobile-view="list"] .nh-deck-right{display:none}
-  .nh-deck[data-mobile-view="detail"] .nh-deck-left{display:none}
-  .nh-deck[data-mobile-view="detail"] .nh-deck-right{border-top:none;flex:1;min-height:0}
-  .nh-deck-mobile-back{display:inline-flex}
-}
 .nh-deck-mobile-back{display:none;align-items:center;gap:4px;margin:8px 12px 0;padding:6px 12px;
   border:1px solid var(--dk-border);border-radius:999px;background:var(--dk-bg-elevated);
   color:var(--dk-text-secondary);font-family:var(--font-mono);font-size:11px;font-weight:700;
   letter-spacing:.04em;align-self:flex-start}
 .nh-deck-mobile-back:hover{color:var(--dk-text-primary);border-color:var(--dk-border-hi,var(--dk-border))}
+@media (max-width:820px){
+  .nh-deck{flex-direction:column}
+  .nh-deck-left{width:100%;max-height:none;flex:1;min-height:0}
+  /* !important — same later-base-rule-wins cascade trap as the cell-hiding rule below
+     (.nh-deck-play-table's own `--nh-play-cols:22px 80px...` base definition is further down
+     this file and would otherwise silently win at this same specificity). */
+  .nh-deck-play-table{--nh-play-cols:20px 56px minmax(0,1fr) 64px!important}
+  /* !important: the per-cell base rules (.nh-deck-play-cell--rating{display:flex...} etc.) are
+     defined LATER in this file and win the cascade at equal specificity regardless of this rule
+     living inside a media query — a media query changes when a rule applies, not its precedence
+     against an equal-specificity rule that comes after it in source order. Caught live: without
+     `!important` this silently no-ops and Grade/Time stay visible on mobile (verified against the
+     compiled build — the override landed in the CSS but the later base rule overrode it). */
+  .nh-deck-play-cell--rating,.nh-deck-play-cell--time{display:none!important}
+  /* z-index above .nav-bar's 100 — this is a full takeover of the viewport, same as any mobile
+     "detail" screen; `.nh-deck-mobile-back` is the sheet's own way back, not the site nav. */
+  .nh-deck-right{
+    position:fixed;inset:0;z-index:110;border-top:none;
+    background:var(--dk-bg-panel);
+    display:flex;flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    transform:translateY(100%);
+    transition:transform .22s cubic-bezier(.22,1,.36,1);
+    pointer-events:none;
+  }
+  .nh-deck[data-mobile-view="detail"] .nh-deck-right{transform:translateY(0);pointer-events:auto}
+  .nh-deck-mobile-back{display:inline-flex;position:sticky;top:0;z-index:1;
+    background:var(--dk-bg-panel);margin:0 0 4px}
+}
+@media (max-width:820px) and (prefers-reduced-motion:reduce){.nh-deck-right{transition:none}}
 @media (prefers-reduced-motion:reduce){.nh-deck-dot,.nh-deck-cursor{animation:none}.nh-deck-clock .decay i,.nh-deck-right.nh-deck-dim,.nh-deck-ck .ckbar i,.nh-deck-excbar .mk .lbl,.nh-deck-occcopy{transition:none}.nh-deck-lc-fresh.is-pulse{animation:none}}
 
 /* ── 0DTE lifecycle play cards (left queue) — table grid ── */
