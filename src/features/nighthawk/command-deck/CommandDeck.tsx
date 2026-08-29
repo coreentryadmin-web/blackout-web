@@ -251,16 +251,9 @@ export function CommandDeck({
       <div className="nh-deck-left">
         {commandCenter ? (
           <DeckCompactHeader
-            laneLabel={laneLabel}
-            degraded={degraded}
-            stats={cmdStats}
-            engineStatus={engineStatus}
-            risk={risk}
-            tape={tape}
             statusFilter={statusFilter}
             setStatusFilter={setStatusFilter}
             playCounts={{ all: plays.length, open: counts.open, watch: counts.watch, closed: counts.closed }}
-            spxSlayerBadge={deckHorizon === "ZERO_DTE" ? spxSlayerBadge : undefined}
             search={search}
             setSearch={setSearch}
             directionFilter={directionFilter}
@@ -489,67 +482,37 @@ function DeckChromeRow({
 }
 
 /** Two-row compact header — stats/engine/risk on row 1; status filters on row 2. */
+/**
+ * Compact header — filters ONLY. Used to render a "primary" row above this (lane label + Opps/
+ * Top/Edge stat pills + engine heartbeat + SPX Slayer badge + risk/P&L cockpit) duplicating
+ * information already available elsewhere on the page (the view toggle already says which lane
+ * you're on; the play list itself IS the opportunity count; engine/risk/P&L are drill-down
+ * detail, not a landing-page headline) — removed per explicit product direction (2026-08-28):
+ * "within a fraction of a second of opening Night Hawk, I see the actual trades." `laneLabel`/
+ * `degraded`/`stats`/`engineStatus`/`risk`/`tape`/`spxSlayerBadge` are no longer threaded into
+ * this component; CommandDeck's own computation of them is untouched (the commandCenter=false
+ * branch below still renders MarketStateStrip/DiscoveryFunnelStrip/SpxSlayerBadgeStrip/
+ * CockpitStrip and is exercised by CommandDeck.ssr.test.ts, so those helpers stay defined).
+ */
 function DeckCompactHeader({
-  laneLabel,
-  degraded,
-  stats,
-  engineStatus,
-  risk,
-  tape,
   statusFilter,
   setStatusFilter,
   playCounts,
-  spxSlayerBadge,
   search,
   setSearch,
   directionFilter,
   setDirectionFilter,
 }: {
-  laneLabel: string;
-  degraded: boolean;
-  stats: ReturnType<typeof buildDeckCommandCenterStats> | null;
-  engineStatus: ReturnType<typeof deriveEngineStatus> | null;
-  risk: ReturnType<typeof deployedRisk>;
-  tape: ReturnType<typeof sessionTape>;
   statusFilter: StatusFilter;
   setStatusFilter: (f: StatusFilter) => void;
   playCounts: { all: number; open: number; watch: number; closed: number };
-  /** 0DTE only — SPX Slayer's own live play, read-only board badge (feat/nh-spx-badge). */
-  spxSlayerBadge?: SpxSlayerBadge | null;
   search: string;
   setSearch: (v: string) => void;
   directionFilter: DirectionFilter;
   setDirectionFilter: (f: DirectionFilter) => void;
 }) {
-  const topLine = stats?.topRated ? `${stats.topRated.ticker} (${stats.topRated.grade})` : "—";
-  const edge = degraded ? null : stats?.edge ?? null;
-
   return (
-    <div className="nh-deck-header-compact" aria-label="Today's command center">
-      <div className="nh-deck-hdr-row nh-deck-hdr-row--primary">
-        <div className="nh-deck-cmd nh-deck-cmd--inline">
-          <div className="nh-deck-cmd-lane">{laneLabel}</div>
-          <div className="nh-deck-cmd-grid nh-deck-cmd-grid--inline">
-            <div className="nh-deck-cmd-stat">
-              <span className="nh-deck-cmd-lab">Opps</span>
-              <span className="nh-deck-cmd-val">{degraded ? "—" : stats?.opportunities ?? 0}</span>
-            </div>
-            <div className="nh-deck-cmd-stat">
-              <span className="nh-deck-cmd-lab">Top</span>
-              <span className="nh-deck-cmd-val nh-deck-cmd-top">{degraded ? "—" : topLine}</span>
-            </div>
-            <div className="nh-deck-cmd-stat">
-              <span className="nh-deck-cmd-lab">Edge</span>
-              <span className={clsx("nh-deck-cmd-val", edge && `edge-${edge.toLowerCase()}`)}>
-                {degraded ? "—" : edge ?? "—"}
-              </span>
-            </div>
-          </div>
-        </div>
-        {engineStatus && <DeckEngineStatus status={engineStatus} compact />}
-        <SpxSlayerBadgeStrip badge={spxSlayerBadge} compact />
-        <CockpitStrip risk={risk} tape={tape} compact />
-      </div>
+    <div className="nh-deck-header-compact" aria-label="Filters">
       <div className="nh-deck-hdr-row nh-deck-hdr-row--secondary nh-deck-hdr-row--filters">
         <DeckStatusFilterBar
           statusFilter={statusFilter}
