@@ -50,6 +50,67 @@ The certification doc (2026-08-23) referenced "G-1..G-14" as the hard gate stack
 
 ---
 
+## PHASE 2 DEEP-DIVE VALIDATION — SCENARIOS & EDGE CASES (2026-08-30 RTH onwards)
+
+### Exit-management scenarios (audit complete, edge cases documented)
+
+| Scenario | Mode | Status | Known Issues | Validation Method |
+|---|---|---|---|---|
+| **Ratchet floor lifecycle** | OPEN→HOLD→EXIT | ✅ Audited | None — monotonic floor, properly latched | Unit tests + live grading audit |
+| **Trim-scale partial scale-out** | OPEN→TRIM→CLOSED/RUNNER | ✅ Audited | **KNOWN GAP:** trimsTaken re-derived same as armed; `trimAvailable` always false; persisted counter needed | FINDINGS 2026-08-27 + unit tests pinning gap |
+| **Trim-scale dead-zone** | Edge case: no trim yet but floor armed | ✅ Audited | **KNOWN GAP (unreachable today):** if trimsTaken were ever <armed, a real plan-stop breach can fall through to TRIM instead of EXIT | exit-engine.test.ts 2 regression tests guard against future redesign |
+| **Ratchet vs plan-stop precedence** | Both breach simultaneously | ✅ Audited | None — higher mark wins; reason is honest | Exit engine OR precedence (lines 25-35) |
+| **Iron Condor 4-leg geometry** | Multi-leg credit structure | ✅ Audited (2026-08-23) | None — short/long symmetry, net credit, phantom-stop edge, breach tracking verified | condor-wr.mjs validates win rates |
+| **Phantom-stop (Condor breach edge)** | Condor goes negative mid-session | ✅ Documented | None — handled via shared breaches gate | zerodte-e2e-healthcheck stage F validates |
+| **WS-11 executable vs mechanical** | Dual grading tracks | ✅ Tested (100% agreement, 298 plays) | None — outcome-grading-audit.mjs confirms perfect coherence | Live ledger comparison 2026-08-23 |
+| **Thesis-break evidence weighting** | Cortex veto vs opposing evidence | ⏳ Measured (veto-flicker 2026-08-28) | None known — stateless veto design working | FINDINGS 2026-08-28; cortex-oppose-magnitude stable |
+
+### Gate coverage matrix (17+ codes, complete mapping)
+
+| Gate | Code | BLOCK Condition | PASS Condition | RTH Validation |
+|---|---|---|---|---|
+| **G-1** | tape_alignment | Flow opposes SPY bias | Flow aligns or plays index/etfs | Observe live bias + FLOW commits |
+| **G-1 fail-closed** | no_market_bias | SPY bias unavailable/stale | Live bias present + age <15m | E2E infrastructure check |
+| **G-2** | opening_window | Before 10:00 ET | ≥10:00 ET and before 15:30 | RTH time-window observation |
+| **G-3** | score_floor | Score <65 | Score ≥65 | Observe score distribution + rejections |
+| **G-4 (VIX regime)** | vix_elevated | VIX 17-20 AND score <75 | VIX <17 or score ≥75 | Live VIX regime check |
+| **G-4 (VIX extreme)** | vix_extreme | VIX ≥20 + non-index | VIX <20 or index/ETF product | Market volatility regime |
+| **G-5 (Governor)** | governor_max_concurrent | 3 plans already OPEN | <3 open plans | Governor state table |
+| **G-5** | governor_session_stops | 3 stops triggered today | <3 stops, session still live | Stop counter |
+| **G-5** | governor_session_loss_halt | 3 losers or -120% cumulative | Session loss <threshold | Loss tracking |
+| **G-5** | governor_reentry_lock | Same-direction re-entry within 20m of stop | 20m+ elapsed since last stop | Re-entry gate logic |
+| **G-5** | correlated_conflict | Opposes OPEN plan on correlated ticker | No conflicting OPEN | Correlation matrix |
+| **G-6** | cross_system_conflict | Opposes live Slayer/Night Hawk take + score <80 | No conflict or score ≥80 | Cross-system state |
+| **G-7** | macro_hard_block | CPI/FOMC/NFP/PPI/GDP window | Outside macro event window | Economic calendar |
+| **G-8** | plan_moved | Mark ≥35% past flow fill | Mark <35% past fill | Mark movement tracking |
+| **G-9** | plan_illiquid | Bid/ask spread >15% of mid | Spread ≤15% of mid | Option chain liquidity |
+| **G-12** | confluence_floor | Insufficient VWAP/market-aligned confirmations | ≥confluence floor count | Discovery lane consensus |
+| **G-14** | late_afternoon | After 15:30 ET | Before 15:30 ET | Time-window check |
+| **G-17** | single_rail_corroboration | 65-74 band without FLOW AND score ≥75 | Any origin combo or score <75 | Origin-aware scoring |
+| **Fail-closed** | gate_context_unavailable | Gate inputs unreadable | All inputs present | Infrastructure health |
+
+### Discovery path validation (FLOW/BREAKOUT/PIN origins)
+
+| Lane | Origin | Status | Known Observations | RTH Check |
+|---|---|---|---|---|
+| **FLOW** (whale evidence) | FLOW | ✅ Core lane | Score floor 65; captured in score 100% of time flow present | Observe FLOW commits + score attribution |
+| **BREAKOUT** (momentum) | BREAKOUT | ✅ Dynamic cap (2026-08-26) | Recall 50% kept vs 64.6% dropped (dynamic cap may be aggressive); floor 65 after #2893 | Observe cap floor vs actual drop-off quality |
+| **PIN** (gamma walls) | PIN | ✅ Origin-preserved | Temporal stability unmasured; PIN_TEMPORAL_STABILITY enforced but parked on assumption | Capture GEX snapshots + measure wall stability |
+| **Cortex veto** | (meta) | ✅ Stateless | Veto-flicker rate low; no hysteresis needed | Observe veto fire rate + clearing patterns |
+| **Governor** | (meta) | ✅ Active | Concurrent limit, stops, loss halt, re-entry lock all firing | Track governor constraint hits |
+
+### Performance baselines (measurement-pending)
+
+| Metric | Target | Measurement | Status |
+|---|---|---|---|
+| Board-build p50 | <500ms | `buildAndPublishBoard` instrument during RTH | ⏳ RTH |
+| Board-build p95 | <2s | Same sampled p95 tail | ⏳ RTH |
+| Interaction latency | <100ms | DOM update to visible in proxy-browser | ⏳ RTH UI audit |
+| CLS (Cumulative Layout Shift) | <0.1 | `cls-measure.cjs` during RTH | ⏳ RTH |
+| Mark latch cadence | 1s tick | `ensureZeroDteMarkPoller` verify timing | ✅ Documented SSE+REST dual |
+
+---
+
 ## EXECUTIVE SUMMARY
 
 Night Hawk is the money-adjacent 0DTE trading surface. This certification validates that every member-facing number originates from a trusted source, every display label is honest, every interaction delivers correct data, and the architecture is sound.
