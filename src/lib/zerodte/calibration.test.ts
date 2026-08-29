@@ -334,7 +334,12 @@ test("ungraded rows are counted but never bucketed", () => {
   assert.equal(report.gates[0]!.evidence.would_block.n, 1);
 });
 
-function skip(gate: string, verdict: SkipCounterfactual["verdict"], basis: SkipCounterfactual["basis"]): GradedSkipInput {
+function skip(
+  gate: string,
+  verdict: SkipCounterfactual["verdict"],
+  basis: SkipCounterfactual["basis"],
+  reason: string | null = null
+): GradedSkipInput {
   return {
     gate_failed: gate,
     counterfactual: {
@@ -346,7 +351,7 @@ function skip(gate: string, verdict: SkipCounterfactual["verdict"], basis: SkipC
       entry: 1,
       exit: 1,
       move_pct: 0,
-      reason: null,
+      reason,
       graded_at: "2026-07-13T20:00:00.000Z",
     } satisfies SkipCounterfactual,
   };
@@ -359,7 +364,7 @@ test("blocked-value lines: per-gate would-have-won rates with the same LOW-N dis
     skip("tape_alignment", "would_have_won", "premium"),
     skip("tape_alignment", "would_have_lost", "underlying"),
     skip("tape_alignment", "would_have_lost", "underlying"),
-    skip("tape_alignment", "ungradeable", null),
+    skip("tape_alignment", "ungradeable", null, "no underlying bar at/after the block time inside the plan window"),
     skip("score_floor", "would_have_won", "underlying"),
     skip("score_floor", "would_have_lost", "underlying"),
     // Malformed blob — ignored, never a throw.
@@ -376,6 +381,9 @@ test("blocked-value lines: per-gate would-have-won rates with the same LOW-N dis
       would_have_won_rate_pct: 60,
       by_basis: { premium: 1, underlying: 4 },
       low_n: false,
+      ungradeable_reasons: [
+        { reason: "no underlying bar at/after the block time inside the plan window", n: 1 },
+      ],
     },
     {
       gate_failed: "score_floor",
@@ -385,9 +393,42 @@ test("blocked-value lines: per-gate would-have-won rates with the same LOW-N dis
       would_have_won_rate_pct: 50,
       by_basis: { premium: 0, underlying: 2 },
       low_n: true, // n=2 < LOW_N_THRESHOLD — no interpretation may rest on this line
+      ungradeable_reasons: [],
     },
   ]);
   assert.equal(report.blocked_value[1]!.n < LOW_N_THRESHOLD, true);
+});
+
+// REGRESSION (2026-08-29 audit finding): a live run against production found EVERY gate's
+// blocked_value line at n=0 (100% ungradeable) with no way to tell WHY — the `reason` string
+// skip-grading.ts already writes onto every ungradeable verdict was read off the DB and then
+// silently discarded by blockedValueLines. This pins the aggregation (most-frequent reason
+// first, capped, absent reasons labeled rather than dropped) so the report can actually answer
+// "why can't this gate be measured" instead of just "it can't".
+test("blocked-value lines: ungradeable reasons are aggregated, most-frequent first, capped, never silently discarded", () => {
+  const skips: GradedSkipInput[] = [
+    skip("opening_window", "ungradeable", null, "no underlying bars after the counterfactual entry — no move to measure"),
+    skip("opening_window", "ungradeable", null, "no underlying bars after the counterfactual entry — no move to measure"),
+    skip("opening_window", "ungradeable", null, "no underlying bars after the counterfactual entry — no move to measure"),
+    skip("opening_window", "ungradeable", null, "block time unreadable — no counterfactual entry point exists"),
+    skip("opening_window", "ungradeable", null, null), // no reason recorded — must not vanish
+    // Six distinct one-off reasons beyond the cap of 5 — only the top 5 (by count, then name) survive.
+    ...["r1", "r2", "r3", "r4", "r5", "r6"].map((r) => skip("min_gross", "ungradeable", null, r)),
+  ];
+  const report = analyzeGateCalibration({ rows: [], gradedSkips: skips, window: WINDOW });
+  const opening = report.blocked_value.find((l) => l.gate_failed === "opening_window")!;
+  assert.deepEqual(opening.ungradeable_reasons, [
+    { reason: "no underlying bars after the counterfactual entry — no move to measure", n: 3 },
+    { reason: "(no reason recorded)", n: 1 },
+    { reason: "block time unreadable — no counterfactual entry point exists", n: 1 },
+  ]);
+  const minGross = report.blocked_value.find((l) => l.gate_failed === "min_gross")!;
+  assert.equal(minGross.ungradeable_reasons.length, 5, "capped at 5 distinct reasons even with 6 present");
+  assert.deepEqual(
+    minGross.ungradeable_reasons.map((r) => r.reason),
+    ["r1", "r2", "r3", "r4", "r5"],
+    "tied counts (all n=1) break alphabetically, so r6 is the one dropped by the cap"
+  );
 });
 
 test("empty window: available:false, machine-readable shape intact", () => {
