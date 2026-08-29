@@ -30,8 +30,22 @@
 - [x] Confirm NIGHTHAWK-CERTIFICATION.md exists and current (✅ 2026-08-23 comprehensive doc found)
 - [x] Review FINDINGS.md for unresolved 0DTE items (✅ checked; trim_scale/exit-engine findings documented)
 - [x] Verify PRs #3110/#3117/#3119/#3101 addressed targets (✅ all merged and functional)
-- [ ] Set up gate test matrix (G-1 through G-14) — **queued for RTH** — 
+- [x] **NEW:** Complete gate inventory audit (✅ gates are more complex than "G-1..G-14" framing; 17+ codes documented in code)
+- [ ] Unit test baseline (Node 20) — currently running in background, expected 1904 pass / 0 fail
+- [ ] Set up gate behavior validation (G-1/G-2/G-3/G-4/G-5/G-6/G-7/G-8/G-9/G-12/G-14/G-17) — **queued for RTH** 
 - [ ] Prepare performance measurement harnesses (CLS, interaction latency) — **queued for RTH**
+
+### Gate inventory audit (Phase 1 discovery)
+
+The certification doc (2026-08-23) referenced "G-1..G-14" as the hard gate stack, but the actual implementation spans **17+ gate codes** across two families:
+
+| Family | Gate | Codes | Status |
+|---|---|---|---|
+| **Evidence gates** (board.ts) | Pre-commit filters | min_gross, min_aggr_share, min_dominance, max_itm_pct, no_dominant_strike, no_underlying_price | ✅ Documented |
+| **Hard entry gates** (gates.ts) | Post-evidence checks | tape_alignment (G-1), opening_window (G-2), score_floor (G-3), vix_elevated/extreme (G-4), governor_* (G-5), cross_system_conflict (G-6), macro_hard_block (G-7), plan_moved (G-8), plan_illiquid (G-9), confluence_floor (G-12), late_afternoon (G-14), single_rail_corroboration (G-17) | ✅ Documented |
+| **Fail-closed** | No-data blocks | gate_context_unavailable | ✅ Documented |
+
+**Implication for RTH validation:** Gate-behavior tests must cover the complete 17+ code matrix, not just G-1..G-14. Each gate's BLOCK condition + PASS condition must be validated against live data.
 
 ---
 
