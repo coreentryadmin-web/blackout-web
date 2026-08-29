@@ -8,6 +8,7 @@ import {
   playStatusDisplay,
   playSymbolLine,
   playTimeRangeCompact,
+  zeroDteActionDisplay,
 } from "./play-card-lifecycle";
 import { formatReturnPct, playGradeLabel, playQualityPct, tierStars } from "./play-card-display";
 import { StatusPill } from "./DeckStatusBadges";
@@ -55,7 +56,11 @@ export function PlayLifecycleCardBody({
   markFlash?: boolean;
 }) {
   const phase = playLifecyclePhase(play.status);
-  const status = playStatusDisplay(play.status);
+  // ACTION vocabulary ("what should I do?") when real fields support it — HOLD/TRIM {%}/EXIT/
+  // RUNNER on OPEN 0DTE rows, TARGET/STOPPED/EOD EXIT on CLOSED ones — else the honest coarse
+  // ACTIVE/WATCH/CLOSED/PASSED lifecycle pill (see zeroDteActionDisplay's own doc for why WATCH
+  // and 3 of the 6 CLOSED labels are deliberately never fabricated here).
+  const status = zeroDteActionDisplay(play) ?? playStatusDisplay(play.status);
   const ret = playListReturnPct(play);
   const times = playTimeRangeCompact(play);
   const grade = playGradeLabel(play);

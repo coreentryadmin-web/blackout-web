@@ -237,6 +237,47 @@ export function playStatusDisplay(status: DeckStatus): { label: string; tone: St
   return { label: "ACTIVE", tone: "active" };
 }
 
+/**
+ * ACTION vocabulary for the plays table — "what should I do right now?" instead of the coarse
+ * lifecycle STATUS pill. Grounded against real fields only (docs/audit/NIGHTHAWK-3RAIL-REDESIGN.md
+ * §2's 2026-08-29 audit): the brief's WATCH-lifecycle vocabulary (WAIT/ARMED/ENTRY VALID/...)
+ * needs a new data path from `archetype-gates.ts` that doesn't exist yet, so WATCH/SKIP rows are
+ * deliberately left returning null here — they keep the existing honest WATCH/PASSED pill rather
+ * than fabricate readiness state. Three of the brief's six CLOSED labels (THESIS BROKE/TRAIL
+ * EXIT/SCRATCH) have no corresponding `exit_reason` value either — an unrecognized reason returns
+ * null for the same reason, falling back to the plain CLOSED pill instead of guessing.
+ *
+ * OPEN/HOLD/TRIM 0DTE rows: `Recommendation` and the real per-tranche `trigger_pct` on the frozen
+ * trim ladder are both already-computed fields — reading them, not deriving anything new. RUNNER
+ * matches `trimLadderVisual()`'s own "any tranche fired" semantics (terminal-display.ts) — once
+ * the first partial trim banks, what remains IS the runner, even before every tranche has fired.
+ */
+export function zeroDteActionDisplay(play: TerminalPlay): { label: string; tone: StatusTone } | null {
+  if (play.horizon !== "ZERO_DTE") return null;
+  if (play.status === "CLOSED") {
+    if (play.closedReason === "doubled") return { label: "TARGET", tone: "closed" };
+    if (play.closedReason === "stopped") return { label: "STOPPED", tone: "closed" };
+    if (play.closedReason === "time_stop") return { label: "EOD EXIT", tone: "closed" };
+    return null;
+  }
+  if (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM") {
+    // A condor's exit is 4-leg credit-structure geometry, not the directional trim ladder — the
+    // coarse ACTIVE pill stays honest here rather than force-fitting condor state into this scale.
+    if (play.isCondor) return null;
+    if (play.recommendation === "SELL") return { label: "EXIT", tone: "active" };
+    if (play.recommendation === "TRIM") {
+      const next = play.exitPolicy?.trim_levels?.find((t) => !t.fired);
+      if (next) return { label: `TRIM ${Math.round(next.trigger_pct)}%`, tone: "active" };
+      return { label: "TRIM", tone: "active" };
+    }
+    const anyTrimFired = play.exitPolicy?.trim_levels?.some((t) => t.fired) ?? false;
+    if (anyTrimFired) return { label: "RUNNER", tone: "active" };
+    if (play.recommendation === "HOLD") return { label: "HOLD", tone: "active" };
+    return null;
+  }
+  return null;
+}
+
 export function setupTypeLabel(play: TerminalPlay): string | null {
   if (play.archetype) {
     return play.archetype.replace(/_/g, " ");
