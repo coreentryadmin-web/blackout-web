@@ -137,6 +137,15 @@ Cortex evaluation into `zerodte-sim.mjs`'s candidate loop so its own generated p
 correctly before grading. (a) is the smaller change and reuses more of what already exists. No gate
 touched; C-tier stays on `ratchet` pending real evidence either way.
 
+**Update 2026-08-29 — blocker (1) resolved, blocker (2) still open.** Shipped option (a):
+`GET /api/admin/zerodte/tier-export` (PR #3112) exposes `entry_premium`/`top_strike`/`expiry`/real
+`tier` per historical play — those fields were never actually missing from the DB
+(`fetchZeroDteSetupLogRange` already returns them), only from every HTTP response, since `record.ts`
+aggregates them away. **The backtest script itself — pulling this export, fetching each real
+contract's OCC minute bars, and re-grading C-tier/untiered rows through `gradeThroughExitEngine`
+under `ratchet` vs `trim_scale` — is still not built.** That remains the next concrete step before
+this item can close; `resolveExitModeForTier`'s C-tier→ratchet policy is unchanged.
+
 ---
 
 ### Board status badge: the TRIM threshold bug is real, and the earlier deferral was correct (2026-08-28)
