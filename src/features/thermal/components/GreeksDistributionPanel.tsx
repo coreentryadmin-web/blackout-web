@@ -16,7 +16,7 @@ interface GreeksDistributionPanelProps {
 export function GreeksDistributionPanel({
   cells,
   spot,
-  ticker,
+  ticker: _ticker,
 }: GreeksDistributionPanelProps) {
   const analysis = useMemo(() => {
     if (!cells || !spot) return null;
@@ -27,7 +27,7 @@ export function GreeksDistributionPanel({
     return (
       <Panel>
         <PanelLabel>Greeks Distribution</PanelLabel>
-        <EmptyState>No exposure data available</EmptyState>
+        <EmptyState title="No exposure data available" />
       </Panel>
     );
   }
@@ -41,33 +41,32 @@ export function GreeksDistributionPanel({
         <PanelLabel>Greeks Distribution</PanelLabel>
         <div className="flex gap-2">
           {analysis.concentrationStrikes.length > 0 && (
-            <Badge variant="warning" className="text-xs">
+            <Badge tone="accent" className="text-xs">
               {analysis.concentrationStrikes.length} concentration
             </Badge>
           )}
           {analysis.maxGap > 5 && (
-            <Badge variant="default" className="text-xs">
+            <Badge tone="neutral" className="text-xs">
               Gap: {analysis.maxGap.toFixed(0)}
             </Badge>
           )}
         </div>
       </div>
 
-      {/* Top 5 strikes by exposure */}
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Top 5 Strikes</h3>
+        <h3 className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
+          Top 5 Strikes
+        </h3>
         <div className="space-y-2">
           {top5.map((bucket) => (
             <div key={bucket.strike} className="space-y-1">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-mono text-gray-600 dark:text-gray-400">
-                  {bucket.strike.toFixed(0)}
-                </span>
+              <div className="flex items-center justify-between font-mono text-[11px]">
+                <span className="tabular-nums text-sky-300">{bucket.strike.toFixed(0)}</span>
                 <div className="flex items-center gap-2">
                   <span
                     className={clsx(
-                      "text-xs font-semibold",
-                      bucket.isConcentration ? "text-orange-600 dark:text-orange-400" : "text-gray-600 dark:text-gray-400"
+                      "text-xs font-semibold tabular-nums",
+                      bucket.isConcentration ? "text-cyan-400" : "text-sky-300"
                     )}
                   >
                     {bucket.pctOfTotal.toFixed(1)}%
@@ -75,13 +74,11 @@ export function GreeksDistributionPanel({
                   {bucket.rank === 1 && <Badge className="text-xs">Peak</Badge>}
                 </div>
               </div>
-              <div className="h-2 w-full overflow-hidden rounded-sm bg-gray-100 dark:bg-gray-800">
+              <div className="h-2 w-full overflow-hidden rounded-sm border border-white/10 bg-white/[0.04]">
                 <div
                   className={clsx(
                     "h-full transition-all",
-                    bucket.isConcentration
-                      ? "bg-orange-500 dark:bg-orange-600"
-                      : "bg-blue-500 dark:bg-blue-600"
+                    bucket.isConcentration ? "bg-cyan-400/80" : "bg-sky-400/70"
                   )}
                   style={{ width: `${(bucket.absGamma / maxGamma) * 100}%` }}
                 />
@@ -91,62 +88,60 @@ export function GreeksDistributionPanel({
         </div>
       </div>
 
-      {/* Risk assessment */}
-      <div className="space-y-3 border-t border-gray-200 pt-4 dark:border-gray-800">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Risk Assessment</h3>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div className="rounded-md bg-gray-50 p-2 dark:bg-gray-900">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Clusters</div>
-            <div className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
-              {analysis.clusterCount}
-            </div>
+      <div className="space-y-3 border-t border-white/10 pt-4">
+        <h3 className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
+          Risk Assessment
+        </h3>
+        <div className="grid grid-cols-2 gap-3 font-mono text-[11px]">
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-2">
+            <div className="text-[9px] uppercase tracking-[0.16em] text-sky-300/70">Clusters</div>
+            <div className="mt-1 font-semibold tabular-nums text-white">{analysis.clusterCount}</div>
           </div>
-          <div className="rounded-md bg-gray-50 p-2 dark:bg-gray-900">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Spread</div>
-            <div className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-2">
+            <div className="text-[9px] uppercase tracking-[0.16em] text-sky-300/70">Spread</div>
+            <div className="mt-1 font-semibold tabular-nums text-white">
               {analysis.exposureSpread.toFixed(0)}%
             </div>
           </div>
-          <div className="rounded-md bg-gray-50 p-2 dark:bg-gray-900">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Max Gap</div>
-            <div className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-2">
+            <div className="text-[9px] uppercase tracking-[0.16em] text-sky-300/70">Max Gap</div>
+            <div className="mt-1 font-semibold tabular-nums text-white">
               {analysis.maxGap.toFixed(1)}
             </div>
           </div>
-          <div className="rounded-md bg-gray-50 p-2 dark:bg-gray-900">
-            <div className="text-xs text-gray-500 dark:text-gray-400">Total Strikes</div>
-            <div className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
-              {analysis.buckets.length}
-            </div>
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-2">
+            <div className="text-[9px] uppercase tracking-[0.16em] text-sky-300/70">Total Strikes</div>
+            <div className="mt-1 font-semibold tabular-nums text-white">{analysis.buckets.length}</div>
           </div>
         </div>
       </div>
 
-      {/* Insights */}
-      <div className="space-y-2 border-t border-gray-200 pt-4 dark:border-gray-800">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Insights</h3>
-        <ul className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
+      <div className="space-y-2 border-t border-white/10 pt-4">
+        <h3 className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
+          Insights
+        </h3>
+        <ul className="space-y-1 text-[11px] leading-relaxed text-sky-300/80">
           {analysis.concentrationStrikes.length > 0 && (
             <li className="flex items-start gap-2">
-              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-orange-500" />
+              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-cyan-400" />
               <span>Concentration risk at {analysis.concentrationStrikes.join(", ")}</span>
             </li>
           )}
           {analysis.maxGap > 10 && (
             <li className="flex items-start gap-2">
-              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-yellow-500" />
+              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-sky-300" />
               <span>Large gap in exposure ({analysis.maxGap.toFixed(0)} points)</span>
             </li>
           )}
           {analysis.clusterCount > 2 && (
             <li className="flex items-start gap-2">
-              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />
+              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-sky-400" />
               <span>Multiple distinct gamma clusters detected</span>
             </li>
           )}
           {analysis.exposureSpread > 80 && (
             <li className="flex items-start gap-2">
-              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-purple-500" />
+              <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-cyan-300" />
               <span>High exposure variance among top strikes</span>
             </li>
           )}
@@ -155,7 +150,7 @@ export function GreeksDistributionPanel({
             analysis.clusterCount <= 2 &&
             analysis.exposureSpread <= 80 && (
               <li className="flex items-start gap-2">
-                <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-green-500" />
+                <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-cyan-400" />
                 <span>Exposure well-distributed with no concentration risk</span>
               </li>
             )}
