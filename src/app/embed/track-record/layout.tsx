@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { requireAdmin } from "@/lib/admin-access";
 
 export default async function EmbedTrackRecordLayout({
