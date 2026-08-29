@@ -305,8 +305,21 @@ export async function runSkipGrading(opts: { days?: number; nowMs: number }): Pr
   }
 
   // One underlying bar fetch per (ticker, session) — many rejections share a name/day.
-  const barCache = new Map<string, Promise<SkipGradeBar[]>>();
-  const barsFor = (ticker: string, sessionDate: string): Promise<SkipGradeBar[]> => {
+  //
+  // fetchThrew below distinguishes "the fetch call itself rejected" (dynamic import
+  // failure, a bug in mapBars, an unexpected exception) from "the fetch succeeded and
+  // Polygon legitimately returned zero bars" (a genuinely quiet session, an
+  // untradeable index-root ticker, etc.) — a distinction the code used to erase
+  // entirely: fetchAggBars's own internal polygonGet already swallows HTTP/network
+  // failures into a bare [] (only a console.warn nobody reads marks it happened), and
+  // this function's own `.catch(() => [])` used to erase the SECOND layer too, so an
+  // outright exception and a clean empty result were indistinguishable by the time
+  // gradeSkippedPlay ever saw them — both just read "no bar data" (2026-08-29 audit
+  // finding: every one of 200+ live rejections graded ungradeable with that exact
+  // generic reason, and there was no way from the report alone to tell whether Polygon
+  // was actually failing or genuinely had nothing for that ticker/session).
+  const barCache = new Map<string, Promise<{ bars: SkipGradeBar[]; fetchThrew: string | null }>>();
+  const barsFor = (ticker: string, sessionDate: string): Promise<{ bars: SkipGradeBar[]; fetchThrew: string | null }> => {
     const key = `${ticker}:${sessionDate}`;
     let cached = barCache.get(key);
     if (cached == null) {
@@ -315,14 +328,30 @@ export async function runSkipGrading(opts: { days?: number; nowMs: number }): Pr
         // alias in dynamic positions): keeps the provider out of the static graph.
         const { fetchAggBars } = await import("../providers/polygon-largo");
         const bars = await fetchAggBars(polygonSpotTicker(ticker), 1, "minute", sessionDate, sessionDate, "50000");
-        return bars
-          .filter((b) => b.t != null && Number.isFinite(b.t))
-          .map((b) => ({ t: b.t as number, h: b.h, l: b.l, c: b.c }));
-      })().catch(() => [] as SkipGradeBar[]);
+        return {
+          bars: bars
+            .filter((b) => b.t != null && Number.isFinite(b.t))
+            .map((b) => ({ t: b.t as number, h: b.h, l: b.l, c: b.c })),
+          fetchThrew: null,
+        };
+      })().catch((err) => ({
+        bars: [] as SkipGradeBar[],
+        fetchThrew: err instanceof Error ? err.message : String(err),
+      }));
       barCache.set(key, cached);
     }
     return cached;
   };
+
+  /** Reasons gradeSkippedPlay emits when it fell through to an empty underlying-bar
+   *  set — swapped out below for the real fetch-failure reason when one was captured,
+   *  so the operator sees WHY the bars were empty instead of just that they were. */
+  const GENERIC_NO_BAR_REASONS = new Set([
+    "no underlying bar at/after the block time inside the plan window",
+    "no underlying bars after the counterfactual entry — no move to measure",
+    "no bar data available for the session — neither contract nor underlying path reconstructable",
+    "contract bars end at/before the counterfactual entry and no underlying bars were available",
+  ]);
 
   const summary = { ...base, available: true };
   for (const row of rows) {
@@ -332,13 +361,17 @@ export async function runSkipGrading(opts: { days?: number; nowMs: number }): Pr
       // printed a contract) — premiumBars stays null and every DB-sourced grade is
       // underlying-basis. The pure core still supports the premium path so a
       // future occ-carrying rejection (or a test fixture) grades on real premium.
+      const { bars, fetchThrew } = await barsFor(row.ticker, row.session_date);
       const verdict = gradeSkippedPlay({
         direction: row.direction,
         blockedAtMs: Date.parse(row.observed_at),
         premiumBars: null,
-        underlyingBars: await barsFor(row.ticker, row.session_date),
+        underlyingBars: bars,
         nowMs: opts.nowMs,
       });
+      if (fetchThrew != null && verdict.verdict === "ungradeable" && verdict.reason != null && GENERIC_NO_BAR_REASONS.has(verdict.reason)) {
+        verdict.reason = `underlying bar fetch threw: ${fetchThrew}`;
+      }
       await db.dbQuery("UPDATE zerodte_scan_rejections SET counterfactual_json = $1 WHERE id = $2", [
         JSON.stringify(verdict),
         row.id,
