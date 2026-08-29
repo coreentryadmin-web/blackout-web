@@ -3,6 +3,7 @@ import "server-only";
 import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
 import { fetchHotTickers } from "@/lib/bie/hot-tickers";
 import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
+import { dbConfigured, dbQuery } from "@/lib/db";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import { buildRankedVectorPicks, VECTOR_CANDIDATE_POOL_SIZE } from "@/features/vector/lib/vector-contract-picks";
 import { loadVectorPickEnrichment } from "@/features/vector/lib/vector-pick-enrichment";
@@ -236,6 +237,28 @@ export async function sweepVectorPickForTicker(
 
 const SWEEP_CONCURRENCY = 4;
 
+/** Night Hawk 0DTE discovery names for today — prioritize tickers the commit engine already surfaced. */
+export async function fetchZerodteDiscoveryTickers(sessionDate: string, limit = 20): Promise<string[]> {
+  if (!dbConfigured()) return [];
+  const capped = Math.min(Math.max(limit, 1), 40);
+  try {
+    const res = await dbQuery<{ ticker: string }>(
+      `SELECT ticker FROM (
+         SELECT ticker, MAX(COALESCE(weighted_score, score, 0)) AS best
+         FROM zerodte_discovery_events
+         WHERE session_date = $1::date AND ticker IS NOT NULL AND ticker <> ''
+         GROUP BY ticker
+         ORDER BY best DESC
+         LIMIT $2
+       ) q`,
+      [sessionDate, capped]
+    );
+    return res.rows.map((r) => String(r.ticker).trim().toUpperCase()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 /** Universe-wide Vector pick sweep — server-side, no `/vector` viewer required. */
 export async function runVectorPickUniverseSweep(): Promise<VectorPickSweepSummary> {
   const sessionDate = etSessionDate(Date.now());
@@ -255,9 +278,10 @@ export async function runVectorPickUniverseSweep(): Promise<VectorPickSweepSumma
 
   const base = vectorUniverseTickers();
   const hot = await fetchHotTickers(12).catch(() => []);
+  const zerodte = await fetchZerodteDiscoveryTickers(sessionDate, 20).catch(() => []);
   const tickers = mergeSweepTickerUniverse(
     base,
-    hot.map((h) => h.ticker)
+    [...zerodte, ...hot.map((h) => h.ticker)]
   );
   const results: VectorPickSweepTickerResult[] = [];
 

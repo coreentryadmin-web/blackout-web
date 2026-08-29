@@ -8,7 +8,7 @@ import type { VectorPickActionStatus } from "@/features/vector/lib/vector-pick-l
 export const VECTOR_PICK_WINNER_PCT_FLOOR = 50;
 export const VECTOR_PICK_LEADER_PCT_FLOOR = 15;
 /** Cap merged universe + hot-ticker sweep list (hot names first). */
-export const VECTOR_SWEEP_TICKER_CAP = 56;
+export const VECTOR_SWEEP_TICKER_CAP = 64;
 
 /** Hot HELIX names first, then the static Vector universe — deduped, capped. */
 export function mergeSweepTickerUniverse(
