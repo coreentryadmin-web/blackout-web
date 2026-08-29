@@ -13,8 +13,6 @@
  * Runs offline — no market dependency.
  */
 
-import { execSync } from 'child_process';
-
 const args = process.argv.slice(2);
 const flags = {
   json: args.includes('--json'),

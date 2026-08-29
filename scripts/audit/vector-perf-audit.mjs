@@ -16,7 +16,7 @@
  */
 
 import fs from 'fs';
-import path from 'path';
+import { resolveAuditBase } from './lib/audit-base.mjs';
 
 const args = process.argv.slice(2);
 const flags = {
@@ -25,7 +25,7 @@ const flags = {
   out: args.find(a => a.startsWith('--out='))?.split('=')[1] || './vector-perf-samples.jsonl',
   interval: parseInt(args.find(a => a.startsWith('--interval='))?.split('=')[1] || '5000'),
   duration: parseInt(args.find(a => a.startsWith('--duration='))?.split('=')[1] || '21600000'), // 6 hours
-  base: args.find(a => a.startsWith('--base='))?.split('=')[1] || 'https://blackouttrades.com',
+  base: resolveAuditBase(args.find(a => a.startsWith('--base='))?.split('=')[1]),
 };
 
 const log = (msg, level = 'INFO') => {

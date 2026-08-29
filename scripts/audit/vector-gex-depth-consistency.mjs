@@ -13,14 +13,14 @@
  * Read-only against prod.
  */
 
-import fs from 'fs';
+import { resolveAuditBase } from './lib/audit-base.mjs';
 
 const args = process.argv.slice(2);
 const flags = {
   json: args.includes('--json'),
   quiet: args.includes('--quiet'),
   tickers: args.find(a => a.startsWith('--tickers='))?.split('=')[1]?.split(',') || ['SPX', 'SPY', 'QQQ'],
-  base: args.find(a => a.startsWith('--base='))?.split('=')[1] || 'https://blackouttrades.com',
+  base: resolveAuditBase(args.find(a => a.startsWith('--base='))?.split('=')[1]),
 };
 
 const log = (msg, level = 'INFO') => {
