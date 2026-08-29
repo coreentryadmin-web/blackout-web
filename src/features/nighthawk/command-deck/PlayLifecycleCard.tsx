@@ -10,7 +10,7 @@ import {
   playTimeRangeCompact,
   zeroDteActionDisplay,
 } from "./play-card-lifecycle";
-import { formatReturnPct, playGradeLabel, playQualityPct, tierStars } from "./play-card-display";
+import { formatReturnPct, playEntryDisplay, playGradeLabel } from "./play-card-display";
 import { StatusPill } from "./DeckStatusBadges";
 
 /** L/S direction chip — omitted on a condor row, where "direction" doesn't apply (a credit
@@ -64,8 +64,7 @@ export function PlayLifecycleCardBody({
   const ret = playListReturnPct(play);
   const times = playTimeRangeCompact(play);
   const grade = playGradeLabel(play);
-  const quality = playQualityPct(play);
-  const stars = tierStars(play.tierLabel);
+  const entryDisplay = playEntryDisplay(play);
 
   const signClass = (n: number | null | undefined) =>
     n != null && n > 0 ? "nh-deck-pos" : n != null && n < 0 ? "nh-deck-neg" : undefined;
@@ -92,17 +91,12 @@ export function PlayLifecycleCardBody({
             {grade}
           </span>
         )}
-        {stars.length > 0 && (
-          <span className="nh-deck-play-stars" aria-hidden>
-            {stars}
+        {entryDisplay != null && (
+          <span className="nh-deck-play-entry" aria-label={`Entry ${entryDisplay}`}>
+            {entryDisplay}
           </span>
         )}
-        {quality != null && (
-          <span className="nh-deck-play-score" aria-label={`Score ${quality}`}>
-            {quality}
-          </span>
-        )}
-        {grade == null && quality == null && <span className="nh-deck-play-empty">—</span>}
+        {grade == null && entryDisplay == null && <span className="nh-deck-play-empty">—</span>}
       </span>
       <span className="nh-deck-play-cell nh-deck-play-cell--time" title="Event time (ET)" role="cell">
         {times ?? "—"}

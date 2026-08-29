@@ -33,7 +33,7 @@ export function DeckPlayTableHeader({
       <span className="nh-deck-play-th nh-deck-play-cell--play" role="columnheader">
         Play
       </span>
-      {sortBtn("rating", "Rating", "nh-deck-play-cell--rating", "Sort by rating")}
+      {sortBtn("rating", "Grade", "nh-deck-play-cell--rating", "Sort by grade")}
       {sortBtn("time", "Time", "nh-deck-play-cell--time", "Sort by triggered time")}
       {sortBtn("peak", "PnL", "nh-deck-play-cell--pnl", "Sort by peak return")}
     </div>
