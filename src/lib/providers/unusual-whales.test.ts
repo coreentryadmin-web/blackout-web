@@ -11,6 +11,7 @@ import {
   optionTradePrintToFlowRaw,
   fetchUwIvRank,
   emptyDarkPoolSnapshot,
+  darkPoolBias,
 } from "./unusual-whales";
 import { shapeMeridianDarkPool } from "../meridian/meridian-earnings-intel-core";
 import { UW_REST_SECTIONS } from "../uw-docs-catalog";
@@ -178,6 +179,27 @@ test("emptyDarkPoolSnapshot makes a definite claim — so it must be reserved fo
   assert.equal(s.total_premium, 0);
   assert.equal(s.bias, "neutral");
   assert.equal(s.pcr, null);
+});
+
+test("darkPoolBias: zero typed (call+put) premium is 'neutral', never a fabricated 'mixed' verdict", () => {
+  // ROOT CAUSE: dark-pool prints are UW EQUITY block trades, not options — verified live against
+  // /api/darkpool/recent and /api/darkpool/{ticker} (2026-08-30): every row carries
+  // ticker/price/size/premium/nbbo_bid/nbbo_ask/market_center/etc, and NEVER a type/option_type
+  // field. So the caller's `optType` is always "", and call/put premium are always 0 for a real,
+  // nonzero total — permanently, for every ticker. Before this fix, 0/0 fell through to
+  // `Math.abs(call - put) < total * 0.15`, which is true for ANY positive total, and returned
+  // "mixed" — a confident "measured, balanced institutional flow" claim computed from nothing.
+  // That string reaches members verbatim (Meridian Earnings Intel panel: "$2.2M total · mixed"),
+  // Night Hawk's dossier text ("bias mixed"), and Largo (`dark_pool_bias: "mixed"`).
+  assert.equal(darkPoolBias(0, 0, 2_190_000), "neutral", "0/0 split over real premium must not read as measured-balanced");
+  assert.equal(darkPoolBias(0, 0, 1), "neutral");
+
+  // Genuinely typed premium must still classify normally — this guard must not swallow a real
+  // measurement, only the zero-denominator fabrication above.
+  assert.equal(darkPoolBias(700_000, 300_000, 1_000_000), "bullish"); // 70% call >= 65% threshold
+  assert.equal(darkPoolBias(300_000, 700_000, 1_000_000), "bearish"); // 70% put >= 65% threshold
+  assert.equal(darkPoolBias(520_000, 480_000, 1_000_000), "mixed");   // within 15% of even, genuinely measured
+  assert.equal(darkPoolBias(0, 0, 0), "neutral");                     // pre-existing total<=0 branch, unaffected
 });
 
 test("fetchUwDarkPool returns null when the upstream never answered — it does not claim 'none today'", () => {
