@@ -88,6 +88,12 @@ export type ReactionStats = {
   down: number;
   /** Share that moved up. null below `minSample`, because a rate from 2 prints is noise. */
   upRate: number | null;
+  /**
+   * Share that moved down. NOT `1 - upRate` — `sample` can include exactly-zero moves, which
+   * belong to neither side, so `1 - upRate` silently folds them into "down". null below
+   * `minSample`, same as `upRate`.
+   */
+  downRate: number | null;
   /** Median absolute reaction, percent. Median not mean: one gap dominates a 4-print mean. */
   medianAbsMovePct: number | null;
   /** Largest absolute reaction seen, percent — the tail this name is actually capable of. */
@@ -119,6 +125,7 @@ export function reactionStats(
     up,
     down,
     upRate: moves.length >= minSample ? round(up / moves.length, 4) : null,
+    downRate: moves.length >= minSample ? round(down / moves.length, 4) : null,
     medianAbsMovePct: median == null ? null : round(median, 2),
     maxAbsMovePct: abs.length ? round(abs[abs.length - 1]!, 2) : null,
   };
@@ -380,8 +387,10 @@ export function buildMeridianSummary(input: SummaryInput): MeridianSummary {
     const picked = pickLevel(side, input);
     if (!picked) return null;
     const implied = impliedProbBeyond(spot, picked.level, movePct, side === "call" ? "above" : "below");
-    const historical =
-      reaction.upRate == null ? null : side === "call" ? reaction.upRate : round(1 - reaction.upRate, 4);
+    // NOT `1 - reaction.upRate` for the put side — `sample` can include exactly-zero reactions,
+    // which are neither up nor down, so that would silently count them as down (contradicting
+    // the `why` bullet two lines below, which correctly divides by `reaction.down`).
+    const historical = side === "call" ? reaction.upRate : reaction.downRate;
     const evNet = side === "call" ? evidence.net : -evidence.net;
 
     const why: string[] = [];
