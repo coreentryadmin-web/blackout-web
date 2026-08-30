@@ -1223,7 +1223,10 @@ async function fetchSpotFromPrevBar(
 ): Promise<{ price: number; change_pct: number } | null> {
   try {
     const { fetchPreviousDayBar } = await import("./polygon-largo");
-    const bar = await fetchPreviousDayBar(symbol);
+    // Last-resort previous-session close — not a live quote. Allow ISR on routes (homepage
+    // `revalidate = 3600`) that hit this path when WS + snapshot are down; `no-store` here
+    // was forcing fully dynamic renders (FINDINGS 2026-08-30 homepage ISR).
+    const bar = await fetchPreviousDayBar(symbol, { next: { revalidate: 3600 } });
     if (!bar || !(bar.c > 0)) return null;
     return { price: bar.c, change_pct: 0 };
   } catch {
