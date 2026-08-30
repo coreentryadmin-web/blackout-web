@@ -6,10 +6,29 @@ import {
   formatTimeEt,
   attachmentsFromCaptures,
   validateAttachmentConstraints,
+  CAPTURE_SURFACES,
   type CaptureResult,
 } from "./capture-harness";
+import { checkCaptureUrl } from "./capture-guard";
 
 describe("capture-harness validators", () => {
+  describe("CAPTURE_SURFACES routes", () => {
+    // Regression for a real defect: helix/thermal were pointed at `/terminal#tab=helix` and
+    // `/terminal#tab=thermal` (a page that gates on Largo specifically and has no such tabs), and
+    // largo was pointed at `/dashboard#tab=largo` (SPX Slayer's own route) -- so three of the
+    // seven captures would have screenshotted the WRONG product and mislabeled it in the caption
+    // and the queue row's source_surface. checkCaptureUrl is the canonical, independently-derived
+    // desk-route allowlist (capture-guard.ts) -- every configured capture URL must resolve to the
+    // surface it claims to be, so a route drifting out of sync with the canonical map cannot ship
+    // silently again.
+    for (const [source, config] of Object.entries(CAPTURE_SURFACES)) {
+      it(`${source} URL resolves to the ${source} surface per capture-guard's canonical routes`, () => {
+        const verdict = checkCaptureUrl(config.url);
+        assert.ok(verdict.ok, `expected ${config.url} to be a capturable URL, got: ${JSON.stringify(verdict)}`);
+        assert.ok(verdict.ok && verdict.surface === source, `expected ${config.url} to resolve to surface "${source}", got "${verdict.ok ? verdict.surface : ""}"`);
+      });
+    }
+  });
   describe("validateCaptureSource", () => {
     it("allows public surfaces on admin capture", () => {
       const err = validateCaptureSource("vector", true);
