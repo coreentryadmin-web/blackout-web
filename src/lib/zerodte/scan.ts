@@ -568,6 +568,7 @@ export async function scanZeroDteBoard(flags?: {
         ticker: f.ticker,
         premium: f.premium,
         option_type: f.option_type,
+        ask_pct: f.ask_pct,
         alerted_at: f.alerted_at,
       }))
     );

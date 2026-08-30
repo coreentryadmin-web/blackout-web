@@ -44,10 +44,13 @@ const LIVE_SPY_POS: ComparePositioningInput = {
 };
 
 const NO_FLOW = { rows: [], available: false, windowHours: 48 };
+// ask_pct: 90 on the call (bought -> bullish) and 10 on the put (sold -> also bullish) — both
+// prints read bullish under the aggressor-aware rule, same net direction the old naive call-share
+// rule gave this fixture, so `call_premium`/`put_premium` arithmetic assertions stay unchanged.
 const BULLISH_FLOW = {
   rows: [
-    { ticker: "SPY", premium: 900_000, option_type: "call" },
-    { ticker: "SPY", premium: 100_000, option_type: "put" },
+    { ticker: "SPY", premium: 900_000, option_type: "call", ask_pct: 90 },
+    { ticker: "SPY", premium: 100_000, option_type: "put", ask_pct: 10 },
   ],
   available: true,
   windowHours: 48,
@@ -224,9 +227,62 @@ describe("compare card — nothing measured is null, not zero", () => {
       available: true,
       windowHours: 48,
     });
-    // A measured zero is data and must survive — only the UNMEASURED zero is suppressed.
+    // A measured zero is data and must survive — only the UNMEASURED zero is suppressed. This is
+    // a `net_premium`/`call_premium`/`put_premium` claim (plain option-type sums, unaffected by
+    // the aggressor-aware bias fix below) — `bias` is `"unknown"` because neither row carries
+    // `ask_pct`, so the aggressor-aware read has nothing to go on (see the aggressor-read
+    // describe block below for the case where it does).
     assert.equal(flow.net_premium, 0);
-    assert.equal(flow.bias, "neutral");
+    assert.equal(flow.bias, "unknown");
+  });
+
+  it("reads a genuine 50/50 split (both sides readable) as mixed, not neutral", () => {
+    // Regression: the old naive call-share rule mapped a 50/50 call/put split to "neutral". The
+    // aggressor-aware read distinguishes "balanced and readable" (mixed) from "nothing readable"
+    // (unknown) — collapsing them back to one label would re-hide which case this is.
+    const { flow } = compareSidesFrom(LIVE_SPY_POS, {
+      rows: [
+        { ticker: "SPY", premium: 500_000, option_type: "call", ask_pct: 90 }, // bought -> bullish
+        { ticker: "SPY", premium: 500_000, option_type: "put", ask_pct: 90 }, // bought -> bearish
+      ],
+      available: true,
+      windowHours: 48,
+    });
+    assert.equal(flow.net_premium, 0);
+    assert.equal(flow.bias, "mixed");
+  });
+});
+
+describe("compare card — flow bias is aggressor-aware, not call-share alone", () => {
+  it("a tape of SOLD calls reads bearish, not bullish, off 100% call share", () => {
+    // Regression: `flowBiasFromPremiums` (removed) computed `ratio = (call-put)/(call+put)` from
+    // option TYPE alone, so 100% call premium always read "bullish" no matter who was buying. A
+    // sold call is bearish — this is the exact conflation `helix-flow-aggression.ts`'s header
+    // measured a 44.6% per-ticker sign-flip rate on, live prod tape, 2026-08-23.
+    const { flow } = compareSidesFrom(LIVE_SPY_POS, {
+      rows: [
+        { ticker: "CG", premium: 5_000_000, option_type: "call", ask_pct: 5 }, // sold -> bearish
+        { ticker: "CG", premium: 3_000_000, option_type: "call", ask_pct: 8 }, // sold -> bearish
+      ],
+      available: true,
+      windowHours: 48,
+    });
+    // call_premium is still the full option-type sum (unaffected by aggressor read)...
+    assert.equal(flow.call_premium, 8_000_000);
+    assert.equal(flow.put_premium, null);
+    // ...but bias, which drives the conflict chip and regime-interaction prose, is bearish.
+    assert.equal(flow.bias, "bearish");
+  });
+
+  it("no ask_pct data reads unknown, never a call-share guess", () => {
+    const { flow } = compareSidesFrom(LIVE_SPY_POS, {
+      rows: [{ ticker: "SPY", premium: 1_000_000, option_type: "call" }],
+      available: true,
+      windowHours: 48,
+    });
+    assert.equal(flow.bias, "unknown");
+    // The option-type sum is still reported — only the DIRECTIONAL read is withheld.
+    assert.equal(flow.call_premium, 1_000_000);
   });
 });
 
@@ -328,17 +384,22 @@ describe("compare card — the stamp anchoring (continued)", () => {
  */
 describe("compare card — flow bias reads the recent session, not the premium-ordered whale slice", () => {
   // (a) The recent session population: many small near-dated PUT prints — a bearish session.
+  // ask_pct: 90 on every row (bought) so each print reads directionally by its option type alone
+  // (put bought -> bearish, call bought -> bullish) — isolating the population-selection question
+  // this describe block is actually about from the separate aggressor-read question covered above.
   const RECENT_SESSION = {
     rows: [
       ...Array.from({ length: 40 }, () => ({
         ticker: "SPX",
         premium: 250_000,
         option_type: "PUT",
+        ask_pct: 90,
       })),
       ...Array.from({ length: 8 }, () => ({
         ticker: "SPX",
         premium: 250_000,
         option_type: "CALL",
+        ask_pct: 90,
       })),
     ],
     available: true,
@@ -348,9 +409,9 @@ describe("compare card — flow bias reads the recent session, not the premium-o
   //     bury every put. This is what `{ limit: 50 }` with no `order` used to hand the card.
   const PREMIUM_ORDERED_SLICE = {
     rows: [
-      { ticker: "SPXW", premium: 368_000_000, option_type: "CALL" },
-      { ticker: "SPX", premium: 35_600_000, option_type: "CALL" },
-      { ticker: "SPX", premium: 250_000, option_type: "PUT" },
+      { ticker: "SPXW", premium: 368_000_000, option_type: "CALL", ask_pct: 90 },
+      { ticker: "SPX", premium: 35_600_000, option_type: "CALL", ask_pct: 90 },
+      { ticker: "SPX", premium: 250_000, option_type: "PUT", ask_pct: 90 },
     ],
     available: true,
     windowHours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
