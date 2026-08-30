@@ -271,15 +271,29 @@ function extractLevels(toolResults: Record<string, any>, ticker: string) {
   };
 }
 
-function extractRegime(toolResults: Record<string, any>): string | undefined {
+/**
+ * Market regime — used by `checkRegimeAlignment` to gate PLAY vs NO_TRADE in
+ * `desk-read-decision.ts` (a "counter-regime" read blocks PLAY and adds a NO_TRADE reason).
+ *
+ * DEALER GAMMA POSTURE IS NOT A DIRECTIONAL MARKET REGIME. This used to infer "bullish"/"bearish"
+ * off `get_positioning`'s posture — short gamma amplifies a move in EITHER direction and long
+ * gamma dampens a move in EITHER direction, so calling either one "bullish" or "bearish" asserts
+ * something the GEX matrix never measured. This is the same root cause as the live P0 (#2422)
+ * `contract/product-adapters.ts::thermalContribution` was written to fix (Thermal casts NO
+ * directional vote there, on purpose) and the near-identical bug in `consensus-read-extract.ts`'s
+ * `extractThermalRead` (fixed alongside this one) — a fabricated regime here gated real trade
+ * decisions exactly like a fabricated consensus vote there.
+ *
+ * It also compared the WRONG field: the real payload has no `gamma_flip` string — `flip` is a
+ * numeric strike level and the posture enum is `gamma_posture: "long" | "short" | null`. So on
+ * real data this silently never fired (`undefined` both times); it only fired on a payload shaped
+ * with the old bogus field, which is precisely how it slipped by. There is no honest way to derive
+ * a directional regime from GEX posture, so this no longer tries — only an explicit
+ * `get_market_regime` tool result can set a regime.
+ */
+export function extractRegime(toolResults: Record<string, any>): string | undefined {
   const regime = toolResults.get_market_regime;
   if (regime) return regime.regime ?? regime.name;
-
-  // Infer from positioning
-  const thermal = toolResults.get_positioning;
-  if (thermal?.gamma_flip === "positive") return "bullish";
-  if (thermal?.gamma_flip === "negative") return "bearish";
-
   return undefined;
 }
 
