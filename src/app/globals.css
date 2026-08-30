@@ -21069,7 +21069,14 @@ html.product-shell .nav-mega {
   -webkit-mask-image:linear-gradient(90deg,#000 0,#000 92%,transparent 100%);
   mask-image:linear-gradient(90deg,#000 0,#000 92%,transparent 100%)}
 .nh-deck-hdr-row--secondary{padding:4px 6px;align-items:center;gap:6px;flex-wrap:nowrap}
-.nh-deck-hdr-row--filters{justify-content:flex-start;gap:8px;padding:6px 8px}
+/* flex-wrap:wrap overrides --secondary's nowrap for this row specifically. Without it, the
+   prominent status filterbar below is forced to `width:100%` (its flex-basis) inside a NOWRAP
+   row, so flex-shrink squeezes it and the direction filterbar / search box below don't drop to a
+   second line -- their un-shrunk, white-space:nowrap text paints on top of the shrunk status
+   buttons instead (measured live at 430px: "WATCH"/"CLOSED" overlaid by "L/S"/"LONG"/"SHORT", and
+   the search placeholder clipped at the viewport edge). Desktop widths never trip this because
+   everything already fits on one line at that width, so this is a no-op there. */
+.nh-deck-hdr-row--filters{justify-content:flex-start;gap:8px;padding:6px 8px;flex-wrap:wrap}
 .nh-deck-header-compact .nh-deck-filterbar--prominent{flex:1 1 auto;width:100%}
 .nh-deck-filterbar--prominent{flex:1 1 auto;gap:6px;min-width:0;padding:0;border:0;background:transparent}
 .nh-deck-header-compact .nh-deck-filterbar--prominent .nh-deck-filtbtn{flex:1 1 0;min-width:56px;padding:8px 10px;font-size:11px;font-weight:800;letter-spacing:.08em}
