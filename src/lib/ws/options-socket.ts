@@ -229,9 +229,11 @@ function finiteOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Mid of bid/ask. bid may be 0 for deep-OTM; require ask>0 so it's a real quote. */
+/** Mid of bid/ask. bid may be 0 for deep-OTM; require ask>0 so it's a real quote. Also
+ *  rejects a CROSSED book (ask < bid) — IDENTICAL guard to the sibling midOf/zeroDteMidOf
+ *  copies (options-snapshot.ts, zerodte/marks-math.ts); found 2026-08-26. */
 function midOf(bid: number | null, ask: number | null): number | null {
-  if (bid != null && ask != null && ask > 0 && bid >= 0) {
+  if (bid != null && ask != null && ask > 0 && bid >= 0 && ask >= bid) {
     return Number(((bid + ask) / 2).toFixed(4));
   }
   return null;

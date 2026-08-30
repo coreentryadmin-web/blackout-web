@@ -5,10 +5,12 @@ import clsx from "clsx";
 import { useRouter } from "next/navigation";
 import { PageShell } from "@/components/ui";
 import { VectorCompareCommandBar } from "@/features/vector/components/VectorCompareCommandBar";
+import { VectorComparePlayStrip } from "@/features/vector/components/VectorComparePlayStrip";
 import {
   VectorComparePane,
   type VectorComparePaneMeta,
 } from "@/features/vector/components/VectorComparePane";
+import { VectorPaneErrorBoundary } from "@/features/vector/components/VectorPaneErrorBoundary";
 import { fetchVectorClientSeed } from "@/features/vector/lib/vector-client-seed";
 import {
   VECTOR_COMPARE_MAX_PANES,
@@ -36,6 +38,7 @@ import {
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import type { VectorCompareChartSyncBind } from "@/features/vector/lib/vector-compare-sync";
 import type { IntradayZoomPreset } from "@/features/vector/lib/vector-candle-render";
+import type { VectorPlayDeskSnapshot } from "@/features/vector/lib/vector-play-desk-snapshot";
 
 type Props = {
   initialSeeds: VectorClientSeed[];
@@ -46,6 +49,16 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   const router = useRouter();
   const [seeds, setSeeds] = useState<VectorClientSeed[]>(initialSeeds.slice(0, VECTOR_COMPARE_MAX_PANES));
   const [loadingTickers, setLoadingTickers] = useState<Set<string>>(new Set());
+  // RESILIENCE (2026-08-27): loadTicker's fetchVectorClientSeed(ticker) had no catch — a bad/
+  // unknown ticker or an API error just cleared the loading spinner and did nothing else. The
+  // click looked like it silently did nothing. addTickerError surfaces that failure; auto-dismiss
+  // mirrors the toast pattern VectorPageShell already uses for fired alerts.
+  const [addTickerError, setAddTickerError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!addTickerError) return;
+    const id = setTimeout(() => setAddTickerError(null), 5000);
+    return () => clearTimeout(id);
+  }, [addTickerError]);
   const [linked, setLinked] = useState(true);
   const [linkedZoom, setLinkedZoom] = useState(true);
   const [syncEpoch, setSyncEpoch] = useState(0);
@@ -60,6 +73,7 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   const [focusedTicker, setFocusedTicker] = useState<string | null>(seeds[0]?.ticker ?? null);
   const [focusExpanded, setFocusExpanded] = useState(false);
   const [metaByTicker, setMetaByTicker] = useState<Record<string, VectorComparePaneMeta>>({});
+  const [playByTicker, setPlayByTicker] = useState<Record<string, VectorPlayDeskSnapshot>>({});
   const [syncFlash, setSyncFlash] = useState(false);
   const [linkedReplayMode, setLinkedReplayMode] = useState(false);
   const [linkedReplayPlaying, setLinkedReplayPlaying] = useState(false);
@@ -269,19 +283,32 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
     [router]
   );
 
-  const bumpSync = useCallback(() => {
-    setSyncEpoch((e) => e + 1);
+  const flashSync = useCallback(() => {
     setSyncFlash(true);
     window.setTimeout(() => setSyncFlash(false), 420);
   }, []);
 
+  const bumpSync = useCallback(() => {
+    setSyncEpoch((e) => e + 1);
+    flashSync();
+  }, [flashSync]);
+
   const applySyncZoomPreset = useCallback(
     (preset: IntradayZoomPreset) => {
+      // Deliberately skips the full-remount path below: VectorChart already applies a synced zoom preset
+      // reactively via the syncZoomPreset/tick props (no remount) — see the effect keyed on
+      // `compareSync?.zoomPreset` tick. bumpSync() bumps `syncEpoch`, which VectorComparePane
+      // folds into the pane's React `key`, forcing React to fully destroy and rebuild all 4
+      // VectorChart instances (tearing down each lightweight-charts instance, WallRailPrimitive,
+      // and SSE connection) for something the reactive path already applies for free. Measured
+      // 2026-08-27: every Sync-zoom click was doing a redundant 4x full remount on top of the
+      // cheap path, discarding the very WallRailPrimitive._derivedCache the perf fix (#2939) keeps
+      // warm across repaints. flashSync() alone still gives the visual "synced" pulse.
       setSyncZoomPreset(preset);
       setSyncZoomPresetTick((t) => t + 1);
-      bumpSync();
+      flashSync();
     },
-    [bumpSync]
+    [flashSync]
   );
 
   const enterFocusExpand = useCallback(
@@ -304,6 +331,7 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
     async (ticker: string) => {
       if (exclude.has(ticker) || seeds.length >= VECTOR_COMPARE_MAX_PANES) return;
       setLoadingTickers((prev) => new Set(prev).add(ticker));
+      setAddTickerError(null);
       try {
         const seed = await fetchVectorClientSeed(ticker);
         setSeeds((prev) => {
@@ -313,7 +341,16 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
           return next;
         });
         setFocusedTicker(ticker);
-        bumpSync();
+        // Visual pulse only — do NOT bumpSync here: syncEpoch is in the pane React key and
+        // forces a full lightweight-charts teardown/remount of EVERY pane. Remounting stable
+        // panes just because one ticker was added measured "Value is null" console storms
+        // during Compare 4-up (2026-08-27 RTH audit).
+        flashSync();
+      } catch {
+        // A bad/unknown ticker or a transient API error is a fact about THIS ticker, not a reason
+        // to fail silently — matches loadCompareSeedsBounded's "settle per item" rationale below,
+        // just for the single-add path instead of the bulk preset path.
+        setAddTickerError(ticker);
       } finally {
         setLoadingTickers((prev) => {
           const n = new Set(prev);
@@ -322,7 +359,7 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
         });
       }
     },
-    [exclude, seeds.length, syncUrl, bumpSync]
+    [exclude, seeds.length, syncUrl, flashSync]
   );
 
   const removeTicker = useCallback(
@@ -338,9 +375,9 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
         delete copy[ticker];
         return copy;
       });
-      bumpSync();
+      flashSync();
     },
-    [syncUrl, bumpSync]
+    [syncUrl, flashSync]
   );
 
   const applyPreset = useCallback(
@@ -361,17 +398,41 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
         setSeeds(ok);
         syncUrl(ok);
         setFocusedTicker(ok[0]?.ticker ?? null);
-        bumpSync();
+        // Preset swap already mounts/unmounts panes via seed tickers — bumpSync remounted every
+        // surviving chart a second time and tripped lightweight-charts "Value is null" noise.
+        flashSync();
       } finally {
         setLoadingTickers(new Set());
       }
     },
-    [syncUrl, bumpSync]
+    [syncUrl, flashSync]
   );
 
   const handleMeta = useCallback((ticker: string, meta: VectorComparePaneMeta) => {
     setMetaByTicker((prev) => ({ ...prev, [ticker]: meta }));
   }, []);
+
+  const handlePlayDeskSnapshot = useCallback((ticker: string, snapshot: VectorPlayDeskSnapshot) => {
+    setPlayByTicker((prev) => ({ ...prev, [ticker]: snapshot }));
+  }, []);
+
+  useEffect(() => {
+    const active = new Set(seeds.map((s) => s.ticker));
+    setPlayByTicker((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const key of Object.keys(next)) {
+        if (!active.has(key)) {
+          delete next[key];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [seeds]);
+
+  const focusedPlaySnapshot =
+    focusedTicker != null ? (playByTicker[focusedTicker] ?? null) : null;
 
   useEffect(() => {
     setLinkedReplayIndex((prev) => clampTimelineIndex(unionTimeline, prev));
@@ -530,6 +591,12 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
           onSyncZoomPreset={applySyncZoomPreset}
         />
 
+        {addTickerError ? (
+          <p className="vector-compare-add-error" role="alert">
+            Couldn&rsquo;t add {addTickerError} — check the ticker and try again.
+          </p>
+        ) : null}
+
         <div className="vector-compare-mobile-gate" role="status">
           <p className="vector-compare-mobile-gate-title">Compare needs a wider screen</p>
           <p className="vector-compare-mobile-gate-copy">
@@ -555,37 +622,52 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
               : undefined;
 
             return (
-              <VectorComparePane
-                key={seed.ticker}
-                seed={seed}
-                slotIndex={i}
-                syncEpoch={syncEpoch}
-                linked={linked}
-                linkedTimeframe={timeframe}
-                linkedDteHorizon={dteHorizon}
-                linkedLens={lens}
-                toolbarHideLinkedControls={linked}
-                onRemove={() => removeTicker(seed.ticker)}
-                removable={seeds.length > 1}
-                onMeta={handleMeta}
-                focused={focusedTicker === seed.ticker}
-                onFocus={() => setFocusedTicker(seed.ticker)}
-                focusHero={isHero}
-                focusRail={isRail}
-                focusRailRow={railRow}
-                onRequestFocusExpand={() => enterFocusExpand(seed.ticker)}
-                compareSync={paneCompareSync(seed.ticker)}
-                onCompareCrosshair={handleCompareCrosshair}
-                onCompareVisibleRange={handleCompareVisibleRange}
-                linkedReplay={linkedReplayBind}
-                hideReplayControls={linked}
-                onReplayTimeline={(timeline) => handleReplayTimeline(seed.ticker, timeline)}
-                compareFourUp={seeds.length >= 4}
-                compareFourUpBackground={seeds.length >= 4 && focusedTicker !== seed.ticker}
-              />
+              // Per-pane isolation: an uncaught render error in one pane (bad ticker, malformed
+              // live payload reaching an overlay) must not take down the other (working) panes and
+              // the desk chrome via the app-level route error boundary. Keyed by ticker like the
+              // pane itself, so swapping tickers naturally resets any tripped boundary.
+              <VectorPaneErrorBoundary key={seed.ticker} ticker={seed.ticker} onRemove={() => removeTicker(seed.ticker)}>
+                <VectorComparePane
+                  seed={seed}
+                  slotIndex={i}
+                  syncEpoch={syncEpoch}
+                  linked={linked}
+                  linkedTimeframe={timeframe}
+                  linkedDteHorizon={dteHorizon}
+                  linkedLens={lens}
+                  toolbarHideLinkedControls={linked}
+                  onRemove={() => removeTicker(seed.ticker)}
+                  removable={seeds.length > 1}
+                  onMeta={handleMeta}
+                  focused={focusedTicker === seed.ticker}
+                  onFocus={() => setFocusedTicker(seed.ticker)}
+                  focusHero={isHero}
+                  focusRail={isRail}
+                  focusRailRow={railRow}
+                  onRequestFocusExpand={() => enterFocusExpand(seed.ticker)}
+                  compareSync={paneCompareSync(seed.ticker)}
+                  onCompareCrosshair={handleCompareCrosshair}
+                  onCompareVisibleRange={handleCompareVisibleRange}
+                  linkedReplay={linkedReplayBind}
+                  hideReplayControls={linked}
+                  onReplayTimeline={(timeline) => handleReplayTimeline(seed.ticker, timeline)}
+                  compareFourUp={seeds.length >= 4}
+                  compareFourUpBackground={seeds.length >= 4 && focusedTicker !== seed.ticker}
+                  onPlayDeskSnapshot={handlePlayDeskSnapshot}
+                />
+              </VectorPaneErrorBoundary>
             );
           })}
         </div>
+
+        {focusedTicker ? (
+          <VectorComparePlayStrip
+            ticker={focusedTicker}
+            snapshot={focusedPlaySnapshot}
+            liveSession={liveSession}
+            replayPaused={linkedReplayMode}
+          />
+        ) : null}
 
         {seeds.length >= 2 ? (
           <footer className="vector-compare-strip" aria-label="Compare summary">

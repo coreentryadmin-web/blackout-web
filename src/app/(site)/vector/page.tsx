@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
-import { requireDeskTool } from "@/lib/auth-access";
-import { ComingSoon } from "@/components/ComingSoon";
 import {
   VectorPageClient,
   normalizeVectorTicker,
-  VECTOR_ORACLE_TICKERS,
 } from "@/features/vector";
 import { noindexPageMetadata } from "@/lib/page-metadata";
 import { Suspense } from "react";
@@ -18,8 +15,6 @@ type PageProps = {
 };
 
 export default async function VectorPage({ searchParams }: PageProps) {
-  if (!(await requireDeskTool("premium", "vector"))) return <ComingSoon toolKey="vector" />;
-
   const { ticker: rawTicker, compare: compareRaw } = await searchParams;
   const ticker = normalizeVectorTicker(rawTicker);
 
@@ -40,8 +35,6 @@ export default async function VectorPage({ searchParams }: PageProps) {
       <VectorPageClient
         ticker={ticker}
         initialCompareRaw={compareRaw ?? null}
-        defaultDteHorizon={VECTOR_ORACLE_TICKERS.has(ticker) ? "0dte" : "all"}
-        defaultChartViewport="session"
       />
     </Suspense>
   );

@@ -27,6 +27,7 @@ import type {
   ThesisLevel,
 } from "./types";
 import { watchReferencePremium, watchTrackPct, watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
+import { thesisFirstFromEntryContext } from "@/lib/zerodte/thesis/thesis-first-rehydrate";
 
 const asDir = (d: unknown): DeckDirection =>
   String(d ?? "").toLowerCase().startsWith("s") || String(d ?? "") === "SHORT" ? "SHORT" : "LONG";
@@ -163,7 +164,13 @@ export interface ZeroDteDeckSource {
     play_type?: string | null;
     /** First time the scanner surfaced this setup (board aggregation). */
     first_seen?: string | null;
+    /** Thesis-first pipeline snapshot when ZERODTE_THESIS_FIRST is armed. */
+    thesis_first?: import("@/lib/zerodte/thesis/types").ThesisPipelineResult | null;
   } | null;
+  /** Bare board setups carry thesis_first at the top level (same shape as nested setup). */
+  thesis_first?: import("@/lib/zerodte/thesis/types").ThesisPipelineResult | null;
+  /** Compact thesis_first blob from entry_context on closed ledger rows. */
+  thesis_first_blob?: Record<string, unknown> | null;
   /**
    * First time the scanner surfaced this row, at the TOP level.
    *
@@ -373,6 +380,12 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   const trackReference = watchTrack ? watchReferencePremium(setup?.plan ?? null) : null;
   const trackPct = watchTrack ? watchTrackPct(trackReference, markNum) : null;
 
+  const setupDir = setup?.direction === "short" ? ("short" as const) : ("long" as const);
+  const thesisFirstResolved =
+    setup?.thesis_first ??
+    src.thesis_first ??
+    thesisFirstFromEntryContext(src.thesis_first_blob, src.ticker, setupDir);
+
   return {
     id: `0DTE:${src.ticker}`,
     ticker: src.ticker.toUpperCase(),
@@ -396,6 +409,7 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     rrRatio: rrFromPlan(setup?.plan),
     thesisBreak,
     thesisHealth,
+    thesisFirst: thesisFirstResolved,
     ...mgmt,
     progress: mgmtBase.progress,
     entry,

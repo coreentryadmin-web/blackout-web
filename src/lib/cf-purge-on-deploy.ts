@@ -28,7 +28,8 @@ const PURGE_LOCK_TTL_SEC = 3_600; // 1h: comfortably longer than a rolling deplo
 // Public marketing routes that CF Cache Rule #6 may edge-cache for anon visitors
 // (/, /upgrade, /learn* — bypass when Cookie has __session). Purge these on deploy
 // so new copy is live immediately. Legal/info pages included for the same reason.
-const MARKETING_PATHS = [
+/** Public URLs purged from Cloudflare edge on each deploy (anon marketing + SEO). */
+export const MARKETING_PURGE_PATHS = [
   "/",
   "/faq",
   "/pricing",
@@ -41,12 +42,18 @@ const MARKETING_PATHS = [
   "/learn/heat-maps",
   "/learn/glossary",
   "/learn/getting-started",
+  "/methodology",
+  "/why-blackout",
+  "/vs/others",
+  "/tools/gamma-snapshot",
+  "/about",
   "/privacy",
   "/disclaimer",
   "/terms",
   "/contact",
   "/cookie-policy",
   "/refund-policy",
+  "/sitemap.xml",
 ] as const;
 
 function deployId(): string | null {
@@ -142,7 +149,7 @@ export async function maybePurgeCloudflareOnDeploy(): Promise<void> {
 
   if (!(await claimPurge(id))) return; // another replica owns this deploy's purge
 
-  const files = MARKETING_PATHS.map((p) => `${origin}${p}`);
+  const files = MARKETING_PURGE_PATHS.map((p) => `${origin}${p}`);
   const prefixes = [`${origin}/_next/static`];
   const body: { files: string[]; prefixes?: string[]; hosts?: string[] } = { files, prefixes };
   // Staging: also purge the whole host so stale HTML/chunk 404s cannot brick the UI after deploy.

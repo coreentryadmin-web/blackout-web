@@ -20,7 +20,12 @@ import { computeIntradayRead, marketBias, type MarketBias } from "./intraday";
 import { priorEtYmd } from "@/lib/providers/spx-session";
 // Runtime import is safe: ./regime is pure (no providers, no cycle) — it turns the SPY
 // session/prior-day OHLC into the "what kind of day is it" read the feature store records.
-import { classifyRegime, type MarketRegime } from "./regime";
+import { classifyRegime, type MarketRegime, type StructureRegime } from "./regime";
+// Type-only (erased): exit-engine.ts's ZeroDteRegime is the trim-scale schedule's day-type
+// input — see zeroDteRegimeFromStructure below for why this module maps the richer
+// classifyRegime() output down to it rather than importing exit-engine.ts at runtime
+// (exit-engine.ts is exit-decision logic; this module only stamps the label).
+import type { ZeroDteRegime } from "./exit-engine";
 // Runtime import is safe here: ./tiers is pure (its only import is ./gates
 // constants), so it adds no providers to this module's load graph.
 import { tierFromEntryContext, type ZeroDteTierAssignment } from "./tiers";
@@ -99,13 +104,44 @@ export type ZeroDteEntryContext = {
    *  Note the tier is DERIVED from the blob's own fields, so a null here costs
    *  nothing durable — tierFromEntryContext re-derives it from the same pins. */
   tier: ZeroDteTierAssignment | null;
+  /** Discovery origin set at commit (FLOW/BREAKOUT/PIN) — used to determine the
+   *  source-specific scoreFloor for tier assignment. Pre-WS-20 rows carry no origin;
+   *  tierFromEntryContext defaults to the full ZERODTE_SCORE_FLOOR when absent. */
+  discovery_origin?: string[];
   /** WS-14 input-age manifest: age (ms) at decision time of each input the commit used
    *  (flow/underlying/option_quote/gex/vix/macro/spy_bias). Frozen at commit by
    *  persistZeroDteScan (buildInputAgeManifest). Optional/additive — pre-WS-14 rows and the
    *  many pure buildZeroDteEntryContext call sites that don't stamp it carry it undefined;
    *  every present manifest has all keys, null where the input's age was genuinely unknown. */
   input_age_manifest?: ZeroDteInputAgeManifest;
+  /** Thesis-first rail panel pinned at commit (shadow calibration). Optional — absent on
+   *  rows committed before the wire-in. See thesis/scan-shadow.ts thesisFirstEntryContext. */
+  thesis_first?: Record<string, unknown> | null;
+  /** Day-type read (exit-engine.ts's ZeroDteRegime — trend/neutral/range) at commit, for
+   *  the trim-scale schedule's regime conditioning. FINDING 2026-08-29: the schedule has
+   *  supported per-regime tranche thresholds since it shipped (TRIM_SCALE_RULES.tranches_by_regime),
+   *  but no caller of evaluateLedgerRowExit ever passed a `regime` — every trim_scale row in
+   *  production ran the `neutral` thresholds regardless of the actual session's structure. This
+   *  field starts building the calibration ledger the trend/range thresholds' own comment says
+   *  they need ("v1 heuristics... calibrated on the live ledger before they size real risk") —
+   *  it does NOT itself change live exit behavior; see exit-sync.ts's ZERODTE_TRIM_REGIME_LIVE
+   *  gate for that. Optional/additive — absent on rows committed before this wire-in, and null
+   *  when session.regime itself was unreadable (classifyRegime needs a full SPY OHLC read). */
+  session_regime?: ZeroDteRegime | null;
 };
+
+/** Maps classifyRegime()'s richer 4-way structure read down to the trim-scale schedule's
+ *  3-way day type. TREND_UP/TREND_DOWN both bank looser (a trim schedule cares that the day
+ *  is trending, not which direction — direction is already priced into the play's own
+ *  LONG/SHORT). INSIDE (a narrow-range day still finding its move) maps to `neutral` rather
+ *  than `range`: `range`'s tighter thresholds assume CONFIRMED chop (the RANGE_VWAP_CROSSES
+ *  mean-reversion read), which an inside day hasn't earned yet — defaulting it to range would
+ *  bank a still-resolving day's runners too early. */
+export function zeroDteRegimeFromStructure(structure: StructureRegime): ZeroDteRegime {
+  if (structure === "TREND_UP" || structure === "TREND_DOWN") return "trend";
+  if (structure === "RANGE") return "range";
+  return "neutral";
+}
 
 /** "YYYY-MM-DD HH:mm ET" for an epoch-ms instant. en-CA date + en-GB 24h time give
  *  stable ISO-ish parts without manual timezone math. */
@@ -131,6 +167,10 @@ export function buildZeroDteEntryContext(
      *  pre-wire-in callers/tests are untouched; passed through verbatim — the
      *  Cortex composer already rounds its own weights/score at emission. */
     cortex?: ZeroDteCortexEntryContext | null;
+    /** Discovery origin set (FLOW/BREAKOUT/PIN) at commit. Optional for backwards
+     *  compat with call sites that don't have it; used to determine source-specific
+     *  scoreFloor for tier assignment (pre-WS-20 rows carry none). */
+    discovery_origin?: string[];
   },
   session: ZeroDteSessionContext | null,
   nowMs: number
@@ -144,6 +184,8 @@ export function buildZeroDteEntryContext(
     committed_at_et: formatEtStamp(nowMs),
     cortex: play.cortex ?? null,
     tier: null,
+    session_regime: session?.regime ? zeroDteRegimeFromStructure(session.regime.structure) : null,
+    ...(play.discovery_origin && { discovery_origin: play.discovery_origin }),
   };
   // Commit-time merit tier (PR-F wiring): computed by feeding the JUST-BUILT blob
   // through tierFromEntryContext — the SAME adapter the calibration/record analyses

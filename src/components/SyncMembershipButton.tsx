@@ -1,14 +1,28 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppAuth } from "@/lib/auth-client";
 
 export function SyncMembershipButton() {
   const router = useRouter();
-  const { isSignedIn } = useAppAuth();
+  const { isSignedIn, isLoaded } = useAppAuth();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  // Fail closed for anonymous visitors — including the pre-hydration window where
+  // isLoaded is false and the old code briefly exposed the paid sync button (audit P2).
+  if (!isLoaded || !isSignedIn) {
+    return (
+      <Link
+        href="/sign-in?redirect_url=%2Fupgrade"
+        className="btn-outline-bull"
+      >
+        Sign in to sync purchase
+      </Link>
+    );
+  }
 
   async function handleSync() {
     setLoading(true);

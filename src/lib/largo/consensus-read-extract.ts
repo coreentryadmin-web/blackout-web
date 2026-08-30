@@ -448,7 +448,11 @@ export function extractConsensusFromTools(toolResults: Record<string, any>): Con
     if (bearishCount === voting) verdict = "strong_bearish";
     else verdict = "bearish";
     direction = "bearish";
-  } else if (Math.abs(bullishCount - bearishCount) <= 1) {
+  } else if (bullishCount + bearishCount > 0 && Math.abs(bullishCount - bearishCount) <= 1) {
+    // A near-even split needs at least one bullish AND one bearish vote to be a real conflict —
+    // unanimous (or all-but-one) neutral also satisfies `abs(0-0) <= 1` but is agreement, not
+    // disagreement. Reporting that as "conflicted" fabricates the exact fake cross-product
+    // disagreement this module's own header says it must never invent.
     verdict = "conflicted";
     direction = null;
   } else {

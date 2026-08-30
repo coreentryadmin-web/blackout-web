@@ -9,8 +9,8 @@
 // wide day recovers a real share of what the fixed cap was cutting off.
 //
 // FORMULA: N = clamp(ceil(qualifying * 0.30), floor, ceiling). floor=40 preserves today's worst-case
-// behavior on quiet days (never worse than the status quo); ceiling=100 bounds worst-case chain-fetch
-// growth to 2.5x today's static cap (`BREAKOUT_SCREEN_POOL` raised alongside it in
+// behavior on quiet days (never worse than the status quo); ceiling=150 (raised 2026-08-24 from 100)
+// bounds worst-case chain-fetch growth (`BREAKOUT_SCREEN_POOL` raised alongside it in
 // breakout-discovery.ts so the upstream screen doesn't itself truncate the pool the formula reads).
 //
 // ⚠ EVIDENCE CORRECTION (2026-08-06) — the numbers this header used to cite were INVALID and have
@@ -27,13 +27,14 @@
 // (the original worry) and does NOT upgrade it either: its value is MORE SHOTS AT THE SAME HIT RATE,
 // not better names. The formula is therefore retained on that (weaker, honest) basis. Two facts from
 // the same run are worth knowing before touching this file:
-//   · N resolves to the CEILING (100) on 10/13 sessions and 91-99 on the rest — the 30% term and the
-//     floor never bind in practice, so only the ceiling is a live lever.
+//   · N resolves to the CEILING on 10/13 sessions and 91-99 on the rest — the 30% term and the
+//     floor never bind in practice, so only the ceiling is a live lever. Ceiling raised 100→150 on
+//     2026-08-24 because evidence shows no quality loss for ranks 41-100 vs top-40 (44.9% vs 43.1% WR).
 //   · win rate does not decay with momentum rank (ranks 1-40: 43.1%, 41-100: 44.9%, 101+: 50.0%),
 //     i.e. the RANKING, not the cap size, is the component without demonstrated signal.
 // Full write-up + re-run commands: `docs/audit/INTENTIONAL-DESIGN.md` §4.
 const DEFAULT_FLOOR = 40;
-const DEFAULT_CEILING = 100;
+const DEFAULT_CEILING = 150;
 /** Fraction of the qualifying pool kept before the floor/ceiling clamp. */
 const POOL_PCT = 0.3;
 

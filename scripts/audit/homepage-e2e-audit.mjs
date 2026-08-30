@@ -29,6 +29,63 @@ async function gotoHome(page, opts = {}) {
   }
 }
 
+/** Auth/footer navigations can miss the load event during edge churn — retry with domcontentloaded. */
+async function clickAndWaitForPath(page, locator, pathPattern, { timeout = 20_000, retries = 3 } = {}) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      await locator.click({ timeout: 12_000 });
+      await page.waitForURL(pathPattern, { timeout, waitUntil: "domcontentloaded" });
+      return;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (attempt === retries - 1) throw e;
+      if (!/Timeout|timeout|interrupted|detached|Target closed/i.test(msg)) throw e;
+      await page.waitForTimeout(600);
+    }
+  }
+}
+
+/** Footer links can detach mid-scroll during hydration — retry before failing the desktop suite. */
+async function scrollClickStable(page, locator) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await locator.waitFor({ state: "visible", timeout: 12_000 });
+      await locator.scrollIntoViewIfNeeded({ timeout: 12_000 });
+      await locator.click({ timeout: 12_000 });
+      return;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/not attached|detached|stable|Target closed/i.test(msg) || attempt === 2) throw e;
+      await page.waitForTimeout(500);
+    }
+  }
+}
+
+/** Smooth-scroll anchors can take >1.2s — poll until the target id sits under the fixed nav band. */
+async function waitForHashAnchor(
+  page,
+  id,
+  { topMin = -80, topMax = 120, timeoutMs = 5_000, pollMs = 100 } = {},
+) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const y = await page.evaluate((anchorId) => {
+      const el = document.getElementById(anchorId);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { top: r.top, id: el.id };
+    }, id);
+    if (y && y.top >= topMin && y.top <= topMax) return y;
+    await page.waitForTimeout(pollMs);
+  }
+  return page.evaluate((anchorId) => {
+    const el = document.getElementById(anchorId);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { top: r.top, id: el.id };
+  }, id);
+}
+
 /** @typedef {{ severity: string, code: string, detail: string }} Issue */
 
 /** @param {import('playwright').Page} page */
@@ -71,33 +128,31 @@ async function runDesktop(browser) {
   if ((await signIn.count()) === 0) {
     issues.push({ severity: "P0", code: "SIGN_IN_MISSING", detail: "No Sign in link in header" });
   } else {
-    await signIn.click();
-    await page.waitForURL(/\/sign-in/, { timeout: 15_000 });
+    await clickAndWaitForPath(page, signIn, /\/sign-in/);
     passes.push("Sign in → /sign-in");
     await page.goBack({ waitUntil: "domcontentloaded" });
+    await page.waitForURL(/\/?(\?_cb=|$)/, { timeout: 15_000, waitUntil: "domcontentloaded" });
     passes.push("back from sign-in → homepage");
   }
 
   const getAccess = page.locator('.mkt-nav-auth a.nav-join[href="/sign-up"]');
   if ((await getAccess.count()) > 0) {
-    await getAccess.click();
-    await page.waitForURL(/\/sign-up/, { timeout: 15_000 });
+    await clickAndWaitForPath(page, getAccess, /\/sign-up/);
     passes.push("Get access → /sign-up");
     await page.goBack({ waitUntil: "domcontentloaded" });
   }
 
-  // In-page anchor from hero
+  // In-page anchor from hero — smooth scroll can exceed a fixed sleep; poll viewport position.
   await gotoHome(page);
   const explore = page.locator('a.btn-g[href="#modules"], a[href="#modules"]').first();
   if ((await explore.count()) > 0) {
-    await explore.click();
-    await page.waitForTimeout(600);
-    const y = await page.evaluate(() => {
-      const el = document.getElementById("modules");
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      return { top: r.top, id: el.id };
-    });
+    let y = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await scrollClickStable(page, explore);
+      y = await waitForHashAnchor(page, "modules");
+      if (y && y.top <= 120 && y.top >= -80) break;
+      if (attempt === 0) await page.waitForTimeout(400);
+    }
     if (!y || y.top > 120 || y.top < -80) {
       issues.push({
         severity: "P1",
@@ -117,14 +172,17 @@ async function runDesktop(browser) {
     ["Privacy", "/privacy"],
   ]) {
     await gotoHome(page);
+    await page.locator("footer").waitFor({ state: "visible", timeout: 12_000 });
     const link = page.locator(`footer a[href="${path}"]`).first();
     if ((await link.count()) === 0) {
       issues.push({ severity: "P1", code: "FOOTER_LINK_MISSING", detail: `${label} ${path}` });
       continue;
     }
-    await link.scrollIntoViewIfNeeded();
-    await link.click();
-    await page.waitForURL(new RegExp(`${path.replace("/", "\\/")}(\\?|$)`), { timeout: 15_000 });
+    await scrollClickStable(page, link);
+    await page.waitForURL(new RegExp(`${path.replace("/", "\\/")}(\\?|$)`), {
+      timeout: 20_000,
+      waitUntil: "domcontentloaded",
+    });
     passes.push(`footer ${label} → ${path}`);
   }
 
@@ -209,9 +267,92 @@ async function runMobile(browser) {
   return { label: "mobile", issues, passes, perf };
 }
 
+/** Reproduce FINDINGS P2 #2799 — sticky bar must not block FAQ taps after opening items above. */
+async function runMobileFaqSticky(browser) {
+  /** @type {Issue[]} */
+  const issues = [];
+  /** @type {string[]} */
+  const passes = [];
+
+  const ctx = await browser.newContext({ ...devices["iPhone 13"] });
+  const page = await ctx.newPage();
+  await gotoHome(page);
+  await page.waitForTimeout(1200);
+
+  // Scroll past hero so sticky CTA becomes visible.
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(400);
+  await page.locator("#faq").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(600);
+
+  const faqItems = page.locator(".sec-faq .faq-item");
+  const count = await faqItems.count();
+  if (count < 3) {
+    issues.push({ severity: "P1", code: "FAQ_ITEMS_MISSING", detail: `Expected ≥3 FAQ items, got ${count}` });
+    await ctx.close();
+    return { label: "mobile-faq-sticky", issues, passes };
+  }
+
+  // Open first two items — grows page so item 3 lands in sticky footprint without fix.
+  for (let i = 0; i < 2; i++) {
+    await faqItems.nth(i).locator("summary").click();
+    await page.waitForTimeout(250);
+  }
+
+  const third = faqItems.nth(2);
+  const overlap = await page.evaluate(() => {
+    const bar = document.getElementById("mobile-sticky-cta");
+    const item = document.querySelectorAll(".sec-faq .faq-item")[2];
+    if (!bar || !item) return { visible: false, overlaps: false };
+    const a = bar.getBoundingClientRect();
+    const b = item.getBoundingClientRect();
+    const visible = bar.classList.contains("visible");
+    const overlaps = !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+    return { visible, overlaps };
+  });
+
+  if (overlap.visible && overlap.overlaps) {
+    issues.push({
+      severity: "P2",
+      code: "STICKY_FAQ_OVERLAP",
+      detail: "mobile sticky CTA overlaps FAQ item 3 while visible",
+    });
+  } else {
+    passes.push("sticky CTA suppressed before FAQ item 3 overlap");
+  }
+
+  const openBefore = await third.evaluate((el) => (el instanceof HTMLDetailsElement ? el.open : false));
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await third.locator("summary").scrollIntoViewIfNeeded({ timeout: 8000 });
+      await third.locator("summary").click({ timeout: 8000 });
+      break;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (attempt === 2 || !/not attached|detached|stable|intercept/i.test(msg)) throw e;
+      await page.waitForTimeout(400);
+    }
+  }
+  await page.waitForTimeout(300);
+  const openAfter = await third.evaluate((el) => (el instanceof HTMLDetailsElement ? el.open : false));
+  if (openAfter === openBefore) {
+    issues.push({
+      severity: "P2",
+      code: "FAQ_TAP_BLOCKED",
+      detail: "FAQ item 3 summary click did not toggle (likely sticky intercept)",
+    });
+  } else {
+    passes.push("FAQ item 3 toggles after opening items 1–2");
+  }
+
+  await ctx.close();
+  return { label: "mobile-faq-sticky", issues, passes };
+}
+
 const browser = await chromium.launch({ headless: true });
 let desktop;
 let mobile;
+let mobileFaqSticky;
 try {
   desktop = await runDesktop(browser);
 } catch (e) {
@@ -233,6 +374,15 @@ try {
     perf: {},
   };
 }
+try {
+  mobileFaqSticky = await runMobileFaqSticky(browser);
+} catch (e) {
+  mobileFaqSticky = {
+    label: "mobile-faq-sticky",
+    issues: [{ severity: "P0", code: "FAQ_STICKY_CRASH", detail: e instanceof Error ? e.message : String(e) }],
+    passes: [],
+  };
+}
 await browser.close();
 
 const report = {
@@ -240,7 +390,8 @@ const report = {
   base: BASE,
   desktop,
   mobile,
-  issue_count: desktop.issues.length + mobile.issues.length,
+  mobileFaqSticky,
+  issue_count: desktop.issues.length + mobile.issues.length + mobileFaqSticky.issues.length,
 };
 writeFileSync(OUT, JSON.stringify(report, null, 2));
 console.log(JSON.stringify(report, null, 2));

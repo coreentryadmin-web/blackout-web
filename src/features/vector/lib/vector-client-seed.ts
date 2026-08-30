@@ -4,7 +4,7 @@ import type { VectorBar } from "@/features/vector/components/VectorChart";
 import type { VectorDarkPoolLevel, VectorWalls } from "@/lib/api";
 import type { WallHistorySample } from "@/features/vector/lib/vector-wall-history";
 import { seedWallHistoryForDisplay, prepareRailBootstrapHistory } from "@/features/vector/lib/vector-wall-history";
-import { VECTOR_ORACLE_TICKERS } from "@/features/vector/lib/vector-ticker";
+import { defaultVectorDteHorizon, VECTOR_ORACLE_TICKERS } from "@/features/vector/lib/vector-ticker";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
 
@@ -45,7 +45,7 @@ export async function fetchVectorClientSeed(ticker: string): Promise<VectorClien
     `/api/market/vector/bars?ticker=${t}`
   );
   const sessionYmd = barsPayload?.sessionYmd ?? todayEtYmd();
-  const horizon = VECTOR_ORACLE_TICKERS.has(ticker) ? "0dte" : "all";
+  const horizon = defaultVectorDteHorizon(ticker);
   const [wallsPayload, historyPayload, horizonHistory] = await Promise.all([
     fetchJson<{ walls?: VectorWalls; flip?: number | null }>(
       `/api/market/vector/walls?ticker=${t}&dte=all`
@@ -112,7 +112,7 @@ export async function fetchVectorEmbedFastSeed(ticker: string): Promise<VectorEm
   const bars = barsPayload?.bars ?? [];
   const sessionYmd = barsPayload?.sessionYmd ?? todayEtYmd();
   const firstBar = bars[0]?.time;
-  const horizon = VECTOR_ORACLE_TICKERS.has(ticker) ? "0dte" : "all";
+  const horizon = defaultVectorDteHorizon(ticker);
 
   const [wallsPayload, bootstrap] = await Promise.all([
     fetchJson<{ walls?: VectorWalls; flip?: number | null }>(

@@ -930,7 +930,7 @@ test("compactHistoryToCap: strictly better than the old behaviour — never lose
   );
 });
 
-// ── DOMINANT_WALLS_PER_BUCKET: 3 -> 5 (2026-08-07 product call) ──────────────────────────────
+// ── DOMINANT_WALLS_PER_BUCKET: 5 -> 6 (2026-08-24 META mid-band fix) ─────────────────────────
 
 /** A bucket whose call ladder has 8 strikes at strictly descending |pct|, so rank is unambiguous. */
 function ladderSample(time: number) {
@@ -943,31 +943,41 @@ function ladderSample(time: number) {
   } as never;
 }
 
-test("DOMINANT_WALLS_PER_BUCKET is 5 — widened coverage, measured trade recorded in the docblock", () => {
-  // Not a tautology-with-extra-steps: this constant has moved twice (6 -> 3 on member feedback,
-  // 3 -> 5 on the 2026-08-07 measurement). Pinning it means the next change is deliberate and
-  // arrives with its own evidence rather than drifting.
-  assert.equal(DOMINANT_WALLS_PER_BUCKET, 5);
+test("DOMINANT_WALLS_PER_BUCKET is 6 — META mid-band coverage, static-rail trade in docblock", () => {
+  assert.equal(DOMINANT_WALLS_PER_BUCKET, 6);
 });
 
 test("trailsByStrike keeps exactly the top-N by |pct| — the selection the whole rail depends on", () => {
   const history = [ladderSample(1000), ladderSample(1005)];
-  const rows = trailsByStrike(history, "callWalls", "gex", 5);
-  // Strongest 5 are pct 8..4 -> strikes 100,105,110,115,120.
-  assert.deepEqual([...rows.keys()].sort((a, b) => a - b), [100, 105, 110, 115, 120]);
-  // The weaker three earn NO bead at all — that is what keeps the rail sparse.
-  for (const absent of [125, 130, 135]) assert.equal(rows.has(absent), false, `${absent} must not draw`);
+  const rows = trailsByStrike(history, "callWalls", "gex", 6);
+  // Strongest 6 are pct 8..3 -> strikes 100,105,110,115,120,125.
+  assert.deepEqual([...rows.keys()].sort((a, b) => a - b), [100, 105, 110, 115, 120, 125]);
+  // The weaker two earn NO bead at all — that is what keeps the rail sparse.
+  for (const absent of [130, 135]) assert.equal(rows.has(absent), false, `${absent} must not draw`);
 });
 
-test("raising N is strictly additive — it can never REMOVE a row that N=3 drew", () => {
-  // The property that makes this change safe to revert in either direction: every strike visible at
-  // 3 is still visible at 5, so nobody loses a level they were watching. Only the tail grows.
+test("trailsByStrike: ranks 4–6 earn beads at cap=6 (META mid-band fix)", () => {
+  const ladder = (strikes: number[]): GexWalls => ({
+    callWalls: strikes.map((strike, i) => ({ strike, pct: 10 - i * 0.5 })),
+    putWalls: [],
+  });
+  const history: WallHistorySample[] = [
+    { time: 100, walls: ladder([600, 595, 558, 585, 575, 565, 560, 550]) },
+  ];
+  const trails = trailsByStrike(history, "callWalls");
+  assert.equal(trails.has(560), false, "rank-7 strike still excluded");
+  assert.ok(trails.has(565), "rank-6 strike included at cap=6");
+  assert.ok(trails.has(575), "rank-5 strike included at cap=6");
+  assert.ok(trails.has(585), "rank-4 strike included at cap=6");
+});
+
+test("raising N is strictly additive — it can never REMOVE a row that N=5 drew", () => {
   const history = [ladderSample(1000), ladderSample(1005), ladderSample(1010)];
-  const at3 = new Set(trailsByStrike(history, "callWalls", "gex", 3).keys());
   const at5 = new Set(trailsByStrike(history, "callWalls", "gex", 5).keys());
-  for (const strike of at3) assert.ok(at5.has(strike), `strike ${strike} vanished when N rose`);
-  assert.equal(at3.size, 3);
+  const at6 = new Set(trailsByStrike(history, "callWalls", "gex", 6).keys());
+  for (const strike of at5) assert.ok(at6.has(strike), `strike ${strike} vanished when N rose`);
   assert.equal(at5.size, 5);
+  assert.equal(at6.size, 6);
 });
 
 // ── BEAD BUCKETING BY PIXELS, NOT BY CLOCK (2026-08-19) ──────────────────────────────

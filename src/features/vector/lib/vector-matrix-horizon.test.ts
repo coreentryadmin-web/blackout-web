@@ -4,6 +4,7 @@ import {
   matrixCellValueForScope,
   matrixRailTitle,
   matrixScopeExpiries,
+  matrixScopeExpiryNote,
   strikeTotalsForScope,
 } from "./vector-matrix-horizon";
 
@@ -43,4 +44,9 @@ test("matrixRailTitle: honest labels per horizon", () => {
   assert.equal(matrixRailTitle("weekly"), "Weekly Matrix");
   assert.equal(matrixRailTitle("monthly"), "Monthly Matrix");
   assert.equal(matrixRailTitle("all"), "All Matrix");
+});
+
+test("matrixScopeExpiryNote: surfaces nearest-expiry fallback on 0DTE off-session days", () => {
+  assert.equal(matrixScopeExpiryNote(["2026-08-17"], "0dte", "2026-08-15"), "Nearest expiry · Aug 17");
+  assert.equal(matrixScopeExpiryNote(["2026-08-15"], "0dte", "2026-08-15"), null);
 });

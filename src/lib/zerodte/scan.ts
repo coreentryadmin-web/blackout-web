@@ -40,6 +40,17 @@ import {
 } from "./flow-accumulation-context";
 import { attachConfluence } from "./confluence";
 import { breakoutSourceEnabled, mergeDiscoveryOrigins } from "./breakout-source";
+import {
+  applyFlowCorroboration,
+  breakoutOnlyTickers,
+  deriveFlowCorroborationSetups,
+  enrichCorroboratingFlowSetups,
+  flowCorroborationEnabled,
+  FLOW_CORROBORATION_LIMIT,
+  FLOW_CORROBORATION_MAX_TICKERS,
+  FLOW_CORROBORATION_SINCE_HOURS,
+  mapFlowRowsForCorroboration,
+} from "./flow-corroboration";
 import { deriveWhyNow } from "./why-now";
 import { pinSourceEnabled, mergePinOrigins } from "./pin-source";
 import {
@@ -107,7 +118,12 @@ import {
 } from "./strategy-version";
 import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy } from "./exit-sync";
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
+import { applyCortexVetoDwell } from "./cortex-veto-dwell";
 import { persistZeroDteRejections } from "./rejections";
+import { attachThesisFirstShadow, thesisFirstEntryContext } from "./thesis/scan-shadow";
+import { thesisFirstEnv } from "./thesis/types";
+import { attachThesisContractPlans } from "./thesis/contract-attach";
+import { thesisBlocksToGateBlocks } from "./thesis/live-pipeline";
 import {
   persistDiscoveryCommitEvents,
   persistDiscoveryDetectedEvents,
@@ -118,6 +134,9 @@ import {
   freshCommitBlockedByPlan,
   gateRejectionFor,
   planQualityGateBlocks,
+  refreshPlanQualityGateBlocks,
+  refreshMoneynessGateBlocks,
+  refreshGovernorPremiumBudgetBlocks,
   recentNighthawkTake,
 } from "./gates";
 import { buildRegimePlaneSnapshot, inferRegimeGexQuality } from "./regime-plane";
@@ -383,6 +402,52 @@ export async function scanZeroDteBoard(flags?: {
           return b.score - a.score;
         });
       }
+
+      // Targeted FLOW corroboration: global premium-ranked fetch starves mid-cap BREAKOUT
+      // names of a FLOW merge. Probe each BREAKOUT-only ticker's own near-dated tape.
+      if (flowCorroborationEnabled()) {
+        try {
+          const targets = breakoutOnlyTickers(setups).slice(0, FLOW_CORROBORATION_MAX_TICKERS);
+          if (targets.length > 0) {
+            const corroRows = (
+              await Promise.all(
+                targets.map((ticker) =>
+                  fetchRecentFlows({
+                    ticker,
+                    since_hours: FLOW_CORROBORATION_SINCE_HOURS,
+                    min_premium: MIN_PREMIUM_NEAR_DATED,
+                    max_dte: 1,
+                    limit: FLOW_CORROBORATION_LIMIT,
+                  }).catch(() => [])
+                )
+              )
+            ).flat();
+            if (corroRows.length > 0) {
+              const rawCorro = deriveFlowCorroborationSetups(mapFlowRowsForCorroboration(corroRows), {
+                todayYmd: today,
+                nowMs: Date.now(),
+                excludeTickers: excludes,
+              });
+              const extrasByTicker = new Map(
+                rawCorro.map((s) => [
+                  s.ticker,
+                  {
+                    earnings: flags?.earnings?.get(s.ticker) ?? null,
+                    news_hot: flags?.news?.get(s.ticker) ?? null,
+                  },
+                ])
+              );
+              const enrichedCorro = enrichCorroboratingFlowSetups(rawCorro, extrasByTicker);
+              const nMerged = applyFlowCorroboration(setups, enrichedCorro);
+              if (nMerged > 0) {
+                console.info(`[zerodte-flow-corroboration] merged FLOW onto ${nMerged}/${targets.length} BREAKOUT-only tickers`);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("[zerodte-flow-corroboration] targeted flow fetch failed — breakout-only board unchanged:", err);
+        }
+      }
     } catch (err) {
       // The board is deliberately unaffected (flow-only this cycle) — but the payload now SAYS so,
       // instead of serving a 75%-smaller roster that reads as a quiet market.
@@ -469,7 +534,11 @@ export async function scanZeroDteBoard(flags?: {
   // window just leaves every context null.
   attachFlowAccumulation(setups, accumulationSignalsFromFlow(multiDayFlows, Date.now()));
 
-  await attachContractPlans(setups);
+  const thesisEnv = thesisFirstEnv();
+  const thesisLive = thesisEnv.enabled;
+  if (!thesisLive) {
+    await attachContractPlans(setups);
+  }
   const chainReceivedAt = Date.now();
   const tape = await attachIntradayEdge(setups);
 
@@ -483,10 +552,59 @@ export async function scanZeroDteBoard(flags?: {
   const nowEtMinutes = nowEt.hour * 60 + nowEt.minute;
   attachConfluence(setups, nowEtMinutes);
 
-  // Hard-gate verdicts LAST — G-3 judges the final post-edge-layer score, G-1 reuses the same SPY read
-  // the edge layer just fetched, and G-12 reads the confluence just attached (one clock per cycle, so
-  // scoring, gating, and confluence can never disagree about the time or the tape).
-  await attachGateVerdicts(setups, tape.bias, tape.biasAsOfMs, nowEtMinutes);
+  // Thesis-first: cache-backed evidence bundle → rails; shadow or live.
+  if (thesisEnv.enabled || thesisEnv.shadow) {
+    const { fetchThesisEvidenceForTickers } = await import("./thesis/evidence-bundle");
+    const { buildHelixExtrasByTicker } = await import("./thesis/helix-tape-extras");
+    const { mergeLegacyBridgeExtras } = await import("./thesis/evidence-bundle-map");
+    const tickers = [...setups]
+      .sort((a, b) => b.score - a.score)
+      .map((s) => s.ticker.toUpperCase());
+    const thesisExtras = await fetchThesisEvidenceForTickers(tickers, {
+      maxTickers: tickers.length,
+    });
+    const helixExtras = buildHelixExtrasByTicker(
+      flows.map((f) => ({
+        ticker: f.ticker,
+        premium: f.premium,
+        option_type: f.option_type,
+        alerted_at: f.alerted_at,
+      }))
+    );
+    for (const t of tickers) {
+      thesisExtras[t] = mergeLegacyBridgeExtras(thesisExtras[t] ?? {}, helixExtras[t] ?? {});
+    }
+    attachThesisFirstShadow(setups, nowEtMinutes, thesisExtras);
+  }
+
+  // Hard-gate verdicts — Cortex runs inside on gate survivors.
+  const { governorPremiumAtRisk } = await attachGateVerdicts(setups, tape.bias, tape.biasAsOfMs, nowEtMinutes);
+
+  // Live thesis-first: contract engine picks expression AFTER thesis + gates + Cortex.
+  if (thesisLive) {
+    await attachThesisContractPlans(setups);
+    await attachContractPlans(setups);
+    for (const s of setups) {
+      if (s.gate) {
+        s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null);
+        // Moneyness re-check (P0 fix, 2026-08-27): attachContractPlans (just above) is what runs
+        // refreshUnderlyingFromLiveSpot in this (thesis-first) pipeline, i.e. AFTER
+        // attachGateVerdicts already evaluated the moneyness caps against the PRE-refresh
+        // otm_pct — the exact "deferred, never reconciled" shape refreshPlanQualityGateBlocks
+        // exists to fix for G-8/G-9. Re-apply the same two caps against the now-refreshed
+        // s.otm_pct so a candidate whose live moneyness drifted past a cap during this pass
+        // still gets caught (mirrors refreshGovernorPremiumBudgetBlocks below).
+        s.gate = refreshMoneynessGateBlocks(s.gate, s.otm_pct ?? null, s.play_type === "CONDOR");
+        // G-5 premium budget was computed with plan=null (entry_premium 0) above, same
+        // "deferred, never reconciled" shape as G-8/G-9 — see refreshGovernorPremiumBudgetBlocks.
+        s.gate = refreshGovernorPremiumBudgetBlocks(
+          s.gate,
+          s.plan?.entry_max ?? s.plan?.mark ?? null,
+          governorPremiumAtRisk
+        );
+      }
+    }
+  }
   const gatesCompletedAt = Date.now();
 
   // WS-14/15 (observability only, best-effort — recorders swallow their own errors): record
@@ -584,14 +702,14 @@ async function attachGateVerdicts(
   bias: MarketBias | null,
   biasAsOfMs: number | null,
   nowEtMinutes: number
-): Promise<void> {
-  if (setups.length === 0) return;
+): Promise<{ governorPremiumAtRisk: number }> {
+  if (setups.length === 0) return { governorPremiumAtRisk: 0 };
   const today = todayEt();
   const nowMs = Date.now();
   const ledgerRows = dbConfigured()
     ? await fetchZeroDteSetupLog(today).catch(() => null)
     : ([] as ZeroDteSetupLogRow[]);
-  if (ledgerRows == null) return; // gates stay null → fresh commits fail closed downstream
+  if (ledgerRows == null) return { governorPremiumAtRisk: 0 }; // gates stay null → fresh commits fail closed downstream
   const committed = new Set(ledgerRows.map((r) => r.ticker.toUpperCase()));
 
   // G-5 snapshot: open/stop counts from the shared Postgres ledger (authoritative),
@@ -799,6 +917,15 @@ async function attachGateVerdicts(
       macroUnavailable,
       todayYmd: today,
       plan: s.plan ?? null,
+      deferPlanQualityGates: thesisFirstEnv().enabled,
+      // Moneyness re-check (P0 fix, 2026-08-27): in the ORDINARY (non-thesis-first) pipeline
+      // attachContractPlans (and its refreshUnderlyingFromLiveSpot) has already run above (this
+      // function is called AFTER that pass — see the caller), so s.otm_pct here is already the
+      // live-refreshed value and this closes the hole directly. In the thesis-first pipeline
+      // attachContractPlans runs AFTER this call instead, so this otmPct is still the PRE-refresh
+      // value — refreshMoneynessGateBlocks (below) re-applies the same caps once the refresh has
+      // actually happened, exactly like refreshPlanQualityGateBlocks does for G-8/G-9.
+      otmPct: s.otm_pct ?? null,
       intradayConflict: s.intraday_conflict,
       // G-11 for EVERY committable rank: prefer the cheap batch halt/earnings reads
       // (computed for all fresh tickers above) over the dossier-only flags that ranks
@@ -826,6 +953,15 @@ async function attachGateVerdicts(
       regimeBlockReason: regimePlane.humanReason,
     });
     s.regime_plane = regimePlane;
+    if (s.thesis_gate_blocks?.length) {
+      const tb = thesisBlocksToGateBlocks(s.thesis_gate_blocks);
+      s.gate = {
+        ...s.gate,
+        verdict: "BLOCKED",
+        blocks: [...tb, ...s.gate.blocks],
+      };
+      continue;
+    }
     if (s.gate.verdict !== "COMMIT") continue;
 
     // ── Night Hawk Cortex layer (NIGHTHAWK-CORTEX-DESIGN.md §2, wired by PR-B) ──
@@ -843,6 +979,7 @@ async function attachGateVerdicts(
     s.cortex = await evaluateCortexForCommit(s.ticker, s.direction, new Date(nowMs), {}, {
       failClosedOnVetoBlind: true,
     });
+    s.cortex = await applyCortexVetoDwell(today, s.ticker, s.cortex);
     const cortexBlocks = cortexGateBlocks(s.cortex);
     if (cortexBlocks.length > 0) {
       // A Cortex veto / net-negative blocks EXACTLY like a hard-gate block:
@@ -855,6 +992,7 @@ async function attachGateVerdicts(
     }
     committedThisCycle.push({ ticker: s.ticker, direction: s.direction });
   }
+  return { governorPremiumAtRisk };
 }
 
 /**
@@ -923,8 +1061,14 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
     //
     // This closes the exact hole board.ts's no_underlying_price comment flagged — "a live
     // underlying price is available moments later in scan.ts's attachContractPlans
-    // (snap?.underlyingPrice) but was never fed back to re-check this gate". attachGateVerdicts
-    // runs after this pass, so the moneyness gate now judges the REFRESHED otm_pct.
+    // (snap?.underlyingPrice) but was never fed back to re-check this gate". CORRECTED
+    // 2026-08-27: this restamp alone did NOT close that hole — evaluateZeroDteGates never
+    // re-read otm_pct against the moneyness caps at all until gates.ts's `otmPct` input was
+    // added (moneynessGateBlocks/refreshMoneynessGateBlocks). In THIS (non-thesis-first)
+    // pipeline attachGateVerdicts runs after this pass and now reads the refreshed otm_pct
+    // directly, so the moneyness gate does judge the REFRESHED value here; the thesis-first
+    // pipeline calls attachContractPlans in the opposite order and must re-run
+    // refreshMoneynessGateBlocks afterward (see that call site) to get the same guarantee.
     //
     // When the snapshot has no usable underlying/as-of we do NOT touch the setup: it keeps its
     // older mark WITH its honest `flow_print`/`chain_spot` stamp, so a consumer can still see the
@@ -1097,7 +1241,12 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     // ratchet (conservative). The operator env override `ZERODTE_EXIT_MODE` still takes
     // precedence in resolveExitModeForTier.
     const baseEntryCtx = buildZeroDteEntryContext(
-      { score: s.score, gamma_regime: s.gamma_regime, cortex: cortexEntryContextFor(s.cortex) },
+      {
+        score: s.score,
+        gamma_regime: s.gamma_regime,
+        cortex: cortexEntryContextFor(s.cortex),
+        discovery_origin: s.discovery_origin,
+      },
       sessionCtx,
       committedAtMs
     );
@@ -1125,7 +1274,29 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     // the win rate (see resolveLedgerEntryPremium's doc comment, plan.ts). The mark is
     // pinned here — the upsert COALESCEs entry_premium first-write-wins, so it's the
     // flag-time mark, never a later refresh tick.
-    entry_premium: resolveLedgerEntryPremium(s.plan?.entry_max, s.top_strike_avg_fill, s.plan?.mark),
+    //
+    // CONDOR: s.plan/s.top_strike_avg_fill are always null (a condor has no single-leg
+    // plan), so resolveLedgerEntryPremium(null, null, ...) used to return null for EVERY
+    // condor row — permanently. Consequence: aggregatePremiumAtRisk (governor.ts) sums
+    // entry_premium across open rows for the session premium-at-risk budget, so an open
+    // condor's real risk (net_credit) was silently invisible to the governor the whole
+    // time it was open. condor_plan.net_credit is priced in $×100-per-contract units (see
+    // its doc comment) while entry_premium is per-share throughout this ledger (matching
+    // directional plays, e.g. $0.57) — divided by 100 here to stay in that same unit, so
+    // the aggregate sums apples to apples. Found 2026-08-26.
+    //
+    // This does NOT restore live per-play condor P&L display: condorSellerPnlPct still
+    // needs a live MARK, and syncLedgerLiveState's mark-fetch keys strictly off a
+    // single-leg plan_json.occ, which a condor row never has — there is no multi-leg
+    // (4-leg) mark-fetch path anywhere in scan.ts/live-marks.ts. That is a separate,
+    // larger gap (a new fetch pipeline, not a one-line fix) — left OPEN, not fixed here;
+    // see the companion findings-staging entry.
+    entry_premium:
+      s.play_type === "CONDOR"
+        ? s.condor_plan?.net_credit != null
+          ? Math.round((s.condor_plan.net_credit / 100) * 100) / 100
+          : null
+        : resolveLedgerEntryPremium(s.plan?.entry_max, s.top_strike_avg_fill, s.plan?.mark),
     flow_avg_fill: s.top_strike_avg_fill,
     plan_json: s.plan ? ({ ...s.plan } as unknown as Record<string, unknown>) : null,
     // G-4/G-6 calibration verdict at commit (C-2 context columns). Refresh-lane
@@ -1170,6 +1341,9 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       // ticker the OTHER way — evidence for the calibration origin band, never a commit change.
       // Present only on a real conflict so the blob stays honest for the common (agreeing) case.
       ...(s.origin_direction_conflict ? { origin_direction_conflict: s.origin_direction_conflict } : {}),
+      ...(s.thesis_first
+        ? { thesis_first: thesisFirstEntryContext(s.thesis_first) }
+        : {}),
       // Play STRUCTURE (Phase 4) pinned at first flag: play_type routes the CONDOR grade path in
       // gradeZeroDteLedger (a condor is graded WIN/breach, never on the −50/+100 directional grader)
       // and the calibration play-type band. The full priced condor geometry rides along for the

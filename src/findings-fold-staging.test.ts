@@ -102,6 +102,88 @@ test("refuses to fold a malformed entry, and does not delete anything", () => {
   assert.doesNotMatch(untouched, /not a proper finding heading/, "FINDINGS.md must stay untouched on refusal");
 });
 
+test("normalizes a kind-line-before-heading staged file to FINDINGS.md's heading-first convention", () => {
+  // MEASURED 2026-08-28: this is the convention actually in use by the vast majority of real
+  // staged findings — kind line first, then a plain '## Title' heading with no date prefix and no
+  // bracket tag. The old guard rejected every one of them. Folding must not just ACCEPT this
+  // shape — it must reorder to heading-first, or the kind line lands in the WRONG entry once
+  // split by findings-hygiene.test.ts's \n(?=## ) boundary.
+  const { dir, findings, staging } = setup();
+  writeFileSync(
+    join(staging, "2026-08-23-kind-first.md"),
+    "> **kind:** `FINDING`\n\n## A finding staged kind-first\n\n| **Status** | FIXED |\n"
+  );
+  run(staging, findings);
+  const out = readFileSync(findings, "utf8");
+  rmSync(dir, { recursive: true, force: true });
+
+  const headingIdx = out.indexOf("## A finding staged kind-first");
+  const kindIdx = out.indexOf("> **kind:** `FINDING`", headingIdx);
+  assert.ok(headingIdx > 0, "heading missing from FINDINGS.md");
+  assert.ok(kindIdx > headingIdx, "kind line must land AFTER its own heading, not before it");
+  // Also confirm it lands in the SAME entry block as the heading — i.e. before the NEXT '## '.
+  const nextHeadingIdx = out.indexOf("\n## ", headingIdx + 1);
+  assert.ok(nextHeadingIdx === -1 || kindIdx < nextHeadingIdx, "kind line escaped into a later entry");
+});
+
+test("a malformed file is skipped without blocking OTHER valid staged files in the same run", () => {
+  // MEASURED 2026-08-28: the original all-or-nothing guard meant one bad staged file blocked
+  // every other lane's already-correct finding from ever reaching FINDINGS.md — ~60 real files
+  // sat un-folded for days because of this. A malformed file must be reported and skipped, not
+  // allowed to take the whole batch down with it.
+  const { dir, findings, staging } = setup();
+  writeFileSync(join(staging, "2026-08-23-malformed.md"), "not a proper finding heading at all\n");
+  writeFileSync(
+    join(staging, "2026-08-23-valid.md"),
+    "> **kind:** `FINDING`\n\n## A perfectly valid finding staged alongside a bad one\n\nbody.\n"
+  );
+  let out = "";
+  try {
+    run(staging, findings);
+  } catch (e) {
+    const err = e as { stdout?: string; stderr?: string };
+    out = `${err.stdout ?? ""}${err.stderr ?? ""}`;
+  }
+  const foundText = readFileSync(findings, "utf8");
+  const remaining = readdirSync(staging);
+  rmSync(dir, { recursive: true, force: true });
+
+  assert.match(
+    foundText,
+    /## A perfectly valid finding staged alongside a bad one/,
+    "the valid file must still be folded even though a sibling file was malformed"
+  );
+  assert.deepEqual(remaining, ["2026-08-23-malformed.md"], "only the malformed file should survive");
+  assert.match(out, /2026-08-23-malformed\.md/, "the malformed file must be named in the output");
+});
+
+test("a body using '## ' for its own sub-sections is skipped, not fragmented into fake entries", () => {
+  // MEASURED 2026-08-28: 10 of 109 real staged files write a PR-style body with `## Root cause` /
+  // `## Fix` / `## Evidence` sub-sections at the SAME heading level FINDINGS.md reserves for
+  // entry boundaries. entries()/splitEntries() split on every '## ' line, so folding one of these
+  // in raw fragments a single finding into several headless sub-"entries" that fail "every entry
+  // declares a kind" (the real kind tag only follows the file's own first heading).
+  const { dir, findings, staging } = setup();
+  writeFileSync(
+    join(staging, "2026-08-23-multi-heading.md"),
+    "> **kind:** `FINDING`\n\n## The real finding title\n\nSummary.\n\n## Root cause\n\nSomething broke.\n\n## Fix\n\nFixed it.\n"
+  );
+  let out = "";
+  try {
+    run(staging, findings);
+  } catch (e) {
+    const err = e as { stdout?: string; stderr?: string };
+    out = `${err.stdout ?? ""}${err.stderr ?? ""}`;
+  }
+  const foundText = readFileSync(findings, "utf8");
+  const remaining = readdirSync(staging);
+  rmSync(dir, { recursive: true, force: true });
+
+  assert.doesNotMatch(foundText, /## The real finding title/, "a multi-heading file must not be folded in raw");
+  assert.deepEqual(remaining, ["2026-08-23-multi-heading.md"], "the multi-heading file must survive, unfolded");
+  assert.match(out, /2026-08-23-multi-heading\.md/, "the offending file must be named in the output");
+});
+
 test("a clean staging directory is a no-op", () => {
   const { dir, findings, staging } = setup();
   const before = readFileSync(findings, "utf8");

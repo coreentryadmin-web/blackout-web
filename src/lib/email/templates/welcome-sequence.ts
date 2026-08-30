@@ -52,14 +52,14 @@ export const WELCOME_SEQUENCE: WelcomeEmailStep[] = [
       const body =
         h1("Right now, somewhere in this market, a dealer is hedging a bet they never wanted to make.") +
         p(
-          "{{firstName}}, that's what actually moves the candle you've been staring at — not vibes, not headlines, a dealer scrambling to hedge exposure they didn't ask for. Most traders only ever see the tick after it happens. You just got access to the mechanics that cause it."
+          "{{firstName}}, that's what actually moves the candle you've been staring at — not vibes, not headlines, a dealer scrambling to hedge exposure they didn't ask for. Most traders only ever see the tick after it happens. You're about to see the mechanics that cause it."
         ) +
         p(
           "Here's what BlackOut actually is: dealer gamma exposure, live institutional options flow, and dark pool prints — GEX by strike, sweep-vs-block flow, size that moved off-tape — fused into one desk. No more juggling six tabs and hoping they agree with each other. This is where the big money leaves footprints, live."
         ) +
         emailScreenshot(heroShot, "The live BlackOut desk — SPX Slayer, gamma map, and Vector chart") +
         p(
-          "Six engines live under one login, from the 0DTE grind to the gamma map that shows you exactly where price wants to snap. We're not dumping all six on you today — that full walkthrough is coming. Today's job is simple: get your bearings, fast."
+          "Six engines run on this desk, from the 0DTE grind to the gamma map that shows you exactly where price wants to snap. Your free account already gets you real ground to stand on — live key levels, the Learn library, the fast-start below — and every engine unlocks under the same login the moment you go Premium. Today's job is simple: get your bearings, fast."
         ) +
         p(
           `Run the fast-start orientation below — five minutes, and the tape looks different for good. Then get into Discord, where members call out setups, break down gamma walls, and argue the tape in real time. Not a newsletter. A floor.`

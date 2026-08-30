@@ -15,6 +15,7 @@ import { resolveFreshFindStatus, type EnrichedZeroDteSetup, type SessionHeat } f
 import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
 import { DiscoveryFunnelStrip, GovPill, MarketStateStrip } from "./zerodte-board-strips";
+import { ThesisRankCard } from "./ThesisRankCard";
 import { buildIntelNote, type IntelAction } from "@/lib/zerodte/intel";
 import { capConvictionDisplay } from "@/lib/zerodte/conviction";
 import { closedPnlDisplay, isZeroDteMarkStale, trimScaleTranchesArmed, type ZeroDteMarkSource } from "@/lib/zerodte/marks-math";
@@ -120,6 +121,17 @@ type BoardGovernor = {
   time_of_day_label?: string | null;
   effective_max_concurrent?: number;
   time_of_day_sizing_factor?: number;
+  // AUDIT SEV-3 realized-loss halt surface (src/lib/zerodte/governor.ts's
+  // ZeroDteGovernorSummary) — `halted` can be true from EITHER the hard-stop halt
+  // (stops.length >= max_session_stops) OR this channel (realized_losers >=
+  // loss_halt_count, or session_pnl_pct <= session_loss_floor_pct). Optional so a
+  // stale/older payload shape still type-checks; the halted banner below falls back
+  // to the hard-stop wording when `would_halt` is absent.
+  realized_losers?: number;
+  session_pnl_pct?: number;
+  loss_halt_count?: number;
+  session_loss_floor_pct?: number;
+  would_halt?: string | null;
 };
 
 type BoardResponse = {
@@ -510,6 +522,33 @@ function GovernorStrip({
               : "No stops this session"
           }
         />
+        {/* Realized-loser/session-PnL diagnostics (2026-08-27): computed unconditionally by
+         *  the governor regardless of whether GOVERNOR_ENFORCE_LOSS_HALT is on, but until now
+         *  only ever rendered inside the `gov.halted` block below — with that channel
+         *  currently disabled, a real "5 realized losers, -9.7% today" session was fully
+         *  invisible on every product surface (member board, admin) unless someone hit the
+         *  API directly. Neutral-toned (not an alarm — the halt itself still governs whether
+         *  new commits are blocked) FYI pill, shown whenever there's something to report. */}
+        {gov.realized_losers != null && gov.realized_losers > 0 && (
+          <GovPill
+            label="Losers"
+            value={
+              gov.loss_halt_count != null
+                ? `${gov.realized_losers}/${gov.loss_halt_count}`
+                : String(gov.realized_losers)
+            }
+            tone={gov.halted ? "bear" : "sky"}
+            title="Realized losers this session (any exit reason) — diagnostic; the session halt on this channel is currently disabled by operator directive"
+          />
+        )}
+        {gov.session_pnl_pct != null && gov.session_pnl_pct !== 0 && (
+          <GovPill
+            label="Session P&L"
+            value={`${gov.session_pnl_pct > 0 ? "+" : ""}${gov.session_pnl_pct.toFixed(1)}%`}
+            tone={gov.session_pnl_pct < 0 ? "bear" : "bull"}
+            title="Sum of realized P&L% across today's closed rows — diagnostic, not a live mark-to-market total"
+          />
+        )}
         {locks.map((l) => (
           <GovPill
             key={`lock-${l.ticker}`}
@@ -559,8 +598,21 @@ function GovernorStrip({
       </div>
       {gov.halted && (
         <p className="rounded-lg border border-bear/40 bg-bear/[0.08] px-3 py-2 font-mono text-[11px] font-bold uppercase tracking-widest text-bear">
-          Session halted — {gov.stops.length} stops (max {gov.max_session_stops}). No new commits for
-          the rest of the session.
+          {/* BUG FIX (2026-08-27): `halted` can be tripped by EITHER the hard-stop channel
+           *  (stops.length >= max_session_stops) OR the AUDIT SEV-3 realized-loss channel
+           *  (realized_losers >= loss_halt_count, or session_pnl_pct <= the floor) — this
+           *  used to always render the hard-stop wording regardless of which one fired.
+           *  Caught live 2026-08-27 mid-session: the board showed "Session halted — 2 stops
+           *  (max 3)" — reading as NOT yet at the stop cap — while the actual trigger was 5
+           *  realized losers (the loss-halt cap), a fact the payload already carried in
+           *  `would_halt` but this component never rendered. `would_halt` is already a
+           *  complete, self-terminating sentence ("...no new commits for the rest of the
+           *  session. 7/13's bleed..."), so it replaces the whole message rather than being
+           *  spliced into the hard-stop wording. Falls back to the hard-stop sentence when
+           *  `would_halt` is absent (older payload shape) or null (this halt really is the
+           *  hard-stop channel). */}
+          {gov.would_halt ??
+            `Session halted — ${gov.stops.length} stops (max ${gov.max_session_stops}). No new commits for the rest of the session.`}
         </p>
       )}
     </div>
@@ -604,7 +656,7 @@ function PaneHeader({
           className={clsx(
             "h-full rounded-full transition-[width] duration-700",
             hot
-              ? "bg-gradient-to-r from-sky-400 via-bull to-bull shadow-[0_0_12px_rgba(0,230,118,0.6)]"
+              ? "bg-gradient-to-r from-sky-400 via-bull to-bull"
               : "bg-gradient-to-r from-sky-500/60 to-sky-400"
           )}
           style={{ width: `${Math.max(2, Math.min(100, heat.heat_pct))}%` }}
@@ -1031,6 +1083,12 @@ function PlayDetail({ row, nowMs }: { row: PlayRow; nowMs: number }) {
   const target = row.entry_premium != null ? row.entry_premium * 2 : null;
   return (
     <div className="nh-v2-briefing-drawer space-y-3 border-t border-white/[0.06] px-4 py-3">
+      {s?.thesis_first && (
+        <BriefingSection title="Thesis rank" accent="sky">
+          <ThesisRankCard thesis={s.thesis_first} />
+        </BriefingSection>
+      )}
+
       <BriefingSection title="Cortex verdict" accent="green">
         <CortexEvidenceBlock view={view} />
       </BriefingSection>

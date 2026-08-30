@@ -237,6 +237,51 @@ test("pickAtmPinContract picks the fade side's ATM contract (0DTE preferred, dte
   assert.ok(pickAtmPinContract(deadPut, 598.2, TODAY, "call"), "the call side is still tradeable");
 });
 
+// ── NH-R5 PARITY (2026-08-28): PIN's picker never got the liquidity-quality tie-break
+//    breakout-source.ts's pickAtmZeroDteContract got on 2026-08-03 — same defect, same fix. ──
+test("pickAtmPinContract: among near-ATM candidates, materially better liquidity wins a close tie", () => {
+  // Mirrors breakout-source.test.ts's identical case. Strike 598 is nominally closer to spot
+  // (dist 0.2) than 598.3 (dist 0.1 -- wait, spot is 598.2, so 598.3 is dist 0.1 vs 598's dist
+  // 0.2) but 598 has a razor-thin quote (huge spread, 1 lot OI) while 598.3 has a tight
+  // two-sided market and real depth. The quality tie-break must prefer the genuinely tradeable
+  // strike even though it is nominally marginally further from spot.
+  const rows: PinChainRow[] = [
+    { expiry: TODAY, strike: 598, call_bid: 0.05, call_ask: 0.5, call_oi: 1, put_bid: 0.05, put_ask: 0.5, put_oi: 1 },
+    {
+      expiry: TODAY,
+      strike: 598.3,
+      call_bid: 1.0,
+      call_ask: 1.02,
+      call_oi: 800,
+      put_bid: 1.0,
+      put_ask: 1.02,
+      put_oi: 800,
+    },
+  ];
+  const call = pickAtmPinContract(rows, 598.2, TODAY, "call");
+  assert.ok(call);
+  assert.equal(call!.strike, 598.3, "the materially more liquid near-tie strike wins");
+});
+
+test("pickAtmPinContract: ATM still dominates — liquidity quality never overrides a materially closer strike", () => {
+  const rows: PinChainRow[] = [
+    { expiry: TODAY, strike: 598, call_bid: 0.9, call_ask: 1.1, call_oi: 5, put_bid: 0.9, put_ask: 1.1, put_oi: 5 },
+    {
+      expiry: TODAY,
+      strike: 603,
+      call_bid: 1.0,
+      call_ask: 1.01,
+      call_oi: 900,
+      put_bid: 1.0,
+      put_ask: 1.01,
+      put_oi: 900,
+    },
+  ];
+  const call = pickAtmPinContract(rows, 598.2, TODAY, "call");
+  assert.ok(call);
+  assert.equal(call!.strike, 598, "ATM proximity still wins over a distant, higher-quality strike");
+});
+
 // ── Merge: union origins by ticker, preserve as a SET, append unique ─────────────────
 test("mergePinOrigins unions a shared ticker to ['FLOW','PIN'] and appends unique pin tickers", () => {
   const flow: EnrichedZeroDteSetup[] = deriveZeroDteSetups(

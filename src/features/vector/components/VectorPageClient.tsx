@@ -9,7 +9,10 @@ import {
   fetchVectorEmbedFastSeed,
 } from "@/features/vector/lib/vector-client-seed";
 import type { VectorClientSeed } from "@/features/vector/lib/vector-client-seed";
-import { VECTOR_DEFAULT_TICKER } from "@/features/vector/lib/vector-ticker";
+import {
+  VECTOR_DEFAULT_TICKER,
+  defaultVectorDeskOpenProps,
+} from "@/features/vector/lib/vector-ticker";
 import {
   comparePath,
   isCompareMode,
@@ -153,6 +156,16 @@ export function VectorPageClient({
     };
   }, [inCompare, compareTickers, seed]);
 
+  const deskOpen = useMemo(
+    () => ({
+      ...defaultVectorDeskOpenProps(bootstrapTicker),
+      ...(defaultDteHorizon != null ? { defaultDteHorizon } : {}),
+      ...(defaultChartViewport != null ? { defaultChartViewport } : {}),
+      ...(defaultTimeframe != null ? { defaultTimeframe } : {}),
+    }),
+    [bootstrapTicker, defaultDteHorizon, defaultChartViewport, defaultTimeframe]
+  );
+
   const onTickerSelect = useCallback(
     async (next: string) => {
       if (!seed || next === seed.ticker) return;
@@ -202,9 +215,7 @@ export function VectorPageClient({
   return (
     <VectorPageShell
       {...seed}
-      defaultDteHorizon={defaultDteHorizon}
-      defaultChartViewport={defaultChartViewport}
-      defaultTimeframe={defaultTimeframe}
+      {...deskOpen}
       onTickerSelect={onTickerSelect}
       tickerNavBusy={navBusy}
       onEnterCompare={onEnterCompare}

@@ -1001,9 +1001,196 @@ export type VectorStreamSnapshot = {
   wallTrailSec?: number;
 };
 
-let activeVectorStream: ReconnectingEventSource | null = null;
-let activeVectorStreamTicker: string | null = null;
+export type VectorPickEvidenceSection = {
+  id: "strike" | "flow" | "positioning" | "structure" | "technicals" | "liquidity" | "session" | "gex" | "catalyst";
+  title: string;
+  items: Array<{ label: string; value: string; detail?: string }>;
+};
 
+export type VectorContractPick = {
+  side: "call" | "put";
+  strike: number;
+  expiry: string;
+  label: string;
+  premium: number;
+  confidence: number;
+  caveat?: "premium_high" | "low_liquidity" | "premium_high_low_liquidity";
+  reasons?: string[];
+  role?: string;
+  rank?: number;
+  dte?: number;
+  evidence?: VectorPickEvidenceSection[];
+  occ?: string | null;
+  entryMid?: number;
+  entryBid?: number | null;
+  entryAsk?: number | null;
+  liveBid?: number | null;
+  liveAsk?: number | null;
+  liveMid?: number | null;
+  liveDelta?: number | null;
+  liveGamma?: number | null;
+  liveTheta?: number | null;
+  liveIv?: number | null;
+  actionStatus?: "still_buy" | "caution" | "dont_buy";
+  actionReason?: string;
+  premiumPctFromEntry?: number | null;
+  setupInvalidated?: boolean;
+  /** Elite whale / A-grade wall pins — surfaced in PLYS + Night Hawk winners board. */
+  tier?: "elite" | "standard";
+  /** True once the live-quote poll (use-vector-pick-live-monitor.ts) has gone LIVE_QUOTES_STALE_MS
+   *  without a successful read — the bid/ask/greeks/actionStatus above are frozen at their last
+   *  known-good value, not a live read, and the UI should say so rather than presenting them as
+   *  current. */
+  liveQuotesStale?: boolean;
+};
+
+export type VectorContractPicksRequest = {
+  ticker: string;
+  play: {
+    bias: "long" | "short" | "range" | "neutral";
+    conviction: number;
+    style?: "scalp" | "swing" | "position";
+    grade?: "A" | "B" | "C";
+    headline?: string;
+    thesis?: string;
+    entryZone?: string;
+    targets?: string[];
+    starred?: string[];
+  };
+  spot: number;
+  callWall?: number | null;
+  putWall?: number | null;
+  magnetStrike?: number | null;
+  gammaFlip?: number | null;
+  regimePosture?: "long" | "short" | "transition" | "unknown" | null;
+  technicals?: {
+    vwap?: number | null;
+    emaStack?: "up" | "down" | "mixed" | null;
+    rsi?: number | null;
+    macd?: "bull" | "bear" | null;
+    goldenPocket?: { low: number; high: number } | null;
+    structure?: { type: string; direction: string; level: number } | null;
+  } | null;
+  confluenceZones?: Array<{
+    center: number;
+    score: number;
+    kinds: string[];
+  }>;
+  darkPoolLevels?: Array<{ strike: number; premium: number; pct: number }>;
+  flows?: Array<{
+    option_type?: string;
+    premium?: number;
+    strike?: number;
+    expiry?: string;
+  }>;
+  /** OCC symbols to omit after a pick invalidates — next rank surfaces replacements. */
+  excludeOccs?: string[];
+};
+
+/** Rank contract picks using full play + wall + HELIX context. Returns a deep pool for backfill. */
+export async function fetchVectorContractPicks(
+  params: VectorContractPicksRequest
+): Promise<{ picks: VectorContractPick[]; pool?: VectorContractPick[] }> {
+  return marketFetch<{ picks: VectorContractPick[]; pool?: VectorContractPick[] }>(
+    `/vector/contract-picks`,
+    {
+      method: "POST",
+      body: JSON.stringify(params),
+    }
+  );
+}
+
+export async function fetchVectorPickLiveQuotes(params: {
+  ticker: string;
+  spot: number;
+  play: VectorContractPicksRequest["play"] & { invalidation?: string };
+  callWall?: number | null;
+  putWall?: number | null;
+  gammaFlip?: number | null;
+  bieBucket?: string | null;
+  picks: Array<{
+    occ: string;
+    side: "call" | "put";
+    strike: number;
+    expiry: string;
+    entryMid?: number | null;
+    caveat?: VectorContractPick["caveat"];
+    rank?: number | null;
+    label?: string | null;
+    role?: string | null;
+    premium?: number | null;
+    confidence?: number | null;
+  }>;
+}): Promise<{
+  live: Array<{
+    occ: string;
+    bid: number | null;
+    ask: number | null;
+    mid: number | null;
+    delta: number | null;
+    gamma: number | null;
+    theta: number | null;
+    iv: number | null;
+    actionStatus: "still_buy" | "caution" | "dont_buy";
+    actionReason: string;
+    premiumPctFromEntry: number | null;
+    setupInvalidated: boolean;
+  }>;
+  asOf: string;
+}> {
+  return marketFetch(`/vector/contract-picks/live`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export type VectorPlayBieResponse = {
+  bucketKey: string;
+  bie: { favPct: number; samples: number; windowDays: number } | null;
+  insufficientSample: boolean;
+};
+
+/** Historical win-rate grounding for the current play bucket (vector_pick_closures). */
+export async function fetchVectorPlayBie(params: {
+  ticker: string;
+  horizon: string;
+  timeframeMin: number;
+  spot: number;
+  regime: { posture: string };
+  gexWalls?: unknown;
+  gammaFlip?: number | null;
+  magnet?: unknown;
+  proximity?: unknown;
+  technicals?: unknown;
+}): Promise<VectorPlayBieResponse> {
+  return marketFetch<VectorPlayBieResponse>(`/vector/play-bie`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+/**
+ * One connection per call — NOT a shared singleton.
+ *
+ * A module-level "close the other ticker's stream" guard lived here until this comment (dating to
+ * the original single-ticker-desk design, before Compare mode existed): it force-closed whichever
+ * stream was previously tracked whenever a call arrived for a DIFFERENT ticker. That is correct
+ * for exactly one concurrent caller. Compare mode mounts up to VECTOR_COMPARE_MAX_PANES independent
+ * `VectorChart` instances, each calling this with its OWN ticker — so pane 2 mounting with a
+ * different ticker than pane 1 silently closed pane 1's live stream, pane 3 then closed pane 2's,
+ * and so on: only the LAST-mounted pane ever ended up with a live connection. The other panes froze
+ * on their last-received tick with no reconnect (the `closed=true` flag `createReconnectingEventSource`
+ * sets on `.close()` permanently disables that instance's own retry loop) and no staleness
+ * indicator — a silently-wrong "looks live, isn't" state.
+ *
+ * The guard was also redundant for the single-pane case it was written for: `VectorChart`'s own
+ * chart-setup effect already closes `connRef.current` in its cleanup on every ticker switch (a full
+ * remount — see the "remount (ticker switch) starts clean" comments on that effect), so the caller
+ * was never relying on this module to deduplicate an old connection. Each `VectorChart` instance
+ * (single-pane or one of up to 4 compare panes) now owns its own connection lifecycle end to end,
+ * matching every sibling stream helper in this file (`createFlowEventSource`,
+ * `createPulseEventSource`, `createSpotStreamEventSource` — none of which carry this pattern).
+ */
 export function createVectorEventSource(
   ticker: string,
   onMessage: (snap: VectorStreamSnapshot) => void,
@@ -1013,13 +1200,7 @@ export function createVectorEventSource(
   const t = (ticker || "SPX").trim().toUpperCase();
   const url = `/api/market/vector/stream?ticker=${encodeURIComponent(t)}`;
 
-  if (activeVectorStream && activeVectorStreamTicker !== t) {
-    activeVectorStream.close();
-    activeVectorStream = null;
-    activeVectorStreamTicker = null;
-  }
-
-  const es = createReconnectingEventSource(
+  return createReconnectingEventSource(
     url,
     (raw) => {
       try {
@@ -1040,21 +1221,8 @@ export function createVectorEventSource(
         /* ignore */
       }
     },
-    {
-      onOpen: hooks?.onOpen,
-      onClose: () => {
-        if (activeVectorStream === es) {
-          activeVectorStream = null;
-          activeVectorStreamTicker = null;
-        }
-        hooks?.onClose?.();
-      },
-    }
+    hooks
   );
-
-  activeVectorStream = es;
-  activeVectorStreamTicker = t;
-  return es;
 }
 
 // ── Stock/ETF live spot-price stream (PR 2/3 of the sub-second-spot project) ──

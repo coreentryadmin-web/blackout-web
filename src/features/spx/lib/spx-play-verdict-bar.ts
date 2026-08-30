@@ -4,6 +4,10 @@ import {
   resolveSpxPlayContractChip,
 } from "@/features/spx/lib/spx-play-contract-label";
 import type { SpxPinForecast } from "@/features/spx/lib/spx-pin";
+import {
+  categorizeGateBlocks,
+  type CategorizedGateBlocks,
+} from "@/features/spx/lib/playbook-gate-categories";
 
 export type PlayVerdictMode = "loading" | "closed" | "open" | "watch" | "hunting";
 
@@ -20,6 +24,7 @@ export type PlayVerdictBarModel = {
   statusLine: string;
   detailLine: string | null;
   gateLine: string | null;
+  gateCategories: CategorizedGateBlocks | null;
   trimHint: string | null;
   signalCommitted: boolean;
   /** When pin magnet drift and structure play direction diverge. */
@@ -104,6 +109,7 @@ export function buildPlayVerdictBarModel(
       statusLine: "Loading Slayer play…",
       detailLine: null,
       gateLine: null,
+      gateCategories: null,
       trimHint: null,
       signalCommitted: false,
       ...emptyAlign,
@@ -124,6 +130,7 @@ export function buildPlayVerdictBarModel(
       statusLine: "Session closed — play engine idle until next RTH.",
       detailLine: null,
       gateLine: null,
+      gateCategories: null,
       trimHint: null,
       signalCommitted: false,
       ...emptyAlign,
@@ -144,6 +151,7 @@ export function buildPlayVerdictBarModel(
       statusLine: "Desk warming — waiting for live play state.",
       detailLine: null,
       gateLine: null,
+      gateCategories: null,
       trimHint: null,
       signalCommitted: false,
       ...emptyAlign,
@@ -158,6 +166,11 @@ export function buildPlayVerdictBarModel(
     !play.gates.passed && play.gates.blocks[0]
       ? play.gates.blocks[0]
       : play.gates.warnings[0] ?? null;
+
+  const gateCategories =
+    play.gates.passed && play.gates.warnings.length === 0
+      ? null
+      : categorizeGateBlocks([...play.gates.blocks, ...play.gates.warnings]);
 
   let statusLine = play.headline || play.thesis || play.idle_message || "Scanning all lanes.";
   if (mode === "watch" && play.watch?.reason) statusLine = play.watch.reason;
@@ -197,6 +210,7 @@ export function buildPlayVerdictBarModel(
     statusLine,
     detailLine,
     gateLine,
+    gateCategories,
     trimHint,
     signalCommitted: play.signal_committed,
     alignHint,

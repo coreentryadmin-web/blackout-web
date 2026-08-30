@@ -73,12 +73,12 @@ function insightsFromAnalytics(
   }
 
   lines.push(
-    `Overall win rate ${(stats.overall.win_rate * 100).toFixed(0)}% across ${stats.total_closed} closed plays.`
+    `Overall win rate ${Number.isFinite(stats.overall.win_rate) ? (stats.overall.win_rate * 100).toFixed(0) : "—"}% across ${stats.total_closed} closed plays.`
   );
 
   if (stats.cold_buy.count >= 2 && stats.watch_promote.count >= 2) {
     const gap = stats.cold_buy.win_rate - stats.watch_promote.win_rate;
-    if (gap >= 0.15) {
+    if (Number.isFinite(gap) && gap >= 0.15) {
       lines.push(
         `WATCH→ENTRY trails cold BUY by ${(gap * 100).toFixed(0)} pts — promote path is penalized in telemetry.`
       );
@@ -90,7 +90,7 @@ function insightsFromAnalytics(
   const aGrades = gradeBreakdown.filter((g) => g.grade.startsWith("A"));
   if (aGrades.length) {
     const best = aGrades.sort((a, b) => b.win_rate - a.win_rate)[0];
-    if (best.count >= 2) {
+    if (best.count >= 2 && Number.isFinite(best.win_rate)) {
       lines.push(`Grade ${best.grade}: ${(best.win_rate * 100).toFixed(0)}% win rate (${best.count} trades).`);
     }
   }

@@ -40,6 +40,10 @@ const CRON_ROUTES_DIR = join(process.cwd(), "src/app/api/cron");
  */
 const INTENTIONALLY_UNREGISTERED: Record<string, string> = {
   "x-engage": "Outward-facing social posting, gated on xApiEnabled + xMarketingSilentOnly. Unscheduled on purpose — enabling it publishes on our behalf, which is a business decision. (Same reason scripts/audit/cron-schedule-coverage.mjs lists it as intentional.)",
+  "x-intel": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule was never provisioned for this one; route.ts and its admin review-queue UI are left in place (not requested for removal), only the schedule is gone.",
+  "x-autopost": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
+  "x-growth": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
+  "x-replies": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
   "darkpool-discord": "Unscheduled in cron-jobs.json; invoked off another job's path rather than on its own timer, so a stale window computed from a schedule it does not have would be meaningless.",
   "helix-discord-digest": "Unscheduled in cron-jobs.json — same reason as darkpool-discord.",
   "thermal-discord": "Unscheduled in cron-jobs.json — same reason as darkpool-discord.",

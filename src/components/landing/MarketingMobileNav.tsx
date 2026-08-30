@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { handleMarketingHomeHashClick } from "@/lib/marketing-hash-nav";
 import { NavAuthLinks } from "./NavAuthLinks";
 
 export type MarketingNavLink = {
@@ -20,6 +21,11 @@ export function MarketingMobileNav({
 }) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
+
+  const onHashNavClick = useCallback(
+    (href: string) => handleMarketingHomeHashClick(href, close),
+    [close],
+  );
 
   useEffect(() => {
     document.documentElement.classList.toggle("mkt-menu-open", open);
@@ -96,7 +102,7 @@ export function MarketingMobileNav({
               href={l.href}
               prefetch={false}
               className={l.iosHide ? "hide-in-ios-app" : undefined}
-              onClick={close}
+              onClick={onHashNavClick(l.href)}
             >
               {l.label}
             </Link>

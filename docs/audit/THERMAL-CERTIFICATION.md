@@ -64,7 +64,7 @@ Builds on Phase 0 inventory (THERMAL-MAP.md) and fixes (9.1–9.3 live-validated
 | Metric | Target | Measured | Date | Notes |
 |---|---|---|---|---|
 | Matrix cache TTL | 5s | 5s + 90s stale-while-revalidate | 2026-08-22 | `GEX_HEATMAP_CACHE_SEC` |
-| Force rebuild cap | 55s fail-closed | overnight p95 SPY 5.4s, SPX 7.3s, QQQ 4.4s, IWM 2.1s; **SPY 56.7s anomaly (2026-08-13) unexplained** | 2026-08-14 overnight | `GEX_HEATMAP_FORCE_MAX_BLOCK_MS` — RTH re-run needed |
+| Force rebuild cap | 55s fail-closed | **RTH 2026-08-24:** SPY p95 15.5s, SPX p95 19.5s, over_cap 0/6 ✓ PASS | 2026-08-24 11:38 ET | **56.7s SPY anomaly NOT reproduced during RTH** (n=3 per ticker, live market). Overnight baseline: SPY 5.4s, SPX 7.3s. Recommend: keep cap at 55s, anomaly likely cache-miss spike or off-hours artifact |
 | API latency | <200ms | ⧖ live measurement needed | — | `/api/market/gex-heatmap` end-to-end |
 | Page load (member) | <1s | ⧖ proxy-browser measurement needed | — | `/heatmap` TTI via proxy-browser |
 | Public page load | <500ms | ⧖ needed | — | `/tools/gamma-snapshot` cached, unauthenticated |

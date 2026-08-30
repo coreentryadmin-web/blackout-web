@@ -75,11 +75,18 @@ export type PaneCortexView =
   | { abstained: true; reason: string }
   | {
       abstained: false;
-      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED" | null;
+      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED" | "OPPOSE_UNRESOLVED" | null;
       verdict: CortexVerdictLike;
     };
 
-const CORTEX_DECISIONS = new Set(["PASS", "VETO", "VETO_BLIND", "NET_NEGATIVE", "CONTESTED"]);
+const CORTEX_DECISIONS = new Set([
+  "PASS",
+  "VETO",
+  "VETO_BLIND",
+  "NET_NEGATIVE",
+  "CONTESTED",
+  "OPPOSE_UNRESOLVED",
+]);
 
 /**
  * Normalize either cortex shape (nested assessment / flattened entry-context blob)
@@ -105,7 +112,7 @@ export function readCortexView(raw: unknown): PaneCortexView | null {
   }
   const decision =
     typeof a.decision === "string" && CORTEX_DECISIONS.has(a.decision)
-      ? (a.decision as "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED")
+      ? (a.decision as "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED" | "OPPOSE_UNRESOLVED")
       : null;
   return { abstained: false, decision, verdict };
 }
@@ -259,6 +266,7 @@ const GATE_LABELS: Record<string, string> = {
   no_market_bias: "G-1 · tape unreadable",
   opening_window: "G-2 · opening window",
   score_floor: "G-3 · score floor",
+  single_rail_corroboration: "G-17 · prime band floor (65-74)",
   governor_max_concurrent: "governor · plans cap",
   governor_session_stops: "governor · stop halt",
   governor_reentry_lock: "governor · re-entry lock",

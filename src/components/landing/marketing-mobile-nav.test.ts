@@ -21,6 +21,13 @@ test("mobile nav includes keyboard focus trap while open", () => {
   assert.match(mobile, /focusables/);
 });
 
+test("mobile nav preserves homepage hash fragments (Platform → #protocol)", () => {
+  const mobile = readFileSync(join(root, "src/components/landing/MarketingMobileNav.tsx"), "utf8");
+  const lib = readFileSync(join(root, "src/lib/marketing-hash-nav.ts"), "utf8");
+  assert.match(mobile, /handleMarketingHomeHashClick/);
+  assert.match(lib, /scrollIntoView/);
+});
+
 test("marketing shell includes scroll progress and anchor offset", () => {
   const shell = readFileSync(join(root, "src/components/landing/MarketingPageShell.tsx"), "utf8");
   const css = readFileSync(join(root, "src/app/marketing-shell.css"), "utf8");

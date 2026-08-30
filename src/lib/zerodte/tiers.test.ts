@@ -148,11 +148,14 @@ test("a Cortex veto forces the tier to C, whatever else aligned", () => {
   assert.equal(factor.direction, "down");
 });
 
-test("early-window penalty (F-4): a pre-11:00 commit costs exactly the boundary point", () => {
+test("early-window penalty (F-4 + E2): [10:00, 11:00) costs exactly the boundary point", () => {
   // boundaryA is exactly 4 points; committing it at 10:05 ET (−1) drops it to B.
   const early = assignZeroDteTier(boundaryA({ committedEtMinutes: 10 * 60 + 5 }));
   assert.equal(early.tier, "B");
   assert.ok(early.factors.some((f) => f.label === "Early window" && f.direction === "down"));
+  // 9:59 (before 10:00) — outside the early window, no penalty.
+  const before = assignZeroDteTier(boundaryA({ committedEtMinutes: 10 * 60 - 1 }));
+  assert.equal(before.tier, "A");
   // 11:00 exactly is OUTSIDE the early window (boundary in the other direction).
   const at11 = assignZeroDteTier(boundaryA({ committedEtMinutes: 11 * 60 }));
   assert.equal(at11.tier, "A");
@@ -290,10 +293,10 @@ test("tierFromEntryContext: abstained Cortex is an evidence gap, not a zero", ()
 });
 
 test("tierFromEntryContext: ET stamp parses; malformed fields degrade to null, never throw", () => {
-  // Early-window stamp costs the F-4 point: 09:55 ET drops PINNED_FULL from A to...
+  // Early-window stamp [10:00, 11:00) costs the F-4 point: 10:05 ET drops PINNED_FULL from A to...
   // +2 prime, +2 calm VIX, +2 clean cortex, −1 early = 5 → still A (evidence-rich
   // plays survive one drag; the boundary case is covered above).
-  const early = tierFromEntryContext({ ...PINNED_FULL, committed_at_et: "2026-07-10 09:55 ET" });
+  const early = tierFromEntryContext({ ...PINNED_FULL, committed_at_et: "2026-07-10 10:05 ET" });
   assert.ok(early);
   assert.ok(early.factors.some((f) => f.label === "Early window"));
 
@@ -312,4 +315,65 @@ test("tierFromEntryContext: ET stamp parses; malformed fields degrade to null, n
 test("tierFromEntryContext: no blob at all is untierable (null), not a fake C", () => {
   assert.equal(tierFromEntryContext(null), null);
   assert.equal(tierFromEntryContext(undefined), null);
+});
+
+// ── Source-aware scoreFloor (mirrors gates.ts — unified 65 floor, 2026-08-25) ─────
+test("tierFromEntryContext: BREAKOUT origin uses unified scoreFloor (65)", () => {
+  const breakout = tierFromEntryContext({
+    ...PINNED_FULL,
+    score: 55,
+    discovery_origin: ["BREAKOUT"],
+    vix_open: 16,
+  });
+  assert.ok(breakout);
+  assert.equal(breakout.tier, "B");
+  assert.ok(breakout.factors.some((f) => f.label === "Score below floor"));
+});
+
+test("tierFromEntryContext: PIN origin uses unified scoreFloor (65)", () => {
+  const pin = tierFromEntryContext({
+    ...PINNED_FULL,
+    score: 52,
+    discovery_origin: ["PIN"],
+    vix_open: 16,
+  });
+  assert.ok(pin);
+  assert.equal(pin.tier, "B");
+  assert.ok(pin.factors.some((f) => f.label === "Score below floor"));
+});
+
+test("tierFromEntryContext: FLOW origin uses standard scoreFloor (65)", () => {
+  const flow = tierFromEntryContext({
+    ...PINNED_FULL,
+    score: 55,
+    discovery_origin: ["FLOW"],
+    vix_open: 16,
+  });
+  assert.ok(flow);
+  assert.equal(flow.tier, "B");
+  assert.ok(flow.factors.some((f) => f.label === "Score below floor"));
+});
+
+test("tierFromEntryContext: multi-source (FLOW+BREAKOUT) uses strict FLOW floor (65)", () => {
+  const multi = tierFromEntryContext({
+    ...PINNED_FULL,
+    score: 55,
+    discovery_origin: ["FLOW", "BREAKOUT"],
+    vix_open: 16,
+  });
+  assert.ok(multi);
+  assert.equal(multi.tier, "B");
+  assert.ok(multi.factors.some((f) => f.label === "Score below floor"));
+});
+
+test("tierFromEntryContext: missing origin defaults to FLOW floor (65)", () => {
+  const noOrigin = tierFromEntryContext({
+    ...PINNED_FULL,
+    score: 55,
+    discovery_origin: undefined,
+    vix_open: 16,
+  });
+  assert.ok(noOrigin);
+  assert.equal(noOrigin.tier, "B");
+  assert.ok(noOrigin.factors.some((f) => f.label === "Score below floor"));
 });

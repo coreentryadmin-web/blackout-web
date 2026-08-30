@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   formatReturnPct,
+  playEntryDisplay,
   playQualityPct,
   primaryReturnLabel,
   primaryReturnPct,
@@ -37,6 +38,13 @@ describe("play-card-display", () => {
   it("tierStars maps A+ to five filled stars", () => {
     assert.equal(tierStarCount("A+"), 5);
     assert.match(tierStars("A+"), /^★{5}$/);
+  });
+
+  it("playEntryDisplay formats a real entry premium as compact $ — never fabricates one", () => {
+    assert.equal(playEntryDisplay({ ...base, entry: 3.15 }), "$3.15");
+    assert.equal(playEntryDisplay({ ...base, entry: 0.5 }), "$0.50");
+    assert.equal(playEntryDisplay({ ...base, entry: null }), null);
+    assert.equal(playEntryDisplay(base), null);
   });
 
   it("formatReturnPct signs positive returns", () => {

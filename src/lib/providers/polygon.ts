@@ -5,6 +5,7 @@ import { polygonConfigured } from "./config";
 import { sessionStatsFromMinuteBars, todayEtYmd, priorEtYmd } from "./spx-session";
 import { smaFromCloses, emaFromCloses } from "./ma-math";
 import { serverCache, TTL } from "@/lib/server-cache";
+import { logToken } from "@/lib/log-token";
 
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
 const KEY = process.env.POLYGON_API_KEY ?? "";
@@ -137,7 +138,7 @@ export async function fetchStockSnapshot(ticker: string): Promise<StockQuoteSnap
   try {
     return _rowToSnapshot(sym, row);
   } catch (err) {
-    console.warn(`[polygon] snapshot validation failed for ${sym}:`, err);
+    console.warn(`[polygon] snapshot validation failed for ${logToken(sym)}:`, err);
     return null;
   }
 }
@@ -968,7 +969,7 @@ export async function fetchBenzingaPriceTarget(
 
 // ── SPX structure (indices) ───────────────────────────────────────────────────
 
-type AggBar = { t?: number; o: number; h: number; l: number; c: number; v?: number };
+export type AggBar = { t?: number; o: number; h: number; l: number; c: number; v?: number };
 
 function mapAggBars(results: Array<Record<string, unknown>> | undefined): AggBar[] {
   return (results ?? []).map((r) => ({
@@ -996,6 +997,26 @@ export async function fetchStockMinuteBars(symbol: string, from: string, to: str
   const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
     `/v2/aggs/ticker/${sym}/range/1/minute/${from}/${to}`,
     { limit: "5000", sort: "asc" }
+  );
+  return mapAggBars(data.results);
+}
+
+/**
+ * Option-contract minute aggs — same `/v2/aggs/ticker` endpoint the stock/index helpers above
+ * use, just given an OCC symbol (e.g. `O:NVDA260828C00190000`) instead of a plain ticker; Polygon
+ * treats it identically. Precedented offline in the audit scripts (gate-smallcap-sensitivity.mjs)
+ * but this is the first PRODUCTION request-time caller — an OCC symbol contains `:` and other
+ * characters a raw URL path segment can't carry, so (unlike the plain-ticker helpers above, whose
+ * symbols never needed it) the symbol MUST be `encodeURIComponent`-ed before it goes into the path;
+ * `polygonGet` does no encoding of its own. `from`/`to` are `YYYY-MM-DD` (Polygon's day-range form,
+ * not a timestamp) — a 0DTE contract's whole tradable life is one calendar day, so both are always
+ * the same date.
+ */
+export async function fetchOptionMinuteBars(occ: string, from: string, to: string) {
+  const sym = encodeURIComponent(occ.toUpperCase());
+  const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
+    `/v2/aggs/ticker/${sym}/range/1/minute/${from}/${to}`,
+    { limit: "1000", sort: "asc" }
   );
   return mapAggBars(data.results);
 }
@@ -1182,10 +1203,21 @@ export async function fetchPolygonFinancialRatios(ticker: string): Promise<Polyg
   try {
     const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
       "/stocks/financials/v1/ratios",
-      // The ratios endpoint filters on `tickers=` (plural) and returns the current snapshot.
-      // We also keep the legacy `ticker`/sort params as harmless extras for resilience if the
-      // upstream ever changes which alias it honors.
-      { tickers: sym, ticker: sym, limit: "1", sort: "period_end.desc" }
+      // CORRECTED 2026-08-28 (live-verified against production Polygon): the endpoint filters on
+      // the SINGULAR `ticker=` param — `tickers=` (plural) is silently ignored (confirmed live:
+      // `tickers=SPY` with no `ticker=` returned ticker "A", the alphabetically-first row of the
+      // WHOLE unfiltered dataset, not SPY). `sort=period_end.desc` is not a valid sort field for
+      // this endpoint at all — Polygon rejects it with a hard HTTP 400 ("Invalid query parameter:
+      // 'sort' ... found: 'period_end'"), for EVERY ticker, not just illiquid ones. Both bad
+      // params together meant this function has thrown on literally every call since whenever
+      // they were added, silently starving BIE/Largo's fundamentals tool (ticker-fundamentals.ts),
+      // Night Hawk's swing dossier scoring (dossier.ts), and the SPX/NDX/RUT heatmap dividend-yield
+      // resolver (polygon-options-gex.ts) of P/E, ROE, debt/equity, dividend yield, market cap,
+      // EPS and every other ratio — all three callers swallow the throw with `.catch(() => null)`,
+      // so nothing ever surfaced as an error, it just silently always returned null/0.
+      // A single row for one ticker has nothing to sort BY, so `sort` is dropped entirely rather
+      // than replaced with a valid-but-meaningless value.
+      { ticker: sym, limit: "1" }
     );
     const row = data.results?.[0];
     if (!row) return null;
@@ -1223,6 +1255,32 @@ export async function fetchPolygonFinancialRatios(ticker: string): Promise<Polyg
   } catch {
     return null;
   }
+}
+
+export type PolygonDividend = {
+  cash_amount: number;
+  ex_dividend_date: string;
+};
+
+/**
+ * Cash dividend history — GET /v3/reference/dividends?ticker=<SYM>. Unlike
+ * /stocks/financials/v1/ratios (companies only — SPY/QQQ/IWM/VOO/DIA all correctly return null
+ * there, live-verified 2026-08-28), this endpoint DOES carry real ETF distribution history, which
+ * is the fix for the SPX/NDX/RUT heatmap's ETF-proxy dividend-yield gap (resolveHeatmapDividendYield
+ * in polygon-options-gex.ts). Newest-first by ex-dividend date.
+ */
+export async function fetchPolygonDividends(ticker: string, limit = 8): Promise<PolygonDividend[]> {
+  const sym = ticker.toUpperCase();
+  const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
+    "/v3/reference/dividends",
+    { ticker: sym, limit: String(limit), sort: "ex_dividend_date", order: "desc" }
+  );
+  return (data.results ?? [])
+    .map((r) => ({
+      cash_amount: Number(r.cash_amount),
+      ex_dividend_date: String(r.ex_dividend_date ?? ""),
+    }))
+    .filter((d) => Number.isFinite(d.cash_amount) && d.ex_dividend_date.length > 0);
 }
 
 // ---------------------------------------------------------------------------

@@ -30,10 +30,10 @@ function printHistorySummary(rows: MeridianEarningsPrint[]): string | null {
   // Revenue is graded on a different subset (measured live: the two denominators differ by 3+
   // prints on 3.1% of names, and one side is ≤2 while the other is ≥6 on 1.2%).
   const rev =
-    rates.revenue_beat_rate != null && rates.revenue_graded > 0
+    rates.revenue_beat_rate != null && Number.isFinite(rates.revenue_beat_rate) && rates.revenue_graded > 0
       ? ` · ${Math.round(rates.revenue_beat_rate * 100)}% rev beats of ${rates.revenue_graded}`
       : "";
-  if (avgMove == null) return base + rev;
+  if (avgMove == null || !Number.isFinite(avgMove)) return base + rev;
   return `${base}${rev} · avg reaction ${avgMove >= 0 ? "+" : ""}${avgMove.toFixed(1)}%`;
 }
 

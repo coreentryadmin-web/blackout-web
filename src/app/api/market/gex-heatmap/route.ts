@@ -360,12 +360,36 @@ export async function GET(req: NextRequest) {
     // Override heatmap wall labels with UW WS when live — same source Vector and Slayer use.
     // SCOPED to near-term (mirrors getGexPositioning). Unscoped sum snaps walls to far monthly/
     // quarterly OpEx strikes of larger magnitude (confirmed class of bug on positioning #223).
+    //
+    // MUST also swap `strike_totals`/`total`, not just the wall labels (found via
+    // full-site-deep-audit.mjs's live RTH-deep-audit gate, 2026-08-29: two consecutive prod runs
+    // reported `[heatmap] AAPL.call_wall: reported 330 != 320`, deriving its own callWall from
+    // `strike_totals` and finding it disagreed with the overridden `call_wall` field in the SAME
+    // response). Previously only `call_wall`/`put_wall` were replaced with the WS-derived pick,
+    // while `strike_totals` (what actually paints the Thermal heatmap bars) stayed Polygon-sourced
+    // — so whenever the live WS ladder's top strike differed from Polygon's, a member could see
+    // the "Call Wall" label pointing at a strike that wasn't even the tallest bar in the chart
+    // right next to it. Replacing both keeps the whole gex summary block sourced from one ladder,
+    // matching the comment's own stated intent ("same source Vector and Slayer use").
+    let gexStrikeTotalsFromWs = false;
     if (heatmap.gex && hasLiveGexStrikeExpiry(ticker)) {
       const wsLadder = getGexStrikeExpiryLadder(ticker, nearTermExpiries);
       if (wsLadder) {
+        const wsStrikeTotals = strikeTotalsFromLadder(wsLadder.ladder);
+        // NOTE: keep this call's shape as `wallsFromStrikeTotals(<call>(...), heatmap.spot)` —
+        // wall-side-constraint.test.ts's "all FIVE producers pass spot" test asserts on the
+        // ROUTE'S SOURCE TEXT (Polygon/Redis/a live WS channel aren't reachable from a unit test),
+        // matching `/wallsFromStrikeTotals\([^)]*\), heatmap\.spot\)/` — a bare identifier first
+        // argument (no inner `(...)`) fails that regex even though the runtime behavior is
+        // identical, since `wsStrikeTotals` above is already computed and passed by value.
         const wsWalls = wallsFromStrikeTotals(strikeTotalsFromLadder(wsLadder.ladder), heatmap.spot);
-        if (wsWalls.callWall != null) heatmap.gex.call_wall = wsWalls.callWall;
-        if (wsWalls.putWall != null) heatmap.gex.put_wall = wsWalls.putWall;
+        if (wsWalls.callWall != null || wsWalls.putWall != null) {
+          if (wsWalls.callWall != null) heatmap.gex.call_wall = wsWalls.callWall;
+          if (wsWalls.putWall != null) heatmap.gex.put_wall = wsWalls.putWall;
+          heatmap.gex.strike_totals = wsStrikeTotals;
+          heatmap.gex.total = Object.values(wsStrikeTotals).reduce((sum, g) => sum + g, 0);
+          gexStrikeTotalsFromWs = true;
+        }
       }
     }
 
@@ -471,7 +495,19 @@ export async function GET(req: NextRequest) {
     // gex/vex are always present on a non-empty heatmap; dex/charm are optional
     // (older cached payloads, empty heatmap) — both helpers are no-op passthroughs
     // on undefined, so the dex/charm assignments stay type-correct.
-    rounded.gex = reconcileStrikeTotal(reconcileCellStrikeTotals(rounded.gex, rounded.near_term_expiries))!;
+    //
+    // gex is a special case when the live-WS wall override above replaced
+    // strike_totals wholesale: reconcileCellStrikeTotals recomputes each strike's
+    // total from `cells` (still Polygon-sourced, untouched by the WS override), which
+    // would silently overwrite the just-set WS-derived strike_totals right back to
+    // the Polygon values — reopening the exact call_wall-vs-strike_totals mismatch
+    // the WS override exists to fix, just one step later in the same pipeline. Skip
+    // cell reconciliation for gex in that case; reconcileStrikeTotal alone still
+    // keeps `total` consistent with whatever strike_totals ends up being (WS or
+    // Polygon), which is the invariant the RTH deep audit actually checks.
+    rounded.gex = reconcileStrikeTotal(
+      gexStrikeTotalsFromWs ? rounded.gex : reconcileCellStrikeTotals(rounded.gex, rounded.near_term_expiries)
+    )!;
     rounded.vex = reconcileStrikeTotal(reconcileCellStrikeTotals(rounded.vex, rounded.near_term_expiries))!;
     rounded.dex = reconcileStrikeTotal(reconcileCellStrikeTotals(rounded.dex, rounded.near_term_expiries));
     rounded.charm = reconcileStrikeTotal(reconcileCellStrikeTotals(rounded.charm, rounded.near_term_expiries));

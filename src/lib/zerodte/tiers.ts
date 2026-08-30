@@ -33,7 +33,12 @@
 // entry_context blobs — which is what makes the record analysis able to grade the
 // tier function retroactively on day one.
 
-import { ZERODTE_SCORE_FLOOR, VIX_ELEVATED_THRESHOLD, VIX_EXTREME_THRESHOLD } from "./gates";
+import {
+  ZERODTE_SCORE_FLOOR,
+  ZERODTE_SCORE_FLOOR_BREAKOUT,
+  VIX_ELEVATED_THRESHOLD,
+  VIX_EXTREME_THRESHOLD,
+} from "./gates";
 
 /** Assignable tiers, best → worst. "A+" is deliberately NOT here (rule 1 above)
  *  and "F" is not either — F is the skip pile (tierForSkip), never a ranking of a
@@ -159,12 +164,16 @@ export const CORTEX_CLEAN_MIN_SUPPORTS = 2;
  *  where multi-source corroboration is meaningful. */
 export const CORTEX_THIN_EVIDENCE_MAX_ABSENT = 6;
 
-/** Committed before 11:00 ET: F-4 — the first ~hour is the weakest window on every
- *  surface with data (0DTE 9:50-11:00 → 36.8% WR n=19; hour-9 signals 36.1% n=147
- *  vs hour-14 60.5% n=126). The user kept the window OPEN (G-2 blocks only
- *  9:30-9:45), so the tier function is where the measured weakness gets priced. */
+/** Committed in [10:00, 11:00) ET: F-4 + E2 research — the post-unlock early window is the
+ *  weakest period (E2: 10:00 → −7.8% EV, 10:30 → −9.1% EV; first positive is 11:00 at +1.5%).
+ *  G-2 blocks all 0DTE commits before 10:00 ET (opening unlock), so the penalty applies only to
+ *  the [10:00, 11:00) window. The user kept the window OPEN (G-12 merely tightens confluence
+ *  requirements [10:00, 10:45)), so the tier function is where the measured weakness gets priced.
+ *  (Pre-CLAUDE-session note: prior versions applied this to [9:30, 11:00), but 9:30-10:00 is
+ *  dead code — no commits exist there.) */
 export const W_EARLY_WINDOW = -1;
-export const EARLY_WINDOW_END_ET_MINUTES = 11 * 60;
+export const EARLY_WINDOW_START_ET_MINUTES = 10 * 60; // 10:00 ET (G-2 unlock)
+export const EARLY_WINDOW_END_ET_MINUTES = 11 * 60; // 11:00 ET (first positive EV per E2)
 
 // ── Tier bands over summed points ────────────────────────────────────────────────
 /** "A" needs two independent strong positives (e.g. calm VIX + prime score, or
@@ -329,22 +338,25 @@ export function assignZeroDteTier(input: ZeroDteTierInput): ZeroDteTierAssignmen
     });
   }
 
-  // ── Entry window (F-4) ─────────────────────────────────────────────────────────
+  // ── Entry window (F-4 + E2) ───────────────────────────────────────────────────
   if (input.committedEtMinutes == null) {
     ceiling = capTier(ceiling, "B");
     factors.push({
       label: "Commit time missing",
       direction: "down",
-      detail: "No pinned commit time — the F-4 window weakness is unverifiable, so A is out of reach.",
+      detail: "No pinned commit time — the entry-window weakness (F-4, E2) is unverifiable, so A is out of reach.",
     });
-  } else if (input.committedEtMinutes < EARLY_WINDOW_END_ET_MINUTES) {
+  } else if (
+    input.committedEtMinutes >= EARLY_WINDOW_START_ET_MINUTES &&
+    input.committedEtMinutes < EARLY_WINDOW_END_ET_MINUTES
+  ) {
     points += W_EARLY_WINDOW;
     factors.push({
       label: "Early window",
       direction: "down",
       detail:
-        "Committed before 11:00 ET — the weakest measured window on every surface (9:50-11:00 ran 36.8% WR n=19, F-4). " +
-        "The window stays open by user direction; the tier prices it instead.",
+        "Committed in [10:00, 11:00) ET — the measured-weak window after the 10:00 unlock (E2: 10:00 −7.8% EV, " +
+        "10:30 −9.1% EV; first positive 11:00 +1.5%). The window stays open by user direction; the tier prices it instead.",
     });
   }
 
@@ -382,6 +394,21 @@ export function tierForSkip(
   };
 }
 
+// ── Source-aware scoreFloor (mirrors gates.ts scoreFloorForOrigins) ───────────────
+/**
+ * Derive the commit-time scoreFloor from discovery_origin for retroactive tiering.
+ * Logic matches {@link scoreFloorForOrigins}: FLOW present → strict 65; BREAKOUT/PIN-only
+ * → origin floor (65 by default, restored 2026-08-25); absent → 65.
+ */
+function scoreFloorForOrigin(origin: string[] | undefined | null): number {
+  if (!origin || origin.length === 0) return ZERODTE_SCORE_FLOOR;
+  if (origin.includes("FLOW")) return ZERODTE_SCORE_FLOOR;
+  if (origin.includes("BREAKOUT") || origin.includes("PIN")) {
+    return ZERODTE_SCORE_FLOOR_BREAKOUT;
+  }
+  return ZERODTE_SCORE_FLOOR;
+}
+
 // ── Retroactive tiering off the pinned entry_context blob ─────────────────────────
 /**
  * Adapt an ALREADY-PINNED entry_context blob (entry-context.ts's ZeroDteEntryContext,
@@ -394,11 +421,6 @@ export function tierForSkip(
  * about the play — the record analysis counts these as untiered instead.
  *
  * Fields the blob CANNOT recover (documented, not guessed):
- * - scoreFloor: the floor at COMMIT time is not pinned anywhere (entry_context nor
- *   gate_calibration_json carry it). G-3's floor has been 65 since it shipped, so
- *   today's ZERODTE_SCORE_FLOOR is exact for every existing row; if the floor ever
- *   moves, rows committed before the move will be judged against the new floor
- *   until a floor-at-commit pin ships.
  * - spy_bias / gamma_regime are pinned but deliberately NOT scored: G-1 hard-blocks
  *   counter-tape commits, so alignment is a precondition of every committed row
  *   (no ranking variance left), and gamma regime has no measured prior yet.
@@ -435,9 +457,16 @@ export function tierFromEntryContext(
     if (m) committedEtMinutes = Number(m[1]) * 60 + Number(m[2]);
   }
 
+  // discovery_origin (WS-20): determines the source-specific scoreFloor. Pre-WS-20
+  // rows carry none; scoreFloorForOrigin defaults to ZERODTE_SCORE_FLOOR.
+  let origin: string[] | undefined;
+  if (Array.isArray(ctx.discovery_origin)) {
+    origin = ctx.discovery_origin.filter((s) => typeof s === "string");
+  }
+
   return assignZeroDteTier({
     score: num(ctx.score),
-    scoreFloor: null, // → today's ZERODTE_SCORE_FLOOR; see the doc comment above.
+    scoreFloor: scoreFloorForOrigin(origin),
     cortexScore,
     cortexVetoCount,
     cortexSupportCount,

@@ -10,8 +10,13 @@
 //   - no veto, score < 0         → BLOCKED with `cortex_net_negative` — the
 //                                  design's "a G-3-passing setup with net-negative
 //                                  Cortex evidence still doesn't print";
-//   - no veto, score ≥ 0         → PASS (commit proceeds; the full evidence vector
-//                                  is pinned on the ledger row via entry_context);
+//   - no veto, score ≥ 0, no active gex-walls oppose (or score ≥ CONVICTION_A_MIN_SCORE) →
+//                                  PASS (commit proceeds; the full evidence vector is
+//                                  pinned on the ledger row via entry_context);
+//   - no veto, an active gex-walls oppose ≥ GEX_WALLS_OPPOSE_PRESENCE_MIN_WEIGHT AND
+//     score < CONVICTION_A_MIN_SCORE → BLOCKED with `cortex_gex_walls_oppose_unresolved`
+//                                  (added 2026-08-28; evidenced separately from the
+//                                  score < 0 case above — see GEX_WALLS_OPPOSE_PRESENCE_MIN_WEIGHT);
 //   - BOTH veto-capable sources absent (failed to read) AND fail-closed opted in →
 //                                  VETO_BLIND (HOLD — fresh commit blocked). Restored
 //                                  2026-07-29: the 07-27 ABSTAIN degradation reopened the
@@ -71,8 +76,29 @@ export const THIN_EVIDENCE_MIN_SOURCES = 2;
  *  answered). Must be strictly positive — a thin wash (0) should not pass. */
 export const THIN_EVIDENCE_SCORE_FLOOR = 0.5;
 
+/**
+ * GEX-WALLS OPPOSE PRESENCE (added 2026-08-28). `cortex-oppose-magnitude-ab.mjs` measured
+ * 341 graded plays over a 90-day window (docs/audit/INTENTIONAL-DESIGN.md item #6): the
+ * oppose-MAGNITUDE theory was NOT monotonic (a [0.40,0.60) weight band graded BETTER than
+ * [0.20,0.40)), but a coarser pattern held cleanly — ANY active `gex-walls` oppose in
+ * [0.20,0.60) graded 31-43% WR, worse than the 48.3% WR clean-signal baseline, independent
+ * of the net score's sign. The live 2026-08-28 record independently reproduced the same
+ * shape same-week: 22 of that week's 32 losing/losing-adjacent rows carried an active
+ * `gex-walls` oppose at commit. Two independent samples agreeing is why this gate exists
+ * now rather than waiting on a single measurement. This threshold (0.20) is the AB script's
+ * own lower bucket boundary — the floor below which oppose weight wasn't part of either
+ * measured claim, so this gate makes no claim about smaller residual opposition. */
+export const GEX_WALLS_OPPOSE_PRESENCE_MIN_WEIGHT = 0.2;
+
 /** What the Cortex layer decided about a gate-surviving find. */
-export type ZeroDteCortexDecision = "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED" | "ABSTAIN";
+export type ZeroDteCortexDecision =
+  | "PASS"
+  | "VETO"
+  | "VETO_BLIND"
+  | "NET_NEGATIVE"
+  | "CONTESTED"
+  | "OPPOSE_UNRESOLVED"
+  | "ABSTAIN";
 
 /** Rejection code for the veto-blind firewall block (mirrors board.ts's ZeroDteGateFailure). */
 export const CORTEX_VETO_BLIND_CODE = "cortex_veto_blind" as const;
@@ -87,7 +113,11 @@ export const CORTEX_VETO_BLIND_CODE = "cortex_veto_blind" as const;
 export type ZeroDteCortexAssessment =
   | { decision: "ABSTAIN"; abstained: true; reason: string }
   | { decision: "VETO_BLIND"; abstained: false; verdict: CortexVerdict; reason: string }
-  | { decision: "PASS" | "VETO" | "NET_NEGATIVE" | "CONTESTED"; abstained: false; verdict: CortexVerdict };
+  | {
+      decision: "PASS" | "VETO" | "NET_NEGATIVE" | "CONTESTED" | "OPPOSE_UNRESOLVED";
+      abstained: false;
+      verdict: CortexVerdict;
+    };
 
 /** Signed score rendering ("+1.85" / "-0.6" / "0") — matches compose.ts's narrative. */
 function fmtSigned(v: number): string {
@@ -194,6 +224,19 @@ export function assessCortexVerdict(
     return { decision: "CONTESTED", abstained: false, verdict };
   }
 
+  // GEX-WALLS OPPOSE PRESENCE (see GEX_WALLS_OPPOSE_PRESENCE_MIN_WEIGHT doc): a real,
+  // live gex-walls oppose is evidenced to predict a worse outcome even when it's too
+  // small to win CONTESTED's both-sides-≥0.75 bar or drag the net score negative. Same
+  // "below the decisive floor, don't let it pass silently" logic as CONTESTED above —
+  // just triggered by a source proven to matter at a lower bar than the general
+  // both-sides-real-fight case.
+  const gexWallsOppose = verdict.opposes.find(
+    (o) => o.source === "gex-walls" && o.weight >= GEX_WALLS_OPPOSE_PRESENCE_MIN_WEIGHT
+  );
+  if (gexWallsOppose != null && verdict.score < CONVICTION_A_MIN_SCORE) {
+    return { decision: "OPPOSE_UNRESOLVED", abstained: false, verdict };
+  }
+
   // Thin-evidence gate: few sources answered → require a meaningful positive
   // score, not just a bare non-negative. The number of answering sources is
   // total minus absent (each absent source is listed by ID in verdict.absent).
@@ -258,6 +301,27 @@ export function cortexGateBlocks(assessment: ZeroDteCortexAssessment | null): Ze
     ];
   }
 
+  if (assessment.decision === "OPPOSE_UNRESOLVED") {
+    // Real, live gex-walls oppose below the decisive floor — evidenced (90-day +
+    // same-week live) to predict a worse outcome even at net score ≥ 0, which is why
+    // this checks separately from NET_NEGATIVE (which only fires on score < 0) and cites
+    // the specific gex-walls oppose rather than the generic opposing-evidence list.
+    const gexWallsOpposes = assessment.verdict.opposes.filter((o) => o.source === "gex-walls");
+    const opposeLines = topEvidenceLines(gexWallsOpposes, 3);
+    return [
+      {
+        code: "cortex_gex_walls_oppose_unresolved",
+        reason:
+          `Active gex-walls oppose at net ${fmtSigned(assessment.verdict.score)} — below the ` +
+          `${CONVICTION_A_MIN_SCORE} decisive floor. A gex-walls oppose this size is measured to ` +
+          "grade worse than a clean signal (31-43% WR vs 48.3% baseline, 90-day + " +
+          `same-week live confirmation) even when net score stays non-negative. ${opposeLines.join(" ")}`,
+        threshold: CONVICTION_A_MIN_SCORE,
+        unlock_et: null,
+      },
+    ];
+  }
+
   // NET_NEGATIVE — one block; the threshold is the 0 floor the score was judged
   // against, and the reason carries the top opposing evidence so the SKIP card
   // argues the block instead of just asserting it.
@@ -282,7 +346,7 @@ export type ZeroDteCortexSummary =
   | { abstained: true; reason: string }
   | {
       abstained: false;
-      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED";
+      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED" | "OPPOSE_UNRESOLVED";
       score: number;
       conviction: CortexConviction;
       /** Every veto as a "[source] detail" line (empty when clear). */
@@ -319,7 +383,7 @@ export type ZeroDteCortexEntryContext =
   | { abstained: true; reason: string }
   | {
       abstained: false;
-      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED";
+      decision: "PASS" | "VETO" | "VETO_BLIND" | "NET_NEGATIVE" | "CONTESTED" | "OPPOSE_UNRESOLVED";
       as_of: string;
       score: number;
       conviction: CortexConviction;

@@ -23,6 +23,105 @@
   .desk-panel { animation: none; }
 }
 
+/* Slim icon rail — answers "do we have the same left rail as the X Ads Manager
+   screenshot to pick a system?" Desktop-only (>=1024px): below that the existing
+   Nav hamburger menu + IosAppTabBar already own navigation, and a second, narrower
+   nav competing for thumb space would be a regression, not an enhancement. Fixed
+   under the nav bar (top offset matches .nav-bar's own height) so it never
+   overlaps the app bar or the mobile drawer it can trigger. */
+.desk-sidebar {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .desk-sidebar {
+    display: block;
+    position: fixed;
+    top: 64px;
+    left: 0;
+    bottom: 0;
+    width: 56px;
+    z-index: 40;
+    background: linear-gradient(180deg, rgba(9, 10, 14, 0.92), rgba(6, 7, 10, 0.96));
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 14px 0;
+  }
+}
+/* Push page content clear of the fixed rail (desktop only). Desk pages already
+   manage their own top offset for the fixed nav bar; this only adds the left
+   gutter, and only for the signed-in wrapper the layout applies it to — a plain
+   class beats a `:has()` selector here since this must work everywhere, not
+   only in browsers new enough to support it. */
+@media (min-width: 1024px) {
+  .desk-sidebar-gutter {
+    padding-left: 56px;
+  }
+}
+.desk-sidebar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.desk-sidebar-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.55);
+  text-decoration: none;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+.desk-sidebar-item:hover,
+.desk-sidebar-item:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
+}
+.desk-sidebar-item.is-active {
+  background: rgba(0, 217, 163, 0.12);
+  color: #00d9a3;
+}
+.desk-sidebar-item.is-locked {
+  opacity: 0.45;
+}
+.desk-sidebar-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+.desk-sidebar-tooltip {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  background: #0d0f16;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f4f6fb;
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.desk-sidebar-item:hover .desk-sidebar-tooltip,
+.desk-sidebar-item:focus-visible .desk-sidebar-tooltip {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .desk-sidebar-item,
+  .desk-sidebar-tooltip {
+    transition: none;
+  }
+}
+
 /* nav scroll lock (fixed app bar) */
 html.nav-locked,
 html.nav-locked body { overflow: hidden; }
@@ -875,15 +974,22 @@ html.nav-locked body { overflow: hidden; }
 .meridian-reaction-flag {
   margin-left: 0.28rem;
   padding: 0 0.28rem;
-  border: 1px solid rgba(251, 191, 36, 0.45);
   border-radius: 3px;
   font-size: 0.62rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #fbbf24;
   vertical-align: 0.06em;
   white-space: nowrap;
   cursor: help;
+}
+/* Yellow = session still open (provisional tape). Red = timing assumption (wrong-session risk). */
+.meridian-reaction-flag-live {
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  color: #fbbf24;
+}
+.meridian-reaction-flag-assumed {
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  color: #f87171;
 }
 
 /* Action dock */
@@ -899,7 +1005,13 @@ html.nav-locked body { overflow: hidden; }
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #7dd3fc;
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.35rem;
+}
+.meridian-action-dock-hint {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #22d3ee;
+  margin: 0 0 0.55rem;
 }
 .meridian-action-dock-row {
   display: flex;
@@ -961,6 +1073,102 @@ html.nav-locked body { overflow: hidden; }
   animation: meridian-shimmer 1.4s ease-in-out infinite;
 }
 .meridian-detail-loading { padding: 0.5rem 0; }
+.meridian-detail-loading-progressive { padding: 0.75rem 0.5rem 0; }
+.meridian-detail-loading-chip {
+  align-self: center;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #22d3ee;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  background: rgba(34, 211, 238, 0.08);
+}
+.meridian-loading-notice {
+  padding: 0.65rem 0.85rem;
+  margin-bottom: 0.75rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  background: rgba(8, 10, 16, 0.72);
+}
+.meridian-loading-notice-label {
+  margin: 0 0 0.25rem;
+  font-size: 0.88rem;
+  color: #e0f2fe;
+}
+.meridian-loading-notice-sub {
+  margin: 0 0 0.45rem;
+  font-size: 0.78rem;
+  color: #7dd3fc;
+}
+.meridian-analytics-lane-strip {
+  margin-bottom: 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(56, 189, 248, 0.16);
+  background: rgba(8, 10, 16, 0.55);
+}
+.meridian-analytics-lane-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+  margin-bottom: 0.55rem;
+}
+.meridian-analytics-lane-sub {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #7dd3fc;
+}
+.meridian-analytics-lane-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.meridian-analytics-lane-row {
+  flex: 0 0 auto;
+  min-width: 10.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  background: rgba(4, 4, 7, 0.65);
+  text-align: left;
+  cursor: pointer;
+}
+.meridian-analytics-lane-row:hover { border-color: rgba(34, 211, 238, 0.45); }
+.meridian-analytics-lane-row.is-active {
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.45);
+}
+.meridian-analytics-lane-kind {
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #22d3ee;
+}
+.meridian-analytics-lane-title {
+  font-size: 0.82rem;
+  color: #f0f9ff;
+  line-height: 1.25;
+}
+.meridian-analytics-lane-meta {
+  font-size: 0.72rem;
+  color: #7dd3fc;
+}
+.meridian-macro-report-unavailable {
+  padding: 0.65rem 0.85rem;
+  margin-bottom: 0.65rem;
+  border-radius: 0.65rem;
+  border: 1px dashed rgba(34, 211, 238, 0.25);
+}
 
 .meridian-earn-wrap { margin-top: 0.5rem; }
 .meridian-earn-enrich { margin-bottom: 0.75rem; }
@@ -1013,6 +1221,21 @@ html.nav-locked body { overflow: hidden; }
 .meridian-revision-link:hover { color: #38bdf8; }
 .meridian-analytics-card.is-printed { opacity: 0.72; }
 .meridian-print-track .meridian-print-arrow { font-weight: 800; margin-left: 0.15rem; }
+.meridian-print-track-details { margin-top: 0.15rem; }
+.meridian-print-track-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.8125rem;
+  color: #e0f2fe;
+  user-select: none;
+}
+.meridian-print-track-summary::-webkit-details-marker { display: none; }
+.meridian-print-track-summary-note { color: #22d3ee; font-size: 0.75rem; }
+.meridian-print-track-details[open] .meridian-print-track-summary { margin-bottom: 0.55rem; }
 .meridian-print-arrow-↑ { color: #34d399; }
 .meridian-print-arrow-↓ { color: #f87171; }
 .meridian-print-arrow-→ { color: #22d3ee; }
@@ -1626,6 +1849,16 @@ html.nav-locked body { overflow: hidden; }
   color: rgba(125,211,252,0.9);
 }
 .mv-ring-value { font-family: var(--font-syne, sans-serif); font-size: 0.98rem; font-weight: 700; }
+.mv-ring-value.is-balanced { font-size: 1.05rem; letter-spacing: 0.02em; }
+.mv-ring-balanced-note {
+  display: block;
+  margin-top: 0.08rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #22d3ee;
+}
 .mv-ring-sig { margin-left: 0.22rem; font-size: 0.84rem; opacity: 0.85; }
 
 /* ── Rails (expected move + targets) ── */
@@ -1743,10 +1976,21 @@ html.nav-locked body { overflow: hidden; }
   position: absolute; top: 50%; width: 8px; height: 8px; padding: 0;
   margin: -4px 0 0 -4px; border-radius: 50%;
   border: 1px solid rgba(167, 139, 250, 0.8); background: rgba(167, 139, 250, 0.45);
-  cursor: pointer; transition: transform 0.16s var(--mv-ease);
+  transition: transform 0.16s var(--mv-ease);
 }
-.mv-target-dot:hover:not(:disabled) { transform: scale(1.55); }
-.mv-target-dot:disabled { cursor: default; }
+/* Only the real `<button>` variant (an `onTargetClick` handler was passed) is interactive — the
+   no-handler case renders a plain `<span>` (see MeridianTargetRail), so cursor/hover/hit-pad are
+   scoped to `type="button"` rather than the shared class, or a decorative span would look and act
+   clickable with nothing behind it. */
+.mv-target-dot[type="button"] { cursor: pointer; }
+.mv-target-dot[type="button"]:hover { transform: scale(1.55); }
+/* Same technique as .ms-orb::after: the drawn dot stays 8px (rail density is the point — many
+   targets close together), an invisible pad extends the real hit area to a 24px minimum without
+   inflating what's drawn. UI-UX-OPPORTUNITIES.md item 13. */
+.mv-target-dot[type="button"]::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: 24px; height: 24px; transform: translate(-50%, -50%);
+}
 .mv-target-consensus { position: absolute; top: 0; height: 100%; transform: translateX(-50%); }
 .mv-target-consensus-tick {
   position: absolute; top: 2px; bottom: 2px; left: 0; width: 2px; background: var(--mv-neutral);
@@ -1763,8 +2007,9 @@ html.nav-locked body { overflow: hidden; }
    (MV_LADDER_MIN_GAP = MV_LADDER_ROW_PX / MV_LADDER_HEIGHT_PX in meridian-viz-core.ts). That
    only holds if a row really is that tall. It was not: rows rendered at 20.5px against an
    assumed 16px, so every adjacent pair overlapped by 4-11px on live prod. The height is pinned
-   here and asserted equal to the TS constant by meridian-viz-core.test.ts. */
-.mv-ladder { --mv-ladder-row-h: 20px; position: relative; min-height: 132px; }
+   here and asserted equal to the TS constant by meridian-viz-core.test.ts. Raised 20px -> 24px
+   so the row is also a real touch target (UI-UX-OPPORTUNITIES.md item 13). */
+.mv-ladder { --mv-ladder-row-h: 24px; position: relative; min-height: 132px; }
 .mv-ladder-row {
   position: absolute; left: 0; right: 0; top: var(--mv-pos);
   height: var(--mv-ladder-row-h);
@@ -1842,7 +2087,7 @@ html.nav-locked body { overflow: hidden; }
 .mv-beats-tally { font-family: var(--font-mono, monospace); font-size: 0.74rem; color: #e2f4ff; }
 .mv-beats-rows { display: flex; flex-direction: column; gap: 0.22rem; }
 .mv-beat-row {
-  display: grid; grid-template-columns: 3.2rem 1fr 3.4rem 3.6rem;
+  display: grid; grid-template-columns: 3.8rem 1fr 3.4rem 3.6rem;
   align-items: center; gap: 0.5rem;
   padding: 0.18rem 0.3rem; border: 0; border-radius: 0.35rem;
   background: transparent; color: inherit; text-align: left; cursor: pointer;
@@ -1853,7 +2098,9 @@ html.nav-locked body { overflow: hidden; }
 .mv-beat-row { min-height: 24px; }
 .mv-beat-row:disabled { cursor: default; }
 .mv-beat-row:hover:not(:disabled) { background: rgba(125, 211, 252, 0.07); }
-.mv-beat-date { color: rgba(125,211,252,0.88); }
+/* nowrap: the 3.2rem column this replaced wrapped an 8-char yy-mm-dd date
+   ("26-05-\n20") onto two lines — widened to 3.8rem and pinned to one line. */
+.mv-beat-date { color: rgba(125,211,252,0.88); white-space: nowrap; }
 .mv-beat-track { position: relative; height: 8px; border-radius: 999px; background: var(--mv-track); overflow: hidden; }
 .mv-beat-bar {
   position: absolute; inset: 0; border-radius: 999px;
@@ -1885,6 +2132,10 @@ html.nav-locked body { overflow: hidden; }
 }
 .mv-rev-more {
   margin-left: auto; padding: 0.1rem 0.4rem;
+  /* min-height, not a fixed height: content sets ~21px, under the 24px touch-target minimum
+     (UI-UX-OPPORTUNITIES.md item 13, found live post-deploy 2026-08-25 — not in the original
+     audit sample, surfaced by a live re-check with different data in view). */
+  min-height: 24px; display: inline-flex; align-items: center;
   border: 1px solid var(--mv-hairline); border-radius: 0.3rem;
   background: transparent; color: var(--mv-chrome); cursor: pointer;
   font-family: inherit; font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase;
@@ -1901,14 +2152,28 @@ html.nav-locked body { overflow: hidden; }
   flex: none; padding: 0; border-radius: 50%;
   border: 1px solid rgba(167, 139, 250, 0.55);
   background: radial-gradient(circle at 35% 30%, rgba(167,139,250,0.55), rgba(167,139,250,0.16));
-  cursor: pointer;
   opacity: 0;
   animation: mv-pop 0.34s var(--mv-ease) forwards;
   transition: transform 0.16s var(--mv-ease);
 }
-.mv-tape-print:hover:not(:disabled) { transform: scale(1.16); }
-.mv-tape-print:disabled { cursor: default; }
+/* Only the real `<button>` variant (an `onPrintClick` handler was passed) is interactive -- the
+   no-handler case renders a plain `<span>` (see MeridianDarkPoolTape), so cursor/hover are scoped
+   to `type="button"` rather than the shared class, matching .mv-target-dot's split. */
+.mv-tape-print[type="button"] { cursor: pointer; }
+.mv-tape-print[type="button"]:hover { transform: scale(1.16); }
 @keyframes mv-pop { to { opacity: 1; } }
+
+.mv-tape-legend {
+  display: flex; flex-direction: column; gap: 0.2rem;
+  margin: 0.4rem 0 0; padding: 0; list-style: none;
+}
+.mv-tape-legend li {
+  display: flex; align-items: baseline; gap: 0.4rem;
+  font-family: inherit; font-size: 0.7rem; font-variant-numeric: tabular-nums;
+}
+.mv-tape-legend-premium { color: var(--mv-chrome); }
+.mv-tape-legend-strike { color: rgba(167, 139, 250, 0.9); }
+.mv-tape-legend-date { color: rgba(148, 163, 184, 0.75); margin-left: auto; }
 
 /* ── Countdown ── */
 .mv-countdown {
@@ -2406,6 +2671,10 @@ html.nav-locked body { overflow: hidden; }
 .mv-strikes-rows { display: flex; flex-direction: column; gap: 0.14rem; margin-top: 0.5rem; }
 .mv-strike-row {
   display: grid; grid-template-columns: 3.4rem 1fr 3.2rem; align-items: center; gap: 0.4rem;
+  /* min-height, not a fixed height: the row's content sets ~20px, under the 24px touch-target
+     minimum (UI-UX-OPPORTUNITIES.md item 13 — measured 301x20). No collision resolver depends on
+     this row's exact height (unlike the ladder above), so a min-height is enough. */
+  min-height: 24px;
   padding: 0.1rem 0.24rem; border: 0; border-radius: 0.28rem;
   background: transparent; color: rgba(226,244,255,0.9); text-align: left; cursor: pointer;
   font-family: var(--font-mono, monospace); font-size: 0.68rem;
@@ -2727,6 +2996,19 @@ html.nav-locked body { overflow: hidden; }
 .msum-idea-level { font-family: var(--mv-label); font-size: 0.76rem; color: #cfe9f8; }
 .msum-idea-level b { font-family: var(--mv-value); font-size: 0.95rem; font-variant-numeric: tabular-nums; }
 .msum-idea-src { color: rgba(148, 200, 230, 0.65); }
+.msum-idea-contract {
+  font-family: var(--mv-value);
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  color: #e8f7ff;
+}
+.msum-idea-framing {
+  margin: 0 0 0.35rem;
+  font-family: var(--mv-label);
+  font-size: 0.74rem;
+  color: rgba(148, 200, 230, 0.85);
+}
+.msum-idea-disclaimer { margin: 0.65rem 0 0; }
 
 .msum-prob { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
 .msum-prob-val {
@@ -2855,6 +3137,14 @@ html.nav-locked body { overflow: hidden; }
   font-family: var(--mv-value); font-size: 0.95rem; font-weight: 800;
   font-variant-numeric: tabular-nums; color: #f2fbff;
 }
+/* A 4th cell in a 3-column row grid — `grid-column: 1 / -1` puts it on its own full-width line
+   under tkr/when/val rather than squeezing into column 1 via default auto-placement. */
+.mpeer-reaction {
+  grid-column: 1 / -1;
+  font-family: var(--mv-label); font-size: 0.66rem; letter-spacing: 0.02em;
+  color: rgba(148, 200, 230, 0.65); font-variant-numeric: tabular-nums;
+}
+.mpeer-reaction-n { color: rgba(148, 200, 230, 0.4); }
 
 /* What changed — the drift panel. Rendered only when a second day exists, because a one-point
    series is not a trend and a panel that implied otherwise would be worse than absent. */

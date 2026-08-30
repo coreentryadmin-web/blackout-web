@@ -36,3 +36,11 @@ test("the ET anchor is a real ET stamp and session date, not a bare UTC instant"
   assert.match(String(a.as_of_et), /ET|-0[45]:00|[AP]M/i);
   assert.match(String(a.session_date), /^\d{4}-\d{2}-\d{2}$/);
 });
+
+test("injected nowMs drives session_state — not the real wall clock", () => {
+  // Friday 2026-08-21 05:00 ET: trading day, pre-market. Before this fix, session_state read
+  // the real wall clock (e.g. Sunday CLOSED) while as_of_et reflected the injected Friday.
+  const a = currentZerodteSessionAnchor(Date.UTC(2026, 7, 21, 9, 0, 0));
+  assert.equal(a.session_state, "PRE_MARKET");
+  assert.match(a.session_note, /NOT open yet|pre-market/i);
+});

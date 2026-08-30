@@ -152,7 +152,7 @@ export function Modal({
                     type="button"
                     onClick={onClose}
                     aria-label="Close dialog"
-                    className="ml-auto grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 text-sky-300 transition-colors hover:border-bear/50 hover:text-bear focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                    className="ml-auto grid size-8 shrink-0 place-items-center rounded-lg border border-white/10 text-sky-300 transition-colors hover:border-bear/50 hover:text-bear focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
                   >
                     <span aria-hidden className="text-base leading-none">
                       ✕
@@ -161,7 +161,7 @@ export function Modal({
                 )}
               </div>
             )}
-            <div className="px-5 py-5 md:px-6">{children}</div>
+            <div className="p-5 md:px-6">{children}</div>
           </motion.div>
         </div>
       )}

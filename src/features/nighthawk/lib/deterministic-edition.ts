@@ -244,11 +244,18 @@ function addCalendarDaysYmd(ymd: string, days: number): string {
  *                   even for a "0DTE day trade", which the day filter then dropped, emptying the
  *                   whole intraday board (the "only one play all day" bug's structural half). A
  *                   ticker with no expiry inside the window returns null (honest: no 0DTE to trade).
+ *
+ * `targetStrike` (optional) ranks candidates by distance to that strike instead of to spot — Night
+ * Hawk's own callers never pass it (its 0DTE picks are ATM-nearest-to-spot by design, unchanged),
+ * but Vector's role-specific specs (gex-king-pin, magnet-mean, fade-dip/rip) need to target the
+ * actual wall/magnet strike. Without it, every 0DTE candidate spec collapsed onto the same
+ * ATM-to-spot contract regardless of which strike its role was supposed to be anchored to.
  */
 export function pickChainContract(
   chain: EditionChainData,
   direction: "long" | "short",
-  maxDte?: number | null
+  maxDte?: number | null,
+  targetStrike?: number | null
 ): PickedContract | null {
   const side: "call" | "put" = direction === "long" ? "call" : "put";
   const spot = chain.spot;
@@ -257,6 +264,7 @@ export function pickChainContract(
   const dayMode = maxDte != null && maxDte <= 1;
   const dayMaxExpiry = dayMode ? addCalendarDaysYmd(today, Math.max(0, Math.floor(maxDte!))) : null;
   const minExpiry = minExpiryDate(today);
+  const distanceRef = targetStrike != null && Number.isFinite(targetStrike) ? targetStrike : spot;
 
   type Candidate = PickedContract & { dist: number };
   const strict: Candidate[] = [];
@@ -283,7 +291,7 @@ export function pickChainContract(
       side,
       expiry: row.expiry,
       premium: Number(premium.toFixed(2)),
-      dist: spot > 0 ? Math.abs(row.strike - spot) : row.strike,
+      dist: distanceRef > 0 ? Math.abs(row.strike - distanceRef) : row.strike,
     };
     const oiOk = oi >= minOi;
     const premOk = premium <= MAX_OPTION_PREMIUM_PER_SHARE;
@@ -641,6 +649,11 @@ export function buildDeterministicEditionPlays(params: {
         noSpotCount += 1;
         continue;
       }
+      // Day-trade mode (maxDte <= 1) requires a real option contract; no stock-only fallback.
+      // For overnight swing (maxDte > 1 or null), stock-only is acceptable. Tickers with no
+      // 0DTE/1DTE options are simply not tradeable on that timeframe — skip them.
+      const isDayTrade = params.maxDte != null && params.maxDte <= 1;
+      if (isDayTrade) continue;
       stockOnly += 1;
     }
 

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   assessGroupedBarFreshness,
+  classifyContractMiss,
   discoverBreakoutSetups,
   rankMoversForChainFetch,
   BREAKOUT_MAX_BAR_AGE_MS,
@@ -47,6 +48,7 @@ function makeDeps(over: Partial<BreakoutDiscoveryDeps> = {}): {
           volume: r.v,
           close_strength: 0.95,
           dollar: r.c * r.v,
+          bar: { h: r.h || 130, l: r.l || 99, o: r.o || 100 },
         })
       );
     }) as BreakoutDiscoveryDeps["screen"],
@@ -163,21 +165,26 @@ test("discoverBreakoutSetups: fresh snapshot with movers → ok + built candidat
   assert.ok(calls.resolveChain > 0, "fresh movers must reach the chain fetch");
 });
 
-test("rankMoversForChainFetch: momentum quality beats $-volume for the chain-fetch budget", () => {
-  const mega = { ticker: "MEGA", gain: 0.04, close_strength: 0.55, dollar: 5e9 };
-  const sharp = { ticker: "SHARP", gain: 0.18, close_strength: 0.95, dollar: 2e8 };
-  const mid = { ticker: "MID", gain: 0.1, close_strength: 0.8, dollar: 8e8 };
+test("rankMoversForChainFetch: gain-over-range ranks clean moves over exhausted ones", () => {
+  // gain_over_range = gain / ((h - l) / o) — move relative to daily volatility.
+  // MEGA: 4% gain on 31% daily range (h-l=30, o=100) → 0.04/(0.30) = 0.13 signal
+  // SHARP: 18% gain on 31% daily range → 0.18/0.30 = 0.60 signal (best)
+  // MID: 10% gain on 31% daily range → 0.10/0.30 = 0.33 signal
+  const mega = { ticker: "MEGA", gain: 0.04, close_strength: 0.55, dollar: 5e9, bar: { h: 130, l: 100, o: 100 } };
+  const sharp = { ticker: "SHARP", gain: 0.18, close_strength: 0.95, dollar: 2e8, bar: { h: 130, l: 100, o: 100 } };
+  const mid = { ticker: "MID", gain: 0.1, close_strength: 0.8, dollar: 8e8, bar: { h: 130, l: 100, o: 100 } };
   const ranked = rankMoversForChainFetch([mega, sharp, mid], 2, "long");
   assert.deepEqual(
     ranked.map((m) => m.ticker),
     ["SHARP", "MID"],
-    "sharp mid-cap continuation outranks sluggish mega-cap $-volume"
+    "gain-over-range: clean continuation (most of daily range) outranks sluggish mega-cap grind"
   );
 
-  const weakClose = { ticker: "DUMP", gain: 0.15, close_strength: 0.1, dollar: 3e8 };
-  const softDump = { ticker: "SOFT", gain: 0.12, close_strength: 0.4, dollar: 9e8 };
+  // For shorts, same daily range (volatility). Gain computed as abs value, so both positive.
+  const weakClose = { ticker: "DUMP", gain: 0.15, close_strength: 0.1, dollar: 3e8, bar: { h: 110, l: 80, o: 100 } };
+  const softDump = { ticker: "SOFT", gain: 0.12, close_strength: 0.4, dollar: 9e8, bar: { h: 110, l: 80, o: 100 } };
   const shortRanked = rankMoversForChainFetch([softDump, weakClose], 1, "short");
-  assert.equal(shortRanked[0]!.ticker, "DUMP", "weak-close breakdown wins the short chain-fetch slot");
+  assert.equal(shortRanked[0]!.ticker, "DUMP", "stronger breakdown (15% vs 12% on same range) wins the short slot");
 });
 
 test("discoverBreakoutSetups: walks past weekly-only misses to fill same-day setups", async () => {
@@ -196,6 +203,7 @@ test("discoverBreakoutSetups: walks past weekly-only misses to fill same-day set
           volume: r.v,
           close_strength: 0.95,
           dollar: r.c * r.v,
+          bar: { h: r.h || 130, l: r.l || 99, o: r.o || 100 },
         })
       )) as BreakoutDiscoveryDeps["screen"],
     screenBreakdowns: (() => [] as BreakoutMover[]) as BreakoutDiscoveryDeps["screenBreakdowns"],
@@ -329,4 +337,21 @@ test("discoverBreakoutSetups: thin day still fills up to the static floor (no re
   });
   assert.equal(out.status, "ok");
   assert.equal(out.setups.length, BREAKOUT_MAX_CANDIDATES, "thin day must still hit the floor, unchanged from pre-dynamic behavior");
+});
+
+// ── classifyContractMiss (2026-08-29 audit finding — dead conditional made no_0dte_contract unreachable) ──
+
+test("classifyContractMiss: a wider contract exists but 0DTE does not -> no_0dte_contract", () => {
+  assert.equal(classifyContractMiss(false, true), "no_0dte_contract");
+});
+
+test("classifyContractMiss: nothing exists at any horizon -> no_same_day_contract", () => {
+  assert.equal(classifyContractMiss(false, false), "no_same_day_contract");
+});
+
+test("classifyContractMiss: a 0DTE contract exists (pickContract failing must be liquidity/side, not horizon) -> no_same_day_contract", () => {
+  // has0=true would mean pickContract SHOULD have found something at dte=0, so this call site is
+  // only reached when pickContract already failed — has0=true here is a defensive default, not a
+  // real production path, but the classifier must still resolve to something sane.
+  assert.equal(classifyContractMiss(true, true), "no_same_day_contract");
 });

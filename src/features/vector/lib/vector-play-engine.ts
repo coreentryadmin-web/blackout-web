@@ -6,6 +6,13 @@ import type { WallProximity } from "./vector-wall-proximity";
 import type { ExpectedMove } from "./vector-expected-move";
 import type { ConfluenceZone } from "./vector-confluence";
 import type { WallIntegrity } from "./vector-wall-integrity";
+import type { VectorDarkPoolLevel } from "./vector-dark-pool-levels";
+import {
+  derivePlayPlatformContext,
+  platformConvictionDelta,
+  platformStarredLine,
+  type PlayPlatformInputs,
+} from "./vector-play-platform";
 
 /**
  * Vector PLAY ENGINE — the desk's single, concrete, timeframe-aware trade idea.
@@ -85,6 +92,8 @@ export type VectorSnapshot = {
   wallIntegrity: { call: WallIntegrity | null; put: WallIntegrity | null } | null | undefined;
   technicals: PlayTechnicals | null | undefined;
   bie?: PlayBieContext | null;
+  /** Session HELIX flow + dark-pool levels for platform fusion (optional — play degrades without). */
+  platformInputs?: PlayPlatformInputs | null;
   /** Age of the underlying stream data in ms (passthrough, for the terminal to show staleness). */
   dataAgeMs?: number | null;
   /** The derived play, attached by the caller after `buildVectorPlay` runs. Part of the full-state
@@ -105,6 +114,8 @@ export type VectorPlayGrade = "A" | "B" | "C";
 export type VectorPlay = {
   style: VectorPlayStyle;
   bias: VectorPlayBias;
+  /** Branch that shaped headline/targets — pivot stays neutral in bias but still earns a PLYS rail. */
+  setup: PlaySetup;
   /** 0–100 blended conviction. */
   conviction: number;
   grade: VectorPlayGrade;
@@ -119,8 +130,24 @@ export type VectorPlay = {
   dataAge?: number | null;
 };
 
+/** Emitted with the play so contract-pick ranking has full desk context. */
+export type VectorPlayEmit = {
+  play: VectorPlay;
+  spot: number;
+  callWall: number | null;
+  putWall: number | null;
+  magnetStrike: number | null;
+  gammaFlip: number | null;
+  regimePosture: VectorRegimePosture | null;
+  technicals: PlayTechnicals | null;
+  confluenceZones: ConfluenceZone[];
+  darkPoolLevels: VectorDarkPoolLevel[];
+  /** BIE bucket key for closure logging + historical lookup. */
+  bieBucket?: string | null;
+};
+
 /** The core setup the regime + proximity resolve to — the branch that shapes everything downstream. */
-type PlaySetup =
+export type PlaySetup =
   | "fade-call" // long gamma, testing/at a call wall → fade short
   | "fade-put" // long gamma, testing/at a put wall → fade long
   | "range" // long gamma, open space → mean-revert to the magnet
@@ -279,7 +306,11 @@ function withinSigma(em: ExpectedMove | null | undefined, price: number | null, 
  * decision that everything else keys off, so the logic is spelled out per regime rather than
  * collapsed into a clever expression — the WHY has to survive a cold read of the diff.
  */
-function determineSetup(input: VectorPlayInput, style: VectorPlayStyle): { setup: PlaySetup; atWall?: { strike: number; side: "call" | "put" } } {
+/** Exported for BIE bucket keys — same branch the play engine keys off. */
+export function resolveVectorPlaySetup(
+  input: VectorPlayInput,
+  style: VectorPlayStyle
+): { setup: PlaySetup; atWall?: { strike: number; side: "call" | "put" } } {
   const posture = input.regime?.posture ?? "unknown";
   const prox = input.proximity ?? null;
   const ema = input.technicals?.emaStack ?? null;
@@ -313,15 +344,30 @@ function determineSetup(input: VectorPlayInput, style: VectorPlayStyle): { setup
     }
     if (ema === "up") return { setup: "momentum-long" };
     if (ema === "down") return { setup: "momentum-short" };
-    // Short gamma with no wall and no clear trend still leans downside (that's the asymmetry of a
-    // short-gamma regime), but it's a low-conviction read — the conviction model reflects that.
-    return { setup: "momentum-short" };
+    // No wall in range and no EMA trend — same fail-closed read as long-gamma open space (range),
+    // not an asserted direction with zero evidence.
+    return { setup: "stand-aside" };
   }
 
   // Unknown regime: fall back to the technical trend if there is one, else stand aside.
   if (spot != null && ema === "up") return { setup: "momentum-long" };
   if (spot != null && ema === "down") return { setup: "momentum-short" };
   return { setup: "stand-aside" };
+}
+
+/** Stable bucket key for historical BIE lookup — posture + style + setup + proximity band. */
+export function vectorPlayBieBucketKey(input: VectorPlayInput): string {
+  const style = styleForHorizon(input.horizon);
+  const { setup } = resolveVectorPlaySetup(input, style);
+  const posture = input.regime?.posture ?? "unknown";
+  const prox = input.proximity;
+  let proxBand = "open";
+  if (prox?.side === "flip") {
+    proxBand = "flip";
+  } else if (prox && prox.nearness !== "near") {
+    proxBand = `${prox.side}-${prox.nearness}`;
+  }
+  return `${posture}|${style}|${setup}|${proxBand}`;
 }
 
 function biasForSetup(setup: PlaySetup): VectorPlayBias {
@@ -354,6 +400,22 @@ function playWallIntegrity(
  * commented with WHY it moves conviction; the sum is clamped and graded A/B/C. Kept transparent
  * (a plain accumulation, not a black box) so a reviewer can trace why a setup graded the way it did.
  */
+/** Staleness thresholds (ms). Under STALE_MILD the stream is operating normally (SSE ticks ~1s) —
+ *  no discount at all. Beyond STALE_SEVERE the feed reads as effectively disconnected. Exported so
+ *  the UI (VectorPlayCard's "stale" badge) uses the exact same boundary as the scoring discount. */
+export const STALE_MILD_MS = 30_000;
+const STALE_MODERATE_MS = 120_000;
+const STALE_SEVERE_MS = 600_000;
+
+/** Conviction discount for stale underlying data. Pure + exported for direct unit testing —
+ *  see the call site in computeConviction for why this exists. */
+export function stalenessConvictionDiscount(dataAgeMs: number | null | undefined): number {
+  if (dataAgeMs == null || !Number.isFinite(dataAgeMs) || dataAgeMs <= STALE_MILD_MS) return 0;
+  if (dataAgeMs <= STALE_MODERATE_MS) return -5;
+  if (dataAgeMs <= STALE_SEVERE_MS) return -15;
+  return -30;
+}
+
 function computeConviction(
   input: VectorPlayInput,
   setup: PlaySetup,
@@ -382,10 +444,23 @@ function computeConviction(
   // biggest edge — several independent levels agreeing where we're acting. Scaled by the zone score,
   // and only credited when a top zone actually sits near the reference (else a small far-field bump).
   const zones = input.confluenceZones ?? [];
-  const top = zones[0] ?? null;
-  if (top && refLevel != null) {
-    const nearRef = Math.abs(top.center - refLevel) / spot <= 0.004;
-    if (nearRef) c += Math.min(14, top.score * 1.6);
+  if (zones.length && refLevel != null) {
+    // Credit the zone NEAREST the level actually being traded, not the globally strongest zone on
+    // the whole board — `zones[0]` (board-wide top score) let an unrelated, stronger zone elsewhere
+    // starve the real confluence sitting at refLevel, so adding strictly more corroborating market
+    // structure elsewhere could silently DROP the grade for this play (measured: A→B on adding an
+    // unrelated stronger zone 4% away). Comment above ("stacked AT the level") already stated the
+    // intent this restores.
+    let nearest: ConfluenceZone | null = null;
+    let nearestDist = Infinity;
+    for (const z of zones) {
+      const d = Math.abs(z.center - refLevel) / spot;
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearest = z;
+      }
+    }
+    if (nearest && nearestDist <= 0.004) c += Math.min(14, nearest.score * 1.6);
     else c += 3;
   }
 
@@ -450,6 +525,14 @@ function computeConviction(
     c += edge * 20 * sampleWeight;
   }
 
+  // Data freshness: `dataAgeMs` was a documented passthrough (field existed, plumbed to `play.
+  // dataAge` for the terminal to show staleness) that nothing here ever actually read — a play
+  // built from a stream frozen for 20 minutes scored identically to one built this instant. Normal
+  // operation ticks every ~1s (see the SSE comment above emitPlay), so anything under 30s is not a
+  // staleness signal at all, only a genuinely stalled connection is. Graduated, not a cliff: a
+  // member losing their feed for a few minutes still gets a play, just a visibly less confident one.
+  c += stalenessConvictionDiscount(input.dataAgeMs);
+
   return Math.max(0, Math.min(100, Math.round(c)));
 }
 
@@ -467,7 +550,7 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
   if (spot == null || spot <= 0) return null;
 
   const style = styleForHorizon(input.horizon);
-  const { setup, atWall } = determineSetup(input, style);
+  const { setup, atWall } = resolveVectorPlaySetup(input, style);
   const bias = biasForSetup(setup);
   const cands = collectLevels(input);
   const flip = num(input.gammaFlip);
@@ -631,7 +714,14 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
   }
 
   const firstTargetPrice = parseFirstTargetPrice(targets);
-  const conviction = computeConviction(input, setup, bias, refLevel, firstTargetPrice, atWall);
+  let conviction = computeConviction(input, setup, bias, refLevel, firstTargetPrice, atWall);
+  const platformCtx = derivePlayPlatformContext(
+    input.platformInputs ?? {},
+    bias,
+    refLevel,
+    spot
+  );
+  conviction = Math.max(0, Math.min(100, conviction + platformConvictionDelta(platformCtx, bias)));
   const grade = gradeFor(conviction);
 
   // Starred = the "watch this NOW" set. The headline always leads; then the imminent, actionable
@@ -652,10 +742,13 @@ export function buildVectorPlay(input: VectorPlayInput): VectorPlay | null {
       `BIE · setups like this resolved ${Math.round(input.bie.favPct * 100)}% fav over ${input.bie.samples} · ${input.bie.windowDays}d`
     );
   }
+  const platformLine = platformStarredLine(platformCtx);
+  if (platformLine) starred.push(platformLine);
 
   return {
     style,
     bias,
+    setup,
     conviction,
     grade,
     headline,

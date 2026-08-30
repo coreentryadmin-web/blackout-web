@@ -85,6 +85,9 @@ export type MeridianEarningsTimelineResult = {
   earnings_week: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["earnings_week"];
   earnings_analytics_rows: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["earnings_analytics_rows"];
   earnings_week_analytics: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["earnings_week_analytics"];
+  earnings_week_analytics_error: Awaited<
+    ReturnType<typeof loadBenzingaEarningsBundle>
+  >["earnings_week_analytics_error"];
   recent_revisions: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["recent_revisions"];
   estimate_revision_timeline: Awaited<
     ReturnType<typeof loadBenzingaEarningsBundle>
@@ -106,12 +109,25 @@ export type MeridianEarningsTimelineResult = {
   sectors_unclassified: number;
 };
 
+export type MeridianTimelineLoadOptions = {
+  /**
+   * Skip the Polygon expected-move batch + sector classification pass.
+   *
+   * The lane (items, stats, analytics rows) is usable without either — they enrich rows the
+   * member sees after first paint. Serving a lite payload first cuts cold load from ~8–10s to
+   * the Benzinga bundle + optionable filter only; the client revalidates the full payload next.
+   */
+  skipEnrich?: boolean;
+};
+
 /** Earnings rows — Benzinga calendar + Polygon chain-IV expected move (no UW earnings REST). */
 export async function loadMeridianEarningsTimeline(
   todayYmd: string,
   daysAhead: number,
-  boardTickers: string[] = []
+  boardTickers: string[] = [],
+  options: MeridianTimelineLoadOptions = {}
 ): Promise<MeridianEarningsTimelineResult> {
+  const skipEnrich = options.skipEnrich === true;
   const [bundle, boardRes] = await Promise.all([
     loadBenzingaEarningsBundle(todayYmd, daysAhead),
     loadBenzingaBoardEarnings(boardTickers, todayYmd, daysAhead),
@@ -136,48 +152,58 @@ export async function loadMeridianEarningsTimeline(
   const split = partitionOptionable(rows, buildOptionableIndex(optionableList), (r) => r.ticker);
   rows = split.kept;
 
-  // Hand the ranker what it needs to spend the chain budget on names anyone is watching:
-  // importance and proximity, not Map insertion order. See meridian-em-priority.ts.
-  const em = await batchLoadEarningsExpectedMovePct(
-    rows.map((r) => ({
-      ticker: r.ticker,
-      report_date: r.report_date,
-      importance: r.importance ?? null,
-      days_until: r.report_date ? daysUntilEt(r.report_date, todayYmd) : null,
-    }))
-  );
-  const emByTicker = em.byTicker;
-  const expectedMoveCoverage = em.coverage;
-  rows = overlayTimelineExpectedMoves(rows, emByTicker);
+  let expectedMoveCoverage: EmCoverage = {
+    requested: rows.length,
+    attempted: 0,
+    skipped: rows.length,
+    resolved: 0,
+    note: skipEnrich ? "Expected-move enrichment deferred — lite timeline payload." : null,
+  };
 
-  // Sector cohort key, so the lane can group and the detail panel can rank a name against the
-  // peers reporting alongside it. Attached AFTER the optionable filter on purpose — classifying
-  // names we are about to hide would spend a Polygon call per row for nothing.
-  //
-  // Never fatal: `classifyTickerSectors` returns unclassified names rather than throwing, and a
-  // row with no sector simply joins no cohort. A sector lookup outage must not empty the lane.
-  //
-  // ORDER MATTERS, and the lane is bigger than the lookup budget. Measured live 2026-08-18:
-  // 199 earnings rows against a 120-lookup cap, so 79 names were skipped in arbitrary calendar
-  // order. Worse, only 22 rows carried a NUMERIC implied move — and a cohort needs at least
-  // MIN_COHORT_PEERS peers WITH VALUES before it can rank anything. Spending the budget in
-  // calendar order therefore classified many rows that could never contribute to a distribution
-  // while skipping ones that could.
-  //
-  // So: names that carry an implied move go first. Same cost, far more usable cohorts.
-  const classifyOrder = orderTickersForClassification(
-    rows,
-    (r) => r.expected_move_pct != null,
-    (r) => r.ticker
-  );
-  const sectors = await classifyTickerSectors(classifyOrder).catch(() => null);
-  if (sectors) {
-    rows = rows.map((r) => {
-      const cls = sectors.byTicker[r.ticker.toUpperCase()];
-      return cls?.majorGroup
-        ? { ...r, sic_major_group: cls.majorGroup, sector_label: cls.label }
-        : r;
-    });
+  if (!skipEnrich) {
+    // Hand the ranker what it needs to spend the chain budget on names anyone is watching:
+    // importance and proximity, not Map insertion order. See meridian-em-priority.ts.
+    const em = await batchLoadEarningsExpectedMovePct(
+      rows.map((r) => ({
+        ticker: r.ticker,
+        report_date: r.report_date,
+        importance: r.importance ?? null,
+        days_until: r.report_date ? daysUntilEt(r.report_date, todayYmd) : null,
+      }))
+    );
+    const emByTicker = em.byTicker;
+    expectedMoveCoverage = em.coverage;
+    rows = overlayTimelineExpectedMoves(rows, emByTicker);
+
+    // Sector cohort key, so the lane can group and the detail panel can rank a name against the
+    // peers reporting alongside it. Attached AFTER the optionable filter on purpose — classifying
+    // names we are about to hide would spend a Polygon call per row for nothing.
+    //
+    // Never fatal: `classifyTickerSectors` returns unclassified names rather than throwing, and a
+    // row with no sector simply joins no cohort. A sector lookup outage must not empty the lane.
+    //
+    // ORDER MATTERS, and the lane is bigger than the lookup budget. Measured live 2026-08-18:
+    // 199 earnings rows against a 120-lookup cap, so 79 names were skipped in arbitrary calendar
+    // order. Worse, only 22 rows carried a NUMERIC implied move — and a cohort needs at least
+    // MIN_COHORT_PEERS peers WITH VALUES before it can rank anything. Spending the budget in
+    // calendar order therefore classified many rows that could never contribute to a distribution
+    // while skipping ones that could.
+    //
+    // So: names that carry an implied move go first. Same cost, far more usable cohorts.
+    const classifyOrder = orderTickersForClassification(
+      rows,
+      (r) => r.expected_move_pct != null,
+      (r) => r.ticker
+    );
+    const sectors = await classifyTickerSectors(classifyOrder).catch(() => null);
+    if (sectors) {
+      rows = rows.map((r) => {
+        const cls = sectors.byTicker[r.ticker.toUpperCase()];
+        return cls?.majorGroup
+          ? { ...r, sic_major_group: cls.majorGroup, sector_label: cls.label }
+          : r;
+      });
+    }
   }
 
   return {
@@ -187,6 +213,7 @@ export async function loadMeridianEarningsTimeline(
     earnings_week: bundle.earnings_week,
     earnings_analytics_rows: bundle.earnings_analytics_rows,
     earnings_week_analytics: bundle.earnings_week_analytics,
+    earnings_week_analytics_error: bundle.earnings_week_analytics_error,
     recent_revisions: bundle.recent_revisions,
     estimate_revision_timeline: bundle.estimate_revision_timeline,
     after_hours_movers: bundle.after_hours_movers,

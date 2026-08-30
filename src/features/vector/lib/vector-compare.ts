@@ -11,7 +11,11 @@ export type VectorComparePreset = {
 
 /** One-click compare bundles — every name is universe-warm or oracle. */
 export const VECTOR_COMPARE_PRESETS: readonly VectorComparePreset[] = [
-  { id: "mag7", label: "Mag 7", tickers: ["NVDA", "AAPL", "MSFT", "AMZN"] },
+  // Label only, NOT the id: this preset was displayed as "Mag 7" while only ever carrying 4
+  // tickers (capped by VECTOR_COMPARE_MAX_PANES=4, 3 short of the real Magnificent Seven).
+  // `id: "mag7"` is kept — it's a stable key referenced by src/lib/x-intel/capture-catalog.ts's
+  // `preset=mag7` param — renaming it would silently break that capture recipe.
+  { id: "mag7", label: "Big Tech", tickers: ["NVDA", "AAPL", "MSFT", "AMZN"] },
   { id: "indices", label: "Indices", tickers: ["SPX", "SPY", "QQQ", "IWM"] },
   { id: "semis", label: "Semis", tickers: ["NVDA", "AMD", "SMH", "AVGO"] },
   { id: "momentum", label: "Momentum", tickers: ["TSLA", "META", "COIN", "MSTR"] },

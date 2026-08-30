@@ -36,12 +36,8 @@ test("adaptiveAutoNodeCount: SPX keeps timeframe AUTO cap (10 on 3m)", () => {
   assert.equal(n, tfAuto, "dense ladder should not self-limit");
 });
 
-test("adaptiveAutoNodeCount: NVDA self-limits below 10 on a quiet session", () => {
+test("adaptiveAutoNodeCount: NVDA respects AUTO floor on coarse ladders", () => {
   const tfAuto = wallCountForTimeframe(3);
-  // The 3m AUTO cap tracks wallCountForTimeframe(3) — a dense-ladder count. This test cares that
-  // NVDA self-limits BELOW that cap on a quiet session, not about its exact value, which timeframe
-  // tuning changes (it was 10 when this was written and is 11 on current main). Asserting the
-  // literal made the test brittle to another module's constant; assert the property instead.
   assert.ok(tfAuto >= 10, `3m AUTO cap should be a dense-ladder count, got ${tfAuto}`);
   const candle = {
     minValue: NVDA.spot - NVDA.sessionSpan / 2,
@@ -53,8 +49,32 @@ test("adaptiveAutoNodeCount: NVDA self-limits below 10 on a quiet session", () =
     candleRange: candle,
     tfAutoCount: tfAuto,
   });
-  assert.ok(n < tfAuto, `NVDA should self-limit, got ${n}`);
-  assert.ok(n >= 3 && n <= 6, `expected ~4-6 rows at 20% candle share, got ${n}`);
+  // Floor lowered 12 -> 8 (2026-08-27, member report): the old floor of 12 was itself the
+  // controlling number on a quiet coarse-stepped session, pulling the axis to ~±14% while the
+  // session traded inside ~1% — see AUTO_MIN_ROWS_PER_SIDE's comment.
+  assert.ok(n >= 8 || n === tfAuto, `expected AUTO floor or full cap, got ${n}`);
+  assert.ok(n <= tfAuto);
+});
+
+test("adaptiveAutoNodeCount: quiet NVDA session — floor override needs meaningfully less axis span than before the 2026-08-27 fix", () => {
+  // Member report (2026-08-27, live screenshot): NVDA candles occupied a tiny sliver of the
+  // chart on a quiet session. Root cause was this exact fixture — AUTO_MIN_ROWS_PER_SIDE (was 12)
+  // forced 12 rows even though the session's own range would only justify ~2 at the (old) 16%
+  // share target, and 12 rows on a $2.50 ladder needs ~13.7% of spot just for the row count,
+  // before any wall-reveal widening on top. Assert the NEW floor (8) needs meaningfully LESS.
+  const tfAuto = wallCountForTimeframe(3);
+  const candle = {
+    minValue: NVDA.spot - NVDA.sessionSpan / 2,
+    maxValue: NVDA.spot + NVDA.sessionSpan / 2,
+  };
+  const n = adaptiveAutoNodeCount({
+    spot: NVDA.spot,
+    strikes: NVDA.strikes,
+    candleRange: candle,
+    tfAutoCount: tfAuto,
+  });
+  const axisSpanPct = (n * NVDA.step) / NVDA.spot;
+  assert.ok(axisSpanPct < 0.12, `expected the floor's own axis need under 12% of spot, got ${(axisSpanPct * 100).toFixed(1)}%`);
 });
 
 test("adaptiveAutoNodeCount: volatile NVDA day allows more rows", () => {

@@ -5,27 +5,14 @@ import {
   WHOP_PREMIUM_CHECKOUT_OPTIONS,
   WHOP_CHECKOUT_UNAVAILABLE_MESSAGE,
 } from "@/lib/whop-checkout";
-import { valuePropFor } from "@/lib/upsell-features";
 import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
+import { PLAN_MATRIX } from "@/lib/plan-matrix";
 import { useAppAuth } from "@/lib/auth-client";
 import { tierAtLeast, resolveDisplayTier } from "@/lib/tiers";
 
-const COMMUNITY_FEATURES = [
-  "SPX Slayer desk — live",
-  "GEX walls & dealer gamma",
-  "0DTE graded plays A–F",
-  "Strike-level heatmaps",
-];
-
-const PREMIUM_FEATURES = [
-  "Everything in SPX Slayer",
-  "HELIX live options-flow tape",
-  "Largo AI desk analyst",
-  "Night Hawk evening playbook",
-  "SPX AI commentary",
-  "Playbook & method docs",
-];
+const COMMUNITY_FEATURES = PLAN_MATRIX.spx_slayer.includes;
+const PREMIUM_FEATURES = PLAN_MATRIX.premium_monthly.includes;
 
 export function PlanLadder() {
   const { tier, isLoaded } = useAppAuth();

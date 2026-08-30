@@ -232,44 +232,6 @@ before(async () => {
     },
   });
 
-  // classifyBieIntent/bieIntentBucket are deliberately left REAL (unmocked) —
-  // this suite exists to prove the real router decision reaches the persisted
-  // row, not a stand-in for it.
-  mock.module("./bie/composers", {
-    namedExports: {
-      // Only "zerodte_plays"/"market_context" compose here (the two intents this
-      // suite's router-path tests actually drive) — any other intent falls
-      // through to Claude the same way an unmatched question would, which is
-      // enough to exercise both logBie branches without wiring up every composer.
-      composeBieAnswer: async (route: { intent: string }) => {
-        if (route.intent === "zerodte_plays") {
-          // Carries a SHIM envelope (as production composeBieAnswer now always does for a string
-          // leg) — used below to prove the API gate DROPS a non-rich envelope.
-          return {
-            answer: "**Command board:** NVDA long is live at 142.5c, +50%.",
-            context: { live_pnl_pct: 50 },
-            envelope: SHIM_ENVELOPE,
-          };
-        }
-        if (route.intent === "market_context") {
-          return {
-            answer: "**Market context:** SPX grinding higher, VIX pinned low.",
-            context: { vix: 12.5 },
-          };
-        }
-        if (route.intent === "verdict") {
-          // The rich synthesis path — its populated envelope MUST reach the response.
-          return {
-            answer: RICH_ENVELOPE.markdown,
-            context: { verdict: true },
-            envelope: RICH_ENVELOPE,
-          };
-        }
-        return null;
-      },
-    },
-  });
-
   mock.module("./zerodte/scan", {
     namedExports: {
       readZeroDteLedger: async () => [],

@@ -7,6 +7,7 @@ import {
   type MeridianEarningsIntelPrefetch,
 } from "@/lib/meridian/meridian-earnings-intel";
 import { flowWindowHours } from "@/lib/meridian/meridian-earnings-intel-core";
+import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { fetchTickerFundamentalsBundle } from "@/lib/bie/ticker-fundamentals";
 import { getVectorExpectedMove } from "@/features/vector/lib/vector-expected-move-server";
@@ -41,16 +42,19 @@ export async function loadMeridianEarningsEventDetail(
   const intelPrefetchBase: MeridianEarningsIntelPrefetch = {
     fundamentals: null,
     vectorEm: null,
+    vectorFullState: null,
     darkPoolRaw: null,
     rawHeatmap: null,
     windowHours,
   };
 
-  const [pack, enrichment, fundamentals, vectorEm, darkPoolRaw, rawHeatmap] = await Promise.all([
+  const [pack, enrichment, fundamentals, vectorEm, vectorFullState, darkPoolRaw, rawHeatmap] =
+    await Promise.all([
     preEarningsPackForLargo(sym, eventDate),
     loadMeridianEarningsEnrichment(sym, null, eventDate),
     fetchTickerFundamentalsBundle(sym).catch(() => null),
     getVectorExpectedMove(sym, "weekly").catch(() => null),
+    fetchVectorFullState(sym, "weekly").catch(() => null),
     fetchUwDarkPool(sym, { limit: 20 }).catch(() => null),
     rawHeatmapPromise,
   ]);
@@ -61,6 +65,7 @@ export async function loadMeridianEarningsEventDetail(
     ...intelPrefetchBase,
     fundamentals,
     vectorEm,
+    vectorFullState,
     darkPoolRaw,
     rawHeatmap,
   };

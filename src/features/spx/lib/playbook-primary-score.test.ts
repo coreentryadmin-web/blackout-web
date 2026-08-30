@@ -51,6 +51,24 @@ test("rankPrimaryCandidates: static priority tie-break only when totals match", 
   assert.ok(rows[0]!.total > rows[1]!.total);
 });
 
+test("rankPrimaryCandidates: on a genuine tie, LOWER static priority index wins (higher priority)", () => {
+  // PB-01 and PB-14 are both fidelity "high" in the same "reversal_failure" family, so with
+  // identical verdicts and no armed-poll context their pre-penalty totals are equal and the
+  // family-conflict penalty is 0 for both (a true tie, not the unequal-totals case the two tests
+  // above already cover) — this is the only path that actually exercises the tie-break branch.
+  const priority = { "PB-01": 3, "PB-14": 1 } as const;
+  const ranked = rankPrimaryCandidates(
+    [
+      verdict({ playbook_id: "PB-01", direction: "long" }),
+      verdict({ playbook_id: "PB-14", direction: "long" }),
+    ],
+    {},
+    priority,
+  );
+  assert.equal(ranked[0]!.total, ranked[1]!.total, "must be a genuine tie for this test to prove anything");
+  assert.equal(ranked[0]!.playbook_id, "PB-14", "lower priority index (1) must outrank higher index (3)");
+});
+
 test("rankPrimaryCandidates: sorts by total then static_priority_tiebreak", () => {
   const ranked = rankPrimaryCandidates(
     [

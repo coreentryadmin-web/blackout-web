@@ -35,6 +35,7 @@ import {
   type EnrichedZeroDteSetup,
   type ZeroDteSetup,
 } from "./board";
+import { liquidityQualityScore, LIQUIDITY_TIE_BREAK_DOLLARS_PER_POINT, type BreakoutChainRow } from "./breakout-source";
 
 // ── Flags (read at call time so tests can toggle process.env per case) ──────────────
 // Default ON: the three discovery systems are production-ready and must survive ECS
@@ -241,9 +242,16 @@ function sideHasLiquidity(row: PinChainRow, side: "call" | "put"): boolean {
  * dte≥5 weekly. A pin whose only liquid contract on `side` is a farther-out weekly returns null
  * here → the candidate is DROPPED (never committed to the 0DTE ledger, never graded with the
  * same-day 15:30 time-stop that would be structurally wrong for a multi-day weekly). ATM = strike
- * closest to spot among liquid rows on the chosen expiry (nearest-expiry wins over ATM-ness, then
- * closest-to-spot, then lower strike — deterministic).
+ * closest to spot NET OF liquidity quality among liquid rows on the chosen expiry (nearest-expiry
+ * wins over ATM-ness, then closest-to-spot net of quality, then lower strike — deterministic).
  * Returns null when no liquid contract sits inside the window (→ dropped).
+ *
+ * NH-R5 PARITY FIX (2026-08-28): this picker previously ranked candidates on raw distance-to-spot
+ * alone — the exact binary-liquidity defect NH-R5 (2026-08-03, FINDINGS.md) found and fixed in
+ * breakout-source.ts's sibling picker (a razor-thin 1-lot quote could out-rank an equally-close
+ * strike with a tight two-sided market and real depth), but the fix was never ported here. Now
+ * reuses breakout-source.ts's `liquidityQualityScore`/`LIQUIDITY_TIE_BREAK_DOLLARS_PER_POINT`
+ * directly (not a duplicated copy) so the two pickers can't drift apart again the way they did.
  */
 export function pickAtmPinContract(
   rows: PinChainRow[],
@@ -253,16 +261,23 @@ export function pickAtmPinContract(
   maxDte = ZERODTE_MAX_DTE
 ): PickedPinContract | null {
   if (!(spot > 0) || rows.length === 0) return null;
-  type Cand = { strike: number; expiry: string; dte: number; dist: number };
+  type Cand = { strike: number; expiry: string; dte: number; effectiveDist: number };
   const cands: Cand[] = [];
   for (const row of rows) {
     if (!sideHasLiquidity(row, side)) continue;
     const dte = calendarDteBetween(todayYmd, row.expiry);
     if (!Number.isFinite(dte) || dte < 0 || dte > maxDte) continue;
-    cands.push({ strike: row.strike, expiry: row.expiry.slice(0, 10), dte, dist: Math.abs(row.strike - spot) });
+    const dist = Math.abs(row.strike - spot);
+    const quality = liquidityQualityScore(row as BreakoutChainRow, side);
+    cands.push({
+      strike: row.strike,
+      expiry: row.expiry.slice(0, 10),
+      dte,
+      effectiveDist: dist - quality * LIQUIDITY_TIE_BREAK_DOLLARS_PER_POINT,
+    });
   }
   if (cands.length === 0) return null;
-  cands.sort((a, b) => a.dte - b.dte || a.dist - b.dist || a.strike - b.strike);
+  cands.sort((a, b) => a.dte - b.dte || a.effectiveDist - b.effectiveDist || a.strike - b.strike);
   const best = cands[0]!;
   return { strike: best.strike, expiry: best.expiry, dte: best.dte, side };
 }

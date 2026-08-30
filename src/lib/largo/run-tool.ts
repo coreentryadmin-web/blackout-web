@@ -652,8 +652,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return { ticker: uwTicker(ticker), prints: await fetchUwLitFlow(uwTicker(ticker)) };
     case "get_unusual_trades":
       return fetchUwUnusualTrades(input.ticker ? uwTicker(String(input.ticker)) : undefined, 25);
-    case "get_market_oi_change":
-      return fetchUwMarketOiChange(30);
+    case "get_market_oi_change": {
+      // MEASURED TRUNCATED 2026-08-29 — OI change array exceeds 16k transport cap. Fitting is
+      // budget-bound (fitRowsToBudget), not a fixed count — see market-data-fits.ts's comment on
+      // fitMarketOiChangeForModel for why three rounds of fixed-count guessing all failed live.
+      const { fitMarketOiChangeForModel } = await import("@/lib/largo/market-data-fits");
+      const raw = await fetchUwMarketOiChange(30);
+      return fitMarketOiChangeForModel(raw).fitted;
+    }
     case "get_top_net_impact":
       return fetchUwMarketTopNetImpact(20);
 
@@ -751,9 +757,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         );
         return { indices: { ...trimmedIndices, ...trimmedEtfs }, market_tide: tide, market_status: status };
       });
+      // Apply the same SPX structure fitting as get_spx_structure to prevent truncation.
+      // spxDeskSummary also feeds Night Hawk and the platform snapshot (no caps), so the fit
+      // is applied only here at the Largo boundary, not in summarizeSpxDesk itself.
+      const spxSummary = desk ? spxDeskSummary(desk) : null;
+      const fittedSpx = spxSummary ? fitSpxStructureForModel(spxSummary).fitted : null;
       return {
         ...shared,
-        spx_desk: desk ? spxDeskSummary(desk) : null,
+        spx_desk: fittedSpx,
       };
     }
     case "get_market_breadth": {
@@ -840,6 +851,13 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         ]);
         const next_report = parseNextEarningsFromBenzinga(sym, calendar.rows, todayEtYmd());
         const calendar_error = (calendar as { error?: string | null }).error ?? null;
+        // MEASURED TRUNCATED live 2026-08-29 — `related` alone (up to 15 full articles, each
+        // carrying up to 2000 chars of body text) can run to ~37KB, more than double the 16k
+        // transport cap, before the structured fields below are even reached. Capped at the
+        // Largo boundary; `related.length` below still reads the FULL fetch for source
+        // detection, since fitting must never change what "no Benzinga news at all" means.
+        const { fitEarningsRelatedNewsForModel } = await import("@/lib/largo/market-data-fits");
+        const fittedRelatedNews = fitEarningsRelatedNewsForModel(related);
         // UW serves its side of this payload as STRINGS, with moves/returns as unlabelled
         // fractions — `reaction: "-0.0915"` is -9.15%, not -0.09%. See uw-earnings-normalize.ts.
         return normalizeUwEarnings({
@@ -854,7 +872,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
           calendar_error: calendar_error ?? history.history_error ?? null,
           // Renamed from `benzinga_news`: these are stories mentioning this ticker in the earnings
           // channel, NOT its own results. The old name invited exactly the wrong reading.
-          related_news: related,
+          ...fittedRelatedNews,
           unusual_whales: uw,
           estimates,
         });
@@ -862,9 +880,28 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
     case "get_earnings_history": {
       const sym = uwTicker(ticker);
-      const [earnings, estimates] = await Promise.all([fetchUwEarnings(sym), fetchUwEarningsEstimates(sym)]);
-      // Same raw-UW units/precision problem as get_earnings — see uw-earnings-normalize.ts.
-      return normalizeUwEarnings({ ticker: sym, source: "unusual_whales", earnings, estimates });
+      return serverCache(`earnings-history:${sym}`, TTL.EARNINGS, async () => {
+        const { loadLargoMeridianEarningsHistory, attachMeridianReactionsToUwRows } = await import(
+          "@/lib/largo/meridian-earnings-for-largo"
+        );
+        const [history, uw, estimates] = await Promise.all([
+          loadLargoMeridianEarningsHistory(sym, 12),
+          fetchUwEarnings(sym),
+          fetchUwEarningsEstimates(sym),
+        ]);
+        const uwEnriched = await attachMeridianReactionsToUwRows(uw as Record<string, unknown>[]);
+        return normalizeUwEarnings({
+          ticker: sym,
+          source: "meridian_print_history",
+          print_history: history.print_history,
+          print_history_summary: history.print_history_summary,
+          history_error: history.history_error,
+          reaction_authority:
+            "print_history.reaction_pct is Meridian timing-aware (same as the desk). unusual_whales rows carry meridian_reaction_pct when enrichable; raw reaction_pct is UW close-to-close on the report session only.",
+          unusual_whales: uwEnriched,
+          estimates,
+        });
+      });
     }
     case "get_analyst_ratings": {
       const sym = uwTicker(ticker);
@@ -962,13 +999,18 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
 
     case "get_screener": {
+      // MEASURED TRUNCATED 2026-08-29 — screened candidates array exceeds 16k transport cap.
+      // Apply fitting to cap shown entries for Largo; product uses full data.
+      const { fitScreenerForModel } = await import("@/lib/largo/market-data-fits");
       const type = String(input.type ?? "stocks");
-      if (type === "short_squeeze") return fetchUwShortScreener(25);
-      if (type === "contracts") return fetchUwScreenerContracts(25);
-      if (type === "option_flow") return fetchUwScreenerOptionContracts(25);
-      if (type === "dark_pool") return fetchUwDarkPoolRecent(25);
-      if (type === "analysts") return fetchUwScreenerAnalysts(25);
-      return fetchUwScreenerStocks(25);
+      let raw;
+      if (type === "short_squeeze") raw = await fetchUwShortScreener(25);
+      else if (type === "contracts") raw = await fetchUwScreenerContracts(25);
+      else if (type === "option_flow") raw = await fetchUwScreenerOptionContracts(25);
+      else if (type === "dark_pool") raw = await fetchUwDarkPoolRecent(25);
+      else if (type === "analysts") raw = await fetchUwScreenerAnalysts(25);
+      else raw = await fetchUwScreenerStocks(25);
+      return fitScreenerForModel(raw).fitted;
     }
 
     case "get_spx_structure": {
@@ -1020,8 +1062,16 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         limit: Number(input.limit ?? 25),
         ticker: input.ticker ? uwTicker(String(input.ticker)) : undefined,
       });
-    case "get_signal_log":
-      return marketPlatform.spx.getSpxSignalLog(Number(input.limit ?? 20));
+    case "get_signal_log": {
+      // spx-signal-log.ts persists the SAME uncalibrated formula as get_spx_play/get_spx_confluence
+      // but under the key `confidence` (not `rawScore`) — see insertSpxSignalLog's
+      // `confidence: play.rawScore`. This tool served that shape completely unwrapped for as long
+      // as it existed: no other get_signal_log call site applied the Largo confidence boundary, so
+      // every row's fabricated conviction reached the model verbatim. Map each row through the same
+      // boundary the other two call sites use — see spx-confidence-boundary.ts.
+      const rows = await marketPlatform.spx.getSpxSignalLog(Number(input.limit ?? 20));
+      return rows.map((row) => omitUncalibratedSpxConfidence(row));
+    }
     case "get_spx_engine_snapshots":
       return marketPlatform.spx.getSpxEngineSnapshots(Number(input.limit ?? 20));
     case "get_lotto_state":
@@ -1179,14 +1229,20 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return { ...summary, recent, ordered_by: since_hours != null && since_hours <= 6 ? "recent" : "premium" };
     }
 
-    case "get_platform_snapshot":
-      return getPlatformSnapshot({
+    case "get_platform_snapshot": {
+      // MEASURED TRUNCATED 2026-08-29 — cross-product snapshot exceeds 16k transport cap.
+      // Apply fitting to reduce flow array size and active session count for Largo.
+      // Product consumers use full getPlatformSnapshot without fitting.
+      const { fitPlatformSnapshotForModel } = await import("@/lib/largo/platform-snapshot-fit");
+      const raw = await getPlatformSnapshot({
         include: Array.isArray(input.include)
           ? (input.include as Array<"spx" | "flows" | "nighthawk" | "largo">)
           : undefined,
         flowLimit: Number(input.flow_limit ?? 50),
         fullEdition: Boolean(input.full_edition),
       });
+      return fitPlatformSnapshotForModel(raw, 20).fitted;
+    }
 
     case "get_ecosystem_context": {
       const { fetchEcosystemContext } = await import("@/lib/bie/ecosystem-context");
@@ -1254,17 +1310,22 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const { computeConfluenceOutcomeStats, computeSpxSlayerShadowFactorOutcomeStats } = await import(
         "@/lib/bie/confluence-outcomes"
       );
+      const { fitConfluenceOutcomesForModel } = await import("@/lib/largo/confluence-outcomes-fit");
       // Two independent, additive analytics passes over the SAME tool surface —
       // see confluence-outcomes.ts's module doc above computeSpxSlayerShadowFactorOutcomeStats
       // for why the SPX Slayer half joins spx_confluence_shadow_observations against
       // spx_play_outcomes directly rather than through alert_audit_log. Each fails
       // open to its own null independently, so a problem on one product's side can
       // never blank out the other's numbers.
+      //
+      // MEASURED TRUNCATED 2026-08-23/2026-08-29 — full 60-day outcome arrays for both
+      // products exceed 16k transport cap. Apply fitting to reduce to top 30 entries each.
+      // Product consumers (Night Hawk, SPX edition builders) use full data directly.
       const [zerodte_nighthawk_echo, spx_slayer_shadow_factors] = await Promise.all([
         computeConfluenceOutcomeStats(60),
         computeSpxSlayerShadowFactorOutcomeStats(60),
       ]);
-      return { zerodte_nighthawk_echo, spx_slayer_shadow_factors };
+      return fitConfluenceOutcomesForModel({ zerodte_nighthawk_echo, spx_slayer_shadow_factors }).fitted;
     }
 
     case "get_similar_precedents": {
@@ -1335,18 +1396,39 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return { ...consensus, note: UW_EXCLUSIVE_NOTE };
     }
     case "get_group_greek_flow": {
+      // MEASURED TRUNCATED 2026-08-29, including at the tool's own DEFAULT call (group unset →
+      // "mag7"), not just market-wide: fetchUwGroupGreekFlow("mag7") returns 391 raw rows / ~277KB
+      // — 17x the 16k cap by itself. The "cap the summary groups" branch below never touched this:
+      // summarizeGroupGreekFlow returns ONE aggregate object (net_delta/net_gamma/bias/headline),
+      // never an array of per-group summaries, so `Array.isArray(summary)` is always false and that
+      // branch is a no-op — the unbounded `greek_flow: rows` field was the entire payload weight in
+      // both branches, every call, regardless of `group`.
+      const { fitGroupGreekFlowForModel, fitGroupGreekFlowToolResultForModel } = await import("@/lib/largo/market-data-fits");
       const group = String(input.group ?? "mag7").toLowerCase();
       const exp = input.expiry ? String(input.expiry) : undefined;
       const rows = await fetchUwGroupGreekFlow(group, exp);
       const summary = summarizeGroupGreekFlow(group, rows as Record<string, unknown>[]);
-      return {
+      // For market-wide query (group="all" or default), cap the summary groups too, in case
+      // summarizeGroupGreekFlow ever returns a per-group array for that case.
+      if (group === "all" || !group) {
+        const cappedSummary = Array.isArray(summary) ? fitGroupGreekFlowForModel(summary).fitted : summary;
+        return fitGroupGreekFlowToolResultForModel({
+          group,
+          expiry: exp,
+          source: "unusual_whales",
+          note: UW_EXCLUSIVE_NOTE,
+          summary: cappedSummary,
+          rows: rows as Record<string, unknown>[],
+        });
+      }
+      return fitGroupGreekFlowToolResultForModel({
         group,
         expiry: exp,
         source: "unusual_whales",
         note: UW_EXCLUSIVE_NOTE,
-        greek_flow: rows,
         summary,
-      };
+        rows: rows as Record<string, unknown>[],
+      });
     }
     case "get_macro_indicator": {
       const indicator = String(input.indicator ?? "CPI").toUpperCase();
@@ -1412,6 +1494,9 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return { etf, info, holdings, weights, exposure, in_outflow: inOut, tide, quote };
     }
     case "get_market_stats": {
+      // MEASURED TRUNCATED 2026-08-29 — aggregation of 7 market data sources exceeds 16k transport cap.
+      // Apply fitting to reduce field inclusion for Largo; product uses full data.
+      const { fitMarketStatsForModel } = await import("@/lib/largo/market-data-fits");
       const [totalVol, correlations, sectorEtfs, netFlow, tide, litRecent, seasonality] = await runUwPooled([
         () => fetchUwMarketTotalOptionsVolume(),
         () => fetchUwMarketCorrelations(30),
@@ -1421,7 +1506,8 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         () => fetchUwLitFlowRecent(20),
         () => fetchUwSeasonalityMarket(),
       ] as const);
-      return { total_options_volume: totalVol, correlations, sector_etfs: sectorEtfs, net_flow_by_expiry: netFlow, market_tide: tide, lit_flow_recent: litRecent, seasonality_market: seasonality };
+      const raw = { total_options_volume: totalVol, correlations, sector_etfs: sectorEtfs, net_flow_by_expiry: netFlow, market_tide: tide, lit_flow_recent: litRecent, seasonality_market: seasonality };
+      return fitMarketStatsForModel(raw).fitted;
     }
     case "get_nbbo": {
       const sym = polySymbol(ticker);
@@ -1488,6 +1574,11 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         fetchUwEarningsPremarket(30),
         fetchUwEarningsAfterhours(30),
       ]);
+      const { attachMeridianReactionsToUwRows } = await import("@/lib/largo/meridian-earnings-for-largo");
+      const [preEnriched, postEnriched] = await Promise.all([
+        attachMeridianReactionsToUwRows(premarket as Record<string, unknown>[]),
+        attachMeridianReactionsToUwRows(afterhours as Record<string, unknown>[]),
+      ]);
       // `as_of` because the tool description promises "today's" prints and the payload itself
       // carried no clock — the model had to take the framing on trust. The rows' own
       // `report_date` is the authority on which session these are; this says when we asked.
@@ -1502,10 +1593,12 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         as_of: etStamp(Date.now()) ?? new Date().toISOString(),
         as_of_session: asOfSession,
         as_of_weekday: weekdayEt(asOfSession),
-        premarket_count: premarket.length,
-        afterhours_count: afterhours.length,
-        premarket,
-        afterhours,
+        premarket_count: preEnriched.length,
+        afterhours_count: postEnriched.length,
+        premarket: preEnriched,
+        afterhours: postEnriched,
+        reaction_authority:
+          "Prefer meridian_reaction_pct on each row for print reactions — timing-aware BMO/AMC anchor, same engine as the Meridian desk. UW reaction_pct is close-to-close on the report session only.",
       });
     }
     case "get_congress_unusual": {
@@ -1742,6 +1835,24 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         };
       }
       return { available: true, ...stamp, id: resolved.id, kind: resolved.kind, detail };
+    }
+    case "get_meridian_peer_cohort": {
+      const { loadMeridianPeerCohortForLargo } = await import(
+        "@/lib/largo/meridian-peer-cohort-for-largo"
+      );
+      const asOfSession = todayEtYmd();
+      const stamp = {
+        as_of: etStamp(Date.now()) ?? new Date().toISOString(),
+        as_of_session: asOfSession,
+        as_of_weekday: weekdayEt(asOfSession),
+      };
+      const result = await loadMeridianPeerCohortForLargo({
+        id: input.id,
+        kind: input.kind,
+        ticker: input.ticker,
+        date: input.date,
+      });
+      return { ...stamp, ...result };
     }
     case "get_earnings_calendar": {
       const { callInternalApiRead } = await import("@/lib/bie/internal-api");

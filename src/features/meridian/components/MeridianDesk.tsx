@@ -18,6 +18,10 @@ import {
   type DeskUrlState,
 } from "@/features/meridian/lib/meridian-deeplink-core";
 import {
+  readMeridianFilterPref,
+  writeMeridianFilterPref,
+} from "@/features/meridian/lib/meridian-desk-prefs";
+import {
   filterMeridianTimelineItems,
   isTickerLikeQuery,
   normalizeMeridianSearchQuery,
@@ -40,6 +44,7 @@ import {
   MeridianEmpty,
   MeridianShimmer,
   MeridianAnalyticsBanner,
+  MeridianLoadingNotice,
 } from "./meridian-ui";
 
 const fetcher = (url: string) =>
@@ -82,12 +87,26 @@ function weekAnalyticsSub(a: {
   return `${printed} · rev beat ${Math.round(a.revenue_beat_rate * 100)}%${of}`;
 }
 
+const TIMELINE_DAYS = 21;
+const TIMELINE_URL = `/api/market/meridian/timeline?days=${TIMELINE_DAYS}`;
+const TIMELINE_LITE_URL = `/api/market/meridian/timeline?days=${TIMELINE_DAYS}&skip_enrich=1`;
+
 export function MeridianDesk() {
-  const { data, error, isLoading, mutate } = useSWR<MeridianTimelinePayload>(
-    "/api/market/meridian/timeline?days=21",
+  const { data: liteData, error: liteError, isLoading: liteLoading } = useSWR<MeridianTimelinePayload>(
+    TIMELINE_LITE_URL,
+    fetcher,
+    { revalidateOnFocus: false }
+  );
+  const { data: fullData, error: fullError, isLoading: fullLoading, mutate } = useSWR<MeridianTimelinePayload>(
+    TIMELINE_URL,
     fetcher,
     { refreshInterval: 90_000 }
   );
+
+  const data = fullData ?? liteData;
+  const error = fullError ?? liteError;
+  const isLoading = !data && (liteLoading || fullLoading);
+  const isEnriching = Boolean(data?.enrich_pending && fullLoading);
 
   const { watchlistSet, ready: watchlistReady } = useWatchlist();
   const boardSet = useMemo(() => new Set(data?.board_tickers ?? []), [data?.board_tickers]);
@@ -114,6 +133,11 @@ export function MeridianDesk() {
   const urlHydrated = useRef(false);
   const lastUrlState = useRef<DeskUrlState>({ event: null, view: null, filter: null });
 
+  const setFilterPref = useCallback((next: FilterKind) => {
+    setFilter(next);
+    writeMeridianFilterPref(next);
+  }, []);
+
   const syncDeskUrl = useCallback(
     (next: DeskUrlState, eventChanged: boolean) => {
       const url = `${window.location.pathname}${deskUrlSearch(next)}`;
@@ -129,7 +153,8 @@ export function MeridianDesk() {
       lastUrlState.current = st;
       setSelectedId(st.event);
       setView((st.view ?? "timeline") as DeskView);
-      setFilter((st.filter ?? "all") as FilterKind);
+      const urlFilter = st.filter as FilterKind | null;
+      setFilter(urlFilter ?? readMeridianFilterPref() ?? "all");
     };
     apply(window.location.search);
     urlHydrated.current = true;
@@ -315,6 +340,9 @@ export function MeridianDesk() {
   ];
 
   const highImpact = allItems.filter((i) => i.impact === "high").slice(0, 6);
+  const analyticsLanePreview = filteredItems.slice(0, 12);
+  const analyticsRows = data?.earnings_analytics_rows ?? [];
+  const showAnalyticsBlock = analyticsRows.length > 0 || isLoading || isEnriching;
 
   return (
     <div className="meridian-desk meridian-desk-v2">
@@ -372,6 +400,44 @@ export function MeridianDesk() {
 
       {view === "analytics" && (
         <>
+          {analyticsLanePreview.length > 0 && (
+            <section className="meridian-analytics-lane-strip" aria-label="Upcoming catalysts">
+              <div className="meridian-analytics-lane-head">
+                <h3 className="meridian-earnings-week-title">Catalyst lane</h3>
+                <p className="meridian-analytics-lane-sub">
+                  Next {analyticsLanePreview.length} in window — open one to inspect the brief
+                </p>
+              </div>
+              <ul className="meridian-analytics-lane-list">
+                {analyticsLanePreview.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      className={`meridian-analytics-lane-row meridian-theme-${item.kind}${item.id === activeId ? " is-active" : ""}`}
+                      onClick={() => {
+                        setSelectedId(item.id);
+                        setView("timeline");
+                      }}
+                    >
+                      <span className="meridian-analytics-lane-kind">{item.kind}</span>
+                      <span className="meridian-analytics-lane-title">{item.title}</span>
+                      <span className="meridian-analytics-lane-meta">
+                        {item.days_until === 0 ? "Today" : `${item.days_until}d`} · {item.date}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {(isLoading || isEnriching) && (
+            <MeridianLoadingNotice
+              label={isLoading ? "Loading earnings analytics…" : "Enriching implied moves and sectors…"}
+              sub="Catalyst lane above paints from the fast payload; grids fill in when analytics rows arrive."
+            />
+          )}
+
           {/*
             Earnings analytics block. Mounted ABOVE the catalyst grid because it answers the
             first question a member opens this view with — what prints, when, and how has the
@@ -381,14 +447,14 @@ export function MeridianDesk() {
             so the scatter is not empty every morning); the mega-cap strip further down keeps its
             own curated 24-row imp>=4 dataset. Two datasets on purpose — see the type comment.
           */}
-          {(data?.earnings_analytics_rows?.length ?? 0) > 0 && (
+          {showAnalyticsBlock && analyticsRows.length > 0 && (
             <section className="meridian-earnings-analytics" aria-label="Earnings analytics">
-              <MeridianEarningsPulse rows={data!.earnings_analytics_rows} />
+              <MeridianEarningsPulse rows={analyticsRows} />
 
               <div className="meridian-mea-split">
                 <MeridianDataCard label="Next 24 hours" tone="earnings">
                   <MeridianPrintClock
-                    rows={data!.earnings_analytics_rows}
+                    rows={analyticsRows}
                     /* `nowMs` is owned here, not read inside the component, so the clock stays a
                        pure function of its props and re-renders deterministically. */
                     nowMs={nowMs}
@@ -398,7 +464,7 @@ export function MeridianDesk() {
 
                 <MeridianDataCard label="Surprise map · EPS vs revenue" tone="earnings">
                   <MeridianSurpriseScatter
-                    rows={data!.earnings_analytics_rows}
+                    rows={analyticsRows}
                     onSelectTicker={selectEarningsTicker}
                   />
                 </MeridianDataCard>
@@ -406,7 +472,7 @@ export function MeridianDesk() {
 
               <MeridianDataCard label="Print calendar" tone="earnings" wide>
                 <MeridianEarningsCalendar
-                  rows={data!.earnings_analytics_rows}
+                  rows={analyticsRows}
                   selectedDate={earningsDate}
                   onSelectDate={(d) => setEarningsDate((cur) => (cur === d ? null : d))}
                 />
@@ -420,8 +486,8 @@ export function MeridianDesk() {
                 <MeridianEarningsTable
                   rows={
                     earningsDate
-                      ? data!.earnings_analytics_rows.filter((r) => r.date === earningsDate)
-                      : data!.earnings_analytics_rows
+                      ? analyticsRows.filter((r) => r.date === earningsDate)
+                      : analyticsRows
                   }
                   onSelectTicker={selectEarningsTicker}
                 />
@@ -456,6 +522,12 @@ export function MeridianDesk() {
           {(data?.earnings_week?.length ?? 0) > 0 && (
             <section className="meridian-earnings-week" aria-label="Mega-cap earnings week">
               <h3 className="meridian-earnings-week-title">Mega-cap earnings week</h3>
+              {data?.earnings_week_analytics_error && (
+                <p className="meridian-feed-error" role="status">
+                  Week analytics history did not respond — beat rates are unavailable for this
+                  refresh. The mega-cap grid below is still live.
+                </p>
+              )}
               {data?.earnings_week_analytics && (
                 <MeridianAnalyticsBanner
                   label="Universe analytics"
@@ -557,7 +629,8 @@ export function MeridianDesk() {
         </>
       )}
 
-      <div className={`meridian-desk-body${view === "analytics" ? " meridian-desk-body-compact" : ""}`}>
+      {view === "timeline" && (
+      <div className="meridian-desk-body">
         <aside className="meridian-rail meridian-rail-v2" aria-label="Catalyst timeline">
           <div className="meridian-rail-head">
             <h2 className="meridian-rail-title">Catalyst lane</h2>
@@ -597,7 +670,7 @@ export function MeridianDesk() {
                 count={f.count}
                 tone={f.tone}
                 active={filter === f.id}
-                onClick={() => setFilter(f.id)}
+                onClick={() => setFilterPref(f.id)}
               />
             ))}
           </div>
@@ -612,7 +685,9 @@ export function MeridianDesk() {
             </p>
           )}
 
-          {isLoading && <MeridianShimmer lines={5} />}
+          {isLoading && (
+            <MeridianLoadingNotice label="Loading catalyst lane…" sub="Fast lane first — implied moves enrich next." />
+          )}
           {error && !isLoading && <MeridianEmpty message="Timeline unavailable — try refresh." />}
           {!isLoading && !error && filteredItems.length === 0 && (
             <div className="meridian-search-empty">
@@ -697,6 +772,7 @@ export function MeridianDesk() {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

@@ -38,6 +38,7 @@ const BREACH_KIND_LABEL: Record<ThermalBreachKind, string> = {
 };
 
 function fmtSpot(n: number): string {
+  if (!Number.isFinite(n)) return "—";
   return Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 

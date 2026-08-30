@@ -21,6 +21,20 @@ export const VECTOR_NON_UNIVERSE_WALLS_SCOPE_POLL_MS = 15_000;
 /** Reconstructed GEX heatmap client poll during live session. */
 export const VECTOR_GEX_HEATMAP_POLL_MS = 5_000;
 
+/**
+ * Expected-move (options-implied ±1σ/2σ band) client poll during live session.
+ *
+ * Fixed 2026-08-27: fetchExpectedMove used to fire once per (ticker, DTE horizon) mount with no
+ * interval, so the drawn flat band stayed pinned at the spot/IV reading from mount for the REST of
+ * the session — spot could move well outside its own displayed "expected move" with the lines never
+ * moving. The EM cone (vector-em-cone.ts) re-anchors to live spot every tick while reusing that same
+ * stale half-width, so the two representations of "the same" expected move visibly diverged over a
+ * session. 30s (vs GEX heatmap's 5s) because ATM IV — the only input that can move this band — does
+ * not need sub-minute refresh; the point is bounding staleness to a session-scale problem, not making
+ * this competitive with the tick-driven overlays.
+ */
+export const VECTOR_EXPECTED_MOVE_POLL_MS = 30_000;
+
 /** SPY share-volume backfill poll for SPX chart proxy. */
 export const VECTOR_SPY_VOLUME_BACKFILL_MS = 60_000;
 

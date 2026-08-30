@@ -61,8 +61,10 @@ test("closed compact row shows symbol line, times, peak", async () => {
   assert.match(html, />CLOSED</);
   assert.match(html, /nh-deck-play-grade/);
   assert.match(html, />A\+</);
-  assert.match(html, /★{5}/);
-  assert.match(html, />96</);
+  // Rating cell shows grade + entry premium (2026-08-29) — the star rating and raw 0-100 score
+  // were removed as visual noise with no actionable meaning; entry premium is real and useful.
+  assert.match(html, /nh-deck-play-entry/);
+  assert.match(html, />\$3\.15</);
 });
 
 // UPDATED 2026-08-07: this asserted the PEAK (+87%) on a row whose CURRENT read is +42% — the
@@ -84,7 +86,11 @@ test("open compact row shows active status and the CURRENT return, not the peak"
   assert.match(html, />11:58</);
   assert.match(html, />\+42%/);
   assert.doesNotMatch(html, />\+87%/, "the peak must not be rendered as the row's PNL");
-  assert.match(html, />ACTIVE</);
+  // The lifecycle STATUS pill shows the grounded ACTION vocabulary when real fields support it —
+  // HOLD here, from the fixture's `recommendation: "HOLD"` (play-card-lifecycle.ts's
+  // zeroDteActionDisplay, 2026-08-29) — not the coarse ACTIVE label this test asserted before that
+  // landed. The pill's tone/class is unchanged (still `is-active`); only the label got sharper.
+  assert.match(html, />HOLD</);
   assert.match(html, /nh-deck-status-pill is-active/);
 });
 
@@ -137,7 +143,7 @@ test("command center renders sortable play table column headers", async () => {
   assert.match(html, /nh-deck-play-th--sort/);
   assert.match(html, />Status</);
   assert.match(html, />Play</);
-  assert.match(html, />Rating</);
+  assert.match(html, />Grade</);
   assert.match(html, />Time</);
   assert.match(html, />PnL</);
   assert.match(html, /aria-sort="descending"/);
@@ -145,7 +151,12 @@ test("command center renders sortable play table column headers", async () => {
   assert.doesNotMatch(html, />TRIGGERED</);
 });
 
-test("CommandDeck command center renders stat strip for 0DTE", async () => {
+// Was "CommandDeck command center renders stat strip for 0DTE" — the Opps/Top/Edge stat strip +
+// engine heartbeat it asserted on were REMOVED from DeckCompactHeader per explicit product
+// direction (2026-08-28 page declutter): redundant with the view toggle above and the play list
+// itself, and they pushed the actual trade queue below the fold. This now pins the opposite: the
+// compact header renders ONLY the filter row, none of the removed chrome.
+test("CommandDeck command center header is filters-only — no stat strip, no engine heartbeat", async () => {
   const { CommandDeck } = await load();
   const html = renderToStaticMarkup(
     React.createElement(CommandDeck, {
@@ -160,13 +171,13 @@ test("CommandDeck command center renders stat strip for 0DTE", async () => {
     }),
   );
   assert.match(html, /nh-deck-header-compact/);
-  assert.match(html, /nh-deck-cmd/);
-  assert.match(html, />META \(A\+\)/);
-  assert.doesNotMatch(html, /Win Rate \(30d\)/);
-  assert.match(html, /nh-deck-engine-status/);
-  assert.match(html, />Engine</);
-  assert.match(html, />Monitoring</);
-  assert.match(html, />Updated</);
+  assert.match(html, /nh-deck-hdr-row--filters/);
+  assert.doesNotMatch(html, /nh-deck-cmd\b/);
+  assert.doesNotMatch(html, /nh-deck-cmd-lane/);
+  assert.doesNotMatch(html, />META \(A\+\)/);
+  assert.doesNotMatch(html, /nh-deck-engine-status/);
+  assert.doesNotMatch(html, />Engine</);
+  assert.doesNotMatch(html, />Updated</);
 });
 
 test("CommandDeck command center hides regime/funnel strips; prominent status filters", async () => {
@@ -206,4 +217,26 @@ test("CommandDeck command center hides regime/funnel strips; prominent status fi
   assert.match(html, />OPEN /);
   assert.match(html, />WATCH /);
   assert.match(html, />CLOSED /);
+});
+
+// REGRESSION 2026-08-29: member report — on a phone-width viewport the right rail rendered
+// unconditionally (initially a "select a play" placeholder, then real detail once a play
+// auto-selects), permanently squeezing the list; ticker/strike/expiry text truncated hard
+// against the fixed-pixel column widths. `data-mobile-view` (CSS-scoped to the mobile
+// breakpoint — a no-op on desktop) makes the list the default view; the detail rail only takes
+// over once the member taps a play. First render (before any effect/click) must be "list".
+test("mobile-view starts on the list, not the detail rail — a member never opens on a squeezed board", async () => {
+  const { CommandDeck } = await load();
+  const html = renderToStaticMarkup(
+    React.createElement(CommandDeck, {
+      plays: [play()],
+      laneLabel: "0DTE · same-day",
+      commandCenter: true,
+    }),
+  );
+  assert.match(html, /data-mobile-view="list"/);
+  assert.doesNotMatch(html, /data-mobile-view="detail"/);
+  // The mobile "back to plays" affordance is always in the tree (CSS-gated to mobile widths only)
+  // so a member who does tap into the detail rail on a phone has a way back.
+  assert.match(html, /nh-deck-mobile-back/);
 });

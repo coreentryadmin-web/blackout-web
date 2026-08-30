@@ -9,7 +9,16 @@ export { VectorCompareDesk } from "./components/VectorCompareDesk";
 export type { VectorBar } from "./components/VectorChart";
 
 export { fetchVectorSeedBars } from "./lib/vector-seed-bars";
-export { normalizeVectorTicker, isVectorTickerAllowed, VECTOR_DEFAULT_TICKER, VECTOR_ORACLE_TICKERS } from "./lib/vector-ticker";
+export {
+  normalizeVectorTicker,
+  isVectorTickerAllowed,
+  VECTOR_DEFAULT_TICKER,
+  VECTOR_ORACLE_TICKERS,
+  defaultVectorDteHorizon,
+  defaultVectorNodeDensity,
+  defaultVectorDeskOpenProps,
+  VECTOR_ORACLE_DEFAULT_NODE_DENSITY,
+} from "./lib/vector-ticker";
 export {
   buildVectorStreamPayload,
   getVectorDarkPoolLevels,

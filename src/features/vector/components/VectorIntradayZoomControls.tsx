@@ -20,7 +20,7 @@ type Props = {
 const PRESETS: { id: IntradayZoomPreset; label: string; title: string }[] = [
   { id: "session", label: "Session", title: "Full RTH session overview" },
   { id: "structure", label: "Structure", title: "Last ~75 minutes — pivot / structure read" },
-  { id: "live", label: "Live", title: "Trailing live edge (~48 bars)" },
+  { id: "live", label: "Live", title: "Centered live window (~48 bars, current candle mid-screen)" },
 ];
 
 /** Intraday chart zoom presets — session overview, structure window, live follow. */

@@ -11,6 +11,8 @@ import { accessEndedEmail } from "@/lib/email/templates/access-ended";
 import { scheduledCancelEmail } from "@/lib/email/templates/scheduled-cancel";
 import { cancelReversedEmail } from "@/lib/email/templates/cancel-reversed";
 import { paymentFailedEmail } from "@/lib/email/templates/payment-failed";
+import { trialEndingSoonEmail } from "@/lib/email/templates/trial-ending-soon";
+import type { BillingKind } from "@/lib/whop";
 
 export type BillingInterval = "monthly" | "yearly" | "other";
 
@@ -195,4 +197,21 @@ export async function notifyPaymentFailed(input: { email: string; graceDays: num
   const { subject, html, attachments } = paymentFailedEmail({ firstName: user?.firstName ?? null, graceDays: input.graceDays });
   const result = await sendEmail({ to: input.email, subject, html, attachments, tag: "payment-failed" });
   if (!result.ok) console.warn("[billing-lifecycle-email] payment-failed send failed", result.error);
+}
+
+/** membership.trial_ending_soon — conversion nudge before first charge. Caller dedupes per membership id. */
+export async function notifyTrialEndingSoon(input: {
+  email: string;
+  billingKind: Extract<BillingKind, "premium" | "community">;
+  trialEndsLabel: string;
+}): Promise<boolean> {
+  const user = await lookupUserByEmail(input.email);
+  const { subject, html, attachments } = trialEndingSoonEmail({
+    firstName: user?.firstName ?? null,
+    billingKind: input.billingKind,
+    trialEndsLabel: input.trialEndsLabel,
+  });
+  const result = await sendEmail({ to: input.email, subject, html, attachments, tag: "trial-ending-soon" });
+  if (!result.ok) console.warn("[billing-lifecycle-email] trial-ending-soon send failed", result.error);
+  return result.ok;
 }

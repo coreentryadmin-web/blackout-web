@@ -1,5 +1,6 @@
 import type { IChartApi, UTCTimestamp } from "lightweight-charts";
 import { lastSessionBars } from "@/features/vector/lib/vector-key-levels";
+import { centeredLiveVisibleLogicalRange } from "@/features/vector/lib/vector-candle-render";
 
 /** Right-edge breathing room (in bar slots) so the latest bead cluster is not glued to the axis. */
 const SESSION_VIEWPORT_RIGHT_PAD = 2;
@@ -36,6 +37,33 @@ export function sessionVisibleTimeRange(
 }
 
 /** Fit the chart to the current session's bars (not the full multi-day seed). */
+/** Frame ~48 bars with the latest candle near center — default live desk load. */
+export function applyCenteredLiveViewport(chart: IChartApi, barCount: number): boolean {
+  const range = centeredLiveVisibleLogicalRange(barCount);
+  if (!range) return false;
+  chart.timeScale().setVisibleLogicalRange(range);
+  return true;
+}
+
+/**
+ * Scale a visible logical range around its own center by `factor` (member request, 2026-08-27:
+ * explicit zoom in/out buttons). `factor < 1` zooms IN (narrower range), `factor > 1` zooms OUT.
+ * Floored at `minSpan` so a member cannot zoom in far enough to make the range degenerate (or
+ * negative-width, which lightweight-charts would reject). Pure so the button math is testable
+ * without a live chart instance — VectorChart's stepZoom is the only caller.
+ */
+export function zoomedLogicalRange(
+  range: { from: number; to: number },
+  factor: number,
+  minSpan: number
+): { from: number; to: number } | null {
+  const span = range.to - range.from;
+  if (!(span > 0) || !(factor > 0)) return null;
+  const center = (range.from + range.to) / 2;
+  const half = Math.max((span * factor) / 2, minSpan / 2);
+  return { from: center - half, to: center + half };
+}
+
 export function applySessionOverviewViewport(
   chart: IChartApi,
   bars: readonly { time: number }[]

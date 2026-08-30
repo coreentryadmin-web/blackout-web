@@ -1,3 +1,7 @@
+import type { VectorDteHorizon } from "./vector-dte-horizon";
+import type { VectorNodeDensity } from "./vector-node-density";
+import { VECTOR_DEFAULT_TIMEFRAME, type VectorPresetTimeframe } from "./vector-bar-timeframes";
+
 /** Default Vector chart symbol — SPX index options desk anchor. */
 export const VECTOR_DEFAULT_TICKER = "SPX";
 
@@ -58,4 +62,40 @@ export function vectorPolygonMinuteSymbol(ticker: string): string {
  */
 export function vectorHasWsOracle(ticker: string): boolean {
   return VECTOR_ORACLE_TICKERS.has(normalizeVectorTicker(ticker));
+}
+
+/** Opening DTE horizon: intraday desk defaults to 0DTE for every symbol (matrix + beads match session view). */
+export function defaultVectorDteHorizon(_raw: string | null | undefined): VectorDteHorizon {
+  return "0dte";
+}
+
+/**
+ * Opening NODES density — every desk opens at 20 rows/side so single-name beads match SPX Slayer
+ * showcase density (server records up to 20/side for all tickers; AUTO was self-limiting NVDA to ~7).
+ */
+export const VECTOR_ORACLE_DEFAULT_NODE_DENSITY = 20 as const satisfies VectorNodeDensity;
+export const VECTOR_DEFAULT_OPEN_NODE_DENSITY = VECTOR_ORACLE_DEFAULT_NODE_DENSITY;
+
+export function defaultVectorNodeDensity(_raw: string | null | undefined): VectorNodeDensity {
+  return VECTOR_DEFAULT_OPEN_NODE_DENSITY;
+}
+
+/** Opening desk props shared by SPX Slayer embed and standalone /vector — one showcase contract. */
+export type VectorDeskOpenDefaults = {
+  defaultDteHorizon: VectorDteHorizon;
+  defaultChartViewport: "session" | "live";
+  defaultTimeframe: VectorPresetTimeframe;
+  defaultNodeDensity: VectorNodeDensity;
+};
+
+/** Desk open: centered live window · 3m · 0DTE · 20-row beads for every symbol. */
+export function defaultVectorDeskOpenProps(
+  raw: string | null | undefined
+): VectorDeskOpenDefaults {
+  return {
+    defaultDteHorizon: defaultVectorDteHorizon(raw),
+    defaultChartViewport: "live",
+    defaultTimeframe: VECTOR_DEFAULT_TIMEFRAME,
+    defaultNodeDensity: defaultVectorNodeDensity(raw),
+  };
 }

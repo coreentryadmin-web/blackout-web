@@ -230,6 +230,16 @@ test("zeroDteMidOf: valid two-sided quote → midpoint (4dp); one-sided/negative
   assert.equal(zeroDteMidOf(1.23456, 1.23458), 1.2346); // rounded to 4dp
 });
 
+// Bug found 2026-08-26: zeroDteMidOf had no crossed-book guard, unlike its sibling
+// zeroDteHalfSpreadFrac (which already rejects ask<bid) and the pre-commit gate
+// (plan.ts's evaluateQuoteValidity, which blocks a crossed quote as "crossed"). A
+// transient crossed print on an already-committed play could fabricate a mid that then
+// feeds the live P&L, the persisted peak/trough latch, and the exit engine.
+test("zeroDteMidOf: a CROSSED book (ask < bid) must return null, not a fabricated midpoint", () => {
+  assert.equal(zeroDteMidOf(1.2, 1.0), null);
+  assert.equal(zeroDteMidOf(1.0, 1.0), 1.0); // locked (ask == bid) is still a valid quote
+});
+
 test("resolveZeroDteMark: MID when a two-sided quote exists (provenance 'mid')", () => {
   assert.deepEqual(resolveZeroDteMark(0.9, 1.1, 5.0), { mark: 1.0, source: "mid" });
 });

@@ -75,7 +75,7 @@ export type WallMembershipConfig = {
  * separate regression.
  */
 export const DEFAULT_WALL_MEMBERSHIP: WallMembershipConfig = {
-  enterRank: 5,
+  enterRank: 6,
   holdRank: 8,
   graceBuckets: 3,
 };

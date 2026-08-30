@@ -6,6 +6,8 @@ import {
   reactionStats,
   evidenceLean,
   buildMeridianSummary,
+  buildPlayContractLabel,
+  formatOptionExpiryShort,
 } from "./meridian-summary-core";
 
 /* ── normalCdf ────────────────────────────────────────────────────────────────────── */
@@ -118,6 +120,20 @@ test("reactionStats: nulls and an empty list are handled without inventing zeros
   }
 });
 
+test("reactionStats: downRate is down/sample, NOT 1-upRate — an exactly-zero print belongs to neither side", () => {
+  const s = reactionStats([
+    { session_change_pct: 5 },
+    { session_change_pct: 3 },
+    { session_change_pct: -2 },
+    { session_change_pct: 0 },
+  ]);
+  assert.equal(s.sample, 4);
+  assert.equal(s.up, 2);
+  assert.equal(s.down, 1);
+  assert.equal(s.upRate, 0.5);
+  assert.equal(s.downRate, 0.25, "must be down/sample (1/4), not 1-upRate (0.5)");
+});
+
 /* ── evidenceLean ─────────────────────────────────────────────────────────────────── */
 
 test("evidenceLean: weights the tally, and neutral pillars do not vote", () => {
@@ -178,6 +194,25 @@ const base = {
     { label: "Street", lean: "bearish", weight: 1 },
   ],
 };
+
+test("summary: with expiry + ticker, contract label uses wall strike — not a profit claim", () => {
+  const s = buildMeridianSummary({
+    ...base,
+    ticker: "NVDA",
+    eventYmd: "2026-08-28",
+    coveringExpiry: "2026-09-18",
+  });
+  assert.equal(s.call!.contractLabel, "NVDA 110C · 09/18");
+  assert.equal(s.call!.expiryDaysFromEvent, 21);
+  assert.equal(buildPlayContractLabel({ ticker: "NVDA", side: "call", strike: 225, expiryYmd: "2026-09-02" }), "NVDA 225C · 09/02");
+  assert.equal(formatOptionExpiryShort("2026-09-18"), "09/18");
+});
+
+test("summary: no contract label without event-covering expiry", () => {
+  const s = buildMeridianSummary({ ...base, ticker: "NVDA", eventYmd: "2026-08-28" });
+  assert.equal(s.call!.contractLabel, null);
+  assert.equal(s.call!.expiryYmd, null);
+});
 
 test("summary: produces BOTH a call and a put idea", () => {
   const s = buildMeridianSummary(base);
@@ -264,6 +299,27 @@ test("summary: a too-small print sample suppresses the rate but explains itself"
   assert.equal(s.call!.historicalRate, null);
   assert.equal(s.call!.historicalSample, 1);
   assert.ok(s.call!.why.some((w) => /too few/i.test(w)), "an absent number must say why");
+});
+
+test("summary: put historicalRate is down/sample, matching its own 'why' bullet — not 1-upRate", () => {
+  // 3 up, 2 down, 1 exactly-zero: 1-upRate would fold the zero print into "down" and read 0.5,
+  // contradicting the why bullet's own "2/6 reacted down" — down/sample (0.3333) is correct.
+  const s = buildMeridianSummary({
+    ...base,
+    prints: [
+      { session_change_pct: 5 },
+      { session_change_pct: 3 },
+      { session_change_pct: 1 },
+      { session_change_pct: -2 },
+      { session_change_pct: -4 },
+      { session_change_pct: 0 },
+    ],
+  });
+  assert.equal(s.put!.historicalRate, 0.3333, "must be down/sample, not 1-upRate");
+  assert.ok(
+    s.put!.why.some((w) => /^2\/6 of this name's last prints reacted down/.test(w)),
+    "the why bullet must agree with the displayed rate"
+  );
 });
 
 test("summary: levels are sorted high to low so they read as a price ladder", () => {

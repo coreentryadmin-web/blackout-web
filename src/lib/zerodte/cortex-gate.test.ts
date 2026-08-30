@@ -209,6 +209,66 @@ test("contested but decisive (score >= the A floor): support has clearly won the
   assert.equal(assessCortexVerdict(decisive).decision, "PASS");
 });
 
+test("gex-walls oppose presence (2026-08-28): an active gex-walls oppose >= the presence floor, net score below the A floor => OPPOSE_UNRESOLVED, not a silent PASS", () => {
+  // Enough support to keep the net score positive (0 <= score < CONVICTION_A_MIN_SCORE) but a
+  // real, live gex-walls oppose at 0.3 (>= GEX_WALLS_OPPOSE_PRESENCE_MIN_WEIGHT's 0.2) is on the
+  // table — measured (90-day + same-week live) to grade worse than a clean signal even here,
+  // where CONTESTED wouldn't fire (oppose total 0.3 is well under CONTESTED_MIN_MAGNITUDE's 0.75).
+  const v = verdict({
+    score: 1.0,
+    contested: false,
+    supports: [ev("flow-quality", "supports", 1.3, "bullish sweep cluster")],
+    opposes: [ev("gex-walls", "opposes", 0.3, "call wall overhead")],
+  });
+  const a = assessCortexVerdict(v);
+  assert.equal(a.decision, "OPPOSE_UNRESOLVED");
+  assert.ok(!a.abstained);
+  const blocks = cortexGateBlocks(a);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "cortex_gex_walls_oppose_unresolved");
+  assert.equal(blocks[0]!.threshold, CONVICTION_A_MIN_SCORE);
+  assert.match(blocks[0]!.reason, /gex-walls/);
+  assert.match(blocks[0]!.reason, /call wall overhead/);
+});
+
+test("gex-walls oppose presence: a THIN oppose below the presence floor does not trigger OPPOSE_UNRESOLVED", () => {
+  // Same shape as above but the oppose weight (0.1) is below GEX_WALLS_OPPOSE_PRESENCE_MIN_WEIGHT
+  // (0.2) — the measured evidence never covered anything this small, so this gate makes no claim
+  // about it and must not block.
+  const v = verdict({
+    score: 1.0,
+    contested: false,
+    supports: [ev("flow-quality", "supports", 1.1, "bullish sweep cluster")],
+    opposes: [ev("gex-walls", "opposes", 0.1, "faint call wall")],
+  });
+  assert.equal(assessCortexVerdict(v).decision, "PASS");
+});
+
+test("gex-walls oppose presence: decisive support (score >= the A floor) still PASSes despite an active gex-walls oppose", () => {
+  // Same "residual opposition is expected noise once support has decisively won" logic as the
+  // CONTESTED carve-out above — a real oppose weight (0.3, above the presence floor) does not
+  // retroactively block a setup whose net score already clears CONVICTION_A_MIN_SCORE.
+  const v = verdict({
+    score: CONVICTION_A_MIN_SCORE + 0.5,
+    contested: false,
+    supports: [ev("flow-quality", "supports", CONVICTION_A_MIN_SCORE + 0.8, "large bullish sweep")],
+    opposes: [ev("gex-walls", "opposes", 0.3, "call wall overhead")],
+  });
+  assert.equal(assessCortexVerdict(v).decision, "PASS");
+});
+
+test("gex-walls oppose presence: an oppose from a DIFFERENT source at the same weight does not trigger OPPOSE_UNRESOLVED", () => {
+  // The evidence is specific to gex-walls — a same-magnitude oppose from vex-charm or any other
+  // source is not what was measured, so this gate must not generalize to "any oppose".
+  const v = verdict({
+    score: 1.0,
+    contested: false,
+    supports: [ev("flow-quality", "supports", 1.3, "bullish sweep cluster")],
+    opposes: [ev("vex-charm", "opposes", 0.3, "negative VEX tilt")],
+  });
+  assert.equal(assessCortexVerdict(v).decision, "PASS");
+});
+
 test("ABSTAIN: an all-absent composition (total outage) passes through with zero blocks and an honest reason", () => {
   const a = assessCortexVerdict(composeCortexEvidence(baseInputs({ ticker: "QQQ", direction: "short" })));
   assert.equal(a.decision, "ABSTAIN");

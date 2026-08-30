@@ -18,6 +18,8 @@ import {
   type IPriceLine,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
+  type LineWidth,
+  type MouseEventParams,
   type SeriesMarker,
   type Time,
   type UTCTimestamp,
@@ -39,6 +41,8 @@ import { vectorCrosshairStatesEqual } from "@/features/vector/lib/vector-crossha
 import { useVectorChartDrawings } from "@/features/vector/lib/use-vector-chart-drawings";
 import {
   createVectorEventSource,
+  fetchVectorPlayBie,
+  type FlowAlert,
   type VectorDarkPoolLevel,
   type VectorWallLevel,
   type VectorWalls,
@@ -130,6 +134,7 @@ import { ExtendedHoursShadePrimitive } from "@/features/vector/lib/vector-extend
 import { extendedHoursShadeBands } from "@/features/vector/lib/vector-session-hours";
 import { computeVolumeProfile } from "@/features/vector/lib/vector-volume-profile";
 import { VolumeProfilePrimitive } from "@/features/vector/lib/vector-volume-profile-primitive";
+import { vectorChartTimeScaleGutter } from "@/features/vector/lib/vector-volume-profile-layout";
 import type { WallBeadRenderProfile } from "@/features/vector/lib/vector-wall-rail-core";
 import { WallRailPrimitive } from "@/features/vector/lib/vector-wall-rail-primitive";
 import { gexCellAtGridPoint, heatmapBucketSecForChartTimeframe } from "@/features/vector/lib/vector-gex-heatmap-paint";
@@ -140,7 +145,7 @@ import { buildFlowMarkers, DEFAULT_FLOW_MAX_MARKERS, type FlowPrint } from "@/fe
 import { confluenceZones, confluenceCallouts, topConfluenceBand, type ConfluenceLevel } from "@/features/vector/lib/vector-confluence";
 import { summarizeTechnicals, technicalsCalloutLines, type TechnicalsLine } from "@/features/vector/lib/vector-technicals";
 import { playTechnicalsFromSummary } from "@/features/vector/lib/vector-server-technicals-core";
-import { buildVectorPlay, type VectorPlay, type PlayTechnicals } from "@/features/vector/lib/vector-play-engine";
+import { buildVectorPlay, type VectorPlay, type VectorPlayEmit, type PlayTechnicals, type PlayBieContext, vectorPlayBieBucketKey } from "@/features/vector/lib/vector-play-engine";
 import { expectedMoveCallouts, type ExpectedMove } from "@/features/vector/lib/vector-expected-move";
 import { evaluateAlerts, type AlertRule, type AlertState, type FiredAlert } from "@/features/vector/lib/vector-alerts";
 import { sessionHodLod } from "@/features/vector/lib/vector-key-levels";
@@ -196,22 +201,25 @@ import {
 import {
   VECTOR_GEX_HEATMAP_FAST_MOVE_PCT,
   VECTOR_GEX_HEATMAP_POLL_MS,
+  VECTOR_EXPECTED_MOVE_POLL_MS,
   VECTOR_COMPARE_FOUR_UP_OVERLAY_REFRESH_MS,
   VECTOR_WALL_TRAIL_SEC,
   vectorComparePerfPollMs,
 } from "@/features/vector/lib/vector-cadence";
 import { vectorWallTrailSecClient } from "@/features/vector/lib/vector-wall-sample";
 import { vectorHeatmapScopeLabel } from "@/lib/gex-scope-labels";
+import { readPersisted, writePersisted, VECTOR_DARK_POOL_WALLS_STORAGE_KEY } from "@/features/vector/lib/vector-chart-view";
 import {
+  applyCenteredLiveViewport,
   applySessionOverviewViewport,
   wantsSessionOverviewViewport,
+  zoomedLogicalRange,
 } from "@/features/vector/lib/vector-chart-viewport";
 import {
   applyAdaptiveBarSpacingToChart,
   coarserTimeframeIfZoomedOut,
   hasExtendedHoursBars,
   intradayZoomPresetFromKeyboard,
-  liveEdgeVisibleLogicalRange,
   overlayDimFactor,
   beadOverlayDimFactor,
   structureVisibleLogicalRange,
@@ -219,9 +227,15 @@ import {
   vectorCandlestickOptions,
   vectorTimeScaleSpacingOptions,
   visibleBarCountFromRange,
-  volumeAlphaForBar,
   type IntradayZoomPreset,
 } from "@/features/vector/lib/vector-candle-render";
+import {
+  volumeAverageLineData,
+  volumeHistogramData,
+  VECTOR_VOLUME_MODES,
+  VECTOR_VOLUME_MODE_STORAGE_KEY,
+  type VectorVolumeMode,
+} from "@/features/vector/lib/vector-volume-render";
 import {
   applyFlowConfluenceToCandles,
   FLOW_CONFLUENCE_PULSE_INTERVAL_MS,
@@ -268,14 +282,18 @@ const MAX_DP_GUIDES = 6;
  *  strength-scaled beads (Skylit-clean axis), so the full-width "Call/Put wall — %" guide lines
  *  are gone; the axis carries just the current price + the gamma-flip line. */
 const EMPTY_WALLS: VectorWalls = { callWalls: [], putWalls: [] };
-/** Trailing whitespace (in bars) between the last candle and the price axis — so the bead bands
- *  stop short of the axis with breathing room instead of running flush into it (Skylit-style). */
-const VECTOR_RIGHT_OFFSET_BARS = 6;
 /** Re-poll cadence for the SPY volume backfill — Polygon only publishes one new closed
  *  minute bar per minute, so anything faster than that would just refetch the same data. */
 const SPY_VOLUME_BACKFILL_MS = 60_000;
 /** If the viewport is within this many bars of the live edge, new bars may follow (TradingView-style). */
 const LIVE_FOLLOW_THRESHOLD_BARS = 2;
+/** Explicit zoom-button step size — each click scales the visible logical range by this factor
+ *  (in: divide, out: multiply), matching a single "solid" mouse-wheel tick rather than a subtle
+ *  nudge a member would have to click many times to notice. */
+const ZOOM_STEP_FACTOR = 1.35;
+/** Zoom-in floor, in bar-index units — never let the explicit zoom button shrink the visible
+ *  range to fewer than this many bars; below it candles overlap into an unreadable smear. */
+const MIN_ZOOM_LOGICAL_SPAN = 6;
 /** Opacity multiplier for a strike row that has LEFT the current wall set (its last bead predates
  *  this side's latest bucket). A closed/faded wall dims to this fraction so a member reads it as
  *  receding history, not a live rail — the birth→fade lifecycle Skylit shows (BUG 3). */
@@ -295,17 +313,31 @@ function chartIsFollowingLive(chart: IChartApi): boolean {
   return Number.isFinite(pos) && pos <= LIVE_FOLLOW_THRESHOLD_BARS;
 }
 
-/** Avoid yanking pan/zoom when the member scrolled back to study structure. */
-function maybeScrollToLive(chart: IChartApi | null, liveFollowEnabled: boolean): void {
-  if (!chart || !liveFollowEnabled) return;
-  if (!chartIsFollowingLive(chart)) return;
-  chart.timeScale().scrollToRealTime();
+/** Re-center the live window unless the member is mid-gesture or has panned away. */
+function maybeFollowLiveViewport(
+  chart: IChartApi | null,
+  liveFollowEnabled: boolean,
+  barCount: number,
+  userPanned: boolean,
+  wheelZoomAtMs: number
+): void {
+  if (!chart || !liveFollowEnabled || barCount <= 0) return;
+  if (memberViewportLocked(userPanned, wheelZoomAtMs)) return;
+  applyCenteredLiveViewport(chart, barCount);
 }
 
 
 /** True once the member pans/drags or scroll-zooms — blocks programmatic refits until live-follow. */
 function memberViewportLocked(chartUserPanned: boolean, wheelZoomAtMs: number): boolean {
   return chartUserPanned || Date.now() - wheelZoomAtMs < 8_000;
+}
+
+/** Short post-wheel tail — defer heavy repaints during burst; resume quickly once zoom stops. */
+const GESTURE_REPAINT_COOLDOWN_MS = 600;
+
+/** Active wheel burst or pointer-down drag — defer heavy bead/overlay repaints, not permanent pan lock. */
+function isMemberGesturing(wheelZoomAtMs: number, pointerActive: boolean): boolean {
+  return pointerActive || Date.now() - wheelZoomAtMs < GESTURE_REPAINT_COOLDOWN_MS;
 }
 
 type Props = {
@@ -349,7 +381,9 @@ type Props = {
    *  already emitted above (regime/magnet/proximity/confluence/wall-integrity/technicals/expected
    *  move/max-pain), re-derived on every selection change and live tick. Null when there isn't
    *  enough structure yet (no spot) — never fabricated. */
-  onPlayChange?: (play: VectorPlay | null) => void;
+  onPlayChange?: (emit: VectorPlayEmit | null) => void;
+  /** Session HELIX tape — feeds platform fusion for the Suggested Play (optional). */
+  sessionHelixFlows?: readonly FlowAlert[];
   /** Member-defined alert rules for THIS ticker (wall-touch / flip-cross). Evaluated on each live tick. */
   alertRules?: AlertRule[];
   /** Fired alerts from the latest tick (already deduped/cooled-down by the engine) — for toast + terminal. */
@@ -434,6 +468,8 @@ type Props = {
   compareKeyboardActive?: boolean;
   /** Reports this pane's replay timeline so Compare can build a union scrubber. */
   onReplayTimeline?: (timeline: number[]) => void;
+  /** Fires when replay mode toggles so the desk can pause live play/pick polling. */
+  onReplayModeChange?: (active: boolean) => void;
   /** When set, the chart toolbar portals here (full-page desk bar) instead of nesting in the chart column. */
   toolbarPortalEl?: HTMLElement | null;
 };
@@ -471,9 +507,6 @@ function pinCandlesOnTop(candleSeries: ISeriesApi<"Candlestick">): void {
 }
 
 
-const VOLUME_UP_BASE = "#00e676";
-const VOLUME_DOWN_BASE = "#ff2d55";
-
 /** Optional flow-confluence pulse styling — set by VectorChart mount. */
 const flowPulseRenderRef: {
   current: ((bars: VectorBar[]) => ReturnType<typeof toCandlestickDisplayData>) | null;
@@ -485,37 +518,25 @@ function candlestickDisplayData(bars: VectorBar[]) {
     : toCandlestickDisplayData(bars);
 }
 
-function volumeColor(baseHex: string, alpha: number): string {
-  const r = parseInt(baseHex.slice(1, 3), 16);
-  const g = parseInt(baseHex.slice(3, 5), 16);
-  const b = parseInt(baseHex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function volumeHistogramData(bars: VectorBar[]): HistogramData<Time>[] {
-  const extended = hasExtendedHoursBars(bars);
-  const out: HistogramData<Time>[] = [];
-  for (const bar of bars) {
-    const value = bar.volume;
-    if (value == null || value <= 0) continue;
-    const alpha = volumeAlphaForBar(bar.time as number, extended);
-    const up = bar.close >= bar.open;
-    out.push({
-      time: bar.time as Time,
-      value,
-      color: volumeColor(up ? VOLUME_UP_BASE : VOLUME_DOWN_BASE, alpha),
-    });
-  }
-  return out;
-}
-
 function applyDisplayBars(
   candleSeries: ISeriesApi<"Candlestick">,
   volumeSeries: ISeriesApi<"Histogram"> | null,
-  bars: VectorBar[]
+  volumeAvgSeries: ISeriesApi<"Line"> | null,
+  bars: VectorBar[],
+  volumeMode: VectorVolumeMode
 ): void {
   candleSeries.setData(candlestickDisplayData(bars) as VectorBar[]);
-  volumeSeries?.setData(volumeHistogramData(bars));
+  if (volumeSeries) {
+    const extended = hasExtendedHoursBars(bars);
+    volumeSeries.setData(volumeHistogramData(bars, volumeMode, extended));
+  }
+  if (volumeAvgSeries) {
+    if (volumeMode === "relative") {
+      volumeAvgSeries.setData(volumeAverageLineData(bars));
+    } else {
+      volumeAvgSeries.setData([]);
+    }
+  }
 }
 
 /**
@@ -526,7 +547,7 @@ function applyDisplayBars(
  *
  * We snapshot the exact visible logical range before swapping the data and restore it after —
  * UNLESS the chart is currently following the live edge, in which case we defer to the same
- * maybeScrollToLive() follow behavior the live-tick path uses (pinning a stale range there
+ * maybeFollowLiveViewport() follow behavior the live-tick path uses (pinning a stale range there
  * would fight the live follow). First load and explicit timeframe switches deliberately keep
  * their fitContent() refit and must NOT route through here.
  */
@@ -534,16 +555,18 @@ function applyDisplayBarsPreservingView(
   chart: IChartApi | null,
   candleSeries: ISeriesApi<"Candlestick">,
   volumeSeries: ISeriesApi<"Histogram"> | null,
+  volumeAvgSeries: ISeriesApi<"Line"> | null,
   bars: VectorBar[],
+  volumeMode: VectorVolumeMode,
   liveFollowEnabled: boolean
 ): void {
   const timeScale = chart?.timeScale() ?? null;
   const following = chart ? chartIsFollowingLive(chart) : false;
   const prevRange =
     timeScale && !(following && liveFollowEnabled) ? timeScale.getVisibleLogicalRange() : null;
-  applyDisplayBars(candleSeries, volumeSeries, bars);
+  applyDisplayBars(candleSeries, volumeSeries, volumeAvgSeries, bars, volumeMode);
   if (following && liveFollowEnabled) {
-    maybeScrollToLive(chart, true);
+    maybeFollowLiveViewport(chart, true, bars.length, false, 0);
   } else if (prevRange && timeScale) {
     timeScale.setVisibleLogicalRange(prevRange);
   }
@@ -629,7 +652,8 @@ function applyWallGuides(
 function applyDarkPoolGuides(
   series: ISeriesApi<"Candlestick">,
   guideRefs: React.MutableRefObject<(IPriceLine | null)[]>,
-  levels: VectorDarkPoolLevel[]
+  levels: VectorDarkPoolLevel[],
+  drawOnChart: boolean
 ): void {
   if (guideRefs.current.length < MAX_DP_GUIDES) {
     guideRefs.current = [
@@ -637,14 +661,11 @@ function applyDarkPoolGuides(
       ...Array.from({ length: MAX_DP_GUIDES - guideRefs.current.length }, () => null),
     ];
   }
-  applyPriceGuides(
-    series,
-    guideRefs,
-    levels.slice(0, MAX_DP_GUIDES).map((l) => ({ strike: l.strike, pct: l.pct, label: "DP" })),
-    DARK_POOL_COLOR,
-    MAX_DP_GUIDES,
-    true
-  );
+  const mapped = drawOnChart
+    ? levels.slice(0, MAX_DP_GUIDES).map((l) => ({ strike: l.strike, pct: l.pct, label: "DP" }))
+    : [];
+  // Visible dashed lines when toggled on; axis-only was the old default-off behaviour (#173).
+  applyPriceGuides(series, guideRefs, mapped, DARK_POOL_COLOR, MAX_DP_GUIDES, !drawOnChart);
 }
 
 function applyFlipGuide(
@@ -861,8 +882,30 @@ function applyPinProjection(
  * oscillator panes are (re)built, since a freshly-created pane starts at the default stretch of 1.
  */
 const VOLUME_PANE_INDEX = 1;
+/**
+ * Price:volume split — 80/20 (matches VectorDailyChart's own `scaleMargins: {top:0.82,bottom:0}`
+ * overlay convention for its volume pane, and sits centered in the product's documented 78-82%
+ * candles / 18-22% volume target).
+ *
+ * FIXED (2026-08-27, operator-reported): this used to be 7:2.2 (≈76.1%/23.9% — volume ~2pt over
+ * the target band). That extra share was invisible on a comfortably tall viewport (nothing here
+ * clips at 900px+), but it directly ate into the price pane's headroom on the shorter viewport
+ * heights the standalone /vector desk budgets for after `globals.css`'s 2026-08-26 change
+ * (`.vector-page-shell .vector-chart-terminal-grid` min-height dropped from `calc(100dvh - 10.5rem)`
+ * to `calc(100dvh - 7rem)`, deliberately reclaiming vertical space once two rows above the chart
+ * were removed). A too-generous volume stretch is exactly the kind of margin that reduced budget
+ * stopped absorbing — on the shorter end of that range the volume pane's bars rendered visibly
+ * compressed toward its own baseline, reading as bars "cut off" above a band of unused canvas
+ * (the pane's own top-margin blank strip, now a larger fraction of a smaller pane) rather than
+ * filling it. Tightening the stretch ratio back into the documented band removes that margin of
+ * error without touching `scaleMargins` (`{top:0.1,bottom:0}` on the volume price-scale was
+ * already correct — verified live: the 0-baseline of the histogram lands exactly on the pane's
+ * lowest gridline pixel, so bars already draw all the way to the true floor; the pane's SHARE of
+ * total chart height, not its internal margins, was the lever that mattered here).
+ */
 const PRICE_PANE_STRETCH = 8;
-const VOLUME_PANE_STRETCH = 1.4;
+/** Volume sub-pane — tall enough to read RVOL bars; price pane stays dominant. */
+const VOLUME_PANE_STRETCH = 2;
 const OSCILLATOR_PANE_STRETCH = 2.6;
 
 function applyPaneStretch(chart: IChartApi, hideVolumePane = false): void {
@@ -1322,6 +1365,7 @@ export function VectorChart({
   onTechnicalsChange,
   onExpectedMoveChange,
   onPlayChange,
+  sessionHelixFlows = [],
   alertRules,
   onAlertsFired,
   leadSlot,
@@ -1350,6 +1394,7 @@ export function VectorChart({
   comparePane = false,
   compareKeyboardActive = true,
   onReplayTimeline,
+  onReplayModeChange,
   toolbarPortalEl = null,
 }: Props) {
   const initialTimeframe = defaultTimeframe ?? VECTOR_DEFAULT_TIMEFRAME;
@@ -1367,6 +1412,7 @@ export function VectorChart({
     onPriceScaleRenderRef.current = onPriceScaleRender;
   });
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const volumeAvgSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   // Always-on technicals narration (VWAP/EMA/RSI/MACD/pocket/structure) → terminal, computed on
   // every paint from the shown bars regardless of which overlays are toggled. `onTechnicalsChangeRef`
   // keeps the latest callback for the []-dep paintOverlays; `lastTechnicalsRef` dedupes emits.
@@ -1388,6 +1434,10 @@ export function VectorChart({
   // lastPlayKeyRef follow the same latest-callback / dedupe pattern as every other emit* above.
   const onPlayChangeRef = useRef(onPlayChange);
   const technicalsForPlayRef = useRef<PlayTechnicals | null>(null);
+  const sessionHelixFlowsRef = useRef<readonly FlowAlert[]>(sessionHelixFlows);
+  useEffect(() => {
+    sessionHelixFlowsRef.current = sessionHelixFlows;
+  }, [sessionHelixFlows]);
   const lastPlayKeyRef = useRef<string>("");
   useEffect(() => {
     onPlayChangeRef.current = onPlayChange;
@@ -1595,11 +1645,26 @@ export function VectorChart({
     defaultChartViewportRef.current = defaultChartViewport;
   }, [defaultChartViewport]);
   const chartUserPannedRef = useRef(false);
+  /** True between pointerdown and pointerup on the chart canvas (active drag). */
+  const chartPointerActiveRef = useRef(false);
+  const pendingTrailRefreshRef = useRef(false);
+  const pendingTrailLensRef = useRef<VectorWallLens>("gex");
+  const pendingOverlayRefreshRef = useRef(false);
+  const deferredRepaintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trailPaintForceRef = useRef(false);
+  const overlayPaintForceRef = useRef(false);
+  const queueDeferredRepaintRef = useRef<() => void>(() => {});
   // Dedupe regime emissions — the read only changes when posture/flip/levels
   // shift, not every tick, so we skip identical reads to avoid re-rendering the
   // banner on every SSE frame.
   const lastRegimeReadRef = useRef<string>("");
   const lastProximityRef = useRef<string>("");
+  // BUG FIX (2026-08-27): holds the actual last deriveWallProximity() result (not just the dedup
+  // key above) so it can be fed back in as `prev` for the module's exit-hysteresis — see
+  // vector-wall-proximity.ts. Shared by emitProximity and emitPlay: both represent the same
+  // real-world quantity and must hysterese together, not maintain two independently-drifting
+  // notions of "is spot still at this wall".
+  const wallProximityStateRef = useRef<WallProximity | null>(null);
   const lastMagnetRef = useRef<string>("");
   const lastWallIntegrityRef = useRef<string>("");
   const lensRef = useRef<VectorWallLens>("gex");
@@ -1611,6 +1676,15 @@ export function VectorChart({
   const spotRef = useRef<number | null>(
     initialBars.length ? initialBars[initialBars.length - 1]!.close : null
   );
+  /** Wall-clock time of the last live spot/wall tick — feeds VectorSnapshot.dataAgeMs so
+   *  computeConviction can discount a play built from data that stopped updating (a stalled SSE
+   *  connection, a dead upstream feed) instead of scoring it identically to a fresh tick. Seeded to
+   *  "now" so a play built before the first live tick reads as fresh, not infinitely stale. */
+  const dataReceivedAtMsRef = useRef<number>(Date.now());
+  /** BIE historical grounding for the current play bucket — fetched async, applied on next emitPlay. */
+  const bieContextRef = useRef<PlayBieContext | null>(null);
+  const bieBucketRef = useRef<string | null>(null);
+  const bieFetchGenRef = useRef(0);
   const timelineRef = useRef<number[]>([]);
   const connRef = useRef<ReturnType<typeof createVectorEventSource> | null>(null);
   const replayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1664,6 +1738,12 @@ export function VectorChart({
   const crosshairLatestRef = useRef<VectorCrosshairState | null>(null);
   const crosshairDisplayedRef = useRef<VectorCrosshairState | null>(null);
   const crosshairRafRef = useRef<number | null>(null);
+  /** Latest crosshair move param — heavy wall/gex lookups run once per frame, not per mousemove. */
+  const crosshairParamLatestRef = useRef<MouseEventParams<Time> | null>(null);
+  const crosshairComputeRafRef = useRef<number | null>(null);
+  /** Coalesce overlay-dim primitive updates across wheel ticks (one repaint per frame). */
+  const viewportDimRafRef = useRef<number | null>(null);
+  const pendingVisibleBarCountRef = useRef<number | null>(null);
   const scheduleCrosshairUpdate = useCallback(
     (next: VectorCrosshairState | null) => {
       crosshairLatestRef.current = next;
@@ -1739,6 +1819,12 @@ export function VectorChart({
   );
   const [gexAsOf, setGexAsOf] = useState<number | null>(null);
   const [vexAsOf, setVexAsOf] = useState<number | null>(null);
+  // Fix (2026-08-27): the SSE payload has carried darkPoolAsOf since dark-pool overlays shipped,
+  // but nothing read it — a 20+ minute-stale dark-pool cache (the cache tolerates one missed cron
+  // run, up to 25min TTL, and a failed refetch skips the write so an outage can push it further)
+  // rendered with zero visual difference from a fresh print. gexAsOf/vexAsOf already had this
+  // exact wiring; dark pool was the one overlay missing it.
+  const [darkPoolAsOf, setDarkPoolAsOf] = useState<number | null>(null);
   // 1m is the seed resolution; host desks may open on a coarser preset (defaultTimeframe — 3m default).
   // Aggregation is client-side from the same 1m bars.
   const [timeframe, setTimeframeState] = useState<VectorTimeframeMinutes>(initialTimeframe);
@@ -1773,10 +1859,10 @@ export function VectorChart({
   const autoCoarsenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayDimRef = useRef(1);
   const [intradayZoomPreset, setIntradayZoomPreset] = useState<IntradayZoomPreset | null>(() =>
-    defaultChartViewport === "session" ? "session" : null
+    defaultChartViewport === "session" ? "session" : defaultChartViewport === "live" ? "live" : null
   );
   const intradayZoomPresetRef = useRef<IntradayZoomPreset | null>(
-    defaultChartViewport === "session" ? "session" : null
+    defaultChartViewport === "session" ? "session" : defaultChartViewport === "live" ? "live" : null
   );
   useEffect(() => {
     intradayZoomPresetRef.current = intradayZoomPreset;
@@ -1806,7 +1892,7 @@ export function VectorChart({
     replayMode,
     chartReady,
     seriesRef,
-    minuteBarsRef,
+    displayBarsRef: lastDisplayBarsRef,
     drawingsPrimitiveRef: userDrawingsPrimitiveRef,
   });
   const updateDraftCursorRef = useRef(updateDraftCursor);
@@ -1835,6 +1921,29 @@ export function VectorChart({
     [compareFourUp, compareFourUpBackground, compareCompactBeads]
   );
 
+  const flushViewportDim = useCallback(() => {
+    viewportDimRafRef.current = null;
+    const count = pendingVisibleBarCountRef.current;
+    if (count == null) return;
+    pendingVisibleBarCountRef.current = null;
+    applyOverlayDim(
+      overlayDimFactor(count, {
+        compareFourUp,
+        compareFourUpBackground,
+      })
+    );
+    applyBeadOverlayDim(count);
+  }, [applyOverlayDim, applyBeadOverlayDim, compareFourUp, compareFourUpBackground]);
+
+  const scheduleViewportDim = useCallback(
+    (count: number) => {
+      pendingVisibleBarCountRef.current = count;
+      if (viewportDimRafRef.current != null) return;
+      viewportDimRafRef.current = requestAnimationFrame(() => flushViewportDim());
+    },
+    [flushViewportDim]
+  );
+
   const sessionOverviewActive = useCallback((): boolean => {
     return (
       intradayZoomPresetRef.current === "session" ||
@@ -1847,13 +1956,8 @@ export function VectorChart({
       const range = chart.timeScale().getVisibleLogicalRange();
       const count = visibleBarCountFromRange(range);
       if (count == null) return;
-      applyOverlayDim(
-        overlayDimFactor(count, {
-          compareFourUp,
-          compareFourUpBackground,
-        })
-      );
-      applyBeadOverlayDim(count);
+      // Primitive dim updates repaint canvas layers — coalesce to one frame during wheel/pan bursts.
+      scheduleViewportDim(count);
       // Bar spacing is applied only on programmatic refits — NOT here. This callback runs
       // synchronously inside lightweight-charts' wheel handler before our bubble-phase wheel
       // listener stamps viewportLocked, so applyOptions here cancels every zoom tick.
@@ -1872,7 +1976,7 @@ export function VectorChart({
         if (timeframeRef.current !== coarser) setTimeframeState(coarser);
       }, 650);
     },
-    [applyOverlayDim, applyBeadOverlayDim, compareFourUp, compareFourUpBackground, sessionOverviewActive]
+    [scheduleViewportDim, compareFourUp, compareFourUpBackground, sessionOverviewActive]
   );
 
   const handleIntradayZoom = useCallback(
@@ -1911,11 +2015,11 @@ export function VectorChart({
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
         liveFollowEnabledRef.current = false;
       } else {
-        chartUserPannedRef.current = true;
-        const range = liveEdgeVisibleLogicalRange(barCount);
-        if (range) chart.timeScale().setVisibleLogicalRange(range);
+        chartUserPannedRef.current = false;
+        wheelZoomCooldownRef.current = 0;
+        applyCenteredLiveViewport(chart, barCount);
         liveFollowEnabledRef.current = true;
-        chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: true });
+        chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
       }
       syncCandleViewportFromRange(chart);
       applyAdaptiveBarSpacingToChart(chart);
@@ -1926,9 +2030,76 @@ export function VectorChart({
   const handleIntradayZoomRef = useRef(handleIntradayZoom);
   handleIntradayZoomRef.current = handleIntradayZoom;
 
+  /**
+   * Explicit +/- zoom buttons (member request, 2026-08-27: "add better user controls for zoom
+   * in, zoom out, drag, move" — mouse-wheel/trackpad zoom already exists but is easy to miss or
+   * fight on some inputs, and there was no on-screen control at all). Scales the CURRENT visible
+   * logical range around its own center rather than resetting to any preset, so a click reads as
+   * "zoom in/out from here" — the same mental model as the existing wheel-zoom gesture, just a
+   * discrete step instead of a continuous one. Reuses the identical wheel-zoom bookkeeping
+   * (chartUserPannedRef / wheelZoomCooldownRef / queueDeferredRepaint) so a button click is
+   * indistinguishable from a wheel tick to every other part of the chart that gates on "the
+   * member just zoomed" (autoscale widening, auto-coarsen, live-follow).
+   */
+  const stepZoom = useCallback(
+    (factor: number) => {
+      const chart = chartRef.current;
+      if (!chart) return;
+      const ts = chart.timeScale();
+      const range = ts.getVisibleLogicalRange();
+      if (!range) return;
+      const next = zoomedLogicalRange(range, factor, MIN_ZOOM_LOGICAL_SPAN);
+      if (!next) return;
+      chartUserPannedRef.current = true;
+      wheelZoomCooldownRef.current = Date.now();
+      queueDeferredRepaintRef.current();
+      ts.setVisibleLogicalRange(next);
+      syncCandleViewportFromRange(chart);
+      applyAdaptiveBarSpacingToChart(chart);
+    },
+    [syncCandleViewportFromRange]
+  );
+  const handleZoomIn = useCallback(() => stepZoom(1 / ZOOM_STEP_FACTOR), [stepZoom]);
+  const handleZoomOut = useCallback(() => stepZoom(ZOOM_STEP_FACTOR), [stepZoom]);
+  /** Reset — the SAME centered framing the chart opens with (see the first-load effect above),
+   *  not a preset the member never asked for. Re-centers on the newest bar and clears the
+   *  member-panned/wheel-cooldown flags so autoscale widening resumes immediately. */
+  const handleZoomReset = useCallback(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    // BUG FIX (2026-08-27): during replay this used to always aggregate the FULL, still-growing
+    // live minuteBarsRef buffer — the reset button has no replay guard (unlike the intraday-zoom
+    // preset selector, which VectorToolbar disables via `disabled={replayMode}`), so a member
+    // scrubbed to mid-session could hit ⟲ and have the viewport re-center on a bar count that
+    // includes bars AFTER the replay cursor, corrupting the scrubbed frame. Mirror applyFrame's
+    // own cursor-scoping (line ~2477) so reset centers on the same cursor-sliced bars replay painted.
+    const cursorTime =
+      replayModeRef.current ? (timelineRef.current[cursorIndexRef.current] ?? undefined) : undefined;
+    const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current, cursorTime);
+    chartUserPannedRef.current = false;
+    wheelZoomCooldownRef.current = 0;
+    applyCenteredLiveViewport(chart, display.length);
+    chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
+    syncCandleViewportFromRange(chart);
+    applyAdaptiveBarSpacingToChart(chart);
+  }, [syncCandleViewportFromRange]);
+
   useEffect(() => {
     const payload = compareSync?.zoomPreset;
     if (!chartReady || !payload) return;
+    // BUG FIX (2026-08-27): when Compare panes are unlinked a member can manually enter replay
+    // on ONE pane (its own toolbar replay control is only hidden while linked, see
+    // hideReplayControls={linked} at the VectorCompareDesk call site) and then re-link — the
+    // relink path only exits replay for panes it itself put into replay
+    // (linkedReplayControlledRef), so a manually-replaying pane stays in replay while linked.
+    // The shared "Sync zoom" command-bar control is gated only on `linked`, not on any pane's
+    // replay state, so it can broadcast a zoom preset into that still-replaying pane. Unlike the
+    // per-pane toolbar selector (already `disabled={replayMode}`) and the keyboard shortcut
+    // (already `if (replayMode) return;`), this compareSync-driven call had no such guard, so it
+    // would call handleIntradayZoom which recomputes from the full LIVE minuteBarsRef buffer —
+    // the same viewport-corruption bug just fixed in handleZoomReset (#2969), reachable here via
+    // the cross-pane broadcast instead of a direct click.
+    if (replayModeRef.current) return;
     handleIntradayZoomRef.current(payload.preset);
   }, [chartReady, compareSync?.zoomPreset?.tick]);
 
@@ -2015,6 +2186,14 @@ export function VectorChart({
   const [openingRangeMinutes, setOpeningRangeMinutes] = useState<VectorOpeningRangeMinutes>(
     DEFAULT_OPENING_RANGE_MINUTES
   );
+  const [volumeMode, setVolumeModeState] = useState<VectorVolumeMode>(() =>
+    readPersisted(VECTOR_VOLUME_MODE_STORAGE_KEY, VECTOR_VOLUME_MODES, "relative")
+  );
+  const volumeModeRef = useRef<VectorVolumeMode>(volumeMode);
+  const [darkPoolWallsEnabled, setDarkPoolWallsEnabled] = useState(() =>
+    readPersisted(VECTOR_DARK_POOL_WALLS_STORAGE_KEY, ["0", "1"] as const, "0") === "1"
+  );
+  const darkPoolWallsEnabledRef = useRef(darkPoolWallsEnabled);
   // Count of bars currently shown (at the active timeframe). Drives the indicator menu's
   // "not enough bars" annotation so an MA family that can't compute at this timeframe is explained
   // rather than looking broken. Updated imperatively from paintOverlays; setState bails out when
@@ -2064,6 +2243,10 @@ export function VectorChart({
   }, [replayMode]);
 
   useEffect(() => {
+    onReplayModeChange?.(replayMode);
+  }, [replayMode, onReplayModeChange]);
+
+  useEffect(() => {
     cursorIndexRef.current = cursorIndex;
   }, [cursorIndex]);
 
@@ -2071,7 +2254,7 @@ export function VectorChart({
     const series = seriesRef.current;
     if (!series) return;
     const bars = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
-    applyDisplayBars(series, volumeSeriesRef.current, bars);
+    applyDisplayBars(series, volumeSeriesRef.current, volumeAvgSeriesRef.current, bars, volumeModeRef.current);
   }, []);
 
   const ensureFlowPulseLoop = useCallback(() => {
@@ -2254,6 +2437,16 @@ export function VectorChart({
   const refreshTrails = useCallback((activeLens: VectorWallLens) => {
     const series = seriesRef.current;
     if (!series) return;
+    if (
+      !trailPaintForceRef.current &&
+      isMemberGesturing(wheelZoomCooldownRef.current, chartPointerActiveRef.current)
+    ) {
+      pendingTrailRefreshRef.current = true;
+      pendingTrailLensRef.current = activeLens;
+      queueDeferredRepaintRef.current();
+      return;
+    }
+    trailPaintForceRef.current = false;
     // Replay bead rail is owned by applyFrame (cursor-sliced history + bar-aligned buckets).
     // The live composeHorizonTrail path unions a session-end "current column" that has no
     // matching bar on the cursor-sliced series — feeding it here wipes formations to candles-only.
@@ -2293,13 +2486,15 @@ export function VectorChart({
     );
     const history: WallHistorySample[] =
       composeHorizonTrail(recordedTrail, currentColumn) ??
-      (liveSessionRef.current && !replayModeRef.current && !sessionOverview
-        ? trimHistoryForLiveTrails(
-            wallHistoryRef.current,
-            undefined,
-            liveTrailAnchorSec(wallHistoryRef.current, minuteBarsRef.current.map((b) => b.time))
-          )
-        : wallHistoryRef.current);
+      (horizon !== "all"
+        ? []
+        : liveSessionRef.current && !replayModeRef.current && !sessionOverview
+          ? trimHistoryForLiveTrails(
+              wallHistoryRef.current,
+              undefined,
+              liveTrailAnchorSec(wallHistoryRef.current, minuteBarsRef.current.map((b) => b.time))
+            )
+          : wallHistoryRef.current);
     const liveBeads = liveSessionRef.current && !replayModeRef.current;
     const pinLiveAnchorBeads = liveFollowEnabledRef.current;
     const trailBucketSec = wallTrailSecRef.current;
@@ -2381,6 +2576,15 @@ export function VectorChart({
       vexFlip: number | null,
       dp: VectorDarkPoolLevel[]
     ) => {
+      if (
+        !overlayPaintForceRef.current &&
+        isMemberGesturing(wheelZoomCooldownRef.current, chartPointerActiveRef.current)
+      ) {
+        pendingOverlayRefreshRef.current = true;
+        queueDeferredRepaintRef.current();
+        return;
+      }
+      overlayPaintForceRef.current = false;
       const series = seriesRef.current;
       if (!series) return;
       const walls = wallsForActiveLens(activeLens, gexWalls, vexWalls);
@@ -2421,9 +2625,7 @@ export function VectorChart({
       // still holds from before this deploy.
       applyKingAnchor(series, kingCallLineRef, null, v.callColor);
       applyKingAnchor(series, kingPutLineRef, null, v.putColor);
-      applyDarkPoolGuides(series, dpGuideRefs, []);
-      void dp; // dark-pool level lines intentionally not drawn (clean axis); kept in the signature
-      //         so callers/consumers of dp elsewhere are unaffected.
+      applyDarkPoolGuides(series, dpGuideRefs, dp, darkPoolWallsEnabledRef.current);
       // Feed the just-drawn strikes to the autoscale provider and nudge a rescale, so
       // the axis widens to reveal support/resistance walls the moment the lens/horizon
       // changes (off-hours there's no tick to trigger the recompute otherwise). Sliced to the
@@ -2450,9 +2652,19 @@ export function VectorChart({
    * nothing is drawn while the (default-empty) enabled set is empty. Values are computed 1:1 with
    * the bars and the null warm-up region is dropped so lines simply start once defined.
    */
-  const paintOverlays = useCallback((bars: VectorBar[]) => {
+  const paintOverlays = useCallback((bars: VectorBar[], frameSpot?: number | null) => {
     const chart = chartRef.current;
     if (!chart || !seriesRef.current) return;
+    // BUG FIX (2026-08-27): during replay, applyFrame calls paintOverlays with the cursor-sliced
+    // historical `bars`, but the technicals summary and the gamma-regime glow both used to read
+    // spotRef.current directly — the LIVE spot, which keeps moving because the SSE tape stays open
+    // during replay. That mixed today's live price against a scrubbed-to-the-past VWAP/flip, e.g.
+    // the TECHNICALS panel's "price N% above/below VWAP" line comparing live price to a VWAP
+    // computed only through the replay cursor, and the gamma-regime glow lighting up the wrong side
+    // of the (correctly historical) flip line. `resolvedSpot` is the frame's own spot when the
+    // caller is replaying (applyFrame passes the cursor bar's close), and only falls back to the
+    // live spotRef for the ordinary live-tick paint path.
+    const resolvedSpot = frameSpot !== undefined ? frameSpot : spotRef.current;
     lastDisplayBarsRef.current = bars;
     syncExtendedHoursShade();
     setDisplayBarCount(bars.length); // menu availability follows the shown-bar count (no-op if unchanged)
@@ -2482,10 +2694,11 @@ export function VectorChart({
         if (v != null) data.push({ time: bars[i]!.time, value: v });
       }
       let line = existing;
+      const overlayLineWidth: LineWidth = (def.lineWidth ?? 2) as LineWidth;
       if (!line) {
         line = chart.addSeries(LineSeries, {
           color: def.color,
-          lineWidth: 2,
+          lineWidth: overlayLineWidth,
           priceLineVisible: false,
           // Labeled + a live value on the axis (2026-08-05 audit finding): with up to 6 MA lines
           // potentially on screen at once, the toggle menu's color dot was the ONLY way to tell
@@ -2497,6 +2710,8 @@ export function VectorChart({
           title: def.label,
         });
         map.set(def.id, line);
+      } else {
+        line.applyOptions({ color: def.color, lineWidth: overlayLineWidth });
       }
       line.setData(data);
     }
@@ -2536,9 +2751,25 @@ export function VectorChart({
       // at exact trade times (atPriceMiddle + price), so they don't need to align to a bar boundary —
       // lightweight-charts snaps them onto the axis, matching how the wall beads use sample times.
       if (flowMarkersRef.current) {
+        // BUG FIX (2026-08-27): during replay this used to draw the FULL unfiltered flowPrintsRef —
+        // scrubbing back to 10:00 AM still showed flow arrows for prints that occurred after 10:00,
+        // misrepresenting "what had printed by this point in the session." Wall beads already get this
+        // right via sliceHistoryToTime/cursorTime in applyFrame; flow markers were the one overlay that
+        // never got the same cursor clip, because they're painted from THIS shared paintOverlays path
+        // (also called on every live tick) rather than only from the replay-specific applyFrame.
+        // Derive cursor time from the already-sliced `bars` (applyFrame passes cursor-clipped
+        // display bars). cursorIndexRef can lag applyFrame by one tick during auto-play/step,
+        // which would show flow arrows one frame ahead of the scrubbed time.
+        const replayCursorMs = replayModeRef.current
+          ? (bars.length ? (bars[bars.length - 1]!.time as number) * 1000 : 0)
+          : null;
+        const flowPrintsToDraw =
+          replayCursorMs != null
+            ? flowPrintsRef.current.filter((p) => p.tsMs <= replayCursorMs)
+            : flowPrintsRef.current;
         flowMarkersRef.current.setMarkers(
           enabled.has("flow-markers")
-            ? buildFlowMarkers(flowPrintsRef.current, flowMinPremiumRef.current).map((m) => ({
+            ? buildFlowMarkers(flowPrintsToDraw, flowMinPremiumRef.current).map((m) => ({
                 time: m.time as Time,
                 position: m.position,
                 price: m.price,
@@ -2608,13 +2839,18 @@ export function VectorChart({
       // Cheap: the primitive just stores refs and requests a redraw; a null grid or the toggle off
       // draws nothing. This lives in paintOverlays so a toggle flip (which repaints here via the
       // indicators effect) shows/hides the surface instantly; the fetch pushes fresh data directly.
-      gexHeatmapPrimitiveRef.current?.setData(gexHeatmapGridRef.current, enabled.has("gex-heatmap"));
+      // During replay, applyFrame calls paintOverlays on every scrub — gate the paint so the
+      // background poll's live grid doesn't overwrite the frozen cursor-time frame (same rule as
+      // fetchGexHeatmap's setData/setSpot gate added 2026-08-27).
+      if (!replayModeRef.current) {
+        gexHeatmapPrimitiveRef.current?.setData(gexHeatmapGridRef.current, enabled.has("gex-heatmap"));
+      }
       // Dealer-gamma regime glow — same toggle-repaint path as the heatmap: re-push the last cached
       // active-lens flip + live spot so flipping "gamma-regime" on/off shows/hides the glow instantly
       // (live flip/spot updates come through refreshOverlays on each tick). No-op when off.
       gammaRegimePrimitiveRef.current?.setData({
         flip: regimeFlipRef.current,
-        spot: spotRef.current,
+        spot: resolvedSpot,
         enabled: enabled.has("gamma-regime"),
       });
       // Session volume profile (P2 #4) — recompute from the raw 1m session bars (not the
@@ -2622,9 +2858,11 @@ export function VectorChart({
       // resolution) whenever this paint runs (tick, timeframe switch, toggle). Cheap: a session's
       // worth of 1m bars is at most ~390 rows.
       const volumeProfileOn = enabled.has("volume-profile");
+      const lastBarTime = bars.length ? (bars[bars.length - 1]!.time as Time) : null;
       volumeProfilePrimitiveRef.current?.setData(
         volumeProfileOn ? computeVolumeProfile(minuteBarsRef.current) : null,
-        volumeProfileOn
+        volumeProfileOn,
+        lastBarTime
       );
     }
 
@@ -2638,7 +2876,7 @@ export function VectorChart({
     // replay frame, toggle) from the SHOWN bars, INDEPENDENT of the enabled-overlay set, so the desk
     // terminal keeps reading VWAP/EMA/RSI/MACD/pocket/structure even when nothing is toggled on the
     // chart. Deduped so an unchanged read is not re-emitted.
-    const summary = summarizeTechnicals(bars, spotRef.current);
+    const summary = summarizeTechnicals(bars, resolvedSpot);
     technicalsForPlayRef.current = playTechnicalsFromSummary(summary);
     const techCb = onTechnicalsChangeRef.current;
     if (techCb) {
@@ -2725,6 +2963,10 @@ export function VectorChart({
   // tick/timeframe change). paintOverlays is stable, so this runs only when the selection changes.
   useEffect(() => {
     indicatorsRef.current = indicators;
+    const chart = chartRef.current;
+    if (chart) {
+      chart.timeScale().applyOptions(vectorChartTimeScaleGutter(indicators.has("volume-profile")));
+    }
     paintOverlays(lastDisplayBarsRef.current);
     if (replayModeRef.current) {
       const t = timelineRef.current[cursorIndexRef.current];
@@ -2742,6 +2984,32 @@ export function VectorChart({
     openingRangeMinutesRef.current = openingRangeMinutes;
     paintOverlays(lastDisplayBarsRef.current);
   }, [openingRangeMinutes, paintOverlays]);
+
+  useEffect(() => {
+    volumeModeRef.current = volumeMode;
+    const bars = lastDisplayBarsRef.current;
+    if (bars.length && seriesRef.current) {
+      applyDisplayBars(
+        seriesRef.current,
+        volumeSeriesRef.current,
+        volumeAvgSeriesRef.current,
+        bars,
+        volumeMode
+      );
+    }
+  }, [volumeMode]);
+
+  const handleVolumeMode = useCallback((next: VectorVolumeMode) => {
+    volumeModeRef.current = next;
+    setVolumeModeState(next);
+    writePersisted(VECTOR_VOLUME_MODE_STORAGE_KEY, next);
+  }, []);
+
+  const handleDarkPoolWalls = useCallback((enabled: boolean) => {
+    darkPoolWallsEnabledRef.current = enabled;
+    setDarkPoolWallsEnabled(enabled);
+    writePersisted(VECTOR_DARK_POOL_WALLS_STORAGE_KEY, enabled ? "1" : "0");
+  }, []);
 
   // Lazy prior-day OHLC fetch: only when a prior-day/pivot level is enabled, and only once per
   // ticker. The PDH/PDL/PDC + floor-pivot lines need the prior session's high/low/close, which the
@@ -2915,8 +3183,11 @@ export function VectorChart({
       if (!chart || !series) return;
 
       const visibleBars = displayBarsFromMinute(bars, timeframeRef.current, cursorTime);
-      applyDisplayBars(series, volumeSeriesRef.current, visibleBars);
-      paintOverlays(visibleBars);
+      applyDisplayBars(series, volumeSeriesRef.current, volumeAvgSeriesRef.current, visibleBars, volumeModeRef.current);
+      // Pass the FRAME's own spot (the cursor bar's close), not the live spotRef — see the
+      // BUG FIX comment inside paintOverlays for why this matters during replay.
+      const frameSpot = visibleBars.length ? visibleBars[visibleBars.length - 1]!.close : null;
+      paintOverlays(visibleBars, frameSpot);
       lastDisplayBarsRef.current = visibleBars;
       const barTimes = visibleBars.map((b) => b.time);
 
@@ -3039,6 +3310,53 @@ export function VectorChart({
     []
   );
 
+  const queueDeferredRepaint = useCallback(() => {
+    if (deferredRepaintTimerRef.current != null) {
+      clearTimeout(deferredRepaintTimerRef.current);
+    }
+    deferredRepaintTimerRef.current = setTimeout(() => {
+      deferredRepaintTimerRef.current = null;
+      if (!pendingTrailRefreshRef.current && !pendingOverlayRefreshRef.current) {
+        return;
+      }
+      if (isMemberGesturing(wheelZoomCooldownRef.current, chartPointerActiveRef.current)) {
+        queueDeferredRepaint();
+        return;
+      }
+      if (pendingTrailRefreshRef.current) {
+        pendingTrailRefreshRef.current = false;
+        trailPaintForceRef.current = true;
+        refreshTrails(pendingTrailLensRef.current ?? lensRef.current);
+      }
+      if (pendingOverlayRefreshRef.current) {
+        pendingOverlayRefreshRef.current = false;
+        overlayPaintForceRef.current = true;
+        refreshOverlays(
+          lensRef.current,
+          liveGexWalls(),
+          vexWallsRef.current,
+          liveGammaFlip(),
+          vexFlipRef.current,
+          darkPoolRef.current
+        );
+      }
+    }, 48);
+  }, [refreshTrails, refreshOverlays, liveGexWalls, liveGammaFlip]);
+
+  queueDeferredRepaintRef.current = queueDeferredRepaint;
+
+  useEffect(() => {
+    darkPoolWallsEnabledRef.current = darkPoolWallsEnabled;
+    refreshOverlays(
+      lensRef.current,
+      liveGexWalls(),
+      vexWallsRef.current,
+      liveGammaFlip(),
+      vexFlipRef.current,
+      darkPoolRef.current
+    );
+  }, [darkPoolWallsEnabled, refreshOverlays, liveGexWalls, liveGammaFlip]);
+
   // Compute the gamma regime from the current spot / flip / walls and emit it up to
   // the page banner. Uses the HORIZON-SCOPED view (liveGexWalls/liveGammaFlip) so the
   // banner describes exactly what the member is looking at: on "all" that's the near-
@@ -3064,12 +3382,14 @@ export function VectorChart({
   // the member's DTE selection actually surfaces — deduped by callout text so it only
   // fires when the actionable level actually changes.
   const emitProximity = useCallback(() => {
-    if (!onProximityChange) return;
     const prox = deriveWallProximity({
       spot: spotRef.current,
       walls: liveGexWalls(),
       gammaFlip: liveGammaFlip(),
+      prev: wallProximityStateRef.current,
     });
+    wallProximityStateRef.current = prox;
+    if (!onProximityChange) return;
     const key = prox ? `${prox.side}:${prox.strike}:${prox.nearness}` : "none";
     if (key === lastProximityRef.current) return;
     lastProximityRef.current = key;
@@ -3124,6 +3444,9 @@ export function VectorChart({
     }
     if (priorDayRef.current) {
       lvls.push({ price: priorDayRef.current.pdh, kind: "pdh" }, { price: priorDayRef.current.pdl, kind: "pdl" });
+    }
+    for (const dp of darkPoolRef.current.slice(0, 3)) {
+      lvls.push({ price: dp.strike, kind: "dark-pool", label: `DP ${dp.strike}` });
     }
     return lvls;
   }, [liveGexWalls, liveGammaFlip]);
@@ -3183,6 +3506,15 @@ export function VectorChart({
   const emitPlay = useCallback(() => {
     const cb = onPlayChangeRef.current;
     if (!cb) return;
+    // BUG FIX (2026-08-27): unlike every sibling emit function in this file (refreshTrails's own
+    // internal guard, the lens-change effect, the SSE-tick handler), emitPlay had no replay check
+    // at all. It's called on a live poll cadence (fetchMaxPain/fetchExpectedMove, ~15-30s) that
+    // stays armed during replay, so the Suggested Play card kept silently re-rendering a plan
+    // built from TODAY's live spot/walls/flip while every other overlay (candles, beads) stayed
+    // frozen at the replay cursor -- with no STALE badge, since the live SSE feed itself was
+    // fresh. Freezing here (skip, don't clear) matches refreshTrails's "leave the last frame
+    // painted" replay behavior.
+    if (replayModeRef.current) return;
     const spot = spotRef.current;
     const walls = liveGexWalls();
     const flip = liveGammaFlip();
@@ -3193,10 +3525,16 @@ export function VectorChart({
       topPutWall: walls?.putWalls?.[0]?.strike ?? null,
     });
     const magnet = deriveGammaMagnet({ spot, walls, posture: regime.posture });
-    const proximity = deriveWallProximity({ spot, walls, gammaFlip: flip });
+    const proximity = deriveWallProximity({
+      spot,
+      walls,
+      gammaFlip: flip,
+      prev: wallProximityStateRef.current,
+    });
+    wallProximityStateRef.current = proximity;
     const zones = spot && spot > 0 ? confluenceZones(gatherConfluenceLevels(spot), spot) : [];
     const integrity = scoreTopWalls(walls, wallHistoryRef.current);
-    const play = buildVectorPlay({
+    const playInput = {
       ticker,
       horizon: dteHorizonRef.current,
       timeframeMin: timeframeRef.current,
@@ -3211,14 +3549,77 @@ export function VectorChart({
       confluenceZones: zones,
       wallIntegrity: integrity,
       technicals: technicalsForPlayRef.current,
-    });
+      platformInputs: {
+        sessionFlows: sessionHelixFlowsRef.current,
+        darkPoolLevels: darkPoolRef.current,
+      },
+      dataAgeMs: Date.now() - dataReceivedAtMsRef.current,
+      bie: bieContextRef.current,
+    };
+    const bucketKey = vectorPlayBieBucketKey(playInput);
+    if (spot != null && spot > 0 && bucketKey !== bieBucketRef.current) {
+      bieBucketRef.current = bucketKey;
+      bieContextRef.current = null;
+      const gen = ++bieFetchGenRef.current;
+      void fetchVectorPlayBie({
+        ticker,
+        horizon: dteHorizonRef.current,
+        timeframeMin: timeframeRef.current,
+        spot,
+        regime: { posture: regime.posture },
+        gexWalls: walls,
+        gammaFlip: flip,
+        magnet,
+        proximity,
+        technicals: technicalsForPlayRef.current,
+      })
+        .then((res) => {
+          if (bieFetchGenRef.current !== gen) return;
+          bieContextRef.current = res.bie;
+          lastPlayKeyRef.current = "";
+          emitPlay();
+        })
+        .catch(() => {
+          if (bieFetchGenRef.current !== gen) return;
+          bieContextRef.current = null;
+        });
+    }
+    const play = buildVectorPlay(playInput);
     const key = play
       ? `${play.headline}|${play.conviction}|${play.grade}|${play.entryZone ?? ""}`
       : "none";
     if (key === lastPlayKeyRef.current) return;
     lastPlayKeyRef.current = key;
-    cb(play);
+    if (!play || spot == null || !(spot > 0)) {
+      cb(null);
+      return;
+    }
+    cb({
+      play,
+      spot,
+      callWall: walls?.callWalls?.[0]?.strike ?? null,
+      putWall: walls?.putWalls?.[0]?.strike ?? null,
+      magnetStrike: magnet?.strike ?? null,
+      gammaFlip: flip,
+      regimePosture: regime.posture,
+      technicals: technicalsForPlayRef.current,
+      confluenceZones: zones,
+      darkPoolLevels: darkPoolRef.current ?? [],
+      bieBucket: bucketKey,
+    });
   }, [ticker, liveGexWalls, liveGammaFlip, gatherConfluenceLevels]);
+
+  useEffect(() => {
+    lastPlayKeyRef.current = "";
+    emitPlay();
+  }, [sessionHelixFlows, emitPlay]);
+
+  // Seed the suggested play from initial bars/walls as soon as props land — do not wait for
+  // lightweight-charts seriesRef or the first SSE tick (on-demand tickers were blank for 10s+).
+  useEffect(() => {
+    lastPlayKeyRef.current = "";
+    emitPlay();
+  }, [ticker, initialWalls, initialGammaFlip, initialBars, emitPlay]);
 
   // Evaluate the member's alert rules against the CURRENT live tick (spot + horizon-scoped walls +
   // flip). The pure engine does the dedupe/cooldown/hysteresis; we just persist its state + the prior
@@ -3258,6 +3659,10 @@ export function VectorChart({
     // here guarantees the first post-selection emit fires; steady-state SSE dedup is unaffected.
     lastRegimeReadRef.current = "";
     lastProximityRef.current = "";
+    // A ticker/horizon switch means the old wall-proximity read no longer describes anything
+    // real (a new ticker's walls could coincidentally share a strike but mean nothing) — hand
+    // the new scope's first read a clean slate rather than hysteresing off stale context.
+    wallProximityStateRef.current = null;
     lastMagnetRef.current = "";
     lastWallIntegrityRef.current = "";
     lastPlayKeyRef.current = "";
@@ -3410,8 +3815,15 @@ export function VectorChart({
         gexHeatmapGridRef.current = grid;
         if (spotNow != null && spotNow > 0) gexHeatmapSpotAtFetchRef.current = spotNow;
         else if (grid?.spot != null) gexHeatmapSpotAtFetchRef.current = grid.spot;
-        gexHeatmapPrimitiveRef.current?.setData(grid, indicatorsRef.current.has("gex-heatmap"));
-        if (spotRef.current != null) gexHeatmapPrimitiveRef.current?.setSpot(spotRef.current);
+        // BUG FIX (2026-08-27): these two calls force-repaint the heatmap surface/spot marker
+        // (_requestUpdate() in vector-gex-heatmap-primitive.ts). Scrubbing into replay used to keep
+        // this surface tracking whatever the background poll last fetched, silently overwriting the
+        // frozen cursor-time frame the rest of the chart shows. The ref update above still runs
+        // unconditionally so live data keeps accumulating in the background — only the paint is gated.
+        if (!replayModeRef.current) {
+          gexHeatmapPrimitiveRef.current?.setData(grid, indicatorsRef.current.has("gex-heatmap"));
+          if (spotRef.current != null) gexHeatmapPrimitiveRef.current?.setSpot(spotRef.current);
+        }
       } catch {
         // Network throw: keep the last-drawn surface rather than blank it on a transient blip.
       }
@@ -3423,6 +3835,13 @@ export function VectorChart({
 
     const heatmapPollMs = vectorComparePerfPollMs(GEX_HEATMAP_REFRESH_MS, compareFourUpBackground);
     const heatmapId = liveSession ? setInterval(() => void fetchGexHeatmap(false), heatmapPollMs) : null;
+    // Bug fix (2026-08-27): fetchExpectedMove used to fire once at mount with no interval, so the
+    // flat expected-move band stayed pinned to the mount-time spot/IV reading for the rest of the
+    // session while the EM cone kept re-anchoring to live spot — see VECTOR_EXPECTED_MOVE_POLL_MS.
+    const expectedMovePollMs = vectorComparePerfPollMs(VECTOR_EXPECTED_MOVE_POLL_MS, compareFourUpBackground);
+    const expectedMoveId = liveSession
+      ? setInterval(() => void fetchExpectedMove(), expectedMovePollMs)
+      : null;
 
     // Clear stale horizon state UP FRONT on every DTE switch — prevents the terminal from
     // briefly narrating the PREVIOUS horizon's walls/confluence while the new fetch is in flight,
@@ -3479,6 +3898,7 @@ export function VectorChart({
           cancelled = true;
           clearInterval(blendedHistId);
           if (heatmapId) clearInterval(heatmapId);
+          if (expectedMoveId) clearInterval(expectedMoveId);
         };
       }
 
@@ -3486,6 +3906,7 @@ export function VectorChart({
       return () => {
         cancelled = true;
         if (heatmapId) clearInterval(heatmapId);
+        if (expectedMoveId) clearInterval(expectedMoveId);
       };
     }
 
@@ -3501,7 +3922,10 @@ export function VectorChart({
         if (cancelled || dteHorizonRef.current !== dteHorizon || !res.ok) return;
         const data = (await res.json()) as { history?: WallHistorySample[] };
         if (cancelled || dteHorizonRef.current !== dteHorizon) return;
-        horizonHistoryRef.current = Array.isArray(data.history) ? data.history : [];
+        const remote = Array.isArray(data.history) ? data.history : [];
+        const merged = mergeWallHistory(horizonHistoryRef.current, remote);
+        if (merged === horizonHistoryRef.current) return;
+        horizonHistoryRef.current = merged;
         repaint();
         if (dteHorizonRef.current === "0dte") requestAnimationFrame(() => fitSessionOverview());
       } catch {
@@ -3549,6 +3973,7 @@ export function VectorChart({
       if (id) clearInterval(id);
       if (histId) clearInterval(histId);
       if (heatmapId) clearInterval(heatmapId);
+      if (expectedMoveId) clearInterval(expectedMoveId);
     };
   }, [
     dteHorizon,
@@ -3612,6 +4037,10 @@ export function VectorChart({
     if (!chartReady || replayModeRef.current || !seriesRef.current) return;
     lastRegimeReadRef.current = "";
     lastProximityRef.current = "";
+    // A ticker/horizon switch means the old wall-proximity read no longer describes anything
+    // real (a new ticker's walls could coincidentally share a strike but mean nothing) — hand
+    // the new scope's first read a clean slate rather than hysteresing off stale context.
+    wallProximityStateRef.current = null;
     lastMagnetRef.current = "";
     lastWallIntegrityRef.current = "";
     lastPlayKeyRef.current = "";
@@ -3655,7 +4084,9 @@ export function VectorChart({
             chartRef.current,
             seriesRef.current,
             volumeSeriesRef.current,
+            volumeAvgSeriesRef.current,
             display,
+            volumeModeRef.current,
             liveFollowEnabledRef.current
           );
           paintOverlays(display);
@@ -3700,7 +4131,12 @@ export function VectorChart({
           wallHistoryRef.current = merged;
           setSessionHistory(merged);
           if (hasVexInHistory(merged)) setVexAvailable(true);
-          if (!inReplay) refreshTrails(lensRef.current);
+          if (
+            !inReplay &&
+            !memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)
+          ) {
+            refreshTrails(lensRef.current);
+          }
         }
       }
 
@@ -3722,6 +4158,9 @@ export function VectorChart({
       }
       if (snap.darkPoolLevels) {
         darkPoolRef.current = snap.darkPoolLevels;
+      }
+      if (snap.darkPoolAsOf != null) {
+        setDarkPoolAsOf(snap.darkPoolAsOf);
       }
       // Capture the PREVIOUS tick's structure before overwriting — spot-break
       // detection requires the level to have been stable across the tick (a
@@ -3763,8 +4202,19 @@ export function VectorChart({
           }
         }
         spotRef.current = curSpot;
-        onSpotChange?.(curSpot);
-        gexHeatmapPrimitiveRef.current?.setSpot(curSpot);
+        dataReceivedAtMsRef.current = Date.now();
+        // BUG FIX (2026-08-27): onSpotChange carries the same live-tick spot the heatmap marker
+        // gate below was written for, but it was left unconditional here — it's consumed upstream
+        // (VectorPageShell -> VectorOdteMatrixRail's `liveSpot`) as the primary source for the
+        // matrix rail's spot row / King-strike / wall highlighting. Left ungated, the 0DTE matrix
+        // rail kept tracking the LIVE tape during replay while the chart itself (candles, this
+        // heatmap marker) correctly froze at the scrubbed cursor — the rail visibly disagreed with
+        // the chart it sits next to. spotRef.current above stays unconditional (other live-view
+        // consumers still need it); only the callback and the heatmap marker are gated.
+        if (!inReplay) {
+          onSpotChange?.(curSpot);
+          gexHeatmapPrimitiveRef.current?.setSpot(curSpot);
+        }
         if (
           !compareFourUpBackgroundRef.current &&
           liveSessionRef.current &&
@@ -3796,14 +4246,28 @@ export function VectorChart({
           if (lastDisplay) {
             displayBarTimeRef.current = lastDisplay.time;
             seriesRef.current?.update(lastDisplay);
-            volumeSeriesRef.current?.setData(volumeHistogramData(displayBars));
+            if (volumeSeriesRef.current) {
+              const extended = hasExtendedHoursBars(displayBars);
+              volumeSeriesRef.current.setData(
+                volumeHistogramData(displayBars, volumeModeRef.current, extended)
+              );
+            }
+            if (volumeAvgSeriesRef.current && volumeModeRef.current === "relative") {
+              volumeAvgSeriesRef.current.setData(volumeAverageLineData(displayBars));
+            }
           }
         }
       }
 
       // Painting the live overlays during replay would overwrite the cursor-sliced
       // frame applyFrame just drew — same leak shape as the 2026-07-07 finding.
-      if (!inReplay) {
+      // During member pan/zoom, defer heavy overlay/trail repaints so wheel/drag stays responsive;
+      // the forming candle still updates via series.update above.
+      const interactionHot = isMemberGesturing(
+        wheelZoomCooldownRef.current,
+        chartPointerActiveRef.current
+      );
+      if (!inReplay && !interactionHot) {
         const now = Date.now();
         const throttleBackground = compareFourUpBackgroundRef.current;
         const overlayDue =
@@ -3857,9 +4321,7 @@ export function VectorChart({
         secondsVisible: true,
         // Live follow is opt-in after load when defaultChartViewport is "session" — see liveFollowEnabledRef.
         shiftVisibleRangeOnNewBar: defaultChartViewport === "live",
-        // Leave whitespace between the last candle and the price axis so the bead bands stop short
-        // of the axis (Skylit-style) instead of running flush into it.
-        rightOffset: VECTOR_RIGHT_OFFSET_BARS,
+        ...vectorChartTimeScaleGutter(initialIndicators.has("volume-profile")),
         ...vectorTimeScaleSpacingOptions(),
       },
       rightPriceScale: { borderColor: "rgba(255,255,255,0.12)" },
@@ -3890,6 +4352,17 @@ export function VectorChart({
         // every bead row outside it clipped. See beadExtensionAllowed for the measured before/after
         // and for why the same collapse reads as "NVDA has one level, SPX has ten".
         if (!beadExtensionAllowed(wheelZoomCooldownRef.current)) {
+          return res;
+        }
+        // Live member report (2026-08-26): zoom/drag/scroll on the chart felt "very very slow".
+        // The wheel-cooldown check above only covers scroll-zoom — a click-drag PAN was never
+        // gated at all, so this provider's wall/bead union work (array spreads, Set-dedup +
+        // sort inside rowAwareSpanPct, run twice) executed in full on EVERY autoscale tick
+        // lightweight-charts fires while panning, which is every frame of the gesture.
+        // `isMemberGesturing` is the SAME "defer heavy work during an active gesture" check this
+        // file already uses elsewhere (deferred bead/overlay repaints) — reusing it here instead
+        // of inventing a second, drag-specific cooldown.
+        if (isMemberGesturing(wheelZoomCooldownRef.current, chartPointerActiveRef.current)) {
           return res;
         }
         const preset = intradayZoomPresetRef.current;
@@ -3954,7 +4427,39 @@ export function VectorChart({
           sessionOverviewFrame ? sessionBeadViewPct : undefined
         );
         let beadViewPct = compareCompactBeadsRef.current ? COMPARE_BEAD_VIEW_MAX_PCT : BEAD_VIEW_MAX_PCT;
-        if (sessionOverviewFrame) beadViewPct = sessionBeadViewPct;
+        // Live member report (2026-08-26): on load, the candles rendered squeezed into a thin
+        // band near the bottom of the pane with a huge empty band above — the axis had widened
+        // to include every drawn bead strike within the full BEAD_VIEW_MAX_PCT (20% of spot),
+        // unconditionally, in the live/default (non-session) frame. Session-overview already
+        // protects against this (candleShareSpanCapPct + clampPriceRangeSpan below); the live
+        // frame never got the same protection.
+        //
+        // Compare-compact WAS excluded here on purpose ("its wider fixed window is tuned for
+        // short panes needing more rows visible") — audited 2026-08-27 after the fixes above
+        // shipped and found that guard bypasses the candle floor entirely for Compare's live
+        // frame (frameSpanPct stayed null, so the clampPriceRangeSpan call below never ran), the
+        // identical bug class this whole block exists to fix, and arguably worse there since
+        // COMPARE_BEAD_VIEW_MAX_PCT (24%) is wider than BEAD_VIEW_MAX_PCT (20%). Compare now gets
+        // the same withCandleFloor protection, just composed against its own wider hard cap —
+        // "more rows visible" and "candles never collapse to a sliver" both still hold, since the
+        // floor only ever TIGHTENS a window the ladder wanted wider, never widens one.
+        let frameSpanPct: number | null = null;
+        if (sessionOverviewFrame) {
+          beadViewPct = sessionBeadViewPct;
+          frameSpanPct = sessionSpanPct;
+        } else {
+          const hardCapPct = compareCompactBeadsRef.current ? COMPARE_BEAD_VIEW_MAX_PCT : BEAD_VIEW_MAX_PCT;
+          beadViewPct = withCandleFloor(
+            rowAwareSpanPct(
+              spotRef.current ?? 0,
+              sessionBeadStrikes,
+              sessionRows,
+              WALL_VIEW_MAX_PCT,
+              hardCapPct
+            )
+          );
+          frameSpanPct = beadViewPct;
+        }
         const beadCalls = sessionOverviewFrame
           ? filterStrikesNearSpot(beadStrikesRef.current.call, spotRef.current ?? 0, beadViewPct)
           : beadStrikesRef.current.call;
@@ -3969,11 +4474,11 @@ export function VectorChart({
           beadViewPct,
           beadViewPct
         );
-        if (sessionOverviewFrame && spotRef.current != null && spotRef.current > 0) {
+        if (frameSpanPct != null && spotRef.current != null && spotRef.current > 0) {
           priceRange = clampPriceRangeSpan(
             priceRange,
             spotRef.current,
-            sessionSpanPct,
+            frameSpanPct,
             res.priceRange
           );
         }
@@ -3987,6 +4492,7 @@ export function VectorChart({
     // Volume in its OWN sub-pane below price (like RSI/MACD), not overlaid on the candles. Compare
     // panes omit volume entirely so candles + beads get the full pane height.
     let volumeSeries: ISeriesApi<"Histogram"> | null = null;
+    let volumeAvgSeries: ISeriesApi<"Line"> | null = null;
     if (!hideVolumePaneRef.current) {
       volumeSeries = chart.addSeries(
         HistogramSeries,
@@ -4000,11 +4506,24 @@ export function VectorChart({
       volumeSeries.priceScale().applyOptions({
         scaleMargins: { top: 0.1, bottom: 0 },
       });
+      volumeAvgSeries = chart.addSeries(
+        LineSeries,
+        {
+          color: "rgba(186, 230, 253, 0.55)",
+          lineWidth: 1,
+          lineStyle: LineStyle.Dashed,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+          title: "Vol avg",
+        },
+        VOLUME_PANE_INDEX
+      );
     }
     applyPaneStretch(chart, hideVolumePaneRef.current);
 
     const initialDisplay = displayBarsFromMinute(initialBars, initialTimeframe);
-    applyDisplayBars(series, volumeSeries, initialDisplay);
+    applyDisplayBars(series, volumeSeries, volumeAvgSeries, initialDisplay, volumeModeRef.current);
     paintOverlays(initialDisplay);
     displayBarTimeRef.current = initialBars[initialBars.length - 1]?.time ?? 0;
     lastDisplayBarsRef.current = initialDisplay;
@@ -4015,8 +4534,25 @@ export function VectorChart({
       const sessionFramedOnLoad =
         intradayZoomPresetRef.current === "session" ||
         (intradayZoomPresetRef.current == null && defaultChartViewportRef.current === "session");
+      const liveFramedOnLoad =
+        intradayZoomPresetRef.current === "live" ||
+        (intradayZoomPresetRef.current == null && defaultChartViewportRef.current === "live");
       if (sessionFramedOnLoad) {
-        applySessionOverviewViewport(chart, initialDisplay);
+        // Live member report (2026-08-26): on first paint, session-overview's right-anchored
+        // framing (applySessionOverviewViewport pins the newest bar 2 slots from the right edge,
+        // with nothing padding the LEFT) left the candles looking dropped into one side of the
+        // pane rather than centered — the exact "SPX Slayer" reference the member pointed to uses
+        // `defaultChartViewport="live"`, whose applyCenteredLiveViewport frames the latest ~48 bars
+        // with the newest bar near the middle. Reuse that same centered framing for the FIRST paint
+        // only — every ongoing session-overview behavior (autoscale gating, re-seed framing on a
+        // new session, live-follow opt-in) still keys off defaultChartViewportRef/
+        // intradayZoomPresetRef being "session", untouched below; this only changes what the member
+        // sees the instant the chart mounts.
+        applyCenteredLiveViewport(chart, initialDisplay.length);
+        chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
+      } else if (liveFramedOnLoad) {
+        applyCenteredLiveViewport(chart, initialDisplay.length);
+        liveFollowEnabledRef.current = true;
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
       } else {
         chart.timeScale().fitContent();
@@ -4029,6 +4565,7 @@ export function VectorChart({
     const onWheel = (e: WheelEvent) => {
       wheelZoomCooldownRef.current = Date.now();
       chartUserPannedRef.current = true;
+      queueDeferredRepaintRef.current();
       const rect = container.getBoundingClientRect();
       const xInChart = e.clientX - rect.left;
       const priceAxisZone = rect.width - 65;
@@ -4071,13 +4608,23 @@ export function VectorChart({
 
     const onChartPointerDown = () => {
       chartUserPannedRef.current = true;
+      chartPointerActiveRef.current = true;
+    };
+    const onChartPointerUp = () => {
+      chartPointerActiveRef.current = false;
+      queueDeferredRepaintRef.current();
     };
     container.addEventListener("mousedown", onChartPointerDown);
     container.addEventListener("touchstart", onChartPointerDown, { passive: true });
+    container.addEventListener("mouseup", onChartPointerUp);
+    container.addEventListener("mouseleave", onChartPointerUp);
+    container.addEventListener("touchend", onChartPointerUp, { passive: true });
+    container.addEventListener("touchcancel", onChartPointerUp, { passive: true });
 
     chartRef.current = chart;
     seriesRef.current = series;
     volumeSeriesRef.current = volumeSeries;
+    volumeAvgSeriesRef.current = volumeAvgSeries;
     setChartReady(true);
     callBeadsRef.current = createSeriesMarkers(series, []);
     putBeadsRef.current = createSeriesMarkers(series, []);
@@ -4113,14 +4660,14 @@ export function VectorChart({
     // EOD pin CONE (SPX desk only): attach the converging-cone primitive to the candle series. It
     // renders at zOrder "top" (a translucent gold funnel over the candles) and stays hidden until
     // paintOverlays pushes a real MC cone for SPX. The right-margin room it needs comes from
-    // VECTOR_RIGHT_OFFSET_BARS on the time scale (the cone maps into that whitespace by time-frac).
+    // VECTOR_RIGHT_OFFSET / vectorChartRightOffsetBars on the time scale (cones map into that gutter).
     const pinCone = new PinConePrimitive();
     series.attachPrimitive(pinCone);
     pinConePrimitiveRef.current = pinCone;
     // TIME-CONVERGING EXPECTED-MOVE CONE — attach the "remaining move" funnel primitive. Renders at
     // zOrder "bottom" (a faint cyan wash under the candles, alongside the heatmap/regime glow) and
     // stays hidden until paintOverlays pushes a real cone AND the member enables the toggle. The
-    // right-margin room it maps into is the same VECTOR_RIGHT_OFFSET_BARS whitespace the pin cone uses.
+    // right-margin room it maps into is the same vectorChartRightOffsetBars whitespace the pin cone uses.
     const emCone = new EmConePrimitive();
     series.attachPrimitive(emCone);
     emConePrimitiveRef.current = emCone;
@@ -4144,13 +4691,27 @@ export function VectorChart({
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
         refreshTrails(lensRef.current);
       });
+    } else if (
+      intradayZoomPresetRef.current === "live" ||
+      (intradayZoomPresetRef.current == null && defaultChartViewportRef.current === "live")
+    ) {
+      requestAnimationFrame(() => {
+        if (memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)) return;
+        const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
+        applyCenteredLiveViewport(chart, display.length);
+        chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
+        refreshTrails(lensRef.current);
+      });
     }
 
     syncCandleViewportFromRangeRef.current(chart);
 
     const unbindDrawClick = bindChartClickRef.current(chart, series);
 
-    chart.subscribeCrosshairMove((param) => {
+    const flushCrosshairCompute = () => {
+      crosshairComputeRafRef.current = null;
+      const param = crosshairParamLatestRef.current;
+      if (!param) return;
       if (!param.time || !param.point) {
         scheduleCrosshairUpdate(null);
         scheduleWallEventTooltipUpdate(null);
@@ -4171,14 +4732,29 @@ export function VectorChart({
       if (syncState?.linkCrosshair && !applyingExternalCrosshairRef.current && hoverEpochSec != null) {
         onCompareCrosshairRef.current?.(syncState.paneId, hoverEpochSec);
       }
-      const history = wallHistoryRef.current;
-      const walls = wallsAtCrosshairTime(
-        history,
-        hoverEpochSec,
-        activeLens,
-        gexWallsRef.current,
-        vexWallsRef.current
+      const interactionHot = isMemberGesturing(
+        wheelZoomCooldownRef.current,
+        chartPointerActiveRef.current
       );
+      const history = wallHistoryRef.current;
+      // BUG FIX (2026-08-27): this used to fall back to the LIVE wall/flip refs during an active
+      // gesture (interactionHot), unconditionally — not just in replay, but any time the member is
+      // hovering an OLDER bar mid-session too. wallsAtCrosshairTime/flipAtCrosshairTime exist
+      // precisely to answer "what were the walls/flip AT the hovered time" rather than "what are
+      // they right now" (see their own doc comments); substituting live data here silently
+      // mislabeled a historical hover with today's/right-now's levels for the ~600ms gesture-
+      // cooldown window. gexCell and the wall-event tooltip a few lines below already suppress
+      // (render nothing) during interactionHot instead of substituting wrong data — this now
+      // matches that same "defer heavy work, never serve wrong data" pattern.
+      const walls = interactionHot
+        ? null
+        : wallsAtCrosshairTime(
+            history,
+            hoverEpochSec,
+            activeLens,
+            gexWallsRef.current,
+            vexWallsRef.current
+          );
       const hoverPrice = series.coordinateToPrice(param.point.y);
       if (
         typeof hoverEpochSec === "number" &&
@@ -4188,6 +4764,7 @@ export function VectorChart({
         updateDraftCursorRef.current(hoverEpochSec, hoverPrice as number);
       }
       const gexCell =
+        !interactionHot &&
         indicatorsRef.current.has("gex-heatmap") &&
         gexHeatmapGridRef.current &&
         hoverEpochSec != null &&
@@ -4199,20 +4776,18 @@ export function VectorChart({
         time,
         close: bar?.close ?? null,
         lens: activeLens,
-        flip: flipAtCrosshairTime(
-          history,
-          hoverEpochSec,
-          activeLens,
-          gammaFlipRef.current,
-          vexFlipRef.current
-        ),
+        flip: interactionHot
+          ? null
+          : flipAtCrosshairTime(
+              history,
+              hoverEpochSec,
+              activeLens,
+              gammaFlipRef.current,
+              vexFlipRef.current
+            ),
         callWalls: walls?.callWalls ?? [],
         putWalls: walls?.putWalls ?? [],
         gexCell,
-        // No DP history exists — only today's live ladder. Walls/flip above resolve
-        // to their value AT the hovered time; showing live DP under a historical
-        // hover timestamp would mislabel it. Show DP only when hovering the present
-        // (at/after the latest recorded sample, or before any history exists).
         darkPoolLevels:
           hoverEpochSec == null ||
           history.length === 0 ||
@@ -4221,7 +4796,7 @@ export function VectorChart({
             : [],
       });
 
-      if (indicatorsRef.current.has("bead-event-glyphs")) {
+      if (indicatorsRef.current.has("bead-event-glyphs") && !interactionHot) {
         const hit = wallRailPrimitiveRef.current?.hitTestEventGlyph(
           param.point.x,
           param.point.y
@@ -4232,6 +4807,12 @@ export function VectorChart({
       } else {
         scheduleWallEventTooltipUpdate(null);
       }
+    };
+
+    chart.subscribeCrosshairMove((param) => {
+      crosshairParamLatestRef.current = param;
+      if (crosshairComputeRafRef.current != null) return;
+      crosshairComputeRafRef.current = requestAnimationFrame(flushCrosshairCompute);
     });
 
     // SHARED PRICE AXIS seam — only wired when a host asked for it at mount (the SPX desk
@@ -4291,7 +4872,14 @@ export function VectorChart({
     const layoutObserver = new ResizeObserver(() => {
       const w = container.clientWidth;
       const h = container.clientHeight;
-      if (w > 0 && h > 0) chart.resize(w, h);
+      if (w > 0 && h > 0) {
+        chart.resize(w, h);
+        // Flex-hosted desk canvases can cross a height threshold after the first paint — reassert
+        // pane stretch so the volume strip keeps its 80/20 share instead of collapsing to ~0px.
+        if (fillHost || container.classList.contains("vector-chart-canvas--desk-fill")) {
+          applyPaneStretch(chart, hideVolumePaneRef.current);
+        }
+      }
     });
     layoutObserver.observe(container);
     // Compare grid starts `display:none` below 1280px and can mount before flex settles —
@@ -4300,7 +4888,12 @@ export function VectorChart({
     const nudgeChartSize = () => {
       const w = container.clientWidth;
       const h = container.clientHeight;
-      if (w > 0 && h > 0) chart.resize(w, h);
+      if (w > 0 && h > 0) {
+        chart.resize(w, h);
+        if (fillHost || container.classList.contains("vector-chart-canvas--desk-fill")) {
+          applyPaneStretch(chart, hideVolumePaneRef.current);
+        }
+      }
     };
     if (fillHost && typeof IntersectionObserver !== "undefined") {
       intersectionObserver = new IntersectionObserver(
@@ -4311,8 +4904,9 @@ export function VectorChart({
       );
       intersectionObserver.observe(container);
     }
-    // WKWebView flex layouts often settle one frame late — double-rAF resize for fillHost embeds.
-    if (fillHost) {
+    // Flex-hosted canvases (SPX embed + standalone /vector desk-fill) mount after layout settles —
+    // nudge autosize once flex assigns a definite height (WKWebView can miss the first tick at 0×0).
+    if (fillHost || container.classList.contains("vector-chart-canvas--desk-fill")) {
       requestAnimationFrame(() => {
         requestAnimationFrame(nudgeChartSize);
       });
@@ -4321,11 +4915,23 @@ export function VectorChart({
     return () => {
       layoutObserver.disconnect();
       intersectionObserver?.disconnect();
+      if (deferredRepaintTimerRef.current != null) {
+        clearTimeout(deferredRepaintTimerRef.current);
+        deferredRepaintTimerRef.current = null;
+      }
       container.removeEventListener("wheel", onWheel);
       unbindDrawClick();
       if (crosshairRafRef.current != null) {
         cancelAnimationFrame(crosshairRafRef.current);
         crosshairRafRef.current = null;
+      }
+      if (crosshairComputeRafRef.current != null) {
+        cancelAnimationFrame(crosshairComputeRafRef.current);
+        crosshairComputeRafRef.current = null;
+      }
+      if (viewportDimRafRef.current != null) {
+        cancelAnimationFrame(viewportDimRafRef.current);
+        viewportDimRafRef.current = null;
       }
       if (wallEventTooltipRafRef.current != null) {
         cancelAnimationFrame(wallEventTooltipRafRef.current);
@@ -4334,6 +4940,10 @@ export function VectorChart({
       renderWallEventTooltip(wallEventTooltipRef.current, null);
       container.removeEventListener("mousedown", onChartPointerDown);
       container.removeEventListener("touchstart", onChartPointerDown);
+      container.removeEventListener("mouseup", onChartPointerUp);
+      container.removeEventListener("mouseleave", onChartPointerUp);
+      container.removeEventListener("touchend", onChartPointerUp);
+      container.removeEventListener("touchcancel", onChartPointerUp);
       chart.timeScale().unsubscribeVisibleTimeRangeChange(onVisibleTimeRangeChange);
       stopReplayTimer();
       if (priceScaleTimer != null) clearInterval(priceScaleTimer);
@@ -4401,6 +5011,7 @@ export function VectorChart({
       // Same lifecycle — chart.remove() disposed the volume-profile primitive too.
       volumeProfilePrimitiveRef.current = null;
       volumeSeriesRef.current = null;
+      volumeAvgSeriesRef.current = null;
       setChartReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4452,7 +5063,9 @@ export function VectorChart({
           chartRef.current,
           seriesRef.current!,
           volumeSeriesRef.current,
+          volumeAvgSeriesRef.current,
           display,
+          volumeModeRef.current,
           liveFollowEnabledRef.current
         );
         paintOverlays(display);
@@ -4524,7 +5137,7 @@ export function VectorChart({
     const display = displayBarsFromMinute(bars, timeframeRef.current);
     displayBarTimeRef.current = display[display.length - 1]?.time ?? 0;
     if (seriesRef.current) {
-      applyDisplayBars(seriesRef.current, volumeSeriesRef.current, display);
+      applyDisplayBars(seriesRef.current, volumeSeriesRef.current, volumeAvgSeriesRef.current, display, volumeModeRef.current);
       paintOverlays(display);
     }
     const history = wallHistoryRef.current;
@@ -4732,7 +5345,7 @@ export function VectorChart({
         timeScale && !timeframeChanged && !following && (!sessionFramed || viewportLocked)
           ? timeScale.getVisibleLogicalRange()
           : null;
-      applyDisplayBars(series, volumeSeriesRef.current, display);
+      applyDisplayBars(series, volumeSeriesRef.current, volumeAvgSeriesRef.current, display, volumeModeRef.current);
       paintOverlays(display);
       lastDisplayBarsRef.current = display;
       if (timeframeChanged) {
@@ -4775,7 +5388,13 @@ export function VectorChart({
         darkPoolRef.current
       );
       if (liveSession) {
-        maybeScrollToLive(chart, liveFollowEnabledRef.current);
+        maybeFollowLiveViewport(
+          chart,
+          liveFollowEnabledRef.current,
+          displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current).length,
+          chartUserPannedRef.current,
+          wheelZoomCooldownRef.current
+        );
       }
     }
     chart?.timeScale().applyOptions({ secondsVisible: timeframe === 1 });
@@ -4846,15 +5465,29 @@ export function VectorChart({
   // price axis widens off the drawn strikes (rangeWallsRef/beadStrikesRef), so repainting only the
   // beads would leave the axis sized for the old count and clip the new outer rows.
   useEffect(() => {
-    refreshTrails(lensRef.current);
-    refreshOverlays(
-      lensRef.current,
-      liveGexWalls(),
-      vexWallsRef.current,
-      liveGammaFlip(),
-      vexFlipRef.current,
-      darkPoolRef.current
-    );
+    // BUG FIX (2026-08-27): this used to call refreshOverlays with the LIVE liveGexWalls()/
+    // liveGammaFlip() unconditionally -- no replay check at all, unlike every sibling repaint-on-
+    // selection-change effect in this file (see the indicator-toggle effect just above, which is
+    // the idiom mirrored here). Flipping the Nodes density select during replay snapped the
+    // gamma-flip line and the axis auto-widening to TODAY's live flip/walls, even though every
+    // other overlay stayed frozen at the replay cursor. In replay, re-run applyFrame for the
+    // current cursor time instead (same replay-scoped walls/flip/history it already draws from).
+    if (replayModeRef.current) {
+      const t = timelineRef.current[cursorIndexRef.current];
+      if (t != null) {
+        applyFrameRef.current?.(t, minuteBarsRef.current, wallHistoryRef.current, lensRef.current);
+      }
+    } else {
+      refreshTrails(lensRef.current);
+      refreshOverlays(
+        lensRef.current,
+        liveGexWalls(),
+        vexWallsRef.current,
+        liveGammaFlip(),
+        vexFlipRef.current,
+        darkPoolRef.current
+      );
+    }
   }, [nodeDensity, refreshTrails, refreshOverlays, liveGexWalls, liveGammaFlip]);
 
   const toolbar = (
@@ -4870,6 +5503,7 @@ export function VectorChart({
       dteAvailable={dteAvailable}
       gexAsOf={gexAsOf}
       vexAsOf={vexAsOf}
+      darkPoolAsOf={darkPoolAsOf}
       liveSession={liveSession && !replayMode}
       replayMode={replayMode}
       playing={playing}
@@ -4903,6 +5537,14 @@ export function VectorChart({
       nodeDensity={nodeDensity}
       onNodeDensity={handleNodeDensity}
       nodeAutoCount={effectiveNodeCount(wallCountForHorizon(timeframe, dteHorizon))}
+      volumeMode={volumeMode}
+      onVolumeMode={handleVolumeMode}
+      hideVolumePane={hideVolumePane}
+      darkPoolWallsEnabled={darkPoolWallsEnabled}
+      onDarkPoolWalls={handleDarkPoolWalls}
+      onZoomIn={handleZoomIn}
+      onZoomOut={handleZoomOut}
+      onZoomReset={handleZoomReset}
     />
   );
 
@@ -4975,12 +5617,10 @@ export function VectorChart({
         )}
         <div
           ref={containerRef}
-          className={clsx("vector-chart-canvas", fillHost && "vector-chart-canvas--fill-host")}
-          style={
-            fillHost
-              ? undefined
-              : { height: "calc(100vh - 132px)", minHeight: 520 }
-          }
+          className={clsx(
+            "vector-chart-canvas",
+            fillHost ? "vector-chart-canvas--fill-host" : "vector-chart-canvas--desk-fill"
+          )}
           aria-busy={liveSession && !replayMode}
         />
       </div>

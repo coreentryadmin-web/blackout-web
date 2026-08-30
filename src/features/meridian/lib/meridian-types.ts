@@ -564,12 +564,78 @@ export type MeridianEarningsDarkPool = {
   top_prints: MeridianEarningsDarkPoolPrint[];
 };
 
+export type MeridianEarningsVectorWallEvent = {
+  message: string;
+  severity: "info" | "warn";
+  time_label: string | null;
+};
+
+export type MeridianEarningsVectorFlowPrint = {
+  premium_label: string;
+  option_type: string | null;
+  strike: number | null;
+  executed_at: string | null;
+};
+
 export type MeridianEarningsVectorRead = {
   available: boolean;
+  /** Vector DTE horizon the read was scoped to (weekly for earnings context). */
+  horizon: string | null;
   expiry: string | null;
   move_pct: number | null;
   spot: number | null;
   bands: Array<{ sigma: number; low: number; high: number }> | null;
+  /** Human-readable gamma posture from Vector regime. */
+  regime: string | null;
+  call_wall: number | null;
+  put_wall: number | null;
+  gamma_flip: number | null;
+  max_pain: number | null;
+  /** Count of wall-history rail samples ("beads") in today's session rail. */
+  bead_samples: number;
+  recent_events: MeridianEarningsVectorWallEvent[];
+  recent_flow: MeridianEarningsVectorFlowPrint[];
+  /** Staleness disclosure when the Vector snapshot is not live. */
+  freshness_note: string | null;
+};
+
+export type MeridianEarningsNighthawkRead = {
+  available: boolean;
+  on_board: boolean;
+  lane: "setup" | "ledger" | null;
+  direction: "long" | "short" | null;
+  strike: number | null;
+  expiry: string | null;
+  score: number | null;
+  conviction: string | null;
+  status: string | null;
+  headline: string | null;
+  live_pnl_pct: number | null;
+  session_label: string | null;
+};
+
+export type MeridianEarningsSpxStrikeStack = {
+  strike: number | null;
+  premium_label: string;
+  hit_count: number;
+};
+
+export type MeridianEarningsSpxRead = {
+  available: boolean;
+  price: number | null;
+  change_pct: number | null;
+  gamma_regime: string | null;
+  gamma_flip: number | null;
+  gex_king: number | null;
+  call_wall: number | null;
+  put_wall: number | null;
+  tide_bias: string | null;
+  flow_0dte_net: number | null;
+  play_phase: string | null;
+  play_action: string | null;
+  play_grade: string | null;
+  play_headline: string | null;
+  strike_stacks: MeridianEarningsSpxStrikeStack[];
 };
 
 export type MeridianEarningsReportSignal = {
@@ -626,6 +692,8 @@ export type MeridianEarningsIntel = {
   dark_pool: MeridianEarningsDarkPool;
   thermal: MeridianEarningsThermalRead;
   vector: MeridianEarningsVectorRead;
+  nighthawk: MeridianEarningsNighthawkRead;
+  spx: MeridianEarningsSpxRead;
   report: MeridianEarningsReport;
   play_read: MeridianErPlayRead;
 };
@@ -817,6 +885,8 @@ export type MeridianTimelinePayload = {
   board_tickers: string[];
   earnings_week: MeridianEarningsWeekRow[];
   earnings_week_analytics: MeridianEarningsWeekAnalytics | null;
+  /** Non-null when the mega-cap week historical-print fetch failed for beat-rate rollups. */
+  earnings_week_analytics_error?: string | null;
   earnings_analytics_rows: MeridianEarningsAnalyticsRow[];
   recent_earnings_revisions: MeridianEarningsRevision[];
   estimate_revision_timeline: MeridianEstimateRevisionEntry[];
@@ -839,4 +909,6 @@ export type MeridianTimelinePayload = {
   /** How many lane rows carry a sector cohort key, and how many do not. Coverage, stated. */
   sectors_classified?: number;
   sectors_unclassified?: number;
+  /** True on the lite first paint — client should revalidate the full payload for implied moves. */
+  enrich_pending?: boolean;
 };

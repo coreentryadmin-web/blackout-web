@@ -7,13 +7,15 @@
 // stop→target track for every 0DTE play — a rendered constant, not the row's actual policy.
 // The exit engine supports TWO families: ratchet (arm/lock/runner floors) and trim_scale
 // (bank ⅓@+25%, ⅓@+50%, run the last ⅓). Which one a row runs is FROZEN at commit in
-// entry_context.exit_policy_snapshot from ZERODTE_EXIT_MODE. IMPORTANT: prod runs the
-// RATCHET default deliberately — DEFAULT_EXIT_MODE is "ratchet" and ZERODTE_EXIT_MODE is
-// currently UNSET (exit-engine.ts "DEFAULT-OFF, DELIBERATELY"), so trim_scale is DORMANT in
-// prod today. This module resolves whichever policy the row actually froze — ratchet today,
-// trim_scale only if/when it is enabled — instead of hard-coding one. Each trim tranche's
-// premium LEVEL is priced off the pinned entry and FIRED when the latched peak reaches it, so
-// the ladder (when trim_scale IS the frozen policy) matches the strategy the engine ran.
+// entry_context.exit_policy_snapshot from ZERODTE_EXIT_MODE. CORRECTED 2026-08-28 (this
+// comment was stale): trim_scale is LIVE in prod, not dormant — DEFAULT_EXIT_MODE
+// (exit-engine.ts) is "trim_scale", and resolveExitModeForTier (exit-sync.ts, the E5
+// graduation) puts every A/B-tier commit on trim_scale by default regardless of the
+// ZERODTE_EXIT_MODE env var; only C-tier/untiered plays default to ratchet. This module
+// resolves whichever policy the row actually froze — trim_scale for A/B tier today, ratchet
+// for C/untiered — instead of hard-coding one. Each trim tranche's premium LEVEL is priced
+// off the pinned entry and FIRED when the latched peak reaches it, so the ladder (when
+// trim_scale IS the frozen policy) matches the strategy the engine ran.
 
 import { PLAN_RULES } from "./plan";
 
@@ -131,7 +133,13 @@ export function timeStopClock(nowEtMinutes: number): TimeStopClock {
     minutes_remaining: remaining,
     label: `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`,
     elapsed_frac: Math.max(0, Math.min(1, elapsed)),
-    past_time_stop: nowEtMinutes >= stop,
+    // Strict `>`, matching derivePlayStatus (plan.ts) and every grader's own time-stop
+    // boundary check — all use `nowEtMinutes > time_stop_et_minutes` (the boundary minute
+    // itself is still in the window; plan.test.ts pins this as "inclusive"). This used to
+    // read `>=`, so the displayed "TIME STOP" flag lit up a full minute before the play's
+    // actual lifecycle/grading boundary — cosmetic only (nothing here grades a play), but a
+    // real, previously-undocumented clock mismatch. Found 2026-08-26.
+    past_time_stop: nowEtMinutes > stop,
   };
 }
 

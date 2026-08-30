@@ -49,7 +49,7 @@ export function AuthShell({ mode, children }: { mode: "signin" | "signup"; child
         animate="show"
         className="relative z-10 hidden flex-col justify-between overflow-hidden p-12 lg:flex xl:p-16"
       >
-        <div aria-hidden className="auth-seam absolute right-0 top-0 bottom-0 w-px" />
+        <div aria-hidden className="auth-seam absolute right-0 inset-y-0 w-px" />
 
         <motion.div variants={riseItem} className="relative z-10">
           <Link

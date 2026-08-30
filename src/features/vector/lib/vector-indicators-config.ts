@@ -31,10 +31,13 @@ export type VectorOverlayDef = {
   period?: number;
   /** Line colour — chosen distinct from the gold/purple beads and the cyan gamma-flip line. */
   color: string;
+  /** Optional line width override (default 2 in the chart layer). */
+  lineWidth?: 1 | 2 | 3 | 4;
 };
 
 export const VECTOR_OVERLAYS: readonly VectorOverlayDef[] = [
-  { id: "vwap", label: "VWAP", kind: "vwap", family: "vwap", color: "#60a5fa" },
+  // Bright sky + thicker stroke — default-on VWAP was invisible against dark candles + yellow beads.
+  { id: "vwap", label: "VWAP", kind: "vwap", family: "vwap", color: "#7dd3fc", lineWidth: 3 as const },
   { id: "ema9", label: "EMA 9", kind: "ema", family: "ema", period: 9, color: "#fb923c" },
   { id: "ema21", label: "EMA 21", kind: "ema", family: "ema", period: 21, color: "#fbbf24" },
   { id: "ema50", label: "EMA 50", kind: "ema", family: "ema", period: 50, color: "#f472b6" },
@@ -446,11 +449,11 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
   },
 ];
 
-/** Indicators enabled on first paint — dealer gamma positioning + bead integrity rings + event glyphs. */
+/** Indicators enabled on first paint — VWAP, market structure, session volume profile only. */
 export const VECTOR_DEFAULT_ENABLED_INDICATORS: readonly VectorIndicatorId[] = [
-  "gex-heatmap",
-  "bead-integrity-rings",
-  "bead-event-glyphs",
+  "vwap",
+  "market-structure",
+  "volume-profile",
 ] as const;
 
 export function defaultVectorIndicators(): Set<VectorIndicatorId> {

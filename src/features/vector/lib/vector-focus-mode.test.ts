@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   vectorPanelVisibility,
   shouldExitFocusMode,
+  shouldToggleFocusMode,
   focusModeAvailable,
   focusModeContentClass,
   VECTOR_PAGE_CONTENT_FOCUS_CLASS,
@@ -36,6 +37,15 @@ test("other keys never exit focus mode", () => {
   for (const key of ["Enter", "f", "F", "Esc", " ", "Tab"]) {
     assert.equal(shouldExitFocusMode({ key }), false, `${key} must not exit`);
   }
+});
+
+test("F toggles focus mode when available, ignored in text fields", () => {
+  assert.equal(shouldToggleFocusMode({ key: "f" }, true), true);
+  assert.equal(shouldToggleFocusMode({ key: "F" }, true), true);
+  assert.equal(shouldToggleFocusMode({ key: "f", shiftKey: true }, true), false);
+  assert.equal(shouldToggleFocusMode({ key: "f" }, false), false);
+  const input = { tagName: "INPUT" };
+  assert.equal(shouldToggleFocusMode({ key: "f", target: input }, true), false);
 });
 
 test("focus mode is desktop-web only", () => {

@@ -402,7 +402,7 @@ describe("horizon — an all-expiry aggregate must not describe today's session"
       ...readyRow({ underlying_evidence: allExpiry }),
       session_claim: true,
     });
-    assert.match(String(reason), /ALL-expiry scope.*today's session/s);
+    assert.match(String(reason), /far-dated.*today's session/s);
   });
 
   it("allows the SAME evidence when the package is not claiming anything about today", () => {
@@ -411,6 +411,21 @@ describe("horizon — an all-expiry aggregate must not describe today's session"
       readyBlockReason({ ...readyRow({ underlying_evidence: allExpiry }), session_claim: false }),
       null,
     );
+  });
+
+  it("REFUSES a session claim built only on monthly-expiry values, same as all-expiry", () => {
+    // Regression pin: "monthly" is a far-dated aggregate exactly like "all" (X_INTEL_HORIZONS lists
+    // both, distinct from "0dte"/"near"), but the original guard checked only `=== "all"`, so a
+    // package built entirely on monthly evidence sailed through with session_claim: true.
+    const monthly = [
+      { what: "call wall", value: "7,900", source: "thermal" as const, horizon: "monthly" as const },
+      { what: "net GEX", value: "-$39.2B", source: "thermal" as const, horizon: "monthly" as const },
+    ];
+    const reason = readyBlockReason({
+      ...readyRow({ underlying_evidence: monthly }),
+      session_claim: true,
+    });
+    assert.match(String(reason), /far-dated.*today's session/s);
   });
 
   it("allows a session claim built on near-dated values", () => {

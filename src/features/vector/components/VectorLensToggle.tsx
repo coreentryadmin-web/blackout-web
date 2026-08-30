@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
+import { formatVectorAge } from "@/features/vector/lib/vector-age-format";
 
 type Props = {
   lens: VectorWallLens;
@@ -13,14 +14,9 @@ type Props = {
   liveSession?: boolean;
   /** When false, omit data-testid (compact toolbar row duplicates desktop controls in DOM). */
   exposeTestIds?: boolean;
+  /** Shown when VEX is disabled — explains why the toggle is inactive. */
+  vexUnavailableHint?: string;
 };
-
-function formatLensAge(asOf: number | null | undefined, now: number | null): string | null {
-  if (asOf == null || now == null || asOf <= 0) return null;
-  const s = Math.max(0, Math.floor((now - asOf) / 1000));
-  if (s < 60) return `${s}s`;
-  return `${Math.floor(s / 60)}m`;
-}
 
 /** Compact GEX / VEX lens toggle — no helper copy (toolbar). */
 export function VectorLensToggle({
@@ -31,6 +27,7 @@ export function VectorLensToggle({
   vexAsOf,
   liveSession = false,
   exposeTestIds = true,
+  vexUnavailableHint = "VEX unavailable — no vanna chain data for this ticker",
 }: Props) {
   const [now, setNow] = useState<number | null>(null);
 
@@ -41,8 +38,8 @@ export function VectorLensToggle({
     return () => clearInterval(id);
   }, [liveSession]);
 
-  const gexAge = formatLensAge(gexAsOf, now);
-  const vexAge = formatLensAge(vexAsOf, now);
+  const gexAge = formatVectorAge(gexAsOf, now);
+  const vexAge = formatVectorAge(vexAsOf, now);
 
   return (
     <div className="vector-desk-seg" role="group" aria-label="Wall exposure lens">
@@ -56,6 +53,7 @@ export function VectorLensToggle({
             type="button"
             disabled={disabled}
             onClick={() => onLens(key)}
+            title={disabled && key === "vex" ? vexUnavailableHint : undefined}
             aria-pressed={active}
             {...(exposeTestIds ? { "data-testid": `vector-lens-${key}` } : {})}
             className={clsx(

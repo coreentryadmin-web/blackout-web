@@ -15,6 +15,7 @@ const VECTOR_SELF_HEAL_CRONS = [
   "vector-walls-warm",
   "vector-bead-record",
   "vector-dark-pool-warm",
+  "vector-pick-sweep",
 ];
 
 const OPS_SELF_HEAL_CRONS = [

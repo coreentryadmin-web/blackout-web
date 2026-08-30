@@ -24,8 +24,8 @@ test("HOME_FAQ_IDS and PRICING_FAQ_IDS resolve without throwing — guards again
 });
 
 test("the SPX Slayer vs Premium price tokens resolve to real prices, never leak a raw {{token}}", () => {
-  const item = FAQ_ITEMS.find((i) => i.id === "member-6");
-  assert.ok(item, "member-6 (SPX Slayer vs Premium) must exist");
+  const item = FAQ_ITEMS.find((i) => i.id === "member-2");
+  assert.ok(item, "member-2 (SPX Slayer vs Premium) must exist");
   assert.ok(!/\{\{/.test(item!.a), "answer must not contain an unresolved {{token}}");
   assert.match(item!.a, /\$49\/mo/);
   assert.match(item!.a, /\$199\/mo/);
@@ -35,7 +35,7 @@ test("the SPX Slayer vs Premium price tokens resolve to real prices, never leak 
 test("home accordion and its JSON-LD share one id list — the exact drift this refactor fixes", () => {
   // RedesignHome.tsx and (marketing)/page.tsx both call selectFaqItems(HOME_FAQ_IDS)
   // directly, so there is no second copy of the wording left to go stale.
-  assert.deepEqual([...HOME_FAQ_IDS], ["member-5", "platform-4", "member-6", "platform-5", "start-1"]);
+  assert.deepEqual([...HOME_FAQ_IDS], ["member-5", "platform-4", "member-2", "platform-5", "start-1"]);
   const items = selectFaqItems(HOME_FAQ_IDS);
   assert.deepEqual(items.map((i) => i.q), [
     "Can I cancel anytime?",

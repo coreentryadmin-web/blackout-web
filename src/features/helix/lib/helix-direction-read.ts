@@ -123,10 +123,12 @@ export function directionTone(d: DirectionRead): "bull" | "bear" | null {
  * the read covers, so a neutral bar is legible as "could not read" rather than "balanced".
  */
 export function readDirectionTitle(d: DirectionRead): string {
-  const usd = (n: number) =>
-    "$" + Math.round(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
+  const usd = (n: number) => {
+    if (!Number.isFinite(n)) return "$—";
+    return "$" + Math.round(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
+  };
 
-  if (d.readablePct == null) {
+  if (d.readablePct == null || !Number.isFinite(d.readablePct)) {
     return "No premium in this horizon to read a direction from.";
   }
   const share = `${Math.round(d.readablePct * 10) / 10}% of this horizon's premium`;
@@ -205,7 +207,7 @@ export function thesisAgreementCopy(
 ): { text: string; tone: "bull" | "bear" | "warn" | "muted" } {
   const thesis = isLong ? "long" : "short";
   const covered =
-    read.readablePct == null ? "none of it" : `${Math.round(read.readablePct)}% of the premium`;
+    read.readablePct == null || !Number.isFinite(read.readablePct) ? "none of it" : `${Math.round(read.readablePct)}% of the premium`;
   switch (a) {
     case "agrees":
       return { text: `✓ tape agrees with ${thesis} thesis`, tone: "bull" };

@@ -1,19 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
-import { timeStopClock } from "@/lib/zerodte/terminal-ladder";
-import { zerodteTimeStopEtLabel } from "@/lib/zerodte/plan";
 import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from "@/lib/zerodte/marks-math";
-import { condorTent } from "@/lib/zerodte/condor-render";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { dispatchGotoSwing } from "@/features/nighthawk/lib/goto-swing";
+import { ZeroDteCommandPanel } from "./ZeroDteCommandPanel";
+import { CondorPanel, TimeStopClock } from "./play-terminal-shared";
+import { ThesisRankCard } from "@/features/nighthawk/components/ThesisRankCard";
 import { showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
 import { managementFor } from "./adapters";
-import type { DeckCondor } from "./types";
 import { markStreamKind } from "./deck-session-ui";
-import { PlayTimelinePanel } from "./PlayTimelinePanel";
 import { useSecondTick, useFlash } from "./use-deck-live";
 import { isZeroDtePremiumTerminal, swingStatusLine } from "./terminal-display";
 import type { ConvictionRankContext } from "./deck-command-center";
@@ -27,6 +26,11 @@ import {
   TradeSummaryHero,
   VisualTrimLadder,
 } from "./TerminalPremiumPanels";
+
+const PlayMarkHistoryChart = dynamic(
+  () => import("@/features/nighthawk/components/PlayMarkHistoryChart").then((m) => m.PlayMarkHistoryChart),
+  { ssr: false }
+);
 
 type Tab = "thesis" | "manage" | "pnl" | "timeline";
 
@@ -129,8 +133,12 @@ export function PlayTerminal({
   nowMs: nowMsProp,
   convictionRank = null,
   initialTab,
+  onBack,
 }: {
   play: TerminalPlay | null;
+  /** Mobile-only "‹ back to plays" affordance — CSS hides the button entirely above the
+   *  `.nh-deck` stacked-layout breakpoint (see globals.css), so passing it is a no-op on desktop. */
+  onBack?: () => void;
   /** Board heat.state === CLOSED — right-rail must not claim LIVE/greeks after the session. */
   sessionClosed?: boolean;
   /**
@@ -148,16 +156,13 @@ export function PlayTerminal({
    *  the normal "thesis" first paint. */
   initialTab?: Tab;
 }) {
-  // Default to Management for working 0DTE rows (action first); Thesis otherwise.
+  // Tabbed horizons (Swing/Legacy/…) default to Thesis at first paint. 0DTE uses the single-panel
+  // scroll — no tab state. (Working 0DTE rows used to auto-switch to Management; that path was
+  // removed with the tab bar in #2909 — do not reintroduce auto-switch for other horizons.)
   const [tab, setTab] = useState<Tab>(initialTab ?? "thesis");
   const [tabTouched, setTabTouched] = useState(false);
   useEffect(() => {
-    if (tabTouched || !play) return;
-    if (play.horizon === "ZERO_DTE" && (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM")) {
-      setTab("manage");
-    }
-  }, [play, tabTouched]);
-  useEffect(() => {
+    if (play?.horizon === "ZERO_DTE") return;
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
@@ -165,7 +170,6 @@ export function PlayTerminal({
       if (e.key === "1") { setTabTouched(true); setTab("thesis"); }
       else if (e.key === "2") { setTabTouched(true); setTab("manage"); }
       else if (e.key === "3") { setTabTouched(true); setTab("pnl"); }
-      else if (e.key === "4" && play?.horizon === "ZERO_DTE") { setTabTouched(true); setTab("timeline"); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -179,7 +183,16 @@ export function PlayTerminal({
   const nowMs = nowMsProp ?? internalNowMs;
 
   if (!play) {
-    return <div className="nh-deck-right"><div className="nh-deck-empty">◂ select a play to break it down</div></div>;
+    return (
+      <div className="nh-deck-right">
+        {onBack && (
+          <button type="button" className="nh-deck-mobile-back" onClick={onBack}>
+            ‹ Plays
+          </button>
+        )}
+        <div className="nh-deck-empty">◂ select a play to break it down</div>
+      </div>
+    );
   }
   const g = play.greeks;
   // A CONDOR is a CREDIT structure closed by BUYING back — the directional "sell into the BID" fill
@@ -219,9 +232,15 @@ export function PlayTerminal({
   );
   const greeksOff = !live || !greeksLive || streamKind === "CLOSED";
   const premium = isZeroDtePremiumTerminal(play);
+  const zeroDteSinglePanel = play.horizon === "ZERO_DTE";
 
   return (
     <div className={clsx("nh-deck-right", premium && "nh-deck-right-premium", (stale || streamKind === "CLOSED") && "nh-deck-dim")}>
+      {onBack && (
+        <button type="button" className="nh-deck-mobile-back" onClick={onBack}>
+          ‹ Plays
+        </button>
+      )}
       {premium ? (
         <>
           <TradeSummaryHero
@@ -337,7 +356,7 @@ export function PlayTerminal({
         </div>
       )}
 
-      {premium && (greeksOff ? <MarketContextRow play={play} /> : (
+      {premium && !zeroDteSinglePanel && (greeksOff ? <MarketContextRow play={play} /> : (
         <div className={clsx("nh-deck-greeks", greeksOff && "off")} title={greeksOff ? "Greeks update with live marks" : undefined}>
           <GreekCell k="delta" v={g?.delta ?? null} />
           <GreekCell k="gamma" v={g?.gamma ?? null} />
@@ -347,23 +366,23 @@ export function PlayTerminal({
         </div>
       ))}
 
-      <div className="nh-deck-tabs">
-        <button className={clsx(tab === "thesis" && "on")} onClick={() => { setTabTouched(true); setTab("thesis"); }}><span className="n">[1]</span>Thesis</button>
-        <button className={clsx(tab === "manage" && "on")} onClick={() => { setTabTouched(true); setTab("manage"); }}><span className="n">[2]</span>Management</button>
-        <button className={clsx(tab === "pnl" && "on")} onClick={() => { setTabTouched(true); setTab("pnl"); }}><span className="n">[3]</span>PnL</button>
-        {play.horizon === "ZERO_DTE" && (
-          <button className={clsx(tab === "timeline" && "on")} onClick={() => { setTabTouched(true); setTab("timeline"); }}><span className="n">[4]</span>Timeline</button>
-        )}
-      </div>
+      {zeroDteSinglePanel ? (
+        <ZeroDteCommandPanel play={play} nowMs={nowMs} sessionClosed={sessionClosed} />
+      ) : (
+        <>
+          <div className="nh-deck-tabs">
+            <button className={clsx(tab === "thesis" && "on")} onClick={() => { setTabTouched(true); setTab("thesis"); }}><span className="n">[1]</span>Thesis</button>
+            <button className={clsx(tab === "manage" && "on")} onClick={() => { setTabTouched(true); setTab("manage"); }}><span className="n">[2]</span>Management</button>
+            <button className={clsx(tab === "pnl" && "on")} onClick={() => { setTabTouched(true); setTab("pnl"); }}><span className="n">[3]</span>PnL</button>
+          </div>
 
-      <div className="nh-deck-body">
-        {tab === "thesis" && <ThesisPanel play={play} sessionClosed={sessionClosed} />}
-        {tab === "manage" && <ManagePanel play={play} nowMs={nowMs} />}
-        {tab === "pnl" && <PnlPanel play={play} />}
-        {tab === "timeline" && play.horizon === "ZERO_DTE" && (
-          <PlayTimelinePanel play={play} nowMs={nowMs} />
-        )}
-      </div>
+          <div className="nh-deck-body">
+            {tab === "thesis" && <ThesisPanel play={play} sessionClosed={sessionClosed} />}
+            {tab === "manage" && <ManagePanel play={play} nowMs={nowMs} />}
+            {tab === "pnl" && <PnlPanel play={play} />}
+          </div>
+        </>
+      )}
 
       <div className="nh-deck-foot">
         <span>EXIT · {play.exitModel === "SCALE_OUT" ? "TRIM-SCALE" : play.horizon === "LEGACY" ? "STOCK LEVELS" : play.exitModel}</span>
@@ -374,9 +393,6 @@ export function PlayTerminal({
   );
 }
 
-/** Tier · confluence · discovery-origin header badges + the calibration scorecard line (shown ONLY
- *  when the payload carries a real figure — never fabricated). Renders nothing when a play carries
- *  none of them (a legacy row), so the header stays clean. */
 function HeaderBadges({ play }: { play: TerminalPlay }) {
   const hasBadges = play.tierLabel || play.confluence != null || (play.discoveryOrigin?.length ?? 0) > 0 || play.sector || play.morningStatus;
   if (!hasBadges && !play.scorecard) return null;
@@ -565,6 +581,11 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
 
   return (
     <>
+      {play.horizon === "ZERO_DTE" && play.thesisFirst && (
+        <div className="nh-deck-thesis-rank mb-3">
+          <ThesisRankCard thesis={play.thesisFirst} />
+        </div>
+      )}
       {premium ? (
         <div className="nh-deck-premium-stack">
           <ThesisChecklistPanel play={play} />
@@ -593,7 +614,7 @@ function ThesisPanel({ play, sessionClosed = false }: { play: TerminalPlay; sess
       )}
       <div
         className="nh-deck-break"
-        style={broke ? undefined : { borderColor: unknown ? "rgba(255,255,255,.14)" : "rgba(53,255,158,.2)" }}
+        style={broke ? undefined : { borderColor: unknown ? "rgba(255,255,255,.14)" : "rgba(0,217,163,.2)" }}
       >
         <div className="bh" style={broke ? undefined : { color: unknown ? "var(--dk-amber)" : "var(--dk-green)" }}>{monitorTitle}</div>
         <div className="nh-deck-feed">
@@ -787,120 +808,6 @@ function TrimScaleLadder({ play }: { play: TerminalPlay }) {
   );
 }
 
-/** Re-shape a DeckCondor (camelCase render geometry) into the snake CondorGeometry condorTent() reads.
- *  One place so the panel + the left card build the tent from the same inputs. */
-function tentGeomOf(c: DeckCondor) {
-  return {
-    spot: c.spot, short_put: c.shortPut, long_put: c.longPut, short_call: c.shortCall,
-    long_call: c.longCall, wing_pts: c.wingPts, net_credit: c.netCredit, max_loss: c.maxLoss,
-    breach_lower: c.breachLower, breach_upper: c.breachUpper,
-    est_win_rate: c.winRate, est_intraday_breach_pct: c.breachRatePct,
-  };
-}
-
-/** The REAL iron-condor render (Wave 2): the "price-inside-the-tent" gauge (spot vs the two short
- *  strikes), distance-to-breach both sides in points, the net credit captured, and WR shown TOGETHER
- *  with the intraday-breach rate (never a bare WR — the honest negative-skew pairing). Replaces the
- *  neutral Wave-1 placeholder. NEVER draws a directional long trim/ratchet ladder or a call/put P&L —
- *  a condor profits from decay/pin, not a rising premium. Degrades to an honest note when the geometry
- *  wasn't pinned on the row (never a fabricated tent). */
-function CondorPanel({ play }: { play: TerminalPlay }) {
-  const c = play.condor;
-  if (!c) {
-    return (
-      <div className="nh-deck-recnote" style={{ marginTop: 4 }}>
-        Credit iron condor — profit comes from the underlying pinning between the short strikes
-        (premium decay), not a rising long premium. The 4-leg geometry wasn&apos;t pinned on this row,
-        so the tent gauge is unavailable.
-      </div>
-    );
-  }
-  const tent = condorTent(tentGeomOf(c), c.spot);
-  const pts = (n: number | null): string => (n == null ? "—" : n.toFixed(0));
-  return (
-    <div className="nh-deck-condor">
-      <div className="nh-deck-lab" style={{ marginTop: 4 }}>
-        Iron condor — sell the range · WIN if {c.spotIsLive ? "spot" : "close"} stays between the shorts
-      </div>
-
-      {/* Price-inside-the-tent gauge: the short-strike band with spot marked; the long wings frame it. */}
-      <div className="nh-deck-tent">
-        <div className="wing lo">▽ {c.longPut}</div>
-        <div className={clsx("tent-band", tent.breached && "brk")}>
-          <span className="edge lo">{c.breachLower}</span>
-          <span className="edge hi">{c.breachUpper}</span>
-          {tent.spotFrac != null ? (
-            <span
-              className={clsx("spot", tent.breached && "brk")}
-              style={{ left: `${Math.round(tent.spotFrac * 100)}%` }}
-            >
-              <span className="dot" />
-              <span className="lbl">{c.spot != null ? c.spot.toFixed(0) : "?"}{c.spotIsLive ? "" : " ∗"}</span>
-            </span>
-          ) : null}
-        </div>
-        <div className="wing hi">△ {c.longCall}</div>
-      </div>
-      {!c.spotIsLive && c.spot != null && (
-        <div className="nh-deck-recnote">∗ commit-time spot — live underlying not on this refresh.</div>
-      )}
-      {tent.spotFrac == null && (
-        <div className="nh-deck-recnote">Underlying price unavailable — showing the sold range only.</div>
-      )}
-
-      {/* Distance-to-breach, both sides, in underlying points. */}
-      <div className="nh-deck-breach">
-        <div className={clsx("side dn", (tent.roomDown ?? 1) <= 0 && "brk")}>
-          <span className="k">↓ to put breach</span>
-          <span className="v">{pts(tent.roomDown)} pt</span>
-        </div>
-        <div className={clsx("side up", (tent.roomUp ?? 1) <= 0 && "brk")}>
-          <span className="k">↑ to call breach</span>
-          <span className="v">{pts(tent.roomUp)} pt</span>
-        </div>
-      </div>
-
-      {/* Net credit captured + defined max loss + the WR / breach-rate pair. */}
-      <div className="nh-deck-meta" style={{ marginTop: 12 }}>
-        <div><span className="k">Net credit</span><span className="v">{c.netCredit != null ? `$${c.netCredit.toFixed(0)}` : "—"}</span></div>
-        <div><span className="k">Defined max loss</span><span className="v">{c.maxLoss != null ? `$${c.maxLoss.toFixed(0)}` : "—"}</span></div>
-        <div><span className="k">Wings</span><span className="v">{c.wingPts.toFixed(0)} pt</span></div>
-        <div><span className="k">Range</span><span className="v">{tent.widthPts.toFixed(0)} pt</span></div>
-      </div>
-
-      {c.breachRatePct != null && (
-        <div className={clsx("nh-deck-wrline", tent.breached && "brk")}>
-          <span className="br">Intraday breach rate · {c.breachRatePct.toFixed(0)}%</span>
-        </div>
-      )}
-      <div className="nh-deck-recnote">
-        Negative skew: a small credit on most days, a DEFINED loss on a breakout. High WR is not edge on
-        its own — the credit, the breach stop, and small size are. {tent.breached ? "Range BREACHED — the defended pin failed; the loss is capped at the wing." : "Range holding — decay is working for you."}
-      </div>
-    </div>
-  );
-}
-
-/** Countdown to the hard time-stop + a session-decay bar (09:30→exit elapsed). */
-function TimeStopClock({ nowMs }: { nowMs: number }) {
-  const exitLabel = zerodteTimeStopEtLabel();
-  // Recompute ET minute-of-day each tick (etNowParts reads the live clock).
-  void nowMs; // depend on the tick so this recomputes every second
-  const { hour, minute } = etNowParts();
-  const clock = timeStopClock(hour * 60 + minute);
-  return (
-    <div className={clsx("nh-deck-clock", clock.past_time_stop && "past")}>
-      <div className="row">
-        <span className="lab">◷ THETA / TIME-STOP</span>
-        <span className={clsx("val", clock.minutes_remaining <= 30 && "warn")}>
-          {clock.past_time_stop ? `TIME STOP — flat by ${exitLabel}` : `${clock.label} to ${exitLabel} ET`}
-        </span>
-      </div>
-      <div className="decay"><i style={{ width: `${Math.round(clock.elapsed_frac * 100)}%` }} /></div>
-    </div>
-  );
-}
-
 function PnlPanel({ play }: { play: TerminalPlay }) {
   const markFlash = useFlash(play.mark ?? play.pnlPct ?? null);
   if (play.horizon === "LEGACY") return <LegacyPnlPanel play={play} />;
@@ -914,6 +821,13 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
         <>
           <TradeOutcomePanel play={play} />
           <TradeExcursionGraphic play={play} markFlash={markFlash} />
+          {play.horizon === "ZERO_DTE" && (
+            <PlayMarkHistoryChart
+              occ={play.occ}
+              since={play.committedAt ?? play.firstFlaggedAt}
+              entry={play.entry}
+            />
+          )}
         </>
       )}
       {!premium && (
@@ -938,10 +852,6 @@ function PnlPanel({ play }: { play: TerminalPlay }) {
       <div className="nh-deck-grid">
         <div><span className="k">Entry</span><span className="v">{has ? usd(play.entry) : "—"}</span></div>
         <div><span className="k">Live mark</span><span className="v">{usd(play.mark)}</span></div>
-        {/* Peak/trough already shown once in the hero (0DTE/Swing) and again in the excursion-graphic
-            stats row above — a 3rd rendering here was redundant for premium plays. Kept for
-            non-premium (LEAPS/Legacy) rows, which carry neither the hero nor this excursion stats
-            row, so this grid is their only Peak/Trough surface. */}
         {has && !premium && <div><span className="k">Peak</span><span className="v nh-deck-pos">{signPct(play.peak)}</span></div>}
         {has && !premium && <div><span className="k">Trough</span><span className="v nh-deck-neg">{signPct(play.trough)}</span></div>}
       </div>

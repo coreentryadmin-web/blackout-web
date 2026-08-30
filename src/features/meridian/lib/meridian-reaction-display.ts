@@ -27,6 +27,8 @@ import type { MeridianEarningsPrint } from "./meridian-types";
 export type ReactionQualifier = {
   /** Terse marker to sit beside the number. */
   mark: string;
+  /** Drives badge color: yellow = still forming, red = assumed anchoring. */
+  kind: "live" | "assumed";
   /** The full sentence, for a `title`/tooltip — the mark alone cannot carry this. */
   title: string;
   /** True when the value is NOT a settled measurement of a known-timing print. */
@@ -52,6 +54,7 @@ export function reactionQualifier(print: ReactionFields): ReactionQualifier | nu
   if (print.reaction_settled === false) {
     return {
       mark: "live",
+      kind: "live",
       title:
         "Still moving — the session this print is measured on has not closed yet, so this is the last trade, not a final reaction.",
       provisional: true,
@@ -61,6 +64,7 @@ export function reactionQualifier(print: ReactionFields): ReactionQualifier | nu
   if (print.reaction_basis === "assumed_report_session") {
     return {
       mark: "assumed",
+      kind: "assumed",
       title:
         "Report timing unknown — this is measured on the report date's own session, which is an assumption, not a measurement. If the company in fact reported after the close, the reaction was the NEXT session and this number can carry the opposite sign.",
       provisional: true,

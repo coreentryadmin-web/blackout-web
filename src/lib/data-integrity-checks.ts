@@ -38,6 +38,7 @@ function pctDiff(a: number, b: number): number {
 }
 
 function num(n: number): string {
+  if (!Number.isFinite(n)) return "—";
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
@@ -80,10 +81,10 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   }
 
   // C1 — desk internal consistency: spx_change_pct must reconstruct from price ÷ prior_close.
-  if (merged.available && merged.price > 0 && merged.prior_close != null && merged.prior_close > 0) {
+  if (merged.available && merged.price > 0 && merged.prior_close != null && merged.prior_close > 0 && Number.isFinite(merged.spx_change_pct)) {
     checked++;
     const implied = ((merged.price - merged.prior_close) / merged.prior_close) * 100;
-    if (Math.abs(implied - merged.spx_change_pct) > 0.1) {
+    if (Number.isFinite(implied) && Math.abs(implied - merged.spx_change_pct) > 0.1) {
       add(
         "SPX desk change% inconsistent with price/prior-close",
         `desk change ${merged.spx_change_pct.toFixed(2)}% but price ${num(merged.price)} vs prior close ${num(
@@ -97,7 +98,7 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   if (merged.available && merged.price > 0 && gexSpx && gexSpx.spot > 0) {
     checked++;
     const d = pctDiff(merged.price, gexSpx.spot);
-    if (d > 0.5) {
+    if (Number.isFinite(d) && d > 0.5) {
       add(
         "SPX spot disagreement (desk vs heatmap)",
         `desk ${num(merged.price)} vs heatmap ${num(gexSpx.spot)} — ${d.toFixed(2)}% apart (one source is stuck/stale)`
@@ -109,7 +110,7 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   if (spySnap && spySnap.price > 0 && gexSpy && gexSpy.spot > 0) {
     checked++;
     const d = pctDiff(spySnap.price, gexSpy.spot);
-    if (d > 0.5) {
+    if (Number.isFinite(d) && d > 0.5) {
       add(
         "SPY spot disagreement (quote vs heatmap)",
         `quote ${num(spySnap.price)} vs heatmap ${num(gexSpy.spot)} — ${d.toFixed(2)}% apart`
@@ -122,7 +123,7 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   if (gexSpx && gexSpx.spot > 0 && gexSpy && gexSpy.spot > 0) {
     checked++;
     const offset = ((gexSpy.spot * 10 - gexSpx.spot) / gexSpx.spot) * 100;
-    if (Math.abs(offset) > 1.5) {
+    if (Number.isFinite(offset) && Math.abs(offset) > 1.5) {
       add(
         "SPY/SPX tracking out of band",
         `SPY ${num(gexSpy.spot)} ×10 = ${num(gexSpy.spot * 10)} vs SPX ${num(gexSpx.spot)} — ${offset.toFixed(
@@ -136,7 +137,7 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   if (gexSpx?.max_pain != null && gexSpx.max_pain > 0 && gexSpy?.max_pain != null && gexSpy.max_pain > 0) {
     checked++;
     const d = pctDiff(gexSpx.max_pain, gexSpy.max_pain * 10);
-    if (d > 2) {
+    if (Number.isFinite(d) && d > 2) {
       add(
         "Max-pain SPX vs SPY scaling mismatch",
         `SPX max-pain ${num(gexSpx.max_pain)} vs SPY ${num(gexSpy.max_pain)} ×10 = ${num(

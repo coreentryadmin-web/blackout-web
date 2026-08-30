@@ -86,6 +86,6 @@ node scripts/ops-collect-action-items.mjs --pretty || true
 
 If items exist, execute this runbook before other work.
 
-**X marketing (`x-autopost`, `x-growth`, `x-replies`, `x-analytics`) is OFF by operator
+**X marketing (`x-intel`, `x-autopost`, `x-growth`, `x-replies`, `x-analytics`) is OFF by operator
 standing order** — see `docs/ops/X-MARKETING.md`. Never re-enable EventBridge rules or
 "fix" stale X crons unless the operator explicitly requests it.

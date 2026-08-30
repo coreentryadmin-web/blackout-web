@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { resolveBreakoutCandidateCap, resolveBreakoutDynamicCapDisabled } from "./breakout-cap";
 
 // Dynamic-N formula (2026-08-04): max(floor, min(ceiling, ceil(qualifyingMovers * 0.30))).
-// Default floor=40 / ceiling=100 mirror the shipped breakout-discovery.ts constants; tests pass
-// them explicitly so this file stays correct even if those constants change independently.
+// Default floor=40 / ceiling=150 (raised 2026-08-24 from 100) mirror the shipped breakout-discovery.ts
+// constants; tests pass them explicitly so this file stays correct even if those constants change independently.
 
 test("resolveBreakoutCandidateCap: thin day stays at the floor (never worse than the old static cap)", () => {
   const cap = resolveBreakoutCandidateCap({ qualifyingMovers: 60, floor: 40, ceiling: 100 });
@@ -35,7 +35,7 @@ test("resolveBreakoutCandidateCap: an extreme pool never exceeds the ceiling", (
 
 test("resolveBreakoutCandidateCap: default floor/ceiling apply when omitted", () => {
   const cap = resolveBreakoutCandidateCap({ qualifyingMovers: 1000 });
-  assert.equal(cap, 100); // DEFAULT_CEILING
+  assert.equal(cap, 150); // DEFAULT_CEILING (raised 2026-08-24 from 100)
   const capThin = resolveBreakoutCandidateCap({ qualifyingMovers: 10 });
   assert.equal(capThin, 40); // DEFAULT_FLOOR
 });

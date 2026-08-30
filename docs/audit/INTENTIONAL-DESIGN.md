@@ -137,11 +137,11 @@ gex-wall-snapshot-poll.mjs` is that live intraday poller — built + smoke-teste
 
 | | value | where |
 |---|---|---|
-| screen pool per side | `max(ceiling × 4, BREAKOUT_SCREEN_POOL)` = **400** | `breakout-discovery.ts:295` |
+| screen pool per side | `max(ceiling × 4, BREAKOUT_SCREEN_POOL)` = **600** | `breakout-discovery.ts:295` |
 | cap floor | `BREAKOUT_MAX_CANDIDATES` = **40** (a floor, not a ceiling) | `breakout-discovery.ts:69` |
-| cap ceiling | `BREAKOUT_MAX_CANDIDATES_CEILING` = **100** | `breakout-discovery.ts:74` |
+| cap ceiling | `BREAKOUT_MAX_CANDIDATES_CEILING` = **150** | `breakout-discovery.ts:74` |
 | cap formula | `clamp(ceil(qualifying × 0.30), 40, 100)`, `qualifying` = **long + short** pools | `breakout-cap.ts:41-56` |
-| ordering | `rankMoversForChainFetch` — long `gain × close_strength`, short `gain × (1 − close_strength)`, $-volume breaks ties | `breakout-discovery.ts:91-105`, applied `:378-379` |
+| ordering | `rankMoversForChainFetch` — **gain-over-range** (`gain / ((h−l)/o)`) for both sides, $-volume breaks ties | `breakout-discovery.ts:91-112`, applied `:378-379` |
 | chain-fetch budget | `min(max(cap × 4, 60), BREAKOUT_SCREEN_POOL)` | `breakout-discovery.ts:378` |
 
 **Corrected measurement — 13 sessions (2026-07-20 … 2026-08-05), long side, favorable-first
@@ -188,8 +188,18 @@ The dropped tail won ≥ the kept cohort on **7 of 13** sessions.
    top-400 *by $-volume* — the very ordering the momentum re-rank exists to correct, reappearing one
    layer upstream.
 
-**Decision: nothing changed in the engine on 2026-08-06.** The recorded evidence was corrected; the
-cap and ranking ship as they are. Operator call on whether to pursue (2).
+**REVISED 2026-08-24 (WS-21: ranking improvement).** The 2026-08-06 evidence exposed that momentum
+ranking carries **no discriminating power** (flat 43–45% win rate across all rank bands). On
+2026-08-24 the ranking was **replaced with gain-over-range** (`gain / ((h−l)/o)` — a mover's clean
+gain relative to daily volatility). Measured signal: **+11.3pt to +15.7pt** (p<0.001) across 3,305+
+names on breakout/breakdown discovery (see `scripts/audit/breakout-ranking-signal.mjs`); the
+prior momentum ranking measured **−5.2pt to −6.4pt** (negative). This single ranking change carries
+a measured **~6 percentage point improvement** in capture-set win rate on historical backtests.
+Screen pool raised to 600 (ceiling × 4 where ceiling is now 150) and chain-fetch budget scaling
+adjusted accordingly.
+
+**Decision: ship the ranking change (WS-21).** Gain-over-range is the ranking that should have
+shipped; the 2026-08-06 evidence pointed exactly here and was misread as "don't change anything."
 
 **Caveat on the proxy.** Grading is an *underlying*-continuation proxy applied identically to every
 cohort, not an option P&L path, and it models the best case for the cap (every kept name builds a
@@ -247,7 +257,93 @@ iron-condor calibration table) is evidence first, gating second. The missing hal
 the graded outcome of the would-be commits this would unlock — the counterfactual needs real minute
 bars, not just a count of what was blocked.
 
+**The missing half, measured (2026-08-28).** `scripts/audit/g11-print-window-outcome.mjs` (pure
+classifier mirrored in `lib/print-window-eval.mjs`, 8 unit tests) pulls every CONFIRMED Benzinga
+structured-earnings row (importance≥4) over a real 4-week window (2026-08-02…08-27, 447 rows),
+classifies each with the same print-window logic, and — for every row the coarse gate over-blocks
+(`after_close`/`pre_open_landed`) — pulls REAL Polygon 1-minute RTH bars and measures realized
+intraday range%, against a same-day SPY/QQQ/IWM baseline.
+
+| | count |
+|---|---|
+| after_close | 192 |
+| pre_open_landed | 253 |
+| pre_open_pending | 0 |
+| intraday | 2 |
+| unknown | 0 |
+| **exemptible (would unblock)** | **445 / 447** |
+
+**Median realized RTH range: exemptible names 4.06% vs. SPY/QQQ/IWM baseline 0.73% — ~5.6x.** This
+is NOT a graded P&L backtest (that needs the full discovery+contract-pick+exit pipeline, deliberately
+not reimplemented here — see zerodte-sim.mjs for that instrument) — it answers the narrower question
+of whether an exemptible day still carries elevated realized vol despite having zero direct print-gap
+risk to a same-day 0DTE. It does, by a wide margin. **Caveat, stated plainly:** the baseline is index
+ETFs, not liquidity/cap-matched non-earnings single stocks, so part of the gap is ordinary
+single-name-vs-index vol rather than an earnings-specific effect — a matched single-stock control
+(same tickers, a non-earnings week) would sharpen this further and is the natural next step before
+any gate change is even drafted.
+
+**Verdict: the evidence argues against a naive "unblock all exemptible" change**, but does not
+settle whether SOME subset (e.g. `after_close` with a small confirmed expected-move, or a
+liquidity/cap floor) could be safely exempted — that needs the sharper control and, ultimately, a
+real graded backtest through the actual pipeline. No gate touched. This measurement only narrows what
+a future proposal would need to show.
+
 **Fail-closed posture is preserved in the classifier itself**: unknown time, projected date, or an
 unreadable date all classify as THREATENING. A projected date does not earn the after-close
 exemption, because that exemption rests entirely on knowing the print lands after the position is
 flat.
+
+---
+
+## 6. Cortex `gex-walls` oppose MAGNITUDE (within a net-PASS commit) does not cleanly predict outcome
+
+**Where this came from.** A live session (2026-08-28) produced 3 real losses (SNDK -50.45%, MSFT
+-52.07%, META -50.44%) alongside 3 real wins (QQQ +63.31%, APP +20%, MUU +4.65%). SNDK and META
+both carried an active Cortex `gex-walls` OPPOSE at commit — "momentum long in a long-gamma/
+mean-reversion tape" — at weight **0.58** and **0.51**, the two highest oppose weights of anything
+committed that morning, while APP and MUU carried the SAME oppose source at lower weight (0.40 /
+0.37) and still won. That reads as a plausible dose-response pattern (higher oppose magnitude →
+worse outcome) — but n=6 in one session is not evidence a gate should act on; it could just as
+easily be noise from one morning's regime.
+
+**The measurement, not the hunch.** `scripts/audit/cortex-oppose-magnitude-ab.mjs` reads the SAME
+already-pinned `entry_context.cortex` blob every committed row already carries (#318,
+zerodte-service.ts) off `GET /api/market/zerodte/record?days=N`, buckets GRADED rows by the
+`gex-walls` oppose weight into four fixed bands (fixed BEFORE looking at results — [0,.2), [.2,.4),
+[.4,.6), [.6,1]), and reports win rate / avg pnl per band against a "no gex-walls oppose" baseline.
+Read-only, no gate touched, same discipline as `veto-flicker-rate.mjs`/`wall-temporal-stability.mjs`
+above.
+
+**First real run, 90-day window (341 graded plays):**
+
+| Band | n | Win rate | Avg P&L |
+|---|---|---|---|
+| [0.00, 0.20) | 0 | — | — |
+| [0.20, 0.40) | 42 | 31.4% | -10.26% |
+| [0.40, 0.60) | 63 | 43.1% | -1.36% |
+| [0.60, 1.00] | 7 | 16.7% | -8.44% (n<10 — not a verdict) |
+| **Baseline (no gex-walls oppose)** | 137 | **48.3%** | **-3.31%** |
+
+**Verdict: NOT MONOTONIC.** Today's specific pattern does not generalize. The [0.40, 0.60) band —
+exactly where SNDK (0.58) and META (0.51) sat — actually graded BETTER (43.1% WR) than the [0.20,
+0.40) band where the winning APP/MUU sat (31.4% WR). The one band that does look worse (0.60+,
+16.7% WR) has too few samples (n=7) to trust. **What the data DOES support**: having ANY active
+`gex-walls` oppose (roughly 31-43% WR across the two populated bands) correlates with a
+meaningfully worse outcome than a clean signal (48.3% WR baseline) — but that is a PRESENCE
+finding, not a MAGNITUDE-graduated one. A gate that blocks harder as the weight climbs is not
+supported by this sample; a coarser "any gex-walls oppose demotes the setup" question is a
+separate, still-open one this tool can also answer once more sessions accumulate in the high band.
+
+**Secondary check — "thin evidence" (n=73 thin vs n=176 rich, by real-source count/tier factor):**
+thin 44.6% WR / -7.45% avg pnl vs rich 42.8% WR / -2.76% avg pnl — also not a clean signal in
+either direction over this sample.
+
+**What was NOT done.** No gate changed. This is exactly the trap the standing note above warns
+against: a plausible-looking small-sample pattern from live observation, checked against a real
+90-day sample before touching anything, and the check said "no."
+
+**Re-run:**
+```
+node --import tsx scripts/audit/cortex-oppose-magnitude-ab.mjs --days=90 --min-n=10
+```

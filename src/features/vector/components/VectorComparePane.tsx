@@ -11,6 +11,7 @@ import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
 import type { VectorRegime } from "@/features/vector/lib/vector-regime";
 import type { VectorCompareChartSyncBind } from "@/features/vector/lib/vector-compare-sync";
 import type { VectorLinkedReplayBind } from "@/features/vector/lib/vector-compare-replay";
+import type { VectorPlayDeskSnapshot } from "@/features/vector/lib/vector-play-desk-snapshot";
 import { fmtCompareSpot } from "@/features/vector/lib/vector-compare-format";
 
 const VectorPageShell = dynamic(
@@ -58,6 +59,7 @@ type Props = {
   onReplayTimeline?: (timeline: number[]) => void;
   compareFourUp?: boolean;
   compareFourUpBackground?: boolean;
+  onPlayDeskSnapshot?: (ticker: string, snapshot: VectorPlayDeskSnapshot) => void;
 };
 
 export function VectorComparePane({
@@ -86,6 +88,7 @@ export function VectorComparePane({
   onReplayTimeline,
   compareFourUp = false,
   compareFourUpBackground = false,
+  onPlayDeskSnapshot,
 }: Props) {
   const [regime, setRegime] = useState<VectorRegime | null>(null);
   const [spot, setSpot] = useState<number | null>(
@@ -113,6 +116,13 @@ export function VectorComparePane({
       pushMeta(regime, s);
     },
     [pushMeta, regime]
+  );
+
+  const handlePlayDeskSnapshot = useCallback(
+    (snapshot: VectorPlayDeskSnapshot) => {
+      onPlayDeskSnapshot?.(seed.ticker, snapshot);
+    },
+    [onPlayDeskSnapshot, seed.ticker]
   );
 
   const posture = regime?.posture ?? "unknown";
@@ -207,6 +217,7 @@ export function VectorComparePane({
           compareFourUpBackground={compareFourUpBackground}
           comparePane
           compareKeyboardActive={focused}
+          onPlayDeskSnapshot={onPlayDeskSnapshot ? handlePlayDeskSnapshot : undefined}
         />
       </div>
     </article>

@@ -28,8 +28,10 @@ import { gexCheatSheetEmail } from "@/lib/email/templates/gex-cheat-sheet";
 import { WELCOME_SEQUENCE } from "@/lib/email/templates/welcome-sequence";
 import { welcomeCommunityEmail } from "@/lib/email/templates/welcome-community";
 import { welcomePremiumEmail } from "@/lib/email/templates/welcome-premium";
+import { completeSignupEmail } from "@/lib/email/templates/complete-signup";
 import { downgradeEmail } from "@/lib/email/templates/downgrade";
 import { paymentFailedEmail } from "@/lib/email/templates/payment-failed";
+import { trialEndingSoonEmail } from "@/lib/email/templates/trial-ending-soon";
 import { scheduledCancelEmail } from "@/lib/email/templates/scheduled-cancel";
 import { cancelReversedEmail } from "@/lib/email/templates/cancel-reversed";
 import { accessEndedEmail } from "@/lib/email/templates/access-ended";
@@ -80,8 +82,18 @@ const lifecycle = [
     "welcome-premium-upgrade",
     welcomePremiumEmail({ firstName: NAME, previousTier: "community", billingInterval: "annual" }),
   ],
+  [
+    "lifecycle · complete-signup (paid on Whop, no BlackOut account yet)",
+    "complete-signup",
+    completeSignupEmail({ email: TO, billingKind: "premium" }),
+  ],
   ["lifecycle · downgrade (Premium → SPX Slayer)", "downgrade", downgradeEmail({ firstName: NAME })],
   ["lifecycle · payment-failed (dunning)", "payment-failed", paymentFailedEmail({ firstName: NAME, graceDays: 7 })],
+  [
+    "lifecycle · trial-ending-soon",
+    "trial-ending-soon",
+    trialEndingSoonEmail({ firstName: NAME, billingKind: "premium", trialEndsLabel: "Monday, Sep 1" }),
+  ],
   [
     "lifecycle · scheduled-cancel",
     "scheduled-cancel",

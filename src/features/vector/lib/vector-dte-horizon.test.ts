@@ -7,6 +7,7 @@ import {
   isVectorDteHorizon,
   dteHorizonLabel,
   pickHorizonScopedValue,
+  horizonMaxDte,
   VECTOR_DTE_HORIZONS,
 } from "./vector-dte-horizon";
 
@@ -60,11 +61,11 @@ test("expiriesForHorizon: malformed expiry strings are ignored, valid ones survi
   assert.deepEqual(expiriesForHorizon(["garbage", "2026-07-20", ""], "all", "2026-07-13"), ["2026-07-20"]);
 });
 
-test("normalizeDteHorizon / isVectorDteHorizon: junk falls back to 'all'", () => {
+test("normalizeDteHorizon / isVectorDteHorizon: junk falls back to 0DTE default", () => {
   assert.equal(normalizeDteHorizon("weekly"), "weekly");
   assert.equal(normalizeDteHorizon("0dte"), "0dte");
-  assert.equal(normalizeDteHorizon("nonsense"), "all");
-  assert.equal(normalizeDteHorizon(undefined), "all");
+  assert.equal(normalizeDteHorizon("nonsense"), "0dte");
+  assert.equal(normalizeDteHorizon(undefined), "0dte");
   assert.equal(isVectorDteHorizon("monthly"), true);
   assert.equal(isVectorDteHorizon("yearly"), false);
 });
@@ -78,7 +79,7 @@ test("resolveDteHorizonParam: accepts dte and horizon alias; dte wins when both 
   assert.equal(resolveDteHorizonParam(params({ horizon: "0dte" })), "0dte");
   assert.equal(resolveDteHorizonParam(params({ horizon: "0DTE" })), "0dte");
   assert.equal(resolveDteHorizonParam(params({ dte: "weekly", horizon: "0dte" })), "weekly");
-  assert.equal(resolveDteHorizonParam(params({})), "all");
+  assert.equal(resolveDteHorizonParam(params({})), "0dte");
 });
 
 test("every horizon has a label", () => {
@@ -121,6 +122,13 @@ test("normalizeDteHorizon: case-insensitive — UI-cased '0DTE'/'WEEKLY' must no
   assert.equal(normalizeDteHorizon("WEEKLY"), "weekly");
   assert.equal(normalizeDteHorizon("Monthly"), "monthly");
   assert.equal(normalizeDteHorizon("ALL"), "all");
-  assert.equal(normalizeDteHorizon("garbage"), "all");
-  assert.equal(normalizeDteHorizon(null), "all");
+  assert.equal(normalizeDteHorizon("garbage"), "0dte");
+  assert.equal(normalizeDteHorizon(null), "0dte");
+});
+
+test("horizonMaxDte: matches expiriesForHorizon's own ceiling; 'all' is unbounded (null)", () => {
+  assert.equal(horizonMaxDte("0dte"), 0);
+  assert.equal(horizonMaxDte("weekly"), 7);
+  assert.equal(horizonMaxDte("monthly"), 35);
+  assert.equal(horizonMaxDte("all"), null);
 });

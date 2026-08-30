@@ -6,7 +6,7 @@
 >
 > Prod state:
 > - Secrets Manager: `X_MARKETING_POSTS_PAUSED=1`, `X_MENTION_REPLIES_PAUSED=1`
-> - EventBridge: `blackout-production-x-{autopost,growth,replies,analytics}` → **DISABLED**
+> - EventBridge: `blackout-production-x-{intel,autopost,growth,replies,analytics}` → **DISABLED**
 > - **No `railway.x-*.toml` catalog files** — removed so infra sync / ops agents cannot re-schedule
 >
 > To resume (human-only): set pause flags to `0`, enable EventBridge rules in AWS, ECS redeploy.
@@ -17,6 +17,7 @@ Autonomous growth stack — prod only (`blackout-web` `main`). **Currently pause
 
 | Job | Schedule | Role |
 |-----|----------|------|
+| `x-intel` | Even ET hours 8–20 (UTC-aligned) | Queue candidates for human review — **never publishes** |
 | `x-autopost` | Even ET hours 8–20 (UTC-aligned) | 1 desk post / 2h — live SPX, human voice, live desk card PNG, Whop UTM |
 | `x-growth` | Hourly weekdays | Silent likes/follows — **budget capped** |
 | `x-replies` | Hourly :20 weekdays | @mention replies — AI + dedup |

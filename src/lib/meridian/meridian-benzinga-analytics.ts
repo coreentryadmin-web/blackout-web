@@ -120,7 +120,9 @@ export async function diffEstimateRevisionTimeline(
       row.estimated_revenue != null &&
       prev.estimated_revenue != null &&
       prev.estimated_revenue !== 0 &&
-      row.estimated_revenue !== prev.estimated_revenue
+      row.estimated_revenue !== prev.estimated_revenue &&
+      Number.isFinite(row.estimated_revenue) &&
+      Number.isFinite(prev.estimated_revenue)
     ) {
       const revenue_delta_pct = Number(
         (((row.estimated_revenue - prev.estimated_revenue) / Math.abs(prev.estimated_revenue)) * 100).toFixed(1)
@@ -142,6 +144,29 @@ export async function diffEstimateRevisionTimeline(
   return out
     .sort((a, b) => b.last_updated.localeCompare(a.last_updated))
     .slice(0, 24);
+}
+
+/**
+ * Merge this build's freshly-diffed revisions with persisted history so a build that runs AFTER
+ * the one that first detected a revision still shows it, instead of reading empty. Needed because
+ * `diffEstimateRevisionTimeline` only emits a revision in the single ~20-min cached build that
+ * happens to run while the Redis snapshot is stale — diffing also advances that snapshot, so the
+ * next build compares equal and stays silent forever after (measured 2026-08-18: 4 entries at
+ * 14:52 UTC, 0 at 14:57 UTC — see FINDINGS.md "Estimate-revision timeline is momentary, not
+ * cumulative"). `(ticker, date, change_kind, last_updated)` identifies the same real-world
+ * revision whether it came from this build's live diff or an earlier build's persisted copy; the
+ * live copy wins on a collision, though the fields are identical either way.
+ */
+export function mergeEstimateRevisionTimeline(
+  live: MeridianEstimateRevisionEntry[],
+  persisted: MeridianEstimateRevisionEntry[],
+  limit = 24
+): MeridianEstimateRevisionEntry[] {
+  const key = (e: MeridianEstimateRevisionEntry) => `${e.ticker}|${e.date}|${e.change_kind}|${e.last_updated}`;
+  const merged = new Map<string, MeridianEstimateRevisionEntry>();
+  for (const e of persisted) merged.set(key(e), e);
+  for (const e of live) merged.set(key(e), e);
+  return [...merged.values()].sort((a, b) => b.last_updated.localeCompare(a.last_updated)).slice(0, limit);
 }
 
 /** Aggregate beat/surprise stats for the mega-cap earnings week grid. */

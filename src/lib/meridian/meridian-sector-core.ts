@@ -27,10 +27,22 @@
  * many words, that there are too few of them to rank against.
  */
 
-import { num, round } from "./meridian-viz-core";
+import { beatSeries, beatTally, num, round } from "./meridian-viz-core";
+import { settledReactions } from "@/features/meridian/lib/meridian-reaction-display";
+import type { MeridianEarningsPrint } from "@/features/meridian/lib/meridian-types";
 
 /** Below this many PEERS (excluding the subject) no percentile is reported. */
 export const MIN_COHORT_PEERS = 4;
+
+/**
+ * Hard cap on peers a reaction-history fetch requests at once — shared between the client panel
+ * (`MeridianPeerCohortPanel`, which needs it to size its request) and the server loader
+ * (`meridian-peer-reactions.ts`, which enforces it). Lives here rather than in the server file
+ * because this file has no `server-only` import and the panel is a client component — importing
+ * a constant from a `server-only`-marked module fails the client bundle at build time even if the
+ * import is only for a number.
+ */
+export const MAX_PEER_REACTION_TICKERS = 6;
 
 export type SectorClassification = {
   /** Cohort key — the 2-digit SIC major group, zero-padded. Null when unclassifiable. */
@@ -287,7 +299,7 @@ export function describeCohortPosition(
   const d = cohort.distribution;
   const unit = opts.unit ?? "";
   const median = `${d.median}${unit}`;
-  if (d.percentile == null) {
+  if (d.percentile == null || !Number.isFinite(d.percentile)) {
     return `${cohort.label} peers are pricing a median ${median} (n=${d.peers})`;
   }
   const pct = Math.round(d.percentile * 100);
@@ -325,4 +337,45 @@ export function orderTickersForClassification<T>(
     (hasValue(row) ? withValue : without).push(ticker);
   }
   return [...withValue, ...without];
+}
+
+// ── Peer reaction history ────────────────────────────────────────────────────────────
+
+export type PeerReactionSummary = {
+  ticker: string;
+  /** Mean of SETTLED reactions only (see `settledReactions`) — a still-forming or
+   *  assumed-session reaction is not pooled into "what this name usually does". Null when no
+   *  print has a settled, measurable reaction. */
+  avgReactionPct: number | null;
+  /** 0..1. Null when no print has a graded EPS surprise. */
+  beatRate: number | null;
+  /** How many prints the averages above were computed FROM — always shown with the number, per
+   *  this file's own rule that a rate without its cohort is not a fact. */
+  n: number;
+};
+
+/**
+ * Reduces one ticker's print history to the same "usually reacts / usually beats" shape the
+ * subject's own History tab already computes (`MeridianImpliedVsRealized`, `MeridianBeatHistory`)
+ * — reused here (`beatSeries`/`beatTally`/`settledReactions`), not reimplemented, so a peer's
+ * number and the subject's own number are guaranteed to mean the same thing.
+ *
+ * Returns null fields rather than 0 when a peer has no usable prints: this feeds a comparison
+ * panel, and a fabricated 0% would read as "this name never reacts", the opposite of "unknown".
+ */
+export function summarizePeerReaction(
+  ticker: string,
+  prints: readonly MeridianEarningsPrint[] | null | undefined
+): PeerReactionSummary {
+  const rows = prints ?? [];
+  const settled = settledReactions(rows);
+  const moves = settled
+    .map((p) => num(p.reaction_pct ?? p.session_change_pct))
+    .filter((v): v is number => v !== null);
+  const avgReactionPct = moves.length > 0 ? round(moves.reduce((a, v) => a + v, 0) / moves.length, 2) : null;
+
+  const { beats, graded } = beatTally(beatSeries(rows));
+  const beatRate = graded > 0 ? round(beats / graded, 4) : null;
+
+  return { ticker, avgReactionPct, beatRate, n: moves.length };
 }

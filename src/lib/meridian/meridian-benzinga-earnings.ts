@@ -9,9 +9,11 @@ import {
   type BenzingaStructuredEarnings,
 } from "@/lib/providers/polygon";
 import { serverCache } from "@/lib/server-cache";
+import { recordMeridianEstimateRevision, readRecentMeridianEstimateRevisions } from "@/lib/db";
 import {
   buildEarningsWeekAnalytics,
   diffEstimateRevisionTimeline,
+  mergeEstimateRevisionTimeline,
 } from "@/lib/meridian/meridian-benzinga-analytics";
 import {
   buildEarningsWeekRows,
@@ -50,6 +52,8 @@ export type BenzingaEarningsBundle = {
   earnings_week: ReturnType<typeof buildEarningsWeekRows>;
   earnings_analytics_rows: ReturnType<typeof buildEarningsAnalyticsRows>;
   earnings_week_analytics: MeridianEarningsWeekAnalytics | null;
+  /** Non-null when the mega-cap week historical-print fetch failed. Empty analytics + null here means no graded history yet. */
+  earnings_week_analytics_error: string | null;
   recent_revisions: ReturnType<typeof buildRecentEarningsRevisions>;
   estimate_revision_timeline: MeridianEstimateRevisionEntry[];
   after_hours_movers: MeridianAfterHoursMover[];
@@ -87,14 +91,20 @@ export async function loadBenzingaEarningsBundle(
     const weekTickers = [...new Set(earnings_week.map((r) => r.ticker))].slice(0, 24);
 
     let historicalRows: BenzingaStructuredEarnings[] = [];
+    let earnings_week_analytics_error: string | null = null;
     if (weekTickers.length) {
       const hist = await fetchBenzingaStructuredEarnings({
         tickers: weekTickers,
         dateLte: todayYmd,
         limit: 100,
         sort: "date.desc",
-      }).catch(() => ({ rows: [] as BenzingaStructuredEarnings[] }));
+      }).catch(() => ({
+        rows: [] as BenzingaStructuredEarnings[],
+        entitled: true,
+        error: "cache_error" as const,
+      }));
       historicalRows = hist.rows;
+      earnings_week_analytics_error = hist.error ?? null;
     }
 
     // DEDUPE before diffing. The two upstream queries overlap — measured live 2026-08-18, 12 of
@@ -109,10 +119,19 @@ export async function loadBenzingaEarningsBundle(
     // between them; pagination can also repeat a key across pages.
     //
     // Newest `last_updated` wins — the freshest observation is the one worth diffing against.
-    const estimate_revision_timeline = await diffEstimateRevisionTimeline(
+    const liveRevisions = await diffEstimateRevisionTimeline(
       dedupeEarningsRowsByEvent([...window_rows, ...revisionRes.rows]),
       since
     );
+    // Persist every freshly-detected revision (best-effort, matches recordMeridianReportSnapshot's
+    // fire-and-forget pattern) and merge with recent persisted history — otherwise this panel is
+    // only ever populated in the single ~20-min build that happened to detect each revision. See
+    // FINDINGS.md "Estimate-revision timeline is momentary, not cumulative" (2026-08-18).
+    for (const entry of liveRevisions) {
+      void recordMeridianEstimateRevision(entry);
+    }
+    const persistedRevisions = await readRecentMeridianEstimateRevisions(since, 24);
+    const estimate_revision_timeline = mergeEstimateRevisionTimeline(liveRevisions, persistedRevisions, 24);
 
     return {
       window_rows,
@@ -121,6 +140,7 @@ export async function loadBenzingaEarningsBundle(
       error: windowRes.error,
       earnings_week,
       earnings_week_analytics: buildEarningsWeekAnalytics(earnings_week, historicalRows),
+      earnings_week_analytics_error,
       recent_revisions: buildRecentEarningsRevisions(revisionRes.rows, since),
       estimate_revision_timeline,
       after_hours_movers: ahMovers.map((m) => ({
@@ -136,6 +156,7 @@ export async function loadBenzingaEarningsBundle(
     earnings_week: [],
     earnings_analytics_rows: [],
     earnings_week_analytics: null,
+    earnings_week_analytics_error: "cache_error",
     recent_revisions: [],
     estimate_revision_timeline: [],
     after_hours_movers: [],

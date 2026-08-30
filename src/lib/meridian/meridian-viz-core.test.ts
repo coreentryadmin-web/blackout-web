@@ -260,6 +260,18 @@ test("darkPoolTape: sorted largest-first, non-positive dropped", () => {
   assert.equal(t[0]!.premium, 500);
 });
 
+test("darkPoolTape: dateLabel is MM/DD from executed_at, not the raw ISO stamp", () => {
+  const t = darkPoolTape([{ premium: 100, executed_at: "2026-08-20T14:32:05" }]);
+  assert.equal(t[0]!.dateLabel, "08/20");
+  assert.equal(t[0]!.at, "2026-08-20T14:32:05", "raw stamp is still kept for the tooltip");
+});
+
+test("darkPoolTape: dateLabel is null when executed_at is absent or malformed", () => {
+  const t = darkPoolTape([{ premium: 100, executed_at: null }, { premium: 50, executed_at: "garbage" }]);
+  assert.equal(t[0]!.dateLabel, null);
+  assert.equal(t[1]!.dateLabel, null);
+});
+
 // ── countdown
 test("countdownTo: splits a span and reports a past event as past", () => {
   const now = Date.parse("2026-08-18T00:00:00Z");

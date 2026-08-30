@@ -90,5 +90,6 @@ test("StaticLandingFooter: DESK links to SEO lead-magnet and comparison pages", 
     const hrefs = extractHrefs(source, "DESK");
     assert.ok(hrefs.includes("/tools/gamma-snapshot"), `${footerPath} DESK must link to free gamma tool`);
     assert.ok(hrefs.includes("/vs/others"), `${footerPath} DESK must link to comparison page`);
+    assert.ok(hrefs.includes("/methodology"), `${footerPath} DESK must link to public methodology page`);
   }
 });

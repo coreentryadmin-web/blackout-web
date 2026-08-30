@@ -37,6 +37,17 @@ import {
   WHALE_PRINT_PREMIUM,
 } from "@/features/helix/lib/helix-flow-limits";
 import { tapeTimeDisplay } from "@/features/helix/lib/helix-tape-time";
+import {
+  helixScoreContextForPrint,
+  helixScoreContextHint,
+  helixScoreDistribution,
+  helixScoreTierLabel,
+  helixScoreTierTone,
+} from "@/features/helix/lib/helix-score-context";
+import {
+  askPctTone,
+  executionQualityHint,
+} from "@/features/helix/lib/helix-execution-quality";
 
 type SignalTone = "bull" | "bear" | "gold" | "sky" | "purple" | "ember";
 
@@ -106,9 +117,10 @@ function renderCell(
     isStarred: boolean;
     onToggleStar?: (ticker: string) => void;
     onTickerClick?: (ticker: string) => void;
+    scoreDistribution: readonly number[];
   }
 ) {
-  const { isCall, isWhale, dte, is0dte, signals, isStarred, onToggleStar, onTickerClick } = ctx;
+  const { isCall, isWhale, dte, is0dte, signals, isStarred, onToggleStar, onTickerClick, scoreDistribution } = ctx;
   const visibleSignals = signals.slice(0, 3);
   const extraSignals = signals.length - visibleSignals.length;
 
@@ -204,8 +216,19 @@ function renderCell(
       );
     case "spot":
       return <span className="helix-tape-muted tabular-nums">{fmtSpot(flow.underlying_price)}</span>;
-    case "ask":
-      return <span className="helix-tape-muted tabular-nums">{fmtAskPct(flow.ask_pct)}</span>;
+    case "ask": {
+      const tone = askPctTone(flow.ask_pct);
+      const label = fmtAskPct(flow.ask_pct);
+      return (
+        <span
+          className="helix-tape-ask tabular-nums font-semibold"
+          style={tone ? { color: tone } : undefined}
+          title={flow.ask_pct != null ? executionQualityHint(flow.ask_pct) : "No ask-side data on this print"}
+        >
+          {label}
+        </span>
+      );
+    }
     case "oi":
       return <span className="helix-tape-muted tabular-nums">{fmtOi(flow.open_interest)}</span>;
     case "iv":
@@ -216,12 +239,29 @@ function renderCell(
       // Reports UW's alert_rule or nothing — never flow.route, which is our own premium/tenor
       // bucket and not a rule at all. See ruleBadge's header for the measurement.
       return <span className="helix-tape-rule">{ruleBadge(flow)}</span>;
-    case "score":
+    case "score": {
+      if (!(flow.score > 0)) {
+        return <span className="helix-tape-score tabular-nums">—</span>;
+      }
+      const scoreCtx = helixScoreContextForPrint(flow.score, scoreDistribution);
+      const tone = helixScoreTierTone(scoreCtx.tier);
       return (
-        <span className="helix-tape-score tabular-nums">
-          {flow.score > 0 ? flow.score.toFixed(1) : "—"}
+        <span
+          className="helix-tape-score inline-flex items-center justify-end gap-1 tabular-nums"
+          title={helixScoreContextHint(scoreCtx, flow.score)}
+        >
+          <span>{flow.score.toFixed(1)}</span>
+          {scoreCtx.calibrationStatus === "session" && (
+            <span
+              className="helix-tape-score-tier font-mono text-[9px] font-semibold px-1 py-px rounded border"
+              style={{ color: tone.text, borderColor: tone.border, background: tone.bg }}
+            >
+              {helixScoreTierLabel(scoreCtx.tier).slice(0, 1)}
+            </span>
+          )}
         </span>
       );
+    }
     case "signals":
       return (
         <div className="helix-tape-signals">
@@ -319,6 +359,11 @@ export function HelixFlowTable({
     if (sortKey === "time") return sortFlows(base, "time", "desc");
     return sortFlows(base, sortKey, sortDir);
   }, [typed, typeFilter, sortKey, sortDir]);
+
+  const scoreDistribution = useMemo(
+    () => helixScoreDistribution(flows.map((f) => f.score)),
+    [flows]
+  );
 
   const virtualizer = useVirtualizer({
     count: filtered.length,
@@ -514,6 +559,7 @@ export function HelixFlowTable({
                           isStarred,
                           onToggleStar,
                           onTickerClick,
+                          scoreDistribution,
                         })}
                       </div>
                     ))}

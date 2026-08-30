@@ -62,6 +62,7 @@ type SpendRedis = {
 /** Fire one ops-Discord alert describing a threshold crossing. `orgWide` distinguishes the
  *  authoritative cross-replica total from the degraded per-process fallback in the message. */
 function fireSpendAlert(a: { day: string; total: number; threshold: number; orgWide: boolean }): void {
+  if (!Number.isFinite(a.total) || !Number.isFinite(a.threshold)) return;
   const scope = a.orgWide
     ? "ORG-WIDE total (cross-replica Redis ledger)"
     : "per-process only — Redis ledger unavailable, true org-wide total is higher";

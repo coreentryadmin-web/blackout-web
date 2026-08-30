@@ -72,6 +72,8 @@ export type GexPositioning = {
   freshness: "cached";
   /** Zero-gamma flip strike, or null when undetermined. */
   flip: number | null;
+  /** Why flip is null: 'insufficient_data' | 'net_short_everywhere' | 'net_long_everywhere' | 'crossings_far' (omitted when flip is available). */
+  flip_reason?: string | null;
   /** Largest-positive net-gamma strike (resistance / pin), or null. */
   call_wall: number | null;
   /** Largest-negative net-gamma strike (support), or null. */
@@ -367,6 +369,7 @@ export function gexPositioningFromHeatmap(
     matrix_age_sec: ageSecondsFromIso(hm.asof, nowMs),
     freshness: "cached",
     flip,
+    flip_reason: flip === null ? gex.flip_reason : undefined,
     call_wall: callWall,
     put_wall: putWall,
     max_pain: hm.max_pain,

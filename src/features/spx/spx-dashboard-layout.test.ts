@@ -78,9 +78,8 @@ test("SpxDashboard mounts triple desk: intel rail (Pulse default + Largo toggle)
   assert.match(src, /spx-sniper-vector-col/);
   const embed = readFileSync(join(process.cwd(), "src/features/spx/components/SpxVectorEmbed.tsx"), "utf8");
   assert.match(embed, /embed="chart-only"/);
-  assert.match(embed, /defaultDteHorizon="0dte"/);
-  assert.match(embed, /defaultChartViewport="session"/);
-  assert.match(embed, /defaultTimeframe=\{3\}/);
+  assert.match(embed, /defaultVectorDeskOpenProps\("SPX"\)/);
+  assert.match(embed, /import \{ defaultVectorDeskOpenProps \}/);
   assert.match(src, /spx-sniper-triple--desk-v3/);
   assert.match(src, /vector-page-toolbar/, "Vector toolbar portals full-width above the desk grid");
   assert.match(src, /toolbarPortalEl=\{vectorToolbarPortalEl\}/);

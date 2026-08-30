@@ -228,7 +228,9 @@ export function rankPrimaryCandidates(
     return {
       ...parts,
       family_conflict_penalty: 0,
-      static_priority_tiebreak: -tiebreak * 0.001,
+      // Ascending sort below must put the LOWER tiebreak index first (lower index = higher
+      // priority per PLAYBOOK_PRIMARY_PRIORITY) — no negation, or the tie-break silently reverses.
+      static_priority_tiebreak: tiebreak * 0.001,
       total,
     };
   });

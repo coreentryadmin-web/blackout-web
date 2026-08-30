@@ -172,7 +172,7 @@ export function SplitFlowRadar({
                   />
                   {/* Center marker */}
                   <div
-                    className="absolute top-0 bottom-0 w-px bg-white/25"
+                    className="absolute inset-y-0 w-px bg-white/25"
                     style={{ left: "50%" }}
                   />
                 </div>

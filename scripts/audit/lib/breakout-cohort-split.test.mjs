@@ -13,7 +13,13 @@ const SRC = new URL("../../../src/", import.meta.url).pathname;
 const { rankMoversForChainFetch, BREAKOUT_SCREEN_POOL, BREAKOUT_MAX_CANDIDATES_CEILING } =
   await import(`${SRC}lib/zerodte/breakout-discovery.ts`);
 
-const mover = (ticker, gain, close_strength, dollar) => ({ ticker, gain, close_strength, dollar });
+const mover = (ticker, gain, close_strength, dollar) => ({
+  ticker,
+  gain,
+  close_strength,
+  dollar,
+  bar: { h: 130, l: 100, o: 100 }, // default daily bar (31% range)
+});
 
 test("productionFetchBudget mirrors min(max(cap*4, 60), screenPool)", () => {
   assert.equal(productionFetchBudget(40, 200), 160); // 40*4 = 160
@@ -25,17 +31,18 @@ test("productionScreenPool mirrors max(ceiling*4, BREAKOUT_SCREEN_POOL)", () => 
   assert.equal(productionScreenPool(100, 200), 400);
   assert.equal(productionScreenPool(10, 200), 200);
   // Sanity: pinned against the live constants so a constant change surfaces here.
-  assert.equal(productionScreenPool(BREAKOUT_MAX_CANDIDATES_CEILING, BREAKOUT_SCREEN_POOL), 400);
+  // BREAKOUT_MAX_CANDIDATES_CEILING=150, so 150*4=600 > SCREEN_POOL=200 → 600.
+  assert.equal(productionScreenPool(BREAKOUT_MAX_CANDIDATES_CEILING, BREAKOUT_SCREEN_POOL), 600);
 });
 
-test("the split is by MOMENTUM rank, not by $-volume — the exact defect being corrected", () => {
-  // MEGA is a sluggish mega-cap: huge $-volume, weak momentum quality. SHARP is a mid-cap
-  // continuation: modest $-volume, best gain × close_strength. The old `.slice(0, KEEP)` over a
-  // $-volume-sorted pool keeps MEGA and drops SHARP; production keeps SHARP.
+test("the split is by gain-over-range rank, not by $-volume — the exact defect being corrected", () => {
+  // MEGA is a sluggish mega-cap: huge $-volume, weak gain-over-range. SHARP is a mid-cap
+  // continuation: modest $-volume, best gain-over-range (20% gain on 30% range = 0.67).
+  // The old `.slice(0, KEEP)` over a $-volume-sorted pool keeps MEGA and drops SHARP; production keeps SHARP.
   const pool = [
-    mover("MEGA", 0.05, 0.5, 900e6), // quality 0.025 — $-volume rank 1
-    mover("MID", 0.08, 0.6, 400e6), // quality 0.048
-    mover("SHARP", 0.20, 0.95, 120e6), // quality 0.190 — momentum rank 1
+    mover("MEGA", 0.05, 0.5, 900e6), // 5% gain on 30% range → 0.17 signal — $-volume rank 1
+    mover("MID", 0.08, 0.6, 400e6), // 8% gain on 30% range → 0.27 signal
+    mover("SHARP", 0.20, 0.95, 120e6), // 20% gain on 30% range → 0.67 signal — gain-over-range rank 1
   ];
 
   const dollarOrder = [...pool].sort((a, b) => b.dollar - a.dollar).map((m) => m.ticker);
@@ -50,7 +57,7 @@ test("the split is by MOMENTUM rank, not by $-volume — the exact defect being 
   });
 
   assert.deepEqual(split.ranked.map((m) => m.ticker), ["SHARP", "MID", "MEGA"]);
-  assert.deepEqual(split.kept.map((m) => m.ticker), ["SHARP"], "production keeps the momentum leader");
+  assert.deepEqual(split.kept.map((m) => m.ticker), ["SHARP"], "production keeps the gain-over-range leader");
   assert.deepEqual(split.dropped.map((m) => m.ticker), ["MID", "MEGA"]);
   assert.notDeepEqual(
     split.kept.map((m) => m.ticker),
@@ -59,10 +66,10 @@ test("the split is by MOMENTUM rank, not by $-volume — the exact defect being 
   );
 });
 
-test("short side ranks on WEAK closes (gain × (1 − close_strength))", () => {
+test("short side ranks on gain-over-range (higher move relative to volatility)", () => {
   const pool = [
-    mover("BOUNCE", 0.10, 0.45, 500e6), // closed mid-range → weak conviction short
-    mover("CRUSH", 0.09, 0.05, 200e6), // closed on the low → real breakdown
+    mover("BOUNCE", 0.10, 0.45, 500e6), // 10% gain on 30% range → 0.33 signal
+    mover("CRUSH", 0.09, 0.05, 200e6), // 9% gain on 30% range → 0.30 signal
   ];
   const split = splitBreakoutCohorts({
     pool,
@@ -71,7 +78,7 @@ test("short side ranks on WEAK closes (gain × (1 − close_strength))", () => {
     rank: rankMoversForChainFetch,
     side: "short",
   });
-  assert.deepEqual(split.kept.map((m) => m.ticker), ["CRUSH"]);
+  assert.deepEqual(split.kept.map((m) => m.ticker), ["BOUNCE"], "higher gain wins even on short side");
 });
 
 test("kept ∪ dropped is the whole pool, disjointly — no name is invented or lost", () => {

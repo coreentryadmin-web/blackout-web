@@ -59,3 +59,11 @@ brag-output-*/
 # Ad-hoc live probes. /tmp is wiped between captures while the repo survives, so probes live
 # here — but they are throwaway diagnostics, not committed tooling.
 scratch/
+public/x-intel/captures/
+
+# data-correctness cron's markdown scorecard (docs/DATA_CORRECTNESS.md) — best-effort local
+# convenience output written only when the FS is writable (production's ECS root FS mostly
+# isn't, so this almost never fires there); the durable record is logCronRun's structured
+# payload, not this file. Tracking it meant six no-op "chore: commit stray placeholder" PRs
+# (#3087, #3113, #3132) for an empty file with nothing to say.
+docs/auto/data-correctness-*.md

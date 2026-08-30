@@ -19,7 +19,9 @@ const TICKERS: PublicGexTicker[] = ["SPX", "SPY", "QQQ"];
  * window is correct — it degrades to the plain label rather than asserting a side we were not told.
  */
 function WallRole({ role, kind }: { role: PublicGexSnapshot["call_wall_role"]; kind: "call" | "put" }) {
-  if (!role) return null;
+  if (!role) {
+    return <p className="font-mono text-[9px] text-transparent uppercase tracking-wider mt-0.5 h-3">—</p>;
+  }
   if (role === "concentration") {
     return (
       <p
@@ -133,11 +135,15 @@ export function GammaSnapshotWidget({ initial }: { initial: PublicGexSnapshot })
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-[#050608]/60 backdrop-blur-md p-6">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5" role="tablist" aria-label="Index ticker">
           {TICKERS.map((t) => (
             <button
               key={t}
               type="button"
+              role="tab"
+              aria-selected={t === ticker}
+              aria-controls="gamma-snapshot-panel"
+              id={`gamma-tab-${t}`}
               onClick={() => selectTicker(t)}
               className={
                 "rounded-lg px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wide transition " +
@@ -150,11 +156,16 @@ export function GammaSnapshotWidget({ initial }: { initial: PublicGexSnapshot })
             </button>
           ))}
         </div>
-        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-sky-300/50">
-          {loading ? "Loading…" : freshness.levels}
-        </p>
+        <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-sky-300/50 relative h-4 min-w-[8rem] text-right">
+          {loading ? (
+            <span>Loading…</span>
+          ) : (
+            <span>{freshness.levels}</span>
+          )}
+        </div>
       </div>
 
+      <div id="gamma-snapshot-panel" role="tabpanel" aria-labelledby={`gamma-tab-${ticker}`}>
       {!snapshot.available ? (
         <p className="font-mono text-sm text-sky-300/70">{snapshot.read}</p>
       ) : (
@@ -167,13 +178,9 @@ export function GammaSnapshotWidget({ initial }: { initial: PublicGexSnapshot })
               <p className="font-anton text-4xl md:text-5xl text-white leading-none tabular-nums">
                 {fmtLevel(snapshot.spot)}
               </p>
-              {/* Sits under the PRICE, not in the corner beside the levels age — the false claim
-                  was about the price, so the correction belongs where a reader looks for it. */}
-              {freshness.priceNote && (
-                <p className="mt-1 font-mono text-[10px] leading-snug text-amber-300/70">
-                  {freshness.priceNote}
-                </p>
-              )}
+              <p className={`mt-1 font-mono text-[10px] leading-snug ${freshness.priceNote ? "text-amber-300/70" : "text-transparent"} h-5`}>
+                {freshness.priceNote || "Space reserved for market status"}
+              </p>
             </div>
             <div className="text-right">
               <p
@@ -208,6 +215,7 @@ export function GammaSnapshotWidget({ initial }: { initial: PublicGexSnapshot })
           <p className="font-mono text-xs text-sky-300/70 leading-relaxed">{snapshot.read}</p>
         </>
       )}
+      </div>
     </div>
   );
 }

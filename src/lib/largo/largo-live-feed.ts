@@ -922,7 +922,7 @@ export function formatLargoLiveFeed(rawFeed: LargoLiveFeed, ticker: string): str
         const side = p.side ?? p.direction ?? "";
         const strike = p.strike ?? "";
         const expiry = p.expiry ? String(p.expiry).slice(0, 10) : "";
-        const plPct = p.pnl_pct != null ? `P&L ${Number(p.pnl_pct).toFixed(1)}%` : "";
+        const plPct = p.pnl_pct != null && Number.isFinite(p.pnl_pct) ? `P&L ${Number(p.pnl_pct).toFixed(1)}%` : "";
         const nwVerdict = p.nw_verdict ?? p.verdict ?? "";
         lines.push(
           `- ${ticker} ${side}${strike ? ` $${strike}` : ""}${expiry ? ` exp ${expiry}` : ""}${plPct ? ` · ${plPct}` : ""}${nwVerdict ? ` · verdict: ${nwVerdict}` : ""}`

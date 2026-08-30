@@ -41,7 +41,15 @@ export function earningsReportTimeEt(time: string | null): string | null {
 }
 
 export function impactFromEarningsImportance(importance: number | null | undefined): MeridianImpact {
-  if (importance == null || !Number.isFinite(importance)) return "high";
+  // An unrated print (Benzinga leaves `importance` null for a large share of names — see
+  // meridian-earnings-data-inventory.mjs's --min-importance cohort guard) is an ABSENCE of
+  // evidence, not evidence of high importance. This mirrors the rule meridian-em-priority.ts
+  // already states explicitly: "unknown ranks BELOW a real 0 — 'we do not know how important
+  // this is' is weaker evidence than 'we know it is unimportant'". MeridianImpact has no
+  // separate "unknown" tier, so an unrated print maps to the WEAKEST bucket ("low"), never the
+  // strongest — the opposite of what this returned before, which let every unrated name crowd
+  // the "High Impact" strip/count indistinguishably from a confirmed importance>=4 mega-cap print.
+  if (importance == null || !Number.isFinite(importance)) return "low";
   if (importance >= 4) return "high";
   if (importance >= 2) return "medium";
   return "low";
@@ -95,9 +103,9 @@ export function computeEarningsYoY(row: BenzingaStructuredEarnings | MeridianEar
   const rev = row.estimated_revenue;
   const prevRev = row.previous_revenue;
   const eps_yoy_pct =
-    est != null && prev != null && prev !== 0 ? Number((((est - prev) / Math.abs(prev)) * 100).toFixed(1)) : null;
+    est != null && prev != null && prev !== 0 && Number.isFinite(est) && Number.isFinite(prev) ? Number((((est - prev) / Math.abs(prev)) * 100).toFixed(1)) : null;
   const revenue_yoy_pct =
-    rev != null && prevRev != null && prevRev !== 0
+    rev != null && prevRev != null && prevRev !== 0 && Number.isFinite(rev) && Number.isFinite(prevRev)
       ? Number((((rev - prevRev) / Math.abs(prevRev)) * 100).toFixed(1))
       : null;
   if (eps_yoy_pct == null && revenue_yoy_pct == null) return null;

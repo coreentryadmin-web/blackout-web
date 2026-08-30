@@ -485,6 +485,34 @@ export function depthBandForPrice<T extends { price: number }>(
 
 }
 
+/**
+ * Where a wall/level marker at `target` should be drawn as its OWN row in a descending-sorted
+ * rung list — never the index of the nearest existing rung.
+ *
+ * The depth ladder used to tag whichever rung was NEAREST to a wall price with a "call wall" /
+ * "put wall" label, while that row still printed ITS OWN price. On a coarse ladder (rungs spaced
+ * `step_pct` apart) the nearest rung can sit a full band or more from the real wall — live SPY
+ * 2026-08-27 showed the Key Levels header reading "CALL WALL 770" while the ladder's tagged row
+ * showed 767, a buy-side band on the OTHER side of spot from the real (771) spot row. The header
+ * and the ladder shared the exact same underlying wall value the whole time (both read
+ * `filteredLevels.posWall`); the mismatch was purely a rendering choice. Returning an insertion
+ * index — like the ladder's own repriced-flip crossing marker already does — lets the caller draw
+ * the TRUE price on its own line instead of relabeling a nearby rung's different one.
+ *
+ * Returns -1 (draw nothing) when `target` is absent or sits beyond `rangePct` of spot, mirroring
+ * the range gate every other consumer of a wall price in this ladder already applies.
+ */
+export function wallMarkerRowIndex<T extends { price: number }>(
+  rungs: readonly T[],
+  target: number | null,
+  spot: number,
+  rangePct: number
+): number {
+  if (target == null || !Number.isFinite(target)) return -1;
+  if (!(spot > 0) || Math.abs(target - spot) > spot * rangePct) return -1;
+  return rungs.findIndex((l) => l.price < target);
+}
+
 /** What stands between spot and a target price. */
 export interface ForcedFlowBetween {
   /** Signed dollars dealers must trade to traverse: positive = net BUYING, negative = net SELLING. */

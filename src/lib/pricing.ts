@@ -17,5 +17,6 @@ export const MEMBERSHIP_PRICING = {
 
 /** Format a whole-dollar amount with thousands separators, e.g. 1999 → "$1,999". */
 export function usd(amount: number): string {
+  if (!Number.isFinite(amount)) return "$—";
   return `$${amount.toLocaleString("en-US")}`;
 }

@@ -41,6 +41,7 @@ function zerodteLine(ctx: EcosystemContext): string {
 function flipProximity(ctx: EcosystemContext): { spot: number; flip: number; pct: number } | null {
   const g = ctx.gex_positioning;
   if (!g || g.flip == null || !(typeof g.spot === "number" && g.spot > 0)) return null;
+  if (!Number.isFinite(g.flip)) return null;
   return { spot: g.spot, flip: g.flip, pct: (Math.abs(g.spot - g.flip) / g.spot) * 100 };
 }
 

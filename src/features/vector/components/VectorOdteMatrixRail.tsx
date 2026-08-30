@@ -10,7 +10,7 @@ import {
   heatmapCellTextStyle,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
-import { matrixScopeExpiries, matrixRailTitle } from "@/features/vector/lib/vector-matrix-horizon";
+import { matrixScopeExpiries, matrixRailTitle, matrixScopeExpiryNote } from "@/features/vector/lib/vector-matrix-horizon";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import {
   readGexHeatmapSessionCache,
@@ -67,6 +67,8 @@ type Props = {
   wallsPollMs?: number;
   hoverPrice?: number | null;
   priceBand?: { min: number; max: number } | null;
+  /** Click a strike row → flash that level on the chart (same seam as HELIX strike focus). */
+  onStrikeFocus?: (strike: number) => void;
 };
 
 function scrollSpotIntoView(list: HTMLElement, target: HTMLElement): void {
@@ -85,6 +87,7 @@ export function VectorOdteMatrixRail({
   wallsPollMs,
   hoverPrice = null,
   priceBand = null,
+  onStrikeFocus,
 }: Props) {
   const [lens, setLens] = useState<GexHeatmapLens>("gex");
   const pollMs = wallsPollMs ?? vectorWallsScopePollMs(ticker);
@@ -162,6 +165,7 @@ export function VectorOdteMatrixRail({
 
   const hasData = Boolean(data?.available && built.rows.length > 0 && scopeExpiries.length > 0);
   const asOf = fmtAsof(data?.asof);
+  const scopeNote = matrixScopeExpiryNote(scopeExpiries, dteHorizon, todayYmd);
   const emptyLabel =
     dteHorizon === "0dte" ? "No 0DTE structure near spot" : `No ${matrixTitle.toLowerCase()} structure near spot`;
 
@@ -186,6 +190,11 @@ export function VectorOdteMatrixRail({
             {spot != null && spot > 0 ? fmtHeatmapStrike(spot) : "—"}
           </span>
           {asOf ? <span className="vector-odte-matrix-asof">{asOf} ET</span> : null}
+          {scopeNote ? (
+            <span className="vector-odte-matrix-scope-note" title="0DTE expiry unavailable — showing nearest listed expiry">
+              {scopeNote}
+            </span>
+          ) : null}
         </div>
         <div className="vector-odte-matrix-lens" role="group" aria-label="Matrix lens">
           {(["gex", "vex"] as const).map((l) => (
@@ -217,9 +226,11 @@ export function VectorOdteMatrixRail({
           <table className="vector-odte-matrix-table spx-gex-matrix-table w-full border-collapse font-mono text-[11px] tabular-nums">
             <thead className="sticky top-0 z-10 bg-[#08080e]">
               <tr className="border-b border-white/10 text-[9px] uppercase tracking-wider text-sky-300">
-                <th className="py-1 pl-1 pr-1 text-left font-semibold">Strike</th>
-                <th className="py-1 px-1 text-right font-semibold">{lens.toUpperCase()}</th>
-                <th className="py-1 pr-1 text-right font-semibold">Δ%</th>
+                <th className="py-1 pl-1 pr-2 text-left font-semibold">Strike</th>
+                {/* Δ% folded into this cell (see MatrixRow) — Vector only ever shows the single
+                    0DTE column, so a standalone Δ% column just burned rail width for one number
+                    that reads fine as a small inline suffix next to the value it explains. */}
+                <th className="py-1 pr-1 text-right font-semibold">{lens.toUpperCase()} · Δ%</th>
               </tr>
             </thead>
             <tbody>
@@ -233,6 +244,7 @@ export function VectorOdteMatrixRail({
                   lens={lens}
                   highlighted={hoverStrike === row.strike}
                   spotRowRef={si === built.spotIdx ? spotRowRef : undefined}
+                  onStrikeFocus={onStrikeFocus}
                 />
               ))}
             </tbody>
@@ -256,6 +268,7 @@ const MatrixRow = memo(function MatrixRow({
   lens,
   highlighted,
   spotRowRef,
+  onStrikeFocus,
 }: {
   row: OdteMatrixRow;
   si: number;
@@ -264,6 +277,7 @@ const MatrixRow = memo(function MatrixRow({
   lens: GexHeatmapLens;
   highlighted: boolean;
   spotRowRef?: RefObject<HTMLTableRowElement>;
+  onStrikeFocus?: (strike: number) => void;
 }) {
   const isSpot = si === spotIdx;
   const hasVal = row.value !== 0;
@@ -285,13 +299,28 @@ const MatrixRow = memo(function MatrixRow({
         row.isKing && "spx-odte-matrix-row--anchor",
         row.isCallWall && "spx-odte-matrix-row--max-pos",
         row.isPutWall && "spx-odte-matrix-row--max-neg",
-        highlighted && "vector-odte-matrix-hover"
+        highlighted && "vector-odte-matrix-hover",
+        onStrikeFocus && "vector-odte-matrix-row-clickable"
       )}
+      onClick={onStrikeFocus ? () => onStrikeFocus(row.strike) : undefined}
+      onKeyDown={
+        onStrikeFocus
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onStrikeFocus(row.strike);
+              }
+            }
+          : undefined
+      }
+      tabIndex={onStrikeFocus ? 0 : undefined}
+      role={onStrikeFocus ? "button" : undefined}
+      aria-label={onStrikeFocus ? `Focus chart on strike ${row.strike}` : undefined}
     >
       <th
         scope="row"
         className={clsx(
-          "py-0.5 pl-1 pr-1 text-left font-bold",
+          "py-0.5 px-1 text-left font-bold",
           isSpot && "text-cyan-300"
         )}
       >
@@ -299,13 +328,23 @@ const MatrixRow = memo(function MatrixRow({
         {row.isKing ? <span className="vector-odte-matrix-crown" aria-hidden> ♛</span> : null}
       </th>
       <td
-        className="py-0.5 px-1 text-right whitespace-nowrap"
+        className="py-0.5 pr-1 text-right whitespace-nowrap"
         style={{ ...cellStyle, ...textStyle }}
       >
-        {hasVal ? fmtHeatmapMoneySigned(row.value) : "·"}
-      </td>
-      <td className={clsx("py-0.5 pr-1 text-right text-[10px] font-semibold tabular-nums", pctTone)}>
-        {row.driftLabel ?? "—"}
+        <span
+          className={clsx(row.isKing && "vector-odte-matrix-king-value")}
+          title={row.isKing ? "King node — largest |GEX| on the board" : undefined}
+        >
+          {hasVal ? fmtHeatmapMoneySigned(row.value) : "·"}
+        </span>
+        {row.driftLabel != null && row.driftLabel !== "—" ? (
+          <span className={clsx("vector-odte-matrix-pct-inline", pctTone)}>
+            {row.shiftDelta != null && row.shiftDelta >= 0 ? "▲" : "▼"}
+            {/* driftLabel already carries its own +/− sign (fmtShiftPercentForStrike) — the arrow
+                above is the direction cue, so strip that leading sign glyph rather than show both. */}
+            {row.driftLabel.replace(/^[+−-]/, "")}
+          </span>
+        ) : null}
       </td>
     </tr>
   );

@@ -1690,6 +1690,75 @@ async function runMigrations(): Promise<void> {
     CREATE INDEX IF NOT EXISTS vector_wall_history_lookup_idx ON vector_wall_history (ticker, session_ymd, bucket_time);
     CREATE INDEX IF NOT EXISTS vector_wall_history_updated_at_idx ON vector_wall_history (updated_at DESC);
   `);
+  // Vector contract-pick closures — advisory Don't buy events for system analysis (Night Hawk Vector tab).
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS vector_pick_closures (
+      id BIGSERIAL PRIMARY KEY,
+      commit_key TEXT NOT NULL,
+      session_date DATE NOT NULL,
+      ticker TEXT NOT NULL,
+      occ TEXT NOT NULL,
+      side TEXT NOT NULL,
+      strike NUMERIC NOT NULL,
+      expiry DATE NOT NULL,
+      rank INT,
+      label TEXT,
+      role TEXT,
+      entry_mid NUMERIC,
+      close_mid NUMERIC,
+      premium_pct_from_entry NUMERIC,
+      close_reason TEXT NOT NULL,
+      setup_invalidated BOOLEAN NOT NULL DEFAULT FALSE,
+      spot NUMERIC,
+      vector_play JSONB,
+      pick_context JSONB,
+      closed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await p.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_vector_pick_closures_commit_key
+    ON vector_pick_closures(commit_key);
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_vector_pick_closures_session
+    ON vector_pick_closures(session_date DESC, ticker);
+  `);
+  // Vector pick leaders — server sweep of ranked contract picks + live P&L (Night Hawk winners lane).
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS vector_pick_leaders (
+      id BIGSERIAL PRIMARY KEY,
+      leader_key TEXT NOT NULL,
+      session_date DATE NOT NULL,
+      ticker TEXT NOT NULL,
+      occ TEXT NOT NULL,
+      side TEXT NOT NULL,
+      strike NUMERIC NOT NULL,
+      expiry DATE NOT NULL,
+      rank INT,
+      label TEXT,
+      role TEXT,
+      entry_mid NUMERIC,
+      live_mid NUMERIC,
+      premium_pct_from_entry NUMERIC,
+      peak_premium_pct NUMERIC,
+      action_status TEXT NOT NULL,
+      action_reason TEXT NOT NULL,
+      setup_invalidated BOOLEAN NOT NULL DEFAULT FALSE,
+      spot NUMERIC,
+      vector_play JSONB,
+      pick_context JSONB,
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await p.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_vector_pick_leaders_key
+    ON vector_pick_leaders(leader_key);
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_vector_pick_leaders_session_pct
+    ON vector_pick_leaders(session_date DESC, premium_pct_from_entry DESC NULLS LAST);
+  `);
   await p.query(`
     ALTER TABLE largo_messages
     ADD COLUMN IF NOT EXISTS tool_results JSONB;
@@ -2173,6 +2242,39 @@ async function runMigrations(): Promise<void> {
        ON meridian_report_snapshots(ticker, event_date, snapshot_day DESC)`
   );
 
+  // Meridian estimate-revision history — ONE ROW PER detected revision, kept (not overwritten).
+  //
+  // `diffEstimateRevisionTimeline` (Redis snapshot diff) only EMITS a revision in the single
+  // ~20-min cached build that happens to run while the delta is fresh — the act of diffing also
+  // advances the Redis snapshot, so the next build compares equal and stays silent forever after.
+  // A member who loads the page outside that one build's window sees an empty "timeline" despite
+  // real revisions having happened (measured 2026-08-18: 4 entries at 14:52 UTC, 0 at 14:57 UTC —
+  // see FINDINGS.md). This table makes each emitted entry durable so it can be read back on any
+  // later build within the lookback window, not just the one that detected it. UNIQUE on the same
+  // fields that define the entry so a second build that races the diff (or re-observes the same
+  // Benzinga row before the Redis snapshot has propagated) writes the identical row harmlessly.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS meridian_estimate_revisions (
+      id BIGSERIAL PRIMARY KEY,
+      ticker TEXT NOT NULL,
+      event_date DATE NOT NULL,
+      change_kind TEXT NOT NULL,
+      revised_at TIMESTAMPTZ NOT NULL,
+      company_name TEXT,
+      eps_delta NUMERIC,
+      revenue_delta_pct NUMERIC,
+      estimated_eps NUMERIC,
+      estimated_revenue NUMERIC,
+      headline TEXT NOT NULL,
+      inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (ticker, event_date, change_kind, revised_at)
+    );
+  `);
+  await p.query(
+    `CREATE INDEX IF NOT EXISTS idx_meridian_est_revisions_recent
+       ON meridian_estimate_revisions(revised_at DESC)`
+  );
+
   // X INTEL QUEUE — the hourly market-intelligence package a human reviews and publishes by hand.
   //
   // `cycle_key` is UNIQUE and carries the ET hour slot ("2026-08-21T11"), so a re-run of the same
@@ -2225,6 +2327,13 @@ async function runMigrations(): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_x_intel_queue_session
        ON x_intel_queue(session_date DESC, created_at DESC)`
   );
+  // #2499 shipped the table without session_claim; #2574 added it to CREATE TABLE IF NOT EXISTS
+  // which does not alter an existing relation. Prod x-intel cron INSERTs failed with
+  // `column "session_claim" of relation "x_intel_queue" does not exist` until this runs.
+  await p.query(`
+    ALTER TABLE x_intel_queue
+      ADD COLUMN IF NOT EXISTS session_claim BOOLEAN NOT NULL DEFAULT FALSE
+  `);
 
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
@@ -6645,7 +6754,10 @@ export async function gradeZeroDteSetupRow(
  *    were already told to trim. The row's own peak_premium column is the shared
  *    truth, so a lower-rung write from a stale latch is dropped here, not raced.
  *  A regressing write still lands its mark and widens peak/trough (real quote
- *  data), it just cannot move the status rung backwards. */
+ *  data), it just cannot move the status rung backwards — UNLESS the row is
+ *  already CLOSED, in which case last_mark/peak_premium/trough_premium freeze
+ *  too (2026-08-27 fix): a closed row must never keep absorbing quotes from a
+ *  writer whose stale active-set cache hasn't noticed the close yet. */
 export async function updateZeroDteLiveState(
   sessionDate: string,
   ticker: string,
@@ -6659,7 +6771,24 @@ export async function updateZeroDteLiveState(
          WHEN status = 'TRIM' AND $3 IN ('OPEN','HOLD') THEN status
          ELSE $3
        END,
-       last_mark = COALESCE($4, last_mark),
+       -- BUG FIX (2026-08-27): all four mark-anchored columns below now short-circuit on
+       -- status = 'CLOSED' (the row's PRE-update value -- Postgres evaluates every SET
+       -- expression against the row as it was before this statement, so this is the same
+       -- "already closed" fact the status CASE above already tests). Before this fix only
+       -- status was frozen at close; last_mark/peak_premium/trough_premium kept moving for
+       -- up to ACTIVE_SET_TTL_MS (10s, live-marks.ts) after a row closed, because the ~1s
+       -- live-marks poller's local active-set cache can still believe a just-closed row is
+       -- OPEN/HOLD for that window and keeps heartbeat-persisting a fresh quote into it. The
+       -- status guard silently absorbed the write (correct), but the mark fields were NOT
+       -- guarded the same way, so they drifted post-close -- and reconcileLedgerLivePnlPct
+       -- (marks-math.ts) reads last_mark directly for any closed_reason other than "stopped"/
+       -- condor (i.e. every thesis/flat/ratchet close), so the DISPLAYED "realized" P&L kept
+       -- reflecting the market's move for several seconds after the trade was actually over.
+       -- Live evidence: MSTR closed "thesis" at a real exit_pnl_pct of +1.61% (the exit-context
+       -- stamp is first-write-wins, trustworthy) but the board showed live_pnl_pct -3.23% — the
+       -- market moved against the position in the post-close window and last_mark followed it,
+       -- flipping the member-visible sign on an already-decided winning trade.
+       last_mark = CASE WHEN status = 'CLOSED' THEN last_mark ELSE COALESCE($4, last_mark) END,
        -- STAMPED ONLY ON A REAL OBSERVATION, and that is the whole point of the column.
        -- last_mark is COALESCEd (correct: a stale tick must not discard a good mark), so a row
        -- whose contract NEVER produced a quote keeps the value it was seeded with — its entry
@@ -6668,12 +6797,18 @@ export async function updateZeroDteLiveState(
        -- exactly 0.00% and closed "breakeven" on a contract that actually traded 0.24 -> 1.48
        -- (76 of 84 minute bars more than $0.05 away from the mark being shown).
        -- With this column, last_mark_at IS NULL says "no quote was ever seen" out loud.
-       last_mark_at = CASE WHEN $4 IS NOT NULL THEN now() ELSE last_mark_at END,
+       last_mark_at = CASE
+         WHEN status = 'CLOSED' THEN last_mark_at
+         WHEN $4 IS NOT NULL THEN now()
+         ELSE last_mark_at
+       END,
        peak_premium = CASE
+         WHEN status = 'CLOSED' THEN peak_premium
          WHEN $4 IS NOT NULL THEN GREATEST(COALESCE(peak_premium, $4), $4)
          ELSE peak_premium
        END,
        trough_premium = CASE
+         WHEN status = 'CLOSED' THEN trough_premium
          WHEN $4 IS NOT NULL THEN LEAST(COALESCE(trough_premium, $4), $4)
          ELSE trough_premium
        END
@@ -9731,6 +9866,99 @@ export async function readMeridianReportSnapshots(
       .reverse();
   } catch (err) {
     console.warn(`[meridian-snapshot] read failed for ${safeLogTicker(ticker)}:`, err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+/* ── Meridian estimate-revision history ─────────────────────────────────────────────── */
+
+export type MeridianEstimateRevisionRow = {
+  ticker: string;
+  company_name: string | null;
+  date: string;
+  last_updated: string;
+  change_kind: "eps" | "revenue" | "date_status" | "print" | "calendar";
+  eps_delta: number | null;
+  revenue_delta_pct: number | null;
+  estimated_eps: number | null;
+  estimated_revenue: number | null;
+  headline: string;
+};
+
+/**
+ * Persist ONE detected estimate revision so it survives past the single ~20-min cached build
+ * that emitted it. `diffEstimateRevisionTimeline`'s Redis snapshot advances the moment it diffs a
+ * row, so without this the SAME revision can never be re-emitted by a later build (see the table
+ * comment in runMigrations). Fire-and-forget from the caller, mirroring `recordMeridianReportSnapshot`;
+ * never throws. ON CONFLICT DO NOTHING — a re-diffed row (overlapping cache windows racing, or the
+ * same Benzinga row re-observed before the Redis snapshot has propagated) writes an identical row.
+ */
+export async function recordMeridianEstimateRevision(entry: MeridianEstimateRevisionRow): Promise<void> {
+  if (!dbConfigured()) return;
+  try {
+    const p = await getPool();
+    await p.query(
+      `INSERT INTO meridian_estimate_revisions
+         (ticker, event_date, change_kind, revised_at, company_name, eps_delta, revenue_delta_pct, estimated_eps, estimated_revenue, headline)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (ticker, event_date, change_kind, revised_at) DO NOTHING`,
+      [
+        entry.ticker.trim().toUpperCase(),
+        entry.date,
+        entry.change_kind,
+        entry.last_updated,
+        entry.company_name,
+        entry.eps_delta,
+        entry.revenue_delta_pct,
+        entry.estimated_eps,
+        entry.estimated_revenue,
+        entry.headline,
+      ]
+    );
+  } catch (err) {
+    console.warn(
+      `[meridian-est-revisions] write failed for ${safeLogTicker(entry.ticker)}:`,
+      err instanceof Error ? err.message : err
+    );
+  }
+}
+
+/**
+ * Recent revision history across ALL tickers, newest first — this is what turns the market-wide
+ * `estimate_revision_timeline` panel from a momentary sample into an actual timeline: the caller
+ * merges this with the current build's live diff, so a member landing outside the one build that
+ * detected a revision still sees it until it ages out of `sinceIso`. Empty on any failure — the
+ * panel simply falls back to whatever the live diff found this build.
+ */
+export async function readRecentMeridianEstimateRevisions(
+  sinceIso: string,
+  limit = 24
+): Promise<MeridianEstimateRevisionRow[]> {
+  if (!dbConfigured()) return [];
+  try {
+    const p = await getPool();
+    const res = await p.query(
+      `SELECT ticker, event_date, change_kind, revised_at, company_name, eps_delta, revenue_delta_pct, estimated_eps, estimated_revenue, headline
+         FROM meridian_estimate_revisions
+        WHERE revised_at >= $1
+        ORDER BY revised_at DESC
+        LIMIT $2`,
+      [sinceIso, Math.min(200, Math.max(1, limit))]
+    );
+    return res.rows.map((r: Record<string, unknown>) => ({
+      ticker: String(r.ticker),
+      company_name: (r.company_name ?? null) as string | null,
+      date: String(r.event_date instanceof Date ? r.event_date.toISOString().slice(0, 10) : r.event_date).slice(0, 10),
+      last_updated: r.revised_at instanceof Date ? r.revised_at.toISOString() : String(r.revised_at),
+      change_kind: r.change_kind as MeridianEstimateRevisionRow["change_kind"],
+      eps_delta: r.eps_delta == null ? null : Number(r.eps_delta),
+      revenue_delta_pct: r.revenue_delta_pct == null ? null : Number(r.revenue_delta_pct),
+      estimated_eps: r.estimated_eps == null ? null : Number(r.estimated_eps),
+      estimated_revenue: r.estimated_revenue == null ? null : Number(r.estimated_revenue),
+      headline: String(r.headline),
+    }));
+  } catch (err) {
+    console.warn(`[meridian-est-revisions] read failed:`, err instanceof Error ? err.message : err);
     return [];
   }
 }

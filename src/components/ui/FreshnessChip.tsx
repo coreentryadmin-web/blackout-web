@@ -119,7 +119,7 @@ export function FreshnessChip({
     >
       <span
         aria-hidden
-        className={clsx("h-1.5 w-1.5 shrink-0 rounded-full", DOT_TONE[effectiveStatus])}
+        className={clsx("size-1.5 shrink-0 rounded-full", DOT_TONE[effectiveStatus])}
       />
       <span>
         {word}

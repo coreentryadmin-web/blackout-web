@@ -86,6 +86,8 @@ export function isIndexTicker(ticker: string): boolean {
  *  cannot resurrect a stale value that no longer parses. */
 export const VECTOR_VIEW_STORAGE_KEY = "blackout.vector.historicalView.v1";
 export const VECTOR_ZOOM_STORAGE_KEY = "blackout.vector.zoomPreset.v1";
+/** Opt-in dark-pool price-level guides on the Vector chart pane. */
+export const VECTOR_DARK_POOL_WALLS_STORAGE_KEY = "blackout.vector.darkPoolWalls.v1";
 
 /** Read a persisted choice, returning `fallback` unless the stored value is one we still accept.
  *  Guards against a stale/ hand-edited value silently putting the chart into an invalid state. */

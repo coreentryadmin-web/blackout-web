@@ -70,3 +70,16 @@ test("selectTopPrints prefers in-window prints over stale session whales", () =>
   assert.equal(sessionFallback, false);
   assert.equal(rows[0]?.strike, 180, "recent 180C beats stale 500C whale");
 });
+
+test("a future-dated print does not count as in-window (must not falsely clear sessionFallback)", () => {
+  // Garbage/skewed timestamp one year ahead of nowMs makes `nowMs - ms` negative, which the old
+  // unguarded `<= windowMs` check let through as "in window" — inflating the ranked pool and
+  // reporting sessionFallback=false when there is in fact no real recent print.
+  const nowMs = Date.parse("2026-07-20T16:00:00.000Z");
+  const futureAt = "2027-07-20T15:55:00.000Z";
+  const { sessionFallback } = selectTopPrints(
+    [row({ ticker: "TSLA", score: 90, premium: 5_000_000, event_at: futureAt, alerted_at: futureAt })],
+    { nowMs, windowMs: HELIX_STRIKE_HITS_WINDOW_MS }
+  );
+  assert.equal(sessionFallback, true, "no real print is actually in-window, so this must fall back");
+});
