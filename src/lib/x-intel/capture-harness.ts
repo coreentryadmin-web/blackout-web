@@ -262,6 +262,26 @@ async function captureSingleSource(
 }
 
 /**
+ * Pick up to `max` captures, preferring at most one per distinct `source` before ever taking a
+ * second one from any surface. Only reaches into the leftover (duplicate-source) pool if there
+ * aren't enough distinct sources to fill `max` slots.
+ */
+function selectDiverseCaptures(captures: CaptureResult[], max: number): CaptureResult[] {
+  const firstBySource: CaptureResult[] = [];
+  const seen = new Set<CaptureSource>();
+  const duplicates: CaptureResult[] = [];
+  for (const c of captures) {
+    if (seen.has(c.source)) {
+      duplicates.push(c);
+    } else {
+      seen.add(c.source);
+      firstBySource.push(c);
+    }
+  }
+  return firstBySource.concat(duplicates).slice(0, max);
+}
+
+/**
  * Convert capture results into queue-compatible attachments.
  * Filters failures and validates constraints (count, diversity, freshness).
  */
@@ -289,11 +309,16 @@ export function attachmentsFromCaptures(
     return [];
   }
 
-  // Enforce diversity (don't stack same source)
-  const diverse =
-    requireDiversity && fresh.length > 1
-      ? fresh.slice(0, Math.min(fresh.length, maxAttachments))
-      : fresh.slice(0, maxAttachments);
+  // Enforce diversity (don't stack same source). `fresh.slice(0, Math.min(fresh.length,
+  // maxAttachments))` and `fresh.slice(0, maxAttachments)` are byte-identical for every input --
+  // Array.prototype.slice already clamps its end index to the array length -- so the
+  // requireDiversity branch above used to be a complete no-op: neither branch ever looked at
+  // source_surface, both just took the first N captures in array order. A package built from
+  // [helix, helix, thermal, vector] with maxAttachments=3 shipped [helix, helix, thermal] --
+  // vector silently dropped, helix duplicated -- and validateAttachmentConstraints only rejects
+  // the FULLY degenerate case (every attachment from one surface), so a two-of-three-same-source
+  // package like this passed every downstream check.
+  const diverse = requireDiversity ? selectDiverseCaptures(fresh, maxAttachments) : fresh.slice(0, maxAttachments);
 
   return diverse.map((cap, idx) => {
     let role: "PRICE" | "BLACKOUT_SIGNAL" | "CONFIRMATION";
