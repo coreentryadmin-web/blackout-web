@@ -5,6 +5,16 @@ on:
     - cron: "30 6 * * *"
   workflow_dispatch:
 
+# Required for the "Open ops issue on failure" step's github.rest.issues.create — without this,
+# the default GITHUB_TOKEN has no issue-write scope and that step itself fails silently (a second,
+# compounding failure on top of whatever broke the stress run), which is exactly how a real
+# ERR_MODULE_NOT_FOUND regression (PR #3203/#3219) went unreported for hours: the workflow run
+# failed, but no ops-auto-fix issue was ever opened to alert anyone. Matches the same
+# contents:read/issues:write pattern ops-auto-fix.yml already uses for its own issue creation.
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   largo-stress:
     runs-on: ubuntu-latest
