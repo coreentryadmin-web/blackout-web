@@ -1,0 +1,17 @@
+> **kind:** FINDING
+
+## Night Hawk: `computeSpxGapContext`'s `gap_fill` pattern was mathematically unreachable — every partial fade mislabeled as a full reversal — FIXED
+
+Fifth product in the "check product by product" audit sweep (SPX Slayer #3192, Helix #3193, Vector #3194, Meridian #3195). This pass was deliberately scoped away from Night Hawk's heavily-audited gate/governor/exit-mode design decisions (already measured and left alone per `docs/audit/INTENTIONAL-DESIGN.md`) toward smaller, previously-unexamined helper files. Confirmed by hand (algebraic proof plus a constructed repro run under `node --import tsx --test` on Node 20), not taken on a subagent's word.
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `computeSpxGapContext` (`src/features/nighthawk/lib/spx-gap.ts:37-59`) classifies a non-flat SPX gap into `gap_and_go` (continuation), `gap_and_trap` (full reversal), or `gap_fill` (partial fade). The up-gap branch's conditions were `last_price >= session_open && last_price > prior_close` (→ `gap_and_go`) and `last_price < session_open` (→ `gap_and_trap`), with `gap_fill` as the `else`. |
+| **Root cause** | Since an up-gap means `session_open > prior_close`, `last_price >= session_open` always already implies `last_price > prior_close` — so the first condition reduces to just `last_price >= session_open`, and together with the second condition (`last_price < session_open`) the two conditions partition the ENTIRE real line. The `else` branch (`gap_fill`) could never execute. The down-gap branch had the identical defect, mirrored. Both branches compared `last_price` only to `session_open`, never distinguishing "faded off the open but still above/below the prior close" (a partial fade) from "crossed back through the prior close" (a full reversal) — the two conceptually distinct outcomes the three-value enum exists to separate. |
+| **Why this matters** | `computeSpxGapContext` feeds `market-wide.ts`'s `spx_gap` context, which flows into `format.ts`'s market-recap summary text and a dedicated "SPX gap:" line — both member/Largo-facing narrative text about the session's SPX gap behavior. Every partial-fade session was described with the more alarmist "trap"/full-reversal framing instead of the intended "fill/fade" framing, and the codebase's own three-state model was effectively a two-state one in practice. |
+| **Fix** | Both branches now check the SECOND boundary against `prior_close` (not `session_open` again): up-gap — `last_price >= session_open` → `gap_and_go`; else `last_price <= prior_close` → `gap_and_trap` (crossed all the way back through the prior close — a genuine full reversal); else → `gap_fill` (faded off the open but still above the prior close — now reachable). Down-gap is the mirror. |
+| **Blast radius** | `market-wide.ts` (`spx_gap` field), `format.ts` (market-recap summary text, "SPX gap:" line). No other call sites. |
+| **Why not caught earlier** | No test file existed for this module at all (`spx-gap.test.ts` was absent) — a unit test asserting all three pattern values are producible would have caught the unreachable branch immediately. |
+| **Regression guard** | New `spx-gap.test.ts` (7 tests): one per pattern for both up-gap and down-gap (`gap_and_go`, `gap_and_trap`, `gap_fill` × 2 directions) plus `flat_open`. The two `gap_fill` tests fail against the pre-fix code (would assert `gap_and_trap` incorrectly) and pass post-fix. |
+| **Gates** | `npx tsc --noEmit` clean. `node --import tsx --test` on the new test file: 7/7 pass (Node 20). |
+| **Status** | FIXED — PR pending. |
