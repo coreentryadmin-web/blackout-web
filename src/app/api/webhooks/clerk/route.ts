@@ -189,7 +189,16 @@ export async function POST(req: Request) {
         console.log(`[clerk-webhook] Updated user: ${userId}`);
       }
 
-      await syncWhopForClerkUser(userId, email, { firstName, lastName });
+      // Same internal-audit skip as the welcome-email/ops-Discord calls above — audit/test
+      // accounts (scripts/audit/*.mjs mint dozens against PRODUCTION Clerk every day) have no
+      // Whop membership to sync, so this call was unconditionally hitting Whop's API and
+      // logging a `console.error` 404 ("Not Found") for every single one — real per-account
+      // outbound-call cost plus ERROR-level noise that drowns out a genuine Whop sync failure
+      // for a real member. This block was simply missed when that skip pattern was added to
+      // the two calls above it.
+      if (!isInternalAuditEmail(email)) {
+        await syncWhopForClerkUser(userId, email, { firstName, lastName });
+      }
     } else if (type === "user.deleted") {
       const clerkId = data.id;
       if (!clerkId) {
