@@ -2347,10 +2347,12 @@ export function VectorChart({
         timeframeRef.current,
         display
       );
-      if (barTime != null) {
-        const tone: FlowConfluenceTone =
-          focusLevel.tone === "bull" ? "bull" : focusLevel.tone === "bear" ? "bear" : "bull";
-        pushFlowConfluencePulse(barTime, tone);
+      // Only a genuine bull/bear tone gets a candle pulse. This used to collapse anything else
+      // (e.g. an undetermined-direction flow print, or the neutral "sky" matrix-strike tone) to
+      // "bull" -- silently pulsing a candle bullish for a print whose direction was never
+      // actually determined.
+      if (barTime != null && (focusLevel.tone === "bull" || focusLevel.tone === "bear")) {
+        pushFlowConfluencePulse(barTime, focusLevel.tone as FlowConfluenceTone);
       }
     }
 
