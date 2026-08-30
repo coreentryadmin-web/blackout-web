@@ -1,12 +1,12 @@
 /**
  * 0DTE SPX confluence engine — client + server safe (no provider imports).
  */
-import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
+import type { SpxDeskPayload, SpxFlowBrief } from "@/features/spx/lib/spx-desk";
 import { computeWeightedConflicts } from "@/features/spx/lib/spx-play-conflicts";
 import { playDynamicTargetPts } from "@/features/spx/lib/spx-play-config";
 import type { FlowStrikeStack } from "@/lib/largo/flow-strike-stacks";
 import { todayEt } from "@/lib/et-date";
-import { spxTapeSkew, spxTapeVerdict } from "@/features/spx/lib/spx-tape-direction";
+import { spxFlowSkew, spxTapeSkew, spxTapeVerdict } from "@/features/spx/lib/spx-tape-direction";
 
 export type SpxSignalAction = "BUY_CALL" | "BUY_PUT" | "HOLD" | "WAIT";
 export type SpxPlayAction = "SCANNING" | "WATCHING" | "BUY" | "HOLD" | "TRIM" | "SELL";
@@ -75,6 +75,12 @@ function nearestWall(
  * Tiered by size + ratio: ±10 (mild: ≥$500K + 1.5:1) or ±15 (strong: ≥$1M + 3:1).
  * Institutional 0DTE sweeps are the highest-conviction same-day signal in the engine.
  * Returns 0 if there is insufficient flow data.
+ *
+ * Direction comes from `spxFlowSkew` (aggressor-aware: option type × who paid the spread), not
+ * option type alone — a block of aggressively-SOLD calls is bearish, not bullish. This factor used
+ * to bucket by option_type only, the identical defect `spx-tape-direction.ts`'s own tape factor
+ * was rewritten to fix (see that file's header for the measured 16.8% sign-flip rate) — this sweep
+ * factor read the same `desk.spx_flows` array but was never updated to match.
  */
 function scoreHelixFlowAlignment(
   desk: SpxDeskPayload,
@@ -88,9 +94,7 @@ function scoreHelixFlowAlignment(
   // Today in ET — expiry strings are YYYY-MM-DD (UTC date would flip at 7 PM ET)
   const todayYmd = todayEt(new Date(nowMs));
 
-  let callPrem = 0;
-  let putPrem = 0;
-
+  const matching: SpxFlowBrief[] = [];
   for (const f of flows) {
     const ticker = (f.ticker ?? "").toUpperCase();
     if (ticker !== "SPX" && ticker !== "SPXW" && ticker !== "SPY") continue;
@@ -98,20 +102,19 @@ function scoreHelixFlowAlignment(
     if (f.expiry !== todayYmd) continue;
     const alertedAt = f.alerted_at ? new Date(f.alerted_at).getTime() : 0;
     if (!alertedAt || nowMs - alertedAt > thirtyMinMs) continue;
-
-    const optType = (f.option_type ?? "").toUpperCase();
-    if (optType.startsWith("C")) callPrem += f.premium;
-    else if (optType.startsWith("P")) putPrem += f.premium;
+    matching.push(f);
   }
 
-  const total = callPrem + putPrem;
+  const { bull: bullPrem, bear: bearPrem } = spxFlowSkew(matching);
+
+  const total = bullPrem + bearPrem;
   if (total < 500_000) return 0; // not enough notional to be meaningful
 
-  const ratio = callPrem > putPrem
-    ? callPrem / Math.max(putPrem, 1)
-    : putPrem / Math.max(callPrem, 1);
+  const ratio = bullPrem > bearPrem
+    ? bullPrem / Math.max(bearPrem, 1)
+    : bearPrem / Math.max(bullPrem, 1);
 
-  const bullish = callPrem > putPrem;
+  const bullish = bullPrem > bearPrem;
   let w = 0;
   // Strong: ≥$1M total + 3:1 ratio — large institutional sweep conviction
   // Mild: ≥$500K total + 1.5:1 ratio — directional but less conclusive
@@ -126,8 +129,8 @@ function scoreHelixFlowAlignment(
       label: "HELIX sweeps",
       weight: w,
       detail: bullish
-        ? `0DTE call sweeps dominant — $${(callPrem / 1e6).toFixed(1)}M vs $${(putPrem / 1e6).toFixed(1)}M puts (30min)`
-        : `0DTE put sweeps dominant — $${(putPrem / 1e6).toFixed(1)}M vs $${(callPrem / 1e6).toFixed(1)}M calls (30min)`,
+        ? `0DTE bullish sweeps dominant — $${(bullPrem / 1e6).toFixed(1)}M vs $${(bearPrem / 1e6).toFixed(1)}M bearish (30min)`
+        : `0DTE bearish sweeps dominant — $${(bearPrem / 1e6).toFixed(1)}M vs $${(bullPrem / 1e6).toFixed(1)}M bullish (30min)`,
     });
   }
 

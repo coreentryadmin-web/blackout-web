@@ -181,7 +181,7 @@ const GOLDEN = {
     {
       label: "HELIX sweeps",
       weight: 15,
-      detail: "0DTE call sweeps dominant — $1.2M vs $0.1M puts (30min)",
+      detail: "0DTE bullish sweeps dominant — $1.2M vs $0.1M bearish (30min)",
     },
     { label: "0DTE flow", weight: 14, detail: "Call premium leading 0DTE tape" },
     { label: "VWAP", weight: 12, detail: "Above VWAP 7400.00 — buyers in control" },
@@ -229,4 +229,34 @@ test("computeSpxConfluence: calling it twice in a row (as the shadow wiring's fi
   const first = computeSpxConfluence(desk);
   const second = computeSpxConfluence(desk);
   assert.deepEqual(JSON.parse(JSON.stringify(first)), JSON.parse(JSON.stringify(second)));
+});
+
+test("HELIX sweeps factor: aggressively SOLD calls read BEARISH, not bullish (regression for the option-type-only bug)", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  const desk = richDesk();
+  // $1.5M of 0DTE SPX calls, 80% sold at the bid (ask_pct: 20) — the pre-fix code bucketed this
+  // purely by option_type and scored it as the strongest possible BULLISH sweep read (+15). The
+  // aggressor-aware rule already shipped for the tape factor (spxTapeSkew/spxFlowSkew) says a sold
+  // call is bearish, so this must now score -15, not +15.
+  desk.spx_flows = [
+    {
+      ticker: "SPX",
+      premium: 1_500_000,
+      option_type: "CALL",
+      strike: 7425,
+      expiry: "2026-07-04",
+      ask_pct: 20,
+      direction: "bullish",
+      alerted_at: "2026-07-04T17:50:00.000Z",
+      alert_rule: null,
+      trade_count: 10,
+      has_sweep: true,
+    },
+  ];
+  const result = computeSpxConfluence(desk);
+  assert.ok(result);
+  const sweepFactor = result.factors.find((f) => f.label === "HELIX sweeps");
+  assert.ok(sweepFactor, "HELIX sweeps factor must fire on $1.5M of qualifying sweep premium");
+  assert.equal(sweepFactor!.weight, -15, "sold calls must score as a BEARISH sweep, not bullish");
+  assert.match(sweepFactor!.detail, /bearish sweeps dominant/);
 });
