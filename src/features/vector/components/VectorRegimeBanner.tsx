@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import type { VectorRegime } from "@/features/vector/lib/vector-regime";
+import { hasReadableRegime, type VectorRegime } from "@/features/vector/lib/vector-regime";
 
 type Props = {
   regime: VectorRegime;
@@ -14,7 +14,7 @@ type Props = {
  * (no positioning data) rather than showing a hollow chip.
  */
 export function VectorRegimeBanner({ regime }: Props) {
-  if (regime.posture === "unknown") return null;
+  if (!hasReadableRegime(regime)) return null;
   return (
     <div
       className={clsx("vector-regime-banner", `vector-regime-${regime.tone}`)}
