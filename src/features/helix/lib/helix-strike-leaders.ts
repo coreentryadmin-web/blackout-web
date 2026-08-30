@@ -1,6 +1,7 @@
 import type { FlowAlert } from "@/lib/api";
 import { flowEventTimeMs } from "@/lib/flow-timestamp";
 import { flowContractKey } from "@/lib/helix/contract-identity";
+import { signalWindowAgeMs } from "@/features/helix/lib/helix-signal-detection";
 
 /** HELIX analytics rail — list sizes and strike-hit windows. */
 
@@ -52,7 +53,12 @@ export function countMatchingContractHits(
       alerted_at: a.alerted_at,
       tape_time_estimated: a.tape_time_estimated,
     });
-    if (ms == null || nowMs - ms > windowMs) continue;
+    // signalWindowAgeMs rejects a future-dated print (age < -tolerance -> null) instead of letting
+    // a negative `nowMs - ms` slip under `> windowMs` and count as a fresh hit — the same
+    // future-print bug already fixed in detectVelocitySpikes/detectSplitFlow, previously
+    // unguarded here.
+    const age = signalWindowAgeMs(ms, nowMs);
+    if (age == null || age > windowMs) continue;
     n++;
   }
   return n;
