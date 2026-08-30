@@ -40,6 +40,11 @@ function getPolygonBase(): string {
 
 const KEY = process.env.POLYGON_API_KEY ?? "";
 
+/** Optional Next/fetch cache override for call sites that must not force dynamic rendering (e.g. marketing ISR). */
+export type PolygonLargoFetchInit = Pick<RequestInit, "cache"> & {
+  next?: { revalidate?: number };
+};
+
 export type AggBar = { t?: number; o: number; h: number; l: number; c: number; v?: number };
 
 /**
@@ -56,7 +61,8 @@ export type AggBar = { t?: number; o: number; h: number; l: number; c: number; v
 async function polygonGet<T>(
   path: string,
   params: Record<string, string> = {},
-  onFailure?: (reason: string) => void
+  onFailure?: (reason: string) => void,
+  fetchInit?: PolygonLargoFetchInit
 ): Promise<T | null> {
   if (!polygonConfigured()) {
     onFailure?.("Polygon not configured (missing POLYGON_API_KEY)");
@@ -67,6 +73,7 @@ async function polygonGet<T>(
     const res = await polygonTrackedFetch(path, `${getPolygonBase()}${path}?${qs}`, {
       headers: { Accept: "application/json" },
       cache: "no-store",
+      ...fetchInit,
     });
     if (!res.ok) {
       console.warn(`[polygon-largo] ${path.replace(/[\r\n]/g, "")} returned ${res.status}`);
@@ -140,11 +147,16 @@ export async function fetchAggBarsWithDiagnostics(
   return { bars: mapBars(data?.results), failureReason: data == null ? failureReason : null };
 }
 
-export async function fetchPreviousDayBar(symbol: string): Promise<AggBar | null> {
+export async function fetchPreviousDayBar(
+  symbol: string,
+  fetchInit?: PolygonLargoFetchInit
+): Promise<AggBar | null> {
   const sym = symbol.toUpperCase();
   const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
     `/v2/aggs/ticker/${sym}/prev`,
-    {}
+    {},
+    undefined,
+    fetchInit
   );
   const row = data?.results?.[0];
   if (!row) return null;

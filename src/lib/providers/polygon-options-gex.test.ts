@@ -80,6 +80,17 @@ test("resolveSpotSnapshot falls back to prev-bar + SPY×10 proxy when snapshots 
   assert.match(src, /resolveSpotFromUwStockState/);
 });
 
+test("fetchSpotFromPrevBar uses ISR-safe prev-bar fetch so marketing homepage revalidate is not defeated", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(
+    src,
+    /fetchPreviousDayBar\(symbol,\s*\{\s*next:\s*\{\s*revalidate:\s*3600\s*\}\s*\}\)/
+  );
+});
+
 test("fetchGexHeatmap keeps stale-while-revalidate during preset fast-move (no blocking guard)", () => {
   const src = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
