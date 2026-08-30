@@ -41,7 +41,15 @@ export function earningsReportTimeEt(time: string | null): string | null {
 }
 
 export function impactFromEarningsImportance(importance: number | null | undefined): MeridianImpact {
-  if (importance == null || !Number.isFinite(importance)) return "high";
+  // An unrated print (Benzinga leaves `importance` null for a large share of names — see
+  // meridian-earnings-data-inventory.mjs's --min-importance cohort guard) is an ABSENCE of
+  // evidence, not evidence of high importance. This mirrors the rule meridian-em-priority.ts
+  // already states explicitly: "unknown ranks BELOW a real 0 — 'we do not know how important
+  // this is' is weaker evidence than 'we know it is unimportant'". MeridianImpact has no
+  // separate "unknown" tier, so an unrated print maps to the WEAKEST bucket ("low"), never the
+  // strongest — the opposite of what this returned before, which let every unrated name crowd
+  // the "High Impact" strip/count indistinguishably from a confirmed importance>=4 mega-cap print.
+  if (importance == null || !Number.isFinite(importance)) return "low";
   if (importance >= 4) return "high";
   if (importance >= 2) return "medium";
   return "low";
