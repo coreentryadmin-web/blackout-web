@@ -85,6 +85,9 @@ export type MeridianEarningsTimelineResult = {
   earnings_week: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["earnings_week"];
   earnings_analytics_rows: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["earnings_analytics_rows"];
   earnings_week_analytics: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["earnings_week_analytics"];
+  earnings_week_analytics_error: Awaited<
+    ReturnType<typeof loadBenzingaEarningsBundle>
+  >["earnings_week_analytics_error"];
   recent_revisions: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["recent_revisions"];
   estimate_revision_timeline: Awaited<
     ReturnType<typeof loadBenzingaEarningsBundle>
@@ -210,6 +213,7 @@ export async function loadMeridianEarningsTimeline(
     earnings_week: bundle.earnings_week,
     earnings_analytics_rows: bundle.earnings_analytics_rows,
     earnings_week_analytics: bundle.earnings_week_analytics,
+    earnings_week_analytics_error: bundle.earnings_week_analytics_error,
     recent_revisions: bundle.recent_revisions,
     estimate_revision_timeline: bundle.estimate_revision_timeline,
     after_hours_movers: bundle.after_hours_movers,

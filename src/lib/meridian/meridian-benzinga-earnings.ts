@@ -52,6 +52,8 @@ export type BenzingaEarningsBundle = {
   earnings_week: ReturnType<typeof buildEarningsWeekRows>;
   earnings_analytics_rows: ReturnType<typeof buildEarningsAnalyticsRows>;
   earnings_week_analytics: MeridianEarningsWeekAnalytics | null;
+  /** Non-null when the mega-cap week historical-print fetch failed. Empty analytics + null here means no graded history yet. */
+  earnings_week_analytics_error: string | null;
   recent_revisions: ReturnType<typeof buildRecentEarningsRevisions>;
   estimate_revision_timeline: MeridianEstimateRevisionEntry[];
   after_hours_movers: MeridianAfterHoursMover[];
@@ -89,14 +91,20 @@ export async function loadBenzingaEarningsBundle(
     const weekTickers = [...new Set(earnings_week.map((r) => r.ticker))].slice(0, 24);
 
     let historicalRows: BenzingaStructuredEarnings[] = [];
+    let earnings_week_analytics_error: string | null = null;
     if (weekTickers.length) {
       const hist = await fetchBenzingaStructuredEarnings({
         tickers: weekTickers,
         dateLte: todayYmd,
         limit: 100,
         sort: "date.desc",
-      }).catch(() => ({ rows: [] as BenzingaStructuredEarnings[] }));
+      }).catch(() => ({
+        rows: [] as BenzingaStructuredEarnings[],
+        entitled: true,
+        error: "cache_error" as const,
+      }));
       historicalRows = hist.rows;
+      earnings_week_analytics_error = hist.error ?? null;
     }
 
     // DEDUPE before diffing. The two upstream queries overlap — measured live 2026-08-18, 12 of
@@ -132,6 +140,7 @@ export async function loadBenzingaEarningsBundle(
       error: windowRes.error,
       earnings_week,
       earnings_week_analytics: buildEarningsWeekAnalytics(earnings_week, historicalRows),
+      earnings_week_analytics_error,
       recent_revisions: buildRecentEarningsRevisions(revisionRes.rows, since),
       estimate_revision_timeline,
       after_hours_movers: ahMovers.map((m) => ({
@@ -147,6 +156,7 @@ export async function loadBenzingaEarningsBundle(
     earnings_week: [],
     earnings_analytics_rows: [],
     earnings_week_analytics: null,
+    earnings_week_analytics_error: "cache_error",
     recent_revisions: [],
     estimate_revision_timeline: [],
     after_hours_movers: [],

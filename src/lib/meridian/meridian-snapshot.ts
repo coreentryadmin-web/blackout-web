@@ -83,6 +83,7 @@ export async function loadMeridianTimelineResponse(
     earnings_week: earningsBundle.earnings_week,
     earnings_analytics_rows: earningsBundle.earnings_analytics_rows,
     earnings_week_analytics: earningsBundle.earnings_week_analytics,
+    earnings_week_analytics_error: earningsBundle.earnings_week_analytics_error,
     recent_earnings_revisions: earningsBundle.recent_revisions,
     estimate_revision_timeline: earningsBundle.estimate_revision_timeline,
     after_hours_movers: earningsBundle.after_hours_movers,
