@@ -12526,13 +12526,22 @@ html.product-shell .nav-mega {
     @apply flex flex-wrap gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] p-2;
   }
   .vector-play-intel-chip {
-    @apply inline-flex max-w-full flex-col gap-0.5 rounded-lg border border-white/10 bg-black/20 px-2 py-1;
+    /* max-w-[15rem] (not max-w-full): the confluence/wall notes are full sentences that carry a
+       trailing data value ("... · score 5", "772C firm — held 100% of last 6m, clustered"), so the
+       chip's own width — not the strip's flex-wrap — bounds how wide a wrapped value can grow. */
+    @apply inline-flex max-w-[15rem] flex-col gap-0.5 rounded-lg border border-white/10 bg-black/20 px-2 py-1;
   }
   .vector-play-intel-chip-label {
     @apply font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-white/45;
   }
   .vector-play-intel-chip-value {
-    @apply truncate font-mono text-[11px] font-semibold text-cyan-300;
+    /* Regression (2026-08-30): `truncate` (nowrap+ellipsis+overflow:hidden) silently cut off the
+       trailing data value on the confluence/wall chips — e.g. "... · score 5" rendered as
+       "... · score…" with the actual score number hidden. Desktop masked this with the `title=`
+       hover tooltip on the parent <span> (VectorPlayIntelStrip.tsx), but mobile has no hover, so
+       the value was simply unreadable there — confirmed live on /vector at 430x932 prod. Regime/
+       Move stay single short words and are unaffected by wrapping. */
+    @apply whitespace-normal break-words font-mono text-[11px] font-semibold text-cyan-300;
   }
   .vector-play-intel-chip--calm .vector-play-intel-chip-value {
     @apply text-emerald-300;
