@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { gammaShareByExpiry } from "@/features/thermal/lib/gex-heatmap/per-expiry-levels";
-import { gexWallsFromStrikeTotals } from "@/lib/providers/gex-cross-validation-core";
+import { recomputeLevels } from "@/features/thermal/lib/gex-heatmap/recompute-levels";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { clsx } from "clsx";
@@ -564,68 +564,6 @@ function anchorStrike(totals: Record<string, number>): number | null {
     }
   }
   return anchor;
-}
-
-/**
- * Recompute walls + flip from FILTERED per-strike totals so the levels track the
- * selected expiry scope. Mirrors the server's primary method (we don't have its fn):
- *  - call/pos wall = strike of the max positive total
- *  - put/neg wall  = strike of the min (most negative) total
- *  - flip = the per-strike sign crossing (negative→positive as strike ascends) nearest
- *    spot, linearly interpolated between the bracketing strikes. Falls back to the
- *    strike of smallest |total| if no clean crossing exists.
- * Returns nulls when there's nothing to compute (so callers can defer to server levels).
- */
-function recomputeLevels(
-  totals: Record<string, number>,
-  spot: number
-): { posWall: number | null; negWall: number | null; flip: number | null } {
-  // Guard against invalid spot (NaN, infinite, or ≤0) that could corrupt the flip calculation.
-  if (!Number.isFinite(spot) || spot <= 0) return { posWall: null, negWall: null, flip: null };
-
-  const entries = Object.entries(totals)
-    .map(([s, v]) => ({ strike: Number(s), value: v }))
-    .filter((e) => Number.isFinite(e.strike))
-    .sort((a, b) => a.strike - b.strike);
-  if (entries.length === 0) return { posWall: null, negWall: null, flip: null };
-
-  // Shared with the server's computeGexRegime. There were two independent copies of this scan
-  // (server + here) before the Key Levels row was scoped; a third would have been added for the
-  // per-expiry tiles. One implementation cannot drift from itself.
-  const { callWall: posWall, putWall: negWall } = gexWallsFromStrikeTotals(totals);
-
-  // Flip: ascending NEGATIVE→POSITIVE sign crossing nearest spot, linearly interpolated — the
-  // structural gamma flip (below it dealers net short, above net long). This MATCHES the server's
-  // `computeZeroGammaFlip` (which also keys on neg→pos only); the prior either-direction match
-  // could place the filtered-subset divider at a pos→neg crossing the server would never mark.
-  let flip: number | null = null;
-  let bestDist = Infinity;
-  for (let i = 1; i < entries.length; i++) {
-    const a = entries[i - 1];
-    const b = entries[i];
-    if (a.value === 0 || b.value === 0) continue;
-    if (a.value < 0 && b.value > 0) {
-      const t = Math.abs(a.value) / (Math.abs(a.value) + Math.abs(b.value));
-      const cross = a.strike + t * (b.strike - a.strike);
-      const dist = spot > 0 ? Math.abs(cross - spot) : 0;
-      if (dist < bestDist) {
-        bestDist = dist;
-        flip = Math.round(cross);
-      }
-    }
-  }
-  // Fallback: no clean crossing — the strike of smallest |total| is the nearest pivot.
-  if (flip == null) {
-    let best = Infinity;
-    for (const e of entries) {
-      const a = Math.abs(e.value);
-      if (a < best) {
-        best = a;
-        flip = e.strike;
-      }
-    }
-  }
-  return { posWall, negWall, flip };
 }
 
 /** Plain-language per-metric explainers — the SpotGamma "legibility" layer (Rank 8). */
