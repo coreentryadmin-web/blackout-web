@@ -2366,28 +2366,25 @@ function fmtElapsed(ms: number): string {
   return m > 0 ? `${h}h${m}m` : `${h}h`;
 }
 
-/** Largest-positive (call) and largest-negative (put) wall strikes from per-strike totals. */
-function wallsOf(strikeTotals: Record<string, number>): {
+/**
+ * Largest-positive (call) and largest-negative (put) wall strikes from per-strike totals.
+ *
+ * Delegates to `wallsFromStrikeTotals` (gex-cross-validation-core.ts) rather than reimplementing
+ * the scan — this was a fourth independent copy of the same unconstrained "argmax anywhere" bug
+ * already found and fixed in `gex-intraday-adjust-core.ts` and in that shared helper itself
+ * (measured live: a "call wall" landing below spot, a "put wall" above it). Pass `spot` so the
+ * wall used for `wall_changes` narration AND the `wall_broken` alert (WALL_BROKEN_TICKERS =
+ * SPY/SPX) is side-constrained — without it, a bigger-magnitude strike on the wrong side of spot
+ * silently defeats the alert or mislabels the shift text.
+ */
+function wallsOf(
+  strikeTotals: Record<string, number>,
+  spot?: number
+): {
   callWall: number | null;
   putWall: number | null;
 } {
-  let callWall: number | null = null;
-  let putWall: number | null = null;
-  let maxPos = 0;
-  let maxNeg = 0;
-  for (const [s, g] of Object.entries(strikeTotals)) {
-    const strike = Number(s);
-    if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;
-    if (g > maxPos) {
-      maxPos = g;
-      callWall = strike;
-    }
-    if (g < maxNeg) {
-      maxNeg = g;
-      putWall = strike;
-    }
-  }
-  return { callWall, putWall };
+  return wallsFromStrikeTotals(strikeTotals, spot);
 }
 
 /**
@@ -2484,7 +2481,10 @@ const CHARM_SHIFT_SPEC: ShiftMetricSpec = {
  */
 function computeMetricShift(
   ring: GexHistorySnapshot[],
-  current: { ts: number; flip: number | null; strike_totals: Record<string, number> },
+  // `spot` only carried by the GEX-metric caller (computeGexShift) — VEX/DEX/CHARM shifts have no
+  // spot-relative "resistance/support" concept, so their wall picks stay unconstrained (spot
+  // undefined) exactly as before.
+  current: { ts: number; spot?: number; flip: number | null; strike_totals: Record<string, number> },
   pick: (s: GexHistorySnapshot) => {
     strike_totals: Record<string, number>;
     flip: number | null;
@@ -2533,8 +2533,11 @@ function computeMetricShift(
   };
 
   // Wall changes (current walls recomputed from totals; earlier from the snapshot's totals).
-  const curWalls = wallsOf(now);
-  const earWalls = wallsOf(earlier);
+  // Each side is constrained against ITS OWN spot at that moment — the current wall against
+  // current.spot, the earlier wall against the baseline snapshot's own spot — not a shared spot,
+  // since spot has moved between the two snapshots being diffed.
+  const curWalls = wallsOf(now, current.spot);
+  const earWalls = wallsOf(earlier, baselineSnap.spot);
   const wall_changes = {
     call_wall: wallChange(curWalls.callWall, earWalls.callWall, now, earlier),
     put_wall: wallChange(curWalls.putWall, earWalls.putWall, now, earlier),
@@ -2700,7 +2703,7 @@ export function computeGexEvents(
     n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
 
   // Recompute the prior's walls + net total from its stored per-strike totals (no extra calls).
-  const priorWalls = wallsOf(prior.strike_totals);
+  const priorWalls = wallsOf(prior.strike_totals, prior.spot);
   let priorTotal = 0;
   for (const v of Object.values(prior.strike_totals)) {
     const n = Number(v);
