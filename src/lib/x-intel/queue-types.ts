@@ -374,6 +374,36 @@ export function xWeightedPostLength(text: string | null | undefined): number {
  * structural half lives here because the store must never persist a READY row that fails it,
  * and a guard that only runs in the writer can be bypassed by the next writer.
  */
+
+/**
+ * A package about TODAY'S SESSION must not rest on an all-expiry aggregate. See the comment on
+ * XIntelHorizon: the same ticker at the same minute read SHORT GAMMA / call wall 7,900 across
+ * all expiries and LONG GAMMA / call wall 7,700 at 0DTE. Quoting the first while writing about
+ * the next six hours is not a rounding error, it is the opposite claim.
+ *
+ * Exported so `validators.ts`'s `validateSessionClaim` can share this exact rule rather than
+ * reimplementing it — that sibling used to be a stale stub that always returned null regardless
+ * of horizon, silently un-fixing this same check.
+ */
+export function sessionClaimFarDatedViolation(
+  row: Pick<XIntelQueueRow, "underlying_evidence"> & Partial<Pick<XIntelQueueRow, "session_claim">>,
+): string | null {
+  if (row.session_claim !== true) return null;
+  const optionsEvidence = row.underlying_evidence.filter(
+    (e) => e.horizon != null && e.horizon !== "n/a",
+  );
+  // "all" (every expiry) and "monthly" are BOTH far-dated aggregates that do not describe today's
+  // session — only "0dte"/"near" do. The original guard checked "all" alone (the one incident that
+  // had already happened when it was written), which left a package built entirely on "monthly"
+  // evidence free to make a session_claim and reach READY, reproducing the identical
+  // opposite-story failure this field exists to prevent.
+  const FAR_DATED_HORIZONS = new Set<XIntelHorizon>(["all", "monthly"]);
+  if (optionsEvidence.length && optionsEvidence.every((e) => FAR_DATED_HORIZONS.has(e.horizon!))) {
+    return "every options-book value is read at a far-dated (ALL-expiry or monthly) scope, but the package makes a claim about today's session — far-dated positioning does not describe the next six hours";
+  }
+  return null;
+}
+
 export function readyBlockReason(
   row: Pick<
     XIntelQueueRow,
@@ -442,25 +472,9 @@ export function readyBlockReason(
   }
 
   // ── HORIZON ────────────────────────────────────────────────────────────────────────────────
-  //
-  // A package about TODAY'S SESSION must not rest on an all-expiry aggregate. See the comment on
-  // XIntelHorizon: the same ticker at the same minute read SHORT GAMMA / call wall 7,900 across
-  // all expiries and LONG GAMMA / call wall 7,700 at 0DTE. Quoting the first while writing about
-  // the next six hours is not a rounding error, it is the opposite claim.
-  const optionsEvidence = row.underlying_evidence.filter(
-    (e) => e.horizon != null && e.horizon !== "n/a",
-  );
-  // "all" (every expiry) and "monthly" are BOTH far-dated aggregates that do not describe today's
-  // session — only "0dte"/"near" do. The original guard checked "all" alone (the one incident that
-  // had already happened when it was written), which left a package built entirely on "monthly"
-  // evidence free to make a session_claim and reach READY, reproducing the identical
-  // opposite-story failure this field exists to prevent.
-  const FAR_DATED_HORIZONS = new Set<XIntelHorizon>(["all", "monthly"]);
-  if (optionsEvidence.length && optionsEvidence.every((e) => FAR_DATED_HORIZONS.has(e.horizon!))) {
-    if (row.session_claim === true) {
-      return "every options-book value is read at a far-dated (ALL-expiry or monthly) scope, but the package makes a claim about today's session — far-dated positioning does not describe the next six hours";
-    }
-  }
+  const farDated = sessionClaimFarDatedViolation(row);
+  if (farDated) return farDated;
+
   const unlabelled = row.underlying_evidence.filter(
     (e) => e.horizon == null && /wall|gamma|gex|flip|max pain|magnet|vol/i.test(e.what),
   );

@@ -11,7 +11,11 @@
  * human reconciles it or marks SKIP.
  */
 
-import type { XIntelChronology, XIntelQueueRow } from "@/lib/x-intel/queue-types";
+import {
+  sessionClaimFarDatedViolation,
+  type XIntelChronology,
+  type XIntelQueueRow,
+} from "@/lib/x-intel/queue-types";
 
 export interface ValidationFailure {
   field: string;
@@ -92,9 +96,14 @@ export function validateSessionClaim(row: XIntelQueueRow): ValidationFailure | n
     return null;
   }
 
-  // This rule would require looking at `underlying_evidence` and checking that none
-  // of it is read at `all` horizon. For now, we log and let human review catch it.
-  // Future: add `horizon` field to `XIntelEvidence` and check here.
+  // Shared with readyBlockReason (queue-types.ts) — this used to be a stale stub that always
+  // returned null regardless of horizon, silently un-fixing the same far-dated-horizon check
+  // that lives correctly in queue-types.ts. Importing it here means the two can't drift apart
+  // again the way they already did once.
+  const reason = sessionClaimFarDatedViolation(row);
+  if (reason) {
+    return { field: "session_claim", reason };
+  }
 
   return null;
 }

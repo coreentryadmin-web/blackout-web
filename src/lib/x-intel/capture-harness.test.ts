@@ -157,6 +157,39 @@ describe("capture-harness validators", () => {
       assert.equal(result.length, 3);
     });
 
+    it("prefers one capture per distinct source over duplicating a surface (requireDiversity default)", () => {
+      // Regression: requireDiversity used to be a no-op -- fresh.slice(0, Math.min(fresh.length,
+      // maxAttachments)) and fresh.slice(0, maxAttachments) are byte-identical for every input,
+      // since Array.prototype.slice already clamps its end index. Neither branch ever looked at
+      // source. [helix, helix, thermal, vector] with maxAttachments=3 used to ship
+      // [helix, helix, thermal] -- vector silently dropped, helix duplicated.
+      const now = Date.now();
+      const freshMs = now - 30 * 60 * 1000;
+      const freshTime = formatTimeEt(freshMs);
+      const captures: CaptureResult[] = [
+        { source: "helix", success: true, imageUrl: "/h1.png", caption: "H1", capturedAtMs: freshMs, capturedAtEt: freshTime },
+        { source: "helix", success: true, imageUrl: "/h2.png", caption: "H2", capturedAtMs: freshMs, capturedAtEt: freshTime },
+        { source: "thermal", success: true, imageUrl: "/t.png", caption: "T", capturedAtMs: freshMs, capturedAtEt: freshTime },
+        { source: "vector", success: true, imageUrl: "/v.png", caption: "V", capturedAtMs: freshMs, capturedAtEt: freshTime },
+      ];
+      const result = attachmentsFromCaptures(captures, now, { maxAttachments: 3 });
+      const sources = result.map((a) => a.source_surface);
+      assert.equal(new Set(sources).size, 3, `expected 3 distinct surfaces, got: ${sources.join(", ")}`);
+      assert.deepEqual(sources.sort(), ["helix", "thermal", "vector"]);
+    });
+
+    it("falls back to duplicate-source captures only once distinct sources are exhausted", () => {
+      const now = Date.now();
+      const freshMs = now - 30 * 60 * 1000;
+      const freshTime = formatTimeEt(freshMs);
+      const captures: CaptureResult[] = [
+        { source: "helix", success: true, imageUrl: "/h1.png", caption: "H1", capturedAtMs: freshMs, capturedAtEt: freshTime },
+        { source: "helix", success: true, imageUrl: "/h2.png", caption: "H2", capturedAtMs: freshMs, capturedAtEt: freshTime },
+      ];
+      const result = attachmentsFromCaptures(captures, now, { maxAttachments: 3 });
+      assert.equal(result.length, 2, "only 2 captures existed at all -- can't invent a third");
+    });
+
     it("assigns slot numbers 1, 2, 3", () => {
       const now = Date.now();
       const freshMs = now - 30 * 60 * 1000;
