@@ -103,6 +103,45 @@ test("every adapter survives a garbage payload rather than taking the read down"
   }
 });
 
+test("ticker_class is derived from the actual ticker, not a hardcoded per-product guess", () => {
+  // Regression: helix hardcoded "equity", vector/nighthawk hardcoded "index" — correct only by
+  // coincidence for SPX-only fixtures. Assert the real classification for tickers where the old
+  // constants were wrong in each direction.
+  const helixEquity = helixContribution({ ticker: "TSLA", session: { call_pct: 72, alert_count: 10 } });
+  assert.equal(helixEquity.signal?.ticker_class, "equity");
+
+  const helixIndex = helixContribution({ ticker: "SPX", session: { call_pct: 72, alert_count: 10 } });
+  assert.equal(helixIndex.signal?.ticker_class, "index", "helix hardcoded equity — must read index for SPX");
+
+  const vectorEquity = vectorContribution({
+    ticker: "TSLA",
+    has_baseline: true,
+    signals: [{ tone: "bullish", line: "x" }],
+  });
+  assert.equal(
+    vectorEquity.signal?.ticker_class,
+    "equity",
+    "vector hardcoded index — must read equity for TSLA"
+  );
+
+  const nighthawkEquity = nighthawkContribution({
+    ticker: "TSLA",
+    plays: [{ ticker: "TSLA", option_type: "CALL" }],
+  });
+  assert.equal(
+    nighthawkEquity.signal?.ticker_class,
+    "equity",
+    "nighthawk hardcoded index — must read equity for TSLA"
+  );
+
+  const spy = vectorContribution({
+    ticker: "SPY",
+    has_baseline: true,
+    signals: [{ tone: "bullish", line: "x" }],
+  });
+  assert.equal(spy.signal?.ticker_class, "etf");
+});
+
 test("END TO END — a real split, with honest coverage", () => {
   // The shape tonight actually produces: helix and night hawk vote, thermal abstains by design,
   // vector has no baseline, meridian has no event.
