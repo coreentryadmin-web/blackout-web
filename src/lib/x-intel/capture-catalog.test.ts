@@ -67,4 +67,56 @@ describe("capture-catalog", () => {
     const earnings = searchCaptureCatalog({ franchise: "EARNINGS_WAR_ROOM" });
     assert.ok(earnings.some((e) => e.product === "meridian"));
   });
+
+  it("searchCaptureCatalog: the ticker filter actually narrows the result — a nonexistent ticker excludes entries with no override path", () => {
+    // No entry's id, default ticker param, or spx_only flag can ever match a ticker that appears
+    // nowhere in the catalog, so any entry WITHOUT an overridable ticker param must be dropped.
+    const all = searchCaptureCatalog({});
+    const nonsense = searchCaptureCatalog({ ticker: "ZZZNOPE" });
+    assert.ok(nonsense.length < all.length, "an unmatched ticker must exclude at least the non-generic entries");
+    for (const e of nonsense) {
+      const hasTickerParam = e.params.some((p) => p.key === "ticker");
+      assert.ok(
+        hasTickerParam || e.spx_only,
+        `${e.id} has no ticker param and isn't spx_only — it should have been excluded`
+      );
+    }
+  });
+
+  it("searchCaptureCatalog: an entry with no ticker param and no id/spx_only hit is excluded by a mismatched ticker", () => {
+    const entry = VISUAL_CAPTURE_CATALOG.find(
+      (e) => !e.params.some((p) => p.key === "ticker") && !e.spx_only && !e.id.toUpperCase().includes("MSFT")
+    )!;
+    assert.ok(entry, "fixture assumption: at least one non-generic, non-spx entry must exist");
+    const result = searchCaptureCatalog({ ticker: "MSFT" });
+    assert.ok(!result.some((e) => e.id === entry.id), `${entry.id} has no path to matching MSFT and must be excluded`);
+  });
+
+  it("searchCaptureCatalog: an entry whose id names the ticker is kept even with no ticker param", () => {
+    const result = searchCaptureCatalog({ ticker: "NVDA" });
+    assert.ok(
+      result.some((e) => e.id.toUpperCase().includes("NVDA")),
+      "an id-hit entry must survive the ticker filter"
+    );
+  });
+
+  it("searchCaptureCatalog: spx_only entries are always kept regardless of the searched ticker", () => {
+    const spxOnly = VISUAL_CAPTURE_CATALOG.filter((e) => e.spx_only);
+    assert.ok(spxOnly.length > 0, "fixture assumption: at least one spx_only entry exists");
+    const result = searchCaptureCatalog({ ticker: "NVDA" });
+    for (const e of spxOnly) {
+      assert.ok(result.some((r) => r.id === e.id), `${e.id} is spx_only and must survive any ticker search`);
+    }
+  });
+
+  it("searchCaptureCatalog: a generic entry with an overridable ticker param is kept even when its default doesn't match", () => {
+    // A default of "SPX" is a placeholder, not a lock — the caller can override it at generation
+    // time, so the entry must stay in scope for an unrelated search ticker.
+    const generic = VISUAL_CAPTURE_CATALOG.find(
+      (e) => e.params.find((p) => p.key === "ticker")?.default === "SPX" && !e.spx_only
+    )!;
+    assert.ok(generic, "fixture assumption: at least one non-spx-only entry defaults its ticker param to SPX");
+    const result = searchCaptureCatalog({ ticker: "NVDA" });
+    assert.ok(result.some((e) => e.id === generic.id), `${generic.id} has an overridable ticker param and must be kept`);
+  });
 });
