@@ -28,6 +28,41 @@ test("helix derives direction from session skew and carries its evidence", () =>
   assert.ok(c.signal?.evidence.includes("140 prints"));
 });
 
+test("helix prefers the authoritative session.direction over re-deriving one from call_pct", () => {
+  // Regression: this adapter used to ignore `session.direction` entirely and always re-derive a
+  // direction from `call_pct` alone -- the real CG case, 100% call premium but every call SOLD
+  // (aggression-aware verdict: bearish), used to come back "bullish" here.
+  const c = helixContribution({
+    ticker: "CG",
+    session: { call_pct: 100, alert_count: 12, direction: "bearish" },
+  });
+  assert.equal(c.signal?.direction, "bearish");
+});
+
+test("helix maps a 'mixed' session.direction to neutral, not a guessed vote", () => {
+  const c = helixContribution({
+    ticker: "SPX",
+    session: { call_pct: 52, alert_count: 40, direction: "mixed" },
+  });
+  assert.equal(c.signal?.direction, "neutral");
+});
+
+test("helix reports 'undetermined' session.direction as no measurable direction, never a call_pct fallback", () => {
+  // Even though call_pct alone would read bullish here (72%), the authoritative aggressor-aware
+  // read says there isn't enough readable evidence -- that must not be second-guessed.
+  const c = helixContribution({
+    ticker: "SPX",
+    session: { call_pct: 72, alert_count: 3, direction: "undetermined" },
+  });
+  assert.equal(c.signal, null);
+  assert.match(String(c.missingReason), /no measurable call\/put skew/);
+});
+
+test("helix falls back to call_pct only when the payload carries no direction field at all", () => {
+  const c = helixContribution({ ticker: "SPX", session: { call_pct: 72, alert_count: 140 } });
+  assert.equal(c.signal?.direction, "bullish");
+});
+
 test("an empty helix tape is an explained absence, not a neutral vote", () => {
   const c = helixContribution({ ticker: "SPX", empty_reason: "no_prints_in_window" });
   assert.equal(c.signal, null);

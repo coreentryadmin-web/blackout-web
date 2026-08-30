@@ -56,7 +56,22 @@ export function directionFromCallPct(callPct: number | null): Direction | null {
   return "neutral";
 }
 
-/** HELIX — the tape. Direction from session call/put skew. */
+/**
+ * HELIX — the tape.
+ *
+ * Direction comes from `session.direction` — the AGGRESSOR-AWARE read `directionFields`
+ * (helix-tape-analytics.ts) already stamps onto this exact payload shape ("bullish" | "bearish" |
+ * "mixed" | "undetermined") — not from re-deriving one out of `session.call_pct` here. Call share
+ * alone cannot tell a bought call from a sold one, and the two read opposite directions: this
+ * adapter used to run `directionFromCallPct(call_pct)` regardless of the `direction` field sitting
+ * right next to it, so a session like `{ call_pct: 100, direction: "bearish" }` (100% call
+ * premium, but every call SOLD — the real CG case this lane's own aggressor-read module
+ * documents) reported `direction: "bullish"` here while the SAME object's own authoritative field
+ * said the opposite. That fed the cross-product join with a fabricated agreement/disagreement.
+ * Falls back to the call-share rule only when the payload doesn't carry `direction` at all (an
+ * older/partial shape) — never when it does but reads `"undetermined"`, which is itself a real
+ * "no measurable direction" answer, not an invitation to guess one from call share instead.
+ */
 export function helixContribution(payload: unknown): ProductContribution {
   const p = obj(payload);
   if (!p) return { product: "helix", signal: null, missingReason: "helix tape read unavailable" };
@@ -65,7 +80,17 @@ export function helixContribution(payload: unknown): ProductContribution {
   }
   const session = obj(p.session);
   const callPct = num(session?.call_pct);
-  const direction = directionFromCallPct(callPct);
+  const rawDirection = session?.direction;
+  const direction: Direction | null =
+    typeof rawDirection === "string"
+      ? rawDirection === "bullish"
+        ? "bullish"
+        : rawDirection === "bearish"
+          ? "bearish"
+          : rawDirection === "mixed"
+            ? "neutral"
+            : null // "undetermined" (or an unrecognized value) — no measurable direction
+      : directionFromCallPct(callPct);
   if (direction === null) {
     return { product: "helix", signal: null, missingReason: "helix tape has no measurable call/put skew" };
   }
