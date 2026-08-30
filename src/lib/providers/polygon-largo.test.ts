@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { test, mock } from "node:test";
 
+// polygonGet() (polygon-largo.ts) checks polygonConfigured() — Boolean(process.env.POLYGON_API_KEY)
+// — BEFORE ever calling polygonTrackedFetch, and short-circuits to null when it reads false. CI's
+// unit-test environment carries no real Polygon key, so without this fixture both tests below fail
+// closed (bar is null, capturedInit is never set) despite the mock being wired correctly — caught
+// live: this file passed locally (a real POLYGON_API_KEY was already set in that shell) and failed
+// in CI. Same hermetic-fixture pattern largo-terminal.test.ts uses for ANTHROPIC_API_KEY.
+process.env.POLYGON_API_KEY = "test-hermetic-fixture-key";
+
 // Mutable stub, same pattern as polygon-options-gex.test.ts: mock.module runs once at import
 // time, so a per-test swap of the captured behavior (not a re-mock) is how each test drives a
 // different response through the SAME dynamic-import-resolved module.
