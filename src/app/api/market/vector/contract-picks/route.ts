@@ -129,6 +129,7 @@ function parsePlatform(body: Record<string, unknown>): PlayPlatformInputs {
             premium: typeof row.premium === "number" ? row.premium : null,
             strike: typeof row.strike === "number" ? row.strike : null,
             expiry: typeof row.expiry === "string" ? row.expiry : null,
+            ask_pct: typeof row.ask_pct === "number" ? row.ask_pct : null,
           };
         })
       : [],

@@ -15,6 +15,7 @@ import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/features/nighthawk/lib/constants
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import type { PlayTechnicals, VectorPlay, VectorPlayStyle } from "./vector-play-engine";
 import type { PlayPlatformFlowPrint, PlayPlatformInputs } from "./vector-play-platform";
+import { flowDirection } from "@/features/helix/lib/helix-flow-aggression";
 import type { VectorContractPick } from "./vector-contract-picks";
 import type { VectorRegimePosture } from "./vector-regime";
 import type { ConfluenceZone } from "./vector-confluence";
@@ -241,6 +242,12 @@ export function pickContractNearTarget(
   return null;
 }
 
+// A print's option TYPE matching the recommended contract's side is not confirmation on its own —
+// a SOLD call at this strike is bearish, not support for buying more calls there. Both helpers below
+// require the aggressor-aware `flowDirection` (bullish for a long/call pick, bearish for a
+// short/put pick) rather than the raw option_type, mirroring the fix already applied in HELIX
+// (helix-flow-aggression.ts) and in vector-play-platform.ts's summarizeSessionFlowBias.
+
 function flowPremiumAtStrike(
   flows: readonly PlayPlatformFlowPrint[] | null | undefined,
   strike: number,
@@ -248,9 +255,9 @@ function flowPremiumAtStrike(
 ): number {
   if (!flows?.length) return 0;
   let best = 0;
-  const want = side === "call" ? "CALL" : "PUT";
+  const wantDir = side === "call" ? "bullish" : "bearish";
   for (const f of flows) {
-    if (f.option_type?.toUpperCase() !== want) continue;
+    if (flowDirection(f) !== wantDir) continue;
     if (num(f.strike) !== strike) continue;
     const prem = num(f.premium);
     if (prem != null && prem > best) best = prem;
@@ -263,10 +270,10 @@ function largestFlowPremium(
   direction: "long" | "short"
 ): number {
   if (!flows?.length) return 0;
-  const want = direction === "long" ? "CALL" : "PUT";
+  const wantDir = direction === "long" ? "bullish" : "bearish";
   let best = 0;
   for (const f of flows) {
-    if (f.option_type?.toUpperCase() !== want) continue;
+    if (flowDirection(f) !== wantDir) continue;
     const prem = num(f.premium);
     if (prem != null && prem >= FLOW_CONFIRM && prem > best) best = prem;
   }
@@ -338,8 +345,11 @@ function specsForContext(ctx: VectorPlayPickContext): CandidateSpec[] {
     const prem = num(f.premium);
     const strike = num(f.strike);
     if (prem == null || prem < FLOW_WHALE || strike == null) continue;
-    const side = f.option_type?.toUpperCase();
-    const dir = side === "CALL" ? "long" : side === "PUT" ? "short" : null;
+    // A whale print becomes a directional candidate from the aggressor-aware read, not raw option
+    // type — a sold call is a short candidate, not a "buy this call" one. Undetermined (no
+    // ask_pct, or midpoint) prints generate no candidate rather than guessing.
+    const flowDir = flowDirection(f);
+    const dir = flowDir === "bullish" ? "long" : flowDir === "bearish" ? "short" : null;
     if (!dir) continue;
     const key = `${dir}-${strike}-${f.expiry ?? ""}`;
     if (seenFlow.has(key)) continue;

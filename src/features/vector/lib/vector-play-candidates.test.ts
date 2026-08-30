@@ -147,7 +147,7 @@ test("HELIX whale print surfaces as a scored candidate with reason", () => {
       spot: 576,
       platformInputs: {
         sessionFlows: [
-          { option_type: "CALL", premium: 3_700_000, strike, expiry },
+          { option_type: "CALL", premium: 3_700_000, strike, expiry, ask_pct: 85 },
         ],
       },
     },
@@ -155,6 +155,33 @@ test("HELIX whale print surfaces as a scored candidate with reason", () => {
   );
   assert.ok(picks.length >= 1);
   assert.ok(picks.some((p) => p.strike === strike && p.reasons?.some((r) => /HELIX/i.test(r))));
+});
+
+test("a SOLD call whale print does not surface as a bullish HELIX candidate", () => {
+  // Regression pin: a call print with ask_pct <= 40 (hit the bid — sold) is bearish, not a "buy
+  // this call" signal, even at whale size. Previously option_type alone drove the candidate.
+  const strike = 572.5;
+  const expiry = ymdPlus(5);
+  const chain: EditionChainData = {
+    spot: 576,
+    rows: [row(strike, { expiry, callAsk: 6, callBid: 5.5 })],
+  };
+  const picks = rankVectorPlayCandidates(
+    {
+      play: basePlay("long", 70),
+      spot: 576,
+      platformInputs: {
+        sessionFlows: [
+          { option_type: "CALL", premium: 3_700_000, strike, expiry, ask_pct: 10 },
+        ],
+      },
+    },
+    chain
+  );
+  assert.ok(
+    !picks.some((p) => p.strike === strike && p.reasons?.some((r) => /HELIX whale/i.test(r))),
+    "a sold call must not surface as a HELIX whale long candidate"
+  );
 });
 
 test("GEX king strike boosts rank when enrichment present", () => {
