@@ -168,12 +168,57 @@ test("buildMeridianFinancialsContext maps fundamentals bundle", () => {
       eps_trajectory: "up",
       net_cash_positive: true,
     },
-    price_target: { price_target: 550, upside_pct: 12.5 },
+    // `BenzingaPriceTarget` (the REAL type of this field) carries only the raw dollar target —
+    // no upside — which is exactly the defect below: there was never a percentage to forward.
+    price_target: { price_target: 550 },
   } as Parameters<typeof buildMeridianFinancialsContext>[0]);
   assert.ok(ctx?.available);
   assert.match(ctx?.headline ?? "", /P\/E 28\.5/);
   assert.match(ctx?.headline ?? "", /Rev \+18% YoY/);
   assert.equal(ctx?.price_target, 550);
+});
+
+/**
+ * REGRESSION (found 2026-08-30): `price_target_upside_pct` was hardcoded `null` in
+ * `buildMeridianFinancialsContext` no matter what was fed in, because the function never received
+ * a current price to compare the target against. `MeridianEarningsIntelPanel.tsx` gates its whole
+ * "Street PT $X (Y% upside)" line on BOTH `price_target` and `price_target_upside_pct` being
+ * non-null, so the line silently never rendered — even for a ticker with a real, live analyst
+ * target. Confirmed with `git blame`/`git log` on this file: the field was `null` unconditionally
+ * since the earnings-intel financials context was introduced (#2253) and nothing since had ever
+ * threaded a price in. The fix passes `spot` (already resolved at both real call sites in
+ * `meridian-earnings-intel.ts`) as a second argument and derives the percentage from it.
+ */
+test("buildMeridianFinancialsContext computes price_target_upside_pct from spot (regression: was always null)", () => {
+  const bundle = {
+    as_of: "2026-08-01",
+    ratios: { pe_ratio: 28.5 },
+    signals: null,
+    price_target: { price_target: 550 },
+  } as Parameters<typeof buildMeridianFinancialsContext>[0];
+
+  // Analyst target $550 vs a $500 spot is +10% upside.
+  const withSpot = buildMeridianFinancialsContext(bundle, 500);
+  assert.equal(withSpot?.price_target, 550);
+  assert.equal(withSpot?.price_target_upside_pct, 10);
+
+  // No spot supplied (the old call-site shape) — honestly absent, not fabricated as 0 or dropped.
+  const noSpot = buildMeridianFinancialsContext(bundle, null);
+  assert.equal(noSpot?.price_target_upside_pct, null);
+
+  // A non-finite/zero/negative spot cannot express a percentage — must stay null, never Infinity/NaN.
+  assert.equal(buildMeridianFinancialsContext(bundle, 0)?.price_target_upside_pct, null);
+  assert.equal(buildMeridianFinancialsContext(bundle, Number.NaN)?.price_target_upside_pct, null);
+  assert.equal(buildMeridianFinancialsContext(bundle, -100)?.price_target_upside_pct, null);
+
+  // No price target at all — still nothing to compute, regardless of spot.
+  const noTarget = {
+    as_of: "2026-08-01",
+    ratios: { pe_ratio: 28.5 },
+    signals: null,
+    price_target: null,
+  } as Parameters<typeof buildMeridianFinancialsContext>[0];
+  assert.equal(buildMeridianFinancialsContext(noTarget, 500)?.price_target_upside_pct, null);
 });
 
 test("the play-read rationale states the beat rate's COHORT, not just the rate", () => {

@@ -271,7 +271,7 @@ export async function loadMeridianEarningsIntel(input: {
     beat_rate_graded,
     post_print: input.enrichment.post_print,
     earnings_yoy: input.enrichment.earnings_yoy,
-    financials: buildMeridianFinancialsContext(fundamentals),
+    financials: buildMeridianFinancialsContext(fundamentals, spot),
     analyst_revisions: input.enrichment.analyst_revisions,
     earnings_headlines: input.enrichment.earnings_headlines,
     catalysts: input.enrichment.catalysts,
@@ -295,7 +295,7 @@ export async function loadMeridianEarningsIntel(input: {
             ),
           }
         : null,
-    financials: buildMeridianFinancialsContext(fundamentals),
+    financials: buildMeridianFinancialsContext(fundamentals, spot),
     flow_into_print: {
       available: top_flows.length > 0,
       window_hours: windowHours,

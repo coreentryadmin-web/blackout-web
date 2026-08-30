@@ -6,9 +6,29 @@ function fmtPct(n: number | null | undefined, digits = 0): string | null {
   return `${n >= 0 ? "+" : ""}${n.toFixed(digits)}%`;
 }
 
-/** Map cached Polygon fundamentals bundle → Meridian earnings card slice. */
+/**
+ * Map cached Polygon fundamentals bundle → Meridian earnings card slice.
+ *
+ * THE DEFECT (found 2026-08-30). `price_target_upside_pct` was hardcoded `null` here, always —
+ * `BenzingaPriceTarget` (the type of `bundle.price_target`) carries only the raw dollar target,
+ * never an upside, so there was never a value to forward. `MeridianEarningsIntelPanel.tsx`
+ * gates the entire "Street PT $X (Y% upside)" line on
+ * `financials.price_target != null && financials.price_target_upside_pct != null` — both must be
+ * non-null — so with the second half permanently null, **that line never renders at all**, even on
+ * a ticker with a real, live analyst price target. A field that always reads absent silently
+ * deletes a whole feature rather than degrading it.
+ *
+ * THE FIX. The missing input is the current price, not a different provider field: upside is
+ * `(target − spot) / spot`, and `spot` is already resolved at every call site in
+ * `meridian-earnings-intel.ts` (from `pack.positioning.spot`/`thermal.spot`) — it was simply never
+ * threaded into this function. `spot` is now an explicit second argument (optional, so existing
+ * callers/tests that only care about the other fields keep compiling) and the percentage is
+ * computed here, guarded the same way every other pct in this file is: both inputs finite, spot > 0
+ * (an upside relative to a zero or negative spot is not a real percentage).
+ */
 export function buildMeridianFinancialsContext(
-  bundle: TickerFundamentalsBundle | null
+  bundle: TickerFundamentalsBundle | null,
+  spot?: number | null
 ): MeridianFinancialsContext | null {
   if (!bundle) return null;
   const r = bundle.ratios;
@@ -34,6 +54,16 @@ export function buildMeridianFinancialsContext(
   }
   if (s?.net_cash_positive != null) parts.push(s.net_cash_positive ? "Net cash" : "Net debt");
 
+  const priceTarget = bundle.price_target?.price_target ?? null;
+  const priceTargetUpsidePct =
+    priceTarget != null &&
+    Number.isFinite(priceTarget) &&
+    spot != null &&
+    Number.isFinite(spot) &&
+    spot > 0
+      ? Number((((priceTarget - spot) / spot) * 100).toFixed(1))
+      : null;
+
   return {
     available: true,
     as_of: bundle.as_of,
@@ -48,7 +78,7 @@ export function buildMeridianFinancialsContext(
     fcf_trend: s?.fcf_trend ?? null,
     eps_trajectory: s?.eps_trajectory ?? null,
     net_cash_positive: s?.net_cash_positive ?? null,
-    price_target: bundle.price_target?.price_target ?? null,
-    price_target_upside_pct: null,
+    price_target: priceTarget,
+    price_target_upside_pct: priceTargetUpsidePct,
   };
 }
