@@ -163,7 +163,7 @@ Don't add a parallel GEX computation — converge on the shared reader.
 | Group | Routes | What's there |
 |---|---|---|
 | `market/` | 34+ | The live data readers — `spx/pulse`, `spx/desk`, `spx/signals`, `flows`, `gex-positioning`, `gex-heatmap`, `nighthawk/edition`, `zerodte/board`, `vector/*`, `news`, `dark-pool`, `regime`, `indices`, `quote`, `largo` |
-| `cron/` | 21 | Background jobs (see §10) — hit by Railway cron services via Bearer `CRON_SECRET` |
+| `cron/` | 21 | Background jobs (see §10) — hit by the AWS EventBridge → Lambda (`blackout-production-hit-cron`) dispatcher via Bearer `CRON_SECRET` |
 | `admin/` | 20 | Admin dashboard data (health, cron-health, spx-analytics, route-errors, incidents) — admin-gated |
 | `account/` | 5 | User account |
 | `signals/` | 3 | SPX signal feed |
@@ -339,8 +339,9 @@ npx tsc --noEmit       # typecheck (should be 0 errors)
 npm test               # tsx --test src/**/*.test.ts
 npm run lint:brand     # brand/tech-stack-disclosure linter (scripts/check-brand.mjs)
 ```
-You need a `.env.local` with provider keys, Clerk keys, `DATABASE_URL`/`REDIS_URL` (or the public
-Railway proxy URLs), and `RAILWAY_TOKEN` for prod inspection. Never commit secrets.
+You need a `.env.local` with provider keys, Clerk keys, and local-dev `DATABASE_URL`/`REDIS_URL`
+values (ask a teammate). Prod inspection goes through AWS — CloudWatch `/ecs/blackout-production`
+and the ECS console (see §9/§11) — not Railway. Never commit secrets.
 
 ---
 
