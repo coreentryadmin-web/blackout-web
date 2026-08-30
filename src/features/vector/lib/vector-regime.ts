@@ -36,6 +36,21 @@ function fmt(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
+/**
+ * True when `regime` has an actual reading worth rendering. `deriveVectorRegime` never returns
+ * null — its "unavailable" case still returns a full, truthy object whose own `headline` is the
+ * literal placeholder string "REGIME —" — so a plain `!!regime` check treats a genuine gap in
+ * positioning data the same as a real reading, and a consumer that doesn't also check `posture`
+ * renders "Regime" / "REGIME —" stacked on top of each other instead of gracefully showing
+ * nothing (as `VectorRegimeBanner` already does). Import this everywhere a consumer decides
+ * whether to show the regime, rather than re-deriving the same `posture !== "unknown"` check.
+ */
+export function hasReadableRegime(
+  regime: VectorRegime | null | undefined
+): regime is VectorRegime {
+  return !!regime && regime.posture !== "unknown";
+}
+
 export function deriveVectorRegime(input: {
   spot: number | null | undefined;
   gammaFlip: number | null | undefined;
