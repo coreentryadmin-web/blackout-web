@@ -11,6 +11,10 @@ import assert from "node:assert/strict";
 // applying the same isInternalAuditEmail() gate already used for the two calls above it.
 
 process.env.CLERK_WEBHOOK_SECRET = "test-hermetic-webhook-secret";
+// syncWhopForClerkUser() fail-opens when Whop env is absent — the mock on
+// syncWhopMembershipForEmail is never reached without these set.
+process.env.WHOP_COMPANY_ID = "test-whop-company";
+process.env.WHOP_API_KEY = "test-whop-key";
 
 let dbQueryCalls: Array<{ text: string; values: unknown[] | undefined }> = [];
 let syncWhopCalls: string[] = [];
