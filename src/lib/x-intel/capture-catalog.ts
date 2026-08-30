@@ -706,13 +706,13 @@ export function searchCaptureCatalog(opts: {
     if (opts.ticker) {
       const t = opts.ticker.toUpperCase();
       const idHit = e.id.toUpperCase().includes(t);
-      const defaultTicker = e.params.find((p) => p.key === "ticker")?.default;
-      if (!idHit && defaultTicker !== t && !e.spx_only) {
-        // still allow generic entries
-        if (e.params.some((p) => p.key === "ticker") && defaultTicker && defaultTicker !== t) {
-          /* keep — param override allowed */
-        }
-      }
+      const tickerParam = e.params.find((p) => p.key === "ticker");
+      const matchesDefault = tickerParam?.default === t;
+      // An entry with a ticker param can be re-targeted to any ticker at generation time (its
+      // default is just a placeholder), so it stays in scope even when the default doesn't match
+      // the search. Only an entry with NO override path — no ticker param, no id/default hit,
+      // and not the SPX-wide catch-all — is actually out of scope for this ticker.
+      if (!idHit && !matchesDefault && !e.spx_only && !tickerParam) return false;
     }
     return true;
   });
