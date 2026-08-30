@@ -450,9 +450,15 @@ export function readyBlockReason(
   const optionsEvidence = row.underlying_evidence.filter(
     (e) => e.horizon != null && e.horizon !== "n/a",
   );
-  if (optionsEvidence.length && optionsEvidence.every((e) => e.horizon === "all")) {
+  // "all" (every expiry) and "monthly" are BOTH far-dated aggregates that do not describe today's
+  // session — only "0dte"/"near" do. The original guard checked "all" alone (the one incident that
+  // had already happened when it was written), which left a package built entirely on "monthly"
+  // evidence free to make a session_claim and reach READY, reproducing the identical
+  // opposite-story failure this field exists to prevent.
+  const FAR_DATED_HORIZONS = new Set<XIntelHorizon>(["all", "monthly"]);
+  if (optionsEvidence.length && optionsEvidence.every((e) => FAR_DATED_HORIZONS.has(e.horizon!))) {
     if (row.session_claim === true) {
-      return "every options-book value is read at the ALL-expiry scope, but the package makes a claim about today's session — far-dated positioning does not describe the next six hours";
+      return "every options-book value is read at a far-dated (ALL-expiry or monthly) scope, but the package makes a claim about today's session — far-dated positioning does not describe the next six hours";
     }
   }
   const unlabelled = row.underlying_evidence.filter(
