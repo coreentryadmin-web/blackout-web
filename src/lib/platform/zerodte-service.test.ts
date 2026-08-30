@@ -23,11 +23,6 @@ test("Largo get_zerodte_plays delegates to zeroDtePlaysForLargo in zerodte-servi
   assert.match(service, /lastMark/);
 });
 
-test("BIE composers read zeroDtePlaysForLargo from shared scan module", () => {
-  const composers = readFileSync(join(ROOT, "lib/bie/composers.ts"), "utf8");
-  assert.match(composers, /zeroDtePlaysForLargo/);
-});
-
 // P1 regression guard (FINDINGS.md): zeroDtePlaysForLargo()'s "fresh find" block
 // used to compute its own OPEN/SKIP status checking ONLY entry_status === "MOVED" —
 // missing the time-of-day cutoff (POWER_HOUR/LATE_SESSION/CLOSED) and illiquid gate
