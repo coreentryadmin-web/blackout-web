@@ -877,8 +877,48 @@ function bucketPrice(price: number, step = 5): number {
   return Math.round(Math.round(price / step) * step * 100) / 100;
 }
 
-function darkPoolBias(call: number, put: number, total: number): string {
+/**
+ * ── THE DEFECT ──────────────────────────────────────────────────────────────────────────────────
+ * `call`/`put` come from `row.type`/`row.option_type` on a UW **dark-pool** print
+ * (`fetchUwDarkPool`/`fetchUwDarkPoolMarketWide`). Dark-pool prints are equity block trades, not
+ * options — VERIFIED LIVE against `/api/darkpool/recent` and `/api/darkpool/{ticker}` (2026-08-30):
+ * every row carries `ticker`/`price`/`size`/`premium`/`nbbo_bid`/`nbbo_ask`/`market_center`/etc,
+ * and NEVER a `type` or `option_type` field. So `optType` is always `""`, and `call`/`put` are
+ * always **0** for every ticker, every session, permanently — this is not an intermittent gap in
+ * the feed, it is a field the endpoint never had.
+ *
+ * Before this guard, `call=0, put=0, total>0` fell through to `Math.abs(0 - 0) < total * 0.15` —
+ * always true for a positive `total` — and returned `"mixed"`: a confident "measured, balanced
+ * institutional flow" verdict computed from a 0/0 split, i.e. from NOTHING. That string is shown
+ * to members verbatim on the Meridian Earnings Intel panel (`"$2.2M total · mixed"`,
+ * `MeridianEarningsIntelPanel.tsx`), in the Night Hawk dossier text (`"bias mixed"`,
+ * `nighthawk/lib/format.ts`), and shipped to Largo as `dark_pool_bias: "mixed"`
+ * (`meridian-earnings-intel.ts`) — every one of them a specific, false claim about institutional
+ * positioning that was never actually measured. This is the same absence-as-measurement failure
+ * `readDarkPoolBias` (helix-darkpool-bias.ts) already fixed for the CLIENT-side buy/sell bias on
+ * 2026-08-23 — that fix left this SERVER-side call/put bias, used by a much wider set of
+ * consumers, still doing the old thing.
+ *
+ * ── WHY "neutral" AND NOT A NEW VALUE ───────────────────────────────────────────────────────────
+ * `"neutral"` is this function's own existing "nothing to say" value (the `total <= 0` branch,
+ * three lines up) — reusing it rather than inventing e.g. `"unknown"` keeps every downstream type
+ * union (`"bullish" | "bearish" | "mixed" | null` in `evidence-bundle-map.ts`/`legacy-bridge.ts`/
+ * `play-similarity.ts`/`scan.ts`) valid with no signature change, because `total<=0` already
+ * produces `"neutral"` through those exact same paths today. VERIFIED SAFE for every scoring
+ * consumer found: `nighthawk/lib/scorer.ts`'s `darkPoolBiasMatchesDirection` already treats
+ * `"neutral"` and `"mixed"` identically (both -> `null` -> half credit); `spx-signals.ts` excludes
+ * both (`dpBias !== "neutral" && dpBias !== "mixed"`); `spx-play-confirmations.ts` passes both
+ * (`dp === "neutral" || dp === "mixed"`); `meridian-earnings-report-core.ts`'s `biasScore` scores
+ * both 0; `spx-lotto-catalyst.ts`'s `darkPoolDirection` never even reaches the `bias` check
+ * (its own `call+put < 500_000` gate already bails first, since call+put is always 0). So this is
+ * a pure truthfulness fix to the DISPLAYED/exposed claim — zero scoring or ranking behavior
+ * changes anywhere it was checked.
+ */
+export function darkPoolBias(call: number, put: number, total: number): string {
   if (total <= 0) return "neutral";
+  // No typed premium at all -> nothing was actually measured. Falling through to the ratio
+  // branches on a 0/0 split would read as "measured, and it's balanced" (see above).
+  if (call + put <= 0) return "neutral";
   if (call >= total * 0.65) return "bullish";
   if (put >= total * 0.65) return "bearish";
   if (Math.abs(call - put) < total * 0.15) return "mixed";
