@@ -45,6 +45,17 @@ export type PolygonLargoFetchInit = Pick<RequestInit, "cache"> & {
   next?: { revalidate?: number };
 };
 
+/**
+ * Build fetch init for `polygonGet` — `cache` and `next.revalidate` are mutually exclusive in
+ * Next's fetch patch; when both are present, `cache: "no-store"` wins and ISR overrides are ignored.
+ */
+export function buildPolygonLargoFetchInit(fetchInit?: PolygonLargoFetchInit): RequestInit {
+  if (fetchInit?.next) {
+    return { headers: { Accept: "application/json" }, next: fetchInit.next };
+  }
+  return { headers: { Accept: "application/json" }, cache: fetchInit?.cache ?? "no-store" };
+}
+
 export type AggBar = { t?: number; o: number; h: number; l: number; c: number; v?: number };
 
 /**
@@ -70,11 +81,11 @@ async function polygonGet<T>(
   }
   const qs = new URLSearchParams({ ...params, apiKey: KEY });
   try {
-    const res = await polygonTrackedFetch(path, `${getPolygonBase()}${path}?${qs}`, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-      ...fetchInit,
-    });
+    const res = await polygonTrackedFetch(
+      path,
+      `${getPolygonBase()}${path}?${qs}`,
+      buildPolygonLargoFetchInit(fetchInit)
+    );
     if (!res.ok) {
       console.warn(`[polygon-largo] ${path.replace(/[\r\n]/g, "")} returned ${res.status}`);
       onFailure?.(`HTTP ${res.status}`);
