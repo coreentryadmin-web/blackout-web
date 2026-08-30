@@ -202,6 +202,8 @@ import {
   uwOptionsMeta,
 } from "@/lib/providers/unusual-whales";
 import { fetchWebSearch } from "@/lib/providers/web-search";
+import { rankSetupAcrossProducts } from "@/lib/largo/cross-product-ranking";
+import { assembleMultiproductBoard } from "@/lib/largo/live-multiproduct-board";
 
 /** Validate a raw ticker symbol supplied from a tool call.
  *  Returns null if valid, or an error object to return immediately if invalid. */
@@ -2073,6 +2075,27 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const limit = Math.min(30, Math.max(1, Number(input.limit ?? 15) || 15));
       const movers = await fetchBenzingaAfterHoursMovers(limit);
       return { source: "benzinga", movers };
+    }
+
+    case "get_cross_product_ranking": {
+      const crossProductInput = {
+        ticker: String(input.ticker ?? "SPX"),
+        entry_price: Number(input.entry_price ?? 0),
+        direction: String(input.direction ?? "bull") as "call" | "put" | "bull" | "bear",
+        timeframe: String(input.timeframe ?? "weekly") as "0dte" | "weekly" | "monthly" | "earnings" | "sector",
+        metric: String(input.metric ?? "edge") as "edge" | "expected_value" | "win_rate" | "confidence" | "avg_win_pct",
+        optional_context: input.optional_context ? String(input.optional_context) : undefined,
+      };
+      return rankSetupAcrossProducts(crossProductInput, { runLargoTool });
+    }
+
+    case "get_live_multiproduct_board": {
+      const multiproductInput = {
+        metric: String(input.metric ?? "score") as "edge" | "confidence" | "urgency" | "score",
+        limit: Math.min(10, Math.max(1, Number(input.limit ?? 5) || 5)),
+        hours_ahead: Math.min(6, Math.max(0, Number(input.hours_ahead ?? 0) || 0)),
+      };
+      return assembleMultiproductBoard(multiproductInput, { runLargoTool });
     }
 
     default:

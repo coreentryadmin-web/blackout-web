@@ -707,6 +707,30 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
     ["query"]
   ),
 
+  t(
+    "get_cross_product_ranking",
+    "Score a specific setup across all six products (Night Hawk, Thermal, Vector, SPX Slayer, Helix, Meridian) and rank which product has the strongest setup for this trade. Pass the setup details (ticker, entry price, direction, timeframe, and ranking metric: edge/win_rate/confidence/expected_value/avg_win_pct) and get each product's score, confidence level, and why it ranks that way. Use for 'which product favors this setup' or 'compare this trade idea across all products'.",
+    {
+      ticker: { type: "string", description: "Stock ticker or index (SPX, SPXW, SPY, etc.)" },
+      entry_price: { type: "number", description: "Entry price for the setup" },
+      direction: { type: "string", enum: ["call", "put", "bull", "bear"], description: "Direction of the setup" },
+      timeframe: { type: "string", enum: ["0dte", "weekly", "monthly", "earnings", "sector"], description: "Timeframe for the setup" },
+      metric: { type: "string", enum: ["edge", "expected_value", "win_rate", "confidence", "avg_win_pct"], description: "Metric to rank products by (default: edge)" },
+      optional_context: { type: "string", description: "Optional setup details (e.g. 'ATM straddle', 'OTM call spread')" },
+    },
+    ["ticker", "entry_price", "direction", "timeframe"]
+  ),
+
+  t(
+    "get_live_multiproduct_board",
+    "Real-time aggregated opportunity board across all six products — the top setups to work on RIGHT NOW across Night Hawk, Thermal, Vector, SPX Slayer, Helix, and Meridian. Ranks by your chosen metric (edge/confidence/urgency/composite score) and caps results to fit the transport limit (5-10 setups). Use for 'what's the best setup to trade right now' or 'show me top opportunities across all products'.",
+    {
+      metric: { type: "string", enum: ["edge", "confidence", "urgency", "score"], description: "Ranking metric (default: score)" },
+      limit: { type: "integer", description: "Number of setups to show (5-10, default 5)" },
+      hours_ahead: { type: "integer", description: "Look-ahead window in hours (0-6, default 0 for now)" },
+    }
+  ),
+
 ];
 
 // The BIE-authored subset of Largo's tool surface — single source of truth so
