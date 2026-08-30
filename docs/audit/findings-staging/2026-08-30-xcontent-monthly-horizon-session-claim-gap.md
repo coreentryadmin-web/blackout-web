@@ -1,0 +1,17 @@
+> **kind:** FINDING
+
+## X-content: session-claim horizon guard checked only "all-expiry" evidence, letting "monthly"-only evidence through unchecked — FIXED
+
+Eighth product surface in the "check product by product" audit sweep (SPX Slayer #3192, Helix #3193, Vector #3194, Meridian #3195, Night Hawk #3196, Thermal #3197, Largo #3198). Confirmed by hand against source (not taken on a subagent's word) with a constructed repro run under `node --import tsx --test` on Node 20.
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `readyBlockReason()` in `src/lib/x-intel/queue-types.ts` blocks a package from reaching READY when it makes a `session_claim: true` and every `underlying_evidence` entry is read at the `"all"` (all-expiry) horizon. `XIntelHorizon` defines FIVE distinct horizons (`"0dte" \| "near" \| "monthly" \| "all" \| "n/a"`), and `"monthly"` is exactly as far-dated/non-session-appropriate as `"all"` — but the guard checked only `e.horizon === "all"`, so a package built entirely on `"monthly"` evidence with `session_claim: true` returned `null` (no block) and could reach READY. |
+| **Root cause** | The guard's own doc comment documents the exact real incident (2026-08-21) that motivated it: a package quoted an ALL-expiry aggregate (`SHORT GAMMA / call wall 7,900`) as if it described the next six hours, when the near-term (0DTE) read was the opposite story (`LONG GAMMA / call wall 7,700 / flip 7,633`). The guard was written narrowly enough to catch only the horizon value involved in that ONE incident, not the general rule the type system already implies (any horizon other than `"0dte"`/`"near"` is far-dated and unsuited to a session claim). |
+| **Why this matters** | A package whose only cited options-book evidence is monthly-expiry positioning, making an explicit claim about today's session, is the identical failure mode the guard exists to prevent — it just happened to use a different word for "not today." Nothing downstream distinguishes a package that slipped through this gap from one the guard correctly caught; it silently reaches READY and can be manually published with a false same-day narrative. |
+| **Fix** | The guard now checks `FAR_DATED_HORIZONS = new Set(["all", "monthly"])` instead of `=== "all"` alone — a package whose options-book evidence is entirely `"all"`, entirely `"monthly"`, or any mix of the two, with `session_claim: true`, is now blocked. `"0dte"`/`"near"` evidence (or a mix that includes either) is unaffected. |
+| **Blast radius** | `readyBlockReason` (`queue-types.ts`) — the single READY-transition gate for the X-content posting queue. No other call sites. |
+| **Why not caught earlier** | `queue-types.test.ts`'s horizon describe block only ever exercised `"all"` vs `"0dte"`/mixed cases — there was no test for `"monthly"`, the exact untested branch that let this ship. |
+| **Regression guard** | Added `REFUSES a session claim built only on monthly-expiry values, same as all-expiry` — fails against the pre-fix code (would return `null`) and passes post-fix. Updated the existing message-match regex (the block message text changed from "ALL-expiry scope" to "far-dated (ALL-expiry or monthly) scope" to describe the wider rule); all 5 pre-existing horizon tests still pass unchanged in behavior. |
+| **Gates** | `npx tsc --noEmit` clean. `node --import tsx --test` on `queue-types.test.ts`: 58/58 pass (Node 20). |
+| **Status** | FIXED — PR pending. |
