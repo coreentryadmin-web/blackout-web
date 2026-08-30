@@ -522,6 +522,12 @@ export function MeridianDesk() {
           {(data?.earnings_week?.length ?? 0) > 0 && (
             <section className="meridian-earnings-week" aria-label="Mega-cap earnings week">
               <h3 className="meridian-earnings-week-title">Mega-cap earnings week</h3>
+              {data?.earnings_week_analytics_error && (
+                <p className="meridian-feed-error" role="status">
+                  Week analytics history did not respond — beat rates are unavailable for this
+                  refresh. The mega-cap grid below is still live.
+                </p>
+              )}
               {data?.earnings_week_analytics && (
                 <MeridianAnalyticsBanner
                   label="Universe analytics"
