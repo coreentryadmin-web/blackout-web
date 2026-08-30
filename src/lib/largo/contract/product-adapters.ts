@@ -13,7 +13,8 @@
 // reason is the contract's C3, and it applies to this layer exactly as it applies to the products.
 
 import type { ProductContribution } from "./cross-product";
-import { canonicalTicker, type Direction, type ProductSignal } from "./product-read";
+import { canonicalTicker, type Direction, type TickerClass, type ProductSignal } from "./product-read";
+import { canonicalTicker as classifyTicker } from "@/lib/largo/core/entities";
 
 /** Read a possibly-missing number without letting a string "7705" or a null poison arithmetic. */
 function num(v: unknown): number | null {
@@ -23,6 +24,18 @@ function num(v: unknown): number | null {
     return Number.isFinite(n) ? n : null;
   }
   return null;
+}
+
+/**
+ * Derive `ticker_class` from the actual ticker rather than a per-product constant. Each adapter
+ * below used to hardcode "equity" (helix) or "index" (vector/nighthawk) regardless of what ticker
+ * was queried — correct only by coincidence for SPX-only test fixtures, silently wrong for any
+ * other ticker (ask about TSLA: vector/nighthawk both asserted `ticker_class: "index"`). Falls back
+ * to "equity" only when the ticker cannot be classified at all, matching core/entities.ts's own
+ * default for an unrecognized symbol.
+ */
+function tickerClassFor(ticker: string): TickerClass {
+  return classifyTicker(ticker)?.kind ?? "equity";
 }
 
 function obj(v: unknown): Record<string, unknown> | null {
@@ -63,7 +76,7 @@ export function helixContribution(payload: unknown): ProductContribution {
     product: "helix",
     signal: {
       ticker: canonicalTicker(String(p.ticker ?? "")),
-      ticker_class: "equity",
+      ticker_class: tickerClassFor(String(p.ticker ?? "")),
       direction,
       evidence,
       native: { session, expiry_horizons: p.expiry_horizons ?? null },
@@ -142,7 +155,7 @@ export function vectorContribution(payload: unknown): ProductContribution {
     product: "vector",
     signal: {
       ticker: canonicalTicker(String(p.ticker ?? "")),
-      ticker_class: "index",
+      ticker_class: tickerClassFor(String(p.ticker ?? "")),
       direction,
       evidence: evidence.length ? evidence : [`${bull} bullish / ${bear} bearish pulse signals`],
       native: { has_baseline: p.has_baseline ?? null, signal_count: signals.length },
@@ -199,7 +212,7 @@ export function nighthawkContribution(payload: unknown): ProductContribution {
     product: "nighthawk",
     signal: {
       ticker: canonicalTicker(String(p.ticker ?? "")),
-      ticker_class: "index",
+      ticker_class: tickerClassFor(String(p.ticker ?? "")),
       direction,
       evidence: evidence.length ? evidence : [`${calls} call-side / ${puts} put-side plays`],
       native: { play_count: plays.length },
