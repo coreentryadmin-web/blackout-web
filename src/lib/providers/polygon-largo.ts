@@ -45,6 +45,17 @@ export type PolygonLargoFetchInit = Pick<RequestInit, "cache"> & {
   next?: { revalidate?: number };
 };
 
+/**
+ * Build fetch init for `polygonGet` — `cache` and `next.revalidate` are mutually exclusive in
+ * Next's fetch patch; when both are present, `cache: "no-store"` wins and ISR overrides are ignored.
+ */
+export function buildPolygonLargoFetchInit(fetchInit?: PolygonLargoFetchInit): RequestInit {
+  if (fetchInit?.next) {
+    return { headers: { Accept: "application/json" }, next: fetchInit.next };
+  }
+  return { headers: { Accept: "application/json" }, cache: fetchInit?.cache ?? "no-store" };
+}
+
 export type AggBar = { t?: number; o: number; h: number; l: number; c: number; v?: number };
 
 /**
@@ -70,17 +81,11 @@ async function polygonGet<T>(
   }
   const qs = new URLSearchParams({ ...params, apiKey: KEY });
   try {
-    // `cache` and `next.revalidate` are mutually exclusive to Next's fetch patch — passing both
-    // leaves `cache: "no-store"` in effect and next.revalidate does nothing (measured live
-    // 2026-08-30: the #3187 "fix" that spread `...fetchInit` AFTER a hardcoded `cache: "no-store"`
-    // shipped, deployed, and the exact "Page changed from static to dynamic" error it was meant to
-    // close kept firing in production, because a spread only overrides `cache` when `fetchInit`
-    // itself sets `cache` — this caller only ever sets `next`). So build the two shapes distinctly
-    // instead of spreading a partial override onto a fixed default.
-    const cacheInit: RequestInit = fetchInit?.next
-      ? { headers: { Accept: "application/json" }, next: fetchInit.next }
-      : { headers: { Accept: "application/json" }, cache: fetchInit?.cache ?? "no-store" };
-    const res = await polygonTrackedFetch(path, `${getPolygonBase()}${path}?${qs}`, cacheInit);
+    const res = await polygonTrackedFetch(
+      path,
+      `${getPolygonBase()}${path}?${qs}`,
+      buildPolygonLargoFetchInit(fetchInit)
+    );
     if (!res.ok) {
       console.warn(`[polygon-largo] ${path.replace(/[\r\n]/g, "")} returned ${res.status}`);
       onFailure?.(`HTTP ${res.status}`);
