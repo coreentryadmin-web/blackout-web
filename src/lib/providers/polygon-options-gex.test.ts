@@ -237,6 +237,33 @@ test("computeGexEvents: spot breaking above a call wall produces wall_broken wit
   assert.equal(wallBroken.to_value, 5060);
 });
 
+test("computeGexEvents: wall_broken uses the spot-constrained wall, not the biggest-magnitude strike anywhere", () => {
+  // Regression: wallsOf() used to pick argmax-positive/argmin-negative ANYWHERE, ignoring spot
+  // side. Here strike 500 (+50k) is the biggest-magnitude positive strike, but it sits BELOW the
+  // prior spot (501) so it cannot be a call wall (resistance) at all -- the real, side-correct
+  // call wall is 510 (+30k), the only positive strike actually above spot. Before the fix,
+  // wallsOf would have picked 500, and priorSpot(501) <= 500 is false, so wall_broken would never
+  // fire even though spot genuinely crosses the real wall at 510.
+  const strikeTotals = { "495": -80_000, "500": 50_000, "510": 30_000 };
+  const ring = [
+    snap({ ts: 1000, spot: 501, flip: null, strike_totals: strikeTotals }),
+    snap({ ts: 2000, spot: 501, flip: null, strike_totals: strikeTotals }),
+  ];
+  const events = computeGexEvents(ring, {
+    ts: 3000,
+    spot: 512,
+    flip: null,
+    call_wall: 510,
+    put_wall: 495,
+    total: 0,
+  });
+  assert.ok(events);
+  const wallBroken = events!.find((e) => e.type === "wall_broken");
+  assert.ok(wallBroken, "wall_broken must fire when spot crosses the real (spot-constrained) call wall");
+  assert.equal(wallBroken!.level, 510, "the wall must be 510 (above spot), not 500 (below spot)");
+  assert.equal(wallBroken!.direction, "above call wall");
+});
+
 test("computeGexEvents: net GEX flipping sign produces net_gex_sign_flipped with real dollar totals before/after", () => {
   const priorTotals = { "5000": -50_000 }; // priorTotal = -50,000; putWall=5000, callWall=null
   const ring = [
