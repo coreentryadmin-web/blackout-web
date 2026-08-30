@@ -15,7 +15,7 @@ import type { PlayLevelsInput } from "@/features/vector/lib/vector-play-levels";
 import type { FlowAlert, VectorDarkPoolLevel, VectorWalls } from "@/lib/api";
 import { VectorHelixRail } from "@/features/vector/components/VectorHelixRail";
 import { useVectorHelixFlows } from "@/features/vector/lib/use-vector-helix-flows";
-import { flowAlertTimeSec } from "@/features/vector/lib/vector-flow-confluence";
+import { flowAlertTimeSec, chartFocusToneForFlow } from "@/features/vector/lib/vector-flow-confluence";
 import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
 import { VectorContractPicksCard } from "@/features/vector/components/VectorContractPicksCard";
 import { useVectorActionablePicks } from "@/features/vector/lib/use-vector-actionable-picks";
@@ -260,7 +260,7 @@ export function VectorPageShell({
     setChartFocus((prev) => ({
       price: flow.strike,
       label: `${flow.strike}${isCall ? "C" : "P"}`,
-      tone: isCall ? "bull" : "bear",
+      tone: chartFocusToneForFlow(flow),
       seq: (prev?.seq ?? 0) + 1,
       ...(barTimeSec != null ? { barTimeSec } : {}),
     }));
