@@ -9,6 +9,7 @@ import {
   computeEarningsYoY,
   dualBeatRateFromPrints,
   earningsWhenFromTime,
+  impactFromEarningsImportance,
   overlayTimelineExpectedMoves,
   parseNextEarningsFromBenzinga,
   mergeEarningsTimelineSources,
@@ -49,6 +50,25 @@ test("earningsWhenFromTime buckets pre/post market", () => {
   assert.equal(earningsWhenFromTime("08:30:00"), "premarket");
   assert.equal(earningsWhenFromTime("16:20:00"), "afterhours");
   assert.equal(earningsWhenFromTime(null), null);
+});
+
+test("impactFromEarningsImportance: an unrated print reads as the WEAKEST bucket, never the strongest", () => {
+  // Regression pin: Benzinga leaves `importance` null for a large share of names (unrated small/mid
+  // caps). An absent rating must not read as importance>=4 (the codebase's own stated rule in
+  // meridian-em-priority.ts: unknown ranks below a real 0), or every unrated name floods the
+  // "High Impact" strip/count indistinguishably from a confirmed mega-cap print.
+  assert.equal(impactFromEarningsImportance(null), "low");
+  assert.equal(impactFromEarningsImportance(undefined), "low");
+  assert.equal(impactFromEarningsImportance(Number.NaN), "low");
+});
+
+test("impactFromEarningsImportance: real importance still buckets high/medium/low", () => {
+  assert.equal(impactFromEarningsImportance(5), "high");
+  assert.equal(impactFromEarningsImportance(4), "high");
+  assert.equal(impactFromEarningsImportance(3), "medium");
+  assert.equal(impactFromEarningsImportance(2), "medium");
+  assert.equal(impactFromEarningsImportance(1), "low");
+  assert.equal(impactFromEarningsImportance(0), "low");
 });
 
 test("benzingaSurpriseToDisplayPct normalizes ratio to percent", () => {
