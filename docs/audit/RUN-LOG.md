@@ -233,6 +233,40 @@ Production stable, validated overnight. All fixes hold. Striking-distance querie
 >>>>>>> Stashed changes
 
 ---
+## 2026-08-31 (18:16 UTC / 14:16 ET) — [SEO] Lane heartbeat: Post-close validation of shipped fixes — GREEN
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Scheduled SEO lane heartbeat (routine post-close production validation).
+
+**Result — `OVERALL: PASS`, `EXIT=0`:**
+
+1. **#2453 (homepage CLS fix) — LIVE and holding:**
+   - Homepage Desktop 1440×900: **CLS = 0.0001** (Cloudflare edge purged before measurement)
+   - Assets: 70 routed ok, 0 fail
+   - Verdict: **VERIFIED** (fix holds on production, well under 0.1 threshold)
+
+2. **#2448 (/api/og crawlability fix) — LIVE and working:**
+   - `/api/og` HTTP response: **200**
+   - Content-Type: **image/png**
+   - Authentication: **none required** (crawlable by search engines)
+   - Verdict: **VERIFIED** (unauthenticated image delivery confirmed)
+
+3. **PR sweep (`agent-pr-sweep.mjs`):**
+   - 0 open agent PRs
+   - No blocked work
+   - Verdict: **CLEAR**
+
+4. **Lane-specific state (established, not rediscovered):**
+   - GSC (Google Search Console) configured: service account `claude-seo@...` verified `siteOwner` on `sc-domain:blackouttrades.com`
+   - GA4 (G-YLN4K37KYF) live on all pages, client-side conversion code ready
+   - **Conversion pipeline gap persists:** GA4 events firing but `NEXT_PUBLIC_GOOGLE_ADS_ID` and label env vars not configured. Google Ads integration blocked pending ads/marketing lane action.
+   - Bing: IndexNow live, pinging on every deploy
+
+**Interpretation:**
+All code fixes for this cycle are **confirmed working on production**. Core Web Vitals hold. OG crawlability unblocked. No new SEO defects discovered in post-close validation (rule 6: DESIGN → IMPLEMENT → TEST → PR → CI → MERGE → DEPLOY → **LIVE PRODUCT TEST → DATA VALIDATION → REGRESSION CHECK** → VERIFIED). Lane correctly awaits out-of-lane blocker: ads/marketing lane configuration of Google Ads conversion action IDs and environment variables.
+
+---
 ## 2026-08-31 (16:34 UTC / 12:34 ET) — [SEO] RTH follow-up: /tools/gamma-snapshot confirmation check — GREEN, 26m to close
 
 **Severity.** — (no defect found)
