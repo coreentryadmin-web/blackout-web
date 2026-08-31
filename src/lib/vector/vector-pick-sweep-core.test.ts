@@ -9,6 +9,7 @@ import {
   mergePeakPremiumPct,
   mergeSweepTickerUniverse,
   pickContextFromFullState,
+  resolveVectorPickEntryMid,
   sortLeadersForBoard,
   VECTOR_PICK_WINNER_PCT_FLOOR,
 } from "./vector-pick-sweep-core";
@@ -156,5 +157,23 @@ describe("vector-pick-sweep-core", () => {
       }),
       true
     );
+  });
+});
+
+describe("resolveVectorPickEntryMid", () => {
+  test("an already-tracked leader uses its FROZEN entry_mid, never the current pass's re-derived pick premium", () => {
+    // Live 2026-08-31: QQQ's frozen entry_mid was $1.94, but the sweep pass that produced the
+    // -2.11% read had re-ranked the pick at $1.42 — the frozen value must win.
+    assert.equal(resolveVectorPickEntryMid(1.94, 1.42, 1.42), 1.94);
+  });
+
+  test("a brand-new leader (no frozen row yet) falls back to the pick's own entryMid, then premium", () => {
+    assert.equal(resolveVectorPickEntryMid(null, 2.5, 2.4), 2.5);
+    assert.equal(resolveVectorPickEntryMid(null, null, 2.4), 2.4);
+    assert.equal(resolveVectorPickEntryMid(null, undefined, undefined), null);
+  });
+
+  test("a frozen entry_mid of exactly 0 is still honored, not treated as absent", () => {
+    assert.equal(resolveVectorPickEntryMid(0, 2.5, 2.4), 0);
   });
 });

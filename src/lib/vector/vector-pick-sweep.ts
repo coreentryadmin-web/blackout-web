@@ -22,11 +22,15 @@ import {
   insertVectorPickClosure,
   vectorPickClosureExists,
 } from "@/lib/vector/vector-pick-closures-db";
-import { upsertVectorPickLeader } from "@/lib/vector/vector-pick-leaders-db";
+import {
+  fetchVectorPickLeaderEntryMid,
+  upsertVectorPickLeader,
+} from "@/lib/vector/vector-pick-leaders-db";
 import {
   mergePeakPremiumPct,
   mergeSweepTickerUniverse,
   pickContextFromFullState,
+  resolveVectorPickEntryMid,
   vectorPickLeaderKey,
 } from "@/lib/vector/vector-pick-sweep-core";
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
@@ -138,10 +142,22 @@ export async function sweepVectorPickForTicker(
   for (const pick of picks) {
     const occ = pick.occ!;
     const quote = quoteForOcc(occ, pick.side, snaps.get(occ));
+    const leaderKey = vectorPickLeaderKey(sessionDate, ticker, occ);
+    // Entry basis: FIRST-WRITE-WINS, same discipline as the 0DTE ledger's entry_premium. A live
+    // drift % must be measured against the price the row was first opened at, not against
+    // whatever this pass's re-ranked pick happens to quote as "entry" right now — the ranked pool
+    // is rebuilt from the live chain every sweep (~2min), so the same rank/role/occ can carry a
+    // different premium pass to pass. Using the fresh value on every pass silently re-bases the
+    // % the member sees off a moving target while the displayed `entry_mid` stays frozen at its
+    // original first-seen value — the two visibly disagree (found 2026-08-31: QQQ showed
+    // entry_mid $1.94 next to a -2.11% read that only reconciles against a $1.42 basis; SPY
+    // showed entry_mid $1.85 next to +0.48% that only reconciles against ~$1.04-1.05).
+    const frozenEntryMid = await fetchVectorPickLeaderEntryMid(leaderKey);
+    const entryMid = resolveVectorPickEntryMid(frozenEntryMid, pick.entryMid, pick.premium);
     const evalResult = evaluateVectorPickLiveStatus({
       spot: state.spot,
       side: pick.side,
-      entryMid: pick.entryMid ?? pick.premium ?? null,
+      entryMid,
       caveat: pick.caveat,
       invalidation: play.invalidation ?? null,
       bias: ctx.play.bias, // the COMMITTED bias (ctx.play already carries it, not the raw card bias)
@@ -151,7 +167,6 @@ export async function sweepVectorPickForTicker(
       quote,
     });
 
-    const entryMid = pick.entryMid ?? pick.premium ?? null;
     const peak = mergePeakPremiumPct(null, evalResult.premiumPctFromEntry);
 
     const playJson = {
@@ -175,7 +190,6 @@ export async function sweepVectorPickForTicker(
       sweep: true,
     };
 
-    const leaderKey = vectorPickLeaderKey(sessionDate, ticker, occ);
     const wroteLeader = await upsertVectorPickLeader({
       leaderKey,
       sessionDate,

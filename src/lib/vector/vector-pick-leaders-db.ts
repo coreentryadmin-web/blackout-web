@@ -105,6 +105,24 @@ export async function upsertVectorPickLeader(payload: VectorPickLeaderUpsert): P
   return (res.rows?.length ?? 0) > 0;
 }
 
+/**
+ * The frozen entry basis for an already-tracked leader, keyed by `leader_key`. `entry_mid` is
+ * intentionally NOT in `upsertVectorPickLeader`'s `ON CONFLICT ... DO UPDATE SET` — it is a
+ * first-write-wins entry price, same discipline as the 0DTE ledger's `entry_premium`. Callers
+ * computing a live drift % must re-use THIS value once a row exists, not re-derive a fresh
+ * "entry" from the current sweep pass (see `vector-pick-sweep.ts`'s call site for why: the
+ * ranked-pick premium for the same rank/role/occ is re-computed from the live chain every pass
+ * and can differ from the one the row was first opened against).
+ */
+export async function fetchVectorPickLeaderEntryMid(leaderKey: string): Promise<number | null> {
+  if (!dbConfigured()) return null;
+  const res = await dbQuery<{ entry_mid: number | null }>(
+    `SELECT entry_mid::float8 AS entry_mid FROM vector_pick_leaders WHERE leader_key = $1 LIMIT 1`,
+    [leaderKey]
+  );
+  return res.rows?.[0]?.entry_mid ?? null;
+}
+
 export async function fetchVectorPickLeaderRows(opts?: {
   sessionDate?: string | null;
   limit?: number;
