@@ -11,6 +11,38 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-08-31 (12:22 UTC) — [SEO] Lane heartbeat: Daytime validation + GA4→Ads conversion pipeline audit
+
+**Severity.** — (no code defect found; configuration gap documented in STEP 3)
+
+**Why it ran.** Scheduled SEO lane heartbeat (daytime cycle, routine validation STEP 1–3).
+
+**Result — `OVERALL: PASS`, `EXIT=0`:**
+
+**STEP 1 — Production deployment validation:**
+1. **Homepage CLS (desktop 1440×900 post-CF purge):** 0.0001 (65 assets routed ok). Verdict: **GOOD** (fix #2453 holding).
+2. **OG image crawlability (`/api/og`):** HTTP 200, PNG magic bytes 89 50 4e 47. Verdict: **LIVE** (fix #2448 holding).
+
+**STEP 2 — PR sweep (`agent-pr-sweep.mjs`):**
+3. **Agent PRs:** 0 open (dropped from 1; #3231 helix issue still open but not SEO-related). No conflicts, no red CI. Verdict: **CLEAR**.
+
+**STEP 3 — New work audit (GA4→Google Ads conversion pipeline):**
+4. **GA4 measurement ID:** G-YLN4K37KYF live on every page ✓
+5. **GA4 events firing:** pricing_view, sign_up, purchase — all instrumented ✓
+6. **Ads conversion code ready:** `src/lib/analytics/google-ads.ts` fail-closed validation complete ✓
+7. **Verification harness:** `scripts/audit/google-ads-conversion-verify.mjs` available ✓
+8. **Configuration status:** All four `NEXT_PUBLIC_GOOGLE_ADS_*` env vars **MISSING** ✗
+   - `NEXT_PUBLIC_GOOGLE_ADS_ID` — not configured
+   - `NEXT_PUBLIC_GOOGLE_ADS_LABEL_SIGNUP` — not configured
+   - `NEXT_PUBLIC_GOOGLE_ADS_LABEL_PURCHASE` — not configured
+   - `NEXT_PUBLIC_GOOGLE_ADS_LABEL_PRICING_VIEW` — not configured
+9. **Verification result:** 4 FAIL, 1 WARN. Verdict: **"DO NOT LAUNCH. Conversion tracking is not live; spend during this window is unattributable."**
+10. **Blocker:** Requires ads/marketing lane to create conversion actions in Google Ads account and provide AW-* conversion ID + per-action labels.
+
+**Lane interpretation:**
+Production is **STABLE AND UNCHANGED** from the 00:18 UTC cycle. Both shipped fixes hold. No new on-page work emerged. STEP 3 identified the GA4→Ads conversion pipeline gap: code is ready, but the Ads account has not been configured with conversion actions. This blocks conversion import. Per SEO-GROWTH-STRATEGY.md §3 (Monitor, don't churn), no on-page action required. Out-of-lane blockers: (1) ads/marketing lane to configure Google Ads conversions, (2) authority/backlinks for deep-demand queries.
+
+---
 ## 2026-08-31 (00:18 UTC) — [SEO] Lane heartbeat: Overnight cycle — state STABLE
 
 **Severity.** — (no defect found)
