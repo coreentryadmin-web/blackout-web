@@ -7,6 +7,7 @@ import {
   fitGroupGreekFlowRowsForModel,
   fitEarningsRelatedNewsForModel,
   fitGroupGreekFlowToolResultForModel,
+  fitGexLadderForModel,
 } from "./market-data-fits";
 
 const TRANSPORT_CAP = 16_384;
@@ -188,4 +189,96 @@ test("fitEarningsRelatedNewsForModel: under-cap input passes through untruncated
 test("fitEarningsRelatedNewsForModel: empty/undefined input never throws", () => {
   assert.deepEqual(fitEarningsRelatedNewsForModel([]).related_news, []);
   assert.deepEqual(fitEarningsRelatedNewsForModel(undefined as unknown as Record<string, unknown>[]).related_news, []);
+});
+
+// Real live shape (SPX 0DTE, 2026-08-31, captured via vector-rth-quick-check.mjs / a direct
+// GET /api/market/vector/gex-ladder?ticker=SPX&dte=0dte fetch): 200 rows, 5-point strikes,
+// spot 7673.58, kings at 7700 (call) and 7650 (put), 18,858 raw chars — 118% of the 16k cap.
+function liveShapedGexLadderFixture() {
+  const spot = 7673.58;
+  const callKingStrike = 7700;
+  const putKingStrike = 7650;
+  const rows: Array<Record<string, unknown>> = [];
+  // 200 strikes, 5pt apart, spanning both sides of spot — same density as the live payload.
+  for (let i = 0; i < 200; i++) {
+    const strike = 8170 - i * 5;
+    const isCall = strike >= spot;
+    rows.push({
+      strike,
+      gex: isCall ? 10_000 + i * 137 : -(10_000 + i * 137),
+      side: isCall ? "call" : "put",
+      magnitude: 0.1,
+      isKing: strike === callKingStrike || strike === putKingStrike,
+      migration: null,
+    });
+  }
+  return {
+    ticker: "SPX",
+    spot,
+    asOf: "2026-08-31T13:47:36.473Z",
+    horizon: "0dte",
+    ladder: { spot, rows, maxAbs: 5_623_801_588.88 },
+    depth: null,
+    depthSpot: null,
+  };
+}
+
+test("fitGexLadderForModel: live-shaped 200-row SPX ladder truncates raw but the fitted result stays under the transport cap", () => {
+  const raw = liveShapedGexLadderFixture();
+  const rawChars = JSON.stringify(raw).length;
+  // Sanity: the fixture must actually reproduce the live overflow, else this test proves nothing.
+  assert.ok(rawChars > TRANSPORT_CAP, `sanity: fixture (${rawChars} chars) must exceed the transport cap`);
+
+  const fitted = fitGexLadderForModel(raw);
+  const fittedChars = JSON.stringify(fitted).length;
+  assert.ok(fittedChars < TRANSPORT_CAP, `fitted payload ${fittedChars} must be under ${TRANSPORT_CAP}`);
+  assert.equal(fitted.rows_truncated, true);
+  assert.ok(fitted.rows_shown > 0 && fitted.rows_shown < 200);
+  assert.equal(fitted.rows_total, 200);
+});
+
+test("fitGexLadderForModel: never drops maxAbs, spot, or depth fields even when rows are cut", () => {
+  const raw = liveShapedGexLadderFixture();
+  const fitted = fitGexLadderForModel(raw);
+  // These sit AFTER `rows` in the route's own key order, so a raw transport tail-cut drops them —
+  // the fitter must keep them regardless of how many rows survive.
+  assert.equal(fitted.ladder.maxAbs, raw.ladder.maxAbs);
+  assert.equal(fitted.spot, raw.spot);
+  assert.equal(fitted.asOf, raw.asOf);
+  assert.equal(fitted.depthSpot, raw.depthSpot);
+});
+
+test("fitGexLadderForModel: both per-side kings always survive the cut, however small the budget forces the row count", () => {
+  const raw = liveShapedGexLadderFixture();
+  const fitted = fitGexLadderForModel(raw);
+  const keptKings = fitted.ladder.rows.filter((r) => r.isKing);
+  assert.equal(keptKings.length, 2, "the call king and the put king must both survive — they are the load-bearing rows");
+});
+
+test("fitGexLadderForModel: kept rows stay nearest-to-spot, not an arbitrary head slice of the descending-strike array", () => {
+  const raw = liveShapedGexLadderFixture();
+  const fitted = fitGexLadderForModel(raw);
+  const keptStrikes = fitted.ladder.rows.map((r) => Number(r.strike));
+  // The full fixture's array order is strictly descending from 8170 — a naive head-first cut would
+  // keep only strikes near 8170 and never reach spot (7673.58) at all.
+  const nearSpot = keptStrikes.some((s) => Math.abs(s - raw.spot) < 50);
+  assert.ok(nearSpot, `kept strikes (${keptStrikes.slice(0, 10)}...) must include rows near spot, not just the array head`);
+});
+
+test("fitGexLadderForModel: kept rows are re-sorted back to descending-strike display order", () => {
+  const raw = liveShapedGexLadderFixture();
+  const fitted = fitGexLadderForModel(raw);
+  const strikes = fitted.ladder.rows.map((r) => Number(r.strike));
+  for (let i = 1; i < strikes.length; i++) {
+    assert.ok(strikes[i - 1]! > strikes[i]!, "rows must be strictly descending by strike, same as the route's own output");
+  }
+});
+
+test("fitGexLadderForModel: under-cap input passes through untruncated", () => {
+  const raw = liveShapedGexLadderFixture();
+  raw.ladder.rows = raw.ladder.rows.slice(0, 5);
+  const fitted = fitGexLadderForModel(raw);
+  assert.equal(fitted.rows_shown, 5);
+  assert.equal(fitted.rows_truncated, false);
+  assert.equal(fitted.ladder.rows.length, 5);
 });
