@@ -150,6 +150,73 @@ export function fitScreenerForModel(raw: any[], maxShown = 15): { fitted: Screen
   return { fitted: envelope as unknown as ScreenerFittedResult };
 }
 
+// ============ vector gex-ladder (reached via call_internal_api, not a named tool) ============
+// MEASURED TRUNCATED live 2026-08-31: GET /api/market/vector/gex-ladder?ticker=SPX&dte=0dte
+// serialized to 18,858 chars raw (18,945 once call_internal_api's {ok,status,path,area,data}
+// wrapper is added) — 118% of the 16k transport cap — at 200 rows (buildGexLadder's own default
+// `maxRows`, vector-gex-ladder.ts). Because `ladder.rows` serializes BEFORE `ladder.maxAbs` (the
+// per-row magnitude normaliser every bar's width/intensity depends on) and before the top-level
+// `depth`/`depthSpot` fields, a raw tail-cut (`raw.slice(0, MAX_TOOL_RESULT_CHARS)`,
+// anthropic.ts) drops those trailing fields entirely, plus every row past the cut point (SPX
+// 2026-08-31: everything below strike 7325, roughly a third of the ladder including its most
+// negative put wall).
+//
+// This route was invisible to every prior truncation fix and to largo-truncation-probe.mjs's
+// sweep: it is not itself a Largo tool with a fixed argument recipe (LANE_TOOLS) — Largo reaches
+// it generically through `call_internal_api`, whose only argument is an arbitrary `path` string
+// (route-registry.ts class:"read"). Same bug class as #2433/#2436/#2480 (get_zerodte_record,
+// get_nighthawk_edition, get_nighthawk_outcomes), on a delivery path none of those three audits,
+// or the probe built after them, could see — see the findings-staging entry for this fix.
+//
+// Fix mirrors the rest of this file: budget-bound (fitEnvelopeToBudget), not a fixed row count —
+// see fitMarketOiChangeForModel's comment above for why a fixed count is the wrong shape here.
+// Row PRIORITY (not array order) decides what survives: the crowned king per side (`isKing`) is
+// kept first — it is the single most load-bearing row, the exact strike the banner/chart/desk
+// terminal all cite — then remaining rows nearest spot. The route's own array order is DESCENDING
+// BY STRIKE, so a naive head-first budget cut would silently keep only the far-OTM top of the
+// chain and lose spot's own neighbourhood entirely.
+export interface GexLadderFittedResult {
+  [key: string]: unknown;
+  ladder: {
+    [key: string]: unknown;
+    rows: Array<Record<string, unknown>>;
+  };
+  rows_shown: number;
+  rows_total: number;
+  rows_truncated: boolean;
+}
+
+export function fitGexLadderForModel(raw: Record<string, unknown>): GexLadderFittedResult {
+  const ladder = (raw?.ladder && typeof raw.ladder === "object" ? raw.ladder : {}) as Record<string, unknown>;
+  const rows = Array.isArray(ladder.rows) ? (ladder.rows as Array<Record<string, unknown>>) : [];
+  const spot =
+    typeof ladder.spot === "number" ? ladder.spot : typeof raw?.spot === "number" ? (raw.spot as number) : null;
+
+  const prioritized = [...rows].sort((a, b) => {
+    const ak = a.isKing ? 0 : 1;
+    const bk = b.isKing ? 0 : 1;
+    if (ak !== bk) return ak - bk;
+    if (spot == null) return 0;
+    return Math.abs(Number(a.strike) - spot) - Math.abs(Number(b.strike) - spot);
+  });
+
+  const shell = (kept: Array<Record<string, unknown>>, total: number) => ({
+    ...raw,
+    ladder: {
+      ...ladder,
+      // Re-sort the kept rows back to the route's own display order (descending strike) so a
+      // partial ladder still reads top-to-bottom like the full one, rather than in priority order.
+      rows: [...kept].sort((a, b) => Number(b.strike) - Number(a.strike)),
+    },
+    rows_shown: kept.length,
+    rows_total: total,
+    rows_truncated: total > kept.length,
+  });
+
+  const { envelope } = fitEnvelopeToBudget(prioritized, shell);
+  return envelope as unknown as GexLadderFittedResult;
+}
+
 export type GroupGreekFlowToolResult = {
   group: string;
   expiry?: string;

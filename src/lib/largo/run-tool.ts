@@ -1256,7 +1256,21 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
           ? (input.params as Record<string, string | number | boolean | null | undefined>)
           : undefined;
       // Governed + read-only: callInternalApiRead hard-denies anything not a GET class:read route.
-      return callInternalApiRead(String(input.path ?? ""), rawParams);
+      const result = await callInternalApiRead(String(input.path ?? ""), rawParams);
+      // MEASURED TRUNCATED live 2026-08-31 (market-data-fits.ts's fitGexLadderForModel doc): this
+      // one route alone serializes to ~118% of the 16k transport cap at its default 200-row
+      // ladder, and unlike every OTHER oversized tool in this file, `call_internal_api` had no
+      // per-route size fitting — its `path` argument is arbitrary, so it fell outside every named
+      // tool's fix and outside largo-truncation-probe.mjs's LANE_TOOLS sweep. Apply the same
+      // budget-bound fitter the rest of this file uses, keyed off the one route proven to
+      // overflow; extend this list if another call_internal_api route is measured to overflow too.
+      if (result.ok && typeof result.path === "string" && result.path.startsWith("/api/market/vector/gex-ladder")) {
+        if (result.data && typeof result.data === "object" && !Array.isArray(result.data)) {
+          const { fitGexLadderForModel } = await import("@/lib/largo/market-data-fits");
+          return { ...result, data: fitGexLadderForModel(result.data as Record<string, unknown>) };
+        }
+      }
+      return result;
     }
 
     case "get_uw": {
