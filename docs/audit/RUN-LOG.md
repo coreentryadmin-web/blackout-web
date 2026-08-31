@@ -7,6 +7,26 @@ made it impossible to tell an open P1 from a finished chore.
 New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling policy, which
 already forbids opening docs-only PRs for GREEN audit logs.
 
+New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling policy, which
+already forbids opening docs-only PRs for GREEN audit logs.
+
+---
+## 2026-08-31 (00:18 UTC) — [SEO] Lane heartbeat: Overnight cycle — state STABLE
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Scheduled SEO lane heartbeat (overnight validation, 00:18 UTC).
+
+**Result — `OVERALL: PASS`, `EXIT=0`:**
+
+1. **Homepage CLS (desktop 1440×900 post-CF purge):** 0.0001 (67/67 assets routed ok). Verdict: **GOOD** (fix #2453 holding).
+2. **OG image crawlability:** HTTP 200, PNG magic bytes 89 50 4e 47 verified. Verdict: **LIVE** (fix #2448 holding).
+3. **PR sweep:** 0 open agent PRs. No conflicts. Verdict: **CLEAR**.
+4. **GSC opportunities (2026-05-31 — 2026-08-28):** Striking-distance band stable: 2 queries, both optimized. Deep-demand: 5 queries (authority-limited, out-of-lane). Verdict: **NO NEW WORK**.
+
+**Lane interpretation:**
+Production stable, validated overnight. All fixes hold. Striking-distance queries fully optimized in existing content. No new on-page work required. Out-of-lane blockers unchanged: authority/backlinks and Google Ads environment provisioning.
+
 ---
 ## 2026-08-30 (18:16 UTC) — [SEO] Lane heartbeat: Evening validation cycle — state STABLE
 
@@ -26,40 +46,6 @@ Production state remains stable, validated THREE times today (00:16, 06:16, 18:1
 
 ---
 ## 2026-08-30 (06:16 UTC) — [SEO] Lane heartbeat: Weekday morning cycle — state STABLE (production validated)
-
-**Severity.** — (no defect found)
-
-**Why it ran.** Scheduled SEO lane heartbeat (weekday morning validation, 06:16 UTC).
-
-**Result — `OVERALL: PASS`, `EXIT=0`:**
-
-1. **Homepage CLS (desktop 1440×900):** 0.0001 (63/63 assets routed ok). Verdict: **GOOD** (fix #2453 holding).
-2. **OG image crawlability:** HTTP 200, PNG magic bytes 89 50 4e 47 present, unauthenticated. Verdict: **LIVE** (fix #2448 holding).
-3. **PR sweep:** 0 open agent PRs. 0 conflicted. Verdict: **CLEAR**.
-4. **GSC opportunities scan (2026-05-30 — 2026-08-27):** Striking-distance band unchanged: "is 0dte gambling" pos 11.5 (4 imp), "gamma three trading" pos 18.7 (3 imp). No new on-page work. Verdict: **STABLE**.
-
-**Lane interpretation:**
-Production remains stable. All shipped fixes hold. Striking-distance queries fully optimized in existing dealer-gamma content; no edits required. Out-of-lane blockers unchanged: authority/backlinks and Google Ads environment variable provisioning (awaiting ads/analytics lane).
-
----
-## 2026-08-30 (00:16 UTC) — [SEO] Lane heartbeat: Overnight cycle — state STABLE (fixes confirmed, no new work)
-
-**Severity.** — (no defect found)
-
-**Why it ran.** Scheduled SEO lane heartbeat (overnight cycle, 00:16 UTC).
-
-**Result — `OVERALL: PASS`, `EXIT=0`:**
-
-1. **Homepage CLS:** 0.0001 desktop (64/64 assets routed ok). Verdict: **GOOD** (fix #2453 holding).
-2. **OG image crawlability:** HTTP 200, PNG magic bytes 89 50 4e 47 present. Verdict: **LIVE** (fix #2448 holding).
-3. **PR sweep:** 1 open agent PR (#3174 Largo audit, CI-running). No SEO lane conflicts. Verdict: **CLEAR**.
-4. **Opportunity register:** Last cycle registered 2 striking-distance queries (is 0dte gambling pos 11.5, gamma three trading pos 18.7). No new on-page work needed. Verdict: **STABLE**.
-
-**Lane interpretation:**
-Production state remains stable. Overnight cycle confirms all shipped fixes hold (CLS, OG crawlability). PR lane clear. No new SEO on-page work emerged. Per SEO-GROWTH-STRATEGY.md §3 (Monitor, don't churn), striking-distance band contains 2 queries, both already fully optimized in existing content. Out-of-lane blockers unchanged: authority/backlinks and Google Ads environment variable provisioning.
-
----
-## 2026-08-29 (12:17 UTC) — [SEO] Lane heartbeat: Third cycle today — state STABLE (no changes)
 
 **Severity.** — (no defect found)
 
@@ -187,6 +173,23 @@ All public production surfaces serving real market data correctly during RTH. Fi
    - `/tools/gamma-snapshot` serves derived gamma state (flip regime, walls), not raw vendor tables
    - Vendor data redistribution policy: no raw Polygon/UW tables published; editorial/aggregate only
    - Verdict: **COMPLIANT** (no new licensing questions found)
+=======
+## 2026-08-31 (00:18 UTC) — [SEO] Lane heartbeat: Overnight cycle — state STABLE
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Scheduled SEO lane heartbeat (overnight validation, 00:18 UTC).
+
+**Result — `OVERALL: PASS`, `EXIT=0`:**
+
+1. **Homepage CLS (desktop 1440×900 post-CF purge):** 0.0001 (67/67 assets routed ok). Verdict: **GOOD** (fix #2453 holding).
+2. **OG image crawlability:** HTTP 200, PNG magic bytes 89 50 4e 47 verified. Verdict: **LIVE** (fix #2448 holding).
+3. **PR sweep:** 0 open agent PRs. No conflicts. Verdict: **CLEAR**.
+4. **GSC opportunities (2026-05-31 — 2026-08-28):** Striking-distance band stable: 2 queries, both optimized. Deep-demand: 5 queries (authority-limited, out-of-lane). Verdict: **NO NEW WORK**.
+
+**Lane interpretation:**
+Production stable, validated overnight. All fixes hold. Striking-distance queries fully optimized in existing content. No new on-page work required. Out-of-lane blockers unchanged: authority/backlinks and Google Ads environment provisioning.
+>>>>>>> Stashed changes
 
 ---
 ## 2026-08-24 (12:20 UTC) — [SEO] Lane heartbeat: Repeat validation cycle — state STABLE
