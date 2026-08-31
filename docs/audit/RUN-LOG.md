@@ -11,6 +11,15 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-08-31 (14:17 UTC) — [SEO] Growth cycle: GSC opportunities scan — IDENTICAL to 12:22 UTC heartbeat, no new work
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Scheduled SEO growth cycle — daily opportunity scan.
+
+**Result — striking-distance unchanged (2 queries, both optimized), deep-demand unchanged, 0 new on-page work.**
+
+---
 ## 2026-08-31 (12:22 UTC) — [SEO] Lane heartbeat: Daytime validation + GA4→Ads conversion pipeline audit
 
 **Severity.** — (no code defect found; configuration gap documented in STEP 3)
