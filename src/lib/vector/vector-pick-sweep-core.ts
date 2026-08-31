@@ -154,6 +154,24 @@ export function leaderEligibleForBoard(row: {
   return pct != null && pct >= VECTOR_PICK_LEADER_PCT_FLOOR;
 }
 
+/**
+ * The entry basis a sweep pass must measure live drift against: the row's FROZEN `entry_mid`
+ * (first-write-wins in the DB — `upsertVectorPickLeader` never updates it) when the row already
+ * exists, never a freshly re-derived pick premium. `buildRankedVectorPicks` re-ranks against the
+ * live chain every sweep pass (~2min RTH), so the same rank/role/occ can carry a different
+ * premium pass to pass — feeding that into `premiumPctFromEntry` on a later pass silently
+ * re-bases the member-facing % onto a moving target while the displayed `entry_mid` field stays
+ * pinned at its original value, so the two visibly stop reconciling (found live 2026-08-31: QQQ
+ * showed `entry_mid` $1.94 next to a -2.11% read that only reconciles against a $1.42 basis).
+ */
+export function resolveVectorPickEntryMid(
+  frozenEntryMid: number | null,
+  pickEntryMid: number | null | undefined,
+  pickPremium: number | null | undefined
+): number | null {
+  return frozenEntryMid ?? pickEntryMid ?? pickPremium ?? null;
+}
+
 /** +15%…+49% live names building toward the +50% winner floor — not yet archived as winners. */
 export function isVectorPickRunner(row: {
   premium_pct_from_entry: number | null;
