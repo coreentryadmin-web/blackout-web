@@ -233,6 +233,24 @@ Production stable, validated overnight. All fixes hold. Striking-distance querie
 >>>>>>> Stashed changes
 
 ---
+## 2026-08-31 (16:34 UTC / 12:34 ET) — [SEO] RTH follow-up: /tools/gamma-snapshot confirmation check — GREEN, 26m to close
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Scheduled market-hours RTH gate fired second validation check in same trading window, 26 minutes before close (13:00 ET).
+
+**Result — `OVERALL: PASS`, `EXIT=0`:**
+
+Public /tools/gamma-snapshot page rendering clean on second check:
+- **Desktop 1440×900:** 57 assets routed ok, 0 fail, DOM fully loaded
+- **Mobile 430×932:** 58 assets routed ok, 0 fail, DOM fully loaded
+- **CLS:** minimal, no visual disruption observed
+- **Verdict:** **LIVE** (page remains responsive within RTH window as market approaches close)
+
+**Interpretation:**
+Page performance is **stable across the RTH window**. First validation at 11:33 ET and follow-up at 12:34 ET both confirm live operation. Asset routing clean on both viewport sizes. Page remains production-ready for market participants monitoring end-of-day flows through market close.
+
+---
 ## 2026-08-31 (15:33 UTC / 11:33 ET) — [SEO] RTH validation: Public /tools/gamma-snapshot live data + Core Web Vitals — GREEN
 
 **Severity.** — (no defect found)
