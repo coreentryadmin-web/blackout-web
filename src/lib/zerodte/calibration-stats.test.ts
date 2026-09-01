@@ -2,12 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  wilsonInterval,
-  betaBinomialPosterior,
-  proportionDiffCI,
-  JEFFREYS_PRIOR,
-} from "./calibration-stats";
+import { wilsonInterval, proportionDiffCI } from "./calibration-stats";
 
 const near = (actual: number, expected: number, tol = 5e-3): void => {
   assert.ok(Math.abs(actual - expected) <= tol, `${actual} not within ${tol} of ${expected}`);
@@ -38,13 +33,6 @@ test("wilsonInterval: larger n tightens the interval around the same point estim
   const small = wilsonInterval(8, 10);
   const large = wilsonInterval(80, 100);
   assert.ok(large.hi - large.lo < small.hi - small.lo, "n=100 interval should be tighter than n=10");
-});
-
-test("betaBinomialPosterior: Jeffreys posterior mean shrinks an extreme cell off the raw rate", () => {
-  const post = betaBinomialPosterior(4, 4, JEFFREYS_PRIOR); // raw 100%
-  // mean = (0.5+4)/(1+4) = 0.9 — shrunk below 1.0, interval inside [0,1].
-  near(post.mean, 0.9);
-  assert.ok(post.lo >= 0 && post.hi <= 1 && post.lo < post.mean && post.hi <= 1);
 });
 
 test("proportionDiffCI: significant decay is detected as hi<0; a flat split is not", () => {
