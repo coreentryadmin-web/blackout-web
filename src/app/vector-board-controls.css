@@ -286,3 +286,178 @@
 .nh-v2-page .vector-board-cal-wrap {
   padding-block: 0.35rem;
 }
+
+/* ── Loading skeleton ─────────────────────────────────────────────────────── */
+.nh-v2-page .vector-board-skeleton-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.5rem;
+}
+
+.nh-v2-page .vector-board-skeleton-tabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.nh-v2-page .vector-board-skeleton-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.nh-v2-page .vector-board-skeleton-cal {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding-block: 0.35rem;
+}
+
+.nh-v2-page .vector-board-skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem;
+}
+
+/* ── Desk empty state ─────────────────────────────────────────────────────── */
+.nh-v2-page .vector-board-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2rem 1rem;
+  text-align: center;
+  border: 1px dashed var(--nh-desk-border);
+  border-radius: 0.75rem;
+  background: var(--nh-desk-surface-muted);
+}
+
+.nh-v2-page .vector-board-empty-state-title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .vector-board-empty-state-copy {
+  max-width: 22rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--nh-desk-text-secondary);
+}
+
+/* ── Results meta + sticky toolbar ───────────────────────────────────────── */
+.nh-v2-page .vector-board-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--nh-desk-bg, transparent);
+}
+
+.nh-v2-page .vector-board-results-meta {
+  flex: 1 1 100%;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-results-meta strong {
+  color: var(--nh-desk-text);
+  font-weight: 800;
+}
+
+.nh-v2-page .vector-board-results-date {
+  color: var(--nh-desk-text-secondary);
+}
+
+/* ── Calendar horizontal scroll ──────────────────────────────────────────── */
+.nh-v2-page .vector-board-cal {
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: thin;
+  padding-bottom: 0.15rem;
+}
+
+/* ── Compare UX ──────────────────────────────────────────────────────────── */
+.nh-v2-page .vector-board-compare-check {
+  width: 0.95rem;
+  height: 0.95rem;
+  accent-color: var(--nh-desk-tab-underline);
+  cursor: pointer;
+}
+
+.nh-v2-page .vector-board-compare-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+
+.nh-v2-page .vector-board-compare-hint {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  color: var(--nh-desk-warn);
+}
+
+/* ── Detail rail premium ─────────────────────────────────────────────────── */
+.nh-v2-page .vector-board-detail-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding-bottom: 0.35rem;
+  background: var(--nh-desk-detail-bg);
+  border-bottom: 1px solid var(--nh-desk-border-subtle);
+}
+
+.nh-v2-page .vector-board-detail-spark-card .vector-board-sparkline,
+.nh-v2-page .vector-board-detail-spark-card svg {
+  width: 100%;
+  max-width: 100%;
+}
+
+.nh-v2-page .vector-board-row:focus-visible td {
+  outline: 2px solid var(--nh-desk-tab-underline);
+  outline-offset: -2px;
+}
+
+/* ── Mobile toolbar ──────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .nh-v2-page .vector-board-toolbar-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .nh-v2-page .vector-board-toolbar-actions {
+    justify-content: flex-end;
+  }
+
+  .nh-v2-page .vector-board-search {
+    flex: 1 1 100%;
+    order: -1;
+  }
+
+  .nh-v2-page .vector-board-search-input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .nh-v2-page .vector-board-sort-label {
+    display: none;
+  }
+
+  .nh-v2-page .vector-board-filters-panel {
+    position: fixed;
+    inset: auto 0 0 0;
+    width: 100%;
+    max-width: none;
+    border-radius: 1rem 1rem 0 0;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+}

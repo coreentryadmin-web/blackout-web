@@ -24,4 +24,8 @@ test("VectorPickLogBoard: X Ads toolbar, premium column, meters, and detail rail
   assert.match(board, /formatPremiumPct/, "premium % must render prominently");
   assert.match(toolbar, /VectorBoardFiltersDrawer/, "filters must use drawer pattern");
   assert.match(toolbar, /"Open"/, "tabs use Open/Closed desk language");
+  assert.match(board, /VectorBoardScorecard/, "session scorecard mounted for today analytics");
+  assert.match(board, /VectorBoardLoadingSkeleton/, "board uses shaped loading skeleton");
+  assert.match(board, /visibleColumnCount/, "empty row colspan derived from visible columns");
+  assert.match(board, /VectorBoardEmptyState/, "desk-aware empty state");
 });

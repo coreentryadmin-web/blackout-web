@@ -50,7 +50,7 @@ async function main() {
   await page.goto(`${BASE}/nighthawk?view=vector`, { waitUntil: "networkidle", timeout: 120_000 });
   await page.waitForTimeout(2500);
 
-  const dom = await page.evaluate(() => {
+  let dom = await page.evaluate(() => {
     const shell = document.querySelector(".vector-board-shell");
     const table = document.querySelector(".vector-board-table");
     const rows = document.querySelectorAll(".vector-board-row");

@@ -20,6 +20,7 @@ import type { BoardResp } from "@/features/nighthawk/command-deck/zerodte-source
 import { NIGHTHAWK_GOTO_SWING_EVENT, type NightHawkGotoSwingDetail } from "@/features/nighthawk/lib/goto-swing";
 import { NightHawkDeskThemeToggle } from "@/features/nighthawk/components/NightHawkDeskThemeToggle";
 import { NightHawkLoadingSkeleton } from "@/features/nighthawk/components/NightHawkLoadingSkeleton";
+import { VectorBoardLoadingSkeleton } from "@/features/nighthawk/components/VectorBoardLoadingSkeleton";
 
 const ZeroDteDeck = dynamic(
   () => import("@/features/nighthawk/command-deck/containers").then((m) => m.ZeroDteDeck),
@@ -39,7 +40,7 @@ const BangerBoard = dynamic(
 );
 const VectorPickLogBoard = dynamic(
   () => import("@/features/nighthawk/components/VectorPickLogBoard").then((m) => m.VectorPickLogBoard),
-  { loading: () => <NightHawkLoadingSkeleton /> }
+  { loading: () => <VectorBoardLoadingSkeleton /> }
 );
 
 /**

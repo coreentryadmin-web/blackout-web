@@ -3,15 +3,15 @@
 import Link from "next/link";
 import { useState } from "react";
 import { clsx } from "clsx";
-import { VectorBoardMeter } from "@/features/nighthawk/components/VectorBoardMeter";
 import { VectorBoardStatusPill } from "@/features/nighthawk/components/VectorBoardStatus";
 import { VectorPremiumSparkline } from "@/features/nighthawk/components/VectorPremiumSparkline";
 import {
+  vectorBoardRowGivebackPct,
   vectorBoardTimeline,
   vectorBoardTradeTicket,
 } from "@/features/nighthawk/lib/vector-board-row-utils";
 import type { VectorBoardTableRow } from "@/features/nighthawk/lib/vector-board-table-utils";
-import { formatPremiumPct, premiumPctTone, vectorBoardMeter } from "@/features/nighthawk/lib/vector-board-table-utils";
+import { formatPremiumPct, premiumPctTone } from "@/features/nighthawk/lib/vector-board-table-utils";
 import { etDateTimeShort } from "@/lib/et-clock";
 
 const EM = "—";
@@ -84,6 +84,7 @@ export function VectorPlayDetailPanel({
 
   const pctTone = premiumPctTone(row.premiumPct);
   const timeline = vectorBoardTimeline(row);
+  const giveback = vectorBoardRowGivebackPct(row);
 
   const copyTicket = async () => {
     const text = vectorBoardTradeTicket(row);
@@ -98,38 +99,40 @@ export function VectorPlayDetailPanel({
 
   return (
     <aside className="vector-board-detail" aria-label={`${row.ticker} play detail`}>
-      <div className="vector-board-detail-head">
-        <div className="vector-board-detail-titleblock">
-          <h2 className="vector-board-detail-ticker">{row.ticker}</h2>
-          <p className="vector-board-detail-contract">{row.contractLabel}</p>
-          <p className="vector-board-detail-id">OCC {row.occ}</p>
+      <div className="vector-board-detail-sticky">
+        <div className="vector-board-detail-head">
+          <div className="vector-board-detail-titleblock">
+            <h2 className="vector-board-detail-ticker">{row.ticker}</h2>
+            <p className="vector-board-detail-contract">{row.contractLabel}</p>
+            <p className="vector-board-detail-id">OCC {row.occ}</p>
+          </div>
+          <button type="button" className="vector-board-detail-close" onClick={onClose} aria-label="Close detail">
+            ×
+          </button>
         </div>
-        <button type="button" className="vector-board-detail-close" onClick={onClose} aria-label="Close detail">
-          ×
-        </button>
+
+        <div className="vector-board-detail-status-row">
+          <VectorBoardStatusPill status={row.status} label={row.statusLabel} />
+          {row.tier === "elite" ? <span className="vector-board-detail-tag">Elite</span> : null}
+          {row.rank != null ? <span className="vector-board-detail-tag">Rank #{row.rank}</span> : null}
+        </div>
+
+        <div className="vector-board-detail-hero">
+          <span className="vector-board-detail-hero-label">Premium vs entry</span>
+          <span
+            className={clsx(
+              "vector-board-detail-hero-value tabular-nums",
+              pctTone === "bull" && "is-up",
+              pctTone === "bear" && "is-down",
+              pctTone === "sky" && "is-flat"
+            )}
+          >
+            {formatPremiumPct(row.premiumPct)}
+          </span>
+        </div>
       </div>
 
-      <div className="vector-board-detail-status-row">
-        <VectorBoardStatusPill status={row.status} label={row.statusLabel} />
-        {row.tier === "elite" ? <span className="vector-board-detail-tag">Elite</span> : null}
-        {row.rank != null ? <span className="vector-board-detail-tag">Rank #{row.rank}</span> : null}
-      </div>
-
-      <div className="vector-board-detail-hero">
-        <span className="vector-board-detail-hero-label">Premium vs entry</span>
-        <span
-          className={clsx(
-            "vector-board-detail-hero-value tabular-nums",
-            pctTone === "bull" && "is-up",
-            pctTone === "bear" && "is-down",
-            pctTone === "sky" && "is-flat"
-          )}
-        >
-          {formatPremiumPct(row.premiumPct)}
-        </span>
-      </div>
-
-      <div className="vector-board-detail-spark-wrap">
+      <div className="vector-board-detail-meter-block vector-board-detail-spark-card">
         <span className="vector-board-detail-reason-label">Premium path</span>
         <VectorPremiumSparkline row={row} />
       </div>
@@ -144,12 +147,10 @@ export function VectorPlayDetailPanel({
           value={formatPremiumPct(row.peakPct)}
           tone={pnlClass(row.peakPct) === "is-up" ? "up" : pnlClass(row.peakPct) === "is-down" ? "down" : "flat"}
         />
+        {giveback != null ? (
+          <DetailMetric label="Giveback" value={`${giveback}%`} tone={giveback > 20 ? "down" : "flat"} />
+        ) : null}
         {row.progressPct != null ? <DetailMetric label="Of peak" value={`${row.progressPct}%`} /> : null}
-      </div>
-
-      <div className="vector-board-detail-meter-block">
-        <span className="vector-board-detail-reason-label">Progress meter</span>
-        <VectorBoardMeter meter={vectorBoardMeter(row)} />
       </div>
 
       <div className="vector-board-detail-timeline">
@@ -171,7 +172,7 @@ export function VectorPlayDetailPanel({
 
       <div className="vector-board-detail-actions">
         <button type="button" className="vector-board-detail-action" onClick={copyTicket}>
-          {copied ? "Copied" : "Copy ticket"}
+          <span aria-live="polite">{copied ? "Copied" : "Copy ticket"}</span>
         </button>
         <Link href={`/vector?ticker=${encodeURIComponent(row.ticker)}`} className="vector-board-detail-action">
           Open in Vector
