@@ -809,6 +809,28 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE zerodte_setup_log ADD COLUMN IF NOT EXISTS feature_vector JSONB;
   `);
+  // Persisted trim-scale tranche count (2026-09-01 fix, ZERODTE_TRIM_BANK_LIVE-gated).
+  // Before this column existed, exit-sync.ts derived "thirds already banked" by
+  // RE-COMPUTING trimTranchesArmed(peak, regime) on every tick — the exact same
+  // function exit-engine.ts's decideTrimScale ALSO calls internally to compute how
+  // many thirds the peak has armed. Passing a freshly-recomputed "taken" count into a
+  // function that recomputes an identical "armed" count from the same inputs makes
+  // `armed > taken` structurally unable to ever be true: the trim ladder's own banking
+  // branch (exit-engine.ts's decideTrimScale, "3. Trim ladder") could never fire, and
+  // the 2026-08-27 breakeven-dead-zone fix's `!trimAvailable` guard was permanently a
+  // no-op, so a peak that armed a tranche kept falling through to the coarse
+  // breakeven-floor EXIT and dumping the WHOLE position instead of banking a third and
+  // running the rest — silently defeating trim_scale's entire E5-backed edge (this
+  // exit mode is the DEFAULT for A/B-tier, the desk's best setups) since the mode
+  // shipped. This column gives "thirds banked" a real, monotonic, externally-persisted
+  // home (GREATEST-latched below, same pattern as peak_premium/trough_premium) so a
+  // tick can tell the difference between "peak has armed a tranche" and "we already
+  // banked it" — exactly the distinction ratchet mode already has for free via its own
+  // persisted `status = 'TRIM'` flag (see exit-sync.ts's `input.trimmed`), which
+  // trim_scale never had an equivalent for.
+  await p.query(`
+    ALTER TABLE zerodte_setup_log ADD COLUMN IF NOT EXISTS trims_taken INT NOT NULL DEFAULT 0;
+  `);
   // 2026-08-01 CTO perf audit (P3): fetchUngradedZeroDteRows (below) scans
   // `WHERE graded_at IS NULL AND session_date < $1` with no supporting index — a
   // backward PRIMARY KEY (session_date, ticker) scan that filters out every already-graded
@@ -5743,6 +5765,10 @@ export type ZeroDteSetupLogRow = {
    *  every row committed before the column shipped; consumers must not assume it. */
   entry_context: Record<string, unknown> | null;
   feature_vector: Record<string, unknown> | null;
+  /** Persisted trim-scale tranches banked (0/1/2), monotonic — see the column's own
+   *  ALTER TABLE comment for why this exists. Always 0 for ratchet-mode rows and for
+   *  rows committed before this column shipped. */
+  trims_taken: number;
 };
 
 export type ZeroDteSetupLogUpsert = {
@@ -6549,6 +6575,7 @@ function mapZeroDteLogRow(r: QueryResultRow): ZeroDteSetupLogRow {
     gate_calibration_json: (r.gate_calibration_json as Record<string, unknown>) ?? null,
     entry_context: (r.entry_context as Record<string, unknown>) ?? null,
     feature_vector: (r.feature_vector as Record<string, unknown>) ?? null,
+    trims_taken: Number(r.trims_taken) || 0,
   };
 }
 
@@ -6767,7 +6794,7 @@ export async function gradeZeroDteSetupRow(
 export async function updateZeroDteLiveState(
   sessionDate: string,
   ticker: string,
-  s: { status: string; mark: number | null }
+  s: { status: string; mark: number | null; trimsTaken?: number }
 ): Promise<void> {
   await ensureSchema();
   await (await getPool()).query(
@@ -6817,9 +6844,18 @@ export async function updateZeroDteLiveState(
          WHEN status = 'CLOSED' THEN trough_premium
          WHEN $4 IS NOT NULL THEN LEAST(COALESCE(trough_premium, $4), $4)
          ELSE trough_premium
+       END,
+       -- Monotonic latch, same pattern as peak_premium above: a tick that doesn't
+       -- report a trim ($5 IS NULL, the overwhelming common case) leaves the column
+       -- untouched; a tick that DOES report one can only raise it (GREATEST), never
+       -- regress a tranche that was already banked by a concurrent writer.
+       trims_taken = CASE
+         WHEN status = 'CLOSED' THEN trims_taken
+         WHEN $5::int IS NOT NULL THEN GREATEST(trims_taken, $5::int)
+         ELSE trims_taken
        END
      WHERE session_date = $1::date AND ticker = $2`,
-    [sessionDate, ticker.toUpperCase(), s.status, s.mark]
+    [sessionDate, ticker.toUpperCase(), s.status, s.mark, s.trimsTaken ?? null]
   );
 }
 
