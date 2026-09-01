@@ -118,7 +118,7 @@ export function SectorFlowPanel({
                     }}
                     initial={{ width: 0 }}
                     animate={{ width: `${widthPct}%` }}
-                    transition={{ duration: 0.8, ease: [0.34, 1.56, 0.64, 1], delay: i * 0.04 }}
+                    transition={{ duration: 0.8, ease: [0.34, 1.56, 0.64, 1] as const, delay: i * 0.04 }}
                   />
                 </div>
               </motion.div>

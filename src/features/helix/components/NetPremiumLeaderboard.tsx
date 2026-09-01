@@ -140,7 +140,7 @@ export function NetPremiumLeaderboard({ alerts, loading = false }: { alerts: Flo
                         style={{ background: "linear-gradient(90deg, #0f9d58, #a3e635)", width: `${callBarW}%` }}
                         initial={{ width: 0 }}
                         animate={{ width: `${callBarW}%` }}
-                        transition={{ duration: 0.6, delay: i * 0.06, ease: [0.34, 1.56, 0.64, 1] }}
+                        transition={{ duration: 0.6, delay: i * 0.06, ease: [0.34, 1.56, 0.64, 1] as const }}
                       />
                     )}
                     {putBarW > 0 && (
@@ -149,7 +149,7 @@ export function NetPremiumLeaderboard({ alerts, loading = false }: { alerts: Flo
                         style={{ background: "linear-gradient(90deg, #b3203f, #ff2d55)", width: `${putBarW}%` }}
                         initial={{ width: 0 }}
                         animate={{ width: `${putBarW}%` }}
-                        transition={{ duration: 0.6, delay: i * 0.06 + 0.05, ease: [0.34, 1.56, 0.64, 1] }}
+                        transition={{ duration: 0.6, delay: i * 0.06 + 0.05, ease: [0.34, 1.56, 0.64, 1] as const }}
                       />
                     )}
                   </div>
