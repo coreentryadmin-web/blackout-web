@@ -8,6 +8,24 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-01 14:30 UTC — [SEO] Daily gamma-three-trading query opportunity enhancement — PR #3258 CI in progress
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Daily SEO growth cycle detected new striking-distance query: "gamma three trading" entered page 2, position 18.5 (4 impressions, 0 clicks). Per "Monitor, don't churn" standing strategy, triggered targeted on-page depth work on hitting striking distance.
+
+**Query context.** "gamma three trading" is NEW to the opportunity register (not present in prior GSC cycle). Position 18.5 places it squarely in striking-distance band (page 2, positions 10–20). Query intent maps to dealer-gamma-options-flow-guide pillar: traders seeking frameworks for multi-confirmation gamma setups.
+
+**Content added (PR #3258).** Enhanced `src/lib/learn/articles.ts` dealer-gamma-options-flow-guide article with:
+- **"The three-part framework for gamma trading"** section: explicit three-point confirmation (① gamma flip regime, ② call/put wall positioning, ③ aggregate GEX sign) before entry — directly addresses "three" as actionable trading discipline
+- **FAQ expansion**: three questions on three-level alignment and confluence, trader psychology ("Professional traders do not take gamma setups without all three levels confirmed")
+- **Internal link strengthening**: emphasized connections to Thermal, SPX Slayer, related articles on walls/flip/GEX
+
+**Content depth strategy.** Article already contained "Three levels concentrate most of the hedging pressure" concept; enhancement fleshes out into a complete trader-actionable framework. Maintains pillar authority (no strike matrix duplication, proper delegation to deep-dive articles). Captures query variations naturally: "gamma three", "three levels", "three confirmations", "three-part setup", "all three aligned".
+
+**Build status.** TypeScript validation: ✓ PASS. ESLint: ✓ PASS. Analyze (JavaScript-TypeScript): ✓ success. CodeQL: ✓ success. `verify` check: ⟳ in_progress. PR: #3258 (draft, awaiting CI completion + coordinator undraft per CLAUDE.md).
+
+---
 ## 2026-08-23 — [Helix] Live /flows UI audit on the settled build — PASS both viewports, and it live-validates three merged fixes
 
 **Severity.** — (no defect found)
