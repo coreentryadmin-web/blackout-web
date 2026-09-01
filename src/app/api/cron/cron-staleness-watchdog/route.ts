@@ -41,6 +41,48 @@ export async function GET(req: NextRequest) {
 
   try {
     const snapshot = await buildCronHealthSnapshot();
+
+    // A DB snapshot READ failure is a fundamentally different signal than any individual cron
+    // being stale, but buildCronHealthSnapshot() can't tell the two apart downstream: a thrown
+    // fetchCronJobLastRuns() falls back to an empty lastRuns[] (admin-cron-health.ts), so EVERY
+    // job in the registry evaluates as if it has never once logged a run — the SAME "NEVER
+    // logged a run — job may not be scheduled at all" label a genuinely unprovisioned cron gets.
+    // Left unguarded, one transient Postgres blip fans out into a false "N jobs need attention"
+    // alert naming jobs that are actually healthy — measured live 2026-09-01 during the
+    // connection-storm incident this same watchdog's own per-cron alerts correctly reported as a
+    // real, separate DB blip (ops #3257): 11 unrelated jobs all alarmed "NEVER logged" in the
+    // same tick. Alert on the snapshot failure itself instead of the tainted per-job list, and
+    // let the next scheduled tick re-evaluate once cron_job_runs is readable again.
+    if (snapshot.db_snapshot_error) {
+      const alertDelivered = await notifyOpsDiscord({
+        title: "🔴 Cron health check: DB snapshot read failed",
+        body:
+          "`buildCronHealthSnapshot` could not read `cron_job_runs` this pass, so every job's " +
+          'per-status read is UNRELIABLE (a failed query and "genuinely never ran" both fall ' +
+          "back to the same no-last-run state) — not reported this tick:\n\n" +
+          `\`${snapshot.db_snapshot_error}\``,
+        severity: "critical",
+      }).catch(() => false);
+      const result = {
+        ok: true,
+        checked: snapshot.jobs.length,
+        problems: 0,
+        problem_keys: [],
+        rth_stale: 0,
+        rth_stale_keys: [],
+        error_window_min: null,
+        error_count: null,
+        error_spike: "none" as const,
+        db_snapshot_error: snapshot.db_snapshot_error,
+        alert_delivered: alertDelivered,
+        self_heal_enabled: false,
+        self_heal_dispatched: [],
+        self_healed: [],
+      };
+      await logCronRun("cron-staleness-watchdog", started, result);
+      return NextResponse.json(result);
+    }
+
     // Alert on jobs that were expected to run but are overdue (stale) or errored (failed).
     // "unknown" (never logged) is excluded — it's the normal state for window-guarded jobs
     // before their first run of the day and would create off-hours noise.
