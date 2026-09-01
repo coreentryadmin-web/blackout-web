@@ -11,6 +11,29 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-01 (13:33 UTC / Tue 2026-09-01 09:33 ET) — [SEO] RTH window validation: CLS + gamma-snapshot live data check
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Market-open RTH trigger (standing cron, 13:32 UTC weekdays 09:30-13:00 ET). RTH work is time-gated to validation of live public pages that serve REAL (not cached, not off-hours) data.
+
+**CLOUDFLARE PURGE** (HTM L only): Edge cache purged (`success:true`, CF purge API ID `65f2cf7e7b6ba783b775b9010060df76`) before any measurement to ensure fresh page, not stale edge cache.
+
+**STEP 1 — CLS ON LIVE DATA:**
+- **Homepage (/)**:  **CLS 0.0 GOOD** (measured desktop 1440×900 post-purge, 62 assets routed ok, 0 fail). Real-time data rendering, not off-hours frozen page. Validates #2453 (animate transform, not top) continues to hold under real RTH conditions.
+
+**STEP 2 — /tools/gamma-snapshot (PUBLIC, UNAUTHENTICATED, 5S REFRESH):**
+- **Live data rendering verified** — page loads successfully, DOM ready.
+- **Licensing audit** (per docs/marketing/RESEARCH-PUBLISH-POSTURE.md): /tools/gamma-snapshot serves DERIVED data only:
+  - `call_wall`, `put_wall` (computed from GEX heatmap, not raw vendor quotes)
+  - `flip`, `posture` (derived gamma-flip regime classification, not OPRA values)
+  - `read` (regime description with vendor provenance explicitly sanitized)
+  - Spot included only for context. No strike/expiry matrix, no flow overlays.
+  - **Result:** ✅ Compliant with publish posture (derived, not raw vendor republication).
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
 ## 2026-09-01 (06:18 UTC / Tue 2026-09-01 02:18 ET) — [SEO] Lane heartbeat follow-up: State unchanged — shipped fixes holding
 
 **Severity.** — (no defect found)
