@@ -255,8 +255,15 @@ export function TradeExcursionGraphic({
   markFlash?: boolean;
 }) {
   const closed = play.status === "CLOSED";
-  const currentPct = closed ? (play.exitPnlPct ?? play.pnlPct) : play.pnlPct;
-  const layout = entryCenteredExcursionLayout(play.trough, play.peak, currentPct, { closed });
+  const isLegacy = play.horizon === "LEGACY";
+  const currentPct = closed
+    ? (play.exitPnlPct ?? play.pnlPct)
+    : isLegacy
+      ? (play.stockMovePct ?? play.pnlPct)
+      : play.pnlPct;
+  const worst = isLegacy ? play.stockTroughPct : play.trough;
+  const best = isLegacy ? play.stockPeakPct : play.peak;
+  const layout = entryCenteredExcursionLayout(worst, best, currentPct, { closed });
 
   if (!layout) return null;
 

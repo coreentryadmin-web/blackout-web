@@ -414,6 +414,7 @@ function HeaderBadges({ play }: { play: TerminalPlay }) {
           {play.morningStatus === "CONFIRMED" ? "PRE-MARKET CONFIRMED"
           : play.morningStatus === "DEGRADED" ? "PRE-MARKET DEGRADED"
           : play.morningStatus === "INVALIDATED" ? "INVALIDATED"
+          : play.morningStatus === "UNVERIFIED" ? "MORNING UNVERIFIED"
           : "MORNING CONFIRM PENDING"}
         </div>
       )}

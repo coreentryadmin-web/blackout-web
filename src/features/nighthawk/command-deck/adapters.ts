@@ -714,7 +714,10 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
 
   // Morning confirmation drives the status + regime display.
   const ms = src.morning_status;
-  const status: DeckStatus = pulled ? "CLOSED" : ms === "INVALIDATED" ? "SKIP" : ms === "CONFIRMED" ? "OPEN" : "WATCH";
+  const status: DeckStatus =
+    ms === "INVALIDATED" || pulled ? "SKIP"
+    : ms === "CONFIRMED" ? "OPEN"
+    : "WATCH";
   const regime = ms
     ? ms === "CONFIRMED"
       ? "pre-market CONFIRMED"
@@ -853,6 +856,7 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     premiumCapOk: src.premium_cap_ok ?? null,
     sector: src.sector?.toLowerCase() ?? null,
     morningStatus: ms ?? null,
+    pulled: pulled || ms === "INVALIDATED",
     confluence,
     discoveryOrigin: discoveryOrigin.length > 0 ? discoveryOrigin : undefined,
     whyNow: whyNow ?? undefined,

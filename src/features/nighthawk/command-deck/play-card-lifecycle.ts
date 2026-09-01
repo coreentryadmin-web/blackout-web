@@ -252,6 +252,20 @@ export function playStatusDisplay(status: DeckStatus): { label: string; tone: St
  * matches `trimLadderVisual()`'s own "any tranche fired" semantics (terminal-display.ts) — once
  * the first partial trim banks, what remains IS the runner, even before every tranche has fired.
  */
+export function legacyActionDisplay(play: TerminalPlay): { label: string; tone: StatusTone } | null {
+  if (play.horizon !== "LEGACY") return null;
+  if (play.morningStatus === "INVALIDATED" || play.pulled) {
+    return { label: "PULLED", tone: "closed" };
+  }
+  if (play.morningStatus === "DEGRADED") {
+    return { label: "DEGRADED", tone: "watch" };
+  }
+  if (play.morningStatus === "UNVERIFIED") {
+    return { label: "UNVERIFIED", tone: "watch" };
+  }
+  return null;
+}
+
 export function zeroDteActionDisplay(play: TerminalPlay): { label: string; tone: StatusTone } | null {
   if (play.horizon !== "ZERO_DTE") return null;
   if (play.status === "CLOSED") {

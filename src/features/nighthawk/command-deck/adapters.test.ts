@@ -206,13 +206,14 @@ test("edition adapter: morning DEGRADED → status WATCH, thesis warn", () => {
   assert.match(play.recNote!, /DEGRADED/);
 });
 
-test("edition adapter: pulled play → status CLOSED, thesis break, recommendation SELL", () => {
+test("edition adapter: pulled play → status SKIP (PULLED pill), thesis break, recommendation SELL", () => {
   const play = terminalPlayFromEdition({
     ticker: "BABA", direction: "long", rank: 4, score: 50,
     pulled: true,
     pulled_reason: "earnings pre-announcement risk",
   });
-  assert.equal(play.status, "CLOSED");
+  assert.equal(play.status, "SKIP");
+  assert.equal(play.pulled, true);
   assert.equal(play.thesisBreak!.level, "break");
   assert.match(play.thesisBreak!.note!, /earnings/);
   assert.equal(play.recommendation, "SELL");
@@ -1097,7 +1098,7 @@ test("overlayLegacyQuotes: computes LONG progress toward target", () => {
   // progress = (190 - 170) / (200 - 170) = 20/30 ≈ 0.667
   assert.ok(result.progress != null);
   assert.ok(Math.abs(result.progress! - 0.667) < 0.01);
-  assert.ok(result.recNote?.includes("NVDA $190.00"));
+  assert.equal(result.stockPrice, 190);
   assert.equal(result.markAsOf, "2026-07-28T14:00:00Z");
 });
 

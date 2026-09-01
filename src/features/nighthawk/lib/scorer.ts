@@ -1182,6 +1182,26 @@ const FUNDAMENTAL_BLOCK_PENALTY = 10;
 const CONFIRMING_SIGNAL_BONUS = 2;
 /** Minimum confirming signals before the bonus kicks in (avoid rewarding noise). */
 const CONFIRMING_SIGNAL_FLOOR = 3;
+/** Overnight measured prime band (40–55) — best historical avg return. */
+const NH_RANK_PRIME_MIN = 40;
+const NH_RANK_PRIME_MAX = 55;
+/** Top band (70+) — measured inversion; demote in synthesis ordering. */
+const NH_RANK_TOP_MIN = 70;
+const NH_PRIME_BAND_BONUS = 8;
+const NH_MID_BAND_PENALTY = 2;
+const NH_TOP_BAND_PENALTY = 6;
+
+/**
+ * Overnight score-band adjustment for synthesis ranking — aligns sort order with the
+ * tier engine's measured inversion (prime 40–55 outperforms 55–69 and 70+).
+ */
+export function overnightRankingBandAdjust(score: number): number {
+  if (!Number.isFinite(score)) return 0;
+  if (score >= NH_RANK_PRIME_MIN && score <= NH_RANK_PRIME_MAX) return NH_PRIME_BAND_BONUS;
+  if (score >= NH_RANK_TOP_MIN) return -NH_TOP_BAND_PENALTY;
+  if (score > NH_RANK_PRIME_MAX) return -NH_MID_BAND_PENALTY;
+  return 0;
+}
 
 /**
  * Effective ranking score: base score + confluence bonus − fundamental penalty.
@@ -1196,6 +1216,7 @@ export function rankingScore(c: ScoredCandidate): number {
   if (signals >= CONFIRMING_SIGNAL_FLOOR) {
     effective += (signals - CONFIRMING_SIGNAL_FLOOR + 1) * CONFIRMING_SIGNAL_BONUS;
   }
+  effective += overnightRankingBandAdjust(c.score);
   return effective;
 }
 

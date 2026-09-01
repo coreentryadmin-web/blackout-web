@@ -308,16 +308,19 @@ export function LegacyDeck() {
     () => fetch(`/api/nighthawk/play-status?date=${editionFor}`, { cache: "no-store", credentials: "same-origin" }).then((r) => r.ok ? r.json() : null),
     { refreshInterval: 60_000 },
   );
-  const confirmByTicker = new Map<string, { status: string; reason: string; swingPromoted?: boolean }>();
-  if (confirmData?.plays) {
-    for (const ps of confirmData.plays) {
-      confirmByTicker.set(ps.ticker?.toUpperCase(), {
-        status: ps.status,
-        reason: ps.reason,
-        swingPromoted: ps.swingPromoted === true,
-      });
+  const confirmByTicker = useMemo(() => {
+    const map = new Map<string, { status: string; reason: string; swingPromoted?: boolean }>();
+    if (confirmData?.plays) {
+      for (const ps of confirmData.plays) {
+        map.set(ps.ticker?.toUpperCase(), {
+          status: ps.status,
+          reason: ps.reason,
+          swingPromoted: ps.swingPromoted === true,
+        });
+      }
     }
-  }
+    return map;
+  }, [confirmData]);
 
   const confirmCheckedAt: string | null = confirmData?.checked_at ?? null;
 

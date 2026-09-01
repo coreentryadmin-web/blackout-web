@@ -733,7 +733,7 @@ export const PlayCard = memo(function PlayCard({
   onSelect: (id: string) => void;
   nowMs: number;
 }) {
-  const markFlash = useFlash(p.mark ?? p.pnlPct ?? p.trackPct ?? null);
+  const markFlash = useFlash(p.mark ?? p.pnlPct ?? p.stockMovePct ?? p.trackPct ?? null);
 
   const asOfMs = p.markAsOf ? Date.parse(p.markAsOf) : NaN;
   const hasAsOf = Number.isFinite(asOfMs);

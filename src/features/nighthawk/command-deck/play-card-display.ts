@@ -23,6 +23,12 @@ export function playGradeLabel(play: TerminalPlay): string | null {
 /** Entry premium (0DTE per-contract, or condor net credit) for the list row — compact $ form.
  *  Null when the play carries no entry field rather than showing a fabricated $0.00. */
 export function playEntryDisplay(play: TerminalPlay): string | null {
+  if (play.horizon === "LEGACY") {
+    if (play.entryCostPerContract != null && Number.isFinite(play.entryCostPerContract)) {
+      return `$${play.entryCostPerContract.toFixed(2)}/sh`;
+    }
+    if (play.entryRange) return play.entryRange;
+  }
   if (play.entry == null || !Number.isFinite(play.entry)) return null;
   return `$${play.entry.toFixed(2)}`;
 }

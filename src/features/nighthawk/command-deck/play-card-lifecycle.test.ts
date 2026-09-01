@@ -20,6 +20,7 @@ import {
   playTriggeredAtMs,
   openMetricsValues,
   zeroDteActionDisplay,
+  legacyActionDisplay,
   closedCapturePct,
 } from "./play-card-lifecycle.ts";
 import type { TerminalPlay } from "./types.ts";
@@ -161,6 +162,21 @@ describe("play-card-lifecycle", () => {
     assert.equal(ageDecayToneFromAge(28 * 60_000, "open"), "aging");
     assert.equal(ageDecayToneFromAge(63 * 60_000, "open"), "stale");
     assert.equal(ageDecayToneFromAge(130 * 60_000, "open"), "late");
+  });
+
+  it("legacyActionDisplay maps INVALIDATED/pulled to PULLED pill", () => {
+    assert.deepEqual(
+      legacyActionDisplay({ horizon: "LEGACY", morningStatus: "INVALIDATED" } as TerminalPlay),
+      { label: "PULLED", tone: "closed" },
+    );
+    assert.deepEqual(
+      legacyActionDisplay({ horizon: "LEGACY", pulled: true } as TerminalPlay),
+      { label: "PULLED", tone: "closed" },
+    );
+    assert.deepEqual(
+      legacyActionDisplay({ horizon: "LEGACY", morningStatus: "DEGRADED" } as TerminalPlay),
+      { label: "DEGRADED", tone: "watch" },
+    );
   });
 
   it("playStatusDisplay maps scannable tones", () => {

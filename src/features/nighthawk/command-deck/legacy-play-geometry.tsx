@@ -25,9 +25,12 @@ export function LegacyManageGeometry({ play }: { play: TerminalPlay }) {
       : entryNums.length === 1
         ? entryNums[0]!
         : null;
+  const isLong = play.direction === "LONG";
   const entryFrac =
     stop != null && target != null && target !== stop && entryMid != null
-      ? Math.max(0, Math.min(1, (entryMid - stop) / (target - stop)))
+      ? isLong
+        ? Math.max(0, Math.min(1, (entryMid - stop) / (target - stop)))
+        : Math.max(0, Math.min(1, (stop - entryMid) / (stop - target)))
       : null;
 
   const zoneLabel =
