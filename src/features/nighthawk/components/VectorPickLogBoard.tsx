@@ -120,12 +120,9 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
     saveVectorBoardPreferences(next);
   }, []);
 
-  const apiUrl =
-    fixtureData != null
-      ? null
-      : sessionScope === "current" && todaySession
-        ? `/api/market/vector/pick-closures/board?limit=500&session_date=${todaySession}`
-        : "/api/market/vector/pick-closures/board?limit=500";
+  // Always fetch the full board — calendar buckets need multi-day history. Client-side
+  // sessionScope / selectedDate filters narrow the table without starving the calendar.
+  const apiUrl = fixtureData != null ? null : "/api/market/vector/pick-closures/board?limit=500";
 
   const { data: swrData, error, isLoading } = useSWR<VectorPickBoardResponse>(
     apiUrl,
@@ -364,6 +361,21 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
         sort={sort}
         onSortChange={setSort}
         selectedDate={selectedDate}
+        todaySession={todaySession}
+        onSelectedDateChange={(date) => {
+          if (!date) {
+            setSelectedDate(null);
+            setSessionScope("current");
+            return;
+          }
+          if (date === todaySession) {
+            setSessionScope("current");
+            setSelectedDate(null);
+          } else {
+            setSessionScope("all");
+            setSelectedDate(date);
+          }
+        }}
         onClearFilters={clearFilters}
         filtersOpen={filtersOpen}
         onFiltersOpenChange={setFiltersOpen}
@@ -385,12 +397,24 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
         <p className="vector-board-note vector-board-note--inline">{data.note}</p>
       ) : null}
 
-      {!prefs.focusMode && calendarBuckets.length > 0 ? (
+      {!prefs.focusMode && (calendarBuckets.length > 0 || selectedDate) ? (
         <div className="vector-board-cal-wrap">
           <VectorBoardCalendar
             buckets={calendarBuckets}
-            selectedDate={selectedDate}
-            onSelectDate={setSelectedDate}
+            selectedDate={selectedDate ?? (sessionScope === "current" ? todaySession : null)}
+            onSelectDate={(date) => {
+              if (!date) {
+                setSelectedDate(null);
+                return;
+              }
+              if (date === todaySession) {
+                setSessionScope("current");
+                setSelectedDate(null);
+              } else {
+                setSessionScope("all");
+                setSelectedDate(date);
+              }
+            }}
           />
           {selectedDate ? (
             <button type="button" className="vector-board-cal-clear" onClick={() => setSelectedDate(null)}>

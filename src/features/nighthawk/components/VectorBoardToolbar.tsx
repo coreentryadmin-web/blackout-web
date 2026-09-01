@@ -33,6 +33,8 @@ export function VectorBoardToolbar({
   sort,
   onSortChange,
   selectedDate,
+  todaySession,
+  onSelectedDateChange,
   onClearFilters,
   filtersOpen,
   onFiltersOpenChange,
@@ -62,6 +64,8 @@ export function VectorBoardToolbar({
   sort: VectorBoardSort;
   onSortChange: (s: VectorBoardSort) => void;
   selectedDate: string | null;
+  todaySession: string;
+  onSelectedDateChange: (date: string | null) => void;
   onClearFilters: () => void;
   filtersOpen: boolean;
   onFiltersOpenChange: (open: boolean) => void;
@@ -128,6 +132,20 @@ export function VectorBoardToolbar({
               All sessions
             </button>
           </div>
+          <label className="vector-board-date-picker">
+            <span className="vector-board-date-picker-label">Day</span>
+            <input
+              type="date"
+              className="vector-board-date-input"
+              value={selectedDate ?? (sessionScope === "current" ? todaySession : "")}
+              max={todaySession || undefined}
+              onChange={(e) => {
+                const v = e.target.value;
+                onSelectedDateChange(v || null);
+              }}
+              aria-label="Pick session day"
+            />
+          </label>
         </div>
       </div>
 

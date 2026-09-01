@@ -209,9 +209,9 @@ async function main() {
     const setupInvalidatedLosers = cs.worstLosers.filter((l) => l.reason === "setup_invalidated");
     analysis.findings.push({
       severity: "P1",
-      issue: "Setup-invalidated closes",
-      detail: `${cs.byReason.setup_invalidated ?? 0} setup_invalidated closures; ${setupInvalidatedLosers.length} in worst-20 losers; avg loser ${cs.avgLoserPct?.toFixed(1)}%`,
-      fix: "Bar-close invalidation; per-leg range invalidation; hold winners at caution",
+      issue: "Setup-invalidated noise",
+      detail: `${cs.byReason.setup_invalidated ?? 0} setup_invalidated; bar-close + 0.15% buffer shipped`,
+      fix: "Deploy vector-pick-invalidation bar-close in sweep + live route",
     });
   }
 

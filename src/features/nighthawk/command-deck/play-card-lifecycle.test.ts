@@ -18,6 +18,7 @@ import {
   playTimeRangeCompact,
   playListReturnPct,
   playTriggeredAtMs,
+  openMetricsValues,
   zeroDteActionDisplay,
   closedCapturePct,
 } from "./play-card-lifecycle.ts";
@@ -266,6 +267,39 @@ describe("list PNL column — current, not peak", () => {
 
   it("WATCH rows keep trackPct — they hold no position, so there is no P&L", () => {
     assert.equal(playListReturnPct(lcPlay({ status: "WATCH", trackPct: 56, pnlPct: null, peak: null })), 56);
+  });
+});
+
+describe("LEGACY open metrics — stock move, not daily change", () => {
+  const legacy = (over: Partial<TerminalPlay>): TerminalPlay =>
+    ({
+      status: "OPEN",
+      horizon: "LEGACY",
+      ticker: "AAPL",
+      contract: "200C",
+      ...over,
+    }) as TerminalPlay;
+
+  it("openMetricsValues uses stockMovePct / stockPeakPct, never stockChangePct", () => {
+    const m = openMetricsValues(
+      legacy({
+        stockMovePct: 5.2,
+        stockPeakPct: 8.1,
+        stockChangePct: 1.1,
+        pnlPct: null,
+      }),
+    );
+    assert.equal(m.currentPct, 5.2);
+    assert.equal(m.peakPct, 8.1);
+  });
+
+  it("playListReturnPct shows stock move for open LEGACY rows", () => {
+    assert.equal(
+      playListReturnPct(
+        legacy({ stockMovePct: -3.4, stockChangePct: 2.0, pnlPct: null }),
+      ),
+      -3.4,
+    );
   });
 });
 

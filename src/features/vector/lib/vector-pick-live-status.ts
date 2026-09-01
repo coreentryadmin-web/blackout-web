@@ -262,6 +262,16 @@ export function evaluateVectorPickLiveStatus(input: VectorPickLiveEvalInput): Ve
     };
   }
 
+  if (premiumPct != null && premiumPct >= 50) {
+    return {
+      status: "caution",
+      reason: `Winner +${premiumPct.toFixed(0)}% — manage exit, not fresh entry`,
+      premiumPctFromEntry: premiumPct,
+      invalidationLevel: inv.level,
+      setupInvalidated: false,
+    };
+  }
+
   if (premiumPct != null && premiumPct >= 20) {
     if (intent === "tracked") {
       if (premiumPct >= 50) {

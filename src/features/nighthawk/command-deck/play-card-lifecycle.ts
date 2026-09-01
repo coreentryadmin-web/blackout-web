@@ -429,7 +429,7 @@ export function closedCapturePct(play: TerminalPlay): number | null {
 /** Open-row primary metric labels — legacy uses stock progress, others use option P&L. */
 export function openMetricsLabels(play: TerminalPlay): { current: string; peak: string } {
   if (play.horizon === "LEGACY") {
-    return { current: "Stock", peak: "Day" };
+    return { current: "Stock", peak: "Session" };
   }
   return { current: "Current", peak: "Peak" };
 }
@@ -441,8 +441,8 @@ export function openMetricsValues(play: TerminalPlay): {
 } {
   if (play.horizon === "LEGACY") {
     return {
-      currentPct: play.pnlPct ?? play.stockChangePct ?? null,
-      peakPct: play.stockChangePct ?? null,
+      currentPct: play.stockMovePct ?? play.pnlPct ?? null,
+      peakPct: play.stockPeakPct ?? play.peak ?? null,
     };
   }
   return {

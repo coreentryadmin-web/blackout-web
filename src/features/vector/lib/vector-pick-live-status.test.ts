@@ -71,6 +71,19 @@ test("evaluateVectorPickLiveStatus: still_buy on fresh quote near entry", () => 
   assert.equal(r.status, "still_buy");
 });
 
+test("evaluateVectorPickLiveStatus: +50% winner is caution even for fresh_entry intent", () => {
+  const r = evaluateVectorPickLiveStatus({
+    spot: 230,
+    side: "call",
+    entryMid: 2.0,
+    quote: { bid: 3.0, ask: 3.2, mid: 3.1, delta: 0.5 },
+    bias: "long",
+    intent: "fresh_entry",
+  });
+  assert.equal(r.status, "caution");
+  assert.match(r.reason, /Winner/i);
+});
+
 test("evaluateVectorPickLiveStatus: dont_buy when premium extended", () => {
   const r = evaluateVectorPickLiveStatus({
     spot: 576,

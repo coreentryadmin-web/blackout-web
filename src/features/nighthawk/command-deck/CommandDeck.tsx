@@ -78,6 +78,7 @@ export function CommandDeck({
   discoveryFunnel = null,
   spxSlayerBadge,
   focusTicker = null,
+  boardChrome = "default",
 }: {
   plays: TerminalPlay[];
   laneLabel: string;
@@ -113,6 +114,8 @@ export function CommandDeck({
    *  Swings Open" link) — forces the selection to that ticker's row as soon as it's present in
    *  `plays`, overriding the normal preferred-selection logic for one focus event. */
   focusTicker?: string | null;
+  /** Vector board chrome — wider detail rail + premium filter styling (Legacy parity). */
+  boardChrome?: "default" | "vector";
 }) {
   // Counts per status group for the filter badges (and the session-aware default filter).
   const counts = useMemo(() => {
@@ -267,7 +270,13 @@ export function CommandDeck({
   );
 
   return (
-    <div className="nh-deck nh-deck-fill" data-mobile-view={mobileDetailOpen ? "detail" : "list"}>
+    <div
+      className={clsx(
+        "nh-deck nh-deck-fill",
+        boardChrome === "vector" && "nh-deck--vector-chrome",
+      )}
+      data-mobile-view={mobileDetailOpen ? "detail" : "list"}
+    >
       <div className="nh-deck-left">
         {commandCenter ? (
           <DeckCompactHeader
@@ -834,19 +843,19 @@ export const PlayCard = memo(function PlayCard({
             <span className="nh-deck-prem" style={{ display: "block" }}>
               ${p.stockPrice.toFixed(2)}
             </span>
-            <span className="nh-deck-premlab">{p.pnlPct != null ? "P&L" : "STOCK"}</span>
+            <span className="nh-deck-premlab">{p.stockMovePct != null ? "Stock" : "STOCK"}</span>
             <span
               className={clsx(
                 "nh-deck-pnl",
-                (p.pnlPct ?? p.stockChangePct ?? 0) > 0 && "nh-deck-pos",
-                (p.pnlPct ?? p.stockChangePct ?? 0) < 0 && "nh-deck-neg",
+                (p.stockMovePct ?? p.pnlPct ?? 0) > 0 && "nh-deck-pos",
+                (p.stockMovePct ?? p.pnlPct ?? 0) < 0 && "nh-deck-neg",
               )}
               style={{ display: "block" }}
             >
-              {p.pnlPct != null
-                ? `${p.pnlPct >= 0 ? "+" : ""}${p.pnlPct.toFixed(1)}%`
-                : p.stockChangePct != null
-                  ? `${p.stockChangePct >= 0 ? "+" : ""}${p.stockChangePct.toFixed(1)}%`
+              {p.stockMovePct != null
+                ? `${p.stockMovePct >= 0 ? "+" : ""}${p.stockMovePct.toFixed(1)}%`
+                : p.pnlPct != null
+                  ? `${p.pnlPct >= 0 ? "+" : ""}${p.pnlPct.toFixed(1)}%`
                   : "—"}
             </span>
           </>

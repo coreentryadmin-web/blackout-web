@@ -28,8 +28,14 @@ import {
   terminalPlayFromEdition,
   type ZeroDteDeckSource,
 } from "./adapters";
-import { fetchNightHawkHorizons } from "@/lib/api";
+import { fetchNightHawkEdition, fetchNightHawkHorizons } from "@/lib/api";
 import type { NightHawkEdition, NightHawkRecordResponse } from "@/features/nighthawk/lib/types";
+import { LegacyBoardChrome } from "@/features/nighthawk/components/LegacyBoardChrome";
+import {
+  legacyEditionCalendarBuckets,
+  legacyEditionSessionDates,
+} from "@/features/nighthawk/lib/legacy-board-calendar";
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import type { TerminalPlay } from "./types";
 import { overlayLegacyQuotes, useLegacyStockQuotes } from "./use-legacy-quotes";
 import { overlayHorizonWatchTrack } from "./use-live-marks";
@@ -286,7 +292,15 @@ export function HorizonDeck({
 
 // ── Legacy: the evening edition ─────────────────────────────────────────────────────
 
-export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | undefined; error?: unknown }) {
+export function LegacyDeck() {
+  const todaySession = etSessionDate(Date.now()) ?? "";
+  const [selectedEditionDate, setSelectedEditionDate] = useState<string | null>(null);
+  const editionKey = selectedEditionDate ? ["legacy-edition", selectedEditionDate] : "nighthawk-edition";
+  const { data: edition, error } = useSWR<NightHawkEdition>(
+    editionKey,
+    () => fetchNightHawkEdition(selectedEditionDate ?? undefined),
+    { refreshInterval: 120_000 }
+  );
   // Fetch morning confirmation verdicts when an edition is available.
   const editionFor = edition?.edition_for ?? null;
   const { data: confirmData } = useSWR(
@@ -413,8 +427,25 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
             ? "Recap published — no plays cleared the funnel tonight."
             : null;
 
+  const editionLabel =
+    edition?.served_for ?? edition?.edition_for ?? (selectedEditionDate ? selectedEditionDate : todaySession);
+  const calendarDates = useMemo(() => legacyEditionSessionDates(14), []);
+  const calendarBuckets = useMemo(
+    () => legacyEditionCalendarBuckets(calendarDates),
+    [calendarDates]
+  );
+
   return (
-    <>
+    <div className="vector-board-shell legacy-board-shell">
+      <LegacyBoardChrome
+        editionFor={edition?.edition_for ?? null}
+        todaySession={todaySession}
+        selectedDate={selectedEditionDate}
+        onSelectedDateChange={setSelectedEditionDate}
+        calendarBuckets={calendarBuckets}
+        playCount={rawPlays.length}
+        editionLabel={editionLabel}
+      />
       {bannerText && (
         <div
           role="status"
@@ -457,6 +488,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
         loading={!edition && !error}
         commandCenter
         deckHorizon="LEGACY"
+        boardChrome="vector"
         boardAsOf={edition?.published_at ?? null}
         emptyHint={
           hasFetchError
@@ -466,6 +498,6 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
               : "Five ranked setups land here after the evening scan · ~5:30 PM ET."
         }
       />
-    </>
+    </div>
   );
 }

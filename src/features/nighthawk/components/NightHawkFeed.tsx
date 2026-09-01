@@ -1,11 +1,9 @@
 "use client";
 
-import useSWR from "swr";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clsx } from "clsx";
-import { fetchNightHawkEdition } from "@/lib/api";
 import { IosNativeSegment } from "@/components/ios/IosNativeSegment";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 import {
@@ -90,10 +88,6 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
   }, [selectView]);
 
   const isLegacy = view === "LEGACY";
-  // Legacy edition — fetched ONLY when the Legacy view is active (scope-to-selected rule).
-  const { data: edition, error: editionError } = useSWR(isLegacy ? "nighthawk-edition" : null, fetchNightHawkEdition, {
-    refreshInterval: 120_000,
-  });
 
   return (
     <div className="nighthawk-content-canvas flex min-h-0 flex-1 flex-col">
@@ -121,7 +115,7 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
         {view === "SWING" && <HorizonDeck horizon="SWING" focusTicker={swingFocusTicker} />}
         {view === "BANGER" && <BangerBoard />}
         {view === "VECTOR" && <VectorPickLogBoard />}
-        {isLegacy && <LegacyDeck edition={edition} error={editionError} />}
+        {isLegacy && <LegacyDeck />}
       </div>
     </div>
   );

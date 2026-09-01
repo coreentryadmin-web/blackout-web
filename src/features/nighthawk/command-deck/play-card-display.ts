@@ -54,7 +54,10 @@ export function primaryReturnPct(play: TerminalPlay): number | null {
 /** Label beside the return % on list rows — WATCH uses "Since flag", not "P&L". */
 export function primaryReturnLabel(play: TerminalPlay): string {
   if (isWatchTrackStatus(play.status) && play.trackPct != null) return "Since flag";
-  if (play.horizon === "LEGACY" && play.pnlPct != null) return "P&L";
+  if (play.horizon === "LEGACY") {
+    if (play.status === "CLOSED") return "Peak Return";
+    return play.stockMovePct != null ? "Stock" : "P&L";
+  }
   if (play.status === "CLOSED") return "Peak Return";
   return "P&L";
 }

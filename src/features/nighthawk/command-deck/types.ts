@@ -201,6 +201,11 @@ export interface TerminalPlay {
   // ── legacy stock-level overlay (populated by overlayLegacyQuotes, not the adapter) ──
   stockPrice?: number | null;
   stockChangePct?: number | null;
+  /** Underlying move from entry band midpoint — NOT option P&L. */
+  stockMovePct?: number | null;
+  /** Session excursion of the underlying on the same basis as stockMovePct. */
+  stockPeakPct?: number | null;
+  stockTroughPct?: number | null;
 
   // ── swing-only enrichment (all OPTIONAL, ADDITIVE — 0DTE/LEAPS/Legacy leave them undefined; PR-12
   //    populates them through the horizon adapter). The observable swing state the serving router keys on. ──
