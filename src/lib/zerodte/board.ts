@@ -1384,41 +1384,6 @@ export function deriveZeroDteSetups(
   return setups.sort((a, b) => b.score - a.score).slice(0, maxSetups);
 }
 
-// ── Engine card ranking ───────────────────────────────────────────────────────────
-
-export type EngineCard = {
-  kind: "spx_play" | "lotto" | "power_hour";
-  /** ACTIVE = live managed play; ARMED = ready/near-trigger; SCANNING = watching; DONE/OFF. */
-  state: "ACTIVE" | "ARMED" | "SCANNING" | "DONE" | "OFF";
-  rank: number;
-};
-
-/**
- * Deterministic ordering for the engine cards: an ACTIVE managed play always leads,
- * ARMED engines next (lotto before power-hour outside 15:00-15:30, reversed inside
- * the window), then scanning states.
- */
-export function rankEngineCards(
-  cards: Array<Omit<EngineCard, "rank">>,
-  inPowerHourWindow: boolean
-): EngineCard[] {
-  const stateOrder: Record<EngineCard["state"], number> = {
-    ACTIVE: 0,
-    ARMED: 1,
-    SCANNING: 2,
-    DONE: 3,
-    OFF: 4,
-  };
-  const kindOrder = (k: EngineCard["kind"]): number => {
-    if (k === "spx_play") return 0;
-    if (inPowerHourWindow) return k === "power_hour" ? 1 : 2;
-    return k === "lotto" ? 1 : 2;
-  };
-  return [...cards]
-    .sort((a, b) => stateOrder[a.state] - stateOrder[b.state] || kindOrder(a.kind) - kindOrder(b.kind))
-    .map((c, i) => ({ ...c, rank: i + 1 }));
-}
-
 // ── Dossier enrichment (the "very strong" layer) ─────────────────────────────────
 // The top setups get the FULL Night Hawk dossier treatment — the same enrichment +
 // direction-correct deterministic scorer the evening edition uses: flow streaks,

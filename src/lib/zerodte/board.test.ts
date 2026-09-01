@@ -7,7 +7,6 @@ import {
   resolveFreshFindStatus,
   deriveZeroDteSetups,
   calibrateFlowEvidenceScore,
-  rankEngineCards,
   enrichSetup,
   noteOriginDirectionConflict,
   mergeSameTickerDiscovery,
@@ -742,20 +741,6 @@ test("enrich: with no chart walls the condor falls back to the target-width floo
 test("enrich: condor is null when spot is unknown (no fabricated geometry)", () => {
   const e = enrichSetup(baseSetup({ underlying_price: null }), null);
   assert.equal(e.condor, null);
-});
-
-// ── engine ranking ───────────────────────────────────────────────────────────────
-
-test("ranking: ACTIVE play leads; power hour outranks lotto only inside its window", () => {
-  const cards = [
-    { kind: "lotto" as const, state: "ARMED" as const },
-    { kind: "power_hour" as const, state: "ARMED" as const },
-    { kind: "spx_play" as const, state: "ACTIVE" as const },
-  ];
-  const normal = rankEngineCards(cards, false);
-  assert.deepEqual(normal.map((c) => c.kind), ["spx_play", "lotto", "power_hour"]);
-  const ph = rankEngineCards(cards, true);
-  assert.deepEqual(ph.map((c) => c.kind), ["spx_play", "power_hour", "lotto"]);
 });
 
 // ── contract plans ───────────────────────────────────────────────────────────────
