@@ -123,6 +123,29 @@ test("evaluateVectorPickLiveStatus: sub-$0.10 entry with wild % is caution, not 
   assert.match(r.reason, /verify premium/i);
 });
 
+test("evaluateVectorPickLiveStatus: bar close prevents tick-noise invalidation (2026-09-01 AAPL)", () => {
+  const tf = 5;
+  const tfSec = tf * 60;
+  const nowMs = (tfSec * 4 + 120) * 1000;
+  const bucketStart = Math.floor(nowMs / 1000 / tfSec) * tfSec - tfSec;
+  const bars = [
+    { time: bucketStart, open: 324, high: 325, low: 323.5, close: 324.2 },
+    { time: bucketStart + 60, open: 324.2, high: 324.6, low: 324, close: 324.5 },
+  ];
+  const r = evaluateVectorPickLiveStatus({
+    spot: 325.46,
+    side: "put",
+    entryMid: 2.5,
+    quote: { bid: 2.1, ask: 2.3, mid: 2.2, delta: -0.4 },
+    invalidation: "5m close > 325",
+    bias: "short",
+    bars,
+    nowMs,
+    intent: "tracked",
+  });
+  assert.equal(r.setupInvalidated, false);
+});
+
 test("evaluateVectorPickLiveStatus: dont_buy when setup invalidated and premium not favorable", () => {
   const r = evaluateVectorPickLiveStatus({
     spot: 568,

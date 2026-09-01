@@ -4,6 +4,10 @@
  */
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/features/nighthawk/lib/constants";
 import { pinnedLivePnlPct, resolveZeroDteMark, zeroDteMidOf } from "@/lib/zerodte/marks-math";
+import {
+  resolveInvalidationSpot,
+  type InvalidationBar,
+} from "./vector-pick-invalidation";
 
 export type VectorPickActionStatus = "still_buy" | "caution" | "dont_buy";
 
@@ -38,6 +42,9 @@ export type VectorPickLiveEvalInput = {
   intent?: "fresh_entry" | "tracked";
   /** Contract role from ranking — enables per-leg invalidation on range plays. */
   pickRole?: string | null;
+  /** Optional 1m seed bars for bar-close invalidation (sweep passes these). */
+  bars?: readonly InvalidationBar[];
+  nowMs?: number;
 };
 
 /** Sub-$0.10 entry mids make %-from-entry meaningless on penny quotes. */
@@ -167,8 +174,14 @@ export function evaluateVectorPickLiveStatus(input: VectorPickLiveEvalInput): Ve
     quote.mid ??
     zeroDteMidOf(quote.bid, quote.ask);
   const premiumPct = premiumDriftPct(entryMid, mid);
+  const invSpot = resolveInvalidationSpot({
+    liveSpot: spot,
+    invalidation: input.invalidation,
+    bars: input.bars,
+    nowMs: input.nowMs,
+  });
   const inv = isSetupInvalidated(
-    spot,
+    invSpot,
     input.invalidation,
     input.bias,
     input.callWall,
