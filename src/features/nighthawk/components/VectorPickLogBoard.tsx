@@ -2,28 +2,36 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
-import { Badge, EmptyState, Panel, Skeleton } from "@/components/ui";
+import { clsx } from "clsx";
+import { EmptyState, Skeleton } from "@/components/ui";
 import { etDateTimeShort } from "@/lib/et-clock";
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
-import type {
-  VectorClosureReasonFilter,
-  VectorClosureSort,
-} from "@/features/nighthawk/lib/vector-pick-log-board-utils";
+import { VectorBoardCalendar } from "@/features/nighthawk/components/VectorBoardCalendar";
+import { VectorBoardStatusPill } from "@/features/nighthawk/components/VectorBoardStatus";
+import { VectorPlayDetailPanel } from "@/features/nighthawk/components/VectorPlayDetailPanel";
+import type { VectorBoardRowKind, VectorBoardTableRow } from "@/features/nighthawk/lib/vector-board-table-utils";
 import {
-  filterVectorClosureRows,
-  filterVectorRunnerLeaders,
+  buildVectorBoardRows,
+  filterVectorBoardRows,
   formatPremiumPct,
-  preferredVectorBoardSection,
   premiumPctTone,
-  sortVectorClosureRows,
-} from "@/features/nighthawk/lib/vector-pick-log-board-utils";
-import type {
-  VectorClosurePlay,
-  VectorLeaderPlay,
-  VectorPickBoardResponse,
-} from "@/features/nighthawk/components/VectorPickLogBoard.types";
+  vectorBoardCalendarBuckets,
+  vectorBoardSummary,
+} from "@/features/nighthawk/lib/vector-board-table-utils";
+import { filterVectorRunnerLeaders, preferredVectorBoardSection } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
+import type { VectorPickBoardResponse } from "@/features/nighthawk/components/VectorPickLogBoard.types";
 
-type BoardSection = "winners" | "runners" | "leaders" | "closed";
+type BoardTab = "all" | VectorBoardRowKind;
+
+const EM = "—";
+
+const TABS: { id: BoardTab; label: string }[] = [
+  { id: "all", label: "All picks" },
+  { id: "winner", label: "Winners" },
+  { id: "runner", label: "Runners" },
+  { id: "live", label: "Live" },
+  { id: "closed", label: "Closed" },
+];
 
 async function fetchVectorBoard(url: string): Promise<VectorPickBoardResponse> {
   const res = await fetch(url, { cache: "no-store" });
@@ -32,125 +40,67 @@ async function fetchVectorBoard(url: string): Promise<VectorPickBoardResponse> {
 }
 
 function fmtPrice(v: number | null): string {
-  return v != null && Number.isFinite(v) ? `$${v.toFixed(2)}` : "—";
+  return v != null && Number.isFinite(v) ? `$${v.toFixed(2)}` : EM;
 }
 
-function fmtTimestamp(iso: string | null): string {
-  if (!iso) return "—";
+function fmtTimestamp(iso: string): string {
+  if (!iso) return EM;
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return etDateTimeShort(d) ?? "—";
+  if (Number.isNaN(d.getTime())) return EM;
+  return etDateTimeShort(d) ?? EM;
 }
 
-function leaderPct(row: VectorLeaderPlay): number | null {
-  return row.premium_pct_from_entry ?? row.peak_premium_pct;
+function pnlClass(pct: number | null): string {
+  const tone = premiumPctTone(pct);
+  if (tone === "bull") return "is-up";
+  if (tone === "bear") return "is-down";
+  return "is-flat";
 }
 
-function statusBadge(status: string, isWinner: boolean) {
-  if (isWinner) return <Badge tone="bull">Winner</Badge>;
-  if (status === "still_buy") return <Badge tone="bull">Still buy</Badge>;
-  if (status === "caution") return <Badge tone="accent">Caution</Badge>;
-  return <Badge tone="bear">Closed</Badge>;
+function preferredTab(
+  winnersCount: number,
+  runnersCount: number,
+  leadersCount: number
+): BoardTab {
+  const legacy = preferredVectorBoardSection(winnersCount, runnersCount, leadersCount);
+  if (legacy === "runners") return "runner";
+  if (legacy === "leaders") return "live";
+  if (legacy === "winners") return "winner";
+  return "all";
 }
 
-function LeaderCard({ row }: { row: VectorLeaderPlay }) {
-  const pct = leaderPct(row);
-  return (
-    <Panel className="vector-leader-row shrink-0 p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-bold text-white">{row.ticker}</span>
-            {statusBadge(row.action_status, row.is_winner)}
-            {row.tier === "elite" ? <Badge tone="accent">Elite</Badge> : null}
-            {row.setup_invalidated ? <Badge tone="accent">Thesis stressed</Badge> : null}
-          </div>
-          <p className="mt-1 text-sm font-bold text-sky-100">
-            {row.contract.label ?? `${row.contract.strike}${row.contract.side === "call" ? "C" : "P"}`}
-            {row.rank != null ? ` · rank #${row.rank}` : ""}
-          </p>
-          <p className="mt-1 text-xs leading-snug text-sky-200">{row.action_reason}</p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-          <div className="text-xs text-sky-200">{fmtTimestamp(row.updated_at)}</div>
-          <Badge tone={premiumPctTone(pct)} size="md">
-            {formatPremiumPct(pct) === "—" ? "No %" : `${formatPremiumPct(pct)} premium`}
-          </Badge>
-          <div className="text-xs font-bold text-white">
-            {fmtPrice(row.entry_mid)} → {fmtPrice(row.live_mid)}
-          </div>
-          {row.peak_premium_pct != null &&
-          row.premium_pct_from_entry != null &&
-          row.peak_premium_pct > row.premium_pct_from_entry ? (
-            <div className="text-[11px] font-bold text-sky-300">Peak {formatPremiumPct(row.peak_premium_pct)}</div>
-          ) : null}
-        </div>
-      </div>
-    </Panel>
-  );
+function tabCount(
+  tab: BoardTab,
+  data: {
+    all: number;
+    winners: number;
+    runners: number;
+    live: number;
+    closed: number;
+  }
+): number {
+  if (tab === "all") return data.all;
+  if (tab === "winner") return data.winners;
+  if (tab === "runner") return data.runners;
+  if (tab === "live") return data.live;
+  return data.closed;
 }
-
-function ClosureCard({ row }: { row: VectorClosurePlay }) {
-  const pct = row.premium_pct_from_entry;
-  return (
-    <Panel className="vector-closure-row shrink-0 p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-bold text-white">{row.ticker}</span>
-            <Badge tone="bear">Don&apos;t buy</Badge>
-            {row.setup_invalidated ? <Badge tone="accent">Setup invalidated</Badge> : null}
-          </div>
-          <p className="mt-1 text-sm font-bold text-sky-100">
-            {row.contract.label ?? `${row.contract.strike}${row.contract.side === "call" ? "C" : "P"}`}
-            {row.rank != null ? ` · rank #${row.rank}` : ""}
-          </p>
-          <p className="mt-1 text-xs leading-snug text-sky-200">{row.close_reason}</p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-          <div className="text-xs text-sky-200">{fmtTimestamp(row.closed_at)}</div>
-          <Badge tone={premiumPctTone(pct)} size="md">
-            {formatPremiumPct(pct) === "—" ? "No %" : `${formatPremiumPct(pct)} premium`}
-          </Badge>
-          <div className="text-xs font-bold text-white">
-            {fmtPrice(row.entry_mid)} → {fmtPrice(row.close_mid)}
-          </div>
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
-const REASON_OPTIONS: { id: VectorClosureReasonFilter; label: string }[] = [
-  { id: "all", label: "All reasons" },
-  { id: "setup_invalidated", label: "Setup invalidated" },
-  { id: "premium_chase", label: "Premium chase" },
-  { id: "premium_cap", label: "Desk cap" },
-  { id: "other", label: "Other" },
-];
-
-const SORT_OPTIONS: { id: VectorClosureSort; label: string }[] = [
-  { id: "newest", label: "Newest" },
-  { id: "oldest", label: "Oldest" },
-  { id: "pct_desc", label: "% high → low" },
-  { id: "pct_asc", label: "% low → high" },
-  { id: "ticker", label: "Ticker A→Z" },
-];
 
 /**
- * Night Hawk Vector tab — universe sweep winners/leaders + closed contract picks.
+ * Night Hawk Vector tab — X Ads Manager–style table board with underline tabs,
+ * session calendar, summary row, and right-rail play inspector.
  */
 export function VectorPickLogBoard() {
   const todaySession = etSessionDate(Date.now()) ?? "";
-  const [sessionFilter, setSessionFilter] = useState<"today" | "all">("today");
-  const [section, setSection] = useState<BoardSection>("winners");
-  const sectionUserPicked = useRef(false);
-  const [reasonFilter, setReasonFilter] = useState<VectorClosureReasonFilter>("all");
-  const [sort, setSort] = useState<VectorClosureSort>("pct_desc");
+  const [sessionScope, setSessionScope] = useState<"current" | "all">("current");
+  const [tab, setTab] = useState<BoardTab>("all");
+  const tabUserPicked = useRef(false);
   const [tickerQuery, setTickerQuery] = useState("");
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedRow, setSelectedRow] = useState<VectorBoardTableRow | null>(null);
 
   const apiUrl =
-    sessionFilter === "today" && todaySession
+    sessionScope === "current" && todaySession
       ? `/api/market/vector/pick-closures/board?limit=500&session_date=${todaySession}`
       : "/api/market/vector/pick-closures/board?limit=500";
 
@@ -161,53 +111,71 @@ export function VectorPickLogBoard() {
   const winners = data?.winners ?? [];
   const leaders = data?.leaders ?? [];
   const closed = data?.closed ?? [];
+  const runners = useMemo(() => filterVectorRunnerLeaders(leaders), [leaders]);
+  const winnerKeys = useMemo(
+    () => new Set(winners.map((w) => `${w.ticker}-${w.contract.occ}`)),
+    [winners]
+  );
+  const liveCount = useMemo(
+    () =>
+      leaders.filter(
+        (r) =>
+          !winnerKeys.has(`${r.ticker}-${r.contract.occ}`) &&
+          !runners.some((x) => x.id === r.id && x.contract.occ === r.contract.occ)
+      ).length,
+    [leaders, winnerKeys, runners]
+  );
 
-  const filteredRunners = useMemo(() => {
-    const q = tickerQuery.trim().toUpperCase();
-    const runners = filterVectorRunnerLeaders(leaders);
-    if (!q) return runners;
-    return runners.filter((r) => r.ticker.toUpperCase().includes(q));
-  }, [leaders, tickerQuery]);
+  const tabCounts = useMemo(
+    () => ({
+      all: buildVectorBoardRows({ winners, leaders, closed, section: "all" }).length,
+      winners: winners.length,
+      runners: runners.length,
+      live: liveCount,
+      closed: closed.length,
+    }),
+    [winners, leaders, closed, runners.length, liveCount]
+  );
 
   useEffect(() => {
-    if (sectionUserPicked.current || !data) return;
-    const next = preferredVectorBoardSection(winners.length, filteredRunners.length, leaders.length);
-    setSection((cur) => (cur === next ? cur : next));
-  }, [data, winners.length, filteredRunners.length, leaders.length]);
+    if (tabUserPicked.current || !data) return;
+    const next = preferredTab(winners.length, runners.length, leaders.length);
+    setTab((cur) => (cur === next ? cur : next));
+  }, [data, winners.length, runners.length, leaders.length]);
 
-  const filteredClosed = useMemo(() => {
-    const filtered = filterVectorClosureRows(closed, {
-      sessionDate: sessionFilter === "today" ? todaySession : null,
-      reason: reasonFilter,
-      tickerQuery,
-    });
-    return sortVectorClosureRows(filtered, sort);
-  }, [closed, sessionFilter, todaySession, reasonFilter, tickerQuery, sort]);
+  const sectionRows = useMemo(
+    () => buildVectorBoardRows({ winners, leaders, closed, section: tab }),
+    [winners, leaders, closed, tab]
+  );
 
-  const filteredLeaders = useMemo(() => {
-    const q = tickerQuery.trim().toUpperCase();
-    if (!q) return leaders;
-    return leaders.filter((r) => r.ticker.toUpperCase().includes(q));
-  }, [leaders, tickerQuery]);
+  const calendarSource = useMemo(
+    () => buildVectorBoardRows({ winners, leaders, closed, section: "all" }),
+    [winners, leaders, closed]
+  );
 
-  const filteredWinners = useMemo(() => {
-    const q = tickerQuery.trim().toUpperCase();
-    if (!q) return winners;
-    return winners.filter((r) => r.ticker.toUpperCase().includes(q));
-  }, [winners, tickerQuery]);
+  const calendarBuckets = useMemo(() => vectorBoardCalendarBuckets(calendarSource), [calendarSource]);
 
   const visibleRows = useMemo(() => {
-    if (section === "winners") return filteredWinners;
-    if (section === "runners") return filteredRunners;
-    if (section === "leaders") return filteredLeaders;
-    return filteredClosed;
-  }, [section, filteredWinners, filteredRunners, filteredLeaders, filteredClosed]);
+    return filterVectorBoardRows(sectionRows, {
+      tickerQuery,
+      sessionDate: selectedDate ? selectedDate : sessionScope === "current" ? todaySession : null,
+    });
+  }, [sectionRows, tickerQuery, selectedDate, sessionScope, todaySession]);
+
+  const summary = useMemo(() => vectorBoardSummary(visibleRows), [visibleRows]);
+
+  useEffect(() => {
+    if (!selectedRow) return;
+    const stillVisible = visibleRows.some((r) => r.key === selectedRow.key);
+    if (!stillVisible) setSelectedRow(null);
+  }, [visibleRows, selectedRow]);
 
   if (isLoading && !data) {
     return (
-      <div className="nh-deck-rows min-h-0 flex-1 space-y-2 overflow-y-auto">
-        <Skeleton className="h-20 w-full shrink-0" />
-        <Skeleton className="h-20 w-full shrink-0" />
+      <div className="vector-board-shell">
+        <Skeleton className="h-10 w-full shrink-0" />
+        <Skeleton className="h-14 w-full shrink-0" />
+        <Skeleton className="min-h-0 flex-1" />
       </div>
     );
   }
@@ -224,141 +192,220 @@ export function VectorPickLogBoard() {
   const coverage = data?.coverage;
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col gap-3">
-      <Panel accent="sky" bodyClassName="px-4 py-3 md:px-5 md:py-4 shrink-0">
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="sky" size="md" dot>
-              Vector plays
-            </Badge>
-            {coverage ? (
-              <span className="text-xs font-bold text-sky-100">
-                {coverage.winners} winner{coverage.winners === 1 ? "" : "s"} · {filteredRunners.length} runner
-                {filteredRunners.length === 1 ? "" : "s"} · {coverage.leaders} live · {coverage.closed} closed
-              </span>
-            ) : null}
-          </div>
-          <p className="text-xs leading-snug text-sky-200">
-            {data?.note ??
-              "Premium % is option mid vs pick entry. Leaders come from the server universe sweep every ~2 min RTH."}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {(
-              [
-                ["winners", `Winners (${winners.length})`],
-                ["runners", `Runners (${filteredRunners.length})`],
-                ["leaders", `Live (${leaders.length})`],
-                ["closed", `Closed (${closed.length})`],
-              ] as const
-            ).map(([id, label]) => (
+    <div className="vector-board-shell">
+      <header className="vector-board-toolbar">
+        <div className="vector-board-toolbar-row">
+          <nav className="vector-board-tabs" role="tablist" aria-label="Vector board views">
+            {TABS.map(({ id, label }) => {
+              const count = tabCount(id, tabCounts);
+              const active = tab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className={clsx("vector-board-tab", active && "is-active")}
+                  onClick={() => {
+                    tabUserPicked.current = true;
+                    setTab(id);
+                  }}
+                >
+                  {label}
+                  <span className="vector-board-tab-count tabular-nums">({count})</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="vector-board-toolbar-actions">
+            <div className="vector-board-scope" role="group" aria-label="Session scope">
               <button
-                key={id}
                 type="button"
-                className={
-                  section === id
-                    ? "rounded border border-cyan-400/60 bg-cyan-400/10 px-2 py-1 text-xs font-bold text-white"
-                    : "rounded border border-white/10 px-2 py-1 text-xs font-bold text-sky-200"
-                }
+                className={clsx("vector-board-scope-btn", sessionScope === "current" && "is-active")}
                 onClick={() => {
-                  sectionUserPicked.current = true;
-                  setSection(id);
+                  setSessionScope("current");
+                  setSelectedDate(null);
                 }}
               >
-                {label}
+                Current
               </button>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wide text-sky-300">
-              Session
-              <select
-                value={sessionFilter}
-                onChange={(e) => setSessionFilter(e.target.value as "today" | "all")}
-                className="min-h-9 rounded-lg border border-white/10 bg-black/40 px-2 text-sm font-bold normal-case text-white"
+              <button
+                type="button"
+                className={clsx("vector-board-scope-btn", sessionScope === "all" && "is-active")}
+                onClick={() => setSessionScope("all")}
               >
-                <option value="today">Today</option>
-                <option value="all">All sessions</option>
-              </select>
-            </label>
-            {section === "closed" ? (
-              <>
-                <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wide text-sky-300">
-                  Reason
-                  <select
-                    value={reasonFilter}
-                    onChange={(e) => setReasonFilter(e.target.value as VectorClosureReasonFilter)}
-                    className="min-h-9 rounded-lg border border-white/10 bg-black/40 px-2 text-sm font-bold normal-case text-white"
-                  >
-                    {REASON_OPTIONS.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wide text-sky-300">
-                  Sort
-                  <select
-                    value={sort}
-                    onChange={(e) => setSort(e.target.value as VectorClosureSort)}
-                    className="min-h-9 rounded-lg border border-white/10 bg-black/40 px-2 text-sm font-bold normal-case text-white"
-                  >
-                    {SORT_OPTIONS.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </>
-            ) : null}
-            <label className="flex min-w-[7rem] flex-1 flex-col gap-1 text-[11px] font-bold uppercase tracking-wide text-sky-300">
-              Ticker
+                All sessions
+              </button>
+            </div>
+
+            <div className="vector-board-search">
+              <span className="vector-board-search-icon" aria-hidden>
+                ⌕
+              </span>
               <input
                 value={tickerQuery}
                 onChange={(e) => setTickerQuery(e.target.value.toUpperCase())}
-                placeholder="e.g. INTC"
-                className="min-h-9 rounded-lg border border-white/10 bg-black/40 px-2 text-sm font-bold normal-case text-white placeholder:text-sky-300/50"
+                placeholder="Search ticker"
+                className="vector-board-search-input"
+                aria-label="Search ticker"
               />
-            </label>
+              {tickerQuery ? (
+                <button
+                  type="button"
+                  className="vector-board-search-clear"
+                  onClick={() => setTickerQuery("")}
+                  aria-label="Clear search"
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
-      </Panel>
 
-      <div className="nh-deck-rows min-h-0 flex-1 space-y-2 overflow-y-auto pb-4">
-        {!visibleRows.length ? (
-          <EmptyState
-            title={
-              section === "winners"
-                ? "No winning Vector picks yet"
-                : section === "runners"
-                  ? "No +15% runners yet"
-                  : section === "leaders"
-                    ? "No live Vector leaders"
-                    : "No closed Vector picks match"
-            }
-            description={
-              section === "winners"
-                ? "Winners are +50% vs pick (or peak) from the universe sweep — INTC-class runners land here after deploy."
-                : section === "runners"
-                  ? "Runners are live names between +15% and +49% premium vs pick entry — the building phase before the +50% winner floor."
-                  : section === "leaders"
-                    ? "Every Vector universe ticker is evaluated every ~2 min during RTH."
-                    : "Try All sessions or clear filters."
-            }
+        {coverage || data?.note ? (
+          <div className="vector-board-toolbar-meta">
+            {coverage ? (
+              <span className="vector-board-meta-stat tabular-nums">
+                <strong>{coverage.winners}</strong> winner{coverage.winners === 1 ? "" : "s"} ·{" "}
+                <strong>{runners.length}</strong> runner{runners.length === 1 ? "" : "s"} ·{" "}
+                <strong>{coverage.leaders}</strong> live · <strong>{coverage.closed}</strong> closed
+              </span>
+            ) : null}
+            {data?.note ? <p className="vector-board-note">{data.note}</p> : null}
+          </div>
+        ) : null}
+      </header>
+
+      {calendarBuckets.length > 0 ? (
+        <div className="vector-board-cal-wrap">
+          <VectorBoardCalendar
+            buckets={calendarBuckets}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
           />
-        ) : (
-          visibleRows.map((row) =>
-            section === "closed" ? (
-              <ClosureCard key={`c-${row.id}`} row={row as VectorClosurePlay} />
-            ) : (
-              <LeaderCard
-                key={`${(row as VectorLeaderPlay).closed_winner ? "cw" : "l"}-${row.id}-${(row as VectorLeaderPlay).contract.occ}`}
-                row={row as VectorLeaderPlay}
+          {selectedDate ? (
+            <button type="button" className="vector-board-cal-clear" onClick={() => setSelectedDate(null)}>
+              Clear day
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="vector-board-body">
+        <div className="vector-board-table-pane">
+          {!visibleRows.length ? (
+            <div className="vector-board-empty">
+              <EmptyState
+                title={
+                  tab === "winner"
+                    ? "No winning Vector picks yet"
+                    : tab === "runner"
+                      ? "No +15% runners yet"
+                      : tab === "live"
+                        ? "No live Vector leaders"
+                        : tab === "closed"
+                          ? "No closed Vector picks match"
+                          : "No Vector picks match"
+                }
+                description={
+                  tab === "winner"
+                    ? "Winners are +50% vs pick (or peak) from the universe sweep."
+                    : tab === "runner"
+                      ? "Runners are live names between +15% and +49% premium vs pick entry."
+                      : tab === "live"
+                        ? "Every Vector universe ticker is evaluated every ~2 min during RTH."
+                        : "Try All sessions or clear filters."
+                }
               />
-            )
-          )
-        )}
+            </div>
+          ) : (
+            <div className="vector-board-tablewrap">
+              <table className="vector-board-table">
+                <thead>
+                  <tr>
+                    <th>Pick</th>
+                    <th>Status</th>
+                    <th className="vector-board-col-num">Premium</th>
+                    <th className="vector-board-col-num">Entry → mark</th>
+                    <th className="vector-board-col-num">Peak</th>
+                    <th className="vector-board-col-num">Of peak</th>
+                    <th>Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="vector-board-summary-row">
+                    <td colSpan={2}>
+                      <span className="vector-board-summary-label">Summary</span>
+                      <span className="vector-board-summary-sub tabular-nums">{summary.total} picks</span>
+                    </td>
+                    <td className={clsx("vector-board-col-num vector-board-pnl tabular-nums", pnlClass(summary.avgPct))}>
+                      {summary.avgPct != null ? `${summary.avgPct >= 0 ? "+" : ""}${summary.avgPct}%` : EM}
+                    </td>
+                    <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
+                      <strong>{summary.open}</strong> open
+                    </td>
+                    <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
+                      <strong>{summary.winners}</strong> winners
+                    </td>
+                    <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
+                      <strong>{summary.closed}</strong> closed
+                    </td>
+                    <td />
+                  </tr>
+
+                  {visibleRows.map((row) => {
+                    const selected = selectedRow?.key === row.key;
+                    return (
+                      <tr
+                        key={row.key}
+                        className={clsx("vector-board-row", selected && "is-selected")}
+                        onClick={() => setSelectedRow(row)}
+                      >
+                        <td className="vector-board-col-pick">
+                          <div className="vector-board-pick-name">{row.ticker}</div>
+                          <div className="vector-board-pick-sub">{row.contractLabel}</div>
+                          <div className="vector-board-pick-id">ID: {row.occ.slice(-8)}</div>
+                        </td>
+                        <td>
+                          <VectorBoardStatusPill status={row.status} label={row.statusLabel} />
+                        </td>
+                        <td className={clsx("vector-board-col-num vector-board-pnl tabular-nums", pnlClass(row.premiumPct))}>
+                          {formatPremiumPct(row.premiumPct)}
+                        </td>
+                        <td className="vector-board-col-num vector-board-mid tabular-nums">
+                          {fmtPrice(row.entryMid)} → {fmtPrice(row.markMid)}
+                        </td>
+                        <td className={clsx("vector-board-col-num tabular-nums", pnlClass(row.peakPct))}>
+                          {formatPremiumPct(row.peakPct)}
+                        </td>
+                        <td className="vector-board-col-num">
+                          {row.progressPct != null ? (
+                            <div className="vector-board-progress" title={`${row.progressPct}% of peak`}>
+                              <div className="vector-board-progress-track">
+                                <div
+                                  className={clsx("vector-board-progress-fill", pnlClass(row.premiumPct))}
+                                  style={{ width: `${row.progressPct}%` }}
+                                />
+                              </div>
+                              <span className="vector-board-progress-label tabular-nums">{row.progressPct}%</span>
+                            </div>
+                          ) : (
+                            <span className="vector-board-em">{EM}</span>
+                          )}
+                        </td>
+                        <td className="vector-board-col-time tabular-nums">{fmtTimestamp(row.timestamp)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <VectorPlayDetailPanel row={selectedRow} onClose={() => setSelectedRow(null)} />
       </div>
     </div>
   );
