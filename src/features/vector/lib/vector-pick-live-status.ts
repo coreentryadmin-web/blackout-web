@@ -36,10 +36,20 @@ export type VectorPickLiveEvalInput = {
    * marked dont_buy while still the session's top winner).
    */
   intent?: "fresh_entry" | "tracked";
+  /** Contract role from ranking — enables per-leg invalidation on range plays. */
+  pickRole?: string | null;
 };
 
 /** Sub-$0.10 entry mids make %-from-entry meaningless on penny quotes. */
 export const VECTOR_PICK_MIN_ENTRY_MID_FOR_PCT = 0.1;
+
+/**
+ * Tick-cross buffer for textual "5m close >/< level" rules — we only have live spot, not a
+ * closed bar. Without this, a $0.46 pierce (AAPL 325.46 vs 325.00) or $0.33 dip (IWM 290.67 vs
+ * 291.00) instant-invalidates high-conviction plays (measured 2026-09-01: 119 setup_invalidated
+ * closures, worst losers all within 0.1–0.5% of the level).
+ */
+export const VECTOR_PICK_INVALIDATION_BUFFER_PCT = 0.15;
 
 export type VectorPickLiveEval = {
   status: VectorPickActionStatus;
@@ -101,17 +111,19 @@ export function isSetupInvalidated(
   bias: VectorPickLiveEvalInput["bias"],
   callWall: number | null | undefined,
   putWall: number | null | undefined,
-  gammaFlip: number | null | undefined
+  gammaFlip: number | null | undefined,
+  pickRole?: string | null
 ): { invalidated: boolean; level: number | null } {
   const text = (invalidation ?? "").toLowerCase();
   const level = parseInvalidationLevel(invalidation);
+  const buf = VECTOR_PICK_INVALIDATION_BUFFER_PCT / 100;
 
   if (level != null) {
     if (text.includes("close >") || text.includes("back >") || text.includes("above")) {
-      if (spot > level) return { invalidated: true, level };
+      if (spot > level * (1 + buf)) return { invalidated: true, level };
     }
     if (text.includes("close <") || text.includes("back <") || text.includes("below")) {
-      if (spot < level) return { invalidated: true, level };
+      if (spot < level * (1 - buf)) return { invalidated: true, level };
     }
     if (text.includes("back through")) {
       if (bias === "long" && spot < level) return { invalidated: true, level };
@@ -119,14 +131,25 @@ export function isSetupInvalidated(
     }
   }
 
-  if (text.includes("short gamma") && gammaFlip != null && spot < gammaFlip) {
+  if (text.includes("short gamma") && gammaFlip != null && spot < gammaFlip * (1 - buf)) {
     return { invalidated: true, level: gammaFlip };
   }
 
-  if (bias === "long" && putWall != null && spot < putWall * 0.995) {
+  // Range plays carry bias "range" — wall-break fallbacks are per-leg via pickRole.
+  if (bias === "range" && pickRole) {
+    if (pickRole === "fade-dip" && putWall != null && spot < putWall * (1 - buf)) {
+      return { invalidated: true, level: putWall };
+    }
+    if (pickRole === "fade-rip" && callWall != null && spot > callWall * (1 + buf)) {
+      return { invalidated: true, level: callWall };
+    }
+    return { invalidated: false, level };
+  }
+
+  if (bias === "long" && putWall != null && spot < putWall * (1 - buf)) {
     return { invalidated: true, level: putWall };
   }
-  if (bias === "short" && callWall != null && spot > callWall * 1.005) {
+  if (bias === "short" && callWall != null && spot > callWall * (1 + buf)) {
     return { invalidated: true, level: callWall };
   }
 
@@ -150,7 +173,8 @@ export function evaluateVectorPickLiveStatus(input: VectorPickLiveEvalInput): Ve
     input.bias,
     input.callWall,
     input.putWall,
-    input.gammaFlip
+    input.gammaFlip,
+    input.pickRole
   );
 
   if (

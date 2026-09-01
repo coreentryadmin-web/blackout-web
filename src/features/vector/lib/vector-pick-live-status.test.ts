@@ -30,8 +30,26 @@ test("parseInvalidationLevel: a sub-$10 level parses (no arbitrary floor beyond 
 });
 
 test("isSetupInvalidated: spot above ceiling invalidates fade", () => {
-  const r = isSetupInvalidated(7610, "5m close > 7,600", "short", 7600, 7500, null);
+  const r = isSetupInvalidated(7620, "5m close > 7,600", "short", 7600, 7500, null);
   assert.equal(r.invalidated, true);
+});
+
+test("isSetupInvalidated: sub-tick pierce below buffer does NOT invalidate (2026-09-01 IWM/AAPL noise)", () => {
+  const r = isSetupInvalidated(325.46, "5m close > 325", "short", null, null, null);
+  assert.equal(r.invalidated, false, "0.14% pierce should not fire with 0.15% buffer");
+  const r2 = isSetupInvalidated(290.67, "5m close < 291", "long", null, null, null);
+  assert.equal(r2.invalidated, false, "0.11% dip should not fire with 0.15% buffer");
+});
+
+test("isSetupInvalidated: range fade-dip invalidates when spot breaks put wall", () => {
+  const r = isSetupInvalidated(566, "5m close < 570", "range", 580, 570, null, "fade-dip");
+  assert.equal(r.invalidated, true);
+  assert.equal(r.level, 570);
+});
+
+test("isSetupInvalidated: range fade-dip does NOT invalidate on call-wall side noise", () => {
+  const r = isSetupInvalidated(578, "5m close < 570", "range", 580, 570, null, "fade-dip");
+  assert.equal(r.invalidated, false);
 });
 
 test("isSetupInvalidated: a sub-$10 ticker's invalidation level still fires (was silently unreachable)", () => {

@@ -179,11 +179,12 @@ export async function POST(req: NextRequest) {
       entryMid: pick.entryMid ?? null,
       caveat: pick.caveat,
       invalidation,
-      bias,
+      bias: rawBias === "range" ? "range" : bias,
       callWall: numOrNull(body.callWall),
       putWall: numOrNull(body.putWall),
       gammaFlip: numOrNull(body.gammaFlip),
       quote,
+      pickRole: pick.role ?? null,
     });
 
     return {

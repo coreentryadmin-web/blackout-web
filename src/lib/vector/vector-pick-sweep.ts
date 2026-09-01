@@ -166,6 +166,7 @@ export async function sweepVectorPickForTicker(
       gammaFlip: ctx.gammaFlip ?? null,
       quote,
       intent: "tracked",
+      pickRole: pick.role ?? null,
     });
 
     const peak = mergePeakPremiumPct(null, evalResult.premiumPctFromEntry);

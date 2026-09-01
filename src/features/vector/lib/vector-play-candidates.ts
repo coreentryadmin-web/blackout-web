@@ -13,7 +13,6 @@ import type { ChainStrikeRow, EditionChainData } from "@/features/nighthawk/lib/
 import { GROUNDING_MIN_OI, tieredMinOi } from "@/features/nighthawk/lib/grounding";
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/features/nighthawk/lib/constants";
 import { todayEtYmd } from "@/lib/providers/spx-session";
-import type { PlayTechnicals, VectorPlay, VectorPlayStyle } from "./vector-play-engine";
 import type { PlayPlatformFlowPrint, PlayPlatformInputs } from "./vector-play-platform";
 import { flowDirection } from "@/features/helix/lib/helix-flow-aggression";
 import type { VectorContractPick } from "./vector-contract-picks";
@@ -25,6 +24,9 @@ import { effectivePickBias } from "./vector-pick-effective-bias";
 import type { VectorPickEnrichmentData } from "./vector-pick-types";
 import { strikeGexFromTotals, topGexPinStrikes } from "./strike-gex-lookup";
 import { vectorPickOcc } from "./vector-pick-occ";
+
+/** Sub-$0.12 premiums make %-from-entry meaningless and dominated by spread noise (2026-09-01 audit). */
+export const MIN_VECTOR_PICK_PREMIUM = 0.12;
 
 export type VectorPickActionStatus = "still_buy" | "caution" | "dont_buy";
 
@@ -206,7 +208,7 @@ export function pickContractNearTarget(
       if (row.expiry < minExpiry || row.expiry > maxExpiry) continue;
     }
     const premium = contractPremium(row, side);
-    if (premium == null) continue;
+    if (premium == null || premium < MIN_VECTOR_PICK_PREMIUM) continue;
     const oi = contractOi(row, side);
     const entry: Candidate = {
       strike: row.strike,
