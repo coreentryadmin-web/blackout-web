@@ -2,7 +2,7 @@
 // Pure — no I/O. Used by the deck adapter (occ field) and the legacy-marks API.
 
 import { buildOccContractId } from "@/lib/helix/occ-contract-id";
-import { parseOptionsContract } from "./option-chain-prompt";
+import { parseOptionsContract } from "./option-contract-parse";
 
 /** Build OCC from ticker + options_play (formatOptionsPlay output). Returns null when unparseable. */
 export function resolveLegacyPlayOcc(ticker: string, optionsPlay: string | null | undefined): string | null {
