@@ -46,41 +46,6 @@ export function wilsonInterval(k: number, n: number, z = 1.96): ProportionInterv
   return { lo: clamp01(center - margin), hi: clamp01(center + margin), mid: clamp01(center) };
 }
 
-/** Prior pseudo-counts for the Bayesian posterior. Default = Jeffreys prior Beta(0.5,0.5),
- *  the standard non-informative prior for a binomial proportion (invariant, and — unlike a
- *  flat Beta(1,1) — it does not over-shrink extreme sparse cells toward 0.5). */
-export type BetaPrior = { a: number; b: number };
-export const JEFFREYS_PRIOR: BetaPrior = { a: 0.5, b: 0.5 };
-
-/** A Bayesian posterior summary for a sparse binomial cell. `mean` is the exact posterior
- *  mean; `lo`/`hi` are an APPROXIMATE equal-tailed credible interval (normal approximation
- *  to the Beta posterior — see below). All in proportion units [0,1]. */
-export type BetaPosterior = { mean: number; lo: number; hi: number };
-
-/**
- * Beta-binomial posterior for k successes in n trials under a Beta prior (default Jeffreys).
- * Posterior is Beta(a+k, b+n−k); the mean is exact. The credible interval is the NORMAL
- * APPROXIMATION to that Beta (mean ± z·√var, clamped to [0,1]) — a deliberate, documented
- * approximation: a numerically-exact Beta quantile needs an inverse regularized incomplete
- * beta, which is far more machinery than a recommend-only calibration report warrants. The
- * approximation is tightest exactly where it is used (sparse cells the Wilson interval already
- * flags as low-n), and it is offered as SUPPLEMENTARY shrinkage evidence — the graduation
- * ladder gates on the Wilson lower bound, never on this posterior. z defaults to 1.96 (≈95%).
- */
-export function betaBinomialPosterior(
-  k: number,
-  n: number,
-  prior: BetaPrior = JEFFREYS_PRIOR,
-  z = 1.96
-): BetaPosterior {
-  const a = prior.a + k;
-  const b = prior.b + (n - k);
-  const mean = a / (a + b);
-  const variance = (a * b) / ((a + b) * (a + b) * (a + b + 1));
-  const margin = z * Math.sqrt(variance);
-  return { mean, lo: clamp01(mean - margin), hi: clamp01(mean + margin) };
-}
-
 /** The signed difference of two proportions (pLater − pEarlier) with a confidence interval.
  *  `diff`/`lo`/`hi` are in proportion units (so `diff` ranges [−1,1]). */
 export type ProportionDiff = { diff: number; lo: number; hi: number };
