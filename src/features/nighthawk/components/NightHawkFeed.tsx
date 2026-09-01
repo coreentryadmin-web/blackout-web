@@ -44,8 +44,8 @@ const VectorPickLogBoard = dynamic(
 /**
  * Night Hawk — one surface, five views (0DTE / Swings / Bangers / Vector / Legacy), single-select.
  * ZERO_DTE/SWING/LEGACY render the COMMAND DECK (a two-panel matrix terminal: plays left, live breakdown
- * right); BANGER renders BangerBoard (Engine B); VECTOR renders VectorPickLogBoard (closed contract-pick
- * analysis log). Selecting a view scopes the ENTIRE desk to it and only
+ * right); BANGER renders BangerBoard (Engine B); VECTOR and LEGACY render X Ads Manager table boards
+ * (VectorPickLogBoard / LegacyPickLogBoard). Selecting a view scopes the ENTIRE desk to it and only
  * that view's data is fetched. The choice persists in the URL (?view=).
  *
  * LEAPS was removed from this toggle 2026-08-04 (no live signal adapter fed it, so it only ever rendered an

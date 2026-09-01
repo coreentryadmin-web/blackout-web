@@ -30,11 +30,8 @@ import {
 } from "./adapters";
 import { fetchNightHawkEdition, fetchNightHawkHorizons } from "@/lib/api";
 import type { NightHawkEdition, NightHawkRecordResponse } from "@/features/nighthawk/lib/types";
-import { LegacyBoardChrome } from "@/features/nighthawk/components/LegacyBoardChrome";
-import {
-  legacyEditionCalendarBuckets,
-  legacyEditionSessionDates,
-} from "@/features/nighthawk/lib/legacy-board-calendar";
+import { LegacyPickLogBoard } from "@/features/nighthawk/components/LegacyPickLogBoard";
+import { legacyEditionSessionDates } from "@/features/nighthawk/lib/legacy-board-calendar";
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import type { TerminalPlay } from "./types";
 import { overlayLegacyQuotes, useLegacyStockQuotes } from "./use-legacy-quotes";
@@ -445,23 +442,16 @@ export function LegacyDeck() {
   const editionLabel =
     edition?.served_for ?? edition?.edition_for ?? (selectedEditionDate ? selectedEditionDate : todaySession);
   const calendarDates = useMemo(() => legacyEditionSessionDates(14), []);
-  const calendarBuckets = useMemo(
-    () => legacyEditionCalendarBuckets(calendarDates),
-    [calendarDates]
-  );
 
-  return (
-    <div className="vector-board-shell legacy-board-shell">
-      <LegacyBoardChrome
-        editionFor={edition?.edition_for ?? null}
-        todaySession={todaySession}
-        selectedDate={selectedEditionDate}
-        onSelectedDateChange={setSelectedEditionDate}
-        calendarBuckets={calendarBuckets}
-        playCount={rawPlays.length}
-        editionLabel={editionLabel}
-      />
-      {bannerText && (
+  const emptyDescription = hasFetchError
+    ? "Edition data unavailable right now — retrying. Check back shortly."
+    : isRecapOnly
+      ? "No plays cleared the scoring funnel tonight — market recap is above."
+      : "Five ranked setups land here after the evening scan · ~5:30 PM ET.";
+
+  const bannerSlot = (
+    <>
+      {bannerText ? (
         <div
           role="status"
           className={`mb-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold uppercase tracking-wide ${
@@ -475,8 +465,8 @@ export function LegacyDeck() {
           <span aria-hidden>{hasFetchError || isDegraded ? "!" : isStale || isCarry ? "~" : "i"}</span>
           <span>{bannerText}</span>
         </div>
-      )}
-      {confirmStale && checkedAtLabel && (
+      ) : null}
+      {confirmStale && checkedAtLabel ? (
         <div
           role="status"
           className="mb-3 flex items-center gap-2 rounded-lg border border-amber-400/60 bg-amber-500/15 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-amber-200"
@@ -484,35 +474,31 @@ export function LegacyDeck() {
           <span aria-hidden>~</span>
           <span>Morning verdict from {checkedAtLabel} — may no longer reflect current conditions.</span>
         </div>
-      )}
-      {edition?.recap_headline && (
+      ) : null}
+      {edition?.recap_headline ? (
         <div className="mb-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
           <div className="text-xs font-bold uppercase tracking-wide text-white">{edition.recap_headline}</div>
-          {edition.recap_summary && <div className="mt-1 text-xs leading-relaxed text-sky-200">{edition.recap_summary}</div>}
+          {edition.recap_summary ? (
+            <div className="mt-1 text-xs leading-relaxed text-sky-200">{edition.recap_summary}</div>
+          ) : null}
         </div>
-      )}
-      <CommandDeck
-        plays={plays}
-        // Was the inline literal "Legacy · Tonight's playbook" (~27 chars) — long enough to
-        // overflow `.nh-deck-cmd-lane`'s shrunk flex box and visually bleed over the adjacent
-        // engine-status/Opps-Top-Edge stat pills on a narrow viewport. See the header comment on
-        // NIGHTHAWK_COMPACT_LANE_LABEL (nighthawk-view.ts) for the full root cause + why a shorter
-        // label (not a CSS change) is this fix's scope.
-        laneLabel={NIGHTHAWK_COMPACT_LANE_LABEL.LEGACY}
-        degraded={hasFetchError || isDegraded}
-        loading={!edition && !error}
-        commandCenter
-        deckHorizon="LEGACY"
-        boardChrome="vector"
-        boardAsOf={edition?.published_at ?? null}
-        emptyHint={
-          hasFetchError
-            ? "Edition data unavailable right now — retrying. Check back shortly."
-            : isRecapOnly
-              ? "No plays cleared the scoring funnel tonight — market recap is above."
-              : "Five ranked setups land here after the evening scan · ~5:30 PM ET."
-        }
-      />
-    </div>
+      ) : null}
+    </>
+  );
+
+  return (
+    <LegacyPickLogBoard
+      plays={plays}
+      loading={!edition && !error}
+      degraded={hasFetchError || isDegraded}
+      editionFor={edition?.edition_for ?? null}
+      editionLabel={editionLabel}
+      todaySession={todaySession}
+      selectedEditionDate={selectedEditionDate}
+      onSelectedEditionDateChange={setSelectedEditionDate}
+      calendarDates={calendarDates}
+      bannerSlot={bannerSlot}
+      emptyDescription={emptyDescription}
+    />
   );
 }

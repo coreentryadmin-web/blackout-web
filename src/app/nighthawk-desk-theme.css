@@ -1381,30 +1381,18 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
   }
 }
 
-/* ── Legacy board — Vector chrome parity ─────────────────────────────────── */
-.nh-v2-page .legacy-board-shell .legacy-board-toolbar {
-  margin-bottom: 0.35rem;
-}
-
-.nh-v2-page .legacy-board-shell .nh-deck--vector-chrome {
-  flex: 1 1 0%;
+/* ── Legacy board — X Ads table parity (LegacyPickLogBoard) ──────────────── */
+.nh-v2-page .legacy-board-shell .legacy-board-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
   min-height: 0;
 }
 
-.nh-v2-page .legacy-board-shell .nh-deck--vector-chrome .nh-deck-left {
-  width: 42%;
-  min-width: 280px;
-}
-
-.nh-v2-page .legacy-board-shell .nh-deck--vector-chrome .nh-deck-right {
-  flex: 1;
-  min-width: 0;
-}
-
-.nh-v2-page .legacy-board-shell .nh-deck--vector-chrome .nh-deck-filterbar--prominent .nh-deck-filtbtn.on {
-  color: var(--nh-desk-text);
-  border-color: rgba(0, 217, 163, 0.45);
-  background: rgba(0, 217, 163, 0.08);
+.nh-v2-page .legacy-board-shell .legacy-board-detail-body .nh-deck-legacy-panel {
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .nh-v2-page[data-desk-theme="light"] .vector-board-date-input {
