@@ -165,12 +165,13 @@ export async function sweepVectorPickForTicker(
       putWall: ctx.putWall ?? null,
       gammaFlip: ctx.gammaFlip ?? null,
       quote,
+      intent: "tracked",
     });
 
     const peak = mergePeakPremiumPct(null, evalResult.premiumPctFromEntry);
 
     const playJson = {
-      bias: play.bias,
+      bias: ctx.play.bias,
       conviction: play.conviction,
       grade: play.grade,
       headline: play.headline,
@@ -217,7 +218,7 @@ export async function sweepVectorPickForTicker(
     if (evalResult.status === "dont_buy") {
       const commitKey = vectorPickClosureCommitKey(sessionDate, ticker, occ);
       const exists = await vectorPickClosureExists(commitKey);
-      if (shouldPersistVectorPickClosure(evalResult.status, exists)) {
+      if (shouldPersistVectorPickClosure(evalResult.status, exists, evalResult.reason)) {
         const logged = await insertVectorPickClosure({
           commitKey,
           sessionDate,

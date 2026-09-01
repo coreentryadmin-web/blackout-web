@@ -69,7 +69,7 @@ describe("vector-pick-sweep-core", () => {
   test("isVectorPickWinner at floor", () => {
     assert.equal(isVectorPickWinner({ premium_pct_from_entry: VECTOR_PICK_WINNER_PCT_FLOOR, peak_premium_pct: null, action_status: "caution" }), true);
     assert.equal(isVectorPickWinner({ premium_pct_from_entry: 10, peak_premium_pct: 60, action_status: "caution" }), true);
-    assert.equal(isVectorPickWinner({ premium_pct_from_entry: 10, peak_premium_pct: 60, action_status: "dont_buy" }), false);
+    assert.equal(isVectorPickWinner({ premium_pct_from_entry: 10, peak_premium_pct: 60, action_status: "dont_buy" }), true);
   });
 
   test("isVectorPickClosureWinner counts archived +50% runners", () => {

@@ -65,6 +65,46 @@ test("evaluateVectorPickLiveStatus: dont_buy when premium extended", () => {
   assert.match(r.reason, /extended/i);
 });
 
+test("evaluateVectorPickLiveStatus: tracked intent — +200% winner is caution, not dont_buy (2026-09-01 AAPL)", () => {
+  const r = evaluateVectorPickLiveStatus({
+    spot: 230,
+    side: "call",
+    entryMid: 1.5,
+    quote: { bid: 4.4, ask: 4.8, mid: 4.6, delta: 0.55 },
+    bias: "long",
+    intent: "tracked",
+  });
+  assert.equal(r.status, "caution");
+  assert.match(r.reason, /manage exit/i);
+  assert.equal(r.setupInvalidated, false);
+});
+
+test("evaluateVectorPickLiveStatus: tracked intent — +30% extended is caution, not chase-risk close", () => {
+  const r = evaluateVectorPickLiveStatus({
+    spot: 576,
+    side: "call",
+    entryMid: 3.0,
+    quote: { bid: 3.8, ask: 4.0, mid: 3.9, delta: 0.42 },
+    bias: "long",
+    intent: "tracked",
+  });
+  assert.equal(r.status, "caution");
+  assert.match(r.reason, /limit only/i);
+});
+
+test("evaluateVectorPickLiveStatus: sub-$0.10 entry with wild % is caution, not chase risk", () => {
+  const r = evaluateVectorPickLiveStatus({
+    spot: 12,
+    side: "call",
+    entryMid: 0.05,
+    quote: { bid: 0.12, ask: 0.16, mid: 0.14, delta: 0.35 },
+    bias: "long",
+    intent: "fresh_entry",
+  });
+  assert.equal(r.status, "caution");
+  assert.match(r.reason, /verify premium/i);
+});
+
 test("evaluateVectorPickLiveStatus: dont_buy when setup invalidated and premium not favorable", () => {
   const r = evaluateVectorPickLiveStatus({
     spot: 568,

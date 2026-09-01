@@ -232,7 +232,7 @@ export async function POST(req: NextRequest) {
       const commitKey = vectorPickClosureCommitKey(sessionDate, ticker, row.occ);
       try {
         const exists = await vectorPickClosureExists(commitKey);
-        if (!shouldPersistVectorPickClosure(row.actionStatus, exists)) continue;
+        if (!shouldPersistVectorPickClosure(row.actionStatus, exists, row.actionReason)) continue;
         await insertVectorPickClosure({
           commitKey,
           sessionDate,

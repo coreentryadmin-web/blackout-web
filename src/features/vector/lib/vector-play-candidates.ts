@@ -306,16 +306,32 @@ function specsForContext(ctx: VectorPlayPickContext): CandidateSpec[] {
   const maxPain = num(ctx.enrichment?.maxPain) ?? num(magnetStrike);
 
   if (play.bias === "long") {
-    const target = num(putWall) ?? spot;
+    const target =
+      play.setup === "momentum-long"
+        ? (num(callWall) ?? spot)
+        : (num(putWall) ?? spot);
     specs.push({ direction: "long", targetStrike: target, role: "primary-long" });
-    // GEX king as support pin when below spot — wall-aligned long leg.
-    if (king != null && king < spot && Math.abs(king - target) / spot > 0.004) {
+    // GEX king as support pin when below spot — wall-aligned long leg (fade / support geometry).
+    if (
+      play.setup !== "momentum-long" &&
+      king != null &&
+      king < spot &&
+      Math.abs(king - target) / spot > 0.004
+    ) {
       specs.push({ direction: "long", targetStrike: king, role: "gex-king-pin" });
     }
   } else if (play.bias === "short") {
-    const target = num(callWall) ?? spot;
+    const target =
+      play.setup === "momentum-short"
+        ? (num(putWall) ?? spot)
+        : (num(callWall) ?? spot);
     specs.push({ direction: "short", targetStrike: target, role: "primary-short" });
-    if (king != null && king > spot && Math.abs(king - target) / spot > 0.004) {
+    if (
+      play.setup !== "momentum-short" &&
+      king != null &&
+      king > spot &&
+      Math.abs(king - target) / spot > 0.004
+    ) {
       specs.push({ direction: "short", targetStrike: king, role: "gex-king-pin" });
     }
   } else if (play.bias === "range") {

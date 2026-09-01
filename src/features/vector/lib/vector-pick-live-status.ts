@@ -29,7 +29,17 @@ export type VectorPickLiveEvalInput = {
   putWall?: number | null;
   gammaFlip?: number | null;
   quote: VectorPickLiveQuote;
+  /**
+   * `fresh_entry` — should a member enter NOW (Vector desk PLYS strip).
+   * `tracked` — server sweep / Night Hawk board row already on the book; never
+   * archive a +50% winner as "chase risk" (found live 2026-09-01: AAPL +205%
+   * marked dont_buy while still the session's top winner).
+   */
+  intent?: "fresh_entry" | "tracked";
 };
+
+/** Sub-$0.10 entry mids make %-from-entry meaningless on penny quotes. */
+export const VECTOR_PICK_MIN_ENTRY_MID_FOR_PCT = 0.1;
 
 export type VectorPickLiveEval = {
   status: VectorPickActionStatus;
@@ -129,6 +139,7 @@ export function isSetupInvalidated(
  */
 export function evaluateVectorPickLiveStatus(input: VectorPickLiveEvalInput): VectorPickLiveEval {
   const { quote, spot, entryMid } = input;
+  const intent = input.intent ?? "fresh_entry";
   const mid =
     quote.mid ??
     zeroDteMidOf(quote.bid, quote.ask);
@@ -141,6 +152,22 @@ export function evaluateVectorPickLiveStatus(input: VectorPickLiveEvalInput): Ve
     input.putWall,
     input.gammaFlip
   );
+
+  if (
+    entryMid != null &&
+    entryMid > 0 &&
+    entryMid < VECTOR_PICK_MIN_ENTRY_MID_FOR_PCT &&
+    premiumPct != null &&
+    Math.abs(premiumPct) >= 25
+  ) {
+    return {
+      status: "caution",
+      reason: `Sub-$${VECTOR_PICK_MIN_ENTRY_MID_FOR_PCT.toFixed(2)} entry — verify premium at your broker`,
+      premiumPctFromEntry: premiumPct,
+      invalidationLevel: inv.level,
+      setupInvalidated: inv.invalidated,
+    };
+  }
 
   if (inv.invalidated) {
     // Spot broke the play thesis but the contract can still be up big (measured INTC 2026-08-28:
@@ -199,6 +226,24 @@ export function evaluateVectorPickLiveStatus(input: VectorPickLiveEvalInput): Ve
   }
 
   if (premiumPct != null && premiumPct >= 20) {
+    if (intent === "tracked") {
+      if (premiumPct >= 50) {
+        return {
+          status: "caution",
+          reason: `Winner +${premiumPct.toFixed(0)}% — manage exit, not fresh entry`,
+          premiumPctFromEntry: premiumPct,
+          invalidationLevel: inv.level,
+          setupInvalidated: false,
+        };
+      }
+      return {
+        status: "caution",
+        reason: `Extended +${premiumPct.toFixed(0)}% — limit only, not fresh entry`,
+        premiumPctFromEntry: premiumPct,
+        invalidationLevel: inv.level,
+        setupInvalidated: false,
+      };
+    }
     return {
       status: "dont_buy",
       reason: `Premium extended +${premiumPct.toFixed(0)}% since pick — chase risk`,
