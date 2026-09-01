@@ -1,0 +1,235 @@
+/**
+ * Vector board control system — modern X Ads / Linear-grade primitives.
+ * Scoped under .nh-v2-page .vector-board-shell
+ */
+
+.nh-v2-page .vector-board-shell {
+  --vb-control-h: 2rem;
+  --vb-control-radius: 0.65rem;
+  --vb-pill-radius: 999px;
+  --vb-focus-ring: 0 0 0 3px rgba(0, 217, 163, 0.18);
+  --vb-shadow-pop: 0 18px 48px -14px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --vb-shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.12);
+  --vb-transition: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nh-v2-page[data-desk-theme="light"] .vector-board-shell {
+  --vb-focus-ring: 0 0 0 3px rgba(15, 20, 25, 0.08);
+  --vb-shadow-pop: 0 18px 48px -14px rgba(15, 20, 25, 0.12), 0 0 0 1px rgba(15, 20, 25, 0.06);
+}
+
+/* ── Tabs: crisp underline + hover lift ─────────────────────────────────── */
+.nh-v2-page .vector-board-tab {
+  letter-spacing: 0.01em;
+  transition: color var(--vb-transition), transform var(--vb-transition);
+}
+
+.nh-v2-page .vector-board-tab:hover {
+  transform: translateY(-1px);
+}
+
+.nh-v2-page .vector-board-tab.is-active::after {
+  transition: transform var(--vb-transition), opacity var(--vb-transition);
+  transform-origin: left center;
+  animation: vb-tab-in 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes vb-tab-in {
+  from {
+    transform: scaleX(0.35);
+    opacity: 0.5;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+/* ── Segmented scope toggle (iOS / X Ads) ─────────────────────────────────── */
+.nh-v2-page .vector-board-scope {
+  position: relative;
+  display: inline-flex;
+  padding: 3px;
+  border-radius: var(--vb-pill-radius);
+  background: var(--nh-desk-input-bg);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.nh-v2-page .vector-board-scope-btn {
+  position: relative;
+  z-index: 1;
+  min-width: 4.75rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--vb-pill-radius);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  transition: color var(--vb-transition), background var(--vb-transition), box-shadow var(--vb-transition);
+}
+
+.nh-v2-page .vector-board-scope-btn.is-active {
+  box-shadow: var(--vb-shadow-soft), 0 4px 14px -6px rgba(0, 217, 163, 0.55);
+}
+
+.nh-v2-page[data-desk-theme="light"] .vector-board-scope-btn.is-active {
+  box-shadow: var(--vb-shadow-soft);
+}
+
+/* ── KPI strip: glass card ───────────────────────────────────────────────── */
+.nh-v2-page .vector-board-kpi-strip {
+  border-radius: var(--vb-control-radius);
+  backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.nh-v2-page .vector-board-kpi-value {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* ── Control buttons: sort / filters / view ──────────────────────────────── */
+.nh-v2-page .vector-board-sort-trigger,
+.nh-v2-page .vector-board-filters-trigger,
+.nh-v2-page .vector-board-view-trigger,
+.nh-v2-page .vector-board-clear-btn {
+  min-height: var(--vb-control-h);
+  border-radius: var(--vb-pill-radius);
+  transition: border-color var(--vb-transition), box-shadow var(--vb-transition), transform var(--vb-transition),
+    background var(--vb-transition);
+}
+
+.nh-v2-page .vector-board-sort-trigger:hover,
+.nh-v2-page .vector-board-filters-trigger:hover,
+.nh-v2-page .vector-board-view-trigger:hover {
+  border-color: var(--nh-desk-text-tertiary);
+  transform: translateY(-1px);
+}
+
+.nh-v2-page .vector-board-sort-trigger:focus-visible,
+.nh-v2-page .vector-board-filters-trigger:focus-visible,
+.nh-v2-page .vector-board-view-trigger:focus-visible,
+.nh-v2-page .vector-board-scope-btn:focus-visible,
+.nh-v2-page .vector-board-search-input:focus-visible {
+  outline: none;
+  box-shadow: var(--vb-focus-ring);
+}
+
+.nh-v2-page .vector-board-sort-trigger.is-open,
+.nh-v2-page .vector-board-filters-trigger.is-open {
+  border-color: var(--nh-desk-tab-underline);
+  box-shadow: var(--vb-focus-ring);
+}
+
+/* ── Dropdown panels: elevated + entrance ────────────────────────────────── */
+.nh-v2-page .vector-board-sort-panel,
+.nh-v2-page .vector-board-filters-panel,
+.nh-v2-page .vector-board-view-panel {
+  border-radius: calc(var(--vb-control-radius) + 2px);
+  box-shadow: var(--vb-shadow-pop);
+  backdrop-filter: blur(12px);
+  animation: vb-panel-in 0.16s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes vb-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.nh-v2-page .vector-board-sort-opt,
+.nh-v2-page .vector-board-filter-chip,
+.nh-v2-page .vector-board-view-chip,
+.nh-v2-page .vector-board-view-saved {
+  transition: background var(--vb-transition), color var(--vb-transition), transform var(--vb-transition);
+}
+
+.nh-v2-page .vector-board-sort-opt:hover,
+.nh-v2-page .vector-board-filter-chip:hover,
+.nh-v2-page .vector-board-view-chip:hover,
+.nh-v2-page .vector-board-view-saved:hover {
+  transform: translateX(2px);
+}
+
+.nh-v2-page .vector-board-filter-chip.is-active,
+.nh-v2-page .vector-board-view-chip.is-active {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* ── Search: premium input ───────────────────────────────────────────────── */
+.nh-v2-page .vector-board-search {
+  min-height: var(--vb-control-h);
+  border-radius: var(--vb-pill-radius);
+  padding-inline: 0.75rem;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
+  transition: border-color var(--vb-transition), box-shadow var(--vb-transition);
+}
+
+.nh-v2-page .vector-board-search:focus-within {
+  box-shadow: var(--vb-focus-ring), inset 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.nh-v2-page .vector-board-search-input {
+  width: 9rem;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ── Scorecard + panel polish ─────────────────────────────────────────────── */
+.nh-v2-page .vector-board-scorecard {
+  border-radius: var(--vb-control-radius);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.nh-v2-page .vector-board-panel {
+  border-radius: calc(var(--vb-control-radius) + 2px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 12px 32px -20px rgba(0, 0, 0, 0.5);
+}
+
+.nh-v2-page[data-desk-theme="light"] .vector-board-panel {
+  box-shadow: 0 1px 2px rgba(15, 20, 25, 0.06), 0 8px 24px -12px rgba(15, 20, 25, 0.08);
+}
+
+/* ── Calendar cells: tactile chips ───────────────────────────────────────── */
+.nh-v2-page .vector-board-cal-cell {
+  border-radius: var(--vb-control-radius);
+  transition: transform var(--vb-transition), box-shadow var(--vb-transition), border-color var(--vb-transition);
+}
+
+.nh-v2-page .vector-board-cal-cell:hover {
+  box-shadow: 0 6px 16px -10px rgba(0, 0, 0, 0.4);
+}
+
+.nh-v2-page .vector-board-cal-cell.is-selected {
+  transform: translateY(-2px);
+}
+
+/* ── Table row selection: refined ────────────────────────────────────────── */
+.nh-v2-page .vector-board-row.is-selected td {
+  background: linear-gradient(90deg, rgba(0, 217, 163, 0.08), transparent 55%);
+}
+
+.nh-v2-page[data-desk-theme="light"] .vector-board-row.is-selected td {
+  background: linear-gradient(90deg, rgba(15, 20, 25, 0.06), transparent 55%);
+}
+
+/* ── Detail panel actions ─────────────────────────────────────────────────── */
+.nh-v2-page .vector-board-detail-action {
+  min-height: var(--vb-control-h);
+  transition: transform var(--vb-transition), border-color var(--vb-transition), color var(--vb-transition);
+}
+
+.nh-v2-page .vector-board-detail-action:hover {
+  transform: translateY(-1px);
+  border-color: var(--nh-desk-tab-underline);
+}
+
+/* ── Compare bar ─────────────────────────────────────────────────────────── */
+.nh-v2-page .vector-board-compare-bar {
+  border-radius: var(--vb-control-radius);
+  animation: vb-panel-in 0.2s ease;
+}

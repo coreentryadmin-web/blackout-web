@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
+    "preview:vector-board": "node scripts/preview-vector-board.mjs",
     "build": "next build",
     "docker:build": "docker build -f deploy/Dockerfile -t blackout-web:local .",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",

@@ -2,14 +2,26 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-test("VectorPickLogBoard: scrollport must not flex-shrink closure rows (nh-v2 desktop lock)", () => {
+test("VectorPickLogBoard: uses viewport-locked shell with internal table scrollport", () => {
   const src = readFileSync(new URL("./VectorPickLogBoard.tsx", import.meta.url), "utf8");
+  assert.match(src, /vector-board-shell/, "board must use dedicated shell for nh-v2 viewport lock");
+  assert.match(src, /vector-board-tablewrap/, "table must scroll internally, not the page");
   assert.doesNotMatch(
     src,
     /nh-deck-rows flex min-h-0 flex-1 flex-col/,
-    "flex-col on nh-deck-rows collapses Panel rows to ~26px under 100svh shell"
+    "flex-col on nh-deck-rows collapses Panel rows under 100svh shell"
   );
-  assert.match(src, /vector-closure-row shrink-0/, "closure panels opt out of flex shrink");
-  assert.match(src, /formatPremiumPct/, "premium % must render prominently");
-  assert.match(src, /filterVectorClosureRows/, "board must support filter controls");
+});
+
+test("VectorPickLogBoard: X Ads toolbar, premium column, meters, and detail rail", () => {
+  const board = readFileSync(new URL("./VectorPickLogBoard.tsx", import.meta.url), "utf8");
+  const toolbar = readFileSync(new URL("./VectorBoardToolbar.tsx", import.meta.url), "utf8");
+  assert.match(board, /VectorBoardToolbar/, "board must use dedicated X Ads-style toolbar");
+  assert.match(board, /Premium vs entry/, "table must expose premium vs entry column");
+  assert.match(board, /VectorBoardMeter/, "table must render X Ads-style premium path meters");
+  assert.match(board, /VectorPlayDetailPanel/, "row click must open right-rail inspector");
+  assert.match(board, /vector-board-summary-row/, "summary row must mirror X Ads totals row");
+  assert.match(board, /formatPremiumPct/, "premium % must render prominently");
+  assert.match(board, /VectorBoardScorecard/, "session scorecard meters must render");
+  assert.match(toolbar, /VectorBoardFiltersDrawer/, "filters must use drawer pattern");
 });

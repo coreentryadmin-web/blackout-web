@@ -18,6 +18,7 @@ import {
 import type { NightHawkSeedProps } from "@/features/nighthawk/lib/nighthawk-seed-props";
 import type { BoardResp } from "@/features/nighthawk/command-deck/zerodte-sources";
 import { NIGHTHAWK_GOTO_SWING_EVENT, type NightHawkGotoSwingDetail } from "@/features/nighthawk/lib/goto-swing";
+import { NightHawkDeskThemeToggle } from "@/features/nighthawk/components/NightHawkDeskThemeToggle";
 import { NightHawkLoadingSkeleton } from "@/features/nighthawk/components/NightHawkLoadingSkeleton";
 
 const ZeroDteDeck = dynamic(
@@ -95,6 +96,9 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
 
   return (
     <div className="nighthawk-content-canvas flex min-h-0 flex-1 flex-col">
+      <div className="nighthawk-feed-chrome mb-2 flex shrink-0 items-center justify-end">
+        <NightHawkDeskThemeToggle />
+      </div>
       <IosNativeSegment
         value={view}
         onChange={selectView}

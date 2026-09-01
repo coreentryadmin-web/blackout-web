@@ -113,6 +113,53 @@
     background: rgba(12, 12, 14, 0.85);
   }
 
+  /* Vector board — same viewport lock as command deck: shell fills single-view,
+     toolbar + calendar pinned, table + detail scroll internally. */
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-shell {
+    flex: 1 1 0%;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-toolbar,
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-cal-wrap,
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-scorecard {
+    flex-shrink: 0;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-body {
+    flex: 1 1 0%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-table-pane,
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-detail {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-tablewrap,
+  html:not(.ios-native-shell) .nh-v2-page .vector-board-detail:not(.vector-board-detail--empty) {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  @media (max-width: 820px) {
+    html:not(.ios-native-shell) .nh-v2-page .vector-board-body {
+      flex-direction: column;
+    }
+
+    html:not(.ios-native-shell) .nh-v2-page .vector-board-detail {
+      width: 100%;
+      max-height: 42vh;
+      border-left: 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+  }
+
   /* Right detail panel — header/tabs/footer pinned; only .nh-deck-body scrolls.
      Without this the viewport lock (shell-fill) clips thesis/management content that
      previously scrolled via the page — left rail got .nh-deck-rows rules in #1596 but
