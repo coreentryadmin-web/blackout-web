@@ -349,12 +349,13 @@ function resolveLevels(
   }
 
   // PR-N21/N22: push the target-side S/R out so overnight plays have meaningful reward.
-  // 1.5× ATR ensures a full average day's range of upside minimum.
+  // 1.0× ATR is the measured sweet spot for one-session reachability (~11% touch rate);
+  // the old 1.5× floor pushed most targets to ~3% — see target-reachability.ts.
   if (px != null && support != null && resistance != null && resistance > support) {
     const atr = tech?.atr14;
     const minTargetDist = atr != null && Number.isFinite(atr) && atr > 0
-      ? atr * 1.5
-      : px * 0.025;
+      ? atr * 1.0
+      : px * 0.02;
     if (direction === "long" && (resistance - px) < minTargetDist) {
       resistance = px + minTargetDist;
     } else if (direction === "short" && (px - support) < minTargetDist) {

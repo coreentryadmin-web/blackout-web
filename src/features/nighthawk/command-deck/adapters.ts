@@ -820,6 +820,7 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     ticker: src.ticker.toUpperCase(),
     direction,
     contract: contractLabel,
+    rank: src.rank ?? null,
     score: rawScore != null ? Math.round(rawScore) : 0,
     status,
     horizon: "LEGACY",

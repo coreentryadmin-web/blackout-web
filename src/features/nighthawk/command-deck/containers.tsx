@@ -343,6 +343,7 @@ export function LegacyDeck() {
       exit_style: p.exit_style ?? null,
       iv_rank: p.iv_rank ?? null,
       rr_ratio: p.rr_ratio ?? null,
+      target_atr_multiple: p.target_atr_multiple ?? null,
       flow_streak_days: p.flow_streak_days ?? null,
       confirming_signals: p.confirming_signals ?? null,
       earnings_risk: p.earnings_risk ?? null,

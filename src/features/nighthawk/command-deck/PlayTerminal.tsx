@@ -8,6 +8,8 @@ import { isZeroDteMarkStale, ZERODTE_MARK_STALE_MS, LEGACY_QUOTE_STALE_MS } from
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { dispatchGotoSwing } from "@/features/nighthawk/lib/goto-swing";
 import { ZeroDteCommandPanel } from "./ZeroDteCommandPanel";
+import { LegacyPlayDetailPanel } from "./LegacyPlayDetailPanel";
+import { LegacyManageGeometry } from "./legacy-play-geometry";
 import { CondorPanel, TimeStopClock } from "./play-terminal-shared";
 import { ThesisRankCard } from "@/features/nighthawk/components/ThesisRankCard";
 import { showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
@@ -233,6 +235,7 @@ export function PlayTerminal({
   const greeksOff = !live || !greeksLive || streamKind === "CLOSED";
   const premium = isZeroDtePremiumTerminal(play);
   const zeroDteSinglePanel = play.horizon === "ZERO_DTE";
+  const legacySinglePanel = play.horizon === "LEGACY";
 
   return (
     <div className={clsx("nh-deck-right", premium && "nh-deck-right-premium", (stale || streamKind === "CLOSED") && "nh-deck-dim")}>
@@ -290,13 +293,13 @@ export function PlayTerminal({
               )}
               {" · "}{play.ticker}{" "}
               <span className={clsx((markFlash || stockFlash) && "neon", stale && "nh-deck-stale-mark")}>${play.stockPrice.toFixed(2)}</span>
-              {play.pnlPct != null ? (
-                <span className={clsx(play.pnlPct > 0 ? "nh-deck-pos" : play.pnlPct < 0 ? "nh-deck-neg" : "")}>
-                  {" "}{play.pnlPct >= 0 ? "+" : ""}{play.pnlPct.toFixed(1)}% from entry
+              {(play.stockMovePct ?? play.pnlPct) != null ? (
+                <span className={clsx((play.stockMovePct ?? play.pnlPct)! > 0 ? "nh-deck-pos" : (play.stockMovePct ?? play.pnlPct)! < 0 ? "nh-deck-neg" : "")}>
+                  {" "}{(play.stockMovePct ?? play.pnlPct)! >= 0 ? "+" : ""}{(play.stockMovePct ?? play.pnlPct)!.toFixed(1)}% from entry
                 </span>
               ) : play.stockChangePct != null ? (
                 <span className={clsx(play.stockChangePct > 0 ? "nh-deck-pos" : play.stockChangePct < 0 ? "nh-deck-neg" : "")}>
-                  {" "}{play.stockChangePct >= 0 ? "+" : ""}{play.stockChangePct.toFixed(1)}%
+                  {" "}{play.stockChangePct >= 0 ? "+" : ""}{play.stockChangePct.toFixed(1)}% today
                 </span>
               ) : null}
               {ageLabel && <span className="nh-deck-age"> · {ageLabel}</span>}
@@ -308,7 +311,7 @@ export function PlayTerminal({
               {" · stock quote polling"}
             </>
           )}
-          {play.entry != null && <span className="nh-deck-fill"> · entry prem {usd(play.entry)}</span>}
+          {play.entry != null && <span className="nh-deck-fill"> · stock entry {usd(play.entry)}</span>}
         </div>
       ) : (
         <div className="nh-deck-stream" title={streamKind === "CLOSED" ? "Session closed — showing last known marks" : undefined}>
@@ -368,6 +371,8 @@ export function PlayTerminal({
 
       {zeroDteSinglePanel ? (
         <ZeroDteCommandPanel play={play} nowMs={nowMs} sessionClosed={sessionClosed} />
+      ) : legacySinglePanel ? (
+        <LegacyPlayDetailPanel play={play} />
       ) : (
         <>
           <div className="nh-deck-tabs">
@@ -901,77 +906,7 @@ function ZeroDtePreEntryContext({ play }: { play: TerminalPlay }) {
 // `commitSnapshot`, always reachable regardless of committed status) instead of disappearing.
 // `usd()` above stays in use elsewhere in this file (PnL/rails formatting).
 
-function LegacyManageGeometry({ play }: { play: TerminalPlay }) {
-  const target = play.targetLevel ? parseFloat(play.targetLevel.replace(/[^0-9.]/g, "")) : null;
-  const stop = play.stopLevel ? parseFloat(play.stopLevel.replace(/[^0-9.]/g, "")) : null;
-  const spot = play.stockPrice;
-
-  const distTarget = spot != null && target != null && Number.isFinite(target) && spot > 0
-    ? { pct: ((target - spot) / spot * 100), dollars: target - spot } : null;
-  const distStop = spot != null && stop != null && Number.isFinite(stop) && spot > 0
-    ? { pct: ((stop - spot) / spot * 100), dollars: stop - spot } : null;
-
-  // Entry zone marker on the progress track (the zone between stop and target where
-  // entry is recommended). Requires knowing stop, target, and the entry range midpoint.
-  const entryNums = play.entryRange?.match(/[\d.]+/g)?.map(Number).filter(Number.isFinite) ?? [];
-  const entryMid = entryNums.length >= 2 ? (entryNums[0]! + entryNums[entryNums.length - 1]!) / 2
-    : entryNums.length === 1 ? entryNums[0]! : null;
-  const entryFrac = (stop != null && target != null && target !== stop && entryMid != null)
-    ? Math.max(0, Math.min(1, (entryMid - stop) / (target - stop)))
-    : null;
-
-  // Position zone label for the recNote
-  const zoneLabel = (play.progress != null && spot != null)
-    ? play.progress <= 0 ? "below stop — cut the position"
-    : play.progress >= 1 ? "at/above target — take profit"
-    : play.progress < 0.3 ? "near stop — elevated risk"
-    : play.progress > 0.7 ? "nearing target — watch for exit"
-    : "mid-range — hold per plan"
-    : null;
-
-  return (
-    <>
-      {(play.entryRange || play.targetLevel || play.stopLevel) && (
-        <div className="nh-deck-grid" style={{ marginBottom: 8 }}>
-          {play.stopLevel && (
-            <div>
-              <span className="k">Stop</span>
-              <span className="v nh-deck-neg">
-                {play.stopLevel}
-                {distStop && <span className="nh-deck-dist"> ({distStop.dollars >= 0 ? "+" : ""}{distStop.dollars.toFixed(2)} / {distStop.pct >= 0 ? "+" : ""}{distStop.pct.toFixed(1)}%)</span>}
-              </span>
-            </div>
-          )}
-          {play.entryRange && <div><span className="k">Entry zone</span><span className="v">{play.entryRange}</span></div>}
-          {play.targetLevel && (
-            <div>
-              <span className="k">Target</span>
-              <span className="v nh-deck-pos">
-                {play.targetLevel}
-                {distTarget && <span className="nh-deck-dist"> ({distTarget.dollars >= 0 ? "+" : ""}{distTarget.dollars.toFixed(2)} / {distTarget.pct >= 0 ? "+" : ""}{distTarget.pct.toFixed(1)}%)</span>}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-      {play.progress != null && (
-        <>
-          <div className="nh-deck-track">
-            <span className="lo">STOP</span><span className="hi">TARGET</span>
-            {entryFrac != null && (
-              <span className="nh-deck-entry-zone" style={{ left: `${Math.round(entryFrac * 100)}%` }} title="Entry zone midpoint" />
-            )}
-            <span className="mk" style={{ left: `${Math.round(play.progress * 100)}%` }} />
-          </div>
-          <div className="nh-deck-recnote">
-            {spot != null ? `${play.ticker} $${spot.toFixed(2)} — ` : ""}
-            {zoneLabel ?? "stock position vs your stop and target levels."}
-          </div>
-        </>
-      )}
-    </>
-  );
-}
+// `LegacyManageGeometry` lives in legacy-play-geometry.tsx (shared with LegacyPlayDetailPanel).
 
 function LegacyPnlPanel({ play }: { play: TerminalPlay }) {
   const markFlash = useFlash(play.pnlPct ?? null);

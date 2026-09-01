@@ -22019,6 +22019,15 @@ html.product-shell .nav-mega {
 .nh-deck-command-technicals__body{display:flex;flex-direction:column;gap:10px}
 .nh-deck-command-live .nh-deck-premium-stack{margin-bottom:0}
 .nh-deck-command-thesis-prose{font-style:italic}
+.nh-deck-legacy-panel .nh-deck-legacy-bullets{margin:8px 0 0;padding:0 0 0 16px;display:flex;flex-direction:column;gap:6px;font-size:12px;line-height:1.45;color:var(--dk-text-secondary)}
+.nh-deck-legacy-panel .nh-deck-legacy-bullets li{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.nh-deck-legacy-panel .nh-deck-legacy-bullets li.is-neg{color:var(--dk-red,#f87171)}
+.nh-deck-legacy-panel .nh-deck-legacy-bullets strong{color:#fff;font-weight:700}
+.nh-deck-legacy-panel .nh-deck-legacy-reach{margin-top:8px;font-size:11px;line-height:1.45;color:var(--dk-amber,#fbbf24)}
+.nh-deck-legacy-panel .nh-deck-legacy-verdict{margin:0;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.nh-deck-legacy-panel .nh-deck-legacy-verdict.is-ok{color:var(--dk-green)}
+.nh-deck-legacy-panel .nh-deck-legacy-verdict.is-warn{color:var(--dk-amber)}
+.nh-deck-legacy-panel .nh-deck-legacy-verdict.is-brk{color:var(--dk-red,#f87171)}
 /* ── Premium 0DTE terminal panels ── */
 .nh-deck-premium-stack{display:flex;flex-direction:column;gap:16px;margin-bottom:16px}
 .nh-deck-premium__heading{margin:0 0 8px;font-size:10px;font-weight:800;letter-spacing:.12em;

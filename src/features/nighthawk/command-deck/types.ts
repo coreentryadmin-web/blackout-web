@@ -71,6 +71,8 @@ export interface TerminalPlay {
   /** OCC symbol for the live greeks/marks subscription, when known. */
   occ?: string | null;
   score: number;
+  /** Edition funnel rank (1–5 on Legacy). */
+  rank?: number | null;
   status: DeckStatus;
   horizon: "ZERO_DTE" | "SWING" | "LEAPS" | "LEGACY";
   exitModel: ExitModel;
