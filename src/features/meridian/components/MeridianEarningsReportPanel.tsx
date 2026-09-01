@@ -33,6 +33,7 @@ import {
   earningsTabNavLabel,
   type MeridianEarningsTabId,
 } from "@/lib/meridian/meridian-earnings-tab-nav-core";
+import { suggestedPlayFromThermal } from "@/lib/meridian/meridian-play-suggestions";
 import { MeridianHalo3D, MeridianOrbital } from "./meridian-spatial";
 import { orbitalGeometry } from "@/lib/meridian/meridian-spatial-core";
 import {
@@ -46,6 +47,7 @@ import {
   MeridianTargetRail,
   type RailMarker,
 } from "./meridian-viz";
+import { MeridianSuggestedPlays } from "./MeridianSuggestedPlays";
 
 type Lean = "bullish" | "bearish" | "neutral";
 const leanClass = (l: string): string =>
@@ -88,6 +90,17 @@ export function MeridianEarningsReportPanel({ ticker, intel, enrichment, eventAt
         ? (report?.signals ?? []).filter((s) => PILLAR_DIMENSION[s.pillar] === openDim)
         : [],
     [openDim, report?.signals]
+  );
+
+  const suggestedPlay = useMemo(
+    () =>
+      suggestedPlayFromThermal(
+        thermal,
+        intel.expected_move_pct,
+        // Extract earnings date from eventAt (ISO instant → YYYY-MM-DD).
+        eventAt ? eventAt.split("T")[0] : null
+      ),
+    [thermal, intel.expected_move_pct, eventAt]
   );
 
   // Every marker drawn on the rail is also folded into its DOMAIN — passing only the band would
@@ -295,6 +308,8 @@ export function MeridianEarningsReportPanel({ ticker, intel, enrichment, eventAt
           <p className="mr-play-structure">{report.best_play.structure}</p>
           <p className="mr-play-risk">{report.best_play.risk}</p>
         </div>
+
+        {suggestedPlay && <MeridianSuggestedPlays play={suggestedPlay} />}
       </div>
 
       {/* ── L4 · EVIDENCE — collapsed. Raw headlines are support, not the dashboard. ── */}
