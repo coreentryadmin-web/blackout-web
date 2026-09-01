@@ -52,10 +52,11 @@ export function LegacyPlayDetailPanel({ play }: { play: TerminalPlay }) {
     .slice(0, 5);
   const morningLine = morningHeadline(play);
   const thesisNote = play.thesisBreak?.note;
-  const showRisk =
+  const showRisk = Boolean(
     play.gates.length > 0 ||
     (play.thesisBreak?.level === "warn" && thesisNote) ||
-    play.premiumCapOk === false;
+    play.premiumCapOk === false
+  );
   const technicalsOpen = play.status === "WATCH" || play.status === "SKIP" || play.factors.length <= 3;
 
   return (

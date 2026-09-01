@@ -53,10 +53,10 @@ function countConfirmingSignals(scored: ScoredCandidate): number {
   if (scored.pos_score >= 4) count++;
   if (scored.news_score >= 2) count++;
   if (scored.smart_money_score >= 2) count++;
-  if (scored.fundamental_score >= 2) count++;
-  if (scored.short_interest_score >= 2) count++;
-  if (scored.wall_proximity_score >= 3) count++;
-  if (scored.vex_alignment_score >= 2) count++;
+  if ((scored.fundamental_score ?? 0) >= 2) count++;
+  if ((scored.short_interest_score ?? 0) >= 2) count++;
+  if ((scored.wall_proximity_score ?? 0) >= 3) count++;
+  if ((scored.vex_alignment_score ?? 0) >= 2) count++;
   return count;
 }
 

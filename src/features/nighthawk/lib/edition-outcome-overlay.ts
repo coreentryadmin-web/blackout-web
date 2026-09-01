@@ -52,5 +52,5 @@ export function applyEditionOutcomeOverlay(
     }
     return next;
   });
-  return { ...edition, plays };
+  return { ...edition, plays: plays as NightHawkEdition["plays"] };
 }

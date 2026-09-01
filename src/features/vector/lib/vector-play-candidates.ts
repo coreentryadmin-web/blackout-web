@@ -20,6 +20,7 @@ import type { VectorRegimePosture } from "./vector-regime";
 import type { ConfluenceZone } from "./vector-confluence";
 import { buildVectorPickEvidence, type VectorPickEvidenceSection } from "./vector-pick-evidence";
 import { rangeMeanReference } from "./vector-play-engine";
+import type { PlayTechnicals, VectorPlay, VectorPlayStyle } from "./vector-play-engine";
 import { effectivePickBias } from "./vector-pick-effective-bias";
 import type { VectorPickEnrichmentData } from "./vector-pick-types";
 import { strikeGexFromTotals, topGexPinStrikes } from "./strike-gex-lookup";

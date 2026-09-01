@@ -1,3 +1,5 @@
+import type { NighthawkTierAssignment } from "./nighthawk-tiers";
+
 export type HuntMode = "day" | "swing" | "leap";
 
 export type PlaybookPlay = {
@@ -65,7 +67,7 @@ export type PlaybookPlay = {
    *  gate_promoted is true. */
   gate_warnings?: string[];
   /** PR-N7: pinned tier assignment merged at read time from publish_context (when available). */
-  tier?: { tier: string; factors: Array<{ label: string; direction: "up" | "down"; detail: string }> };
+  tier?: NighthawkTierAssignment | null;
   /** Per-play morning confirm instant from morning_verdict.checked_at (read-time overlay). */
   morning_checked_at?: string;
 };

@@ -33,6 +33,7 @@ import {
   resolveVectorPickEntryMid,
   vectorPickLeaderKey,
 } from "@/lib/vector/vector-pick-sweep-core";
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { fetchVectorSeedBars } from "@/features/vector/lib/vector-seed-bars";
 import { invalidationBarsFromSeed } from "@/features/vector/lib/vector-pick-invalidation";
 import { VECTOR_DEFAULT_DTE_HORIZON } from "@/features/vector/lib/vector-dte-horizon";
