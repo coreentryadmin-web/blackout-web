@@ -22,13 +22,13 @@ export default function VectorBoardPreviewPage() {
 
   return (
     <NightHawkDeskThemeProvider>
-      <div className="nh-v2-page nighthawk-page-shell nighthawk-page-shell-fill flex min-h-screen flex-col bg-[#060608]">
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-4 py-2">
+      <div className="nh-v2-page nighthawk-page-shell nighthawk-page-shell-fill flex min-h-screen flex-col">
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[color:var(--nh-desk-border,#ffffff1a)] px-4 py-2">
           <div>
-            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-amber-300">
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-amber-500">
               Dev preview · fixture data
             </p>
-            <p className="mt-0.5 font-mono text-[11px] text-sky-200/70">
+            <p className="mt-0.5 font-mono text-[11px] text-[color:var(--nh-desk-text-secondary,#94a3b8)]">
               Open <code className="rounded bg-white/5 px-1">http://localhost:3000/vector-board-preview</code>{" "}
               while <code className="rounded bg-white/5 px-1">npm run dev</code> is running — no Clerk or DB needed.
             </p>

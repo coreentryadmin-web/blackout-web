@@ -93,6 +93,18 @@ async function main() {
   if (await themeBtn.count()) {
     await themeBtn.click();
     await page.waitForTimeout(400);
+    const lightDom = await page.evaluate(() => {
+      const th = document.querySelector(".vector-board-table thead th");
+      const pick = document.querySelector(".vector-board-pick-name");
+      const cs = (el) => (el ? getComputedStyle(el) : null);
+      return {
+        theme: document.documentElement.getAttribute("data-nighthawk-desk-theme"),
+        thBg: cs(th)?.backgroundColor,
+        pickColor: cs(pick)?.color,
+        hasLightHeader: (cs(th)?.backgroundColor || "").includes("247, 249, 249"),
+      };
+    });
+    dom = { ...dom, lightMode: lightDom };
     await page.screenshot({ path: `${OUT}/vector-board-light.png`, fullPage: false });
   }
 
@@ -149,7 +161,9 @@ async function main() {
               ? "RED — legacy summary/KPI chrome still present"
               : !dom.hasOpenTab
                 ? "RED — Open tab missing (desk tabs not migrated)"
-                : dom.rowCount === 0 && (apiJson?.closed?.length ?? 0) + (apiJson?.leaders?.length ?? 0) > 0
+                : dom.lightMode && !dom.lightMode.hasLightHeader
+                  ? "RED — light mode table header still dark"
+                  : dom.rowCount === 0 && (apiJson?.closed?.length ?? 0) + (apiJson?.leaders?.length ?? 0) > 0
               ? "RED — API has rows but table empty"
               : dom.pageScrollY > 8
                 ? "AMBER — page scrolls (viewport lock may be broken)"
