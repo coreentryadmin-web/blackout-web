@@ -166,7 +166,7 @@
     "@types/web-push": "^3.6.4",
     "@whop/sdk": "0.0.42",
     "clsx": "^2.1.1",
-    "framer-motion": "^11.18.2",
+    "framer-motion": "^13.1.1",
     "html-to-image": "^1.11.13",
     "ioredis": "6.0.0",
     "jose": "^6.2.10",
