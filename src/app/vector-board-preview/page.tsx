@@ -6,6 +6,7 @@ import { VectorPickLogBoard } from "@/features/nighthawk/components/VectorPickLo
 import { VECTOR_BOARD_DEV_FIXTURE } from "@/features/nighthawk/lib/vector-board-dev-fixture";
 import "../nighthawk-v2.css";
 import "../nighthawk-desk-theme.css";
+import "../vector-board-controls.css";
 
 export const metadata: Metadata = {
   title: "Vector Board Preview (dev)",

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Live probe: Night Hawk Vector tab closed pick rows — height + DOM classes.
- * Guards the #3053 flex-shrink collapse (blank ~26px green strips while API has rows).
+ * Live probe: Night Hawk Vector board — new table UI (vector-board-* selectors).
+ * Guards viewport lock, tab switching, filters, search, and detail rail.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium } from "playwright";
@@ -42,121 +42,114 @@ async function main() {
   }
 
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await ctx.addCookies(cookiesFromHeader(session.cookieHeader, new URL(BASE).hostname));
 
   const page = await ctx.newPage();
   await page.goto(`${BASE}/nighthawk?view=vector`, { waitUntil: "networkidle", timeout: 120_000 });
-  await page.waitForTimeout(2000);
-
-  const winnersBtn = page.getByRole("button", { name: /Winners/i });
-  const liveBtn = page.getByRole("button", { name: /Live/i });
-  const closedBtn = page.getByRole("button", { name: /Closed/i });
-  const hasWinnersTab = (await winnersBtn.count()) > 0;
+  await page.waitForTimeout(2500);
 
   const apiJson = await page.evaluate(async (base) => {
-    const r = await fetch(`${base}/api/market/vector/pick-closures/board`, { cache: "no-store" });
+    const r = await fetch(`${base}/api/market/vector/pick-closures/board?limit=50`, { cache: "no-store" });
     return r.json();
   }, BASE);
 
-  const apiLeadersCount = apiJson?.leaders?.length ?? 0;
-  const apiWinnersCount = apiJson?.winners?.length ?? 0;
+  const winnersTab = page.getByRole("tab", { name: /Winners/i });
+  const liveTab = page.getByRole("tab", { name: /Live/i });
+  const closedTab = page.getByRole("tab", { name: /Closed/i });
 
-  // After load, board should auto-select Live when winners=0 but leaders>0.
-  if (hasWinnersTab && apiLeadersCount > 0 && apiWinnersCount === 0) {
-    await page.waitForTimeout(800);
+  if (await liveTab.count()) {
+    await liveTab.click();
+    await page.waitForTimeout(500);
   }
 
-  let liveDom = null;
-  if (apiLeadersCount > 0 && (await liveBtn.count())) {
-    await liveBtn.first().click();
-    await page.waitForTimeout(600);
-    liveDom = await page.evaluate(() => {
-      const leaderRows = [...document.querySelectorAll(".vector-leader-row")];
-      const first = leaderRows[0];
-      const rect = first?.getBoundingClientRect();
-      const style = first ? getComputedStyle(first) : null;
-      return {
-        leaderRowCount: leaderRows.length,
-        firstHeight: rect?.height ?? 0,
-        firstFlexShrink: style?.flexShrink ?? null,
-      };
-    });
-  }
-
-  // Verify closed rows render on the Closed tab (labels include counts, e.g. "Closed (47)").
-  if (await closedBtn.count()) {
-    await closedBtn.first().click();
-    await page.waitForTimeout(600);
-  }
-
-  const tabState = await page.evaluate(() => {
-    const tabs = [...document.querySelectorAll("button")].filter((b) =>
-      /^(Winners|Live|Closed)(\s*\(\d+\))?$/i.test(b.textContent?.trim() ?? "")
-    );
-    return tabs.map((b) => ({ label: b.textContent?.trim(), pressed: b.getAttribute("aria-pressed") }));
-  });
-
-  const dom = await page.evaluate(() => {
-    const scrollport = document.querySelector(".nh-deck-rows");
-    const closureRows = [...document.querySelectorAll(".vector-closure-row")];
-    const leaderRows = [...document.querySelectorAll(".vector-leader-row")];
-    const rows = leaderRows.length ? leaderRows : closureRows;
+  let dom = await page.evaluate(() => {
+    const shell = document.querySelector(".vector-board-shell");
+    const rows = [...document.querySelectorAll(".vector-board-row")];
     const first = rows[0];
     const rect = first?.getBoundingClientRect();
-    const style = first ? getComputedStyle(first) : null;
     return {
-      scrollportClass: scrollport?.className ?? null,
+      hasShell: !!shell,
+      hasTable: !!document.querySelector(".vector-board-table"),
       rowCount: rows.length,
-      leaderRowCount: leaderRows.length,
-      closureRowCount: closureRows.length,
-      firstText: first?.innerText?.slice(0, 200) ?? null,
       firstHeight: rect?.height ?? 0,
-      firstFlexShrink: style?.flexShrink ?? null,
+      legacyCards: document.querySelectorAll(".vector-closure-row, .vector-leader-row").length,
+      pageScrollY: window.scrollY,
     };
   });
 
+  if (await closedTab.count()) {
+    await closedTab.click();
+    await page.waitForTimeout(500);
+    dom = {
+      ...dom,
+      ...(await page.evaluate(() => ({
+        closedRowCount: document.querySelectorAll(".vector-board-row").length,
+      }))),
+    };
+  }
+
+  // Search interaction
+  const search = page.locator(".vector-board-search-input");
+  if (await search.count()) {
+    await search.fill("A");
+    await page.waitForTimeout(300);
+    const searchRows = await page.locator(".vector-board-row").count();
+    await search.fill("");
+    dom = { ...dom, searchFiltered: searchRows };
+  }
+
+  // Filters drawer
+  const filters = page.locator(".vector-board-filters-trigger");
+  if (await filters.count()) {
+    await filters.click();
+    await page.waitForTimeout(250);
+    dom = { ...dom, filtersOpen: await page.locator(".vector-board-filters-panel").count() > 0 };
+    await page.keyboard.press("Escape");
+  }
+
+  // Detail rail
+  const row = page.locator(".vector-board-row").first();
+  if (await row.count()) {
+    await row.click();
+    await page.waitForTimeout(400);
+    dom = { ...dom, detailOpen: (await page.locator(".vector-board-detail:not(.vector-board-detail--empty)").count()) > 0 };
+  }
+
   await page.screenshot({ path: `${OUT}/nighthawk-vector-tab.png`, fullPage: false });
 
-  const hasFlexCol = dom.scrollportClass?.includes("flex-col") ?? false;
-  const boardHasLeaders = Array.isArray(apiJson?.leaders);
+  const apiTotal =
+    (apiJson?.leaders?.length ?? 0) + (apiJson?.winners?.length ?? 0) + (apiJson?.closed?.length ?? 0);
+
+  const verdict =
+    dom.legacyCards > 0 && !dom.hasTable
+      ? "AMBER — legacy card UI (deploy pending)"
+      : !dom.hasShell
+        ? "RED — vector-board-shell missing"
+        : !dom.hasTable
+          ? "RED — table UI missing"
+          : dom.rowCount === 0 && apiTotal > 0
+            ? "RED — API has rows but table empty"
+            : dom.firstHeight > 0 && dom.firstHeight < 20
+              ? "RED — row height collapsed"
+              : dom.pageScrollY > 12
+                ? "AMBER — page scrolls (viewport lock may be broken)"
+                : "GREEN — Vector board table UI live";
+
   const report = {
     base: BASE,
-    apiClosedCount: apiJson?.closed?.length ?? 0,
-    apiLeadersCount: apiJson?.leaders?.length ?? 0,
-    apiWinnersCount,
-    boardHasLeaders,
-    tabState,
-    liveDom,
     dom,
-    verdict:
-      !boardHasLeaders && (apiJson?.closed?.length ?? 0) > 0
-        ? "AMBER — legacy board API (deploy rolling or pending)"
-        : dom.rowCount === 0 && (apiJson?.closed?.length ?? 0) > 0 && !hasWinnersTab
-          ? "RED — API has rows but DOM empty"
-          : hasFlexCol
-            ? "RED — flex-col on scrollport (regression)"
-            : liveDom && liveDom.leaderRowCount > 0 && liveDom.firstHeight < 60
-              ? "RED — leader rows collapsed (layout bug)"
-            : dom.rowCount > 0 && dom.firstHeight < 60
-              ? "RED — rows collapsed (layout bug)"
-              : boardHasLeaders && hasWinnersTab && liveDom && liveDom.leaderRowCount > 0 && dom.closureRowCount > 0
-                ? "GREEN — live leaders + closed rows render"
-              : boardHasLeaders && hasWinnersTab && dom.closureRowCount > 0
-                ? "GREEN — winners board + tabs shipped, closed rows render"
-                : boardHasLeaders && hasWinnersTab
-                  ? "GREEN — winners board + tabs shipped"
-                  : dom.rowCount > 0
-                    ? "GREEN — closure rows render full height"
-                    : "AMBER — no picks visible today",
+    apiLeaders: apiJson?.leaders?.length ?? 0,
+    apiWinners: apiJson?.winners?.length ?? 0,
+    apiClosed: apiJson?.closed?.length ?? 0,
+    verdict,
   };
-
   await writeFile(`${OUT}/report.json`, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 
   await browser.close();
   await session.cleanup();
-  process.exit(report.verdict.startsWith("GREEN") ? 0 : report.verdict.startsWith("AMBER") ? 0 : 1);
+  process.exit(verdict.startsWith("GREEN") ? 0 : verdict.startsWith("AMBER") ? 0 : 1);
 }
 
 main().catch(async (err) => {

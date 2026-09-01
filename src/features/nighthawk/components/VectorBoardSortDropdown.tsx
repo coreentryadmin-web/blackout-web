@@ -47,7 +47,15 @@ export function VectorBoardSortDropdown({
         <span className="vector-board-sort-label">Sort</span>
         <span className="vector-board-sort-value">{active.label}</span>
         <span className="vector-board-sort-chevron" aria-hidden>
-          {open ? "▲" : "▼"}
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path
+              d={open ? "M2 7 L5 4 L8 7" : "M2 4 L5 7 L8 4"}
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </span>
       </button>
       {open ? (

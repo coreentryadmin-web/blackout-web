@@ -77,6 +77,11 @@ export function VectorBoardFiltersDrawer({
         aria-expanded={open}
         aria-haspopup="dialog"
       >
+        <span className="vector-board-filters-icon" aria-hidden>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M1.5 2.5h9M3 6h6M4.5 9.5h3" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+          </svg>
+        </span>
         Filters
         {activeCount > 0 ? <span className="vector-board-filters-badge tabular-nums">{activeCount}</span> : null}
       </button>

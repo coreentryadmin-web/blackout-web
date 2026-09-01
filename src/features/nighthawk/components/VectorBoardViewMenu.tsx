@@ -63,6 +63,13 @@ export function VectorBoardViewMenu({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
+        <span className="vector-board-view-icon" aria-hidden>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <rect x="1.5" y="2" width="9" height="2" rx="0.5" fill="currentColor" opacity="0.5" />
+            <rect x="1.5" y="5" width="6" height="2" rx="0.5" fill="currentColor" />
+            <rect x="1.5" y="8" width="8" height="2" rx="0.5" fill="currentColor" opacity="0.7" />
+          </svg>
+        </span>
         View
       </button>
       {open ? (

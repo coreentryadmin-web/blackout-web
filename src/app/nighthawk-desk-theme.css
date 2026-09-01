@@ -520,9 +520,22 @@
   color: var(--nh-desk-text);
 }
 
+.nh-v2-page .vector-board-filters-trigger,
+.nh-v2-page .vector-board-view-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.nh-v2-page .vector-board-filters-icon,
+.nh-v2-page .vector-board-view-icon,
 .nh-v2-page .vector-board-sort-chevron {
-  font-size: 8px;
+  display: inline-flex;
   color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-sort-chevron svg {
+  display: block;
 }
 
 .nh-v2-page .vector-board-sort-panel {
