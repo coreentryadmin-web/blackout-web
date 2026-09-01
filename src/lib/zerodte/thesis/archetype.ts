@@ -85,17 +85,6 @@ export function scoreForArchetype(archetype: TradeArchetype, scores: RailScoreMa
   return scoreArchetype(rule, scores, structural);
 }
 
-export const ARCHETYPE_EMOJI: Record<TradeArchetype, string> = {
-  MOMENTUM_CONTINUATION: "🔥",
-  BREAKOUT: "⚡",
-  FLOW_FOLLOWING: "🐋",
-  MEAN_REVERSION: "🧲",
-  GAMMA_BREAK: "💥",
-  CATALYST_CONTINUATION: "📰",
-  FAILED_BREAKOUT: "⚔️",
-  VOL_EXPANSION: "🌊",
-};
-
 export const ARCHETYPE_LABEL: Record<TradeArchetype, string> = {
   MOMENTUM_CONTINUATION: "Momentum Continuation",
   BREAKOUT: "Breakout",
