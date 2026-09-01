@@ -15,6 +15,7 @@ import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-re
 import { thesisManagementOverlay } from "@/lib/zerodte/thesis-health";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
 import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
+import { resolveLegacyPlayOcc } from "@/features/nighthawk/lib/legacy-play-contract";
 import type {
   DeckCondor,
   DeckDirection,
@@ -823,6 +824,7 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     ticker: src.ticker.toUpperCase(),
     direction,
     contract: contractLabel,
+    occ: resolveLegacyPlayOcc(src.ticker, src.options_play ?? null),
     rank: src.rank ?? null,
     score: rawScore != null ? Math.round(rawScore) : 0,
     status,

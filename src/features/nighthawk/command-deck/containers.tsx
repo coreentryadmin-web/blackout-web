@@ -38,6 +38,7 @@ import {
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import type { TerminalPlay } from "./types";
 import { overlayLegacyQuotes, useLegacyStockQuotes } from "./use-legacy-quotes";
+import { overlayLegacyOptionMarks, useLegacyOptionMarks } from "./use-legacy-option-marks";
 import { overlayHorizonWatchTrack } from "./use-live-marks";
 import { useZeroDteLiveDeck } from "./use-zero-dte-live-deck";
 import { zeroDteSources, isBoardDegraded, type BoardResp } from "./zerodte-sources";
@@ -406,7 +407,15 @@ export function LegacyDeck() {
   // real-time stock-level progress toward target/stop (the "dynamic trade management" overlay).
   const tickers = useMemo(() => rawPlays.map((p) => p.ticker?.toUpperCase()).filter(Boolean), [rawPlays]);
   const stockQuotes = useLegacyStockQuotes(tickers);
-  const plays = overlayLegacyQuotes(playsWithScorecard, stockQuotes, rawPlays);
+  const legacyOccs = useMemo(
+    () => playsWithScorecard.map((p) => p.occ).filter((o): o is string => typeof o === "string" && o.length > 0),
+    [playsWithScorecard],
+  );
+  const optionMarks = useLegacyOptionMarks(legacyOccs);
+  const plays = overlayLegacyOptionMarks(
+    overlayLegacyQuotes(playsWithScorecard, stockQuotes, rawPlays),
+    optionMarks,
+  );
 
   // Morning-confirm staleness: the verdict is a one-time 9am snapshot that never updates.
   // After 4h it misleads if shown without qualification.
