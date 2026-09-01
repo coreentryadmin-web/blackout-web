@@ -42,6 +42,18 @@ The **call wall** and **put wall** are large concentrations of gamma that often 
 
 Aggregate all of it and you get **GEX** — total gamma exposure across the chain. → [What Is GEX?](/learn/what-is-gex)
 
+## The three-part framework for gamma trading
+
+Before you take any 0DTE or swing gamma trade, confirm all three of these:
+
+**① Is the gamma flip above or below current price?** This tells you the regime. Price above the flip = dealers are long gamma = expect fading and mean reversion. Price below the flip = dealers are short gamma = expect momentum and acceleration. Wrong regime for your thesis kills the trade.
+
+**② Where do the call wall and put wall sit relative to your entry?** Walls act as magnets when gamma pressure builds. If you're buying calls, the call wall above you is profit-taking resistance — know its level before you enter. If you're selling premium, the walls bracket your range — trading inside them is low probability, trading outside them is high risk.
+
+**③ Is aggregate GEX positive or negative?** Positive GEX = the market self-corrects, volatility stays suppressed. Negative GEX = volatility spirals. A bounce off support with negative GEX looks tradeable until it accelerates through support. Knowing the GEX regime before entry prevents getting chopped in the opposite regime.
+
+All three in alignment? You have confluence. Two or three misaligned? The trade lacks confirmation and the risk/reward is worse than it appears. Professional traders do not take gamma setups without all three levels confirmed — neither should you.
+
 ## Reading order flow
 
 Positioning tells you *where* the battle lines are; options order flow tells you *who's showing up*. Learning to separate real institutional signal from routine hedging is its own skill — and it extends beyond the lit tape into [dark pool activity](/learn/what-is-dark-pool-trading), where institutions trade size off-exchange before layering on options exposure. Spotting [unusual options activity](/learn/unusual-options-activity-guide) on top of that dark pool context is what turns raw flow into actionable signal. → [How to Read Options Flow](/learn/how-to-read-options-flow)
@@ -50,9 +62,16 @@ Positioning tells you *where* the battle lines are; options order flow tells you
 
 Zero-days-to-expiration options carry enormous, fast-decaying gamma, which makes intraday dealer positioning more important for 0DTE than for any other timeframe. That same gamma concentration is what makes premium-selling structures like the [iron condor](/learn/iron-condor-strategy-guide) viable when the positioning read supports a range. Meanwhile, [implied volatility](/learn/implied-volatility-explained) determines how rich the premiums are on any given session — and whether the trade is worth taking at all. → [0DTE SPX Options Strategy Guide](/learn/0dte-spx-options-strategy), [Best 0DTE Trading Strategies](/learn/best-0dte-trading-strategies), and [Is 0DTE Gambling?](/learn/is-0dte-gambling)
 
-## Where to go next
+## FAQ: Gamma three-level questions
 
-New to the terms? Start with the [Options Trading Glossary](/learn/options-trading-glossary). Curious how a sharp move happens? Read [Gamma Squeeze Explained](/learn/gamma-squeeze-explained). Want to understand the Greeks underneath all of it? [Options Greeks Explained](/learn/options-greeks-explained) covers delta, gamma, theta, and vega in plain English.
+**Q: Should I trade before confirming all three levels?**
+No. The three-part framework is not optional — it's a filter. If even one of the three is misaligned, your edge is gone. You either wait for alignment or you pass. That discipline alone is what separates profitable gamma traders from breakeven noise.
+
+**Q: What if two of the three are aligned but one is against me?**
+That's a reduced-confidence setup. If the flip and walls say "buy here" but GEX is negative, the regime can change suddenly and violently. Price may get to your target, but the exit will be messy. Professionals size down or skip it. A+ setups have all three — that's why they're graded A+ instead of B.
+
+**Q: How do I check all three in real time?**
+[Thermal](/learn/heat-maps) plots the flip, walls, and GEX heatmap live every session. You can see all three levels at a glance. [SPX Slayer](/learn/spx-slayer) surfaces the confluence — plays are graded partly on how many independent levels stack at the same price. The higher the alignment, the higher the grade.
 
 **See it on the tools.** [Thermal](/learn/heat-maps) maps the gamma flip, call wall, put wall, and GEX heatmap live every session. [SPX Slayer](/learn/spx-slayer) is the 0DTE desk — graded setups, live tracking, public record. [HELIX](/learn/helix-flows) scans institutional flow for unusual activity so you see who's showing up. [Night Hawk](/learn/night-hawk) handles swing and overnight setups outside the 0DTE window. And [Largo AI](/learn/largo-ai) can walk you through any of it conversationally if you're just getting started. [Get access →](/pricing)
 
