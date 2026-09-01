@@ -60,12 +60,3 @@ export function mergeMinuteRefreshedBars(
   }
   return out;
 }
-
-/** Newest minute timestamp across refreshed bars — intraday freshness signal (WS-19 supplement). */
-export function freshestMinuteBarMs(bars: ReadonlyMap<string, DailyMarketBar>): number | null {
-  let max = Number.NEGATIVE_INFINITY;
-  for (const bar of bars.values()) {
-    if (typeof bar.t === "number" && Number.isFinite(bar.t) && bar.t > max) max = bar.t;
-  }
-  return max === Number.NEGATIVE_INFINITY ? null : max;
-}
