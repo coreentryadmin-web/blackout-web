@@ -11,7 +11,7 @@
  * Omitted: detailed calibration pending Coordinator approval of design questions.
  */
 
-import type { MeridianThermalTape } from "@/features/meridian/lib/meridian-types";
+import type { MeridianEarningsThermalRead } from "@/features/meridian/lib/meridian-types";
 
 export type SuggestedPlay = {
   /** The strike offering the primary directional exposure (where regime bets it goes). */
@@ -37,7 +37,7 @@ export type SuggestedPlay = {
  * weekend earnings, single vs multi-expiry display). For now, uses closest covering expiry.
  */
 export function suggestedPlayFromThermal(
-  thermal: MeridianThermalTape | null | undefined,
+  thermal: MeridianEarningsThermalRead | null | undefined,
   expectedMovePct: number | null,
   earningsDate: string | null
 ): SuggestedPlay | null {
@@ -66,20 +66,20 @@ export function suggestedPlayFromThermal(
   const primarySide = primaryIsPut ? "P" : "C";
   const hedgeSide = primaryIsPut ? "C" : "P";
 
-  // Positioning % = wall prominence ratio.
-  // Expressed as the share of total wall intensity at the primary strike.
-  // Formula: primary_wall / (primary_wall + hedge_wall) × 100.
-  const positioningPct = Math.round((primaryStrike / (primaryStrike + hedgeStrike)) * 100);
+  // Positioning % = call wall prominence ratio.
+  // Expressed as the call wall's share of total wall intensity.
+  // Formula: call_wall / (call_wall + put_wall) × 100.
+  const positioningPct = Math.round((call_wall / (call_wall + put_wall)) * 100);
 
   // Expiry selection: use Friday of the same week if available, else Monday.
   // Pending design approval on multi-expiry + weekend behavior.
   const expiry = closestCoveringExpiry(earningsDate);
 
-  // Thesis label.
+  // Thesis label: directional if ratio moves > 1.5% away from parity.
   const thesis =
-    wallRatio > 1.05
+    wallRatio > 1.015
       ? "GEX walls favor puts"
-      : wallRatio < 0.95
+      : wallRatio < 0.985
         ? "GEX walls favor calls"
         : "Walls balanced";
 
