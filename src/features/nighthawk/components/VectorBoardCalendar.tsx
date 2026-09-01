@@ -7,6 +7,12 @@ function fmtSigned(v: number): string {
   return `${v >= 0 ? "+" : ""}${v}%`;
 }
 
+function intensityClass(magnitude: number): string {
+  if (magnitude >= 75) return "is-intense";
+  if (magnitude >= 40) return "is-strong";
+  return "is-mild";
+}
+
 export function VectorBoardCalendar({
   buckets,
   selectedDate,
@@ -24,20 +30,29 @@ export function VectorBoardCalendar({
         const active = b.session_date === selectedDate;
         const day = b.session_date.slice(-2);
         const month = b.session_date.slice(5, 7);
+        const mag = Math.abs(b.net_premium_pct);
         return (
           <button
             key={b.session_date}
             type="button"
-            className={clsx("vector-board-cal-cell", `is-${b.tone}`, active && "is-selected")}
+            className={clsx(
+              "vector-board-cal-cell",
+              `is-${b.tone}`,
+              intensityClass(mag),
+              active && "is-selected"
+            )}
             onClick={() => onSelectDate(active ? null : b.session_date)}
             aria-pressed={active}
-            title={`${b.session_date} · ${b.n} picks · ${b.winners} winners · avg ${fmtSigned(b.net_premium_pct)}`}
+            title={`${b.session_date} · ${b.n} picks · ${b.winners} winners · ${b.closed} closed · avg ${fmtSigned(b.net_premium_pct)}`}
           >
             <span className="vector-board-cal-month">{month}</span>
             <span className="vector-board-cal-day">{day}</span>
             <span className="vector-board-cal-net tabular-nums">
               {b.n > 0 ? fmtSigned(b.net_premium_pct) : "—"}
             </span>
+            {b.winners > 0 ? (
+              <span className="vector-board-cal-dot" aria-label={`${b.winners} winners`} />
+            ) : null}
           </button>
         );
       })}

@@ -13,12 +13,15 @@ test("VectorPickLogBoard: uses viewport-locked shell with internal table scrollp
   );
 });
 
-test("VectorPickLogBoard: X Ads toolbar, P&L column, meters, and detail rail", () => {
-  const src = readFileSync(new URL("./VectorPickLogBoard.tsx", import.meta.url), "utf8");
-  assert.match(src, /VectorBoardToolbar/, "board must use dedicated X Ads-style toolbar");
-  assert.match(src, /P&amp;L %/, "table must expose a dedicated P&L column");
-  assert.match(src, /VectorBoardMeter/, "table must render X Ads-style premium path meters");
-  assert.match(src, /VectorPlayDetailPanel/, "row click must open right-rail inspector");
-  assert.match(src, /vector-board-summary-row/, "summary row must mirror X Ads totals row");
-  assert.match(src, /formatPremiumPct/, "premium % must render prominently");
+test("VectorPickLogBoard: X Ads toolbar, premium column, meters, and detail rail", () => {
+  const board = readFileSync(new URL("./VectorPickLogBoard.tsx", import.meta.url), "utf8");
+  const toolbar = readFileSync(new URL("./VectorBoardToolbar.tsx", import.meta.url), "utf8");
+  assert.match(board, /VectorBoardToolbar/, "board must use dedicated X Ads-style toolbar");
+  assert.match(board, /Premium vs entry/, "table must expose premium vs entry column");
+  assert.match(board, /VectorBoardMeter/, "table must render X Ads-style premium path meters");
+  assert.match(board, /VectorPlayDetailPanel/, "row click must open right-rail inspector");
+  assert.match(board, /vector-board-summary-row/, "summary row must mirror X Ads totals row");
+  assert.match(board, /formatPremiumPct/, "premium % must render prominently");
+  assert.match(board, /VectorBoardScorecard/, "session scorecard meters must render");
+  assert.match(toolbar, /VectorBoardFiltersDrawer/, "filters must use drawer pattern");
 });

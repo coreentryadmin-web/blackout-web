@@ -2,7 +2,7 @@ import type { VectorBoardTableRow } from "@/features/nighthawk/lib/vector-board-
 import type { VectorClosureReasonFilter } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
 import { classifyVectorClosureReason } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
 
-export type VectorBoardSortKey = "updated" | "pnl" | "peak" | "ticker";
+export type VectorBoardSortKey = "updated" | "pnl" | "peak" | "ticker" | "tier";
 export type VectorBoardSortDir = "asc" | "desc";
 
 export type VectorBoardStatusFilter =
@@ -26,8 +26,9 @@ export const VECTOR_BOARD_SORT_OPTIONS: {
 }[] = [
   { id: "updated_desc", label: "Newest first", key: "updated", dir: "desc" },
   { id: "updated_asc", label: "Oldest first", key: "updated", dir: "asc" },
-  { id: "pnl_desc", label: "P&L high → low", key: "pnl", dir: "desc" },
-  { id: "pnl_asc", label: "P&L low → high", key: "pnl", dir: "asc" },
+  { id: "pnl_desc", label: "Premium high → low", key: "pnl", dir: "desc" },
+  { id: "pnl_asc", label: "Premium low → high", key: "pnl", dir: "asc" },
+  { id: "tier_desc", label: "Elite first, then premium", key: "tier", dir: "desc" },
   { id: "peak_desc", label: "Peak high → low", key: "peak", dir: "desc" },
   { id: "ticker_asc", label: "Ticker A → Z", key: "ticker", dir: "asc" },
 ];
@@ -68,6 +69,14 @@ export function sortVectorBoardRows(
     }
     if (key === "ticker") {
       return a.ticker.localeCompare(b.ticker) * sign || b.timestamp.localeCompare(a.timestamp);
+    }
+    if (key === "tier") {
+      const tierRank = (t: VectorBoardTableRow["tier"]) => (t === "elite" ? 0 : 1);
+      const td = tierRank(a.tier) - tierRank(b.tier);
+      if (td !== 0) return td * sign;
+      const av = a.premiumPct ?? Number.NEGATIVE_INFINITY;
+      const bv = b.premiumPct ?? Number.NEGATIVE_INFINITY;
+      return (bv - av) * sign;
     }
     return a.timestamp.localeCompare(b.timestamp) * sign;
   });

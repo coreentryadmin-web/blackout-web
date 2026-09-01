@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { clsx } from "clsx";
 import { EmptyState, Skeleton } from "@/components/ui";
 import { etDateTimeShort } from "@/lib/et-clock";
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { VectorBoardCalendar } from "@/features/nighthawk/components/VectorBoardCalendar";
+import { VectorBoardCompareBar } from "@/features/nighthawk/components/VectorBoardCompareBar";
 import { VectorBoardMeter } from "@/features/nighthawk/components/VectorBoardMeter";
+import { VectorBoardScorecard } from "@/features/nighthawk/components/VectorBoardScorecard";
 import { VectorBoardStatusPill } from "@/features/nighthawk/components/VectorBoardStatus";
 import { VectorBoardToolbar } from "@/features/nighthawk/components/VectorBoardToolbar";
 import { VectorPlayDetailPanel } from "@/features/nighthawk/components/VectorPlayDetailPanel";
@@ -29,6 +31,20 @@ import {
   type VectorBoardStatusFilter,
   type VectorBoardTierFilter,
 } from "@/features/nighthawk/lib/vector-board-filters";
+import {
+  loadVectorBoardPreferences,
+  saveVectorBoardPreferences,
+  type VectorBoardColumnId,
+  type VectorBoardPreferences,
+  type VectorBoardSavedView,
+} from "@/features/nighthawk/lib/vector-board-preferences";
+import {
+  vectorBoardCalendarSlice,
+  vectorBoardExportCsv,
+  vectorBoardRowAtRisk,
+  vectorBoardRowIsLive,
+  vectorBoardScorecard,
+} from "@/features/nighthawk/lib/vector-board-row-utils";
 import { filterVectorRunnerLeaders, preferredVectorBoardSection } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
 import type { VectorClosureReasonFilter } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
 import type { VectorPickBoardResponse } from "@/features/nighthawk/components/VectorPickLogBoard.types";
@@ -78,8 +94,16 @@ function ariaSort(active: boolean, dir: "asc" | "desc"): "none" | "ascending" | 
   return dir === "asc" ? "ascending" : "descending";
 }
 
+function emptyTitle(tab: BoardTab): string {
+  if (tab === "winner") return "No winning Vector picks yet";
+  if (tab === "runner") return "No +15% runners yet";
+  if (tab === "live") return "No live Vector leaders";
+  if (tab === "closed") return "No closed Vector picks match";
+  return "No Vector picks match";
+}
+
 /**
- * Night Hawk Vector tab — X Ads Manager table with filters, sorts, P&L column, and inspector rail.
+ * Night Hawk Vector tab — X Ads Manager table with filters, sorts, premium column, and inspector rail.
  * Pass `fixtureData` on /vector-board-preview (dev only) to review UI without DB/Clerk.
  */
 export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBoardResponse }) {
@@ -90,10 +114,22 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
   const [tickerQuery, setTickerQuery] = useState("");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedRow, setSelectedRow] = useState<VectorBoardTableRow | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [statusFilter, setStatusFilter] = useState<VectorBoardStatusFilter>("all");
   const [tierFilter, setTierFilter] = useState<VectorBoardTierFilter>("all");
   const [reasonFilter, setReasonFilter] = useState<VectorClosureReasonFilter>("all");
   const [sort, setSort] = useState<VectorBoardSort>("updated_desc");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [prefs, setPrefs] = useState<VectorBoardPreferences>(() => loadVectorBoardPreferences());
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareKeys, setCompareKeys] = useState<Set<string>>(() => new Set());
+  const searchRef = useRef<HTMLInputElement>(null);
+  const tableRef = useRef<HTMLDivElement | null>(null);
+
+  const persistPrefs = useCallback((next: VectorBoardPreferences) => {
+    setPrefs(next);
+    saveVectorBoardPreferences(next);
+  }, []);
 
   const apiUrl =
     fixtureData != null
@@ -155,7 +191,10 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
     [winners, leaders, closed]
   );
 
-  const calendarBuckets = useMemo(() => vectorBoardCalendarBuckets(calendarSource), [calendarSource]);
+  const calendarBuckets = useMemo(() => {
+    const all = vectorBoardCalendarBuckets(calendarSource);
+    return vectorBoardCalendarSlice(all, prefs.calendarRange) as typeof all;
+  }, [calendarSource, prefs.calendarRange]);
 
   const sessionDateFilter = selectedDate ? selectedDate : sessionScope === "current" ? todaySession : null;
 
@@ -181,12 +220,66 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
     () => vectorBoardSessionPnl(sectionRows, sessionDateFilter),
     [sectionRows, sessionDateFilter]
   );
+  const scorecard = useMemo(
+    () => vectorBoardScorecard(sessionDateFilter ? filteredRows : sectionRows),
+    [filteredRows, sectionRows, sessionDateFilter]
+  );
+
+  const compareRows = useMemo(
+    () => visibleRows.filter((r) => compareKeys.has(r.key)),
+    [visibleRows, compareKeys]
+  );
+
+  const col = (id: VectorBoardColumnId) => prefs.columns[id] !== false;
+
+  const summaryLabelSpan =
+    (compareMode ? 1 : 0) + (col("pick") ? 1 : 0) + (col("status") ? 1 : 0);
 
   useEffect(() => {
     if (!selectedRow) return;
     const stillVisible = visibleRows.some((r) => r.key === selectedRow.key);
     if (!stillVisible) setSelectedRow(null);
   }, [visibleRows, selectedRow]);
+
+  useEffect(() => {
+    if (!selectedRow) return;
+    const idx = visibleRows.findIndex((r) => r.key === selectedRow.key);
+    if (idx >= 0) setSelectedIndex(idx);
+  }, [visibleRows, selectedRow]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
+      if (e.key === "/" && !typing) {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      if (typing) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = Math.min(visibleRows.length - 1, selectedIndex + 1);
+        setSelectedIndex(next);
+        const row = visibleRows[next];
+        if (row) setSelectedRow(row);
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const next = Math.max(0, selectedIndex - 1);
+        setSelectedIndex(next);
+        const row = visibleRows[next];
+        if (row) setSelectedRow(row);
+      }
+      if (e.key === "Escape") {
+        setSelectedRow(null);
+        setFiltersOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [visibleRows, selectedIndex]);
 
   const clearFilters = () => {
     setStatusFilter("all");
@@ -195,6 +288,35 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
     setSelectedDate(null);
     setTickerQuery("");
   };
+
+  const applyView = (view: VectorBoardSavedView) => {
+    setStatusFilter(view.statusFilter);
+    setTierFilter(view.tierFilter);
+    setReasonFilter(view.reasonFilter);
+    setSort(view.sort);
+  };
+
+  const exportCsv = () => {
+    const csv = vectorBoardExportCsv(visibleRows);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `vector-board-${todaySession || "export"}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const toggleCompare = (key: string) => {
+    setCompareKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else if (next.size < 3) next.add(key);
+      return next;
+    });
+  };
+
+  const sessionLabel = sessionDateFilter ? `Session ${sessionDateFilter}` : "All visible picks";
 
   if (!fixtureData && isLoading && !data) {
     return (
@@ -216,7 +338,13 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
   }
 
   return (
-    <div className="vector-board-shell">
+    <div
+      className={clsx(
+        "vector-board-shell",
+        prefs.density === "compact" && "is-compact",
+        prefs.focusMode && "is-focus"
+      )}
+    >
       <VectorBoardToolbar
         tab={tab}
         tabCounts={tabCounts}
@@ -231,6 +359,7 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
         }}
         tickerQuery={tickerQuery}
         onTickerQueryChange={setTickerQuery}
+        searchInputRef={searchRef}
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
         tierFilter={tierFilter}
@@ -244,11 +373,25 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
         sessionPnl={sessionPnl}
         netPnl={summary.netPnl}
         totalVisible={visibleRows.length}
+        filtersOpen={filtersOpen}
+        onFiltersOpenChange={setFiltersOpen}
+        prefs={prefs}
+        onPrefsChange={persistPrefs}
+        onApplyView={applyView}
+        onExport={exportCsv}
+        compareMode={compareMode}
+        onCompareModeChange={setCompareMode}
       />
 
-      {data?.note ? <p className="vector-board-note vector-board-note--inline">{data.note}</p> : null}
+      {data?.note && !prefs.focusMode ? (
+        <p className="vector-board-note vector-board-note--inline">{data.note}</p>
+      ) : null}
 
-      {calendarBuckets.length > 0 ? (
+      {!prefs.focusMode && scorecard.total > 0 ? (
+        <VectorBoardScorecard data={scorecard} sessionLabel={sessionLabel} />
+      ) : null}
+
+      {!prefs.focusMode && calendarBuckets.length > 0 ? (
         <div className="vector-board-cal-wrap">
           <VectorBoardCalendar
             buckets={calendarBuckets}
@@ -266,38 +409,25 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
       <div className="vector-board-body">
         <div className="vector-board-table-pane">
           <div className="vector-board-panel">
-            {!visibleRows.length ? (
-              <div className="vector-board-empty">
-                <EmptyState
-                  title={
-                    tab === "winner"
-                      ? "No winning Vector picks yet"
-                      : tab === "runner"
-                        ? "No +15% runners yet"
-                        : tab === "live"
-                          ? "No live Vector leaders"
-                          : tab === "closed"
-                            ? "No closed Vector picks match"
-                            : "No Vector picks match"
-                  }
-                  description="Try All sessions, clear filters, or change the sort."
-                />
-              </div>
-            ) : (
-              <div className="vector-board-tablewrap">
-                <table className="vector-board-table">
-                  <thead>
-                    <tr>
-                      <th>Pick</th>
-                      <th>Status</th>
+            <div className="vector-board-tablewrap" ref={tableRef}>
+              <table className="vector-board-table">
+                <thead>
+                  <tr>
+                    {compareMode ? <th className="vector-board-col-check" aria-label="Compare" /> : null}
+                    {col("pick") ? <th>Pick</th> : null}
+                    {col("status") ? <th>Status</th> : null}
+                    {col("premium") ? (
                       <th
                         className="vector-board-col-num vector-board-th-sortable"
                         aria-sort={ariaSort(sortKey === "pnl", sortDir)}
                         onClick={() => setSort(sortKey === "pnl" && sortDir === "desc" ? "pnl_asc" : "pnl_desc")}
+                        title="Option premium vs pick entry — not managed 0DTE P&L"
                       >
-                        P&amp;L % {sortKey === "pnl" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                        Premium vs entry {sortKey === "pnl" ? (sortDir === "asc" ? "▲" : "▼") : ""}
                       </th>
-                      <th className="vector-board-col-num">Entry → mark</th>
+                    ) : null}
+                    {col("entryMark") ? <th className="vector-board-col-num">Entry → mark</th> : null}
+                    {col("peak") ? (
                       <th
                         className="vector-board-col-num vector-board-th-sortable"
                         aria-sort={ariaSort(sortKey === "peak", sortDir)}
@@ -305,7 +435,9 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
                       >
                         Peak {sortKey === "peak" ? (sortDir === "asc" ? "▲" : "▼") : ""}
                       </th>
-                      <th className="vector-board-col-num">Premium path</th>
+                    ) : null}
+                    {col("path") ? <th className="vector-board-col-num">Premium path</th> : null}
+                    {col("updated") ? (
                       <th
                         className="vector-board-th-sortable"
                         aria-sort={ariaSort(sortKey === "updated", sortDir)}
@@ -315,82 +447,150 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
                       >
                         Updated {sortKey === "updated" ? (sortDir === "asc" ? "▲" : "▼") : ""}
                       </th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                    ) : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleRows.length > 0 ? (
                     <tr className="vector-board-summary-row">
-                      <td colSpan={2}>
-                        <span className="vector-board-summary-label">Total for {summary.total} picks</span>
-                      </td>
-                      <td
-                        className={clsx(
-                          "vector-board-col-num vector-board-pnl vector-board-pnl-hero tabular-nums",
-                          pnlClass(summary.netPnl)
-                        )}
-                        title="Equal-weight sum of premium % vs pick entry"
-                      >
-                        {summary.netPnl != null ? `${summary.netPnl >= 0 ? "+" : ""}${summary.netPnl}%` : EM}
-                      </td>
-                      <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
-                        Avg <strong>{summary.avgPct != null ? `${summary.avgPct >= 0 ? "+" : ""}${summary.avgPct}%` : EM}</strong>
-                      </td>
-                      <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
-                        <strong>{summary.winners}</strong> winners
-                      </td>
-                      <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
-                        <strong>{summary.open}</strong> open
-                      </td>
-                      <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
-                        <strong>{summary.closed}</strong> closed
+                      {summaryLabelSpan > 0 ? (
+                        <td colSpan={summaryLabelSpan}>
+                          <span className="vector-board-summary-label">Total for {summary.total} picks</span>
+                        </td>
+                      ) : null}
+                      {col("premium") ? (
+                        <td
+                          className={clsx(
+                            "vector-board-col-num vector-board-pnl vector-board-pnl-hero tabular-nums",
+                            pnlClass(summary.netPnl)
+                          )}
+                          title="Equal-weight sum of premium % vs pick entry"
+                        >
+                          {summary.netPnl != null ? `${summary.netPnl >= 0 ? "+" : ""}${summary.netPnl}%` : EM}
+                        </td>
+                      ) : null}
+                      {col("entryMark") ? (
+                        <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
+                          Avg <strong>{summary.avgPct != null ? `${summary.avgPct >= 0 ? "+" : ""}${summary.avgPct}%` : EM}</strong>
+                        </td>
+                      ) : null}
+                      {col("peak") ? (
+                        <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
+                          <strong>{summary.winners}</strong> winners
+                        </td>
+                      ) : null}
+                      {col("path") ? (
+                        <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
+                          <strong>{summary.open}</strong> open
+                        </td>
+                      ) : null}
+                      {col("updated") ? (
+                        <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
+                          <strong>{summary.closed}</strong> closed
+                        </td>
+                      ) : null}
+                    </tr>
+                  ) : null}
+
+                  {!visibleRows.length ? (
+                    <tr className="vector-board-empty-row">
+                      <td colSpan={12}>
+                        <div className="vector-board-empty">
+                          <EmptyState
+                            title={emptyTitle(tab)}
+                            description="Try All sessions, clear filters, or change the sort."
+                          />
+                        </div>
                       </td>
                     </tr>
-
-                    {visibleRows.map((row) => {
+                  ) : (
+                    visibleRows.map((row) => {
                       const selected = selectedRow?.key === row.key;
+                      const live = vectorBoardRowIsLive(row);
+                      const atRisk = vectorBoardRowAtRisk(row);
                       return (
                         <tr
                           key={row.key}
-                          className={clsx("vector-board-row", selected && "is-selected")}
-                          onClick={() => setSelectedRow(row)}
+                          className={clsx(
+                            "vector-board-row",
+                            selected && "is-selected",
+                            live && "is-live",
+                            atRisk && "is-at-risk"
+                          )}
+                          onClick={() => {
+                            setSelectedRow(row);
+                            setSelectedIndex(visibleRows.findIndex((r) => r.key === row.key));
+                          }}
                         >
-                          <td className="vector-board-col-pick">
-                            <div className="vector-board-pick-name">{row.ticker}</div>
-                            <div className="vector-board-pick-sub">{row.contractLabel}</div>
-                            <div className="vector-board-pick-id">
-                              {row.tier === "elite" ? "Elite · " : ""}
-                              ID: {row.occ.slice(-8)}
-                            </div>
-                          </td>
-                          <td>
-                            <VectorBoardStatusPill status={row.status} label={row.statusLabel} />
-                          </td>
-                          <td
-                            className={clsx(
-                              "vector-board-col-num vector-board-pnl vector-board-pnl-hero tabular-nums",
-                              pnlClass(row.premiumPct)
-                            )}
-                            title="Premium vs pick entry — Vector desk P&L"
-                          >
-                            {formatPremiumPct(row.premiumPct)}
-                          </td>
-                          <td className="vector-board-col-num vector-board-mid tabular-nums">
-                            {fmtPrice(row.entryMid)} → {fmtPrice(row.markMid)}
-                          </td>
-                          <td className={clsx("vector-board-col-num tabular-nums", pnlClass(row.peakPct))}>
-                            {formatPremiumPct(row.peakPct)}
-                          </td>
-                          <td className="vector-board-col-num">
-                            <VectorBoardMeter meter={vectorBoardMeter(row)} />
-                          </td>
-                          <td className="vector-board-col-time tabular-nums">{fmtTimestamp(row.timestamp)}</td>
+                          {compareMode ? (
+                            <td className="vector-board-col-check" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={compareKeys.has(row.key)}
+                                onChange={() => toggleCompare(row.key)}
+                                aria-label={`Compare ${row.ticker}`}
+                              />
+                            </td>
+                          ) : null}
+                          {col("pick") ? (
+                            <td className="vector-board-col-pick">
+                              <div className="vector-board-pick-name">
+                                {live ? <span className="vector-board-live-dot" aria-label="Live" /> : null}
+                                {row.ticker}
+                              </div>
+                              <div className="vector-board-pick-sub">{row.contractLabel}</div>
+                              <div className="vector-board-pick-id">
+                                {row.tier === "elite" ? "Elite · " : ""}
+                                ID: {row.occ.slice(-8)}
+                              </div>
+                            </td>
+                          ) : null}
+                          {col("status") ? (
+                            <td>
+                              <div className="vector-board-status-cell">
+                                <VectorBoardStatusPill status={row.status} label={row.statusLabel} />
+                                {atRisk ? <span className="vector-board-at-risk">At risk</span> : null}
+                              </div>
+                            </td>
+                          ) : null}
+                          {col("premium") ? (
+                            <td
+                              className={clsx(
+                                "vector-board-col-num vector-board-pnl vector-board-pnl-hero tabular-nums",
+                                pnlClass(row.premiumPct)
+                              )}
+                              title="Premium vs pick entry"
+                            >
+                              {formatPremiumPct(row.premiumPct)}
+                            </td>
+                          ) : null}
+                          {col("entryMark") ? (
+                            <td className="vector-board-col-num vector-board-mid tabular-nums">
+                              {fmtPrice(row.entryMid)} → {fmtPrice(row.markMid)}
+                            </td>
+                          ) : null}
+                          {col("peak") ? (
+                            <td className={clsx("vector-board-col-num tabular-nums", pnlClass(row.peakPct))}>
+                              {formatPremiumPct(row.peakPct)}
+                            </td>
+                          ) : null}
+                          {col("path") ? (
+                            <td className="vector-board-col-num">
+                              <VectorBoardMeter meter={vectorBoardMeter(row)} />
+                            </td>
+                          ) : null}
+                          {col("updated") ? (
+                            <td className="vector-board-col-time tabular-nums">{fmtTimestamp(row.timestamp)}</td>
+                          ) : null}
                         </tr>
                       );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
+          <VectorBoardCompareBar rows={compareRows} onClear={() => setCompareKeys(new Set())} />
         </div>
 
         <VectorPlayDetailPanel row={selectedRow} onClose={() => setSelectedRow(null)} />

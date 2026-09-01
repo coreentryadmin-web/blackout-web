@@ -1,10 +1,17 @@
 "use client";
 
+import Link from "next/link";
+import { useState } from "react";
 import { clsx } from "clsx";
+import { VectorBoardMeter } from "@/features/nighthawk/components/VectorBoardMeter";
+import { VectorBoardStatusPill } from "@/features/nighthawk/components/VectorBoardStatus";
+import { VectorPremiumSparkline } from "@/features/nighthawk/components/VectorPremiumSparkline";
+import {
+  vectorBoardTimeline,
+  vectorBoardTradeTicket,
+} from "@/features/nighthawk/lib/vector-board-row-utils";
 import type { VectorBoardTableRow } from "@/features/nighthawk/lib/vector-board-table-utils";
 import { formatPremiumPct, premiumPctTone, vectorBoardMeter } from "@/features/nighthawk/lib/vector-board-table-utils";
-import { VectorBoardStatusPill } from "@/features/nighthawk/components/VectorBoardStatus";
-import { VectorBoardMeter } from "@/features/nighthawk/components/VectorBoardMeter";
 import { etDateTimeShort } from "@/lib/et-clock";
 
 const EM = "—";
@@ -61,19 +68,33 @@ export function VectorPlayDetailPanel({
   row: VectorBoardTableRow | null;
   onClose: () => void;
 }) {
+  const [copied, setCopied] = useState(false);
+
   if (!row) {
     return (
       <aside className="vector-board-detail vector-board-detail--empty" aria-label="Play detail">
         <p className="vector-board-detail-empty-title">Select a pick</p>
         <p className="vector-board-detail-empty-copy">
           Click any row to inspect contract, premium path, and desk reason — same drill-down model as
-          the X Ads campaign inspector.
+          the X Ads campaign inspector. Use ↑/↓ to navigate, / to search.
         </p>
       </aside>
     );
   }
 
   const pctTone = premiumPctTone(row.premiumPct);
+  const timeline = vectorBoardTimeline(row);
+
+  const copyTicket = async () => {
+    const text = vectorBoardTradeTicket(row);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked */
+    }
+  };
 
   return (
     <aside className="vector-board-detail" aria-label={`${row.ticker} play detail`}>
@@ -95,7 +116,7 @@ export function VectorPlayDetailPanel({
       </div>
 
       <div className="vector-board-detail-hero">
-        <span className="vector-board-detail-hero-label">P&amp;L vs entry</span>
+        <span className="vector-board-detail-hero-label">Premium vs entry</span>
         <span
           className={clsx(
             "vector-board-detail-hero-value tabular-nums",
@@ -108,6 +129,11 @@ export function VectorPlayDetailPanel({
         </span>
       </div>
 
+      <div className="vector-board-detail-spark-wrap">
+        <span className="vector-board-detail-reason-label">Premium path</span>
+        <VectorPremiumSparkline row={row} />
+      </div>
+
       <div className="vector-board-detail-grid">
         <DetailMetric label="Session" value={row.sessionDate} />
         <DetailMetric label="Updated" value={fmtTime(row.timestamp)} />
@@ -118,19 +144,38 @@ export function VectorPlayDetailPanel({
           value={formatPremiumPct(row.peakPct)}
           tone={pnlClass(row.peakPct) === "is-up" ? "up" : pnlClass(row.peakPct) === "is-down" ? "down" : "flat"}
         />
-        {row.progressPct != null ? (
-          <DetailMetric label="Of peak" value={`${row.progressPct}%`} />
-        ) : null}
+        {row.progressPct != null ? <DetailMetric label="Of peak" value={`${row.progressPct}%`} /> : null}
       </div>
 
       <div className="vector-board-detail-meter-block">
-        <span className="vector-board-detail-reason-label">Premium path</span>
+        <span className="vector-board-detail-reason-label">Progress meter</span>
         <VectorBoardMeter meter={vectorBoardMeter(row)} />
+      </div>
+
+      <div className="vector-board-detail-timeline">
+        <span className="vector-board-detail-reason-label">Timeline</span>
+        <ol className="vector-board-detail-timeline-list">
+          {timeline.map((evt, i) => (
+            <li key={`${evt.at}-${i}`} className={clsx("vector-board-detail-timeline-item", evt.tone && `is-${evt.tone}`)}>
+              <span className="vector-board-detail-timeline-time">{fmtTime(evt.at)}</span>
+              <span className="vector-board-detail-timeline-label">{evt.label}</span>
+            </li>
+          ))}
+        </ol>
       </div>
 
       <div className="vector-board-detail-reason">
         <span className="vector-board-detail-reason-label">Desk read</span>
         <p className="vector-board-detail-reason-copy">{row.reason || EM}</p>
+      </div>
+
+      <div className="vector-board-detail-actions">
+        <button type="button" className="vector-board-detail-action" onClick={copyTicket}>
+          {copied ? "Copied" : "Copy ticket"}
+        </button>
+        <Link href={`/vector?ticker=${encodeURIComponent(row.ticker)}`} className="vector-board-detail-action">
+          Open in Vector
+        </Link>
       </div>
     </aside>
   );

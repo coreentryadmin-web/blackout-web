@@ -6,13 +6,19 @@ import type { VectorBoardMeter as VectorBoardMeterData } from "@/features/nighth
 const EM = "—";
 
 /** X Ads "Budget remaining" meter — value on top, thin bar, percent below. */
-export function VectorBoardMeter({ meter }: { meter: VectorBoardMeterData | null }) {
+export function VectorBoardMeter({
+  meter,
+  compact = false,
+}: {
+  meter: VectorBoardMeterData | null;
+  compact?: boolean;
+}) {
   if (!meter) {
     return <span className="vector-board-em">{EM}</span>;
   }
 
   return (
-    <div className="vector-board-meter" title={meter.caption}>
+    <div className={clsx("vector-board-meter", compact && "is-compact")} title={meter.caption}>
       <span className={clsx("vector-board-meter-value tabular-nums", `is-${meter.tone}`)}>
         {meter.valueLabel}
       </span>

@@ -606,3 +606,486 @@
   font-weight: 800;
 }
 
+/* ── Filters drawer (X Ads style) ───────────────────────────────────────── */
+.nh-v2-page .vector-board-filters {
+  position: relative;
+}
+
+.nh-v2-page .vector-board-filters-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 999px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--nh-desk-text-secondary);
+  background: var(--nh-desk-input-bg);
+}
+
+.nh-v2-page .vector-board-filters-trigger.is-open,
+.nh-v2-page .vector-board-filters-trigger.has-active {
+  color: var(--nh-desk-text);
+  border-color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-filters-badge {
+  display: inline-flex;
+  min-width: 1rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--nh-desk-chip-active-text);
+  background: var(--nh-desk-chip-active-bg);
+}
+
+.nh-v2-page .vector-board-filters-panel {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 40;
+  width: min(22rem, 92vw);
+  padding: 0.75rem;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 0.65rem;
+  background: var(--nh-desk-surface);
+  box-shadow: 0 12px 40px -16px rgba(0, 0, 0, 0.55);
+}
+
+.nh-v2-page .vector-board-filters-section + .vector-board-filters-section {
+  margin-top: 0.65rem;
+}
+
+.nh-v2-page .vector-board-filters-heading {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-filters-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.nh-v2-page .vector-board-filter-chip {
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--nh-desk-text-secondary);
+  background: var(--nh-desk-input-bg);
+}
+
+.nh-v2-page .vector-board-filter-chip.is-active {
+  color: var(--nh-desk-chip-active-text);
+  background: var(--nh-desk-chip-active-bg);
+  border-color: transparent;
+}
+
+.nh-v2-page .vector-board-filters-clear {
+  margin-top: 0.65rem;
+  width: 100%;
+  border: 1px solid rgba(240, 185, 74, 0.3);
+  border-radius: 0.5rem;
+  padding: 0.4rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--nh-desk-warn);
+  background: rgba(240, 185, 74, 0.08);
+}
+
+/* ── View menu ─────────────────────────────────────────────────────────── */
+.nh-v2-page .vector-board-view-menu {
+  position: relative;
+}
+
+.nh-v2-page .vector-board-view-trigger {
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 999px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--nh-desk-text-secondary);
+  background: var(--nh-desk-input-bg);
+}
+
+.nh-v2-page .vector-board-view-panel {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 40;
+  width: min(18rem, 92vw);
+  padding: 0.75rem;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 0.65rem;
+  background: var(--nh-desk-surface);
+  box-shadow: 0 12px 40px -16px rgba(0, 0, 0, 0.55);
+}
+
+.nh-v2-page .vector-board-view-section + .vector-board-view-section {
+  margin-top: 0.65rem;
+}
+
+.nh-v2-page .vector-board-view-heading {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-view-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.nh-v2-page .vector-board-view-chip,
+.nh-v2-page .vector-board-view-saved,
+.nh-v2-page .vector-board-view-action {
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--nh-desk-text-secondary);
+  background: var(--nh-desk-input-bg);
+}
+
+.nh-v2-page .vector-board-view-chip.is-active,
+.nh-v2-page .vector-board-view-action.is-active {
+  color: var(--nh-desk-chip-active-text);
+  background: var(--nh-desk-chip-active-bg);
+}
+
+.nh-v2-page .vector-board-view-columns {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.nh-v2-page .vector-board-view-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  color: var(--nh-desk-text-secondary);
+}
+
+.nh-v2-page .vector-board-view-views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.nh-v2-page .vector-board-view-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.65rem;
+}
+
+/* ── Session scorecard ─────────────────────────────────────────────────── */
+.nh-v2-page .vector-board-scorecard {
+  margin-top: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 0.55rem;
+  background: var(--nh-desk-surface-muted);
+}
+
+.nh-v2-page .vector-board-scorecard-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+}
+
+.nh-v2-page .vector-board-scorecard-title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .vector-board-scorecard-meta {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  color: var(--nh-desk-text-secondary);
+}
+
+.nh-v2-page .vector-board-scorecard-net.is-up {
+  color: var(--nh-desk-up);
+  font-weight: 800;
+}
+
+.nh-v2-page .vector-board-scorecard-net.is-down {
+  color: var(--nh-desk-down);
+  font-weight: 800;
+}
+
+.nh-v2-page .vector-board-scorecard-best {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  color: var(--nh-desk-text-secondary);
+}
+
+.nh-v2-page .vector-board-scorecard-meters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.65rem;
+  margin-top: 0.55rem;
+}
+
+.nh-v2-page .vector-board-scorecard-meter-label {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-meter.is-compact .vector-board-meter-value {
+  font-size: 10px;
+}
+
+.nh-v2-page .vector-board-meter.is-compact .vector-board-meter-track {
+  height: 4px;
+}
+
+/* ── Table enhancements ──────────────────────────────────────────────────── */
+.nh-v2-page .vector-board-shell.is-compact .vector-board-table tbody td {
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
+}
+
+.nh-v2-page .vector-board-shell.is-focus .vector-board-note,
+.nh-v2-page .vector-board-shell.is-focus .vector-board-scorecard,
+.nh-v2-page .vector-board-shell.is-focus .vector-board-cal-wrap {
+  display: none;
+}
+
+.nh-v2-page .vector-board-summary-row td {
+  position: sticky;
+  top: 2rem;
+  z-index: 9;
+}
+
+.nh-v2-page .vector-board-live-dot {
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-right: 0.35rem;
+  border-radius: 999px;
+  background: var(--nh-desk-up);
+  box-shadow: 0 0 0 0 rgba(0, 217, 163, 0.55);
+  animation: vector-board-live-pulse 1.8s ease infinite;
+}
+
+@keyframes vector-board-live-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 217, 163, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(0, 217, 163, 0);
+  }
+}
+
+.nh-v2-page .vector-board-row.is-at-risk td {
+  background: rgba(240, 185, 74, 0.04);
+}
+
+.nh-v2-page .vector-board-at-risk {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nh-desk-warn);
+  background: rgba(240, 185, 74, 0.12);
+}
+
+.nh-v2-page .vector-board-status-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.nh-v2-page .vector-board-col-check {
+  width: 2rem;
+  text-align: center;
+}
+
+.nh-v2-page .vector-board-empty-row td {
+  border: 0;
+  background: transparent;
+}
+
+.nh-v2-page .vector-board-empty {
+  padding: 1.5rem 0.5rem;
+}
+
+.nh-v2-page .vector-board-cal-cell.is-intense.is-up {
+  box-shadow: inset 0 0 0 1px rgba(0, 217, 163, 0.35);
+}
+
+.nh-v2-page .vector-board-cal-cell.is-strong.is-up {
+  box-shadow: inset 0 0 0 1px rgba(0, 217, 163, 0.2);
+}
+
+.nh-v2-page .vector-board-cal-dot {
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 999px;
+  background: var(--nh-desk-up);
+}
+
+/* ── Compare bar ───────────────────────────────────────────────────────── */
+.nh-v2-page .vector-board-compare-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 0.5rem;
+  background: var(--nh-desk-surface-muted);
+}
+
+.nh-v2-page .vector-board-compare-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-compare-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.nh-v2-page .vector-board-compare-item {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  color: var(--nh-desk-text-secondary);
+}
+
+.nh-v2-page .vector-board-compare-clear {
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--nh-desk-warn);
+}
+
+/* ── Detail panel extras ─────────────────────────────────────────────────── */
+.nh-v2-page .vector-board-detail-spark-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.nh-v2-page .vector-board-sparkline {
+  display: block;
+  width: 100%;
+  max-width: 8rem;
+}
+
+.nh-v2-page .vector-board-detail-timeline-list {
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nh-v2-page .vector-board-detail-timeline-item {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 0.35rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--nh-desk-border-subtle);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+}
+
+.nh-v2-page .vector-board-detail-timeline-time {
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-detail-timeline-item.is-up .vector-board-detail-timeline-label {
+  color: var(--nh-desk-up);
+}
+
+.nh-v2-page .vector-board-detail-timeline-item.is-down .vector-board-detail-timeline-label {
+  color: var(--nh-desk-down);
+}
+
+.nh-v2-page .vector-board-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 0.35rem;
+}
+
+.nh-v2-page .vector-board-detail-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 999px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--nh-desk-text-secondary);
+  background: var(--nh-desk-input-bg);
+  text-decoration: none;
+}
+
+.nh-v2-page .vector-board-detail-action:hover {
+  color: var(--nh-desk-text);
+  border-color: var(--nh-desk-text-tertiary);
+}
+

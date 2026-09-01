@@ -1,34 +1,21 @@
 "use client";
 
+import type { RefObject } from "react";
 import { clsx } from "clsx";
+import { VectorBoardFiltersDrawer } from "@/features/nighthawk/components/VectorBoardFiltersDrawer";
 import { VectorBoardSortDropdown } from "@/features/nighthawk/components/VectorBoardSortDropdown";
+import { VectorBoardViewMenu } from "@/features/nighthawk/components/VectorBoardViewMenu";
 import type { VectorBoardRowKind } from "@/features/nighthawk/lib/vector-board-table-utils";
 import {
-  VECTOR_BOARD_REASON_OPTIONS,
   type VectorBoardSort,
   type VectorBoardStatusFilter,
   type VectorBoardTierFilter,
   vectorBoardActiveFilterCount,
 } from "@/features/nighthawk/lib/vector-board-filters";
+import type { VectorBoardPreferences, VectorBoardSavedView } from "@/features/nighthawk/lib/vector-board-preferences";
 import type { VectorClosureReasonFilter } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
 
 type BoardTab = "all" | VectorBoardRowKind;
-
-const STATUS_OPTIONS: { id: VectorBoardStatusFilter; label: string }[] = [
-  { id: "all", label: "All status" },
-  { id: "open", label: "Open" },
-  { id: "winner", label: "Winners" },
-  { id: "runner", label: "Runners" },
-  { id: "caution", label: "Caution" },
-  { id: "closed", label: "Closed" },
-  { id: "invalidated", label: "Stressed" },
-];
-
-const TIER_OPTIONS: { id: VectorBoardTierFilter; label: string }[] = [
-  { id: "all", label: "All tiers" },
-  { id: "elite", label: "Elite" },
-  { id: "standard", label: "Standard" },
-];
 
 function fmtSignedPct(v: number | null): string {
   if (v == null || !Number.isFinite(v)) return "—";
@@ -50,6 +37,7 @@ export function VectorBoardToolbar({
   onSessionScopeChange,
   tickerQuery,
   onTickerQueryChange,
+  searchInputRef,
   statusFilter,
   onStatusFilterChange,
   tierFilter,
@@ -63,6 +51,14 @@ export function VectorBoardToolbar({
   sessionPnl,
   netPnl,
   totalVisible,
+  filtersOpen,
+  onFiltersOpenChange,
+  prefs,
+  onPrefsChange,
+  onApplyView,
+  onExport,
+  compareMode,
+  onCompareModeChange,
 }: {
   tab: BoardTab;
   tabCounts: Record<BoardTab, number>;
@@ -71,6 +67,7 @@ export function VectorBoardToolbar({
   onSessionScopeChange: (scope: "current" | "all") => void;
   tickerQuery: string;
   onTickerQueryChange: (q: string) => void;
+  searchInputRef?: RefObject<HTMLInputElement>;
   statusFilter: VectorBoardStatusFilter;
   onStatusFilterChange: (f: VectorBoardStatusFilter) => void;
   tierFilter: VectorBoardTierFilter;
@@ -84,6 +81,14 @@ export function VectorBoardToolbar({
   sessionPnl: number | null;
   netPnl: number | null;
   totalVisible: number;
+  filtersOpen: boolean;
+  onFiltersOpenChange: (open: boolean) => void;
+  prefs: VectorBoardPreferences;
+  onPrefsChange: (next: VectorBoardPreferences) => void;
+  onApplyView: (view: VectorBoardSavedView) => void;
+  onExport: () => void;
+  compareMode: boolean;
+  onCompareModeChange: (on: boolean) => void;
 }) {
   const tabs: { id: BoardTab; label: string }[] = [
     { id: "all", label: "All picks" },
@@ -150,7 +155,7 @@ export function VectorBoardToolbar({
         </div>
         {sessionPnl != null ? (
           <div className="vector-board-kpi">
-            <span className="vector-board-kpi-label">Session P&amp;L</span>
+            <span className="vector-board-kpi-label">Session premium</span>
             <span className={clsx("vector-board-kpi-value tabular-nums vector-board-pnl", pnlTone(sessionPnl))}>
               {fmtSignedPct(sessionPnl)}
             </span>
@@ -158,7 +163,7 @@ export function VectorBoardToolbar({
         ) : null}
         {netPnl != null ? (
           <div className="vector-board-kpi">
-            <span className="vector-board-kpi-label">Net P&amp;L</span>
+            <span className="vector-board-kpi-label">Net premium</span>
             <span className={clsx("vector-board-kpi-value tabular-nums vector-board-pnl", pnlTone(netPnl))}>
               {fmtSignedPct(netPnl)}
             </span>
@@ -168,59 +173,37 @@ export function VectorBoardToolbar({
 
       <div className="vector-board-controls">
         <VectorBoardSortDropdown value={sort} onChange={onSortChange} />
-
-        <div className="vector-board-filterbar" role="group" aria-label="Delivery status">
-          {STATUS_OPTIONS.map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              className={clsx("vector-board-filter-btn", statusFilter === opt.id && "is-active")}
-              onClick={() => onStatusFilterChange(opt.id)}
-              aria-pressed={statusFilter === opt.id}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="vector-board-filterbar" role="group" aria-label="Tier">
-          {TIER_OPTIONS.map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              className={clsx("vector-board-filter-btn", tierFilter === opt.id && "is-active")}
-              onClick={() => onTierFilterChange(opt.id)}
-              aria-pressed={tierFilter === opt.id}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-
-        {tab === "closed" ? (
-          <div className="vector-board-filterbar" role="group" aria-label="Close reason">
-            {VECTOR_BOARD_REASON_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                className={clsx("vector-board-filter-btn", reasonFilter === opt.id && "is-active")}
-                onClick={() => onReasonFilterChange(opt.id)}
-                aria-pressed={reasonFilter === opt.id}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
+        <VectorBoardFiltersDrawer
+          open={filtersOpen}
+          onOpenChange={onFiltersOpenChange}
+          activeCount={activeFilterCount}
+          statusFilter={statusFilter}
+          onStatusFilterChange={onStatusFilterChange}
+          tierFilter={tierFilter}
+          onTierFilterChange={onTierFilterChange}
+          reasonFilter={reasonFilter}
+          onReasonFilterChange={onReasonFilterChange}
+          showReasonFilter={tab === "closed"}
+          onClear={onClearFilters}
+        />
+        <VectorBoardViewMenu
+          prefs={prefs}
+          onPrefsChange={onPrefsChange}
+          onApplyView={onApplyView}
+          onExport={onExport}
+          compareMode={compareMode}
+          onCompareModeChange={onCompareModeChange}
+        />
 
         <div className="vector-board-search">
           <span className="vector-board-search-icon" aria-hidden>
             ⌕
           </span>
           <input
+            ref={searchInputRef}
             value={tickerQuery}
             onChange={(e) => onTickerQueryChange(e.target.value.toUpperCase())}
-            placeholder="Search ticker"
+            placeholder="Search ticker (/)"
             className="vector-board-search-input"
             aria-label="Search ticker"
           />
@@ -238,7 +221,7 @@ export function VectorBoardToolbar({
 
         {activeFilterCount > 0 ? (
           <button type="button" className="vector-board-clear-btn" onClick={onClearFilters}>
-            Clear filters ({activeFilterCount})
+            Clear ({activeFilterCount})
           </button>
         ) : null}
       </div>
