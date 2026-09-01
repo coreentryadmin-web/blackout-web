@@ -258,12 +258,16 @@
 }
 
 .nh-v2-page .vector-board-table tbody td {
-  padding-inline: 0.5rem;
+  padding: 0.5rem;
   vertical-align: middle;
 }
 
 .nh-v2-page .vector-board-table thead th {
-  padding-inline: 0.5rem;
+  padding: 0.5rem;
+}
+
+.nh-v2-page .vector-board-table thead th.vector-board-col-num {
+  text-align: right;
 }
 
 .nh-v2-page .vector-board-pick-id {

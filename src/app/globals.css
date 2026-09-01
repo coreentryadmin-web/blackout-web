@@ -3681,6 +3681,7 @@ html.product-shell .nav-mega {
     @apply min-h-0 flex-1 overflow-auto;
     scrollbar-width: thin;
     scrollbar-color: rgba(0, 217, 163, 0.25) transparent;
+    scrollbar-gutter: stable;
   }
 
   .vector-board-tablewrap::-webkit-scrollbar {
@@ -3694,46 +3695,55 @@ html.product-shell .nav-mega {
   }
 
   .vector-board-table {
-    @apply w-full min-w-0 border-collapse font-mono text-[11px];
+    @apply w-full min-w-[52rem] border-separate font-mono text-[11px];
     table-layout: fixed;
+    border-spacing: 0;
   }
 
-  .vector-board-col-pick {
-    width: 16%;
+  .vector-board-table col.vector-board-col-check {
+    width: 2.25rem;
   }
 
-  .vector-board-col-status {
-    width: 11%;
+  .vector-board-table col.vector-board-col-pick {
+    width: 20%;
   }
 
-  .vector-board-col-premium {
-    width: 10%;
-  }
-
-  .vector-board-col-entry {
-    width: 14%;
-  }
-
-  .vector-board-col-peak {
-    width: 8%;
-  }
-
-  .vector-board-col-path {
-    width: 16%;
-  }
-
-  .vector-board-col-updated {
+  .vector-board-table col.vector-board-col-status {
     width: 12%;
   }
 
+  .vector-board-table col.vector-board-col-premium {
+    width: 11%;
+  }
+
+  .vector-board-table col.vector-board-col-entry {
+    width: 14%;
+  }
+
+  .vector-board-table col.vector-board-col-peak {
+    width: 9%;
+  }
+
+  .vector-board-table col.vector-board-col-path {
+    width: 18%;
+  }
+
+  .vector-board-table col.vector-board-col-updated {
+    width: 16%;
+  }
+
   .vector-board-table thead th {
-    @apply sticky top-0 z-10 border-b px-2.5 py-2 text-left text-[9px] font-bold uppercase tracking-[0.1em] text-sky-300/65;
+    @apply sticky top-0 z-10 border-b px-2 py-2 text-left text-[9px] font-bold uppercase tracking-[0.1em] text-sky-300/65;
     background: linear-gradient(180deg, rgba(12, 14, 20, 0.98), rgba(9, 10, 14, 0.96));
     border-color: rgba(255, 255, 255, 0.08);
   }
 
+  .vector-board-table thead th.vector-board-col-num {
+    text-align: right;
+  }
+
   .vector-board-table tbody td {
-    @apply border-b px-2.5 py-2.5 text-sky-100/85;
+    @apply border-b px-2 py-2 text-sky-100/85;
     border-color: rgba(255, 255, 255, 0.035);
     transition: background-color 0.15s ease;
   }
