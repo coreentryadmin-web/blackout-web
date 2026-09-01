@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  applyRailWeightToScore,
   buildMarketState,
   rawRailWeightsForStructure,
   weightedScoreForMerge,
@@ -50,14 +49,6 @@ describe("market-state-engine", () => {
     });
     assert.ok(state.calibration_shadow?.active);
     assert.ok(state.rail_weights.BREAKOUT > 1.1);
-  });
-
-  it("applyRailWeightToScore scales by primary origin", () => {
-    const state = buildMarketState({ regime: trendRegime, sessionDate: "2026-08-03" });
-    const flowScore = applyRailWeightToScore(80, ["FLOW"], state);
-    const pinScore = applyRailWeightToScore(80, ["PIN"], state);
-    assert.ok(flowScore > 80);
-    assert.ok(pinScore < 80);
   });
 
   it("weightedScoreForMerge uses max origin weight", () => {

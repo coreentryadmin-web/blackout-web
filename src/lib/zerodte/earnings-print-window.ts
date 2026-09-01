@@ -171,39 +171,3 @@ export function assessPrintWindow(
     minutesUntil: printMin - nowMin,
   };
 }
-
-export type PrintWindowTally = Record<PrintWindowVerdict, number> & {
-  /** Rows the COARSE gate blocks that a window-aware gate would not. The measurable prize. */
-  exemptible: number;
-  total: number;
-};
-
-/**
- * Tally verdicts across a set of reporters — the counterfactual input.
- *
- * `exemptible` is the number this module claims the coarse gate over-blocks. It is reported as a
- * COUNT, not acted on: turning it into an unblock needs the graded outcome of those specific
- * would-be commits, which is a separate measurement against real minute bars.
- */
-export function tallyPrintWindows(
-  rows: readonly PrintWindowInput[],
-  todayYmd: string,
-  nowMin: number
-): PrintWindowTally {
-  const tally: PrintWindowTally = {
-    after_close: 0,
-    pre_open_landed: 0,
-    pre_open_pending: 0,
-    intraday: 0,
-    unknown: 0,
-    exemptible: 0,
-    total: 0,
-  };
-  for (const row of rows) {
-    const a = assessPrintWindow(row, todayYmd, nowMin);
-    tally[a.verdict]++;
-    tally.total++;
-    if (!a.threatensToday) tally.exemptible++;
-  }
-  return tally;
-}
