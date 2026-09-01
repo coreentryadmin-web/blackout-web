@@ -9,7 +9,10 @@ import {
 } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
 import { isVectorPickRunner as isRunnerCore } from "@/lib/vector/vector-pick-sweep-core";
 
-export type VectorBoardRowKind = "winner" | "runner" | "live" | "closed";
+export type VectorBoardRowKind = "winner" | "runner" | "live" | "closed" | "open";
+
+/** UI tabs — Open = all active desk picks; use Filters for Winner/Runner sub-states. */
+export type VectorBoardTab = "all" | "open" | "closed";
 
 export type VectorBoardStatus =
   | "open"
@@ -205,7 +208,7 @@ export function buildVectorBoardRows(input: {
   winners: VectorLeaderPlay[];
   leaders: VectorLeaderPlay[];
   closed: VectorClosurePlay[];
-  section: "all" | VectorBoardRowKind;
+  section: "all" | VectorBoardTab | VectorBoardRowKind;
 }): VectorBoardTableRow[] {
   const runners = filterVectorRunnerLeaders(input.leaders);
   const winnerKeys = new Set(input.winners.map((w) => `${w.ticker}-${w.contract.occ}`));
@@ -230,6 +233,23 @@ export function buildVectorBoardRows(input: {
       .map(leaderToTableRow);
     const closedRows = input.closed.map(closureToTableRow);
     rows = [...winnerRows, ...runnerRows, ...liveRows, ...closedRows];
+  } else if (input.section === "open") {
+    const winnerRows = input.winners.map(leaderToTableRow);
+    const runnerRows = runners
+      .filter((r) => !winnerKeys.has(`${r.ticker}-${r.contract.occ}`))
+      .map(leaderToTableRow);
+    const liveRows = input.leaders
+      .filter(
+        (r) =>
+          !winnerKeys.has(`${r.ticker}-${r.contract.occ}`) &&
+          !isRunnerCore({
+            premium_pct_from_entry: r.premium_pct_from_entry,
+            peak_premium_pct: r.peak_premium_pct,
+            action_status: r.action_status,
+          })
+      )
+      .map(leaderToTableRow);
+    rows = [...winnerRows, ...runnerRows, ...liveRows];
   } else if (input.section === "winner") {
     rows = input.winners.map(leaderToTableRow);
   } else if (input.section === "runner") {

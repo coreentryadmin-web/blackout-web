@@ -55,6 +55,8 @@ async function main() {
     const table = document.querySelector(".vector-board-table");
     const rows = document.querySelectorAll(".vector-board-row");
     const summary = document.querySelector(".vector-board-summary-row");
+    const kpiStrip = document.querySelector(".vector-board-kpi-strip");
+    const openTab = [...document.querySelectorAll('[role="tab"]')].find((el) => /^Open/i.test(el.textContent ?? ""));
     const pnlHeader = [...document.querySelectorAll("th")].find((th) =>
       /Premium|P&L/i.test(th.textContent ?? "")
     );
@@ -70,6 +72,8 @@ async function main() {
       hasTable: !!table,
       rowCount: rows.length,
       hasSummary: !!summary,
+      hasKpiStrip: !!kpiStrip,
+      hasOpenTab: !!openTab,
       hasPnlColumn: !!pnlHeader,
       hasThemeToggle: !!themeToggle,
       hasSort: !!sortTrigger,
@@ -141,7 +145,11 @@ async function main() {
           ? "RED — table UI missing"
           : !dom.hasPnlColumn
             ? "RED — P&L column missing"
-            : dom.rowCount === 0 && (apiJson?.closed?.length ?? 0) + (apiJson?.leaders?.length ?? 0) > 0
+            : dom.hasSummary || dom.hasKpiStrip
+              ? "RED — legacy summary/KPI chrome still present"
+              : !dom.hasOpenTab
+                ? "RED — Open tab missing (desk tabs not migrated)"
+                : dom.rowCount === 0 && (apiJson?.closed?.length ?? 0) + (apiJson?.leaders?.length ?? 0) > 0
               ? "RED — API has rows but table empty"
               : dom.pageScrollY > 8
                 ? "AMBER — page scrolls (viewport lock may be broken)"

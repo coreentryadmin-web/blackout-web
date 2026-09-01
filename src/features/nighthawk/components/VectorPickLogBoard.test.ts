@@ -20,8 +20,8 @@ test("VectorPickLogBoard: X Ads toolbar, premium column, meters, and detail rail
   assert.match(board, /Premium vs entry/, "table must expose premium vs entry column");
   assert.match(board, /VectorBoardMeter/, "table must render X Ads-style premium path meters");
   assert.match(board, /VectorPlayDetailPanel/, "row click must open right-rail inspector");
-  assert.match(board, /vector-board-summary-row/, "summary row must mirror X Ads totals row");
+  assert.doesNotMatch(board, /vector-board-summary-row/, "summary row removed — analytics live in detail rail");
   assert.match(board, /formatPremiumPct/, "premium % must render prominently");
-  assert.match(board, /VectorBoardScorecard/, "session scorecard meters must render");
   assert.match(toolbar, /VectorBoardFiltersDrawer/, "filters must use drawer pattern");
+  assert.match(toolbar, /"Open"/, "tabs use Open/Closed desk language");
 });

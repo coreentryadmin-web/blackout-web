@@ -233,3 +233,56 @@
   border-radius: var(--vb-control-radius);
   animation: vb-panel-in 0.2s ease;
 }
+
+/* ── Night Hawk feed header — view toggles flush to top ─────────────────── */
+.nh-v2-page .nighthawk-feed-header {
+  gap: 0.5rem;
+}
+
+.nh-v2-page .nighthawk-feed-header .ios-native-desk-segment {
+  margin-bottom: 0;
+}
+
+/* ── Vector board split — table shrinks, detail rail gets room ───────────── */
+@media (min-width: 821px) {
+  .nh-v2-page .vector-board-body--split .vector-board-table-pane {
+    flex: 1 1 0%;
+    min-width: 0;
+  }
+
+  .nh-v2-page .vector-board-body--split .vector-board-detail {
+    flex: 0 0 min(32vw, 28rem);
+    width: min(32vw, 28rem);
+    max-width: 28rem;
+  }
+}
+
+.nh-v2-page .vector-board-table tbody td {
+  padding-inline: 0.5rem;
+  vertical-align: middle;
+}
+
+.nh-v2-page .vector-board-table thead th {
+  padding-inline: 0.5rem;
+}
+
+.nh-v2-page .vector-board-pick-id {
+  display: none;
+}
+
+.nh-v2-page .vector-board-meter {
+  max-width: 7.5rem;
+  margin-inline-start: auto;
+}
+
+.nh-v2-page .vector-board-toolbar {
+  padding-bottom: 0.35rem;
+}
+
+.nh-v2-page .vector-board-controls {
+  margin-top: 0.35rem;
+}
+
+.nh-v2-page .vector-board-cal-wrap {
+  padding-block: 0.35rem;
+}

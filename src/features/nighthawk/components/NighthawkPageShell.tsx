@@ -42,7 +42,7 @@ export function NighthawkPageShell({ seed }: { seed?: NightHawkSeedProps | null 
             "nighthawk-page-root flex max-w-none flex-col",
             nativeShell
               ? "nighthawk-page-inner-native min-h-[calc(100dvh-var(--ios-header-offset)-var(--ios-tab-offset))]"
-              : "min-h-0 flex-1 px-2 py-4 md:px-3"
+              : "min-h-0 flex-1 px-2 py-1 md:px-2 md:py-1.5"
           )}
         >
           {/* PageHeader removed — view toggle identifies the desk. */}

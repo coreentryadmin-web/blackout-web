@@ -5,7 +5,7 @@ import { clsx } from "clsx";
 import { VectorBoardFiltersDrawer } from "@/features/nighthawk/components/VectorBoardFiltersDrawer";
 import { VectorBoardSortDropdown } from "@/features/nighthawk/components/VectorBoardSortDropdown";
 import { VectorBoardViewMenu } from "@/features/nighthawk/components/VectorBoardViewMenu";
-import type { VectorBoardRowKind } from "@/features/nighthawk/lib/vector-board-table-utils";
+import type { VectorBoardTab } from "@/features/nighthawk/lib/vector-board-table-utils";
 import {
   type VectorBoardSort,
   type VectorBoardStatusFilter,
@@ -14,20 +14,6 @@ import {
 } from "@/features/nighthawk/lib/vector-board-filters";
 import type { VectorBoardPreferences, VectorBoardSavedView } from "@/features/nighthawk/lib/vector-board-preferences";
 import type { VectorClosureReasonFilter } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
-
-type BoardTab = "all" | VectorBoardRowKind;
-
-function fmtSignedPct(v: number | null): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${v >= 0 ? "+" : ""}${v}%`;
-}
-
-function pnlTone(v: number | null): "is-up" | "is-down" | "is-flat" | undefined {
-  if (v == null || !Number.isFinite(v)) return undefined;
-  if (v > 0) return "is-up";
-  if (v < 0) return "is-down";
-  return "is-flat";
-}
 
 export function VectorBoardToolbar({
   tab,
@@ -48,9 +34,6 @@ export function VectorBoardToolbar({
   onSortChange,
   selectedDate,
   onClearFilters,
-  sessionPnl,
-  netPnl,
-  totalVisible,
   filtersOpen,
   onFiltersOpenChange,
   prefs,
@@ -60,9 +43,9 @@ export function VectorBoardToolbar({
   compareMode,
   onCompareModeChange,
 }: {
-  tab: BoardTab;
-  tabCounts: Record<BoardTab, number>;
-  onTabChange: (tab: BoardTab) => void;
+  tab: VectorBoardTab;
+  tabCounts: Record<VectorBoardTab, number>;
+  onTabChange: (tab: VectorBoardTab) => void;
   sessionScope: "current" | "all";
   onSessionScopeChange: (scope: "current" | "all") => void;
   tickerQuery: string;
@@ -78,9 +61,6 @@ export function VectorBoardToolbar({
   onSortChange: (s: VectorBoardSort) => void;
   selectedDate: string | null;
   onClearFilters: () => void;
-  sessionPnl: number | null;
-  netPnl: number | null;
-  totalVisible: number;
   filtersOpen: boolean;
   onFiltersOpenChange: (open: boolean) => void;
   prefs: VectorBoardPreferences;
@@ -90,11 +70,9 @@ export function VectorBoardToolbar({
   compareMode: boolean;
   onCompareModeChange: (on: boolean) => void;
 }) {
-  const tabs: { id: BoardTab; label: string }[] = [
-    { id: "all", label: "All picks" },
-    { id: "winner", label: "Winners" },
-    { id: "runner", label: "Runners" },
-    { id: "live", label: "Live" },
+  const tabs: { id: VectorBoardTab; label: string; hint?: string }[] = [
+    { id: "all", label: "All" },
+    { id: "open", label: "Open", hint: "Active desk picks — filter Winners/Runners in Filters" },
     { id: "closed", label: "Closed" },
   ];
 
@@ -110,7 +88,7 @@ export function VectorBoardToolbar({
     <header className="vector-board-toolbar">
       <div className="vector-board-toolbar-row">
         <nav className="vector-board-tabs" role="tablist" aria-label="Vector board views">
-          {tabs.map(({ id, label }) => {
+          {tabs.map(({ id, label, hint }) => {
             const active = tab === id;
             return (
               <button
@@ -118,6 +96,7 @@ export function VectorBoardToolbar({
                 type="button"
                 role="tab"
                 aria-selected={active}
+                title={hint}
                 className={clsx("vector-board-tab", active && "is-active")}
                 onClick={() => onTabChange(id)}
               >
@@ -135,7 +114,7 @@ export function VectorBoardToolbar({
               className={clsx("vector-board-scope-btn", sessionScope === "current" && "is-active")}
               onClick={() => onSessionScopeChange("current")}
             >
-              Current
+              Today
             </button>
             <button
               type="button"
@@ -146,29 +125,6 @@ export function VectorBoardToolbar({
             </button>
           </div>
         </div>
-      </div>
-
-      <div className="vector-board-kpi-strip">
-        <div className="vector-board-kpi">
-          <span className="vector-board-kpi-label">Showing</span>
-          <span className="vector-board-kpi-value tabular-nums">{totalVisible}</span>
-        </div>
-        {sessionPnl != null ? (
-          <div className="vector-board-kpi">
-            <span className="vector-board-kpi-label">Session premium</span>
-            <span className={clsx("vector-board-kpi-value tabular-nums vector-board-pnl", pnlTone(sessionPnl))}>
-              {fmtSignedPct(sessionPnl)}
-            </span>
-          </div>
-        ) : null}
-        {netPnl != null ? (
-          <div className="vector-board-kpi">
-            <span className="vector-board-kpi-label">Net premium</span>
-            <span className={clsx("vector-board-kpi-value tabular-nums vector-board-pnl", pnlTone(netPnl))}>
-              {fmtSignedPct(netPnl)}
-            </span>
-          </div>
-        ) : null}
       </div>
 
       <div className="vector-board-controls">
