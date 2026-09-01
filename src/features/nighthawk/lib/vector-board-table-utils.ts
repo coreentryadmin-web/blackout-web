@@ -51,6 +51,55 @@ export type VectorBoardCalendarBucket = {
   closed: number;
 };
 
+export type VectorBoardMeter = {
+  valueLabel: string;
+  fillPct: number;
+  caption: string;
+  tone: "up" | "down" | "flat";
+};
+
+function meterTone(pct: number | null): VectorBoardMeter["tone"] {
+  const t = premiumPctTone(pct);
+  if (t === "bull") return "up";
+  if (t === "bear") return "down";
+  return "flat";
+}
+
+/** X Ads budget-remaining analogue — premium value + fill bar + caption %. */
+export function vectorBoardMeter(row: VectorBoardTableRow): VectorBoardMeter | null {
+  const pct = row.premiumPct;
+  const tone = meterTone(pct);
+  const valueLabel = formatPremiumPct(pct);
+
+  if (row.progressPct != null && row.peakPct != null && row.peakPct > 0) {
+    return {
+      valueLabel,
+      fillPct: row.progressPct,
+      caption: `${row.progressPct}%`,
+      tone,
+    };
+  }
+
+  if (pct == null || !Number.isFinite(pct)) return null;
+
+  if (row.status === "winner" || pct >= 50) {
+    return {
+      valueLabel,
+      fillPct: 100,
+      caption: "100%",
+      tone,
+    };
+  }
+
+  const towardFloor = Math.max(0, Math.min(100, Math.round((Math.max(0, pct) / 50) * 100)));
+  return {
+    valueLabel,
+    fillPct: towardFloor,
+    caption: `${towardFloor}%`,
+    tone,
+  };
+}
+
 export function leaderRowKind(row: VectorLeaderPlay): VectorBoardRowKind {
   if (row.is_winner || row.closed_winner) return "winner";
   if (

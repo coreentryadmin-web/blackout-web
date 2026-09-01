@@ -6,6 +6,7 @@ import { clsx } from "clsx";
 import { EmptyState, Skeleton } from "@/components/ui";
 import { etDateTimeShort } from "@/lib/et-clock";
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
+import { VectorBoardMeter } from "@/features/nighthawk/components/VectorBoardMeter";
 import { VectorBoardCalendar } from "@/features/nighthawk/components/VectorBoardCalendar";
 import { VectorBoardStatusPill } from "@/features/nighthawk/components/VectorBoardStatus";
 import { VectorPlayDetailPanel } from "@/features/nighthawk/components/VectorPlayDetailPanel";
@@ -16,6 +17,7 @@ import {
   formatPremiumPct,
   premiumPctTone,
   vectorBoardCalendarBuckets,
+  vectorBoardMeter,
   vectorBoardSummary,
 } from "@/features/nighthawk/lib/vector-board-table-utils";
 import { filterVectorRunnerLeaders, preferredVectorBoardSection } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
@@ -330,7 +332,7 @@ export function VectorPickLogBoard() {
                     <th className="vector-board-col-num">Premium</th>
                     <th className="vector-board-col-num">Entry → mark</th>
                     <th className="vector-board-col-num">Peak</th>
-                    <th className="vector-board-col-num">Of peak</th>
+                    <th className="vector-board-col-num">Premium path</th>
                     <th>Updated</th>
                   </tr>
                 </thead>
@@ -381,19 +383,7 @@ export function VectorPickLogBoard() {
                           {formatPremiumPct(row.peakPct)}
                         </td>
                         <td className="vector-board-col-num">
-                          {row.progressPct != null ? (
-                            <div className="vector-board-progress" title={`${row.progressPct}% of peak`}>
-                              <div className="vector-board-progress-track">
-                                <div
-                                  className={clsx("vector-board-progress-fill", pnlClass(row.premiumPct))}
-                                  style={{ width: `${row.progressPct}%` }}
-                                />
-                              </div>
-                              <span className="vector-board-progress-label tabular-nums">{row.progressPct}%</span>
-                            </div>
-                          ) : (
-                            <span className="vector-board-em">{EM}</span>
-                          )}
+                          <VectorBoardMeter meter={vectorBoardMeter(row)} />
                         </td>
                         <td className="vector-board-col-time tabular-nums">{fmtTimestamp(row.timestamp)}</td>
                       </tr>

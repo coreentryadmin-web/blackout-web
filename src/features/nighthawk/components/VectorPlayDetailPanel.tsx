@@ -2,8 +2,9 @@
 
 import { clsx } from "clsx";
 import type { VectorBoardTableRow } from "@/features/nighthawk/lib/vector-board-table-utils";
-import { formatPremiumPct, premiumPctTone } from "@/features/nighthawk/lib/vector-board-table-utils";
+import { formatPremiumPct, premiumPctTone, vectorBoardMeter } from "@/features/nighthawk/lib/vector-board-table-utils";
 import { VectorBoardStatusPill } from "@/features/nighthawk/components/VectorBoardStatus";
+import { VectorBoardMeter } from "@/features/nighthawk/components/VectorBoardMeter";
 import { etDateTimeShort } from "@/lib/et-clock";
 
 const EM = "—";
@@ -122,17 +123,10 @@ export function VectorPlayDetailPanel({
         ) : null}
       </div>
 
-      {row.progressPct != null && row.peakPct != null && row.peakPct > 0 ? (
-        <div className="vector-board-detail-progress">
-          <div className="vector-board-detail-progress-track">
-            <div
-              className={clsx("vector-board-detail-progress-fill", pnlClass(row.premiumPct))}
-              style={{ width: `${row.progressPct}%` }}
-            />
-          </div>
-          <span className="vector-board-detail-progress-label tabular-nums">{row.progressPct}% of peak</span>
-        </div>
-      ) : null}
+      <div className="vector-board-detail-meter-block">
+        <span className="vector-board-detail-reason-label">Premium path</span>
+        <VectorBoardMeter meter={vectorBoardMeter(row)} />
+      </div>
 
       <div className="vector-board-detail-reason">
         <span className="vector-board-detail-reason-label">Desk read</span>

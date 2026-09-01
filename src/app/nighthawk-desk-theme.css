@@ -1,0 +1,399 @@
+
+/* ── Desk theme tokens (X Ads Manager light/dark) ─────────────────────────── */
+.nh-v2-page[data-desk-theme="dark"],
+.nh-v2-page:not([data-desk-theme]) {
+  --nh-desk-bg: transparent;
+  --nh-desk-surface: rgba(8, 10, 14, 0.92);
+  --nh-desk-surface-muted: rgba(255, 255, 255, 0.02);
+  --nh-desk-text: #f5f6f7;
+  --nh-desk-text-secondary: #9aa3b2;
+  --nh-desk-text-tertiary: rgba(154, 163, 178, 0.65);
+  --nh-desk-border: rgba(255, 255, 255, 0.08);
+  --nh-desk-border-subtle: rgba(255, 255, 255, 0.035);
+  --nh-desk-row-hover: rgba(255, 255, 255, 0.035);
+  --nh-desk-summary-bg: rgba(255, 255, 255, 0.02);
+  --nh-desk-tab: rgba(154, 163, 178, 0.75);
+  --nh-desk-tab-active: #f4f7fb;
+  --nh-desk-tab-underline: #00d9a3;
+  --nh-desk-up: #00d9a3;
+  --nh-desk-down: #f0637c;
+  --nh-desk-warn: #f0b94a;
+  --nh-desk-meter-track: rgba(255, 255, 255, 0.1);
+  --nh-desk-meter-fill: #00d9a3;
+  --nh-desk-chip-active-text: #04120d;
+  --nh-desk-chip-active-bg: linear-gradient(180deg, #1fe9bb, #00d9a3);
+  --nh-desk-input-bg: rgba(4, 4, 7, 0.35);
+  --nh-desk-thead-bg: linear-gradient(180deg, rgba(12, 14, 20, 0.98), rgba(9, 10, 14, 0.96));
+  --nh-desk-detail-bg: linear-gradient(180deg, rgba(10, 12, 18, 0.96), rgba(6, 7, 11, 0.92));
+  --nh-desk-selection-accent: rgba(0, 217, 163, 0.75);
+}
+
+.nh-v2-page[data-desk-theme="light"] {
+  --nh-desk-bg: #ffffff;
+  --nh-desk-surface: #ffffff;
+  --nh-desk-surface-muted: #f7f9f9;
+  --nh-desk-text: #0f1419;
+  --nh-desk-text-secondary: #536471;
+  --nh-desk-text-tertiary: #8b98a5;
+  --nh-desk-border: #eff3f4;
+  --nh-desk-border-subtle: #f0f3f4;
+  --nh-desk-row-hover: #f7f9f9;
+  --nh-desk-summary-bg: #f7f9f9;
+  --nh-desk-tab: #536471;
+  --nh-desk-tab-active: #0f1419;
+  --nh-desk-tab-underline: #0f1419;
+  --nh-desk-up: #00ba7c;
+  --nh-desk-down: #f4212e;
+  --nh-desk-warn: #f7b928;
+  --nh-desk-meter-track: #e8ecef;
+  --nh-desk-meter-fill: #00ba7c;
+  --nh-desk-chip-active-text: #ffffff;
+  --nh-desk-chip-active-bg: #0f1419;
+  --nh-desk-input-bg: #f7f9f9;
+  --nh-desk-thead-bg: #f7f9f9;
+  --nh-desk-detail-bg: #ffffff;
+  --nh-desk-selection-accent: #0f1419;
+  background: var(--nh-desk-bg);
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page[data-desk-theme="light"] .nighthawk-radar-backdrop,
+.nh-v2-page[data-desk-theme="light"] .nighthawk-radar-hud {
+  opacity: 0 !important;
+}
+
+.nh-v2-page[data-desk-theme="light"] .nighthawk-page-root {
+  background: var(--nh-desk-bg);
+}
+
+/* Theme toggle — moon/sun like X Ads sidebar control */
+.nh-desk-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 999px;
+  background: var(--nh-desk-input-bg);
+  color: var(--nh-desk-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.nh-desk-theme-toggle:hover {
+  color: var(--nh-desk-text);
+  border-color: var(--nh-desk-text-tertiary);
+}
+
+.nh-desk-theme-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Light mode: view tabs + vector board tabs use black underline like X Ads */
+.nh-v2-page[data-desk-theme="light"] .ios-native-segment {
+  border-bottom-color: var(--nh-desk-border);
+}
+
+.nh-v2-page[data-desk-theme="light"] .ios-native-segment-btn {
+  color: var(--nh-desk-tab) !important;
+}
+
+.nh-v2-page[data-desk-theme="light"] .ios-native-segment-btn-active {
+  color: var(--nh-desk-tab-active) !important;
+}
+
+.nh-v2-page[data-desk-theme="light"] .ios-native-segment-indicator {
+  background: var(--nh-desk-tab-underline);
+  box-shadow: none;
+}
+
+/* ── Vector board theme bridge (maps globals vector-board-* to desk tokens) ── */
+.nh-v2-page .vector-board-toolbar {
+  border-color: var(--nh-desk-border);
+}
+
+.nh-v2-page .vector-board-meta-stat {
+  color: var(--nh-desk-text-secondary);
+}
+
+.nh-v2-page .vector-board-meta-stat strong {
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .vector-board-note {
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-tabs {
+  border-bottom-color: var(--nh-desk-border);
+}
+
+.nh-v2-page .vector-board-tab {
+  color: var(--nh-desk-tab);
+}
+
+.nh-v2-page .vector-board-tab:hover {
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .vector-board-tab.is-active {
+  color: var(--nh-desk-tab-active);
+}
+
+.nh-v2-page .vector-board-tab.is-active::after {
+  background: var(--nh-desk-tab-underline);
+  box-shadow: none;
+}
+
+.nh-v2-page .vector-board-tab-count {
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-scope,
+.nh-v2-page .vector-board-search {
+  border-color: var(--nh-desk-border);
+  background: var(--nh-desk-input-bg);
+}
+
+.nh-v2-page .vector-board-scope-btn {
+  color: var(--nh-desk-text-secondary);
+}
+
+.nh-v2-page .vector-board-scope-btn.is-active {
+  color: var(--nh-desk-chip-active-text);
+  background: var(--nh-desk-chip-active-bg);
+  box-shadow: none;
+}
+
+.nh-v2-page .vector-board-search-input {
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .vector-board-table thead th {
+  color: var(--nh-desk-text-secondary);
+  background: var(--nh-desk-thead-bg);
+  border-color: var(--nh-desk-border);
+}
+
+.nh-v2-page .vector-board-table tbody td {
+  color: var(--nh-desk-text);
+  border-color: var(--nh-desk-border-subtle);
+}
+
+.nh-v2-page .vector-board-row:hover td,
+.nh-v2-page .vector-board-row.is-selected td {
+  background: var(--nh-desk-row-hover);
+}
+
+.nh-v2-page .vector-board-row.is-selected td {
+  box-shadow: inset 3px 0 0 var(--nh-desk-selection-accent);
+}
+
+.nh-v2-page .vector-board-pick-name {
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .vector-board-pick-sub {
+  color: var(--nh-desk-text-secondary);
+}
+
+.nh-v2-page .vector-board-pick-id,
+.nh-v2-page .vector-board-col-time {
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-pnl.is-up {
+  color: var(--nh-desk-up);
+  text-shadow: none;
+}
+
+.nh-v2-page .vector-board-pnl.is-down {
+  color: var(--nh-desk-down);
+  text-shadow: none;
+}
+
+.nh-v2-page .vector-board-pnl.is-flat {
+  color: var(--nh-desk-warn);
+}
+
+.nh-v2-page .vector-board-summary-row td {
+  background: var(--nh-desk-summary-bg);
+  border-color: var(--nh-desk-border);
+}
+
+.nh-v2-page .vector-board-summary-label,
+.nh-v2-page .vector-board-summary-sub,
+.nh-v2-page .vector-board-summary-metric {
+  color: var(--nh-desk-text-secondary);
+}
+
+.nh-v2-page .vector-board-summary-metric strong {
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .vector-board-status.is-open .vector-board-status-dot {
+  background: var(--nh-desk-up);
+  box-shadow: none;
+}
+
+.nh-v2-page .vector-board-status.is-open .vector-board-status-label {
+  color: var(--nh-desk-up);
+}
+
+.nh-v2-page .vector-board-status.is-neutral .vector-board-status-dot {
+  background: var(--nh-desk-warn);
+}
+
+.nh-v2-page .vector-board-status.is-neutral .vector-board-status-label {
+  color: var(--nh-desk-warn);
+}
+
+.nh-v2-page .vector-board-status.is-closed .vector-board-status-dot {
+  background: var(--nh-desk-down);
+  box-shadow: none;
+}
+
+.nh-v2-page .vector-board-status.is-closed .vector-board-status-label {
+  color: var(--nh-desk-down);
+}
+
+.nh-v2-page .vector-board-detail {
+  border-color: var(--nh-desk-border);
+  background: var(--nh-desk-detail-bg);
+}
+
+.nh-v2-page .vector-board-detail-ticker,
+.nh-v2-page .vector-board-detail-empty-title {
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .vector-board-detail-contract,
+.nh-v2-page .vector-board-detail-reason-copy {
+  color: var(--nh-desk-text-secondary);
+}
+
+.nh-v2-page .vector-board-detail-id,
+.nh-v2-page .vector-board-detail-empty-copy,
+.nh-v2-page .vector-board-detail-metric-label,
+.nh-v2-page .vector-board-detail-reason-label,
+.nh-v2-page .vector-board-detail-hero-label {
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-detail-hero-value.is-up {
+  color: var(--nh-desk-up);
+}
+
+.nh-v2-page .vector-board-detail-hero-value.is-down {
+  color: var(--nh-desk-down);
+}
+
+.nh-v2-page .vector-board-detail-hero-value.is-flat {
+  color: var(--nh-desk-warn);
+}
+
+.nh-v2-page .vector-board-detail-meter-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.75rem;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 0.5rem;
+  background: var(--nh-desk-surface-muted);
+}
+
+/* X Ads budget-remaining meter */
+.nh-v2-page .vector-board-meter {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+  min-width: 5.5rem;
+}
+
+.nh-v2-page .vector-board-meter-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .vector-board-meter-value.is-up {
+  color: var(--nh-desk-up);
+}
+
+.nh-v2-page .vector-board-meter-value.is-down {
+  color: var(--nh-desk-down);
+}
+
+.nh-v2-page .vector-board-meter-value.is-flat {
+  color: var(--nh-desk-warn);
+}
+
+.nh-v2-page .vector-board-meter-track {
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--nh-desk-meter-track);
+}
+
+.nh-v2-page .vector-board-meter-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--nh-desk-meter-fill);
+  transition: width 0.2s ease;
+}
+
+.nh-v2-page .vector-board-meter-fill.is-up {
+  background: var(--nh-desk-up);
+}
+
+.nh-v2-page .vector-board-meter-fill.is-down {
+  background: var(--nh-desk-down);
+}
+
+.nh-v2-page .vector-board-meter-fill.is-flat {
+  background: var(--nh-desk-warn);
+}
+
+.nh-v2-page .vector-board-meter-caption {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-detail-meter-block .vector-board-meter {
+  align-items: stretch;
+}
+
+.nh-v2-page .vector-board-detail-meter-block .vector-board-meter-value {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.nh-v2-page .vector-board-detail-meter-block .vector-board-meter-track {
+  height: 6px;
+}
+
+.nh-v2-page .vector-board-detail-meter-block .vector-board-meter-caption {
+  font-size: 10px;
+}
+
+.nh-v2-page[data-desk-theme="light"] .vector-board-cal-cell {
+  border-color: var(--nh-desk-border);
+  background: var(--nh-desk-surface-muted);
+}
+
+.nh-v2-page[data-desk-theme="light"] .vector-board-cal-cell.is-selected {
+  border-color: var(--nh-desk-text);
+  box-shadow: 0 0 0 1px var(--nh-desk-text);
+}

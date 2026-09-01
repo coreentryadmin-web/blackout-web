@@ -9,6 +9,7 @@ import {
   leaderStatus,
   leaderToTableRow,
   vectorBoardCalendarBuckets,
+  vectorBoardMeter,
   vectorBoardSummary,
 } from "./vector-board-table-utils";
 
@@ -133,4 +134,20 @@ test("vectorBoardSummary counts open, closed, and winners", () => {
   assert.equal(summary.open, 1);
   assert.equal(summary.closed, 1);
   assert.equal(summary.avgPct, 15);
+});
+
+test("vectorBoardMeter mirrors X Ads budget bar for peak and winner floor", () => {
+  const peakRow = leaderToTableRow(leader({ premium_pct_from_entry: 40, peak_premium_pct: 50 }));
+  const peakMeter = vectorBoardMeter(peakRow);
+  assert.ok(peakMeter);
+  assert.equal(peakMeter!.fillPct, 80);
+  assert.equal(peakMeter!.caption, "80%");
+
+  const floorRow = leaderToTableRow(
+    leader({ is_winner: false, premium_pct_from_entry: 25, peak_premium_pct: null })
+  );
+  const floorMeter = vectorBoardMeter(floorRow);
+  assert.ok(floorMeter);
+  assert.equal(floorMeter!.fillPct, 50);
+  assert.equal(floorMeter!.caption, "50%");
 });
