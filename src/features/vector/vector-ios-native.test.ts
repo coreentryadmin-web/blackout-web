@@ -21,14 +21,22 @@ test("VectorTechnicalsPanel — honest-absence + reuses VectorPulse's intel-card
   assert.match(src, /renderEmphasis/);
 });
 
-test("VectorPageShell — desktop action rail (Play/Technicals/Alerts) excluded from iOS native shell", () => {
+test("VectorPageShell — iOS Plays segment mounts action rail on native shell", () => {
+  const src = readFileSync(join(root, "src/features/vector/components/VectorPageShell.tsx"), "utf8");
+  assert.match(src, /id: "plays", label: "Plays"/);
+  assert.match(src, /iosPanel === "plays"/);
+  assert.match(src, /VectorTickerComparisonStrip/);
+  assert.doesNotMatch(src, /VectorTechnicalsPanel/);
+});
+
+test("VectorPageShell — desktop action rail (Play engine) available on web; iOS uses Plays segment", () => {
   const src = readFileSync(join(root, "src/features/vector/components/VectorPageShell.tsx"), "utf8");
   assert.match(src, /vector-action-rail/);
-  assert.match(src, /!\(compactPanels && nativeShell\)/);
-  assert.match(src, /VectorTechnicalsPanel/);
+  assert.match(src, /iosPanel === "plays"/);
   assert.match(src, /VectorHelixRail/);
   assert.equal((src.match(/<VectorPlayCard/g) ?? []).length, 1);
-  assert.equal((src.match(/<VectorAlertsPanel/g) ?? []).length, 1);
+  assert.doesNotMatch(src, /<VectorAlertsPanel\b/);
+  assert.match(src, /<VectorAlertsBell\b/);
 });
 
 test("Vector route — no DeskShell double offset", () => {
@@ -37,9 +45,12 @@ test("Vector route — no DeskShell double offset", () => {
   assert.match(page, /VectorPageClient/);
 });
 
-test("NightHawkFeed hides view blurb on native shell", () => {
+test("NightHawkFeed still adapts the view segment control for native shell (blurb removed entirely, not just hidden natively)", () => {
   const src = readFileSync(join(root, "src/features/nighthawk/components/NightHawkFeed.tsx"), "utf8");
-  assert.match(src, /!nativeShell/);
+  // The per-view descriptive blurb paragraph (NIGHTHAWK_VIEW_META[view].blurb) was removed
+  // entirely from the page — not conditionally hidden on native shell — per the 2026-08-28
+  // page-declutter direction (see NighthawkPageShell.tsx's own comment on the same change).
+  assert.doesNotMatch(src, /NIGHTHAWK_VIEW_META\[view\]\.blurb/);
   assert.match(src, /variant=\{nativeShell \? "compact"/);
 });
 

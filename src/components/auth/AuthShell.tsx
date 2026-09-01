@@ -14,7 +14,7 @@ const paneStagger = {
 };
 const riseItem = {
   hidden: { opacity: 0, y: 14 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] } },
+  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] as const } },
 };
 
 /**
@@ -49,7 +49,7 @@ export function AuthShell({ mode, children }: { mode: "signin" | "signup"; child
         animate="show"
         className="relative z-10 hidden flex-col justify-between overflow-hidden p-12 lg:flex xl:p-16"
       >
-        <div aria-hidden className="auth-seam absolute right-0 top-0 bottom-0 w-px" />
+        <div aria-hidden className="auth-seam absolute right-0 inset-y-0 w-px" />
 
         <motion.div variants={riseItem} className="relative z-10">
           <Link
@@ -96,7 +96,7 @@ export function AuthShell({ mode, children }: { mode: "signin" | "signup"; child
       <motion.section
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.55, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.55, delay: 0.15, ease: [0.22, 1, 0.36, 1] as const }}
         className="auth-mobile-pane relative z-10 flex items-center justify-center p-6 sm:p-10"
       >
         {/* legibility scrim — darkens behind the form, edges keep the backdrop motion */}

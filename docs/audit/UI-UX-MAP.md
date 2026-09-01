@@ -598,6 +598,21 @@ too consistent to keep calling a fluke without a longer `--wait` re-check. Not f
 pending that re-check — a slow endpoint and a broken one need different fixes and this pass can't
 yet tell which it is.
 
+**RESOLVED, 2026-08-25 — the API is fast; the stall is client-side, not the backend.** Timed
+`GET /api/market/meridian/timeline?days=21` directly (authenticated, `fetchAuditJson`, no browser)
+with the one-time Clerk session-mint cost isolated as a separate warmup call first (10.4s on its
+own — irrelevant to the route, just how long minting a temp premium session takes): **6 consecutive
+authenticated fetches came back in 135-840ms**, no slow tail at all. An earlier, less careful timing
+run that included the auth-mint inside the timed window read as a single 27.7s "attempt" — that was
+the Clerk mint, not the route; every later attempt in that same run (session already cached) was
+back to 221-2110ms. **This rules out "broken" and "genuinely slow endpoint" both** — the backend
+consistently answers in under a second once authenticated. The 2-for-3 desktop stalls in the live
+browser captures are therefore client-side: cold page-JS compile/hydration or the browser's own
+Clerk-JS session establishment taking longer than the harness's fixed capture window on some runs,
+not a slow or broken API. No code fix filed — there is no broken endpoint to fix, and a client-side
+hydration/cold-compile stall is the same class of thing `docs/audit/findings-staging/2026-08-24-chunk-load-error-critical-crash.md`
+already addressed platform-wide (a stuck client self-heals via reload) rather than a new defect.
+
 **`RE-VERIFIED 2026-08-23 (correct UA)`** — layout structure otherwise unchanged from the original
 shot; the loading-skeleton state above is what this second desktop attempt also captured, so no
 new structural detail to add beyond the timeout note.
@@ -614,7 +629,14 @@ contention between the two concurrent runs, not a product defect; not filed):
   wall/pin rows with adequate width but ~20px height, `18x18` intel-source badges, `8x8`
   price-target/analyst-rating dots in Estimates). Real, reproducible, `button`/`a[href]`/
   `[role=button]` elements per the harness's own interactive-element filter — not a text-collision
-  false positive. See `UI-UX-OPPORTUNITIES.md` item 13.
+  false positive. See `UI-UX-OPPORTUNITIES.md` item 13. **Fixed and deployed 2026-08-25**, and
+  live-re-verified post-deploy: the same probe against production (different ticker) shows zero
+  wall/pin-row or strike-row items anymore, positive confirmation the fix is live — but the SAME
+  re-check surfaced two more undersized/non-controls the original 10-per-tab-capped sample never
+  happened to catch (a `revisions` toggle, and `MeridianDarkPoolTape`'s dark-pool print markers —
+  same disabled-non-control pattern as the already-fixed price-target dots). Fixed the same day;
+  see `UI-UX-OPPORTUNITIES.md` item 13's update and
+  `docs/audit/findings-staging/2026-08-25-meridian-tap-targets-round-2.md`.
 - **Tablet only: a P3 saying "selecting an event does not change the URL."** This directly
   contradicts a static trace of `meridian-deeplink-core.ts` (built and unit-tested 2026-08-18 for
   exactly this behavior) and `MeridianDesk.tsx` (`onSelect={() => setSelectedId(item.id)}` →
@@ -718,6 +740,41 @@ single-column. Two things worth recording:
   could show something (recent closed plays, a teaser for the other 3 engine tabs, next-session
   countdown) instead of the page just stopping.
 
+**LIVE INTERACTION TEST, 2026-08-24** (`live-ui-interaction-audit.mjs`, desktop 1440): an isolated
+run reported `[FAIL] BACK from "0DTE" left the page unusable (loading) {"chars":0}` — investigated
+and determined to be an AUDIT-TOOLING false positive, not a Night Hawk defect. Root cause: the "0DTE"
+engine tab uses `router.replace()` (`NightHawkFeed.tsx:65`, deliberate — avoids polluting browser
+history on a tab switch), so the URL changes without pushing a history entry. The harness's
+recovery logic called `page.goBack()` on any URL change regardless, which in a fresh audit context
+(no real prior browsing history) pops into the browser's own blank initial page rather than
+anything Night Hawk rendered — confirmed via `history.length` being identical before and after the
+click, and reproduced identically with JS-level `window.history.back()`, ruling out a
+Playwright/CDP quirk. Fixed in the harness itself (`needsBackRecovery()`,
+`scripts/audit/lib/back-nav-recovery.mjs`) rather than the product — see
+`docs/audit/findings-staging/2026-08-24-live-ui-audit-back-recovery-false-positive.md`. No Night
+Hawk code change.
+
+**Re-run after the BACK-recovery fix landed, 2026-08-24 — a second, different false positive
+surfaced.** `[FAIL] 1 DEAD control(s) — click changed nothing observable {"dead":["WATCH 0"]}`.
+Investigated directly: an isolated, single-click probe from a fresh page load found "WATCH 0" is a
+real `<button class="nh-deck-filtbtn">` (the Swing lane's WATCH-section filter,
+`containers.tsx`'s `watchCount`), and clicking it in isolation produces a real, measurable change —
+interactive-control count on the page dropped from **31 to 16** (filtering the list) even though
+the first 300 chars of body text (header/toolbar) happened to read identically before and after.
+**Not a Night Hawk defect** — the harness's own "dead" verdict is very likely a DIFFERENT
+audit-tooling bug from the BACK-recovery one, not yet fixed: `safeControls()` re-stamps every
+control's `data-audit-idx` from scratch after ANY URL-changing click, but the harness's outer loop
+keeps iterating over the ORIGINAL pre-run `controls` array's indices — so once one control's click
+restructures the DOM (the "0DTE" engine tab, likely index 0, switches which whole section renders),
+every SUBSEQUENT `ctl.idx` in that array can point at a completely different, re-numbered element
+than the one whose `ctl.label` is in the report. **FIXED same day** — the outer loop now iterates a
+`queue`/`qi` pair that both re-stamp branches REPLACE (not just re-stamp in place), so a stale index
+can never resolve against a DOM it wasn't stamped for; a separate `exercised` counter preserves the
+original click budget across any number of re-stamps. Live-verified: a clean re-run of `/nighthawk`
+post-fix reports `[PASS] every exercised control did something` — no "WATCH 0" false positive, no
+regression on the BACK-recovery fix. See
+`docs/audit/findings-staging/2026-08-24-live-ui-audit-stale-control-index.md`.
+
 ---
 
 ## 8. Largo — `/terminal`
@@ -793,22 +850,19 @@ with `.largo-toolbar-actions > * { flex-shrink: 0; }`. See
 regression test asserting the fix's own new properties passed clean; only rendering the actual
 layout caught the side effect on a sibling element.
 
-**LIVE INTERACTION TEST, 2026-08-24 — NOT YET CONFIRMED, deploy-window confound.** An isolated
+**LIVE INTERACTION TEST, 2026-08-24 — confirmed deploy noise on re-check.** An isolated
 `live-ui-interaction-audit.mjs` run (desktop 1440) exercised 19/19 controls cleanly, but clicking a
 "Pricing" link produced console errors and 404s for `webpack-*.js`, `app/error-*.js`, and
 `app/global-error-*.js` (MIME-type-refused scripts) — the same shape as the deploy-window
 `ChunkLoadError` crash found and fixed same day
-(`docs/audit/findings-staging/2026-08-24-chunk-load-error-critical-crash.md`, #2842). This run
+(`docs/audit/findings-staging/2026-08-24-chunk-load-error-critical-crash.md`, #2842). That run had
 landed squarely inside a confirmed active deploy window (`ecr-push-production.yml` had a `pending`
-run and an `in_progress` run at the same timestamp, triggered by this session's own doc-PR merges)
-— strongly consistent with the same root cause, not re-confirmed outside a deploy window. Left
-open rather than filed: unlike the Thermal case, this specific failure mode (the core webpack
-runtime chunk itself 404ing, alongside both error-boundary bundles) has not been isolated to prove
-`#2842`'s self-heal reload fully covers it — a residual gap is plausible if the self-heal's own
-`window.location.reload()` can land on a manifest that is ALSO stale during a rapid multi-deploy
-sequence. Next step: re-run `--pages=/terminal` in isolation, outside any deploy window, and if it
-reproduces cleanly there, escalate; if it doesn't reproduce, close as deploy noise (item to be added
-to `UI-UX-OPPORTUNITIES.md`).
+run and an `in_progress` run at the same timestamp, triggered by this session's own doc-PR merges).
+**Re-ran the identical command once the deploy queue showed no `pending`/`in_progress` run:**
+`exercising 20 of 20 controls`, `[PASS] every exercised control did something` — clean, including
+the "Pricing" click. Confirms the original observation was the same already-fixed `ChunkLoadError`
+root cause recurring during a deploy, not a residual gap in #2842's self-heal reload. No code
+change; see `UI-UX-OPPORTUNITIES.md` item 15.
 
 ---
 
@@ -832,7 +886,41 @@ layout, it was telling the app "you are the real iOS native app," which per an A
 3.1.1 comment in the source hides purchase-flow links/language site-wide. With the correct UA the
 nav shows in full. The hero itself (animated cracked-glass "B" mark, particle field, "TRADE LIKE"
 headline mid-reveal at the 9s capture point) is unchanged — that part of the original entry stands.
-Full scroll-depth inventory (module grid, membership block, footer) still not captured this pass.
+
+**LIVE 2026-08-25** (`home-desktop`, 1440×900, full scroll-depth) — closes the remaining desktop
+scroll-depth gap. Content is correct and clean end to end: hero → free "DEALER GAMMA, ON THE GLASS"
+live SPX gamma-snapshot module (real spot/wall data) → "SIX ENGINES. ONE EDGE." carousel (SPX
+Slayer / Helix / Thermal cards, real live-desk mockups, all three visible at once at this width) →
+"HOW BLACKOUT THINKS." four-stage timeline → membership tiers → FAQ → footer. **One capture-tool
+nuance worth recording, not a product defect:** two independent `--full` captures both showed the
+four-stage timeline's mini demo widgets (a live pipeline visualization, a sample trade card, a
+GEX-wall bar chart) as "● OFFLINE" and blank — while the SAME widgets, given real dwell time
+in-view (verified directly: scrolled straight to the section and watched for up to 14s), connect
+and populate correctly with live-looking data ("CONFLUENCE 3.8/5", a real "SPX 0DTE CALL 5640C ·
+Tier: A" trade card, populated GEX bars). The product is confirmed correct; these specific widgets
+just need longer sustained visibility than `proxy-browser.cjs --full`'s default per-step dwell
+provides (`scrollThrough`'s `waitMs`, from the fix in
+`docs/audit/findings-staging/2026-08-25-proxy-browser-full-page-reveal-animations.md`, was tuned
+against CSS/JS-transition-gated reveals, not connection-establishing live widgets — a different,
+slower class of "not yet visible" than that fix addresses). Not chased into a further tooling fix
+this pass — `--wait`/a longer `waitMs` is already available to a caller who knows a page has this
+pattern, and generalizing the default risks slowing every capture for a page-specific quirk.
+
+**LIVE 2026-08-25** (`home-mobile`, 430×932, full scroll-depth) — closes the `home-mobile` beyond-
+the-hero-fold gap from §11. First attempt (`proxy-browser.cjs --full`) showed two large blank
+voids where real content should be — the "SIX ENGINES. ONE EDGE." product-screenshot carousel and
+the entire "HOW BLACKOUT THINKS." four-stage timeline — traced to a real audit-tooling defect
+(scroll-triggered reveal animations never firing under a non-scrolling full-page capture) and
+FIXED same day; see
+`docs/audit/findings-staging/2026-08-25-proxy-browser-full-page-reveal-animations.md`. With the
+fix, the full scroll depth is clean: stat strip (6 live engines, 12,400+ contracts scanned daily,
+every setup graded A–F, free gamma snapshot) → sticky "Get access / From $199/mo / START NOW" bar
+→ "SIX ENGINES. ONE EDGE." horizontally-scrollable product-screenshot carousel (SPX Slayer's real
+live desk mockup — 0DTE gamma matrix, dealer wall levels — fully rendered, HELIX peeking in as
+card 2 of 6) → "HOW BLACKOUT THINKS." four-stage timeline (01 IDENTIFY fully populated: heading,
+tagline, description, 5 tag pills, a GEX-wall-exposure chart placeholder) → membership tier cards
+($49/$199/$1,999) → FAQ accordion → footer. No blank sections, no clipped text, no defect found —
+the original gap is closed with a clean result, not left open.
 
 **`RE-VERIFIED 2026-08-23 (correct UA)` — the original `/pricing` entry was ENTIRELY WRONG, same
 root cause.** The original said `/pricing` shows a "Your membership is managed on the web…"
@@ -850,7 +938,23 @@ the swap is correct App-Store-compliance behavior — but the original inventory
 describing the wrong platform's UI as if it were the desktop web page. **Separately, per §1.2b:**
 the three CTAs are `PlanLadder.tsx`'s not-yet-subscribed default state — our minted session's
 client-side tier hook never hydrates, so this pass cannot confirm whether a real hydrated premium
-session would show these same CTAs or a "Manage subscription" state instead.
+session would show these same CTAs or a different state instead.
+
+**RESOLVED, 2026-08-25 — a real hydrated premium session would NOT show these CTAs, confirmed by
+source trace (same method as item 8's `parseTier("admin")` closure).** `PlanLadder.tsx` gates each
+card independently: `hasPremium = isLoaded && tierAtLeast(userTier, "premium")`, `hasCommunity =
+isLoaded && tierAtLeast(userTier, "community")` (`resolveDisplayTier` per §1.2b, so an admin's
+synthetic `"admin"` tier resolves to `"premium"` here same as everywhere else this wrapper is
+used). Where the audit's unhydrated session rendered `<CheckoutLink>` ("Unlock Premium →" /
+"Unlock Monthly →" / "Get SPX Access →"), a real member whose tier already clears that card's
+requirement renders a static `"Current Plan"` badge instead — not a link, not a checkout CTA, and
+not literally "Manage subscription" text (the map's original phrasing guessed at a label that
+doesn't exist; the real state is simpler than that). This is a real, working conditional — not a
+hardcoded default the audit merely failed to trigger — so the only genuine unknown left is whether
+`isLoaded` itself ever becomes `true` in this lane's minted-session harness, which is the SAME
+already-documented hydration-timing limitation `§1.2b` describes for every `useAppAuth()`
+consumer, not a new gap specific to `/pricing`/`/upgrade`. No code change; this was a source-trace
+closure of an audit-coverage gap, not a defect.
 
 **`RE-VERIFIED 2026-08-23 (correct UA)` — the original `/upgrade` entry inherited the same error**
 ("same signed-in-member routing pattern as `/pricing`, no drift found" — there was no such pattern
@@ -889,7 +993,7 @@ about the account — it reflects the hook never loading.** Whether a real, full
 session would show "Premium" here is unconfirmed (§1.2b's open question about `parseTier("admin")`
 is the specific reason it's not a safe assumption either way).
 
-`home-mobile` scroll-depth beyond the hero fold not yet reviewed — fold in on next edit.
+`home-mobile` scroll-depth beyond the hero fold reviewed 2026-08-25 (§9) — clean, no defect found.
 
 ---
 
@@ -912,11 +1016,11 @@ wrong UA can mask real bugs, not just invent fake ones.
 | ~~2~~ | ~~`/flows` mobile~~ | ~~Header flow-split bar overflows viewport horizontally; two stat strings concatenate with no separating space~~ | **FIXED, live-validated** | §3 | Root-caused (`justify-between` with no gap/wrap) and fixed same day — see §3 and `docs/audit/findings-staging/2026-08-23-helix-mobile-tide-bar-overflow.md`. **Live-validated 2026-08-24 during RTH** — the "BULLISH" bias pill and "$17M calls sold $130M puts sold" split render on one clean line with real live flow data, no overlap. |
 | ~~3~~ | ~~`/vector` mobile~~ | ~~GEX-scope chip overlaps the chart's own axis time ticks~~ | **FIXED, live-validated** | §5 | Root-caused (unbounded-width, no-background overlay label vs. canvas-drawn ticks) and fixed same day — see §5 and `docs/audit/findings-staging/2026-08-23-vector-chart-footer-legend-overlap.md`. **Live-validated 2026-08-24 during RTH** at a real zoomed/panned chart state (session "15:06–15:30", real SPX GEX data) — the chip rendered cleanly separated from the axis tick, no garbling. Same fix applied on `/dashboard`'s embedded chart too (shared `VectorChart.tsx`) — that desktop half was never independently confirmed broken, but the fix is defensive there regardless (still open, `UI-UX-OPPORTUNITIES.md` item 6). |
 | ~~4~~ | ~~`/nighthawk` mobile~~ | ~~Header stat strip truncates ("UPDATED 12" cuts off "sec ago") instead of wrapping~~ | **FIXED, live-validated** | §7 | Root-caused (corrected from the original candidate): live measurement showed the row is deliberately `overflow-x:auto` and the text was never lost — `scrollWidth` 672px vs `clientWidth` 411px, and scrolling the row to its end fully revealed the same text. The real defect was a missing scroll affordance (mobile Safari hides the scrollbar), fixed with a static right-edge fade — see §7 and `docs/audit/findings-staging/2026-08-23-nighthawk-mobile-header-scroll-affordance.md`. **Live-validated 2026-08-24 during RTH** with real board density (55 opportunities, `scrollWidth` grew to 921px) — a zoomed screenshot confirms the fade visibly dims the trailing text rather than hard-cutting it. Closed. |
-| ~~5~~ | ~~`/terminal` mobile~~ | ~~Toolbar label collapses to bare "L…"; composer placeholder overflows its input box~~ | **FIXED, then self-corrected** | §8 | Root-caused (two independent causes: a non-shrinking actions row starving the brand label; a composited layer's shadow escaping `overflow:hidden`) and fixed 2026-08-23 — see §8 and `docs/audit/findings-staging/2026-08-23-largo-terminal-mobile-toolbar-composer.md`. **Live post-deploy validation on 2026-08-24 caught a regression the fix itself introduced** (the answer-mode toggle crushed to 56.7px, clipping "Concrete"/"Deep dive" mid-word) — fixed same day, see `docs/audit/findings-staging/2026-08-24-largo-toolbar-answer-mode-squish.md`. Composer glow-clip fix unaffected, still pending its own live re-check. |
+| ~~5~~ | ~~`/terminal` mobile~~ | ~~Toolbar label collapses to bare "L…"; composer placeholder overflows its input box~~ | **FIXED, self-corrected, live-confirmed** | §8 | Root-caused (two independent causes: a non-shrinking actions row starving the brand label; a composited layer's shadow escaping `overflow:hidden`) and fixed 2026-08-23 — see §8 and `docs/audit/findings-staging/2026-08-23-largo-terminal-mobile-toolbar-composer.md`. **Live post-deploy validation on 2026-08-24 caught a regression the fix itself introduced** (the answer-mode toggle crushed to 56.7px, clipping "Concrete"/"Deep dive" mid-word) — fixed same day, see `docs/audit/findings-staging/2026-08-24-largo-toolbar-answer-mode-squish.md`. **Composer glow-clip fix live-confirmed 2026-08-25**: a live production capture at 430×932 shows both the full "LARGO TERMINAL" brand label and complete "CONCRETE"/"DEEP DIVE" button text, plus the composer's animated placeholder glow rendering entirely inside its box — no bleed into the page margin, the exact defect shape originally measured. See `docs/audit/findings-staging/2026-08-25-largo-terminal-composer-glow-live-confirmed.md`. |
 | 6 | `/nighthawk` mobile | ~45% of viewport left blank below the no-session empty state | **P2/P3** | §7 | Correct mobile UA |
 | 7 | `/vector` mobile | Drops ticker search, metric/expiry toggles, matrix table, and live tape entirely (chart-only) — scope call | **P2** (needs Vector-lane input) | §5 | Correct mobile UA |
 | ~~8~~ | ~~`/nighthawk` **desktop**~~ | ~~Engine tab bar renders with NO spacing between labels~~ | **FIXED, live-validated** | §7 | Root-caused (`IosNativeSegment`'s structural CSS never loads on desktop web) and fixed same day — see §7 and `docs/audit/findings-staging/2026-08-23-nighthawk-desktop-tab-bar-unstyled.md`. Locally verified via `next dev` + real Playwright before AND after the fix. **Live-validated 2026-08-24 during RTH** — 0DTE/Swings/Bangers/Legacy tabs render with correct spacing/chrome alongside a real live play (MARA, active management panel). |
-| 9 | `/meridian` desktop | Catalyst-list fetch (`/api/market/meridian/timeline?days=21`) has now timed out on 2 of 3 desktop attempts (one mobile attempt succeeded) | **OPEN QUESTION**, not yet a finding | §6 | 2 correct-UA desktop attempts, both stalled; needs a longer `--wait` re-check to separate "slow" from "broken." |
+| ~~9~~ | ~~`/meridian` desktop~~ | ~~Catalyst-list fetch (`/api/market/meridian/timeline?days=21`) has now timed out on 2 of 3 desktop attempts (one mobile attempt succeeded)~~ | **RESOLVED — API is fast, stall is client-side** | §6 | Timed the route directly, auth-mint cost isolated from the measurement: 6 consecutive authenticated fetches all 135-840ms. Rules out both "broken" and "genuinely slow endpoint" — the desktop stalls were the browser's own cold-hydration/Clerk-JS-init timing, not the backend. No code fix; see §6. |
 
 Cross-product patterns, not yet P0–P3 classified pending more coverage:
 
@@ -950,24 +1054,30 @@ Cross-product patterns, not yet P0–P3 classified pending more coverage:
 Per the file's own opening rule (an honest gap is a finding, a plausible guess is a lie that
 outlives whoever wrote it):
 
-- **`home-mobile` beyond the hero fold** — not yet reviewed.
-- **Interaction testing STARTED, 2026-08-23 — Vector only so far.** `vector-ui-walkthrough.cjs`
-  (committed harness) run live against production: 16 states, no engine crashes, no broken canvas,
-  ladder/play card always populated — but surfaced one evidence-backed open question (regime banner
-  absent across the run; see §5 and `UI-UX-OPPORTUNITIES.md` item 9). Every OTHER product's tabs,
-  filters, search, sort, drawers/modals, and ticker switching are still unexercised — Largo,
-  Thermal, and Meridian each already have their own committed interaction harnesses
-  (`largo-ui-walkthrough.cjs`, `thermal-interaction-audit.cjs`, `meridian-interaction-audit.mjs`)
-  not yet run this pass. Night Hawk, SPX Slayer, and Helix have no dedicated interaction harness at
-  all yet. Queued for the next LIVE VALIDATION window against a moving tape, where most of this
-  class of defect is actually observable (§0).
-- **No admin surfaces** (`/admin*`) — explicitly noted as lower priority in the charter, not
-  covered this pass.
-- **Two OPEN QUESTIONs remain:** `/meridian`'s slow desktop fetch (§6/§10 #9) and §5's withdrawn
-  desktop-half of the Vector footer-overlap finding both need a longer `--wait` or a chart-loaded
-  re-check rather than another default 9s shot. (§1.2b's `parseTier("admin")` fallthrough, third of
-  the original three, turned out NOT to need a real browser session — it resolved by static tracing
-  the same day; see §1.2b.)
+- **`home-mobile` beyond the hero fold — reviewed 2026-08-25, clean.** See §9. Along the way,
+  found and fixed a real capture-methodology defect in `proxy-browser.cjs --full` itself (scroll-
+  triggered reveal content rendered as blank voids without a real scroll-through) —
+  `docs/audit/findings-staging/2026-08-25-proxy-browser-full-page-reveal-animations.md`.
+- **Interaction testing — now run against EVERY product, 2026-08-23 through 2026-08-24.** Started
+  with Vector-only (`vector-ui-walkthrough.cjs`, 16 states, no engine crashes) on 2026-08-23. Since
+  then every other product has had at least one live isolated interaction pass: Thermal
+  (`thermal-interaction-audit.cjs`, desktop+mobile, §4), Meridian
+  (`meridian-interaction-audit.mjs`, desktop+tablet+mobile, §6), and — via the generic
+  `live-ui-interaction-audit.mjs` harness built for this pass — SPX Slayer (§2, 20/34 controls,
+  clean), Helix (§3, 20/555 controls, clean), Night Hawk (§7, two real audit-tooling false
+  positives found and fixed in the harness itself, now clean), and Largo (§8, 19/19 controls
+  clean except an unconfirmed deploy-window-confounded observation on the "Pricing" nav link, not
+  yet re-checked outside a deploy window). This closes what was the single largest gap in the
+  original pass — **not** because every interaction on every product has been exercised (each run
+  sampled a bounded number of controls, and `MAX_CONTROLS` on Helix's 555-control page is a small
+  fraction), but because the "no coverage at all" state for 5 of 7 products is gone.
+- **No admin surfaces** (`/admin*`) — explicitly noted as lower priority in the charter, still not
+  covered.
+- ~~`/meridian`'s slow desktop fetch OPEN QUESTION (§6/§10 #9)~~ **CLOSED 2026-08-25** — timed the
+  route directly (auth-mint cost isolated from the measurement), 6/6 authenticated fetches came
+  back in 135-840ms. The backend is fast; the browser-capture stalls were client-side (cold
+  hydration/Clerk-JS-init), not the API. See §6. **§5's withdrawn desktop-half of the Vector
+  footer-overlap finding is still genuinely open** — not re-checked this pass either.
 - **A second, distinct methodology gap found the same day as the UA correction (§1.2b): every
   client-side tier-dependent UI element (`useAppAuth()` consumers — the `/account` plan display,
   `/pricing` and `/upgrade` CTAs) rendered in its default/unhydrated state in EVERY screenshot this
@@ -975,8 +1085,10 @@ outlives whoever wrote it):
   there is no proposed tooling fix for this one yet — establishing a genuinely hydrated Clerk
   client session from a headless mint is a bigger change than a CLI flag, and worth its own design
   discussion rather than a quick patch. Flagged, not solved, this pass.
-- **`docs/audit/UI-UX-OPPORTUNITIES.md`** stubbed in this PR per brief item 16 but not yet
-  populated with real backlog items beyond what's in §10's table.
+- **`docs/audit/UI-UX-OPPORTUNITIES.md`** — no longer just a stub. Actively populated and
+  maintained across this pass: 16 numbered items tracking design questions, live-interaction
+  findings (real and ruled-out), and audit-tooling bugs found and fixed along the way, each closed
+  out with evidence when resolved rather than left to go stale.
 - **This correction pass itself is proof the methodology needs a permanent fix, not just a one-time
   re-shoot:** `proxy-browser.cjs`'s own doc comment already warned that the UA stays mobile without
   `--desktop`, and this pass still shipped 8 desktop entries (later corrected) without it. The

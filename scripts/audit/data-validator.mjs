@@ -200,17 +200,31 @@ function addCalendarDaysYmd(fromYmd, days) {
  *  VIX/leveraged ETPs, not SPX/SPY/QQQ/NDX) and needs the indices endpoint, not the stock
  *  snapshot endpoint; other pure-index roots are not special-cased (none observed on this
  *  board in practice — extend here if one ever is). */
+/** Returns { value, source } — source is 'live' or 'prev-close' so callers can label the
+ *  comparison accurately (it no longer tracks isRth 1:1 for stocks — see below). */
 function polygonSpotNow(ticker, isRth) {
   if (ticker === 'SPX') {
-    const snap = isRth ? poly('/v3/snapshot/indices?ticker.any_of=I:SPX')?.results?.[0] : null;
-    if (isRth) return num(snap?.value) ?? null;
-    return num(poly('/v2/aggs/ticker/I:SPX/prev')?.results?.[0]?.c) ?? null;
+    // SPX is a pure index — it has NO extended-hours session at all, so outside RTH
+    // prev-close really is the best available ground truth. Unlike the stock branch below,
+    // this one stays isRth-gated on purpose.
+    if (isRth) {
+      const snap = poly('/v3/snapshot/indices?ticker.any_of=I:SPX')?.results?.[0];
+      return { value: num(snap?.value) ?? null, source: 'live' };
+    }
+    return { value: num(poly('/v2/aggs/ticker/I:SPX/prev')?.results?.[0]?.c) ?? null, source: 'prev-close' };
   }
-  if (isRth) {
-    const snap = poly(`/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(ticker)}`)?.ticker;
-    return num(snap?.lastTrade?.p ?? snap?.day?.c) ?? null;
-  }
-  return num(poly(`/v2/aggs/ticker/${encodeURIComponent(ticker)}/prev`)?.results?.[0]?.c) ?? null;
+  // Single-name stocks/ETFs (unlike SPX) DO trade in the extended-hours session, and
+  // Polygon's snapshot lastTrade reflects that regardless of isRth. Try it FIRST always —
+  // not just during RTH — falling back to prev-close only when the snapshot has nothing
+  // (fully closed market with no extended print, or an illiquid name). Fixes a false-FAIL
+  // class found live 2026-08-27: CRM/MRVL/MSTR/TSLA all "FAILED" 0DTE underlying_price vs
+  // Polygon by 9-23% during an active extended-hours session with real (earnings-driven)
+  // moves — the app was correct in every case; this validator's own ground truth was the
+  // stale one, still pinned to yesterday's close instead of the live extended-hours tape.
+  const snap = poly(`/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(ticker)}`)?.ticker;
+  const live = num(snap?.lastTrade?.p ?? snap?.day?.c);
+  if (live != null) return { value: live, source: 'live' };
+  return { value: num(poly(`/v2/aggs/ticker/${encodeURIComponent(ticker)}/prev`)?.results?.[0]?.c) ?? null, source: 'prev-close' };
 }
 
 /** Does a real, listed 0-1DTE contract exist for ticker/direction/strike? Polygon's
@@ -582,7 +596,7 @@ async function main() {
           const ticker = String(s?.ticker || '').toUpperCase();
           if (!ticker) continue;
           const appPrice = num(s.underlying_price);
-          const spot = polygonSpotNow(ticker, rth);
+          const { value: spot, source: spotSource } = polygonSpotNow(ticker, rth);
           if (appPrice != null && spot != null && spot > 0) {
             const d = Math.abs(appPrice - spot) / spot * 100;
             // ASSET-CLASS-AWARE tolerance (fixed 2026-07-23 after this false-failed MU live). ROOT CAUSE:
@@ -598,7 +612,7 @@ async function main() {
             // (moneyness/display) logged in FINDINGS.md — the validator widening only stops the
             // false-FAIL; it does not paper over a gross-staleness break.
             const nameTol = INDEX_ETF_0DTE.has(ticker) ? priceTol : Math.max(priceTol, rth ? 1.5 : 2.5);
-            rec(`0DTE live ${ticker}: underlying_price vs Polygon`, d <= nameTol ? 'PASS' : 'FAIL', `app=${appPrice} polygon(${rth ? 'live' : 'prev-close'})=${spot} Δ=${d.toFixed(3)}% (tol ${nameTol}%${INDEX_ETF_0DTE.has(ticker) ? ' index' : ' single-name'})`);
+            rec(`0DTE live ${ticker}: underlying_price vs Polygon`, d <= nameTol ? 'PASS' : 'FAIL', `app=${appPrice} polygon(${spotSource})=${spot} Δ=${d.toFixed(3)}% (tol ${nameTol}%${INDEX_ETF_0DTE.has(ticker) ? ' index' : ' single-name'})`);
           } else {
             rec(`0DTE live ${ticker}: underlying_price vs Polygon`, 'INFO', `skipped — app=${appPrice} polygon=${spot} (missing one side)`);
           }

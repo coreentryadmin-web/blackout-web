@@ -15,40 +15,27 @@
  */
 
 import { useMemo } from "react";
+import useSWR from "swr";
 import type { MeridianTimelineItem } from "@/features/meridian/lib/meridian-types";
+import { buildCohortForTimelineItem } from "@/lib/meridian/meridian-peer-cohort-core";
 import {
-  buildSectorCohort,
+  MAX_PEER_REACTION_TICKERS,
   describeCohortPosition,
+  type PeerReactionSummary,
   type SectorCohort,
 } from "@/lib/meridian/meridian-sector-core";
+
+const fetcher = (url: string) =>
+  fetch(url, { credentials: "include" }).then((res) => {
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  });
 
 export function buildCohortForItem(
   item: MeridianTimelineItem,
   allItems: readonly MeridianTimelineItem[]
 ): SectorCohort | null {
-  const group = item.sic_major_group;
-  if (!group || !item.ticker) return null;
-  const peers = (allItems ?? [])
-    .filter(
-      (i) =>
-        i.kind === "earnings" &&
-        i.sic_major_group === group &&
-        i.ticker &&
-        i.ticker !== item.ticker
-    )
-    .map((i) => ({ ticker: i.ticker!, value: i.expected_move_pct ?? null, date: i.date }));
-
-  return buildSectorCohort({
-    subject: item.ticker,
-    subjectValue: item.expected_move_pct ?? null,
-    classification: {
-      majorGroup: group,
-      label: item.sector_label ?? null,
-      sicCode: null,
-      sicDescription: null,
-    },
-    peers,
-  });
+  return buildCohortForTimelineItem(item, allItems);
 }
 
 export function MeridianPeerCohortPanel({
@@ -62,6 +49,35 @@ export function MeridianPeerCohortPanel({
   onSelectTicker?: (ticker: string) => void;
 }) {
   const cohort = useMemo(() => buildCohortForItem(item, allItems), [item, allItems]);
+
+  // Peer reaction history: "how did BBWI/ULTA/SPWH react to their last few prints", not just
+  // whether they have a comparable forward implied move (most don't — see the panel's own
+  // "too few to rank against" case, which this doesn't fix, it adds a second lens). Capped and
+  // computed BEFORE the `!cohort` return so hook order stays identical every render.
+  const peerTickers = useMemo(() => {
+    if (!cohort) return [];
+    const subject = item.ticker?.toUpperCase();
+    return cohort.members
+      .filter((m) => m.ticker !== subject)
+      .slice(0, MAX_PEER_REACTION_TICKERS)
+      .map((m) => m.ticker);
+  }, [cohort, item.ticker]);
+
+  const reactionKey =
+    peerTickers.length > 0
+      ? `/api/market/meridian/peer-reactions?tickers=${encodeURIComponent(peerTickers.join(","))}`
+      : null;
+  const { data: reactionData } = useSWR<{ reactions: PeerReactionSummary[] }>(reactionKey, fetcher, {
+    revalidateOnFocus: false,
+    // Matches the server loader's own 6h cache — no point re-asking within that window.
+    dedupingInterval: 6 * 60 * 60 * 1000,
+  });
+  const reactionByTicker = useMemo(() => {
+    const map = new Map<string, PeerReactionSummary>();
+    for (const r of reactionData?.reactions ?? []) map.set(r.ticker, r);
+    return map;
+  }, [reactionData]);
+
   if (!cohort) return null;
 
   const d = cohort.distribution;
@@ -113,11 +129,23 @@ export function MeridianPeerCohortPanel({
       <ul className="mpeer-rows">
         {cohort.members.slice(0, 12).map((m) => {
           const isSubject = m.ticker === item.ticker?.toUpperCase();
+          const reaction = reactionByTicker.get(m.ticker);
           const row = (
             <>
               <span className="mpeer-tkr">{m.ticker}</span>
               <span className="mpeer-when">{m.date ?? ""}</span>
               <span className="mpeer-val">{m.value == null ? "—" : `${m.value}%`}</span>
+              {/* Second lens: how this peer's OWN prints have historically landed — fills in
+                  exactly the rows the implied-move column above shows as "—". Omitted (not "0%")
+                  when the peer has no settled reactions on file; n is always shown alongside the
+                  rate, per this file's "a rate without its cohort is not a fact" rule. */}
+              {reaction && reaction.n > 0 && (
+                <span className="mpeer-reaction">
+                  avg {reaction.avgReactionPct == null ? "—" : `${reaction.avgReactionPct >= 0 ? "+" : ""}${reaction.avgReactionPct}%`}
+                  {reaction.beatRate != null && ` · ${Math.round(reaction.beatRate * 100)}% beat`}
+                  <span className="mpeer-reaction-n"> (n={reaction.n})</span>
+                </span>
+              )}
             </>
           );
           return (

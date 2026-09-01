@@ -6,7 +6,7 @@ import {
   sessionHeat,
   resolveFreshFindStatus,
   deriveZeroDteSetups,
-  rankEngineCards,
+  calibrateFlowEvidenceScore,
   enrichSetup,
   noteOriginDirectionConflict,
   mergeSameTickerDiscovery,
@@ -252,6 +252,46 @@ test("setups: flow_quality is computed on the setup's own tape (institutional fl
   assert.ok(fq, "flow_quality should be attached");
   assert.ok(fq!.score > 50, `expected a solid flow-quality score, got ${fq!.score}`);
   assert.equal(fq!.dominantSide, "call");
+});
+
+test("calibrateFlowEvidenceScore: QQQ-like $7.6M ETF tape clears 65 when flow_quality confirms", () => {
+  // Simulates live 2026-08-25: high gross, moderate dominance (ETF hedging), tier score ~58.
+  const baseTs = Date.parse("2026-08-25T14:00:00Z");
+  const rows: FlowSetupInput[] = [
+    row({ ticker: "QQQ", premium: 2_200_000, strike: 480, expiry: "2026-08-25", dte: 0, underlying_price: 478, ask_pct: 68, alerted_at: new Date(baseTs).toISOString() }),
+    row({ ticker: "QQQ", premium: 1_800_000, strike: 481, expiry: "2026-08-25", dte: 0, underlying_price: 478, ask_pct: 70, alerted_at: new Date(baseTs + 120_000).toISOString() }),
+    row({ ticker: "QQQ", premium: 1_600_000, strike: 479, expiry: "2026-08-25", dte: 0, underlying_price: 478, ask_pct: 65, alerted_at: new Date(baseTs + 240_000).toISOString() }),
+    row({ ticker: "QQQ", premium: 1_200_000, strike: 482, expiry: "2026-08-25", dte: 0, underlying_price: 478, ask_pct: 62, alerted_at: new Date(baseTs + 360_000).toISOString() }),
+    row({ ticker: "QQQ", premium: 900_000, option_type: "put", strike: 475, expiry: "2026-08-25", dte: 0, underlying_price: 478, ask_pct: 58, alerted_at: new Date(baseTs + 480_000).toISOString() }),
+  ];
+  const out = deriveZeroDteSetups(rows, { todayYmd: "2026-08-25", nowMs: baseTs + 600_000 });
+  assert.equal(out.length, 1);
+  const s = out[0]!;
+  assert.ok(s.gross_premium >= 7_000_000);
+  assert.ok(s.flow_quality, "flow_quality must be attached");
+  assert.ok(
+    s.score >= 65,
+    `QQQ-like institutional tape should clear G-3 (score=${s.score}, fq=${s.flow_quality!.score}, gross=${s.gross_premium})`
+  );
+  // When tiers under-score but flow_quality + gross confirm institutional size, lift toward FQ.
+  const syntheticFq = { ...s.flow_quality!, score: 62 };
+  assert.ok(
+    calibrateFlowEvidenceScore(58, syntheticFq, s.gross_premium) >= 65,
+    "calibration must lift under-scored tier evidence when FQ confirms"
+  );
+});
+
+test("calibrateFlowEvidenceScore lifts mixed-side ETF tape when tiers land ~58", () => {
+  const fq = {
+    score: 60,
+    components: {} as import("./flow-quality").FlowQuality["components"],
+    momentum: {} as import("./flow-quality").FlowQuality["momentum"],
+    dominantSide: "call" as const,
+    dominance: 0.62,
+    reason: "test",
+  };
+  assert.ok(calibrateFlowEvidenceScore(58, fq, 7_600_000) >= 65);
+  assert.equal(calibrateFlowEvidenceScore(58, fq, 500_000), 58, "low gross must not inflate");
 });
 
 test("setups: top strike is chosen by aggression-weighted premium, not raw dollar premium", () => {
@@ -703,20 +743,6 @@ test("enrich: condor is null when spot is unknown (no fabricated geometry)", () 
   assert.equal(e.condor, null);
 });
 
-// ── engine ranking ───────────────────────────────────────────────────────────────
-
-test("ranking: ACTIVE play leads; power hour outranks lotto only inside its window", () => {
-  const cards = [
-    { kind: "lotto" as const, state: "ARMED" as const },
-    { kind: "power_hour" as const, state: "ARMED" as const },
-    { kind: "spx_play" as const, state: "ACTIVE" as const },
-  ];
-  const normal = rankEngineCards(cards, false);
-  assert.deepEqual(normal.map((c) => c.kind), ["spx_play", "lotto", "power_hour"]);
-  const ph = rankEngineCards(cards, true);
-  assert.deepEqual(ph.map((c) => c.kind), ["spx_play", "power_hour", "lotto"]);
-});
-
 // ── contract plans ───────────────────────────────────────────────────────────────
 
 import { buildContractPlan, gradePlanFromBars, resolveLedgerEntryPremium } from "./plan";
@@ -728,6 +754,40 @@ test("setups: top-strike avg fill is premium-weighted from real prints", () => {
   ];
   const out = deriveZeroDteSetups(rows);
   // (4.0*900k + 6.0*300k) / 1.2M = 4.5
+  assert.equal(out[0]!.top_strike_avg_fill, 4.5);
+});
+
+// 2026-08-27 QQQ/NVDA finding: top_strike_avg_fill is a premium-weighted average of EVERY
+// print at that strike across the whole lookback (up to 7h), with no recency weighting. A
+// single large, hours-stale print can dominate the average and price the ledger 2-4x away
+// from what the contract actually trades at by flag time — this is what fed the false
+// instant stop-outs the achievability ceiling (resolveLedgerEntryPremium) papers over
+// downstream. This test reproduces the QQQ shape directly at the source: avgFill must
+// prefer the SAME recency window (SPIKE_WINDOW_MS, 30min) already used for the spike read.
+test("setups: top-strike avg fill prefers the RECENT window over a stale dominant print (QQQ 2026-08-27 shape)", () => {
+  const nowMs = Date.parse("2026-07-06T14:31:00Z");
+  const rows = [
+    // Stale, hours-old, large print — real UW fill from early in the session.
+    row({ ticker: "QQQ", premium: 2_000_000, strike: 720, underlying_price: 718, fill_price: 3.27, alerted_at: "2026-07-06T07:00:00Z" }),
+    // Recent, smaller prints — what the contract is actually trading at by flag time.
+    row({ ticker: "QQQ", premium: 100_000, strike: 720, underlying_price: 718, fill_price: 0.9, alerted_at: "2026-07-06T14:25:00Z" }),
+    row({ ticker: "QQQ", premium: 100_000, strike: 720, underlying_price: 718, fill_price: 0.9, alerted_at: "2026-07-06T14:29:00Z" }),
+  ];
+  const out = deriveZeroDteSetups(rows, { nowMs });
+  // Old behavior would have been ~3.05 (the stale $2M print dominates); fixed behavior
+  // uses only the two recent prints, both at 0.9.
+  assert.equal(out[0]!.top_strike_avg_fill, 0.9);
+});
+
+test("setups: top-strike avg fill falls back to the full-window average when NOTHING at that strike is recent", () => {
+  const nowMs = Date.parse("2026-07-06T14:31:00Z");
+  const rows = [
+    row({ premium: 900_000, strike: 190, fill_price: 4.0, alerted_at: "2026-07-06T07:00:00Z" }),
+    row({ premium: 300_000, strike: 190, fill_price: 6.0, alerted_at: "2026-07-06T07:05:00Z" }),
+  ];
+  const out = deriveZeroDteSetups(rows, { nowMs });
+  // No recent prints at all for this strike — falls back to the same premium-weighted
+  // full-window average as before, rather than going null.
   assert.equal(out[0]!.top_strike_avg_fill, 4.5);
 });
 
@@ -823,6 +883,39 @@ test("resolveLedgerEntryPremium: floors the graded basis at the flag-time mark w
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 0), 4.0);
   // Rounds the floored basis at the data layer (no 5.1900000001 leaks).
   assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 5.19), 5.19);
+});
+
+// Fix (2026-08-27, live QQQ/NVDA finding): the symmetric CEILING. The floor above only
+// ever bounded the basis UP toward the mark; an outlier flow fill sitting FAR ABOVE the
+// live mark (a stale/mismatched print, never a real tradeable price) was adopted wholesale
+// with no ceiling at all, manufacturing a same-second "stopped" grade nobody could have
+// experienced. Live production instances the same morning: QQQ 720C 0DTE committed with
+// flow-fill entry_premium $3.27 while the real market never traded above $1.31 all session
+// (~73% below the fill) — plan_stop fired 357ms after commit at a reported -77%; NVDA
+// 225C 1DTE entry_premium $5.86 against a live market trading materially lower at the
+// same instant — plan_stop fired 1.2s after commit at -53%. Both losses were fake: the
+// underlying barely moved in either case (verified against real 1-min Polygon bars), so a
+// hard stop breaching within ~1 second of a fresh commit is a mispriced entry, not real
+// decay. The threshold reuses CHASE_PCT (55) — the SAME magnitude this file already
+// treats as "too extreme to trust" for the opposite (MOVED) direction.
+test("resolveLedgerEntryPremium: caps the graded basis DOWN at the flag-time mark when the mark is FAR BELOW the flow fill (outlier fill, achievability ceiling)", () => {
+  // The live QQQ shape: flow fill 3.27, live mark 0.88 (~73% below) — outlier, cap to mark.
+  assert.equal(resolveLedgerEntryPremium(3.27, 3.27, 0.88), 0.88);
+  // A comparable outlier shape well past the CHASE_PCT magnitude (5.86 -> 2.0, ~66% below).
+  assert.equal(resolveLedgerEntryPremium(5.86, 5.86, 2.0), 2.0);
+  // Ordinary CHEAPER (real front-running): mark modestly below the fill, well inside the
+  // CHASE_PCT band — untouched, matches the existing CHEAPER test above.
+  assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 3.5), 4.0);
+  // Exactly at the CHASE_PCT boundary (45% of the fill remains, i.e. 55% below) — the
+  // ceiling fires (>=), consistent with the existing >= comparison at the MOVED boundary.
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 4.5), 4.5);
+  // Just inside the boundary (45.01% remains, i.e. 54.99% below) — no ceiling.
+  assert.equal(resolveLedgerEntryPremium(10.0, 10.0, 4.501), 10.0);
+  // A malformed non-positive mark never drags the basis down via this path either.
+  assert.equal(resolveLedgerEntryPremium(4.0, 4.0, 0), 4.0);
+  assert.equal(resolveLedgerEntryPremium(4.0, 4.0, -1), 4.0);
+  // No mark supplied → legacy behavior, unaffected.
+  assert.equal(resolveLedgerEntryPremium(4.0, 4.0), 4.0);
 });
 
 // Fix 3, end-to-end: the achievable-entry floor flips a flattered "doubled" into the honest

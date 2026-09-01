@@ -5,6 +5,16 @@ on:
     - cron: "30 6 * * *"
   workflow_dispatch:
 
+# Required for the "Open ops issue on failure" step's github.rest.issues.create — without this,
+# the default GITHUB_TOKEN has no issue-write scope and that step itself fails silently (a second,
+# compounding failure on top of whatever broke the stress run), which is exactly how a real
+# ERR_MODULE_NOT_FOUND regression (PR #3203/#3219) went unreported for hours: the workflow run
+# failed, but no ops-auto-fix issue was ever opened to alert anyone. Matches the same
+# contents:read/issues:write pattern ops-auto-fix.yml already uses for its own issue creation.
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   largo-stress:
     runs-on: ubuntu-latest
@@ -26,13 +36,26 @@ jobs:
           POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: npm run validate:largo-stress-live-all
+      # `if: failure()` alone does NOT catch a timeout: `timeout-minutes: 45` above kills the
+      # previous step with conclusion `cancelled`, not `failure`, so `failure()` is false and this
+      # step used to be silently SKIPPED. Measured 2026-08-31: 15 of the last 19 scheduled runs
+      # (2026-08-13 through 08-31) ended `cancelled` at the 45-minute wall — the DOMINANT outcome,
+      # not an edge case — and NONE of them ever opened an ops-auto-fix issue. `LARGO_STRESS_BANK=all`
+      # runs 523 questions at the harness's own concurrency=1, ~20-90s each (some runs also hit a
+      # Clerk FAPI re-establish throttle partway through that never recovers, burning the remainder
+      # of the run on immediate 401/SKIP) — structurally can't finish in 45 minutes, so this is not
+      # a rare flake this alert exists to catch, it is the modal run. This gap is exactly the same
+      # silent-failure shape the `issues: write` permissions fix above (this same file) was written
+      # to close — that fix only helps once this step actually RUNS. See docs/audit/findings-staging
+      # for the timeout root-cause writeup (why 45min/all-banks is structurally undersized) — this
+      # change restores alerting only; it does not change the timeout budget or run scope.
       - name: Open ops issue on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/github-script@v9
         with:
           script: |
             const title = `ops-auto-fix: Largo nightly stress failed (${new Date().toISOString().slice(0,10)})`;
-            const body = `Nightly \`validate:largo-stress-live-all\` failed. Check workflow run: ${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = `Nightly \`validate:largo-stress-live-all\` failed or was cancelled (timeout-minutes: 45 reached is the common case — see workflow run for which). Check workflow run: ${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,

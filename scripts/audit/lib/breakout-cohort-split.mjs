@@ -4,29 +4,29 @@
  * WHY THIS EXISTS (2026-08-06 audit): `discovery-recall-probe.mjs` and `breakout-dynamic-n-ab.mjs`
  * both split their cohorts with `screenBreakoutMovers(results, N).slice(0, KEEP)` — i.e. by
  * **$-volume rank**, because that is the order `screenBreakoutMovers` returns. Production has NOT
- * used that ordering since the momentum re-rank shipped: `runBreakoutDiscovery`
+ * used that ordering since 2026-08-21 when gain-over-range ranking shipped: `runBreakoutDiscovery`
  * (`src/lib/zerodte/breakout-discovery.ts`) re-orders the screened pool with
- * `rankMoversForChainFetch(pool, fetchBudget, side)` — momentum quality, `gain × close_strength`
- * for longs — and only THEN takes the cap. The harnesses were therefore measuring a cohort split
- * the live board never makes, which invalidated the recall/dynamic-N evidence derived from them.
+ * `rankMoversForChainFetch(pool, fetchBudget, side)` — gain-over-range quality, gain/((h−l)/o) — and only THEN takes the cap.
+ * The harnesses were therefore measuring a cohort split the live board never makes, which invalidated
+ * the recall/dynamic-N evidence derived from them.
  *
  * This module is the single place that mirrors the production ordering + pool sizing, so the two
  * harnesses cannot drift apart from each other or from `breakout-discovery.ts` again.
  *
  * WHAT PRODUCTION DOES, in order (breakout-discovery.ts:295-379):
- *   1. screenPool   = max(BREAKOUT_MAX_CANDIDATES_CEILING * 4, BREAKOUT_SCREEN_POOL)   → 400
+ *   1. screenPool   = max(BREAKOUT_MAX_CANDIDATES_CEILING * 4, BREAKOUT_SCREEN_POOL)   → 600
  *   2. longMovers   = screenBreakoutMovers(results, screenPool)      ($-volume-ranked, filtered)
  *      shortMovers  = screenBreakdownMovers(results, screenPool)
  *   3. qualifying   = longMovers.length + shortMovers.length         ← BOTH sides feed the cap
  *   4. cap          = resolveBreakoutCandidateCap({ qualifyingMovers: qualifying, floor, ceiling })
  *   5. fetchBudget  = min(max(cap * 4, 60), BREAKOUT_SCREEN_POOL)    → 60…200
- *   6. ranked<side> = rankMoversForChainFetch(<side>Movers, fetchBudget, side)   ← MOMENTUM order
+ *   6. ranked<side> = rankMoversForChainFetch(<side>Movers, fetchBudget, side)   ← gain-over-range order
  *   7. fillSide walks `ranked` in batches of 8 and keeps the first `cap` names that successfully
  *      build a same-day contract.
  *
  * MODELLING NOTE (stated, not hidden): step 7's contract-build failures cannot be reproduced
  * offline (they need each name's live 0DTE chain). We model the BEST CASE — every name builds — so
- * KEPT = momentum ranks 1…cap and DROPPED = momentum ranks cap+1…pool end. That is the correct
+ * KEPT = gain-over-range ranks 1…cap and DROPPED = gain-over-range ranks cap+1…pool end. That is the correct
  * comparison for a *recall* question ("what did the cap never look at?"): real build failures only
  * pull MORE of the dropped tail into the kept set, so the modelled kept cohort is the tightest
  * (most favourable-to-the-cap) reading of the split. Names beyond `fetchBudget` never get a chain

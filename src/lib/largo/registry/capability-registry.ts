@@ -3,7 +3,7 @@ import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 /**
  * LARGO CAPABILITY REGISTRY — the data catalog Largo queries to discover what it can answer.
  *
- * THE PROBLEM THIS SOLVES. Largo is handed 129 tools, each with a one-line description. That is
+ * THE PROBLEM THIS SOLVES. Largo is handed 130 tools, each with a one-line description. That is
  * enough for "which tool fetches an SPX quote" and nowhere near enough for the questions that make
  * Largo worth having: *"what changed on SPX in the last 30 minutes"*, *"which Helix flow eventually
  * became a Night Hawk trade"*, *"where do Helix and Thermal disagree"*. Those need facts a tool
@@ -880,7 +880,7 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
   // uncatalogued that was almost never. The guard was armed and dormant: a turn mixing one
   // catalogued source with three unknown ones passed the check without the check meaning anything.
   //
-  // That pass closed the gap and the catalog has stayed complete since: coverage is 129 of 129
+  // That pass closed the gap and the catalog has stayed complete since: coverage is 130 of 130
   // today, held 1:1 by `registry.test.ts`. The numbers above are the state BEFORE this block, kept
   // as the reason it exists — do not read them as current.
   //
@@ -1532,7 +1532,9 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     entities: ["ticker"],
     entitlement: "premium",
     keywords: ["earnings history", "beat", "miss", "eps", "past earnings"],
-    joinsWith: ["fund.earnings_calendar"],
+    caveat:
+      "print_history uses Meridian timing-aware reactions (same as the desk). Do not quote raw UW reaction_pct for how a name reacted.",
+    joinsWith: ["fund.earnings_calendar", "meridian.event"],
   },
   // ── Meridian: the catalyst desk ──
   // Registered as MERIDIAN rather than CATALYSTS on purpose. The calendar tools answer "when",
@@ -1576,7 +1578,31 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     ],
     caveat:
       "Needs an event id from get_meridian_timeline, or kind + ticker + date. Earnings reactions carry a `reaction_basis` saying WHICH session was measured — an AMC print's reaction is the next session, and a value without its basis is not comparable across names.",
-    joinsWith: ["meridian.timeline", "fund.earnings_history"],
+    joinsWith: ["meridian.timeline", "fund.earnings_history", "meridian.peer_cohort"],
+  },
+  {
+    id: "meridian.peer_cohort",
+    product: "MERIDIAN",
+    tool: "get_meridian_peer_cohort",
+    answers:
+      "Which sector peers is this earnings print ranked against, and how have those peers historically reacted to their own prints?",
+    temporal: "live_only",
+    freshness: "periodic",
+    entities: ["ticker", "session"],
+    entitlement: "premium",
+    keywords: [
+      "sector peers",
+      "peer cohort",
+      "compared against",
+      "peer comparison",
+      "same sector",
+      "peer reaction",
+      "implied move vs peers",
+      "rich vs cohort",
+    ],
+    caveat:
+      "Live only — the cohort is built from the CURRENT Meridian timeline window (today forward), not a historical calendar; a `date` in the past that falls outside that window resolves to \"not found\", not an old cohort. Earnings only. Built from the same-SIC-major-group names in the loaded window — not a static watchlist. Pass an event id from get_meridian_timeline or kind=earnings + ticker + date.",
+    joinsWith: ["meridian.timeline", "meridian.event", "fund.earnings_history"],
   },
   {
     id: "fund.earnings_calendar",
@@ -1601,7 +1627,8 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     entities: ["ticker", "session"],
     entitlement: "premium",
     keywords: ["premarket earnings", "after hours earnings", "reporting today"],
-    caveat: "Live only — today’s reporting schedule, not a record of past reports.",
+    caveat:
+      "Live only — today’s reporting schedule. Prefer meridian_reaction_pct over UW reaction_pct for print reactions.",
   },
   {
     id: "fund.catalysts",
@@ -1913,7 +1940,7 @@ export function uncataloguedTools(): string[] {
  * question it lists the past-capable capabilities FIRST and states plainly that they are the ones
  * that can cover the window.
  *
- * RANKING, NEVER FILTERING. This block adds information; it removes nothing. All 129 tools stay in
+ * RANKING, NEVER FILTERING. This block adds information; it removes nothing. All 130 tools stay in
  * the request, so a capability that ranks poorly is merely further down a hint list — it can still
  * be called. That distinction is the entire lesson of the deleted intent allowlist
  * (FINDINGS 2026-08-10): a discovery mechanism that can HIDE a capability can make an answer

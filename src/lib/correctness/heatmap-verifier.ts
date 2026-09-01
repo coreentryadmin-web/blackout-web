@@ -153,12 +153,10 @@ function deriveFlip(strikeTotals: Record<string, number>, spot: number): number 
 /**
  * Independent GAMMA-flip oracle matching the production SpotGamma definition
  * (`cumulativeGammaFlip`): cumulative dealer gamma low→high, short→long crossings only,
- * nearest spot within ±12%. Written from scratch (does NOT import the production helper) so a
- * real cumulative-detector bug is still FLAG-able — but we no longer false-flag when the matrix
- * correctly reports null while a per-strike crossing exists near spot (live 2026-07-28 SPX:
- * per-strike ~7426.83 vs cumulative undetermined on a net-short-everywhere book).
+ * lowest plausible crossing within ±12% of spot. Written from scratch (does NOT import the
+ * production helper) so a real cumulative-detector bug is still FLAG-able.
  */
-function deriveCumulativeGammaFlip(
+export function deriveCumulativeGammaFlip(
   strikeTotals: Record<string, number>,
   spot: number
 ): number | null {
@@ -187,7 +185,11 @@ function deriveCumulativeGammaFlip(
   const FLIP_MAX_DIST_PCT = 0.12;
   const plausible = crossings.filter((c) => Math.abs(c - spot) <= spot * FLIP_MAX_DIST_PCT);
   if (plausible.length === 0) return null;
-  return plausible.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best));
+  // Match production `cumulativeGammaFlipDetail`: lowest plausible crossing (not nearest spot).
+  // Nearest-spot was retired 2026-08-19 — it false-flagged real flips when a second crossing sat
+  // closer to spot (ops-auto-fix P0 on ~215 names off-hours). Hysteresis needs the prior flip;
+  // the heatmap payload does not carry it, so we only apply the stable min() rule here.
+  return plausible.reduce((lowest, c) => (c < lowest ? c : lowest));
 }
 
 /**
@@ -452,7 +454,7 @@ function invariantChecks(ctx: Ctx, hm: GexHeatmap): CheckResult[] {
           close ? "consistency-only" : "flag",
           close
             ? `Reported flip ${fmt(reported)} matches an independent cumulative short→long crossing ${fmt(derivedFlip)}.`
-            : `Reported flip ${fmt(reported)} is NOT at an independent cumulative short→long crossing (nearest ${fmt(derivedFlip)}) — flip is not a real zero-gamma boundary.`,
+            : `Reported flip ${fmt(reported)} is NOT at an independent cumulative short→long crossing (lowest plausible ${fmt(derivedFlip)}) — flip is not a real zero-gamma boundary.`,
           { id: "flip-real-crossing", expected: derivedFlip, actual: reported, tolerance: Math.max(spot * 0.01, 1) }
         )
       );

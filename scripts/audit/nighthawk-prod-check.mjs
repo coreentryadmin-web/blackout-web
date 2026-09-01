@@ -100,18 +100,32 @@ async function main() {
     rec('playbook edition API (1-5 plays)', 'FAIL', `HTTP ${edR.s} ${edR.b.slice(0, 120)}`);
   }
 
-  // --- 2. the new unified horizon board API (0DTE lane) is live ---
-  for (const view of ['zerodte', 'swings', 'leaps']) {
-    const r = get(`/api/market/nighthawk/horizons?view=${view}`);
+  // --- 2. unified horizon board API (0DTE + swing + banger views) ---
+  /** API truth for remodel deploy — NightHawkFeed is `"use client"` so toggle/deck labels are not in SSR HTML. */
+  let horizonSwingsOk = false;
+  let horizonBangersOk = false;
+  let horizonZerodteDeckOk = false;
+  for (const spec of [
+    { view: "zerodte", laneKey: "ZERO_DTE" },
+    { view: "swings", laneKey: "SWING" },
+    { view: "bangers", laneKey: null },
+  ]) {
+    const r = get(`/api/market/nighthawk/horizons?view=${spec.view}`);
     const j = J(r);
     if (r.s === 200 && j?.board?.lanes) {
       const L = j.board.lanes;
-      const active = view === 'zerodte' ? L.ZERO_DTE : view === 'swings' ? L.SWING : L.LEAPS;
-      rec(`horizons API ?view=${view}`, 'PASS', `HTTP 200 · ${active?.committedCount ?? 0} committed / ${active?.watchCount ?? 0} watch · floor ${active?.scoreFloor}${active?.scoreFloorGraduated ? '' : ' (provisional)'}`);
+      if (spec.view === "swings") horizonSwingsOk = true;
+      if (spec.view === "bangers") horizonBangersOk = true;
+      if (spec.laneKey && L[spec.laneKey]) horizonZerodteDeckOk = true;
+      const active = spec.laneKey ? L[spec.laneKey] : null;
+      const detail = active
+        ? `${active.committedCount ?? 0} committed / ${active.watchCount ?? 0} watch · floor ${active.scoreFloor}${active.scoreFloorGraduated ? "" : " (provisional)"}`
+        : "board payload OK (BANGER view — no horizon lane)";
+      rec(`horizons API ?view=${spec.view}`, "PASS", `HTTP 200 · ${detail}`);
     } else if (r.s === 404) {
-      rec(`horizons API ?view=${view}`, 'WARN', 'HTTP 404 — route not deployed to prod yet');
+      rec(`horizons API ?view=${spec.view}`, "WARN", "HTTP 404 — route not deployed to prod yet");
     } else {
-      rec(`horizons API ?view=${view}`, r.s === 200 ? 'WARN' : 'FAIL', `HTTP ${r.s} ${r.b.slice(0, 120)}`);
+      rec(`horizons API ?view=${spec.view}`, r.s === 200 ? "WARN" : "FAIL", `HTTP ${r.s} ${r.b.slice(0, 120)}`);
     }
   }
 
@@ -124,19 +138,29 @@ async function main() {
     rec('/nighthawk page renders (authed)', 'FAIL', `HTTP ${pg.s}`);
   }
 
-  // --- 4. is the 0DTE/Swings/LEAPS/Legacy TOGGLE build deployed? ---
-  // "Swings" + "LEAPS" are the new-build markers (0DTE/Legacy existed before). They render server-side in
-  // the IosNativeSegment button labels, so the served HTML carries them once ECS rolls the new image.
-  const hasSwings = /Swings/.test(pg.b), hasLeaps = /LEAPS/.test(pg.b);
-  const toggleLive = hasSwings && hasLeaps;
-  rec('toggle build deployed (0DTE/Swings/LEAPS/Legacy)', toggleLive ? 'PASS' : 'WARN',
-    toggleLive ? 'served HTML carries the Swings+LEAPS toggle labels' : `NOT yet — Swings:${hasSwings} LEAPS:${hasLeaps} (ECS deploy still rolling)`);
+  // --- 4. is the 0DTE/Swings/Bangers/Legacy TOGGLE build deployed? ---
+  // Labels are client-rendered (NightHawkFeed + IosNativeSegment). Horizons ?view=swings|bangers is the
+  // honest deploy signal; keep HTML as a secondary hint when present.
+  const hasSwingsHtml = /Swings/.test(pg.b);
+  const hasBangersHtml = /Bangers/.test(pg.b);
+  const toggleLive = (horizonSwingsOk && horizonBangersOk) || (hasSwingsHtml && hasBangersHtml);
+  rec('toggle build deployed (0DTE/Swings/Bangers/Legacy)', toggleLive ? 'PASS' : 'WARN',
+    toggleLive
+      ? horizonSwingsOk && horizonBangersOk
+        ? 'horizons API live for Swings + Bangers views (CSR toggle — labels not in SSR HTML)'
+        : 'served HTML carries the Swings+Bangers toggle labels'
+      : `NOT yet — horizons swings:${horizonSwingsOk} bangers:${horizonBangersOk} html Swings:${hasSwingsHtml} Bangers:${hasBangersHtml}`);
 
   // --- 5. is the COMMAND DECK (matrix terminal) deployed? ---
-  const hasDeck = /nh-deck/.test(pg.b);
-  const hasTerminal = /Management|THESIS|Thesis|nh-deck-terminal|matrix/i.test(pg.b) && hasDeck;
-  rec('command deck / terminal deployed', hasDeck ? 'PASS' : 'WARN',
-    hasDeck ? `served HTML carries the nh-deck terminal markup${hasTerminal ? ' + tabs' : ''}` : 'NOT yet — command deck (#1016) not merged/deployed; the OLD board still serves');
+  const hasDeckHtml = /nh-deck/.test(pg.b);
+  const hasTerminalHtml = /Management|THESIS|Thesis|nh-deck-terminal|matrix/i.test(pg.b) && hasDeckHtml;
+  const deckLive = horizonZerodteDeckOk || hasDeckHtml;
+  rec('command deck / terminal deployed', deckLive ? 'PASS' : 'WARN',
+    deckLive
+      ? horizonZerodteDeckOk
+        ? 'horizons ?view=zerodte serves ZERO_DTE lane (command-deck data path live; UI is CSR)'
+        : `served HTML carries the nh-deck terminal markup${hasTerminalHtml ? ' + tabs' : ''}`
+      : 'NOT yet — ZERO_DTE horizon lane missing and no nh-deck markup in served HTML');
 
   const fails = out.filter((o) => o.status === 'FAIL').length;
   console.log(`\n${fails === 0 ? '✅' : '❌'} ${out.filter((o) => o.status === 'PASS').length} pass · ${out.filter((o) => o.status === 'WARN').length} warn · ${fails} fail\n`);

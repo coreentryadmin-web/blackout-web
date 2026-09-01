@@ -43,7 +43,7 @@ const JSON_OUT = process.argv.includes("--json");
 const BASE = arg("base", "https://blackouttrades.com").replace(/\/$/, "");
 
 /**
- * Lane tools, with the args each needs. Deliberately the LANES' list rather than all 129 — a
+ * Lane tools, with the args each needs. Deliberately the LANES' list rather than all 130 — a
  * lane's owner is better placed to say which of theirs carry enough data to be at risk, and
  * `--tools=` lets them point this at their own subset.
  *
@@ -109,7 +109,7 @@ const LANE_TOOLS = [
   // probing only the fat ones cannot tell those apart.
   ["get_spx_pulse", ""],
   // ── Full coverage (102 additional tools, all remaining from tool-defs.ts) ─────────────────────
-  // Added 2026-08-23 for comprehensive 129-tool truncation validation. Default arguments ("") are
+  // Added 2026-08-23 for comprehensive then-129-tool truncation validation. Default arguments ("") are
   // safe for all tools; optional-argument tools will omit the args if empty string is passed.
   ["get_ah_movers", ""],
   ["get_analyst_ratings", ""],

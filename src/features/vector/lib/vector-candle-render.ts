@@ -206,6 +206,22 @@ export function liveEdgeVisibleLogicalRange(
 }
 
 /**
+ * Live desk window with the forming bar near horizontal center (~48 bars visible).
+ * Default Vector load — recent structure on both sides of the current candle (member ask).
+ */
+export function centeredLiveVisibleLogicalRange(
+  barCount: number,
+  windowBars = VECTOR_LIVE_ZOOM_BARS
+): { from: number; to: number } | null {
+  if (!Number.isFinite(barCount) || barCount <= 0) return null;
+  const want = Math.min(windowBars, barCount);
+  const lastIdx = barCount - 1;
+  const halfBefore = Math.floor((want - 1) / 2);
+  const from = Math.max(0, lastIdx - halfBefore);
+  return { from, to: from + want + 1 };
+}
+
+/**
  * When zoomed far out on a fine interval, step up to the next preset timeframe so bodies stay
  * readable. Returns null when no change is warranted. Effective bar count is measured in 1m units.
  */

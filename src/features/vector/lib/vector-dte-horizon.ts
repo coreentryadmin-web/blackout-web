@@ -17,11 +17,10 @@ export type VectorDteHorizon = "0dte" | "weekly" | "monthly" | "all";
 /** Display order for the horizon toggle. */
 export const VECTOR_DTE_HORIZONS: readonly VectorDteHorizon[] = ["0dte", "weekly", "monthly", "all"];
 
-/** Standalone /vector default for single names — NOT oracle indices.
- *  Measured 2026-08-24: the blended "all" rail on stocks carries ~60s sample gaps and sparse
- *  beads/row, while weekly/0dte per-horizon rails record at 5s with full session density.
- *  Oracle tickers override to 0DTE at the page layer (see defaultVectorDteHorizon). */
-export const VECTOR_DEFAULT_DTE_HORIZON: VectorDteHorizon = "weekly";
+/** Standalone /vector fallback when `?dte=` is missing or invalid — intraday desk opens on 0DTE.
+ *  Per-horizon rails (0dte/weekly/monthly) record at 5s for universe names; members can still
+ *  toggle Weekly/Monthly/All from the chart toolbar. */
+export const VECTOR_DEFAULT_DTE_HORIZON: VectorDteHorizon = "0dte";
 
 /** Inclusive DTE ceiling per horizon (calendar days from today). "all" is unbounded. */
 const HORIZON_MAX_DTE: Record<Exclude<VectorDteHorizon, "all">, number> = {
@@ -29,6 +28,14 @@ const HORIZON_MAX_DTE: Record<Exclude<VectorDteHorizon, "all">, number> = {
   weekly: 7,
   monthly: 35,
 };
+
+/** Same per-horizon DTE ceiling `expiriesForHorizon` filters walls by, exposed for any other
+ *  Vector consumer (e.g. the contract-pick chain filter) that needs to reason in the same
+ *  DTE window as the walls a member is already looking at. Null for "all" (unbounded) — the
+ *  same null a caller like `pickChainContract` already treats as "no ceiling". */
+export function horizonMaxDte(horizon: VectorDteHorizon): number | null {
+  return horizon === "all" ? null : HORIZON_MAX_DTE[horizon];
+}
 
 /** Short label for the UI toggle. */
 export function dteHorizonLabel(h: VectorDteHorizon): string {

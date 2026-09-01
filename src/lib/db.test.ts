@@ -126,6 +126,36 @@ test("updateZeroDteLiveState: SQL status CASE is monotonic — CLOSED terminal, 
   assert.match(body, /LEAST\(COALESCE\(trough_premium, \$4\), \$4\)/);
 });
 
+// FIX (2026-09-01, ZERODTE_TRIM_BANK_LIVE): trims_taken must be a monotonic latch
+// (GREATEST), never a plain overwrite — two independent writers (the ~1s live-marks
+// lane and the ~2-min scan.ts cron sync) share this UPDATE, same as peak/trough
+// above, and a stale writer's lower count must never un-bank a tranche a fresher
+// writer already persisted. It must also freeze once CLOSED (same pattern as the
+// other mark-anchored columns) and be skipped entirely (not zeroed) on a tick that
+// doesn't report a trim, or every ordinary heartbeat write would silently regress it.
+test("updateZeroDteLiveState: trims_taken is a monotonic GREATEST latch, frozen at CLOSED, untouched when omitted", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function updateZeroDteLiveState");
+  assert.ok(start > 0, "updateZeroDteLiveState exists");
+  const body = src.slice(start, src.indexOf("stampZeroDteExitContext"));
+
+  const trimsIdx = body.indexOf("trims_taken = CASE");
+  assert.ok(trimsIdx > 0, "trims_taken SET clause present");
+  const clause = body.slice(trimsIdx, body.indexOf("END", trimsIdx) + 3);
+
+  assert.match(clause, /WHEN status = 'CLOSED' THEN trims_taken/, "frozen once closed, same as peak/trough");
+  assert.match(
+    clause,
+    /WHEN \$5::int IS NOT NULL THEN GREATEST\(trims_taken, \$5::int\)/,
+    "a reported count can only raise the latch, never overwrite/regress it"
+  );
+  assert.match(clause, /ELSE trims_taken/, "omitted ($5 IS NULL) leaves the column untouched, not zeroed");
+
+  // The new 5th bind param must actually be threaded through to the query call.
+  const paramsMatch = body.match(/\[sessionDate, ticker\.toUpperCase\(\), s\.status, s\.mark, s\.trimsTaken \?\? null\]/);
+  assert.ok(paramsMatch, "s.trimsTaken must be bound as the 5th query param, defaulting to null when omitted");
+});
+
 // PR-N1 (P0, docs/audit/NIGHTHAWK-OVERNIGHT-DECISION.md §0.1): ensureSchema used to
 // re-issue nighthawk_play_outcomes_outcome_check TWICE — the correct DROP+ADD (with
 // 'unfilled') right after the table DDL, then a stale pre-'unfilled' copy ~270 lines
@@ -266,12 +296,50 @@ test("both live-state writers stamp last_mark_at ONLY when a real mark arrives",
   const zStart = src.indexOf("export async function updateZeroDteLiveState");
   assert.ok(zStart > 0, "updateZeroDteLiveState exists");
   const zBody = src.slice(zStart, src.indexOf("stampZeroDteExitContext"));
-  assert.match(zBody, /last_mark_at = CASE WHEN \$4 IS NOT NULL THEN now\(\) ELSE last_mark_at END/);
+  assert.match(
+    zBody,
+    /last_mark_at = CASE\s*\n\s*WHEN status = 'CLOSED' THEN last_mark_at\s*\n\s*WHEN \$4 IS NOT NULL THEN now\(\)\s*\n\s*ELSE last_mark_at\s*\n\s*END/
+  );
   // The COALESCE it disambiguates must still be there — the stamp ADDS a fact, it does not
-  // change which marks are kept.
-  assert.match(zBody, /last_mark = COALESCE\(\$4, last_mark\)/);
+  // change which marks are kept (for an OPEN/HOLD/TRIM row; see the CLOSED-freeze test below).
+  assert.match(zBody, /last_mark = CASE WHEN status = 'CLOSED' THEN last_mark ELSE COALESCE\(\$4, last_mark\) END/);
 
   // Writer 2: the swing/other ledger lane ($3 is the mark). Both writers or neither — a row
   // updated only by the unstamped one would be indistinguishable from a never-quoted row.
   assert.match(src, /last_mark_at = CASE WHEN \$3 IS NOT NULL THEN now\(\) ELSE last_mark_at END/);
+});
+
+// BUG FIX (2026-08-27, live evidence: MSTR closed "thesis" at a real exit_pnl_pct of +1.61%
+// but the board displayed live_pnl_pct -3.23%): the status CASE above was already terminal at
+// CLOSED, but last_mark/peak_premium/trough_premium were NOT — the ~1s live-marks poller's
+// 10s-stale active-set cache (ACTIVE_SET_TTL_MS, live-marks.ts) can still believe a just-closed
+// row is OPEN/HOLD for up to that window and heartbeat-persists a fresh quote into it anyway.
+// reconcileLedgerLivePnlPct (marks-math.ts) reads last_mark directly for every closed_reason
+// other than "stopped"/condor, so the member-visible "realized" P&L kept drifting — and could
+// flip sign — for several seconds after the trade was actually decided. All four mark-anchored
+// columns must freeze the instant the row's OWN pre-update status is already CLOSED.
+test("updateZeroDteLiveState: last_mark/last_mark_at/peak_premium/trough_premium all freeze once status is already CLOSED", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function updateZeroDteLiveState");
+  assert.ok(start > 0, "updateZeroDteLiveState exists");
+  const body = src.slice(start, src.indexOf("stampZeroDteExitContext"));
+  assert.match(body, /last_mark = CASE WHEN status = 'CLOSED' THEN last_mark ELSE COALESCE\(\$4, last_mark\) END/);
+  assert.match(body, /WHEN status = 'CLOSED' THEN last_mark_at/);
+  assert.match(body, /WHEN status = 'CLOSED' THEN peak_premium/);
+  assert.match(body, /WHEN status = 'CLOSED' THEN trough_premium/);
+});
+
+// Pool-teardown race: dbQuery must only reset the pool instance IT queried on, so a concurrent
+// caller's retry cannot end a pool another subsystem is still mid-flight on (2026-09-01 ops #3257).
+test("dbQuery: resetPoolForRetry is identity-guarded against concurrent pool replacement", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const dbQueryStart = src.indexOf("export async function dbQuery");
+  assert.ok(dbQueryStart > 0, "dbQuery exists");
+  const dbQueryBody = src.slice(dbQueryStart, dbQueryStart + 1200);
+  assert.match(dbQueryBody, /const activePool = await getPool\(\)/);
+  assert.match(dbQueryBody, /await resetPoolForRetry\(activePool\)/);
+  const resetStart = src.indexOf("async function resetPoolForRetry");
+  assert.ok(resetStart > 0, "resetPoolForRetry exists");
+  const resetBody = src.slice(resetStart, resetStart + 500);
+  assert.match(resetBody, /if \(failedPool && pool !== failedPool\) return/);
 });

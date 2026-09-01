@@ -62,13 +62,52 @@ a pattern worth generalizing. Classify with the brief's own scale:
    for the other 3 engine tabs (Swings/Bangers/Legacy), or a countdown to the next session. Not
    urgent — it's not broken, just under-used space on a day with genuinely nothing to show.
 
-6. **[P3] A shared chart-footer-legend component to prevent the overlap bug from recurring.**
-   `UI-UX-MAP.md` finding #3 is confirmed on `/vector` mobile; whether it also affects `/dashboard`
-   desktop (same `VectorChart.tsx` via `SpxVectorEmbed`) is still an open question pending a
-   chart-loaded re-check. If it does turn out to affect both, the larger opportunity is auditing
-   whether other embeds of the same component (any future ones) inherit the same footer-legend
-   layout logic, so a fix to the shared component doesn't need to be re-verified per embed site by
-   hand each time.
+6. **[ANSWERED, 2026-08-25 — closed by code-identity, live re-check attempted but blocked by an
+   environment issue this pass] `/dashboard` desktop inherits the footer-legend fix automatically —
+   it is not a separate code path to verify.** Traced `SpxVectorEmbed.tsx` (the `/dashboard`
+   embed): it dynamically imports and renders `VectorPageShell`, the exact same component tree
+   `/vector` itself renders, with no props or wrapper that touch, override, or conditionally skip
+   the footer-label JSX. The fixed pill markup (`bg-black/70`, width cap, truncate — the same lines
+   read for `UI-UX-MAP.md` finding #3) lives directly in `VectorChart.tsx` at the leaf the embed
+   also renders, so there is no scenario where `/dashboard` executes different code for this label
+   than `/vector` does — this is one function running in two places, not two implementations that
+   happen to look alike. A live chart-loaded screenshot of `/dashboard` desktop was attempted to
+   confirm visually as well, but `proxy-browser.cjs` hit `ERR_CONNECTION_RESET` on **every** target
+   including the homepage across 4 consecutive attempts (with `recentRelayFailures: []` on the
+   proxy status, curl to the same URLs succeeding throughout) — consistent with the tunnel-
+   exhaustion failure mode `proxy-tunnel-context.cjs`'s own header comment documents (leaked
+   CONNECT tunnels from a prior long run present as this exact signature: Chromium reports
+   `ERR_CONNECTION_RESET`, the proxy has nothing to report because it is saturated, not failing).
+   Not chased further since the code-identity evidence is airtight regardless of what a screenshot
+   would add — a live re-check remains a reasonable follow-up whenever the tunnel clears, not a
+   blocker on closing this. The second half of the original ask (auditing whether *other*, future
+   embeds of `VectorChart.tsx` could diverge) stays real but speculative — no second embed exists
+   yet to check.
+
+   **Correction, 2026-08-25 — the tunnel-exhaustion hypothesis above does NOT hold up; the real
+   cause is still unknown.** Retried the `/dashboard` capture later the same day, well after the
+   original attempts, with no other live-capture activity in between and a fresh session mint —
+   `meridian-interaction-audit.mjs` had just completed cleanly through the same proxy tunnel
+   moments earlier, ruling out exhaustion from a leaked prior run. `/dashboard` still failed
+   identically (`ERR_CONNECTION_RESET`, both with and without `--full`), while every OTHER page
+   this session (homepage, `/meridian`, `/terminal`) succeeds through the identical mechanism.
+   This is `/dashboard`-specific, reproducible, and NOT a general tunnel-health problem — the
+   original diagnosis was wrong. Chased two hypotheses and ruled both out: (1) the known
+   28-50MB-SSR-payload bug (`FINDINGS.md`, 2026-08-01) — its fix (`trimHistoryToSession`) is
+   confirmed present in `main`, AND `SpxVectorEmbed.tsx`'s own header comment says it deliberately
+   never SSRs `loadVectorSeedProps` in the first place, specifically to avoid this exact failure
+   mode; (2) an HTTP/1.0-vs-103-Early-Hints parsing mismatch in `proxyFetch`
+   (`proxy-tunnel-context.cjs` sends `HTTP/1.0`, which shouldn't solicit a 103 from the origin, so
+   this doesn't fit either). A curl probe with the same session cookie also failed to reach
+   `/dashboard` as authenticated (redirected to `/sign-in`) even though the identical cookie
+   authenticates fine against API routes elsewhere in this session — inconclusive on its own
+   (curl's plain request doesn't replicate a full browser navigation), but a data point that
+   `/dashboard` specifically behaves differently under this cookie than every other route tried.
+   **Leaving this genuinely open rather than re-guessing**: the code-identity evidence still
+   closes the ORIGINAL question (does `/dashboard` inherit the footer-legend fix — yes), but
+   `proxy-browser.cjs`'s specific inability to capture `/dashboard` at all is now flagged as its
+   own unresolved, reproducible tooling gap, not attributed to a cause that turned out to be
+   wrong.
 
 7. **[DONE, 2026-08-23] `proxy-browser.cjs` now warns loud when `--viewport` implies desktop but
    `--desktop` is omitted.** This Phase 0 pass shipped 8 desktop findings built on the wrong UA
@@ -134,6 +173,36 @@ a pattern worth generalizing. Classify with the brief's own scale:
    same result). Next step for whoever picks this up: either get ECS task-level visibility to
    confirm the multi-instance-cache theory directly, or ask Vector's lane whether a client-side
    fallback fetch is an intentional trade-off they've already made (vs. an oversight).
+   **Update, 2026-08-25 — new direct evidence, still short of full confirmation.** AWS credentials
+   were live this session, which the note above said would be needed. `ecs:DescribeServices` shows
+   `enableExecuteCommand: false` on `blackout-production-web`, so literal per-task `exec` genuinely
+   isn't available here (confirms, doesn't just repeat, the earlier note) — but two other checks
+   were possible and both corroborate the hypothesis:
+   1. **Live task topology**: `blackout-production-web` runs **8 tasks**, all `HEALTHY`, with ages
+      ranging from **1.8 to 51.6 minutes** at time of check — direct proof that with 8 independently
+      warming processes and this much churn, a request landing on a task under ~2 minutes old is a
+      routine, expected event, not an edge case.
+   2. **Source confirmation**: `vector-snapshot.ts`'s `stateByTicker` is a plain module-level `Map`
+      (`state(ticker)`, line ~126) — genuinely process-local, exactly as inferred, with zero
+      cross-instance backing. The SAME file documents an ALREADY-FOUND-AND-FIXED instance of this
+      exact failure mode on a sibling code path: `getVectorGexWallsForHorizon`'s `"all"` branch has
+      an explicit "Cold-task safety net" comment describing the identical symptom — "a member
+      toggling the DTE control to All would watch the beads/walls blank out intermittently
+      depending on which task the request lands on" — measured live 2026-07-12/07-13 and fixed with
+      a multi-layer fallback (prime → Redis rail-tail → chain recompute). That fix does not cover
+      the regime banner's own read path (`liveGexWalls()`/`liveGammaFlip()`, fed by the SSE stream,
+      not this REST route), so it doesn't close this item — but it confirms the architecture-level
+      risk is real, not speculative, and that this exact codebase has hit it before.
+   **Reconciling the "always absent across 16 states" evidence**: this update also explains why the
+   original walkthrough saw the banner missing consistently across an ENTIRE run rather than
+   flickering between present/absent — the SSE stream is one persistent connection per page load,
+   so a session that happens to land on a cold task stays on that same task (and that task's
+   coldness) for the run's whole duration, which is exactly the all-16-states pattern measured.
+   **Still not filed as a confirmed finding**: this is strong structural and historical corroboration,
+   not a literal per-task cache read — that would need `enableExecuteCommand: true` (not this
+   service's current config) or task-level application logging this sandbox can't add. Next step
+   unchanged: Vector's owning lane decides between a cross-instance-consistent cache backing or a
+   client-side self-heal fetch, per this file's own boundary rule against guessing that unilaterally.
 
 10. **[ANSWERED, 2026-08-24 — confirmed benign, no fix needed] Thermal mobile GEX matrix — 5
     measured text collisions, root-caused as the opaque sticky-header-over-scrolled-row pattern.**
@@ -186,59 +255,93 @@ a pattern worth generalizing. Classify with the brief's own scale:
     before the deploy rotated instead of leaving it on a manual "Try again." See
     `docs/audit/findings-staging/2026-08-24-chunk-load-error-critical-crash.md`.
 
-13. **[P3, needs fix] Meridian earnings detail — 26 interactive controls under the 24px tap-target
-    minimum, confirmed on both desktop and tablet.** `meridian-interaction-audit.mjs` (live,
-    isolated runs, 2026-08-24) measured real `button`/`a[href]`/`[role=button]` elements below
+13. **[FIXED, 2026-08-25 — root-caused to four distinct components, three real fixes + one
+    confirmed audit-tool false positive] Meridian earnings detail — 26 interactive controls under
+    the 24px tap-target minimum, confirmed on both desktop and tablet.** `meridian-interaction-audit.mjs`
+    (live, isolated runs, 2026-08-24) measured real `button`/`a[href]`/`[role=button]` elements below
     24px in both axes across three tabs: **Report** (10 — wall/pin rows `470x20`/`561x20`, five
     `18x18` intel-source badges: HELIX flow, dark pool, thermal nodes, Vector expected move, news &
     catalysts), **Estimates** (6 — analyst price-target/rating dots, all `8x8`), **Positioning**
     (10 — same wall/pin rows plus GEX-strike pills, `301x20`/`561x20`). Same shapes on desktop
     1440×900 and tablet 1024×1100, so this isn't a viewport-specific squeeze — it's the panel's
-    base row/badge sizing. The `8x8` Estimates dots are the sharpest case (tiny icon-only rating
-    markers, not just a few px short). Not yet root-caused to the specific component/CSS (likely
-    `MeridianEarningsReportPanel.tsx` for Report/Positioning, an analyst-estimates panel for
-    Estimates — not yet located precisely) or fixed. Repro:
-    `NODE_USE_ENV_PROXY=1 node scripts/audit/meridian-interaction-audit.mjs --viewport=desktop`
-    (mints its own session; run desktop and tablet as SEPARATE invocations, never concurrently —
-    see item 14's note on why).
+    base row/badge sizing. Root-caused each: (1) `MeridianStructureLadder`'s wall/pin rows — a real
+    undersized control, height was pinned to 20px and coupled to a collision-resolver constant;
+    raised to 24px, the resolver constant derives from it automatically. (2) `MeridianStrikeProfile`'s
+    GEX-strike pills — a real undersized control, no coupling; given `min-height: 24px`. (3)
+    `MeridianOrbital`'s 18×18 intel badges — **not a defect**: they already carry a deliberate
+    invisible `::after` hit-area pad (26×26) so the visually-meaningful orb size doesn't have to be
+    inflated; `getBoundingClientRect()` can't see a pseudo-element's painted area, so the audit
+    flagged an already-correct control. Live-verified the pad genuinely extends the clickable area
+    with a minimal Playwright reproduction (click 12px from center, outside the 9px visible circle,
+    registered). (4) `MeridianTargetRail`'s 8×8 analyst dots — **not an undersized control, a
+    non-control**: both current call sites render them as `disabled` buttons (no `onTargetClick`
+    passed), and a disabled button can never be activated by any means, so no size would make it
+    usable; changed the no-handler path to render a plain `<span>` instead of interactive markup
+    for a control that can never be controlled. See
+    `docs/audit/findings-staging/2026-08-25-meridian-earnings-tap-targets.md` for full evidence,
+    fix rationale, and regression coverage (119 meridian tests + tsc green).
 
-14. **[P3, inconclusive — do not treat as confirmed either way] Meridian tablet — "selecting an
-    event does not change the URL" flagged live, but a static code trace says the opposite.**
-    `meridian-interaction-audit.mjs`'s tablet pass measured the desk's URL still bare after opening
-    an earnings event. Traced the actual code path: `MeridianTimelineRow`'s click handler
-    (`onSelect={() => setSelectedId(item.id)}` in `MeridianDesk.tsx`) feeds a `useEffect` watching
-    `[selectedId, view, filter]` that calls `syncDeskUrl` → `router.push` with the serialized state
-    from `meridian-deeplink-core.ts` — a module whose own header comment says this exact gap
-    ("selecting an event changed nothing in the address bar") was found and fixed 2026-08-18, and
-    which carries a dedicated unit test (`meridian-deeplink-core.test.ts`). The wiring reads
-    correct by inspection. A follow-up isolated live probe built to click a real earnings row and
-    read `window.location` before/after timed out waiting for the row to even appear (30s), which
-    this map's own Meridian section already documents as a known cold-timeline-fetch stall — so it
-    neither confirmed nor refuted the harness's tablet finding. **Left genuinely open rather than
-    asserted either way.** Note the harness's separate reload-based deep-link check (does a URL
-    WITH params survive a reload) never even ran on this pass — its own logic only reaches that
-    check when the URL already carries a `?`/`#`, which is exactly the condition in question, so
-    there is no second live signal to lean on either way from this run. Next step: re-run the
-    isolated probe with a longer row-wait (60s+, matching the documented
-    8.5s-cold-then-occasional-stall pattern) to get a clean click-through and a real before/after
-    URL comparison.
+    **Deployed and live-verified, 2026-08-25 — and a second round found by the same probe.**
+    Post-deploy, `meridian-interaction-audit.mjs` against production (different ticker/live data
+    than the original audit) confirmed the fix directly: **zero wall/pin-row or strike-row items**
+    appear in the flagged list anymore. But the same run surfaced **two controls the original
+    26-item sample never sampled** — the probe caps at 10 hits per tab, and which controls even
+    render depends on the current ticker's data, so a control absent from one run's sample was
+    never proven absent, only unsampled. Found: a `"revisions"` toggle (`79x21`,
+    `MeridianRevisionMomentum`'s `.mv-rev-more` — a real undersized control, `min-height: 24px`
+    fixed it) and `MeridianDarkPoolTape`'s dark-pool print markers (`11x11`–`18x18`) — the
+    identical disabled-button non-control pattern as the already-fixed price-target dots (neither
+    call site passes `onPrintClick`), fixed the same way: a `<span>` instead of interactive markup
+    for a control that can never be controlled. See
+    `docs/audit/findings-staging/2026-08-25-meridian-tap-targets-round-2.md`. Not yet deployed —
+    this round's own post-merge follow-up.
 
-15. **[P2, needs re-confirmation outside a deploy window] Largo `/terminal` — clicking "Pricing"
-    produced chunk 404s matching the ChunkLoadError deploy-window shape.** `UI-UX-MAP.md` §8: an
-    isolated `live-ui-interaction-audit.mjs` run measured `webpack-*.js` / `app/error-*.js` /
-    `app/global-error-*.js` all 404ing with a MIME-type refusal after clicking "Pricing" — the same
-    symptom class as the already-fixed `docs/audit/findings-staging/2026-08-24-chunk-load-error-critical-crash.md`
-    (#2842), and this run landed inside a confirmed active deploy window (this session's own
-    doc-PR merges triggered back-to-back `ecr-push-production.yml` runs). Not filed as a new
-    finding because it may simply be the same already-fixed root cause recurring during a deploy —
-    but also not dismissed, because this specific shape (the core webpack RUNTIME chunk itself
-    404ing, not just a lazy route chunk) hasn't been proven to be fully covered by #2842's
-    self-heal reload; if the reload itself lands on a still-rotating manifest during a rapid
-    multi-deploy sequence, a member could see two failures in a row with only one reload attempt
-    budgeted. Next step: `NODE_USE_ENV_PROXY=1 node --import tsx
-    scripts/audit/live-ui-interaction-audit.mjs --pages=/terminal --desktop-only`, isolated, well
-    outside any deploy window (check `ecr-push-production.yml` run status first) — if it reproduces
-    cleanly there, this is a real, separate defect; if not, close as deploy noise.
+14. **[ANSWERED, 2026-08-25 — confirmed working, the original harness finding was a stall, not a
+    defect] Meridian tablet deeplink — selecting an event DOES change the URL.**
+    `meridian-interaction-audit.mjs`'s original tablet pass measured the desk's URL still bare
+    after opening an earnings event, but a static code trace said the opposite (`MeridianDesk.tsx`
+    → `meridian-deeplink-core.ts`, wiring reads correct by inspection, with its own dedicated unit
+    test). A first live re-check probe timed out waiting for the row to appear (a known
+    cold-timeline-fetch stall) and settled nothing either way. **Re-ran with a longer row-wait
+    (60s) and a direct before/after URL comparison:** `url before:
+    https://blackouttrades.com/meridian`, `url after click:
+    https://blackouttrades.com/meridian?event=earnings%3AGRRR%3A2026-08-24` — the URL correctly
+    carries the selected event. Confirms the static trace was right and the original harness
+    finding was a false negative caused by the cold-fetch stall (the click landed on a
+    not-yet-fully-mounted row, or the harness's own timing raced the same stall this map already
+    documents for Meridian's desktop timeline fetch), not a real product defect. No code change.
+
+15. **[ANSWERED, 2026-08-24 — confirmed deploy noise, no fix needed] Largo `/terminal` —
+    "Pricing"-click chunk 404s did not reproduce outside a deploy window.** `UI-UX-MAP.md` §8: an
+    isolated `live-ui-interaction-audit.mjs` run had measured `webpack-*.js` / `app/error-*.js` /
+    `app/global-error-*.js` all 404ing after clicking "Pricing", landing inside a confirmed active
+    deploy window (this session's own doc-PR merges triggering back-to-back
+    `ecr-push-production.yml` runs). Re-ran the identical command once `ecr-push-production.yml`
+    showed no `pending`/`in_progress` run: `exercising 20 of 20 controls`,
+    `[PASS] every exercised control did something` — clean, including the "Pricing" click. Confirms
+    the original observation was the same deploy-window `ChunkLoadError` root cause already fixed
+    in #2842, not a separate residual gap in its self-heal reload. No code change; closing.
+
+16. **[DONE, 2026-08-24] `live-ui-interaction-audit.mjs` could mislabel or misattribute a "DEAD
+    control" once ANY earlier click restructures the page's DOM — FIXED.** A post-BACK-recovery-fix
+    re-run of `/nighthawk` (desktop) reported `[FAIL] 1 DEAD control(s) — click changed nothing
+    observable {"dead":["WATCH 0"]}`. Investigated directly: an isolated single click on the real
+    "WATCH 0" button (`.nh-deck-filtbtn`, Swing lane's WATCH-section filter) from a fresh page load
+    produces a real, measurable change — interactive-control count dropped **31 → 16**. Not a Night
+    Hawk defect. **Root cause:** `safeControls()` stamps every matched element's `data-audit-idx`
+    fresh, by DOM traversal order, each time it runs — including the re-stamp the URL-changed
+    branch triggers after ANY click that restructures the page (a tab switch, a filter, a route
+    change). The outer loop iterated over the ORIGINAL, pre-run `controls` array captured once
+    before the loop started, so once one control's click caused a re-stamp (the "0DTE" engine tab,
+    index 0, switches the entire rendered section via `router.replace()`), every SUBSEQUENT
+    `ctl.idx` in that stale array could resolve to a DIFFERENT physical element than the one
+    `ctl.label` described. **Fix:** the outer loop is now a `while` over a `queue`/`qi` pair that
+    gets REPLACED (not just re-stamped in place) by both re-stamp branches, so `qi` never indexes
+    into a list that isn't the one it came from; a separate `exercised` counter preserves the
+    original `MAX_CONTROLS` budget across any number of re-stamps. Live-verified: a clean re-run of
+    `/nighthawk` after the fix reports `[PASS] every exercised control did something` — the "WATCH
+    0" false positive does not reproduce, and no regression from the BACK-recovery fix (#2851) was
+    introduced. See `docs/audit/findings-staging/2026-08-24-live-ui-audit-stale-control-index.md`.
 
 ---
 

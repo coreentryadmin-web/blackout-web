@@ -450,7 +450,19 @@ export async function verifyNightHawk(_marketOpen: boolean): Promise<TickerScore
         const verdict = evaluatePlayAgainstChain(play.options_play ?? "", chain.rows);
         if (verdict.contradicted) {
           contradicted++;
-          if (contraDetail.length < 5) contraDetail.push(`${play.ticker} ${play.options_play}`);
+          // Every real generator (formatOptionsPlay, grounding.ts, play-backfill.ts) already
+          // writes options_play with the ticker as its own leading word ("MSTR $138 CALL @
+          // $6.08 — Sep 4"), so unconditionally prepending play.ticker duplicated it in the
+          // alert ("MSTR MSTR $138 CALL..." — caught live in #website-logs). Only prepend when
+          // it's genuinely missing, so a future/edge-case source that doesn't self-prefix still
+          // reads correctly.
+          if (contraDetail.length < 5) {
+            const detail = play.options_play ?? "";
+            const tickerUpper = play.ticker.toUpperCase();
+            contraDetail.push(
+              detail.toUpperCase().startsWith(tickerUpper) ? detail : `${play.ticker} ${detail}`
+            );
+          }
           continue;
         }
         if (verdict.verified) {

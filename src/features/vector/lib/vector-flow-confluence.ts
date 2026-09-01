@@ -2,6 +2,7 @@ import {
   normalizeVectorIntervalMinutes,
   type VectorTimeframeMinutes,
 } from "@/features/vector/lib/vector-bar-timeframes";
+import { flowDirection } from "@/features/helix/lib/helix-flow-aggression";
 import type { CandlestickBarInput, CandlestickDisplayBar } from "@/features/vector/lib/vector-candle-render";
 
 /** Match Live Helix card flash duration. */
@@ -116,6 +117,41 @@ export function applyFlowConfluenceToCandles<T extends CandlestickBarInput>(
   });
 }
 
-export function toneFromFlowSide(optionType: string | undefined | null): FlowConfluenceTone {
-  return optionType?.toUpperCase() === "CALL" ? "bull" : "bear";
+/**
+ * Aggressor-aware, not option-type-alone: a SOLD call is bearish and a SOLD put is bullish, the
+ * same conflation `flowDirection` (helix-flow-aggression.ts) already exists to fix -- delegated to
+ * rather than reimplemented, so this can't drift back out of sync with it a second time. This
+ * function has no callers today, but its option-type-only name/signature was exactly the trap a
+ * future caller would reach for -- see this session's own precedent (X-content's
+ * validateSessionClaim stub, fixed the same day for the identical reason). `FlowConfluenceTone`
+ * has no "undetermined" state, so a print with no readable aggressor side falls back to the
+ * option-type-only read; prefer `flowDirection` directly wherever "undetermined" can be
+ * represented honestly instead.
+ */
+export function toneFromFlowSide(flow: {
+  option_type?: string | null;
+  ask_pct?: number | null;
+}): FlowConfluenceTone {
+  const direction = flowDirection(flow);
+  if (direction === "bullish") return "bull";
+  if (direction === "bearish") return "bear";
+  return flow.option_type?.toUpperCase() === "CALL" ? "bull" : "bear";
+}
+
+/**
+ * The chart-focus tone for a live HELIX flow print (price-line flash + candle pulse) --
+ * aggressor-aware via `flowDirection`, with an honest third state: an undetermined-direction
+ * print (no `ask_pct`, or one at the midpoint) renders neutral "sky", never guessed as bull or
+ * bear. Extracted so this can't silently regress back to option-type-only the way it did before
+ * (`isCall ? "bull" : "bear"`) -- a SOLD call used to flash the chart lime/bullish for a print
+ * that read bearish everywhere else in the product (HELIX's own printBias/flowDirection).
+ */
+export function chartFocusToneForFlow(flow: {
+  option_type?: string | null;
+  ask_pct?: number | null;
+}): "bull" | "bear" | "sky" {
+  const direction = flowDirection(flow);
+  if (direction === "bullish") return "bull";
+  if (direction === "bearish") return "bear";
+  return "sky";
 }

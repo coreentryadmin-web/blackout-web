@@ -406,6 +406,58 @@ test("0DTE adapter: src.strike takes precedence over setup.top_strike", () => {
   assert.equal(p.contract, "500C · 0DTE");
 });
 
+test("0DTE adapter: thesis_first on setup surfaces as thesisFirst on TerminalPlay", () => {
+  const thesisFirst = {
+    thesis: {
+      ticker: "NVDA",
+      direction: "long" as const,
+      rail_scores: { FLOW: 88, BREAKOUT: 84 },
+      rails_fired: ["FLOW", "BREAKOUT"] as const,
+      systems_aligned: 2,
+      trade_archetype: "BREAKOUT" as const,
+      archetype_score: 82,
+      structural_state: "TRIGGERED" as const,
+      trigger_price: 181.5,
+      summaries: {},
+    },
+    archetype_gates: { verdict: "PASS" as const, archetype: "BREAKOUT" as const, blocks: [], notes: [] },
+    expression: null,
+    rank_tier: "A" as const,
+  };
+  const p = terminalPlayFromZeroDte({
+    ticker: "nvda",
+    status: "WATCH",
+    setup: { direction: "long", dte: 0, thesis_first: thesisFirst },
+  });
+  assert.equal(p.thesisFirst?.rank_tier, "A");
+  assert.equal(p.thesisFirst?.thesis.systems_aligned, 2);
+});
+
+test("0DTE adapter: rehydrates thesisFirst from compact entry_context blob on ledger rows", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "crml",
+    status: "CLOSED",
+    setup: { direction: "long", dte: 3 },
+    thesis_first_blob: {
+      rail_scores: { FLOW: 72 },
+      rails_fired: ["FLOW"],
+      summaries: { FLOW: "campaign" },
+      systems_aligned: 1,
+      trade_archetype: "FLOW_FOLLOWING",
+      archetype_score: 72,
+      structural_state: "TRIGGERED",
+      trigger_price: 12.5,
+      rank_tier: "B",
+      archetype_gate: "PASS",
+      archetype_blocks: [],
+      disagreeing_rails: [],
+    },
+  });
+  assert.equal(p.thesisFirst?.rank_tier, "B");
+  assert.equal(p.thesisFirst?.thesis.ticker, "CRML");
+  assert.equal(p.thesisFirst?.thesis.rail_scores.FLOW, 72);
+});
+
 // ── missing setup entirely ─────────────────────────────────────────────────────────────
 test("0DTE adapter: NO setup at all — defaults to LONG, empty factors, unknown thesis, gate driven by status", () => {
   const working = terminalPlayFromZeroDte({ ticker: "nvda", status: "HOLD", live_pnl_pct: 10, entry_premium: 4, last_mark: 4.4 });

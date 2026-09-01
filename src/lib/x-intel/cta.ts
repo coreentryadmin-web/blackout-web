@@ -69,12 +69,13 @@ const PRICING = {
  */
 const PROMO_CODE = "BLACK50";
 
-const LINKS = {
+export const LINKS = {
   /**
-   * Supplied by the operator 2026-08-21. NOTE: `SITE.social.discord.url` in `src/lib/site.ts`
-   * points at a DIFFERENT invite (`5zSt7G34dw`). One of the two is stale and they are not
-   * reconciled here on purpose — picking one silently would either publish a dead invite or
-   * quietly overrule the site's own config. Raised in the PR; see the note there.
+   * Supplied by the operator 2026-08-21. Previously diverged from `SITE.social.discord.url`
+   * (`src/lib/site.ts`), which pointed at a separate, DEAD invite code (`5zSt7G34dw` — verified
+   * live against Discord's public invite-resolve API: "Unknown Invite" / code 10006, while this
+   * one resolves to the real BLACKOUT server). Reconciled 2026-08-28 — see
+   * docs/audit/findings-staging for the live proof; both now point at this same invite.
    */
   discord: "https://discord.gg/j9FNuBXfMH",
   whop: "https://whop.com/joined/blackout-2d9c/",

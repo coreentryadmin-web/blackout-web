@@ -46,28 +46,104 @@ test("OCC copy: control renders (accessible button, aria-label) when an OCC is o
   assert.match(html, /<button/); // a real, keyboard-focusable control
 });
 
-test("Play timeline tab renders for 0DTE horizon", async () => {
+test("Swing OPEN play: tabbed terminal defaults to Thesis at first paint (SSR)", async () => {
+  const html = await render(
+    play({
+      horizon: "SWING",
+      status: "OPEN",
+      contract: "180C · 5DTE",
+      factors: [{ label: "Flow", points: 10 }],
+    }),
+  );
+  assert.match(html, /nh-deck-tabs/);
+  assert.match(html, />\[1\]<\/span>Thesis/);
+  assert.match(html, /Why this play was picked/);
+  assert.doesNotMatch(html, /nh-deck-command-panel/);
+  // Management-only trim ladder headline must not be the default tab body.
+  assert.doesNotMatch(html, /Trim-scale ladder — the engine banks partials/);
+});
+
+test("0DTE single panel v2: verdict band, evidence stack, collapsed technicals", async () => {
   const html = await render(
     play({
       firstFlaggedAt: "2026-08-03T11:20:00-04:00",
       pnlPct: 35,
       peak: 87,
-    }),
-  );
-  assert.match(html, />\[4\]</);
-  assert.match(html, />Timeline</);
-});
-
-test("premium thesis panels render for 0DTE", async () => {
-  const html = await render(
-    play({
-      tierLabel: "A",
+      // Full ThesisHealthPayload shape required (not just the fields each test happens to
+      // assert on) now that ThesisHealthPanel actually renders it inside ZeroDteCommandPanel —
+      // `rung`/`moves` are read unconditionally (rung.replace, moves.map) with no null guard,
+      // since the real payload from thesis-health.ts always populates them.
       thesisHealth: {
         health: 82,
         currentIndex: 92,
         advisory: "Thesis intact",
         pillars: [{ id: "flow", label: "Flow", status: "intact" }],
         committedAtEt: "10:15",
+        rung: "INTACT",
+        moves: [],
+      },
+    }),
+  );
+  assert.match(html, /nh-deck-command-panel-v2/);
+  assert.match(html, /nh-deck-verdict-band/);
+  assert.match(html, />Why we picked it</);
+  assert.match(html, />Live · management</);
+  assert.match(html, />Technicals · gates · factors</);
+  assert.match(html, />Session log</);
+  assert.doesNotMatch(html, /nh-deck-tabs/);
+  assert.doesNotMatch(html, />\[4\]</);
+  // v2 drops stacked legacy tab bodies — no duplicate Engine Checklist in default OPEN view.
+  assert.doesNotMatch(html, /Engine Checklist/);
+  // Technicals collapsed by default on OPEN working plays.
+  assert.doesNotMatch(html, /<details class="nh-deck-command-technicals" open="">/);
+});
+
+test("DeskEvidenceStack renders in 0DTE command panel when thesisFirst is present", async () => {
+  const html = await render(
+    play({
+      thesisFirst: {
+        thesis: {
+          ticker: "NVDA",
+          direction: "long",
+          rail_scores: { FLOW: 88, BREAKOUT: 84 },
+          rails_fired: ["FLOW", "BREAKOUT"],
+          systems_aligned: 2,
+          trade_archetype: "BREAKOUT",
+          archetype_score: 82,
+          structural_state: "TRIGGERED",
+          trigger_price: 181.5,
+          summaries: { FLOW: "campaign", BREAKOUT: "triggered" },
+          disagreeing_rails: [],
+        },
+        archetype_gates: { verdict: "PASS", archetype: "BREAKOUT", blocks: [], notes: [] },
+        expression: null,
+        rank_tier: "A",
+      },
+    }),
+  );
+  assert.match(html, /nh-deck-evidence-stack/);
+  assert.match(html, />HELIX</);
+  assert.match(html, />THERMAL</);
+  assert.doesNotMatch(html, /nh-deck-thesis-rank/);
+  assert.doesNotMatch(html, />Contract</);
+});
+
+test("premium thesis panels render for 0DTE", async () => {
+  const html = await render(
+    play({
+      tierLabel: "A",
+      // Full ThesisHealthPayload shape required (not just the fields each test happens to
+      // assert on) now that ThesisHealthPanel actually renders it inside ZeroDteCommandPanel —
+      // `rung`/`moves` are read unconditionally (rung.replace, moves.map) with no null guard,
+      // since the real payload from thesis-health.ts always populates them.
+      thesisHealth: {
+        health: 82,
+        currentIndex: 92,
+        advisory: "Thesis intact",
+        pillars: [{ id: "flow", label: "Flow", status: "intact" }],
+        committedAtEt: "10:15",
+        rung: "INTACT",
+        moves: [],
       },
     }),
     { convictionRank: { rank: 1, total: 18, isHighestToday: true } },
@@ -84,7 +160,7 @@ test("premium thesis panels render for 0DTE", async () => {
 
 test("Play timeline tab absent on Legacy horizon", async () => {
   const html = await render(play({ horizon: "LEGACY" }));
-  assert.doesNotMatch(html, />Timeline</);
+  assert.doesNotMatch(html, />Session log</);
 });
 
 // ── Confidence/Conviction/Thesis-Strength dedup (Night Hawk panel declutter, docs/audit/FINDINGS.md
@@ -93,12 +169,18 @@ test("hero: the live metrics tile shows the canonical 'Thesis Strength' label + 
   const html = await render(
     play({
       tierLabel: "A",
+      // Full ThesisHealthPayload shape required (not just the fields each test happens to
+      // assert on) now that ThesisHealthPanel actually renders it inside ZeroDteCommandPanel —
+      // `rung`/`moves` are read unconditionally (rung.replace, moves.map) with no null guard,
+      // since the real payload from thesis-health.ts always populates them.
       thesisHealth: {
         health: 82,
         currentIndex: 92,
         advisory: "Thesis intact",
         pillars: [{ id: "flow", label: "Flow", status: "intact" }],
         committedAtEt: "10:15",
+        rung: "INTACT",
+        moves: [],
       },
     }),
   );
@@ -126,8 +208,8 @@ test("Management tab: no longer renders the Entry-plan Contract/Current-mark tri
   assert.doesNotMatch(html, /Current mark/);
 });
 
-test("Thesis tab: R:R ratio now appears in the commit-snapshot meta grid (folded in from the removed Entry-plan block)", async () => {
-  const html = await render(play({ rrRatio: 2.4 }));
+test("Thesis tab: R:R ratio appears in technicals when expanded (CLOSED play)", async () => {
+  const html = await render(play({ rrRatio: 2.4, status: "CLOSED" }));
   assert.match(html, /Risk : Reward/);
   assert.match(html, /2\.4:1/);
 });

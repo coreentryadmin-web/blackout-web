@@ -13,6 +13,10 @@ import {
   gateRejectionFor,
   MARKET_BIAS_MAX_AGE_MS,
   planQualityGateBlocks,
+  refreshPlanQualityGateBlocks,
+  moneynessGateBlocks,
+  refreshMoneynessGateBlocks,
+  refreshGovernorPremiumBudgetBlocks,
   confluenceFloorAt,
   scoreFloorForOrigins,
   ZERODTE_CONFLUENCE_MIN,
@@ -20,14 +24,17 @@ import {
   ZERODTE_SCORE_FLOOR,
   ZERODTE_SCORE_FLOOR_BREAKOUT,
   ZERODTE_SCORE_FLOOR_PIN,
+  ZERODTE_SINGLE_RAIL_PRIME_MIN,
+  isSingleRailWithoutFlow,
   getNullConfluencePassCount,
   LATE_AFTERNOON_BLOCK_ET_MINUTES,
   type ZeroDteGateInput,
 } from "./gates";
 import type { ContractPlan } from "./plan";
 import { buildContractPlan, evaluateQuoteValidity, QUOTE_VALIDITY } from "./plan";
+import { SETUP_MAX_ITM_PCT, SETUP_MAX_OTM_PCT } from "./board";
 import type { ZeroDteConfluence } from "./confluence";
-import { GOVERNOR_MAX_CONCURRENT_PLANS } from "./governor";
+import { GOVERNOR_MAX_CONCURRENT_PLANS, GOVERNOR_MAX_PREMIUM_AT_RISK } from "./governor";
 
 /** Minimal confluence read carrying `confirmations` (the only field G-12 reads). */
 function confluence(confirmations: number): ZeroDteConfluence {
@@ -71,7 +78,11 @@ function input(overrides: Partial<ZeroDteGateInput> = {}): ZeroDteGateInput {
   return {
     ticker: "QQQ",
     direction: "short",
-    score: 70,
+    // 80, not 70: G-17 (extended 2026-08-28) now requires >=75 in the 65-74 band regardless of
+    // discovery_origin, and most fixtures here don't set discovery_origin at all — a bare 70
+    // baseline would spuriously trip G-17 on tests that have nothing to do with score/origin
+    // interaction. Tests that specifically exercise the 65-74 band pass their own `score` override.
+    score: 80,
     nowEtMinutes: 11 * 60, // 11:00 ET
     nowMs: NOW_MS,
     bias: "down",
@@ -195,19 +206,15 @@ test("G-1 + G-2: a counter-tape long at 09:40 collects BOTH blocks (all reasons 
 
 // ── G-14 · late-afternoon block (no new commits after 3:30 PM ET) ─────────────────
 
-test("G-14: directional setup at 15:30 ET is BLOCKED", () => {
-  const v = evaluateZeroDteGates(input({ nowEtMinutes: 15 * 60 + 30 }));
+test("G-14: directional setup at 14:00 ET is BLOCKED", () => {
+  const v = evaluateZeroDteGates(input({ nowEtMinutes: 14 * 60 }));
   assert.equal(v.verdict, "BLOCKED");
   assert.ok(v.blocks.some((b) => b.code === "late_afternoon"));
-  assert.equal(LATE_AFTERNOON_BLOCK_ET_MINUTES, 15 * 60 + 30);
+  assert.equal(LATE_AFTERNOON_BLOCK_ET_MINUTES, 14 * 60);
 });
 
-test("G-14: 15:29 commits — boundary is exclusive (last minute before the block)", () => {
-  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 15 * 60 + 29 })).verdict, "COMMIT");
-});
-
-test("G-14: 14:00 still commits (window now runs through 15:29 ET)", () => {
-  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 14 * 60 })).verdict, "COMMIT");
+test("G-14: 13:59 commits — boundary is exclusive (last minute before the block)", () => {
+  assert.equal(evaluateZeroDteGates(input({ nowEtMinutes: 13 * 60 + 59 })).verdict, "COMMIT");
 });
 
 test("G-14: 15:45 is still BLOCKED after the cutoff", () => {
@@ -217,33 +224,36 @@ test("G-14: 15:45 is still BLOCKED after the cutoff", () => {
 });
 
 
-test("scoreFloorForOrigins: FLOW 65; BREAKOUT 65; PIN 65; FLOW+BREAKOUT stays FLOW", () => {
+test("scoreFloorForOrigins: all rails share 65 floor; FLOW+BREAKOUT stays FLOW strict", () => {
   assert.equal(scoreFloorForOrigins(["FLOW"]), ZERODTE_SCORE_FLOOR);
   assert.equal(scoreFloorForOrigins(["FLOW", "BREAKOUT"]), ZERODTE_SCORE_FLOOR);
   assert.equal(scoreFloorForOrigins(["BREAKOUT"]), ZERODTE_SCORE_FLOOR_BREAKOUT);
   assert.equal(scoreFloorForOrigins(["PIN"]), ZERODTE_SCORE_FLOOR_PIN);
   assert.equal(ZERODTE_SCORE_FLOOR_BREAKOUT, 65);
-  assert.equal(ZERODTE_SCORE_FLOOR_PIN, ZERODTE_SCORE_FLOOR);
+  assert.equal(ZERODTE_SCORE_FLOOR_PIN, 65);
   assert.equal(scoreFloorForOrigins([]), ZERODTE_SCORE_FLOOR);
 });
 
-test("G-3: BREAKOUT at score 65 clears at the 65 floor; sub-65 still blocked", () => {
+test("G-3: BREAKOUT at score 65 clears unified floor; G-17 blocks solo rail below 75", () => {
   const brk = evaluateZeroDteGates(input({ score: 65, discovery_origin: ["BREAKOUT"] }));
-  assert.equal(brk.verdict, "COMMIT");
+  assert.equal(brk.verdict, "BLOCKED");
+  assert.ok(!brk.blocks.some((b) => b.code === "score_floor"));
+  assert.ok(brk.blocks.some((b) => b.code === "single_rail_corroboration"));
   const brkLow = evaluateZeroDteGates(input({ score: 64, discovery_origin: ["BREAKOUT"] }));
   assert.equal(brkLow.verdict, "BLOCKED");
   assert.ok(brkLow.blocks.some((b) => b.code === "score_floor"));
-  const flow = evaluateZeroDteGates(input({ score: 60, discovery_origin: ["FLOW"] }));
+  const flow = evaluateZeroDteGates(input({ score: 64, discovery_origin: ["FLOW"] }));
   assert.equal(flow.verdict, "BLOCKED");
   assert.ok(flow.blocks.some((b) => b.code === "score_floor"));
   assert.equal(
-    evaluateZeroDteGates(input({ score: 70, discovery_origin: ["BREAKOUT"] })).verdict,
+    evaluateZeroDteGates(input({ score: 75, discovery_origin: ["BREAKOUT"] })).verdict,
     "COMMIT",
   );
-  assert.equal(
-    evaluateZeroDteGates(input({ score: 65, discovery_origin: ["FLOW"] })).verdict,
-    "COMMIT",
-  );
+  // G-17 (extended 2026-08-28) now requires >=75 for FLOW too in the 65-74 band — a FLOW-only
+  // setup at 65 clears G-3's OWN floor but is still BLOCKED overall by G-17.
+  const flow65 = evaluateZeroDteGates(input({ score: 65, discovery_origin: ["FLOW"] }));
+  assert.ok(!flow65.blocks.some((b) => b.code === "score_floor"));
+  assert.ok(flow65.blocks.some((b) => b.code === "single_rail_corroboration"));
 });
 
 
@@ -285,13 +295,53 @@ test("G-3: score 64 blocks, 65 commits (FLOW default floor)", () => {
   assert.equal(blocked.blocks[0]!.threshold, 65);
   assert.match(blocked.blocks[0]!.reason, /65 commit floor/);
 
-  assert.equal(evaluateZeroDteGates(input({ score: 65 })).verdict, "COMMIT");
+  // G-17 (extended 2026-08-28) also requires >=75 in the 65-74 band with no discovery_origin
+  // set here, so the OVERALL verdict at 65 is BLOCKED — check score_floor specifically clears.
+  const at65 = evaluateZeroDteGates(input({ score: 65 }));
+  assert.ok(!at65.blocks.some((b) => b.code === "score_floor"));
 });
 
 test("G-3: judged on the POST-edge-layer score — 7/13's INTC short (61) blocks even though aligned and mid-day", () => {
   const v = evaluateZeroDteGates(input({ ticker: "INTC", score: 61, nowEtMinutes: 12 * 60 + 51 }));
   assert.equal(v.verdict, "BLOCKED");
-  assert.deepEqual(v.blocks.map((b) => b.code), ["score_floor"]);
+  assert.ok(v.blocks.some((b) => b.code === "score_floor"));
+});
+
+test("G-17: the 65-74 band blocks REGARDLESS of rail corroboration; 75+ commits either way", () => {
+  // EXTENDED 2026-08-28 (real n=152, /api/market/zerodte/record 90d): multi-rail/FLOW commits
+  // in the unrestricted 65-74 band graded WORSE (35.7% WR) than single-rail at the 75+ floor
+  // (41.0% WR) — the FLOW/multi-rail exemption from this band was never buying safety, so it's
+  // gone. Every origin combo now needs the same 75 floor in this band; corroboration no longer
+  // buys an early commit at 65-74. See ZERODTE_SINGLE_RAIL_PRIME_MIN's doc comment for the numbers.
+  assert.equal(isSingleRailWithoutFlow(["BREAKOUT"]), true);
+  assert.equal(isSingleRailWithoutFlow(["FLOW", "BREAKOUT"]), false);
+  assert.equal(isSingleRailWithoutFlow(["BREAKOUT", "PIN"]), false);
+  assert.equal(ZERODTE_SINGLE_RAIL_PRIME_MIN, 75);
+
+  const soloMid = evaluateZeroDteGates(
+    input({ score: 68, discovery_origin: ["BREAKOUT"], nowEtMinutes: 12 * 60 })
+  );
+  assert.equal(soloMid.verdict, "BLOCKED");
+  assert.ok(soloMid.blocks.some((b) => b.code === "single_rail_corroboration"));
+
+  const soloPrime = evaluateZeroDteGates(
+    input({ score: 75, discovery_origin: ["BREAKOUT"], nowEtMinutes: 12 * 60 })
+  );
+  assert.equal(soloPrime.verdict, "COMMIT");
+
+  // Multi-rail (FLOW+BREAKOUT) at 68 NOW BLOCKS TOO — the corroboration exemption is gone.
+  const corroboratedMid = evaluateZeroDteGates(
+    input({ score: 68, discovery_origin: ["FLOW", "BREAKOUT"], nowEtMinutes: 12 * 60 })
+  );
+  assert.equal(corroboratedMid.verdict, "BLOCKED");
+  assert.ok(corroboratedMid.blocks.some((b) => b.code === "single_rail_corroboration"));
+
+  // But 75+ still clears, same as before — the floor is universal, not a new higher bar.
+  const corroboratedPrime = evaluateZeroDteGates(
+    input({ score: 75, discovery_origin: ["FLOW", "BREAKOUT"], nowEtMinutes: 12 * 60 })
+  );
+  assert.equal(corroboratedPrime.verdict, "COMMIT");
+  assert.ok(!corroboratedPrime.blocks.some((b) => b.code === "single_rail_corroboration"));
 });
 
 // ── G-5 · session governor (wiring — the rules themselves live in governor.test.ts) ─
@@ -366,15 +416,19 @@ test("G-4: normal VIX (<17) commits freely, calibration tier logged", () => {
 });
 
 test("G-4: elevated VIX tape-aligned score 65–74 commits (G-1 already blocks counter-tape)", () => {
+  // G-17 (extended 2026-08-28, >=75 for every origin combo in the 65-74 band) also applies at
+  // score 70 with no discovery_origin set here — this test is about G-4's OWN floor, so check
+  // vix_elevated specifically clears rather than the overall verdict.
   const aligned = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 70 }));
-  assert.equal(aligned.verdict, "COMMIT");
+  assert.ok(!aligned.blocks.some((b) => b.code === "vix_elevated"));
   assert.equal(aligned.calibration.g4_vix.would_block, false);
 });
 
 test("G-4: elevated VIX with flat tape uses the standard 65 floor (flat = no directional opposition)", () => {
   // Flat tape clears G-1 (no counter-tape fight), so the elevated regime keeps the 65 floor.
+  // (G-17 also applies at this score with no discovery_origin — check vix_elevated, not overall verdict.)
   const flat70 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 70, bias: "flat" }));
-  assert.equal(flat70.verdict, "COMMIT");
+  assert.ok(!flat70.blocks.some((b) => b.code === "vix_elevated"));
   assert.equal(flat70.calibration.g4_vix.tier, "elevated");
   assert.equal(flat70.calibration.g4_vix.would_block, false);
   // Null bias (unknown tape — stale or unavailable) still requires 75 (belt-and-suspenders).
@@ -429,15 +483,15 @@ test("G-4 fail-closed: unavailable VIX does NOT block an index/ETF whose score c
   assert.equal(strong.verdict, "COMMIT");
   assert.equal(strong.blocks.some((b) => b.code === "vix_unavailable"), false);
   // Tape-aligned index at 70 clears too (aligned elevated floor is 65, G-3 guarantees ≥65).
+  // G-17 also applies at 70 with no discovery_origin set — check vix_unavailable specifically.
   const aligned = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, vixDayOpen: null, vixUnavailable: true }));
-  assert.equal(aligned.verdict, "COMMIT");
   assert.equal(aligned.blocks.some((b) => b.code === "vix_unavailable"), false);
 });
 
 test("G-4 fail-closed: unavailable VIX does NOT block an index/ETF with flat tape above the standard 65 floor (flat = aligned)", () => {
   // Flat tape is treated as aligned, so the 65 floor applies — 70 >= 65 → no present VIX could block.
+  // (G-17 also applies at 70 with no discovery_origin set — check vix_unavailable specifically.)
   const v = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
-  assert.equal(v.verdict, "COMMIT");
   assert.equal(v.blocks.some((b) => b.code === "vix_unavailable"), false);
   // Null bias (unknown tape) at 70 < 75 → DOES block (belt-and-suspenders for unknown tape).
   const nullBias = evaluateZeroDteGates(input({ ticker: "QQQ", direction: "short", score: 70, bias: null, vixDayOpen: null, vixUnavailable: true }));
@@ -729,6 +783,158 @@ test("planQualityGateBlocks: exported helper matches gate evaluation", () => {
   assert.equal(planQualityGateBlocks(null)[0]!.code, "plan_no_quote");
 });
 
+test("refreshPlanQualityGateBlocks: drops stale plan_no_quote after deferred attach", () => {
+  const stale = evaluateZeroDteGates(
+    input({ plan: null, deferPlanQualityGates: true, score: 88 })
+  );
+  assert.equal(stale.verdict, "COMMIT");
+  assert.equal(stale.blocks.some((b) => b.code === "plan_no_quote"), false);
+
+  const refreshed = refreshPlanQualityGateBlocks(stale, CLEAN_PLAN);
+  assert.equal(refreshed.verdict, "COMMIT");
+  assert.equal(refreshed.blocks.some((b) => b.code === "plan_no_quote"), false);
+
+  const blocked = refreshPlanQualityGateBlocks(stale, null);
+  assert.equal(blocked.verdict, "BLOCKED");
+  assert.equal(blocked.blocks.some((b) => b.code === "plan_no_quote"), true);
+});
+
+// ── Moneyness re-check (P0 fix, 2026-08-27) ─────────────────────────────────────────────
+// Live-caught: board.ts's deriveZeroDteSetups gates SETUP_MAX_ITM_PCT/SETUP_MAX_OTM_PCT exactly
+// once, before scan.ts's attachContractPlans refreshes otm_pct from a fresher live-spot read —
+// and nothing ever re-compared the REFRESHED value against either cap. SNXX (short, 9.55% ITM)
+// and PATH (long, 4.11% ITM) both committed live past the 2% cap on this exact hole.
+
+test("moneynessGateBlocks: within both caps → no blocks (no false positive on ordinary moneyness)", () => {
+  assert.deepEqual(moneynessGateBlocks(3, false), []); // 3% OTM — comfortably inside [-2, 12]
+  assert.deepEqual(moneynessGateBlocks(-1.5, false), []); // 1.5% ITM — inside the 2% ITM cap
+});
+
+test("moneynessGateBlocks: breaches the ITM cap → max_itm_pct", () => {
+  const blocks = moneynessGateBlocks(-9.55, false); // SNXX-shaped: 9.55% ITM
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "max_itm_pct");
+  assert.equal(blocks[0]!.threshold, -SETUP_MAX_ITM_PCT);
+  assert.match(blocks[0]!.reason, /9\.55% ITM/);
+});
+
+test("moneynessGateBlocks: breaches the OTM lotto cap → max_otm_pct", () => {
+  const blocks = moneynessGateBlocks(16.11, false); // GAP-shaped: 16.11% OTM, cap is 12%
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "max_otm_pct");
+  assert.equal(blocks[0]!.threshold, SETUP_MAX_OTM_PCT);
+  assert.match(blocks[0]!.reason, /16\.11% OTM/);
+});
+
+test("moneynessGateBlocks: a CONDOR is exempt regardless of otm_pct (no single-strike moneyness)", () => {
+  assert.deepEqual(moneynessGateBlocks(50, true), []);
+  assert.deepEqual(moneynessGateBlocks(-50, true), []);
+  assert.deepEqual(moneynessGateBlocks(null, true), []);
+});
+
+test("moneynessGateBlocks: fails OPEN on a null/undefined otmPct (supplementary re-check, not sole authority)", () => {
+  assert.deepEqual(moneynessGateBlocks(null, false), []);
+  assert.deepEqual(moneynessGateBlocks(undefined, false), []);
+});
+
+test("evaluateZeroDteGates: existing gate behavior is UNCHANGED when otmPct is simply not supplied", () => {
+  // The base `input()` fixture never sets `otmPct` — every pre-existing gate test in this file
+  // relies on that being a true no-op. Guard it explicitly so a future edit can't silently
+  // reintroduce a fail-closed default here.
+  const v = evaluateZeroDteGates(input());
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks, []);
+});
+
+test("evaluateZeroDteGates: a candidate whose REFRESHED otm_pct has drifted past the ITM cap is BLOCKED", () => {
+  // Initial otm_pct (at candidate derivation, board.ts) was inside the cap — e.g. 1% ITM — but by
+  // the time attachContractPlans's live-spot refresh ran, the underlying moved and the true
+  // (refreshed) moneyness is now 9.55% ITM, mirroring the live SNXX evidence. The ordinary
+  // (non-thesis-first) pipeline passes this refreshed value straight into `otmPct`.
+  const v = evaluateZeroDteGates(input({ otmPct: -9.55 }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "max_itm_pct"), true);
+});
+
+test("evaluateZeroDteGates: a candidate whose REFRESHED otm_pct has drifted past the OTM lotto cap is BLOCKED", () => {
+  const v = evaluateZeroDteGates(input({ otmPct: 16.11 }));
+  assert.equal(v.verdict, "BLOCKED");
+  assert.equal(v.blocks.some((b) => b.code === "max_otm_pct"), true);
+});
+
+test("evaluateZeroDteGates: a refreshed otm_pct comfortably inside both caps does NOT block (no false positive)", () => {
+  const v = evaluateZeroDteGates(input({ otmPct: 4 }));
+  assert.equal(v.verdict, "COMMIT");
+  assert.deepEqual(v.blocks, []);
+});
+
+test("evaluateZeroDteGates: a CONDOR is exempt from the moneyness re-check even with an extreme otmPct", () => {
+  const v = evaluateZeroDteGates(
+    input({ play_type: "CONDOR", condorPlan: null, otmPct: -50 })
+  );
+  assert.equal(v.blocks.some((b) => b.code === "max_itm_pct" || b.code === "max_otm_pct"), false);
+});
+
+test("refreshMoneynessGateBlocks: re-applies the caps after a deferred (thesis-first) contract-plan attach", () => {
+  // Gates ran first (thesis-first order) with the PRE-refresh otm_pct (inside caps) — no
+  // moneyness block yet.
+  const preRefresh = evaluateZeroDteGates(input({ otmPct: 1, score: 88 }));
+  assert.equal(preRefresh.verdict, "COMMIT");
+  assert.equal(preRefresh.blocks.some((b) => b.code === "max_itm_pct"), false);
+
+  // attachContractPlans now runs and refreshes the live spot — the true moneyness is 9.55% ITM.
+  const postRefresh = refreshMoneynessGateBlocks(preRefresh, -9.55, false);
+  assert.equal(postRefresh.verdict, "BLOCKED");
+  assert.equal(postRefresh.blocks.some((b) => b.code === "max_itm_pct"), true);
+
+  // And the inverse: a candidate that started BLOCKED on a stale reading clears once the
+  // refreshed otm_pct is back inside both caps (drift can go either direction).
+  const badPreRefresh = evaluateZeroDteGates(input({ otmPct: -9.55, score: 88 }));
+  assert.equal(badPreRefresh.verdict, "BLOCKED");
+  const goodPostRefresh = refreshMoneynessGateBlocks(badPreRefresh, 1, false);
+  assert.equal(goodPostRefresh.blocks.some((b) => b.code === "max_itm_pct"), false);
+});
+
+test("refreshMoneynessGateBlocks: a CONDOR stays exempt through the refresh", () => {
+  const gate = evaluateZeroDteGates(
+    input({ play_type: "CONDOR", condorPlan: null, score: 88 })
+  );
+  const refreshed = refreshMoneynessGateBlocks(gate, -50, true);
+  assert.equal(refreshed.blocks.some((b) => b.code === "max_itm_pct" || b.code === "max_otm_pct"), false);
+});
+
+// Bug found 2026-08-26 alongside the plan_no_quote fix: G-5's premium-budget check runs with
+// entry_premium computed from the (still-null, deferred) plan, so a thesis-first candidate's
+// own premium contribution was permanently 0 unless refreshed after the real plan attaches.
+// Currently dormant (GOVERNOR_ENFORCE_PREMIUM_BUDGET defaults false) — `enforce: true` is
+// passed explicitly here since the flag is read once at module load and cannot be flipped
+// at runtime by a test.
+test("refreshGovernorPremiumBudgetBlocks: recomputes the budget using the REAL post-attach premium, not the stale plan=null 0", () => {
+  const base = evaluateZeroDteGates(input({ plan: null, score: 88 }));
+  assert.equal(base.blocks.some((b) => b.code === "governor_premium_budget"), false);
+
+  // premiumAtRisk sits just under the cap; only a real (now-attached) entry_premium pushes
+  // it over — the stale plan=null (entryPremium null → 0) computation must NOT block.
+  const almostAtCap = GOVERNOR_MAX_PREMIUM_AT_RISK - 200;
+  const staleNull = refreshGovernorPremiumBudgetBlocks(base, null, almostAtCap, true);
+  assert.equal(staleNull.blocks.some((b) => b.code === "governor_premium_budget"), false, "null entry_premium (the stale value) must not block");
+
+  const withRealPremium = refreshGovernorPremiumBudgetBlocks(base, 500, almostAtCap, true);
+  assert.equal(withRealPremium.verdict, "BLOCKED");
+  assert.ok(withRealPremium.blocks.some((b) => b.code === "governor_premium_budget"));
+
+  // With enforcement OFF (the real, current production default) the same over-cap premium
+  // never blocks — confirms this stays a dormant MEASURE path until the flag is flipped on.
+  const enforcementOff = refreshGovernorPremiumBudgetBlocks(base, 500, almostAtCap, false);
+  assert.equal(enforcementOff.blocks.some((b) => b.code === "governor_premium_budget"), false);
+});
+
+test("deferPlanQualityGates: evaluateZeroDteGates skips plan blocks when plan is null", () => {
+  const v = evaluateZeroDteGates(input({ plan: null, deferPlanQualityGates: true, score: 88 }));
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.blocks.some((b) => b.code === "plan_no_quote"), false);
+});
+
 // ── WS-04 · Malformed-quote validation gate (fail-closed) ─────────────────────────
 // Each case drives the REAL plan builder (buildContractPlan) with a malformed book and
 // asserts it is BLOCKED with the distinct plan_quote_invalid / plan_quote_stale code.
@@ -983,7 +1189,11 @@ function runFirewallScenario(scenario: "g4" | "g7" | "g11earn" | "g11halt", env:
 import { evaluateZeroDteGates } from ${JSON.stringify(GATES_PATH)};
 const nowMs = Date.parse("2026-07-13T15:00:00Z");
 const CLEAN_PLAN = { occ:"O:NVDA260713P00100000", flow_avg_fill:2, bid:1.9, ask:2.1, mark:2, entry_max:2, vs_flow_pct:0, entry_status:"IN_RANGE", spread_pct:10, illiquid:false, stop_premium:1, target_premium:4, time_stop_et:"15:30", underlying_target:null, underlying_invalid:null };
-const base = { ticker:"NVDA", direction:"short", score:70, nowEtMinutes:660, nowMs, bias:"down", biasAsOfMs: nowMs-60000, governor:{open_plans:[],stops:[]}, plan: CLEAN_PLAN, intradayConflict:false, halted:false, earnings:null, todayYmd:"2026-07-13", macroEvents:[] };
+// score:80, not 70: G-17 (extended 2026-08-28) requires >=75 in the 65-74 band for every
+// origin combo, and this scenario doesn't set discovery_origin — a bare 70 would make the
+// "off" case wrongly still show one block (single_rail_corroboration) instead of the clean
+// empty-blocks commit this test is asserting for the firewall-only scenario.
+const base = { ticker:"NVDA", direction:"short", score:80, nowEtMinutes:660, nowMs, bias:"down", biasAsOfMs: nowMs-60000, governor:{open_plans:[],stops:[]}, plan: CLEAN_PLAN, intradayConflict:false, halted:false, earnings:null, todayYmd:"2026-07-13", macroEvents:[] };
 const scenarios = {
   g4: { vixDayOpen:null, vixUnavailable:true },
   g7: { macroUnavailable:true },
@@ -1065,18 +1275,25 @@ test("G-2: 9:59 blocks, 10:00 commits — the unlock boundary is inclusive to th
 
 // ── G-3 score-floor EXACT boundary (raw comparison, not the rounded display) ──────────
 test("G-3: score 64.999 blocks, exactly 65 commits — the floor comparison is on the raw score", () => {
-  assert.equal(evaluateZeroDteGates(input({ score: 64.999 })).verdict, "BLOCKED");
-  assert.equal(evaluateZeroDteGates(input({ score: 65 })).verdict, "COMMIT");
+  const below = evaluateZeroDteGates(input({ score: 64.999 }));
+  assert.equal(below.verdict, "BLOCKED");
+  assert.ok(below.blocks.some((b) => b.code === "score_floor"));
+  // G-3's OWN floor clears at exactly 65 — G-17 (extended 2026-08-28, >=75 for every origin
+  // combo in the 65-74 band) also applies here with no discovery_origin set, so the OVERALL
+  // verdict is BLOCKED; score_floor specifically must be absent.
+  const at65 = evaluateZeroDteGates(input({ score: 65 }));
+  assert.ok(!at65.blocks.some((b) => b.code === "score_floor"));
 });
 
 // ── G-4 VIX tier EXACT boundaries (elevated 17, extreme 20) ──────────────────────────
 test("G-4: 16.999 is normal, exactly 17 is elevated, 19.999 is elevated, exactly 20 is extreme", () => {
   // 16.999 → normal regime, no floor bump; a flat-tape 70 commits.
   assert.equal(evaluateZeroDteGates(input({ vixDayOpen: 16.999, score: 70, bias: "flat" })).calibration.g4_vix.tier, "normal");
-  // Exactly 17 (>= elevated) → flat-tape 70 still commits (flat = aligned, 65 floor).
+  // Exactly 17 (>= elevated) → flat-tape 70 clears G-4's OWN floor (flat = aligned, 65 floor).
+  // (G-17 also applies at 70 with no discovery_origin set — check vix_elevated specifically.)
   const at17 = evaluateZeroDteGates(input({ vixDayOpen: 17, score: 70, bias: "flat" }));
   assert.equal(at17.calibration.g4_vix.tier, "elevated");
-  assert.equal(at17.verdict, "COMMIT");
+  assert.ok(!at17.blocks.some((b) => b.code === "vix_elevated"));
   // Exactly 17 with null bias (unknown tape) at 70 < 75 → blocked.
   const at17null = evaluateZeroDteGates(input({ vixDayOpen: 17, score: 70, bias: null }));
   assert.equal(at17null.calibration.g4_vix.tier, "elevated");
@@ -1094,17 +1311,51 @@ test("G-4: 16.999 is normal, exactly 17 is elevated, 19.999 is elevated, exactly
 test("G-4: elevated flat-tape score floor is 65 (same as aligned) — 64 blocks, 65 clears", () => {
   const at64 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 64, bias: "flat" }));
   assert.ok(at64.blocks.some((b) => b.code === "vix_elevated"));
+  // G-17 also applies at 65 with no discovery_origin set — check vix_elevated specifically.
   const at65 = evaluateZeroDteGates(input({ vixDayOpen: 18, score: 65, bias: "flat" }));
-  assert.equal(at65.verdict, "COMMIT");
+  assert.ok(!at65.blocks.some((b) => b.code === "vix_elevated"));
   // Null bias triggers G-1 no_market_bias first (can't reach G-4), so the 75 elevated
   // floor for unknown tape is tested via the calibration path and fail-closed tests.
+});
+
+// ── G-4: elevated-VIX tape scoping must match G-1's (index/ETF only) ─────────────────
+// Bug found 2026-08-26: the elevated-VIX floor read `input.bias` vs `input.direction`
+// unconditionally, so a single name (which G-1 already exempts from tape alignment
+// entirely) with a disagreeing SPY bias was silently held to the stricter 75 floor —
+// re-imposing exactly the SPY-tape constraint G-1 was written to remove for single names.
+test("G-4: a single name with a DISAGREEING SPY bias still gets the standard 65 floor (G-1 exempts it from tape alignment)", () => {
+  // NVDA long, SPY tape DOWN (disagreeing) — G-1 never fires for single names, so this
+  // must reach G-4 and clear at the standard 65 floor, not the 75 elevated-counter-tape floor.
+  // (G-17 also applies at score 70 with no discovery_origin set — check vix_elevated specifically
+  // rather than the overall verdict.)
+  const v = evaluateZeroDteGates(
+    input({ ticker: "NVDA", direction: "long", bias: "down", score: 70, vixDayOpen: 18 })
+  );
+  assert.equal(v.calibration.g4_vix.tier, "elevated");
+  assert.ok(!v.blocks.some((b) => b.code === "vix_elevated"));
+
+  // The same score/VIX/disagreeing-bias combination on an INDEX ETF must still block —
+  // this fix must not loosen the elevated floor for the instrument class it actually protects.
+  const vEtf = evaluateZeroDteGates(
+    input({ ticker: "QQQ", direction: "long", bias: "down", score: 70, vixDayOpen: 18 })
+  );
+  assert.equal(vEtf.verdict, "BLOCKED");
+  assert.ok(vEtf.blocks.some((b) => b.code === "tape_alignment"), "index ETF counter-tape still blocked by G-1 before G-4 is reached");
+});
+
+test("computeGateCalibration: a single name's g4_vix.tier ignores SPY bias the same way the live gate does", () => {
+  const v = evaluateZeroDteGates(
+    input({ ticker: "NVDA", direction: "long", bias: "down", score: 70, vixDayOpen: 18 })
+  );
+  assert.equal(v.calibration.g4_vix.would_block, false);
+  assert.match(v.calibration.g4_vix.note, /tape-aligned/);
 });
 
 // ── G-4 fail-closed couldBlock narrowing: index/ETF flat at EXACTLY the 65 floor ──────
 test("G-4 fail-closed: an index/ETF flat-tape at 65+ could NOT have been blocked → unavailable VIX passes it", () => {
   // couldBlock = !isIndexEtf || (!tapeAlignedOrFlat && score < 75). QQQ flat → tapeAlignedOrFlat=true → couldBlock false.
+  // (G-17 also applies at 65 with no discovery_origin set — check vix_unavailable specifically.)
   const v = evaluateZeroDteGates(input({ ticker: "QQQ", score: 65, bias: "flat", vixDayOpen: null, vixUnavailable: true }));
-  assert.equal(v.verdict, "COMMIT");
   assert.ok(!v.blocks.some((b) => b.code === "vix_unavailable"));
   // Null bias (unknown tape) at 74 < 75 → a present elevated VIX COULD have blocked it → fails closed.
   const vNull74 = evaluateZeroDteGates(input({ ticker: "QQQ", score: 74, bias: null, vixDayOpen: null, vixUnavailable: true }));
@@ -1141,9 +1392,12 @@ test("G-6: an SPX-correlated short (QQQ/NDX) opposing a live Slayer long conflic
     const conflict = evaluateZeroDteGates(input({ ticker, direction: "short", score: 64, slayerLive }));
     assert.equal(conflict.verdict, "BLOCKED", `${ticker} at 64 should block`);
     assert.ok(conflict.blocks.some((b) => b.code === "cross_system_conflict"));
-    // Exactly 65 overrides the conflict (CONFLICT_SCORE_FLOOR is 65, comparison is `< 65`).
+    // Exactly 65 overrides the conflict (CONFLICT_SCORE_FLOOR is 65, comparison is `< 65`). G-17
+    // (extended 2026-08-28, >=75 for every origin combo in the 65-74 band) also applies at this
+    // score since discovery_origin isn't set here, so the overall verdict is BLOCKED overall —
+    // check cross_system_conflict specifically clears rather than the full verdict.
     const cleared = evaluateZeroDteGates(input({ ticker, direction: "short", score: 65, slayerLive }));
-    assert.equal(cleared.verdict, "COMMIT", `${ticker} at 65 should override the conflict`);
+    assert.ok(!cleared.blocks.some((b) => b.code === "cross_system_conflict"), `${ticker} at 65 should override the conflict`);
     assert.equal(cleared.calibration.g6_conflict.conflict, true, "still FLAGGED as a conflict in calibration");
   }
 });
@@ -1371,7 +1625,9 @@ test("stack fix: VIX unavailable without regime_blind — index ETF flat at 70 c
       regimeBlockFreshCommits: false,
     }),
   );
-  assert.equal(v.verdict, "COMMIT");
+  // G-17 (extended 2026-08-28, >=75 for every origin combo in the 65-74 band) also fires at
+  // score 70 with no discovery_origin set here, so the overall verdict is BLOCKED — this test
+  // is about G-4's OWN narrowing, so check those two codes specifically clear instead.
   assert.ok(!v.blocks.some((b) => b.code === "regime_blind"));
   assert.ok(!v.blocks.some((b) => b.code === "vix_unavailable"));
 });

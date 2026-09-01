@@ -12,6 +12,7 @@
 
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import { buildCondorRecord, isCondorRow, type CondorRecord } from "./condor-record";
+import { categorizeExitReason } from "./exit-engine";
 import { etMinutesOf } from "./plan";
 import { tierFromEntryContext, type ZeroDteTier } from "./tiers";
 
@@ -169,15 +170,43 @@ export function readExecutableGrade(
   return { plan_outcome: outcome, plan_pnl_pct: pnl };
 }
 
+/** FINDINGS 2026-08-27: when a row carries a GENUINE trim-scale reconstruction (WS-11) that a
+ *  real, live-only exit (thesis-break/ratchet-floor/flat-timeout) should outrank — see
+ *  realExitIsBarWalkReproducible below — the OFFICIAL number must follow that real exit too, not
+ *  just the as-managed headline (managedGradeView). Without this, officialPlanPnlPct keeps
+ *  reading entry_context.executable.plan_pnl_pct, which scan.ts stamps as the RECONSTRUCTION'S
+ *  OWN blended number for any row carrying a `tranches` array (WS-11's design: "presence of
+ *  tranches is the signal the OFFICIAL number IS the as-managed path") — so the calibration
+ *  lane and the feature store (both of which read officialPlanPnlPct, never managedGradeView)
+ *  would keep grading the fictitious reconstruction even after the member-facing headline above
+ *  was fixed. Returns null when no override applies (ratchet-mode/legacy rows, or a genuine
+ *  reconstruction the real exit does NOT need to outrank) — callers fall through unchanged. */
+function officialOverridingRealExit(
+  entryContext: Record<string, unknown> | null | undefined
+): { plan_outcome: string | null; plan_pnl_pct: number } | null {
+  const reco = readReconstructedTrimScale(entryContext);
+  if (!reco || !reconstructionShowsGenuinePartialBank(entryContext)) return null;
+  const exit = readManagedExit(entryContext);
+  if (!exit || exit.pnl_pct == null || realExitIsBarWalkReproducible(exit.reason)) return null;
+  return { plan_outcome: managedOutcomeLabel(exit.reason, exit.pnl_pct), plan_pnl_pct: round2(exit.pnl_pct) };
+}
+
 /** The OFFICIAL per-row plan P&L: the executable lane when the row carries it, else the mid
- *  column (legacy). This is the number calibration buckets and the record grades on. */
+ *  column (legacy) — corrected (2026-08-27) to defer to a real live-only exit over a GENUINE
+ *  trim-scale reconstruction, mirroring managedGradeView so the two lanes can never disagree.
+ *  This is the number calibration buckets and the record grades on. */
 export function officialPlanPnlPct(row: OfficialGradableRow): number | null {
+  const override = officialOverridingRealExit(row.entry_context);
+  if (override) return override.plan_pnl_pct;
   return readExecutableGrade(row.entry_context)?.plan_pnl_pct ?? row.plan_pnl_pct;
 }
 
 /** The OFFICIAL per-row plan outcome label — the executable lane's outcome when present, else
- *  the mid column. Kept in lockstep with officialPlanPnlPct so the label and the pnl agree. */
+ *  the mid column. Kept in lockstep with officialPlanPnlPct so the label and the pnl agree
+ *  (including the 2026-08-27 real-exit override above). */
 export function officialPlanOutcome(row: OfficialGradableRow): string | null {
+  const override = officialOverridingRealExit(row.entry_context);
+  if (override) return override.plan_outcome;
   return readExecutableGrade(row.entry_context)?.plan_outcome ?? row.plan_outcome ?? null;
 }
 
@@ -189,6 +218,15 @@ export function officialPlanOutcome(row: OfficialGradableRow): string | null {
 // calibration lane grades (officialPlanPnlPct), making grade_vs_asmanaged_delta ≈ 0 by
 // construction. Ratchet / legacy rows carry NO tranches, so this returns null and the as-managed
 // headline keeps its prior behavior (the live single-exit stamp, else the mechanical fallback).
+//
+// CORRECTED 2026-08-27: "by construction" held only because nothing checked whether a REAL,
+// terminal exit had already closed the position for a reason (thesis-break/ratchet-floor/
+// flat-timeout) the bar-walk reconstruction is structurally blind to — the reconstruction then
+// keeps "trading" bars against an already-closed position and produces a fictitious number. 90-day
+// prod pull: 94/104 reconstructed rows also carried a real entry_context.exit, 43/94 (46%)
+// sign-flipping the displayed outcome. See realExitIsBarWalkReproducible + managedGradeView's
+// updated precedence, and officialOverridingRealExit (keeps officialPlanPnlPct/officialPlanOutcome
+// — read by calibration + feature-store, NOT by managedGradeView — in lockstep with the same fix).
 
 /** Read a WS-11 reconstructed TRIM-SCALE grade off entry_context.executable — only when it
  *  carries a non-empty `tranches` array AND a finite plan_pnl_pct (a real reconstruction).
@@ -321,6 +359,36 @@ function reconstructionShowsGenuinePartialBank(
   return fraction < 0.999;
 }
 
+// ── FINDINGS 2026-08-27: a REAL, TERMINAL live-only exit must outrank the reconstruction ────
+// reconstructionShowsGenuinePartialBank only asks "did the bar-walk trim more than once" — it
+// never asks whether a real recorded exit (entry_context.exit) closed the position for a reason
+// the bar-walk is structurally blind to. reconstructTrimScaleExecutableFromBars (plan.ts)
+// replays the frozen ⅓/⅓/⅓ tranche ladder against raw minute bars ONLY — it has no notion of
+// Cortex veto, GEX-wall thesis-break, or the ratchet floors, all of which are LIVE state the
+// exit engine (exit-engine.ts) computes tick-by-tick and nothing else can reconstruct after the
+// fact. So whenever the real exit fired for one of those live-only reasons, the reconstruction
+// is not "more information" (the 2026-08-06 fix's framing) — it is a fictitious continuation of
+// a position that was already closed. Live evidence (90-day prod pull, 2026-08-27): 94/104
+// reconstructed rows also carried a real entry_context.exit; 43/94 (46%) sign-flipped the
+// displayed outcome (APLD +19% thesis_break shown as -0.98% time_stop; MU -21.92% thesis_break
+// shown as +56.93%; SPXW exactly-0% ratchet_breakeven_floor shown as +56.07%).
+//
+// The fix is NOT "always prefer the real exit" — a genuine multi-tranche bank still carries real
+// information the moment the real exit's OWN reason is something the bar-walk can faithfully
+// replay (a plain premium stop, or the trim-scale ladder's own target/tranche exits — the exact
+// mechanism the reconstruction models). It is only THESIS/RATCHET/FLAT-family reasons — states
+// requiring live Cortex/GEX-wall/dealer-positioning knowledge — that the reconstruction can never
+// see coming and must therefore defer to. categorizeExitReason (exit-engine.ts) is the existing,
+// single source of truth for this split: "stop" (plan_stop) and "target" (plan_target*/
+// trim_scale*) are bar-walk-reproducible; "thesis", "ratchet", and "flat" are live-only.
+function realExitIsBarWalkReproducible(reason: string | null): boolean {
+  const category = categorizeExitReason(reason);
+  // An unrecognized/future reason token fails CLOSED toward trusting the real exit over a
+  // reconstruction we cannot vouch for — this is a real-money grading number, so an unknown
+  // category must never silently unlock the reconstruction's precedence.
+  return category === "stop" || category === "target";
+}
+
 function reconstructedGradeView(reco: { plan_outcome: string | null; plan_pnl_pct: number }): GradeView {
   const pnl = round2(reco.plan_pnl_pct);
   return {
@@ -341,24 +409,43 @@ function reconstructedGradeView(reco: { plan_outcome: string | null; plan_pnl_pc
  *      ⅓/⅓/⅓ scale-out the engine runs, priced executable-side, so it IS the canonical
  *      as-managed number AND the official calibration number (officialPlanPnlPct) — one and
  *      the same, so the headline and the grade agree by construction. It supersedes the live
- *      single-exit stamp for these rows (FINDINGS 2026-08-06: gated on GENUINE partial
- *      banking — a degenerate single-tranche "reconstruction" is not preferred over a real
- *      recorded exit; see reconstructionShowsGenuinePartialBank).
+ *      single-exit stamp for these rows, but ONLY under BOTH of:
+ *        (a) FINDINGS 2026-08-06: GENUINE partial banking (2+ tranches, or one tranche with
+ *            fraction < 1) — a degenerate single-tranche "reconstruction" is never preferred
+ *            over a real recorded exit (see reconstructionShowsGenuinePartialBank), and
+ *        (b) FINDINGS 2026-08-27: no real recorded exit exists, OR the real exit's own reason
+ *            is one the bar-walk can faithfully reproduce (a plain premium stop, or the
+ *            trim-scale ladder's own target/tranche exits — see
+ *            realExitIsBarWalkReproducible). A real exit whose reason needs LIVE state the
+ *            bar-walk structurally cannot see (thesis-break, any ratchet floor, flat-timeout)
+ *            always wins — the reconstruction is not "more information" there, it is a
+ *            fictitious continuation of an already-closed position (see repro evidence above
+ *            realExitIsBarWalkReproducible).
  *  (2) the live engine's stamped single exit (entry_context.exit) — ratchet mode, thesis/flat,
- *      OR a trim_scale row whose reconstruction never actually armed a trim.
+ *      a trim_scale row whose reconstruction never actually armed a trim, OR a genuine
+ *      reconstruction whose real-exit counterpart is a live-only reason per (1b).
  *  (3) no engine exit → the reconstruction (even if degenerate) if present, else the play rode
  *      to the plan's own stop/target/time-stop (mechanical) — never silently ungraded. */
 function managedGradeView(row: ZeroDteSetupLogRow): GradeView {
   const reco = readReconstructedTrimScale(row.entry_context);
-  if (reco && reconstructionShowsGenuinePartialBank(row.entry_context)) {
+  const exit = readManagedExit(row.entry_context);
+  const hasRealTerminalExit = exit != null && exit.pnl_pct != null;
+  // A real exit blocks the reconstruction's precedence unless the exit's OWN reason is one the
+  // bar-walk reconstruction can faithfully reproduce (see realExitIsBarWalkReproducible above).
+  const realExitBlocksReconstruction =
+    hasRealTerminalExit && !realExitIsBarWalkReproducible(exit.reason);
+  if (
+    reco &&
+    reconstructionShowsGenuinePartialBank(row.entry_context) &&
+    !realExitBlocksReconstruction
+  ) {
     return reconstructedGradeView(reco);
   }
-  const exit = readManagedExit(row.entry_context);
-  if (exit && exit.pnl_pct != null) {
-    const pnl = round2(exit.pnl_pct);
+  if (hasRealTerminalExit) {
+    const pnl = round2(exit.pnl_pct as number);
     return {
       graded: true,
-      outcome: managedOutcomeLabel(exit.reason, pnl),
+      outcome: managedOutcomeLabel(exit!.reason, pnl),
       pnl_pct: pnl,
       win: pnl > 0,
       breakeven: pnl === 0,

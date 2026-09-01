@@ -31,6 +31,13 @@ import {
   gexProximityLabel,
   printBias,
 } from "@/features/helix/lib/helix-print-detail";
+import {
+  helixScoreContextForPrint,
+  helixScoreContextHint,
+  helixScoreDistribution,
+  helixScoreTierLabel,
+} from "@/features/helix/lib/helix-score-context";
+import { executionFillDetail } from "@/features/helix/lib/helix-execution-quality";
 import { etClock } from "@/lib/et-clock";
 
 /** Kept for callers that only need the contract identity (ticker/strike/expiry/type). */
@@ -113,11 +120,14 @@ function PrintStat({
 
 export function ContractDrilldownDrawer({
   flow,
+  sessionAlerts,
   onClose,
   onViewTicker,
 }: {
   /** The full clicked print — its own real payload drives the "This print" panel. */
   flow: FlowAlert | null;
+  /** Visible session tape — used for score percentile context (optional). */
+  sessionAlerts?: readonly FlowAlert[];
   onClose: () => void;
   onViewTicker?: (ticker: string) => void;
 }) {
@@ -175,6 +185,13 @@ export function ContractDrilldownDrawer({
     const bias = printBias(flow);
     return { dte, size, notional, aggr, wall, bias };
   }, [flow]);
+
+  const scoreContext = useMemo(() => {
+    if (!flow || !(flow.score > 0)) return null;
+    const dist = helixScoreDistribution((sessionAlerts ?? []).map((a) => a.score));
+    const ctx = helixScoreContextForPrint(flow.score, dist);
+    return { ctx, hint: helixScoreContextHint(ctx, flow.score) };
+  }, [flow, sessionAlerts]);
 
   const header = flow ? (
     <div className="flex flex-col gap-1.5 min-w-0">
@@ -257,8 +274,30 @@ export function ContractDrilldownDrawer({
                     detail.bias === "bullish" ? "bull" : detail.bias === "bearish" ? "bear" : "neutral"
                   }
                 />
-                <PrintStat label="Score" value={flow.score > 0 ? flow.score.toFixed(1) : null} />
+                <PrintStat
+                  label="Score"
+                  value={
+                    flow.score > 0
+                      ? scoreContext?.ctx.percentile != null
+                        ? `${flow.score.toFixed(1)} · ${helixScoreTierLabel(scoreContext.ctx.tier)} · p${scoreContext.ctx.percentile}`
+                        : `${flow.score.toFixed(1)} · ${helixScoreTierLabel(scoreContext?.ctx.tier ?? "common")}`
+                      : null
+                  }
+                  tone={scoreContext?.ctx.tier === "rare" ? "gold" : scoreContext?.ctx.tier === "notable" ? "bull" : "neutral"}
+                />
               </div>
+              {scoreContext && (
+                <p className="font-mono text-[10px] text-cyan-400 px-1">{scoreContext.hint}</p>
+              )}
+              {executionFillDetail(flow) && (
+                <section className="mt-3 pt-3 border-t border-white/[0.06]">
+                  <p className="helix-print-detail-title">Execution</p>
+                  <p className="font-mono text-[11px] text-sky-300 mt-1">{executionFillDetail(flow)}</p>
+                  {flow.ask_pct != null && (
+                    <PrintStat label="Ask-side" value={`${Math.round(flow.ask_pct)}%`} tone="neutral" />
+                  )}
+                </section>
+              )}
               {(flow.alert_rule || detail.wall) && (
                 <div className="helix-print-tags">
                   {flow.alert_rule && (

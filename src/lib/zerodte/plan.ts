@@ -23,8 +23,24 @@ export const PLAN_RULES = {
 /** 0DTE directional commits open at 10:00 ET (G-2 unlock). */
 export const ZERODTE_COMMIT_OPEN_ET_MINUTES = 10 * 60;
 
-/** No NEW 0DTE plays after 15:30 ET — gate G-14 + persist backstop. */
+/** No NEW 0DTE plays of ANY kind (including condor) after 15:30 ET — persist-layer backstop
+ *  and the discovery-layer condor-fresh-eligibility boundary (scan.ts). NOT the directional
+ *  commit cutoff — see DIRECTIONAL_LATE_CUTOFF_ET_MINUTES for that. */
 export const NEW_PLAY_CUTOFF_ET_MINUTES = 15 * 60 + 30;
+
+/** No NEW DIRECTIONAL 0DTE commits after 14:00 ET — gate G-14 (gates.ts) + confluence's
+ *  ENTRY_CUTOFF_ET_MINUTES. Condors are exempt (a credit seller WANTS late-session theta
+ *  crush) and stay eligible through NEW_PLAY_CUTOFF_ET_MINUTES (15:30 ET) above.
+ *
+ *  Evidence: 90-day prod record (FINDINGS 2026-07-28), 14:00-15:30 bucket ran 14.3% WR /
+ *  −19.02% avg P&L — shipped as a hard 14:00 gate. On 2026-08-03 (#1591) this was widened
+ *  to alias NEW_PLAY_CUTOFF_ET_MINUTES (15:30 ET) "to align session discipline with operator
+ *  intent" — but the toxic window kept bleeding: re-measured live 2026-09-01, the reopened
+ *  14:00-15:30 bucket still ran 21.1% WR / −12.72% avg over the 90 days since the widening
+ *  (n=19), materially unchanged from the original evidence. Split back out to its own constant
+ *  so a future change to the general session-exit cutoff (condor/backstop) cannot silently
+ *  drag the directional gate along with it again. */
+export const DIRECTIONAL_LATE_CUTOFF_ET_MINUTES = 14 * 60;
 
 /** Human ET label for the hard exit (derived from PLAN_RULES). */
 export function zerodteTimeStopEtLabel(): string {
@@ -297,6 +313,22 @@ export function buildContractPlan(input: {
  * — only the ledger's grading/tracking reference moves, and only UP toward the mark
  * (never below entry_max), so the clean IN_RANGE/CHEAPER path where the mark sits at or
  * below the fill is unchanged. `markAtFlag` omitted → legacy behavior (no floor).
+ *
+ * ACHIEVABILITY CEILING (2026-08-27, live finding) — the symmetric completion the floor
+ * above never had: achievability cuts BOTH ways, but this function only ever bounded the
+ * basis UP toward the mark, never down. Live session 2026-08-27 produced two rows whose
+ * `plan_stop` exit fired inside ~1.2s of commit (QQQ 720C 0DTE: flow fill $3.27, real
+ * market never above $1.31 all session; NVDA 225C 1DTE: flow fill $5.86 vs a live market
+ * around $2.6-3.1 at the same instant) — a "stopped -77%"/"-53%" a member arriving at
+ * flag time and paying the live mark could never have experienced, because the flow
+ * print itself (stale, or matched to the wrong strike/expiry upstream) was never a
+ * tradeable price. A member can't be graded against a fill they couldn't get in EITHER
+ * direction, so when the mark sits FAR below the fill (the QQQ case above was ~73%
+ * below) — by the same CHASE_PCT magnitude this file already treats as "too extreme to
+ * trust" for the opposite (MOVED) case — the ledger basis is capped DOWN to the mark
+ * instead of trusting the outlier fill.
+ * Ordinary CHEAPER prints (mark a few/some percent below the fill — real front-running)
+ * are far inside this band and are completely unaffected.
  */
 export function resolveLedgerEntryPremium(
   planEntryMax: number | null | undefined,
@@ -305,7 +337,11 @@ export function resolveLedgerEntryPremium(
 ): number | null {
   const base = planEntryMax ?? flowAvgFill ?? null;
   if (base == null) return null;
-  if (markAtFlag != null && markAtFlag > 0 && markAtFlag > base) return round2(markAtFlag);
+  if (markAtFlag != null && markAtFlag > 0) {
+    if (markAtFlag > base) return round2(markAtFlag);
+    const pctBelow = ((base - markAtFlag) / base) * 100;
+    if (pctBelow >= CHASE_PCT) return round2(markAtFlag);
+  }
   return base;
 }
 

@@ -233,8 +233,9 @@ export function MeridianRing({
   const cx = size / 2;
   const r = size / 2 - 5;
   const pct = v === null || max <= 0 ? 0 : clamp(v / max, 0, 1);
+  const isBalanced = v === 0;
   return (
-    <div className="mv-ring" title={`${label}: ${v ?? "no data"}`}>
+    <div className="mv-ring" title={`${label}: ${v ?? "no data"}${isBalanced ? " — signals balanced" : ""}`}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
         <circle cx={cx} cy={cx} r={r} className="mv-ring-track" />
         {/* No arc at all when there is no value — an empty ring is honest, a full grey one is not. */}
@@ -242,8 +243,9 @@ export function MeridianRing({
       </svg>
       <div className="mv-ring-body">
         <span className="mv-ring-label">{label}</span>
-        <span className={`mv-ring-value ${LEAN_CLASS[lean]}`}>
+        <span className={`mv-ring-value ${LEAN_CLASS[lean]}${isBalanced ? " is-balanced" : ""}`}>
           {v === null ? "—" : <MeridianCountUp value={v} />}
+          {isBalanced ? <span className="mv-ring-balanced-note">balanced</span> : null}
           {signal && <span className="mv-ring-sig" aria-hidden="true">{LIVE_SIGNAL_GLYPH[signal]}</span>}
         </span>
       </div>
@@ -637,6 +639,24 @@ export function MeridianTargetRail({
           // `.mv-ladder-row` in this same file already carries a full aria-label with its level,
           // price and distance from spot. These dots simply never got the same treatment.
           const label = `${t.firm ?? "price target"} ${fmtPrice(t.value)}${t.action ? ` · ${t.action}` : ""}`;
+          // Neither current call site (Report, Estimates) passes `onTargetClick`, so this used to
+          // render a `disabled` button — real markup for a control that can NEVER be activated:
+          // no click, no keyboard focus, nothing a `disabled` state would ever lift. That is not a
+          // small tap target, it is a non-control wearing interactive markup, which is exactly what
+          // meridian-interaction-audit.mjs's button/[role=button] selector picked up as one of the
+          // 6 "8x8" undersized controls (UI-UX-OPPORTUNITIES.md item 13). A `<span>` reports the
+          // same visual dot honestly: present, not interactive, nothing to size as a tap target.
+          if (!onTargetClick) {
+            return (
+              <span
+                key={`${t.value}-${i}`}
+                className="mv-target-dot"
+                style={{ left: `${pctAlong(t.value, domain)! * 100}%` }}
+                title={label}
+                aria-label={label}
+              />
+            );
+          }
           return (
             <button
               type="button"
@@ -645,8 +665,7 @@ export function MeridianTargetRail({
               style={{ left: `${pctAlong(t.value, domain)! * 100}%` }}
               title={label}
               aria-label={label}
-              onClick={onTargetClick ? () => onTargetClick({ value: t.value, firm: t.firm }) : undefined}
-              disabled={!onTargetClick}
+              onClick={() => onTargetClick({ value: t.value, firm: t.firm })}
             />
           );
         })}
@@ -700,6 +719,22 @@ export function MeridianDarkPoolTape({
           // A dark-pool print square is `title`-only: sized by premium, so its MEANING is carried
           // entirely by pixels and a tooltip, neither of which reaches a screen reader.
           const printLabel = `${p.label ?? p.premium}${p.strike ? ` @ ${fmtPrice(p.strike)}` : ""}${p.at ? ` · ${p.at}` : ""}`;
+          // Neither current call site (Report, Positioning) passes `onPrintClick`, so this used to
+          // render a `disabled` button -- markup for a control that can NEVER be activated. Same
+          // fix as MeridianTargetRail's price-target dots (UI-UX-OPPORTUNITIES.md item 13): a
+          // `<span>` reports the same area-proportional mark honestly without claiming to be a
+          // control nothing can ever enable.
+          if (!onPrintClick) {
+            return (
+              <span
+                key={`${p.at ?? i}-${p.premium}`}
+                className="mv-tape-print"
+                style={{ width: d, height: d, animationDelay: `${i * 30}ms` }}
+                title={printLabel}
+                aria-label={`dark pool print ${printLabel}`}
+              />
+            );
+          }
           return (
             <button
               type="button"
@@ -708,12 +743,25 @@ export function MeridianDarkPoolTape({
               style={{ width: d, height: d, animationDelay: `${i * 30}ms` }}
               title={printLabel}
               aria-label={`dark pool print ${printLabel}`}
-              onClick={onPrintClick ? () => onPrintClick({ premium: p.premium, strike: p.strike, at: p.at }) : undefined}
-              disabled={!onPrintClick}
+              onClick={() => onPrintClick({ premium: p.premium, strike: p.strike, at: p.at })}
             />
           );
         })}
       </div>
+      {/* The tape strip carries MEANING (premium) in pixels only -- strike and date were
+          captured (`p.strike`/`p.at`) but previously surfaced solely via `title`/`aria-label`,
+          invisible until hover. Listing the largest few as text makes the same data legible at
+          a glance, matching the visible-list treatment MeridianEarningsIntelPanel already uses
+          for its own dark-pool prints. */}
+      <ul className="mv-tape-legend">
+        {tape.slice(0, 5).map((p, i) => (
+          <li key={`${p.at ?? i}-${p.premium}-legend`}>
+            <span className="mv-tape-legend-premium">{p.label ?? p.premium}</span>
+            {p.strike != null && <span className="mv-tape-legend-strike">@ {fmtPrice(p.strike)}</span>}
+            {p.dateLabel && <span className="mv-tape-legend-date">{p.dateLabel}</span>}
+          </li>
+        ))}
+      </ul>
       <p className="mv-note">largest first · area ∝ premium</p>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { MeridianEventDetail, MeridianTimelineItem, MeridianEarningsAnalyticsRow } from "@/features/meridian/lib/meridian-types";
 import { FreshnessChip } from "@/components/ui";
@@ -18,6 +18,10 @@ import {
   MeridianEarningsTablist,
   type EarningsTab,
 } from "./MeridianEarningsTabs";
+import {
+  readMeridianEarningsTabPref,
+  writeMeridianEarningsTabPref,
+} from "@/features/meridian/lib/meridian-desk-prefs";
 import { MeridianMacroReportPanel } from "./MeridianMacroReportPanel";
 import { MeridianOpexCrossMarketPanel } from "./MeridianOpexCrossMarketPanel";
 
@@ -84,20 +88,26 @@ export function MeridianEventDetailPanel({
   const earnings = detail?.kind === "earnings" ? detail : null;
   const hasPostPrint = Boolean(earnings?.enrichment.post_print?.headline);
   const hasActual = earnings?.enrichment.earnings_calendar?.actual_eps != null;
-  const [earningsTab, setEarningsTab] = useState<EarningsTab>("summary");
+  const [earningsTab, setEarningsTab] = useState<EarningsTab>(
+    () => readMeridianEarningsTabPref() ?? "summary"
+  );
+  const selectEarningsTab = useCallback((tab: EarningsTab) => {
+    setEarningsTab(tab);
+    writeMeridianEarningsTabPref(tab);
+  }, []);
   const hadActualRef = useRef(hasActual);
   useEffect(() => {
-    if (hasActual && !hadActualRef.current) setEarningsTab("estimates");
+    if (hasActual && !hadActualRef.current) selectEarningsTab("estimates");
     hadActualRef.current = hasActual;
-  }, [hasActual]);
+  }, [hasActual, selectEarningsTab]);
   useEffect(() => {
-    if (hasPostPrint) setEarningsTab("estimates");
-  }, [hasPostPrint]);
-  // A different event starts on REPORT again — carrying the previous name's tab across is a
-  // state leak the reader reads as the page opening on the wrong section.
+    if (hasPostPrint) selectEarningsTab("estimates");
+  }, [hasPostPrint, selectEarningsTab]);
+  // New event: open on the reader's saved default tab (localStorage), not always Summary.
+  // Auto-switch rules above still win when a print lands mid-session.
   useEffect(() => {
-    setEarningsTab("summary");
-  }, [item.id]);
+    selectEarningsTab(readMeridianEarningsTabPref() ?? "summary");
+  }, [item.id, selectEarningsTab]);
 
   return (
     <article
@@ -126,13 +136,36 @@ export function MeridianEventDetailPanel({
             the content. The old "Structure" freshness chip that sat in this slot said nothing
             the header did not already say. */}
         {detail?.kind === "earnings" && !loading && !error && (
-          <MeridianEarningsTablist tab={earningsTab} onTabChange={setEarningsTab} />
+          <MeridianEarningsTablist tab={earningsTab} onTabChange={selectEarningsTab} />
+        )}
+        {loading && item.kind === "macro" && (
+          <span className="meridian-detail-loading-chip" role="status">
+            Loading macro brief…
+          </span>
         )}
       </header>
 
-      {loading && (
+      {loading && item.kind !== "macro" && (
         <div className="meridian-detail-loading">
           <MeridianShimmer lines={6} />
+        </div>
+      )}
+      {loading && item.kind === "macro" && (
+        <div className="meridian-detail-loading meridian-detail-loading-progressive">
+          <div className="meridian-detail-grid-v2">
+            <MeridianDataCard label="Macro context" wide tone="macro" delay={0}>
+              <MeridianShimmer lines={2} />
+            </MeridianDataCard>
+            <MeridianDataCard label="SPX positioning" tone="macro" delay={80}>
+              <MeridianShimmer lines={2} />
+            </MeridianDataCard>
+            <MeridianDataCard label="HELIX flow skew" tone="macro" delay={160}>
+              <MeridianShimmer lines={2} />
+            </MeridianDataCard>
+            <MeridianDataCard label="Prior prints · session + 60m" wide tone="macro" delay={240}>
+              <MeridianShimmer lines={3} />
+            </MeridianDataCard>
+          </div>
         </div>
       )}
       {error && !loading && <MeridianEmpty message={error} />}
@@ -356,7 +389,7 @@ export function MeridianEventDetailPanel({
         <MeridianEarningsTabs
           detail={detail}
           tab={earningsTab}
-          onTabChange={setEarningsTab}
+          onTabChange={selectEarningsTab}
           item={item}
           allItems={allItems}
           analyticsRows={earningsAnalyticsRows}

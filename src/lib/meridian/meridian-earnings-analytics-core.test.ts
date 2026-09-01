@@ -12,6 +12,7 @@ import {
   fmtSurprisePct,
   fmtCompactMoney,
   fmtCountdown,
+  printHistoryToAnalyticsRows,
   type EarningsAnalyticsRow,
 } from "./meridian-earnings-analytics-core";
 
@@ -151,6 +152,83 @@ test("buildBeatMissStreak: miss streaks are negative; empty history is null-rate
   const empty = buildBeatMissStreak("T", [row({ ticker: "T", actual_eps: null })]);
   assert.equal(empty.beatRate, null, "no graded prints => unknown rate, not 0%");
   assert.equal(empty.currentStreak, 0);
+});
+
+// Regression test for the live contradiction found 2026-08-25 (DKS): the Quarterly Beat/Miss
+// Streak card said "No printed quarters on record" two panels below "7/8 EPS beats" for the same
+// ticker, because it read the market-wide forward calendar window instead of this ticker's real
+// print_history. `printHistoryToAnalyticsRows` is the adapter that lets buildBeatMissStreak read
+// the SAME data the Beat Rates/Track Record panels already use correctly.
+test("printHistoryToAnalyticsRows: a real print_history row feeds buildBeatMissStreak correctly", () => {
+  const prints = [
+    { report_date: "2026-05-27", eps_estimate: 2.9, eps_actual: 2.88, surprise_pct: -0.6, revenue_estimate: null, revenue_actual: null, revenue_surprise_pct: null },
+    { report_date: "2026-03-12", eps_estimate: 3.45, eps_actual: 3.02, surprise_pct: 1.1, revenue_estimate: null, revenue_actual: null, revenue_surprise_pct: null },
+  ];
+  const rows = printHistoryToAnalyticsRows("DKS", prints);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0]!.ticker, "DKS");
+  assert.equal(rows[0]!.date, "2026-05-27");
+  assert.equal(rows[0]!.actual_eps, 2.88);
+
+  const streak = buildBeatMissStreak("DKS", rows);
+  assert.equal(streak.entries.length, 2, "both real prints must be visible, not 'no printed quarters'");
+  assert.equal(streak.graded, 2);
+});
+
+test("printHistoryToAnalyticsRows: converts print_history's display-percent surprise back to the fraction convention", () => {
+  // Regression: print_history's surprise_pct/revenue_surprise_pct are already a DISPLAY PERCENT
+  // (benzingaSurpriseToDisplayPct multiplies the raw ratio by 100 before storing), but
+  // EarningsAnalyticsRow.eps_surprise_pct is a FRACTION everywhere else in this file --
+  // fmtSurprisePct multiplies by 100 again. Copying the percent straight through used to render
+  // a real -0.7% surprise as "-70.0%" on the History tab's Beat/Miss Streak.
+  const rows = printHistoryToAnalyticsRows("DKS", [
+    {
+      report_date: "2026-05-27",
+      eps_estimate: 2.9,
+      eps_actual: 2.88,
+      surprise_pct: -0.7, // display percent: -0.7%
+      revenue_estimate: null,
+      revenue_actual: null,
+      revenue_surprise_pct: 6.25, // display percent: 6.25%
+    },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.ok(
+    Math.abs(rows[0]!.eps_surprise_pct! - -0.007) < 1e-9,
+    "must be the fraction -0.007, not the percent -0.7"
+  );
+  assert.ok(
+    Math.abs(rows[0]!.revenue_surprise_pct! - 0.0625) < 1e-9,
+    "must be the fraction 0.0625, not the percent 6.25"
+  );
+  assert.equal(
+    fmtSurprisePct(rows[0]!.eps_surprise_pct),
+    "-0.7%",
+    "formatted through the same fmtSurprisePct every other surprise display uses"
+  );
+});
+
+test("printHistoryToAnalyticsRows: null surprise stays null through the unit conversion", () => {
+  const rows = printHistoryToAnalyticsRows("DKS", [
+    {
+      report_date: "2026-05-27",
+      eps_estimate: 2.9,
+      eps_actual: 2.88,
+      surprise_pct: null,
+      revenue_estimate: null,
+      revenue_actual: null,
+      revenue_surprise_pct: null,
+    },
+  ]);
+  assert.equal(rows[0]!.eps_surprise_pct, null);
+  assert.equal(rows[0]!.revenue_surprise_pct, null);
+});
+
+test("printHistoryToAnalyticsRows: a row with no report_date is dropped, not given a fabricated date", () => {
+  const rows = printHistoryToAnalyticsRows("DKS", [
+    { report_date: null, eps_estimate: 1, eps_actual: 1, surprise_pct: 0 },
+  ]);
+  assert.equal(rows.length, 0);
 });
 
 test("buildPrintClock: sorted soonest-first, unknown-time rows kept and sorted LAST", () => {

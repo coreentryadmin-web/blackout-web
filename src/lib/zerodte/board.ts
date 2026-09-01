@@ -442,6 +442,30 @@ export function resolveDirectionOwner(
   return best;
 }
 
+/** When a whole-market rail gains FLOW corroboration, stamp whale-flow evidence onto the
+ *  kept row (breakouts carry gross_premium=0 by construction). Contract geometry stays
+ *  with the kept setup — only the flow conviction fields copy over. */
+function stampFlowEvidenceFromIncoming(
+  kept: EnrichedZeroDteSetup,
+  incoming: EnrichedZeroDteSetup
+): void {
+  const incomingHasFlow = incoming.discovery_origin?.includes("FLOW");
+  const keptHasFlowEvidence = (kept.gross_premium ?? 0) > 0;
+  if (!incomingHasFlow || keptHasFlowEvidence || (incoming.gross_premium ?? 0) <= 0) return;
+  kept.gross_premium = incoming.gross_premium;
+  kept.prints = incoming.prints;
+  kept.sweep_pct = incoming.sweep_pct;
+  kept.side_dominance = incoming.side_dominance;
+  kept.aggression = incoming.aggression;
+  kept.flow_quality = incoming.flow_quality;
+  kept.new_money = incoming.new_money;
+  kept.spike = incoming.spike;
+  kept.recent_premium_30m = incoming.recent_premium_30m;
+  kept.net_premium = incoming.net_premium;
+  if (incoming.first_seen) kept.first_seen = kept.first_seen ?? incoming.first_seen;
+  if (incoming.last_seen) kept.last_seen = incoming.last_seen;
+}
+
 /**
  * Merge one incoming discovery setup onto a same-ticker kept setup (MERGE_POLICY_VERSION v2).
  * Returns the setup that should occupy the ticker slot after the merge (may be `kept` or a
@@ -469,6 +493,8 @@ export function mergeSameTickerDiscovery(
     if (condor.discovery_origin.length > 1) {
       condor.score = Math.min(100, (condor.score ?? 0) + CORROBORATION_SCORE_BOOST);
     }
+    stampFlowEvidenceFromIncoming(condor, incoming);
+    stampFlowEvidenceFromIncoming(condor, kept);
     return condor;
   }
   if (kept.direction === incoming.direction) {
@@ -476,6 +502,7 @@ export function mergeSameTickerDiscovery(
     if (kept.discovery_origin.length > 1) {
       kept.score = Math.min(100, (kept.score ?? 0) + CORROBORATION_SCORE_BOOST);
     }
+    stampFlowEvidenceFromIncoming(kept, incoming);
     return kept;
   }
   const keptScore = Number.isFinite(kept.score) ? kept.score : 0;
@@ -587,10 +614,24 @@ export function underlyingMarkAgeMs(
  * the flow/breakout/pin construction sites use (positive = OTM on either side), so refreshing the
  * mark while leaving the old moneyness behind would leave the setup internally inconsistent by
  * exactly the staleness we just removed — and `otm_pct` is a gate input (SETUP_MAX_ITM_PCT /
- * SETUP_MAX_OTM_PCT). The refresh runs BEFORE attachGateVerdicts, so the moneyness gate now judges
- * the REAL moneyness. This is precisely the feedback the no_underlying_price comment below
+ * SETUP_MAX_OTM_PCT).
+ *
+ * CORRECTED 2026-08-27 (P0 fix — this comment previously claimed "the refresh runs BEFORE
+ * attachGateVerdicts, so the moneyness gate now judges the REAL moneyness", which was FALSE: the
+ * refresh restamps this field, but until gates.ts's evaluateZeroDteGates gained the `otmPct` input
+ * (moneynessGateBlocks/refreshMoneynessGateBlocks), NOTHING ever re-compared the refreshed value
+ * against SETUP_MAX_ITM_PCT/SETUP_MAX_OTM_PCT — it rode through the gate stack as a passive AUDIT
+ * field only, exactly like the ordinary (non-refreshed) case this function exists to fix. Caught
+ * live 2026-08-27: SNXX short committed 9.55% ITM and PATH long 4.11% ITM, both ~2-5x past the 2%
+ * SETUP_MAX_ITM_PCT cap. What actually happens now: in the ordinary pipeline (scan.ts's
+ * attachContractPlans runs before attachGateVerdicts) the caller passes this refreshed otm_pct
+ * straight into evaluateZeroDteGates's `otmPct` input, so the moneyness gate DOES now judge the
+ * real, refreshed moneyness. In the thesis-first pipeline (attachContractPlans runs AFTER gates),
+ * the caller must additionally call refreshMoneynessGateBlocks once this refresh has run — see
+ * that function's doc. This is precisely the feedback the no_underlying_price comment below
  * ("a live underlying price is available moments later in scan.ts's attachContractPlans ... but
- * was never fed back") flagged as missing.
+ * was never fed back") flagged as missing — restamping the field alone was not "feeding it back";
+ * feeding it back requires the gate to actually re-read it, which this fix adds.
  */
 export function refreshUnderlyingFromLiveSpot(input: {
   livePrice: number | null | undefined;
@@ -746,6 +787,34 @@ function aggressionWeight(askPct: number | null | undefined): number {
   return 0.15;
 }
 
+/**
+ * Reconcile the tier-based FLOW evidence score with `computeFlowQuality`.
+ * Mega-cap / ETF tapes (QQQ, SPY) often carry $5–10M gross with mixed-side hedging
+ * that crushes dominance points in the tier formula while flow_quality still reads
+ * real institutional accumulation — measured live 2026-08-25: QQQ $7.6M gross scored
+ * 58 on tiers alone despite clearing every evidence gate. This lifts toward the
+ * flow-quality read when gross + FQ agree; it never inflates above what FQ supports.
+ */
+export function calibrateFlowEvidenceScore(
+  evidenceScore: number,
+  flowQuality: FlowQuality | null,
+  gross: number
+): number {
+  const base = Math.max(0, Math.min(100, evidenceScore));
+  if (!flowQuality || gross < 1_000_000) return base;
+  const fq = flowQuality.score;
+  if (gross >= 5_000_000 && fq >= 55) {
+    const blended = Math.round(base * 0.5 + fq * 0.5);
+    // Already inside gross >= 5_000_000 here (line 792's guard), so the floor is just 65 vs 62.
+    const institutionalFloor = gross >= 7_000_000 ? 65 : 62;
+    return Math.max(0, Math.min(100, Math.max(blended, Math.min(institutionalFloor, fq + 5))));
+  }
+  if (gross >= 2_000_000 && fq >= 65) {
+    return Math.max(base, Math.min(100, Math.round(base * 0.65 + fq * 0.35)));
+  }
+  return base;
+}
+
 // ── Gate-rejection / near-miss capture (task #147) ────────────────────────────────
 // deriveZeroDteSetups below evaluates 4 real gates per aggregated candidate ticker
 // (SETUP_MIN_GROSS, SETUP_MIN_AGGR_SHARE, SETUP_MIN_DOMINANCE, SETUP_MAX_ITM_PCT) —
@@ -778,6 +847,7 @@ export type ZeroDteGateFailure =
   | "opening_window" // G-2: no new commits before 10:00 ET
   | "late_afternoon" // G-14: no new directional commits after 15:30 ET
   | "score_floor" // G-3: post-edge-layer score below 65
+  | "single_rail_corroboration" // G-17: the 65-74 band needs the prime floor (≥75), any origin combo
   | "confluence_floor" // G-12: too few VWAP-side/market-aligned confirmations (0-conf −12.5% EV; higher floor 10:00–10:45)
   | "governor_max_concurrent" // G-5: 3 plans already open
   | "governor_session_stops" // G-5: 3 stops today — halted for the session
@@ -819,7 +889,9 @@ export type ZeroDteGateFailure =
   | `cortex_veto:${string}` // a Cortex source hard-vetoed the entry
   | "cortex_veto_blind" // Cortex blind to BOTH veto-capable sources on a fresh commit → HOLD
   | "cortex_net_negative" // no veto, but the evidence score nets < 0 — doesn't print
+  | "cortex_thin_evidence" // 2026-09-01: no veto, score >= 0 but too few sources answered to trust it — distinct from cortex_net_negative, whose score is always negative
   | "cortex_contested" // NH-R9: both a real support case and a real oppose case, net score below the A floor — unresolved internal fight, doesn't print
+  | "cortex_gex_walls_oppose_unresolved" // 2026-08-28: a real, active gex-walls oppose below the A floor — evidenced (90-day + same-week live) to grade worse even at net score >= 0
   // ── CONDOR play-type gates (Phase 4, gates.ts) — replace the DIRECTIONAL plan-quality /
   // tape / confluence gates for a delta-neutral iron condor. A condor is graded WIN=close-
   // inside-both-shorts / DEFINED-LOSS=breach, so it wants a CONTAINED, LOW-vol tape and a
@@ -832,7 +904,10 @@ export type ZeroDteGateFailure =
   | "regime_blind" // Regime Plane: VIX/macro/halt/GEX blind — no fresh commits
   | "governor_concentration" // Q9 enforced: too many correlated same-direction opens
   | "governor_premium_budget" // Phase 2c: aggregate entry premium budget exceeded
-  | "governor_gamma_budget"; // Phase 2c: short-gamma open count exceeded
+  | "governor_gamma_budget" // Phase 2c: short-gamma open count exceeded
+  // ── Thesis-first pipeline (thesis/live-pipeline.ts) — archetype + rank tier fail-closed
+  | "thesis_rank_reject"
+  | "thesis_archetype_block";
 
 export type ZeroDteGateRejection = {
   ticker: string;
@@ -898,7 +973,23 @@ export function deriveZeroDteSetups(
     sweep: number;
     gross: number;
     prints: number;
-    strikes: Map<string, { prem: number; premAggr: number; strike: number; expiry: number; isCall: boolean; fillPrem: number; fillW: number; contracts: number; oi: number }>;
+    strikes: Map<
+      string,
+      {
+        prem: number;
+        premAggr: number;
+        strike: number;
+        expiry: number;
+        isCall: boolean;
+        fillPrem: number;
+        fillW: number;
+        contracts: number;
+        oi: number;
+        /** Per-print (timestamp, fill price, premium) at this strike — lets avgFill prefer
+         *  the RECENT window over the whole lookback (see the recency note at avgFill below). */
+        fillEntries: Array<{ ts: number; price: number; prem: number }>;
+      }
+    >;
     underlying: number | null;
     /** alerted_at of the print that supplied `underlying` — keep only the freshest. */
     underlyingSeen: string | null;
@@ -986,7 +1077,7 @@ export function deriveZeroDteSetups(
     }
     agg.minDte = Math.min(agg.minDte, dte);
     const key = `${r.strike}|${r.expiry}|${isCall ? "c" : "p"}`;
-    const cur = agg.strikes.get(key) ?? { prem: 0, premAggr: 0, strike: r.strike, expiry: Date.parse(r.expiry) || 0, isCall, fillPrem: 0, fillW: 0, contracts: 0, oi: 0 };
+    const cur = agg.strikes.get(key) ?? { prem: 0, premAggr: 0, strike: r.strike, expiry: Date.parse(r.expiry) || 0, isCall, fillPrem: 0, fillW: 0, contracts: 0, oi: 0, fillEntries: [] };
     cur.prem += prem;
     // Same at-the-ask aggression weight the ticker-level callAggr/putAggr use to decide
     // direction — the top strike must be chosen by the SAME conviction measure that won
@@ -1000,6 +1091,11 @@ export function deriveZeroDteSetups(
       // Implied contracts traded (premium / (fill × 100)) vs the strike's OI —
       // flow bigger than existing OI is OPENING positioning, not closing.
       cur.contracts += prem / (r.fill_price * 100);
+      // Kept alongside the running fillPrem/fillW sum so avgFill can prefer a RECENT
+      // window over the whole multi-hour lookback (2026-08-27 QQQ/NVDA finding: a single
+      // large, hours-stale print dominated the premium-weighted average and priced the
+      // ledger 2-4x away from what the contract actually traded at by flag time).
+      cur.fillEntries.push({ ts: r.alerted_at ? Date.parse(r.alerted_at) : Number.NaN, price: r.fill_price, prem });
     }
     if (r.open_interest && r.open_interest > 0) cur.oi = Math.max(cur.oi, r.open_interest);
     agg.strikes.set(key, cur);
@@ -1091,7 +1187,7 @@ export function deriveZeroDteSetups(
     // premium (prem) can crown a strike that's mostly SOLD (bid-side) premium even
     // when the buying conviction that actually made this side "dominant" concentrated
     // at a different strike — see docs/audit/FINDINGS.md.
-    let top: { prem: number; premAggr: number; strike: number; expiry: number; fillPrem: number; fillW: number; contracts: number; oi: number } | null = null;
+    let top: { prem: number; premAggr: number; strike: number; expiry: number; fillPrem: number; fillW: number; contracts: number; oi: number; fillEntries: Array<{ ts: number; price: number; prem: number }> } | null = null;
     let topExpiry = "";
     for (const [key, s] of Array.from(agg.strikes.entries())) {
       if (s.isCall !== dominantCall) continue;
@@ -1116,7 +1212,24 @@ export function deriveZeroDteSetups(
       });
       continue;
     }
-    const avgFill = top.fillW > 0 ? Math.round((top.fillPrem / top.fillW) * 100) / 100 : null;
+    // Prefer a RECENT-window average fill over the whole multi-hour lookback (same
+    // SPIKE_WINDOW_MS the sudden-flow-spike read already uses above). Root cause of the
+    // 2026-08-27 QQQ/NVDA mispricing: top.fillPrem/top.fillW is a premium-weighted average
+    // across the ENTIRE query window (up to 7h), so one large, hours-stale print (e.g. an
+    // early-session fill at a price the contract hasn't traded at since) can dominate the
+    // average and diverge 2-4x from what the contract trades at by flag time. Falls back to
+    // the full-window average when nothing in this strike's tape is recent (rather than
+    // going null), so a genuinely quiet/aged strike is unaffected.
+    const recentFillEntries = top.fillEntries.filter(
+      (e) => Number.isFinite(e.ts) && nowMs - e.ts <= SPIKE_WINDOW_MS
+    );
+    const recentFillW = recentFillEntries.reduce((sum, e) => sum + e.prem, 0);
+    const avgFill =
+      recentFillW > 0
+        ? Math.round((recentFillEntries.reduce((sum, e) => sum + e.price * e.prem, 0) / recentFillW) * 100) / 100
+        : top.fillW > 0
+          ? Math.round((top.fillPrem / top.fillW) * 100) / 100
+          : null;
 
     // Moneyness: deep-ITM top strike = stock replacement, not a directional 0DTE
     // bet — excluded outright (the fake-out class live-caught on day one). This
@@ -1218,6 +1331,9 @@ export function deriveZeroDteSetups(
     score += Math.round(Math.max(0, aggression - 0.5) * 20); // 0-10
     if (newMoney) score += 5;
 
+    const flowQuality = computeFlowQuality(agg.flowPrints);
+    const calibratedScore = calibrateFlowEvidenceScore(score, flowQuality, agg.gross);
+
     setups.push({
       ticker,
       direction: dominantCall ? "long" : "short",
@@ -1254,7 +1370,7 @@ export function deriveZeroDteSetups(
       // one. Carried through now so scan.ts can refresh it and any consumer can degrade honestly.
       underlying_price_as_of: agg.underlying == null ? null : agg.underlyingSeen,
       underlying_price_source: agg.underlying == null ? null : "flow_print",
-      score: Math.max(0, Math.min(100, score)),
+      score: Math.max(0, Math.min(100, calibratedScore)),
       aggression: Math.round(aggression * 100) / 100,
       otm_pct: otmPct,
       new_money: newMoney,
@@ -1262,46 +1378,11 @@ export function deriveZeroDteSetups(
       spike,
       first_seen: agg.firstSeen,
       last_seen: agg.lastSeen,
-      flow_quality: computeFlowQuality(agg.flowPrints),
+      flow_quality: flowQuality,
     });
   }
 
   return setups.sort((a, b) => b.score - a.score).slice(0, maxSetups);
-}
-
-// ── Engine card ranking ───────────────────────────────────────────────────────────
-
-export type EngineCard = {
-  kind: "spx_play" | "lotto" | "power_hour";
-  /** ACTIVE = live managed play; ARMED = ready/near-trigger; SCANNING = watching; DONE/OFF. */
-  state: "ACTIVE" | "ARMED" | "SCANNING" | "DONE" | "OFF";
-  rank: number;
-};
-
-/**
- * Deterministic ordering for the engine cards: an ACTIVE managed play always leads,
- * ARMED engines next (lotto before power-hour outside 15:00-15:30, reversed inside
- * the window), then scanning states.
- */
-export function rankEngineCards(
-  cards: Array<Omit<EngineCard, "rank">>,
-  inPowerHourWindow: boolean
-): EngineCard[] {
-  const stateOrder: Record<EngineCard["state"], number> = {
-    ACTIVE: 0,
-    ARMED: 1,
-    SCANNING: 2,
-    DONE: 3,
-    OFF: 4,
-  };
-  const kindOrder = (k: EngineCard["kind"]): number => {
-    if (k === "spx_play") return 0;
-    if (inPowerHourWindow) return k === "power_hour" ? 1 : 2;
-    return k === "lotto" ? 1 : 2;
-  };
-  return [...cards]
-    .sort((a, b) => stateOrder[a.state] - stateOrder[b.state] || kindOrder(a.kind) - kindOrder(b.kind))
-    .map((c, i) => ({ ...c, rank: i + 1 }));
 }
 
 // ── Dossier enrichment (the "very strong" layer) ─────────────────────────────────
@@ -1472,6 +1553,12 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
    *  so the graded origin band can measure opposing-co-discovery outcomes; it does not change
    *  what commits. Absent = no conflict (same-direction corroboration or single origin). */
   origin_direction_conflict?: OriginDirectionConflict | null;
+  /** Thesis-first pipeline snapshot (ZERODTE_THESIS_FIRST_SHADOW) — independent per-rail
+   *  scores, archetype classification, and gate verdict. Shadow by default; does not gate
+   *  commits until ZERODTE_THESIS_FIRST=1. See thesis/scan-shadow.ts. */
+  thesis_first?: import("./thesis/types").ThesisPipelineResult | null;
+  /** Pre-gate block codes when ZERODTE_THESIS_FIRST=1 (thesis/archetype fail-closed). */
+  thesis_gate_blocks?: string[];
   /** WS-06: per-origin (direction, score) recorded at merge time — the raw material buildOriginMaps
    *  freezes onto the committed row. Populated in-place by recordOriginContributionsOnMerge for a
    *  multi-source ticker; absent for a single-origin setup (buildOriginMaps seeds those from the

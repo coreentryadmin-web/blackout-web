@@ -147,21 +147,28 @@ export function correlationGroupOf(ticker: string): ReadonlySet<string> | null {
   return null;
 }
 
-// ── Q9 (design record) — SAME-DIRECTION concentration MEASURE (surfaced, NOT enforced) ──
+// ── Q9 (design record) — SAME-DIRECTION concentration, MEASURE-then-ENFORCE ──
 // The correlated-conflict rule above blocks OPPOSING plays on correlated names (SPY-long
 // + QQQ-short). It does NOT see same-DIRECTION concentration: SPY-long + QQQ-long +
 // IWM-long is 3× the same broad-market beta behind the 3-concurrent cap — one bad tape
 // takes all three. Q9 flagged this as a genuine gap.
 //
-// WHY MEASURE, NOT BLOCK (yet). Unlike the realized-loss halt (unambiguously good — you're
-// already down, stand down), concentration is ambiguous: three independent origins all
-// surfacing correlated longs can be CONVICTION, not reckless over-exposure. Enforcing a
+// WHY IT SHIPPED MEASURE-ONLY FIRST. Unlike the realized-loss halt (unambiguously good —
+// you're already down, stand down), concentration is ambiguous: three independent origins
+// all surfacing correlated longs can be CONVICTION, not reckless over-exposure. Enforcing a
 // cap could forgo the best trend days. So — per the house calibration-first rule ("evidence,
-// not gating; the ledger graduates it before it sizes") — this ships as a SURFACED measure:
-// the board reports the largest same-direction correlated cluster and a would-block reason,
-// the ledger accrues whether concentrated days win or lose, and a later PR flips it to an
-// enforced gate ONLY if the evidence says concentrated same-direction days underperform.
-// This channel changes NOTHING the board commits today.
+// not gating; the ledger graduates it before it sizes") — this shipped first as a SURFACED
+// measure: the board reported the largest same-direction correlated cluster and a
+// would-block reason, and the ledger accrued whether concentrated days won or lost.
+//
+// CORRECTED 2026-08-28 (this comment was stale): it IS now enforced by default
+// (GOVERNOR_ENFORCE_CONCENTRATION below). The flip was evidence-driven, not a guess — the
+// 2026-07-30 session (FINDINGS.md, "Wave A/B strongest-engines hardening") was a real P0/P1
+// incident (14 losers / 1 winner) where unmeasured same-direction concentration was one of
+// five named contributing root causes, alongside the regime-plane gap and a stale-BREAKOUT
+// score floor fixed in the same pass. GOVERNOR_MAX_CORRELATED_SAME_DIR=2 remains the
+// original conservative starting value from before that flip — it has not itself been
+// re-measured since enforcement began.
 
 /** Max same-direction correlated open plans before the concentration measure flags it.
  *  CONSERVATIVE starting value (calibration-first) — with the 3-concurrent cap, a cluster
@@ -196,38 +203,48 @@ export const GOVERNOR_ENFORCE_GAMMA_BUDGET = envFlag("GOVERNOR_ENFORCE_GAMMA_BUD
 /** Phase 2c — time-of-day concurrent cap scaling (lunch chop / opening chop). Enforce opt-in. */
 export const GOVERNOR_ENFORCE_TOD_SIZING = envFlag("GOVERNOR_ENFORCE_TOD_SIZING", false);
 
-/** The largest same-direction cluster of open plans within a single correlation group, or
- *  null if no two open plans share a group+direction. Pure. Used both by the board measure
- *  and by the per-candidate evaluator, so the "what counts as concentration" logic lives
- *  in ONE place. Caller need not pre-uppercase — tickers are normalized here. */
-export function maxCorrelatedSameDirection(
-  openPlans: GovernorOpenPlan[]
-): { tickers: string[]; direction: "long" | "short"; count: number } | null {
-  let best: { tickers: string[]; direction: "long" | "short"; count: number } | null = null;
-  for (const group of CORRELATION_GROUPS) {
-    for (const direction of ["long", "short"] as const) {
-      const inCluster = openPlans
-        .filter((p) => p.direction === direction && group.has(p.ticker.toUpperCase()))
-        .map((p) => p.ticker.toUpperCase());
-      // De-dup tickers so a ledger quirk (two rows same ticker/direction) can't inflate
-      // the count — concentration is about distinct correlated exposures.
-      const distinct = Array.from(new Set(inCluster));
-      if (distinct.length >= 2 && (best == null || distinct.length > best.count)) {
-        best = { tickers: distinct.sort(), direction, count: distinct.length };
-      }
-    }
+/** AUDIT SEV-3 realized-loss halt — DISABLED BY DEFAULT (2026-08-27, operator directive: the
+ *  system is in a testing/pre-launch phase with no members trading 0DTE aggressively off it yet,
+ *  and the operator wants the discovery/commit pipeline to keep producing plays every session
+ *  regardless of how many realized losers or how deep the session drawdown gets, rather than go
+ *  quiet for the rest of the day). `governorLossHaltReason` (below) still COMPUTES the would-halt
+ *  reason/counts unconditionally — the board keeps showing realized_losers/session_pnl_pct/
+ *  would_halt as live diagnostics — this flag only controls whether that reason actually BLOCKS a
+ *  new commit (evaluateZeroDteGovernor) and contributes to the board's `halted` flag
+ *  (summarizeGovernorForBoard). The separate hard-stop-count halt (GOVERNOR_MAX_SESSION_STOPS,
+ *  `governor_session_stops`) is UNCHANGED and still enforced unconditionally — it was not part of
+ *  this directive. Flip GOVERNOR_ENFORCE_LOSS_HALT=1 to restore the prior always-on behavior. */
+export const GOVERNOR_ENFORCE_LOSS_HALT = envFlag("GOVERNOR_ENFORCE_LOSS_HALT", false);
+
+/**
+ * One row's contribution to session premium-at-risk. For a directional play, `entry_premium`
+ * IS the capital at risk (premium paid; worst case ≈ total loss). For a CONDOR, `entry_premium`
+ * is stamped as `net_credit` (income RECEIVED, deliberately the SMALL side of the trade —
+ * `condor.ts` floors `credit_to_risk` at just 10% of `gross_wing_risk`) so it stays usable as
+ * the seller-framed live P&L basis (`condorSellerPnlPct`, `marks-math.ts`) — it cannot also be
+ * repurposed as the risk figure without breaking that. The condor's real defined-risk exposure
+ * is `max_loss = gross_wing_risk − net_credit`, pinned at commit as `entry_context.condor.max_loss`
+ * (same $×100-per-contract unit as `net_credit`, divided by 100 here to match `entry_premium`'s
+ * per-share convention). Found 2026-08-28: summing `net_credit` here understated a condor's true
+ * worst-case loss by up to ~9-10× at the credit floor — inert today (GOVERNOR_ENFORCE_PREMIUM_BUDGET
+ * defaults off, no position sizing wired to any play type yet) but would silently under-budget
+ * real exposure the moment either goes live. */
+function riskContribution(r: GovernorLedgerRow): number {
+  const ec = r.entry_context;
+  if (ec?.play_type === "CONDOR") {
+    const condor = ec.condor as Record<string, unknown> | null | undefined;
+    const maxLoss = typeof condor?.max_loss === "number" ? condor.max_loss : null;
+    return maxLoss != null && Number.isFinite(maxLoss) && maxLoss > 0 ? maxLoss / 100 : 0;
   }
-  return best;
+  return r.entry_premium != null && Number.isFinite(r.entry_premium) && r.entry_premium > 0 ? r.entry_premium : 0;
 }
 
-/** Sum entry premium across open ledger rows (rounded). Pure. */
+/** Sum real risk-at-stake across open ledger rows (rounded). Pure. */
 export function aggregatePremiumAtRisk(rows: GovernorLedgerRow[]): number {
   let sum = 0;
   for (const r of rows) {
     if (r.status === "CLOSED") continue;
-    if (r.entry_premium != null && Number.isFinite(r.entry_premium) && r.entry_premium > 0) {
-      sum += r.entry_premium;
-    }
+    sum += riskContribution(r);
   }
   return Math.round(sum);
 }
@@ -402,6 +419,12 @@ export type GovernorLedgerRow = Pick<
   // not just the seeded entry premium (see db.ts).
   | "last_mark"
   | "last_mark_at"
+  // Needed by aggregatePremiumAtRisk to read a condor row's real defined-risk (max_loss),
+  // pinned at commit as entry_context.condor.max_loss — entry_premium alone is net_credit for
+  // a condor (income received, not risk; see the function's own doc for why they can't be the
+  // same field). Required (matches ZeroDteSetupLogRow) — every construction site must now pass
+  // entry_context explicitly (null for a row that predates it / a non-condor test fixture).
+  | "entry_context"
 >;
 
 /** Did this ledger row stop out? Two independent signals, either suffices:
@@ -572,7 +595,7 @@ export function evaluateZeroDteGovernor(
   // hard-stop halt fires on 3 −50% stops, the loss halt fires on 3 realized losers
   // (any exit reason) or cumulative −120% session P&L. Strictly additive.
   const lossHalt = governorLossHaltReason(snap);
-  if (lossHalt) {
+  if (GOVERNOR_ENFORCE_LOSS_HALT && lossHalt) {
     blocks.push({
       code: "governor_session_loss_halt",
       reason: lossHalt,
@@ -757,27 +780,13 @@ export type ZeroDteGovernorSummary = {
    *  SURFACED so the operator sees the halt firing on ledger evidence. Non-null here
    *  is already reflected in `halted` (this channel enforces). */
   would_halt: string | null;
-  // ── Q9 same-direction concentration MEASURE (surfaced, NOT enforced) ─────────────
-  /** The largest same-direction cluster of open plans within one correlation group
-   *  (index/ETF beta), or null if none. Distinct tickers only. A pure measure — it does
-   *  NOT gate commits (unlike the enforcing halts above); it is calibration evidence. */
-  correlated_concentration: { tickers: string[]; direction: "long" | "short"; count: number } | null;
-  /** The same-direction concentration cap the measure flags against (payload number, not
-   *  a UI copy). */
-  max_correlated_same_dir: number;
-  /** A human reason when the current same-direction correlated cluster is at/over the cap
-   *  (a further correlated same-direction add would be over-concentration), else null.
-   *  SURFACED for the operator + the ledger; NOT reflected in `halted` (measure only, Q9). */
-  would_block_concentration: string | null;
   // ── Phase 2c portfolio governor extensions (measure-first) ───────────────────────
   /** Sum of entry premium across open plans. */
   premium_at_risk: number;
   max_premium_at_risk: number;
-  would_block_premium_budget: string | null;
   /** Open plans with short-gamma regime at commit. */
   short_gamma_open: number;
   max_short_gamma_open: number;
-  would_block_gamma_budget: string | null;
   /** Time-of-day sizing label (lunch chop / prime window). */
   time_of_day_label: string | null;
   /** Effective concurrent cap after time-of-day sizing factor. */
@@ -800,17 +809,6 @@ export function summarizeGovernorForBoard(
   // AUDIT SEV-3 — the realized-loss halt reason keys off the ledger-derived tallies
   // (timestamps don't matter for it), so compute it from `snap`, not the merged stops.
   const wouldHalt = governorLossHaltReason(snap);
-  // Q9 — same-direction concentration MEASURE over the open plans. Pure evidence: it is
-  // surfaced but never folded into `halted`, so it changes nothing the board commits.
-  const concentration = maxCorrelatedSameDirection(snap.open_plans);
-  const wouldBlockConcentration =
-    concentration != null && concentration.count >= GOVERNOR_MAX_CORRELATED_SAME_DIR
-      ? `Session governor (MEASURE): ${concentration.count} same-direction ${concentration.direction} plays ` +
-        `on correlated index/ETF beta (${concentration.tickers.join(", ")}) — at/over the ` +
-        `${GOVERNOR_MAX_CORRELATED_SAME_DIR}-play concentration ceiling; a further correlated ` +
-        `${concentration.direction} add would over-concentrate one direction. Surfaced as evidence, not enforced (Q9).`
-      : null;
-
   const premiumAtRisk = aggregatePremiumAtRisk(rows);
   const shortGammaOpen = opts?.shortGammaOpen ?? 0;
   const todSizing =
@@ -821,22 +819,24 @@ export function summarizeGovernorForBoard(
     max_concurrent: GOVERNOR_MAX_CONCURRENT_PLANS,
     stops,
     max_session_stops: GOVERNOR_MAX_SESSION_STOPS,
-    halted: stops.length >= GOVERNOR_MAX_SESSION_STOPS || wouldHalt != null,
+    // `wouldHalt` only contributes to `halted` when the loss-halt is actually enforced
+    // (GOVERNOR_ENFORCE_LOSS_HALT) -- otherwise the board would show "SESSION HALTED" while
+    // evaluateZeroDteGovernor keeps accepting new commits underneath, the exact display/reality
+    // mismatch PR #2973 fixed for a different field. `would_halt` below still reports the reason
+    // as a live diagnostic even when it isn't gating anything.
+    halted:
+      stops.length >= GOVERNOR_MAX_SESSION_STOPS ||
+      (GOVERNOR_ENFORCE_LOSS_HALT && wouldHalt != null),
     reentry_lock_ms: GOVERNOR_REENTRY_LOCK_MS,
     realized_losers: snap.realized_losers ?? 0,
     session_pnl_pct: snap.session_pnl_pct ?? 0,
     loss_halt_count: GOVERNOR_LOSS_HALT_COUNT,
     session_loss_floor_pct: GOVERNOR_SESSION_LOSS_FLOOR_PCT,
     would_halt: wouldHalt,
-    correlated_concentration: concentration,
-    max_correlated_same_dir: GOVERNOR_MAX_CORRELATED_SAME_DIR,
-    would_block_concentration: wouldBlockConcentration,
     premium_at_risk: premiumAtRisk,
     max_premium_at_risk: GOVERNOR_MAX_PREMIUM_AT_RISK,
-    would_block_premium_budget: premiumBudgetReason(premiumAtRisk),
     short_gamma_open: shortGammaOpen,
     max_short_gamma_open: GOVERNOR_MAX_SHORT_GAMMA_OPEN,
-    would_block_gamma_budget: gammaBudgetReason(shortGammaOpen),
     time_of_day_label: todSizing.label,
     effective_max_concurrent: todSizing.effective_max_concurrent,
     time_of_day_sizing_factor: todSizing.factor,

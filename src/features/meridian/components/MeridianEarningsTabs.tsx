@@ -456,43 +456,47 @@ export function MeridianEarningsTabs({
 
       {tab === "history" && (
         <div role="tabpanel" className="meridian-earnings-tabpanel">
+          {/* `MeridianEarningsHistoryPanel` already renders `print_history_summary` as its own
+              "Summary" card -- a "Track record" banner repeating the identical string used to
+              render right below it here, verbatim (found live, 2026-08-25 CTO audit). Removed
+              rather than kept as a second view: it wasn't a second format, it was the same
+              sentence twice. */}
           <MeridianEarningsHistoryPanel
             ticker={pack.ticker}
             enrichment={enrichment}
             intel={intel}
-            analyticsRows={analyticsRows}
           />
-          {enrichment.print_history_summary && (
-            <MeridianAnalyticsBanner
-              label="Track record"
-              headline={enrichment.print_history_summary}
-              tone="earnings"
-              icon="▣"
-            />
-          )}
           <div className="meridian-detail-grid-v2 meridian-earn-enrich">
             {enrichment.print_history.length > 0 && (
               <MeridianDataCard label="Print track · est vs actual" wide tone="earnings" delay={0}>
-                <ul className="meridian-card-list meridian-history-list meridian-print-track">
-                  {enrichment.print_history.map((row) => (
-                    <li key={row.report_date ?? "unknown"}>
-                      <span className="meridian-history-date">{row.report_date?.slice(5) ?? "—"}</span>
-                      {row.eps_estimate != null && row.eps_actual != null ? (
-                        <span>
-                          {" "}
-                          EPS {row.eps_actual} vs {row.eps_estimate}
-                        </span>
-                      ) : null}
-                      {(row.reaction_pct ?? row.session_change_pct) != null && (
-                        <span className="meridian-history-move">
-                          {" "}
-                          · {fmtPct(row.reaction_pct ?? row.session_change_pct)} reaction
-                          <ReactionFlag print={row} />
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+                <details className="meridian-print-track-details">
+                  <summary className="meridian-print-track-summary">
+                    Raw EPS vs estimate per print
+                    <span className="meridian-print-track-summary-note">
+                      {enrichment.print_history.length} print{enrichment.print_history.length === 1 ? "" : "s"}
+                    </span>
+                  </summary>
+                  <ul className="meridian-card-list meridian-history-list meridian-print-track">
+                    {enrichment.print_history.map((row) => (
+                      <li key={row.report_date ?? "unknown"}>
+                        <span className="meridian-history-date">{row.report_date?.slice(5) ?? "—"}</span>
+                        {row.eps_estimate != null && row.eps_actual != null ? (
+                          <span>
+                            {" "}
+                            EPS {row.eps_actual} vs {row.eps_estimate}
+                          </span>
+                        ) : null}
+                        {(row.reaction_pct ?? row.session_change_pct) != null && (
+                          <span className="meridian-history-move">
+                            {" "}
+                            · {fmtPct(row.reaction_pct ?? row.session_change_pct)} reaction
+                            <ReactionFlag print={row} />
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               </MeridianDataCard>
             )}
             {enrichment.analyst_revisions.length > 0 && (

@@ -19,6 +19,8 @@ import {
 import { HelixFlowTable } from "@/features/helix/components/HelixFlowTable";
 import { HelixMobileFlowTape } from "@/features/helix/components/HelixMobileFlowTape";
 import { HelixCommandBar } from "@/features/helix/components/HelixCommandBar";
+import { HelixSessionPulseBar } from "@/features/helix/components/HelixSessionPulseBar";
+import { HelixHotTickersRail } from "@/features/helix/components/HelixHotTickersRail";
 import {
   HELIX_INDEX_TICKERS,
   matchesDteFilter,
@@ -52,6 +54,14 @@ import {
   HELIX_PREMIUM_PRESETS,
   WHALE_PRINT_PREMIUM,
 } from "@/features/helix/lib/helix-flow-limits";
+import { flowDirection } from "@/features/helix/lib/helix-flow-aggression";
+import { positionIntent } from "@/features/helix/lib/helix-position-intent";
+import {
+  applyHelixFilterPreset,
+  HELIX_DEFAULT_TAPE_FILTERS,
+  HELIX_FILTER_PRESETS,
+  type HelixDirectionFilter,
+} from "@/features/helix/lib/helix-filter-presets";
 import { hasCoincidentBlock } from "@/features/helix/lib/helix-coord-window";
 import {
   watchlistFilterActive,
@@ -93,8 +103,13 @@ import { SectorFlowPanel, type SectorFlowEntry } from "@/features/helix/componen
 import { NightHawkFlowPanel, type NightHawkPlayWithFlow } from "@/features/helix/components/NightHawkFlowPanel";
 import { ExpiryConcentration } from "@/features/helix/components/ExpiryConcentration";
 import { RouteBreakdown } from "@/features/helix/components/RouteBreakdown";
+import { ExecutionAnalysisPanel } from "@/features/helix/components/ExecutionAnalysisPanel";
+import { SessionCorrelationMatrix } from "@/features/helix/components/SessionCorrelationMatrix";
+import { FlowClusterPanel } from "@/features/helix/components/FlowClusterPanel";
 import { SignalOutcomeTracker } from "@/features/helix/components/SignalOutcomeTracker";
 import { HighScorePrints } from "@/features/helix/components/HighScorePrints";
+import { HelixContextHeader } from "@/features/helix/components/HelixContextHeader";
+import { downloadHelixCsv } from "@/features/helix/lib/helix-csv-export";
 import { WatchlistBar } from "@/features/helix/components/WatchlistBar";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { Skeleton, Modal } from "@/components/ui";
@@ -160,39 +175,29 @@ function playWhaleBeep() {
   } catch { /* AudioContext unavailable in this environment */ }
 }
 
-function exportCSV(alerts: FlowAlert[]) {
+function helixFilterSummary(f: {
+  minPremium: number;
+  typeFilter: string;
+  dteFilter: string;
+  tickerFilter: string;
+  whalesOnly: boolean;
+  directionFilter?: string;
+  openingOnly?: boolean;
+}): string {
+  const parts: string[] = [];
+  if (f.minPremium !== HELIX_DEFAULT_MIN_PREMIUM) parts.push(`minPremium=${f.minPremium}`);
+  if (f.typeFilter !== "ALL") parts.push(`type=${f.typeFilter}`);
+  if (f.dteFilter !== "all") parts.push(`dte=${f.dteFilter}`);
+  if (f.tickerFilter) parts.push(`ticker=${f.tickerFilter}`);
+  if (f.whalesOnly) parts.push("whalesOnly");
+  if (f.directionFilter && f.directionFilter !== "all") parts.push(`dir=${f.directionFilter}`);
+  if (f.openingOnly) parts.push("openingOnly");
+  return parts.join("; ") || "default";
+}
+
+function exportCSV(alerts: FlowAlert[], filterSummary?: string) {
   try {
-    const header =
-      "Ticker,Type,Strike,Expiry,Premium,Fill,Spot,Ask%,OI,IV,OTM%,DTE,Score,Route,Alert Rule,Alerted At\n";
-    const rows = alerts
-      .map((a) =>
-        [
-          a.ticker,
-          a.option_type,
-          a.strike,
-          a.expiry,
-          a.premium,
-          a.fill_price ?? "",
-          a.underlying_price ?? "",
-          a.ask_pct ?? "",
-          a.open_interest ?? "",
-          a.implied_volatility ?? "",
-          a.otm_pct ?? "",
-          a.dte ?? "",
-          a.score ?? "",
-          a.route ?? "",
-          a.alert_rule ?? "",
-          a.alerted_at,
-        ].join(",")
-      )
-      .join("\n");
-    const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `helix-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadHelixCsv(alerts, filterSummary);
   } catch (e) {
     console.error("[FlowFeed] CSV export failed:", e);
     alert("Export failed — check console for details.");
@@ -224,7 +229,9 @@ export function FlowFeed() {
   const [whalesOnly, setWhalesOnly]         = useState(false);
   const [dteFilter, setDteFilter]           = useState<HelixDteFilter>("all");
   const [indicesOnly, setIndicesOnly]       = useState(false);
-  const density: HelixTableDensity = "full";
+  const [density, setDensity] = useState<HelixTableDensity>("full");
+  const [directionFilter, setDirectionFilter] = useState<HelixDirectionFilter>("all");
+  const [openingOnly, setOpeningOnly] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(true);
   const [tickerFilter, setTickerFilter]   = useState("");
 
@@ -341,6 +348,14 @@ export function FlowFeed() {
       if (includeType && typeFilter !== "ALL") {
         rows = rows.filter((a) => a.option_type === typeFilter);
       }
+      if (directionFilter === "bullish") {
+        rows = rows.filter((a) => flowDirection(a) === "bullish");
+      } else if (directionFilter === "bearish") {
+        rows = rows.filter((a) => flowDirection(a) === "bearish");
+      }
+      if (openingOnly) {
+        rows = rows.filter((a) => positionIntent(a).intent === "opening");
+      }
       return rows;
     },
     [
@@ -352,6 +367,8 @@ export function FlowFeed() {
       indicesOnly,
       dteFilter,
       typeFilter,
+      directionFilter,
+      openingOnly,
     ]
   );
 
@@ -648,9 +665,36 @@ export function FlowFeed() {
       indicesOnly,
       watchlistOnly,
       tickerFilter,
+      directionFilter,
+      openingOnly,
     }),
-    [dteFilter, typeFilter, whalesOnly, indicesOnly, watchlistOnly, tickerFilter]
+    [dteFilter, typeFilter, whalesOnly, indicesOnly, watchlistOnly, tickerFilter, directionFilter, openingOnly]
   );
+
+  const applyHelixPreset = useCallback((presetId: string) => {
+    const preset = HELIX_FILTER_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    const next = applyHelixFilterPreset(preset);
+    setMinPremium(next.minPremium);
+    setTypeFilter(next.typeFilter);
+    setWhalesOnly(next.whalesOnly);
+    setDteFilter(next.dteFilter);
+    setIndicesOnly(next.indicesOnly);
+    setDirectionFilter(next.directionFilter);
+    setOpeningOnly(next.openingOnly);
+  }, []);
+
+  const resetHelixFilters = useCallback(() => {
+    setMinPremium(HELIX_DEFAULT_TAPE_FILTERS.minPremium);
+    setTypeFilter(HELIX_DEFAULT_TAPE_FILTERS.typeFilter);
+    setWhalesOnly(HELIX_DEFAULT_TAPE_FILTERS.whalesOnly);
+    setDteFilter(HELIX_DEFAULT_TAPE_FILTERS.dteFilter);
+    setIndicesOnly(HELIX_DEFAULT_TAPE_FILTERS.indicesOnly);
+    setDirectionFilter(HELIX_DEFAULT_TAPE_FILTERS.directionFilter);
+    setOpeningOnly(HELIX_DEFAULT_TAPE_FILTERS.openingOnly);
+    setTickerFilter("");
+    setWatchlistOnly(false);
+  }, []);
 
   useEffect(() => {
     filterBackfillPagesRef.current = 0;
@@ -840,6 +884,16 @@ export function FlowFeed() {
     isRestrictiveTapeFilter(tapeFilterSnapshot) &&
     !replayMode;
 
+  const csvFilterSummary = helixFilterSummary({
+    minPremium,
+    typeFilter,
+    dteFilter,
+    tickerFilter,
+    whalesOnly,
+    directionFilter,
+    openingOnly,
+  });
+
   const flowTapeProps = {
     flows: displayAlerts,
     live,
@@ -935,7 +989,18 @@ export function FlowFeed() {
         onTickerClick={setSelectedTicker}
       />
       <SplitFlowRadar entries={splitFlowEntries} onTickerClick={setSelectedTicker} eligibility={signalCoverage} />
+      <ExecutionAnalysisPanel alerts={displayAlerts} loading={loading} />
       <RouteBreakdown alerts={displayAlerts} loading={loading} />
+      {marketWidePanels && (
+        <SessionCorrelationMatrix
+          alerts={displayAlerts}
+          loading={loading}
+          onSelectTicker={setSelectedTicker}
+        />
+      )}
+      {marketWidePanels && (
+        <FlowClusterPanel alerts={displayAlerts} onSelectTicker={setSelectedTicker} />
+      )}
       <SignalOutcomeTracker />
       {marketWidePanels && <SectorFlowPanel entries={sectorFlowEntries} />}
       <div className="helix-analytics-grid-wide">
@@ -1099,7 +1164,7 @@ export function FlowFeed() {
               </button>
               <button
                 type="button"
-                onClick={() => exportCSV(displayAlerts)}
+                onClick={() => exportCSV(displayAlerts, csvFilterSummary)}
                 disabled={displayAlerts.length === 0}
                 className="font-mono text-[10px] font-semibold px-2 py-[5px] rounded-lg border border-white/10 text-cyan-400 disabled:opacity-30"
               >
@@ -1128,6 +1193,14 @@ export function FlowFeed() {
           watchlistOnly={watchlistOnly}
           onWatchlistOnlyChange={setWatchlistOnly}
           watchlistCount={watchlist.watchlist.length}
+          directionFilter={directionFilter}
+          onDirectionFilterChange={setDirectionFilter}
+          openingOnly={openingOnly}
+          onOpeningOnlyChange={setOpeningOnly}
+          density={density}
+          onDensityChange={setDensity}
+          onApplyPreset={applyHelixPreset}
+          onResetFilters={resetHelixFilters}
           analyticsOpen={analyticsOpen}
           onAnalyticsOpenChange={setAnalyticsOpen}
           replayMode={replayMode}
@@ -1136,7 +1209,7 @@ export function FlowFeed() {
           onReplaySpeedChange={setReplaySpeed}
           audioEnabled={audioEnabled}
           onAudioToggle={() => setAudioEnabled((v) => !v)}
-          onExportCsv={() => exportCSV(displayAlerts)}
+          onExportCsv={() => exportCSV(displayAlerts, csvFilterSummary)}
           exportDisabled={displayAlerts.length === 0}
           loading={loading}
           live={live}
@@ -1145,6 +1218,17 @@ export function FlowFeed() {
           newestAgeLabel={newestAgeLabel}
           replayDisabled={!replayMode && alerts.length === 0}
         />
+      )}
+
+      {!nativeShell && (
+        <>
+          <HelixSessionPulseBar flows={displayAlerts} scopeLabel={analyticsScopeLabel} />
+          <HelixHotTickersRail
+            flows={filteredTapeBuffer}
+            activeTicker={tickerFilter}
+            onSelect={setTickerFilter}
+          />
+        </>
       )}
 
       {/* ── Main grid — table-first; analytics optional ─────────────────── */}
@@ -1162,6 +1246,9 @@ export function FlowFeed() {
             nativeShell && iosView === "tape" && "ios-native-panel-visible"
           )}
         >
+          {scopedTicker ? (
+            <HelixContextHeader alerts={displayAlerts} ticker={scopedTicker} className="mb-2" />
+          ) : null}
           {compactTape ? (
             <HelixMobileFlowTape {...flowTapeProps} />
           ) : (
@@ -1208,6 +1295,7 @@ export function FlowFeed() {
       {/* Contract drilldown — per-leg volume/OI/fill history (FLOWCHECKER-style) */}
       <ContractDrilldownDrawer
         flow={selectedContract}
+        sessionAlerts={displayAlerts}
         onClose={() => setSelectedContract(null)}
         onViewTicker={(t) => {
           setSelectedContract(null);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { fmtPrice } from "@/lib/api";
 import {
   screenUniverse,
@@ -8,6 +8,7 @@ import {
   type ScreenerPreset,
 } from "@/features/vector/lib/vector-screener";
 import { useVectorUniverseSnapshot } from "@/features/vector/lib/vector-universe-client";
+import { formatVectorAge, VECTOR_UNIVERSE_STALE_MS } from "@/features/vector/lib/vector-age-format";
 
 type Props = {
   activeTicker: string;
@@ -36,6 +37,19 @@ const PRESETS: Array<{ key: ScreenerPreset; label: string; hint: string }> = [
 export function VectorScanner({ activeTicker, onSelect }: Props) {
   const { data, error, isLoading } = useVectorUniverseSnapshot();
   const [preset, setPreset] = useState<ScreenerPreset>("all");
+  const [now, setNow] = useState<number | null>(null);
+
+  // BUG FIX (2026-08-27): the universe snapshot's `updatedAt` was plumbed all the way to the
+  // client (server comment: "for consumers to age-gate" against a 48h Redis TTL — "staleness is
+  // disclosed, not hidden via expiry") but nothing ever rendered it. If the 5-minute rebuild cron
+  // stops firing, this table keeps showing the last cached scan, unchanged, for up to 48 hours
+  // with zero visual difference from a live one — a member has no way to tell a frozen scan from
+  // a live scan just by looking at it.
+  useEffect(() => {
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   if (isLoading && !data) {
     return (
@@ -55,6 +69,8 @@ export function VectorScanner({ activeTicker, onSelect }: Props) {
 
   const activePreset = PRESETS.find((p) => p.key === preset) ?? PRESETS[0]!;
   const displayRows = screenUniverse(data.rows, { preset });
+  const age = formatVectorAge(data.updatedAt, now);
+  const isStale = now != null && data.updatedAt > 0 && now - data.updatedAt >= VECTOR_UNIVERSE_STALE_MS;
 
   return (
     <div className="vector-scanner-table-wrap">
@@ -72,6 +88,14 @@ export function VectorScanner({ activeTicker, onSelect }: Props) {
           </button>
         ))}
         <span className="vector-screener-hint">{activePreset.hint}</span>
+        {age != null && (
+          <span
+            className={`vector-screener-age${isStale ? " is-stale" : ""}`}
+            title={isStale ? "Universe scan hasn't refreshed recently — showing the last cached snapshot" : "Universe scan age"}
+          >
+            {isStale ? "⚠ " : ""}Updated {age} ago
+          </span>
+        )}
       </div>
       {displayRows.length === 0 && (
         <p className="vector-scanner-note" role="status">

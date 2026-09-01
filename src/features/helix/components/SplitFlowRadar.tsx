@@ -158,7 +158,7 @@ export function SplitFlowRadar({
                     }}
                     initial={{ width: 0 }}
                     animate={{ width: `${e.callPct}%` }}
-                    transition={{ duration: 0.9, ease: [0.34, 1.56, 0.64, 1] }}
+                    transition={{ duration: 0.9, ease: [0.34, 1.56, 0.64, 1] as const }}
                   />
                   <motion.div
                     className="h-full rounded-r-full flex-1"
@@ -168,11 +168,11 @@ export function SplitFlowRadar({
                     }}
                     initial={{ width: 0 }}
                     animate={{ width: `${100 - e.callPct}%` }}
-                    transition={{ duration: 0.9, ease: [0.34, 1.56, 0.64, 1], delay: 0.05 }}
+                    transition={{ duration: 0.9, ease: [0.34, 1.56, 0.64, 1] as const, delay: 0.05 }}
                   />
                   {/* Center marker */}
                   <div
-                    className="absolute top-0 bottom-0 w-px bg-white/25"
+                    className="absolute inset-y-0 w-px bg-white/25"
                     style={{ left: "50%" }}
                   />
                 </div>

@@ -6,7 +6,7 @@
  * `SpendTracker`. Reading one number therefore cost a caller that entire graph. `tool-guard.ts` —
  * the one place that measures every tool result's size and so the only place that can DETECT a
  * result heading for this cap — is deliberately kept free of that graph (its own comment: "injected
- * so this module stays free of the 129-tool dependency graph"), so it could not see the number it
+ * so this module stays free of the 130-tool dependency graph"), so it could not see the number it
  * needed. Splitting the constant out is what lets detection live where the measurement already is.
  *
  * WHAT THE CAP ACTUALLY DOES, stated here because seven places in this repo used to describe it

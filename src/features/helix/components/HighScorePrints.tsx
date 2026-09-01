@@ -14,6 +14,11 @@ import {
 } from "@/features/helix/lib/helix-strike-leaders";
 import { fmtExpiryShort } from "@/features/helix/lib/helix-flow-format";
 import { aggressorRead } from "@/features/helix/lib/helix-print-detail";
+import {
+  helixScoreContextForPrint,
+  helixScoreDistribution,
+  helixScoreTierLabel,
+} from "@/features/helix/lib/helix-score-context";
 
 export function scoreTone(score: number): { bg: string; border: string; text: string } {
   if (score >= 9) return { bg: "rgba(250,204,21,0.08)", border: "rgba(250,204,21,0.3)", text: "#facc15" };
@@ -50,6 +55,10 @@ export function HighScorePrints({
   timeAnchor?: number;
 }) {
   const nowMs = useMemo(() => Date.now(), [timeAnchor]);
+  const scoreDistribution = useMemo(
+    () => helixScoreDistribution(alerts.map((a) => a.score)),
+    [alerts]
+  );
   const { rows: top, mode, sessionFallback } = useMemo(
     () => selectTopPrints(alerts, { nowMs }),
     [alerts, nowMs]
@@ -78,6 +87,7 @@ export function HighScorePrints({
           {top.map((a, i) => {
             const isCall = a.option_type?.toUpperCase() === "CALL";
             const tone = scoreTone(a.score);
+            const scoreCtx = helixScoreContextForPrint(a.score, scoreDistribution);
             const hits = countMatchingContractHits(alerts, a, HELIX_STRIKE_HITS_WINDOW_MS, nowMs);
             const aggr = aggressorRead(a.ask_pct);
             return (
@@ -108,9 +118,19 @@ export function HighScorePrints({
                     <span
                       className="font-mono text-[13px] font-black tabular-nums w-8 text-center"
                       style={{ color: tone.text }}
+                      title={
+                        scoreCtx.percentile != null
+                          ? `${helixScoreTierLabel(scoreCtx.tier)} · session p${scoreCtx.percentile}`
+                          : helixScoreTierLabel(scoreCtx.tier)
+                      }
                     >
                       {a.score > 0 ? a.score.toFixed(1) : "—"}
                     </span>
+                    {scoreCtx.calibrationStatus === "session" && (
+                      <span className="font-mono text-[9px] font-semibold text-cyan-400 uppercase">
+                        {helixScoreTierLabel(scoreCtx.tier).slice(0, 1)}
+                      </span>
+                    )}
                     <span className="font-mono text-[12px] font-bold text-white tracking-wide">{a.ticker}</span>
                     <span
                       className={clsx(

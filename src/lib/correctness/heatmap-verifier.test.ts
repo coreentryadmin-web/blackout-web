@@ -28,10 +28,16 @@ let dexCharmInvariantChecks: typeof import("./heatmap-verifier").dexCharmInvaria
 let dexCharmSanityChecks: typeof import("./heatmap-verifier").dexCharmSanityChecks;
 let dexCharmCrossToolChecks: typeof import("./heatmap-verifier").dexCharmCrossToolChecks;
 let spxDeskCrossToolChecks: typeof import("./heatmap-verifier").spxDeskCrossToolChecks;
+let deriveCumulativeGammaFlip: typeof import("./heatmap-verifier").deriveCumulativeGammaFlip;
 
 before(async () => {
-  ({ dexCharmInvariantChecks, dexCharmSanityChecks, dexCharmCrossToolChecks, spxDeskCrossToolChecks } =
-    await import("./heatmap-verifier"));
+  ({
+    dexCharmInvariantChecks,
+    dexCharmSanityChecks,
+    dexCharmCrossToolChecks,
+    spxDeskCrossToolChecks,
+    deriveCumulativeGammaFlip,
+  } = await import("./heatmap-verifier"));
 });
 
 // ---------------------------------------------------------------------------
@@ -493,4 +499,22 @@ test("INV-3 call/put wall checks use side-constrained deriveWalls (spot passed â
     /deriveWalls\(\s*hm\.gex\.strike_totals,\s*spot\s*\)/
   );
   assert.match(src, /cross-provider[\s\S]*odte_overlay\?\.applied !== true/);
+});
+
+test("deriveCumulativeGammaFlip matches production lowest-plausible selection (not nearest spot)", async () => {
+  const { cumulativeGammaFlip } = await import("../providers/gex-cross-validation-core");
+  const twoCrossingBook: Record<string, number> = {
+    "100": -10,
+    "105": 12,
+    "110": -5,
+    "115": 8,
+    "120": 2,
+  };
+  for (const spot of [108, 108.1, 214.95]) {
+    assert.equal(
+      deriveCumulativeGammaFlip(twoCrossingBook, spot),
+      cumulativeGammaFlip(twoCrossingBook, spot),
+      `verifier oracle must track production flip at spot ${spot}`
+    );
+  }
 });

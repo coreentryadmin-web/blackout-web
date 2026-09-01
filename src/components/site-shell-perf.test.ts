@@ -14,7 +14,9 @@ test("site layout: iOS + route CSS deferred off global product shell", () => {
 });
 
 test("nighthawk layout owns nighthawk-v2.css", () => {
-  assert.match(read("src/app/(site)/nighthawk/layout.tsx"), /nighthawk-v2\.css/);
+  const layout = read("src/app/(site)/nighthawk/layout.tsx");
+  assert.match(layout, /nighthawk-v2\.css/);
+  assert.match(layout, /nighthawk-desk-theme\.css/);
 });
 
 // Regression guard for the desktop tab-bar spacing bug (docs/audit/UI-UX-MAP.md §7, finding #8,
@@ -28,13 +30,22 @@ test("nighthawk layout owns nighthawk-v2.css", () => {
 // page; it asserts the structural CSS properties are present in the always-loaded file, so removing
 // them (e.g. while "cleaning up" the color-only overrides this block started as) fails loud instead
 // of silently reintroducing the bug.
+//
+// UPDATED 2026-08-28 (X Ads Manager reference — flat underline tabs, not a filled equal-width
+// pill row): the ORIGINAL bug was buttons collapsing to zero layout — no gap, no chrome, reading
+// as one unbroken word. It was never actually about `flex: 1` specifically; that was just the
+// layout choice at the time. The redesign intentionally switches to content-width tabs
+// (`flex: 0 0 auto`) with explicit spacing (`gap: 22px` on the container) — real chrome (padding,
+// min-height, color/weight) is still present on every button, so the actual failure mode this
+// test exists to catch (invisible/unstyled buttons) still can't reoccur silently.
 test("nighthawk-v2.css: view-tab segment has its own structural CSS, not just color overrides", () => {
   const css = read("src/app/nighthawk-v2.css");
   const segmentBlock = css.match(/\.nh-v2-page \.ios-native-segment\s*\{[^}]*\}/)?.[0] ?? "";
   const btnBlock = css.match(/\.nh-v2-page \.ios-native-segment-btn\s*\{[^}]*\}/)?.[0] ?? "";
   assert.match(segmentBlock, /display:\s*flex/, "segment container must be a flex row");
   assert.match(segmentBlock, /gap:/, "segment container must space its buttons — this is the exact property whose absence produced the bug");
-  assert.match(btnBlock, /flex:\s*1/, "each tab button must claim equal flex space, not collapse to content width");
+  assert.match(btnBlock, /padding:/, "each tab button must carry real chrome (padding), not collapse to bare unstyled text");
+  assert.match(btnBlock, /min-height:/, "each tab button must claim a real tap target height, not collapse to content");
 });
 
 test("admin layout owns admin-console.css", () => {

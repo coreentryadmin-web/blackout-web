@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import {
   buildSessionBarFromMinuteBars,
   mergeMinuteRefreshedBars,
-  freshestMinuteBarMs,
 } from "./breakout-intraday-breadth";
 
 test("buildSessionBarFromMinuteBars aggregates OHLCV", () => {
@@ -28,12 +27,4 @@ test("mergeMinuteRefreshedBars overrides grouped rows by ticker", () => {
   const merged = mergeMinuteRefreshedBars(base, refreshed);
   assert.equal(merged.length, 1);
   assert.equal(merged[0]!.c, 2.5);
-});
-
-test("freshestMinuteBarMs returns max t", () => {
-  const m = new Map([
-    ["A", { T: "A", o: 1, h: 1, l: 1, c: 1, v: 1, t: 100 }],
-    ["B", { T: "B", o: 1, h: 1, l: 1, c: 1, v: 1, t: 200 }],
-  ]);
-  assert.equal(freshestMinuteBarMs(m), 200);
 });

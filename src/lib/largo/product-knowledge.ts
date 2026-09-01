@@ -189,6 +189,7 @@ key levels + floor pivots, OpEx calendar, daily dealer-regime series, screener p
 
 **Timeline rail:** macro (CPI, FOMC, NFP), earnings, FDA, OpEx — one ranked, ET-anchored timeline, filterable by kind/impact/ticker.
 - **get_meridian_timeline** — days_ahead (1-30), kind, impact (that bar OR ABOVE), ticker, limit.
+- **get_meridian_peer_cohort** — sector peer strip for one earnings print (implied-move rank + peer reaction history). Needs timeline id or kind=earnings + ticker + date.
 
 **Event detail:** earnings intel (print history anchored to BMO/AMC timing, implied vs realized, dealer structure, flow, thermal nodes, dark pool, play read), macro release history, OpEx pin accuracy + cross-market, FDA prior decisions.
 - **get_meridian_event** — pass an id from the timeline, or kind + ticker + date.

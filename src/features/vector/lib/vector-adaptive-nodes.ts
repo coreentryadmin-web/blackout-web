@@ -14,13 +14,27 @@ import type { VectorNodeDensity } from "./vector-node-density";
 import { resolveNodeCount } from "./vector-node-density";
 
 /** Candles must occupy at least this share of the visible price-axis span (member-readable tape).
- *  Was 0.2 — lowered slightly (2026-08-24) so coarse single-name ladders can show one more bead
- *  row without collapsing candles; paired with AUTO_MIN_ROWS_PER_SIDE below. */
-export const AUTO_MIN_CANDLE_SHARE = 0.16;
+ *  Raised from 0.16 (2026-08-27, member report — "candles squeezed, fits without scroll"): 0.16
+ *  was closer to the axis's OWN eventual floor (`MIN_CANDLE_SHARE_OF_PANE` = 0.35 in
+ *  vector-price-range.ts) than it looked, because `AUTO_MIN_ROWS_PER_SIDE` below could still force
+ *  MORE rows than even 0.16 allowed (see that constant's comment) — so on a quiet, coarse-stepped
+ *  single name the row count AUTO picked assumed a much looser bar than the axis would ultimately
+ *  honor, and the two constants disagreeing is what let AUTO settle on a row count the chart then
+ *  had to squeeze candles to draw. 0.22 narrows that gap while staying under 0.35, so the row-count
+ *  decision and the axis's own guarantee are pulling in the same direction instead of past each
+ *  other. */
+export const AUTO_MIN_CANDLE_SHARE = 0.22;
 
 /** AUTO never draws fewer rows than this when the timeframe cap allows — single names were self-
- *  limiting to ~4 rows while the rail carries 8+ (measured NVDA 2026-08-24). Clamped to cap. */
-export const AUTO_MIN_ROWS_PER_SIDE = 7;
+ *  limiting to ~7 rows while the rail carries 16+ (measured NVDA 2026-08-24). Clamped to cap.
+ *  Lowered from 12 (2026-08-27, same member report): with AUTO_MIN_CANDLE_SHARE at 0.16, this
+ *  floor was the ACTUAL controlling number on a quiet coarse-stepped session — the geometry math
+ *  would pick as few as 2 rows to hold 16% candle share, and this floor overrode it up to 12
+ *  regardless, which is the "AUTO 20" (13 uncapped further by node density's own
+ *  VECTOR_WALL_NODES_PER_SIDE ceiling) seen live pulling the axis to ~±14% while the session
+ *  traded inside ~1%. 8 keeps meaningfully more wall structure than the old "~7 rows" complaint
+ *  this floor was built to fix, without overriding the (now tighter) share target by as much. */
+export const AUTO_MIN_ROWS_PER_SIDE = 8;
 
 export type AdaptiveNodeInputs = {
   spot: number;

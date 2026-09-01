@@ -13,7 +13,7 @@ import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 
 const premiumTool = LARGO_CAPABILITIES.find((c) => c.entitlement === "premium")!.tool;
 
-// A SYNTHETIC catalog. The real registry declares `premium` on all 129 of its capabilities today,
+// A SYNTHETIC catalog. The real registry declares `premium` on all 130 of its capabilities today,
 // so enforcement against it is armed but inert — testing the gate against the real catalog would
 // pass vacuously and prove nothing. This proves the mechanism; the test below pins the real
 // catalog's current state separately, so the day a capability is marked admin it is a deliberate,
@@ -53,7 +53,7 @@ test("the fixtures this file depends on actually exist", () => {
 });
 
 test("the real registry currently restricts nothing — recorded, not assumed", () => {
-  // Honest state, pinned. Every one of the 129 catalogued capabilities declares `premium`, so this
+  // Honest state, pinned. Every one of the 130 catalogued capabilities declares `premium`, so this
   // gate denies nothing in production today. It is here so that marking a capability `admin` is a
   // one-line change that takes effect in CODE. If this assertion ever fails, someone added a real
   // restriction — update it deliberately and check the blast radius.
@@ -238,8 +238,8 @@ test("what the model receives is rounded for reading, and captured results match
  * had arrived — because an over-cap tool still "succeeds": the call returns, the loop completes, and
  * the model writes a fluent answer from the fragment.
  *
- * The Phase 0 map counted the exposure: of 129 tools, exactly TWO bound their payload before this
- * blind cut. The other 127 are capped with nothing watching.
+ * The Phase 0 map counted the exposure: of then-129 tools, exactly TWO bound their payload before
+ * this blind cut. The other 127 were capped with nothing watching.
  *
  * The comparison is exact, not a heuristic. `sizeOf` here stringifies the same object the loop then
  * stringifies, so `bytes` IS `raw.length` — which is why the boundary tests below are worth having:

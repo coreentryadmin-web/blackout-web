@@ -8,7 +8,7 @@
  */
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import type { CalibrationBucket } from "./calibration";
-import { analyzeOriginBands, buildZeroDteCalibrationReport } from "./calibration";
+import { buildZeroDteCalibrationReport } from "./calibration";
 import type { DiscoveryRail, RailWeightMap } from "./market-state-engine";
 import { BASE_RAIL_WEIGHTS, MAX_RAIL_WEIGHT_DELTA } from "./market-state-engine";
 import { LOW_N_THRESHOLD } from "./record";
@@ -121,10 +121,6 @@ export function computeShadowRailPriorsFromOriginBands(
   };
 }
 
-export function calibrationRailPriorsEnabled(): boolean {
-  return priorsModeFromEnvLocal() !== "off";
-}
-
 /** Resolve priors mode without circular import at module load. */
 function priorsModeFromEnvLocal(): "off" | "shadow" | "enforce" {
   const raw = process.env.ZERODTE_CALIBRATION_RAIL_PRIORS?.trim().toLowerCase();
@@ -196,13 +192,4 @@ export async function refreshShadowRailPriors(opts?: { days?: number; nowMs?: nu
     console.warn("[zerodte-calibration-priors] refresh failed:", err instanceof Error ? err.message : err);
     return null;
   }
-}
-
-/** Convenience for tests — build priors from graded rows without DB. */
-export function computeShadowRailPriorsFromRows(
-  rows: Parameters<typeof analyzeOriginBands>[0],
-  window: { since: string; through: string; days: number },
-  nowIso: string
-): ShadowRailPriorsSnapshot {
-  return computeShadowRailPriorsFromOriginBands(analyzeOriginBands(rows), window, nowIso);
 }

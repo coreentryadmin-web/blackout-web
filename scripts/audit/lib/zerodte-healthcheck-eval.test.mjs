@@ -11,6 +11,7 @@ import {
   commitRowComplete,
   partitionMarkRows,
   verdictForMark,
+  formatGovernorNote,
 } from "./zerodte-healthcheck-eval.mjs";
 
 test("rollupVerdict: worst-of ordering RED > AMBER > GREEN > SKIPPED", () => {
@@ -138,4 +139,25 @@ test("verdictForMark: a present mark defers to the staleness contract", () => {
   assert.equal(verdictForMark(7.2, 99_000, 20_000, true), "RED");
   assert.equal(verdictForMark(7.2, 99_000, 20_000, false), "AMBER");
   assert.equal(verdictForMark(7.2, null, 20_000, true), "AMBER");
+});
+
+test("formatGovernorNote: reads the real ZeroDteGovernorSummary shape, not state/status", () => {
+  // The bug this pins: the caller used to read `gov.state ?? gov.status ?? "?"`, but
+  // ZeroDteGovernorSummary (src/lib/zerodte/governor.ts) carries neither field — only
+  // `halted`, `open_plans`, `stops`, `realized_losers`, `session_pnl_pct` exist — so every
+  // stage-B note printed the literal string "governor ?" regardless of real session state.
+  assert.equal(formatGovernorNote(null), "governor unavailable");
+  assert.equal(
+    formatGovernorNote({ halted: false, open_plans: [{ ticker: "SPY", direction: "long" }], stops: [] }),
+    "governor live (1 open, 0 stop(s))"
+  );
+  assert.equal(
+    formatGovernorNote({
+      halted: true,
+      open_plans: [],
+      stops: [{ ticker: "QQQ" }, { ticker: "NVDA" }],
+      session_pnl_pct: -124.5,
+    }),
+    "governor HALTED (2 stop(s), -124.5% session P&L)"
+  );
 });

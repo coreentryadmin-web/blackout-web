@@ -28,6 +28,41 @@ test("helix derives direction from session skew and carries its evidence", () =>
   assert.ok(c.signal?.evidence.includes("140 prints"));
 });
 
+test("helix prefers the authoritative session.direction over re-deriving one from call_pct", () => {
+  // Regression: this adapter used to ignore `session.direction` entirely and always re-derive a
+  // direction from `call_pct` alone -- the real CG case, 100% call premium but every call SOLD
+  // (aggression-aware verdict: bearish), used to come back "bullish" here.
+  const c = helixContribution({
+    ticker: "CG",
+    session: { call_pct: 100, alert_count: 12, direction: "bearish" },
+  });
+  assert.equal(c.signal?.direction, "bearish");
+});
+
+test("helix maps a 'mixed' session.direction to neutral, not a guessed vote", () => {
+  const c = helixContribution({
+    ticker: "SPX",
+    session: { call_pct: 52, alert_count: 40, direction: "mixed" },
+  });
+  assert.equal(c.signal?.direction, "neutral");
+});
+
+test("helix reports 'undetermined' session.direction as no measurable direction, never a call_pct fallback", () => {
+  // Even though call_pct alone would read bullish here (72%), the authoritative aggressor-aware
+  // read says there isn't enough readable evidence -- that must not be second-guessed.
+  const c = helixContribution({
+    ticker: "SPX",
+    session: { call_pct: 72, alert_count: 3, direction: "undetermined" },
+  });
+  assert.equal(c.signal, null);
+  assert.match(String(c.missingReason), /no measurable call\/put skew/);
+});
+
+test("helix falls back to call_pct only when the payload carries no direction field at all", () => {
+  const c = helixContribution({ ticker: "SPX", session: { call_pct: 72, alert_count: 140 } });
+  assert.equal(c.signal?.direction, "bullish");
+});
+
 test("an empty helix tape is an explained absence, not a neutral vote", () => {
   const c = helixContribution({ ticker: "SPX", empty_reason: "no_prints_in_window" });
   assert.equal(c.signal, null);
@@ -101,6 +136,45 @@ test("every adapter survives a garbage payload rather than taking the read down"
       assert.ok(String(c.missingReason).length > 0, "an absence must always state a reason");
     }
   }
+});
+
+test("ticker_class is derived from the actual ticker, not a hardcoded per-product guess", () => {
+  // Regression: helix hardcoded "equity", vector/nighthawk hardcoded "index" — correct only by
+  // coincidence for SPX-only fixtures. Assert the real classification for tickers where the old
+  // constants were wrong in each direction.
+  const helixEquity = helixContribution({ ticker: "TSLA", session: { call_pct: 72, alert_count: 10 } });
+  assert.equal(helixEquity.signal?.ticker_class, "equity");
+
+  const helixIndex = helixContribution({ ticker: "SPX", session: { call_pct: 72, alert_count: 10 } });
+  assert.equal(helixIndex.signal?.ticker_class, "index", "helix hardcoded equity — must read index for SPX");
+
+  const vectorEquity = vectorContribution({
+    ticker: "TSLA",
+    has_baseline: true,
+    signals: [{ tone: "bullish", line: "x" }],
+  });
+  assert.equal(
+    vectorEquity.signal?.ticker_class,
+    "equity",
+    "vector hardcoded index — must read equity for TSLA"
+  );
+
+  const nighthawkEquity = nighthawkContribution({
+    ticker: "TSLA",
+    plays: [{ ticker: "TSLA", option_type: "CALL" }],
+  });
+  assert.equal(
+    nighthawkEquity.signal?.ticker_class,
+    "equity",
+    "nighthawk hardcoded index — must read equity for TSLA"
+  );
+
+  const spy = vectorContribution({
+    ticker: "SPY",
+    has_baseline: true,
+    signals: [{ tone: "bullish", line: "x" }],
+  });
+  assert.equal(spy.signal?.ticker_class, "etf");
 });
 
 test("END TO END — a real split, with honest coverage", () => {

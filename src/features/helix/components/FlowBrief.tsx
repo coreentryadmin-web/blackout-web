@@ -169,7 +169,7 @@ export function FlowBrief() {
             {showAfterHours ? (
               <>
                 <div className="relative">
-                  <span className="badge-live-dot w-2 h-2 block relative z-10 bg-purple-light/80" />
+                  <span className="badge-live-dot size-2 block relative z-10 bg-purple-light/80" />
                   <span className="absolute inset-0 rounded-full animate-ping opacity-30 motion-reduce:animate-none bg-purple-light/40" />
                 </div>
                 <span className="font-mono text-[10px] tracking-[0.35em] uppercase font-bold text-purple-light">
@@ -179,7 +179,7 @@ export function FlowBrief() {
             ) : (
               <>
                 <div className="relative">
-                  <span className="badge-live-dot w-2 h-2 block relative z-10 bg-purple-light/80" />
+                  <span className="badge-live-dot size-2 block relative z-10 bg-purple-light/80" />
                   <span className="absolute inset-0 rounded-full animate-ping opacity-50 motion-reduce:animate-none bg-purple-light/40" />
                 </div>
                 <span className="font-mono text-[10px] tracking-[0.35em] uppercase font-bold text-purple-light">

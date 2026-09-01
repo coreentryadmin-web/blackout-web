@@ -470,6 +470,9 @@ export type TapePrint = {
   strike: number | null;
   side: string | null;
   at: string | null;
+  /** `MM/DD` from `at`'s date portion, for a visible label — `at` itself is a raw ISO
+   *  timestamp (`2026-08-20T14:32:05`) never meant for display as-is. */
+  dateLabel: string | null;
   /** 0..1 area-proportional magnitude — see below. */
   magnitude: number;
 };
@@ -493,6 +496,7 @@ export function darkPoolTape(
       strike: num(p.strike),
       side: p.side ?? null,
       at: p.executed_at ?? null,
+      dateLabel: darkPoolDateLabel(p.executed_at),
     }))
     .filter((p): p is TapePrint & { premium: number } => p.premium !== null && p.premium > 0) as Array<
     Omit<TapePrint, "magnitude"> & { premium: number }
@@ -502,6 +506,18 @@ export function darkPoolTape(
   return rows
     .map((r) => ({ ...r, magnitude: peak > 0 ? clamp(Math.sqrt(r.premium / peak), 0, 1) : 0 }))
     .sort((a, b) => b.premium - a.premium);
+}
+
+/**
+ * `executed_at` arrives as a raw ISO stamp (`2026-08-20T14:32:05`, per unusual-whales.ts's
+ * `.slice(0, 19)`) that was never fit for display — the tape's tooltip used to interpolate it
+ * verbatim. Formats the date portion only as `MM/DD`; time-of-day isn't useful at print-history
+ * granularity and the tooltip already gives the fuller string via `title`.
+ */
+function darkPoolDateLabel(at: string | null | undefined): string | null {
+  if (!at) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(at);
+  return m ? `${m[2]}/${m[3]}` : null;
 }
 
 // ── Countdown ────────────────────────────────────────────────────────────────────────
@@ -896,7 +912,11 @@ export function railLabelWidthPx(label: string, price: string): number {
 }
 
 export const MV_LADDER_HEIGHT_PX = 132;
-export const MV_LADDER_ROW_PX = 20;
+// 24px, not the measured 20.5px, so the row is also a real ≥24px tap target — see
+// UI-UX-OPPORTUNITIES.md item 13 (`meridian-interaction-audit.mjs` flagged 470x20/561x20 rows as
+// under the touch-target minimum). MV_LADDER_MIN_GAP derives from this, so the collision resolver
+// keeps demanding proportionally more separation automatically; nothing else to update.
+export const MV_LADDER_ROW_PX = 24;
 /** One full row of separation, as the [0,1] fraction `resolveCollisions` works in. */
 export const MV_LADDER_MIN_GAP = MV_LADDER_ROW_PX / MV_LADDER_HEIGHT_PX;
 

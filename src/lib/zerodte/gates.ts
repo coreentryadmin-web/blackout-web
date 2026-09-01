@@ -27,10 +27,18 @@
 
 import type { MarketBias } from "./intraday";
 import type { EarningsFlag, EnrichedZeroDteSetup, PlayType, ZeroDteGateFailure, ZeroDteGateRejection } from "./board";
-import { evaluateZeroDteGovernor, type GovernorOpenPlan, type GovernorSnapshot } from "./governor";
+import { SETUP_MAX_ITM_PCT, SETUP_MAX_OTM_PCT } from "./board";
+import {
+  evaluateZeroDteGovernor,
+  premiumBudgetReason,
+  GOVERNOR_ENFORCE_PREMIUM_BUDGET,
+  GOVERNOR_MAX_PREMIUM_AT_RISK,
+  type GovernorOpenPlan,
+  type GovernorSnapshot,
+} from "./governor";
 import { CHASE_PCT, type ContractPlan } from "./plan";
 import type { ZeroDteConfluence } from "./confluence";
-import { NEW_PLAY_CUTOFF_ET_MINUTES } from "./plan";
+import { DIRECTIONAL_LATE_CUTOFF_ET_MINUTES } from "./plan";
 import { commitAuthorizedBySourceHealth, type SourceHealthState } from "@/lib/ws/source-health";
 import { EARLY_ENTRY_WINDOW_END_ET_MINUTES } from "./confluence";
 import { evaluateMacroHardBlock, hasHighImpactMacroEvent, type MacroEventLike } from "@/lib/macro-hard-block";
@@ -85,8 +93,15 @@ export const OPENING_WINDOW_UNLOCK_LABEL = "10:00 ET";
 // (FINDINGS 2026-07-28) — the prior 15:00 cutoff left the entire toxic bucket open.
 // CONDOR-EXEMPT: an iron condor WANTS late-session theta crush (credit seller); the late
 // window is only destructive for long-premium entries.
-export const LATE_AFTERNOON_BLOCK_ET_MINUTES = NEW_PLAY_CUTOFF_ET_MINUTES;
-export const LATE_AFTERNOON_BLOCK_LABEL = "15:30 ET";
+//
+// On 2026-08-03 (#1591) this was widened to 15:30 ET (aliased to the general session-exit
+// cutoff) "to align session discipline with operator intent". Re-measured live 2026-09-01:
+// the reopened 14:00-15:30 directional window still ran 21.1% WR / −12.72% avg over the 90
+// days since the widening (n=19) — materially unchanged from the original evidence. Tightened
+// back to its own dedicated 14:00 ET constant (DIRECTIONAL_LATE_CUTOFF_ET_MINUTES, plan.ts) so
+// a future change to the unrelated condor/backstop cutoff can't silently drag this along again.
+export const LATE_AFTERNOON_BLOCK_ET_MINUTES = DIRECTIONAL_LATE_CUTOFF_ET_MINUTES;
+export const LATE_AFTERNOON_BLOCK_LABEL = "14:00 ET";
 
 // ── G-12 · Confluence floor — HARD GATE (Phase 1, 2026-07-24) ─────────────────────
 // Evidence (E3, 25 sessions, docs/audit/0DTE-RESEARCH.md): expectancy ladders with the number of
@@ -260,10 +275,12 @@ export type ZeroDteGateCalibration = {
 // raise the floor above the 55-64 band. Judged AFTER the intraday edge layer, so a
 // raw-evidence 70 that the tape/time-of-day layer marked down to 62 does NOT clear.
 export const ZERODTE_SCORE_FLOOR = 65;
-/** Origin-aware G-3 floors. 2026-07-29 precision restore: BREAKOUT/PIN share the same 65
- *  commit bar as FLOW. The 58 "unstarve" floor sat inside the measured near-flat 55–64 band
- *  (−3.6% avg / 36.8% WR) and admitted weak single-rail movers. Multi-rail +8 corroboration
- *  still helps real confluence clear 65; env overrides remain available. */
+/** Origin-aware G-3 floors. BREAKOUT/PIN use multiplicative scoring (gain×close / regime quality)
+ *  but share the SAME commit bar as FLOW: the measured 55–64 band ran 18.8% WR / −24.5% avg (F-2),
+ *  under the 33% breakeven of the −50/+100 payoff. A 50 floor (WS-20) let BREAKOUT-only commits
+ *  through that death band all session — live 2026-08-25: MSTR 54, LUNR 53, ASST 59 committed while
+ *  score_floor blocked 90 stronger candidates. Restored to 65; breakout-source.ts BASE bump helps
+ *  genuine 7%+ continuations clear without lowering the bar. Env overrides remain available. */
 export const ZERODTE_SCORE_FLOOR_BREAKOUT = envInt("ZERODTE_SCORE_FLOOR_BREAKOUT", 65);
 export const ZERODTE_SCORE_FLOOR_PIN = envInt("ZERODTE_SCORE_FLOOR_PIN", 65);
 
@@ -277,6 +294,26 @@ export function scoreFloorForOrigins(origins: readonly string[] | null | undefin
   // BREAKOUT+PIN corroboration (no FLOW) — still the origin floor (now = 65 by default).
   if (set.includes("BREAKOUT") || set.includes("PIN")) return ZERODTE_SCORE_FLOOR_BREAKOUT;
   return ZERODTE_SCORE_FLOOR;
+}
+
+/** G-17 — the 65-74 score band requires the PRIME floor (75) UNLESS the setup clears it on its
+ *  own merits some other way. Originally (2026-08-06, n=11) scoped to single-rail whole-market
+ *  commits only — BREAKOUT-only or PIN-only — on the theory that FLOW/multi-rail corroboration
+ *  was itself enough evidence to skip the extra floor. EXTENDED 2026-08-28 (real n=152 over a
+ *  90-day window, /api/market/zerodte/record) after that theory stopped holding: multi-rail/FLOW
+ *  commits in the UNRESTRICTED 65-74 band graded 35.7% WR / -10.43% avg pnl (n=34) — WORSE than
+ *  single-rail-without-flow at the 75+ floor (41.0% WR / -3.76% avg pnl, n=89, the only single-rail
+ *  population that can even commit) and worse than multi-rail/FLOW itself at 75+ (42.3% WR /
+ *  -11.6% avg pnl, n=29). The 65-74 band is weak EV on its OWN score, independent of rail
+ *  composition — corroboration was never actually buying safety there, it was just exempting a
+ *  weak-score population from the floor that governs everyone else in that band. */
+export const ZERODTE_SINGLE_RAIL_PRIME_MIN = envInt("ZERODTE_SINGLE_RAIL_PRIME_MIN", 75);
+
+/** True when discovery_origin is exactly one non-FLOW rail (BREAKOUT or PIN alone). Pure. */
+export function isSingleRailWithoutFlow(origins: readonly string[] | null | undefined): boolean {
+  const set = Array.isArray(origins) ? origins : [];
+  if (set.includes("FLOW")) return false;
+  return set.length === 1 && (set[0] === "BREAKOUT" || set[0] === "PIN");
 }
 
 export type ZeroDteGateBlock = {
@@ -360,6 +397,9 @@ export type ZeroDteGateInput = {
   macroUnavailable?: boolean;
   /** G-8/G-9: contract plan from attachContractPlans (null = no quote + no fill). */
   plan?: ContractPlan | null;
+  /** Thesis-first live path: plan is attached AFTER gates — skip G-8/G-9 here and call
+   *  refreshPlanQualityGateBlocks once attachContractPlans has run. */
+  deferPlanQualityGates?: boolean;
   /** G-15: selected contract horizon (`ZERO_DTE` | `ONE_DTE` | `WEEKLY_FALLBACK`). Absent →
    *  gate no-op (legacy callers/tests). When present and not `ZERO_DTE`, fresh commits are blocked
    *  so the 0DTE board never grades a tomorrow-expiry as a same-session scalp. */
@@ -403,6 +443,27 @@ export type ZeroDteGateInput = {
   /** Regime Plane: block fresh commits when regime inputs are blind. */
   regimeBlockFreshCommits?: boolean;
   regimeBlockReason?: string | null;
+  /**
+   * Moneyness re-check input (P0 fix, 2026-08-27 — live-caught: SNXX short 9.55% ITM, PATH long
+   * 4.11% ITM both committed past the 2% SETUP_MAX_ITM_PCT cap). board.ts's deriveZeroDteSetups
+   * gates SETUP_MAX_ITM_PCT/SETUP_MAX_OTM_PCT exactly ONCE, off whatever underlying_price the flow
+   * print carried at candidate-derivation time. scan.ts's attachContractPlans later REFRESHES
+   * `otm_pct` from a fresher live option snapshot (refreshUnderlyingFromLiveSpot, board.ts) — but
+   * until this field existed, nothing ever re-compared that refreshed value against either cap, so
+   * a candidate whose true (post-refresh) moneyness had drifted past a cap could still commit with
+   * `otm_pct` riding through as a passive audit field only. Pass the setup's CURRENT (ideally
+   * post-refresh) `otm_pct` here so `moneynessGateBlocks` can re-fire the same two caps board.ts
+   * already applies once. DIRECTIONAL ONLY — a CONDOR has no single-strike moneyness
+   * (hasSingleStrikeMoneyness=false at the refresh call site pins its otm_pct to null), so this
+   * never fires for one regardless of what is passed. Fails OPEN on null/undefined — like every
+   * other optional gate input here (VIX, macro, confluence), a caller that simply doesn't supply
+   * this is unaffected; it is a SUPPLEMENTARY re-check, not the sole authority — board.ts's own
+   * evidence gate already fails CLOSED on an unreadable underlying before a candidate ever reaches
+   * this function. When the live scan's attachContractPlans runs BEFORE this gate (the ordinary
+   * pipeline), pass the already-refreshed value directly; when it runs AFTER (thesis-first deferred
+   * attach), the caller must re-apply via {@link refreshMoneynessGateBlocks} once the refresh has run.
+   */
+  otmPct?: number | null;
 };
 
 /**
@@ -510,8 +571,32 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
           ? " — the <55 band ran 20% WR / −23% avg premium on this engine's own calibration, " +
             "under the 33% breakeven of the −50/+100 payoff."
           : ` for ${(input.discovery_origin ?? []).join("+") || "non-FLOW"} origin ` +
-            `(FLOW floor stays ${ZERODTE_SCORE_FLOOR}; multi-rail floors are calibrated to the near-flat 55-64 band).`),
+            `(all rails share the ${ZERODTE_SCORE_FLOOR} floor — the 55-64 band is near-flat EV).`),
       threshold: scoreFloor,
+      unlock_et: null,
+    });
+  }
+
+  // G-17 — the 65-74 band requires the PRIME floor (75) for EVERY origin combo, not just
+  // single-rail-without-flow. Extended 2026-08-28: multi-rail/FLOW commits in this band measured
+  // WORSE (35.7% WR, n=34) than single-rail-without-flow at the 75+ floor (41.0% WR, n=89) — the
+  // FLOW/multi-rail exemption was never buying safety, the whole 65-74 band is weak EV on its own
+  // score regardless of corroboration. See ZERODTE_SINGLE_RAIL_PRIME_MIN doc comment for the full
+  // measurement.
+  if (
+    !isCondor &&
+    input.score >= scoreFloorForOrigins(input.discovery_origin) &&
+    input.score < ZERODTE_SINGLE_RAIL_PRIME_MIN
+  ) {
+    const single = isSingleRailWithoutFlow(input.discovery_origin);
+    const rail = single ? ((input.discovery_origin ?? [])[0] ?? "whole-market") : "multi-rail/FLOW";
+    blocks.push({
+      code: "single_rail_corroboration",
+      reason:
+        `${rail} setup scored ${Math.round(input.score)} — the 65-74 band needs ≥${ZERODTE_SINGLE_RAIL_PRIME_MIN} ` +
+        "regardless of rail corroboration (measured 2026-08-28: multi-rail/FLOW in this band ran " +
+        "35.7% WR, worse than single-rail at the 75+ floor).",
+      threshold: ZERODTE_SINGLE_RAIL_PRIME_MIN,
       unlock_et: null,
     });
   }
@@ -559,6 +644,17 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
       unlock_et: null,
     });
   }
+
+  // ── Moneyness re-check (live-refreshed underlying) — P0 fix, 2026-08-27 ─────────────────
+  // See the `otmPct` field doc above for the full root cause. In short: board.ts's evidence
+  // gate compared otm_pct to SETUP_MAX_ITM_PCT/SETUP_MAX_OTM_PCT exactly once, before the
+  // scan's later live-spot refresh could move it; this re-applies the SAME two caps to
+  // whatever otm_pct the caller currently has (ideally the refreshed value), so a name that
+  // drifted past a cap between candidate derivation and commit no longer slips through. Pure
+  // pass-through to moneynessGateBlocks, which is also exported standalone so scan.ts can
+  // re-run it after a deferred (thesis-first) contract-plan attach — see
+  // refreshMoneynessGateBlocks below, mirroring refreshPlanQualityGateBlocks.
+  blocks.push(...moneynessGateBlocks(input.otmPct, isCondor));
 
   // G-4 — VIX regime hard gate (promoted from calibration 2026-07-16).
   // F-1: 69.2% WR at VIX<17 vs 25.0% at ≥17 — the strongest measured factor.
@@ -613,25 +709,29 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         });
       }
     } else if (vix >= VIX_ELEVATED_THRESHOLD) {
-      // G-1 already hard-blocks counter-tape entries. A setup that reaches G-4 either
-      // PASSED G-1 (tape aligned or flat) or is a condor (skipped above). The 75 floor
-      // only applies to the residual unknown-tape case (bias == null / stale — G-1's
-      // no_market_bias already blocked these, so 75 here is belt-and-suspenders).
+      // G-1 already hard-blocks counter-tape entries — but ONLY for index ETFs (isIndexEtfG1
+      // above); single names bypass G-1 entirely and move on their own catalysts, independently
+      // of SPY direction. This branch must mirror that same scoping: a single name's `bias`
+      // vs `direction` comparison means nothing about ITS OWN tape, only SPY's — so judging a
+      // single name against the tape here re-imposes exactly the constraint G-1 was written to
+      // exempt it from. Found 2026-08-26: a single-name long at VIX 18 with a disagreeing SPY
+      // tape was silently held to the stricter 75 floor though nothing in the design intends
+      // single names to be judged against SPY direction at all. Non-index/ETF tickers therefore
+      // always get the standard 65 floor here, exactly as if tape-aligned/flat, regardless of
+      // `input.bias` — the F-1 69% vs 25% WR evidence backing the 75 floor was never measured
+      // as a single-name-vs-SPY-tape effect, and G-1's own comment already establishes that
+      // relationship holds for index ETFs only.
       //
-      // NOTE: This branch is effectively unreachable in normal flow — G-1 (tape alignment)
-      // blocks any setup with null spy_bias before G-4 evaluates. Retained as a safety
-      // net if G-1 is ever disabled via ZERODTE_GATE_DISABLE.
-      //
-      // FLAT tape: the setup has no directional fight with the market (G-1 passed it),
-      // so it keeps the standard 65 floor — the same treatment as tape-aligned. Before
-      // this fix, flat tape was treated as non-aligned, requiring 75, which produced
-      // zero-commit sessions on choppy/range-bound days with VIX 17-20 (the most common
-      // market regime). The 75 floor was designed for COUNTER-tape entries, but G-1
-      // already hard-blocks those — double-gating them here was redundant, and
-      // collateral-damaging flat-tape setups that had no directional opposition.
+      // For index ETFs: the 75 floor only applies to the residual unknown-tape case (bias ==
+      // null / stale — G-1's no_market_bias already blocked these, so 75 here is
+      // belt-and-suspenders if G-1 is ever disabled via ZERODTE_GATE_DISABLE). FLAT tape: no
+      // directional fight with the market, so it keeps the standard 65 floor — the same
+      // treatment as tape-aligned (see prior fix note: treating flat as non-aligned produced
+      // zero-commit sessions on choppy/range-bound VIX 17-20 days, the most common regime).
       const tapeAlignedOrFlat =
-        input.bias != null &&
-        (input.bias === "flat" || (input.bias === "up") === (input.direction === "long"));
+        !isIndexEtfG1 ||
+        (input.bias != null &&
+          (input.bias === "flat" || (input.bias === "up") === (input.direction === "long")));
       const elevatedFloor = tapeAlignedOrFlat ? ZERODTE_SCORE_FLOOR : VIX_ELEVATED_SCORE_FLOOR;
       if (input.score < elevatedFloor) {
         blocks.push({
@@ -757,7 +857,7 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         unlock_et: null,
       });
     }
-  } else {
+  } else if (!input.deferPlanQualityGates) {
     // G-8/G-9 — plan quality: no chase (MOVED), no untradeable spread (illiquid), no
     // plan without a real quote or fill. UI SKIP already hid these; persist must match.
     blocks.push(...planQualityGateBlocks(input.plan ?? null));
@@ -1009,9 +1109,143 @@ const QUOTE_INVALID_SENTENCE: Record<
   thin_size: "Contract resting quote size is below the floor",
 };
 
+/**
+ * Moneyness cap re-check — pure, unit-testable, reused by the deferred (thesis-first) refresh
+ * below. Re-applies the SAME two board.ts constants (SETUP_MAX_ITM_PCT / SETUP_MAX_OTM_PCT) the
+ * evidence gate already used once, against whatever `otmPct` the caller currently holds. Never
+ * invents a different threshold — see the `otmPct` field doc on ZeroDteGateInput for why.
+ *
+ * `isCondor` short-circuits to no blocks: a CONDOR is delta-neutral (no single-strike moneyness),
+ * and its otm_pct is always null at the refresh call site anyway (hasSingleStrikeMoneyness=false),
+ * so this is belt-and-suspenders, not load-bearing, for that branch.
+ *
+ * Fails OPEN on null/undefined `otmPct` — this is a supplementary re-check layered on top of
+ * board.ts's own fail-closed evidence gate (no_underlying_price), not a replacement for it, and a
+ * caller that doesn't supply a value must see zero behavior change (mirrors every other optional
+ * gate input in this file).
+ */
+export function moneynessGateBlocks(
+  otmPct: number | null | undefined,
+  isCondor: boolean
+): ZeroDteGateBlock[] {
+  if (isCondor || otmPct == null) return [];
+  const blocks: ZeroDteGateBlock[] = [];
+  if (otmPct < -SETUP_MAX_ITM_PCT) {
+    blocks.push({
+      code: "max_itm_pct",
+      reason:
+        `Top strike is ${Math.abs(otmPct).toFixed(2)}% ITM — past the ${SETUP_MAX_ITM_PCT}% ` +
+        "stock-replacement cap on the live-refreshed underlying (re-checked post live-spot refresh).",
+      threshold: -SETUP_MAX_ITM_PCT,
+      unlock_et: null,
+    });
+  } else if (otmPct > SETUP_MAX_OTM_PCT) {
+    blocks.push({
+      code: "max_otm_pct",
+      reason:
+        `Top strike is ${otmPct.toFixed(2)}% OTM — past the ${SETUP_MAX_OTM_PCT}% far-OTM lotto ` +
+        "cap on the live-refreshed underlying (re-checked post live-spot refresh).",
+      threshold: SETUP_MAX_OTM_PCT,
+      unlock_et: null,
+    });
+  }
+  return blocks;
+}
+
+const MONEYNESS_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set(["max_itm_pct", "max_otm_pct"]);
+
+/** Re-apply the moneyness cap after a deferred (thesis-first) contract-plan attach (scan.ts) —
+ *  mirrors refreshPlanQualityGateBlocks exactly. Needed because thesis-first defers
+ *  attachContractPlans (and therefore refreshUnderlyingFromLiveSpot) until AFTER
+ *  evaluateZeroDteGates has already run once against the PRE-refresh otm_pct. */
+export function refreshMoneynessGateBlocks(
+  gate: ZeroDteGateVerdict,
+  otmPct: number | null | undefined,
+  isCondor: boolean
+): ZeroDteGateVerdict {
+  const rest = gate.blocks.filter((b) => !MONEYNESS_GATE_CODES.has(b.code));
+  const blocks = [...rest, ...moneynessGateBlocks(otmPct, isCondor)];
+  return {
+    ...gate,
+    verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
+    blocks,
+  };
+}
+
+const PLAN_QUALITY_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
+  "plan_no_quote",
+  "plan_moved",
+  "plan_illiquid",
+  "plan_quote_stale",
+  "plan_quote_invalid",
+]);
+
+/** Re-apply G-8/G-9 after thesis-first deferred plan attach (scan.ts). */
+export function refreshPlanQualityGateBlocks(
+  gate: ZeroDteGateVerdict,
+  plan: ContractPlan | null
+): ZeroDteGateVerdict {
+  const nonPlan = gate.blocks.filter((b) => !PLAN_QUALITY_GATE_CODES.has(b.code));
+  const blocks = [...nonPlan, ...planQualityGateBlocks(plan)];
+  return {
+    ...gate,
+    verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
+    blocks,
+  };
+}
+
 /** Belt-and-suspenders: true when a fresh find must NOT write a ledger row. */
 export function freshCommitBlockedByPlan(plan: ContractPlan | null | undefined): boolean {
   return planQualityGateBlocks(plan ?? null).length > 0;
+}
+
+/**
+ * Re-apply the G-5 premium-budget check after thesis-first deferred plan attach (scan.ts),
+ * mirroring refreshPlanQualityGateBlocks. G-5 (governor.ts's evaluateZeroDteGovernor) runs
+ * INSIDE attachGateVerdicts with `entry_premium: input.plan?.entry_max ?? input.plan?.mark ?? null`
+ * — under thesis-first, `input.plan` is still null at that point (contract plans attach
+ * afterward), so the candidate's OWN contribution to the premium budget is permanently computed
+ * as 0 for the life of that gate verdict, even once the real plan is attached. Currently dormant
+ * in production (GOVERNOR_ENFORCE_PREMIUM_BUDGET defaults false — this is a MEASURE-only path
+ * today), but the same "stale verdict never reconciled after deferred attach" shape as the
+ * plan_no_quote bug (#2911) — found 2026-08-26 alongside it. If the flag is ever flipped on
+ * without this refresh, every thesis-first commit would silently under-count its own premium
+ * against the session cap.
+ *
+ * `gamma_regime` is NOT similarly stale — it comes from discovery/positioning data already on
+ * the setup before gates ever run, not from the deferred plan, so G-5's gamma-budget check
+ * (governor_gamma_budget) needs no refresh here.
+ */
+export function refreshGovernorPremiumBudgetBlocks(
+  gate: ZeroDteGateVerdict,
+  entryPremium: number | null,
+  premiumAtRisk: number,
+  /** Test-only override for GOVERNOR_ENFORCE_PREMIUM_BUDGET — the flag is read once at module
+   *  load (envFlag), so a test cannot flip it at runtime. Production always uses the default
+   *  (the real env-driven flag); only tests pass this explicitly. */
+  enforce: boolean = GOVERNOR_ENFORCE_PREMIUM_BUDGET
+): ZeroDteGateVerdict {
+  const nonPremium = gate.blocks.filter((b) => b.code !== "governor_premium_budget");
+  const premiumReason = premiumBudgetReason(premiumAtRisk + (entryPremium ?? 0));
+  const blocks =
+    enforce && premiumReason
+      ? [
+          ...nonPremium,
+          {
+            code: "governor_premium_budget" as const,
+            reason: premiumReason
+              .replace(" (MEASURE)", "")
+              .replace(/Surfaced as calibration evidence.*/, "Blocked — premium budget exceeded."),
+            threshold: GOVERNOR_MAX_PREMIUM_AT_RISK,
+            unlock_et: null,
+          },
+        ]
+      : nonPremium;
+  return {
+    ...gate,
+    verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
+    blocks,
+  };
 }
 
 /** "HH:MM" from ET minutes-since-midnight. */
@@ -1030,9 +1264,14 @@ function etLabel(etMinutes: number): string {
  */
 export function computeGateCalibration(input: ZeroDteGateInput): ZeroDteGateCalibration {
   const ticker = input.ticker.toUpperCase();
-  // Flat tape = no directional opposition (same treatment as aligned in G-4).
-  const aligned: boolean | null =
-    input.bias == null
+  // Flat tape = no directional opposition (same treatment as aligned in G-4). Single names are
+  // scoped OUT of the SPY-tape comparison here, mirroring the live gate's own G-1 scoping
+  // (INDEX_ETF_TICKERS-only) — a single name's bias-vs-direction comparison says nothing about
+  // its own tape, only SPY's, so an ungated non-index/ETF ticker reads as unconditionally
+  // "aligned" (found alongside the same bug in the live elevated-VIX gate, 2026-08-26).
+  const aligned: boolean | null = !INDEX_ETF_TICKERS.has(ticker)
+    ? true
+    : input.bias == null
       ? null
       : input.bias === "flat"
         ? true

@@ -158,10 +158,19 @@ assert `event.company_id === WHOP_COMPANY_ID` (defense-in-depth, ack-drop on def
 
 ---
 
-## Infra — Redis (ioredis 5.11.1) · Postgres (pg 8.21.0) · Railway
+## Infra — Redis (ioredis 5.11.1) · Postgres (pg 8.21.0)
+> **Stale as of this "Last full pass" date:** this section still names Railway, but Railway was fully
+> decommissioned 2026-07-25 — production Redis is now AWS ElastiCache (`blackout-production-redis-rg`)
+> and Postgres is AWS RDS (`blackout-production-postgres`), same as `docs/PGBOUNCER-SETUP.md` and
+> `docs/CLOUDFLARE_SETUP.md` already note for their own sections. The `family:0` IPv6 client setting and
+> the `'error'`-listener/Pool/query-parameterization behavior below are unaffected by the platform
+> move and remain accurate; the section title and the "Railway IPv6 internal DNS" current-state claim
+> were the only two stale-as-current-state mentions, now corrected below. The "single-node Railway
+> Redis" note further down is left as-is — it correctly describes what was true AT THE TIME of that
+> historical `49cb17d` fix, not a current-state claim.
 **🛡️ Prior CRITICAL RESOLVED:** pg Pool `'error'` handler present (`db.ts:106-111`) — no replica-crash.
 
-**✅ USED:** Redis `family:0` (Railway IPv6 internal DNS — load-bearing, do not remove) + mandatory
+**✅ USED:** Redis `family:0` (IPv6 internal DNS — load-bearing, do not remove) + mandatory
 `'error'` listener on all 8 clients; pg Pool (`max` default 5, `idleTimeout`, `connectionTimeout`,
 context-aware SSL); fully parameterized queries (`$n`, identifier interpolation allow-listed); atomic
 Lua rate-limiters; advisory-lock-serialized migrations. 🛡️

@@ -26,14 +26,15 @@
  */
 
 import type { EnrichedZeroDteSetup } from "./board";
-import { NEW_PLAY_CUTOFF_ET_MINUTES } from "./plan";
+import { DIRECTIONAL_LATE_CUTOFF_ET_MINUTES } from "./plan";
 
 /** Past this ET minute the opening chop has resolved — the favorable entry window per the research
  *  (entries at 9:45 ran −12% EV; the edge shows up after the first ~30–90 min). Exported so a backtest
  *  can sweep it. */
 export const POST_OPEN_ET_MINUTES = 10 * 60; // 10:00 ET
-/** No NEW 0DTE entries after the commit cutoff — MUST match NEW_PLAY_CUTOFF / G-14 (15:30 ET). */
-export const ENTRY_CUTOFF_ET_MINUTES = NEW_PLAY_CUTOFF_ET_MINUTES;
+/** No NEW DIRECTIONAL 0DTE entries after the commit cutoff — MUST match G-14 / the directional
+ *  gate (14:00 ET, DIRECTIONAL_LATE_CUTOFF_ET_MINUTES). Not the condor/backstop cutoff. */
+export const ENTRY_CUTOFF_ET_MINUTES = DIRECTIONAL_LATE_CUTOFF_ET_MINUTES;
 /** End of the measured-NEGATIVE early entry window [10:00, 10:45) ET. E2 (25 sessions,
  *  docs/audit/0DTE-RESEARCH.md) put a fixed entry at 10:00 at −7.8% EV and 10:30 at −9.1%; the
  *  first positive cell is 11:00 (+1.5%). The board still UNLOCKS at 10:00 (G-2) — blocking the

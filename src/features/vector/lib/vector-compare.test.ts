@@ -53,6 +53,22 @@ test("VECTOR_COMPARE_PRESETS: every preset respects max panes", () => {
   }
 });
 
+test("VECTOR_COMPARE_PRESETS: a preset's label never claims more tickers than it carries", () => {
+  // Regression: the "mag7" preset (id kept stable — referenced by capture-catalog's `preset=mag7`
+  // param) was labeled "Mag 7" while capped at 4 tickers by VECTOR_COMPARE_MAX_PANES, 3 short of
+  // the real Magnificent Seven.
+  for (const preset of VECTOR_COMPARE_PRESETS) {
+    const numberClaim = preset.label.match(/\d+/);
+    if (numberClaim) {
+      assert.equal(
+        Number(numberClaim[0]),
+        preset.tickers.length,
+        `${preset.id} label "${preset.label}" claims ${numberClaim[0]} tickers but carries ${preset.tickers.length}`
+      );
+    }
+  }
+});
+
 test("loadCompareSeedsBounded: preserves order with concurrency cap", async () => {
   const { loadCompareSeedsBounded } = await import("./vector-compare");
   let peak = 0;

@@ -16,7 +16,6 @@ import {
   beadKey,
   kingKey,
   kingStrikeByTime,
-  maxPctByTime,
   trailingRefs,
   rowSwellMul,
   rowPeakRefs,
@@ -322,6 +321,15 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
   private _requestUpdate: (() => void) | null = null;
   private _data: WallRailData | null = null;
   private _visible = false;
+  /** Per-repaint-frame-invariant derivations of `_data` (earliest bucket, kingship, live time) —
+   *  see the comment at their use site in `project()` for why this exists. */
+  private _derivedCache: {
+    forData: WallRailData;
+    earliest: number;
+    callKingAt: Map<number, number>;
+    putKingAt: Map<number, number>;
+    liveTime: number;
+  } | null = null;
   /** Background dim when member zooms out — candles stay dominant. */
   private _overlayDim = 1;
   private readonly _paneViews: readonly IPrimitivePaneView[] = [new WallRailPaneView(this)];
@@ -377,6 +385,7 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
     this._targetHalf.clear();
     this._kingEmph.clear();
     this._kingTargetEmph.clear();
+    this._derivedCache = null;
   }
 
   paneViews(): readonly IPrimitivePaneView[] {
@@ -564,31 +573,52 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
     this._targetHalf.clear();
     this._kingTargetEmph.clear();
 
-    // Earliest bucket across every trail — a trail that STARTS here began before/at the drawn window
-    // edge (session open / live-window trim), so its "birth" is unknowable and must NOT flash. Only a
-    // first-bucket strictly after this boundary is a real formation. Mirrors buildWallBeadMarkers.
-    let earliest = Infinity;
-    for (const t of [...callTrails, ...putTrails]) {
-      const t0 = t.points[0]?.time;
-      if (t0 != null && t0 < earliest) earliest = t0;
-    }
+    // Earliest bucket, per-time kingship, and the newest-bucket time are all pure functions of the
+    // TRAIL DATA — none read viewport/scale — yet `project()` runs on EVERY canvas repaint (every
+    // single wheel/drag tick during a zoom or pan), while `this._data` only changes on the much
+    // lower-frequency poll/refresh cadence (`setData`). Recomputing these full-history scans from
+    // scratch every repaint frame was measured live (CDP CPU profile, 2026-08-27) as a dominant
+    // contributor to multi-hundred-ms zoom/drag stalls. Cached below, invalidated only when
+    // `this._data` is reassigned — the SAME instance survives many repaint frames within one
+    // gesture, so this is a real cache hit, not one recompute masquerading as caching.
+    if (this._derivedCache?.forData !== this._data) {
+      // Earliest bucket across every trail — a trail that STARTS here began before/at the drawn
+      // window edge (session open / live-window trim), so its "birth" is unknowable and must NOT
+      // flash. Only a first-bucket strictly after this boundary is a real formation. Mirrors
+      // buildWallBeadMarkers.
+      let earliestCalc = Infinity;
+      for (const t of [...callTrails, ...putTrails]) {
+        const t0 = t.points[0]?.time;
+        if (t0 != null && t0 < earliestCalc) earliestCalc = t0;
+      }
 
-    // Kingship PER BUCKET, not one scalar per strike — the crown belongs to whichever strike held
-    // the highest share at that moment, so a handover is visible where it happened.
-    // One reference per bucket across BOTH sides — a call and a put of equal share at the same
-    // moment must read equally bright, exactly as maxPct did frame-wide.
-    const maxPctAtTime = maxPctByTime([...callTrails, ...putTrails]);
-    const callKingAt = kingStrikeByTime(callTrails);
-    const putKingAt = kingStrikeByTime(putTrails);
+      // Kingship PER BUCKET, not one scalar per strike — the crown belongs to whichever strike held
+      // the highest share at that moment, so a handover is visible where it happened.
+      // (A per-bucket maxPct-by-time map used to be computed here too, for point-in-time colour
+      // contrast — removed 2026-08-27, CodeQL-flagged dead code: the colour channel was switched to
+      // the frame-wide `maxPct` denominator back on 2026-08-19 — see the "COLOUR USES THE SAME
+      // SHARED DENOMINATOR AS SIZE" comment below — and nothing has read the per-bucket map since.)
+      const callKingAtCalc = kingStrikeByTime(callTrails);
+      const putKingAtCalc = kingStrikeByTime(putTrails);
 
-    // The newest bucket on screen. Only THIS bucket's emphasis eases (a smooth crossfade as the
-    // crown changes hands live); every earlier bucket renders its frozen truth. Easing history too
-    // would re-animate the past on every pan — a different kind of lie about what happened when.
-    let liveTime = -Infinity;
-    for (const t of [...callTrails, ...putTrails]) {
-      const last = t.points[t.points.length - 1];
-      if (last && last.time > liveTime) liveTime = last.time;
+      // The newest bucket on screen. Only THIS bucket's emphasis eases (a smooth crossfade as the
+      // crown changes hands live); every earlier bucket renders its frozen truth. Easing history too
+      // would re-animate the past on every pan — a different kind of lie about what happened when.
+      let liveTimeCalc = -Infinity;
+      for (const t of [...callTrails, ...putTrails]) {
+        const last = t.points[t.points.length - 1];
+        if (last && last.time > liveTimeCalc) liveTimeCalc = last.time;
+      }
+
+      this._derivedCache = {
+        forData: this._data,
+        earliest: earliestCalc,
+        callKingAt: callKingAtCalc,
+        putKingAt: putKingAtCalc,
+        liveTime: liveTimeCalc,
+      };
     }
+    const { earliest, callKingAt, putKingAt, liveTime } = this._derivedCache;
 
     const addTrail = (
       trail: StrikeTrail,

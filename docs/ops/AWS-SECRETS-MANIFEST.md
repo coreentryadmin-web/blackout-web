@@ -85,6 +85,8 @@ Secrets Manager. **Never commit real values.**
 | `INTEL_URL` | External intel feed |
 | `SENTRY_DSN` | Error tracking |
 | `ZERODTE_MAX_CONCURRENT` | Max simultaneously OPEN 0DTE plans (code default **100**; `0` = unlimited). Quality gates + session stop/loss floors remain the risk brake — do not lower this to invent desk scarcity. |
+| `ZERODTE_THESIS_FIRST` | Opt-in `1`/`true`/`on` — arms thesis-first **live** commit path (archetype gates, contract engine reorder). Default absent = shadow-only via `ZERODTE_THESIS_FIRST_SHADOW` default-ON. |
+| `ZERODTE_THESIS_FIRST_SHADOW` | Set `0`/`false`/`off` to disable shadow thesis attach when live mode is off. Ignored when `ZERODTE_THESIS_FIRST=1`. |
 
 ## Docker build-arg overrides (production vs staging defaults)
 

@@ -52,9 +52,10 @@ function noteFor(state: SessionHeatState): string {
 
 /** Compose the current session anchor from the shared clock helpers. Reads the clock; no IO. */
 export function currentZerodteSessionAnchor(nowMs: number = Date.now()): ZerodteSessionAnchor {
-  const ymd = todayEt();
+  const now = new Date(nowMs);
+  const ymd = todayEt(now);
   const tradingDay = isTradingDayEt(ymd);
-  const { hour, minute } = etNowParts();
+  const { hour, minute } = etNowParts(now);
   const heat = sessionHeat(hour * 60 + minute, tradingDay);
   return {
     as_of_et: etStamp(nowMs),

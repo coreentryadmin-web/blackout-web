@@ -721,6 +721,75 @@ test("persistZeroDteScan: a fresh COMMIT's upserted row pins entry_context.tier 
   }
 });
 
+// ── Condor entry_premium persistence (bug found 2026-08-26) ────────────────────────
+// A condor row's s.plan/s.top_strike_avg_fill are always null (no single-leg plan), so
+// resolveLedgerEntryPremium(null, null, null) used to return null for EVERY committed
+// condor — permanently (COALESCE-pinned at first write). aggregatePremiumAtRisk
+// (governor.ts) sums entry_premium across open rows, so an open condor's real risk was
+// silently invisible to the governor's session premium-at-risk budget the whole time it
+// was open. net_credit is priced $×100-per-contract; entry_premium is per-share
+// throughout this ledger, so the persisted value must be net_credit/100.
+test("persistZeroDteScan: a committed CONDOR row persists entry_premium from net_credit (was permanently null)", async () => {
+  resetState();
+  state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
+
+  const setup = {
+    ticker: "SPY",
+    direction: "short" as const,
+    play_type: "CONDOR" as const,
+    top_strike: null,
+    expiry: "2026-07-06",
+    contract_horizon: "ZERO_DTE" as const,
+    actual_dte_at_commit: 0,
+    grading_policy: "same_day_1530_close",
+    score: 78,
+    dossier_score: null,
+    conviction: null,
+    gross_premium: 0,
+    spike: false,
+    underlying_price: 550,
+    top_strike_avg_fill: null,
+    plan: null,
+    condor_plan: {
+      play_type: "CONDOR" as const,
+      expiry: "2026-07-06",
+      dte: 0,
+      spot: 550,
+      short_put: 545,
+      long_put: 543,
+      short_call: 555,
+      long_call: 557,
+      put_width_pct: 0.36,
+      call_width_pct: 0.36,
+      wing_pts: 2,
+      legs: [],
+      net_credit: 80, // $80/contract ($×100 units) — $0.80/share
+      gross_wing_risk: 200,
+      max_loss: 120,
+      credit_to_risk: 0.4,
+      net_credit_mid: 85,
+      credit_to_risk_mid: 0.425,
+      breach_lower: 545,
+      breach_upper: 555,
+    },
+    gamma_regime: null,
+    cortex: null,
+    gate: { verdict: "COMMIT" as const, blocks: [], calibration: null },
+    earnings: null,
+    news_hot: null,
+    halted: false,
+    fib_note: null,
+    direction_confirmed: null,
+  };
+
+  const { persistZeroDteScan } = await mod();
+  const logged = await persistZeroDteScan([setup as never]);
+
+  assert.equal(logged, 1);
+  assert.equal(state.upsertRows.length, 1);
+  assert.equal(state.upsertRows[0]!.entry_premium, 0.8, "net_credit ($80, ×100 units) → 0.80/share, matching directional entry_premium's per-share convention");
+});
+
 // ── HORIZON INTEGRITY fail-closed commit guard (PR-1) ──────────────────────────────
 test("persistZeroDteScan DROPS a WEEKLY_FALLBACK (dte≥2) candidate — never committed, never graded same-day", async () => {
   resetState();
@@ -776,7 +845,7 @@ function losingTimeStop(ticker: string): LedgerRow {
   });
 }
 
-test("scanZeroDteBoard: 5 realized losing time-stops HALT a fresh commit — the enforcement snapshot carries realized_losers/session_pnl_pct (SEV-3 wiring)", async () => {
+test("scanZeroDteBoard: 5 realized losing time-stops no longer HALT a fresh commit (GOVERNOR_ENFORCE_LOSS_HALT disabled by default, 2026-08-27 operator directive) — the enforcement snapshot still carries realized_losers/session_pnl_pct (SEV-3 wiring, now diagnostic-only)", async () => {
   resetState();
   // Ledger = five losing time-stops on OTHER tickers (so NVDA is a genuinely fresh,
   // un-committed candidate the gate stack will judge).
@@ -811,17 +880,14 @@ test("scanZeroDteBoard: 5 realized losing time-stops HALT a fresh commit — the
   assert.ok(nvda, "the NVDA flow print must survive discovery into a gated setup");
   assert.ok(nvda!.gate, "a fresh (un-committed) candidate must get a gate verdict");
 
-  // The discriminating assertion: the realized-loss halt block must be present. Its code
-  // is governor_session_loss_halt (distinct from the hard-stop halt's governor_session_stops).
-  const lossHalt = nvda!.gate!.blocks.find(
-    (b) => b.code === "governor_session_loss_halt" && /realized losers/i.test(b.reason)
-  );
-  assert.ok(
-    lossHalt,
-    "the enforcement snapshot must carry realized_losers so the loss-halt fires — pre-fix, the " +
-      "two-field literal dropped it and this block was absent (fresh commits ran through a 5-loser day)"
-  );
-  assert.equal(nvda!.gate!.verdict, "BLOCKED", "a halted session must not COMMIT a fresh play");
+  // GOVERNOR_ENFORCE_LOSS_HALT defaults to false (2026-08-27 operator directive: testing/
+  // pre-launch phase, no aggressive live 0DTE users yet — keep producing plays regardless of
+  // realized losses). The loss-halt block must therefore be ABSENT from a fresh candidate's
+  // gate trace even on a 5-realized-loser day — this is the mirror image of the pre-fix
+  // regression this test used to guard (a dropped realized_losers field silently prevented the
+  // block from ever firing; now it is INTENTIONALLY not enforced, a different fact).
+  const lossHalt = nvda!.gate!.blocks.find((b) => b.code === "governor_session_loss_halt");
+  assert.equal(lossHalt, undefined, "the loss-halt channel is measure-only by default -- it must not block a fresh commit");
 });
 
 // ── Phase 3a: with the whole-market flags OFF, the board is flow-only + every setup is ["FLOW"] ──

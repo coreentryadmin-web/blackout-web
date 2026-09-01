@@ -44,6 +44,33 @@ test("null, undefined, primitives and arrays pass straight through", () => {
   assert.equal(omitUncalibratedSpxConfidence(arr), arr, "arrays are not payload objects");
 });
 
+test("REGRESSION: a signal-log row (confidence present, rawScore ABSENT) is stripped too", () => {
+  // insertSpxSignalLog (spx-signal-log.ts) persists `confidence: play.rawScore` — the identical
+  // fabricated formula as the confluence/play shapes, but under the OTHER name and with no
+  // `rawScore` key at all. Before this fix, the guard required `rawScore` to be present, so this
+  // exact row shape sailed through get_signal_log completely unomitted.
+  const signalLogRow = {
+    id: 1,
+    signal_key: "2026-08-29|BUY|long",
+    action: "BUY",
+    bias: "bullish",
+    score: 40,
+    confidence: 96,
+    price: 7700,
+    entry: null,
+    stop: null,
+    target: null,
+    headline: "SPX long",
+    factors: [],
+    created_at: new Date(0).toISOString(),
+  };
+  const out = omitUncalibratedSpxConfidence(signalLogRow) as Record<string, unknown>;
+  assert.ok(!("confidence" in out), "the fabricated value must not reach the model under either name");
+  assert.equal(out.confidence_omitted, SPX_CONFIDENCE_OMITTED);
+  assert.equal(out.score, 40, "the non-fabricated fields survive");
+  assert.equal(out.headline, "SPX long");
+});
+
 test("does NOT recurse — a nested peer product's calibrated confidence survives", () => {
   // get_ecosystem_context carries Vector/Thermal/HELIX beside the SPX state. Removing a peer
   // lane's MEASURED confidence to fix ours would be the same defect in the other direction.

@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { isChunkLoadErrorMessage, CHUNK_ERROR_PATTERN_SOURCE } from "./chunk-reload";
+import {
+  isChunkLoadErrorMessage,
+  CHUNK_ERROR_PATTERN_SOURCE,
+  CHUNK_RELOAD_TELEMETRY_MESSAGE,
+} from "./chunk-reload";
 
 test("isChunkLoadErrorMessage: matches the real deploy-race errors, ignores app errors", () => {
   // The exact strings observed live during a rollout.
@@ -34,4 +38,8 @@ test("layout inline script embeds the canonical chunk-error pattern (kept in syn
   );
   // The resource-error branch matches failed <script>/<link> loads under static chunks/css paths.
   assert.ok(layout.includes("static") && layout.includes("chunks") && layout.includes("css") && layout.includes("tagName"), "guard must also catch failed chunk/css resource loads");
+  assert.ok(
+    layout.includes(CHUNK_RELOAD_TELEMETRY_MESSAGE) && layout.includes("sendBeacon") && layout.includes("/api/telemetry/client-error"),
+    "guard must beacon chunk-reload attempts before reload (sign-in + marketing funnels)"
+  );
 });

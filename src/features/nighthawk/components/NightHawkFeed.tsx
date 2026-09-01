@@ -18,7 +18,9 @@ import {
 import type { NightHawkSeedProps } from "@/features/nighthawk/lib/nighthawk-seed-props";
 import type { BoardResp } from "@/features/nighthawk/command-deck/zerodte-sources";
 import { NIGHTHAWK_GOTO_SWING_EVENT, type NightHawkGotoSwingDetail } from "@/features/nighthawk/lib/goto-swing";
+import { NightHawkDeskThemeToggle } from "@/features/nighthawk/components/NightHawkDeskThemeToggle";
 import { NightHawkLoadingSkeleton } from "@/features/nighthawk/components/NightHawkLoadingSkeleton";
+import { VectorBoardLoadingSkeleton } from "@/features/nighthawk/components/VectorBoardLoadingSkeleton";
 
 const ZeroDteDeck = dynamic(
   () => import("@/features/nighthawk/command-deck/containers").then((m) => m.ZeroDteDeck),
@@ -36,12 +38,16 @@ const BangerBoard = dynamic(
   () => import("@/features/nighthawk/components/BangerBoard").then((m) => m.BangerBoard),
   { loading: () => <NightHawkLoadingSkeleton /> }
 );
+const VectorPickLogBoard = dynamic(
+  () => import("@/features/nighthawk/components/VectorPickLogBoard").then((m) => m.VectorPickLogBoard),
+  { loading: () => <VectorBoardLoadingSkeleton /> }
+);
 
 /**
- * Night Hawk — one surface, four views (0DTE / Swings / Bangers / Legacy), single-select. ZERO_DTE/SWING/
- * LEGACY render the COMMAND DECK (a two-panel matrix terminal: plays left, live breakdown right); BANGER
- * renders BangerBoard — Engine B's standalone whole-market weekly-banger board (not part of the Command
- * Deck / horizon-ledger shape, see BangerBoard.tsx). Selecting a view scopes the ENTIRE desk to it and only
+ * Night Hawk — one surface, five views (0DTE / Swings / Bangers / Vector / Legacy), single-select.
+ * ZERO_DTE/SWING/LEGACY render the COMMAND DECK (a two-panel matrix terminal: plays left, live breakdown
+ * right); BANGER renders BangerBoard (Engine B); VECTOR renders VectorPickLogBoard (closed contract-pick
+ * analysis log). Selecting a view scopes the ENTIRE desk to it and only
  * that view's data is fetched. The choice persists in the URL (?view=).
  *
  * LEAPS was removed from this toggle 2026-08-04 (no live signal adapter fed it, so it only ever rendered an
@@ -91,19 +97,18 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
 
   return (
     <div className="nighthawk-content-canvas flex min-h-0 flex-1 flex-col">
-      <IosNativeSegment
-        value={view}
-        onChange={selectView}
-        accent="#ff2d55"
-        variant={nativeShell ? "compact" : "default"}
-        aria-label="Night Hawk view"
-        className="ios-native-desk-segment mb-3 shrink-0"
-        segments={NIGHTHAWK_VIEWS.map((v) => ({ id: v, label: NIGHTHAWK_VIEW_META[v].label }))}
-      />
-      {!nativeShell ? (
-        <p className="mb-3 shrink-0 text-sm font-bold leading-snug text-sky-100">{NIGHTHAWK_VIEW_META[view].blurb}</p>
-      ) : null}
-
+      <div className="nighthawk-feed-header mb-1 flex shrink-0 items-center gap-2">
+        <IosNativeSegment
+          value={view}
+          onChange={selectView}
+          accent="#00D9A3"
+          variant={nativeShell ? "compact" : "default"}
+          aria-label="Night Hawk view"
+          className="ios-native-desk-segment min-w-0 flex-1 shrink"
+          segments={NIGHTHAWK_VIEWS.map((v) => ({ id: v, label: NIGHTHAWK_VIEW_META[v].label }))}
+        />
+        <NightHawkDeskThemeToggle />
+      </div>
       <div
         className={clsx(
           "nighthawk-single-view flex w-full max-w-none flex-1 flex-col",
@@ -115,6 +120,7 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
         )}
         {view === "SWING" && <HorizonDeck horizon="SWING" focusTicker={swingFocusTicker} />}
         {view === "BANGER" && <BangerBoard />}
+        {view === "VECTOR" && <VectorPickLogBoard />}
         {isLegacy && <LegacyDeck edition={edition} error={editionError} />}
       </div>
     </div>

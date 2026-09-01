@@ -134,40 +134,57 @@ function extractHelixRead(result: any): SystemDirectionalRead | null {
 
 /**
  * Extract directional read from THERMAL GEX result.
- * Expected shape: gamma positioning, call/put walls, regime.
+ * Expected shape: gamma positioning, call/put walls.
+ *
+ * DEALER GAMMA IS NOT A DIRECTIONAL MEASUREMENT — this function used to assert otherwise, twice
+ * over. Short gamma amplifies a move in EITHER direction and long gamma dampens a move in EITHER
+ * direction, so folding either onto a bullish/bearish axis states something the matrix never
+ * measured. This is the exact live P0 (#2422) that `contract/product-adapters.ts::thermalContribution`
+ * was written to fix — Thermal casts NO directional vote there, on purpose — but the identical
+ * anti-pattern shipped again here, in the module that actually feeds the live adaptive-response
+ * orchestrator's consensus matrix and PLAY/WAIT/NO_TRADE gate (`desk-read-decision.ts`).
+ *
+ * It also read the WRONG field. The real payload (`GexPositioning`, `get_positioning`/
+ * `get_gex_heatmap`) carries `gamma_posture: "long" | "short" | null` — there is no `gamma_flip`
+ * string field; `flip` is a numeric strike level. So `result.gamma_flip === "positive"` never
+ * matched real data at all (silently voting "neutral" in production) while still matching any
+ * test/fixture payload built with that shape, which is how the bug passed review and how the
+ * repo's own `consensus-read-extract.test.ts` came to assert `{ gamma_flip: "positive" }` counts
+ * as a real bullish vote (see the updated test alongside this fix).
+ *
+ * The corrected mapping mirrors the ALREADY-ESTABLISHED convention in
+ * `helix-thermal-compare.ts::thermalReadFromPosture` (also documented in `tool-defs.ts`'s
+ * `get_helix_thermal_compare` description): long gamma -> "neutral" (dealers dampen both ways,
+ * mean-reverting), short gamma -> "mixed" (dealers amplify both ways) — never "bullish"/"bearish".
+ * Wall proximity is reported as evidence in `basis`, not folded into direction — a call wall
+ * sitting above spot is a level, not a vote.
  */
 function extractThermalRead(result: any): SystemDirectionalRead | null {
   if (!result || typeof result !== "object") return null;
 
-  // Thermal reports gamma flip direction and wall positions
-  const gammaFlip = result.gamma_flip ?? result.regime ?? null;
+  const posture: "long" | "short" | null = result.gamma_posture ?? result.regime?.posture ?? null;
   const callWall = result.call_wall ?? result.call_wall_strike ?? null;
   const putWall = result.put_wall ?? result.put_wall_strike ?? null;
   const spotPrice = result.spot ?? result.current_price ?? 0;
 
-  // Direction based on wall positioning relative to spot
-  let direction: "bullish" | "bearish" | "neutral" = "neutral";
-  let strength = 5; // neutral default
-  let basis = "Dealer positioning neutral";
+  let direction: "bullish" | "bearish" | "neutral" | "mixed" = "neutral";
+  let strength = 0;
+  let basis = "No dealer gamma posture available";
 
-  if (gammaFlip === "positive" || gammaFlip === "bullish") {
-    direction = "bullish";
-    strength = 7;
-    basis = "Positive gamma (dealer wants up)";
-  } else if (gammaFlip === "negative" || gammaFlip === "bearish") {
-    direction = "bearish";
-    strength = 7;
-    basis = "Negative gamma (dealer wants down)";
+  if (posture === "long") {
+    direction = "neutral";
+    strength = 6;
+    basis = "Long gamma (dealers dampen moves both ways — mean-reverting)";
+  } else if (posture === "short") {
+    direction = "mixed";
+    strength = 6;
+    basis = "Short gamma (dealers amplify moves both ways)";
   }
 
-  // Wall positioning refines the read
+  // Wall proximity is EVIDENCE, never a directional vote — described in basis only.
   if (callWall && spotPrice && callWall > spotPrice * 1.01) {
-    direction = "bullish";
-    strength = Math.max(strength, 8);
     basis += "; call wall above spot";
   } else if (putWall && spotPrice && putWall < spotPrice * 0.99) {
-    direction = "bearish";
-    strength = Math.max(strength, 8);
     basis += "; put wall below spot";
   }
 
@@ -448,7 +465,11 @@ export function extractConsensusFromTools(toolResults: Record<string, any>): Con
     if (bearishCount === voting) verdict = "strong_bearish";
     else verdict = "bearish";
     direction = "bearish";
-  } else if (Math.abs(bullishCount - bearishCount) <= 1) {
+  } else if (bullishCount + bearishCount > 0 && Math.abs(bullishCount - bearishCount) <= 1) {
+    // A near-even split needs at least one bullish AND one bearish vote to be a real conflict —
+    // unanimous (or all-but-one) neutral also satisfies `abs(0-0) <= 1` but is agreement, not
+    // disagreement. Reporting that as "conflicted" fabricates the exact fake cross-product
+    // disagreement this module's own header says it must never invent.
     verdict = "conflicted";
     direction = null;
   } else {

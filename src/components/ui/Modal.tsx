@@ -120,7 +120,7 @@ export function Modal({
             initial={panelInitial}
             animate={panelAnimate}
             exit={panelExit}
-            transition={{ duration: reduce ? 0 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+            transition={{ duration: reduce ? 0 : 0.22, ease: [0.4, 0, 0.2, 1] as const }}
             className={clsx(
               "relative z-10 flex w-full flex-col border border-white/12 bg-[rgba(8,9,14,0.92)] backdrop-blur-xl outline-none",
               "shadow-[0_30px_90px_-30px_rgba(0,0,0,0.85)]",
@@ -152,7 +152,7 @@ export function Modal({
                     type="button"
                     onClick={onClose}
                     aria-label="Close dialog"
-                    className="ml-auto grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 text-sky-300 transition-colors hover:border-bear/50 hover:text-bear focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                    className="ml-auto grid size-8 shrink-0 place-items-center rounded-lg border border-white/10 text-sky-300 transition-colors hover:border-bear/50 hover:text-bear focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
                   >
                     <span aria-hidden className="text-base leading-none">
                       ✕
@@ -161,7 +161,7 @@ export function Modal({
                 )}
               </div>
             )}
-            <div className="px-5 py-5 md:px-6">{children}</div>
+            <div className="p-5 md:px-6">{children}</div>
           </motion.div>
         </div>
       )}

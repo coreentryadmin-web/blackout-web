@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, test } from "node:test";
 import {
   createDrawingFromClick,
@@ -59,5 +61,26 @@ describe("vector-drawings", () => {
     const a = newDrawingId();
     const b = newDrawingId();
     assert.notEqual(a, b);
+  });
+
+  test("guard: switching draw tools clears the pending two-click draft anchor", () => {
+    // Regression guard for the 2026-08-27 fix: switching tools mid-draft (e.g. clicking one point
+    // of a trendline, then selecting "Select" or a different tool) used to leave draftAnchorRef
+    // pointing at the abandoned click. A ghost preview line kept following the cursor regardless
+    // of the active tool, and re-selecting a two-click tool later silently anchored the NEXT
+    // drawing to that stale, long-abandoned point instead of starting fresh. There's no React
+    // rendering harness in this repo to mount the hook directly, so this asserts the fix is wired
+    // into the source: the drawTool-change effect must clear both the anchor ref and the
+    // primitive's draft preview.
+    const src = readFileSync(
+      join(process.cwd(), "src/features/vector/lib/use-vector-chart-drawings.ts"),
+      "utf8"
+    );
+    const effectMatch = src.match(
+      /useEffect\(\(\) => \{\s*drawToolRef\.current = drawTool;[\s\S]*?\}, \[drawTool[^\]]*\]\);/
+    );
+    assert.ok(effectMatch, "expected the drawTool-sync effect to exist");
+    assert.match(effectMatch![0], /draftAnchorRef\.current = null/);
+    assert.match(effectMatch![0], /drawingsPrimitiveRef\.current\?\.setDraft\(null, null\)/);
   });
 });

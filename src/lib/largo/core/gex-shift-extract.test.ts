@@ -43,6 +43,23 @@ test("not-called and nothing-moved are different — one is null, one is a table
   assert.equal(extractGexShifts([{ updated_strikes: [{ strike: "x" }] }]), null);
 });
 
+test("called with a genuinely EMPTY updated_strikes is a real, checked no-move result — a table, not null", () => {
+  // gexMatrixChangesForLargo's actual shape when spot moved but no strike exceeded the change
+  // threshold: the tool ran, updated_strikes is [], and that is a fact worth rendering, not the
+  // same "we did not look" state as never having called the tool at all.
+  const noMove = {
+    ticker: "SPX",
+    asof: "2026-08-10T14:38:22Z",
+    previous_asof: "2026-08-10T14:37:22Z",
+    updated_strikes: [],
+  };
+  const t = extractGexShifts([noMove]);
+  assert.notEqual(t, null, "a genuinely empty result must not read as unchecked");
+  assert.deepEqual(t!.shifts, []);
+  assert.equal(t!.asOf, "2026-08-10T14:38:22Z");
+  assert.equal(t!.previousAsOf, "2026-08-10T14:37:22Z");
+});
+
 test("a partially-formed row is dropped, never rendered with a blank change", () => {
   const messy = {
     updated_strikes: [

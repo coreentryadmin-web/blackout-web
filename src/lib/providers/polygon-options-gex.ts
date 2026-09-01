@@ -8,6 +8,7 @@ import { fetchStockSnapshot, fetchIndexSnapshot } from "./polygon";
 import { rebaseChangePct } from "./change-pct";
 import { todayEtYmd } from "./spx-session";
 import { liveExpiries } from "./expiry-liveness";
+import { logToken } from "@/lib/log-token";
 import { buildGexDepthLadder, type DepthContract, type GexDepthLadder } from "@/lib/gex-depth";
 import { polygonTrackedFetch } from "./polygon-rate-limiter";
 import { isHeatmapPreset } from "../heatmap-allowlist";
@@ -1222,7 +1223,10 @@ async function fetchSpotFromPrevBar(
 ): Promise<{ price: number; change_pct: number } | null> {
   try {
     const { fetchPreviousDayBar } = await import("./polygon-largo");
-    const bar = await fetchPreviousDayBar(symbol);
+    // Last-resort previous-session close — not a live quote. Allow ISR on routes (homepage
+    // `revalidate = 3600`) that hit this path when WS + snapshot are down; `no-store` here
+    // was forcing fully dynamic renders (FINDINGS 2026-08-30 homepage ISR).
+    const bar = await fetchPreviousDayBar(symbol, { next: { revalidate: 3600 } });
     if (!bar || !(bar.c > 0)) return null;
     return { price: bar.c, change_pct: 0 };
   } catch {
@@ -1757,9 +1761,12 @@ const GEX_HEATMAP_FAST_MOVE_TTL_MS = gexHeatmapFastMoveTtlMs();
  * the cap / fully following next_url is a value-changing follow-up (API_INTEGRATION_MAP →
  * "Pagination guards can silently truncate the chain").
  */
-function warnChainTruncated(label: string, underlying: string, pages: number): void {
+// Exported for tests only — this is the same shape as every other test-only export in this
+// file: a call-site-adjacent unit prevents the log-injection regression without needing a full
+// network mock (see `polygon-options-gex.test.ts` for the newline-neutralization case).
+export function warnChainTruncated(label: string, underlying: string, pages: number): void {
   console.warn(
-    `[polygon-gex] ${label}(${underlying}) truncated: hit ${pages}-page guard with next_url still set — chain incomplete, walls/OI/IV understated. Raise the page guard or paginate fully if this recurs.`
+    `[polygon-gex] ${logToken(label)}(${logToken(underlying)}) truncated: hit ${pages}-page guard with next_url still set — chain incomplete, walls/OI/IV understated. Raise the page guard or paginate fully if this recurs.`
   );
 }
 
@@ -1840,19 +1847,49 @@ const HEATMAP_DIVIDEND_YIELD_PROXY: Record<string, string> = {
 };
 
 /**
+ * Trailing-12-month cash-dividend yield from raw distribution history — decimal (0.0098 = 0.98%),
+ * or `null` when there is nothing to compute from (no spot, or no dividends in the window; the
+ * latter is a real answer for a genuine non-payer, callers should treat it as 0, not as failure).
+ */
+export function trailingTwelveMonthDividendYield(
+  dividends: readonly { cash_amount: number; ex_dividend_date: string }[],
+  spot: number,
+  nowMs: number
+): number | null {
+  if (!(spot > 0)) return null;
+  const cutoffMs = nowMs - 365 * 24 * 60 * 60 * 1000;
+  const sum = dividends.reduce((acc, d) => {
+    const t = Date.parse(d.ex_dividend_date);
+    return Number.isFinite(t) && t >= cutoffMs ? acc + d.cash_amount : acc;
+  }, 0);
+  return sum > 0 ? sum / spot : 0;
+}
+
+/**
  * Inner resolve. THROWS rather than returning 0 when the yield is UNAVAILABLE — that is what keeps
  * a transient upstream blip out of the 1h cache below: `refreshCache` writes the store only on a
  * fulfilled loader, so a rejection leaves the key unset and the next call retries. A genuine
  * non-payer (`raw <= 0`) is a real answer and does get cached. The caller turns the throw into 0.
  */
-async function resolveHeatmapDividendYieldUncached(lookup: string): Promise<number> {
+async function resolveHeatmapDividendYieldUncached(lookup: string, spot: number): Promise<number> {
   const { fetchPolygonFinancialRatios } = await import("./polygon");
   const ratios = await fetchPolygonFinancialRatios(lookup);
   const raw = ratios?.dividend_yield;
-  if (raw == null || !Number.isFinite(raw)) throw new Error(`no dividend_yield for ${lookup}`);
-  if (raw <= 0) return 0;
-  // Guard percent-vs-decimal: yields above 100% are nonsense; above 1 likely percent notation.
-  return raw > 1 ? raw / 100 : raw;
+  if (raw != null && Number.isFinite(raw)) {
+    if (raw <= 0) return 0;
+    // Guard percent-vs-decimal: yields above 100% are nonsense; above 1 likely percent notation.
+    return raw > 1 ? raw / 100 : raw;
+  }
+  // /stocks/financials/v1/ratios covers companies, not funds — it structurally has no row for an
+  // ETF (SPY/QQQ/IWM/VOO/DIA all correctly return null here, live-verified 2026-08-28), which is
+  // why every SPX/NDX/RUT heatmap (proxied to SPY/QQQ/IWM below) always fell back to q=0 through
+  // this path alone. /v3/reference/dividends DOES carry real ETF distribution history — fall back
+  // to a trailing-12mo cash sum from that instead of giving up.
+  const { fetchPolygonDividends } = await import("./polygon");
+  const dividends = await fetchPolygonDividends(lookup, 8);
+  const fromDividends = trailingTwelveMonthDividendYield(dividends, spot, Date.now());
+  if (fromDividends == null) throw new Error(`no dividend_yield for ${lookup}`);
+  return fromDividends;
 }
 
 /**
@@ -1871,13 +1908,13 @@ async function resolveHeatmapDividendYieldUncached(lookup: string): Promise<numb
  * blip's q=0 for an hour would silently reinstate the exact 10–22% VEX/CHARM under-read this change
  * exists to fix, and would do it invisibly.
  */
-async function resolveHeatmapDividendYield(root: string): Promise<number> {
+async function resolveHeatmapDividendYield(root: string, spot: number): Promise<number> {
   const upper = root.toUpperCase();
   const lookup = HEATMAP_DIVIDEND_YIELD_PROXY[upper] ?? upper.replace(/^I:/, "");
   try {
     const { serverCache, TTL } = await import("../server-cache");
     const q = await serverCache(`heatmap-div-yield:${lookup}`, TTL.REFERENCE, () =>
-      resolveHeatmapDividendYieldUncached(lookup)
+      resolveHeatmapDividendYieldUncached(lookup, spot)
     );
     return Number.isFinite(q) && q > 0 ? q : 0;
   } catch {
@@ -2329,28 +2366,25 @@ function fmtElapsed(ms: number): string {
   return m > 0 ? `${h}h${m}m` : `${h}h`;
 }
 
-/** Largest-positive (call) and largest-negative (put) wall strikes from per-strike totals. */
-function wallsOf(strikeTotals: Record<string, number>): {
+/**
+ * Largest-positive (call) and largest-negative (put) wall strikes from per-strike totals.
+ *
+ * Delegates to `wallsFromStrikeTotals` (gex-cross-validation-core.ts) rather than reimplementing
+ * the scan — this was a fourth independent copy of the same unconstrained "argmax anywhere" bug
+ * already found and fixed in `gex-intraday-adjust-core.ts` and in that shared helper itself
+ * (measured live: a "call wall" landing below spot, a "put wall" above it). Pass `spot` so the
+ * wall used for `wall_changes` narration AND the `wall_broken` alert (WALL_BROKEN_TICKERS =
+ * SPY/SPX) is side-constrained — without it, a bigger-magnitude strike on the wrong side of spot
+ * silently defeats the alert or mislabels the shift text.
+ */
+function wallsOf(
+  strikeTotals: Record<string, number>,
+  spot?: number
+): {
   callWall: number | null;
   putWall: number | null;
 } {
-  let callWall: number | null = null;
-  let putWall: number | null = null;
-  let maxPos = 0;
-  let maxNeg = 0;
-  for (const [s, g] of Object.entries(strikeTotals)) {
-    const strike = Number(s);
-    if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;
-    if (g > maxPos) {
-      maxPos = g;
-      callWall = strike;
-    }
-    if (g < maxNeg) {
-      maxNeg = g;
-      putWall = strike;
-    }
-  }
-  return { callWall, putWall };
+  return wallsFromStrikeTotals(strikeTotals, spot);
 }
 
 /**
@@ -2447,7 +2481,10 @@ const CHARM_SHIFT_SPEC: ShiftMetricSpec = {
  */
 function computeMetricShift(
   ring: GexHistorySnapshot[],
-  current: { ts: number; flip: number | null; strike_totals: Record<string, number> },
+  // `spot` only carried by the GEX-metric caller (computeGexShift) — VEX/DEX/CHARM shifts have no
+  // spot-relative "resistance/support" concept, so their wall picks stay unconstrained (spot
+  // undefined) exactly as before.
+  current: { ts: number; spot?: number; flip: number | null; strike_totals: Record<string, number> },
   pick: (s: GexHistorySnapshot) => {
     strike_totals: Record<string, number>;
     flip: number | null;
@@ -2496,8 +2533,11 @@ function computeMetricShift(
   };
 
   // Wall changes (current walls recomputed from totals; earlier from the snapshot's totals).
-  const curWalls = wallsOf(now);
-  const earWalls = wallsOf(earlier);
+  // Each side is constrained against ITS OWN spot at that moment — the current wall against
+  // current.spot, the earlier wall against the baseline snapshot's own spot — not a shared spot,
+  // since spot has moved between the two snapshots being diffed.
+  const curWalls = wallsOf(now, current.spot);
+  const earWalls = wallsOf(earlier, baselineSnap.spot);
   const wall_changes = {
     call_wall: wallChange(curWalls.callWall, earWalls.callWall, now, earlier),
     put_wall: wallChange(curWalls.putWall, earWalls.putWall, now, earlier),
@@ -2663,7 +2703,7 @@ export function computeGexEvents(
     n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
 
   // Recompute the prior's walls + net total from its stored per-strike totals (no extra calls).
-  const priorWalls = wallsOf(prior.strike_totals);
+  const priorWalls = wallsOf(prior.strike_totals, prior.spot);
   let priorTotal = 0;
   for (const v of Object.values(prior.strike_totals)) {
     const n = Number(v);
@@ -3092,7 +3132,7 @@ async function buildGexHeatmapUncached(
   // Band sizing stays RELATIVE (% of spot) so it works for $5 and $900 names.
   const [chainResult, dividendYieldQ] = await Promise.all([
     fetchHeatmapBand(optionsRoot, spot, root),
-    resolveHeatmapDividendYield(root),
+    resolveHeatmapDividendYield(root, spot),
   ]);
   const contracts = chainResult.contracts;
   const chainTruncated = chainResult.truncated;
@@ -3839,6 +3879,39 @@ export async function readGexHeatmapSnapshot(underlying = "SPX"): Promise<GexHea
   return finalizeHeatmapForServe(cacheKey, handoff);
 }
 
+/**
+ * Strict cache-reader for scan-path consumers (thesis evidence bundle): in-memory, then
+ * Redis (500ms cap). NEVER registers single-flight or kicks a Polygon chain build — cold
+ * or past the SWR ceiling → null. Unlike readGexHeatmapSnapshot, this does not call
+ * tryStaleWhileRevalidateHeatmap, so a cache miss cannot fan out background builds across
+ * the whole 0DTE board roster.
+ */
+export async function readGexHeatmapCacheOnly(underlying: string): Promise<GexHeatmap | null> {
+  if (!polygonConfigured()) return null;
+  const { root } = resolveOptionsRoot(underlying);
+  if (!root) return null;
+  const cacheKey = `${GEX_HEATMAP_CACHE_PREFIX}:${root}`;
+  const now = Date.now();
+  const maxStaleMs = gexHeatmapMaxStaleMs();
+
+  let entry = cachedHeatmaps.get(cacheKey) ?? null;
+  if (!entry) {
+    try {
+      const { sharedCacheGet } = await import("../shared-cache");
+      entry = await Promise.race([
+        sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
+      ]);
+      if (entry) setCachedHeatmap(cacheKey, entry);
+    } catch {
+      /* redis optional */
+    }
+  }
+
+  if (!entry || now - entry.at > maxStaleMs) return null;
+  return finalizeHeatmapForServe(cacheKey, entry.data);
+}
+
 /** One ticker's shared-cache freshness, as reported by peekGexHeatmapCache. */
 export type GexHeatmapCachePeek = {
   ticker: string;
@@ -3934,12 +4007,12 @@ async function polygonFetchUrl(url: string): Promise<ChainResponse | null> {
     if (!res.ok) {
       // Surface silent provider failures (invalid/non-Massive key, plan without
       // options-chain access, bad symbol). Host + status only — never the apiKey.
-      console.warn(`[polygon-gex] chain fetch ${res.status} ${res.statusText || ""} from ${hostOf(full)} ${endpointKey}`.trim());
+      console.warn(`[polygon-gex] chain fetch ${res.status} ${res.statusText || ""} from ${hostOf(full)} ${logToken(endpointKey)}`.trim());
       return null;
     }
     return (await res.json()) as ChainResponse;
   } catch (err) {
-    console.warn(`[polygon-gex] chain fetch threw from ${hostOf(full)} ${endpointKey}: ${err instanceof Error ? err.message : String(err)}`);
+    console.warn(`[polygon-gex] chain fetch threw from ${hostOf(full)} ${logToken(endpointKey)}: ${logToken(err instanceof Error ? err.message : String(err))}`);
     return null;
   }
 }

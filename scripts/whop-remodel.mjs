@@ -16,7 +16,7 @@ const MAX_DESC = 1480;
 
 const COMPANY = {
   title: "BlackOut Trades",
-  description: `BlackOut is a live options trading desk — six integrated modules on one platform: HELIX flow, SPX Slayer 0DTE, Largo AI, Night Hawk, Thermal heatmaps, and a graded play log. Community Discord $75/mo or Premium $199/mo / $1,999/yr. Sign up free at blackouttrades.com, checkout with the same email. Educational tools only — not financial advice.`,
+  description: `BlackOut is a live options trading desk — six integrated modules on one platform: HELIX flow, SPX Slayer 0DTE, Largo AI, Night Hawk, Thermal heatmaps, and a graded play log. SPX Slayer ${49}/mo or Premium ${199}/mo / ${1999}/yr. Sign up free at blackouttrades.com, checkout with the same email. Educational tools only — not financial advice.`,
   target_audience:
     "Active SPX and 0DTE options traders who want institutional-grade flow, dealer gamma, and AI desk tools in one platform.",
   social_links: [
@@ -26,10 +26,10 @@ const COMPANY = {
 };
 
 const FAQ = `
-FAQ — Premium: full desk + Discord. Community: Discord-only ($75). Data is licensed, live during RTH. No broker link required. Same email at blackouttrades.com + checkout. Cancel anytime; billing@blackouttrades.com for help.`;
+FAQ — Premium: full desk + Discord. SPX Slayer ($49/mo): live SPX desk + Discord. Data is licensed, live during RTH. No broker link required. Same email at blackouttrades.com + checkout. Cancel anytime; billing@blackouttrades.com for help.`;
 
-const COMMUNITY_FAQ = `
-FAQ — Discord-only: signals, reads, recaps. No web platform. Upgrade to Premium anytime. Same email at blackouttrades.com. Cancel anytime.`;
+const SPX_SLAYER_FAQ = `
+FAQ — SPX Slayer includes the live SPX desk (regime, GEX, graded 0DTE plays) plus Discord. Does NOT include HELIX, Largo, Night Hawk scanners, Thermal, or Vector (Premium only). Same email at blackouttrades.com. Cancel anytime.`;
 
 function cap(text) {
   const t = text.trim();
@@ -66,20 +66,20 @@ Sign up at blackouttrades.com, checkout with the same email.${FAQ}`),
     store_page_config: { custom_cta: "Save $389 / Yearly", show_price: true },
   },
   prod_hPHU7bWcvWg8T: {
-    title: "BlackOut Discord Community",
-    headline: "The room — live signals, daily reads, Discord",
-    description: cap(`Private Discord for SPX-focused traders — $75/mo.
+    title: "BlackOut SPX Slayer",
+    headline: "Live SPX desk — regime, GEX, graded 0DTE plays",
+    description: cap(`SPX Slayer — the live SPX/SPXW 0DTE desk — $49/mo.
 
-• Daily live signals & market reads
-• Real-time session discussions
-• Evening recaps & next-day prep
-• Upgrade to Premium anytime
+• Live SPX regime & dealer gamma (GEX)
+• Graded 0DTE plays (A–F) with entry/stop/target
+• Strike-level heatmaps on SPX
+• Private Discord included
 
-Does not include SPX Slayer, HELIX, Largo, or heatmaps (Premium only).
+Does NOT include HELIX flow, Largo AI, Night Hawk/0DTE Command scanners, Thermal multi-ticker heatmaps, or Vector (Premium only).
 
-Free account at blackouttrades.com, checkout with same email.${COMMUNITY_FAQ}`),
+Create a free account at blackouttrades.com, then checkout with the same email.${SPX_SLAYER_FAQ}`),
     custom_cta: "join",
-    store_page_config: { custom_cta: "Join Community", show_price: true },
+    store_page_config: { custom_cta: "Get SPX Slayer $49", show_price: true },
   },
   prod_fSnPbyYQi50Wm: {
     title: "Life Time Access",
@@ -98,8 +98,8 @@ const PLANS = {
     description: "Full desk + Discord. Save $389 vs monthly.",
   },
   plan_F6TycpzlDjfql: {
-    title: "Community Discord — $75/mo",
-    description: "Discord-only. Upgrade to Premium anytime.",
+    title: "SPX Slayer — $49/mo",
+    description: "Live SPX desk + Discord. Premium unlocks all six modules.",
   },
   plan_GMS9jVmX6paTb: {
     visibility: "archived",

@@ -7,26 +7,13 @@ import { CheckoutLink } from "@/components/analytics/CheckoutLink";
 import { FeatureComparison } from "@/components/upgrade/FeatureComparison";
 import { PRICING_FAQ_IDS, selectFaqItems } from "@/lib/faq/content";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
+import { PLAN_MATRIX } from "@/lib/plan-matrix";
 import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
 
 /** Full-desk perks — every module, one membership. */
-const DESK_PERKS = [
-  "HELIX live options-flow feed",
-  "SPX Slayer · 0DTE desk",
-  "Largo desk analyst",
-  "Dealer gamma / GEX positioning",
-  "Dark-pool prints",
-  "Night Hawk evening playbook",
-  "Strike-level heatmaps",
-  "Transparent play log, graded A–F",
-];
+const DESK_PERKS = PLAN_MATRIX.premium_monthly.includes;
 
-const SPX_PERKS = [
-  "Live SPX regime & GEX positioning",
-  "0DTE graded plays A–F",
-  "Dealer gamma & strike heatmaps",
-  "Real-time VWAP & structure",
-];
+const SPX_PERKS = PLAN_MATRIX.spx_slayer.includes.slice(0, 4);
 
 /** Redesigned pricing page — three tiers, real perks, the "lights on" language. */
 export function RedesignPricing() {

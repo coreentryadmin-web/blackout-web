@@ -62,7 +62,7 @@ export function PricingBackdrop() {
 
       {/* perspective "trading-floor" grid receding to the horizon */}
       <div
-        className="absolute left-0 right-0 bottom-0"
+        className="absolute inset-x-0 bottom-0"
         style={{
           height: "58%",
           perspective: "480px",
@@ -89,7 +89,7 @@ export function PricingBackdrop() {
 
       {/* glowing horizon where floor meets sky */}
       <div
-        className="absolute left-0 right-0"
+        className="absolute inset-x-0"
         style={{
           bottom: "58%",
           height: 2,
@@ -139,7 +139,7 @@ export function PricingBackdrop() {
 
       {/* top hairline */}
       <div
-        className="absolute top-0 left-0 right-0 h-px"
+        className="absolute top-0 inset-x-0 h-px"
         style={{ background: "linear-gradient(90deg, transparent, rgba(0,230,118,0.4), transparent)" }}
       />
     </div>

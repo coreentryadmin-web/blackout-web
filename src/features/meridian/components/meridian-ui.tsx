@@ -18,7 +18,10 @@ export function ReactionFlag({ print }: { print: MeridianEarningsPrint }) {
   const q = reactionQualifier(print);
   if (!q) return null;
   return (
-    <span className="meridian-reaction-flag" title={q.title}>
+    <span
+      className={`meridian-reaction-flag meridian-reaction-flag-${q.kind}`}
+      title={q.title}
+    >
       {q.mark}
     </span>
   );
@@ -219,16 +222,24 @@ export function MeridianActionDock({ item, boardTickers }: ActionDockProps) {
   return (
     <nav className={`meridian-action-dock ${theme.accent}`} aria-label="Cross-tool navigation">
       <p className="meridian-action-dock-label">Jump to desk</p>
+      <p className="meridian-action-dock-hint">
+        Thermal, HELIX, Vector, Night Hawk, and SPX previews render inline on Positioning when live
+        data is available.
+      </p>
       <div className="meridian-action-dock-row">
-        <Link href="/dashboard" className="meridian-dock-btn meridian-dock-btn-primary">
-          SPX desk
-        </Link>
-        <Link href="/heatmap?ticker=SPX" className="meridian-dock-btn">
-          Thermal · SPX
-        </Link>
-        <Link href="/flows?ticker=SPX" className="meridian-dock-btn">
-          HELIX · SPX
-        </Link>
+        {!ticker && (
+          <>
+            <Link href="/dashboard" className="meridian-dock-btn meridian-dock-btn-primary">
+              SPX desk
+            </Link>
+            <Link href="/heatmap?ticker=SPX" className="meridian-dock-btn">
+              Thermal · SPX
+            </Link>
+            <Link href="/flows?ticker=SPX" className="meridian-dock-btn">
+              HELIX · SPX
+            </Link>
+          </>
+        )}
         {ticker && (
           <>
             <Link href={`/vector?ticker=${encodeURIComponent(ticker)}`} className="meridian-dock-btn">
@@ -258,6 +269,23 @@ export function MeridianShimmer({ lines = 3 }: { lines?: number }) {
       {Array.from({ length: lines }).map((_, i) => (
         <div key={i} className="meridian-shimmer-line" style={{ animationDelay: `${i * 120}ms` }} />
       ))}
+    </div>
+  );
+}
+
+/** Visible loading copy — silent shimmer reads as a broken empty lane. */
+export function MeridianLoadingNotice({
+  label,
+  sub,
+}: {
+  label: string;
+  sub?: string | null;
+}) {
+  return (
+    <div className="meridian-loading-notice" role="status" aria-live="polite">
+      <p className="meridian-loading-notice-label">{label}</p>
+      {sub ? <p className="meridian-loading-notice-sub">{sub}</p> : null}
+      <MeridianShimmer lines={3} />
     </div>
   );
 }

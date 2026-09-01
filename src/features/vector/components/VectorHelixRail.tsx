@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import clsx from "clsx";
+import { ExternalLink } from "lucide-react";
 import type { FlowAlert } from "@/lib/api";
 import { fmtPremium } from "@/lib/api";
 import { FreshnessChip } from "@/components/ui";
@@ -14,23 +15,27 @@ import {
   fmtFullTimestamp,
 } from "@/features/helix/lib/helix-flow-format";
 import { flowDedupeKey } from "@/features/helix/lib/helix-flow-tape-merge";
-import { useVectorHelixFlows } from "@/features/vector/lib/use-vector-helix-flows";
+import type { useVectorHelixFlows } from "@/features/vector/lib/use-vector-helix-flows";
 import {
   pickVectorLiveHelixLayout,
   VECTOR_HELIX_DEFAULT_FILTERS,
   VECTOR_HELIX_WHALE_PREMIUM,
-  vectorLiveHelixSubtitle,
   type VectorHelixFlowFilters,
   type VectorHelixTypeFilter,
 } from "@/features/vector/lib/vector-helix-flows";
 
+export type VectorHelixFlowState = Pick<
+  ReturnType<typeof useVectorHelixFlows>,
+  "flows" | "loading" | "live" | "flashKeys"
+>;
+
 type Props = {
   ticker: string;
   liveSession: boolean;
+  /** Session tape from the shell — one fetch feeds the rail AND the Suggested Play engine. */
+  helixState: VectorHelixFlowState;
   /** Flash the flow's strike on the chart (alongside drilldown). */
   onStrikeFocus?: (strike: number, flow: FlowAlert) => void;
-  /** Live SSE print — auto flash strike + pulse the matching candle. */
-  onFlowFlash?: (flow: FlowAlert) => void;
 };
 
 function SignalPill({ label, tone }: { label: string; tone: string }) {
@@ -118,9 +123,9 @@ function FlowCard({
 }
 
 /** Vector desk — Live Helix: Recent strip + premium-ranked session tape. */
-export function VectorHelixRail({ ticker, liveSession, onStrikeFocus, onFlowFlash }: Props) {
+export function VectorHelixRail({ ticker, liveSession, helixState, onStrikeFocus }: Props) {
   const normalized = ticker.trim().toUpperCase();
-  const { flows, loading, live, flashKeys } = useVectorHelixFlows(normalized, liveSession, onFlowFlash);
+  const { flows, loading, live, flashKeys } = helixState;
 
   const [filters, setFilters] = useState<VectorHelixFlowFilters>(VECTOR_HELIX_DEFAULT_FILTERS);
   const [selected, setSelected] = useState<FlowAlert | null>(null);
@@ -130,7 +135,6 @@ export function VectorHelixRail({ ticker, liveSession, onStrikeFocus, onFlowFlas
     [flows, filters]
   );
   const { recent, ranked } = layout;
-  const subtitle = vectorLiveHelixSubtitle(layout, liveSession);
   const hasAny = recent.length > 0 || ranked.length > 0;
 
   const setTypeFilter = (typeFilter: VectorHelixTypeFilter) => {
@@ -147,17 +151,20 @@ export function VectorHelixRail({ ticker, liveSession, onStrikeFocus, onFlowFlas
           <div>
             <p className="vector-helix-kicker">Live Helix</p>
             <h2 className="vector-helix-title">{normalized} live tape</h2>
-            <p className="vector-helix-subtitle">{subtitle}</p>
           </div>
-          <FreshnessChip status={liveSession && live ? "live" : "stale"} label={live ? "LIVE" : "STALE"} />
+          <div className="vector-helix-head-actions">
+            <FreshnessChip status={liveSession && live ? "live" : "stale"} label={live ? "LIVE" : "STALE"} />
+            <Link
+              href={`/flows?ticker=${encodeURIComponent(normalized)}`}
+              className="vector-helix-open-full"
+              aria-label="Open full Helix tape"
+              title="Full Helix tape"
+              data-testid="vector-helix-open-full"
+            >
+              <ExternalLink size={13} aria-hidden />
+            </Link>
+          </div>
         </div>
-        <Link
-          href={`/flows?ticker=${encodeURIComponent(normalized)}`}
-          className="vector-helix-open-full"
-          data-testid="vector-helix-open-full"
-        >
-          Full Helix tape →
-        </Link>
       </header>
 
       <div className="vector-helix-controls vector-helix-controls--major">
@@ -190,7 +197,6 @@ export function VectorHelixRail({ ticker, liveSession, onStrikeFocus, onFlowFlas
             {recent.length > 0 ? (
               <div className="vector-helix-section" data-testid="vector-helix-recent-section">
                 <h3 className="vector-helix-section-title">Recent</h3>
-                <p className="vector-helix-section-kicker">Latest prints · by time</p>
                 <div className="vector-helix-cards">
                   {recent.map((flow, i) => (
                     <FlowCard
@@ -208,7 +214,6 @@ export function VectorHelixRail({ ticker, liveSession, onStrikeFocus, onFlowFlas
             {ranked.length > 0 ? (
               <div className="vector-helix-section" data-testid="vector-helix-ranked-section">
                 <h3 className="vector-helix-section-title">Top by premium</h3>
-                <p className="vector-helix-section-kicker">Session rank</p>
                 <div className="vector-helix-cards" data-testid="vector-helix-live-tape">
                   {ranked.map((flow, i) => (
                     <FlowCard

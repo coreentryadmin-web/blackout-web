@@ -23,6 +23,8 @@ import {
   __test_vannaPerShare,
   __test_charmPerShare,
   __test_resolveHeatmapDividendYieldUncached,
+  trailingTwelveMonthDividendYield,
+  warnChainTruncated,
 } from "./polygon-options-gex";
 
 function contract(
@@ -78,6 +80,17 @@ test("resolveSpotSnapshot falls back to prev-bar + SPY×10 proxy when snapshots 
   assert.match(src, /resolveSpotFromUwStockState/);
 });
 
+test("fetchSpotFromPrevBar uses ISR-safe prev-bar fetch so marketing homepage revalidate is not defeated", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(
+    src,
+    /fetchPreviousDayBar\(symbol,\s*\{\s*next:\s*\{\s*revalidate:\s*3600\s*\}\s*\}\)/
+  );
+});
+
 test("fetchGexHeatmap keeps stale-while-revalidate during preset fast-move (no blocking guard)", () => {
   const src = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
@@ -129,6 +142,7 @@ test("gex heatmap Redis TTL covers SWR window (not 5s matrix TTL only)", () => {
   assert.match(src, /function gexHeatmapRedisTtlSec/);
   assert.match(src, /sharedCacheSet\(cacheKey, entry, gexHeatmapRedisTtlSec\(\)\)/);
   assert.match(src, /export async function readGexHeatmapSnapshot/);
+  assert.match(src, /export async function readGexHeatmapCacheOnly/);
 });
 
 // ── task #136: computeGexEvents — the pure diff durable persistence (gex-regime-
@@ -221,6 +235,33 @@ test("computeGexEvents: spot breaking above a call wall produces wall_broken wit
   assert.equal(wallBroken.severity, "warn");
   assert.equal(wallBroken.from_value, 5040);
   assert.equal(wallBroken.to_value, 5060);
+});
+
+test("computeGexEvents: wall_broken uses the spot-constrained wall, not the biggest-magnitude strike anywhere", () => {
+  // Regression: wallsOf() used to pick argmax-positive/argmin-negative ANYWHERE, ignoring spot
+  // side. Here strike 500 (+50k) is the biggest-magnitude positive strike, but it sits BELOW the
+  // prior spot (501) so it cannot be a call wall (resistance) at all -- the real, side-correct
+  // call wall is 510 (+30k), the only positive strike actually above spot. Before the fix,
+  // wallsOf would have picked 500, and priorSpot(501) <= 500 is false, so wall_broken would never
+  // fire even though spot genuinely crosses the real wall at 510.
+  const strikeTotals = { "495": -80_000, "500": 50_000, "510": 30_000 };
+  const ring = [
+    snap({ ts: 1000, spot: 501, flip: null, strike_totals: strikeTotals }),
+    snap({ ts: 2000, spot: 501, flip: null, strike_totals: strikeTotals }),
+  ];
+  const events = computeGexEvents(ring, {
+    ts: 3000,
+    spot: 512,
+    flip: null,
+    call_wall: 510,
+    put_wall: 495,
+    total: 0,
+  });
+  assert.ok(events);
+  const wallBroken = events!.find((e) => e.type === "wall_broken");
+  assert.ok(wallBroken, "wall_broken must fire when spot crosses the real (spot-constrained) call wall");
+  assert.equal(wallBroken!.level, 510, "the wall must be 510 (above spot), not 500 (below spot)");
+  assert.equal(wallBroken!.direction, "above call wall");
 });
 
 test("computeGexEvents: net GEX flipping sign produces net_gex_sign_flipped with real dollar totals before/after", () => {
@@ -712,26 +753,92 @@ test("vanna/charm magnitudes shift with ETF dividend yield q", () => {
 // through a STATIC import that resolved when this file was loaded, above. Only the dynamic
 // import() inside the yield resolver sees the stub.
 let ratiosStub: () => Promise<unknown> = async () => null;
+let dividendsStub: () => Promise<unknown[]> = async () => [];
 mock.module("./polygon", {
-  namedExports: { fetchPolygonFinancialRatios: async () => ratiosStub() },
+  namedExports: {
+    fetchPolygonFinancialRatios: async () => ratiosStub(),
+    fetchPolygonDividends: async () => dividendsStub(),
+  },
 });
 
 test("dividend-yield resolve THROWS when unavailable so failures are never cached", async () => {
+  // Ratios has no row AND the dividends fallback itself fails (genuine outage) — must throw.
   ratiosStub = async () => null;
-  await assert.rejects(() => __test_resolveHeatmapDividendYieldUncached("SPY"));
+  dividendsStub = async () => {
+    throw new Error("upstream unavailable");
+  };
+  await assert.rejects(() => __test_resolveHeatmapDividendYieldUncached("SPY", 500));
   ratiosStub = async () => ({ dividend_yield: null });
-  await assert.rejects(() => __test_resolveHeatmapDividendYieldUncached("SPY"));
+  await assert.rejects(() => __test_resolveHeatmapDividendYieldUncached("SPY", 500));
+
+  // Ratios has no row and the dividends fallback SUCCEEDS but returns zero rows — this is NOT
+  // treated as unavailable (SPY/QQQ/IWM having zero dividend history ever is essentially
+  // impossible, but the function's contract is "empty result = a real non-payer", matching the
+  // ratios path's own `raw <= 0` → 0 behavior) — it resolves to 0, it does not throw.
+  dividendsStub = async () => [];
+  assert.equal(await __test_resolveHeatmapDividendYieldUncached("SPY", 500), 0);
 });
 
 test("dividend-yield resolve normalizes percent notation and caches a genuine non-payer", async () => {
+  dividendsStub = async () => [];
   // 1.2 is percent notation (1.2%), not a 120% yield.
   ratiosStub = async () => ({ dividend_yield: 1.2 });
-  assert.equal(await __test_resolveHeatmapDividendYieldUncached("SPY"), 0.012);
+  assert.equal(await __test_resolveHeatmapDividendYieldUncached("SPY", 500), 0.012);
 
   ratiosStub = async () => ({ dividend_yield: 0.012 });
-  assert.equal(await __test_resolveHeatmapDividendYieldUncached("SPY"), 0.012);
+  assert.equal(await __test_resolveHeatmapDividendYieldUncached("SPY", 500), 0.012);
 
   // A real non-payer resolves to 0 WITHOUT throwing — it is an answer, so it is cacheable.
   ratiosStub = async () => ({ dividend_yield: 0 });
-  assert.equal(await __test_resolveHeatmapDividendYieldUncached("NVDA"), 0);
+  assert.equal(await __test_resolveHeatmapDividendYieldUncached("NVDA", 500), 0);
+});
+
+// The ratios endpoint covers COMPANIES, not FUNDS — an ETF ticker (SPY/QQQ/IWM, the exact proxies
+// HEATMAP_DIVIDEND_YIELD_PROXY resolves SPX/NDX/RUT to) has no row there at all, live-verified
+// 2026-08-28. Before this fallback, that meant every index heatmap's dividend yield q silently
+// pinned to 0 through this path — this test locks down the fix: /v3/reference/dividends DOES cover
+// ETFs, so a null ratios read now falls through to a trailing-12mo cash sum instead of a throw.
+test("dividend-yield resolve falls back to trailing dividends when ratios has no row (ETF)", async () => {
+  ratiosStub = async () => null;
+  dividendsStub = async () => [
+    { cash_amount: 1.5, ex_dividend_date: "2026-06-18" },
+    { cash_amount: 1.5, ex_dividend_date: "2026-03-20" },
+    { cash_amount: 1.5, ex_dividend_date: "2025-12-19" },
+    { cash_amount: 1.5, ex_dividend_date: "2025-09-19" },
+    // Outside the trailing-12mo window from a 2026-08-28 "now" — must be excluded.
+    { cash_amount: 1.5, ex_dividend_date: "2025-06-20" },
+  ];
+  const spot = 600;
+  const q = await __test_resolveHeatmapDividendYieldUncached("SPY", spot);
+  // 4 of the 5 rows are within the trailing 12 months of the fixed "now" below: 4 × 1.5 / 600.
+  assert.ok(Math.abs(q - (6 / spot)) < 1e-9, `expected ~${6 / spot}, got ${q}`);
+});
+
+test("trailingTwelveMonthDividendYield excludes rows outside the trailing 12mo window", () => {
+  const nowMs = Date.parse("2026-08-28T00:00:00Z");
+  const dividends = [
+    { cash_amount: 2, ex_dividend_date: "2026-06-18" }, // in window
+    { cash_amount: 2, ex_dividend_date: "2025-06-20" }, // just outside a year back
+    { cash_amount: 2, ex_dividend_date: "not-a-date" }, // malformed — must not throw or count
+  ];
+  assert.equal(trailingTwelveMonthDividendYield(dividends, 100, nowMs), 2 / 100);
+  assert.equal(trailingTwelveMonthDividendYield(dividends, 0, nowMs), null, "no spot → null, not a false 0");
+  assert.equal(trailingTwelveMonthDividendYield([], 100, nowMs), 0, "no dividends is a real non-payer answer");
+});
+
+// CodeQL js/log-injection: `underlying` reaches this from a caller-supplied ticker. A newline in
+// it used to forge a second, indistinguishable log line — this pins that it no longer can.
+test("warnChainTruncated: a newline-bearing underlying cannot forge a second log line", () => {
+  const calls: string[] = [];
+  const restore = mock.method(console, "warn", (msg: string) => {
+    calls.push(msg);
+  });
+  try {
+    warnChainTruncated("fetchChainBand", "SPY\n[fake] admin override granted", 50);
+  } finally {
+    restore.mock.restore();
+  }
+  assert.equal(calls.length, 1, "one real call must produce exactly one log line, not two");
+  assert.ok(!calls[0]!.includes("\n"), "no raw newline survives into the logged message");
+  assert.match(calls[0]!, /SPY.*admin override granted/, "the token itself still renders, just flattened");
 });

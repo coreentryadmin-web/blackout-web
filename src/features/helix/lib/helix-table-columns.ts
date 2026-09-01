@@ -129,10 +129,10 @@ export const HELIX_TABLE_COLUMNS: HelixColumnDef[] = [
   {
     id: "ask",
     label: "Ask%",
-    hint: "Percent of premium paid at or above ask",
+    hint: "Percent of premium paid at or above ask — green = aggressive lift, red = passive/bid",
     group: "chain",
     align: "right",
-    density: "full",
+    density: "standard",
     width: "3.5rem",
   },
   {
@@ -174,7 +174,7 @@ export const HELIX_TABLE_COLUMNS: HelixColumnDef[] = [
     id: "score",
     label: "Score",
     shortLabel: "Sc",
-    hint: "Notability heuristic: order size + sweep/0DTE flags. Not a validated directional-conviction ranking.",
+    hint: "Session notability tier + percentile vs today's tape (when n≥8). Heuristic only — not a validated directional rank.",
     group: "intel",
     sortKey: "score",
     align: "right",

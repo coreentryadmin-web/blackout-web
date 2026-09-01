@@ -7,7 +7,29 @@ import {
   classifySic,
   describeCohortPosition,
   orderTickersForClassification,
+  summarizePeerReaction,
 } from "./meridian-sector-core";
+import type { MeridianEarningsPrint } from "@/features/meridian/lib/meridian-types";
+
+function print(over: Partial<MeridianEarningsPrint> = {}): MeridianEarningsPrint {
+  return {
+    report_date: "2026-05-20",
+    eps_estimate: 1,
+    eps_actual: 1,
+    surprise_pct: 0,
+    beat: true,
+    reaction_pct: null,
+    session_change_pct: null,
+    reaction_basis: "amc_next_session",
+    reaction_settled: true,
+    revenue_estimate: null,
+    revenue_actual: null,
+    revenue_surprise_pct: null,
+    expected_move_pct: null,
+    next_day_change_pct: null,
+    ...over,
+  };
+}
 
 test("classifySic reads the 2-digit major group and names it", () => {
   const c = classifySic(3674, "SEMICONDUCTORS & RELATED DEVICES");
@@ -237,4 +259,40 @@ test("orderTickersForClassification never loses a usable name", () => {
   const out = orderTickersForClassification(rows, (r) => r.em != null, (r) => r.ticker);
   assert.equal(out.length, 50);
   assert.equal(new Set(out).size, 50);
+});
+
+// ── summarizePeerReaction ──────────────────────────────────────────────────────────────
+
+test("summarizePeerReaction: averages SETTLED reactions and computes a beat rate", () => {
+  const s = summarizePeerReaction("BBWI", [
+    print({ report_date: "2026-05-20", reaction_pct: -2, surprise_pct: 1, beat: true }),
+    print({ report_date: "2026-02-19", reaction_pct: 4, surprise_pct: -1, beat: false }),
+  ]);
+  assert.equal(s.ticker, "BBWI");
+  assert.equal(s.avgReactionPct, 1, "(-2 + 4) / 2 = 1");
+  assert.equal(s.beatRate, 0.5);
+  assert.equal(s.n, 2);
+});
+
+test("summarizePeerReaction: a still-forming reaction is excluded from the average, not zeroed", () => {
+  const s = summarizePeerReaction("X", [
+    print({ report_date: "2026-05-20", reaction_pct: 5, reaction_settled: false }),
+    print({ report_date: "2026-02-19", reaction_pct: 3, reaction_settled: true }),
+  ]);
+  assert.equal(s.avgReactionPct, 3, "only the settled print counts");
+  assert.equal(s.n, 1);
+});
+
+test("summarizePeerReaction: no prints at all → nulls, not zeros", () => {
+  const s = summarizePeerReaction("X", []);
+  assert.equal(s.avgReactionPct, null);
+  assert.equal(s.beatRate, null);
+  assert.equal(s.n, 0);
+});
+
+test("summarizePeerReaction: ungraded prints (no surprise) do not count as misses", () => {
+  const s = summarizePeerReaction("X", [
+    print({ report_date: "2026-05-20", beat: null, surprise_pct: null }),
+  ]);
+  assert.equal(s.beatRate, null, "zero GRADED prints means an unknown rate, not 0%");
 });

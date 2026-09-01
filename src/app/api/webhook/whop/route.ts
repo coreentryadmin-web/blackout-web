@@ -19,7 +19,14 @@ import {
   notifyScheduledCancellation,
   notifyCancellationReversed,
   notifyPaymentFailed,
+  notifyTrialEndingSoon,
 } from "@/lib/billing-lifecycle-email";
+import { resolveBillingKindFromMembership } from "@/lib/whop";
+import { wasSignupNudgeSent, markSignupNudgeSent } from "@/lib/whop-signup-nudge";
+import { wasTrialEndingNudgeSent, markTrialEndingNudgeSent } from "@/lib/whop-trial-nudge";
+import { completeSignupEmail } from "@/lib/email/templates/complete-signup";
+import { formatTrialEndLabel } from "@/lib/email/templates/trial-ending-soon";
+import { sendEmail } from "@/lib/email/resend-client";
 // #1895's OPS-facing Discord notification is a different consumer of the same event than
 // #1901's MEMBER-facing email — both stay.
 import {
@@ -252,13 +259,36 @@ export async function POST(req: NextRequest) {
         // this is self-dedupING and why it's scoped to this real-time path only).
         // cancel_at_period_end_changed does NOT change tier — plain re-sync,
         // handled by its own boolean-driven email dispatch below.
-        const { updatedUserIds } =
+        const { updatedUserIds, billingKind } =
           event.type === "membership.cancel_at_period_end_changed"
             ? await syncWhopMembershipForEmail(email)
             : await syncWhopMembershipAndNotify(email);
         // Evict tier cache on all replicas immediately so premium/downgrade is visible
         // within the next request rather than waiting up to 60s for TTL expiry.
         for (const uid of updatedUserIds) publishTierChanged(uid);
+        // Paid-but-never-signed-up: Whop checkout requires no BlackOut sign-in first (see
+        // UpgradePageShell), so a real payment can resolve a valid billingKind here with
+        // updatedUserIds EMPTY — syncWhopMembershipForEmail's own "no Clerk account yet"
+        // branch — meaning the member is charged/trialing and has no way to know access is
+        // sitting behind a separate account creation step. Nudge them, once per membership.
+        if (
+          event.type === "membership.activated" &&
+          updatedUserIds.length === 0 &&
+          (billingKind === "premium" || billingKind === "community") &&
+          event.data.id &&
+          !(await wasSignupNudgeSent(event.data.id))
+        ) {
+          const result = await sendEmail({
+            to: email,
+            ...completeSignupEmail({ email, billingKind }),
+            tag: "complete-signup",
+          });
+          if (result.ok) {
+            await markSignupNudgeSent(event.data.id);
+          } else {
+            console.warn("[whop webhook] complete-signup nudge send failed", result.error);
+          }
+        }
         if (event.type === "membership.deactivated" && event.data.id) {
           await clearMembershipDunningGrace(event.data.id);
         }
@@ -413,6 +443,26 @@ export async function POST(req: NextRequest) {
       const { membershipId, email } = extractMembershipAndEmail(event.data);
       if (membershipId) await clearMembershipDunningGrace(membershipId);
       await syncEmailTier(email);
+    } else if (event.type === "membership.trial_ending_soon") {
+      const email = event.data.user?.email;
+      const membershipId = event.data.id;
+      if (email && membershipId && event.data.status === "trialing") {
+        const billingKind = resolveBillingKindFromMembership(event.data);
+        if (
+          (billingKind === "premium" || billingKind === "community") &&
+          !(await wasTrialEndingNudgeSent(membershipId))
+        ) {
+          const trialEndsLabel = formatTrialEndLabel(event.data.renewal_period_end);
+          const sent = await notifyTrialEndingSoon({ email, billingKind, trialEndsLabel });
+          if (sent) {
+            await markTrialEndingNudgeSent(membershipId);
+          }
+        }
+      } else if (!email) {
+        console.warn(
+          "[whop webhook] membership.trial_ending_soon: user.email is missing (null). Grant member:email:read on the Whop app."
+        );
+      }
     }
   } catch (error) {
     console.error("[whop webhook]", event.type, error);

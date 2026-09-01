@@ -5,14 +5,25 @@ import { join } from "node:path";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
-test("SPX embed seeds 0DTE horizon history and opens on session viewport", () => {
+test("SPX embed seeds 0DTE horizon history and uses shared desk-open defaults", () => {
   const embed = read("src/features/spx/components/SpxVectorEmbed.tsx");
   assert.match(embed, /defaultVectorDeskOpenProps\("SPX"\)/);
   assert.match(embed, /import \{ defaultVectorDeskOpenProps \}/);
+  const ticker = read("src/features/vector/lib/vector-ticker.ts");
+  assert.match(ticker, /defaultChartViewport: "live"/);
   const shell = read("src/features/vector/components/VectorPageShell.tsx");
-  assert.match(shell, /defaultChartViewport = "session"/);
   assert.match(shell, /defaultChartViewport=\{defaultChartViewport\}/);
   assert.match(shell, /initialHorizonWallHistory=\{initialHorizonWallHistory\}/);
+});
+
+test("VectorPageShell: standalone page drops the regime narrative banner, embed keeps it", () => {
+  // Member request (2026-08-26): the "Short/Long gamma …" callout above the standalone chart was
+  // removed to reclaim vertical space — regimeSlot is now null there. The chart-only SPX Slayer
+  // embed path (embedRegimeSlot) is a different product surface and is deliberately untouched.
+  const shell = read("src/features/vector/components/VectorPageShell.tsx");
+  assert.match(shell, /regimeSlot=\{null\}/);
+  assert.match(shell, /embedRegimeSlot = spxIosEmbed \|\| suppressRegimeBanner \? null : <VectorRegimeBanner regime=\{regime\} \/>/);
+  assert.match(shell, /regimeSlot=\{embedRegimeSlot\}/);
 });
 
 test("/vector page preloads 0DTE rail for oracle tickers and weekly for single names", () => {
@@ -29,11 +40,13 @@ test("VectorPageShell forwards desk-open props to standalone chartBlock", () => 
   assert.match(shell, /defaultChartViewport=\{defaultChartViewport\}/);
 });
 
-test("VectorChart: session viewport defers live-edge scroll until member pans", () => {
+test("VectorChart: live viewport centers the forming bar and follows until member pans", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /liveFollowEnabledRef/);
   assert.match(src, /defaultChartViewport = "session"/);
-  assert.match(src, /maybeScrollToLive\(chart, liveFollowEnabledRef\.current\)/);
+  assert.match(src, /maybeFollowLiveViewport/);
+  assert.match(src, /applyCenteredLiveViewport/);
+  assert.match(src, /liveFramedOnLoad/);
   assert.match(src, /pinLiveAnchorBeads/);
   assert.match(src, /fitSessionOverview/);
   assert.match(src, /applySessionOverviewViewport/);
@@ -50,11 +63,28 @@ test("VectorChart: session overview blocks live-follow flip and auto-coarsen", (
   assert.match(src, /fitContent\(\)/);
 });
 
-test("VectorChart: default load frames session overview when defaultChartViewport is session", () => {
+test("VectorChart: default load frames centered live when defaultChartViewport is live", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
-  assert.match(src, /defaultChartViewport === "session" \? "session" : null/);
+  assert.match(src, /defaultChartViewport === "live" \? "live" : null/);
+  assert.match(src, /liveFramedOnLoad/);
+  assert.match(src, /applyCenteredLiveViewport\(chart, initialDisplay\.length\)/);
+});
+
+test("VectorChart: default load centers the latest candle even when defaultChartViewport is session", () => {
+  // Live member report (2026-08-26): session-overview's right-anchored first paint left candles
+  // looking dropped to one side rather than centered like the "live" viewport default (SPX Slayer
+  // reference). The FIRST-PAINT framing now reuses applyCenteredLiveViewport for both branches;
+  // session-overview's own OWN behavior (re-seed framing, autoscale gating) is unchanged elsewhere.
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(
+    src,
+    /defaultChartViewport === "session" \? "session" : defaultChartViewport === "live" \? "live" : null/
+  );
   assert.match(src, /sessionFramedOnLoad/);
-  assert.match(src, /applySessionOverviewViewport\(chart, initialDisplay\)/);
+  assert.match(
+    src,
+    /if \(sessionFramedOnLoad\) \{[\s\S]{0,1200}applyCenteredLiveViewport\(chart, initialDisplay\.length\)/
+  );
 });
 
 test("VectorChart: member wheel zoom not overridden by adaptive bar spacing", () => {
@@ -263,6 +293,145 @@ test("VectorChart: standalone desk uses flex-fill canvas (volume sub-pane must n
   assert.match(css, /\.vector-page-shell \.vector-chart-stage/);
 });
 
+test("VectorChart: wide-desktop grid flex-fills below toolbar + scanner (no document scroll)", () => {
+  // #2936 fixed the implicit grid row; follow-up caps the page shell like Compare mode so the
+  // collapsed universe-scanner row below the grid is in the flex budget instead of pushing scroll.
+  const css = read("src/app/globals.css");
+  const wideBlock = css.slice(css.indexOf("@media (min-width: 1600px)"));
+  assert.match(wideBlock, /vector-page-shell:not\(:has\(\.vector-page-content-focus\)\)/);
+  assert.match(wideBlock, /height: 100dvh/);
+  assert.match(wideBlock, /\.vector-page-shell \.vector-chart-terminal-grid \{\s*min-height: 0;/);
+  const colIdx = wideBlock.indexOf("grid-template-columns: minmax(168px, 14%)");
+  assert.ok(colIdx > -1, "expected wide-desktop grid-template-columns");
+  const gridRuleStart = wideBlock.lastIndexOf(".vector-chart-terminal-grid {", colIdx);
+  assert.ok(gridRuleStart > -1, "expected the main wide-desktop grid rule");
+  const gridRuleEnd = wideBlock.indexOf("}", gridRuleStart);
+  const gridRule = wideBlock.slice(gridRuleStart, gridRuleEnd);
+  assert.match(gridRule, /flex: 1 1 0/);
+  assert.match(gridRule, /height: auto/);
+  // The base (mobile/stacked, <1280px) rule must stay a MIN — that layout is meant to scroll the
+  // whole page like any other stacked mobile view.
+  assert.match(css, /\.vector-page-shell \.vector-chart-terminal-grid \{\s*min-height: calc\(100dvh - 7rem\);/);
+});
+
+test("VectorChart: wide-desktop grid row is forced to fill its container, not sized by content", () => {
+  // The height/max-height fix above (2026-08-27) was INCOMPLETE — measured live the same day at
+  // 1920x1080: the grid container correctly computed to 968px, but `.vector-chart-terminal-chart`
+  // inside it measured 2806px and the page still scrolled to 2938px. Root cause: with no
+  // `grid-template-rows` declared, the single implicit row used the default `grid-auto-rows: auto`,
+  // which sizes to the MAX-CONTENT of its children — completely independent of the container's own
+  // height/max-height. `grid-template-rows: minmax(0, 1fr)` forces the row to actually BE the
+  // container's height while still letting it shrink below any child's intrinsic size; `overflow:
+  // hidden` on the container is the second half — without it, a child that still doesn't shrink
+  // perfectly could bleed back into document flow instead of clipping inside its own box.
+  const css = read("src/app/globals.css");
+  const wideBlock = css.slice(css.indexOf("@media (min-width: 1600px)"));
+  const colIdxWide = wideBlock.indexOf("grid-template-columns: minmax(168px, 14%)");
+  assert.ok(colIdxWide > -1, "expected wide-desktop grid-template-columns");
+  const gridRuleStart = wideBlock.lastIndexOf(".vector-chart-terminal-grid {", colIdxWide);
+  assert.ok(gridRuleStart > -1, "expected the main wide-desktop grid rule");
+  const gridRuleEnd = wideBlock.indexOf("}", gridRuleStart);
+  const gridRule = wideBlock.slice(gridRuleStart, gridRuleEnd);
+  assert.match(gridRule, /grid-template-rows:\s*minmax\(0,\s*1fr\)/);
+  assert.match(gridRule, /overflow:\s*hidden/);
+});
+
+test("VectorChart: 1280-1599px desk (before the 4-col breakpoint) also flex-fills, no document scroll", () => {
+  // FOLLOW-UP to #2981 (2026-08-27). #2981 fixed the 80/20 price/volume SHARE, but that ratio only
+  // ever applies to whatever height the chart's own container ends up with — and the >=1600px fix
+  // two tests below was never extended down to this breakpoint. Live capture at 1366x768 (a normal
+  // laptop height, well inside 1280-1599px) reproduced the identical "min-height is a floor, not a
+  // size" bug the wide-desktop tests below already guard: `.vector-chart-terminal-grid` here carried
+  // only `min-height: calc(100dvh - 7rem)`, so `grid-auto-rows: auto` sized the row to the
+  // MAX-CONTENT of its tallest column (the GEX ladder / ODTE matrix / desk terminal all strip their
+  // own `max-height` at this exact breakpoint a few lines below) instead of the viewport — measured
+  // live: chart column swung between 823px and 1955px on the SAME 768px-tall viewport depending on
+  // live content, and the grid grew to 1316-2448px, pushing the volume sub-pane completely below the
+  // fold and requiring the whole PAGE to scroll to reach it (`docScrollHeight` up to 2663 vs
+  // `innerHeight` 768) — exactly the "last time" page-scroll regression the operator does not want
+  // repeated.
+  const css = read("src/app/globals.css");
+  // globals.css has several unrelated `@media (min-width: 1280px)` blocks (Largo etc.) — anchor on
+  // the vector desk's own base rule (`.vector-page-shell .vector-chart-terminal-grid`, the min-height
+  // floor) and take the FIRST 1280px query after it, which is the vector one.
+  const vectorBaseRule = css.indexOf(".vector-page-shell .vector-chart-terminal-grid {");
+  assert.ok(vectorBaseRule > -1, "expected the vector base grid rule");
+  const block1280Start = css.indexOf("@media (min-width: 1280px)", vectorBaseRule);
+  const block1600Start = css.indexOf("@media (min-width: 1600px)", block1280Start);
+  assert.ok(block1280Start > -1 && block1600Start > block1280Start, "expected the vector 1280px block before its 1600px block");
+  const block1280 = css.slice(block1280Start, block1600Start);
+  assert.match(block1280, /vector-page-shell:not\(:has\(\.vector-page-content-focus\)\)/);
+  assert.match(block1280, /height: 100dvh/);
+  assert.match(block1280, /\.vector-page-shell \.vector-chart-terminal-grid \{\s*min-height: 0;/);
+  const colIdx1280 = block1280.indexOf("grid-template-columns: minmax(168px, 14%)");
+  assert.ok(colIdx1280 > -1, "expected 1280px grid-template-columns");
+  const gridRuleStart1280 = block1280.lastIndexOf(".vector-chart-terminal-grid {", colIdx1280);
+  assert.ok(gridRuleStart1280 > -1, "expected the main 1280px grid rule");
+  const gridRuleEnd1280 = block1280.indexOf("}", gridRuleStart1280);
+  const gridRule = block1280.slice(gridRuleStart1280, gridRuleEnd1280);
+  assert.match(gridRule, /flex: 1 1 0/);
+  assert.match(gridRule, /height: auto/);
+  assert.match(gridRule, /overflow:\s*hidden/);
+  // Two rows here (not one, unlike >=1600px): the action rail is still a full-width row UNDER the
+  // 3-col section at this breakpoint (it doesn't earn its own column until 1600px), so the row that
+  // holds ladder/chart/terminal must be capped to `minmax(0, 1fr)` while the action-rail row gets its
+  // own bounded track instead of `auto` — an unbounded `auto` row would just move the overflow from
+  // the chart column onto the action rail instead of eliminating it.
+  assert.match(gridRule, /grid-template-rows:\s*minmax\(0,\s*1fr\)\s+minmax\(0,/);
+  // The action rail must actually USE that row's height and scroll internally, or a long
+  // Play-card/Technicals/Alerts stack re-inflates the page exactly like the chart column used to.
+  const actionRuleStart = block1280.indexOf(".vector-action-rail {");
+  const actionRuleEnd = block1280.indexOf("}", actionRuleStart);
+  const actionRule = block1280.slice(actionRuleStart, actionRuleEnd);
+  assert.match(actionRule, /height: 100%/);
+  assert.match(actionRule, /overflow-y: auto/);
+  // The base (mobile/stacked, <1280px) rule must stay a MIN — unchanged by this fix, that layout is
+  // meant to scroll the whole page like any other stacked mobile view.
+  assert.match(css, /\.vector-page-shell \.vector-chart-terminal-grid \{\s*min-height: calc\(100dvh - 7rem\);/);
+});
+
+test("VectorChart: explicit zoom in/out/reset buttons wired through to the toolbar", () => {
+  // Member request (2026-08-27): "add better user controls for zoom in, zoom out, drag, move".
+  const chart = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(chart, /const stepZoom = useCallback/);
+  assert.match(chart, /zoomedLogicalRange\(range, factor, MIN_ZOOM_LOGICAL_SPAN\)/);
+  assert.match(chart, /const handleZoomIn = useCallback/);
+  assert.match(chart, /const handleZoomOut = useCallback/);
+  assert.match(chart, /const handleZoomReset = useCallback/);
+  assert.match(chart, /onZoomIn=\{handleZoomIn\}/);
+  assert.match(chart, /onZoomOut=\{handleZoomOut\}/);
+  assert.match(chart, /onZoomReset=\{handleZoomReset\}/);
+  const toolbar = read("src/features/vector/components/VectorToolbar.tsx");
+  assert.match(toolbar, /VectorZoomControls/);
+  const zoomComponent = read("src/features/vector/components/VectorZoomControls.tsx");
+  assert.match(zoomComponent, /onZoomIn: \(\) => void/);
+  assert.match(zoomComponent, /onZoomOut: \(\) => void/);
+  assert.match(zoomComponent, /onReset: \(\) => void/);
+});
+
+test("VectorChart: Compare mode's live frame now gets the same candle-share floor as standalone", () => {
+  // Audit finding (2026-08-27): the 2026-08-26 candle-squeeze fix explicitly excluded
+  // Compare-compact ("its wider fixed window is tuned for short panes") — that guard bypassed
+  // withCandleFloor entirely for Compare's live frame (frameSpanPct stayed null, so
+  // clampPriceRangeSpan below never ran), the identical bug class the fix exists for, and worse
+  // there since COMPARE_BEAD_VIEW_MAX_PCT (24%) is wider than BEAD_VIEW_MAX_PCT (20%). Compare
+  // now composes withCandleFloor against its own wider hard cap instead of being skipped.
+  const chart = read("src/features/vector/components/VectorChart.tsx");
+  assert.doesNotMatch(
+    chart,
+    /\} else if \(!compareCompactBeadsRef\.current\) \{/,
+    "Compare-compact must no longer be excluded from the candle-floor branch"
+  );
+  assert.match(
+    chart,
+    /const hardCapPct = compareCompactBeadsRef\.current \? COMPARE_BEAD_VIEW_MAX_PCT : BEAD_VIEW_MAX_PCT;/
+  );
+  assert.match(
+    chart,
+    /rowAwareSpanPct\(\s*spotRef\.current \?\? 0,\s*sessionBeadStrikes,\s*sessionRows,\s*WALL_VIEW_MAX_PCT,\s*hardCapPct\s*\)/
+  );
+});
+
 test("VectorChart: volume profile bars render in the right gutter beside the last candle", () => {
   const chart = read("src/features/vector/components/VectorChart.tsx");
   const primitive = read("src/features/vector/lib/vector-volume-profile-primitive.ts");
@@ -304,11 +473,26 @@ test("VectorChart: live 'all' horizon polls enriched blended history during RTH"
   assert.match(src, /mergeWallHistory\(wallHistoryRef\.current, remote\)/);
 });
 
-test("Vector desk defaults to weekly DTE when host does not override", () => {
+test("Vector desk defaults to 0DTE when host does not override", () => {
   const chart = read("src/features/vector/components/VectorChart.tsx");
   assert.match(chart, /VECTOR_DEFAULT_DTE_HORIZON/);
   const horizon = read("src/features/vector/lib/vector-dte-horizon.ts");
-  assert.match(horizon, /VECTOR_DEFAULT_DTE_HORIZON: VectorDteHorizon = "weekly"/);
+  assert.match(horizon, /VECTOR_DEFAULT_DTE_HORIZON: VectorDteHorizon = "0dte"/);
+});
+
+test("VectorChart: narrowed DTE horizon history poll merges remote tail (does not wipe live stamps)", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /const fetchHistory = async \(\) =>/);
+  assert.match(src, /mergeWallHistory\(horizonHistoryRef\.current, remote\)/);
+});
+
+test("VectorChart: narrowed DTE bead trail never falls back to blended all rail", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /composeHorizonTrail\(recordedTrail, currentColumn\)/);
+  assert.match(
+    src,
+    /composeHorizonTrail\(recordedTrail, currentColumn\) \?\?\s*\n\s*\(horizon !== "all"\s*\n\s*\? \[\]/
+  );
 });
 
 test("VectorChart fetches and uses the blended rail when it was given no seed", () => {
@@ -320,18 +504,18 @@ test("VectorChart fetches and uses the blended rail when it was given no seed", 
   assert.match(src, /horizon !== "all" \|\| seedRailEmptyRef\.current/);
 });
 
-test("VectorPageShell: chart view toggle stays mounted when historical chart replaces intraday", () => {
+test("VectorPageShell: Intraday/4H/1D/1W toggle removed, chart column always renders intraday", () => {
+  // Member request (2026-08-26): "Remove Intraday all that totally .. default it to Intraday" —
+  // the historical (4H/1D/1W) view and its selector are gone from the standalone page entirely.
+  // VectorDailyChart/VectorChartViewSelect themselves are left in place (unused) rather than
+  // deleted — no other surface imports them — but VectorPageShell must never reference either.
   const shell = read("src/features/vector/components/VectorPageShell.tsx");
-  assert.match(shell, /vector-chart-column-head/);
-  assert.match(shell, /data-testid="vector-chart-column-head"/);
-  assert.match(shell, /chartColumnHead/);
-  assert.match(shell, /chartView === "intraday" \? \(\s*chartBlock/);
-  assert.match(shell, /VectorDailyChart/);
-  assert.doesNotMatch(
-    shell,
-    /chartLead[\s\S]{0,400}VectorChartViewSelect/,
-    "view select must not live only inside VectorChart leadSlot"
-  );
+  assert.doesNotMatch(shell, /VectorChartViewSelect/);
+  assert.doesNotMatch(shell, /VectorDailyChart/);
+  assert.doesNotMatch(shell, /vector-chart-column-head/);
+  assert.doesNotMatch(shell, /\bchartColumnHead\b/);
+  assert.doesNotMatch(shell, /\bchartView\b/);
+  assert.match(shell, /\{chartBlock\}/);
 });
 
 test("VectorChartViewSelect: segmented Intraday/4H/1D/1W control", () => {
@@ -339,4 +523,135 @@ test("VectorChartViewSelect: segmented Intraday/4H/1D/1W control", () => {
   assert.match(src, /vector-chart-view-\$\{opt\.value\.toLowerCase\(\)\}/);
   assert.match(src, /aria-pressed/);
   assert.doesNotMatch(src, /<select/);
+});
+
+test("VectorChart: wheel/pan interaction defers heavy overlay + crosshair work", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  // Overlay dim coalesced to one rAF per frame (not every wheel tick).
+  assert.match(src, /scheduleViewportDim/);
+  assert.match(src, /viewportDimRafRef/);
+  // Crosshair wall/gex lookups run once per frame, not per mousemove.
+  assert.match(src, /crosshairComputeRafRef/);
+  assert.match(src, /flushCrosshairCompute/);
+  // Active gesture (pointer down or wheel cooldown) defers trail/overlay repaints.
+  assert.match(src, /isMemberGesturing/);
+  assert.match(src, /GESTURE_REPAINT_COOLDOWN_MS/);
+  assert.match(src, /chartPointerActiveRef/);
+  assert.match(src, /queueDeferredRepaint/);
+  assert.match(src, /interactionHot = isMemberGesturing/);
+  assert.match(src, /!inReplay && !interactionHot/);
+});
+
+test("VectorToolbar: Compare-pane branch renders zoom controls (member request shipped standalone-only)", () => {
+  // Regression (Compare-mode audit, 2026-08-27): onZoomIn/Out/Reset were built and passed down
+  // unconditionally from VectorChart.tsx, and `zoomControls` was even computed at the top of this
+  // file — but the comparePane early-return branch never referenced it, so every Compare pane (and
+  // the "Per-pane"/unlinked mode specifically, where the linked command bar's own zoom preset
+  // control is disabled) had no way to zoom at all.
+  const src = read("src/features/vector/components/VectorToolbar.tsx");
+  const compareBranchStart = src.indexOf("if (comparePane) {");
+  const compareBranchEnd = src.indexOf("\n  return (", compareBranchStart);
+  const compareBranch = src.slice(compareBranchStart, compareBranchEnd);
+  assert.match(compareBranch, /VectorZoomControls/);
+  assert.match(compareBranch, /exposeTestIds=\{false\}/);
+});
+
+test("VectorCompareDesk: sync-zoom preset no longer forces a redundant 4x pane remount", () => {
+  // Regression (Compare-mode audit, 2026-08-27): applySyncZoomPreset called bumpSync(), which
+  // bumps syncEpoch — folded into VectorComparePane's `key` prop, forcing React to fully destroy
+  // and rebuild all 4 VectorChart instances (each with its own lightweight-charts instance,
+  // WallRailPrimitive, and SSE connection) even though VectorChart already applies a synced zoom
+  // preset reactively via syncZoomPreset/tick props with no remount at all. The redundant remount
+  // discarded the very WallRailPrimitive._derivedCache the wall-rail perf fix (#2939) keeps warm
+  // across repaints, on every single sync-zoom click.
+  const src = read("src/features/vector/components/VectorCompareDesk.tsx");
+  const fnStart = src.indexOf("const applySyncZoomPreset = useCallback(");
+  const fnEnd = src.indexOf("\n  const enterFocusExpand", fnStart);
+  const fn = src.slice(fnStart, fnEnd);
+  assert.doesNotMatch(fn, /^\s*bumpSync\(\);\s*$/m, "applySyncZoomPreset must not force a full pane remount");
+  assert.match(fn, /flashSync\(\)/, "still gives the visual synced pulse without the remount");
+});
+
+test("VectorCompareDesk: seed add/remove/preset no longer remounts stable panes via bumpSync", () => {
+  // Regression (RTH audit 2026-08-27): applyPreset/loadTicker/removeTicker also called bumpSync(),
+  // remounting every surviving chart when Compare went 1-up → 4-up. lightweight-charts logged
+  // "Value is null" during the redundant teardown (vector-e2e ui:console-errors FAIL).
+  const src = read("src/features/vector/components/VectorCompareDesk.tsx");
+  for (const fnName of ["loadTicker", "removeTicker", "applyPreset"] as const) {
+    const start = src.indexOf(`const ${fnName} = useCallback(`);
+    assert.ok(start >= 0, `expected ${fnName}`);
+    const end = src.indexOf("\n  const ", start + 1);
+    const fn = src.slice(start, end);
+    assert.doesNotMatch(fn, /\bbumpSync\(\)/, `${fnName} must not bump syncEpoch (pane remount)`);
+    assert.match(fn, /flashSync\(\)/, `${fnName} still flashes the sync pulse`);
+  }
+});
+
+test("VectorChart: real dataAgeMs is captured from live ticks and fed to buildVectorPlay", () => {
+  // dataAgeMs was a documented VectorSnapshot field ("for the terminal to show staleness") that no
+  // production caller ever set — buildVectorPlay always saw a play built "just now" regardless of
+  // how long the underlying stream had actually been frozen.
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /dataReceivedAtMsRef/);
+  assert.match(src, /dataReceivedAtMsRef\.current = Date\.now\(\)/);
+  assert.match(src, /dataAgeMs: Date\.now\(\) - dataReceivedAtMsRef\.current/);
+});
+
+test("VectorPlayCard: shows a STALE badge once dataAge crosses the play engine's own threshold", () => {
+  const src = read("src/features/vector/components/VectorPlayCard.tsx");
+  assert.match(src, /import \{ STALE_MILD_MS, type VectorPlay \}/);
+  assert.match(src, /play\.dataAge != null && play\.dataAge > STALE_MILD_MS/);
+  assert.match(src, /vector-play-card-stale/);
+});
+
+test("VectorChart: volume sub-pane gets an 18-22% share of chart height, never more", () => {
+  // FIXED (2026-08-27, operator-reported): PRICE_PANE_STRETCH:VOLUME_PANE_STRETCH was 7:2.2
+  // (~76.1%/23.9%) — outside the product's documented 78-82% candles / 18-22% volume split and
+  // the exact margin of error that read as clipped volume bars on shorter chart-height budgets
+  // (see the constant's own comment in VectorChart.tsx for the full trace). This is a ratio
+  // assertion, not an exact-value one, so it stays green across any proportional retune within
+  // the documented band.
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  const priceMatch = src.match(/const PRICE_PANE_STRETCH = ([\d.]+);/);
+  const volumeMatch = src.match(/const VOLUME_PANE_STRETCH = ([\d.]+);/);
+  assert.ok(priceMatch && volumeMatch, "expected both pane-stretch constants to be found");
+  const price = Number(priceMatch![1]);
+  const volume = Number(volumeMatch![1]);
+  const volumeShare = volume / (price + volume);
+  assert.ok(
+    volumeShare >= 0.18 && volumeShare <= 0.22,
+    `volume pane share ${(volumeShare * 100).toFixed(1)}% is outside the documented 18-22% band`
+  );
+  // bottom:0 is the load-bearing half of the volume histogram's own scale margins — it is what
+  // puts the 0-baseline exactly on the pane's lowest pixel so bars draw all the way to the true
+  // floor (verified live against production, 2026-08-27). Guard it so a future edit can't silently
+  // reintroduce bottom padding that would shrink bars away from the floor again.
+  assert.match(src, /scaleMargins: \{ top: [\d.]+, bottom: 0 \}/);
+});
+
+test("VectorCompareDesk: focused play strip mirrors single-chart action rail", () => {
+  const desk = read("src/features/vector/components/VectorCompareDesk.tsx");
+  assert.match(desk, /VectorComparePlayStrip/);
+  assert.match(desk, /onPlayDeskSnapshot=\{handlePlayDeskSnapshot\}/);
+  assert.match(desk, /replayPaused=\{linkedReplayMode\}/);
+});
+
+test("VectorPageShell chart-only embed: wires play-engine callbacks for Compare export", () => {
+  const src = read("src/features/vector/components/VectorPageShell.tsx");
+  const embedStart = src.indexOf('if (chartOnly) {');
+  const embedEnd = src.indexOf("const helixRail = (", embedStart);
+  const embed = src.slice(embedStart, embedEnd);
+  assert.match(embed, /onPlayChange=\{setPlayEmit\}/);
+  assert.match(embed, /onExpectedMoveChange=\{setExpectedMove\}/);
+  assert.match(src, /onPlayDeskSnapshot\(\{/);
+});
+
+test("VectorComparePlayStrip: renders play card, intel, and contract picks", () => {
+  const strip = read("src/features/vector/components/VectorComparePlayStrip.tsx");
+  assert.match(strip, /VectorPlayCard/);
+  assert.match(strip, /VectorPlayIntelStrip/);
+  assert.match(strip, /VectorContractPicksCard/);
+  assert.match(strip, /VectorReplayPlayGate/);
+  assert.doesNotMatch(strip, /useVectorHelixFlows/, "must reuse pane Helix tape via snapshot, not a second SSE");
+  assert.match(strip, /helixFlows/);
 });

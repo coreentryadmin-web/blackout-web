@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { requireTier } from "@/lib/auth-access";
 
 export default async function DashboardLayout({

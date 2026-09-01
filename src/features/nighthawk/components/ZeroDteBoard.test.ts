@@ -1,8 +1,51 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { resolveZeroDteFreshness, mergePlays } from "./ZeroDteBoard";
 import type { EnrichedZeroDteSetup } from "@/lib/zerodte/board";
 import type { ContractPlan } from "@/lib/zerodte/plan";
+
+// Regression for the 2026-08-27 live-monitoring fix: the halted banner in GovernorStrip
+// used to always render "Session halted — {stops.length} stops (max {max_session_stops})"
+// even when the AUDIT SEV-3 realized-loss channel (not the hard-stop channel) was what
+// actually tripped `halted`. Caught live: the board showed "2 stops (max 3)" — reading as
+// NOT yet at the stop cap — while the real trigger was 5 realized losers, a fact the
+// payload already carried in `would_halt` but the component never rendered.
+// GovernorStrip is not exported and this repo has no React render harness (see the
+// pre-existing resolveZeroDteFreshness/mergePlays tests above, which test pure functions
+// instead) — this asserts on the source so the fix can't silently regress.
+test("guard: the halted banner prefers gov.would_halt over the hard-stop wording", () => {
+  const src = readFileSync(join(process.cwd(), "src/features/nighthawk/components/ZeroDteBoard.tsx"), "utf8");
+  const banner = src.match(/\{gov\.halted && \([\s\S]*?\)\}/);
+  assert.ok(banner, "expected the governor halted banner to exist");
+  assert.match(
+    banner![0],
+    /gov\.would_halt\s*\?\?/,
+    "must render gov.would_halt when present, falling back to the hard-stop sentence only when it's absent"
+  );
+});
+
+// Regression for the 2026-08-27 live-monitoring finding: realized_losers/session_pnl_pct/
+// would_halt are computed by the governor UNCONDITIONALLY (regardless of whether
+// GOVERNOR_ENFORCE_LOSS_HALT is on), but before this fix the ONLY place they ever rendered
+// was inside the `gov.halted` banner above — with that enforcement channel disabled, a real
+// "5 realized losers, -9.7% today" session was invisible on every product surface (confirmed
+// live: `GET /api/market/zerodte/board` carried the values, no UI showed them). Fix adds a
+// neutral-toned FYI pill shown whenever there's something to report, independent of `halted`.
+test("guard: realized_losers/session_pnl_pct render as their own pills, not gated on gov.halted", () => {
+  const src = readFileSync(join(process.cwd(), "src/features/nighthawk/components/ZeroDteBoard.tsx"), "utf8");
+  // Find the governor strip's pill block (between the "Plans" pill and the halted banner) —
+  // scoped so this can't accidentally match the halted banner's own use of these fields.
+  const stripStart = src.indexOf('label="Plans"');
+  const bannerStart = src.indexOf("{gov.halted && (");
+  assert.ok(stripStart > 0 && bannerStart > stripStart, "expected the governor pill strip before the halted banner");
+  const stripSrc = src.slice(stripStart, bannerStart);
+  assert.match(stripSrc, /gov\.realized_losers\s*!=\s*null\s*&&\s*gov\.realized_losers\s*>\s*0/,
+    "the realized-losers pill must render independent of gov.halted");
+  assert.match(stripSrc, /gov\.session_pnl_pct\s*!=\s*null\s*&&\s*gov\.session_pnl_pct\s*!==\s*0/,
+    "the session P&L pill must render independent of gov.halted");
+});
 
 test("resolveZeroDteFreshness: upstream_ok=false always reads offline, regardless of age", () => {
   assert.equal(resolveZeroDteFreshness(false, Date.now(), Date.now()), "offline");

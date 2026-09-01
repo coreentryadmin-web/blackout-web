@@ -383,6 +383,169 @@ test("resolveExitMode: trim_scale is the default; only exact 'trim_scale' env op
   assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "trim" } as NodeJS.ProcessEnv), "trim_scale");
 });
 
+// ── resolveTrimRegimeLive: the regime-conditioning kill-switch (DEFAULT-OFF) — FINDING
+//    2026-08-29. Off by default because trend/range tranche thresholds are uncalibrated
+//    v1 heuristics (only `neutral` is E5-measured) — flipping this on lets the live engine
+//    condition real trims on the row's stamped session_regime; unset/anything-but-exact-"1"
+//    must stay off so a typo'd env value can never silently change live exit behavior.
+test("resolveTrimRegimeLive: off by default — only the exact string '1' opts in", async () => {
+  const { resolveTrimRegimeLive } = await import("./exit-sync");
+  assert.equal(resolveTrimRegimeLive({} as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "" } as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "true" } as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "0" } as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "1" } as NodeJS.ProcessEnv), true);
+});
+
+// ── resolveTrimBankLive: the persisted-tranche-count kill-switch (DEFAULT-OFF, FIX
+//    2026-09-01) — same off-by-default discipline as resolveTrimRegimeLive above.
+test("resolveTrimBankLive: off by default — only the exact string '1' opts in", async () => {
+  const { resolveTrimBankLive } = await import("./exit-sync");
+  assert.equal(resolveTrimBankLive({} as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimBankLive({ ZERODTE_TRIM_BANK_LIVE: "" } as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimBankLive({ ZERODTE_TRIM_BANK_LIVE: "true" } as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimBankLive({ ZERODTE_TRIM_BANK_LIVE: "0" } as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimBankLive({ ZERODTE_TRIM_BANK_LIVE: "1" } as NodeJS.ProcessEnv), true);
+});
+
+// ── THE DEAD-ZONE BUG ITSELF, pinned directly against evaluateLedgerRowExit ─────────
+//
+// Root cause (see db.ts's trims_taken ALTER TABLE comment + exit-sync.ts's trimsTaken
+// derivation for the full writeup): before this fix, "thirds already banked" was
+// RECOMPUTED every tick via trimTranchesArmed(peak, regime) — the EXACT SAME function
+// decideTrimScale (exit-engine.ts) calls internally to compute "thirds the peak has
+// armed". Feeding a function's own recomputed output back in as if it were an
+// independently-tracked "already taken" count makes `armed > taken` structurally
+// unable to ever be true, which had two live consequences at the neutral-regime
+// crossing point (peak exactly +20%, matching BOTH the trim_scale tranche-1 arm AND
+// the shared ratchet-style breakeven floor arm):
+//   (a) the trim ladder's own banking branch could never fire (a tranche never
+//       actually gets banked), and
+//   (b) the 2026-08-27 dead-zone guard's `!trimAvailable` check was permanently a
+//       no-op, so the coarse breakeven-floor EXIT fired anyway and dumped the WHOLE
+//       position — exactly the SLS/TSM regression that guard was written to prevent,
+//       just reintroduced by how the caller computed its own input.
+//
+// A fully-typed row builder (not the loosely-typed `baseRow()`/`as never` idiom the
+// full-integration tests above use) so these two tests type-check evaluateLedgerRowExit's
+// real signature directly, without going through syncLedgerLiveState.
+function trimScaleRow(overrides: Partial<import("@/lib/db").ZeroDteSetupLogRow> = {}): import("@/lib/db").ZeroDteSetupLogRow {
+  return {
+    session_date: "2026-09-01",
+    ticker: "SLS",
+    direction: "long",
+    top_strike: 10,
+    expiry: "2026-09-01",
+    score: 80,
+    score_max: 80,
+    dossier_score: null,
+    conviction: null,
+    gross_premium: 2_000_000,
+    spike: false,
+    underlying_at_flag: 10,
+    underlying_latest: null,
+    flags_json: null,
+    first_flagged_at: new Date(Date.now() - 20 * 60_000).toISOString(),
+    last_seen_at: new Date().toISOString(),
+    close_price: null,
+    move_pct: null,
+    direction_hit: null,
+    graded_at: null,
+    entry_premium: 4.0,
+    flow_avg_fill: 4.0,
+    // Stop at −50% (2.0); target at +100% (8.0) — plain PLAN_RULES-shaped rails, well
+    // clear of the +20%-peak / breakeven-mark scenario these tests exercise.
+    plan_json: { occ: "O:SLS260901C00010000", stop_premium: 2.0, target_premium: 8.0 },
+    plan_outcome: null,
+    plan_pnl_pct: null,
+    status: "OPEN",
+    last_mark: 4.0,
+    last_mark_at: null,
+    // Peak +20% (4.8) — the exact neutral-regime tranche-1 arm AND ratchet-style
+    // breakeven-floor arm crossing point (both thresholds sit at peak +20%).
+    peak_premium: 4.8,
+    trough_premium: 4.0,
+    gate_calibration_json: null,
+    entry_context: null,
+    feature_vector: null,
+    trims_taken: 0,
+    ...overrides,
+  };
+}
+
+test("trim_scale dead-zone FIX: a real persisted trims_taken=0 lets a just-armed tranche bank instead of dumping the whole position at breakeven", async () => {
+  const { evaluateLedgerRowExit } = await import("./exit-sync");
+  const row = trimScaleRow();
+  const banked: number[] = [];
+
+  // onTrimBank only fires once ZERODTE_TRIM_BANK_LIVE is genuinely on (resolveTrimBankLive()
+  // reads process.env directly, no deps override — it's the real production kill-switch,
+  // not a test seam) — flip it for this test only, restore in `finally` so it can never
+  // leak into another test in this file/process.
+  const prevFlag = process.env.ZERODTE_TRIM_BANK_LIVE;
+  process.env.ZERODTE_TRIM_BANK_LIVE = "1";
+  let result: Awaited<ReturnType<typeof evaluateLedgerRowExit>>;
+  try {
+    // Mark back at breakeven (4.0, 0%) after a +20% peak — the crossing scenario. With
+    // the caller supplying the REAL persisted count (0 — nothing banked yet, simulating
+    // ZERODTE_TRIM_BANK_LIVE=1 reading a fresh row.trims_taken) instead of a recompute,
+    // `armed(1) > taken(0)` is genuinely true this time.
+    result = await evaluateLedgerRowExit(
+      row,
+      { syncMark: 4.0, status: "OPEN" },
+      {
+        exitMode: "trim_scale",
+        regime: "neutral",
+        trimsTaken: 0, // the fix: a real "not yet banked" count, not a recompute of `armed`
+        fetchEvidence: async () => [], // no Cortex evidence → thesis-break check is inert
+        readLaneMark: () => undefined, // force the sync snapshot mark to decide
+        onTrimBank: (n) => {
+          banked.push(n);
+        },
+      }
+    );
+  } finally {
+    if (prevFlag === undefined) delete process.env.ZERODTE_TRIM_BANK_LIVE;
+    else process.env.ZERODTE_TRIM_BANK_LIVE = prevFlag;
+  }
+
+  // The row does NOT close — the whole point of the fix is that this tick banks a
+  // third instead of exiting the whole position at breakeven.
+  assert.equal(result, null, "a trim-bank tick must never itself report an EXIT");
+  assert.deepEqual(banked, [1], "onTrimBank must fire exactly once, banking tranche 1");
+});
+
+test("trim_scale dead-zone BUG (unchanged while ZERODTE_TRIM_BANK_LIVE is off): the identical scenario still dumps the whole position at breakeven — the PR is a no-op until the flag flips", async () => {
+  const { evaluateLedgerRowExit } = await import("./exit-sync");
+  const row = trimScaleRow();
+  const banked: number[] = [];
+
+  // SAME row, SAME mark/peak — only difference is `trimsTaken` is NOT overridden, so
+  // evaluateLedgerRowExit recomputes it via trimTranchesArmed(peak, regime), exactly
+  // as it always has. This must reproduce today's shipped (buggy) behavior byte-for-
+  // byte: merging this fix changes nothing live until ZERODTE_TRIM_BANK_LIVE=1.
+  const result = await evaluateLedgerRowExit(
+    row,
+    { syncMark: 4.0, status: "OPEN" },
+    {
+      exitMode: "trim_scale",
+      regime: "neutral",
+      // trimsTaken deliberately omitted — exercises the real resolveTrimBankLive()
+      // (unset in this test process → false) recompute path.
+      fetchEvidence: async () => [],
+      readLaneMark: () => undefined,
+      onTrimBank: (n) => {
+        banked.push(n);
+      },
+    }
+  );
+
+  assert.ok(result, "the coarse breakeven floor still dumps the whole position — the bug is unchanged while the flag is off");
+  assert.equal(result!.decision.action, "EXIT");
+  assert.match(result!.decision.reason, /ratchet_breakeven_floor|ratchet_early_profit_floor/);
+  assert.deepEqual(banked, [], "onTrimBank must never fire while ZERODTE_TRIM_BANK_LIVE is off");
+});
+
 // ── ENTRY-BASIS COHERENCE: the operative stop can never be looser than −50% of the
 //    LEDGER basis, no matter how far the mark ran past the flow fill before commit ───
 //
@@ -460,6 +623,71 @@ test("entry-basis coherence: a ledger basis above entry_max re-bases the stop �
   state.snapMark = ledgerEntry * 0.5;
   await syncLedgerLiveState(state.ledgerRows as never);
   assert.equal((state.stampCalls[0]!.exit as { pnl_pct: number }).pnl_pct, -50);
+  lane._resetZeroDteLiveMarksForTest();
+});
+
+// ── ACHIEVABILITY CEILING (2026-08-27, plan.ts PR #2986) is the SYMMETRIC counterpart of the
+//    FLOOR case above: resolveLedgerEntryPremium can also move the ledger basis DOWN, capping a
+//    flow fill that sat far above a live market that never traded there. `entryBasisDiverged`
+//    was written for the floor direction only (`entry > planEntryMax`) and never updated when the
+//    ceiling shipped, so a ceiling-capped row kept using the STALE pinned stop — which, being
+//    entry_max×0.5 off the OLD (much higher) entry_max, sits ABOVE the new (lower) ledger entry.
+//    Reproduces the live production defect measured 2026-08-28: AMD flow fill $3.80, ledger-
+//    capped entry $1.23 (real market never near $3.80), pinned stop 1.90 — every mark from that
+//    point on reads "at/below 1.90" trivially, so the row closed_reason="stop" within ~1s of its
+//    own commit at ~0% real P&L. Two such phantom stops (AMD, NVDA) contributed to the session's
+//    stop tally and the desk halting for the rest of the day.
+test("entry-basis coherence: a ledger basis BELOW entry_max (achievability ceiling) also re-bases the stop — no instant phantom stop", async () => {
+  const { lane, syncLedgerLiveState } = await mods();
+  resetState();
+  lane._resetZeroDteLiveMarksForTest();
+
+  const entryMax = 3.82; // the flow's own fill — the market never actually traded this high
+  const ledgerEntry = 1.24; // resolveLedgerEntryPremium capped DOWN to the flag-time mark
+  const pinnedStop = 1.91; // = entryMax × 0.5 — stale once the ceiling capped the basis down
+
+  state.ledgerRows = [
+    baseRow({
+      entry_premium: ledgerEntry,
+      flow_avg_fill: entryMax,
+      peak_premium: ledgerEntry,
+      trough_premium: ledgerEntry,
+      last_mark: ledgerEntry,
+      entry_context: { exit_policy_at_commit: "ratchet" },
+      plan_json: { occ: OCC, entry_max: entryMax, stop_premium: pinnedStop, target_premium: 7.6 },
+    }),
+  ];
+  // The live AMD tick: barely below the STALE pinned stop (1.91) but nowhere near the real
+  // −50% ledger stop (1.24 × 0.5 = 0.62). Pre-fix this closed instantly; post-fix it must hold.
+  state.snapMark = 1.225;
+
+  const rows = await syncLedgerLiveState(state.ledgerRows as never);
+
+  assert.notEqual(
+    rows[0]!.status,
+    "CLOSED",
+    "a mark of 1.225 is far above the real ledger-basis stop of 0.62 — must not phantom-stop off the stale pre-ceiling pinned stop of 1.91"
+  );
+
+  // And the correct ledger-basis stop DOES still fire, once the mark actually gets there.
+  resetState();
+  lane._resetZeroDteLiveMarksForTest();
+  state.ledgerRows = [
+    baseRow({
+      entry_premium: ledgerEntry,
+      flow_avg_fill: entryMax,
+      peak_premium: ledgerEntry,
+      trough_premium: ledgerEntry,
+      last_mark: ledgerEntry,
+      entry_context: { exit_policy_at_commit: "ratchet" },
+      plan_json: { occ: OCC, entry_max: entryMax, stop_premium: pinnedStop, target_premium: 7.6 },
+    }),
+  ];
+  state.snapMark = ledgerEntry * 0.5; // exactly the re-derived ledger-basis stop
+  const stoppedRows = await syncLedgerLiveState(state.ledgerRows as never);
+  assert.equal(stoppedRows[0]!.status, "CLOSED");
+  assert.equal((state.stampCalls[0]!.exit as { reason: string; pnl_pct: number }).reason, "plan_stop");
+  assert.equal((state.stampCalls[0]!.exit as { reason: string; pnl_pct: number }).pnl_pct, -50);
   lane._resetZeroDteLiveMarksForTest();
 });
 

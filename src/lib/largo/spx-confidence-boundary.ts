@@ -45,20 +45,30 @@ export const SPX_CONFIDENCE_OMITTED =
   "measured confidence. Use `score` (-100..100, signed: positive = long), `grade` (A+..D), and " +
   "`agreeing` vs `weighted_conflicts` to judge conviction instead.";
 
-/** Shape-agnostic: both SpxConfluence and SpxPlayPayload carry `confidence` at the top level. */
-type MaybeConfidence = { rawScore?: unknown } & Record<string, unknown>;
+/** Shape-agnostic: `rawScore` (confluence/play shapes) and `confidence` (signal-log rows, which
+ *  persist the identical formula under a DIFFERENT key — see spx-signal-log.ts's
+ *  `confidence: play.rawScore`) are the same fabricated number under two names. */
+type MaybeConfidence = { rawScore?: unknown; confidence?: unknown } & Record<string, unknown>;
 
 /**
- * Return `payload` with the uncalibrated `rawScore` replaced by a named, explanatory absence.
+ * Return `payload` with the uncalibrated confidence value replaced by a named, explanatory absence.
  *
- * Passes `null`/`undefined` and non-objects straight through, and leaves a payload that never
- * carried `rawScore` completely untouched — so this is safe to wrap around a tool result whose
- * shape varies (an `{ error }` object, a degraded payload) without inventing a field on it.
+ * Passes `null`/`undefined` and non-objects straight through, and leaves a payload that carries
+ * NEITHER `rawScore` NOR `confidence` completely untouched — so this is safe to wrap around a tool
+ * result whose shape varies (an `{ error }` object, a degraded payload) without inventing a field
+ * on it.
+ *
+ * Triggers on `confidence` alone, not just `rawScore` — a payload can carry the fabricated number
+ * under either name. `spx-signal-log.ts`'s `insertSpxSignalLog` persists it as
+ * `confidence: play.rawScore` with no `rawScore` key at all, so a guard that required `rawScore`
+ * would silently pass every signal-log row through unomitted. This is not hypothetical: the
+ * `get_signal_log` Largo tool served exactly that row shape with no omission wrapper at all until
+ * this fix — see docs/audit/findings-staging/2026-08-29-spx-signal-log-confidence-leak.md.
  */
 export function omitUncalibratedSpxConfidence<T>(payload: T): T {
   if (payload == null || typeof payload !== "object" || Array.isArray(payload)) return payload;
   const obj = payload as MaybeConfidence;
-  if (!("rawScore" in obj)) return payload;
+  if (!("rawScore" in obj) && !("confidence" in obj)) return payload;
   // Policy: per LARGO-PRODUCT-CONTRACT.md, omit confidence when uncalibrated.
   // This field is an arbitrary formula (|score|*1.15 + #factors*3, clamped 0-96)
   // with no measured calibration against outcomes — measured win rate on these plays

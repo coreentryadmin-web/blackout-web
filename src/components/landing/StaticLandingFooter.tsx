@@ -21,6 +21,7 @@ const ICON_DISCORD =
 
 const DESK = [
   { label: "Why BlackOut", href: "/why-blackout" },
+  { label: "Public record", href: "/methodology" },
   { label: "Compare", href: "/vs/others" },
   { label: "Free Gamma Tool", href: "/tools/gamma-snapshot" },
   { label: "Pricing", href: "/pricing" },

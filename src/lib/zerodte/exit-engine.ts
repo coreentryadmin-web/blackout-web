@@ -313,11 +313,40 @@ function decideTrimScale(
   // How many thirds the caller has already banked (clamped/floored — the latch is 0/1/2).
   const taken = Math.max(0, Math.min(thresholds.length, Math.floor(input.trimsTaken ?? 0)));
 
+  // How many thirds the LATCHED PEAK has armed under this regime's schedule (computed
+  // up front — see the dead-zone note just below, which needs it before the floor check).
+  const armed = trimTranchesArmed(peakPnlPct, regime);
+
   // 1. Protective: plan stop OR the shared early/breakeven ratchet floor (trim_scale
   //    has no whole-position dump at breakeven, but a +15%/+20% peak still arms a
   //    floor so a modest winner cannot round-trip to −50% between trim tranches).
+  //
+  //    DEAD-ZONE GUARD (2026-08-27, live SLS/TSM): `ratchetFloorPct` and
+  //    `trimTranchesArmed` are two INDEPENDENT threshold tables — the ratchet's
+  //    breakeven arm sits at a fixed peak +20% while a tranche's own trigger is
+  //    regime-conditioned (neutral +20%, range +15%, trend +40%). For neutral and
+  //    range the two tables cross or COINCIDE, so a peak that is high enough to have
+  //    armed a trim tranche this tick can *also* be high enough to have armed the
+  //    shared floor — and because the floor check ran first in the code, it always
+  //    won: SLS (peak +22.09%) and TSM (peak +20.59%) both round-tripped their ENTIRE
+  //    position to flat breakeven via `ratchet_breakeven_floor` without ever banking
+  //    the first third the peak had already earned. That defeats trim_scale's whole
+  //    purpose (E5: "don't scratch a momentum runner at breakeven") for exactly the
+  //    peak range where it matters. The floor itself is NOT wrong — a peak that has
+  //    NOT armed a tranche yet still needs the breakeven/early-arm safety net, so it
+  //    is left fully intact for that case (unarmed dead-zone, e.g. trend @ +20-39%,
+  //    where the trim schedule deliberately runs later and the floor is the only
+  //    protection — see the PR write-up for why that residual gap is not a bug).
+  //    The fix: once a tranche is armed but not yet taken, bank it INSTEAD of letting
+  //    the coarse floor dump everything — banking also flips `input.trimmed` for the
+  //    next tick, which raises the shared floor to the +50% runner floor for the
+  //    remainder (strictly better protection than riding the breakeven floor to the
+  //    finish). Only suppresses the floor EXIT action below; it does not change
+  //    `floorMark`/the plan-stop comparison, so a real stop breach still outranks a
+  //    pending trim exactly as before.
+  const trimAvailable = armed > taken;
   const sharedFloor = ratchetFloorPct(peakPnlPct, input.trimmed);
-  const floorBreached = sharedFloor != null && pnlPct <= sharedFloor;
+  const floorBreached = sharedFloor != null && pnlPct <= sharedFloor && !trimAvailable;
   if (input.planStop != null && currentMark <= input.planStop) {
     const floorMark = sharedFloor != null ? protectiveFloorMark(ctx.entryPremium, sharedFloor) : null;
     const stopIsHigher =
@@ -360,7 +389,7 @@ function decideTrimScale(
   // 3. Trim ladder: the LATCHED PEAK arms tranches monotonically; bank the next third
   //    whenever the peak has armed more than the caller has already taken. One third per
   //    tick until caught up (same one-step-per-tick catch-up as the ratchet trim latch).
-  const armed = trimTranchesArmed(peakPnlPct, regime);
+  //    (`armed` was computed above, ahead of the floor check — see the dead-zone note.)
   if (armed > taken) {
     const trancheIdx = taken + 1; // banking the 1st or 2nd third now
     const at = thresholds[taken]!;

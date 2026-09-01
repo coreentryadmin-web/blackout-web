@@ -209,6 +209,66 @@ test("contested but decisive (score >= the A floor): support has clearly won the
   assert.equal(assessCortexVerdict(decisive).decision, "PASS");
 });
 
+test("gex-walls oppose presence (2026-08-28): an active gex-walls oppose >= the presence floor, net score below the A floor => OPPOSE_UNRESOLVED, not a silent PASS", () => {
+  // Enough support to keep the net score positive (0 <= score < CONVICTION_A_MIN_SCORE) but a
+  // real, live gex-walls oppose at 0.3 (>= GEX_WALLS_OPPOSE_PRESENCE_MIN_WEIGHT's 0.2) is on the
+  // table — measured (90-day + same-week live) to grade worse than a clean signal even here,
+  // where CONTESTED wouldn't fire (oppose total 0.3 is well under CONTESTED_MIN_MAGNITUDE's 0.75).
+  const v = verdict({
+    score: 1.0,
+    contested: false,
+    supports: [ev("flow-quality", "supports", 1.3, "bullish sweep cluster")],
+    opposes: [ev("gex-walls", "opposes", 0.3, "call wall overhead")],
+  });
+  const a = assessCortexVerdict(v);
+  assert.equal(a.decision, "OPPOSE_UNRESOLVED");
+  assert.ok(!a.abstained);
+  const blocks = cortexGateBlocks(a);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0]!.code, "cortex_gex_walls_oppose_unresolved");
+  assert.equal(blocks[0]!.threshold, CONVICTION_A_MIN_SCORE);
+  assert.match(blocks[0]!.reason, /gex-walls/);
+  assert.match(blocks[0]!.reason, /call wall overhead/);
+});
+
+test("gex-walls oppose presence: a THIN oppose below the presence floor does not trigger OPPOSE_UNRESOLVED", () => {
+  // Same shape as above but the oppose weight (0.1) is below GEX_WALLS_OPPOSE_PRESENCE_MIN_WEIGHT
+  // (0.2) — the measured evidence never covered anything this small, so this gate makes no claim
+  // about it and must not block.
+  const v = verdict({
+    score: 1.0,
+    contested: false,
+    supports: [ev("flow-quality", "supports", 1.1, "bullish sweep cluster")],
+    opposes: [ev("gex-walls", "opposes", 0.1, "faint call wall")],
+  });
+  assert.equal(assessCortexVerdict(v).decision, "PASS");
+});
+
+test("gex-walls oppose presence: decisive support (score >= the A floor) still PASSes despite an active gex-walls oppose", () => {
+  // Same "residual opposition is expected noise once support has decisively won" logic as the
+  // CONTESTED carve-out above — a real oppose weight (0.3, above the presence floor) does not
+  // retroactively block a setup whose net score already clears CONVICTION_A_MIN_SCORE.
+  const v = verdict({
+    score: CONVICTION_A_MIN_SCORE + 0.5,
+    contested: false,
+    supports: [ev("flow-quality", "supports", CONVICTION_A_MIN_SCORE + 0.8, "large bullish sweep")],
+    opposes: [ev("gex-walls", "opposes", 0.3, "call wall overhead")],
+  });
+  assert.equal(assessCortexVerdict(v).decision, "PASS");
+});
+
+test("gex-walls oppose presence: an oppose from a DIFFERENT source at the same weight does not trigger OPPOSE_UNRESOLVED", () => {
+  // The evidence is specific to gex-walls — a same-magnitude oppose from vex-charm or any other
+  // source is not what was measured, so this gate must not generalize to "any oppose".
+  const v = verdict({
+    score: 1.0,
+    contested: false,
+    supports: [ev("flow-quality", "supports", 1.3, "bullish sweep cluster")],
+    opposes: [ev("vex-charm", "opposes", 0.3, "negative VEX tilt")],
+  });
+  assert.equal(assessCortexVerdict(v).decision, "PASS");
+});
+
 test("ABSTAIN: an all-absent composition (total outage) passes through with zero blocks and an honest reason", () => {
   const a = assessCortexVerdict(composeCortexEvidence(baseInputs({ ticker: "QQQ", direction: "short" })));
   assert.equal(a.decision, "ABSTAIN");
@@ -337,7 +397,7 @@ test("fail-closed: evaluateCortexForCommit — a both-veto-absent read HOLDs (VE
 
 // ── Thin-evidence gate ──────────────────────────────────────────────────────────
 
-test("thin evidence: a bare +0.1 from <2 sources is blocked as NET_NEGATIVE — THIN_EVIDENCE_SCORE_FLOOR enforced", () => {
+test("thin evidence: a bare +0.1 from <2 sources is blocked as THIN_EVIDENCE, not NET_NEGATIVE (the score is not negative)", () => {
   assert.equal(THIN_EVIDENCE_MIN_SOURCES, 2);
   assert.equal(THIN_EVIDENCE_SCORE_FLOOR, 0.5);
   // Build a verdict with 7 absent sources (only 1 answered) and a thin positive score.
@@ -353,8 +413,13 @@ test("thin evidence: a bare +0.1 from <2 sources is blocked as NET_NEGATIVE — 
     narrative: ["thin"],
   };
   const a = assessCortexVerdict(thinVerdict);
-  assert.equal(a.decision, "NET_NEGATIVE");
-  assert.deepEqual(cortexGateBlocks(a).map(b => b.code), ["cortex_net_negative"]);
+  assert.equal(a.decision, "THIN_EVIDENCE");
+  const blocks = cortexGateBlocks(a);
+  assert.deepEqual(blocks.map(b => b.code), ["cortex_thin_evidence"]);
+  // Regression for the mislabel: the reason must NOT describe a positive score as
+  // "against" the direction — it should say the score is not negative, just thin.
+  assert.match(blocks[0]!.reason, /not negative/);
+  assert.doesNotMatch(blocks[0]!.reason, /nets \+0\.1 against/);
 });
 
 test("thin evidence: score at or above THIN_EVIDENCE_SCORE_FLOOR passes even with <2 sources", () => {
@@ -487,7 +552,7 @@ test("cortexGateBlocks: a null assessment (Cortex never ran — refresh lane) yi
   assert.deepEqual(cortexGateBlocks(null), []);
 });
 
-test("thin evidence: score JUST below the 0.5 floor with <2 sources is NET_NEGATIVE (the floor is `<`)", () => {
+test("thin evidence: score JUST below the 0.5 floor with <2 sources is THIN_EVIDENCE (the floor is `<`)", () => {
   const justBelow: CortexVerdict = {
     score: 0.49,
     conviction: "C" as CortexConviction,
@@ -499,9 +564,31 @@ test("thin evidence: score JUST below the 0.5 floor with <2 sources is NET_NEGAT
     absent: ["gex-walls", "wall-trend", "flow-quality", "sector-heat", "darkpool-confluence", "opening-harvest", "catalyst-news"],
     narrative: ["thin"],
   };
-  assert.equal(assessCortexVerdict(justBelow).decision, "NET_NEGATIVE");
+  assert.equal(assessCortexVerdict(justBelow).decision, "THIN_EVIDENCE");
   // …and at exactly the floor it passes (proving the boundary is inclusive on the PASS side).
   assert.equal(assessCortexVerdict({ ...justBelow, score: 0.5, supports: [{ ...justBelow.supports[0]!, weight: 0.5 }] }).decision, "PASS");
+});
+
+test("thin evidence vs genuine net-negative: a real negative score stays NET_NEGATIVE even with few sources", () => {
+  // Same thin-evidence shape (1 of 8 answered) but the score is actually negative —
+  // the `verdict.score < 0` check must still win, proving THIN_EVIDENCE did not
+  // swallow the genuine case it was split out from.
+  const thinButNegative: CortexVerdict = {
+    score: -0.3,
+    conviction: "C" as CortexConviction,
+    direction: "short",
+    asOf: "2026-07-17T15:00:00.000Z",
+    vetoes: [],
+    supports: [],
+    opposes: [{ source: "vex-charm", detail: "thin opposing", weight: 0.3, asOf: "2026-07-17T15:00:00.000Z", halfLifeMs: 300_000 }],
+    absent: ["gex-walls", "wall-trend", "flow-quality", "sector-heat", "darkpool-confluence", "opening-harvest", "catalyst-news"],
+    narrative: ["thin, negative"],
+  };
+  const a = assessCortexVerdict(thinButNegative);
+  assert.equal(a.decision, "NET_NEGATIVE");
+  const blocks = cortexGateBlocks(a);
+  assert.deepEqual(blocks.map(b => b.code), ["cortex_net_negative"]);
+  assert.match(blocks[0]!.reason, /nets -0\.3 against/);
 });
 
 test("veto priority: a real veto with BOTH veto sources otherwise blind still reports VETO (checked before degradation)", () => {

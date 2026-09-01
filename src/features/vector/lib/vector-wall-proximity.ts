@@ -25,12 +25,64 @@ export type WallProximity = {
 
 const DEFAULT_BAND_PCT = 0.5;
 
+// BUG FIX (2026-08-27, measured live during RTH): with plain thresholds, `nearness` (and the
+// band membership itself) is a hard boundary re-evaluated fresh on every poll. A ticker sitting
+// right at a wall for an extended stretch (SPY/QQQ/IWM/SPX all did, in the session that surfaced
+// this) has its spot ticking back and forth across that boundary by sub-tenth-percent amounts —
+// not a regime change, just quote noise — and each crossing flips `nearness`, which feeds
+// `computeConviction`'s testing/at bump (vector-play-engine.ts), which sits right under the A/B
+// grade cutoff. Measured: NVDA's play flipped grade B -> A between two reads 25s apart on a 0.06%
+// spot move (229.51 -> 229.65), nowhere near a real wall test or break. Two members opening the
+// same ticker a few seconds apart could see different grades on an identical setup, purely from
+// which side of the boundary their poll landed on.
+// Fix: hysteresis. ENTERING a tighter state (near -> testing -> at) still uses the plain
+// threshold — a level should register as "at" or "testing" promptly the first time. LEAVING one
+// requires crossing back out past a WIDER threshold, so a level already classified "at" doesn't
+// downgrade until spot has moved meaningfully away, not just ticked across the exact boundary.
+// Requires the caller to pass its own last read back in as `prev` — this module stays pure/
+// Date-free, so the caller (VectorChart.tsx) owns the ref, not this file.
+const HYSTERESIS_EXIT_MARGIN = 0.25;
+
 function absPct(spot: number, strike: number): number {
   return (Math.abs(strike - spot) / spot) * 100;
 }
 
 function fmt(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+/** Is `prev` a read of the SAME level this candidate represents? Wall strikes are discrete and
+ *  should match exactly between polls of the same book; the gamma flip is a continuously
+ *  recomputed value, so use a tight tolerance (5bps of spot) rather than exact equality there —
+ *  otherwise the flip's hysteresis would never engage since it never lands on the same float twice. */
+function sameLevel(
+  prev: WallProximity | null | undefined,
+  side: WallProximitySide,
+  strike: number,
+  spot: number
+): boolean {
+  if (!prev || prev.side !== side) return false;
+  return (Math.abs(prev.strike - strike) / spot) * 100 < 0.05;
+}
+
+function classifyNearness(
+  dist: number,
+  band: number,
+  prevNearness: WallProximity["nearness"] | null | undefined
+): WallProximity["nearness"] {
+  const atIn = band / 3;
+  const testingIn = (band * 2) / 3;
+  if (prevNearness === "at") {
+    const atOut = atIn * (1 + HYSTERESIS_EXIT_MARGIN);
+    if (dist <= atOut) return "at";
+    return dist <= testingIn ? "testing" : "near";
+  }
+  if (prevNearness === "testing") {
+    if (dist <= atIn) return "at";
+    const testingOut = testingIn * (1 + HYSTERESIS_EXIT_MARGIN);
+    return dist <= testingOut ? "testing" : "near";
+  }
+  return dist <= atIn ? "at" : dist <= testingIn ? "testing" : "near";
 }
 
 /**
@@ -43,8 +95,12 @@ export function deriveWallProximity(input: {
   walls: GexWalls | null | undefined;
   gammaFlip: number | null | undefined;
   bandPct?: number;
+  /** The caller's last `deriveWallProximity` result for this same (ticker, horizon), if any —
+   *  enables the exit hysteresis above. Omit (or pass null) for a fresh/first read: falls back
+   *  to plain thresholds, matching the pre-fix behavior exactly. */
+  prev?: WallProximity | null;
 }): WallProximity | null {
-  const { spot, walls, gammaFlip } = input;
+  const { spot, walls, gammaFlip, prev } = input;
   const band = input.bandPct ?? DEFAULT_BAND_PCT;
   if (spot == null || !Number.isFinite(spot) || spot <= 0) return null;
 
@@ -56,25 +112,35 @@ export function deriveWallProximity(input: {
   if (gammaFlip != null && Number.isFinite(gammaFlip) && gammaFlip > 0)
     candidates.push({ strike: gammaFlip, side: "flip" });
 
+  // A level already being tracked (same side + strike as `prev`) gets the widened exit band too,
+  // so it doesn't drop OUT of the band entirely on the same kind of sub-tick noise.
+  const exitBand = band * (1 + HYSTERESIS_EXIT_MARGIN);
   let best: { strike: number; side: WallProximitySide; dist: number } | null = null;
   for (const c of candidates) {
     const dist = absPct(spot, c.strike);
-    if (dist > band) continue;
+    const tracking = sameLevel(prev, c.side, c.strike, spot);
+    if (dist > (tracking ? exitBand : band)) continue;
     if (!best || dist < best.dist) best = { ...c, dist };
   }
   if (!best) return null;
 
   const signed = ((best.strike - spot) / spot) * 100;
-  const nearness = best.dist <= band / 3 ? "at" : best.dist <= (band * 2) / 3 ? "testing" : "near";
+  const trackingBest = sameLevel(prev, best.side, best.strike, spot);
+  const nearness = classifyNearness(best.dist, band, trackingBest ? prev!.nearness : null);
   const above = signed >= 0;
 
   let callout: string;
   if (best.side === "flip") {
     callout = `${fmt(best.strike)} gamma flip ${above ? "overhead" : "below"} (${best.dist.toFixed(2)}% away) — a cross flips the regime; expect the sharpest moves here.`;
   } else if (best.side === "call") {
+    // `above` (signed >= 0) means the call-wall STRIKE is at/above spot — spot is testing it from
+    // below. `!above` means spot has broken THROUGH and is now above the wall — resistance
+    // cleared, not "back under" it. The prior wording said "back under the call wall ... lost
+    // magnet" in exactly that case, describing spot as below a wall it had actually broken above
+    // (inverted bias) — the call-wall mirror of the put-wall fix immediately below.
     callout = above
       ? `Testing ${fmt(best.strike)} call wall (${best.dist.toFixed(2)}% below) — dealers sell into strength; resistance unless it breaks on volume.`
-      : `Back under the ${fmt(best.strike)} call wall (${best.dist.toFixed(2)}% away) — lost magnet, watch for fade.`;
+      : `Cleared the ${fmt(best.strike)} call wall (${best.dist.toFixed(2)}% below spot) — resistance gave way; dealers stop capping, watch for continuation higher.`;
   } else {
     // `above` (signed >= 0) means the put-wall STRIKE is at/above spot — i.e. spot has fallen to or
     // through its largest-negative-gamma support. That is support BREAKING, not a reclaim: the prior

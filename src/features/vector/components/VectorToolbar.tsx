@@ -7,6 +7,7 @@ import { VectorBeadRailToggle } from "@/features/vector/components/VectorBeadRai
 import { VectorNodesToggle } from "@/features/vector/components/VectorNodesToggle";
 import { VectorVolumeModeToggle } from "@/features/vector/components/VectorVolumeModeToggle";
 import { VectorDarkPoolToggle } from "@/features/vector/components/VectorDarkPoolToggle";
+import { VectorZoomControls } from "@/features/vector/components/VectorZoomControls";
 import { VectorReplayControls } from "@/features/vector/components/VectorReplayControls";
 import { VectorTimeframeSelect } from "@/features/vector/components/VectorTimeframeSelect";
 import { VectorIndicatorMenu } from "@/features/vector/components/VectorIndicatorMenu";
@@ -85,6 +86,13 @@ type Props = {
   hideVolumePane?: boolean;
   darkPoolWallsEnabled?: boolean;
   onDarkPoolWalls?: (enabled: boolean) => void;
+  /** Server fetch time of the currently-rendered dark-pool snapshot — see VectorDarkPoolToggle. */
+  darkPoolAsOf?: number | null;
+  /** Explicit zoom in/out/reset buttons (2026-08-27 member request). Optional — a host that
+   *  doesn't wire these (e.g. an embed) simply omits the control rather than rendering a dead one. */
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onZoomReset?: () => void;
 };
 
 /** Single compact toolbar — timeframe left, replay + lens right. */
@@ -139,7 +147,16 @@ export function VectorToolbar(props: Props) {
     hideVolumePane = false,
     darkPoolWallsEnabled = false,
     onDarkPoolWalls,
+    darkPoolAsOf,
+    onZoomIn,
+    onZoomOut,
+    onZoomReset,
   } = props;
+
+  const zoomControls =
+    onZoomIn && onZoomOut && onZoomReset ? (
+      <VectorZoomControls onZoomIn={onZoomIn} onZoomOut={onZoomOut} onReset={onZoomReset} />
+    ) : null;
 
   const drawMenu = drawTools ? <VectorDrawToolsMenu {...drawTools} /> : null;
 
@@ -169,6 +186,22 @@ export function VectorToolbar(props: Props) {
             autoCount={nodeAutoCount}
             exposeTestIds={false}
           />
+          {/* Member-requested zoom in/out/reset (2026-08-27) shipped to the standalone chart but
+              never reached Compare — this branch renders its own control set and `zoomControls`
+              was computed above but never referenced here. A per-pane zoom is exactly what a
+              member switching to "Per-pane" (unlinked) mode needs, since the linked command bar's
+              own zoom control is Session/Structure/Live presets, not a discrete step-zoom.
+              exposeTestIds=false (not the shared `zoomControls` var, which defaults true) — up to
+              4 panes render this row at once, and the NODES toggle right above already follows
+              this same false-in-compare convention to avoid 4 duplicate data-testids. */}
+          {onZoomIn && onZoomOut && onZoomReset ? (
+            <VectorZoomControls
+              onZoomIn={onZoomIn}
+              onZoomOut={onZoomOut}
+              onReset={onZoomReset}
+              exposeTestIds={false}
+            />
+          ) : null}
           {drawMenu}
           {replayLeadSlot}
           {!hideReplayControls ? (
@@ -278,6 +311,16 @@ export function VectorToolbar(props: Props) {
           <VectorDarkPoolToggle
             enabled={darkPoolWallsEnabled}
             onChange={onDarkPoolWalls}
+            darkPoolAsOf={darkPoolAsOf}
+            liveSession={liveSession}
+            exposeTestIds={false}
+          />
+        ) : null}
+        {onZoomIn && onZoomOut && onZoomReset ? (
+          <VectorZoomControls
+            onZoomIn={onZoomIn}
+            onZoomOut={onZoomOut}
+            onReset={onZoomReset}
             exposeTestIds={false}
           />
         ) : null}
@@ -347,8 +390,14 @@ export function VectorToolbar(props: Props) {
             <VectorVolumeModeToggle value={volumeMode} onChange={onVolumeMode} />
           ) : null}
           {onDarkPoolWalls ? (
-            <VectorDarkPoolToggle enabled={darkPoolWallsEnabled} onChange={onDarkPoolWalls} />
+            <VectorDarkPoolToggle
+              enabled={darkPoolWallsEnabled}
+              onChange={onDarkPoolWalls}
+              darkPoolAsOf={darkPoolAsOf}
+              liveSession={liveSession}
+            />
           ) : null}
+          {zoomControls}
           {trailSlot}
         </div>
       </div>

@@ -7,9 +7,6 @@ import { useMarketingSignedIn } from "@/lib/use-marketing-signed-in";
 // Server passes its best guess; __client_uat wins on the FIRST client render, then /api/auth/me
 // verifies the session so expired cookies don't keep showing "Open desk".
 
-/** @deprecated import from `@/lib/client-signed-in` */
-export { readClientSignedIn } from "@/lib/client-signed-in";
-
 export function NavAuthLinks({ signedIn: initial }: { signedIn: boolean }) {
   const signedIn = useMarketingSignedIn(initial);
 

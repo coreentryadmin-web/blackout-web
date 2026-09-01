@@ -13,6 +13,26 @@
 
 export const VERDICT_RANK = { RED: 3, AMBER: 2, GREEN: 1, SKIPPED: 0 };
 
+/**
+ * Human-readable governor summary for the stage-B "0 live <origin> setups" note.
+ *
+ * The board's real payload type is `ZeroDteGovernorSummary` (src/lib/zerodte/governor.ts) —
+ * it has NO `state`/`status` field. The caller here used to read `gov.state ?? gov.status ?? "?"`,
+ * which can never resolve to anything but "?" against the real shape, so every stage-B AMBER
+ * line silently printed "governor ?" even on a session governor-halted by realized losses —
+ * exactly the context an operator needs to tell "gates are just strict today" apart from
+ * "the desk stood itself down". Read the fields that actually exist instead.
+ */
+export function formatGovernorNote(gov) {
+  if (!gov) return "governor unavailable";
+  const openCount = Array.isArray(gov.open_plans) ? gov.open_plans.length : 0;
+  const stopCount = Array.isArray(gov.stops) ? gov.stops.length : 0;
+  if (gov.halted) {
+    return `governor HALTED (${stopCount} stop(s), ${(gov.session_pnl_pct ?? 0).toFixed(1)}% session P&L)`;
+  }
+  return `governor live (${openCount} open, ${stopCount} stop(s))`;
+}
+
 /** Roll a set of sub-verdicts up to the single worst one. Empty / all-SKIPPED → SKIPPED. */
 export function rollupVerdict(verdicts) {
   let worst = "SKIPPED";

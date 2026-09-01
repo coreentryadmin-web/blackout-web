@@ -28,7 +28,6 @@ import {
   buildBreakoutSetup,
   pickBreakoutContractWithFallback,
   pickAtmZeroDteContract,
-  breakoutAllow1DteFallback,
   type BreakoutChainRow,
 } from "./breakout-source";
 import type { EnrichedZeroDteSetup } from "./board";
@@ -69,10 +68,13 @@ const RTH_CUTOFF_ET_MINUTES = 15 * 60 + 30;
  *  `discovery-recall-probe.mjs` run: real qualifying pools of 100-390/day, cap stuck at 40). */
 export const BREAKOUT_MAX_CANDIDATES = 40; // dynamic-N floor — raised 6→15→25→40, now a floor not a ceiling
 
-/** Dynamic-N ceiling (2026-08-04) — bounds worst-case chain-fetch growth on a huge-breadth day to
- *  2.5x the pre-dynamic static cap. See `resolveBreakoutCandidateCap` for the sizing formula and
- *  `scripts/audit/breakout-dynamic-n-ab.mjs` for the A/B evidence that justified it. */
-export const BREAKOUT_MAX_CANDIDATES_CEILING = 100;
+/** Dynamic-N ceiling (2026-08-04, raised to 150 on 2026-08-24) — bounds worst-case chain-fetch
+ *  growth on a huge-breadth day. See `resolveBreakoutCandidateCap` for the sizing formula and
+ *  `scripts/audit/breakout-dynamic-n-ab.mjs` for the A/B evidence that justified the original 100.
+ *  Raised from 100→150 because evidence shows the ceiling is hit on 10/13 sessions, and momentum-rank
+ *  cohorts (41-100 vs top-40) show 44.9% WR vs 43.1% — indistinguishable, no quality loss from wider
+ *  pools, only more shots at the same hit rate. Chain-fetch budget is bounded, Polygon concurrency tuned. */
+export const BREAKOUT_MAX_CANDIDATES_CEILING = 150;
 
 /** Wider $-volume pool fed into the momentum re-rank before the chain-fetch cap. Liquidity filter
  *  stays in `screenBreakoutMovers` / `screenBreakdownMovers`; quality ranking is separate. Raised
@@ -84,18 +86,24 @@ export const BREAKOUT_SCREEN_POOL = 200;
 
 /**
  * Rank screened movers for the chain-fetch budget. Liquidity already gated the pool; this orders
- * by momentum quality so a sharp mid-cap continuation outranks a sluggish mega-cap grind.
- * - long / breakout: `gain × close_strength` (strong close = conviction)
- * - short / breakdown: `gain × (1 − close_strength)` (weak close = conviction)
- * Ties break by $-volume (still prefer tradeable names). Pure.
+ * by gain-over-range: the move relative to the daily volatility (measured 2026-08-06: +11.3pt signal
+ * vs the prior −5.2pt momentum ranking). Ties break by $-volume (still prefer tradeable names). Pure.
+ *
+ * EVIDENCE (docs/audit/FINDINGS.md 2026-08-06): breakout-ranking-signal.mjs over 15 sessions
+ * (3,305 graded names) shows gain_over_range +11.3pt (p=0.000) vs momentum −5.2pt (p=0.945).
+ * Held-out cohort (15 disjoint sessions, 2,538 names): +15.7pt vs −6.4pt. Current momentum ranking
+ * is harmful; gain_over_range captures whether a move is "clean" (most of the day's range) or
+ * exhausted (already priced in volatility).
  */
-export function rankMoversForChainFetch<T extends { gain: number; close_strength: number; dollar: number }>(
+export function rankMoversForChainFetch<T extends { gain: number; close_strength: number; dollar: number; bar: { h: number; l: number; o: number } }>(
   movers: readonly T[],
   maxKeep: number,
   side: "long" | "short"
 ): T[] {
-  const quality = (m: T): number =>
-    side === "long" ? m.gain * m.close_strength : m.gain * (1 - m.close_strength);
+  const quality = (m: T): number => {
+    const range = m.bar.h - m.bar.l;
+    return range > 0 ? m.gain / (range / m.bar.o) : 0;
+  };
   return [...movers]
     .sort((a, b) => {
       const dq = quality(b) - quality(a);
@@ -181,6 +189,23 @@ export type BreakoutDiscoveryDeps = {
   /** Wave C1 — optional minute bar fetch for intraday breadth refresh (tests inject fakes). */
   fetchMinuteBars?: (ticker: string, from: string, to: string) => Promise<MinuteBarLike[]>;
 };
+
+/**
+ * Classify why `pickContract` (pickBreakoutContractWithFallback) came back empty, for the
+ * per-cycle funnel diagnostic only (never changes whether the candidate is dropped — it always
+ * is). `hasWidened` should be computed UNCONDITIONALLY (regardless of ZERODTE_BREAKOUT_ALLOW_1DTE)
+ * so this can distinguish "no contract exists at ANY horizon" from "a wider contract exists but
+ * the operator's flag withheld it" — conflating the two into one counter (`no_same_day_contract`)
+ * was a real regression: a prior version gated the `hasWidened` COMPUTATION itself behind the same
+ * flag, so it could only ever be non-null when the flag was ON, making the `no_0dte_contract`
+ * branch permanently unreachable (2026-08-29 audit finding — see breakout-discovery.test.ts).
+ */
+export function classifyContractMiss(
+  has0: boolean,
+  hasWidened: boolean
+): "no_0dte_contract" | "no_same_day_contract" {
+  return !has0 && hasWidened ? "no_0dte_contract" : "no_same_day_contract";
+}
 
 const DEFAULT_DEPS: BreakoutDiscoveryDeps = {
   fetchSummary: fetchDailyMarketSummary,
@@ -345,13 +370,14 @@ export async function discoverBreakoutSetups(opts: {
       const side = direction === "long" ? ("call" as const) : ("put" as const);
       const picked = pickContract(rows, chain.spot, today, side);
       if (!picked) {
+        // Diagnostic re-query, not a re-pick: `picked` above already tried the widened window
+        // when ZERODTE_BREAKOUT_ALLOW_1DTE allows it, so a wider contract existing here only ever
+        // means the FLAG withheld it — never that `picked` missed something available. Compute
+        // `hasWidened` unconditionally (cheap: pure filter over `rows`, no I/O) so that case is
+        // distinguishable from a genuine no-contract-at-any-horizon miss — see classifyContractMiss.
         const has0 = pickAtmZeroDteContract(rows, chain.spot, today, 0, side);
-        const hasWidened =
-          breakoutAllow1DteFallback() ? pickAtmZeroDteContract(rows, chain.spot, today, ZERODTE_MAX_DTE, side) : null;
-        if (!has0 && hasWidened && !breakoutAllow1DteFallback()) {
-          return { setup: null, miss: "no_0dte_contract" as const };
-        }
-        return { setup: null, miss: "no_same_day_contract" as const };
+        const hasWidened = pickAtmZeroDteContract(rows, chain.spot, today, ZERODTE_MAX_DTE, side);
+        return { setup: null, miss: classifyContractMiss(has0 != null, hasWidened != null) };
       }
       const { used_1dte_fallback, ...contract } = picked;
       const dollarNorm = maxDollar > 0 ? mover.dollar / maxDollar : 0;

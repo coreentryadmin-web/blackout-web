@@ -15,6 +15,7 @@ import { isIosAppShell } from "@/lib/ios-app-shell";
 import { getIosToolNavLabel } from "@/lib/ios-tool-routes";
 import { readClientSignedIn } from "@/lib/client-signed-in";
 import { useAdminFlag } from "@/hooks/use-admin-flag";
+import { isSignedInOnDeskPage } from "@/lib/nav-desk-gate";
 
 type Accent = "green" | "purple" | "orange" | "blue" | "red" | "teal";
 type FeatureLink = { href: string; label: string; sub: string; accent: Accent; adminOnly?: boolean };
@@ -160,6 +161,13 @@ export function Nav({
 
   const showAdmin = isLoaded && isSignedIn && isAdmin;
   const isFeatureActive = FEATURE_LINKS.some((l) => path.startsWith(l.href));
+  // See nav-desk-gate.ts for why: hides FAQ/Pricing/Learn once a signed-in member is on a desk
+  // page, keeps the Features dropdown (the real in-app product switcher there).
+  const onDeskPage = isSignedInOnDeskPage(
+    isSignedIn,
+    path,
+    FEATURE_LINKS.map((l) => l.href)
+  );
   const isLearnActive = path.startsWith("/learn");
   const isFaqActive = path.startsWith("/faq");
   const isPricingActive = path.startsWith("/pricing");
@@ -282,7 +290,7 @@ export function Nav({
       data-route-pending={routePending ? "true" : "false"}
       initial={isHome && !reduced ? { opacity: 0, y: -20 } : undefined}
       animate={isHome && !reduced ? { opacity: 1, y: 0 } : undefined}
-      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] as const }}
       className={clsx("nav-bar", iosToolChrome && "nav-bar-ios-tool")}
     >
       <div className="nav-surface" aria-hidden>
@@ -338,7 +346,7 @@ export function Nav({
                   initial={reduced ? { opacity: 0 } : { opacity: 0, y: -6 }}
                   animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
                   exit={reduced ? { opacity: 0 } : { opacity: 0, y: -6 }}
-                  transition={{ duration: 0.12, ease: [0.22, 1, 0.36, 1] }}
+                  transition={{ duration: 0.12, ease: [0.22, 1, 0.36, 1] as const }}
                 >
                   <div className="nav-mega-head">
                     <span className="nav-mega-kicker font-mono">All instruments · one desk</span>
@@ -367,26 +375,29 @@ export function Nav({
             </AnimatePresence>
           </li>
 
-          {TOP_LINKS.map(({ href, label, iosHide }) => {
-            const active = href === "/faq" ? isFaqActive : isPricingActive;
-            const li = iosHide ? "nav-pill-li hide-in-ios-app" : "nav-pill-li";
-            return (
-              <li key={href} className={li}>
-                <Link href={href} className={clsx("nav-pill-item", active && "nav-pill-item-active")}>
-                  {label}
-                </Link>
-              </li>
-            );
-          })}
+          {!onDeskPage &&
+            TOP_LINKS.map(({ href, label, iosHide }) => {
+              const active = href === "/faq" ? isFaqActive : isPricingActive;
+              const li = iosHide ? "nav-pill-li hide-in-ios-app" : "nav-pill-li";
+              return (
+                <li key={href} className={li}>
+                  <Link href={href} className={clsx("nav-pill-item", active && "nav-pill-item-active")}>
+                    {label}
+                  </Link>
+                </li>
+              );
+            })}
 
-          <li className="nav-pill-li">
-            <Link
-              href="/learn"
-              className={clsx("nav-pill-item", isLearnActive && "nav-pill-item-active")}
-            >
-              Learn
-            </Link>
-          </li>
+          {!onDeskPage && (
+            <li className="nav-pill-li">
+              <Link
+                href="/learn"
+                className={clsx("nav-pill-item", isLearnActive && "nav-pill-item-active")}
+              >
+                Learn
+              </Link>
+            </li>
+          )}
 
           {showAdmin && (
             <li className="nav-pill-li">
@@ -484,30 +495,33 @@ export function Nav({
                 />
               </div>
               <div className="nav-sheet-divider" />
-              {TOP_LINKS.map(({ href, label, iosHide }) => {
-                const active = href === "/faq" ? isFaqActive : isPricingActive;
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    onClick={() => setMobileOpen(false)}
-                    className={clsx(
-                      "nav-sheet-link font-syne",
-                      iosHide && "hide-in-ios-app",
-                      active && "nav-sheet-link-active"
-                    )}
-                  >
-                    {label}
-                  </Link>
-                );
-              })}
-              <Link
-                href="/learn"
-                onClick={() => setMobileOpen(false)}
-                className={clsx("nav-sheet-link font-syne", isLearnActive && "nav-sheet-link-active")}
-              >
-                Learn
-              </Link>
+              {!onDeskPage &&
+                TOP_LINKS.map(({ href, label, iosHide }) => {
+                  const active = href === "/faq" ? isFaqActive : isPricingActive;
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      onClick={() => setMobileOpen(false)}
+                      className={clsx(
+                        "nav-sheet-link font-syne",
+                        iosHide && "hide-in-ios-app",
+                        active && "nav-sheet-link-active"
+                      )}
+                    >
+                      {label}
+                    </Link>
+                  );
+                })}
+              {!onDeskPage && (
+                <Link
+                  href="/learn"
+                  onClick={() => setMobileOpen(false)}
+                  className={clsx("nav-sheet-link font-syne", isLearnActive && "nav-sheet-link-active")}
+                >
+                  Learn
+                </Link>
+              )}
               {showAdmin && (
                 <Link
                   href="/admin"

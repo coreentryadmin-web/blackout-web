@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildVectorPlay, type VectorSnapshot , rangeMeanReference } from "./vector-play-engine";
+import { buildVectorPlay, type VectorSnapshot , rangeMeanReference, stalenessConvictionDiscount, vectorPlayBieBucketKey } from "./vector-play-engine";
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 import type { GammaMagnet } from "./vector-gamma-magnet";
 import type { WallProximity } from "./vector-wall-proximity";
@@ -191,6 +191,30 @@ test("short-gamma no wall in range → follows the EMA trend", () => {
   assert.equal(down.bias, "short");
 });
 
+test("short-gamma, no wall, NO trend either (ema null/mixed): stand aside — no fabricated direction", () => {
+  const noEma = buildVectorPlay(
+    base({ regime: { posture: "short" }, proximity: null, technicals: { emaStack: null } })
+  )!;
+  assert.equal(noEma.bias, "neutral", "no wall and no trend → stand aside, not a guessed short");
+
+  const mixedEma = buildVectorPlay(
+    base({ regime: { posture: "short" }, proximity: null, technicals: { emaStack: "mixed" } })
+  )!;
+  assert.equal(mixedEma.bias, "neutral", "mixed EMA with no wall → stand aside");
+
+  const realSignal = buildVectorPlay(
+    base({
+      regime: { posture: "short" },
+      proximity: proximity("put", 7500, "testing"),
+      technicals: { emaStack: "down", macd: "bear" },
+    })
+  )!;
+  assert.ok(
+    realSignal.conviction > noEma.conviction,
+    `a real wall+trend setup (${realSignal.conviction}) should outscore the no-signal stand-aside (${noEma.conviction})`
+  );
+});
+
 // ── Flip transition pivot ────────────────────────────────────────────────────
 test("transition regime → pivot play at the flip, neutral bias, tight invalidation at the flip", () => {
   const play = buildVectorPlay(
@@ -266,6 +290,37 @@ test("conviction: confluence stacked at the play level raises conviction", () =>
   assert.ok(withConf.conviction > without.conviction);
 });
 
+test("conviction: credits the zone AT the traded level even when a stronger, unrelated zone exists elsewhere", () => {
+  // Regression: computeConviction used to key off `zones[0]` (the globally strongest zone on the
+  // whole board), not the zone nearest refLevel (the level this play actually trades). A stronger
+  // zone 4% away — completely irrelevant to this fade — silently starved credit for the real
+  // confluence sitting AT 7600, dropping conviction even though strictly more corroborating market
+  // structure was added. It must find and credit the zone nearest refLevel regardless of ranking.
+  const atLevelOnly = buildVectorPlay(
+    base({
+      spot: 7598,
+      proximity: proximity("call", 7600, "at"),
+      confluenceZones: [
+        { center: 7600, low: 7599, high: 7601, score: 4, kinds: ["call-wall", "max-pain"], levels: [] } as ConfluenceZone,
+      ],
+    })
+  )!;
+  const plusStrongerFarZone = buildVectorPlay(
+    base({
+      spot: 7598,
+      proximity: proximity("call", 7600, "at"),
+      confluenceZones: [
+        { center: 7600, low: 7599, high: 7601, score: 4, kinds: ["call-wall", "max-pain"], levels: [] } as ConfluenceZone,
+        { center: 7300, low: 7295, high: 7305, score: 6, kinds: ["pdl", "vwap", "gamma-flip"], levels: [] } as ConfluenceZone,
+      ],
+    })
+  )!;
+  assert.ok(
+    plusStrongerFarZone.conviction >= atLevelOnly.conviction,
+    `adding an unrelated stronger zone elsewhere must not DROP conviction (${plusStrongerFarZone.conviction} < ${atLevelOnly.conviction})`
+  );
+});
+
 test("grade thresholds: A ≥75, B 55–74, C <55", () => {
   // Cheap direct check of the banding by driving conviction through inputs.
   const a = buildVectorPlay(
@@ -327,6 +382,29 @@ test("BIE: zero samples never applied", () => {
   assert.ok(!zero.starred.some((s) => /BIE/.test(s)));
 });
 
+// ── Data freshness (dataAgeMs was a documented passthrough nothing ever read) ───────────────────
+test("stalenessConvictionDiscount: no discount inside normal SSE cadence, graduated beyond it", () => {
+  assert.equal(stalenessConvictionDiscount(null), 0);
+  assert.equal(stalenessConvictionDiscount(undefined), 0);
+  assert.equal(stalenessConvictionDiscount(0), 0);
+  assert.equal(stalenessConvictionDiscount(5_000), 0, "5s — normal SSE tick cadence");
+  assert.equal(stalenessConvictionDiscount(30_000), 0, "at the boundary — still fresh");
+  assert.equal(stalenessConvictionDiscount(60_000), -5, "1 minute — mild discount");
+  assert.equal(stalenessConvictionDiscount(300_000), -15, "5 minutes — moderate discount");
+  assert.equal(stalenessConvictionDiscount(900_000), -30, "15 minutes — feed reads as disconnected");
+});
+
+test("conviction: a stale data feed lowers conviction vs an identical fresh one", () => {
+  const fresh = buildVectorPlay(
+    base({ spot: 7598, proximity: proximity("call", 7600, "at"), dataAgeMs: 2_000 })
+  )!;
+  const stale = buildVectorPlay(
+    base({ spot: 7598, proximity: proximity("call", 7600, "at"), dataAgeMs: 900_000 })
+  )!;
+  assert.ok(stale.conviction < fresh.conviction, "stale data must score lower than fresh data");
+  assert.equal(stale.dataAge, 900_000, "play.dataAge passes through for the UI staleness badge");
+});
+
 // ── Graceful degradation ─────────────────────────────────────────────────────
 test("returns null when spot is missing/invalid — never fabricates a play", () => {
   assert.equal(buildVectorPlay(base({ spot: null })), null);
@@ -370,6 +448,23 @@ test("missing expected-move / magnet / integrity: play still builds with real le
   assert.ok(play);
   assert.match(play.headline, /fade the 7,600 call wall/);
   assert.ok(play.targets.length > 0);
+});
+
+test("vectorPlayBieBucketKey: stable across spot-only drift", () => {
+  const keyA = vectorPlayBieBucketKey(
+    base({ spot: 7598, proximity: proximity("call", 7600, "at") })
+  );
+  const keyB = vectorPlayBieBucketKey(
+    base({ spot: 7601, proximity: proximity("call", 7600, "at") })
+  );
+  assert.equal(keyA, keyB);
+  assert.match(keyA, /^long\|scalp\|fade-call\|call-at$/);
+});
+
+test("vectorPlayBieBucketKey: differs when setup branch changes", () => {
+  const fade = vectorPlayBieBucketKey(base({ spot: 7598, proximity: proximity("call", 7600, "at") }));
+  const range = vectorPlayBieBucketKey(base({ spot: 7555, proximity: null, magnet: magnet(7555, "long", "at") }));
+  assert.notEqual(fade, range);
 });
 
 // ── Timeframe awareness ──────────────────────────────────────────────────────

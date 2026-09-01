@@ -165,7 +165,7 @@ export function NightHawkFlowPanel({
                         style={{ background: "linear-gradient(90deg, #0f9d58, #a3e635)", width: `${callPct}%` }}
                         initial={{ width: 0 }}
                         animate={{ width: `${callPct}%` }}
-                        transition={{ duration: 0.8, ease: [0.34, 1.56, 0.64, 1] }}
+                        transition={{ duration: 0.8, ease: [0.34, 1.56, 0.64, 1] as const }}
                       />
                       <div className="absolute inset-y-0 right-0 rounded-r-full"
                         style={{ background: "linear-gradient(90deg, #9f1239, #f43f5e)", width: `${100 - callPct}%` }} />

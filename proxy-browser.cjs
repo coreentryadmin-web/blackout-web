@@ -46,6 +46,34 @@ function mobileUaWarning(viewport, desktop) {
   );
 }
 
+/**
+ * Scroll a page top-to-bottom in steps before a full-page screenshot, then return to the top.
+ *
+ * Playwright's `fullPage: true` screenshot renders the WHOLE document in one CDP capture without
+ * ever dispatching real `scroll` events — so a scroll-triggered reveal (an IntersectionObserver-
+ * gated opacity/transform animation, a "mount when scrolled into view" carousel) that depends on a
+ * genuine scroll event never fires, and the capture shows those sections in their pre-reveal
+ * state. Measured live on blackouttrades.com's homepage, 2026-08-24: the "SIX ENGINES" product-
+ * screenshot carousel and the "HOW BLACKOUT THINKS" 4-stage timeline both rendered as large blank
+ * voids under `fullPage: true` with no scrolling — real product screenshots and a fully-populated
+ * timeline once actually scrolled through incrementally, exactly like a member scrolling the page
+ * would see. `maxSteps` bounds worst-case wait time on an unexpectedly tall page rather than
+ * looping indefinitely; a page taller than that just gets partial reveal coverage, which is still
+ * strictly better than none.
+ */
+async function scrollThrough(page, { stepPx = 900, waitMs = 700, maxSteps = 40 } = {}) {
+  const total = await page.evaluate(() => document.body.scrollHeight);
+  let y = 0;
+  let steps = 0;
+  while (y < total && steps < maxSteps) {
+    await page.evaluate((yy) => window.scrollTo(0, yy), y);
+    await page.waitForTimeout(waitMs);
+    y += stepPx;
+    steps += 1;
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+}
+
 async function main() {
   const o = parseArgs();
   if (!o.url) { console.error('Usage: node proxy-browser.cjs <url> [out.png]'); process.exit(1); }
@@ -65,6 +93,12 @@ async function main() {
   });
 
   const page = await ctx.newPage();
+  // Every framer-motion animation site-wide respects OS prefers-reduced-motion (MotionProvider.tsx
+  // wraps the app in `<MotionConfig reducedMotion="user">`) — so a scroll-triggered reveal that
+  // would otherwise be mid-transition when scrollThrough() moves past it instead applies instantly.
+  // Gated on --full: a plain single-viewport shot isn't racing any scroll-triggered animation, and
+  // this changes what's actually rendered, so it should only fire where it's solving a real problem.
+  if (o.full) await page.emulateMedia({ reducedMotion: 'reduce' });
   console.log(`→ ${o.url}`);
   try {
     await page.goto(o.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -84,6 +118,13 @@ async function main() {
     console.warn('Network timeout (continuing)');
   }
 
+  // A full-page shot needs a real scroll-through FIRST — see scrollThrough()'s own comment for
+  // why: scroll-triggered reveal content renders as blank voids without it.
+  if (o.full) {
+    await scrollThrough(page);
+    console.log('Scrolled through for reveal animations');
+  }
+
   // A LIVE desk never stops moving — SSE ticks, marks, pulsing status dots. Playwright's
   // screenshot waits for visual stability, so on /nighthawk it burned the whole 10s budget and
   // threw, leaving NO image while the page had loaded perfectly (145 requests routed, 0 failed).
@@ -99,4 +140,4 @@ if (require.main === module) {
   main().catch(e => { console.error(e.message); process.exit(1); });
 }
 
-module.exports = { mobileUaWarning };
+module.exports = { mobileUaWarning, scrollThrough };

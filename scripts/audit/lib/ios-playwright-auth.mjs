@@ -264,6 +264,26 @@ export function onboardingInitScript() {
   return `try{localStorage.setItem(${JSON.stringify(ONBOARDING_KEY)},${JSON.stringify(ONBOARDING_DONE)})}catch(e){}`;
 }
 
+/** Dismiss onboarding / modal scrims that block chart pointer events. */
+export async function dismissDeskModals(page) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const skip = page.getByRole("button", { name: /^skip$/i });
+    if (await skip.isVisible({ timeout: 800 }).catch(() => false)) {
+      await skip.click({ timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(300);
+    }
+    const close = page.getByRole("button", { name: /^(close|got it|done)$/i });
+    if (await close.isVisible({ timeout: 400 }).catch(() => false)) {
+      await close.click({ timeout: 2000 }).catch(() => {});
+      await page.waitForTimeout(200);
+    }
+    const scrim = page.locator(".fixed.inset-0.z-\\[100\\]").first();
+    if (!(await scrim.isVisible({ timeout: 400 }).catch(() => false))) return;
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.waitForTimeout(250);
+  }
+}
+
 /** Wait until native iOS product shell is active. */
 export async function waitForNativeShell(page, timeoutMs = 45_000) {
   await page.waitForFunction(

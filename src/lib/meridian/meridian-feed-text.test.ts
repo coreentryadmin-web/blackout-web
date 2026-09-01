@@ -3,10 +3,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { meridianFeedText, meridianFeedTextOrNull } from "./meridian-feed-text";
+import { looksLikeAnalystAction, meridianFeedText, meridianFeedTextOrNull } from "./meridian-feed-text";
 
 const root = process.cwd();
 const CATALYST = readFileSync(join(root, "src/lib/meridian/meridian-catalyst-enrich.ts"), "utf8");
+// `shapeCatalystBriefs` itself lives here now (server-only import moved it out for testability,
+// 2026-08-25) — CATALYST above still covers shapeAnalyst/loadPriceTargetRows.
+const CATALYST_CORE = readFileSync(join(root, "src/lib/meridian/meridian-catalyst-enrich-core.ts"), "utf8");
 const EARNINGS = readFileSync(join(root, "src/lib/meridian/meridian-earnings-enrich.ts"), "utf8");
 
 /**
@@ -83,7 +86,7 @@ describe("the enrichment shapers are wired to it — and decode BEFORE they pars
     assert.match(EARNINGS, /title: meridianFeedText\(r\.title\)/, "headline titles");
     assert.match(CATALYST, /const title = meridianFeedText\(r\.title\)/, "analyst-note titles");
     assert.match(CATALYST, /summary: meridianFeedText\(/, "price-target summaries");
-    assert.match(CATALYST, /title: meridianFeedText\(c\.title\)/, "catalyst-brief titles");
+    assert.match(CATALYST_CORE, /title: meridianFeedText\(c\.title\)/, "catalyst-brief titles");
   });
 
   test("no shaper still trims the raw string instead of decoding it", () => {
@@ -115,5 +118,26 @@ describe("the enrichment shapers are wired to it — and decode BEFORE they pars
     const MOD = readFileSync(join(root, "src/lib/meridian/meridian-feed-text.ts"), "utf8");
     assert.match(MOD, /from "@\/lib\/largo\/sanitize-feed-text"/);
     assert.equal(/NAMED_ENTITIES|String\.fromCodePoint/.test(MOD), false, "no second decoder here");
+  });
+});
+
+describe("looksLikeAnalystAction", () => {
+  test("a price-target/rating headline reads as an analyst action", () => {
+    assert.equal(
+      looksLikeAnalystAction("JP Morgan Maintains Overweight on Dick's Sporting Goods, Lowers Price Target to $245"),
+      true
+    );
+    assert.equal(
+      looksLikeAnalystAction("Wells Fargo Upgrades Dick's Sporting Goods to Overweight, Raises Price Target to $240"),
+      true
+    );
+  });
+
+  // The trap this function exists to avoid: a company genuinely "raises guidance" using the same
+  // bare verb an analyst note uses for "raises price target" -- matching on the verb alone would
+  // misclassify real corporate guidance as an analyst note.
+  test("a real corporate-guidance headline is NOT read as an analyst action", () => {
+    assert.equal(looksLikeAnalystAction("Dick's Sporting Goods Raises Full-Year Revenue Guidance"), false);
+    assert.equal(looksLikeAnalystAction("Company Lowers Full-Year Outlook Amid Demand Softness"), false);
   });
 });

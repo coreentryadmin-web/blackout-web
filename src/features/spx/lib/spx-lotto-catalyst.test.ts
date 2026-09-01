@@ -91,3 +91,53 @@ test("flowSkew: UNKNOWN premium does not count toward the catalyst floor", () =>
   const sig = flowSignal(d);
   assert.equal(sig, null, "UNKNOWN premium must not push a sub-floor tape over the floor");
 });
+
+// Regression: a qualifying gap used to be voted TWICE -- once as evaluateLottoCatalysts' own
+// independent `id: "gap"` signal, and a second time via `technicalDirection`'s (now-removed) gap
+// branch, emitted as `id: "technical"`. Both carried the same direction off the exact same
+// underlying evidence (today's gap%), so a single gap print alone could occupy 2 of the 3
+// `playLottoMinDirectionSignals()` votes required to qualify a lotto pick.
+function gapOnlyDesk(gapPct: number): SpxDeskPayload {
+  const priorClose = 5000;
+  return {
+    price: priorClose * (1 + gapPct / 100),
+    prior_close: priorClose,
+    flow_0dte_net: null,
+    spx_flows: [],
+    macro_events: [],
+    gex_walls: [],
+    dark_pool: null,
+  } as unknown as SpxDeskPayload;
+}
+
+test("a qualifying gap contributes exactly ONE direction vote, not two", () => {
+  // +2.0% gap (>= 3x the 0.4% default floor, so its weight clamps at the 3.0 cap), zero other
+  // catalysts.
+  const evalResult = evaluateLottoCatalysts(gapOnlyDesk(2.0));
+  const gapVotes = evalResult.direction_signals.filter((s) => s.id === "gap");
+  const technicalVotes = evalResult.direction_signals.filter((s) => s.id === "technical");
+  assert.equal(gapVotes.length, 1, "the gap signal itself should still fire");
+  assert.equal(
+    technicalVotes.length,
+    0,
+    "technicalDirection must not ALSO vote off the same gap evidence"
+  );
+  assert.equal(
+    evalResult.direction_signals.length,
+    1,
+    "one gap print must produce exactly one direction_signal, not two"
+  );
+});
+
+test("a lone gap can no longer satisfy the 3-vote bar by double-counting itself", () => {
+  // Weight bar is satisfied (2.0% gap clamps weight to the 3.0 cap == minWeight), but with only
+  // ONE real signal source, the SEPARATE vote-count bar (also default 3) must still fail --
+  // before the fix, `technicalDirection`'s duplicate "technical" vote off the same gap evidence
+  // would have pushed longVotes to 2, still short of 3, but on a smaller real gap plus one more
+  // genuine signal it silently supplied the missing vote. Pinning votes==1 here is the direct
+  // regression check; qualified==false is the visible consequence.
+  const evalResult = evaluateLottoCatalysts(gapOnlyDesk(2.0));
+  assert.equal(evalResult.direction_signals.length, 1);
+  assert.equal(evalResult.qualified, false);
+  assert.match(evalResult.reason, /need \d\+ agreeing signals/i);
+});

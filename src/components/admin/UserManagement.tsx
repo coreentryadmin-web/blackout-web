@@ -315,7 +315,7 @@ export function UserManagement() {
                         <img
                           src={user.imageUrl}
                           alt=""
-                          className="w-6 h-6 rounded-full"
+                          className="size-6 rounded-full"
                         />
                       )}
                       <div>

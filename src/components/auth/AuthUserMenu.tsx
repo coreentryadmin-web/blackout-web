@@ -27,7 +27,7 @@ const CLERK_APPEARANCE = {
 function ClerkUserButton() {
   const { isLoaded: clerkReady } = useAuth();
   if (!clerkReady) {
-    return <span className="inline-block h-9 w-9 rounded-full bg-white/5" aria-hidden />;
+    return <span className="inline-block size-9 rounded-full bg-white/5" aria-hidden />;
   }
   return <UserButton appearance={CLERK_APPEARANCE} userProfileUrl="/account" />;
 }
@@ -36,7 +36,7 @@ export function AuthUserMenu() {
   const { isSignedIn, isLoaded, email, signOut } = useAppAuth();
 
   if (!isLoaded) {
-    return <span className="inline-block h-9 w-9 rounded-full bg-white/5" aria-hidden />;
+    return <span className="inline-block size-9 rounded-full bg-white/5" aria-hidden />;
   }
 
   if (!isSignedIn) {

@@ -14,6 +14,9 @@ export const CHUNK_ERROR_PATTERN_SOURCE =
 
 const CHUNK_ERROR_RE = new RegExp(CHUNK_ERROR_PATTERN_SOURCE, "i");
 
+/** Telemetry message for the inline reload guard — grouped by path in error_events.scope. */
+export const CHUNK_RELOAD_TELEMETRY_MESSAGE = "chunk-reload";
+
 /** True when `message` looks like a chunk/dynamic-import load failure (not an app logic error). */
 export function isChunkLoadErrorMessage(message: unknown): boolean {
   if (message == null) return false;

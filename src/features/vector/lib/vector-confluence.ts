@@ -25,7 +25,8 @@ export type ConfluenceKind =
   | "lod"
   | "pdh"
   | "pdl"
-  | "pivot";
+  | "pivot"
+  | "dark-pool";
 
 export type ConfluenceLevel = {
   price: number;
@@ -60,6 +61,7 @@ export const DEFAULT_WEIGHTS: Record<ConfluenceKind, number> = {
   pivot: 1.5,
   hod: 1,
   lod: 1,
+  "dark-pool": 2.5,
 };
 
 /**
@@ -96,15 +98,24 @@ export function confluenceZones(
   for (const c of clusters) {
     const kinds = [...new Set(c.map((l) => l.kind))];
     if (kinds.length < 2) continue; // one signal repeated is not confluence
-    let score = 0;
-    let weighted = 0;
+    let centerWeightSum = 0;
+    let weightedPrice = 0;
+    // SCORE counts each DISTINCT KIND once (its strongest instance), never the raw level count —
+    // otherwise a caller that pushes several same-kind levels into one cluster (e.g. 3 ranked call
+    // walls, or a golden pocket's top+bottom both tagged "golden-pocket") inflates score by
+    // repeating ONE signal, exactly what the ≥2-distinct-kinds gate above exists to rule out. A
+    // cluster of 3 call-wall levels + 1 HOD must not outscore a true 3-kind stack (flip+max-pain+
+    // pdh) just because one kind happened to arrive three times.
+    const maxWeightByKind = new Map<ConfluenceKind, number>();
     for (const l of c) {
       const w = l.weight ?? DEFAULT_WEIGHTS[l.kind];
-      score += w;
-      weighted += w * l.price;
+      centerWeightSum += w;
+      weightedPrice += w * l.price;
+      if (w > (maxWeightByKind.get(l.kind) ?? 0)) maxWeightByKind.set(l.kind, w);
     }
+    const score = [...maxWeightByKind.values()].reduce((a, b) => a + b, 0);
     zones.push({
-      center: weighted / score,
+      center: weightedPrice / centerWeightSum,
       low: c[0]!.price,
       high: c[c.length - 1]!.price,
       score,
@@ -167,6 +178,7 @@ const KIND_LABEL: Record<ConfluenceKind, string> = {
   pdh: "PDH",
   pdl: "PDL",
   pivot: "pivot",
+  "dark-pool": "dark pool",
 };
 
 /**

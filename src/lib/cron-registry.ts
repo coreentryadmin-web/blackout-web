@@ -463,6 +463,19 @@ export const CRON_JOBS: CronJobDefinition[] = [
       "Snapshot the COMPLETE Vector desk state (regime/walls/flip/magnet/max-pain/expected-move/ladder/heatmap/flow/beads/VEX/dark-pool/technicals/play) per universe ticker × DTE horizon into Redis, so Largo-BIE serves current Vector state for any stock/horizon cache-only without a per-query fan-out",
   },
   {
+    key: "vector-pick-sweep",
+    name: "Vector Pick Universe Sweep",
+    kind: "http",
+    path: "/api/cron/vector-pick-sweep",
+    schedule_label: "~Every 2 min (market hours)",
+    schedule_cron_utc: "1-59/2 11-21 * * 1-5",
+    stale_after_min: 8,
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Server-side sweep of every Vector universe ticker: buildVectorPlay + rank contract picks + live quote eval → persist leaders (winners lane) and Don't buy closures without requiring /vector open",
+  },
+  {
     key: "bie-full-state-snapshot",
     name: "BIE Full-State Snapshot",
     kind: "http",
@@ -548,55 +561,6 @@ export const CRON_JOBS: CronJobDefinition[] = [
     market_hours_only: true,
     description: "Live marks + outcome sync for the banger board",
     produces_member_alert: true,
-  },
-  {
-    key: "x-intel",
-    name: "X Intel Queue Writer",
-    kind: "http",
-    path: "/api/cron/x-intel",
-    schedule_label: "Every 2h (same as x-autopost)",
-    stale_after_min: 240,
-    schedule_cron_utc: "0 12,14,16,18,20,22,0 * * *",
-    description: "Generate X content candidates and write to review queue (paused via X marketing env; never publishes)",
-  },
-  {
-    key: "x-autopost",
-    name: "X Autopost",
-    kind: "http",
-    path: "/api/cron/x-autopost",
-    schedule_label: "Every 1-2h (covers EDT + EST windows)",
-    stale_after_min: 240,
-    // EDT (UTC-4): ET 8,10,12,14,16,18,20 → UTC 12,14,16,18,20,22,0
-    // EST (UTC-5): ET 8,10,12,14,16,18,20 → UTC 13,15,17,19,21,23,1
-    // Union covers both seasons: fire hourly 0-1,12-23 to guarantee post window hits
-    schedule_cron_utc: "0 0,1,12,13,14,15,16,17,18,19,20,21,22,23 * * *",
-    description: "Scheduled X posts (paused via X marketing env)",
-  },
-  {
-    key: "x-growth",
-    name: "X Growth",
-    kind: "http",
-    path: "/api/cron/x-growth",
-    // Label states UTC, not ET, DELIBERATELY. 13:00-22:00 UTC is 9AM-6PM ET under EDT but
-    // 8AM-5PM ET under EST — a fixed-UTC band cannot hold an ET clock year-round, so an ET label here
-    // would be true for only half the year. Following spx-signal-weight-optimize's honest UTC label.
-    schedule_label: "Hourly 13:00–22:00 UTC weekdays (9AM–6PM ET in EDT, 8AM–5PM ET in EST)",
-    stale_after_min: 150,
-    schedule_cron_utc: "0 13-22 * * 1-5",
-    weekdays_only: true,
-    description: "X growth pass — likes/follows/RT (paused via X marketing env)",
-  },
-  {
-    key: "x-replies",
-    name: "X Replies",
-    kind: "http",
-    path: "/api/cron/x-replies",
-    // See x-growth: UTC label, because the ET equivalent moves with daylight saving.
-    schedule_label: "Hourly :20 past, 13:00–22:00 UTC weekdays (9:20AM–6:20PM ET in EDT, an hour earlier in EST)",
-    stale_after_min: 150,
-    schedule_cron_utc: "20 13-22 * * 1-5",
-    weekdays_only: true,
-    description: "Reply to X mentions (paused via X marketing env)",
   },
   {
     key: "x-analytics",

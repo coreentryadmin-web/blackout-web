@@ -282,7 +282,7 @@ export function selectToolsForIntent(
     TRACK_RECORD: ["get_zerodte_record", "get_trade_history", "get_similar_precedents"],
     MARKET: ["get_quote", "get_market_context", "get_technicals"],
     CATALYSTS: ["get_news", "get_earnings"],
-    MERIDIAN: ["get_meridian_timeline", "get_meridian_event"],
+    MERIDIAN: ["get_meridian_timeline", "get_meridian_event", "get_meridian_peer_cohort"],
     PLATFORM: ["get_platform_snapshot", "get_ecosystem_context"],
   };
 

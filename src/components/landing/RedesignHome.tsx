@@ -12,6 +12,7 @@ import { LandingRedesignFxLazy } from "./LandingRedesignFxLazy";
 import { MarketingAuthAnchor, MarketingAuthCta, MarketingAuthLabel } from "./MarketingAuthCta";
 import { HomeGammaHeroLink, HomeGammaPromo } from "./HomeGammaPromo";
 import { HomeCommunityRail } from "./HomeCommunityRail";
+import { MarketingHashLink } from "./MarketingHashLink";
 
 /** Redesigned homepage body — server-rendered content + one client FX layer (canvas, reveal, ticker). */
 export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot }) {
@@ -72,14 +73,19 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
               className="btn-p"
             />
             <HomeGammaHeroLink />
-            <Link href="#modules" prefetch={false} className="btn-g hero-btn-ghost">
+            <MarketingHashLink href="#modules" className="btn-g hero-btn-ghost">
               Explore the desk
-            </Link>
+            </MarketingHashLink>
           </div>
           <ul className="hero-creds">
             <li>6 live engines</li>
             <li>12,400+ contracts scanned daily</li>
             <li>Every setup graded A–F</li>
+            <li>
+              <Link href="/methodology" prefetch={false} className="hero-cred-link">
+                Public track record
+              </Link>
+            </li>
             <li>
               <Link href="/tools/gamma-snapshot" prefetch={false} className="hero-cred-link">
                 Free gamma snapshot
@@ -315,7 +321,9 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
                     <span className="pipe-chip live">LOGGED</span>
                     <span className="pipe-chip">GRADED A&ndash;F</span>
                     <span className="pipe-chip">TIMESTAMPED</span>
-                    <span className="pipe-chip">PUBLIC RECORD</span>
+                    <Link href="/methodology" prefetch={false} className="pipe-chip pipe-chip-link">
+                      PUBLIC RECORD
+                    </Link>
                   </div>
                 </div>
               </div>
@@ -561,7 +569,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             >
               Open the desk <span className="cta-arrow">&rarr;</span>
             </MarketingAuthCta>
-            <Link href="#modules" prefetch={false} className="btn-g">See the desk</Link>
+            <MarketingHashLink href="#modules" className="btn-g">See the desk</MarketingHashLink>
           </div>
         </div>
       </section>
