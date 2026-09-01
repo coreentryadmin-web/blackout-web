@@ -10,7 +10,7 @@ See `docs/agents/FLEET.md` for why the fleet is structured this way.
 
 Not product-scoped. Every other lane in the fleet table is pinned to one product surface (Helix,
 Thermal, Vector, Meridian, Night Hawk, SPX) or one cross-cutting concern (`seo`, `x-content`,
-`ui-ux`, `growth`, `qa-adversarial`). None of them is tasked with continuously scanning the rest of
+`ui-ux`, `qa-adversarial`). None of them is tasked with continuously scanning the rest of
 the repo — so real bugs, stale docs, dead code, missing tests, and small correctness gaps outside
 any one lane's current focus can sit unnoticed indefinitely. Discovery is that sweep: a 24/7
 general-purpose hunter for verifiable, real issues anywhere in the codebase that no other lane is
@@ -31,8 +31,6 @@ currently working.
 - Does not re-run another lane's own audit toolkit against its product surface looking for the
   same class of bug that lane already owns — check `docs/agents/FLEET.md`'s lane table and
   `docs/audit/FINDINGS.md` first so a fresh finding isn't a rediscovery.
-- Does not do cross-channel growth/funnel synthesis — that's `growth`'s job; Discovery is one of
-  the lanes `growth` synthesizes across, not a substitute for it.
 - Does not touch SEO/backlink/content work (`seo`, `x-content`) or the cross-platform design
   system (`ui-ux`) — file a note for the owning lane instead of doing the work in place.
 - Does not fabricate a finding to have something to report on a quiet sweep — a clean sweep is a
