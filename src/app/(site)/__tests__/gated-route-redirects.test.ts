@@ -1,5 +1,6 @@
 import { before, describe, test, mock } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 
 /**
@@ -22,11 +23,42 @@ import path from "node:path";
  * test here, invoked exactly as Next invokes them.
  */
 
-const CSS_MOCKS = [
-  path.join(process.cwd(), "src/app/styles/admin-console.css"),
-  path.join(process.cwd(), "src/app/nighthawk-v2.css"),
-  path.join(process.cwd(), "src/app/nighthawk-desk-theme.css"),
+// Every gated layout this file imports below (see the `before()` block, which keeps its own
+// copy for per-layout type safety — `let AdminLayout: typeof import(...)` etc.). This list
+// exists so CSS-import discovery (next) doesn't need its own third copy of the same paths.
+const GATED_LAYOUT_RELATIVE_PATHS = [
+  "../admin/layout.tsx",
+  "../dashboard/layout.tsx",
+  "../flows/layout.tsx",
+  "../heatmap/layout.tsx",
+  "../meridian/layout.tsx",
+  "../nighthawk/layout.tsx",
+  "../terminal/layout.tsx",
+  "../vector/layout.tsx",
+  "../../embed/track-record/layout.tsx",
 ];
+
+/**
+ * Auto-discover every side-effect `.css` import a gated layout makes, by reading its source text
+ * rather than hand-maintaining a static path list (the CSS_MOCKS array this replaced went stale
+ * three times as nighthawk's own CSS imports grew from 1 to 3 in one afternoon — each time
+ * silently turning every subtest under this layout into a `cancelledByParent` cascade instead of
+ * a clear failure, because tsx's plain CJS transform has no CSS loader and tries to parse the raw
+ * CSS file as JS, throwing on the first class-selector `.`). Regex, not a real parser: these are
+ * plain `import "./x.css";` side-effect statements, not dynamic or templated paths.
+ */
+function discoverCssImportPaths(layoutRelPath: string): string[] {
+  const layoutAbsPath = path.join(process.cwd(), "src/app/(site)/__tests__", layoutRelPath);
+  const source = fs.readFileSync(layoutAbsPath, "utf8");
+  const importRe = /^\s*import\s+["'](\.[^"']+\.css)["'];?\s*$/gm;
+  const found: string[] = [];
+  for (const match of source.matchAll(importRe)) {
+    found.push(path.resolve(path.dirname(layoutAbsPath), match[1]!));
+  }
+  return found;
+}
+
+const CSS_MOCKS = [...new Set(GATED_LAYOUT_RELATIVE_PATHS.flatMap(discoverCssImportPaths))];
 for (const cssPath of CSS_MOCKS) {
   mock.module(cssPath, { namedExports: {} });
 }
