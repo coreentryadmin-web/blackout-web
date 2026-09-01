@@ -309,13 +309,14 @@ export function LegacyDeck() {
     { refreshInterval: 60_000 },
   );
   const confirmByTicker = useMemo(() => {
-    const map = new Map<string, { status: string; reason: string; swingPromoted?: boolean }>();
+    const map = new Map<string, { status: string; reason: string; swingPromoted?: boolean; checkedAt?: string | null }>();
     if (confirmData?.plays) {
       for (const ps of confirmData.plays) {
         map.set(ps.ticker?.toUpperCase(), {
           status: ps.status,
           reason: ps.reason,
           swingPromoted: ps.swingPromoted === true,
+          checkedAt: typeof ps.checked_at === "string" ? ps.checked_at : (confirmData?.checked_at ?? null),
         });
       }
     }
@@ -357,11 +358,12 @@ export function LegacyDeck() {
       gate_warnings: p.gate_warnings ?? null,
       pulled: p.pulled ?? null,
       pulled_reason: p.pulled_reason ?? null,
+      tier: p.tier ?? null,
       morning_status: confirm?.status as "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | undefined ?? null,
       morning_reason: confirm?.reason ?? null,
       swing_promoted: confirm?.swingPromoted ?? null,
       published_at: edition?.published_at ?? null,
-      confirmed_at: confirmCheckedAt,
+      confirmed_at: confirm?.checkedAt ?? p.morning_checked_at ?? confirmCheckedAt,
     });
   }), [rawPlays, confirmByTicker, edition?.published_at, confirmCheckedAt]);
 

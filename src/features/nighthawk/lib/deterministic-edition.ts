@@ -859,13 +859,13 @@ export function buildRescuePlays(params: {
     const { thesis, key_signal } = buildDeterministicThesis(scored, dossier, levels);
 
     const warnings: string[] = [];
+    const direction = scored.direction === "short" ? "SHORT" : "LONG";
+    const geom = validatePlayGeometry({ ...levels, direction } as Parameters<typeof validatePlayGeometry>[0]);
+    if (!geom.ok) continue;
+
     const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte) : null;
     const options_play = formatOptionsPlay(ticker, contract);
-    if (contract) {
-      if (!validatePlayGeometry({ ...levels, direction: scored.direction === "short" ? "SHORT" : "LONG" } as any).ok) {
-        warnings.push("Entry/target geometry did not pass normal validation — verify levels before trading");
-      }
-    } else {
+    if (!contract) {
       warnings.push(`No affordable liquid option contract found under the $${MAX_OPTION_PREMIUM_PER_SHARE}/share cap — check the chain manually`);
     }
 

@@ -64,6 +64,10 @@ export type PlaybookPlay = {
   /** Human-readable gate-failure reasons (one per failed gate). Only present when
    *  gate_promoted is true. */
   gate_warnings?: string[];
+  /** PR-N7: pinned tier assignment merged at read time from publish_context (when available). */
+  tier?: { tier: string; factors: Array<{ label: string; direction: "up" | "down"; detail: string }> };
+  /** Per-play morning confirm instant from morning_verdict.checked_at (read-time overlay). */
+  morning_checked_at?: string;
 };
 
 export type PlayExplainRequest = {

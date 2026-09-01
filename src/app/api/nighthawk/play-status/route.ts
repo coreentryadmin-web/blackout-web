@@ -17,8 +17,11 @@ import { NextResponse } from "next/server";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { makeRedis } from "@/lib/make-redis";
+import { fetchNighthawkEditionByDate, fetchNighthawkEditionOutcomeOverlays } from "@/lib/db";
 import { todayEt } from "@/features/nighthawk/lib/session";
 import type { MorningConfirmResult } from "@/app/api/cron/nighthawk-morning-confirm/route";
+import { morningStatusFromDb } from "@/features/nighthawk/lib/morning-status-from-db";
+import { rowToNightHawkEdition } from "@/features/nighthawk/lib/edition-builder";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -26,6 +29,29 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 10;
 
 const REDIS_KEY = (date: string) => `nh:play-status:${date}`;
+
+async function loadMorningStatusFromDb(date: string): Promise<MorningConfirmResult | null> {
+  try {
+    const [editionRow, outcomeRows] = await Promise.all([
+      fetchNighthawkEditionByDate(date),
+      fetchNighthawkEditionOutcomeOverlays(date),
+    ]);
+    if (!editionRow) return null;
+    const edition = rowToNightHawkEdition(editionRow);
+    return morningStatusFromDb({
+      editionFor: date,
+      editionPlays: (edition.plays ?? []).map((p, i) => ({
+        rank: p.rank ?? i + 1,
+        ticker: p.ticker,
+        direction: p.direction,
+      })),
+      outcomeRows,
+    });
+  } catch (err) {
+    console.warn("[nighthawk/play-status] DB fallback failed:", err);
+    return null;
+  }
+}
 
 export async function GET(req: NextRequest) {
   const authResult = await authorizeCronOrTierApi(req, "premium");
@@ -50,6 +76,13 @@ export async function GET(req: NextRequest) {
     const raw = await redis.get(REDIS_KEY(date));
 
     if (!raw) {
+      const dbResult = await loadMorningStatusFromDb(date);
+      if (dbResult) {
+        return NextResponse.json(
+          { available: true, source: "db", ...dbResult },
+          { headers: NO_STORE_HEADERS }
+        );
+      }
       // 200, not 404: "not yet run" is the EXPECTED state for every request before the 9:15am ET
       // cron fires (and all evening/overnight once the date param rolls to the next ET day), so a
       // 404 here printed a red console error on every Night Hawk pane load ~15 hours a day. The
@@ -64,7 +97,7 @@ export async function GET(req: NextRequest) {
 
     const result = JSON.parse(raw) as MorningConfirmResult;
     return NextResponse.json(
-      { available: true, ...result },
+      { available: true, source: "redis", ...result },
       { headers: NO_STORE_HEADERS }
     );
   } catch (err) {

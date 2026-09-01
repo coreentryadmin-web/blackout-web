@@ -15,6 +15,8 @@ export type PlayStatus = {
   direction: string;
   status: PlayConfirmStatus;
   reason: string;
+  /** Per-play verdict instant — usually identical across the edition (cron batch time). */
+  checked_at?: string | null;
   /** True once this CONFIRMED ticker was actually promoted into the Swing serving snapshot —
    *  stamped after promoteLegacyConfirmedToSwing runs (see nighthawk-morning-confirm/route.ts
    *  Phase 3.8). Promotion can fail per-ticker (e.g. "no chain rows") even when status is
