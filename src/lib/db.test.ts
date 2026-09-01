@@ -298,3 +298,18 @@ test("updateZeroDteLiveState: last_mark/last_mark_at/peak_premium/trough_premium
   assert.match(body, /WHEN status = 'CLOSED' THEN peak_premium/);
   assert.match(body, /WHEN status = 'CLOSED' THEN trough_premium/);
 });
+
+// Pool-teardown race: dbQuery must only reset the pool instance IT queried on, so a concurrent
+// caller's retry cannot end a pool another subsystem is still mid-flight on (2026-09-01 ops #3257).
+test("dbQuery: resetPoolForRetry is identity-guarded against concurrent pool replacement", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const dbQueryStart = src.indexOf("export async function dbQuery");
+  assert.ok(dbQueryStart > 0, "dbQuery exists");
+  const dbQueryBody = src.slice(dbQueryStart, dbQueryStart + 1200);
+  assert.match(dbQueryBody, /const activePool = await getPool\(\)/);
+  assert.match(dbQueryBody, /await resetPoolForRetry\(activePool\)/);
+  const resetStart = src.indexOf("async function resetPoolForRetry");
+  assert.ok(resetStart > 0, "resetPoolForRetry exists");
+  const resetBody = src.slice(resetStart, resetStart + 500);
+  assert.match(resetBody, /if \(failedPool && pool !== failedPool\) return/);
+});

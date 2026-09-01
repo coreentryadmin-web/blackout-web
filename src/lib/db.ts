@@ -2355,7 +2355,12 @@ export async function ensureSchema(): Promise<void> {
   }
 }
 
-async function resetPoolForRetry(): Promise<void> {
+async function resetPoolForRetry(failedPool?: Pool | null): Promise<void> {
+  // Only tear down if this caller still owns the live singleton — a concurrent caller's
+  // retry may have already replaced `pool` with a fresh instance. Ending a pool another
+  // caller is mid-flight on produces the pg-library "Cannot use a pool after calling end"
+  // cascade (measured 2026-08-31 and again 2026-09-01 during RDS/PgBouncer blips).
+  if (failedPool && pool !== failedPool) return;
   if (pool) {
     try {
       await pool.end();
@@ -2416,8 +2421,9 @@ export async function dbQuery<T extends QueryResultRow = QueryResultRow>(
 
   let lastError: unknown;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const activePool = await getPool();
     try {
-      return await (await getPool()).query<T>(text, values);
+      return await activePool.query<T>(text, values);
     } catch (err) {
       lastError = err;
       if (attempt < maxAttempts - 1 && isTransientPgError(err)) {
@@ -2425,7 +2431,7 @@ export async function dbQuery<T extends QueryResultRow = QueryResultRow>(
           `[db] transient query error (attempt ${attempt + 1}/${maxAttempts}):`,
           err instanceof Error ? err.message : err
         );
-        await resetPoolForRetry();
+        await resetPoolForRetry(activePool);
         await new Promise((resolve) => setTimeout(resolve, baseDelayMs * (attempt + 1)));
         continue;
       }
