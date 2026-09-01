@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { clsx } from "clsx";
-import { EmptyState, Skeleton } from "@/components/ui";
 import { etDateTimeShort } from "@/lib/et-clock";
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { VectorBoardCalendar } from "@/features/nighthawk/components/VectorBoardCalendar";
 import { VectorBoardCompareBar } from "@/features/nighthawk/components/VectorBoardCompareBar";
+import { VectorBoardEmptyState } from "@/features/nighthawk/components/VectorBoardEmptyState";
+import { VectorBoardLoadingSkeleton } from "@/features/nighthawk/components/VectorBoardLoadingSkeleton";
 import { VectorBoardMeter } from "@/features/nighthawk/components/VectorBoardMeter";
+import { VectorBoardScorecard } from "@/features/nighthawk/components/VectorBoardScorecard";
 import { VectorBoardStatusPill } from "@/features/nighthawk/components/VectorBoardStatus";
 import { VectorBoardToolbar } from "@/features/nighthawk/components/VectorBoardToolbar";
 import { VectorPlayDetailPanel } from "@/features/nighthawk/components/VectorPlayDetailPanel";
@@ -40,6 +42,7 @@ import {
   vectorBoardExportCsv,
   vectorBoardRowAtRisk,
   vectorBoardRowIsLive,
+  vectorBoardScorecard,
 } from "@/features/nighthawk/lib/vector-board-row-utils";
 import type { VectorClosureReasonFilter } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
 import type { VectorPickBoardResponse } from "@/features/nighthawk/components/VectorPickLogBoard.types";
@@ -108,6 +111,7 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
   const [prefs, setPrefs] = useState<VectorBoardPreferences>(() => loadVectorBoardPreferences());
   const [compareMode, setCompareMode] = useState(false);
   const [compareKeys, setCompareKeys] = useState<Set<string>>(() => new Set());
+  const [compareLimitHit, setCompareLimitHit] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const tableRef = useRef<HTMLDivElement | null>(null);
 
@@ -191,11 +195,44 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
 
   const col = (id: VectorBoardColumnId) => prefs.columns[id] !== false;
 
+  const visibleColumnCount = useMemo(() => {
+    let n = 0;
+    if (col("pick")) n += 1;
+    if (col("status")) n += 1;
+    if (col("premium")) n += 1;
+    if (col("entryMark")) n += 1;
+    if (col("peak")) n += 1;
+    if (col("path")) n += 1;
+    if (col("updated")) n += 1;
+    if (compareMode) n += 1;
+    return Math.max(n, 1);
+  }, [prefs.columns, compareMode]);
+
+  const scorecardRows = useMemo(() => {
+    if (sessionScope !== "current" || !todaySession) return [];
+    const all = buildVectorBoardRows({ winners, leaders, closed, section: "all" });
+    return filterVectorBoardRowsAdvanced(all, {
+      sessionDate: todaySession,
+      statusFilter: "all",
+      tierFilter: "all",
+      reasonFilter: "all",
+      tickerQuery: "",
+    });
+  }, [winners, leaders, closed, sessionScope, todaySession]);
+
+  const scorecard = useMemo(() => vectorBoardScorecard(scorecardRows), [scorecardRows]);
+
   useEffect(() => {
     if (!selectedRow) return;
     const stillVisible = visibleRows.some((r) => r.key === selectedRow.key);
     if (!stillVisible) setSelectedRow(null);
   }, [visibleRows, selectedRow]);
+
+  useEffect(() => {
+    if (!selectedRow || !tableRef.current) return;
+    const row = tableRef.current.querySelector(".vector-board-row.is-selected");
+    row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selectedIndex, selectedRow?.key]);
 
   useEffect(() => {
     if (!selectedRow) return;
@@ -266,28 +303,32 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
   const toggleCompare = (key: string) => {
     setCompareKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else if (next.size < 3) next.add(key);
+      if (next.has(key)) {
+        next.delete(key);
+        setCompareLimitHit(false);
+      } else if (next.size < 3) {
+        next.add(key);
+        setCompareLimitHit(false);
+      } else {
+        setCompareLimitHit(true);
+        window.setTimeout(() => setCompareLimitHit(false), 2200);
+      }
       return next;
     });
   };
 
   if (!fixtureData && isLoading && !data) {
-    return (
-      <div className="vector-board-shell">
-        <Skeleton className="h-10 w-full shrink-0" />
-        <Skeleton className="h-14 w-full shrink-0" />
-        <Skeleton className="min-h-0 flex-1" />
-      </div>
-    );
+    return <VectorBoardLoadingSkeleton />;
   }
 
   if (error || data?.degraded) {
     return (
-      <EmptyState
-        title="Vector board unavailable"
-        description="The Vector leaders log could not load right now — it will retry automatically."
-      />
+      <div className="vector-board-shell">
+        <VectorBoardEmptyState
+          title="Vector board unavailable"
+          description="The Vector leaders log could not load right now — it will retry automatically."
+        />
+      </div>
     );
   }
 
@@ -332,7 +373,13 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
         onExport={exportCsv}
         compareMode={compareMode}
         onCompareModeChange={setCompareMode}
+        visibleCount={visibleRows.length}
+        sectionCount={sectionRows.length}
       />
+
+      {!prefs.focusMode && sessionScope === "current" && scorecardRows.length > 0 ? (
+        <VectorBoardScorecard data={scorecard} sessionLabel={todaySession || "Today"} />
+      ) : null}
 
       {data?.note && !prefs.focusMode ? (
         <p className="vector-board-note vector-board-note--inline">{data.note}</p>
@@ -400,9 +447,9 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
                 <tbody>
                   {!visibleRows.length ? (
                     <tr className="vector-board-empty-row">
-                      <td colSpan={12}>
+                      <td colSpan={visibleColumnCount}>
                         <div className="vector-board-empty">
-                          <EmptyState
+                          <VectorBoardEmptyState
                             title={emptyTitle(tab)}
                             description="Try All sessions, clear filters, or change the sort."
                           />
@@ -423,15 +470,24 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
                             live && "is-live",
                             atRisk && "is-at-risk"
                           )}
+                          tabIndex={selected ? 0 : -1}
                           onClick={() => {
                             setSelectedRow(row);
                             setSelectedIndex(visibleRows.findIndex((r) => r.key === row.key));
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedRow(row);
+                              setSelectedIndex(visibleRows.findIndex((r) => r.key === row.key));
+                            }
                           }}
                         >
                           {compareMode ? (
                             <td className="vector-board-col-check" onClick={(e) => e.stopPropagation()}>
                               <input
                                 type="checkbox"
+                                className="vector-board-compare-check"
                                 checked={compareKeys.has(row.key)}
                                 onChange={() => toggleCompare(row.key)}
                                 aria-label={`Compare ${row.ticker}`}
@@ -496,7 +552,14 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
               </table>
             </div>
           </div>
-          <VectorBoardCompareBar rows={compareRows} onClear={() => setCompareKeys(new Set())} />
+          <VectorBoardCompareBar
+            rows={compareRows}
+            onClear={() => {
+              setCompareKeys(new Set());
+              setCompareLimitHit(false);
+            }}
+            limitHit={compareLimitHit}
+          />
         </div>
 
         <VectorPlayDetailPanel row={selectedRow} onClose={() => setSelectedRow(null)} />

@@ -148,16 +148,50 @@
   }
 
   @media (max-width: 820px) {
-    html:not(.ios-native-shell) .nh-v2-page .vector-board-body {
+    html:not(.ios-native-shell) .nh-v2-page .vector-board-body,
+    html.ios-native-shell .nh-v2-page .vector-board-body {
       flex-direction: column;
     }
 
-    html:not(.ios-native-shell) .nh-v2-page .vector-board-detail {
+    html:not(.ios-native-shell) .nh-v2-page .vector-board-detail,
+    html.ios-native-shell .nh-v2-page .vector-board-detail {
       width: 100%;
       max-height: 42vh;
       border-left: 0;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      border-top: 1px solid var(--nh-desk-border, rgba(255, 255, 255, 0.08));
     }
+  }
+
+  html.ios-native-shell .nh-v2-page .vector-board-shell {
+    flex: 1 1 0%;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  html.ios-native-shell .nh-v2-page .vector-board-toolbar,
+  html.ios-native-shell .nh-v2-page .vector-board-cal-wrap,
+  html.ios-native-shell .nh-v2-page .vector-board-scorecard {
+    flex-shrink: 0;
+  }
+
+  html.ios-native-shell .nh-v2-page .vector-board-body {
+    flex: 1 1 0%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  html.ios-native-shell .nh-v2-page .vector-board-table-pane,
+  html.ios-native-shell .nh-v2-page .vector-board-detail {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  html.ios-native-shell .nh-v2-page .vector-board-tablewrap,
+  html.ios-native-shell .nh-v2-page .vector-board-detail:not(.vector-board-detail--empty) {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   /* Right detail panel — header/tabs/footer pinned; only .nh-deck-body scrolls.

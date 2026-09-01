@@ -42,6 +42,8 @@ export function VectorBoardToolbar({
   onExport,
   compareMode,
   onCompareModeChange,
+  visibleCount,
+  sectionCount,
 }: {
   tab: VectorBoardTab;
   tabCounts: Record<VectorBoardTab, number>;
@@ -69,6 +71,8 @@ export function VectorBoardToolbar({
   onExport: () => void;
   compareMode: boolean;
   onCompareModeChange: (on: boolean) => void;
+  visibleCount: number;
+  sectionCount: number;
 }) {
   const tabs: { id: VectorBoardTab; label: string; hint?: string }[] = [
     { id: "all", label: "All" },
@@ -128,6 +132,18 @@ export function VectorBoardToolbar({
       </div>
 
       <div className="vector-board-controls">
+        <p className="vector-board-results-meta tabular-nums" aria-live="polite">
+          Showing <strong>{visibleCount}</strong>
+          {visibleCount !== sectionCount ? (
+            <>
+              {" "}
+              of <strong>{sectionCount}</strong>
+            </>
+          ) : null}
+          {selectedDate ? (
+            <span className="vector-board-results-date"> · {selectedDate}</span>
+          ) : null}
+        </p>
         <VectorBoardSortDropdown value={sort} onChange={onSortChange} />
         <VectorBoardFiltersDrawer
           open={filtersOpen}
@@ -153,7 +169,10 @@ export function VectorBoardToolbar({
 
         <div className="vector-board-search">
           <span className="vector-board-search-icon" aria-hidden>
-            ⌕
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.75" />
+              <path d="M16 16l5 5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+            </svg>
           </span>
           <input
             ref={searchInputRef}

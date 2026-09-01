@@ -29,7 +29,10 @@ export function VectorBoardCalendar({
       {buckets.map((b) => {
         const active = b.session_date === selectedDate;
         const day = b.session_date.slice(-2);
-        const month = b.session_date.slice(5, 7);
+        const month = new Date(`${b.session_date}T12:00:00Z`).toLocaleString("en-US", {
+          month: "short",
+          timeZone: "UTC",
+        });
         const mag = Math.abs(b.net_premium_pct);
         return (
           <button

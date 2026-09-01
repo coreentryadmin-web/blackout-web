@@ -59,6 +59,7 @@
     "validate:nighthawk-prod-check": "NODE_USE_ENV_PROXY=1 node scripts/audit/nighthawk-prod-check.mjs",
     "validate:nh-deck-mobile-css": "npx tsx --test src/features/nighthawk/command-deck/nh-deck-mobile-css.test.ts",
     "validate:nighthawk-vector-closures": "node scripts/audit/nighthawk-vector-closures-probe.mjs",
+    "validate:nighthawk-vector-board-ui": "node scripts/audit/nighthawk-vector-board-ui-audit.mjs",
     "calibration:thesis-rank": "node scripts/audit/thesis-rank-calibration.mjs",
     "send:emails": "node --import tsx scripts/audit/email-template-send.mjs",
     "healthcheck:swing": "node --import tsx scripts/audit/swing-e2e-healthcheck.mjs",

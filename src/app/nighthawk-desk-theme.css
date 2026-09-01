@@ -1082,7 +1082,7 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 .nh-v2-page .vector-board-sparkline {
   display: block;
   width: 100%;
-  max-width: 8rem;
+  max-width: 100%;
 }
 
 .nh-v2-page .vector-board-detail-timeline-list {
@@ -1356,6 +1356,23 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 .nh-v2-page[data-desk-theme="light"] .vector-board-filters-panel,
 .nh-v2-page[data-desk-theme="light"] .vector-board-view-panel {
   box-shadow: 0 12px 40px -16px rgba(15, 20, 25, 0.16);
+}
+
+.nh-v2-page[data-desk-theme="light"] .vector-board-tab.is-active {
+  color: var(--nh-desk-tab-active);
+}
+
+.nh-v2-page[data-desk-theme="light"] .vector-board-compare-bar {
+  background: var(--nh-desk-surface-muted);
+  border-color: var(--nh-desk-border);
+}
+
+.nh-v2-page[data-desk-theme="light"] .vector-board-compare-item {
+  color: var(--nh-desk-text-secondary);
+}
+
+.nh-v2-page[data-desk-theme="light"] .vector-board-detail-sticky {
+  background: var(--nh-desk-detail-bg);
 }
 
 @media (max-width: 820px) {
