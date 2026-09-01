@@ -126,6 +126,36 @@ test("updateZeroDteLiveState: SQL status CASE is monotonic — CLOSED terminal, 
   assert.match(body, /LEAST\(COALESCE\(trough_premium, \$4\), \$4\)/);
 });
 
+// FIX (2026-09-01, ZERODTE_TRIM_BANK_LIVE): trims_taken must be a monotonic latch
+// (GREATEST), never a plain overwrite — two independent writers (the ~1s live-marks
+// lane and the ~2-min scan.ts cron sync) share this UPDATE, same as peak/trough
+// above, and a stale writer's lower count must never un-bank a tranche a fresher
+// writer already persisted. It must also freeze once CLOSED (same pattern as the
+// other mark-anchored columns) and be skipped entirely (not zeroed) on a tick that
+// doesn't report a trim, or every ordinary heartbeat write would silently regress it.
+test("updateZeroDteLiveState: trims_taken is a monotonic GREATEST latch, frozen at CLOSED, untouched when omitted", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function updateZeroDteLiveState");
+  assert.ok(start > 0, "updateZeroDteLiveState exists");
+  const body = src.slice(start, src.indexOf("stampZeroDteExitContext"));
+
+  const trimsIdx = body.indexOf("trims_taken = CASE");
+  assert.ok(trimsIdx > 0, "trims_taken SET clause present");
+  const clause = body.slice(trimsIdx, body.indexOf("END", trimsIdx) + 3);
+
+  assert.match(clause, /WHEN status = 'CLOSED' THEN trims_taken/, "frozen once closed, same as peak/trough");
+  assert.match(
+    clause,
+    /WHEN \$5::int IS NOT NULL THEN GREATEST\(trims_taken, \$5::int\)/,
+    "a reported count can only raise the latch, never overwrite/regress it"
+  );
+  assert.match(clause, /ELSE trims_taken/, "omitted ($5 IS NULL) leaves the column untouched, not zeroed");
+
+  // The new 5th bind param must actually be threaded through to the query call.
+  const paramsMatch = body.match(/\[sessionDate, ticker\.toUpperCase\(\), s\.status, s\.mark, s\.trimsTaken \?\? null\]/);
+  assert.ok(paramsMatch, "s.trimsTaken must be bound as the 5th query param, defaulting to null when omitted");
+});
+
 // PR-N1 (P0, docs/audit/NIGHTHAWK-OVERNIGHT-DECISION.md §0.1): ensureSchema used to
 // re-issue nighthawk_play_outcomes_outcome_check TWICE — the correct DROP+ADD (with
 // 'unfilled') right after the table DDL, then a stale pre-'unfilled' copy ~270 lines

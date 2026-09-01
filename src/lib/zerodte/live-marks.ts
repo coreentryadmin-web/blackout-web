@@ -543,9 +543,24 @@ export async function runZeroDteMarkTick(deps?: {
         if (finalStatus !== "CLOSED") {
           const row = rowsByKey.get(key);
           if (row) {
-            const exit = await evalExit(row, { syncMark: engineMark, status: finalStatus }, { nowMs: now }).catch(
-              () => null
-            );
+            const exit = await evalExit(
+              row,
+              { syncMark: engineMark, status: finalStatus },
+              {
+                nowMs: now,
+                // Persist a newly-armed trim_scale tranche immediately (not just at the
+                // heartbeat below) — the NEXT ~1s tick must already see it via
+                // row.trims_taken, or the same tranche could re-arm repeatedly within
+                // the heartbeat window. A no-op while ZERODTE_TRIM_BANK_LIVE is off.
+                onTrimBank: async (trimsTaken) => {
+                  await persist(play.session_date, play.ticker, {
+                    status: finalStatus,
+                    mark: persistMark,
+                    trimsTaken,
+                  }).catch(() => {});
+                },
+              }
+            ).catch(() => null);
             if (exit) {
               finalStatus = "CLOSED";
               persistMark = exit.mark;

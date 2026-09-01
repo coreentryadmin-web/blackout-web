@@ -1942,7 +1942,18 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       });
       const exit =
         preStop.status !== "CLOSED"
-          ? await evaluateLedgerRowExit(r, { syncMark: mark, status: preStop.status }).catch(() => null)
+          ? await evaluateLedgerRowExit(r, { syncMark: mark, status: preStop.status }, {
+              // Persist a newly-armed trim_scale tranche so the NEXT sync pass sees it
+              // via row.trims_taken. A no-op while ZERODTE_TRIM_BANK_LIVE is off.
+              onTrimBank: async (trimsTaken) => {
+                if (!dbConfigured()) return;
+                await updateZeroDteLiveState(r.session_date, r.ticker, {
+                  status: preStop.status,
+                  mark,
+                  trimsTaken,
+                }).catch(() => {});
+              },
+            }).catch(() => null)
           : null;
       const state =
         exit == null

@@ -129,6 +129,25 @@ export function resolveTrimRegimeLive(env: NodeJS.ProcessEnv = process.env): boo
 }
 
 /**
+ * Persisted trim-tranche kill-switch (FIX 2026-09-01, off by default). While OFF,
+ * `trimsTaken` is recomputed fresh each tick via trimTranchesArmed(peak, regime) —
+ * BYTE-IDENTICAL to today's shipped behavior, bug included: since decideTrimScale
+ * (exit-engine.ts) ALSO computes `armed` via that same function on the same inputs,
+ * `armed > taken` can never be true, so trim_scale never actually banks a tranche and
+ * a peak that armed one falls straight through to the coarse breakeven-floor EXIT
+ * instead — see the zerodte_setup_log.trims_taken column's own ALTER TABLE comment
+ * (db.ts) for the full mechanism. Flipping this ON makes `trimsTaken` read the row's
+ * REAL persisted count instead (0 until a tranche is actually banked), which is the
+ * fix — but it changes live exit TIMING for every A/B-tier trim_scale row (the
+ * desk's best setups), so per this codebase's own calibration-first discipline it
+ * ships disarmed and gets flipped only after a real session's worth of shadow
+ * observation, exactly like ZERODTE_TRIM_REGIME_LIVE above.
+ */
+export function resolveTrimBankLive(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.ZERODTE_TRIM_BANK_LIVE === "1";
+}
+
+/**
  * Tier-aware exit-mode resolver (CTO audit E5 graduation). The E5 study proved
  * trim-scale dominates ratchet in EVERY backtest window — it is now the DEFAULT for
  * A-tier and B-tier plays. C-tier plays stay on the conservative ratchet (their signal
@@ -210,6 +229,19 @@ export type ExitSyncDeps = {
   exitMode?: ZeroDteExitMode;
   /** Day regime for the trim_scale schedule (trim_scale only). Omitted → "neutral". */
   regime?: ZeroDteRegime | null;
+  /** Persisted trims-taken override (tests / A-B). Omitted → read row.trims_taken
+   *  when ZERODTE_TRIM_BANK_LIVE=1, else the legacy (buggy) recompute — see
+   *  resolveTrimBankLive's own doc comment. */
+  trimsTaken?: number;
+  /** Fired when this tick's decision just armed a NEW trim_scale tranche
+   *  (decision.reason "trim_scale_first"/"trim_scale_second") that has not been
+   *  persisted yet (trancheIdx > the row's own trims_taken). The caller should
+   *  persist the new count (updateZeroDteLiveState's `trimsTaken` field) so the
+   *  NEXT tick sees it via row.trims_taken and stops re-arming the same tranche.
+   *  Never fires for ratchet mode's own single "plan_target_trim" — that fact is
+   *  already carried forward via the row's persisted `status` field, unchanged
+   *  here. Best-effort: a failure here must not affect the tick's exit decision. */
+  onTrimBank?: (trimsTaken: number) => void | Promise<void>;
 };
 
 export type ZeroDteRowExit = {
@@ -222,11 +254,16 @@ export type ZeroDteRowExit = {
 /**
  * Evaluate the exit engine for one STILL-OPEN ledger row (the caller has already
  * run derivePlayStatus and skips rows it closed). Returns the exit to apply, or
- * null for anything else — HOLD/RAISE_FLOOR/TRIM decisions change nothing here
- * (TRIM is already derived + persisted by the peak latch; the engine's TRIM can
- * only agree with it). On EXIT the counterfactual record is stamped into the row's
- * entry_context.exit (first-write-wins, best-effort) before the caller persists
- * the CLOSED state.
+ * null for anything else — HOLD/RAISE_FLOOR/TRIM decisions never close the row
+ * here. For RATCHET mode that is exactly right: its single "TRIM" (bank half at
+ * target) is already derived + persisted by the peak latch via the row's own
+ * `status` field, so the engine's TRIM can only ever agree with it. For TRIM_SCALE
+ * mode there is no equivalent externally-persisted fact — which is why this
+ * function ALSO fires `deps.onTrimBank` (see ExitSyncDeps) when a tranche just
+ * armed and ZERODTE_TRIM_BANK_LIVE is on, so the caller can persist it; the return
+ * value here still stays null for that case (a trim bank is not a row close). On
+ * EXIT the counterfactual record is stamped into the row's entry_context.exit
+ * (first-write-wins, best-effort) before the caller persists the CLOSED state.
  */
 export async function evaluateLedgerRowExit(
   row: ZeroDteSetupLogRow,
@@ -330,18 +367,10 @@ export async function evaluateLedgerRowExit(
     const planTarget =
       pinnedTarget != null && !entryBasisDiverged ? pinnedTarget : entry * (1 + targetPct / 100);
 
-    // Exit family (A/B, default ratchet). In trim_scale mode there is no persisted
-    // trim-count column yet (that is the graduation follow-up — FINDINGS 2026-07-23), so
-    // derive "thirds already banked" from the MONOTONIC peak: taken == armed keeps the
-    // runner's protective/target/thesis/flat exits self-consistent while the two
-    // intermediate ⅓ TRIMs stay advisory (this sync path acts only on EXIT, exactly as
-    // in ratchet mode). The conservative effect: flipping the env captures the core E5
-    // win — never dump the whole runner at breakeven, run it to the target/stop — while
-    // the precise per-third banking accounting graduates with the persisted count. In the
-    // DEFAULT ratchet mode every field below is ignored by the engine.
-    // Exit archetype precedence (design Q13): an explicit test/AB override, else the mode
-    // FROZEN on the row at commit, else the live env. So a committed play manages itself
-    // under its own commit-time policy — the env flip only steers plays committed AFTER it.
+    // Exit family (A/B, default ratchet). Exit archetype precedence (design Q13): an
+    // explicit test/AB override, else the mode FROZEN on the row at commit, else the
+    // live env. So a committed play manages itself under its own commit-time policy —
+    // the env flip only steers plays committed AFTER it.
     const exitMode = deps.exitMode ?? readFrozenExitMode(row.entry_context) ?? resolveExitMode();
     // Regime-conditioned trim thresholds (FINDING 2026-08-29): the row's own commit-time
     // session_regime (entry-context.ts) is real, but only reaches the live engine when
@@ -353,8 +382,21 @@ export async function evaluateLedgerRowExit(
       | null
       | undefined;
     const regime = deps.regime ?? (resolveTrimRegimeLive() ? (stampedRegime ?? null) : null);
+    // Thirds already banked. deps.trimsTaken (test/AB override) always wins. Else, while
+    // ZERODTE_TRIM_BANK_LIVE is off, RECOMPUTE via trimTranchesArmed(peak, regime) — the
+    // legacy (buggy) behavior, preserved byte-for-byte so merging this fix changes nothing
+    // live until the flag flips (see resolveTrimBankLive's doc). Once on, read the row's
+    // REAL persisted count instead — the actual fix, see the trims_taken column's own
+    // ALTER TABLE comment (db.ts) for why recomputing here made the tranche-banking branch
+    // in decideTrimScale (exit-engine.ts) structurally unreachable.
+    const trimBankLive = resolveTrimBankLive();
     const trimsTaken =
-      exitMode === "trim_scale" ? trimTranchesArmed(pinnedLivePnlPct(entry, peak), regime ?? "neutral") : 0;
+      deps.trimsTaken ??
+      (exitMode === "trim_scale"
+        ? trimBankLive
+          ? row.trims_taken
+          : trimTranchesArmed(pinnedLivePnlPct(entry, peak), regime ?? "neutral")
+        : 0);
 
     const regimePlane = (row.entry_context as Record<string, unknown> | null)?.regime_plane as
       | { gexQuality?: RegimeGexQuality }
@@ -378,6 +420,24 @@ export async function evaluateLedgerRowExit(
       trimsTaken,
       gexQualityDegraded,
     });
+
+    // A trim_scale tranche just armed (never ratchet's own single "plan_target_trim" —
+    // that fact is already carried forward via the row's persisted `status` field, no
+    // change needed there). Only meaningful once ZERODTE_TRIM_BANK_LIVE is on: while
+    // off, trimsTaken was recomputed via trimTranchesArmed (identical to `armed`), so
+    // this branch is provably unreachable and firing onTrimBank would be a no-op that
+    // could only ever be a latent behavior surprise for a caller that wires it anyway.
+    if (
+      trimBankLive &&
+      decision.action === "TRIM" &&
+      (decision.reason === "trim_scale_first" || decision.reason === "trim_scale_second")
+    ) {
+      const bankedIdx = decision.reason === "trim_scale_first" ? 1 : 2;
+      if (bankedIdx > (row.trims_taken ?? 0) && deps.onTrimBank) {
+        await Promise.resolve(deps.onTrimBank(bankedIdx)).catch(() => {});
+      }
+    }
+
     if (decision.action !== "EXIT") return null;
 
     const exitContext = buildExitContext(decision, entry, mark, peak, nowMs);
