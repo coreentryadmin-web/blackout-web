@@ -19,6 +19,8 @@ import {
 import { HelixFlowTable } from "@/features/helix/components/HelixFlowTable";
 import { HelixMobileFlowTape } from "@/features/helix/components/HelixMobileFlowTape";
 import { HelixCommandBar } from "@/features/helix/components/HelixCommandBar";
+import { HelixSessionPulseBar } from "@/features/helix/components/HelixSessionPulseBar";
+import { HelixHotTickersRail } from "@/features/helix/components/HelixHotTickersRail";
 import {
   HELIX_INDEX_TICKERS,
   matchesDteFilter,
@@ -52,6 +54,14 @@ import {
   HELIX_PREMIUM_PRESETS,
   WHALE_PRINT_PREMIUM,
 } from "@/features/helix/lib/helix-flow-limits";
+import { flowDirection } from "@/features/helix/lib/helix-flow-aggression";
+import { positionIntent } from "@/features/helix/lib/helix-position-intent";
+import {
+  applyHelixFilterPreset,
+  HELIX_DEFAULT_TAPE_FILTERS,
+  HELIX_FILTER_PRESETS,
+  type HelixDirectionFilter,
+} from "@/features/helix/lib/helix-filter-presets";
 import { hasCoincidentBlock } from "@/features/helix/lib/helix-coord-window";
 import {
   watchlistFilterActive,
@@ -171,6 +181,8 @@ function helixFilterSummary(f: {
   dteFilter: string;
   tickerFilter: string;
   whalesOnly: boolean;
+  directionFilter?: string;
+  openingOnly?: boolean;
 }): string {
   const parts: string[] = [];
   if (f.minPremium !== HELIX_DEFAULT_MIN_PREMIUM) parts.push(`minPremium=${f.minPremium}`);
@@ -178,6 +190,8 @@ function helixFilterSummary(f: {
   if (f.dteFilter !== "all") parts.push(`dte=${f.dteFilter}`);
   if (f.tickerFilter) parts.push(`ticker=${f.tickerFilter}`);
   if (f.whalesOnly) parts.push("whalesOnly");
+  if (f.directionFilter && f.directionFilter !== "all") parts.push(`dir=${f.directionFilter}`);
+  if (f.openingOnly) parts.push("openingOnly");
   return parts.join("; ") || "default";
 }
 
@@ -215,7 +229,9 @@ export function FlowFeed() {
   const [whalesOnly, setWhalesOnly]         = useState(false);
   const [dteFilter, setDteFilter]           = useState<HelixDteFilter>("all");
   const [indicesOnly, setIndicesOnly]       = useState(false);
-  const density: HelixTableDensity = "full";
+  const [density, setDensity] = useState<HelixTableDensity>("full");
+  const [directionFilter, setDirectionFilter] = useState<HelixDirectionFilter>("all");
+  const [openingOnly, setOpeningOnly] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(true);
   const [tickerFilter, setTickerFilter]   = useState("");
 
@@ -332,6 +348,14 @@ export function FlowFeed() {
       if (includeType && typeFilter !== "ALL") {
         rows = rows.filter((a) => a.option_type === typeFilter);
       }
+      if (directionFilter === "bullish") {
+        rows = rows.filter((a) => flowDirection(a) === "bullish");
+      } else if (directionFilter === "bearish") {
+        rows = rows.filter((a) => flowDirection(a) === "bearish");
+      }
+      if (openingOnly) {
+        rows = rows.filter((a) => positionIntent(a).intent === "opening");
+      }
       return rows;
     },
     [
@@ -343,6 +367,8 @@ export function FlowFeed() {
       indicesOnly,
       dteFilter,
       typeFilter,
+      directionFilter,
+      openingOnly,
     ]
   );
 
@@ -639,9 +665,36 @@ export function FlowFeed() {
       indicesOnly,
       watchlistOnly,
       tickerFilter,
+      directionFilter,
+      openingOnly,
     }),
-    [dteFilter, typeFilter, whalesOnly, indicesOnly, watchlistOnly, tickerFilter]
+    [dteFilter, typeFilter, whalesOnly, indicesOnly, watchlistOnly, tickerFilter, directionFilter, openingOnly]
   );
+
+  const applyHelixPreset = useCallback((presetId: string) => {
+    const preset = HELIX_FILTER_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    const next = applyHelixFilterPreset(preset);
+    setMinPremium(next.minPremium);
+    setTypeFilter(next.typeFilter);
+    setWhalesOnly(next.whalesOnly);
+    setDteFilter(next.dteFilter);
+    setIndicesOnly(next.indicesOnly);
+    setDirectionFilter(next.directionFilter);
+    setOpeningOnly(next.openingOnly);
+  }, []);
+
+  const resetHelixFilters = useCallback(() => {
+    setMinPremium(HELIX_DEFAULT_TAPE_FILTERS.minPremium);
+    setTypeFilter(HELIX_DEFAULT_TAPE_FILTERS.typeFilter);
+    setWhalesOnly(HELIX_DEFAULT_TAPE_FILTERS.whalesOnly);
+    setDteFilter(HELIX_DEFAULT_TAPE_FILTERS.dteFilter);
+    setIndicesOnly(HELIX_DEFAULT_TAPE_FILTERS.indicesOnly);
+    setDirectionFilter(HELIX_DEFAULT_TAPE_FILTERS.directionFilter);
+    setOpeningOnly(HELIX_DEFAULT_TAPE_FILTERS.openingOnly);
+    setTickerFilter("");
+    setWatchlistOnly(false);
+  }, []);
 
   useEffect(() => {
     filterBackfillPagesRef.current = 0;
@@ -837,6 +890,8 @@ export function FlowFeed() {
     dteFilter,
     tickerFilter,
     whalesOnly,
+    directionFilter,
+    openingOnly,
   });
 
   const flowTapeProps = {
@@ -1138,6 +1193,14 @@ export function FlowFeed() {
           watchlistOnly={watchlistOnly}
           onWatchlistOnlyChange={setWatchlistOnly}
           watchlistCount={watchlist.watchlist.length}
+          directionFilter={directionFilter}
+          onDirectionFilterChange={setDirectionFilter}
+          openingOnly={openingOnly}
+          onOpeningOnlyChange={setOpeningOnly}
+          density={density}
+          onDensityChange={setDensity}
+          onApplyPreset={applyHelixPreset}
+          onResetFilters={resetHelixFilters}
           analyticsOpen={analyticsOpen}
           onAnalyticsOpenChange={setAnalyticsOpen}
           replayMode={replayMode}
@@ -1155,6 +1218,17 @@ export function FlowFeed() {
           newestAgeLabel={newestAgeLabel}
           replayDisabled={!replayMode && alerts.length === 0}
         />
+      )}
+
+      {!nativeShell && (
+        <>
+          <HelixSessionPulseBar flows={displayAlerts} scopeLabel={analyticsScopeLabel} />
+          <HelixHotTickersRail
+            flows={filteredTapeBuffer}
+            activeTicker={tickerFilter}
+            onSelect={setTickerFilter}
+          />
+        </>
       )}
 
       {/* ── Main grid — table-first; analytics optional ─────────────────── */}
