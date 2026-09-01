@@ -290,7 +290,7 @@ export function Nav({
       data-route-pending={routePending ? "true" : "false"}
       initial={isHome && !reduced ? { opacity: 0, y: -20 } : undefined}
       animate={isHome && !reduced ? { opacity: 1, y: 0 } : undefined}
-      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] as const }}
       className={clsx("nav-bar", iosToolChrome && "nav-bar-ios-tool")}
     >
       <div className="nav-surface" aria-hidden>
@@ -346,7 +346,7 @@ export function Nav({
                   initial={reduced ? { opacity: 0 } : { opacity: 0, y: -6 }}
                   animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
                   exit={reduced ? { opacity: 0 } : { opacity: 0, y: -6 }}
-                  transition={{ duration: 0.12, ease: [0.22, 1, 0.36, 1] }}
+                  transition={{ duration: 0.12, ease: [0.22, 1, 0.36, 1] as const }}
                 >
                   <div className="nav-mega-head">
                     <span className="nav-mega-kicker font-mono">All instruments · one desk</span>

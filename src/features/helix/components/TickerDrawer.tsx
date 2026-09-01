@@ -203,13 +203,13 @@ export function TickerDrawer({
                           className="h-full bg-gradient-to-r from-[#0f9d58] to-bull"
                           initial={{ width: 0 }}
                           animate={{ width: `${callPct ?? 0}%` }}
-                          transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1] }}
+                          transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1] as const }}
                         />
                         <motion.div
                           className="h-full bg-gradient-to-r from-rose-700 to-rose-500 flex-1"
                           initial={{ width: 0 }}
                           animate={{ width: `${100 - (callPct ?? 0)}%` }}
-                          transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1], delay: 0.05 }}
+                          transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1] as const, delay: 0.05 }}
                         />
                       </div>
                     </div>
