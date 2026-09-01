@@ -25,6 +25,7 @@ import path from "node:path";
 const CSS_MOCKS = [
   path.join(process.cwd(), "src/app/styles/admin-console.css"),
   path.join(process.cwd(), "src/app/nighthawk-v2.css"),
+  path.join(process.cwd(), "src/app/nighthawk-desk-theme.css"),
 ];
 for (const cssPath of CSS_MOCKS) {
   mock.module(cssPath, { namedExports: {} });
