@@ -11,6 +11,27 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-01 (00:16 UTC / Mon 2026-08-31 20:16 ET) — [SEO] Lane heartbeat: Three-step post-weekend validation
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Monday scheduled SEO lane heartbeat (weekly cadence, standing trigger).
+
+**STEP 1 — VALIDATE SHIPPED FIXES:**
+- **#2453** (homepage desktop CLS animate-transform not top): **Measured CLS 0.0002** post-Cloudflare purge on desktop 1440×900 (63 assets routed ok, 0 fail) — **GOOD**, under 0.1 threshold, holding from 2026-08-21 forward deployment.
+- **#2448** (/api/og crawlable image): **HTTP 200 OK, Content-Type: image/png**, unauthenticated fetch succeeds, endpoint crawlable by search engines — **VERIFIED on production**.
+
+**STEP 2 — UNBLOCK YOURSELF:**
+- **agent-pr-sweep.mjs**: **0 open agent PRs** — lane clear, no conflicted branches, no red CI blocking work.
+
+**STEP 3 — NEW WORK ASSESSMENT:**
+- **GA4→Google Ads conversion pipeline**: GA4 live and firing (G-YLN4K37KYF in src/app/layout.tsx). Client-side conversion code ready and fail-closed. **Gap remains: NEXT_PUBLIC_GOOGLE_ADS_ID and three label env vars not deployed** — blocks Google Ads conversion import. Awaiting ads/marketing lane action.
+- **GSC**: Service account verified siteOwner on DOMAIN property sc-domain:blackouttrades.com (URL-encoded as sc-domain%3Ablackouttrades.com). No new striking-distance queries since 2026-08-31 12:22 UTC run. Deep-demand queries await authority/backlinks (out-of-lane).
+- **IndexNow (Bing)**: Live via deploy-smoke.yml, pinging on every deploy, no code-side action needed.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
 ## 2026-08-31 (14:17 UTC) — [SEO] Growth cycle: GSC opportunities scan — IDENTICAL to 12:22 UTC heartbeat, no new work
 
 **Severity.** — (no defect found)
