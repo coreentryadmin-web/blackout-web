@@ -19,6 +19,7 @@ const NightHawkDeskThemeContext = createContext<NightHawkDeskThemeContextValue |
 function applyDeskTheme(theme: NightHawkDeskTheme) {
   const root = document.querySelector(".nh-v2-page");
   if (root) root.setAttribute("data-desk-theme", theme);
+  document.documentElement.setAttribute("data-nighthawk-desk-theme", theme);
   document.documentElement.style.colorScheme = theme;
 }
 

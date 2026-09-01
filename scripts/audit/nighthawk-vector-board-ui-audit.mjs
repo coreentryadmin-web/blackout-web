@@ -55,6 +55,8 @@ async function main() {
     const table = document.querySelector(".vector-board-table");
     const rows = document.querySelectorAll(".vector-board-row");
     const summary = document.querySelector(".vector-board-summary-row");
+    const kpiStrip = document.querySelector(".vector-board-kpi-strip");
+    const openTab = [...document.querySelectorAll('[role="tab"]')].find((el) => /^Open/i.test(el.textContent ?? ""));
     const pnlHeader = [...document.querySelectorAll("th")].find((th) =>
       /Premium|P&L/i.test(th.textContent ?? "")
     );
@@ -70,6 +72,8 @@ async function main() {
       hasTable: !!table,
       rowCount: rows.length,
       hasSummary: !!summary,
+      hasKpiStrip: !!kpiStrip,
+      hasOpenTab: !!openTab,
       hasPnlColumn: !!pnlHeader,
       hasThemeToggle: !!themeToggle,
       hasSort: !!sortTrigger,
@@ -89,6 +93,18 @@ async function main() {
   if (await themeBtn.count()) {
     await themeBtn.click();
     await page.waitForTimeout(400);
+    const lightDom = await page.evaluate(() => {
+      const th = document.querySelector(".vector-board-table thead th");
+      const pick = document.querySelector(".vector-board-pick-name");
+      const cs = (el) => (el ? getComputedStyle(el) : null);
+      return {
+        theme: document.documentElement.getAttribute("data-nighthawk-desk-theme"),
+        thBg: cs(th)?.backgroundColor,
+        pickColor: cs(pick)?.color,
+        hasLightHeader: (cs(th)?.backgroundColor || "").includes("247, 249, 249"),
+      };
+    });
+    dom = { ...dom, lightMode: lightDom };
     await page.screenshot({ path: `${OUT}/vector-board-light.png`, fullPage: false });
   }
 
@@ -141,7 +157,13 @@ async function main() {
           ? "RED — table UI missing"
           : !dom.hasPnlColumn
             ? "RED — P&L column missing"
-            : dom.rowCount === 0 && (apiJson?.closed?.length ?? 0) + (apiJson?.leaders?.length ?? 0) > 0
+            : dom.hasSummary || dom.hasKpiStrip
+              ? "RED — legacy summary/KPI chrome still present"
+              : !dom.hasOpenTab
+                ? "RED — Open tab missing (desk tabs not migrated)"
+                : dom.lightMode && !dom.lightMode.hasLightHeader
+                  ? "RED — light mode table header still dark"
+                  : dom.rowCount === 0 && (apiJson?.closed?.length ?? 0) + (apiJson?.leaders?.length ?? 0) > 0
               ? "RED — API has rows but table empty"
               : dom.pageScrollY > 8
                 ? "AMBER — page scrolls (viewport lock may be broken)"

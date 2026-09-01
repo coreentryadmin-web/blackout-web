@@ -96,18 +96,18 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
 
   return (
     <div className="nighthawk-content-canvas flex min-h-0 flex-1 flex-col">
-      <div className="nighthawk-feed-chrome mb-2 flex shrink-0 items-center justify-end">
+      <div className="nighthawk-feed-header mb-1 flex shrink-0 items-center gap-2">
+        <IosNativeSegment
+          value={view}
+          onChange={selectView}
+          accent="#00D9A3"
+          variant={nativeShell ? "compact" : "default"}
+          aria-label="Night Hawk view"
+          className="ios-native-desk-segment min-w-0 flex-1 shrink"
+          segments={NIGHTHAWK_VIEWS.map((v) => ({ id: v, label: NIGHTHAWK_VIEW_META[v].label }))}
+        />
         <NightHawkDeskThemeToggle />
       </div>
-      <IosNativeSegment
-        value={view}
-        onChange={selectView}
-        accent="#00D9A3"
-        variant={nativeShell ? "compact" : "default"}
-        aria-label="Night Hawk view"
-        className="ios-native-desk-segment mb-3 shrink-0"
-        segments={NIGHTHAWK_VIEWS.map((v) => ({ id: v, label: NIGHTHAWK_VIEW_META[v].label }))}
-      />
       <div
         className={clsx(
           "nighthawk-single-view flex w-full max-w-none flex-1 flex-col",

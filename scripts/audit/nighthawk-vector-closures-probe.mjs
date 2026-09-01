@@ -54,12 +54,11 @@ async function main() {
     return r.json();
   }, BASE);
 
-  const winnersTab = page.getByRole("tab", { name: /Winners/i });
-  const liveTab = page.getByRole("tab", { name: /Live/i });
-  const closedTab = page.getByRole("tab", { name: /Closed/i });
+  const openTab = page.getByRole("tab", { name: /^Open/i });
+  const closedTab = page.getByRole("tab", { name: /^Closed/i });
 
-  if (await liveTab.count()) {
-    await liveTab.click();
+  if (await openTab.count()) {
+    await openTab.click();
     await page.waitForTimeout(500);
   }
 

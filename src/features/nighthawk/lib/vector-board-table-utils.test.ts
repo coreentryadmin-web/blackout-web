@@ -103,6 +103,18 @@ test("buildVectorBoardRows dedupes winners from runners/live in all view", () =>
   assert.equal(all.filter((r) => r.kind === "closed").length, 1);
 });
 
+test("buildVectorBoardRows open section excludes closed picks", () => {
+  const winners = [leader({ id: 1 })];
+  const leaders = [
+    leader({ id: 1 }),
+    leader({ id: 2, ticker: "NVDA", is_winner: false, premium_pct_from_entry: 22, peak_premium_pct: 24 }),
+  ];
+  const closedRows = [closure(), closure({ id: 10, ticker: "AAPL" })];
+  const open = buildVectorBoardRows({ winners, leaders, closed: closedRows, section: "open" });
+  assert.equal(open.length, 2);
+  assert.equal(open.filter((r) => r.kind === "closed").length, 0);
+});
+
 test("filterVectorBoardRows filters by ticker and session", () => {
   const rows = [leaderToTableRow(leader()), closureToTableRow(closure())];
   const byTicker = filterVectorBoardRows(rows, { tickerQuery: "int" });
