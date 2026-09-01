@@ -193,6 +193,7 @@ function cortexScore(blob: Record<string, unknown> | null | undefined): { score:
     decision === "VETO" ||
     decision === "VETO_BLIND" ||
     decision === "NET_NEGATIVE" ||
+    decision === "THIN_EVIDENCE" ||
     decision === "CONTESTED" ||
     decision === "OPPOSE_UNRESOLVED"
   ) {
