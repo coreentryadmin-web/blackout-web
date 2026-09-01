@@ -397,3 +397,212 @@
   border-color: var(--nh-desk-text);
   box-shadow: 0 0 0 1px var(--nh-desk-text);
 }
+
+/* ── Vector board filters / sort / KPI strip (X Ads control row) ─────────── */
+.nh-v2-page .vector-board-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.nh-v2-page .vector-board-kpi-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.65rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 0.5rem;
+  background: var(--nh-desk-surface-muted);
+}
+
+.nh-v2-page .vector-board-kpi {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.nh-v2-page .vector-board-kpi-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-kpi-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .vector-board-filterbar {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.15rem 0.15rem 0.15rem 0.45rem;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 999px;
+  background: var(--nh-desk-input-bg);
+}
+
+.nh-v2-page .vector-board-filter-btn {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--nh-desk-text-secondary);
+  background: transparent;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.nh-v2-page .vector-board-filter-btn:hover {
+  color: var(--nh-desk-text);
+  background: var(--nh-desk-row-hover);
+}
+
+.nh-v2-page .vector-board-filter-btn.is-active {
+  color: var(--nh-desk-chip-active-text);
+  background: var(--nh-desk-chip-active-bg);
+}
+
+.nh-v2-page .vector-board-clear-btn {
+  border: 1px solid rgba(240, 185, 74, 0.3);
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nh-desk-warn);
+  background: rgba(240, 185, 74, 0.08);
+}
+
+.nh-v2-page .vector-board-sort {
+  position: relative;
+}
+
+.nh-v2-page .vector-board-sort-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 999px;
+  background: var(--nh-desk-input-bg);
+  color: var(--nh-desk-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.nh-v2-page .vector-board-sort-trigger.is-open {
+  border-color: var(--nh-desk-tab-underline);
+}
+
+.nh-v2-page .vector-board-sort-label {
+  color: var(--nh-desk-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.nh-v2-page .vector-board-sort-value {
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .vector-board-sort-chevron {
+  font-size: 8px;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-sort-panel {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  display: flex;
+  min-width: 188px;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.35rem;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 0.5rem;
+  background: var(--nh-desk-surface);
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.35);
+}
+
+.nh-v2-page .vector-board-sort-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 0;
+  border-radius: 0.35rem;
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--nh-desk-text-secondary);
+  background: transparent;
+}
+
+.nh-v2-page .vector-board-sort-opt:hover {
+  background: var(--nh-desk-row-hover);
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .vector-board-sort-opt.is-active {
+  color: var(--nh-desk-up);
+  background: rgba(0, 186, 124, 0.08);
+}
+
+.nh-v2-page .vector-board-sort-check {
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.nh-v2-page .vector-board-panel {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: 0.65rem;
+  background: var(--nh-desk-surface);
+}
+
+.nh-v2-page .vector-board-note--inline {
+  margin: 0.35rem 0 0;
+  padding: 0 0.15rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-th-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.nh-v2-page .vector-board-th-sortable:hover {
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .vector-board-pnl-hero {
+  font-size: 12.5px;
+  font-weight: 800;
+}
+

@@ -95,7 +95,7 @@ export function VectorPlayDetailPanel({
       </div>
 
       <div className="vector-board-detail-hero">
-        <span className="vector-board-detail-hero-label">Premium vs entry</span>
+        <span className="vector-board-detail-hero-label">P&amp;L vs entry</span>
         <span
           className={clsx(
             "vector-board-detail-hero-value tabular-nums",

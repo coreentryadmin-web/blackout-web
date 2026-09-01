@@ -6,34 +6,36 @@ import { clsx } from "clsx";
 import { EmptyState, Skeleton } from "@/components/ui";
 import { etDateTimeShort } from "@/lib/et-clock";
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
-import { VectorBoardMeter } from "@/features/nighthawk/components/VectorBoardMeter";
 import { VectorBoardCalendar } from "@/features/nighthawk/components/VectorBoardCalendar";
+import { VectorBoardMeter } from "@/features/nighthawk/components/VectorBoardMeter";
 import { VectorBoardStatusPill } from "@/features/nighthawk/components/VectorBoardStatus";
+import { VectorBoardToolbar } from "@/features/nighthawk/components/VectorBoardToolbar";
 import { VectorPlayDetailPanel } from "@/features/nighthawk/components/VectorPlayDetailPanel";
 import type { VectorBoardRowKind, VectorBoardTableRow } from "@/features/nighthawk/lib/vector-board-table-utils";
 import {
   buildVectorBoardRows,
-  filterVectorBoardRows,
   formatPremiumPct,
   premiumPctTone,
   vectorBoardCalendarBuckets,
   vectorBoardMeter,
   vectorBoardSummary,
 } from "@/features/nighthawk/lib/vector-board-table-utils";
+import {
+  filterVectorBoardRowsAdvanced,
+  parseVectorBoardSort,
+  sortVectorBoardRows,
+  vectorBoardSessionPnl,
+  type VectorBoardSort,
+  type VectorBoardStatusFilter,
+  type VectorBoardTierFilter,
+} from "@/features/nighthawk/lib/vector-board-filters";
 import { filterVectorRunnerLeaders, preferredVectorBoardSection } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
+import type { VectorClosureReasonFilter } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
 import type { VectorPickBoardResponse } from "@/features/nighthawk/components/VectorPickLogBoard.types";
 
 type BoardTab = "all" | VectorBoardRowKind;
 
 const EM = "—";
-
-const TABS: { id: BoardTab; label: string }[] = [
-  { id: "all", label: "All picks" },
-  { id: "winner", label: "Winners" },
-  { id: "runner", label: "Runners" },
-  { id: "live", label: "Live" },
-  { id: "closed", label: "Closed" },
-];
 
 async function fetchVectorBoard(url: string): Promise<VectorPickBoardResponse> {
   const res = await fetch(url, { cache: "no-store" });
@@ -71,26 +73,13 @@ function preferredTab(
   return "all";
 }
 
-function tabCount(
-  tab: BoardTab,
-  data: {
-    all: number;
-    winners: number;
-    runners: number;
-    live: number;
-    closed: number;
-  }
-): number {
-  if (tab === "all") return data.all;
-  if (tab === "winner") return data.winners;
-  if (tab === "runner") return data.runners;
-  if (tab === "live") return data.live;
-  return data.closed;
+function ariaSort(active: boolean, dir: "asc" | "desc"): "none" | "ascending" | "descending" {
+  if (!active) return "none";
+  return dir === "asc" ? "ascending" : "descending";
 }
 
 /**
- * Night Hawk Vector tab — X Ads Manager–style table board with underline tabs,
- * session calendar, summary row, and right-rail play inspector.
+ * Night Hawk Vector tab — X Ads Manager table with filters, sorts, P&L column, and inspector rail.
  */
 export function VectorPickLogBoard() {
   const todaySession = etSessionDate(Date.now()) ?? "";
@@ -100,6 +89,10 @@ export function VectorPickLogBoard() {
   const [tickerQuery, setTickerQuery] = useState("");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedRow, setSelectedRow] = useState<VectorBoardTableRow | null>(null);
+  const [statusFilter, setStatusFilter] = useState<VectorBoardStatusFilter>("all");
+  const [tierFilter, setTierFilter] = useState<VectorBoardTierFilter>("all");
+  const [reasonFilter, setReasonFilter] = useState<VectorClosureReasonFilter>("all");
+  const [sort, setSort] = useState<VectorBoardSort>("updated_desc");
 
   const apiUrl =
     sessionScope === "current" && todaySession
@@ -131,8 +124,8 @@ export function VectorPickLogBoard() {
   const tabCounts = useMemo(
     () => ({
       all: buildVectorBoardRows({ winners, leaders, closed, section: "all" }).length,
-      winners: winners.length,
-      runners: runners.length,
+      winner: winners.length,
+      runner: runners.length,
       live: liveCount,
       closed: closed.length,
     }),
@@ -157,20 +150,44 @@ export function VectorPickLogBoard() {
 
   const calendarBuckets = useMemo(() => vectorBoardCalendarBuckets(calendarSource), [calendarSource]);
 
-  const visibleRows = useMemo(() => {
-    return filterVectorBoardRows(sectionRows, {
+  const sessionDateFilter = selectedDate ? selectedDate : sessionScope === "current" ? todaySession : null;
+
+  const filteredRows = useMemo(() => {
+    return filterVectorBoardRowsAdvanced(sectionRows, {
       tickerQuery,
-      sessionDate: selectedDate ? selectedDate : sessionScope === "current" ? todaySession : null,
+      sessionDate: sessionDateFilter,
+      statusFilter,
+      tierFilter,
+      reasonFilter: tab === "closed" ? reasonFilter : "all",
     });
-  }, [sectionRows, tickerQuery, selectedDate, sessionScope, todaySession]);
+  }, [sectionRows, tickerQuery, sessionDateFilter, statusFilter, tierFilter, reasonFilter, tab]);
+
+  const { key: sortKey, dir: sortDir } = parseVectorBoardSort(sort);
+
+  const visibleRows = useMemo(
+    () => sortVectorBoardRows(filteredRows, sortKey, sortDir),
+    [filteredRows, sortKey, sortDir]
+  );
 
   const summary = useMemo(() => vectorBoardSummary(visibleRows), [visibleRows]);
+  const sessionPnl = useMemo(
+    () => vectorBoardSessionPnl(sectionRows, sessionDateFilter),
+    [sectionRows, sessionDateFilter]
+  );
 
   useEffect(() => {
     if (!selectedRow) return;
     const stillVisible = visibleRows.some((r) => r.key === selectedRow.key);
     if (!stillVisible) setSelectedRow(null);
   }, [visibleRows, selectedRow]);
+
+  const clearFilters = () => {
+    setStatusFilter("all");
+    setTierFilter("all");
+    setReasonFilter("all");
+    setSelectedDate(null);
+    setTickerQuery("");
+  };
 
   if (isLoading && !data) {
     return (
@@ -191,94 +208,38 @@ export function VectorPickLogBoard() {
     );
   }
 
-  const coverage = data?.coverage;
-
   return (
     <div className="vector-board-shell">
-      <header className="vector-board-toolbar">
-        <div className="vector-board-toolbar-row">
-          <nav className="vector-board-tabs" role="tablist" aria-label="Vector board views">
-            {TABS.map(({ id, label }) => {
-              const count = tabCount(id, tabCounts);
-              const active = tab === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  className={clsx("vector-board-tab", active && "is-active")}
-                  onClick={() => {
-                    tabUserPicked.current = true;
-                    setTab(id);
-                  }}
-                >
-                  {label}
-                  <span className="vector-board-tab-count tabular-nums">({count})</span>
-                </button>
-              );
-            })}
-          </nav>
+      <VectorBoardToolbar
+        tab={tab}
+        tabCounts={tabCounts}
+        onTabChange={(next) => {
+          tabUserPicked.current = true;
+          setTab(next);
+        }}
+        sessionScope={sessionScope}
+        onSessionScopeChange={(scope) => {
+          setSessionScope(scope);
+          if (scope === "current") setSelectedDate(null);
+        }}
+        tickerQuery={tickerQuery}
+        onTickerQueryChange={setTickerQuery}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        tierFilter={tierFilter}
+        onTierFilterChange={setTierFilter}
+        reasonFilter={reasonFilter}
+        onReasonFilterChange={setReasonFilter}
+        sort={sort}
+        onSortChange={setSort}
+        selectedDate={selectedDate}
+        onClearFilters={clearFilters}
+        sessionPnl={sessionPnl}
+        netPnl={summary.netPnl}
+        totalVisible={visibleRows.length}
+      />
 
-          <div className="vector-board-toolbar-actions">
-            <div className="vector-board-scope" role="group" aria-label="Session scope">
-              <button
-                type="button"
-                className={clsx("vector-board-scope-btn", sessionScope === "current" && "is-active")}
-                onClick={() => {
-                  setSessionScope("current");
-                  setSelectedDate(null);
-                }}
-              >
-                Current
-              </button>
-              <button
-                type="button"
-                className={clsx("vector-board-scope-btn", sessionScope === "all" && "is-active")}
-                onClick={() => setSessionScope("all")}
-              >
-                All sessions
-              </button>
-            </div>
-
-            <div className="vector-board-search">
-              <span className="vector-board-search-icon" aria-hidden>
-                ⌕
-              </span>
-              <input
-                value={tickerQuery}
-                onChange={(e) => setTickerQuery(e.target.value.toUpperCase())}
-                placeholder="Search ticker"
-                className="vector-board-search-input"
-                aria-label="Search ticker"
-              />
-              {tickerQuery ? (
-                <button
-                  type="button"
-                  className="vector-board-search-clear"
-                  onClick={() => setTickerQuery("")}
-                  aria-label="Clear search"
-                >
-                  ×
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        {coverage || data?.note ? (
-          <div className="vector-board-toolbar-meta">
-            {coverage ? (
-              <span className="vector-board-meta-stat tabular-nums">
-                <strong>{coverage.winners}</strong> winner{coverage.winners === 1 ? "" : "s"} ·{" "}
-                <strong>{runners.length}</strong> runner{runners.length === 1 ? "" : "s"} ·{" "}
-                <strong>{coverage.leaders}</strong> live · <strong>{coverage.closed}</strong> closed
-              </span>
-            ) : null}
-            {data?.note ? <p className="vector-board-note">{data.note}</p> : null}
-          </div>
-        ) : null}
-      </header>
+      {data?.note ? <p className="vector-board-note vector-board-note--inline">{data.note}</p> : null}
 
       {calendarBuckets.length > 0 ? (
         <div className="vector-board-cal-wrap">
@@ -297,102 +258,132 @@ export function VectorPickLogBoard() {
 
       <div className="vector-board-body">
         <div className="vector-board-table-pane">
-          {!visibleRows.length ? (
-            <div className="vector-board-empty">
-              <EmptyState
-                title={
-                  tab === "winner"
-                    ? "No winning Vector picks yet"
-                    : tab === "runner"
-                      ? "No +15% runners yet"
-                      : tab === "live"
-                        ? "No live Vector leaders"
-                        : tab === "closed"
-                          ? "No closed Vector picks match"
-                          : "No Vector picks match"
-                }
-                description={
-                  tab === "winner"
-                    ? "Winners are +50% vs pick (or peak) from the universe sweep."
-                    : tab === "runner"
-                      ? "Runners are live names between +15% and +49% premium vs pick entry."
-                      : tab === "live"
-                        ? "Every Vector universe ticker is evaluated every ~2 min during RTH."
-                        : "Try All sessions or clear filters."
-                }
-              />
-            </div>
-          ) : (
-            <div className="vector-board-tablewrap">
-              <table className="vector-board-table">
-                <thead>
-                  <tr>
-                    <th>Pick</th>
-                    <th>Status</th>
-                    <th className="vector-board-col-num">Premium</th>
-                    <th className="vector-board-col-num">Entry → mark</th>
-                    <th className="vector-board-col-num">Peak</th>
-                    <th className="vector-board-col-num">Premium path</th>
-                    <th>Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="vector-board-summary-row">
-                    <td colSpan={2}>
-                      <span className="vector-board-summary-label">Summary</span>
-                      <span className="vector-board-summary-sub tabular-nums">{summary.total} picks</span>
-                    </td>
-                    <td className={clsx("vector-board-col-num vector-board-pnl tabular-nums", pnlClass(summary.avgPct))}>
-                      {summary.avgPct != null ? `${summary.avgPct >= 0 ? "+" : ""}${summary.avgPct}%` : EM}
-                    </td>
-                    <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
-                      <strong>{summary.open}</strong> open
-                    </td>
-                    <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
-                      <strong>{summary.winners}</strong> winners
-                    </td>
-                    <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
-                      <strong>{summary.closed}</strong> closed
-                    </td>
-                    <td />
-                  </tr>
-
-                  {visibleRows.map((row) => {
-                    const selected = selectedRow?.key === row.key;
-                    return (
-                      <tr
-                        key={row.key}
-                        className={clsx("vector-board-row", selected && "is-selected")}
-                        onClick={() => setSelectedRow(row)}
+          <div className="vector-board-panel">
+            {!visibleRows.length ? (
+              <div className="vector-board-empty">
+                <EmptyState
+                  title={
+                    tab === "winner"
+                      ? "No winning Vector picks yet"
+                      : tab === "runner"
+                        ? "No +15% runners yet"
+                        : tab === "live"
+                          ? "No live Vector leaders"
+                          : tab === "closed"
+                            ? "No closed Vector picks match"
+                            : "No Vector picks match"
+                  }
+                  description="Try All sessions, clear filters, or change the sort."
+                />
+              </div>
+            ) : (
+              <div className="vector-board-tablewrap">
+                <table className="vector-board-table">
+                  <thead>
+                    <tr>
+                      <th>Pick</th>
+                      <th>Status</th>
+                      <th
+                        className="vector-board-col-num vector-board-th-sortable"
+                        aria-sort={ariaSort(sortKey === "pnl", sortDir)}
+                        onClick={() => setSort(sortKey === "pnl" && sortDir === "desc" ? "pnl_asc" : "pnl_desc")}
                       >
-                        <td className="vector-board-col-pick">
-                          <div className="vector-board-pick-name">{row.ticker}</div>
-                          <div className="vector-board-pick-sub">{row.contractLabel}</div>
-                          <div className="vector-board-pick-id">ID: {row.occ.slice(-8)}</div>
-                        </td>
-                        <td>
-                          <VectorBoardStatusPill status={row.status} label={row.statusLabel} />
-                        </td>
-                        <td className={clsx("vector-board-col-num vector-board-pnl tabular-nums", pnlClass(row.premiumPct))}>
-                          {formatPremiumPct(row.premiumPct)}
-                        </td>
-                        <td className="vector-board-col-num vector-board-mid tabular-nums">
-                          {fmtPrice(row.entryMid)} → {fmtPrice(row.markMid)}
-                        </td>
-                        <td className={clsx("vector-board-col-num tabular-nums", pnlClass(row.peakPct))}>
-                          {formatPremiumPct(row.peakPct)}
-                        </td>
-                        <td className="vector-board-col-num">
-                          <VectorBoardMeter meter={vectorBoardMeter(row)} />
-                        </td>
-                        <td className="vector-board-col-time tabular-nums">{fmtTimestamp(row.timestamp)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                        P&amp;L % {sortKey === "pnl" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                      </th>
+                      <th className="vector-board-col-num">Entry → mark</th>
+                      <th
+                        className="vector-board-col-num vector-board-th-sortable"
+                        aria-sort={ariaSort(sortKey === "peak", sortDir)}
+                        onClick={() => setSort(sortKey === "peak" && sortDir === "desc" ? "peak_asc" : "peak_desc")}
+                      >
+                        Peak {sortKey === "peak" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                      </th>
+                      <th className="vector-board-col-num">Premium path</th>
+                      <th
+                        className="vector-board-th-sortable"
+                        aria-sort={ariaSort(sortKey === "updated", sortDir)}
+                        onClick={() =>
+                          setSort(sortKey === "updated" && sortDir === "desc" ? "updated_asc" : "updated_desc")
+                        }
+                      >
+                        Updated {sortKey === "updated" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="vector-board-summary-row">
+                      <td colSpan={2}>
+                        <span className="vector-board-summary-label">Total for {summary.total} picks</span>
+                      </td>
+                      <td
+                        className={clsx(
+                          "vector-board-col-num vector-board-pnl vector-board-pnl-hero tabular-nums",
+                          pnlClass(summary.netPnl)
+                        )}
+                        title="Equal-weight sum of premium % vs pick entry"
+                      >
+                        {summary.netPnl != null ? `${summary.netPnl >= 0 ? "+" : ""}${summary.netPnl}%` : EM}
+                      </td>
+                      <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
+                        Avg <strong>{summary.avgPct != null ? `${summary.avgPct >= 0 ? "+" : ""}${summary.avgPct}%` : EM}</strong>
+                      </td>
+                      <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
+                        <strong>{summary.winners}</strong> winners
+                      </td>
+                      <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
+                        <strong>{summary.open}</strong> open
+                      </td>
+                      <td className="vector-board-col-num vector-board-summary-metric tabular-nums">
+                        <strong>{summary.closed}</strong> closed
+                      </td>
+                    </tr>
+
+                    {visibleRows.map((row) => {
+                      const selected = selectedRow?.key === row.key;
+                      return (
+                        <tr
+                          key={row.key}
+                          className={clsx("vector-board-row", selected && "is-selected")}
+                          onClick={() => setSelectedRow(row)}
+                        >
+                          <td className="vector-board-col-pick">
+                            <div className="vector-board-pick-name">{row.ticker}</div>
+                            <div className="vector-board-pick-sub">{row.contractLabel}</div>
+                            <div className="vector-board-pick-id">
+                              {row.tier === "elite" ? "Elite · " : ""}
+                              ID: {row.occ.slice(-8)}
+                            </div>
+                          </td>
+                          <td>
+                            <VectorBoardStatusPill status={row.status} label={row.statusLabel} />
+                          </td>
+                          <td
+                            className={clsx(
+                              "vector-board-col-num vector-board-pnl vector-board-pnl-hero tabular-nums",
+                              pnlClass(row.premiumPct)
+                            )}
+                            title="Premium vs pick entry — Vector desk P&L"
+                          >
+                            {formatPremiumPct(row.premiumPct)}
+                          </td>
+                          <td className="vector-board-col-num vector-board-mid tabular-nums">
+                            {fmtPrice(row.entryMid)} → {fmtPrice(row.markMid)}
+                          </td>
+                          <td className={clsx("vector-board-col-num tabular-nums", pnlClass(row.peakPct))}>
+                            {formatPremiumPct(row.peakPct)}
+                          </td>
+                          <td className="vector-board-col-num">
+                            <VectorBoardMeter meter={vectorBoardMeter(row)} />
+                          </td>
+                          <td className="vector-board-col-time tabular-nums">{fmtTimestamp(row.timestamp)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
 
         <VectorPlayDetailPanel row={selectedRow} onClose={() => setSelectedRow(null)} />

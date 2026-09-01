@@ -318,6 +318,7 @@ export function vectorBoardSummary(rows: VectorBoardTableRow[]) {
   return {
     total: rows.length,
     avgPct: pctCount > 0 ? Math.round(sumPct / pctCount) : null,
+    netPnl: pctCount > 0 ? Math.round(sumPct) : null,
     open,
     closed,
     winners,

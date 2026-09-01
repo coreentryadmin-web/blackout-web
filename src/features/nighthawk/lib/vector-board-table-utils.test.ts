@@ -134,6 +134,7 @@ test("vectorBoardSummary counts open, closed, and winners", () => {
   assert.equal(summary.open, 1);
   assert.equal(summary.closed, 1);
   assert.equal(summary.avgPct, 15);
+  assert.equal(summary.netPnl, 45);
 });
 
 test("vectorBoardMeter mirrors X Ads budget bar for peak and winner floor", () => {

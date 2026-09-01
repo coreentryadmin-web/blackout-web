@@ -13,9 +13,10 @@ test("VectorPickLogBoard: uses viewport-locked shell with internal table scrollp
   );
 });
 
-test("VectorPickLogBoard: X Ads underline tabs, meter column, and detail rail", () => {
+test("VectorPickLogBoard: X Ads toolbar, P&L column, meters, and detail rail", () => {
   const src = readFileSync(new URL("./VectorPickLogBoard.tsx", import.meta.url), "utf8");
-  assert.match(src, /vector-board-tabs/, "tabs must use underline style, not pill buttons");
+  assert.match(src, /VectorBoardToolbar/, "board must use dedicated X Ads-style toolbar");
+  assert.match(src, /P&amp;L %/, "table must expose a dedicated P&L column");
   assert.match(src, /VectorBoardMeter/, "table must render X Ads-style premium path meters");
   assert.match(src, /VectorPlayDetailPanel/, "row click must open right-rail inspector");
   assert.match(src, /vector-board-summary-row/, "summary row must mirror X Ads totals row");
