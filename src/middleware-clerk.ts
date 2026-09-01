@@ -26,6 +26,9 @@ const isProtectedRoute = createRouteMatcher([
   "/account(.*)",
 ]);
 
+/** Dev-only Vector board UI preview — must not match `/vector(.*)` auth above. */
+const isVectorBoardDevPreview = createRouteMatcher(["/vector-board-preview"]);
+
 const isWebhookRoute = createRouteMatcher(["/api/webhook/(.*)", "/api/webhooks/(.*)"]);
 const isPublicTelemetryRoute = createRouteMatcher([
   "/api/telemetry/client-error",
@@ -120,6 +123,13 @@ export default clerkMiddleware(
           }
         }
       }
+    }
+
+    if (
+      isVectorBoardDevPreview(req) &&
+      process.env.NODE_ENV !== "production"
+    ) {
+      return withStagingNoEdgeCache(NextResponse.next());
     }
 
     if (isProtectedRoute(req)) {

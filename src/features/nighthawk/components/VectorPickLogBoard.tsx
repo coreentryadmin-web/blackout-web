@@ -80,12 +80,13 @@ function ariaSort(active: boolean, dir: "asc" | "desc"): "none" | "ascending" | 
 
 /**
  * Night Hawk Vector tab — X Ads Manager table with filters, sorts, P&L column, and inspector rail.
+ * Pass `fixtureData` on /vector-board-preview (dev only) to review UI without DB/Clerk.
  */
-export function VectorPickLogBoard() {
+export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBoardResponse }) {
   const todaySession = etSessionDate(Date.now()) ?? "";
-  const [sessionScope, setSessionScope] = useState<"current" | "all">("current");
+  const [sessionScope, setSessionScope] = useState<"current" | "all">(fixtureData ? "all" : "current");
   const [tab, setTab] = useState<BoardTab>("all");
-  const tabUserPicked = useRef(false);
+  const tabUserPicked = useRef(Boolean(fixtureData));
   const [tickerQuery, setTickerQuery] = useState("");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedRow, setSelectedRow] = useState<VectorBoardTableRow | null>(null);
@@ -95,13 +96,19 @@ export function VectorPickLogBoard() {
   const [sort, setSort] = useState<VectorBoardSort>("updated_desc");
 
   const apiUrl =
-    sessionScope === "current" && todaySession
-      ? `/api/market/vector/pick-closures/board?limit=500&session_date=${todaySession}`
-      : "/api/market/vector/pick-closures/board?limit=500";
+    fixtureData != null
+      ? null
+      : sessionScope === "current" && todaySession
+        ? `/api/market/vector/pick-closures/board?limit=500&session_date=${todaySession}`
+        : "/api/market/vector/pick-closures/board?limit=500";
 
-  const { data, error, isLoading } = useSWR<VectorPickBoardResponse>(apiUrl, fetchVectorBoard, {
-    refreshInterval: 30_000,
-  });
+  const { data: swrData, error, isLoading } = useSWR<VectorPickBoardResponse>(
+    apiUrl,
+    fetchVectorBoard,
+    { refreshInterval: fixtureData ? 0 : 30_000 }
+  );
+
+  const data = fixtureData ?? swrData;
 
   const winners = data?.winners ?? [];
   const leaders = data?.leaders ?? [];
@@ -133,10 +140,10 @@ export function VectorPickLogBoard() {
   );
 
   useEffect(() => {
-    if (tabUserPicked.current || !data) return;
+    if (fixtureData || tabUserPicked.current || !data) return;
     const next = preferredTab(winners.length, runners.length, leaders.length);
     setTab((cur) => (cur === next ? cur : next));
-  }, [data, winners.length, runners.length, leaders.length]);
+  }, [fixtureData, data, winners.length, runners.length, leaders.length]);
 
   const sectionRows = useMemo(
     () => buildVectorBoardRows({ winners, leaders, closed, section: tab }),
@@ -189,7 +196,7 @@ export function VectorPickLogBoard() {
     setTickerQuery("");
   };
 
-  if (isLoading && !data) {
+  if (!fixtureData && isLoading && !data) {
     return (
       <div className="vector-board-shell">
         <Skeleton className="h-10 w-full shrink-0" />
