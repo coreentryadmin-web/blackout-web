@@ -45,9 +45,22 @@ const swrLiveOpts = {
 export function useMergedDesk() {
   const { mutate } = useSWRConfig();
   const sessionDateRef = useRef(todayEtYmd());
-  const deskStable = useRef<SpxDeskPayload | undefined>(
-    readSessionCache<SpxDeskPayload>(DESK_CACHE_KEY, DESK_CACHE_MAX_AGE_MS)
-  );
+  // MUST start undefined — never read sessionStorage synchronously here. This ref decides
+  // which of two structurally different trees SpxDashboard renders (deskLoading's skeleton
+  // vs. the full desk), and readSessionCache() returns undefined on the server (no `window`)
+  // but a real cached desk on the client's very first paint whenever the member reloaded (or
+  // reopened the tab) mid-session — writeSessionCache runs every ~7.5s while the desk is
+  // live, so any refresh during/shortly after RTH hits this. That divergence on the render
+  // React uses for hydration reconciliation is a guaranteed React #418 crash, not a
+  // possible one. Confirmed live 2026-09-01: /dashboard was the single most crash-prone
+  // route in production telemetry (30 #418s over 5 days, 100% /dashboard, clustered on
+  // trading-hours reloads, not deploy windows) — see
+  // docs/audit/findings-staging/2026-09-01-spx-dashboard-hydration-crash-session-cache.md.
+  // Hydrating from cache is still done — just one tick later, via the effect below, which is
+  // a normal post-mount re-render (React is free to change the DOM there) rather than part
+  // of hydration.
+  const deskStable = useRef<SpxDeskPayload | undefined>(undefined);
+  const [cacheHydrated, setCacheHydrated] = useState(false);
   const [pulseSseConnected, setPulseSseConnected] = useState(false);
   const [etSessionOpen, setEtSessionOpen] = useState(true);
   // Initialized becomes true after the first pulse or REST response arrives.
@@ -55,6 +68,17 @@ export function useMergedDesk() {
   const [initialized, setInitialized] = useState(false);
   const onPulseConnection = useCallback((connected: boolean) => {
     setPulseSseConnected(connected);
+  }, []);
+
+  // Populate deskStable from sessionStorage post-mount (see the ref's own comment above for
+  // why this can't happen during the initial render). Declared first among this hook's
+  // effects so it runs before the "discard stale cache" effect below on the same mount.
+  useEffect(() => {
+    const cached = readSessionCache<SpxDeskPayload>(DESK_CACHE_KEY, DESK_CACHE_MAX_AGE_MS);
+    if (cached) {
+      deskStable.current = cached;
+      setCacheHydrated(true);
+    }
   }, []);
 
   // ET session clock — prevents a post-close sessionStorage snapshot from pinning OFFLINE
@@ -226,7 +250,12 @@ export function useMergedDesk() {
     }
 
     return out;
-  }, [desk, flow, pulse, etSessionOpen]);
+    // cacheHydrated is read only to force this memo to recompute once deskStable.current is
+    // populated post-mount (see that effect above) — the memo body reads the ref directly,
+    // which React does not track, so the dependency has to be named explicitly even though
+    // eslint's static analysis can't see why it's needed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desk, flow, pulse, etSessionOpen, cacheHydrated]);
 
   // Side effects for the merged desk, in commit phase:
   //  1. deskStable.current is updated on EVERY change (unthrottled) — sessionActive
