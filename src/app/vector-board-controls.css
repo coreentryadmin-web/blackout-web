@@ -257,16 +257,17 @@
   }
 }
 
+.nh-v2-page .vector-board-table thead th,
 .nh-v2-page .vector-board-table tbody td {
   padding: 0.5rem;
+  box-sizing: border-box;
   vertical-align: middle;
 }
 
-.nh-v2-page .vector-board-table thead th {
-  padding: 0.5rem;
-}
-
-.nh-v2-page .vector-board-table thead th.vector-board-col-num {
+.nh-v2-page .vector-board-table thead th.vector-board-col-num,
+.nh-v2-page .vector-board-table tbody td.vector-board-col-num,
+.nh-v2-page .vector-board-table thead th.vector-board-col-updated,
+.nh-v2-page .vector-board-table tbody td.vector-board-col-updated {
   text-align: right;
 }
 
@@ -275,8 +276,10 @@
 }
 
 .nh-v2-page .vector-board-meter {
-  max-width: 7.5rem;
-  margin-inline-start: auto;
+  max-width: 100%;
+  width: 100%;
+  margin-inline-start: 0;
+  align-items: flex-end;
 }
 
 .nh-v2-page .vector-board-toolbar {
