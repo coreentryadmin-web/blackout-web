@@ -29,25 +29,24 @@ test("HomeGammaPromo links to the free gamma snapshot tool", () => {
 
 test("pipeline .pipe-status label has exactly one text source, not two overlapping renders", () => {
   // Regression guard for the "How BlackOut Thinks" 01-04 stage badges rendering as
-  // garbled double-exposed text (e.g. "ONLINE" overlapping itself) on every homepage
-  // visit. Root cause: LandingRedesignFx.tsx's IntersectionObserver already rewrites
-  // .pipe-status's innerHTML to "<dot/>ONLINE" the instant a stage scrolls into view —
-  // that must stay the ONE place the label text is authored. A CSS
-  // `.pipe-status::after{content:"ONLINE"}` used to duplicate it: with no top/left set,
-  // an absolutely-positioned ::after renders at its in-flow "static position" (CSS2.1
-  // 10.3.7), landing directly on top of the JS-authored text instead of away from it.
-  // RedesignHome.tsx seeds the same nodes with static "OFFLINE" markup pre-hydration,
-  // which is expected (and is never lit at first paint) — only guard the CSS/JS pair
-  // that actually fires once a stage goes live.
-  assert.match(
+  // garbled double-exposed text (e.g. "ONLINE" overlapping itself) on every homepage visit.
+  // Originally the label text was authored twice — once by LandingRedesignFx.tsx's
+  // IntersectionObserver rewriting .pipe-status's innerHTML to "<dot/>ONLINE" on scroll-into-
+  // view, and once (accidentally) by a CSS `.pipe-status::after{content:"ONLINE"}` that,
+  // lacking top/left, rendered at its in-flow "static position" (CSS2.1 10.3.7) directly on
+  // top of the JS-authored text. Fixed properly since (2026-09) by removing the runtime text
+  // mutation entirely — RedesignHome.tsx now bakes a single static "LIVE" label straight into
+  // the server-rendered markup, so there is only ever ONE place the text is authored, and no
+  // scroll-triggered rewrite can ever race a CSS pseudo-element again.
+  assert.doesNotMatch(
     FX,
-    /statusEl\.innerHTML = .*ONLINE/,
-    "LandingRedesignFx.tsx must still author the lit .pipe-status label text",
+    /pipe-status[\s\S]{0,120}innerHTML/,
+    "LandingRedesignFx.tsx should not mutate .pipe-status text at runtime — the badge is static now",
   );
   assert.doesNotMatch(
     CSS,
-    /\.pipe-status::after\s*\{[^}]*content:\s*["'][^"']*(ONLINE|OFFLINE)/i,
-    "marketing-redesign.css must not re-add a ::after{content:\"ONLINE\"} on .pipe-status — " +
-      "it double-renders on top of the JS-authored label (see the comment above pipe-status in that file)",
+    /\.pipe-status::after\s*\{[^}]*content:\s*["'][^"']*(ONLINE|OFFLINE|LIVE)/i,
+    "marketing-redesign.css must not add a ::after{content:...} on .pipe-status — " +
+      "it would double-render on top of the static server-rendered label",
   );
 });
