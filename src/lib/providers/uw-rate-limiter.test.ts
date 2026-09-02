@@ -48,3 +48,44 @@ test("computeDegradedLocalConcurrency divides in-flight budget across replicas",
   assert.equal(computeDegradedLocalConcurrency(2, 3), 1);
   assert.equal(computeDegradedLocalConcurrency(3, 3), 1);
 });
+
+// Regression for vector-dark-pool-warm's unbounded fan-out (measured live 2026-09-02: firing
+// all ~55 universe tickers' UW fetches via Promise.allSettled at once overwhelmed the rate
+// limiter's 20s admission-queue budget, 83-95% per-run ticker failures). runUwPool is the fix
+// callers reach for; this proves the primitive itself actually bounds concurrency rather than
+// just documenting an intent in its docstring.
+test("runUwPool never runs more than `concurrency` tasks at once", async () => {
+  const { runUwPool } = await import("./uw-rate-limiter");
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const tasks = Array.from({ length: 20 }, (_, i) => async () => {
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise((r) => setTimeout(r, 1));
+    inFlight -= 1;
+    return i;
+  });
+
+  const results = await runUwPool(tasks, 3);
+
+  assert.deepEqual(results, tasks.map((_, i) => i), "results preserve input order despite pooled execution");
+  assert.ok(maxInFlight <= 3, `expected at most 3 concurrent tasks, saw ${maxInFlight}`);
+  assert.ok(maxInFlight > 1, "sanity: the pool should actually overlap work, not degrade to fully sequential");
+});
+
+test("runUwPool tolerates an unbounded task count without ever exceeding its concurrency cap", async () => {
+  const { runUwPool } = await import("./uw-rate-limiter");
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const tasks = Array.from({ length: 55 }, () => async () => {
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await Promise.resolve();
+    inFlight -= 1;
+    return null;
+  });
+
+  await runUwPool(tasks, 3);
+
+  assert.ok(maxInFlight <= 3, `55-task fan-out must still respect the concurrency cap, saw ${maxInFlight}`);
+});
