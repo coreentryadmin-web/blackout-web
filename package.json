@@ -98,6 +98,8 @@
     "validate:deploy-wait": "node scripts/gha-wait-deploy.mjs",
     "validate:rth-open": "node scripts/rth-open-check.mjs",
     "validate:rth-sweep": "node scripts/rth-comprehensive-sweep.mjs",
+    "validate:rth-four-engines": "node scripts/audit/rth-four-engine-play-audit.mjs",
+    "validate:rth-wakeup-monitor": "node scripts/audit/rth-wakeup-monitor.mjs",
     "validate:exhaustive": "node scripts/exhaustive-platform-audit.mjs",
     "validate:spot-check": "node scripts/continuous-spot-check.mjs --once",
     "validate:spot-check:loop": "node scripts/continuous-spot-check.mjs",

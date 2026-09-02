@@ -33,14 +33,15 @@ function sumTotals(strikeTotals) {
   return t;
 }
 
-function deriveWalls(strikeTotals) {
+function deriveWalls(strikeTotals, spot) {
+  const constrained = typeof spot === "number" && Number.isFinite(spot) && spot > 0;
   let callWall = null, putWall = null, king = null;
   let maxPos = 0, maxNeg = 0, maxAbs = -1;
   for (const [s, gRaw] of Object.entries(strikeTotals ?? {})) {
     const strike = Number(s), g = Number(gRaw);
     if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;
-    if (g > maxPos) { maxPos = g; callWall = strike; }
-    if (g < maxNeg) { maxNeg = g; putWall = strike; }
+    if (g > maxPos && (!constrained || strike > spot)) { maxPos = g; callWall = strike; }
+    if (g < maxNeg && (!constrained || strike < spot)) { maxNeg = g; putWall = strike; }
     if (Math.abs(g) > maxAbs) { maxAbs = Math.abs(g); king = strike; }
   }
   return { callWall, putWall, king };
@@ -76,7 +77,7 @@ function deriveFlip(strikeTotals, spot) {
   const FLIP_MAX_DIST_PCT = 0.12;
   const plausible = crossings.filter((c) => Math.abs(c - spot) <= spot * FLIP_MAX_DIST_PCT);
   if (!plausible.length) return null;
-  return plausible.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best));
+  return plausible.reduce((lowest, c) => (c < lowest ? c : lowest));
 }
 
 function reSumCells(cells, nearExpiries) {
@@ -155,13 +156,13 @@ function auditMetricBlock(ticker, metricName, block, spot, nearExpiries) {
 
   // Walls (GEX block only has call/put wall fields)
   if (metricName === "gex") {
-    const { callWall, putWall } = deriveWalls(st);
+    const { callWall, putWall } = deriveWalls(st, spot);
     if (!sameStrike(callWall, block.call_wall)) {
-      fail(ticker, "gex.call_wall", `reported ${block.call_wall} != argmax+ ${callWall}`);
+      fail(ticker, "gex.call_wall", `reported ${block.call_wall} != constrained+ ${callWall}`);
       flags++;
     }
     if (!sameStrike(putWall, block.put_wall)) {
-      fail(ticker, "gex.put_wall", `reported ${block.put_wall} != argmin- ${putWall}`);
+      fail(ticker, "gex.put_wall", `reported ${block.put_wall} != constrained- ${putWall}`);
       flags++;
     }
     const derivedFlip = deriveFlip(st, spot);

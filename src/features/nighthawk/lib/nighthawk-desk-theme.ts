@@ -13,6 +13,7 @@ export function readStoredNightHawkDeskTheme(): NightHawkDeskTheme | null {
 }
 
 export function systemNightHawkDeskTheme(): NightHawkDeskTheme {
-  if (typeof window === "undefined") return "dark";
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  // Trading desk defaults dark — OS light preference caused false "broken toggle" reports
+  // when users loaded already-light then clicked once into dark.
+  return "dark";
 }
