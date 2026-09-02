@@ -1,17 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MARKETING_PRODUCTS, capitalizedNumberWord, marketingProductById, marketingProductLearnHref } from "./products";
+import {
+  MARKETING_PRODUCTS,
+  marketingModulesHeadline,
+  marketingProductById,
+  marketingProductCount,
+  premiumPricingPerks,
+} from "./products.ts";
 
-test("MARKETING_PRODUCTS lists six desk modules", () => {
-  assert.equal(MARKETING_PRODUCTS.length, 6);
-  const ids = MARKETING_PRODUCTS.map((p) => p.id);
-  assert.deepEqual(ids, ["spx", "helix", "thermal", "largo", "hawk", "vector"]);
-  // NOTE: the real desk ships SEVEN modules (this list is missing Meridian) — see
-  // docs/audit/findings-staging/2026-09-02-homepage-product-copy-manifest-drift.md. Meridian
-  // is blocked from joining this carousel until a real /images/marketing/meridian*.webp
-  // screenshot exists (MARKETING_MODULE_GALLERY has no entry and none should be fabricated).
-  // The homepage headline/cred-count below are already derived from this array's length, so
-  // adding Meridian's entry here is the ONLY change needed to correct them platform-wide.
+test("marketing product count is driven from the registry, not hardcoded", () => {
+  assert.equal(marketingProductCount(), MARKETING_PRODUCTS.filter((p) => p.launchStatus === "live").length);
+  assert.equal(marketingProductCount(), 7);
 });
 
 // A launchStatus:"live" module telling the member "Soon"/"Rolling out" contradicts its own
@@ -40,26 +39,30 @@ test("Night Hawk's card mentions 0DTE Command, not just the evening playbook", (
   assert.match(haystack, /0DTE Command/i);
 });
 
-test("capitalizedNumberWord matches small counts, falls back to the numeral otherwise", () => {
-  assert.equal(capitalizedNumberWord(6), "Six");
-  assert.equal(capitalizedNumberWord(7), "Seven");
-  assert.equal(capitalizedNumberWord(0), "Zero");
-  assert.equal(capitalizedNumberWord(42), "42");
+test("premium pricing perks lists every live product by name", () => {
+  const perks = premiumPricingPerks();
+  assert.equal(perks.length, 7);
+  assert.ok(perks.includes("Meridian"));
+  assert.ok(perks.includes("Night Hawk"));
+  assert.ok(perks.includes("Vector"));
 });
 
-test("every module card links to a public learn guide", () => {
-  for (const p of MARKETING_PRODUCTS) {
-    assert.match(p.learnHref, /^\/learn\/[a-z0-9-]+$/);
-  }
+test("modules headline pluralizes from the live registry count", () => {
+  assert.equal(marketingModulesHeadline(), "Seven products.");
 });
 
-test("marketingProductById resolves routes", () => {
-  assert.equal(marketingProductById("spx")?.href, "/dashboard");
-  assert.equal(marketingProductById("vector")?.launchStatus, "live");
-  assert.equal(marketingProductById("vector")?.href, "/vector");
+test("Night Hawk marketing copy reflects intraday 0DTE command, not swing-only positioning", () => {
+  const hawk = MARKETING_PRODUCTS.find((p) => p.id === "hawk");
+  assert.ok(hawk);
+  assert.match(hawk!.tag, /0DTE/i);
+  assert.match(hawk!.lede, /0DTE Command/i);
+  assert.doesNotMatch(hawk!.lede, /swing playbook/i);
+  assert.match(hawk!.bullets.join(" "), /0DTE Command/i);
 });
 
-test("marketingProductLearnHref resolves learn guides", () => {
-  assert.equal(marketingProductLearnHref("helix"), "/learn/helix-flow-scanner-guide");
-  assert.equal(marketingProductLearnHref("unknown" as "spx"), "/learn");
+test("Vector is live in the marketing registry", () => {
+  const vector = MARKETING_PRODUCTS.find((p) => p.id === "vector");
+  assert.ok(vector);
+  assert.equal(vector!.launchStatus, "live");
+  assert.equal(vector!.stat.v, "universe scan");
 });

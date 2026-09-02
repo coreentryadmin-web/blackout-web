@@ -8,16 +8,18 @@ export function LandingRedesignFx() {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduce) {
       // Reduced motion correctly skips every animation below (canvas atmosphere, scroll
-      // reveals, parallax). The "Intelligence Pipeline" stage badges render a static "LIVE"
-      // status directly in the server-rendered markup (RedesignHome.tsx) — no runtime text
-      // mutation needed here or in the IntersectionObserver below. This used to swap an
-      // OFFLINE default to ONLINE on scroll-into-view, which meant a reduced-motion browser
-      // (an accessibility setting, or a crawler/audit tool that defaults to it) never fired
-      // the observer and saw all four stages stuck at OFFLINE forever, reading as the
-      // platform being down while the rest of the page markets it as live. Still mark the
-      // stages "lit" for the CSS glow, purely decorative now.
+      // reveals, parallax). The "Intelligence Pipeline" stage badges render a static,
+      // always-true semantic label (SCAN/VERIFY/STRUCTURE/LOGGED) directly in the server-
+      // rendered markup (RedesignHome.tsx) — no runtime text mutation needed here or in the
+      // IntersectionObserver below. This used to swap an OFFLINE default to ONLINE on
+      // scroll-into-view, which meant a reduced-motion browser (an accessibility setting, or
+      // a crawler/audit tool that defaults to it) never fired the observer and saw all four
+      // stages stuck at OFFLINE forever, reading as the platform being down while the rest of
+      // the page markets it as live. Still mark the stages "lit"/"is-live" for the CSS glow,
+      // purely decorative now.
       document.querySelectorAll<HTMLElement>("[data-pipe-stage]").forEach((el) => {
         el.classList.add("pipe-lit");
+        el.querySelector(".pipe-status")?.classList.add("is-live");
       });
       document.querySelectorAll<HTMLElement>("[data-pipe-conduit]").forEach((el) => {
         el.classList.add("pipe-lit");
@@ -896,6 +898,9 @@ export function LandingRedesignFx() {
                 const conduit = document.querySelector(`[data-pipe-conduit="${idx - 1}"]`);
                 if (conduit) conduit.classList.add("pipe-lit");
               }
+              // Update status text
+              const statusEl = el.querySelector(".pipe-status");
+              if (statusEl) statusEl.classList.add("is-live");
             }
           }
         },

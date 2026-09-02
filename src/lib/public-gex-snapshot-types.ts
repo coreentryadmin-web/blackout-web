@@ -47,6 +47,14 @@ export type PublicGexSnapshot = {
   session_date: string | null;
   /** The matrix compute time as an ET wall-clock stamp, beside the raw UTC `asof`. */
   as_of_et: string | null;
+  /** Seconds since `asof` at response time — lets clients and monitors reason about freshness without parsing ISO timestamps. */
+  snapshot_data_age_seconds?: number | null;
+  /** Why the snapshot is unavailable when `available` is false — `warming` (no data yet), `error` (build threw), or omitted when live. */
+  warming_reason?: "warming" | "error" | null;
+  /** True when serving a cached last-good read because the live upstream missed this refresh. */
+  degraded?: boolean;
+  /** Human-readable note for degraded payloads — shown in the UI badge. */
+  degraded_note?: string | null;
 };
 
 const ALLOWED_TICKERS = ["SPX", "SPY", "QQQ"] as const;
@@ -192,4 +200,17 @@ export function publicFreshnessCopy(input: {
     return { levels, priceNote: "After hours — price is the closing print or a late trade, not a live quote" };
   }
   return { levels, priceNote: "Market closed — price is the last session's close, not a live quote" };
+}
+
+/** Alert ops when the public lead magnet has no data beyond this window. */
+export const PUBLIC_GEX_WARMING_ALARM_SEC = 300;
+
+/** Pure helper — unit-tested; drives prolonged-warmup paging without Redis. */
+export function shouldAlarmPublicGexWarming(
+  warmingSinceMs: number | null,
+  nowMs: number,
+  thresholdSec = PUBLIC_GEX_WARMING_ALARM_SEC
+): boolean {
+  if (warmingSinceMs == null || !Number.isFinite(warmingSinceMs)) return false;
+  return nowMs - warmingSinceMs >= thresholdSec * 1000;
 }

@@ -28,16 +28,22 @@ test("HomeGammaPromo links to the free gamma snapshot tool", () => {
 });
 
 test("pipeline .pipe-status label has exactly one text source, not two overlapping renders", () => {
-  // Regression guard for the "How BlackOut Thinks" 01-04 stage badges rendering as
-  // garbled double-exposed text (e.g. "ONLINE" overlapping itself) on every homepage visit.
-  // Originally the label text was authored twice — once by LandingRedesignFx.tsx's
-  // IntersectionObserver rewriting .pipe-status's innerHTML to "<dot/>ONLINE" on scroll-into-
-  // view, and once (accidentally) by a CSS `.pipe-status::after{content:"ONLINE"}` that,
-  // lacking top/left, rendered at its in-flow "static position" (CSS2.1 10.3.7) directly on
-  // top of the JS-authored text. Fixed properly since (2026-09) by removing the runtime text
-  // mutation entirely — RedesignHome.tsx now bakes a single static "LIVE" label straight into
-  // the server-rendered markup, so there is only ever ONE place the text is authored, and no
-  // scroll-triggered rewrite can ever race a CSS pseudo-element again.
+  // Regression guard for the "How BlackOut Thinks" 01-04 stage badges rendering as garbled
+  // double-exposed text (e.g. "ONLINE" overlapping itself) on every homepage visit. Originally
+  // the label text was authored twice — once by LandingRedesignFx.tsx's IntersectionObserver
+  // rewriting .pipe-status's innerHTML to "<dot/>ONLINE" on scroll-into-view, and once
+  // (accidentally) by a CSS `.pipe-status::after{content:"ONLINE"}` that, lacking top/left,
+  // rendered at its in-flow "static position" (CSS2.1 10.3.7) directly on top of the JS-authored
+  // text. Fixed properly since (2026-09) by removing the runtime text mutation entirely — the
+  // stage badges now bake a single static, semantic label (SCAN / VERIFY / STRUCTURE / LOGGED)
+  // straight into the server-rendered markup, so there is only ever ONE place the text is
+  // authored. LandingRedesignFx only ever toggles a `.is-live` CLASS on scroll for the purely
+  // decorative glow — it must never rewrite the badge's innerHTML to a second label.
+  assert.match(
+    FX,
+    /statusEl\.classList\.add\("is-live"\)/,
+    "LandingRedesignFx.tsx must light stages via class only, not rewrite label text",
+  );
   assert.doesNotMatch(
     FX,
     /pipe-status[\s\S]{0,120}innerHTML/,
@@ -45,8 +51,11 @@ test("pipeline .pipe-status label has exactly one text source, not two overlappi
   );
   assert.doesNotMatch(
     CSS,
-    /\.pipe-status::after\s*\{[^}]*content:\s*["'][^"']*(ONLINE|OFFLINE|LIVE)/i,
+    /\.pipe-status::after\s*\{[^}]*content:\s*["'][^"']*(ACTIVE|ONLINE|OFFLINE|STANDBY|LIVE)/i,
     "marketing-redesign.css must not add a ::after{content:...} on .pipe-status — " +
       "it would double-render on top of the static server-rendered label",
   );
+  assert.match(REDESIGN, /SCAN/, "Identify stage uses semantic SCAN label");
+  assert.match(REDESIGN, /VERIFY/, "Validate stage uses semantic VERIFY label");
+  assert.doesNotMatch(REDESIGN, />OFFLINE</, "pipeline must never seed OFFLINE on the public homepage");
 });

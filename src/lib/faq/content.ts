@@ -1,4 +1,10 @@
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
+import {
+  MARKETING_DATA_FRESHNESS,
+  PRODUCT_MANIFEST,
+  manifestPlatformSummary,
+  manifestProductCount,
+} from "@/lib/marketing/product-manifest";
 
 export const FAQ_SUPPORT_EMAIL = "support@blackouttrades.com";
 
@@ -62,7 +68,7 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
   platform: [
     {
       q: "What exactly is BlackOut?",
-      a: "BlackOut is an institutional-grade trading intelligence platform built for options and 0DTE traders. It combines live options flow, the SPX Slayer desk, dealer gamma positioning, dark-pool activity, Largo analysis, and the Night Hawk overnight playbook into one surface — what a professional desk sees, built for individual traders.",
+      a: `BlackOut is an institutional-grade trading intelligence platform built for options and 0DTE traders. It combines live options flow, SPX Slayer, dealer gamma positioning, dark-pool activity, Largo analysis, and Night Hawk's 0DTE Command desk into one surface — ${manifestPlatformSummary()} — what a professional desk sees, built for individual traders.`,
     },
     {
       q: "Who is BlackOut built for?",
@@ -74,7 +80,7 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
     },
     {
       q: "Do I need to connect a broker?",
-      a: "No. BlackOut is a pure intelligence layer — you execute on your own broker. We surface the data, structure, and setups before price moves; you pull the trigger wherever you already trade.",
+      a: "No. BlackOut is a pure intelligence layer — you execute on your own broker. We surface live structure, positioning, and graded setups from observable market data; you pull the trigger wherever you already trade.",
     },
     {
       q: "Is any of this financial advice?",
@@ -108,7 +114,7 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
     },
     {
       q: "What is Night Hawk?",
-      a: "Your BlackOut Intelligence evening playbook. After the close, Night Hawk builds ranked swing and leap setups with a per-ticker dossier behind each one — so instead of starting tomorrow from a blank chart, you walk in with a plan.",
+      a: PRODUCT_MANIFEST.hawk.faqAnswer,
     },
     {
       q: "Is there a market overview / heatmap?",
@@ -122,7 +128,7 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
     },
     {
       q: "Is the data really real-time?",
-      a: "Yes — quotes, options flow, dealer gamma, dark-pool activity, and your alerts stream in real time wherever the underlying feed supports it, with a visible freshness indicator so you can see exactly how current a number is. Third-party market data can occasionally be delayed, inaccurate, or incomplete (see our Risk Disclaimer) — the freshness indicator tells you when that's happening rather than leaving you to assume.",
+      a: MARKETING_DATA_FRESHNESS.platform,
     },
     {
       q: "Do you track your performance?",
@@ -132,11 +138,11 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
   member: [
     {
       q: "How do I get access?",
-      a: "Create your free BlackOut account, then pick a plan: SPX Slayer ($49/mo) for SPX desk access — live regime, GEX, 0DTE graded plays — or Premium ($199/mo or $1,999/yr) to unlock the full platform with all seven modules. Same email, same login — upgrade anytime from your account.",
+      a: `Create your free BlackOut account, then pick a plan: SPX Slayer ($49/mo) for SPX desk access — live regime, GEX, 0DTE graded plays — or Premium ($199/mo or $1,999/yr) to unlock the full platform with all ${manifestProductCount()} products. Same email, same login — upgrade anytime from your account.`,
     },
     {
       q: "What's the difference between SPX Slayer and Premium?",
-      a: "SPX Slayer ({{communityPrice}}) unlocks the live SPX/SPXW desk — regime, GEX, graded 0DTE plays, and strike heatmaps — plus Discord. Premium ({{premiumMonthly}} or {{premiumYearly}}) adds every module: HELIX live flow, Largo AI, Night Hawk evening + 0DTE Command scanners, Thermal multi-ticker heatmaps, Vector, Meridian, and the full graded play log.",
+      a: `SPX Slayer ({{communityPrice}}) unlocks the live SPX/SPXW desk — regime, GEX, graded 0DTE plays, and strike heatmaps — plus Discord. Premium ({{premiumMonthly}} or {{premiumYearly}}) adds every product: HELIX live flow, Largo AI, ${PRODUCT_MANIFEST.hawk.planInclude}, Thermal multi-ticker heatmaps, Vector universe scanner, Meridian, and the full graded play log.`,
     },
     {
       q: "Can I upgrade from SPX Slayer to Premium later?",

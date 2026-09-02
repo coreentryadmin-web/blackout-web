@@ -1,9 +1,12 @@
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
-import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
+import { captureError } from "@/lib/error-sink";
+import { sharedCacheGet, sharedCacheSet, sharedCacheDel } from "@/lib/shared-cache";
 import {
   classifyWall,
   correctPublicRead,
   publicSnapshotSessionFacts,
+  shouldAlarmPublicGexWarming,
+  PUBLIC_GEX_WARMING_ALARM_SEC,
   type PublicGexSnapshot,
   type PublicGexTicker,
   sanitizePublicRead,
@@ -18,6 +21,8 @@ export {
   publicGexTickers,
   publicSnapshotSessionFacts,
   sanitizePublicRead,
+  shouldAlarmPublicGexWarming,
+  PUBLIC_GEX_WARMING_ALARM_SEC,
 } from "@/lib/public-gex-snapshot-types";
 
 /**
@@ -29,23 +34,124 @@ export {
  */
 
 // 5s — matched to the lane underneath, NOT a loosened budget.
-//
-// This was 300s, justified as "bounding upstream Polygon calls to at most once per ticker per TTL,
-// REGARDLESS of anonymous traffic volume". That bound is real but it is ALREADY provided one layer
-// down: fetchGexHeatmap is itself cached at GEX_HEATMAP_CACHE_SEC (default 5s) and warmed by the
-// heatmap-warm cron, which is exactly the lane Thermal reads. This wrapper was therefore redundant
-// protection over an already-protected call, and dropping it to 5s adds ZERO upstream vendor
-// requests — an anonymous miss now costs a Redis read instead of being absorbed here.
-//
-// 5s is the floor worth having: the source only changes every 5s, so a shorter TTL would spend
-// work to re-serve identical bytes.
 const CACHE_TTL_SEC = 5;
 const EMPTY_CACHE_TTL_SEC = 30; // short-lived so a transient upstream miss self-heals fast
+const LAST_GOOD_TTL_SEC = 86_400; // 24h — acquisition surface must not go blank on a blip
+
+function warmingSinceKey(ticker: string): string {
+  return `public-gex-snapshot:warming-since:${ticker}`;
+}
+
+function warmingAlarmKey(ticker: string): string {
+  return `public-gex-snapshot:warming-alarm:${ticker}`;
+}
+
+async function clearWarmingState(ticker: string): Promise<void> {
+  await Promise.all([
+    sharedCacheDel(warmingSinceKey(ticker)).catch(() => undefined),
+    sharedCacheDel(warmingAlarmKey(ticker)).catch(() => undefined),
+  ]);
+}
+
+async function noteWarmingAndMaybeAlarm(ticker: string): Promise<void> {
+  const sinceKey = warmingSinceKey(ticker);
+  const alarmKey = warmingAlarmKey(ticker);
+  const now = Date.now();
+  let sinceMs = now;
+  try {
+    const existing = await sharedCacheGet<number>(sinceKey);
+    if (typeof existing === "number" && Number.isFinite(existing)) {
+      sinceMs = existing;
+    } else {
+      await sharedCacheSet(sinceKey, sinceMs, LAST_GOOD_TTL_SEC);
+    }
+  } catch {
+    /* best-effort */
+  }
+
+  if (!shouldAlarmPublicGexWarming(sinceMs, now)) return;
+
+  try {
+    const already = await sharedCacheGet<number>(alarmKey);
+    if (already) return;
+    await sharedCacheSet(alarmKey, now, PUBLIC_GEX_WARMING_ALARM_SEC);
+  } catch {
+    return;
+  }
+
+  void captureError(
+    new Error(`Public GEX snapshot warming >${PUBLIC_GEX_WARMING_ALARM_SEC}s for ${ticker}`),
+    {
+      source: "manual",
+      scope: "public-gex-snapshot:warming",
+      meta: {
+        ticker,
+        warming_since_ms: sinceMs,
+        warming_age_sec: Math.round((now - sinceMs) / 1000),
+      },
+    }
+  );
+}
+
+function snapshotAgeSec(asof: string | null): number | null {
+  if (!asof) return null;
+  const ms = Date.now() - new Date(asof).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return 0;
+  return Math.round(ms / 1000);
+}
+
+function withAgeFields(snapshot: PublicGexSnapshot): PublicGexSnapshot {
+  return {
+    ...snapshot,
+    snapshot_data_age_seconds: snapshotAgeSec(snapshot.asof),
+    warming_reason:
+      snapshot.available || snapshot.degraded ? null : snapshot.warming_reason ?? "warming",
+  };
+}
+
+function lastGoodKey(ticker: string): string {
+  return `public-gex-snapshot:last-good:${ticker}`;
+}
+
+async function persistLastGood(snapshot: PublicGexSnapshot): Promise<void> {
+  if (!snapshot.available || snapshot.spot == null) return;
+  const durable: PublicGexSnapshot = {
+    ...snapshot,
+    degraded: false,
+    degraded_note: null,
+    warming_reason: null,
+    snapshot_data_age_seconds: undefined,
+  };
+  await sharedCacheSet(lastGoodKey(snapshot.ticker), durable, LAST_GOOD_TTL_SEC).catch(() => undefined);
+}
+
+async function loadLastGood(ticker: string): Promise<PublicGexSnapshot | null> {
+  try {
+    const cached = await sharedCacheGet<PublicGexSnapshot>(lastGoodKey(ticker));
+    if (!cached?.spot) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+function degradedFromLastGood(lastGood: PublicGexSnapshot, note: string): PublicGexSnapshot {
+  const session = publicSnapshotSessionFacts();
+  return withAgeFields({
+    ...lastGood,
+    available: true,
+    degraded: true,
+    degraded_note: note,
+    market_session: session.market_session,
+    session_date: session.session_date,
+    as_of_et: session.as_of_et,
+    read:
+      lastGood.read ||
+      "Last known dealer positioning — live feed temporarily unavailable. Levels below are from the most recent successful snapshot.",
+  });
+}
 
 function emptySnapshot(ticker: string): PublicGexSnapshot {
-  // Session facts are stamped even on the empty payload: "we could not build a snapshot" and "the
-  // market is closed" are different statements, and a consumer that gets nulls for both cannot
-  // tell them apart.
   const session = publicSnapshotSessionFacts();
   return {
     available: false,
@@ -63,14 +169,75 @@ function emptySnapshot(ticker: string): PublicGexSnapshot {
     call_wall_role: null,
     put_wall_role: null,
     read: "Snapshot warming up — check back shortly.",
+    warming_reason: "warming",
   };
+}
+
+function buildSnapshotFromHeatmap(
+  ticker: PublicGexTicker,
+  heatmap: NonNullable<Awaited<ReturnType<typeof fetchGexHeatmap>>>
+): PublicGexSnapshot {
+  const session = publicSnapshotSessionFacts();
+  const constrainedCallWall =
+    heatmap.gex.call_wall != null && heatmap.gex.call_wall > heatmap.spot
+      ? heatmap.gex.call_wall
+      : null;
+  const constrainedPutWall =
+    heatmap.gex.put_wall != null && heatmap.gex.put_wall < heatmap.spot
+      ? heatmap.gex.put_wall
+      : null;
+  return {
+    available: true,
+    ticker,
+    spot: heatmap.spot,
+    change_pct: heatmap.change_pct,
+    asof: heatmap.asof,
+    market_session: session.market_session,
+    session_date: session.session_date,
+    as_of_et: session.as_of_et,
+    call_wall: constrainedCallWall,
+    put_wall: constrainedPutWall,
+    flip: heatmap.gex.flip,
+    posture: heatmap.gex.regime.posture,
+    call_wall_role: classifyWall("call", constrainedCallWall, heatmap.spot),
+    put_wall_role: classifyWall("put", constrainedPutWall, heatmap.spot),
+    read: correctPublicRead(sanitizePublicRead(heatmap.gex.regime.read), {
+      spot: heatmap.spot,
+      call_wall: constrainedCallWall,
+      put_wall: constrainedPutWall,
+    }),
+    ...(heatmap.spot_source !== undefined ? { spot_source: heatmap.spot_source } : {}),
+    ...(heatmap.chain_truncated ? { chain_truncated: true } : {}),
+    degraded: false,
+    degraded_note: null,
+  };
+}
+
+async function resolveMiss(
+  ticker: PublicGexTicker,
+  reason: string
+): Promise<PublicGexSnapshot> {
+  const lastGood = await loadLastGood(ticker);
+  if (lastGood) {
+    const degraded = degradedFromLastGood(lastGood, reason);
+    await sharedCacheSet(`public-gex-snapshot:${ticker}`, degraded, CACHE_TTL_SEC).catch(
+      () => undefined
+    );
+    return degraded;
+  }
+  const empty = withAgeFields(emptySnapshot(ticker));
+  await sharedCacheSet(`public-gex-snapshot:${ticker}`, empty, EMPTY_CACHE_TTL_SEC).catch(
+    () => undefined
+  );
+  void noteWarmingAndMaybeAlarm(ticker);
+  return empty;
 }
 
 export async function buildPublicGexSnapshot(ticker: PublicGexTicker): Promise<PublicGexSnapshot> {
   const cacheKey = `public-gex-snapshot:${ticker}`;
   try {
     const cached = await sharedCacheGet<PublicGexSnapshot>(cacheKey);
-    if (cached) return cached;
+    if (cached) return withAgeFields(cached);
   } catch {
     /* fall through to a fresh compute */
   }
@@ -78,48 +245,15 @@ export async function buildPublicGexSnapshot(ticker: PublicGexTicker): Promise<P
   try {
     const heatmap = await fetchGexHeatmap(ticker);
     if (!heatmap) {
-      const empty = emptySnapshot(ticker);
-      await sharedCacheSet(cacheKey, empty, EMPTY_CACHE_TTL_SEC).catch(() => undefined);
-      return empty;
+      return resolveMiss(ticker, "Live matrix unavailable — showing last known levels.");
     }
-    // ONE instant for the whole payload — the phase, the session date and the ET stamp must all
-    // describe the same moment, or a snapshot built across 15:59:59 -> 16:00:01 reports OPEN over
-    // post-close levels.
-    const session = publicSnapshotSessionFacts();
-    // Client-side wall constraint: a call wall must be above spot (resistance), a put wall below
-    // (support). If a wall lands on the wrong side, return null rather than an inverted level.
-    // This is applied defensively here to protect against unconstrained cached heatmaps while the
-    // server-side source (wallsFromStrikeTotals with spot) is the primary gate.
-    const constrainedCallWall = heatmap.gex.call_wall != null && heatmap.gex.call_wall > heatmap.spot ? heatmap.gex.call_wall : null;
-    const constrainedPutWall = heatmap.gex.put_wall != null && heatmap.gex.put_wall < heatmap.spot ? heatmap.gex.put_wall : null;
-    const snapshot: PublicGexSnapshot = {
-      available: true,
-      ticker,
-      spot: heatmap.spot,
-      change_pct: heatmap.change_pct,
-      asof: heatmap.asof,
-      market_session: session.market_session,
-      session_date: session.session_date,
-      as_of_et: session.as_of_et,
-      call_wall: constrainedCallWall,
-      put_wall: constrainedPutWall,
-      flip: heatmap.gex.flip,
-      posture: heatmap.gex.regime.posture,
-      call_wall_role: classifyWall("call", constrainedCallWall, heatmap.spot),
-      put_wall_role: classifyWall("put", constrainedPutWall, heatmap.spot),
-      // Sanitize (drop vendor provenance) THEN correct (drop wrong-side level claims).
-      read: correctPublicRead(sanitizePublicRead(heatmap.gex.regime.read), {
-        spot: heatmap.spot,
-        call_wall: constrainedCallWall,
-        put_wall: constrainedPutWall,
-      }),
-      ...(heatmap.spot_source !== undefined ? { spot_source: heatmap.spot_source } : {}),
-      ...(heatmap.chain_truncated ? { chain_truncated: true } : {}),
-    };
+    const snapshot = withAgeFields(buildSnapshotFromHeatmap(ticker, heatmap));
+    await persistLastGood(snapshot);
+    await clearWarmingState(ticker);
     await sharedCacheSet(cacheKey, snapshot, CACHE_TTL_SEC).catch(() => undefined);
     return snapshot;
   } catch (err) {
     console.warn("[public-gex-snapshot] build failed", ticker, err);
-    return emptySnapshot(ticker);
+    return resolveMiss(ticker, "Live refresh failed — showing last known levels.");
   }
 }

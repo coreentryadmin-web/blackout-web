@@ -73,7 +73,7 @@ That's a reduced-confidence setup. If the flip and walls say "buy here" but GEX 
 **Q: How do I check all three in real time?**
 [Thermal](/learn/heat-maps) plots the flip, walls, and GEX heatmap live every session. You can see all three levels at a glance. [SPX Slayer](/learn/spx-slayer) surfaces the confluence — plays are graded partly on how many independent levels stack at the same price. The higher the alignment, the higher the grade.
 
-**See it on the tools.** [Thermal](/learn/heat-maps) maps the gamma flip, call wall, put wall, and GEX heatmap live every session. [SPX Slayer](/learn/spx-slayer) is the 0DTE desk — graded setups, live tracking, public record. [HELIX](/learn/helix-flows) scans institutional flow for unusual activity so you see who's showing up. [Night Hawk](/learn/night-hawk) handles swing and overnight setups outside the 0DTE window. And [Largo AI](/learn/largo-ai) can walk you through any of it conversationally if you're just getting started. [Get access →](/pricing)
+**See it on the tools.** [Thermal](/learn/heat-maps) maps the gamma flip, call wall, put wall, and GEX heatmap live every session. [SPX Slayer](/learn/spx-slayer) is the 0DTE desk — graded setups, live tracking, public record. [HELIX](/learn/helix-flows) scans institutional flow for unusual activity so you see who's showing up. [Night Hawk](/learn/night-hawk) runs 0DTE Command intraday and publishes Evening Edition prep after the close. And [Largo AI](/learn/largo-ai) can walk you through any of it conversationally if you're just getting started. [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
   },
@@ -142,7 +142,7 @@ New to the terminology? See the [Options Trading Glossary](/learn/options-tradin
 
 ## What the gamma flip actually is
 
-The gamma flip is the price at which aggregate dealer gamma crosses from positive to negative. Above it, dealers are typically long gamma and *stabilize* the market. Below it, they flip short gamma and *destabilize* it. Dealer gamma positioning is one input into a session's regime — a strong one, but not the only one; liquidity conditions, macro catalysts, and flow can all push a session away from what the flip alone would suggest. (For the underlying mechanics, see [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure). For how the hedging process works step by step, see [Delta Hedging Explained](/learn/delta-hedging-explained).)
+The gamma flip is the price at which **aggregate dealer gamma is estimated to cross from positive to negative** on BlackOut's positioning model. Above it, the model reads dealers as typically long gamma — hedging that *tends to* stabilize price. Below it, the model reads short gamma — hedging that *tends to* amplify moves. Dealer positioning is **inferred from open-interest and greeks**, not directly observed; treat the flip as a regime estimate, not a deterministic switch — one input into a session's regime, not the only one, since liquidity conditions, macro catalysts, and flow can all push a session away from what the flip alone would suggest. (For the underlying mechanics, see [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure). For how the hedging process works step by step, see [Delta Hedging Explained](/learn/delta-hedging-explained).)
 
 ## Above the flip: expect chop
 
@@ -341,7 +341,7 @@ It doesn't have to be. The honest answer is nuanced enough to deserve its own pi
 
 ## See the 0DTE desk
 
-BlackOut's [SPX Slayer](/learn/spx-slayer) is a 0DTE desk built on exactly this approach — live gamma, graded setups, public logging. For the full SPX playbook and regime-matched templates, see [How to Trade SPX Options](/learn/how-to-trade-spx-options) and [Best 0DTE Trading Strategies](/learn/best-0dte-trading-strategies). For setups that carry overnight, [Night Hawk](/learn/night-hawk) handles the swing side. New to the platform? [Getting Started](/learn/getting-started) walks you through how the tools fit together. [Get access →](/pricing)
+BlackOut's [SPX Slayer](/learn/spx-slayer) is a 0DTE desk built on exactly this approach — live gamma, graded setups, public logging. For the full SPX playbook and regime-matched templates, see [How to Trade SPX Options](/learn/how-to-trade-spx-options) and [Best 0DTE Trading Strategies](/learn/best-0dte-trading-strategies). For the full Night Hawk session arc — 0DTE Command plus Evening Edition prep — see [Night Hawk 0DTE Command](/learn/night-hawk-0dte-command-guide). New to the platform? [Getting Started](/learn/getting-started) walks you through how the tools fit together. [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -1622,6 +1622,8 @@ The confluence read is the sharpest edge in the 0DTE research. It measures how m
 
 The measured EV ladders with the confirmation count: **0 confirmations = -12.5% EV**, **1 = 0%**, **2 (VWAP + market) = +15.9% EV** with a 41% win rate. This is why G-12 gates on a minimum of 2 confirmations — the zero-confirmation bucket is a money-losing filter the additive score alone could not catch.
 
+> **Methodology note:** These figures are from BlackOut's graded 0DTE ledger (historical forward outcomes on committed plays, mechanical mid-price grading, no transaction-cost adjustment unless noted). Sample size, observation window, and full calculation rules are documented on the [public track record](/track-record) and [methodology](/methodology) pages — verify there before citing the numbers externally.
+
 ## Plan rules: fixed risk discipline
 
 Every committed play follows the same mechanical risk rules:
@@ -2449,7 +2451,11 @@ On a 0DTE contract, the pinning effect is compressed into hours instead of days.
 
 However, 0DTE also introduces a natural mitigation: **SPX options are cash-settled**. There is no stock assignment — just a cash difference. A SPX 5,500 call that finishes ITM by $2.00 settles for $200 per contract in cash. No short stock, no after-hours surprise, no weekend gap risk. This is one reason SPX is the preferred vehicle for 0DTE over SPY: cash settlement eliminates the assignment tail risk entirely.
 
+<<<<<<< HEAD
+For equity options (SPY, QQQ, individual stocks), **assignment risk** applies when you are **short** calls or puts into expiration. BlackOut's 0DTE Command and Night Hawk directional plays are **long-option** structures (buy-to-open, sell-to-close) — assignment is not the primary tail risk for those tickets. The **15:30 ET time stop** instead exits long premium before the final 30 minutes when theta collapse and pin dynamics are most chaotic. If you sell premium separately, close or roll short legs before the close; never hold uncovered short equity options into expiration without understanding assignment math.
+=======
 For equity options (SPY, QQQ, individual stocks), 0DTE pin risk is real — but it never touches BlackOut's own tracked plays in the first place: [Night Hawk's 0DTE Command](/learn/night-hawk-0dte-command-guide) plays are long-premium (calls or puts you'd buy), never a sold/short equity option, so there is no assignment exposure to structure around. The **15:30 ET time stop** is a separate, complementary discipline: BlackOut marks any tracked 0DTE play closed 30 minutes before the 4:00 PM close and alerts you to exit at your own broker (BlackOut is analytics-only — it does not route the order). A member following that alert on their OWN equity-option position is never holding it into the final pinning window where assignment uncertainty peaks, which is exactly why the last 30 minutes of an expiration session are the most dangerous and least predictable window to ride out.
+>>>>>>> origin/main
 
 ## Gamma walls as pin indicators
 

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import Link from "next/link";
 import { MarkdownBody } from "@/components/learn/MarkdownBody";
+import { manifestProductCount } from "@/lib/marketing/product-manifest";
 
 const BODY = `You've got options when it comes to options tools. Here's the honest case for this one — no hype, just what BlackOut does differently and why it matters.
 
@@ -28,7 +29,7 @@ BlackOut is intelligence, not a brokerage. There's no broker lock-in and no orde
 
 ## 5. Built for how you actually trade
 
-Six tools, one desk: **SPX Slayer** (0DTE desk), **HELIX** (institutional flow), **BlackOut Thermal** (dealer gamma heatmap), **Largo** (AI desk analyst), **Night Hawk** (swing setups), and **Vector** (cross-ticker radar). Start with just the 0DTE desk, or run the full stack — it scales to how you trade.
+${manifestProductCount()} tools, one desk: **SPX Slayer** (0DTE desk), **HELIX** (institutional flow), **BlackOut Thermal** (dealer gamma heatmap), **Largo** (AI desk analyst), **Night Hawk** (0DTE Command + Evening Edition), **Vector** (universe scanner), and **Meridian** (earnings desk). Start with just the 0DTE desk, or run the full stack — it scales to how you trade.
 
 ## Who it's for (and who it isn't)
 
@@ -36,7 +37,7 @@ BlackOut is built for SPX, 0DTE, and swing traders who want to trade *structure*
 
 ## Start where it makes sense
 
-The 0DTE desk starts at **$49/month**, or get all six modules plus the community from **$199/month**. Cancel anytime — no contracts.
+The 0DTE desk starts at **$49/month**, or get all ${manifestProductCount()} products plus the community from **$199/month**. Cancel anytime — no contracts.
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`;
 

@@ -8,6 +8,7 @@ import {
   publicGexTickers,
   publicSnapshotSessionFacts,
   sanitizePublicRead,
+  shouldAlarmPublicGexWarming,
 } from "./public-gex-snapshot-types.ts";
 
 test("isPublicGexTicker accepts only the 3-ticker allowlist", () => {
@@ -203,7 +204,6 @@ test("midnight ET renders as 00:xx, not 24:xx", () => {
 });
 
 test("classifyWall correctly handles inverted walls from constraint test data", () => {
-  // Live 2026-08-20 examples: walls landing on the wrong side of spot occur naturally.
   // classifyWall is part of the public snapshot's defensive constraint — it returns null
   // for walls that cannot be claimed as support/resistance given their spot position.
 
@@ -234,4 +234,11 @@ test("classifyWall correctly handles inverted walls from constraint test data", 
     "support",
     "put wall below spot is support"
   );
+});
+
+test("shouldAlarmPublicGexWarming fires only after the threshold", () => {
+  const now = 1_000_000;
+  assert.equal(shouldAlarmPublicGexWarming(null, now), false);
+  assert.equal(shouldAlarmPublicGexWarming(now - 60_000, now), false);
+  assert.equal(shouldAlarmPublicGexWarming(now - 301_000, now), true);
 });
