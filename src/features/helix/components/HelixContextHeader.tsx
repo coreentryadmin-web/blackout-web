@@ -155,12 +155,25 @@ export function HelixContextHeader({
           Top {summary.topScore.toFixed(0)} · {summary.topScoreTier}
         </span>
       )}
-      <a
-        href={`/heatmap?ticker=${encodeURIComponent(summary.ticker)}`}
-        className="font-mono text-[10px] text-sky-300 hover:text-white ml-auto"
-      >
-        Thermal →
-      </a>
+      <div className="ml-auto flex items-center gap-3">
+        <a
+          href={`/heatmap?ticker=${encodeURIComponent(summary.ticker)}`}
+          className="font-mono text-[10px] text-sky-300 hover:text-white"
+        >
+          Thermal →
+        </a>
+        {/* Vector accepts any well-formed ticker (isVectorTickerAllowed is not an allowlist —
+            see vector-ticker.ts), and every ticker reaching this header already has real option
+            flow, so it is always optionable. Meridian and Night Hawk have no ticker-scoped deep
+            link today (Meridian's search is client-state-only, Night Hawk's board has no ticker
+            param), so a link there would drop the user on an unscoped page — worse than no link. */}
+        <a
+          href={`/vector?ticker=${encodeURIComponent(summary.ticker)}`}
+          className="font-mono text-[10px] text-sky-300 hover:text-white"
+        >
+          Vector →
+        </a>
+      </div>
     </div>
   );
 }
