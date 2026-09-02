@@ -572,7 +572,7 @@ export const ARTICLE_FAQS: Record<string, FAQItem[]> = {
     {
       question: "What risk rules does the 0DTE system enforce?",
       answer:
-        "Every committed play follows fixed rules: a -50% stop (cut when premium loses half its entry value), a +100% target (trim when premium doubles), a 15:30 ET time stop (hard exit before the close), and 55% chase protection to prevent stale entries.",
+        "Every committed play follows fixed rules: a -50% stop (cut when premium loses half its entry value), a +100% target (trim when premium doubles), a 15:50 ET time stop (hard exit before the close), and 55% chase protection to prevent stale entries.",
     },
   ],
 
