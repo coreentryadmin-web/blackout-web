@@ -8,8 +8,9 @@ import type { ZeroDteSetupLogRow } from "@/lib/db";
 
 export type ZeroDteTradeDiscordInput = Pick<
   ZeroDteSetupLogRow,
-  "session_date" | "ticker" | "direction" | "top_strike" | "expiry" | "entry_premium" | "last_mark"
+  "session_date" | "ticker" | "direction" | "top_strike" | "expiry" | "entry_premium"
 > & {
+  last_mark?: number | null;
   play_type?: string | null;
 };
 
