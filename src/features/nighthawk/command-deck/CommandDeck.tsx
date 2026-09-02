@@ -33,6 +33,7 @@ import {
   useLifecyclePlayCard,
 } from "./play-card-display";
 import { isWatchTrackStatus } from "./play-card-lifecycle";
+import { legacyPrimaryPnlPct } from "@/features/nighthawk/lib/legacy-primary-pnl";
 import { PlayLifecycleCardBody } from "./PlayLifecycleCard";
 import { DeckPlayTableHeader } from "./DeckPlayTableHeader";
 import { groupSwingSections } from "./swing-section-groups";
@@ -843,20 +844,18 @@ export const PlayCard = memo(function PlayCard({
             <span className="nh-deck-prem" style={{ display: "block" }}>
               ${p.stockPrice.toFixed(2)}
             </span>
-            <span className="nh-deck-premlab">{p.stockMovePct != null ? "Stock" : "STOCK"}</span>
+            <span className="nh-deck-premlab">{p.pnlPct != null ? "Premium" : "Stock"}</span>
             <span
               className={clsx(
                 "nh-deck-pnl",
-                (p.stockMovePct ?? p.pnlPct ?? 0) > 0 && "nh-deck-pos",
-                (p.stockMovePct ?? p.pnlPct ?? 0) < 0 && "nh-deck-neg",
+                (legacyPrimaryPnlPct(p) ?? 0) > 0 && "nh-deck-pos",
+                (legacyPrimaryPnlPct(p) ?? 0) < 0 && "nh-deck-neg",
               )}
               style={{ display: "block" }}
             >
-              {p.stockMovePct != null
-                ? `${p.stockMovePct >= 0 ? "+" : ""}${p.stockMovePct.toFixed(1)}%`
-                : p.pnlPct != null
-                  ? `${p.pnlPct >= 0 ? "+" : ""}${p.pnlPct.toFixed(1)}%`
-                  : "—"}
+              {legacyPrimaryPnlPct(p) != null
+                ? `${legacyPrimaryPnlPct(p)! >= 0 ? "+" : ""}${legacyPrimaryPnlPct(p)!.toFixed(1)}%`
+                : "—"}
             </span>
           </>
         ) : (

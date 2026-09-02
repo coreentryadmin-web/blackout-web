@@ -10,6 +10,7 @@ import {
   legacyMorningHeadline,
 } from "@/features/nighthawk/lib/legacy-board-detail-copy";
 import { TradeExcursionGraphic } from "@/features/nighthawk/command-deck/TerminalPremiumPanels";
+import { legacyPrimaryPnlPct } from "@/features/nighthawk/lib/legacy-primary-pnl";
 import { useFlash } from "@/features/nighthawk/command-deck/use-deck-live";
 import { VectorBoardStatusPill } from "@/features/nighthawk/components/VectorBoardStatus";
 import {
@@ -42,7 +43,7 @@ export function LegacyPlayManageRail({
   sheet?: boolean;
 }) {
   const play: TerminalPlay | null = row?.play ?? null;
-  const markFlash = useFlash(play?.stockMovePct ?? play?.pnlPct ?? null);
+  const markFlash = useFlash(play ? legacyPrimaryPnlPct(play) : null);
 
   if (!row || !play) {
     return (

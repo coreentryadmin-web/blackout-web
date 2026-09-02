@@ -15,7 +15,8 @@ import { ThesisRankCard } from "@/features/nighthawk/components/ThesisRankCard";
 import { showsTimeStopClock, showsTrimScaleLadder } from "./terminal-guards";
 import { managementFor } from "./adapters";
 import { markStreamKind } from "./deck-session-ui";
-import { useSecondTick, useFlash } from "./use-deck-live";
+import { legacyPrimaryPnlPct } from "@/features/nighthawk/lib/legacy-primary-pnl";
+import { useFlash, useSecondTick } from "./use-deck-live";
 import { isZeroDtePremiumTerminal, swingStatusLine } from "./terminal-display";
 import type { ConvictionRankContext } from "./deck-command-center";
 import {
@@ -293,9 +294,9 @@ export function PlayTerminal({
               )}
               {" · "}{play.ticker}{" "}
               <span className={clsx((markFlash || stockFlash) && "neon", stale && "nh-deck-stale-mark")}>${play.stockPrice.toFixed(2)}</span>
-              {(play.stockMovePct ?? play.pnlPct) != null ? (
-                <span className={clsx((play.stockMovePct ?? play.pnlPct)! > 0 ? "nh-deck-pos" : (play.stockMovePct ?? play.pnlPct)! < 0 ? "nh-deck-neg" : "")}>
-                  {" "}{(play.stockMovePct ?? play.pnlPct)! >= 0 ? "+" : ""}{(play.stockMovePct ?? play.pnlPct)!.toFixed(1)}% from entry
+              {legacyPrimaryPnlPct(play) != null ? (
+                <span className={clsx(legacyPrimaryPnlPct(play)! > 0 ? "nh-deck-pos" : legacyPrimaryPnlPct(play)! < 0 ? "nh-deck-neg" : "")}>
+                  {" "}{legacyPrimaryPnlPct(play)! >= 0 ? "+" : ""}{legacyPrimaryPnlPct(play)!.toFixed(1)}% from entry
                 </span>
               ) : play.stockChangePct != null ? (
                 <span className={clsx(play.stockChangePct > 0 ? "nh-deck-pos" : play.stockChangePct < 0 ? "nh-deck-neg" : "")}>

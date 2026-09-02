@@ -1375,6 +1375,38 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
   background: var(--nh-desk-detail-bg);
 }
 
+/* Legacy / command-deck panels — globals use dark gradients that read as muddy black in light */
+.nh-v2-page[data-desk-theme="light"] .nh-deck-verdict-band {
+  background: var(--nh-desk-surface-muted);
+  border-color: var(--nh-desk-border);
+}
+
+.nh-v2-page[data-desk-theme="light"] .nh-deck-verdict-band__rec {
+  border-color: var(--nh-desk-border);
+  color: var(--nh-desk-text-secondary);
+}
+
+.nh-v2-page[data-desk-theme="light"] .nh-deck-verdict-band__pnl {
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page[data-desk-theme="light"] .nh-deck-verdict-band__thesis {
+  color: var(--nh-desk-text-secondary);
+}
+
+.nh-v2-page[data-desk-theme="light"] .nh-deck-excursion-graphic {
+  background: var(--nh-desk-surface-muted);
+  border-color: var(--nh-desk-border);
+}
+
+.nh-v2-page[data-desk-theme="light"] .legacy-board-technicals {
+  background: var(--nh-desk-surface-muted);
+}
+
+.nh-v2-page[data-desk-theme="light"] .legacy-board-manage-head {
+  background: var(--nh-desk-surface);
+}
+
 @media (max-width: 820px) {
   .nh-v2-page[data-desk-theme="light"] .vector-board-detail {
     border-top-color: var(--nh-desk-border);
