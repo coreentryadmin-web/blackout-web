@@ -176,7 +176,7 @@ export const PRODUCT_MANIFEST: Record<MarketingModuleId, ProductManifestEntry> =
     faqAnswer:
       "Meridian is the earnings desk: calendar, estimate revisions, reaction history, and cross-tool positioning and flow context for every major print — not a generic screener.",
     planInclude: "Meridian earnings desk",
-    learnHref: "/meridian",
+    learnHref: "/learn/meridian-earnings-desk-guide",
     href: "/meridian",
   },
 };
