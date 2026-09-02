@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 
 // Locks the Massive UNIFIED-SNAPSHOT mapper + chunking + per-OCC cache reader for Night's
@@ -11,6 +11,22 @@ import assert from "node:assert/strict";
 // API key is set so fetchOptionsUnifiedSnapshot's not-configured path never hits network.
 delete process.env.POLYGON_API_KEY;
 delete process.env.MASSIVE_API_KEY;
+
+// ---------------------------------------------------------------------------
+// Mock the wire call ONLY (polygonRawJson) for the O:-prefix regression tests below — every
+// OTHER test in this file never touches these two mutable knobs, so it keeps exercising the
+// real "no API key configured → polygonRawJson short-circuits to null" path unmodified.
+// Same established pattern as gex-positioning.test.ts's mock.module("./polygon-options-gex", ...).
+let mockSnapshotResult: { results?: unknown[] } | null = null;
+let lastSnapshotPath: string | null = null;
+mock.module("./polygon-options-gex", {
+  namedExports: {
+    polygonRawJson: async (path: string) => {
+      lastSnapshotPath = path;
+      return mockSnapshotResult;
+    },
+  },
+});
 
 // ----------------------------- mapper (doc-shaped fixture) -----------------------------
 
@@ -264,6 +280,103 @@ test("fetchOptionsUnifiedSnapshot: not configured (no key) → empty map, never 
   // No POLYGON_API_KEY set → polygonRawJson short-circuits to null → empty map.
   const out = await fetchOptionsUnifiedSnapshot(["O:SPXW250620C05850000", "O:SPXW250620C05850000"]);
   assert.equal(out.size, 0);
+});
+
+// -------------- REGRESSION: bare OCC must be O:-prefixed on the wire, but keyed --------------
+// -------------- back by the CALLER's original (possibly bare) string ---------------------------
+//
+// LIVE-VERIFIED 2026-09-02: `/v3/snapshot?ticker.any_of=` on BOTH api.massive.com and
+// api.polygon.io returns `{"error":"NOT_FOUND"}` for a bare OCC (e.g. "MU260904C00930000") and a
+// full live quote for the SAME contract `O:`-prefixed — yet `buildOcc`/`buildOccContractId`
+// (used by Legacy's legacy-marks route, Vector contract-picks/pick-sweep, zerodte scan/live-marks/
+// contract-attach, banger-live-sync, option-chain-prompt) deliberately return BARE OCC (UW wants
+// it bare). Only `occSymbolFromSwingRow` normalized to `O:` before calling this function. Every
+// other caller's live marks silently came back null/stale — reproduced live via
+// GET /api/market/nighthawk/legacy-marks on 2026-09-02 (all 5 real open Legacy contracts during
+// RTH returned mark:null/stale:true).
+
+test("withOccPrefix: adds O: to a bare OCC, leaves an already-prefixed one untouched", async () => {
+  const { withOccPrefix } = await import("./options-snapshot");
+  assert.equal(withOccPrefix("MU260904C00930000"), "O:MU260904C00930000");
+  assert.equal(withOccPrefix("O:MU260904C00930000"), "O:MU260904C00930000");
+  assert.equal(withOccPrefix("  MU260904C00930000  "), "O:MU260904C00930000");
+});
+
+test("fetchOptionsUnifiedSnapshot: a BARE OCC is sent O:-prefixed on the wire (the live defect)", async () => {
+  const { fetchOptionsUnifiedSnapshot } = await import("./options-snapshot");
+  mockSnapshotResult = { results: [] };
+  lastSnapshotPath = null;
+  await fetchOptionsUnifiedSnapshot(["MU260904C00930000"]);
+  assert.ok(lastSnapshotPath, "polygonRawJson was called");
+  // The regression: pre-fix this asserted the OPPOSITE (bare on the wire) and failed live.
+  assert.ok(
+    lastSnapshotPath!.includes("ticker.any_of=O%3AMU260904C00930000") ||
+      lastSnapshotPath!.includes("ticker.any_of=O:MU260904C00930000"),
+    `expected an O:-prefixed ticker.any_of, got: ${lastSnapshotPath}`
+  );
+  mockSnapshotResult = null;
+});
+
+test("fetchOptionsUnifiedSnapshot: caller's bare OCC is the map key even though the wire request was O:-prefixed", async () => {
+  const { fetchOptionsUnifiedSnapshot } = await import("./options-snapshot");
+  const bareOcc = "MU260904C00930000";
+  mockSnapshotResult = {
+    results: [
+      {
+        // Provider echoes back EXACTLY the ticker form it was asked for (O:-prefixed, since the
+        // fix always normalizes the outgoing request) — verified live in the raw curl capture.
+        ticker: "O:MU260904C00930000",
+        type: "options",
+        last_quote: { bid: 24.75, ask: 25.75 },
+        details: { strike_price: 930, contract_type: "call", expiration_date: "2026-09-04" },
+      },
+    ],
+  };
+  const out = await fetchOptionsUnifiedSnapshot([bareOcc]);
+  mockSnapshotResult = null;
+
+  // The caller passed a BARE occ and must be able to look it up the SAME way — this is what
+  // legacy-marks/route.ts, vector-pick-sweep.ts, scan.ts, etc. all do (`snaps.get(occ)` with
+  // their own un-normalized string). Pre-fix this key was "O:MU260904C00930000" (the provider's
+  // canonical form) and `snaps.get(bareOcc)` returned undefined — every mark null/stale.
+  assert.equal(out.size, 1);
+  const snap = out.get(bareOcc);
+  assert.ok(snap, "snapshot must be keyed by the caller's ORIGINAL bare OCC");
+  assert.equal(snap!.mark, 25.25); // mid(24.75, 25.75)
+  assert.equal(out.get("O:MU260904C00930000"), undefined, "must NOT be keyed by the canonical form instead");
+});
+
+test("fetchOptionsUnifiedSnapshot: an already-O:-prefixed caller (Swing's convention) is unaffected", async () => {
+  const { fetchOptionsUnifiedSnapshot } = await import("./options-snapshot");
+  const occ = "O:MU260904C00930000";
+  mockSnapshotResult = {
+    results: [
+      {
+        ticker: occ,
+        type: "options",
+        last_quote: { bid: 24.75, ask: 25.75 },
+        details: { strike_price: 930, contract_type: "call", expiration_date: "2026-09-04" },
+      },
+    ],
+  };
+  const out = await fetchOptionsUnifiedSnapshot([occ]);
+  mockSnapshotResult = null;
+  assert.equal(out.size, 1);
+  assert.ok(out.get(occ));
+});
+
+test("fetchOptionsUnifiedSnapshot: diag.unfound/missing/noQuote stay keyed by the caller's original OCC", async () => {
+  const { fetchOptionsUnifiedSnapshot } = await import("./options-snapshot");
+  const bareOcc = "ZZZZ260904C00001000";
+  mockSnapshotResult = {
+    results: [{ ticker: "O:ZZZZ260904C00001000", error: "NOT_FOUND", message: "Ticker not found." }],
+  };
+  const diag = { requested: 0, found: 0, unfound: [] as Array<{ occ: string; reason: string }>, missing: [] as string[], noQuote: [] as string[] };
+  const out = await fetchOptionsUnifiedSnapshot([bareOcc], diag);
+  mockSnapshotResult = null;
+  assert.equal(out.size, 0);
+  assert.deepEqual(diag.unfound, [{ occ: bareOcc, reason: "Ticker not found." }]);
+  assert.deepEqual(diag.missing, []); // a row DID come back (as an error row) — not "no row at all"
 });
 
 // ----------------------------- per-OCC cache reader -----------------------------
