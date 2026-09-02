@@ -140,7 +140,6 @@ export const ENGINE_ACCENT = {
   red: "#ff2d55",
   teal: "#2dd4bf",
 } as const;
-export type EngineAccent = keyof typeof ENGINE_ACCENT;
 
 /** The lime CTA button used across every template — bright lime bg with
  *  near-black text reads as a highlighter-style call to action and is the
