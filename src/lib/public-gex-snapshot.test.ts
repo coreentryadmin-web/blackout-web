@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  applyPublicReadFreshnessGate,
   classifyWall,
   correctPublicRead,
   isPublicGexTicker,
@@ -103,6 +104,46 @@ test("correctPublicRead: both walls wrong-side says so instead of leaving a bare
   const out = correctPublicRead(read, { spot: 100, call_wall: 90, put_wall: 110 });
   assert.ok(/neither is acting as a level/.test(out), out);
   assert.ok(!/Resistance 90/.test(out) && !/support 110/.test(out), out);
+});
+
+// Regression for a P1 finding (2026-09-02): the short/long-gamma regime read carries an
+// ACTIONABLE momentum claim ("moves accelerate" / "fade extremes") with no gate on whether the
+// underlying quote is actually live. `publicFreshnessCopy` already knows market_session outside
+// RTH is not live and shows a `priceNote` warning, but nothing stopped the SAME snapshot from also
+// publishing a fresh-sounding directional read next to it — a fresh recompute timestamp making a
+// stale input look actionable.
+test("applyPublicReadFreshnessGate: OPEN market passes the actionable read through unchanged", () => {
+  const read = "Spot 7,671.33 is below the gamma flip (7,800.2) → short gamma: momentum / vol expansion, moves accelerate. Resistance 7,675, support 7,500.";
+  assert.equal(applyPublicReadFreshnessGate(read, "OPEN"), read);
+});
+
+test("applyPublicReadFreshnessGate: pre-market suppresses the actionable short-gamma claim", () => {
+  const read = "Spot 7,631.47 is below the gamma flip (7,800.2) → short gamma: momentum / vol expansion, moves accelerate. Resistance 7,675, support 7,500.";
+  const out = applyPublicReadFreshnessGate(read, "PRE-MARKET");
+  assert.ok(/^Prior-session structural reference/.test(out), out);
+  assert.ok(!/moves accelerate/i.test(out), `still claims live momentum: ${out}`);
+});
+
+test("applyPublicReadFreshnessGate: after-hours suppresses the actionable long-gamma claim too", () => {
+  const read = "Spot 7,900 is above the gamma flip (7,800.2) → long gamma: range-bound, fade extremes. Resistance 7,950, support 7,850.";
+  const out = applyPublicReadFreshnessGate(read, "AFTER-HOURS");
+  assert.ok(/^Prior-session structural reference/.test(out), out);
+  assert.ok(!/fade extremes/i.test(out), `still claims live range-bound behavior: ${out}`);
+});
+
+test("applyPublicReadFreshnessGate: closed market also gates, and the net-short-everywhere read is covered", () => {
+  const read =
+    "No gamma flip — dealers are net short gamma at EVERY strike, so there is no long-gamma " +
+    "region above spot 7,631.47 → short gamma: momentum / vol expansion, moves accelerate.";
+  const out = applyPublicReadFreshnessGate(read, "CLOSED");
+  assert.ok(/^Prior-session structural reference/.test(out), out);
+  assert.ok(!/moves accelerate/i.test(out), `still claims live momentum: ${out}`);
+});
+
+test("applyPublicReadFreshnessGate: an unknown session is gated too — absence is not a green light", () => {
+  const read = "Spot 100 is below the gamma flip (110) → short gamma: momentum / vol expansion, moves accelerate.";
+  const out = applyPublicReadFreshnessGate(read, null);
+  assert.ok(/^Prior-session structural reference/.test(out), out);
 });
 
 test("correctPublicRead: unmatched wording passes through — can only remove a false claim", () => {
