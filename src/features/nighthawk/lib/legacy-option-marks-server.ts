@@ -2,7 +2,7 @@
  * Server-side option mark fetch for Legacy live-sync and EOD grading.
  * Mirrors /api/market/nighthawk/legacy-marks (WS-first, REST snapshot fallback).
  */
-import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
+import { fetchOptionsUnifiedSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
 import { getLiveOptionMarkSync } from "@/lib/ws/options-socket";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { ZERODTE_MARK_STALE_MS } from "@/lib/zerodte/marks-math";

@@ -80,12 +80,14 @@ function premiumTargetPrice(entry: number): number {
   return entry * (1 + PLAN_RULES.target_pct / 100);
 }
 
-function stockAtStop(row: LegacyLiveSyncRow, price: number): boolean {
+type LegacyStockBands = Pick<LegacyLiveSyncRow, "direction" | "target" | "stop">;
+
+function stockAtStop(row: LegacyStockBands, price: number): boolean {
   if (row.stop == null) return false;
   return row.direction === "LONG" ? price <= row.stop : price >= row.stop;
 }
 
-function stockAtTarget(row: LegacyLiveSyncRow, price: number): boolean {
+function stockAtTarget(row: LegacyStockBands, price: number): boolean {
   if (row.target == null) return false;
   return row.direction === "LONG" ? price >= row.target : price <= row.target;
 }

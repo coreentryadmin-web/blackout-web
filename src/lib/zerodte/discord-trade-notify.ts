@@ -39,11 +39,6 @@ export type BuildTradePayloadOpts = {
   idempotencySuffix?: string;
 };
 
-export type BuildTradePayloadOpts = {
-  qty?: number;
-  idempotencySuffix?: string;
-};
-
 export function zerodteDiscordAlertsEnabled(): boolean {
   const raw = process.env.ZERODTE_DISCORD_ALERTS?.trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes";
