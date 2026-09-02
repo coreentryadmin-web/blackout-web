@@ -267,13 +267,27 @@ Consumer code must **validate against actual implementations**, not assumptions.
 
 ---
 
+## Truncation Detection Improvement
+
+**Coordinator finding**: Breadth probe detected answer cut mid-sentence ("SPX 7000 put (exp 2027-") with no caveat sections, but no CloudWatch budget-warning logged.
+
+**Root cause identified**: `src/lib/providers/anthropic.ts` was only checking for non-empty text, not Anthropic's actual `stop_reason`. If model hit `max_tokens`, the code reported it as a normal successful "answered" stop without detecting truncation.
+
+**Fix committed**:
+- Added logging for any non-"end_turn" stop_reason with text (early detection)
+- Added "incomplete_max_tokens" stop reason to type definition
+- Early exit when max_tokens is detected, marking answer as incomplete
+- CloudWatch will now show truncation warnings for investigation
+
+This directly addresses the operator's QA protocol goal: investigating whether response length capping is inappropriately truncating answers.
+
 ## Next Steps
 
-1. **Complete breadth test** — All 50 questions against live production (in progress)
+1. **Complete breadth test** — All 50 questions against live production (in progress, Q1-Q3 running)
 2. **Analyze grading results** — Identify correctness gaps, freshness issues, cross-product misses
 3. **Depth conversations** — 8-12 turn sessions using same `session_id` to validate memory and data refresh
-4. **Response length investigation** — Measure whether fixed caps (1300/2600 chars) are truncating dynamic answers on complex multi-system questions
-5. **Merge production-ready fixes** — All three defects are unit-tested and ready; fold staging findings into FINDINGS.md
+4. **Review truncation logs** — Check CloudWatch for "incomplete_max_tokens" detections during QA run
+5. **Merge production-ready fixes** — All defects are unit-tested and ready; fold staging findings into FINDINGS.md
 
 ---
 
