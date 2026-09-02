@@ -3,6 +3,7 @@ import Image from "next/image";
 import type { CSSProperties } from "react";
 import { HOME_FAQ_IDS, selectFaqItems } from "@/lib/faq/content";
 import { MARKETING_PRODUCTS, marketingModulesHeadline, marketingProductCount, premiumPricingPerks } from "@/lib/marketing/products";
+import { MARKETING_DATA_FRESHNESS } from "@/lib/marketing/product-manifest";
 import { IMAGES, MARKETING_MODULE_GALLERY } from "@/lib/images";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { SITE } from "@/lib/site";
@@ -417,7 +418,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
               <div className="vs-col vs-us">
                 <div className="vs-label">BlackOut</div>
                 <ul className="vs-list">
-                  <li>Live tick-by-tick — quote age shown on every read</li>
+                  <li>{MARKETING_DATA_FRESHNESS.comparison}</li>
                   <li>Every setup graded A–F with a logged track record</li>
                   <li>{productCount} products, one screen, one membership</li>
                   <li>AI verification engine gates every play</li>

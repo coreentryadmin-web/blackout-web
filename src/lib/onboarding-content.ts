@@ -2,6 +2,8 @@
 // Alias-free and side-effect-free so it runs under `npx tsx --test`.
 // No money-path, no network, no env. Pure data + localStorage helpers.
 
+import { PRODUCT_MANIFEST } from "@/lib/marketing/product-manifest";
+
 export type OnboardingStep = {
   /** Stable id used for analytics/anchors. */
   id: string;
@@ -74,18 +76,18 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
   {
     id: "nighthawk",
     kicker: "Night Hawk",
-    title: "Night Hawk Scanner",
-    body: "Your AI evening playbook. After the close, Night Hawk publishes an edition of ranked next-session swing and leap setups, each with a per-ticker dossier — so you walk into tomorrow with a plan instead of a blank chart.",
+    title: "Night Hawk 0DTE Command",
+    body: PRODUCT_MANIFEST.hawk.lifecycle,
     href: "/nighthawk",
     cta: "Open Night Hawk",
   },
   {
     id: "zerodte",
-    kicker: "Always-on scanner",
-    title: "0DTE Command",
-    body: "Right alongside the evening playbook, 0DTE Command hunts the tape all session for fresh single-name 0DTE plays — cross-checked against the full evidence stack and tracked on a graded ledger. You'll find it on the Night Hawk page.",
+    kicker: "Evening Edition",
+    title: "Evening Edition prep",
+    body: "After the close, Evening Edition publishes ranked prep for the next session — dossiers, confirmation workflow, and track record context. It complements 0DTE Command; find both on the Night Hawk desk.",
     href: "/nighthawk",
-    cta: "Open 0DTE Command",
+    cta: "Open Night Hawk",
   },
   {
     id: "finish",

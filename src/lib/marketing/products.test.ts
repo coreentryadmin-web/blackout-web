@@ -28,6 +28,7 @@ test("Night Hawk marketing copy reflects intraday 0DTE command, not swing-only p
   const hawk = MARKETING_PRODUCTS.find((p) => p.id === "hawk");
   assert.ok(hawk);
   assert.match(hawk!.tag, /0DTE/i);
+  assert.match(hawk!.lede, /0DTE Command/i);
   assert.doesNotMatch(hawk!.lede, /swing playbook/i);
   assert.match(hawk!.bullets.join(" "), /0DTE Command/i);
 });

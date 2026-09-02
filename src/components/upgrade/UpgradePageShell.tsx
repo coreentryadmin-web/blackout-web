@@ -47,7 +47,7 @@ export function UpgradePageShell({
             </h1>
             <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-white/50 md:text-lg">
               One membership opens every instrument — live flow, SPX structure,
-              AI analyst, and overnight playbook.
+              AI analyst, and the full product desk.
             </p>
           </div>
         )}
@@ -60,7 +60,7 @@ export function UpgradePageShell({
             <h1 className="mt-2 font-syne text-2xl font-bold text-white">Unlock the desk</h1>
             <p className="mt-2 text-sm leading-relaxed text-sky-300">
               One membership opens every instrument — live flow, SPX structure, AI analyst, and
-              overnight playbook.
+              the full product desk.
             </p>
           </div>
         )}

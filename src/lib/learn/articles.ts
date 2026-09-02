@@ -73,7 +73,7 @@ That's a reduced-confidence setup. If the flip and walls say "buy here" but GEX 
 **Q: How do I check all three in real time?**
 [Thermal](/learn/heat-maps) plots the flip, walls, and GEX heatmap live every session. You can see all three levels at a glance. [SPX Slayer](/learn/spx-slayer) surfaces the confluence — plays are graded partly on how many independent levels stack at the same price. The higher the alignment, the higher the grade.
 
-**See it on the tools.** [Thermal](/learn/heat-maps) maps the gamma flip, call wall, put wall, and GEX heatmap live every session. [SPX Slayer](/learn/spx-slayer) is the 0DTE desk — graded setups, live tracking, public record. [HELIX](/learn/helix-flows) scans institutional flow for unusual activity so you see who's showing up. [Night Hawk](/learn/night-hawk) handles swing and overnight setups outside the 0DTE window. And [Largo AI](/learn/largo-ai) can walk you through any of it conversationally if you're just getting started. [Get access →](/pricing)
+**See it on the tools.** [Thermal](/learn/heat-maps) maps the gamma flip, call wall, put wall, and GEX heatmap live every session. [SPX Slayer](/learn/spx-slayer) is the 0DTE desk — graded setups, live tracking, public record. [HELIX](/learn/helix-flows) scans institutional flow for unusual activity so you see who's showing up. [Night Hawk](/learn/night-hawk) runs 0DTE Command intraday and publishes Evening Edition prep after the close. And [Largo AI](/learn/largo-ai) can walk you through any of it conversationally if you're just getting started. [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
   },
@@ -341,7 +341,7 @@ It doesn't have to be. The honest answer is nuanced enough to deserve its own pi
 
 ## See the 0DTE desk
 
-BlackOut's [SPX Slayer](/learn/spx-slayer) is a 0DTE desk built on exactly this approach — live gamma, graded setups, public logging. For the full SPX playbook and regime-matched templates, see [How to Trade SPX Options](/learn/how-to-trade-spx-options) and [Best 0DTE Trading Strategies](/learn/best-0dte-trading-strategies). For setups that carry overnight, [Night Hawk](/learn/night-hawk) handles the swing side. New to the platform? [Getting Started](/learn/getting-started) walks you through how the tools fit together. [Get access →](/pricing)
+BlackOut's [SPX Slayer](/learn/spx-slayer) is a 0DTE desk built on exactly this approach — live gamma, graded setups, public logging. For the full SPX playbook and regime-matched templates, see [How to Trade SPX Options](/learn/how-to-trade-spx-options) and [Best 0DTE Trading Strategies](/learn/best-0dte-trading-strategies). For the full Night Hawk session arc — 0DTE Command plus Evening Edition prep — see [Night Hawk 0DTE Command](/learn/night-hawk-0dte-command-guide). New to the platform? [Getting Started](/learn/getting-started) walks you through how the tools fit together. [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },

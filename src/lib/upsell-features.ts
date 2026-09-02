@@ -1,14 +1,8 @@
 // Presentation-only upsell data. Pure, alias-free, no React, no env reads.
-// Sourced from the ACTUAL gated routes (requireTier/requireTierApi grep):
-//   premium pages : dashboard, terminal, flows, heatmap, nighthawk, docs/*
-//   premium APIs  : spx/commentary, largo/session, largo/query, docs/spx-playbook
-//   free APIs     : market/ticker-search
-// This file describes value framing ONLY. It creates no tiers and touches no
-// billing — the real entitlement check stays in src/lib/auth-access.ts.
+// Capability copy sourced from src/lib/marketing/product-manifest.ts.
 
-// Type-only import: MarkProduct is erased at compile time, so this pure,
-// server-safe module pulls no client/runtime code from ProductMark.
 import type { MarkProduct } from "@/components/marks/ProductMark";
+import { PRODUCT_MANIFEST } from "@/lib/marketing/product-manifest";
 
 export type FeatureRow = {
   /** Short feature name shown in the left column. */
@@ -54,11 +48,24 @@ export const FEATURE_MATRIX: FeatureRow[] = [
     mark: "largo",
   },
   {
-    label: "Night Hawk evening playbook",
-    detail: "Overnight scan of the session, ranked setups",
+    label: "Night Hawk 0DTE Command",
+    detail: PRODUCT_MANIFEST.hawk.positioning,
     free: false,
     premium: true,
     mark: "nighthawk",
+  },
+  {
+    label: "Vector universe scanner",
+    detail: PRODUCT_MANIFEST.vector.positioning,
+    free: false,
+    premium: true,
+    mark: "vector",
+  },
+  {
+    label: "Meridian earnings desk",
+    detail: PRODUCT_MANIFEST.meridian.positioning,
+    free: false,
+    premium: true,
   },
   {
     label: "Strike-level heatmaps",
