@@ -48,10 +48,23 @@ type Props = {
   variant?: "band" | "academy";
 };
 
+function hasLevels(snapshot: PublicGexSnapshot): boolean {
+  return snapshot.spot != null && Boolean(snapshot.available || snapshot.degraded);
+}
+
 export function HomeGammaPromo({ initial, variant = "band" }: Props) {
   const [ticker, setTicker] = useState<PublicGexTicker>(initial.ticker as PublicGexTicker);
   const [snapshot, setSnapshot] = useState<PublicGexSnapshot>(initial);
-  const [loading, setLoading] = useState(false);
+  // Seeded `true` (not `false`) whenever the server-rendered seed has no levels, so the FIRST paint
+  // never shows `initial.read`'s literal copy (e.g. "Snapshot warming up — check back shortly")
+  // as if it were a live verdict. That seed comes from a `revalidate=3600` ISR page that is ALSO
+  // Cloudflare-edge-cached for up to 7200s for anonymous visitors (see HomeLiveDeskStrip.tsx's own
+  // fix note) — so an `unavailable` snapshot captured at one bad ISR regeneration keeps getting
+  // served, unchanged, to every new visitor for up to ~3h. The mount-fetch below corrects it within
+  // one round trip regardless, but until this flag existed the component displayed that frozen
+  // "warming up"/"unavailable" text as fact for the ~1-8s the correction takes — on EVERY load,
+  // directly contradicting the "Live" pill and "Refreshes live every 5 seconds" copy next to it.
+  const [loading, setLoading] = useState(() => !hasLevels(initial));
 
   const loadTicker = useCallback(async (next: PublicGexTicker) => {
     setLoading(true);
@@ -111,7 +124,7 @@ export function HomeGammaPromo({ initial, variant = "band" }: Props) {
     await loadTicker(next);
   }
 
-  const showLevels = Boolean(snapshot.spot != null && (snapshot.available || snapshot.degraded));
+  const showLevels = hasLevels(snapshot);
   const isLong = snapshot.posture === "long";
   const isShort = snapshot.posture === "short";
   const spot = snapshot.spot;
@@ -214,7 +227,11 @@ export function HomeGammaPromo({ initial, variant = "band" }: Props) {
                 {!showLevels ? (
                   <div className="gamma-promo-warm">
                     <span className="gamma-promo-warm-scan" aria-hidden />
-                    <p>{snapshot.read}</p>
+                    <p>
+                      {loading
+                        ? "Loading live gamma levels…"
+                        : snapshot.read}
+                    </p>
                   </div>
                 ) : (
                   <>
