@@ -39,12 +39,14 @@ export function legacyDiscordAlertsEnabled(): boolean {
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
+/** Legacy desk channel — separate from 0DTE Command (CHIEF_TRADE_CHANNEL_ID on the bot). */
+export function legacyChiefTradeChannelId(): string | null {
+  const raw = process.env.LEGACY_CHIEF_TRADE_CHANNEL_ID?.trim();
+  return raw || null;
+}
+
 function legacyAuthorName(): string {
-  return (
-    process.env.LEGACY_DISCORD_AUTHOR_NAME?.trim() ||
-    process.env.CHIEF_TRADE_AUTHOR_NAME?.trim() ||
-    "Night-Hawk-Bot"
-  );
+  return process.env.LEGACY_DISCORD_AUTHOR_NAME?.trim() || "night-hawk-legacy";
 }
 
 /** Map options_play side (+ play direction fallback) → Chief Trade long/short strike suffix. */
@@ -138,6 +140,7 @@ export function buildLegacyTradePayload(
 
   const suffix = opts.idempotencySuffix ?? action.toLowerCase();
 
+  const channelId = legacyChiefTradeChannelId();
   return {
     action,
     qty,
@@ -147,6 +150,7 @@ export function buildLegacyTradePayload(
     price,
     idempotency_key: `legacy:${row.edition_for}:${ticker}:${suffix}`,
     author_name: legacyAuthorName(),
+    ...(channelId ? { channel_id: channelId } : {}),
   };
 }
 

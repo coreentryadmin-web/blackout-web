@@ -30,6 +30,8 @@ export type ChiefTradePayload = {
   price: number;
   idempotency_key: string;
   author_name?: string;
+  /** Discord channel snowflake — bot posts here when set; else CHIEF_TRADE_CHANNEL_ID. */
+  channel_id?: string;
 };
 
 export type BuildTradePayloadOpts = {

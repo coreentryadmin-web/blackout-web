@@ -58,17 +58,39 @@ describe("legacy-discord-trade-notify", () => {
       })
     );
     assert.ok(input);
-    const payload = buildLegacyTradePayload(input!, "BTO", 3.55);
-    assert.deepEqual(payload, {
-      action: "BTO",
-      qty: 1,
-      ticker: "SPX",
-      strike: "7650C",
-      expiry: "9/2",
-      price: 3.55,
-      idempotency_key: "legacy:2026-09-02:SPX:bto",
-      author_name: "Night-Hawk-Bot",
-    });
+    const prevCh = process.env.LEGACY_CHIEF_TRADE_CHANNEL_ID;
+    delete process.env.LEGACY_CHIEF_TRADE_CHANNEL_ID;
+    try {
+      const payload = buildLegacyTradePayload(input!, "BTO", 3.55);
+      assert.deepEqual(payload, {
+        action: "BTO",
+        qty: 1,
+        ticker: "SPX",
+        strike: "7650C",
+        expiry: "9/2",
+        price: 3.55,
+        idempotency_key: "legacy:2026-09-02:SPX:bto",
+        author_name: "night-hawk-legacy",
+      });
+    } finally {
+      if (prevCh === undefined) delete process.env.LEGACY_CHIEF_TRADE_CHANNEL_ID;
+      else process.env.LEGACY_CHIEF_TRADE_CHANNEL_ID = prevCh;
+    }
+  });
+
+  test("buildLegacyTradePayload includes channel_id when LEGACY_CHIEF_TRADE_CHANNEL_ID set", () => {
+    const input = legacyInputFromPlaybookPlay("2026-09-02", play());
+    assert.ok(input);
+    const prev = process.env.LEGACY_CHIEF_TRADE_CHANNEL_ID;
+    process.env.LEGACY_CHIEF_TRADE_CHANNEL_ID = "1544793338597871636";
+    try {
+      const payload = buildLegacyTradePayload(input!, "BTO", 4);
+      assert.equal(payload?.channel_id, "1544793338597871636");
+      assert.equal(payload?.author_name, "night-hawk-legacy");
+    } finally {
+      if (prev === undefined) delete process.env.LEGACY_CHIEF_TRADE_CHANNEL_ID;
+      else process.env.LEGACY_CHIEF_TRADE_CHANNEL_ID = prev;
+    }
   });
 
   test("legacyInputFromOutcomeRow reads publish_context", () => {
