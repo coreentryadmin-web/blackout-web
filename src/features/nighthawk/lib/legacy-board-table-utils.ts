@@ -118,16 +118,19 @@ export function buildLegacyBoardRows(
 export function legacyBoardMeter(row: LegacyBoardTableRow): VectorBoardMeter | null {
   const pct = row.premiumPct;
   const tone = premiumPctTone(pct);
-  const valueLabel = formatPremiumPct(pct);
+  const stockMove = row.play.stockMovePct ?? null;
 
   if (row.progressPct != null) {
+    const stockTone = premiumPctTone(stockMove);
     return {
-      valueLabel,
+      valueLabel: formatPremiumPct(stockMove),
       fillPct: row.progressPct,
       caption: `${row.progressPct}% stock path`,
-      tone: tone === "bull" ? "up" : tone === "bear" ? "down" : "flat",
+      tone: stockTone === "bull" ? "up" : stockTone === "bear" ? "down" : "flat",
     };
   }
+
+  const valueLabel = formatPremiumPct(pct);
 
   if (pct == null || !Number.isFinite(pct)) return null;
   if (pct >= 50) {

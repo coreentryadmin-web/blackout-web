@@ -67,6 +67,13 @@ async function main() {
   const afterSelect = await page.evaluate(() => {
     const shell = document.querySelector(".legacy-board-shell");
     const body = document.body;
+    const manageBody = document.querySelector(".legacy-board-manage-body");
+    const manageRect = manageBody?.getBoundingClientRect();
+    const technicalsGrid = document.querySelector(".legacy-board-technicals-grid");
+    const techRect = technicalsGrid?.getBoundingClientRect();
+    const narrowValues = [...document.querySelectorAll(".legacy-board-manage .legacy-detail-bullet-value")]
+      .map((el) => el.getBoundingClientRect().width)
+      .filter((w) => w > 0 && w < 24);
     return {
       inspectorMode: shell?.classList.contains("legacy-board-shell--inspector") ?? false,
       manageRail: !!document.querySelector(".legacy-board-manage"),
@@ -80,6 +87,12 @@ async function main() {
       viewportHeight: window.innerHeight,
       sectionTitles: [...document.querySelectorAll(".legacy-detail-section-title")].map((el) => el.textContent?.trim()),
       bulletCount: document.querySelectorAll(".legacy-detail-bullet").length,
+      manageBodyVisiblePx: manageRect?.height ?? 0,
+      manageBodyScrollPx: manageBody?.scrollHeight ?? 0,
+      technicalsGridVisiblePx: techRect?.height ?? 0,
+      technicalsGridScrollPx: technicalsGrid?.scrollHeight ?? 0,
+      narrowValueColumns: narrowValues.length,
+      bannerHidden: !document.querySelector(".legacy-board-shell--inspector .mb-3"),
     };
   });
 
@@ -105,8 +118,12 @@ async function main() {
             ? "RED — dual rails missing"
             : !afterSelect.tradePlan || !afterSelect.whyPicked
               ? "RED — manage/technicals content missing"
+              : afterSelect.narrowValueColumns > 0
+                ? "RED — manage rail has crushed text columns (vertical wrap bug)"
               : afterSelect.pageScrollY > 12
                 ? "AMBER — page scrolls (target: viewport-locked)"
+                : afterSelect.manageBodyVisiblePx < 220
+                  ? "AMBER — manage rail body too short (scroll to see trade plan)"
                 : afterSelect.bulletCount < 8
                   ? "AMBER — sparse bullet content"
                   : "GREEN — Legacy dual-rail inspector live";

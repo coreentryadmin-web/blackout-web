@@ -398,7 +398,7 @@ export function LegacyPickLogBoard({
         sessionDates={sessionDates}
       />
 
-      {bannerSlot}
+      {selectedRow ? null : bannerSlot}
 
       {!selectedRow && macroContext ? <LegacyMacroStrip macro={macroContext} /> : null}
 

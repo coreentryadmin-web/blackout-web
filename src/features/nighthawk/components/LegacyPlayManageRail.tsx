@@ -19,6 +19,8 @@ import {
 } from "@/features/nighthawk/components/legacy-board-detail-primitives";
 import type { LegacyBoardTableRow } from "@/features/nighthawk/lib/legacy-board-table-utils";
 import { formatPremiumPct, premiumPctTone } from "@/features/nighthawk/lib/vector-board-table-utils";
+import { etDateTimeShort } from "@/lib/et-clock";
+import { playPrimaryEvent } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { LegacyManageGeometry } from "@/features/nighthawk/command-deck/legacy-play-geometry";
 
 const usd = (n: number | null | undefined): string => (n != null ? `$${n.toFixed(2)}` : "—");
@@ -57,6 +59,12 @@ export function LegacyPlayManageRail({
   const morningLine = legacyMorningHeadline(play);
   const stockTone = pnlTone(play.stockMovePct ?? null);
   const markAge = legacyMarkAgeLabel(play.markAsOf);
+  const primaryEvent = playPrimaryEvent(play);
+  const publishedAt = play.detectedAt ? etDateTimeShort(new Date(play.detectedAt)) : null;
+  const confirmedAt =
+    play.firstFlaggedAt && play.firstFlaggedAt !== play.detectedAt
+      ? etDateTimeShort(new Date(play.firstFlaggedAt))
+      : null;
 
   return (
     <aside
@@ -116,6 +124,14 @@ export function LegacyPlayManageRail({
             {play.stockPrice != null ? (
               <LegacyDetailBullet label="Spot" value={usd(play.stockPrice)} />
             ) : null}
+            {play.stockChangePct != null ? (
+              <LegacyDetailBullet
+                label="Today"
+                value={formatPremiumPct(play.stockChangePct)}
+                tone={pnlTone(play.stockChangePct)}
+                sub="Session % change"
+              />
+            ) : null}
           </LegacyDetailBullets>
         </LegacyDetailSection>
 
@@ -160,9 +176,6 @@ export function LegacyPlayManageRail({
             </div>
           )}
           <LegacyDetailBullets>
-            {play.stopLevel ? <LegacyDetailBullet label="Stop" value={play.stopLevel} tone="down" /> : null}
-            {play.entryRange ? <LegacyDetailBullet label="Entry zone" value={play.entryRange} /> : null}
-            {play.targetLevel ? <LegacyDetailBullet label="Target" value={play.targetLevel} tone="up" /> : null}
             {play.rrRatio != null ? (
               <LegacyDetailBullet
                 label="Risk : reward"
@@ -173,9 +186,13 @@ export function LegacyPlayManageRail({
           </LegacyDetailBullets>
         </LegacyDetailSection>
 
-        {(morningLine || play.swingPromoted || play.pulledReason) && (
+        {(morningLine || play.swingPromoted || play.pulledReason || publishedAt) && (
           <LegacyDetailSection title="Session status">
             <LegacyDetailBullets>
+              {publishedAt ? (
+                <LegacyDetailBullet label="Published" value={publishedAt} sub={primaryEvent.label} />
+              ) : null}
+              {confirmedAt ? <LegacyDetailBullet label="Confirmed" value={confirmedAt} /> : null}
               {morningLine ? (
                 <LegacyDetailBullet
                   label="Pre-market"
