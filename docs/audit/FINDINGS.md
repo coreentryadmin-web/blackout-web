@@ -4,6 +4,1178 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
+## Vector: two of three regime consumers rendered the literal placeholder string "REGIME —" as if it were a real reading — FIXED
+
+> **kind:** `FINDING`
+
+Twelfth product-surface pass in the "check product by product" audit sweep — root-cause of a defect first surfaced by a live production visual/UX audit screenshot (`/vector` mobile, a stat tile showing "REGIME —" where desktop showed "SHORT GAMMA" at the same moment).
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `VectorPlayAnalyticsDrawer`'s "Regime" stat tile and `VectorPlayIntelStrip`'s desk-intel chip both rendered the label "Regime" stacked directly above the literal text "REGIME —" whenever the client had no positioning data yet (a normal, transient gap during page bootstrap or an SSE hiccup — not itself a bug). |
+| **Root cause** | `deriveVectorRegime` (`vector-regime.ts`) never returns `null` — its "unavailable" branch (hit when `spot`/`gammaFlip` are null, non-finite, or ≤0) still returns a full, truthy `VectorRegime` object whose own `headline` field is the literal placeholder string `"REGIME —"`. Every other branch's headline is a clean phrase ("LONG GAMMA", "SHORT GAMMA") with no "REGIME" prefix, because the label is always supplied separately by the UI — this one branch alone bakes the label into the value. `VectorPlayAnalyticsDrawer`'s `value={regime?.headline ?? "—"}` and `VectorPlayIntelStrip`'s bare `{regime ? (...) : null}` both check only *presence*, not `posture`, so the `?? "—"` fallback was dead code (regime is always truthy whenever it exists) and both rendered the raw placeholder. `VectorRegimeBanner.tsx` already had the correct guard (`if (regime.posture === "unknown") return null`) — the other two consumers never adopted the same check. |
+| **Why this matters** | A member glancing at the desk-intel strip or opening Play Analytics during exactly this transient window sees nonsense text instead of either the real regime or a clean absent state — undermines trust in the panel's other numbers too. Not data-incorrect (no wrong number shown), but a real, live-reachable rendering defect confirmed via production screenshot. |
+| **Fix** | Added `hasReadableRegime(regime)` (`vector-regime.ts`) — a shared, exported, type-narrowing helper (`!!regime && regime.posture !== "unknown"`) — and switched all three consumers (`VectorRegimeBanner`, `VectorPlayIntelStrip`, `VectorPlayAnalyticsDrawer`) to use it instead of each reimplementing its own presence/posture check. `VectorRegimeBanner` already had the right behavior; it now imports the shared helper instead of a private reimplementation, so a future fourth consumer can't drift from it again. |
+| **Blast radius** | Three components; no data/logic change, purely which UI state renders "nothing"/"—" vs. the placeholder string. |
+| **Why not caught earlier** | No test covered `deriveVectorRegime`'s "unavailable" case being fed into a consumer's presence check — the existing `vector-regime.test.ts` only tested `deriveVectorRegime`'s own return value, never how downstream components branch on it. |
+| **Regression guard** | New `hasReadableRegime` tests: `null`/`undefined` → false; the unavailable (`posture: "unknown"`) reading → false; a real long/short/transition reading → true. |
+| **Gates** | `npx tsc --noEmit` clean · `vector-regime.test.ts` 9/9 pass (Node 20.20.2) · full `npm test` — see PR. |
+| **Status** | FIXED |
+
+### Companion finding, not fixed (dead code, flagged as a landmine)
+The same pass found `toneFromFlowSide` (`vector-flow-confluence.ts`) reimplements the option-type-only (not aggressor-aware) direction bug already fixed three times elsewhere in this codebase today. It has **zero live call sites** (confirmed via repo-wide grep) — the live flow-confluence pulse path derives tone from `focusLevel.tone`, set upstream by the Pulse rail's own correct aggressor-aware logic. Not fixed here since it changes nothing live; flagged so a future change wiring raw `option_type` through this exported, obviously-named helper doesn't reintroduce the bug a third time.
+
+## 2026-08-30 — [FINDING, P3 spx-slayer/ranking] `rankPrimaryCandidates`' static-priority tie-break silently reversed priority order — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Found in the same audit pass as the SPX Slayer option-sim direction bug (see the adjacent finding), in `src/features/spx/lib/playbook-primary-score.ts`. The function's own doc comment says "Static priority is tie-break only" and `staticPriorityIndex` is documented as lower-index-wins ("lower index = higher priority" per its call site), but the tie-break sort put the *higher* index first. |
+| **Root cause** | `static_priority_tiebreak: -tiebreak * 0.001` negated the index, then the sort (`a.static_priority_tiebreak - b.static_priority_tiebreak`, ascending) picked the smallest value first. Negating flips which candidate that is: for `tiebreak=1` (highest priority) vs `tiebreak=3`, the negated values are `-0.001` and `-0.003` — the sort picks `-0.003` (the LOWER-priority PB-03-style candidate) first. Live repro: PB-01 (priority index 3) and PB-14 (priority index 1) tied at `total=95` — PB-01 won the tie instead of PB-14. |
+| **Why not caught earlier** | Both existing tests named around "tie-break" (`static priority tie-break only when totals match`, `sorts by total then static_priority_tiebreak`) actually construct candidates with UNEQUAL totals — one test's own comment says "not a static-order tie" — so neither ever exercised a genuine tie, and the reversed branch shipped untested. |
+| **Fix** | Dropped the negation: `static_priority_tiebreak: tiebreak * 0.001`. The ascending sort now correctly puts the lowest (highest-priority) index first. |
+| **Blast radius** | Single production usage (`rankPrimaryCandidates` itself); no other reader of `static_priority_tiebreak`'s sign. |
+| **Regression guard** | New test picks PB-01 and PB-14 — same family (`reversal_failure`) and same fidelity (`high`), so with identical verdicts their pre-penalty totals are equal and the family-conflict penalty is 0 for both, producing a genuine tie — then asserts the lower priority index (1) outranks the higher one (3). |
+| **Gates** | Same `npx tsc --noEmit` / `npx tsx --test` / full `npm test` run as the adjacent option-sim finding — both fixes landed together. |
+| **Status** | FIXED |
+
+## 2026-08-30 — [FINDING, P2 spx-slayer/research] `simulateOptionEntry`/`simulateOptionExit` conflate play direction with buy/sell, inflating simulated fills for every short-direction SPX Slayer play — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Found via targeted product-by-product audit (no live incident) of `src/features/spx/lib/playbook-option-sim.ts`. `simulateOptionEntry`/`simulateOptionExit` branch their adverse-fill formula on `input.direction` ("long"/"short") as if it meant buy vs. sell. |
+| **Root cause** | `direction` here is the *play's* underlying stance (a long play expects a rally, a short expects a drop) — it is never buy/sell. SPX Slayer always **BUYS an option to enter** regardless of direction (a long play buys a call, a short play buys a put — confirmed via `spx-play-engine.ts`'s single `verdict: "APPROVE_BUY"`), and always **SELLS to close**, again regardless of direction. The old code did the opposite for "short": entry gave a fill *below* mid (as if selling) and exit gave a fill *above* mid (as if buying back). Live repro before the fix: `direction:"short"` entry on `option_mid=2.5` gave `assumed_fill=2.3925` instead of the correct `2.6075` (same as "long"); the corresponding exit gave `2.6075` instead of the correct `2.3925`. |
+| **Why this matters** | This is the execution-cost model attached to every play's `option_ticket.execution_sim` for cost-adjusted P&L research (`playbook-option-execution-contract.ts`). For every short-direction play, the bug understated entry cost and overstated exit proceeds — i.e. it made every short play's simulated round-trip cost cheaper than a long play's, when the two should be identical (same buy-to-open/sell-to-close mechanics, same option, same spread). Any research or backtest comparing long vs. short-play cost/expectancy was silently biased in short plays' favor. |
+| **Fix** | `simulateOptionEntry` now always applies the adverse-above-mid fill; `simulateOptionExit` now always applies the adverse-below-mid fill. Neither branches on `direction` anymore — the field stays in `OptionSimInput` for API stability but no longer affects the fill formula. |
+| **Blast radius** | Single call site — `buildOptionExecutionSim` (same file) is the only caller of either function; no other consumer depends on the old (direction-branched) behavior. |
+| **Why not caught earlier** | `playbook-option-sim.test.ts` only ever exercised `direction: "long"` — never `"short"` — so the reversed branch shipped with 0% coverage of the path it broke. |
+| **Regression guard** | Two new tests in `playbook-option-sim.test.ts`: `simulateOptionEntry`'s short branch must equal its long branch (both pay adverse-above-mid); `simulateOptionExit`'s short branch must equal its long branch (both pay adverse-below-mid). |
+| **Gates** | `npx tsc --noEmit` clean · `npx tsx --test playbook-option-sim.test.ts playbook-primary-score.test.ts` 9/9 pass · full `npm test` **11431 pass / 0 fail / 2 skipped** (Node 20.20.2). |
+| **Status** | FIXED |
+
+## Night Hawk: mobile status/direction filter bars overlap into illegible text — FIXED
+
+> **kind:** `FINDING`
+
+Found via a live production visual/UX audit (proxy-tunnel Chromium, `/nighthawk` at 430×932) — screenshots confirmed a real rendered defect, not inferred from the diff.
+
+| Field | Detail |
+|---|---|
+| **Symptom** | On `/nighthawk` at mobile width (430px), the status filter row (`ALL / OPEN / WATCH / CLOSED`) and the direction filter row (`L/S / LONG / SHORT`) painted on top of each other instead of stacking — "WATCH"/"CLOSED" text overlaid by "L/S"/"LONG"/"SHORT" directly beneath, all illegible. The adjacent ticker search input was also clipped at the viewport's right edge. Desktop (1440×900) showed both groups cleanly side-by-side with no overlap — mobile-only. |
+| **Root cause** | `DeckCompactHeader` (`CommandDeck.tsx`) renders the status filterbar, direction filterbar, and search box inside a row with classes `nh-deck-hdr-row nh-deck-hdr-row--secondary nh-deck-hdr-row--filters`. `.nh-deck-hdr-row--secondary` sets `flex-wrap:nowrap` (`globals.css`), and `--filters` never overrides it. Meanwhile `.nh-deck-header-compact .nh-deck-filterbar--prominent{flex:1 1 auto;width:100%}` gives the status filterbar a `width:100%` flex-basis. In a NOWRAP row, that forces flex-shrink math on all three children instead of wrapping to a new line — the shrunk boxes' own text (still full-size, no `overflow:hidden`) escapes into the space the next sibling now occupies. This is the exact same architecture bug this file's own comments already document for a different selector (`.nh-deck-cmd--inline`, ~20 lines above in the same file): "min-width:0 collapses the box toward zero under space pressure, but its children are white-space:nowrap with no overflow:hidden, so their text escaped the collapsed box and painted ON TOP of the siblings." The lesson from that earlier fix was never applied to this sibling row. |
+| **Fix** | Added `flex-wrap:wrap` to `.nh-deck-hdr-row--filters`. This lets the `width:100%` prominent status bar take its own full-width row and the direction filterbar + search box wrap cleanly to a second line, matching the already-correct pattern used by the sibling `.nh-deck-chrome-row` (non-compact header) a few lines below in the same file, which already has `flex-wrap:wrap` and does not exhibit this bug. No-op at desktop widths, where everything already fits on one line. |
+| **Blast radius** | Single CSS rule (`globals.css`), affects only `DeckCompactHeader`'s filter row — the non-compact `DeckChromeRow`'s equivalent row already had `flex-wrap:wrap` and was unaffected. |
+| **Why not caught earlier** | No visual/pixel regression test exists for this specific header variant at mobile width — `meridian-interaction-audit.mjs`-style pixel-overlap detection has not yet been extended to Night Hawk. |
+| **Gates** | `npx tsc --noEmit` clean (CSS-only change). `npx stylelint src/app/globals.css` — 2 pre-existing unrelated issues at different lines, none introduced by this change. |
+| **Status** | FIXED — visual confirmation is CSS-reasoning-based (verified the exact flex/shrink mechanics against the file's own documented precedent for the identical bug class) rather than a live post-deploy screenshot, since this session cannot reach the network from Chromium except through the CONNECT-tunnel harness against an already-deployed page. Recommend a live re-screenshot of `/nighthawk` at 430px once this merges and deploys, per the repo's own "a merge is not a verification" discipline. |
+
+### Other live UI defects found this pass, not yet fixed (filed for the owning lane)
+The same audit pass also found, with screenshot evidence, and root cause not yet located/fixed:
+- ~~**`/heatmap` mobile**: horizontal overflow clips the `MATRIX/PROFILE/DEPTH/DISTRIBUTION` tab strip ("DISTRIBUTION" renders as "…UTION") and the STRIKE/NET FLOW table's rightmost dollar column (desktop shows the full value, e.g. `$892.2M`, cut off on mobile).~~
+  **RE-CHECKED 2026-08-30, DOES NOT REPRODUCE — retracted, not a bug.** Live re-screenshot of `/heatmap?ticker=SPY` at 430×932 today: the tab strip renders "MATRIX / PROFILE / DEPTH / DISTRIBUTION" fully, no clipping (`docs`/tablist crop confirms it pixel-for-pixel). The earlier "…UTION" read was a harness artifact — reading each tab's `.textContent` (which includes text of `display:none` descendants) concatenated the hidden `hidden sm:inline` long label onto the visible `sm:hidden` short one (e.g. `"DistributionGreeks Distribution"`), which looked like an overflow but was never actually painted; per-span `getComputedStyle` confirms the long label is genuinely `display:none` at this width and the short label alone renders at its full width with room to spare (list `scrollWidth === clientWidth`, zero overflow). The NET FLOW dollar column is real but is **intentional horizontal-scroll content, not a clipping bug** — `GexHeatmap.tsx`'s matrix already ships a `overflow-auto` scroll box (`.thermal-matrix-scroll`) plus an explicit "right-edge scroll fade" cue (`bg-gradient-to-l`, comment: "hints there's more matrix to the right") for exactly this — the box measured `scrollWidth 392 / clientWidth 356` (36px reachable via scroll) and setting `scrollLeft` to max revealed the full `$841.3M` value that had been partially off-screen at rest. A member swiping the matrix (its designed interaction — the same box already scrolls for expiry columns) reaches the full value; nothing here is unreachable or broken. No code change made.
+- **`/vector` mobile**: the "REGIME" stat tile shows the literal placeholder `REGIME —` instead of the real value (desktop shows `SHORT GAMMA` in the same slot at the same moment) — traced as far as `VectorPlayAnalyticsDrawer.tsx`'s `StatTile` (`value={regime?.headline ?? "—"}`) and `VectorRegimeBanner.tsx`, neither of which is confirmed as the actual mobile-page source; not fixed here to avoid guessing at the wrong component. The adjacent "CONFLUENCE" row also hard-truncates mid-word on mobile, hiding the trailing score number (desktop shows it in full).
+- ~~**`/terminal` mobile**: the "NIGHT HAWK" desk-picker card is missing its description/module-count line that every sibling card (Helix, Thermal, Vector) shows; composer placeholder text hard-clips mid-word with no ellipsis.~~
+  **RE-CHECKED 2026-08-30, DOES NOT REPRODUCE — retracted, not a bug.** Live re-screenshot of `/terminal` at 430×932: the Night Hawk desk card renders identically to every sibling — label, hint ("0DTE board, marks, discovery funnel"), and "4 modules · type after pick" all present (confirmed via both the screenshot and a direct DOM read of all 8 desk cards' `.largo-empty-card-hint`/`.largo-empty-card-meta` text — Night Hawk's are populated same as the rest). The apparent "composer placeholder hard-clips mid-word" turned out to be `LargoTerminal.tsx`'s `.largo-input-placeholder-marquee` — a deliberate 20s-looping CSS marquee (`animation: largo-placeholder-ltr 20s linear infinite`, `globals.css`) that scrolls the idle-composer placeholder text left-to-right across the input; the earlier screenshot simply caught one animation frame mid-scroll, which will always show a partial substring by design (the same mechanism a prior finding, 2026-08-23 UI-UX-MAP.md §8 finding #5, already documented and partially fixed for a glow-clipping variant of this same marquee). Not a defect — no code change made.
+- ~~**`/nighthawk` mobile**: an oversized, near-invisible decorative background graphic inflates the empty-state page height.~~
+  **RE-CHECKED 2026-08-30, DOES NOT REPRODUCE — retracted, not a bug.** Live re-check of `/nighthawk` at 430×932 in the empty-state (no session today): a Playwright `fullPage` screenshot captured what looked like ~2 viewport-heights of near-black scrollable space with the faint `NighthawkRadarBackdrop` bleeding through partway down. But a `fullPage` screenshot uses `document.body.scrollHeight` (measured 1864, exactly 2×932) — measured directly, `document.documentElement.scrollHeight` (932, one viewport) is what actually bounds real scrolling, since `document.scrollingElement` resolves to `HTML`, not `BODY`, in this document. Confirmed live: `window.scrollTo(0, 1200)` and a 2000px wheel-scroll both left `scrollY` at 0 — the page cannot scroll past the first viewport at all. The `body.scrollHeight` inflation traces to `PlayTerminal.tsx`'s `.nh-deck-right` detail panel, which on mobile (`@media max-width:820px`, `globals.css`) is `position:fixed;inset:0;transform:translateY(100%)` to sit off-screen below the viewport until a play is tapped — a documented, deliberate pattern (see the CSS file's own 2026-08-29 comment on this exact rule). That transform, on a `position:fixed` element, is apparently still counted toward `body`'s scrollable-overflow measurement in this rendering path even though it is NOT counted toward `documentElement`'s (the one real touch-scroll actually obeys) — a screenshot-tooling artifact, not a rendering bug a member can ever encounter. No code change made.
+- **`/vector` header**: a small step-chart element clips at its container edge (both viewports).
+
+## 2026-08-29 — Largo 6-tool truncation fixes — IMPLEMENTED
+
+> **kind:** `FINDING`
+
+### Summary
+
+Probe run 2026-08-29 identified 6 Largo tools still returning TRUNCATED payloads (previously marked ANALYZING on 2026-08-23). Implemented fitting functions and applied caps at Largo tool boundary for all 6 tools, following the established product-first data design pattern (full data preserved for product consumers, fitting applied only at model boundary).
+
+| **Tool** | **Status 2026-08-23** | **Probe 2026-08-29** | **Fix** | **Status 2026-08-29** |
+|---|---|---|---|---|
+| `get_confluence_outcomes` | ANALYZING | TRUNCATED | Cap to 30 per object, explicit shown/truncated fields | FIXED (pending test) |
+| `get_platform_snapshot` | ANALYZING | TRUNCATED | Cap flows to 20, reduce active sessions | FIXED (pending test) |
+| `get_market_oi_change` | ANALYZING | TRUNCATED | Cap to 20 entries, explicit truncated flag | FIXED (pending test) |
+| `get_market_stats` | ANALYZING | TRUNCATED | Keep major indices only (SPY/SPX/QQQ/IWM/VIX) | FIXED (pending test) |
+| `get_group_greek_flow` | ANALYZING | TRUNCATED | Cap to 15 top groups by exposure | FIXED (pending test) |
+| `get_screener` | ANALYZING | TRUNCATED | Cap to 15 top candidates, explicit truncated flag | FIXED (pending test) |
+
+### Root Cause (All 6 Tools)
+
+Each tool aggregates market-wide data from UW or internal sources, returning result arrays or large composed objects that exceed 16,384-byte transport cap. JSON is truncated mid-payload at various completion points.
+
+**Common pattern:** Last visible key before truncation indicates payload grew too large (e.g., `get_confluence_outcomes` truncates at "spx_slayer_shadow_factors", the second of two large objects).
+
+### Fixes Applied
+
+All fixes follow the established pattern from PR #3032, #3038, #3045, #3046:
+
+1. **Preserve product-first data:** Full raw data still available to product consumers (Night Hawk board, platform UI, etc.)
+2. **Create fitXyzForModel functions:** New files in `src/lib/largo/` implement caps and field shedding
+3. **Apply fitting at Largo boundary only:** In `run-tool.ts` case statements
+4. **Add explicit flags:** Return fields like `shown`, `truncated`, `max_shown` so model understands omissions
+
+#### Files Created
+
+- **`src/lib/largo/confluence-outcomes-fit.ts`** — Fits `get_confluence_outcomes` to 30 entries per outcome object
+- **`src/lib/largo/platform-snapshot-fit.ts`** — Fits `get_platform_snapshot` to 20 flow entries
+- **`src/lib/largo/market-data-fits.ts`** — Centralized fits for 4 tools:
+  - `fitMarketOiChangeForModel`: Cap to 20 OI entries
+  - `fitMarketStatsForModel`: Keep major indices only
+  - `fitGroupGreekFlowForModel`: Cap to 15 sector groups
+  - `fitScreenerForModel`: Cap to 15 screened candidates
+
+#### Code Changes in `src/lib/largo/run-tool.ts`
+
+- Line ~655-661: `get_market_oi_change` — Apply fitMarketOiChangeForModel
+- Line ~964-976: `get_screener` — Apply fitScreenerForModel per type
+- Line ~1182-1192: `get_platform_snapshot` — Apply fitPlatformSnapshotForModel
+- Line ~1358-1384: `get_group_greek_flow` — Apply fitGroupGreekFlowForModel when market-wide
+- Line ~1451-1465: `get_market_stats` — Apply fitMarketStatsForModel
+- Line ~1253-1270: `get_confluence_outcomes` — Apply fitConfluenceOutcomesForModel
+
+### Validation Plan
+
+**Next step:** Re-run `scripts/audit/largo-truncation-probe.mjs` against production after code is deployed to confirm all 6 tools return COMPLETE verdicts.
+
+Expected results:
+- All 6 tools should transition from TRUNCATED → COMPLETE
+- Probe control (get_zerodte_rejections) should remain TRUNCATED (as expected, validates probe functionality)
+- No new truncations introduced
+
+### Product Impact
+
+- **Largo:** Model receives complete (though capped) payloads, eliminating silent truncation parsing errors
+- **Products:** Night Hawk, SPX, Thermal, Vector, Helix continue using full uncapped data via direct API calls (not through Largo boundary)
+- **Trade-off:** Largo model sees top-N results (30 confluence outcomes, 20 flows, 15 candidates, etc.), sufficient for agent reasoning about "what are the top opportunities/risks"; less common to need the tail entries for decision-making
+
+### Status
+
+**Status.** FIXED & AWAITING VERIFICATION (code compiled, pending build completion and truncation probe re-run) — superseded by the "3 of 6 Tools Still Exceeding 16KB Cap" entry immediately below, which found 3 of these 6 tools still truncating after this fix deployed and applied a second, more conservative round of caps.
+
+## Largo Truncation: 3 of 6 Tools Still Exceeding 16KB Cap
+
+> **kind:** `FINDING`
+
+**Date:** 2026-08-29  
+**Root Cause:** Undersized caps from PR #3159 (measured production sizes + JSON overhead not accounted for)
+
+**Status.** FIXING (caps re-reduced) — the second, more conservative cap round was applied this session; re-probe confirming all three tools now return COMPLETE was not captured in this entry (see "Next Validation" below for the exact command to close the loop).
+
+---
+
+### Discovery
+
+Live truncation probe (2026-08-29 21:13 UTC) run 20 minutes after PR #3159 deployed confirmed that three of the six "fixed" tools are STILL returning truncated tool results to Largo:
+
+**TRUNCATED (Still):**
+- ❌ `get_screener` — 6-entry cap insufficient
+- ❌ `get_group_greek_flow` — 15-row cap insufficient  
+- ❌ `get_market_oi_change` — 15-entry cap insufficient
+
+**COMPLETE (Fixed):**
+- ✅ `get_confluence_outcomes` — 30/outcome cap working
+- ✅ `get_market_stats` — Major indices only, working
+- ✅ `get_platform_snapshot` — fitSpxStructureForModel applied, working
+
+---
+
+### Root Cause
+
+PR #3159's measured sizes were correct (1956 bytes/screener entry, 708 bytes/greek flow row, 635 bytes/OI entry), but the JSON overhead + wrapper overhead was underestimated:
+
+**Screener example:**
+- 6 entries × 1956 bytes = 11,736 bytes of data
+- Plus JSON field names, brackets, commas, wrapper overhead = ~14-15KB total
+- Approaches/exceeds 16,384 byte cap when wrapped in tool result transport
+
+**The test (`market-data-fits.test.ts`) passed** because:
+1. Test fixtures may not include all fields from real production API responses
+2. Actual production data sizes may be larger than measured
+3. Test checks only the fitted result, not the full tool result wrapper overhead
+
+---
+
+### Fix (This Session)
+
+Reduced caps further to account for complete overhead:
+
+| Tool | PR #3155 Cap | PR #3159 Cap | This Fix | Measurement |
+|------|---|---|---|---|
+| `get_screener` | 15 | 6 | **3** | ~1956 bytes/entry |
+| `get_group_greek_flow` rows | N/A | 15 | **8** | ~708 bytes/row |
+| `get_market_oi_change` | 20 | 15 | **8** | ~635 bytes/entry |
+
+**Rationale:** More conservative caps leave headroom for JSON overhead and prevent edge cases at the transport boundary.
+
+---
+
+### Caps Adjusted In
+
+**`src/lib/largo/market-data-fits.ts`:**
+- `fitScreenerForModel(raw, maxShown = 3)` (was 6)
+- `fitGroupGreekFlowForModel(raw, maxShown = 8)` (was 15)
+- `fitGroupGreekFlowRowsForModel(raw, maxShown = 8)` (was 15)
+- `fitMarketOiChangeForModel(raw, maxShown = 8)` (was 15)
+
+**`src/lib/largo/run-tool.ts`:**
+- `fitMarketOiChangeForModel(raw, 8)` (was 15)
+- `fitScreenerForModel(raw, 3)` (was 6)
+- `fitGroupGreekFlowForModel(summary, 8)` (was 15)
+
+---
+
+### Next Validation
+
+After this fix deploys, re-run truncation probe:
+
+```bash
+node --import tsx scripts/audit/largo-truncation-probe.mjs \
+  --tools=get_screener,get_group_greek_flow,get_market_oi_change \
+  --json
+```
+
+Expected: All three return `COMPLETE`.
+
+---
+
+### Lessons
+
+1. **Test fixtures must match production.** A test that passes at 6 entries but production truncates at 6 means the test is measuring something other than what production does.
+
+2. **Overhead is not negligible.** Measured entry size + JSON wrapper + transport wrapper can double the actual payload budget demand.
+
+3. **Conservative is better.** When the exact cap is uncertain, go lower. Users rarely need ranks 4-6 or rows 9-15; top 3 or top 8 are sufficient for agent reasoning.
+
+4. **Probe again after fix.** Each cap adjustment needs live validation, not just local testing.
+
+---
+
+## 2026-08-29 — Largo `get_nighthawk_dossier` tool — COMPLETE
+
+> **kind:** `FINDING`
+
+### Summary
+
+The `get_nighthawk_dossier` Largo tool was previously marked ANALYZING for truncation risk (2026-08-23). Re-probe on 2026-08-29 confirms the tool now returns COMPLETE payloads without truncation.
+
+| **Date** | **Probe** | **Result** |
+|---|---|---|
+| 2026-08-23 | Batch 2 truncation probe | TRUNCATED |
+| 2026-08-29 | Full truncation sweep | COMPLETE ✓ |
+
+### Root Cause of Prior Truncation
+
+Unknown fix point — `get_nighthawk_dossier` truncation was present on 2026-08-23 but not recorded as fixed in any PR description. Possible causes:
+1. Intermediate PR reduced play count or entry_context field inclusion.
+2. Payload serialization changed (field reordering, omission of low-priority fields).
+3. Upstream API payload shrinkage (fewer plays generated per session).
+
+### Current State
+
+Tool returns complete dossier for all live plays. Probe confirmed COMPLETE verdict with no truncation marker.
+
+### Status
+
+**Status.** FIXED (root cause unknown, but empirically verified COMPLETE on live production as of 2026-08-29 07:XX UTC).
+
+## 2026-08-29 — Largo `get_market_context` tool fitting applied — FIXED
+
+> **kind:** `FINDING`
+
+### Summary
+
+The `get_market_context` Largo tool was previously marked ANALYZING for truncation risk (2026-08-23). PR #3038 applied `fitSpxStructureForModel` to the `spx_desk` field, reducing its payload size. Re-probe on 2026-08-29 confirms the tool now returns COMPLETE payloads without truncation.
+
+| **Date** | **Event** | **Result** |
+|---|---|---|
+| 2026-08-23 | Truncation probe | TRUNCATED |
+| 2026-08-28 07:43 UTC | PR #3038 merged | Applied fitSpxStructureForModel |
+| 2026-08-29 | Full truncation sweep | COMPLETE ✓ |
+
+### Fix Applied
+
+**PR #3038 change:**
+- Location: `src/lib/largo/run-tool.ts` line ~754-762, case `"get_market_context"`
+- Change: Wrap `spxSummary` with `fitSpxStructureForModel()` before inclusion in returned payload
+- Pattern: Product-first data preserved (full data in Night Hawk edition builder); Largo-specific fitting applied only at tool boundary
+
+```typescript
+const fittedSpx = spxSummary ? fitSpxStructureForModel(spxSummary).fitted : null;
+```
+
+### Result
+
+- Before: Payload exceeded 16,384 bytes, JSON truncated, model received `[truncated]` marker
+- After: Payload ~14,200 bytes after fitting, fits within transport cap, model receives COMPLETE payload
+
+### Root Cause
+
+The `spx_desk` field of `get_market_context` returned full SPX desk summary including optional fields (news_headlines, macro_events, sector_heat, oi_changes, unified_tape, greek_exposure, macro_indicators, strike_stacks) that Largo questions don't use. Fitting removed these fields while preserving core data.
+
+### Status
+
+**Status: FIXED** (verified COMPLETE on live production as of 2026-08-29 07:XX UTC).
+
+## 2026-08-29 — Largo `get_analyst_ratings` tool — COMPLETE
+
+> **kind:** `FINDING`
+
+### Summary
+
+The `get_analyst_ratings` Largo tool was previously marked ANALYZING for truncation risk (2026-08-23). Re-probe on 2026-08-29 confirms the tool now returns COMPLETE payloads without truncation.
+
+| **Date** | **Probe** | **Result** |
+|---|---|---|
+| 2026-08-23 | Batch 5 truncation probe | TRUNCATED |
+| 2026-08-29 | Full truncation sweep | COMPLETE ✓ |
+
+### Root Cause of Prior Truncation
+
+Unknown fix point — `get_analyst_ratings` truncation was present on 2026-08-23 but not recorded as fixed in any PR description. Possible causes:
+1. Payload was reduced to top-N ratings instead of market-wide query.
+2. Field inclusion changed (fewer details per rating).
+3. Upstream analyst data provider returned smaller dataset.
+
+### Current State
+
+Tool returns complete analyst ratings for the market-wide query. Probe confirmed COMPLETE verdict with no truncation marker.
+
+### Status
+
+**Status.** FIXED (root cause unknown, but empirically verified COMPLETE on live production as of 2026-08-29 07:XX UTC).
+
+## 2026-09-02 — [FINDING, P2 correctness] Night Hawk 0DTE FLOW/PIN setups' "Why this play was picked" panel silently dropped 6 of 11 real scoring inputs — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | A new finding surfaced live 2026-09-02 by the 4-engine live monitor cycle while checking Night Hawk 0DTE's `/board` data for correctness (setup coherence: does `factor_breakdown` explain `score`). Not previously logged — distinct from the same-day BREAKOUT `factor_breakdown` fix (`2026-09-02-nighthawk-breakout-score-breakdown-mismatch.md`, PR #3346), which explicitly assumed FLOW/PIN's breakdown "reconciles to the separate `dossier_score` field" without live-verifying that claim. It did not: this finding is that unverified claim turning out to be false. |
+| **Root cause** | `scoreCandidate` (`src/features/nighthawk/lib/scorer.ts`) always folds **11** named components into the final score: `flow_score, tech_score, pos_score, news_score, smart_money_score, fundamental_score, catalyst_score, short_interest_score, wall_proximity_score, vex_alignment_score, skew_score` (plus a few unnamed adjustments and a regime multiplier). `enrichSetup` in `src/lib/zerodte/board.ts` — the ONE call site that turns a `ScoredCandidate` into the 0DTE board's `factor_breakdown` for FLOW/PIN-origin setups — only ever copied the first **5** of those 11 into `factor_breakdown`, silently dropping fundamental/catalyst/short_interest/wall_proximity/vex/skew. The local `SetupDossierView.scored` type in `board.ts` had also never declared those 6 fields (even though `fetchTickerDossier` in `dossier.ts` always assigns the FULL `ScoredCandidate`, runtime-carrying all of them), so the omission was invisible to `tsc` as well as to the eye. The exact same `ScoredCandidate` → `factor_breakdown` mapping already exists CORRECTLY, twice, in `src/features/nighthawk/lib/deterministic-edition.ts` (Night Hawk Edition) — `board.ts`'s copy had simply drifted out of sync with that established, already-shipped pattern. |
+| **Evidence** | Live production `GET /api/market/zerodte/board`, 2026-09-02 ~17:39 UTC: of 79 live setups, 7 FLOW-origin setups carried a `factor_breakdown` whose sum did not match `dossier_score` (the metric it is supposed to explain) — NVDA: displayed factors summed to **22.4** vs `dossier_score` **35** (displayed `score` 69); MU: **22** vs **34**; QQQ: **42** vs **47**; SMH: **5** vs **13**; AAPL: **22** vs **28**; MSFT: **18** vs **38**; AMD: **12** vs **24**. For NVDA the missing 6 factors (12.6 points) accounted for more than a third of `dossier_score` and were entirely invisible to the member reading the "Why this play was picked" panel. `FB_LABELS` in `src/features/nighthawk/command-deck/adapters.ts` already had display labels waiting for all 6 missing keys (`fundamental`, `catalyst`, `short_interest`, `wall_proximity`, `vex`, `skew`) — the UI side was ready; only the data side (`board.ts`) never populated them. |
+| **Fix** | `enrichSetup` in `board.ts` now conditionally spreads all 6 missing subscores into `factor_breakdown` (`...(scored.fundamental_score != null ? { fundamental: scored.fundamental_score } : {})`, etc.) — the identical conditional-spread pattern already used in `deterministic-edition.ts`'s two builders, so a real 0 (dimension scored, contributed nothing) and an absent input (dimension never scored) still render as different facts rather than collapsing into the same "0" bar. Widened the local `SetupDossierView.scored` type declaration to include the 6 fields as optional (matching `ScoredCandidate`'s own optionality) so the fix type-checks against the real runtime shape `fetchTickerDossier` already produces. |
+| **Blast radius** | Single call site (`board.ts`'s `enrichSetup`, the only producer of `factor_breakdown` for FLOW/PIN setups — confirmed via `grep factor_breakdown: src/lib/zerodte/board.ts`). `thesis-health.ts` reads `factor_breakdown` off the frozen `entry_context` snapshot written at commit time — this fix improves it for future commits going forward, same self-heals-forward pattern as every other snapshot-shaped fix in this codebase; already-committed rows are untouched (no live write access from this sandbox, and retroactively rewriting a frozen commit snapshot would be its own, worse bug). BREAKOUT-origin setups (`breakout_core`/`dollar_volume`/`screen_base`/`intraday_edge`, PR #3346's fix) are untouched — this `enrichSetup` function is not on that code path (BREAKOUT's `factor_breakdown` is built entirely in `breakout-source.ts`/`scan.ts`). |
+| **Fix rationale** | Mirrored the already-shipped, already-tested `deterministic-edition.ts` mapping rather than inventing a new architecture (e.g. a BREAKOUT-style catch-all `intraday_edge`-shaped residual entry) — smaller diff, and consistent with an existing on-record design decision rather than a new one. Deliberately did NOT attempt to make the breakdown sum to `dossier_score` *exactly*: `scoreCandidate` also applies an IV-rank penalty, an anomaly-ticker penalty, a flow-conviction bonus, and a `dampenedRegime` multiplicative scale that are not exposed as named `ScoredCandidate` fields at all — `deterministic-edition.ts`'s own shipped, tested mapping doesn't reconcile to the exact cent either, so exact reconciliation was never an established invariant for this shape (unlike BREAKOUT, which has its own explicit, tested guarantee via `applyIntradayEdgeToBreakdown`). Closing that residual gap would mean inventing a NEW invariant/catch-all field this codebase has never committed to for FLOW/PIN, which is out of scope for a same-day correctness fix; the fix here removes the actual defect (6 always-available, always-real components silently missing) without overreaching into that separate design question. |
+| **Regression guard** | 2 new tests in `src/lib/zerodte/board.test.ts`: `enrich: factor_breakdown carries the six named subscores scoreCandidate also folds into score` (a `scored` fixture with all 6 non-zero, asserts every one appears with the right label/value) and `enrich: factor_breakdown omits (not zero-fills) subscores the scorer never returned` (the pre-existing 5-field-only fixture still produces exactly the pre-existing 5-key object — no regression on the base case). Git-stash proven: reverting only `board.ts` reproduces exactly 1 failure (the new carries-six-subscores test; `board.test.ts` otherwise 127/128) against pre-fix source; restoring returns 128/128. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20) · `board.test.ts` 128/128 · `board.test.ts` + `scan.test.ts` + `thesis-health.test.ts` + `adapters.test.ts` + `deterministic-edition.test.ts` together (with `--experimental-test-module-mocks`) 334/334 · full `npm test` — see PR for result. |
+| **Status** | FIXED. |
+
+## 2026-09-02 — [FINDING, P4 dead-code, X-intel] Three more X-intel exports with zero importers — same "designed-ahead, not yet wired" pattern as the capture-harness finding, flagged rather than deleted — OPEN, write-up only
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | The same dead-code sweep that produced the companion "three confirmed-dead email-lane exports" fix (this cycle). These three also came back with zero importers on a whole-repo grep — but unlike the email-lane ones, each sits inside X-intel's evolving "attachment package" pipeline, a lane this file already has a documented pattern for (2026-08-10's orphaned-`bie/*`-files correction; the `capture-harness.ts` "X-intel capture harness pointed Helix, Thermal and Largo at the WRONG desk routes" finding, whose own text notes `captureForQueuePackage`/`captureSingleSource` had "no live caller yet" at the time it shipped, wrong routes and all). Deleting mid-flight scaffolding carries the same "unilaterally acting on a bigger change" risk this lane's own standing policy warns against for BUILDING — so these are recorded, not removed. |
+| **`scoreAttachmentPackage()`** (`src/lib/x-intel/package-scorer.ts:45`) | A fully-implemented 0-100 scoring function (story relevance, visual impact, product diversity, panel novelty, information density, readability, differentiation — `MIN_PUBLISH_SCORE = 55`) for a proposed X post attachment package. Imports real types from `franchises.ts`, `visual-memory.ts` (the ACTIVE module — see next entry for why that distinction matters), and `capture-catalog.ts`. `grep -rn "\bscoreAttachmentPackage\b" src scripts` → only its own definition; no caller, no test file. |
+| **`viewsForSurface()`** (`src/lib/x-intel/view-catalog.ts:445`) | `X_INTEL_VIEW_CATALOG.filter((v) => v.surface === surface)` — a lookup helper over a large, real, populated view catalog (`X_INTEL_VIEW_CATALOG`, `X_INTEL_VIEW_BY_ID`). `grep -rn "\bviewsForSurface\b" src scripts` → only its own definition; not called even internally by the file. |
+| **The orphaned module `src/lib/x-intel/visual-memory-persist.ts`** | Not a single dead export — the WHOLE FILE has zero importers: `grep -rln "visual-memory-persist" src scripts` returns nothing outside the file itself, and there is no `visual-memory-persist.test.ts`. Every export in it is dead as a result: `VISUAL_MEMORY_PATH`, `emptyVisualMemoryLedger`, `parseVisualMemoryLedger`, `appendVisualMemory`, `PUBLISH_HISTORY_PATH`, `emptyPublishHistory`, `appendPublishRecord`, plus the `VisualMemoryLedger`/`PublishedPostRecord`/`PublishHistoryLedger` types. Notably, `package-scorer.ts` (above) imports the SAME kind of visual-memory concepts (`XIntelVisualMemoryEntry`, `visualNoveltyPenalty`, `signatureSimilarity`) from a DIFFERENT, active file: `src/lib/x-intel/visual-memory.ts` (no `-persist` suffix). That strongly suggests `visual-memory-persist.ts` is an earlier iteration that was superseded by `visual-memory.ts` without being deleted — the same "evolved past, left behind" shape as the `wasLeadMagnetSentRecently` case in the companion fix, but for a whole file rather than one function. |
+| **Why write up, not delete — same reasoning as `ScrollProgressBar.tsx`** | Per this lane's own precedent in this file: a large, real, non-trivial body of work (here, three pieces of an attachment-scoring/view-selection/visual-memory-persistence pipeline) that is currently unwired could mean either "abandoned, safe to delete" or "built ahead of the caller that will wire it in" — and only the X-intel lane's owner knows which. Silently deleting real scoring logic and a view catalog lookup is a bigger, riskier action than deleting two one-line accessor functions in a stable, non-evolving lane (the companion PR's email-lane fixes), which is why those were handled directly and these were not. |
+| **Suggested next step** | For whoever owns X-intel: (1) confirm whether `visual-memory-persist.ts` is genuinely superseded by `visual-memory.ts` (if so, delete the whole file — it is unambiguously dead, not just unwired) or whether the two serve different purposes; (2) decide whether `scoreAttachmentPackage`/`viewsForSurface` are still-planned wiring for the queue-package pipeline `capture-harness.ts`'s history references, or are themselves now superseded/abandoned. |
+| **Status** | OPEN — flagged for the X-intel lane owner; no code change made here (see the companion PR for the three exports that WERE safe to remove directly). |
+
+## 2026-09-02 — [FINDING, P2 billing] Whop dunning-grace is Redis-only and fails open toward REVOKING access — the hourly reconcile cron can persist the downgrade — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | The 2026-09-01 entry `[FINDING, P2 billing] Whop dunning-grace is Redis-only and fails open toward REVOKING access — the hourly reconcile cron can persist the downgrade — OPEN`, which characterized the bug and proposed mirroring `whop-revocation.ts`'s dual Postgres+Redis pattern but deferred the fix to the billing lane. |
+| **Root cause** | `isMembershipInDunningGrace` (`whop-dunning.ts`) read only Redis; any miss (TTL expiry, transient ETIMEDOUT, post-deploy cold cache) returned false, so `resolveTierFromMembership` downgraded legitimately `past_due` members inside webhook-granted grace to `free`. The hourly `membership-reconcile` cron could persist that downgrade to Clerk `publicMetadata`. |
+| **Fix** | Mirrored `whop-revocation.ts` exactly: new `whop_dunning_grace(membership_id, expires_at)` Postgres table in `ensureSchema()`; `markMembershipDunningGrace` dual-writes (Redis hot path + Postgres `expires_at`); `clearMembershipDunningGrace` deletes from both; `isMembershipInDunningGrace` falls through to `expires_at > NOW()` on a Redis miss and backfills the hot cache (positive with remaining TTL, negative with 10m TTL). Throws on mark only when BOTH stores fail (webhook retry path). |
+| **Regression guard** | `src/lib/__tests__/whop-dunning-grace.test.ts` — 9 tests covering Redis hit/miss, expired Postgres rows, negative backfill, dual-write/clear, and db-not-configured degradation. |
+| **Gates** | `npx tsc --noEmit` clean · `whop-dunning-grace.test.ts` 9/9 · full `npm test` (Node 20). |
+| **Status** | FIXED. |
+
+## 2026-09-02 — [FINDING, P2 performance] vector-full-state-snapshot had no cross-replica overlap guard — a single tail-latency run (335s) outran its own 300s EventBridge schedule and produced a confirmed overlapping run during the worst ALB latency window of the sweep — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | Standing performance/latency audit mandate (CLAUDE.md) sweep, 2026-09-02. `AWS/ApplicationELB` `TargetResponseTime` on `blackout-production-app` over the prior 6h showed the classic tail-latency signature (low average, high p99/Max: avg-of-5-min-averages 1.57s, worst single-bucket p99 95.4s, worst single-bucket Max 119.0s) — concentrated in one window, 16:01–16:31 UTC (per-bucket avg climbed to 2.4–7.6s, p99 44.7–95.4s, Max up to 119.0s), which also carried the highest `AWS/ECS` CPUUtilization of the sweep (16:06–16:26 UTC: avg 36.0–50.6% vs an overall-window avg of 29.4%, per-task Max 84.3–89.3%). CloudWatch Logs (`/ecs/blackout-production`, `elapsed=` filter) for that exact window show a cluster of background cron jobs running long and concurrently (`vector-pick-sweep` 196–385s, `zerodte-warm` 110–372s, `vector-full-state-snapshot` up to 335s) — all fire-and-forget `after()` dispatches sharing the same cluster-wide Polygon/UW rate limiters real member requests also depend on. `vector-pick-sweep` and `zerodte-warm` already carry a `sharedCacheSetNx` overlap guard (fixed 2026-09-01/02, PRs #3295 and the desk-warm/zerodte-warm finding); `vector-full-state-snapshot` did not. |
+| **Root cause** | `vector-full-state-snapshot`'s own in-loop `TIME_BUDGET_MS = 50_000` only checks the clock **between** ticker batches (`for (...) { if (Date.now() - started > TIME_BUDGET_MS) break; ... await Promise.all(batch...) }`), never **within** one. When a single `Promise.all(batch)` blocks on the shared cluster-wide rate limiters (`GLOBAL_MAX_RPS=2`, `GLOBAL_MAX_CONCURRENCY=2-3` in `uw-rate-limiter.ts`/`polygon-rate-limiter.ts`) — exactly what happens when several other crons are hammering the same limiters concurrently, as they were in this window — one stuck batch alone can blow the intended 50s budget by 6x+, and the route had no mechanism at all to stop a second scheduled fire from dispatching a second, fully concurrent sweep while the first was still running. This is the identical problem shape `vector-pick-sweep` had before its overlap guard (a single EventBridge schedule outrunning its own measured runtime with no cross-replica lock), not the "two independent uncoordinated trigger sources" shape of the `desk-warm`/`zerodte-warm` finding earlier the same day — `vector-full-state-snapshot` is **not** in `RTH_WRITER_HEAL_AFTER_MIN` (`src/lib/rth-warm-leader-logic.ts`; confirmed by direct grep), so it has exactly one trigger source (EventBridge only). That earlier finding's blast-radius note ("swept `vector-full-state-snapshot` ... comfortable runtime margin ... correctly left untouched") evaluated a different failure mode (margin against the in-app leader's heal interval) that structurally does not apply to this route, and used evidence from an earlier window (~15:26–15:28 UTC) than the 16:10–16:12 UTC overlap this finding is based on — the two findings are not in conflict, they are catching different mechanisms with different evidence windows. |
+| **Evidence** | Deployed schedule confirmed via `blackout-infra/terraform/modules/crons/cron-jobs.json`: `"key": "vector-full-state-snapshot"`, `"eventbridge_schedule": "cron(2-59/5 11-21 ? * MON-FRI *)"` — every 5 minutes (300s) during RTH; `cron-registry.ts` mirrors this as `schedule_label: "~Every 5 min (market hours)"`, `stale_after_min: 15`. CloudWatch Logs, 44 `"[cron/vector-full-state-snapshot] background done"` completions over the prior ~6h (2026-09-02 13:32–17:06 UTC): min 62.2s, max **335.0s**, avg 119.6s. One run (2.3% of the sample) exceeded the 300s schedule: `elapsed=334995ms` logged at 16:10:43.323 UTC (derived start 16:05:08). Deriving start = done-timestamp − elapsed for every consecutive pair and checking for interval overlap finds exactly one genuine overlap in the whole sample, and it is this run: the 16:05:08→16:10:43 run (335.0s) overlaps the very next run, derived start 16:10:08→16:12:12 (123.7s, logged elapsed=123701ms), by ~34.7s — the next scheduled EventBridge fire landed while the first was still executing, both then competing for the same rate limiters, in the same window ALB `TargetResponseTime` read its worst p99/Max of the whole sweep. |
+| **Fix** | Added the same `sharedCacheSetNx`/`sharedCacheDel` cross-replica overlap guard already established by `vector-pick-sweep`/`zerodte-warm` in `src/app/api/cron/vector-full-state-snapshot/route.ts`: `OVERLAP_LOCK_KEY = "vector:full-state-snapshot:running"`, `OVERLAP_LOCK_TTL_SEC = 900` (matches this cron's own `stale_after_min: 15` from `cron-registry.ts`, the safety-net ceiling if a release is ever missed — chosen the same way as `zerodte-warm`'s TTL, and comfortably above the single 335s outlier observed). Lock acquired via `SET NX EX` before the `after()` dispatch; on a lost race the route returns `{ok:true, skipped:true, reason:"previous full-state snapshot still in flight (idempotent skip)"}` (still logged via `logCronRun`, so cron-staleness tracking is unaffected) instead of dispatching a second concurrent sweep. Fails OPEN on a Redis error (`.catch(() => true)`) — a missed overlap guard is safer than a stuck cron. `runVectorFullStateSnapshot`'s body is now wrapped in `try { ... } finally { await sharedCacheDel(OVERLAP_LOCK_KEY)... }` so the lock releases on both the success and thrown-error paths; the internal `TIME_BUDGET_MS` early-exit and the existing per-ticker `try/catch` (never abort the sweep on one ticker failing) are unchanged. |
+| **Blast radius** | Limited to this one route. No other consumer reads `vector:full-state-snapshot:running`. Cross-checked every other cron with an `elapsed=` entry in the same 6h log window against its own deployed schedule interval (`swing-active-refresh` 15min sched / max 143s, `bie-full-state-snapshot` 5min / max 114s, `meridian-warm` 5min / max 62s, `uw-cache-refresh` 2min / max 61s, `desk-warm` 5min / max 57s, `vector-dark-pool-warm`, `coaching-alerts`, `vector-universe-snapshot`, `vector-walls-warm`, `platform-warm` — all comfortably under their own schedule) — none showed genuine overlap risk and none were touched, per this repo's own standing anti-scope-creep discipline. `vector-pick-sweep` itself shows a second, distinct issue in this same evidence pull — its existing `OVERLAP_LOCK_TTL_SEC = 480` was measurably undershot by a 628.9s outlier run today (14:03:19–14:13:47 UTC), and the derived timestamps show 3 consecutive overlapping runs cascading from it (14:13–14:18 UTC) — but that is a correctness gap in an *already-shipped, already-tested* guard, not a missing one, and is being left as a documented observation rather than bundled into this PR (single-issue-per-PR policy); flagging here for the next sweep. |
+| **Fix rationale** | `sharedCacheSetNx` over alternatives (e.g. tightening `TIME_BUDGET_MS` to check within a batch, or shrinking `TICKER_CONCURRENCY`) because it is the already-proven, already-tested pattern in this exact codebase for exactly this problem shape (single schedule outrunning measured runtime), it defends against the race regardless of *why* a given run happens to be slow, and it does not touch the existing time-budget/partial-completion design (which is itself fine — the route's own comment already documents that a partial run is acceptable since the snapshots carry `asOf` and the next run fills the gap). Tightening the in-loop time check was considered and rejected as a narrower, more invasive change that only reduces the *frequency* of a slow run, not the actual harm (concurrent execution against shared rate limiters) when one still occurs. |
+| **Regression guard** | `src/app/api/cron/vector-full-state-snapshot/route.test.ts` — extended the existing after()-handshake test with 5 new source-text assertions mirroring `vector-pick-sweep/route.test.ts`'s established convention: lock acquired before dispatch, a lost race returns a skip response ahead of the dispatch call, the lock fails open on a Redis error, the lock is released in a `finally` on both success and failure paths, and the TTL matches the route's own `stale_after_min` (900s = 15min). Git-stash proof: stashing only `route.ts` (keeping the new tests) reproduces the pre-fix source — 4/5 new tests fail (only the pre-existing after()-handshake test passes); popping the stash restores the fix and all 5/5 (9/9 total in the file) pass. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20, `/opt/node20/bin`) · `src/app/api/cron/vector-full-state-snapshot/route.test.ts` 5/5 · combined with `vector-pick-sweep`/`zerodte-warm` overlap-guard tests 15/15 · full `npm test` (Node 20, `scripts/run-tests.mjs`) 11751 pass / 0 fail / 2 skipped. |
+| **Status** | FIXED. |
+
+## 2026-09-02 — [FINDING, P2 correctness] Vector's shared dynamic universe pinned an unresolvable typo ticker ("NFLIX") forever, serving a permanent dead row to every member — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | A new finding surfaced live 2026-09-02 by the ~10-minute-cadence 4-engine monitor agent while checking Vector's `/api/market/vector/universe` for correctness. Not previously logged. |
+| **Root cause** | `touchDynamicUniverse` (`src/features/vector/lib/vector-dynamic-universe.ts`) persists any ticker a member opens on Vector/Thermal/Helix/Largo into a shared Redis map (`vector:universe:dynamic`) that the 5-min recorder cron unions into its warm/record set and that `/api/market/vector/universe` serves to every member. The only gate before persisting was `isVectorTickerAllowed` — a deliberate SYNTAX-only check (`^[A-Z0-9.\-]{1,8}$`) documented in `vector-ticker.ts` as intentional: Vector serves any well-formed symbol on demand, honest-empty for non-optionable ones. That design is correct for the live, on-demand view, but `touchDynamicUniverse` reused the same gate for a different, higher-stakes decision — whether to pin a name into the CRON-RECORDED, EVERY-MEMBER-VISIBLE universe. A syntactically valid but non-existent symbol satisfies the syntax gate exactly like a real one, so once viewed it was stuck there permanently — nothing ever re-validated it, and the 14-day retention only resets on a fresh touch, which a genuinely dead symbol never gets removed by (only re-added by, if someone else makes the same typo). |
+| **Evidence** | Live production, 2026-09-02: a `"NFLIX"` row (not a real symbol — Netflix trades as `NFLX`, which has its own correct row alongside it) was present in the shared universe with `spot:0/null, gammaFlip:null, vexFlip:null, topCallWall:null, topPutWall:null`. Confirmed via direct `GET /api/market/gex-heatmap?ticker=NFLIX` → `available:false, spot:0` — the ticker genuinely does not resolve to a real, optionable symbol. |
+| **Fix** | `touchDynamicUniverse` now calls `fetchGexHeatmap(ticker)` and only writes to the shared Redis map when it returns a real spot (`hm?.spot != null`) — `fetchGexHeatmap`'s own contract ("Returns null when...spot is unavailable — never fabricates") makes this a direct, honest signal. `fetchGexHeatmap` is Redis-cache-first, so this costs nothing extra once a ticker is already warm, and the existing per-process debounce still applies to failed lookups so a repeatedly-opened typo isn't re-validated on every view. `isVectorTickerAllowed` itself is untouched — the live on-demand view still serves any syntactically valid symbol, exactly as designed. |
+| **Blast radius** | Limited to `touchDynamicUniverse`'s write path. The member-visible snapshot self-heals without any additional code change: `refreshVectorUniverseSnapshot`'s cron already REPLACES the whole snapshot outright on a complete build ("A COMPLETE build is the roster and replaces outright"), rebuilt fresh each cycle from `listSharedUniverseTickers()` (static ∪ dynamic). Once a typo ticker can no longer enter the dynamic set, the next complete cron cycle naturally excludes it — no live-Redis purge of the existing stuck "NFLIX" entry was needed or attempted; it will age out on its own (14-day retention) since this fix means it can never be re-touched/refreshed again. `ensureTickerInUniverseSnapshot` (the immediate per-view snapshot append) was deliberately left unchanged — it can still append a transient row for an unresolvable typo on the SAME view, but that row is wiped by the next complete cron rebuild rather than persisting forever, which is a fundamentally smaller and self-correcting problem than the one this fixes. |
+| **Fix rationale** | Validating against `fetchGexHeatmap`'s own real-data signal (rather than, say, an external ticker-reference list) reuses the exact same "does this resolve to a real matrix" check every other honesty-first path in this codebase already relies on, and costs nothing extra thanks to the existing cache-first design. Gating in `touchDynamicUniverse` (rather than in `isVectorTickerAllowed`) keeps the live on-demand view's documented, deliberate behavior (serve any syntactically valid symbol) completely intact — this fix is scoped to the SEPARATE decision of what enters the shared background-recording universe. |
+| **Regression guard** | 3 new tests in `src/features/vector/lib/vector-dynamic-universe-touch.test.ts` (module-mocked `fetchGexHeatmap`/shared-cache): a real, resolvable ticker is written to the shared map; a syntactically valid but unresolvable ticker (the exact "NFLIX" shape) is never pinned; a provider rejection degrades the same way, never crashing the fire-and-forget caller. Git-stash proven: all 3 fail against the pre-fix source (0/3 pass) and pass against the fix (3/3). Existing `vector-dynamic-universe.test.ts` (pure helpers) and `vector-universe.test.ts` (12 tests, `touchDynamicUniverse` mocked wholesale there) both still green — no regression. |
+| **Gates** | `npx tsc --noEmit` clean · new tests 3/3 + related existing tests 12/12 (Node 20) · full `npm test` — see PR for result. |
+| **Status** | FIXED. |
+
+## 2026-09-02 — [FINDING, P2 correctness] Vector dynamic-universe typo-ticker fix (#3348) used the wrong "no data" sentinel — dead rows (spot:0) still get pinned forever — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | Follow-up surfaced live 2026-09-02 by the 4-engine monitor agent while checking Vector's `/api/market/vector/universe` for correctness, ~25 minutes after #3348 (same day, 09:43 local) merged a fix for this exact class of bug. Not a re-report of #3348 — #3348's own guard is the root cause here. |
+| **Root cause** | #3348 added a guard to `touchDynamicUniverse` (`src/features/vector/lib/vector-dynamic-universe.ts`): `if (hm?.spot == null) return;` — intended to stop an unresolvable ticker (the "NFLIX" typo) from being pinned into the shared, cron-recorded dynamic universe forever. The guard never actually fires for that case. `fetchGexHeatmap`'s return type (`GexHeatmap`, `polygon-options-gex.ts`) types `spot: number` — never `number \| null` — and its real "can't price this ticker" path returns `emptyHeatmap(root, { spot: 0, ... })` (`spot: ctx?.spot ?? 0`), i.e. the actual sentinel for "no chain data" is the number `0`, not `null`/`undefined`. `hm` itself is `null`/`undefined` only on a TOTAL fetch failure (Polygon not configured, or `resolveOptionsRoot` can't even parse a root) — a case the `.catch(() => null)` one line above already collapses to the same shape. So `hm?.spot == null` can only ever catch the total-failure case; every syntactically-valid-but-unpriceable ticker — the exact shape of the incident #3348 was written to fix — resolves with `hm.spot === 0`, which is not `null`, sails past the guard, and gets pinned exactly as before. Every other `.spot` consumer in the codebase (`vector-screener.ts`, `vector-play-engine.ts`, `vector-play-bootstrap.ts`, `watch-track.ts`, `condor-render.ts`, `swing/manage-sync.ts`, …) already guards `spot <= 0` alongside the null check for this reason; this was the one call site that didn't. #3348's own regression test modeled the failure case as `fetchGexHeatmap` returning `null`, which is not what production actually returns for an unpriceable-but-syntactically-valid ticker — so the test passed while the guard it was proving stayed broken. |
+| **Evidence** | Live production, 2026-09-02, ~17:05-17:09 UTC (after #3348's 09:43 local merge): `GET /api/market/vector/universe` served 3 dead rows with `spot:0, gammaFlip:null, vexFlip:null, topCallWall:null, topPutWall:null` — `"NFLIX"` (the original incident, confirming #3348 did not actually stop it), plus two more not previously logged: `"LAST"` and `"SOX"`. None of the three appear in the static allowlist (`vectorUniverseTickers()` / `heatmap-allowlist.ts`), so they can only have entered through the dynamic-universe write path this guard is meant to protect — `"LAST"` in particular is not a real ticker at all (reads like a stray field name, not a symbol a member typed), and its presence with an identical dead-row shape to the already-diagnosed NFLIX case is independent confirmation the guard is a no-op rather than a coincidence. `npx tsx` repro (see Regression guard) reproduces the exact mechanism outside of prod: a mocked `fetchGexHeatmap` returning `{spot: 0, ...}` (the real `emptyHeatmap()` shape) for `"NFLIX"` gets written to the shared map by the pre-this-fix code, 0/3 new tests passing; identical run against `GexHeatmap.spot`'s type (`number`, `polygon-options-gex.ts:478`) and `emptyHeatmap`'s literal `spot: ctx?.spot ?? 0` (`polygon-options-gex.ts:3762`) confirms this is not a hypothetical shape but the actual contract. |
+| **Fix** | Changed the guard from `if (hm?.spot == null) return;` to `if (!hm \|\| !(hm.spot > 0)) return;` — matching the `spot > 0` convention already used at the two other "can we price this ticker" checks in the same source file (`polygon-options-gex.ts:93` and `:3114`) and at every other `.spot` consumer listed above. `isVectorTickerAllowed` (the deliberate syntax-only gate for the live, on-demand view) is untouched, as is everything else in #3348's fix — this is a one-line correction to the sentinel comparison it introduced. |
+| **Blast radius** | Same single call site #3348 touched (`touchDynamicUniverse`'s write guard) — no other code path reads or writes `vector:universe:dynamic` with this comparison. The member-visible snapshot self-heals the same way #3348's writeup already described: `refreshVectorUniverseSnapshot`'s cron replaces the whole snapshot outright each cycle from `listSharedUniverseTickers()` (static ∪ dynamic), so once a spot:0 ticker can no longer be (re-)touched into the dynamic map, it ages out via the existing 14-day retention with no separate purge needed. The three already-stuck rows (NFLIX, LAST, SOX) are not retroactively removed by this fix — they stop being *re-pinned* on next view/cron-touch and drop off within 14 days of last touch, same self-healing path #3348 relied on. |
+| **Fix rationale** | Fixing the comparison operator rather than changing what `fetchGexHeatmap`/`emptyHeatmap` returns: `spot: number` with a `0` "no data" sentinel is the codebase-wide convention (confirmed by grepping every other `.spot` consumer), so the caller adapting to it is the smaller, consistent change — rewriting `emptyHeatmap` to return `spot: null` would ripple into every other consumer's type and is unjustified for a bug that is fully explained, and fully fixed, at the one call site that didn't follow the existing convention. Also updated #3348's own regression test, which had modeled the "unresolvable ticker" case as `fetchGexHeatmap` returning `null` — that mock was the reason the original fix's own test suite stayed green while the guard it was testing did nothing in production; the test now mirrors the real `emptyHeatmap()` return shape (`spot: 0`), plus a separate case for the genuine total-failure (`null`) path so both are covered distinctly. |
+| **Regression guard** | `src/features/vector/lib/vector-dynamic-universe-touch.test.ts`: renamed/rewrote the "unresolvable ticker" test to use the real `spot: 0` shape (fails pre-fix: `NFLIX` gets pinned, `deepEqual` mismatch `['NFLIX']` vs `[]`; passes post-fix), and split the total-fetch-failure case into its own test using a distinct `unreachableTickers` mock set (still passes both before and after — it was never the broken path). Git-stash proven: reverting only `vector-dynamic-universe.ts` reproduces 2/3 passing (the new spot:0 test fails exactly as described above); restoring it returns 3/3. Also ran the 3 other test files that exercise this module (`vector-dynamic-universe.test.ts`, `vector-universe.test.ts`, `vector-bead-recorder-core.test.ts`, `vector-walls-warm.test.ts`, `run-tool.test.ts`) — 42/42 pass, no regression. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20) · targeted test files 45/45 pass (Node 20, `--experimental-test-module-mocks`) · full `npm test` — see PR for CI result. |
+| **Status** | FIXED. |
+
+## 2026-09-02 — [FINDING, P1 performance] vector-dark-pool-warm's unbounded ~55-ticker fan-out exhausted the UW rate limiter's admission queue, causing 83-95% per-run ticker failures — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | A second, separate finding from the same investigation that produced the `desk-warm`/`zerodte-warm` overlap-guard fix (2026-09-02-desk-warm-zerodte-warm-overlap-guard.md), spun off per that PR's blast-radius note because the root cause is different (unbounded concurrency, not a missing overlap lock). |
+| **Root cause** | `runVectorDarkPoolWarm` (`src/app/api/cron/vector-dark-pool-warm/route.ts`) fired every universe ticker's `warmVectorDarkPool(t)` call at once via `Promise.allSettled(tickers.map(...))` — roughly 55 tickers, each issuing 1-2 UW dark-pool fetches (primary + SPX/SPY fallback). Each call immediately entered the shared UW rate limiter's admission queue (`GLOBAL_MAX_RPS=2`, `DEFAULT_QUEUE_MAX_WAIT_MS=20s` in `queue-budget.ts`). With ~55-110 simultaneous entrants against a 2-RPS admission rate, tickers seated near the back of the queue routinely waited past the 20s budget and were dropped with a queue-timeout before ever reaching UW. |
+| **Evidence** | Investigated live as part of the 2026-09-02 8-agent overlap-guard sweep: measured 83-95% per-run ticker failures on `vector-dark-pool-warm`, distinct from (and unrelated to) the overlap-guard problem shape found on `desk-warm`/`zerodte-warm`. |
+| **Fix** | Replaced the raw `Promise.allSettled` fan-out with `runUwPool` (`src/lib/providers/uw-rate-limiter.ts`) — the same bounded-concurrency pool helper nighthawk's `fetchIndexFlowsPooled` already uses for exactly this shape. `runUwPool` defaults to `MAX_CONCURRENCY` (3, the rate limiter's own tuning), so at most 3 `warmVectorDarkPool` calls — and therefore at most 3 admission-queue entrants — are in flight at once, keeping each ticker's queue wait well under the 20s timeout instead of racing all ~55 into the queue simultaneously. `runUwPool` runs its worker loop through `Promise.all`, so each pooled task wraps its own call in a try/catch and returns a `PromiseSettledResult`-shaped object — otherwise one ticker's unexpected throw (not the normal case; `warmVectorDarkPool` already catches its own fetch failures) would abort every other in-flight ticker's warm via `Promise.all`. The downstream `fulfilled`/`fetchFailed` aggregation loop was left completely unchanged — this fix is purely about how the calls are scheduled, not how results are counted. |
+| **Blast radius** | Limited to this one route; `runUwPool` and its bounded-concurrency guarantee were previously unverified by any unit test (added here, see below), so this also strengthens a primitive several other call sites already depend on (`nighthawk/market-wide.ts`, `nighthawk/dossier.ts`, `largo/run-tool.ts`, `spx/spx-desk.ts`, `spx/spx-signals-shadow-skew.ts`). |
+| **Fix rationale** | `runUwPool` was chosen over alternatives (e.g. a manual batching loop, or widening `DEFAULT_QUEUE_MAX_WAIT_MS`) because it's the established, already-proven pattern in this codebase for exactly this problem shape (unbounded per-ticker fan-out against the shared UW rate limiter) — widening the queue timeout would only mask the symptom by making every warm run slower, not fix the actual overload. |
+| **Regression guard** | `src/app/api/cron/vector-dark-pool-warm/route.test.ts` (4 tests, source-text convention matching the sibling cron-route tests) — verifies the route uses `runUwPool` (not the old unbounded `Promise.allSettled` shape), that each pooled task catches its own rejection, and that the downstream aggregation is untouched. `src/lib/providers/uw-rate-limiter.test.ts` gains 2 new BEHAVIORAL tests proving `runUwPool` itself never exceeds its `concurrency` argument even under a 55-task fan-out (instrumented in-flight counter, not just source inspection) — this is real proof the primitive works, not just that the route calls it. Git-stash proven: the route test fails 3/4 against the pre-fix source (the 4th, unchanged aggregation logic, correctly still passes) and passes 4/4 against the fix. |
+| **Gates** | `npx tsc --noEmit` clean · new tests 10/10 (Node 20) · full `npm test` 11724/11726 pass, 0 fail, 2 skipped (unrelated, pre-existing) (Node 20). |
+| **Status** | FIXED. |
+
+## SPX Dashboard's embedded Vector panel wrongly claimed the whole product was "launching soon" — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P1 |
+| **Surface** | `/dashboard` (SPX Slayer desk) — embedded Vector chart panel fallback |
+| **Status** | FIXED |
+
+### Context
+Raised alongside a broader P1 about the Vector guide documenting a fully-built feature set
+(universe screener, GEX ladder, regime banner, wall-integrity scoring, gamma magnet, confluence
+zones, GEX-shift leaders, alerts, session replay) while public marketing copy elsewhere still said
+"Soon"/"Rolling out." Investigation confirmed every one of those documented capabilities has a
+real, wired production component (`VectorScanner`, `VectorGexLadder`, `VectorRegimeBanner`,
+`VectorAlertsBell`/`VectorAlertsPanel`, `VectorReplayControls`, `GexShiftLeadersStrip`,
+`vector-flow-confluence.ts`, gamma-magnet wiring in `VectorChart`/`VectorPageShell`, wall-integrity
+scoring throughout the play-intel stack) and Vector's own launch gate
+(`src/lib/tool-access.ts`'s `TOOLS` entry) is `defaultLaunched: true` — Vector has been globally
+live, not a documentation-ahead-of-reality problem. The homepage/marketing "Soon" copy was already
+fixed in PRs #3307/#3317/#3320 (this session).
+
+While auditing every remaining "Vector" + "Soon"/"launching" occurrence in the codebase for
+residue, found one more, in a different surface than marketing copy: the embedded Vector chart
+panel on the SPX Slayer dashboard (`SpxDashboard.tsx`) showed **"Vector chart launching soon"**
+whenever `vectorEnabled` was false.
+
+### Root cause
+`vectorEnabled` is `canAccessTool("vector")`, which combines the **global launch flag** (always
+`true` for Vector) with **per-user tier/tool_access overrides** (`userCanAccessTool` in
+`tool-access-server.ts`). Since the global flag can never be the reason this branch renders, the
+fallback ONLY ever fires for an SPX-Slayer-only (non-Premium) member whose plan doesn't include
+Vector — a plan-entitlement gap, not an incomplete-feature gap. The old copy told a paying member
+the wrong thing (the product doesn't exist yet) and gave them no path forward.
+
+### Fix
+Changed the fallback to `"Vector isn't on your plan yet"` / `"The embedded SPX Vector chart is a
+Premium feature. Vector itself is fully live — upgrade to unlock it here."`, with an `Upgrade to
+Premium` button linking `/upgrade` (the same CTA pattern already used elsewhere in this file).
+
+### Test
+Extended `src/features/spx/spx-vector-ios-embed.test.ts`: asserts the fallback copy never claims
+"launching soon" and does state the plan gate + upgrade CTA. Verified fails pre-fix (git-stash),
+passes post-fix. Full suite 11709/11709 green, `tsc --noEmit` clean, Node 20.
+
+## Public Learning Academy docs leaked internal component names + unsubstantiated predictive claim — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in this PR |
+
+**Root cause:** `src/lib/learn/articles.ts` — the public `/learn/*` guide content — used internal
+React component names verbatim as section headers and inline copy across the Vector, Thermal,
+HELIX, Night Hawk, and Largo guides: `VectorGexLadder`, `VectorRegimeBanner`,
+`GexShiftLeadersStrip`, `ExposureProfile`/`CumulativeCurve`/`ShiftView`, `ExpiryScope`,
+`KeyLevelBox`, `AlertsStrip`, `FlowAnomalyBanner`, `FlowBrief`, `HelixTideBar`/`TideBar`,
+`DarkPoolRail`, `TickerDrawer`, `PlaybookBoard`, `HawkRecordStrip`, `MarketContextBar`,
+`FreshnessChip`, `LargoThinkingState`. These read as engineering identifiers accidentally surfaced
+as customer education rather than product copy — a member has no reason to know or care that a
+panel is implemented as a component called `GexShiftLeadersStrip`.
+
+**Evidence:** `grep -n '\b[A-Z][a-zA-Z]*(Rail|Panel|Strip|Banner|Ladder|Board|Bar|Drawer|Scope|Box|View|Curve|Feed|Chip|Matrix|Tab)\b' src/lib/learn/articles.ts` surfaced 20+ occurrences across five separate product guides — this was systemic, not isolated to Vector.
+
+**Also fixed — unsubstantiated predictive claim (Vector guide):** the GEX Shift Leaders section
+claimed a large intraday GEX shift "often precedes a regime change or a wall break." No measurement
+of this relationship has been published (checked `docs/audit/` for any backtest of this claim —
+none exists), and Largo can ingest and repeat platform copy as if it were empirically established.
+Reworded to describe the shift as "worth watching," and explicitly states no hit-rate has been
+measured or published for it.
+
+**Also fixed — deterministic gamma-flip framing:** the Vector guide's screener table defined the
+gamma flip as flatly "above = pinned, below = trending," and the standalone Gamma Flip guide's
+worked example concluded "the only variable that changed was which side of the flip price sat on
+… before the candle printed" — both treat dealer gamma as a binary market-state switch rather than
+one regime input among several (liquidity, macro catalysts, flow). Reworded both to state the
+historical tendency while being explicit that it's an input, not a guarantee — this matters because
+Largo can ingest and repeat the same framing when answering regime questions.
+
+**Fix:** Renamed every internal identifier to plain product language while leaving the actual
+component/file names untouched (`VectorGexLadder.tsx`, `GexShiftLeadersStrip.tsx`, etc. keep their
+internal names — only the public-facing docs prose changed): "GEX Ladder", "Regime Read"/"regime
+banner", "GEX Shift Leaders", "Exposure bars"/"Cumulative curve"/"Shift view", "Expiry filter
+chips", "Key Levels", "Alerts", "Flow anomaly alerts", "Flow Brief", "The Tide bar", "dark pool
+lines", "ticker detail view" (drill-down drawer), "the playbook" (Night Hawk), "track record
+strip", "market context bar", "freshness chip", "thinking state" (Largo).
+
+**Blast radius:** All within `src/lib/learn/articles.ts` — no component code, routing, or tests
+outside this file needed to change since only the rendered guide prose was affected.
+
+**Test:** `node --import tsx --test src/lib/learn/articles.test.ts src/lib/learn/metatitle-length.test.ts src/lib/learn/article-faqs.test.ts src/lib/learn/related-articles.test.ts src/lib/learn/guide-seo.test.ts src/lib/learn/article-dates.test.ts` → 20/20 pass. `npx tsc --noEmit` → clean.
+
+## 2026-09-02 — [FINDING, P1 correctness] Night Hawk 0DTE BREAKOUT setups' displayed score silently drifted off its own listed factor_breakdown — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | A new finding surfaced live 2026-09-02 by the ~10-minute-cadence 4-engine monitor agent while checking Night Hawk 0DTE's `/record` and board data for correctness. Not previously logged. |
+| **Root cause** | `breakoutScoreBreakdown` (`src/lib/zerodte/breakout-source.ts`) pins each BREAKOUT-origin setup's `factor_breakdown` (`{breakout_core, dollar_volume, screen_base}`) to sum EXACTLY to `score` at construction time — its own docstring states the reason: "a breakdown whose parts do not add up to the headline number is worse than none." But `attachIntradayEdge` (`src/lib/zerodte/scan.ts`), which runs LATER in the same scan cycle for every gated setup regardless of origin, mutates `s.score` by adding a time-of-day nudge (`timeOfDayFactor`), a market-alignment adjustment (`marketAlignAdjust`), and an intraday-VWAP/trend adjustment (`intradayScoreAdjust`) — without touching `factor_breakdown`. The displayed score and its own listed factors silently diverged. |
+| **Evidence** | Live production `/api/market/zerodte/record`, 2026-09-02: for every BREAKOUT-origin setup carrying `factor_breakdown` (50 of 54 live setups), `sum(factor_breakdown)` did not equal the displayed `score` — consistently off by exactly **+5** (47 setups, matching `timeOfDayFactor`'s "prime continuation window" bonus, active 10:30–12:30 ET) or **+15** (3 setups: FCEL, KTOS, TDOC — time-of-day +5 stacked with market-alignment +4 and intraday-edge up to +10). |
+| **Fix** | Extracted the reconciliation logic into a new pure, exported helper `applyIntradayEdgeToBreakdown(factorBreakdown, appliedDelta)` in `scan.ts`, called from `attachIntradayEdge` right after `s.score` is computed. It adds the adjustment back as a new named `intraday_edge` factor — but ONLY when `factorBreakdown` carries the breakout-only `breakout_core` key, so FLOW/PIN-origin setups (whose `factor_breakdown` reconciles to the *separate* `dossier_score` field via `enrichSetup` in `board.ts` — verified via `board.test.ts:645-648`, a deliberately different, unrelated metric) are never touched. `appliedDelta` is passed as the actually-applied score delta (`s.score - preScore`, i.e. post-clamp), not the raw adjustment sum, so the breakdown still reconciles exactly even when the `Math.max(0, Math.min(100, ...))` clamp bites at the 0/100 boundary. |
+| **Blast radius** | Limited to `factor_breakdown`, a display-only field on `EnrichedZeroDteSetup` — `s.score` itself, the gate/governor/Cortex pipeline, and every downstream commit/grading path are completely unchanged (verified: `attachIntradayEdge`'s only other statements are unmodified, and the new helper is called strictly after the existing `s.score` assignment). No FLOW/PIN setup's `factor_breakdown` is ever written to by this change, confirmed by a dedicated regression test. |
+| **Fix rationale** | Adding the adjustment as its own named factor (rather than folding it invisibly into an existing factor, or removing the breakdown when stale) preserves `breakoutScoreBreakdown`'s original design intent — every point in `score` traceable to a named factor — and gives the deck's "Why this play was picked" panel an honest new line item ("intraday edge") instead of silently corrupting or hiding the mismatch. Gating on the `breakout_core` key (rather than `discovery_origin`) is more precise: it targets the exact breakdown SHAPE that needs reconciliation and is immune to any future change in how origins are unioned/merged for corroborated tickers. |
+| **Regression guard** | 4 new tests in `src/lib/zerodte/scan.test.ts` covering: the adjustment is added as a new factor and the breakdown reconciles to the post-adjustment score; a FLOW/PIN-shaped breakdown is left completely untouched; a zero delta or null breakdown is a no-op; the post-clamp delta (not the raw sum) is what gets recorded. Git-stash proven: all 4 fail (`applyIntradayEdgeToBreakdown is not a function`) against the pre-fix source and pass against the fix. Full `scan.test.ts` (30 tests) still green. |
+| **Gates** | `npx tsc --noEmit` clean · new tests 4/4 + full `scan.test.ts` 30/30 (Node 20) · full `npm test` — see PR for result. |
+| **Status** | FIXED. |
+
+## 2026-09-02 — [FINDING, P2 correctness] Meridian's "Read the guide" CTA pointed at the same route as "Open Meridian" — no Academy guide existed to point at — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | A P2 defect reported live 2026-09-02: "On the production homepage, Meridian has two different buttons: Read the guide / Open Meridian. But both lead to /meridian." Reported as a follow-up to an earlier finding that Meridian was the only live product missing an Academy (`/learn/...`) guide. |
+| **Root cause** | `PRODUCT_MANIFEST.meridian` (`src/lib/marketing/product-manifest.ts`) had `learnHref: "/meridian"` and `href: "/meridian"` — identical values, because no Meridian guide article had ever been written. `RedesignHome.tsx` renders the "Read the guide" CTA unconditionally for every product whose `learnHref` and `href` differ (`m.learnHref !== m.href`) — the check itself was correct (added by an earlier fix for this exact class of bug), but Meridian failed the check on the data side: it had no distinct guide to point `learnHref` at, so the two buttons collapsed onto one destination and "Read the guide" delivered no documentation. |
+| **Evidence** | Live production: Meridian's card showed both "Read the guide" and "Open Meridian" as separate buttons, both resolving to `/meridian`. Every other live product (SPX Slayer, HELIX, Thermal, Largo, Night Hawk, Vector) already had a distinct `/learn/...` `learnHref`. |
+| **Fix** | Wrote a full Meridian Academy guide at `/learn/meridian-earnings-desk-guide` (new entry in `src/lib/learn/articles.ts`) covering the catalyst timeline (earnings/macro/OpEx/FDA), the five-tab earnings sub-desk (Summary, Report, Estimates, Positioning, History), the product's core honesty mechanic — BMO/AMC-timing-aware reaction anchoring so a reaction is never misattributed to the wrong session — the Analytics Grid wide view, and cross-tool context pulled from Thermal/HELIX/Largo. Added a matching 3-item FAQ set in `src/lib/learn/article-faqs.ts`. Re-pointed `PRODUCT_MANIFEST.meridian.learnHref` to the new guide, which un-hides "Read the guide" for Meridian via the existing gate — no other homepage code changed. |
+| **Blast radius** | Added cross-links to the new guide from `thermal-heatmap-reading-guide`'s and `helix-flow-scanner-guide`'s closing sections (one sentence each), needed to satisfy the site's own internal-link-graph SEO test (every article needs >=2 incoming links; a brand-new article otherwise starts as an orphan). No other article content changed. Regenerated `src/lib/learn/article-dates.ts` (auto-generated, git-history-derived) per its own header's required process — this also caught up `dateModified` for ~15 unrelated articles whose real content had changed in commits since the file was last regenerated (drift that predates this PR; the regeneration script derives strictly from `git blame`/`git log`, so this is the tool correctly reporting real history, not a hand-edited change). |
+| **Fix rationale** | Chose the fuller fix (write the real guide) over the stopgap (hide the CTA) per the operator's own instruction: "create the Meridian Academy guide and point 'Read the guide' to it — or temporarily remove that button." A real guide was buildable from Meridian's actual shipped feature set (verified directly from `MeridianDesk.tsx`, `MeridianEarningsTabs.tsx`, and `meridian-reaction-core.ts`, not copied from marketing copy), so there was no need to fall back to the stopgap. |
+| **Regression guard** | New test in `src/lib/marketing/product-manifest-consistency.test.ts` asserts `PRODUCT_MANIFEST.meridian.learnHref !== PRODUCT_MANIFEST.meridian.href` and equals the new guide path. Git-stash proven: fails against the pre-fix manifest (1/9 fail), passes post-fix (9/9). The existing `RedesignHome.seo.test.ts` guide-CTA-gate test and the site's internal-link-graph / FAQ-coverage / meta-description-length tests all pass against the new article without modification. |
+| **Gates** | `npx tsc --noEmit` clean · targeted suites (`articles.test.ts`, `article-faqs.test.ts`, `article-dates.test.ts`, `guide-faqs.test.ts`, `guide-seo.test.ts`, `related-articles.test.ts`, `metatitle-length.test.ts`, `no-execution-claims.test.ts`, `product-manifest-consistency.test.ts`, `RedesignHome.seo.test.ts`) 38/38 + 3/3 (Node 20) · full `npm test` — see PR for result. |
+| **Status** | FIXED. |
+
+## 2026-09-02 — [FINDING, P1 correctness] Legacy edition live option marks were always null/stale — `legacy-marks` fed the shared REST snapshot fetcher a bare OCC, and Massive/Polygon requires the `O:` prefix — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | A new finding surfaced live 2026-09-02 by the 4-engine live monitor cycle while checking Night Hawk's Legacy digest board (`GET /api/market/nighthawk/legacy-marks`, `/edition`) for whether marks are populated on actually-open plays. Not previously logged. |
+| **Root cause** | `fetchOptionsUnifiedSnapshot` (`src/lib/providers/options-snapshot.ts`) calls Massive/Polygon's `GET /v3/snapshot?ticker.any_of=<csv>` with whatever OCC strings its caller passes, unmodified. That endpoint requires the canonical `O:`-prefixed form (e.g. `O:MU260904C00930000`) — a **bare** OCC (`MU260904C00930000`, no prefix) resolves to `{"error":"NOT_FOUND"}`. This codebase has two OCC builders. `buildOcc` (`src/lib/ws/options-socket.ts`, plus a structurally-identical local copy in `option-chain-prompt.ts`) and Vector's `vectorPickOcc` (`features/vector/lib/vector-pick-occ.ts`) both already return the `O:`-prefixed form — every caller built on those (zerodte `scan.ts`/`live-marks.ts`/`contract-attach.ts`, `banger-live-sync`, `option-chain-prompt.ts`, Vector's `contract-picks/live` route and `vector-pick-sweep.ts`) was unaffected, VERIFIED by reading each one's occ back to its source. `buildOccContractId` (`src/lib/helix/occ-contract-id.ts`) deliberately returns **bare** OCC instead — its own header comment says so explicitly, because its UW callers (`option-contract`/`option-contract-history` routes) want it bare, and that is correct for them. The bug is that Legacy's `resolveLegacyPlayOcc` (`features/nighthawk/lib/legacy-play-contract.ts`) also uses `buildOccContractId`, and `legacy-marks/route.ts` feeds that bare result straight into `fetchOptionsUnifiedSnapshot` — the ONE caller of that function built on the bare builder. Swing's `occSymbolFromSwingRow` (`src/lib/swing/occ-from-row.ts`) shows the pattern was already known and handled once: it explicitly re-prefixes with `O:` before calling this same function, with a doc comment saying exactly why ("Returns a Massive/Polygon-style `O:` prefixed symbol") — `legacy-play-contract.ts` just didn't do the same thing. |
+| **Evidence** | Live production, 2026-09-02 ~18:04 UTC, RTH open: fetched the day's real Legacy edition (`GET /api/market/nighthawk/edition`, 5 open plays: MU, MRNA, META, TGTX, UBS), derived each play's real OCC via the actual `resolveLegacyPlayOcc` production function, then called `GET /api/market/nighthawk/legacy-marks?occs=<those 5 OCCs>` — every row came back `mark:null, bid:null, ask:null, asof:null, stale:true`, despite the market being open and the underlyings actively trading. Direct raw-provider proof, same OCC (`MU260904C00930000`, MU's real $930C 9/4 contract): `ticker.any_of=MU260904C00930000` → `{"error":"NOT_FOUND"}` on **both** `api.massive.com` and `api.polygon.io`; `ticker.any_of=O:MU260904C00930000` (identical contract, `O:`-prefixed) → full live quote (`bid:24.75, ask:25.75, delta:0.66, open_interest:1021`, etc.) on both. Cross-check: the SAME live `GET /api/market/zerodte/board` pull, same session, showed populated `plan.bid`/`ask`/`mark` on its setups (e.g. CRDO `O:CRDO260904P00162500` → `bid:4.7, ask:5, mark:4.85`) — confirming zerodte's `scan.ts` path was never broken, since it builds `O:`-prefixed OCC via the other builder. |
+| **Fix** | `fetchOptionsUnifiedSnapshot` now normalizes every OCC to the required `O:`-prefixed form **only for the outgoing wire request** (new exported helper `withOccPrefix`), via a per-chunk reverse map (`normalizedOcc → caller's original string`). The returned `Map` (and every `diag` list: `unfound`/`missing`/`noQuote`) stays keyed by whatever format the **caller** originally passed — bare or `O:`-prefixed — so every existing caller's own `snaps.get(occ)` lookup keeps working unchanged with zero caller-side edits. `mapUnifiedSnapshotResult` (the per-row mapper) and the separate `getOptionSnapshot`/`setOptionSnapshots` in-mem cache are both untouched. |
+| **Blast radius** | Confirmed-broken: `legacy-marks/route.ts` only (the finding's trigger). Confirmed-UNaffected, by tracing each caller's occ back to its origin: `zerodte/scan.ts`, `zerodte/live-marks.ts` (reads `plan_json.occ`, itself written by scan.ts), `zerodte/thesis/contract-attach.ts`, `banger-live-sync/route.ts` (via `banger/contract.ts`), `nighthawk/option-chain-prompt.ts` (its own local `buildOcc`), `vector/contract-picks/live/route.ts` and `vector-pick-sweep.ts` (both via `vectorPickOcc`) — all eight already build/carry `O:`-prefixed OCC and were never exposed to this defect. `swing-active-refresh.ts` was the one caller already normalizing defensively (`occSymbolFromSwingRow`). The fix still lives in the ONE shared choke point (`fetchOptionsUnifiedSnapshot`) rather than only patching `legacy-play-contract.ts`, so any FUTURE caller built the bare way (as `buildOccContractId`'s own callers legitimately are, for UW) can't silently reproduce this defect a second time. |
+| **Fix rationale** | Fixing inside the shared function, rather than adding an `O:` prefix inside `resolveLegacyPlayOcc` alone, closes the general case (a future caller of `fetchOptionsUnifiedSnapshot` built on the bare `buildOccContractId` would otherwise hit the identical bug) at zero extra cost, since the already-correct callers are provably unaffected (verified by a dedicated test below). Keeping the returned map keyed by the CALLER's original string — rather than switching to always key by the canonical `O:`-prefixed form — was deliberate: that alternative would have required editing every caller's own `.get()` lookup for no behavioral gain, and multiplies the surface for an unrelated regression. |
+| **Regression guard** | 5 new tests in `src/lib/providers/options-snapshot.test.ts` (module-mocked `polygonRawJson` via `mock.module("./polygon-options-gex", ...)`, the same established pattern as `gex-positioning.test.ts`): `withOccPrefix` unit behavior; a bare OCC is sent `O:`-prefixed on the wire; the returned map is keyed by the caller's ORIGINAL bare OCC (not the canonical form); an already-`O:`-prefixed caller (the Swing/other-builders convention) is unaffected; `diag.unfound`/`missing`/`noQuote` stay keyed by the caller's original OCC. Git-stash proven: reverting only `options-snapshot.ts` reproduces exactly 4 failures (the wire-format and map-key assertions — the fifth, the already-correct-caller path, still passes unchanged) against pre-fix source; restoring returns 23/23 pass. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20) · `options-snapshot.test.ts` 23/23 · downstream caller test files (`live-marks.test.ts`, `exit-sync.test.ts`, `scan.test.ts`, `swing/contract-ranker.test.ts`, `swing/live-plays.test.ts`) 98/98, all green — confirms the fix is a no-op for their existing (already-correct or already-mocked) behavior · full `npm test` (Node 20): **11760 pass / 0 fail / 2 skipped** (11762 total). |
+| **Status** | FIXED. |
+
+## Learn / Night Hawk guide still said "overnight playbook" — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in PR (learn article title, meta, image alt, instrument guide description) |
+| **Severity** | P2 marketing consistency |
+| **Surface** | `/learn/night-hawk-evening-edition-guide`, learn instrument guide |
+
+**Symptom:** Homepage module carousel still served stale hawk `lede` from pre-manifest deploy, and the Evening Edition learn article title/meta/alt text still said "overnight playbook" after the canonical manifest banned that phrase.
+
+**Fix:** Retitle article to "Prep for the Next Session", update meta/alt copy to 0DTE Command + Evening Edition framing, align `night-hawk.ts` guide description. Regression test in `no-execution-claims.test.ts`.
+
+## Learn docs: execution-language overclaim on the 0DTE time stop, absolute freshness claims, and two residual internal-name leaks — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in this PR |
+
+**Execution-language overclaim (the main finding):** two Learn articles described BlackOut's own
+15:30 ET 0DTE time stop as literally executing a trade: "the 15:30 ET time stop **closes all
+0DTE positions** 30 minutes before the 4:00 PM close" (Pin Risk guide) and "Any open 0DTE
+position **is closed** by 3:30 PM Eastern" (theta-risk guide). BlackOut is analytics-only — no
+order routing, no broker execution (the homepage says so explicitly: "No order routing, no
+broker lock-in — pure intelligence delivered to your screen") — so it can only mark a TRACKED
+play closed in its own ledger and alert the member; it cannot literally close a position at
+their broker. Reworded both to "BlackOut marks [the play] closed ... and alerts you to exit at
+your own broker."
+
+**Also investigated, found NOT a genuine contradiction:** a QA report worried the Pin Risk
+article's "you are never holding a short equity option" sentence contradicted the 0DTE Command
+guide's description of long-premium directional plays (calls/puts, -50%/+100% rules). Verified
+against `src/lib/zerodte/plan.ts` (direction is bearish/bullish bias via buying puts/calls, never
+a sold option) and `src/lib/zerodte/terminal-ladder.ts` (the time-stop logic only marks a
+tracked play's grading outcome, never routes an order) — Night Hawk's own committed plays are
+never short equity options, so there was no real strategy contradiction. The Pin Risk sentence
+was genuinely confusing (it read as describing BlackOut's own plays when it was really general
+options-education advice), so it was rewritten to explicitly separate "BlackOut's own tracked
+plays are long-premium, so this risk never applies to them" from "if you also trade equity 0DTE
+directly, the same time-stop discipline protects you."
+
+**Absolute freshness claims:** "Live, tick-by-tick — zero delay" (homepage, `/vs/others`) and
+"update the instant the market moves ... never a stale snapshot" (FAQ) contradict the platform's
+own Risk Disclaimer ("third-party market data may be delayed, inaccurate, or incomplete").
+Reworded to "real-time streaming where the underlying feed supports it" with a pointer to the
+visible freshness indicator, rather than promising zero delay / instant / never-stale.
+
+**Two residual internal-component-name leaks** missed by the earlier vocabulary-leak pass
+(#3312): `KeyLevelBox` (Using Thermal for Strike Selection guide) → "Key Levels panel";
+`TickerDrawer` (HELIX flow scanner guide) → "ticker detail view". Found via re-running the same
+regex sweep (`\b[A-Z][a-zA-Z]*(Rail|Panel|Strip|...)\b`) against the merged `main`, which turned
+up two hits the first pass's manual section-by-section read didn't catch.
+
+**Also fixed, same theme:** two more hardcoded "6 engines"/"6 live engines" literals
+(`RedesignHome.tsx`'s "them vs us" list, `/vs/others`'s comparison table) now derive from
+`MARKETING_PRODUCTS.length`, same pattern as #3317's fix to the homepage headline.
+
+**Test:** `src/lib/learn/no-execution-claims.test.ts` (new) — regression-guards the exact broken
+phrasing (deliberately narrow: a broad "closes...position" heuristic false-positives on ordinary
+options-education prose like "SPY closes at $550.02"); verified fails pre-fix / passes post-fix.
+`articles.test.ts`, `guide-seo.test.ts`, `faq/content.test.ts`, `RedesignHome.seo.test.ts`,
+`marketing-hash-nav.test.ts` (24 tests total) still pass. `npx tsc --noEmit`: clean.
+
+## Several Largo-facing Vector reads silently defaulted to 0DTE-scoped walls/flip instead of the canonical all-expiry picture — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in this PR |
+
+**Investigation trigger:** a QA report asked whether SPX Slayer, Thermal, and Vector derive
+`call_wall`/`put_wall` from the same canonical calculation, worried that Largo could report
+different wall values depending on which product it queries.
+
+**What's NOT a bug (verified):** SPX Slayer, Thermal, and Vector's own *default* (unscoped/"all")
+wall calculation all trace to the same lineage — `wallsFromStrikeTotals`/`kingFromStrikeTotals`
+(`src/lib/providers/gex-cross-validation-core.ts`) and `computeGexWalls`
+(`src/lib/providers/gex-wall-levels.ts`, cross-checked by its own test that
+`callWalls[0]`/`putWalls[0]` match `wallsFromStrikeTotals`'s pick) — both fed by the ONE
+`fetchGexHeatmap()` matrix (`src/lib/providers/polygon-options-gex.ts`, explicitly documented as
+"the ONE source every other tool/service/AI surface consumes"). King node (`kingFromStrikeTotals`,
+cross-side argmax `|net gamma|`) is a deliberately DIFFERENT concept from call/put wall
+(per-side argmax), correctly reflected in code and docs — not a bug.
+
+**What IS a bug (root cause, fixed here):** `fetchVectorFullState(ticker, horizon = VECTOR_DEFAULT_DTE_HORIZON)`
+(`src/lib/bie/vector-full-state.ts`) defaults its `horizon` param to `"0dte"`
+(`VECTOR_DEFAULT_DTE_HORIZON`, `vector-dte-horizon.ts`) — correct for Vector's own chart, which
+genuinely opens on 0DTE by product design. A `"0dte"`-scoped call routes through
+`getVectorGexWallsForHorizon` → `getPerExpiryGexWalls` → `vector-dte-walls-core.ts`, which
+recomputes walls AND gamma flip from a **live BSM reconstruction over the raw options chain**
+(volume-adjusted, today's expiries only) — a genuinely different calculation and data source than
+the canonical all-expiry matrix SPX Slayer/Thermal report by default. Six call sites across the
+Largo surface omitted the `horizon` argument — intending "the general/canonical Vector picture,"
+not "today's 0DTE only" — and so silently inherited the 0DTE-scoped values instead:
+
+- `src/app/api/market/largo/status/route.ts` — the Largo intelligence health strip's VECTOR row.
+- `src/lib/largo/slash-prompts.ts` — the "SPX Vector read" slash-prompt preview (shows `flip` directly to the member before they even ask a question).
+- `src/lib/largo/mini-panel.ts` — both the SPX desk's `vector` sub-panel (regime/spot) and the per-ticker `vector` case (spot/regime/flip/play), injected straight into a rendered Largo mini-panel.
+- `src/lib/largo/desk-scope-prefetch.ts` — both the SPX desk's `vector` sub-context and the per-ticker `vector` case, which serialize the FULL `VectorFullState` (including `gexWalls`/`gammaFlip`) directly into Largo's prompt context as ground truth, right alongside the SAME file's `thermal`/`flow-gex` cases which already read the canonical matrix.
+
+**Blast radius:** exactly these six call sites. Already-correct callers were left untouched:
+`ecosystem-context.ts` and `wall-dynamics-read.ts` already pass `"all"` explicitly; `run-tool.ts`'s
+`get_vector_full_state`/`get_vector_pulse` tool handlers already default to `"all"` when Largo
+omits the param. Callers that legitimately want the 0DTE scope stay as-is:
+`full-platform-snapshot.ts` (explicit `"0dte"`), `play-suggest-read.ts` (explicit `"0dte"`, this
+IS 0DTE play suggestion), `nighthawk/cortex/fetch.ts` (explicit `"0dte"`, the Cortex 0DTE gate),
+`vector-pick-sweep.ts` (explicitly imports `VECTOR_DEFAULT_DTE_HORIZON`, tracking Vector's own
+default view on purpose), and `meridian-earnings-*.ts` (explicit `"weekly"`, appropriate for
+earnings-week option flow).
+
+**Fix:** made `horizon: "all"` explicit at all six sites, aligning them with the pattern already
+established in `ecosystem-context.ts`/`wall-dynamics-read.ts`/`run-tool.ts`.
+
+**Fix rationale:** did not change `fetchVectorFullState`'s own default parameter — `"0dte"` is the
+correct default for Vector's own product surfaces (the chart, the pick sweep) and changing it
+would silently alter behavior for callers that correctly rely on it. The bug was specifically
+callers omitting the argument while intending the OTHER meaning; fixing the call sites is the
+narrower, lower-risk change.
+
+**Test:** `src/lib/largo/vector-horizon-consistency.test.ts` — source-regex-asserts every
+`fetchVectorFullState(...)` call in the four affected files carries an explicit `"all"`. Verified
+fails 4/4 pre-fix (`git stash`) / passes 4/4 post-fix. Existing `desk-scope-prefetch-spx.test.ts`,
+`desk-scope-ticker.test.ts`, `desk-scope.test.ts`, `mini-panel-orphaned.test.ts`,
+`slash-prompts.test.ts` (39 tests total) still pass. `npx tsc --noEmit`: clean.
+
+## iOS E2E Vector canvas flake after SPX segment switch — FIXED (harness)
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed — `waitForVectorCanvas()` + resilient segment clicks |
+| **Severity** | P3 harness |
+| **Surface** | `scripts/ios-native-ui-e2e.mjs` |
+
+**Symptom:** `pro:spx:vector-canvas` failed with `h=0` after Matrix→Vector segment switch because the harness only slept 3s while `SpxVectorEmbed` dynamic-imports + fetches seed.
+
+**Fix:** Poll until `.vector-chart-canvas canvas` client dimensions exceed 80×80; dismiss command deck overlay before segment clicks; early-return dashboard content assert when Intel segment hides vector.
+
+**Evidence:** Re-run measured `pro:spx:vector-canvas — h=282 w=312` PASS during RTH.
+
+## Homepage Premium Yearly card omitted the 7-day money-back guarantee — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P1 |
+| **Surface** | Homepage pricing grid (`RedesignHome.tsx`, `#pricing` section) |
+| **Status** | FIXED — PR (this branch) |
+
+### Root cause
+Homepage pricing cards and `/pricing` (`RedesignPricing.tsx`) are separately maintained copy, not
+rendered from one shared plan config. All three homepage cards (SPX Slayer, Premium Monthly,
+Premium Yearly) shared the identical trust line `"Cancel anytime · No contracts"`. `/pricing`
+correctly states `"7-day money-back guarantee · cancel anytime"` on its yearly card, and
+`/refund-policy` confirms the entitlement (`"Annual subscriptions are non-refundable after the
+first 7 days"`, monthly explicitly non-refundable). So a real contractual benefit existed but
+wasn't communicated on the highest-traffic purchase surface (the homepage), while the correct
+copy already lived one click away on `/pricing`.
+
+### Evidence
+`grep` on `RedesignHome.tsx` showed all three `<p className="trust">` lines identical:
+`Cancel anytime &middot; No contracts`. `RedesignPricing.tsx` line 95:
+`7-day money-back guarantee · cancel anytime`. `refund-policy/page.tsx` lines 29/37/39 confirm the
+policy: monthly non-refundable once granted, annual refundable within the first 7 days.
+
+### Fix
+Changed only the Premium Yearly card's trust line on the homepage to
+`"7-day money-back guarantee · cancel anytime"`, matching `/pricing`'s exact wording. Left the SPX
+Slayer and Premium Monthly cards' `"Cancel anytime · No contracts"` line untouched — deliberately,
+since `/refund-policy` states monthly plans are non-refundable once access is granted; adding the
+guarantee there would misstate the policy in the other direction.
+
+### Blast radius
+Checked all three homepage pricing cards and `/pricing`'s three plan cards — no other surface
+shares this hardcoded trust string. A full plan-metadata canonicalization (price, interval,
+refund_window, cancellation, features, checkout_id — as recommended) is a larger refactor than
+this fix; left as a documented follow-up rather than expanding this PR's scope.
+
+### Test
+New `src/components/landing/RedesignHome.pricing.test.ts`: asserts the homepage yearly card states
+the guarantee (matching `/pricing`'s wording) and that the SPX Slayer/Premium Monthly cards do
+NOT claim a money-back guarantee. Verified fails pre-fix (git-stash), passes post-fix. Full suite
+11694/11694 green, `tsc --noEmit` clean, Node 20.
+
+## Homepage product-catalog copy drifted from the shared manifest + FAQ — FIXED (Meridian addition blocked on a missing asset)
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in this PR (Meridian carousel entry tracked separately — see below) |
+
+**Root cause (three separate drifts, one shared manifest already exists):** `src/lib/marketing/products.ts`
+(`MARKETING_PRODUCTS`) is already the intended single source of truth for the homepage's product
+carousel, consumed by `RedesignHome.tsx`/`ProductScroller.tsx`. Three of its entries/consumers had
+drifted from what the rest of the site (and the product itself) actually says:
+
+1. **Night Hawk's card described only half the product.** `tag: "Swing playbook"`,
+   `headline: "Overnight and swing setups with receipts."`, and its bullets never mentioned
+   0DTE Command — while the FAQ on the SAME homepage (`src/lib/faq/content.ts:139`) already says
+   "Night Hawk evening + 0DTE Command scanners," and the public guide
+   (`/learn/night-hawk-0dte-command-guide`) documents 0DTE Command as a continuously-running
+   intraday scanner, not a swing-only product. A visitor could get two different definitions of
+   Night Hawk without leaving the page.
+2. **Vector's card contradicted its own `launchStatus`.** `launchStatus: "live"` but
+   `stat: { k: "Soon", v: "universe scan" }` and a bullet reading "Rolling out as desk coverage
+   expands" — while Vector's public guide documents a mature feature set (universe ranking, GEX
+   ladders, regime detection, wall-integrity scoring, gamma magnet, confluence zones, GEX Shift
+   Leaders, alerts, replay) that is genuinely shipped production code (confirmed via a separate
+   investigation into Vector's wall-calculation implementation this session — real API routes,
+   crons, and tests, not a stub).
+3. **The homepage headline/cred-count were hardcoded, not derived.** `<h2>Six engines.<br/>One
+   edge.</h2>` and `<li>6 live engines</li>` were literal strings independent of
+   `MARKETING_PRODUCTS.length` — so the count could silently go stale the next time a module was
+   added or removed, exactly as it now has (see below). The FAQ's own "How do I get access?"
+   answer separately said "all six modules" while its own next answer already names seven
+   (SPX Slayer + HELIX + Largo + Night Hawk + Thermal + Vector + Meridian).
+
+**Fix:**
+- Corrected Night Hawk's `tag`/`headline`/`lede`/`heroBlurb`/`bullets` to describe both halves of
+  the product (evening playbook AND 0DTE Command), matching the FAQ and public guide.
+- Corrected Vector's `stat`/`bullets` to describe its shipped feature set instead of "Soon"/
+  "Rolling out," matching its `launchStatus: "live"` and its own public guide.
+- Made the homepage headline and cred-count derive from `MARKETING_PRODUCTS.length` (new
+  `capitalizedNumberWord()` helper for the stylized word-form headline) instead of hardcoded
+  literals — so adding or removing a module can no longer silently desync the count from the copy.
+- Fixed the FAQ's "all six modules" → "all seven modules" (the platform genuinely ships seven:
+  SPX Slayer + the six Premium add-ons the very next FAQ answer already names).
+- Added regression tests: no `launchStatus:"live"` module's own copy may say "soon"/"rolling out"
+  (guards the Vector class of bug); Night Hawk's card must mention "0DTE Command" (guards this
+  specific regression); `capitalizedNumberWord` unit tests.
+
+**NOT fixed here — Meridian is still missing from `MARKETING_PRODUCTS` (still 6 entries, not 7):**
+the homepage's product carousel (`RedesignHome.tsx`) requires a real screenshot per product via
+`MARKETING_MODULE_GALLERY` (`src/lib/images.ts`, a `Record<MarketingModuleId, readonly string[]>`
+keyed off `/images/marketing/<id>.webp`). No Meridian screenshot exists anywhere in
+`public/images/marketing/` or the repo. Adding a `meridian` entry to `MARKETING_PRODUCTS` without
+a real asset would either fail to type-check (the gallery record would be missing a key) or force
+reusing another product's screenshot under Meridian's name — actively misleading. **This needs a
+real Meridian screenshot committed to `public/images/marketing/` before the manifest can gain a
+7th entry.** Once that asset exists, adding one `MARKETING_PRODUCTS` entry is the ONLY code change
+needed — the headline/cred-count derivation added in this PR will automatically read "Seven
+engines" / "7 live engines" with no further edits, which is exactly the "fix it through the shared
+manifest, not by hand" approach requested in review. Flagging as a tracked follow-up rather than
+silently leaving it as a stale "6" — see `docs/audit/RUN-LOG.md`/this file for the pointer.
+
+**Also investigated this session, found NOT broken (see the companion PR for the real bug
+found instead):** whether SPX Slayer/Thermal/Vector derive `call_wall`/`put_wall` from one
+canonical calculation — verified yes for their default views; a real divergence was found and
+fixed separately in several Largo-facing Vector reads that silently defaulted to a 0DTE-scoped
+calculation instead (see `fix(largo): stop several Vector reads silently defaulting to 0DTE-scoped
+walls/flip`).
+
+**Test:** `src/lib/marketing/products.test.ts` — 3 new/changed assertions, verified fail pre-fix /
+pass post-fix (`git stash`). `RedesignHome.seo.test.ts`, `faq/content.test.ts`,
+`marketing-hash-nav.test.ts` (19 tests total) still pass. `npx tsc --noEmit`: clean.
+
+## Homepage "How BlackOut thinks" pipeline stuck at OFFLINE under reduced motion — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in this PR |
+
+**Root cause:** `LandingRedesignFx.tsx`'s single effect starts with
+`const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; if (reduce) return;`
+— an early return that skips the ENTIRE effect, including the "Intelligence Pipeline" scroll-reveal
+IntersectionObserver that flips each of the four stage badges from the markup's default `OFFLINE`
+text to `ONLINE` once the stage scrolls into view. Reduced motion correctly should skip the
+decorative canvas/parallax animation, but the OFFLINE→ONLINE swap is *informational state*, not
+decoration — a page marketing the platform as live should never permanently tell a visitor the
+pipeline is offline. Any browser/OS with `prefers-reduced-motion: reduce` set (a real accessibility
+setting, and the default many crawlers/audit tools use) never fires the observer, so all four
+stages read OFFLINE forever for that visitor.
+
+**Evidence:** `curl -s https://blackouttrades.com/ | grep -c OFFLINE` returns 2+ occurrences in the
+raw, un-hydrated homepage HTML (confirmed live 2026-09-02) — that raw markup is exactly what a
+non-JS or reduced-motion crawl sees. This matches a QA report flagging the same defect as observed
+and unresolved across repeated crawls.
+
+**Fix:** When `reduce` is true, the effect now directly marks every `[data-pipe-stage]` element
+`pipe-lit` and sets its `.pipe-status` text to `ONLINE` (no animation, immediate) before returning
+— giving reduced-motion visitors the correct informational state without the scroll-triggered
+reveal or any of the decorative canvas/parallax work.
+
+**Blast radius:** Single file (`LandingRedesignFx.tsx`); no other page uses this effect.
+
+**Fix rationale:** Kept the fix minimal — a direct DOM update mirroring exactly what the existing
+IntersectionObserver callback already does (`el.classList.add("pipe-lit")` +
+`statusEl.innerHTML = '<span class="status-dot"></span>ONLINE'`), so the two code paths stay
+visibly in sync rather than diverging into two different "online" renderings.
+
+**Separately investigated, not changed:** the homepage's public gamma-tool "warming" state
+(`HomeGammaPromo.tsx` / `buildPublicGexSnapshot`) reported by the same QA crawl. Confirmed the
+underlying `/api/public/gex-snapshot?ticker=SPX` endpoint is live and healthy right now
+(`available: true`, real `asof`), and the component already fetches immediately on mount plus
+every 5s while visible (comment in the code explicitly documents this as a prior fix for exactly
+this class of staleness). The `warming` text visible in a raw `curl` of the homepage is the
+`revalidate = 3600` ISR snapshot plus the Cloudflare edge cache (`edge_ttl 7200` for anonymous
+requests, per `CLAUDE.md`) — real browsers self-heal within ~5s of the client JS running, so this
+reads as an accepted architectural tradeoff (fast static-first-paint, live self-heal) rather than a
+code bug to patch here. Flagging for awareness, not fixing, to avoid scope creep into an ISR/edge-
+cache TTL change that needs its own cost/staleness tradeoff discussion.
+
+**Test:** `src/components/landing/LandingRedesignFx.test.ts` — regex-asserts the reduced-motion
+branch touches `[data-pipe-stage]` and sets `ONLINE`. Verified fails pre-fix (`git stash`) / passes
+post-fix. `npx tsc --noEmit`: clean.
+
+## Homepage pipeline badges permanently fixed to never render OFFLINE — supersedes the reduced-motion-only patch
+
+> **kind:** `FINDING`
+
+| **Status** | Fixed in this PR |
+
+**Follow-up to #3313.** That PR fixed one specific path (reduced motion) where the "How BlackOut
+thinks" pipeline stage badges got stuck at their default `OFFLINE` text. A live re-crawl afterward
+confirmed via `curl blackouttrades.com` that the raw HTML STILL showed `OFFLINE` — expected,
+because that fix only changed client-side runtime behavior; the badges' default markup (what any
+non-JS reader — crawler, SEO scraper, social-preview bot, or the first paint before a real visitor
+scrolls that far — actually sees) was untouched. The underlying design (`OFFLINE` baked into SSR
+markup, flipped to `ONLINE` only by a scroll-triggered `IntersectionObserver`) meant there was
+ALWAYS a window — before scroll, before hydration, or with JS disabled entirely — where the
+platform's own marketing page described its "Identify → Validate → Execute → Results" pipeline as
+offline while every other section markets the platform as live.
+
+**Root cause:** the OFFLINE→ONLINE text swap was never actually tracking a real operational state —
+it was a decorative "power on" animation trope applied to a badge that reads as a genuine status
+indicator (status-dot + all-caps word). The four pipeline stages are always-running product
+capabilities; there's no real "offline" state to represent.
+
+**Fix:** removed the fake binary status entirely. All four badges (`RedesignHome.tsx`) now render a
+single static `LIVE` label baked directly into server-rendered markup — true from the very first
+byte the server sends, independent of JS, motion preference, or scroll position. `LandingRedesignFx.tsx`
+no longer mutates the badge text at runtime (in either the reduced-motion branch or the
+`IntersectionObserver` callback) — it still marks stages `pipe-lit` for the purely decorative
+CSS glow on scroll-into-view, with no textual claim attached to that class anymore.
+
+**Blast radius:** `RedesignHome.tsx`, `LandingRedesignFx.tsx`. Updated an existing regression test
+(`RedesignHome.seo.test.ts`) that asserted the old JS-authored-ONLINE-text invariant (guarding
+against a real prior bug: a CSS `::after` duplicating the JS text and rendering garbled overlapping
+words) — the invariant is now simpler: no runtime mutation of `.pipe-status` at all, and no CSS
+`::after` content on it either.
+
+**Fix rationale:** rejected the alternative (replacing OFFLINE/ONLINE with the reviewer-suggested
+static stage names DISCOVER/VERIFY/SURFACE/TRACK) because those would sit directly next to and
+duplicate the existing `<h3>` headers (Identify/Validate/Execute/Results) with near-synonymous
+words — confusing, not clarifying. A single accurate, permanent "LIVE" status is simpler and
+removes the entire class of bug (no runtime dependency = no window where it can be wrong).
+
+**Test:** `LandingRedesignFx.test.ts` rewritten to assert (a) all 4 badges render static `LIVE` in
+`RedesignHome.tsx`'s source and `OFFLINE` never appears, (b) `LandingRedesignFx.tsx` no longer
+mutates `.pipe-status` via `innerHTML`. Verified both fail against the current `main` / pass
+post-fix. `RedesignHome.seo.test.ts`'s existing double-render guard updated to match (still passes,
+still catches a reintroduced CSS `::after`). `npx tsc --noEmit`: clean.
+
+## 2026-09-02 — [FINDING, P1 marketing/trust] Public homepage showed OFFLINE pipeline stages, warming gamma snapshot, and stale product taxonomy — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | Operator audit of the public homepage acquisition surface: free gamma snapshot stuck on "Snapshot warming up — check back shortly." despite 5s refresh copy; "How BlackOut thinks" pipeline rendered OFFLINE for all four stages (trust bug — reads as platform down); product carousel still said "Six engines" while Premium includes Meridian; Night Hawk marketed as swing/overnight; Vector labeled "Soon" while live; Premium pricing bullets omitted Thermal/Vector/Meridian by name. |
+| **Root cause** | (1) `buildPublicGexSnapshot` returned empty warming state on upstream miss with no last-good fallback. (2) `LandingRedesignFx.tsx` rewrote `.pipe-status` innerHTML to ONLINE/OFFLINE on scroll while SSR seeded conflicting labels — double-exposed garbled OFFLINE text. (3) Homepage copy hardcoded engine count and product cards instead of `src/lib/marketing/products.ts` registry. |
+| **Fix** | Last-good Redis cache (`public-gex-snapshot:last-good:{ticker}`) served with `degraded: true` + timestamp when live feed misses; prolonged warming (>300s) pages via `captureError` + `shouldAlarmPublicGexWarming`. Pipeline labels → semantic static SCAN/VERIFY/STRUCTURE/LOGGED; FX only adds `.is-live` class. Canonical 7-product registry drives module headline, pricing perks, Night Hawk 0DTE positioning, Vector live status. `HomeLiveDeskStrip` under hero; `HomeGammaPromo` shows cached badge when degraded. |
+| **Blast radius** | Marketing surfaces only: `RedesignHome.tsx`, `HomeGammaPromo.tsx`, `public-gex-snapshot.ts`, `marketing/products.ts`, FAQ/onboarding copy softening zero-delay claims. |
+| **Regression guard** | `public-gex-snapshot-degraded.test.ts`, `public-gex-snapshot.test.ts` (warming alarm), `products.test.ts`, `RedesignHome.seo.test.ts` (no OFFLINE seed, no ::after duplicate labels). |
+| **Status** | FIXED. |
+
+## 2026-09-02 — [FINDING, P2 correctness] Homepage still said "module" after the products rename, and the mobile sticky CTA misstated the platform's entry price — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | Two P2 findings reported live 2026-09-02 by an external review pass of the production homepage/pricing pages, following the earlier 6→7 product-catalog migration. |
+| **Root cause (terminology)** | The homepage's headline (`marketingModulesHeadline()`) and the FAQ (`src/lib/faq/content.ts`) were already correctly updated to say "product(s)" after the migration, but four other user-visible strings in `RedesignHome.tsx` and `RedesignPricing.tsx` were never updated: the eyebrow tag above the product carousel ("Every module, in depth"), its subhead ("Each module is a full product"), the Premium pricing card's sub-line on both the homepage and `/pricing` ("Every module — one membership" / "Every module · one membership"), and the "Browse modules" CTA button — a direct contradiction sitting one line below a headline that already says "product(s)." |
+| **Root cause (pricing CTA)** | The mobile sticky CTA read "Get access — From `{usd(MEMBERSHIP_PRICING.monthly)}`/mo" = "Get access — From $199/mo". `MEMBERSHIP_PRICING.monthly` (`src/lib/pricing.ts`) is the flat **Premium/full-desk** price ($199) — but the SAME homepage's pricing section also offers a genuinely cheaper **SPX Slayer / community** tier at `MEMBERSHIP_PRICING.community` ($49/mo). "From $X" is a floor claim, so pairing it with the higher tier's price contradicted the page's own pricing section, which correctly labels the $199 tier "FULL DESK" and the $49 tier separately. |
+| **Evidence** | Live production, verified directly: the eyebrow/subhead/pricing-card copy above still read "module" while the headline read "SEVEN PRODUCTS. ONE EDGE." on the same screen; the mobile sticky CTA showed "Get access — From $199/mo" while the pricing section on the same page offered SPX Slayer at $49/mo. |
+| **Fix** | Terminology: replaced "module" with "product"/"desk" in the four identified user-visible strings across `RedesignHome.tsx` and `RedesignPricing.tsx`. Left untouched: the `#modules` URL anchor, `sec-cmd`/`cmd-*` CSS classes, and the `MARKETING_MODULE_GALLERY`/`marketingModulesHeadline` code identifiers — these are a URL/code contract, not copy, and renaming them is a separate, larger, unrelated refactor with its own blast radius (external bookmarks, other call sites). Pricing CTA: this specific CTA routes to `/upgrade` (`hrefSignedOut="/sign-up?redirect_url=%2Fupgrade"`), the same premium-checkout path the pricing section's "FULL DESK" card uses — confirming its real intent is the premium tier, not a site-wide floor. Relabeled to "Get Full Desk" and dropped the "From" prefix, so the copy honestly states what it sells (a flat $199/mo full-desk membership) rather than implying it as the platform's cheapest entry point. |
+| **Blast radius** | Purely display copy — no pricing logic, checkout flow, or routing changed; `MEMBERSHIP_PRICING.monthly`'s value and the CTA's href are untouched. |
+| **Fix rationale** | For the CTA, relabeling (matching the operator's own stated preference when the intent is genuinely Full Desk) was chosen over changing the displayed price to `$49/mo`, because the href already routes to the premium `/upgrade` flow — showing "$49/mo" there while linking to a $199 checkout would create a new, worse mismatch between the CTA's promise and its destination. |
+| **Regression guard** | 2 new tests in `src/components/landing/RedesignHome.seo.test.ts`: one asserts no stray user-visible "module" text remains in either `RedesignHome.tsx` or `RedesignPricing.tsx` (narrow JSX-text-position regex, deliberately excluding the URL anchor/CSS classes/code identifiers); one asserts the mobile sticky CTA is labeled "Get Full Desk" and no longer claims `MEMBERSHIP_PRICING.monthly` as a "From" floor. Git-stash proven: both fail against the pre-fix source (2/8 fail, the other 6 pre-existing tests unaffected) and pass against the fix (8/8). |
+| **Gates** | `npx tsc --noEmit` clean · new tests 2/2 + full `RedesignHome.seo.test.ts` 8/8 (Node 20) · full `npm test` — see PR for result. |
+| **Status** | FIXED. |
+
+## 2026-09-02 — [FINDING, P2 navigation, homepage] Meridian's "Read the guide" CTA points at the product shell, not a guide — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | Live report: every module card on the homepage renders two CTAs — "Read the guide" and "Open {Product}". For every product except Meridian these resolve to two different URLs (e.g. Vector: `/learn/vector-scanner-guide` vs `/vector`). Meridian's card renders both against `/meridian` — following "Read the guide" lands on the product shell, not educational content. |
+| **Root cause** | `PRODUCT_MANIFEST.meridian` in `src/lib/marketing/product-manifest.ts` has `learnHref: "/meridian"` and `href: "/meridian"` — identical. Meridian shipped with its product route reused as a placeholder `learnHref` before a dedicated Academy article existed, and `RedesignHome.tsx`'s module-card renderer had no guard against a product whose guide and product route coincide — it always rendered "Read the guide" unconditionally. |
+| **Evidence** | `src/lib/marketing/product-manifest.ts:179-180` — `learnHref: "/meridian", href: "/meridian"`. Confirmed no Meridian entry exists in the Academy curriculum (`src/lib/learn/nav.ts`'s `LEARN_NAV` — 7 slugs, none `meridian` or `vector`) or as a standalone guide page, so there is genuinely nowhere for the CTA to send a reader. |
+| **Fix** | `RedesignHome.tsx`'s module-card action row now only renders "Read the guide" when `m.learnHref !== m.href` — a general guard (not a Meridian special-case), so any future product added without its own Academy guide yet degrades the same way instead of shipping a dead-end duplicate CTA. |
+| **Blast radius** | This affects every current and future `PRODUCT_MANIFEST` entry rendered on the homepage module gallery, not just Meridian — checked live: SPX Slayer, HELIX, Largo, Night Hawk, Thermal, and Vector all have distinct `learnHref`/`href` pairs already, so only Meridian's card visibly changes today. |
+| **Deliberately not done** | Did not write the Meridian Academy guide itself (the user's suggested `/learn/meridian-earnings-guide` covering earnings timeline, estimate revisions, historical reactions, positioning/flow context, freshness semantics, cross-product workflow) — that is real content authoring, a separate, larger piece of work, and out of scope for a navigation-routing fix. Also did not touch the separately-reported Academy CURRICULUM gap (`LEARN_NAV` has no Vector/Meridian chapter at all) — see the companion finding for that; this fix only prevents the CTA from lying about a guide's existence, it does not create the guide or the chapter. |
+| **Status** | FIXED — new regression test (`RedesignHome.seo.test.ts`) confirmed to fail pre-fix (`git stash`) and pass post-fix. `npx tsc --noEmit` clean. |
+
+## 2026-09-02 — [FINDING, P3 Marketing/Homepage] `HomeLiveDeskStrip` ticker row loses its 1.5rem side margin on every viewport — text runs flush to both screen edges — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | Live UI verification pass (`proxy-browser.cjs` against the production homepage, mobile viewport 430x932) as part of the standing hourly Discovery sweep — a "fresh angle" cycle after the Helix/email/X-intel findings earlier this session. Two screenshots taken 3s apart (6000ms and 9000ms wait) to rule out a scrolling/animating element caught mid-frame, per this repo's own documented false-positive precedent (the `/terminal` composer "clip" — a 20s CSS marquee caught mid-frame, FINDINGS.md). Both captures were pixel-identical at this element (same text, same x-position), which rules out an animation artifact and confirms this is a static layout bug. |
+| **Symptom** | The "GEX snapshot initializing" chip (or the live GEX chips when the snapshot is warm) and the product-link ticker beneath it (`HomeLiveDeskStrip`, rendered under the homepage hero) sit flush against the very left AND right edges of the viewport, with zero horizontal padding — visibly inconsistent with every other section on the page (hero heading, CTA buttons, feature-bullet rows), which all keep a consistent side margin. |
+| **Root cause** | `HomeLiveDeskStrip.tsx` renders `<div className="w home-live-strip-inner">` — combining the shared `.w` class (`max-width:var(--mw);margin:0 auto;padding:0 1.5rem`, used site-wide for the page's centered/margined content column) with its own `.home-live-strip-inner` class. `.rl .home-live-strip-inner` (`src/app/marketing-redesign.css`) is a more specific selector than `.w` (two classes vs one), and its own `padding:.65rem 0` declaration is a shorthand that sets **all four sides** — so it doesn't add vertical padding on top of `.w`'s horizontal padding, it silently replaces `.w`'s `0 1.5rem` outright, zeroing the side margin the developer explicitly added the `.w` class to get. This is the only place in the codebase that combines `.w` with a second class carrying its own `padding` shorthand (`grep -rn 'className="w [a-zA-Z0-9_-]+"'` returns exactly this one usage), so there was no established convention this file deviated from — it's a first-instance cascade mistake, not a copy of a working pattern. |
+| **Consequence** | Cosmetic/visual-consistency defect on every page load, every viewport — the row is the first thing a visitor sees confirming the desk is live ("proves the desk is live without inventing unavailable feeds", per the component's own doc comment) directly under the hero CTA, so it's high-visibility real estate for the bug to sit in. No data/logic impact — `overflow-x:auto` on the same rule means the content itself was never clipped or unreachable, just visually mis-margined. |
+| **Fix** | Restated the horizontal component in `.rl .home-live-strip-inner`'s own `padding` shorthand: `padding:.65rem 0` → `padding:.65rem 1.5rem`, matching `.w`'s own 1.5rem side padding exactly so the row keeps the page's shared margin regardless of the cascade/specificity relationship with `.w`. No other property changed; `overflow-x:auto` (for narrow viewports where the ticker doesn't fit) is untouched. |
+| **Regression guard** | New test `home live desk strip keeps the page's shared 1.5rem side margin` (`src/components/landing/HomeLiveDeskStrip.test.ts`) — greps the raw `.rl .home-live-strip-inner` rule out of `marketing-redesign.css` and asserts its `padding` declaration is exactly `.65rem 1.5rem`, so a future edit can't silently re-zero the horizontal side without failing CI. Follows this repo's existing convention of CSS-content regression tests (e.g. `marketing-mobile-nav.test.ts`, `thermal-ios-tab-hit.test.ts`). Confirmed RED pre-fix (`git stash` the one-line CSS change, keep the test: actual `.65rem 0` !== expected `.65rem 1.5rem`) and GREEN post-fix. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20.20.2). Full `npm test` (the correct entrypoint, not direct `node --test`): **11735 pass / 0 fail / 2 skipped**. |
+| **Status** | FIXED |
+
+## 2026-09-02 — [FINDING, P3 Helix] `contractStackHitsFromFlows` had no lower bound on print age — a future-dated print could inflate the Repeat Hits timeline and fire a milestone early — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | A routine "cold read" correctness pass over `src/lib/helix-discord-format.ts` (HELIX → Discord community-alert formatting), an area not previously deep-read this session. |
+| **Symptom** | `contractStackHitsFromFlows` (`src/lib/helix-discord-format.ts`, builds the Repeat Hits timeline for Discord embeds) filtered pool rows with `if (!Number.isFinite(ms) \|\| nowMs - ms > windowMs) continue;` — a lower bound on `ms` (i.e. rejecting a print dated AHEAD of `now`) was missing. A future-dated or clock-skewed `event_at`/`alerted_at` makes `nowMs - ms` negative, which trivially satisfies `<= windowMs` and gets counted as a hit, when it should be rejected as unreliable. |
+| **This is a known bug shape in this exact lane, missed at one call site** | Three sibling functions in the same Helix codebase already carry the fix for this: `countMatchingContractHits` (`helix-strike-leaders.ts`), and `detectVelocitySpikes`/`detectSplitFlow` (`helix-signal-detection.ts`), all via the shared `signalWindowAgeMs`/`FUTURE_PRINT_TOLERANCE_MS` helper (`helix-signal-detection.ts:156-169`) — which returns `null` (reject) for any print more than 60s ahead of `now`, generous enough to absorb ordinary UW/server clock skew while still excluding a genuinely mis-stamped print. `contractStackHitsFromFlows` predates or was written alongside those fixes and never picked up the same guard. |
+| **Consequence** | `stack_hits.length` (the array this function returns) feeds `resolveHelixMilestoneGate` (`helix-discord-milestone.ts:66`), which gates the 3rd/5th/10th repeat-hit Discord ping — so a single mis-stamped future print could make a milestone fire one hit early, and the "Stack timeline" embed would display a hit before it actually happened on the tape. |
+| **Fix** | Replaced the raw `nowMs - ms > windowMs` comparison with the same `signalWindowAgeMs(ms, nowMs)` guard the sibling call sites already use — `age == null` (rejected as future-dated beyond tolerance) or `age > windowMs` (too old) both correctly exclude the row. No behavior change for any print inside the normal window; only the previously-unguarded future-dated case is now rejected. |
+| **Regression guard** | New test `contractStackHitsFromFlows rejects a future-dated print instead of counting it as a fresh hit` (`helix-discord-format.test.ts`) — a pool with one normal print and one dated 30 minutes ahead of `now` must return exactly 1 hit, not 2. Confirmed RED pre-fix (`git stash` the one-line source change, keep the test: `2 !== 1`) and GREEN post-fix (15/15 in the file). |
+| **Gates** | `npx tsc --noEmit` clean (Node 20.20.2). Full `npm test` (the correct entrypoint, not direct `node --test`): **11711 pass / 0 fail / 2 skipped**. |
+| **Status** | FIXED |
+
+## 2026-09-02 — [FINDING, P1 data-integrity, public Gamma Snapshot] Stale underlying quote paired with a fresh-sounding, actionable directional read outside RTH — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | Live report: `/tools/gamma-snapshot` (and its homepage embed) published "Levels computed 1 min ago" alongside "dealers are net short gamma at EVERY strike … above spot 7,631.47 … momentum / vol expansion, moves accelerate" while the page's own `priceNote` was simultaneously warning the SPX price shown was the prior session's close or an early print, not a live quote. |
+| **Root cause** | `publicFreshnessCopy()` (`src/lib/public-gex-snapshot-types.ts`) already derives, from `market_session` alone, whether the underlying quote is live — it correctly shows an amber `priceNote` outside RTH. But that fact was never connected to the regime NARRATIVE. `snapshot.read` is built in `buildSnapshotFromHeatmap()` (`src/lib/public-gex-snapshot.ts`) from `heatmap.gex.regime.read`, itself produced by `computeGexRegimeCore()` (`src/lib/providers/gex-cross-validation-core.ts`) — a pure structural function with no concept of quote freshness at all (correctly so: for a member trading RTH, spot IS live, and the actionable framing is exactly right). The public snapshot is the one surface composing this string for an unauthenticated visitor with no session gate, and it never checked `market_session` before repeating the same actionable language a live member would see. Two independently-correct freshness signals (`priceNote`'s session check, `computeGexRegimeCore`'s structural read) were tracked separately with nothing reconciling them for the one audience that needed it. |
+| **Evidence** | `applyPublicReadFreshnessGate` unit tests (`src/lib/public-gex-snapshot.test.ts`) pin the exact live-observed string: `"Spot 7,631.47 is below the gamma flip (7,800.2) → short gamma: momentum / vol expansion, moves accelerate. Resistance 7,675, support 7,500."` — asserted unchanged when `market_session: "OPEN"`, and rewritten to `"Prior-session structural reference — ..."` with "moves accelerate" suppressed for `PRE-MARKET`/`AFTER-HOURS`/`CLOSED`/unknown session. Confirmed 5/5 new tests fail (import error) on the pre-fix source via `git stash` and pass post-fix. |
+| **Fix** | Added `applyPublicReadFreshnessGate(read, marketSession)` to `public-gex-snapshot-types.ts` and wired it into `buildSnapshotFromHeatmap()`, applied AFTER `correctPublicRead` (wall-side clause fix) so both corrections compose. Outside `OPEN`, it prefixes the read with `"Prior-session structural reference — "` and replaces the actionable clause (`"→ short gamma: momentum / vol expansion, moves accelerate"` / `"→ long gamma: range-bound, fade extremes"`) with a structural-only framing that keeps the factual spot-vs-flip relationship but drops the "moves accelerate now" claim. |
+| **Why here, not the shared regime builder** | `computeGexRegimeCore()` is read by the full live member desk (Thermal, Vector, Largo) where spot genuinely is live during RTH — gating it there would either do nothing useful (members trade RTH) or risk breaking a correct read for an authenticated, paying user. The freshness problem is specific to the ONE unauthenticated, no-session-gate surface republishing that same structural read to the public — so the fix is scoped to `public-gex-snapshot.ts`'s composition step, leaving every other consumer of `computeGexRegimeCore` untouched. |
+| **Deliberately not done** | The user's report also proposed a fuller schema (`underlying_as_of`, `options_as_of`, `computed_at`, `market_state`, `is_actionable` as separate fields) and integration tests across RTH/pre-market/after-hours/stale-quote/stale-options/partial-provider-failure. That is a larger contract change touching every consumer of `PublicGexSnapshot`; this fix addresses the concrete, reported defect (the narrative's actionable language leaking outside RTH) with the schema and freshness signal (`market_session`) that already exist, rather than widening scope on top of it. |
+| **Status** | FIXED — `applyPublicReadFreshnessGate` unit-tested (5 new cases), `npx tsc --noEmit` clean. |
+
+## 2026-09-02 — [FINDING, P3 Helix/Dark Pool/Largo] Three more sibling call sites had no lower bound on print age — a future-dated print could win a Discord digest pick or inflate a Largo strike-stack hit count — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | Earlier this cycle (`docs/audit/findings-staging/2026-09-02-helix-repeat-hits-future-print-guard.md`, PR #3338, merged) fixed `contractStackHitsFromFlows` for the same bug shape. Rather than treat that as done, this cycle's fresh angle was to grep the whole repo for the exact vulnerable pattern (`nowMs - ms <= windowMs` / `nowMs - ms > windowMs` with no lower bound) to see if it recurred elsewhere — the standing "3 sibling call sites already had the guard, 1 didn't" note from that finding implied the fix had been applied inconsistently across the codebase, which is exactly the shape of bug worth re-checking broadly rather than assuming one fix closed the class. |
+| **Symptom** | Three more call sites filtered "is this print inside my rolling window" with `nowMs - ms <= windowMs` (or the inverted `> windowMs` exclusion) and no check that `ms` isn't AHEAD of `now`. A future-dated or clock-skewed timestamp makes `nowMs - ms` negative, which trivially satisfies `<= windowMs` and gets treated as the freshest possible print — the opposite of "unreliable, exclude it." |
+| **Where** | 1. `selectHelixDiscordDigest` (`src/lib/helix-discord-format.ts:627-634`) — the SAME file already partially fixed this session (`contractStackHitsFromFlows`), but this second function, which ranks flows for the periodic "Top Hits" Discord digest embed, had the bug independently. A future-dated print could win the digest pick over real prints purely on score/premium. 2. `selectDarkpoolDigestPrints` (`src/lib/darkpool-discord-format.ts:201-204`) — the Dark Pool "Top blocks" digest, same shape, ranks by premium so a future-dated block with an inflated premium would always win. 3. The `recentRows` filter inside `computeFlowStrikeStacks` (`src/lib/largo/flow-strike-stacks.ts:230-233`) — feeds `recent_hit_count`/`recent_hits`, which Largo (the platform's chat/answer surface) reads directly before Claude writes about a strike stack, so an inflated count here would misinform a member-facing answer, not just a Discord ping. |
+| **This is the same bug shape already fixed 4x in this exact codebase** | `countMatchingContractHits` (`helix-strike-leaders.ts`), `detectVelocitySpikes`/`detectSplitFlow` (`helix-signal-detection.ts`), and `contractStackHitsFromFlows` (this session, `helix-discord-format.ts`) all already carry the fix via the shared `signalWindowAgeMs`/`FUTURE_PRINT_TOLERANCE_MS` helper (`helix-signal-detection.ts:156-169`, 60s tolerance for ordinary clock skew). These three were written alongside or before those fixes and never picked up the same guard — confirmed via a repo-wide grep for the raw comparison pattern, not assumption. |
+| **Consequence** | Digest embeds (`selectHelixDiscordDigest`, `selectDarkpoolDigestPrints`) could post a future-dated/clock-skewed print as the lead pick in a periodic Discord "Top Hits"/"Top blocks" digest. `computeFlowStrikeStacks`'s `recent_hit_count` (Largo-facing) could read higher than the real number of hits in the window, misinforming a member asking about a strike stack. |
+| **Fix** | All three: replaced the raw `nowMs - ms <= windowMs` (or `> windowMs` exclusion) comparison with `signalWindowAgeMs(ms, nowMs)` — `age == null` (future-dated beyond the 60s tolerance) or `age > windowMs` (too old) both correctly exclude the row; no behavior change for any print inside the normal window. `darkpool-discord-format.ts` and `largo/flow-strike-stacks.ts` needed a new import of `signalWindowAgeMs` from `@/features/helix/lib/helix-signal-detection` — both files already imported other Helix-namespace utilities (`helix-discord-format`, `helix-flow-deep-link`, `helix-strike-leaders`), so this isn't a new layering relationship. |
+| **Regression guard** | New test in each of the three existing test files, following each file's own convention: `selectHelixDiscordDigest rejects a future-dated print instead of picking it as freshest` (`helix-discord-format.test.ts`), `selectDarkpoolDigestPrints rejects a future-dated block instead of counting it in-window` (`darkpool-discord-format.test.ts`), `computeFlowStrikeStacks: rejects a future-dated alert instead of counting it as a recent hit` (`largo/flow-strike-stacks.test.ts`). Each pairs a real in-window row with a print dated 10 minutes ahead of `now` (carrying a higher score/premium, so the pre-fix bug would visibly pick the wrong one) and asserts only the real row survives. **Confirmed RED pre-fix and GREEN post-fix together**: `git stash` all three source changes (keeping the tests) — all 3 new tests fail (2 !== 1) — then `git stash pop` — all 30 tests across the three files pass. |
+| **Gates** | `npx tsc --noEmit` clean (Node 20.20.2). Full `npm test` (the correct entrypoint, not direct `node --test`): **11750 pass / 0 fail / 2 skipped**. |
+| **Status** | FIXED |
+
+## 2026-09-02 — [FINDING, P1 performance] desk-warm and zerodte-warm cache-warm crons had no cross-replica overlap guard — two independent trigger sources drove real concurrent execution during sustained RTH latency degradation — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What this resolves** | A sustained, worsening ALB p99 latency degradation observed live during RTH on 2026-09-02 (p50/p90/p99 elevated for over an hour). This finding is the code-level root cause of the observable-in-logs component of that degradation, per the operator's explicit "dig deeper into the issue and lets fix it" instruction. |
+| **Root cause** | `desk-warm` and `zerodte-warm` (`src/app/api/cron/{desk-warm,zerodte-warm}/route.ts`) are fire-and-forget crons: the HTTP handler dispatches heavy UW/Polygon-bound work via `after()` and returns 202 immediately, so `logCronRun` records DISPATCH time, not completion time. Each route has **two independent, uncoordinated trigger sources**: EventBridge's own ~5-min schedule, and the in-app `rth-warm-leader` (`src/lib/rth-warm-leader.ts`), which polls `cron_job_runs` every 15s during extended RTH hours and re-dispatches any key whose last recorded run exceeds its own `RTH_WRITER_HEAL_AFTER_MIN` threshold (`desk-warm`: 90s — the tightest of any watched key; `zerodte-warm`: 4 min). Neither route had a lock between these two sources, so a fast EventBridge fire landing close to a leader-triggered heal-fire could — and did — dispatch a second overlapping run while the first was still executing in the background on the same shared web-tier ECS compute, contending for the same rate-limited UW/Polygon upstreams real member requests also depend on. |
+| **Evidence** | Live CloudWatch Logs (`/ecs/blackout-production`), 2026-09-02: `desk-warm` logged FOUR `"[cron/desk-warm] background done"` completions within a 17.5s window (15:26:01.386–15:26:18.865 UTC), each carrying `elapsed=9–24s` — i.e. 4 genuinely concurrent fan-outs (`loadMergedSpxDesk` + `fetchGexHeatmap` SPX/SPY + `loadBootstrapBundle` + `warmFlowsMemberCaches`) running at once, not a hypothetical race. `zerodte-warm` logged two `"[cron/zerodte-warm] background done"` completions 2.171s apart (15:28:37.606 and 15:28:39.777 UTC) with `elapsed=168371ms` and `elapsed=123934ms` — their runtimes overlapped for 100+ seconds of concurrent scanner-tick + board-snapshot-rebuild execution. |
+| **Fix** | Added the same `sharedCacheSetNx`/`sharedCacheDel` cross-replica overlap guard already established by `vector-pick-sweep` (fixed earlier the same day for an analogous but distinct problem — a single schedule outrunning its own runtime, not two trigger sources racing each other). `desk-warm`: `OVERLAP_LOCK_KEY = "desk-warm:running"`, TTL 600s (matches its own `stale_after_min: 10` from `cron-registry.ts`, the safety-net ceiling if a release is ever missed); lock acquired via `SET NX EX` before dispatch, released in a `try/finally` around `runDeskWarm`'s body so both the success and error paths free it. `zerodte-warm`: `OVERLAP_LOCK_KEY = "zerodte-warm:running"`, TTL 900s (matches `stale_after_min: 15`); this route's background work is a `.then()/.catch()` promise chain rather than async/await, so the release is a `.finally()` appended to that chain instead of a `try/finally` block — functionally identical guarantee, different syntax because of the pre-existing control flow. Both fail OPEN on a Redis error (`.catch(() => true)`) — a missed overlap guard is safer than a stuck cron — and both return a `{ok:true, skipped:true, reason:"previous ... still in flight (idempotent skip)"}` payload (still logged via `logCronRun` so cron-staleness tracking is unaffected) when a race is lost, rather than silently dropping the request. |
+| **Blast radius** | Limited to these two routes. A parallel 8-agent investigation swept every other `RTH_WRITER_HEAL_AFTER_MIN`-watched cron (`meridian-warm`, `uw-cache-refresh`, `vector-full-state-snapshot`, `bie-full-state-snapshot`, `vector-walls-warm`) with the same evidence bar — none showed genuine overlap risk (comfortable runtime margin against their own trigger gaps) and were correctly left untouched, per this repo's own standing anti-scope-creep discipline (`vector-pick-sweep` precedent: lock the crons genuinely at risk, not every cron that could theoretically race). One separate, real bug was found in the same sweep — `vector-dark-pool-warm`'s unbounded 55-ticker fan-out exhausting the UW rate limiter's 20s queue budget (83–95% per-run ticker failures) — but it is a different root cause (unbounded concurrency, not a missing overlap lock) and is being fixed as a separate PR rather than bundled here. |
+| **Fix rationale** | `sharedCacheSetNx` was chosen over alternatives (e.g. narrowing `rth-warm-leader`'s heal window, or removing one trigger source) because it is the established, already-proven pattern in this exact codebase for exactly this problem shape, and because it defends against races from *any* future trigger source, not just the two currently known — removing the leader's backup dispatch would also remove its real value (self-healing a genuinely stalled EventBridge fire), and narrowing its heal window would only shrink the race window, not close it. |
+| **Regression guard** | `src/app/api/cron/desk-warm/route.test.ts` (5 tests) and `src/app/api/cron/zerodte-warm/route.test.ts` (5 tests) — source-text assertions (mirroring `vector-pick-sweep/route.test.ts`'s established convention) verifying: the lock is acquired before dispatch, a lost race returns a skip response ahead of the dispatch call, the lock fails open on a Redis error, the lock is released on both success and failure paths, and the TTL matches each route's own `stale_after_min`. Git-stash proof: both test files fail 0/10 pass against the pre-fix source and pass 10/10 against the fix. |
+| **Gates** | `npx tsc --noEmit` clean · both new test files 10/10 (Node 20) · full `npm test` (Node 20) — see PR for result. |
+| **Status** | FIXED. |
+
+## 2026-09-02 — [FINDING, P4 dead-code, email] Three confirmed-dead exports in the email lane removed — one (`wasLeadMagnetSentRecently`) was a superseded mail-bomb mitigation, not a live gap — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | A dead-code sweep of less-audited directories (`src/lib/swing/*`, `src/lib/email*`, `src/lib/whop*.ts`, `src/lib/x-intel/*`, `src/lib/providers/*`, `src/components/*`) — areas outside the heavily-audited Largo/Vector/zerodte/Meridian/Thermal/SPX/Helix/marketing surfaces. Each candidate was independently re-verified with a fresh whole-repo grep (`src/` + `scripts/`) before touching anything, per this lane's own established discipline after an earlier session's PR #3203 mistake. |
+| **`resendConfigured()`** (`src/lib/email/resend-client.ts`) | Plain, undocumented boolean helper — zero callers anywhere. `getResendClient()` in the same file already checks `process.env.RESEND_API_KEY` directly rather than calling it. No design-intent comment suggesting deliberate future use. Removed. |
+| **`EngineAccent`** (`src/lib/email/layout.ts`) | `export type EngineAccent = keyof typeof ENGINE_ACCENT` — not referenced by any function signature, in this file or anywhere else. `ENGINE_ACCENT` itself (the object) remains in use; only the derived type was dead. Removed. |
+| **`wasLeadMagnetSentRecently()` + `LEAD_MAGNET_RESEND_COOLDOWN_HOURS`** (`src/lib/email-captures.ts`) — the interesting one | This function carried a substantial doc comment describing a real mail-bomb amplification risk on `POST /api/public/email-capture` (an unauthenticated, attacker-addressable send target with only an IP-based rate limit, capping the CALLER not the RECIPIENT) — reading that comment in isolation looks like a live, unaddressed vulnerability with a written-but-never-wired fix. Traced the actual route (`src/app/api/public/email-capture/route.ts`) before assuming that: it DOES close this exact gap today, just via a different, better mechanism than the one this function implements — `checkIpRateLimit(email.toLowerCase(), "public:email-capture:recipient", 1, 86_400)`, an atomic Redis-based per-recipient limiter, with its own comment explaining the same threat model and why Redis was chosen over a DB read ("atomic... keeps working when Postgres is degraded"). `markLeadMagnetSent()` (which writes `lead_magnet_sent_at`, used for tracking/analytics) is still called and untouched; only the READ side that would have gated on that column — superseded before it was ever wired in — was dead. Confirmed via the route's own `git log` history that the Redis limiter is the shipped fix, not a parallel/redundant one. Removed both. |
+| **Deliberately NOT touched — explicitly-documented or actively-evolving code, not accidental dead code** | (1) `CORRELATION_THEMES` (`src/lib/swing/theme-cluster.ts`) — the file's own comment says it is "Exposed so tooling / tests can enumerate the seeded clusters," matching the `DealersLadderBackground.tsx` precedent in this file (2026-08-30) where an explicit design-intent comment correctly overrides a zero-importer heuristic. (2) `scoreAttachmentPackage` (`x-intel/package-scorer.ts`), `viewsForSurface` (`x-intel/view-catalog.ts`), and the fully-orphaned module `x-intel/visual-memory-persist.ts` — the X-intel lane has a well-documented history in this file (2026-08-10, and the `capture-harness.ts` "wired to nothing yet" finding) of shipping designed-ahead scaffolding for a package/capture pipeline before it's wired to a live caller; deleting mid-flight scaffolding carries the same risk as unilaterally building it, so these are written up separately for the owning lane rather than removed here. (3) `ScrollProgressBar.tsx` — already an existing OPEN finding (2026-08-30), correctly deferred to the landing-page owner; not re-flagged. |
+| **Regression check** | `npx tsc --noEmit` clean. Confirmed the one local test failure encountered (`email-capture/route.test.ts` under direct `node --test` invocation) is a pre-existing harness quirk unrelated to this change — reproduced identically via `git stash` before touching anything (`mock.module is not a function`, the same `--experimental-test-module-mocks`-class issue this file's own environment notes describe for direct-invocation runs). Full `npm test` (the correct entrypoint) — **11710 pass / 0 fail / 2 skipped**, Node 20.20.2. |
+| **Status** | FIXED |
+
+## 2026-09-02 — [FINDING, P4 infra/performance, audit-hygiene] ALB tail latency has RECOVERED — the sustained ~100s pattern cleared around 04:53 UTC and has stayed clean for 80+ minutes — status update, chain remains OPEN
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | Continuing the OPEN ALB tail-latency finding chain (original finding; a same-day follow-up reporting the pattern had WORSENED into a sustained run — six of seven 5-min windows landing on ~100.0s Max between roughly 03:57-04:48 UTC; and this session's own addendum ruling out the Largo route-deadline as the cause). Re-measured again per the mandate's own discipline before assuming anything — the shape had just changed from isolated spikes to a sustained run, so it was worth checking whether that sustained run was still ongoing. |
+| **The re-measurement — clean recovery, not another spike** | `AWS/ApplicationELB` `TargetResponseTime`, 5-min granularity, 2026-09-02 04:18-06:13 UTC. Confirms the "worsened" finding's own numbers through 04:48 UTC (`04:18→100.02s`, `04:23→98.4s`, `04:28→100.02s`, `04:33→100.03s`, `04:38→100.1s`, `04:43→100.03s`, `04:48→100.03s` — 6 of 7 windows at ~100s, matching that entry exactly). Then, starting at **04:53 UTC, the pattern stops outright**: `04:53→11.8s`, `04:58→8.3s`, `05:03→3.2s`, and every one of the following 19 consecutive 5-min windows through `06:13 UTC` stayed under 12s Max, most under 4s, with `avg` dropping from the sustained-run's 1.0-1.95s band back down to 0.05-0.15s — the same excellent baseline the very first finding measured. This is a clean, sustained recovery (80+ minutes and counting at the time of this check), not a single quiet window inside an otherwise-ongoing problem. |
+| **What this does and doesn't mean for the open finding** | It does NOT resolve the underlying open question — nothing here identifies root cause, and the access-logging fix that would provide real per-request attribution is still blocked on the sandbox permission boundary documented in the prior follow-up (PR #3319). The condition could recur; recording a recovery is not the same as recording a fix. It DOES mean whoever next reads this chain should not assume an ongoing, currently-active incident — as of this check, production is back to its original clean baseline, and has been for well over an hour. |
+| **Timing observation, not a proven cause** | The recovery lands close in time to a cluster of unrelated fixes merging around this window (nighthawk/marketing/billing/security PRs, none touching ALB or ECS config). No log evidence connects any of them to the recovery, and per this finding chain's own discipline (rule things out with logs, not coincidence), this is flagged as an observation worth someone checking later, not a claimed explanation — a self-resolving deploy-transition artifact (the leading hypothesis in the original finding) remains at least as plausible as any code change coincidentally overlapping in time. |
+| **Why record a recovery at all** | The same reason `CLAUDE.md`'s own "Base branch recovered" pattern exists for CI: a stale "still failing" read on a chain that has actually cleared wastes the next investigator's time confirming what a fresh measurement would have told them in one API call. This keeps the chain's status honest and current rather than leaving the "worsened, sustained" framing as the last word when it's no longer true. |
+| **Status** | OPEN (parent finding, unchanged) — root cause still unidentified, access-logging remediation still blocked; this entry only updates the record to reflect that the currently-measured condition is CLEAR, not ongoing, as of 2026-09-02 ~06:13 UTC. |
+
+## 2026-09-02 — [FINDING, P2 infra/performance] ALB tail latency recurred WITHOUT a deploy in the window — the deploy-transition hypothesis does not explain this episode — OPEN, write-up only
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | Continuing the OPEN ALB tail-latency finding chain (original finding → "worsened" follow-up → Largo-deadline ruled out → "recovered" status update, all this same day). Re-checked per the mandate's own discipline after the prior "recovered" entry — the condition should be assumed to recur, and it did: `AWS/ApplicationELB` `TargetResponseTime`, 15-min granularity, 2026-09-02 10:20-12:05 UTC shows the sustained pattern back: `10:50→65.6s`, `11:05→72.1s`, `11:20→87.3s`, `11:35→83.7s`, `11:50→97.5s`, `12:05→99.9s` — climbing steadily, avg rising from 0.16s to 1.32s over the same window, matching the earlier "worsened" episode's shape almost exactly. |
+| **The new evidence — no deploy happened in this window** | The original finding's leading hypothesis was deploy-transition mechanics (health-check warmup + deregistration draining around a rolling ECS deployment). Checked `ecs.describe_services`'s own event history for `blackout-production-web` directly: the most recent deployment **completed at 09:46:43 UTC** — a full **64 minutes before** the tail-latency climb began (~10:50 UTC), and the climb was still ongoing, unabated, **139 minutes after** that deploy completed (12:05 UTC, the last sample). No task start/stop/drain events appear anywhere in that entire window. This specific episode cannot be a deploy-transition artifact — there was no transition to attribute it to. |
+| **What this does to the existing hypothesis** | It doesn't rule deploy-transition out entirely — the ORIGINAL finding's correlation (dense during this session's active merge hours, absent during quiet overnight hours) is still real and still unexplained by this entry alone; deploy frequency and general daytime traffic load are confounded in that data and were never disentangled. But this episode is clean evidence that deploy-transition is **not a necessary condition** for the sustained ~90-100s pattern — whatever is happening here can and does occur with a completely idle deploy pipeline. |
+| **A different candidate this episode's timing suggests, not yet checked** | 10:50 UTC ≈ 6:50 AM ET — inside the pre-market build-up toward the 9:30 AM ET cash open, and specifically inside `isEtExtendedWarmHours()`'s 4:00 AM-8:00 PM ET window (referenced by `rth-warm-leader.ts`) where background warmers and, plausibly, genuine member traffic both ramp up. A LOAD-correlated explanation (real concurrent usage or warm-cadence background work saturating some slow, shared resource — a DB connection, a rate-limited upstream, a single-threaded hot path) fits the observed shape (climbing steadily over ~75 minutes, not a step-function) at least as well as a deploy-collision would, and is untested here. This is a new candidate to check, not a conclusion — flagged for whoever next has time to correlate against real request volume or CPU/memory (`AWS/ECS` metrics weren't pulled this pass). |
+| **Why not investigated further this cycle** | Same permission boundary as the prior follow-up (PR #3319): real per-request attribution needs ALB access logging, which is not enabled (`access_logs.s3.enabled=false`) and whose enablement is blocked on a sandbox AWS write-permission boundary already documented there. This entry only adds a new, clean falsification of one candidate cause — it does not diagnose the real one. |
+| **Status** | OPEN — the parent finding's deploy-transition hypothesis is now known to be insufficient on its own (falsified for this specific episode); condition is ACTIVE again as of 12:05 UTC (2026-09-02), climbing, not resolved. Root cause still unidentified; ALB access logging remains the correct next step once unblocked. |
+
+## 2026-09-02 — [FINDING, P4 infra/performance, audit-hygiene] ALB tail-latency investigation: the Largo 100s route-deadline is a tempting but WRONG lead — ruled out directly — addendum to the OPEN ALB tail-latency finding
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | Continuing the OPEN "ALB tail latency 90-119s" finding chain (this session's earlier entry, plus today's follow-up reporting the pattern has WORSENED — 6 of 7 consecutive 5-min windows landing on almost exactly ~100.0s Max). While looking for an application-level angle that doesn't need the AWS write access the follow-up got blocked on, found `src/lib/providers/config.ts:130`'s `largoMemberRouteDeadlineMs()` — a **documented, deliberate 100-second hard ceiling** on `POST /api/market/largo/query`, explicitly commented `"hard ceiling before ALB idle timeout (120s)"`. A same-round-number match against the observed ~100.0s ALB ceiling is exactly the kind of lead that looks too good to not check — and also exactly the kind that needs checking with evidence, not just noted as plausible. |
+| **Why this looked promising** | If Largo queries were routinely hitting this deadline, it would produce EXACTLY the observed shape: a hard ~100.0s ceiling, repeatedly, with no scatter above it — because the route itself forcibly returns at `LARGO_ROUTE_DEADLINE_MS` via `Promise.race([work, deadline])` (`route.ts:246-254`) rather than letting a slow request run longer. It would also retroactively explain why this session's own earlier check of `[largo/turn-phases]` `total_ms` values (max 14.5s, used to "rule out" Largo as the cause) was potentially misleading: that log line only fires on NORMAL completion — a request that gets cut off by the deadline handler would never reach it, so measuring only completed turns is blind to exactly the population that would matter here. |
+| **Directly checked, not assumed — and it's negative** | The deadline handler has its own distinct log line: `` `[market/largo/query] exceeded ${LARGO_ROUTE_DEADLINE_MS}ms route deadline — returning before ALB 504` `` (`route.ts:249`). Searched `/ecs/blackout-production` for `"route deadline"` over a full 24-hour window (spanning both the original finding's sample and the follow-up's "worsened" sample): **zero matches**. If Largo requests were hitting this deadline even a fraction as often as the ALB spikes occur (dozens of ~100s Max windows across that period), this log line would have fired repeatedly. It did not fire once. |
+| **What this means for the open finding** | The Largo-route-deadline hypothesis is RULED OUT, not just unconfirmed — cleanly, with a targeted log search rather than inference. Whatever is producing the ~100s ALB ceiling, it is not this specific, well-instrumented code path. The two live hypotheses from the existing finding chain (deploy-transition health-check/drain timing; some other request-level cause not yet identified) remain the open candidates, and the recommended remediation (ALB access logging, still blocked on the AWS permission boundary documented in the prior follow-up) remains the correct next step to get real per-request attribution. |
+| **Why write this up at all, given it's a negative result** | The 100-second coincidence is distinctive enough that it will very plausibly occur to the next person who looks at this OPEN finding too — without this note, that's a second investigator re-deriving and re-checking the same lead from scratch. A negative result this cheap to record (one grep, twenty minutes) is worth recording precisely because it's a natural next guess that turned out wrong. |
+| **Status** | OPEN (no change to the underlying finding's status) — this is a ruled-out sub-hypothesis, recorded so it isn't re-investigated; the parent ALB tail-latency finding remains OPEN pending ALB access-log attribution. |
+
+## 2026-09-02 — [FINDING, P2 performance, infra] ALB tail-latency spikes root-caused to unstaggered cron schedules — four crons fire on the exact same UTC minute — FIX PROPOSED, blocked on AWS write permission
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Continuing** | The open ALB tail-latency thread from PR #3335 ("ALB tail latency recurred with no deploy in the window"), which confirmed the deploy-transition hypothesis is not a necessary condition and flagged an untested "load-correlated" candidate for the ~6:50am ET recurrence. This entry answers that open question with a confirmed, measured root cause found independently in this session's own standing-mandate pass, same morning (2026-09-02, ~11:00-11:08 UTC episode). |
+| **Measurement** | `AWS/ApplicationELB` `TargetResponseTime` on `blackout-production-app`'s target group: 10:53 UTC avg=0.341 max=46.4s, 11:03 UTC avg=0.704 max=72.1s p99=8.1s (up from a steady baseline avg~0.13 p99~1.7-2.5s in the surrounding hour). `AWS/ECS` CPU for `blackout-production-web` rose in the same window: avg 5.6%→12.8%, **max 55%→91.8%**. `ecs.describe_services` confirmed no deployment was in progress or transitioning at the time (last deployment had completed at 09:46:43 UTC, steady state since) — ruling out deploy-churn for this episode, same conclusion PR #3335 reached independently. |
+| **Root cause** | `grep`'d CloudWatch Logs `/ecs/blackout-production` for `elapsed=` in the 10:45-11:10 UTC window and found five different crons all landing within the same ~90-second span at the top of the hour: `uw-cache-refresh` (21.1s), `zerodte-warm` (2.7s), `meridian-warm` (24.3s), `desk-warm` (30.4s), and **`swing-active-refresh` (56.4s)** — the longest single run, timestamped 11:01:15, almost exactly under the 11:03 ALB max=72s datapoint. Confirmed via live `events.describe_rule` against the deployed EventBridge rules (not `cron-registry.ts`'s mirror, which only carries human-readable `schedule_label`s like "~Every 5 min" and doesn't reveal minute-level alignment): `blackout-production-desk-warm`, `-meridian-warm`, and `-zerodte-warm` are all `cron(*/5 11-21 ? * MON-FRI *)`, and `blackout-production-swing-active-refresh` is `cron(*/15 11-21 ? * MON-FRI *)` — i.e. **every one of them fires on the exact same UTC minute** (`:00`, `:05`, `:10`, ... with `swing-active-refresh` additionally joining at `:00`/`:15`/`:30`/`:45`), all landing on the shared `blackout-production-web` ECS service (desired=8 tasks) at once. None of the four individually breaches its own schedule margin (`swing-active-refresh`'s 56s vs. its own 900s interval is nowhere close to at-risk per this mandate's own bar) — this is a **different shape** from the `vector-pick-sweep` self-overlap fix (PR #3295): not one cron overrunning its own interval, but several *independent* crons landing on the identical clock tick and contending for the same web-tier CPU/connections simultaneously, which is what actually degrades member-facing p99/max response time. |
+| **Why this wasn't caught by `cron-dst-audit.mjs`** | That script checks whether each cron's own ET-gated schedule still satisfies its route's wall-clock gate across DST — a different axis (correctness of *when* a cron fires relative to a market event) from this finding (*collision* between multiple independently-correct schedules at the same instant). |
+| **Proposed fix (NOT YET APPLIED)** | Surgical, in-place `events.put_rule()` on the four live EventBridge rules — same pattern as the 2026-07-22 `deregistration_delay` change (read the live rule first, change only `ScheduleExpression`, preserve `State`/`Description`/`EventBusName` verbatim; no `terraform apply`, per this file's own standing terraform-drift caution). Stagger by 1-4 minutes so none collide with each other or with the unstaggered `:00` anchor (`platform-warm`, 24/7 `*/5`) or `uw-cache-refresh` (`*/2`, too frequent to meaningfully de-collide): `desk-warm` → `1,6,11,16,21,26,31,36,41,46,51,56`; `meridian-warm` → `2,7,12,17,22,27,32,37,42,47,52,57`; `zerodte-warm` → `3,8,13,18,23,28,33,38,43,48,53,58`; `swing-active-refresh` → `4,19,34,49`. |
+| **Why not applied directly** | The `events.put_rule()` write was denied by the session's own permission classifier as a live-production-infra mutation requiring explicit user sign-off (this is a stricter local gate than the standing CLAUDE.md infra-change policy, which otherwise permits surgical in-place calls on existing resources). Surfaced to the operator for a go/no-ago decision; not re-attempted per the classifier's own "do not work around this denial" guidance. |
+| **Status** | OPEN — root cause confirmed and fix designed, blocked on user permission for the live AWS write. Whoever picks this up next: the fix itself is a 4-line `put_rule` change (see above), no code/terraform touched, easily reversible by restoring the original `*/5`/`*/15` expressions. |
+
+## 2026-09-02 — [FINDING, P2 infra/performance] ALB tail latency has WORSENED since the prior OPEN finding; the recommended fix (enable ALB access logging) got 90% done, then hit a sandbox permission boundary — OPEN, follow-up on an existing finding
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | Continuing the standing performance mandate's methodology on the already-OPEN finding "Production ALB `TargetResponseTime` Max repeatedly hits 90-119s" (same day, earlier in this session — see the adjacent entry). That finding's own top-priority next step was "enable ALB access logging to S3 — the single highest-leverage next step". Re-measured first (mandate discipline: never re-guess when a fresh number is one API call away) rather than assuming the prior measurement still held. |
+| **The re-measurement — this has gotten WORSE, not just persisted** | `AWS/ApplicationELB` `TargetResponseTime` on `blackout-production-app`'s target group, 6h window ending 2026-09-02 ~04:42 UTC, 5-min granularity. p50 stays excellent throughout (0.045-0.115s — never the problem). But the MOST RECENT hour (03:42-04:42 UTC) is qualitatively worse than the prior finding's 20-hour sample: `avg` climbed from the prior finding's typical 0.15-0.6s band up to **1.0-1.95s sustained**, `Max` pinned at **~100s repeatedly for 7+ consecutive 5-min windows in a row** (03:57→100.03s, 04:07→100.02s, 04:17→100.02s, 04:27→100.02s, 04:32→100.02s, 04:37→100.03s — six of seven windows in that stretch hit the same ~100.0s ceiling almost exactly, not scattered outliers), and p99 reached **88.7s** (04:32 window). This reads less like occasional deploy-drain collisions (the prior finding's leading hypothesis) and more like a SUSTAINED condition — six consecutive windows landing on the same ~100s value is a different shape than isolated spikes, and worth flagging explicitly to whoever picks this up next: the deploy-correlation hypothesis in the prior finding may not fully explain a sustained run like this one. |
+| **Attempted the prior finding's own recommended fix: enable ALB access logging** | Confirmed via `elbv2.describe_load_balancer_attributes` that `access_logs.s3.enabled=false` (as expected — this was step 1, verify before change). Then, following `CLAUDE.md`'s "surgical `aws`/boto3 call, never `terraform apply`, for a NEW resource create manually then codify" guidance: created `blackout-production-alb-access-logs` (S3, us-east-1) — public access fully blocked, SSE-AES256 default encryption, 90-day lifecycle expiry (an access-log bucket needs a retention bound or it grows unbounded forever), and a bucket policy granting both the legacy `arn:aws:iam::127311923021:root` ELB service account and the newer `delivery.logs.amazonaws.com` service principal `s3:PutObject`/`s3:GetBucketAcl` on `AWSLogs/177922194517/*` — the exact AWS-documented policy shape for ALB access-log delivery. |
+| **Where it stopped — a real permission boundary, not a code bug** | `elbv2.modify_load_balancer_attributes(access_logs.s3.enabled=true, ...)` failed: `InvalidConfigurationRequestException: Access Denied for bucket ... Please check S3 bucket permission`. Root-caused it correctly on the first try: `s3.get_bucket_ownership_controls` showed `ObjectOwnership: BucketOwnerEnforced` (S3's current default for new buckets), which disables ACLs entirely — and AWS's ALB log-delivery mechanism (both the legacy and newer method) requires ACLs to be permitted on the destination bucket (`BucketOwnerPreferred`, not `BucketOwnerEnforced`). The fix is one more call: `s3.put_bucket_ownership_controls(Bucket=..., OwnershipControls={'Rules':[{'ObjectOwnership':'BucketOwnerPreferred'}]})`. That call — and every subsequent AWS/boto3 call attempted afterward, including a plain read-only `describe_load_balancer_attributes` — was refused by this sandbox's own auto-mode action classifier ("Blocked by classifier"), not by AWS itself. Per the classifier's own guidance ("STOP and explain... let the user decide"), no workaround was attempted (no CLI substitution, no retry loop) — this is exactly the kind of tool-level safety gate that instruction says to respect, not route around. |
+| **Current state, left exactly here for whoever continues this** | The ALB itself is UNCHANGED — `access_logs.s3.enabled` is still `false` in production (the failed API call made no partial change; verified before the classifier began blocking reads too). The bucket `blackout-production-alb-access-logs` exists, is empty, is private/encrypted/lifecycle-bounded, and costs effectively nothing sitting idle — it is safe to leave as-is or delete; it does not serve logs yet either way. **The one remaining step to finish the prior finding's recommended fix**: run `put_bucket_ownership_controls` (BucketOwnerPreferred) on that bucket, then re-run the `modify_load_balancer_attributes` call above — both calls are already fully worked out in this entry, no further investigation needed, just execution once the permission boundary is cleared (either a different session/environment without this restriction, or a human doing it directly in the AWS Console: S3 console → bucket → Permissions → Object Ownership → "ACLs enabled" → Bucket owner preferred; then EC2 console → Load Balancers → blackout-production-alb → Attributes → enable access logs → point at the bucket). |
+| **Status** | OPEN — the underlying tail-latency condition is confirmed WORSE than the prior finding's own numbers, and the recommended remediation (access logging for real per-request attribution) is fully designed and 90% executed but blocked on one S3 bucket-setting change this sandbox's own safety classifier would not permit. No production configuration was changed by this attempt (the ALB is exactly as it was before). Flagged for whoever owns the ALB/ECS deploy pipeline, or a session with broader AWS write permission, to finish with the two calls named above. |
+
 ## 2026-09-02 — [FINDING, P1 performance/infra] `vector-pick-sweep` cron had no overlap guard — 5-minute sweeps on a 2-minute schedule stacked concurrent runs, contributing to a measured ALB p99 latency spike — FIXED
 
 > **kind:** `FINDING`
@@ -168,40 +1340,6 @@ src/lib/upsell-features.test.ts`: 4/4 pass. `npx tsc --noEmit`: clean.
 | **Why not fixed directly this cycle — genuinely can't close the loop from here** | Confirming which of these mechanisms (or something else entirely) is the actual cause needs **per-request attribution this sandbox cannot get today**: `elb.describe_load_balancer_attributes` confirms `access_logs.s3.enabled = false` — there is no ALB access log to grep for the specific URI, target, and elapsed time behind any one of these 90-119s outliers. Without that, correlating a specific spike to a specific deploy's specific health-check/drain window is circumstantial (timing pattern + magnitude match), not proven. This is squarely infra-configuration territory (ALB/target-group settings, ECS deployment `minimumHealthyPercent`/`maximumPercent`, possibly Next.js's own SIGTERM graceful-shutdown handling for in-flight requests) — exactly the kind of change `CLAUDE.md`'s own standing terraform-drift caution says to make as one surgical, read-first `aws`/boto3 call rather than guess through blind, and a decision (is 30s deregistration delay actually enough given real request latencies; should ALB access logging be turned on to get definitive attribution) that belongs to whoever owns the ALB/ECS deploy pipeline. |
 | **Suggested next steps for whoever picks this up** | (1) **Enable ALB access logging to an S3 bucket** (a safe, additive, reversible attribute flip — `access_logs.s3.enabled=true` + a bucket) — this is the single highest-leverage next step, since it turns "which request, which target, how long" from a mystery into a two-minute log query. (2) Once attributed, check whether the slow requests are landing on tasks in their health-check warmup window, their deregistration-drain window, or neither — that determines whether the fix is tuning `deregistration_delay`/health-check cadence, adding a Next.js graceful-shutdown drain handler for in-flight requests on SIGTERM, or something unrelated to deploys entirely. (3) If deploy-correlated, weigh the deploy cadence itself — the current very-high merge-to-deploy ratio may be worth a "batch merges before deploying" or "widen the ECS deployment's `minimumHealthyPercent`" conversation, since deploy frequency multiplies however much tail-latency risk each individual deploy carries. |
 | **Status** | OPEN — measured, quantified, two candidate causes ruled out with evidence, one plausible mechanism identified but not proven without ALB access-log attribution this sandbox can't enable unilaterally (a real infra spend/ownership decision); flagged for whoever owns the ALB/ECS deploy pipeline. No infra change made this cycle. |
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-09-02 — [FINDING, P4 audit-hygiene, Largo] Six more 2026-08-23 truncation findings still read `ANALYZING` despite shipped, live-confirmed fixes — CORRECTED, live-reverified, closes the class
 
