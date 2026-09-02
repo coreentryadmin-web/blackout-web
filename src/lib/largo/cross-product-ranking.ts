@@ -112,10 +112,8 @@ async function scoreNightHawk(input: CrossProductRankingInput, tools: any): Prom
     if (input.timeframe !== "0dte" && input.timeframe !== "weekly") return null;
 
     // Check if there's an active play for this setup
-    const plays = await tools.get_nighthawk_edition?.();
-    const relevant = plays?.filter((p: any) => p.ticker === input.ticker && p.direction === input.direction);
-
-    if (!relevant?.length) {
+    const edition = await tools.get_nighthawk_edition?.();
+    if (!edition?.available || !edition?.plays?.length) {
       // Historical track record fallback
       const outcomes = await tools.get_nighthawk_outcomes?.();
       const winRate = outcomes?.win_rate_pct ?? 50;
@@ -126,6 +124,23 @@ async function scoreNightHawk(input: CrossProductRankingInput, tools: any): Prom
         score: normalizeWinRate(winRate),
         raw_value: winRate,
         confidence: 0.6, // historical, not live
+        reason: "Track record average (no live setup for this ticker)",
+        data_source: "get_nighthawk_outcomes",
+        freshness_minutes: 60,
+      };
+    }
+
+    const relevant = edition.plays.filter((p: any) => p.ticker === input.ticker && p.direction === input.direction);
+    if (!relevant?.length) {
+      // No specific setup for this ticker, use track record
+      const outcomes = await tools.get_nighthawk_outcomes?.();
+      const winRate = outcomes?.win_rate_pct ?? 50;
+      return {
+        product: "nighthawk",
+        rank: 0,
+        score: normalizeWinRate(winRate),
+        raw_value: winRate,
+        confidence: 0.6,
         reason: "Track record average (no live setup for this ticker)",
         data_source: "get_nighthawk_outcomes",
         freshness_minutes: 60,
