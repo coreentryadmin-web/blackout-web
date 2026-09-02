@@ -8915,21 +8915,46 @@ export async function fetchLegacyDiscordLiveRows(editionFor?: string): Promise<L
 
   const out: LegacyDiscordLiveRow[] = [];
   const { resolveLegacyPlayOcc } = await import("@/features/nighthawk/lib/legacy-play-contract");
+  const { legacyPublishFieldsFrom } = await import(
+    "@/features/nighthawk/lib/legacy-publish-fields"
+  );
+
+  const editionDatesUnique = [...new Set(res.rows.map((r) => isoDateString(r.edition_for)))];
+  const editionPlayByKey = new Map<string, Record<string, unknown>>();
+  for (const editionDate of editionDatesUnique) {
+    const edition = await fetchNighthawkEditionByDate(editionDate);
+    if (!edition || !Array.isArray(edition.plays)) continue;
+    for (const play of edition.plays) {
+      if (!play || typeof play !== "object") continue;
+      const ticker = String((play as { ticker?: string }).ticker ?? "").toUpperCase();
+      if (!ticker) continue;
+      editionPlayByKey.set(`${editionDate}:${ticker}`, play as Record<string, unknown>);
+    }
+  }
+
   for (const r of res.rows) {
     const row = mapNighthawkPlayOutcomeRow(r);
-    const ctx = row.publish_context as { final_output?: Record<string, unknown> } | null | undefined;
-    const finalOut = ctx?.final_output;
-    const optionsPlay = typeof finalOut?.options_play === "string" ? finalOut.options_play : null;
-    const entryPremium =
-      typeof finalOut?.entry_premium === "number" && Number.isFinite(finalOut.entry_premium)
-        ? finalOut.entry_premium
-        : null;
-    if (!optionsPlay || entryPremium == null || entryPremium <= 0) continue;
+    const editionPlay = editionPlayByKey.get(`${row.edition_for}:${row.ticker.toUpperCase()}`);
+    const fields = legacyPublishFieldsFrom({
+      publish_context: row.publish_context as Record<string, unknown> | null | undefined,
+      editionPlay: editionPlay
+        ? {
+            options_play:
+              typeof editionPlay.options_play === "string" ? editionPlay.options_play : null,
+            entry_premium:
+              typeof editionPlay.entry_premium === "number" ? editionPlay.entry_premium : null,
+            exit_style:
+              typeof editionPlay.exit_style === "string" ? editionPlay.exit_style : null,
+          }
+        : null,
+    });
+    const { options_play: optionsPlay, entry_premium: entryPremium, exit_style: exitStyle } =
+      fields;
+    if (!optionsPlay || entryPremium == null) continue;
 
     const occ = resolveLegacyPlayOcc(row.ticker, optionsPlay);
     if (!occ) continue;
 
-    const exitStyle = finalOut?.exit_style === "scale_out" ? "scale_out" : null;
     out.push({
       ...row,
       contract_occ: occ,

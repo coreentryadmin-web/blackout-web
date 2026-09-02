@@ -119,6 +119,24 @@ describe("legacy-discord-trade-notify", () => {
     assert.equal(input?.entry_premium, 3.2);
   });
 
+  test("legacyInputFromOutcomeRow reads flat PR-N4 publish_context", () => {
+    const input = legacyInputFromOutcomeRow({
+      id: 1,
+      edition_for: "2026-09-03",
+      ticker: "DELL",
+      direction: "LONG",
+      conviction: "A",
+      outcome: "pending",
+      publish_context: {
+        entry_premium: 12.85,
+        options_play: "DELL $490 CALL @ $12.85 — Sep 4",
+      },
+    } as never);
+    assert.equal(input?.ticker, "DELL");
+    assert.equal(input?.top_strike, 490);
+    assert.equal(input?.entry_premium, 12.85);
+  });
+
   test("legacyOutcomeExitPremium scales target/stop", () => {
     assert.equal(legacyOutcomeExitPremium(4, "target"), 5.4);
     assert.equal(legacyOutcomeExitPremium(4, "stop"), 2.6);
