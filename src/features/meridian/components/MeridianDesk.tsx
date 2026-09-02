@@ -131,7 +131,7 @@ export function MeridianDesk() {
    */
   const router = useRouter();
   const urlHydrated = useRef(false);
-  const lastUrlState = useRef<DeskUrlState>({ event: null, view: null, filter: null });
+  const lastUrlState = useRef<DeskUrlState>({ event: null, view: null, filter: null, ticker: null });
 
   const setFilterPref = useCallback((next: FilterKind) => {
     setFilter(next);
@@ -155,6 +155,11 @@ export function MeridianDesk() {
       setView((st.view ?? "timeline") as DeskView);
       const urlFilter = st.filter as FilterKind | null;
       setFilter(urlFilter ?? readMeridianFilterPref() ?? "all");
+      // Seed the search box exactly like a member typing the symbol would — reuses the existing
+      // search/lookup path (auto-selects if the print is in the visible window, else surfaces the
+      // "Earnings lookup" card) rather than a second, parallel selection mechanism. Read-only: see
+      // DeskUrlState.ticker's own comment for why this never round-trips back into the URL.
+      if (st.ticker) setSearchQuery(st.ticker);
     };
     apply(window.location.search);
     urlHydrated.current = true;
@@ -168,7 +173,7 @@ export function MeridianDesk() {
     // Never write a URL before the first read, or the mount would immediately overwrite the
     // state a pasted link just delivered.
     if (!urlHydrated.current) return;
-    const next: DeskUrlState = { event: selectedId, view, filter };
+    const next: DeskUrlState = { event: selectedId, view, filter, ticker: null };
     if (sameDeskUrlState(next, lastUrlState.current)) return;
     const eventChanged = next.event !== lastUrlState.current.event;
     lastUrlState.current = next;

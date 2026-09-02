@@ -117,6 +117,21 @@ export function parseNightHawkView(raw: unknown): NightHawkView {
 }
 
 /**
+ * Resolve the view for an incoming request that may carry BOTH `view` and `ticker` params —
+ * the one rule the deep-link entry points (page.tsx's server seed, NightHawkFeed's client
+ * soft-nav re-read) must agree on, extracted so they read it from one place instead of each
+ * repeating the same `if (ticker && !view) return "SWING"` and risking the two silently drifting
+ * apart. SWING is the only view with a real per-ticker focus mechanism today (`focusTicker` on
+ * HorizonDeck) — a ticker link with no explicit view therefore defaults to SWING rather than
+ * landing on ZERO_DTE (the app's own default) and silently dropping the ticker. An EXPLICIT
+ * `view=` is always honored as given; only the ticker's own default view is SWING.
+ */
+export function resolveNightHawkView(rawView: unknown, ticker: string | null | undefined): NightHawkView {
+  if (rawView != null) return parseNightHawkView(rawView);
+  return ticker && ticker.trim() ? "SWING" : DEFAULT_NIGHTHAWK_VIEW;
+}
+
+/**
  * Is `raw` a view name this app actually understands?
  *
  * `parseNightHawkView` deliberately falls back to the default for anything it does not recognise,
