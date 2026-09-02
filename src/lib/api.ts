@@ -96,6 +96,15 @@ export const fetchSpxDesk = () => marketFetch<SpxDeskPayload>("/spx/desk");
 export const fetchSpxPin = () =>
   marketFetch<import("@/features/spx/lib/spx-pin").SpxPinForecast>("/spx/pin");
 
+/** SPX + VIX index snapshot — /api/market/indices, `authorizeMarketDeskApi` (community tier). */
+export type MarketIndicesPayload = {
+  source: string;
+  as_of: string;
+  spx: import("@/lib/providers/polygon").IndexQuote | null;
+  vix: import("@/lib/providers/polygon").IndexQuote | null;
+};
+export const fetchMarketIndices = () => marketFetch<MarketIndicesPayload>("/indices");
+
 /** One-shot dashboard bundle — desk + flow + pulse + merged (+ SPX matrix server-side). */
 export type SpxBootstrapPayload = {
   desk: SpxDeskPayload;
