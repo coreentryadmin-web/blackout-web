@@ -7,6 +7,7 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { VectorBoardCalendar } from "@/features/nighthawk/components/VectorBoardCalendar";
 import { VectorBoardCompareBar } from "@/features/nighthawk/components/VectorBoardCompareBar";
 import { VectorBoardEmptyState } from "@/features/nighthawk/components/VectorBoardEmptyState";
+import { VectorBoardDataTable } from "@/features/nighthawk/components/VectorBoardDataTable";
 import { VectorBoardLoadingSkeleton } from "@/features/nighthawk/components/VectorBoardLoadingSkeleton";
 import { VectorBoardScorecard } from "@/features/nighthawk/components/VectorBoardScorecard";
 import { VectorBoardToolbar } from "@/features/nighthawk/components/VectorBoardToolbar";
@@ -41,6 +42,7 @@ import {
   vectorBoardScorecard,
 } from "@/features/nighthawk/lib/vector-board-row-utils";
 import type { VectorClosureReasonFilter } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
+import { useVectorBoardMobile } from "@/features/nighthawk/hooks/use-vector-board-mobile";
 
 const EM = "—";
 
@@ -113,7 +115,7 @@ export function LegacyPickLogBoard({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [statusFilter, setStatusFilter] = useState<VectorBoardStatusFilter>("all");
   const [tierFilter, setTierFilter] = useState<VectorBoardTierFilter>("all");
-  const [reasonFilter] = useState<VectorClosureReasonFilter>("all");
+  const [reasonFilter, setReasonFilter] = useState<VectorClosureReasonFilter>("all");
   const [sort, setSort] = useState<VectorBoardSort>("updated_desc");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [prefs, setPrefs] = useState<VectorBoardPreferences>(() => loadVectorBoardPreferences());
@@ -122,6 +124,7 @@ export function LegacyPickLogBoard({
   const [compareLimitHit, setCompareLimitHit] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const tableRef = useRef<HTMLDivElement | null>(null);
+  const isMobile = useVectorBoardMobile();
 
   useEffect(() => {
     setSelectedDate(selectedEditionDate);
@@ -162,6 +165,11 @@ export function LegacyPickLogBoard({
     return vectorBoardCalendarSlice(all, prefs.calendarRange) as typeof all;
   }, [allRows, calendarDates, prefs.calendarRange]);
 
+  const sessionDates = useMemo(
+    () => calendarBuckets.map((b) => b.session_date),
+    [calendarBuckets]
+  );
+
   const sessionDateFilter = selectedDate
     ? selectedDate
     : sessionScope === "current"
@@ -174,9 +182,9 @@ export function LegacyPickLogBoard({
       sessionDate: sessionDateFilter,
       statusFilter,
       tierFilter,
-      reasonFilter: "all",
+      reasonFilter: tab === "closed" ? reasonFilter : "all",
     });
-  }, [sectionRows, tickerQuery, sessionDateFilter, statusFilter, tierFilter]);
+  }, [sectionRows, tickerQuery, sessionDateFilter, statusFilter, tierFilter, reasonFilter, tab]);
 
   const { key: sortKey, dir: sortDir } = parseVectorBoardSort(sort);
 
@@ -194,8 +202,6 @@ export function LegacyPickLogBoard({
       }),
     [prefs, compareMode, sortKey, sortDir]
   );
-
-  const visibleColumnCount = Math.max(boardColumns.length, 1);
 
   const visibleRows = useMemo(
     () => sortVectorBoardRows(filteredRows, sortKey, sortDir) as LegacyBoardTableRow[],
@@ -325,9 +331,11 @@ export function LegacyPickLogBoard({
     <div
       className={clsx(
         "vector-board-shell legacy-board-shell",
+        "legacy-board-xads",
         prefs.density === "compact" && "is-compact",
         prefs.focusMode && "is-focus"
       )}
+      data-board="legacy-xads-table"
     >
       <VectorBoardToolbar
         tab={tab}
@@ -352,7 +360,7 @@ export function LegacyPickLogBoard({
         tierFilter={tierFilter}
         onTierFilterChange={setTierFilter}
         reasonFilter={reasonFilter}
-        onReasonFilterChange={() => undefined}
+        onReasonFilterChange={setReasonFilter}
         sort={sort}
         onSortChange={setSort}
         selectedDate={selectedDate}
@@ -381,6 +389,7 @@ export function LegacyPickLogBoard({
         onCompareModeChange={setCompareMode}
         visibleCount={visibleRows.length}
         sectionCount={sectionRows.length}
+        sessionDates={sessionDates}
       />
 
       {bannerSlot}
@@ -414,102 +423,46 @@ export function LegacyPickLogBoard({
         </div>
       ) : null}
 
-      <div className="vector-board-body vector-board-body--split">
+      <div
+        className={clsx(
+          "vector-board-body vector-board-body--split",
+          selectedRow && "has-detail-open",
+          prefs.focusMode && !selectedRow && "is-focus-awaiting"
+        )}
+      >
         <div className="vector-board-table-pane">
           <div className="vector-board-panel">
-            <div className="vector-board-tablewrap" ref={tableRef}>
-              <table className="vector-board-table">
-                <colgroup>
-                  {boardColumns.map((column) => (
-                    <col key={column.key} className={column.colClass} />
-                  ))}
-                </colgroup>
-                <thead>
-                  <tr>
-                    {boardColumns.map((column) => (
-                      <th
-                        key={column.key}
-                        className={column.thClass}
-                        aria-sort={column.ariaSort}
-                        aria-label={column.key === "compare" ? "Compare" : undefined}
-                        title={column.headerTitle}
-                        onClick={column.onHeaderClick}
-                      >
-                        {column.header}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {!visibleRows.length ? (
-                    <tr className="vector-board-empty-row">
-                      <td colSpan={visibleColumnCount}>
-                        <div className="vector-board-empty">
-                          <VectorBoardEmptyState
-                            title={emptyTitle(tab)}
-                            description={
-                              emptyDescription && plays.length === 0
-                                ? emptyDescription
-                                : "Try another tab, clear filters, or pick a different edition date."
-                            }
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    visibleRows.map((row) => {
-                      const selected = selectedRow?.key === row.key;
-                      const live = vectorBoardRowIsLive(row);
-                      const atRisk = vectorBoardRowAtRisk(row);
-                      const rowCtx = {
-                        live,
-                        atRisk,
-                        compareChecked: compareKeys.has(row.key),
-                        onToggleCompare: () => toggleCompare(row.key),
-                        fmtPrice,
-                        fmtTimestamp,
-                        pnlClass,
-                      };
-                      return (
-                        <tr
-                          key={row.key}
-                          className={clsx(
-                            "vector-board-row",
-                            selected && "is-selected",
-                            live && "is-live",
-                            atRisk && "is-at-risk"
-                          )}
-                          tabIndex={selected ? 0 : -1}
-                          onClick={() => {
-                            setSelectedRow(row);
-                            setSelectedIndex(visibleRows.findIndex((r) => r.key === row.key));
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              setSelectedRow(row);
-                              setSelectedIndex(visibleRows.findIndex((r) => r.key === row.key));
-                            }
-                          }}
-                        >
-                          {boardColumns.map((column) => (
-                            <td
-                              key={column.key}
-                              className={column.colClass}
-                              onClick={
-                                column.key === "compare" ? (e) => e.stopPropagation() : undefined
-                              }
-                            >
-                              {column.renderCell(row, rowCtx)}
-                            </td>
-                          ))}
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <VectorBoardDataTable
+              columns={boardColumns}
+              rows={visibleRows}
+              tableRef={tableRef}
+              selectedKey={selectedRow?.key ?? null}
+              onSelectRow={(row, index) => {
+                setSelectedRow(row);
+                setSelectedIndex(index);
+              }}
+              emptyTitle={emptyTitle(tab)}
+              emptyDescription={
+                emptyDescription && plays.length === 0
+                  ? emptyDescription
+                  : "Try another tab, clear filters, or pick a different edition date."
+              }
+              getRowCtx={(row) => ({
+                live: vectorBoardRowIsLive(row),
+                atRisk: vectorBoardRowAtRisk(row),
+                compareChecked: compareKeys.has(row.key),
+                onToggleCompare: () => toggleCompare(row.key),
+                fmtPrice,
+                fmtTimestamp,
+                pnlClass,
+              })}
+              rowClassName={(row) =>
+                clsx(
+                  vectorBoardRowIsLive(row) && "is-live",
+                  vectorBoardRowAtRisk(row) && "is-at-risk"
+                )
+              }
+            />
           </div>
           <VectorBoardCompareBar
             rows={compareRows}
@@ -521,7 +474,20 @@ export function LegacyPickLogBoard({
           />
         </div>
 
-        <LegacyPlayDetailRail row={selectedRow} onClose={() => setSelectedRow(null)} />
+        {isMobile && selectedRow ? (
+          <button
+            type="button"
+            className="vector-board-detail-backdrop"
+            aria-label="Close detail"
+            onClick={() => setSelectedRow(null)}
+          />
+        ) : null}
+
+        <LegacyPlayDetailRail
+          row={selectedRow}
+          onClose={() => setSelectedRow(null)}
+          sheet={isMobile && !!selectedRow}
+        />
       </div>
     </div>
   );

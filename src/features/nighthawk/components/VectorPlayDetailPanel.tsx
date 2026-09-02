@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { VectorBoardStatusPill } from "@/features/nighthawk/components/VectorBoardStatus";
 import { VectorPremiumSparkline } from "@/features/nighthawk/components/VectorPremiumSparkline";
+import {
+  VectorBoardDetailTabs,
+  type VectorBoardDetailTab,
+} from "@/features/nighthawk/components/VectorBoardDetailTabs";
 import {
   vectorBoardRowGivebackPct,
   vectorBoardTimeline,
@@ -64,11 +68,18 @@ function DetailMetric({
 export function VectorPlayDetailPanel({
   row,
   onClose,
+  sheet = false,
 }: {
   row: VectorBoardTableRow | null;
   onClose: () => void;
+  sheet?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
+  const [tab, setTab] = useState<VectorBoardDetailTab>("overview");
+
+  useEffect(() => {
+    if (row) setTab("overview");
+  }, [row?.key]);
 
   if (!row) {
     return (
@@ -98,7 +109,10 @@ export function VectorPlayDetailPanel({
   };
 
   return (
-    <aside className="vector-board-detail" aria-label={`${row.ticker} play detail`}>
+    <aside
+      className={clsx("vector-board-detail", sheet && "vector-board-detail--sheet")}
+      aria-label={`${row.ticker} play detail`}
+    >
       <div className="vector-board-detail-sticky">
         <div className="vector-board-detail-head">
           <div className="vector-board-detail-titleblock">
@@ -130,54 +144,78 @@ export function VectorPlayDetailPanel({
             {formatPremiumPct(row.premiumPct)}
           </span>
         </div>
+
+        <VectorBoardDetailTabs active={tab} onChange={setTab} />
       </div>
 
-      <div className="vector-board-detail-meter-block vector-board-detail-spark-card">
-        <span className="vector-board-detail-reason-label">Premium path</span>
-        <VectorPremiumSparkline row={row} />
-      </div>
+      {tab === "overview" ? (
+        <div className="vector-board-detail-panel vector-board-detail-panel--overview">
+          <div className="vector-board-detail-grid">
+            <DetailMetric label="Session" value={row.sessionDate} />
+            <DetailMetric label="Updated" value={fmtTime(row.timestamp)} />
+            <DetailMetric label="Entry mid" value={fmtPrice(row.entryMid)} bold />
+            <DetailMetric
+              label={row.kind === "closed" ? "Close mid" : "Live mid"}
+              value={fmtPrice(row.markMid)}
+              bold
+            />
+            <DetailMetric
+              label="Peak"
+              value={formatPremiumPct(row.peakPct)}
+              tone={pnlClass(row.peakPct) === "is-up" ? "up" : pnlClass(row.peakPct) === "is-down" ? "down" : "flat"}
+            />
+            {giveback != null ? (
+              <DetailMetric label="Giveback" value={`${giveback}%`} tone={giveback > 20 ? "down" : "flat"} />
+            ) : null}
+            {row.progressPct != null ? <DetailMetric label="Of peak" value={`${row.progressPct}%`} /> : null}
+          </div>
+        </div>
+      ) : null}
 
-      <div className="vector-board-detail-grid">
-        <DetailMetric label="Session" value={row.sessionDate} />
-        <DetailMetric label="Updated" value={fmtTime(row.timestamp)} />
-        <DetailMetric label="Entry mid" value={fmtPrice(row.entryMid)} bold />
-        <DetailMetric label={row.kind === "closed" ? "Close mid" : "Live mid"} value={fmtPrice(row.markMid)} bold />
-        <DetailMetric
-          label="Peak"
-          value={formatPremiumPct(row.peakPct)}
-          tone={pnlClass(row.peakPct) === "is-up" ? "up" : pnlClass(row.peakPct) === "is-down" ? "down" : "flat"}
-        />
-        {giveback != null ? (
-          <DetailMetric label="Giveback" value={`${giveback}%`} tone={giveback > 20 ? "down" : "flat"} />
-        ) : null}
-        {row.progressPct != null ? <DetailMetric label="Of peak" value={`${row.progressPct}%`} /> : null}
-      </div>
+      {tab === "path" ? (
+        <div className="vector-board-detail-panel vector-board-detail-panel--path">
+          <div className="vector-board-detail-meter-block vector-board-detail-spark-card">
+            <span className="vector-board-detail-reason-label">Premium path</span>
+            <VectorPremiumSparkline row={row} />
+          </div>
+        </div>
+      ) : null}
 
-      <div className="vector-board-detail-timeline">
-        <span className="vector-board-detail-reason-label">Timeline</span>
-        <ol className="vector-board-detail-timeline-list">
-          {timeline.map((evt, i) => (
-            <li key={`${evt.at}-${i}`} className={clsx("vector-board-detail-timeline-item", evt.tone && `is-${evt.tone}`)}>
-              <span className="vector-board-detail-timeline-time">{fmtTime(evt.at)}</span>
-              <span className="vector-board-detail-timeline-label">{evt.label}</span>
-            </li>
-          ))}
-        </ol>
-      </div>
+      {tab === "timeline" ? (
+        <div className="vector-board-detail-panel vector-board-detail-panel--timeline">
+          <div className="vector-board-detail-timeline">
+            <span className="vector-board-detail-reason-label">Timeline</span>
+            <ol className="vector-board-detail-timeline-list">
+              {timeline.map((evt, i) => (
+                <li
+                  key={`${evt.at}-${i}`}
+                  className={clsx("vector-board-detail-timeline-item", evt.tone && `is-${evt.tone}`)}
+                >
+                  <span className="vector-board-detail-timeline-time">{fmtTime(evt.at)}</span>
+                  <span className="vector-board-detail-timeline-label">{evt.label}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+      ) : null}
 
-      <div className="vector-board-detail-reason">
-        <span className="vector-board-detail-reason-label">Desk read</span>
-        <p className="vector-board-detail-reason-copy">{row.reason || EM}</p>
-      </div>
-
-      <div className="vector-board-detail-actions">
-        <button type="button" className="vector-board-detail-action" onClick={copyTicket}>
-          <span aria-live="polite">{copied ? "Copied" : "Copy ticket"}</span>
-        </button>
-        <Link href={`/vector?ticker=${encodeURIComponent(row.ticker)}`} className="vector-board-detail-action">
-          Open in Vector
-        </Link>
-      </div>
+      {tab === "desk" ? (
+        <div className="vector-board-detail-panel vector-board-detail-panel--desk">
+          <div className="vector-board-detail-reason">
+            <span className="vector-board-detail-reason-label">Desk read</span>
+            <p className="vector-board-detail-reason-copy">{row.reason || EM}</p>
+          </div>
+          <div className="vector-board-detail-actions">
+            <button type="button" className="vector-board-detail-action" onClick={copyTicket}>
+              <span aria-live="polite">{copied ? "Copied" : "Copy ticket"}</span>
+            </button>
+            <Link href={`/vector?ticker=${encodeURIComponent(row.ticker)}`} className="vector-board-detail-action">
+              Open in Vector
+            </Link>
+          </div>
+        </div>
+      ) : null}
     </aside>
   );
 }

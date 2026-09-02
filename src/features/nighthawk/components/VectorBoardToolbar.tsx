@@ -13,6 +13,7 @@ import {
   vectorBoardActiveFilterCount,
 } from "@/features/nighthawk/lib/vector-board-filters";
 import type { VectorBoardPreferences, VectorBoardSavedView } from "@/features/nighthawk/lib/vector-board-preferences";
+import { VectorBoardDatePresetDropdown } from "@/features/nighthawk/components/VectorBoardDatePresetDropdown";
 import type { VectorClosureReasonFilter } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
 
 export function VectorBoardToolbar({
@@ -46,6 +47,7 @@ export function VectorBoardToolbar({
   onCompareModeChange,
   visibleCount,
   sectionCount,
+  sessionDates = [],
 }: {
   tab: VectorBoardTab;
   tabCounts: Record<VectorBoardTab, number>;
@@ -77,6 +79,7 @@ export function VectorBoardToolbar({
   onCompareModeChange: (on: boolean) => void;
   visibleCount: number;
   sectionCount: number;
+  sessionDates?: string[];
 }) {
   const tabs: { id: VectorBoardTab; label: string; hint?: string }[] = [
     { id: "all", label: "All" },
@@ -132,20 +135,33 @@ export function VectorBoardToolbar({
               All sessions
             </button>
           </div>
-          <label className="vector-board-date-picker">
-            <span className="vector-board-date-picker-label">Day</span>
-            <input
-              type="date"
-              className="vector-board-date-input"
-              value={selectedDate ?? (sessionScope === "current" ? todaySession : "")}
-              max={todaySession || undefined}
-              onChange={(e) => {
-                const v = e.target.value;
-                onSelectedDateChange(v || null);
-              }}
-              aria-label="Pick session day"
-            />
-          </label>
+          <VectorBoardDatePresetDropdown
+            todaySession={todaySession}
+            selectedDate={selectedDate}
+            sessionDates={sessionDates}
+            onScopeToday={() => {
+              onSelectedDateChange(null);
+              onSessionScopeChange("current");
+            }}
+            onScopeAll={() => {
+              onSelectedDateChange(null);
+              onSessionScopeChange("all");
+            }}
+            onSelectDate={(date) => {
+              if (!date) {
+                onSelectedDateChange(null);
+                onSessionScopeChange("current");
+                return;
+              }
+              if (date === todaySession) {
+                onSelectedDateChange(null);
+                onSessionScopeChange("current");
+              } else {
+                onSelectedDateChange(date);
+                onSessionScopeChange("all");
+              }
+            }}
+          />
         </div>
       </div>
 
