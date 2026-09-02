@@ -201,6 +201,35 @@ test("fetchRecentFlows: ask_pct = COALESCE(ask_side_pct, ask/(ask+bid)*100) with
   );
 });
 
+// Multi-day contract history drilldown (HELIX operator mandate 2026-09-02) needed
+// fetchRecentFlows to scope to ONE contract (ticker+strike+expiry+option_type) over a wide
+// date range, rather than the whole tape — added strike/expiry/option_type as optional filter
+// params, following the exact same clause-push pattern as the existing ticker/min_premium/
+// max_dte/before filters right above them. Raw PG is blocked in CI, so pin by source
+// inspection (same idiom as the ask_pct test above).
+test("fetchRecentFlows: strike/expiry/option_type are optional, parameterized, additive filters", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const fnStart = src.indexOf("export async function fetchRecentFlows");
+  assert.ok(fnStart > 0, "fetchRecentFlows exists");
+  const body = src.slice(fnStart, src.indexOf("FROM flow_alerts", fnStart));
+
+  // Each new filter is a parameterized clause ($N), never raw string interpolation of the
+  // caller's value into the SQL text — the same discipline every existing clause here uses.
+  assert.match(body, /clauses\.push\(`strike = \$\$\{i\+\+\}`\)/, "strike is parameterized");
+  assert.match(body, /clauses\.push\(`expiry = \$\$\{i\+\+\}::date`\)/, "expiry is parameterized and cast to date");
+  assert.match(
+    body,
+    /clauses\.push\(`UPPER\(option_type\) = \$\$\{i\+\+\}`\)/,
+    "option_type is parameterized and case-normalized to match stored values"
+  );
+
+  // Each is gated so an existing caller that never passes these params gets byte-identical
+  // behavior — additive, not a rewrite of the existing filter set.
+  assert.match(body, /if \(params\.strike != null && Number\.isFinite\(params\.strike\)\)/);
+  assert.match(body, /if \(params\.expiry\)/);
+  assert.match(body, /if \(params\.option_type\)/);
+});
+
 test("ensureSchema: nighthawk play-outcome CHECK issued exactly once, allowed set includes 'unfilled'", () => {
   const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
   const adds = src.match(/ADD CONSTRAINT nighthawk_play_outcomes_outcome_check/g) ?? [];

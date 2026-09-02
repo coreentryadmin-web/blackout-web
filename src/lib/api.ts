@@ -356,6 +356,41 @@ export async function fetchOptionContractDrilldown(params: {
   return marketFetch<OptionContractDrilldown>(`/option-contract?${qs}`);
 }
 
+/** Multi-day per-contract history — our own persisted flow_alerts, not UW's live (today-only)
+ *  API. Same contract-id shape as OptionContractDrilldown, days pre-aggregated server-side. */
+export interface OptionContractHistoryDay {
+  date: string;
+  callPremium: number;
+  putPremium: number;
+  total: number;
+  count: number;
+}
+export interface OptionContractHistory {
+  contract_id: string;
+  label: string;
+  ticker: string;
+  strike: number;
+  expiry: string;
+  option_type: "CALL" | "PUT";
+  lookback_days: number;
+  days: OptionContractHistoryDay[];
+  total_prints: number;
+}
+export async function fetchOptionContractHistory(params: {
+  ticker: string;
+  strike: number;
+  expiry: string;
+  option_type: "CALL" | "PUT";
+}) {
+  const qs = new URLSearchParams({
+    ticker: params.ticker,
+    strike: String(params.strike),
+    expiry: params.expiry.slice(0, 10),
+    option_type: params.option_type,
+  });
+  return marketFetch<OptionContractHistory>(`/option-contract-history?${qs}`);
+}
+
 /** Upcoming earnings dates — ticker → YYYY-MM-DD. Returns {} on error (graceful degradation). */
 export async function fetchEarningsCalendar(): Promise<Record<string, string>> {
   try {
