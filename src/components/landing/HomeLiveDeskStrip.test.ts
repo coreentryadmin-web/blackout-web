@@ -5,6 +5,31 @@ import { join } from "node:path";
 
 const root = process.cwd();
 
+// 2026-09-02, P1 (user report): the homepage route is `revalidate = 3600` (ISR) AND
+// force-cached at the Cloudflare edge for `edge_ttl 7200` for anonymous visitors/crawlers —
+// so a single bad SSR moment (a transient upstream stall, e.g. the multi-minute ALB
+// tail-latency episodes in FINDINGS 2026-09-02) can bake a "GEX snapshot initializing" seed
+// into the cached page for up to ~3 hours. This component used to be a pure server-rendered
+// prop with NO client-side hook at all, so nothing ever corrected a bad seed even once a real
+// browser loaded the page and ran its JS — unlike its sibling `HomeGammaPromo`, which already
+// self-heals via a mount-fetch + 5s poll. Source-text assertions (this file's existing
+// convention — no React Testing Library in this repo) rather than a render test.
+test("HomeLiveDeskStrip is a client component that self-heals a stale gamma seed on mount", () => {
+  const src = readFileSync(join(root, "src/components/landing/HomeLiveDeskStrip.tsx"), "utf8");
+  assert.match(src, /^"use client";/, "must be a client component to run a mount-fetch/poll effect");
+  assert.match(
+    src,
+    /fetch\(`\/api\/public\/gex-snapshot\?ticker=\$\{ticker\}`,\s*\{\s*cache:\s*"no-store"\s*\}\)/,
+    "must re-fetch the live, never-cached snapshot endpoint client-side"
+  );
+  assert.match(src, /useEffect/, "must run its refresh in an effect, not only from the initial prop");
+  assert.match(
+    src,
+    /window\.setInterval\(tick,\s*5_000\)/,
+    "must poll on the same 5s cadence as the underlying snapshot cache/matrix"
+  );
+});
+
 test("home live desk strip keeps the page's shared 1.5rem side margin", () => {
   // HomeLiveDeskStrip renders its row as <div className="w home-live-strip-inner">, combining
   // the shared `.w` class (max-width + centering + `padding:0 1.5rem`, used by every other
