@@ -8706,6 +8706,7 @@ export type NighthawkPlayOutcomeRow = {
 export type LegacyDiscordLiveState = {
   closed?: boolean;
   closed_reason?: string | null;
+  bto_posted?: boolean;
   last_mark?: number | null;
   peak_premium?: number | null;
   trough_premium?: number | null;
@@ -8885,10 +8886,14 @@ export type LegacyDiscordLiveRow = NighthawkPlayOutcomeRow & {
   exit_style: "scale_out" | null;
 };
 
-/** Open Legacy plays for the Chief Trade Alert Bot live-sync loop — today's edition,
+/** Open Legacy plays for the Chief Trade Alert Bot live-sync loop — active edition date(s),
  *  pending outcome, not morning-pulled, not already closed in discord_live_state. */
 export async function fetchLegacyDiscordLiveRows(editionFor?: string): Promise<LegacyDiscordLiveRow[]> {
   await ensureSchema();
+  const { activeLegacyEditionDates } = await import(
+    "@/features/nighthawk/lib/legacy-edition-dates"
+  );
+  const editionDates = editionFor ? [editionFor] : activeLegacyEditionDates();
   const res = await (await getPool()).query(
     `
     SELECT id, edition_for, ticker, direction, conviction,
@@ -8901,11 +8906,11 @@ export async function fetchLegacyDiscordLiveRows(editionFor?: string): Promise<L
     WHERE outcome = 'pending'
       AND COALESCE(pulled, FALSE) = FALSE
       AND COALESCE((discord_live_state->>'closed')::boolean, FALSE) = FALSE
-      AND edition_for = COALESCE($1::date, (NOW() AT TIME ZONE 'America/New_York')::date)
+      AND edition_for = ANY($1::date[])
       AND publish_context IS NOT NULL
-    ORDER BY ticker ASC
+    ORDER BY edition_for ASC, ticker ASC
     `,
-    [editionFor ?? null]
+    [editionDates]
   );
 
   const out: LegacyDiscordLiveRow[] = [];
@@ -8938,6 +8943,7 @@ export async function fetchLegacyDiscordLiveRows(editionFor?: string): Promise<L
 export type LegacyDiscordLiveStateUpdate = {
   closed?: boolean;
   closedReason?: string | null;
+  btoPosted?: boolean;
   mark?: number | null;
   peakPremium?: number | null;
   troughPremium?: number | null;
@@ -8988,6 +8994,11 @@ export async function updateLegacyDiscordLiveState(
            END,
            'scaled_already', COALESCE((discord_live_state->>'scaled_already')::boolean, FALSE)
              OR COALESCE($6::boolean, FALSE),
+           'bto_posted', CASE
+             WHEN COALESCE((discord_live_state->>'bto_posted')::boolean, FALSE) THEN TRUE
+             WHEN $8::boolean IS TRUE THEN TRUE
+             ELSE FALSE
+           END,
            'last_action', COALESCE($7, discord_live_state->>'last_action'),
            'last_sync_at', NOW()
          )),
@@ -9004,6 +9015,7 @@ export async function updateLegacyDiscordLiveState(
       update.trimsTaken ?? null,
       update.scaledNow ?? null,
       update.lastAction ?? null,
+      update.btoPosted ?? null,
     ]
   );
 }
