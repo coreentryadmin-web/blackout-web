@@ -102,6 +102,7 @@ import { detectSplitFlow, detectVelocitySpikes, signalEligibility } from "@/feat
 import { SectorFlowPanel, type SectorFlowEntry } from "@/features/helix/components/SectorFlowPanel";
 import { NightHawkFlowPanel, type NightHawkPlayWithFlow } from "@/features/helix/components/NightHawkFlowPanel";
 import { ExpiryConcentration } from "@/features/helix/components/ExpiryConcentration";
+import { StrikeVolumeProfile } from "@/features/helix/components/StrikeVolumeProfile";
 import { RouteBreakdown } from "@/features/helix/components/RouteBreakdown";
 import { ExecutionAnalysisPanel } from "@/features/helix/components/ExecutionAnalysisPanel";
 import { SessionCorrelationMatrix } from "@/features/helix/components/SessionCorrelationMatrix";
@@ -989,6 +990,10 @@ export function FlowFeed() {
         onTickerClick={setSelectedTicker}
       />
       <SplitFlowRadar entries={splitFlowEntries} onTickerClick={setSelectedTicker} eligibility={signalCoverage} />
+      {/* Strike price is only a shared axis for ONE underlying — $150 on AAPL and $150 on GME
+          are unrelated levels — so this only renders once the tape is scoped to a single name
+          (the same condition ExpiryConcentration's sibling market-wide panels below invert). */}
+      {!marketWidePanels && <StrikeVolumeProfile alerts={displayAlerts} loading={loading} />}
       <ExecutionAnalysisPanel alerts={displayAlerts} loading={loading} />
       <RouteBreakdown alerts={displayAlerts} loading={loading} />
       {marketWidePanels && (
