@@ -349,12 +349,13 @@ function resolveLevels(
   }
 
   // PR-N21/N22: push the target-side S/R out so overnight plays have meaningful reward.
-  // 1.5× ATR ensures a full average day's range of upside minimum.
+  // 1.0× ATR is the measured sweet spot for one-session reachability (~11% touch rate);
+  // the old 1.5× floor pushed most targets to ~3% — see target-reachability.ts.
   if (px != null && support != null && resistance != null && resistance > support) {
     const atr = tech?.atr14;
     const minTargetDist = atr != null && Number.isFinite(atr) && atr > 0
-      ? atr * 1.5
-      : px * 0.025;
+      ? atr * 1.0
+      : px * 0.02;
     if (direction === "long" && (resistance - px) < minTargetDist) {
       resistance = px + minTargetDist;
     } else if (direction === "short" && (px - support) < minTargetDist) {
@@ -858,13 +859,13 @@ export function buildRescuePlays(params: {
     const { thesis, key_signal } = buildDeterministicThesis(scored, dossier, levels);
 
     const warnings: string[] = [];
+    const direction = scored.direction === "short" ? "SHORT" : "LONG";
+    const geom = validatePlayGeometry({ ...levels, direction } as Parameters<typeof validatePlayGeometry>[0]);
+    if (!geom.ok) continue;
+
     const contract = chain ? pickChainContract(chain, scored.direction, params.maxDte) : null;
     const options_play = formatOptionsPlay(ticker, contract);
-    if (contract) {
-      if (!validatePlayGeometry({ ...levels, direction: scored.direction === "short" ? "SHORT" : "LONG" } as any).ok) {
-        warnings.push("Entry/target geometry did not pass normal validation — verify levels before trading");
-      }
-    } else {
+    if (!contract) {
       warnings.push(`No affordable liquid option contract found under the $${MAX_OPTION_PREMIUM_PER_SHARE}/share cap — check the chain manually`);
     }
 

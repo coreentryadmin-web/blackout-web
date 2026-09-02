@@ -14,6 +14,7 @@ import {
   targetHitCompositionLabel,
   NIGHTHAWK_COMPACT_LANE_LABEL,
   MAX_COMPACT_LANE_LABEL_LEN,
+  resolveNightHawkView,
 } from "./nighthawk-view.ts";
 
 test("the toggle has five views in fast→slow→banger→vector→legacy order", () => {
@@ -194,4 +195,24 @@ test("parseNightHawkView keeps its forgiving default — the UI still depends on
   // The fix is at the API boundary, NOT here. Changing this would blank a stale shared link.
   assert.equal(parseNightHawkView("outcomes"), DEFAULT_NIGHTHAWK_VIEW);
   assert.equal(parseNightHawkView("nonsense"), DEFAULT_NIGHTHAWK_VIEW);
+});
+
+test("resolveNightHawkView: a ticker with no explicit view defaults to SWING", () => {
+  // SWING is the only view with a real per-ticker focus mechanism today (HorizonDeck's
+  // focusTicker) — landing on the app's own ZERO_DTE default would silently drop the ticker.
+  assert.equal(resolveNightHawkView(null, "TSLA"), "SWING");
+  assert.equal(resolveNightHawkView(undefined, "TSLA"), "SWING");
+});
+
+test("resolveNightHawkView: an explicit view always wins, even with a ticker present", () => {
+  assert.equal(resolveNightHawkView("banger", "TSLA"), "BANGER");
+  assert.equal(resolveNightHawkView("zerodte", "TSLA"), "ZERO_DTE");
+  assert.equal(resolveNightHawkView("legacy", "TSLA"), "LEGACY");
+});
+
+test("resolveNightHawkView: no view and no ticker falls back to the app default", () => {
+  assert.equal(resolveNightHawkView(null, null), DEFAULT_NIGHTHAWK_VIEW);
+  assert.equal(resolveNightHawkView(undefined, undefined), DEFAULT_NIGHTHAWK_VIEW);
+  assert.equal(resolveNightHawkView(null, ""), DEFAULT_NIGHTHAWK_VIEW, "an empty ticker string is the same as absent");
+  assert.equal(resolveNightHawkView(null, "   "), DEFAULT_NIGHTHAWK_VIEW, "whitespace-only is the same as absent");
 });

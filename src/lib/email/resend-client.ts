@@ -1,14 +1,5 @@
 import { Resend } from "resend";
-
-// Strip newlines/control characters from caller-supplied strings (email
-// subject/recipient) before they ever reach a log call — otherwise a crafted
-// value could inject fake log entries (CodeQL: log injection). Truncated too,
-// so a very long subject can't blow out log lines. Sanitized values are also
-// passed as a separate structured arg rather than interpolated into the
-// message string, so nothing tainted ever flows into the log format itself.
-function sanitizeForLog(value: string, maxLen = 200): string {
-  return value.replace(/[\r\n\t\x00-\x1f\x7f]/g, " ").slice(0, maxLen);
-}
+import { sanitizeForLog } from "@/lib/log-sanitize";
 
 let client: Resend | null = null;
 
@@ -17,10 +8,6 @@ function getResendClient(): Resend | null {
   if (!apiKey) return null;
   if (!client) client = new Resend(apiKey);
   return client;
-}
-
-export function resendConfigured(): boolean {
-  return Boolean(process.env.RESEND_API_KEY?.trim());
 }
 
 const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL?.trim() || "BlackOut Trades <hello@send.blackouttrades.com>";

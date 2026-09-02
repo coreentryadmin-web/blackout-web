@@ -38,7 +38,7 @@ import {
 } from "./governor";
 import { CHASE_PCT, type ContractPlan } from "./plan";
 import type { ZeroDteConfluence } from "./confluence";
-import { NEW_PLAY_CUTOFF_ET_MINUTES } from "./plan";
+import { DIRECTIONAL_LATE_CUTOFF_ET_MINUTES } from "./plan";
 import { commitAuthorizedBySourceHealth, type SourceHealthState } from "@/lib/ws/source-health";
 import { EARLY_ENTRY_WINDOW_END_ET_MINUTES } from "./confluence";
 import { evaluateMacroHardBlock, hasHighImpactMacroEvent, type MacroEventLike } from "@/lib/macro-hard-block";
@@ -93,8 +93,15 @@ export const OPENING_WINDOW_UNLOCK_LABEL = "10:00 ET";
 // (FINDINGS 2026-07-28) — the prior 15:00 cutoff left the entire toxic bucket open.
 // CONDOR-EXEMPT: an iron condor WANTS late-session theta crush (credit seller); the late
 // window is only destructive for long-premium entries.
-export const LATE_AFTERNOON_BLOCK_ET_MINUTES = NEW_PLAY_CUTOFF_ET_MINUTES;
-export const LATE_AFTERNOON_BLOCK_LABEL = "15:30 ET";
+//
+// On 2026-08-03 (#1591) this was widened to 15:30 ET (aliased to the general session-exit
+// cutoff) "to align session discipline with operator intent". Re-measured live 2026-09-01:
+// the reopened 14:00-15:30 directional window still ran 21.1% WR / −12.72% avg over the 90
+// days since the widening (n=19) — materially unchanged from the original evidence. Tightened
+// back to its own dedicated 14:00 ET constant (DIRECTIONAL_LATE_CUTOFF_ET_MINUTES, plan.ts) so
+// a future change to the unrelated condor/backstop cutoff can't silently drag this along again.
+export const LATE_AFTERNOON_BLOCK_ET_MINUTES = DIRECTIONAL_LATE_CUTOFF_ET_MINUTES;
+export const LATE_AFTERNOON_BLOCK_LABEL = "14:00 ET";
 
 // ── G-12 · Confluence floor — HARD GATE (Phase 1, 2026-07-24) ─────────────────────
 // Evidence (E3, 25 sessions, docs/audit/0DTE-RESEARCH.md): expectancy ladders with the number of

@@ -10,7 +10,7 @@ export const revalidate = 3600;
 
 export const metadata: Metadata = publicPageMetadata(
   "BlackOut — Live Dealer Gamma & 0DTE SPX Options Flow",
-  "BlackOut gives options traders live dealer gamma, 0DTE flow, and A–F graded SPX setups. See what the desks see and trade before the crowd moves.",
+  "BlackOut gives options traders live dealer gamma, 0DTE flow, and Trade Grade A–F SPX setups. See what the desks see — with quote age and session context on every read.",
   "/"
 );
 
@@ -32,7 +32,7 @@ export default async function LandingPage() {
       <FAQPageJsonLd items={selectFaqItems(HOME_FAQ_IDS).map((i) => ({ question: i.q, answer: i.a }))} />
       <WebPageJsonLd
         title="BlackOut — Live Dealer Gamma & 0DTE SPX Options Flow"
-        description="BlackOut gives options traders live dealer gamma, 0DTE flow, and A–F graded SPX setups. See what the desks see and trade before the crowd moves."
+        description="BlackOut gives options traders live dealer gamma, 0DTE flow, and Trade Grade A–F SPX setups. See what the desks see — with quote age and session context on every read."
         path="/"
       />
       <script dangerouslySetInnerHTML={{ __html: LANDING_REDIRECT_SCRIPT }} />

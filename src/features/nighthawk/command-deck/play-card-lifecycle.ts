@@ -2,6 +2,7 @@ import type { DeckStatus, TerminalPlay } from "./types";
 import { isoToEtClock, parseCommittedAtEt } from "@/lib/zerodte/play-timeline";
 import { trimScaleBlendedPnlAtStop } from "@/lib/zerodte/marks-math";
 import { PLAN_RULES } from "@/lib/zerodte/plan";
+import { legacyPrimaryPeakPct, legacyPrimaryPnlPct } from "@/features/nighthawk/lib/legacy-primary-pnl";
 
 /** Which lifecycle bucket drives the left-rail card layout. */
 export type PlayLifecyclePhase = "open" | "watch" | "closed";
@@ -252,6 +253,20 @@ export function playStatusDisplay(status: DeckStatus): { label: string; tone: St
  * matches `trimLadderVisual()`'s own "any tranche fired" semantics (terminal-display.ts) — once
  * the first partial trim banks, what remains IS the runner, even before every tranche has fired.
  */
+export function legacyActionDisplay(play: TerminalPlay): { label: string; tone: StatusTone } | null {
+  if (play.horizon !== "LEGACY") return null;
+  if (play.morningStatus === "INVALIDATED" || play.pulled) {
+    return { label: "PULLED", tone: "closed" };
+  }
+  if (play.morningStatus === "DEGRADED") {
+    return { label: "DEGRADED", tone: "watch" };
+  }
+  if (play.morningStatus === "UNVERIFIED") {
+    return { label: "UNVERIFIED", tone: "watch" };
+  }
+  return null;
+}
+
 export function zeroDteActionDisplay(play: TerminalPlay): { label: string; tone: StatusTone } | null {
   if (play.horizon !== "ZERO_DTE") return null;
   if (play.status === "CLOSED") {
@@ -426,10 +441,13 @@ export function closedCapturePct(play: TerminalPlay): number | null {
   return Number.isFinite(pct) ? pct : null;
 }
 
-/** Open-row primary metric labels — legacy uses stock progress, others use option P&L. */
+
+/** Open-row primary metric labels — legacy prefers option premium when marks are live. */
 export function openMetricsLabels(play: TerminalPlay): { current: string; peak: string } {
   if (play.horizon === "LEGACY") {
-    return { current: "Stock", peak: "Day" };
+    return play.pnlPct != null
+      ? { current: "Premium", peak: "Peak" }
+      : { current: "Stock", peak: "Session" };
   }
   return { current: "Current", peak: "Peak" };
 }
@@ -441,8 +459,8 @@ export function openMetricsValues(play: TerminalPlay): {
 } {
   if (play.horizon === "LEGACY") {
     return {
-      currentPct: play.pnlPct ?? play.stockChangePct ?? null,
-      peakPct: play.stockChangePct ?? null,
+      currentPct: legacyPrimaryPnlPct(play),
+      peakPct: legacyPrimaryPeakPct(play),
     };
   }
   return {

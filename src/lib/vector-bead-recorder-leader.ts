@@ -98,13 +98,25 @@ const activeSweepBudget: SweepBudgetState = { lastLoggedAt: 0 };
 let lastHeartbeatAt = 0;
 let heartbeatInFlight = false;
 
+/** Cached lock connection, reused across calls. Before this cache existed, getLockRedis()
+ *  opened a brand-new never-closed ioredis connection on EVERY call — and readHeldSlots()
+ *  (below) calls it on every 5s universe tick plus the 15s leader-refresh timer, per replica.
+ *  Measured live 2026-09-01: pegged ElastiCache CurrConnections at its 65,000 ceiling for
+ *  30+ minutes during RTH (13:33-14:03 UTC), flooding this module + rth-warm-leader.ts (the
+ *  same copy-pasted pattern, fixed alongside) with ETIMEDOUT/ECONNRESET/EPIPE, and starving
+ *  every OTHER Redis consumer on the shared cluster (uw-rate-limiter, bie-redis-probe) of a
+ *  connection slot even though those modules already cache/close correctly. */
+let cachedLockRedis: IoredisLockExtra | null = null;
+
 async function getLockRedis(): Promise<IoredisLockExtra | null> {
+  if (cachedLockRedis) return cachedLockRedis;
   const url = process.env.REDIS_URL?.trim();
   if (!url) return null;
   try {
     const { makeRedis } = await import("./make-redis");
     const client = await makeRedis("vector-bead-recorder", url, { maxRetriesPerRequest: 1 });
-    return client as unknown as IoredisLockExtra;
+    cachedLockRedis = client as unknown as IoredisLockExtra;
+    return cachedLockRedis;
   } catch {
     return null;
   }

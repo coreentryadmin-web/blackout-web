@@ -26,7 +26,7 @@ export function LearnHub() {
         className={clsx("learn-hub-hero", native ? "learn-hub-hero-native mb-6" : "mb-12")}
         initial={reduced || native ? false : { opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] as const }}
       >
         {!native && (
           <p className="learn-hub-kicker">

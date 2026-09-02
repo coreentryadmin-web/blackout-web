@@ -1,5 +1,6 @@
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
+import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "./vector-ticker";
 
 /**
@@ -76,7 +77,39 @@ export function pruneDynamicUniverse(
   return Object.fromEntries(fresh.slice(0, cap));
 }
 
-/** Record that a member opened `ticker` on Vector. Fire-and-forget; never throws. */
+/**
+ * Record that a member opened `ticker` on Vector. Fire-and-forget; never throws.
+ *
+ * `isVectorTickerAllowed` (vector-ticker.ts) is a SYNTAX gate only, by design — Vector serves any
+ * well-formed symbol on demand so a member can look up a name outside the preset universe. That
+ * design is correct for the live, on-demand view, but this function feeds a DIFFERENT, higher-
+ * stakes path: the cron-recorded, every-member-visible shared universe. A one-time typo view (a
+ * real live incident: "NFLIX" for NFLX) satisfied the syntax gate and got pinned into this map
+ * forever, since nothing here ever asked whether the symbol has real options data — the 5-min
+ * recorder cron then kept re-warming a name that will never produce one, and every member's
+ * `/api/market/vector/universe` served a permanent dead row. This confirms the ticker resolves to
+ * a REAL, optionable symbol (a positive spot from the live matrix) before writing it into the
+ * shared map — `fetchGexHeatmap` is Redis-cache-first, so this costs nothing extra once a ticker
+ * is warm, and the debounce below still applies to failed lookups so a repeatedly-opened typo
+ * isn't re-validated on every view.
+ *
+ * P2 FOLLOW-UP (2026-09-02, live monitor): the FIRST fix here (#3348, merged the same morning)
+ * checked `hm?.spot == null`, which never actually fires. `GexHeatmap.spot` is typed `number`, not
+ * `number | null` — a ticker `fetchGexHeatmap` cannot price returns `emptyHeatmap()`
+ * (polygon-options-gex.ts), whose `spot` field is `ctx?.spot ?? 0`, i.e. the real "unresolvable"
+ * sentinel is `0`, never `null`/`undefined`. `hm` itself is only `null`/`undefined` on a total
+ * fetch failure (not configured, or `resolveOptionsRoot` can't even parse a root) — an outcome
+ * `.catch(() => null)` above already produces the same way. So the `== null` guard could only ever
+ * catch that total-failure case; every "syntactically valid, no real chain" ticker — exactly the
+ * NFLIX-typo shape this fix exists to stop — sailed through with `hm.spot === 0`, which is not
+ * `null`, and got pinned anyway. Confirmed live: `/api/market/vector/universe` was still serving
+ * dead rows (`spot: 0`) for "NFLIX", plus two more (`LAST`, `SOX`) that are NOT in the static
+ * allowlist, so they can only have entered through this same broken guard — including possibly
+ * AFTER #3348 shipped, since nothing about that fix could have blocked a fresh spot:0 write either.
+ * Every other `.spot` consumer in the codebase (vector-screener.ts, vector-play-engine.ts,
+ * vector-play-bootstrap.ts, watch-track.ts, condor-render.ts, …) already guards `spot <= 0`
+ * alongside the null check — this was the one call site that didn't, now brought in line.
+ */
 export async function touchDynamicUniverse(rawTicker: string): Promise<void> {
   try {
     if (!isVectorTickerAllowed(rawTicker)) return;
@@ -86,6 +119,8 @@ export async function touchDynamicUniverse(rawTicker: string): Promise<void> {
     const prev = lastTouch.get(ticker);
     if (prev != null && now - prev < TOUCH_DEBOUNCE_MS) return;
     lastTouch.set(ticker, now);
+    const hm = await fetchGexHeatmap(ticker).catch(() => null);
+    if (!hm || !(hm.spot > 0)) return;
     const map = (await sharedCacheGet<DynamicMap>(KEY)) ?? {};
     map[ticker] = now;
     await sharedCacheSet(KEY, pruneDynamicUniverse(map, now), KEY_TTL_SEC);

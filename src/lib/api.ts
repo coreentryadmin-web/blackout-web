@@ -96,6 +96,15 @@ export const fetchSpxDesk = () => marketFetch<SpxDeskPayload>("/spx/desk");
 export const fetchSpxPin = () =>
   marketFetch<import("@/features/spx/lib/spx-pin").SpxPinForecast>("/spx/pin");
 
+/** SPX + VIX index snapshot — /api/market/indices, `authorizeMarketDeskApi` (community tier). */
+export type MarketIndicesPayload = {
+  source: string;
+  as_of: string;
+  spx: import("@/lib/providers/polygon").IndexQuote | null;
+  vix: import("@/lib/providers/polygon").IndexQuote | null;
+};
+export const fetchMarketIndices = () => marketFetch<MarketIndicesPayload>("/indices");
+
 /** One-shot dashboard bundle — desk + flow + pulse + merged (+ SPX matrix server-side). */
 export type SpxBootstrapPayload = {
   desk: SpxDeskPayload;
@@ -347,6 +356,41 @@ export async function fetchOptionContractDrilldown(params: {
   return marketFetch<OptionContractDrilldown>(`/option-contract?${qs}`);
 }
 
+/** Multi-day per-contract history — our own persisted flow_alerts, not UW's live (today-only)
+ *  API. Same contract-id shape as OptionContractDrilldown, days pre-aggregated server-side. */
+export interface OptionContractHistoryDay {
+  date: string;
+  callPremium: number;
+  putPremium: number;
+  total: number;
+  count: number;
+}
+export interface OptionContractHistory {
+  contract_id: string;
+  label: string;
+  ticker: string;
+  strike: number;
+  expiry: string;
+  option_type: "CALL" | "PUT";
+  lookback_days: number;
+  days: OptionContractHistoryDay[];
+  total_prints: number;
+}
+export async function fetchOptionContractHistory(params: {
+  ticker: string;
+  strike: number;
+  expiry: string;
+  option_type: "CALL" | "PUT";
+}) {
+  const qs = new URLSearchParams({
+    ticker: params.ticker,
+    strike: String(params.strike),
+    expiry: params.expiry.slice(0, 10),
+    option_type: params.option_type,
+  });
+  return marketFetch<OptionContractHistory>(`/option-contract-history?${qs}`);
+}
+
 /** Upcoming earnings dates — ticker → YYYY-MM-DD. Returns {} on error (graceful degradation). */
 export async function fetchEarningsCalendar(): Promise<Record<string, string>> {
   try {
@@ -429,8 +473,10 @@ export type { NightHawkEdition, HuntMode, HuntRequest, HuntResponse, PlayExplain
 export const fetchNightHawkPlays = () =>
   intelFetch<{ plays: NightHawkPlay[] }>("/nighthawk/plays");
 
-export const fetchNightHawkEdition = () =>
-  marketFetch<import("@/features/nighthawk/lib/types").NightHawkEdition>("/nighthawk/edition");
+export const fetchNightHawkEdition = (date?: string) =>
+  marketFetch<import("@/features/nighthawk/lib/types").NightHawkEdition>(
+    `/nighthawk/edition${date ? `?date=${encodeURIComponent(date)}` : ""}`
+  );
 
 export const fetchNightHawkPlayStatus = (date?: string) =>
   fetch(

@@ -16,7 +16,6 @@ import {
   summarizeGovernorForBoard,
   aggregatePremiumAtRisk,
   timeOfDaySizingFactor,
-  maxCorrelatedSameDirection,
   concentrationReasonForCandidate,
   freezeConcentrationState,
   correlationGroupOf,
@@ -28,7 +27,6 @@ import {
   GOVERNOR_LOSS_HALT_COUNT,
   GOVERNOR_SESSION_LOSS_FLOOR_PCT,
   GOVERNOR_ENFORCE_LOSS_HALT,
-  GOVERNOR_MAX_CORRELATED_SAME_DIR,
   type GovernorLedgerRow,
 } from "./governor";
 
@@ -431,37 +429,6 @@ test("governor state: an empty/unknown session date loads as no stops (never a g
 
 // ── Q9 — same-direction concentration MEASURE (surfaced, not enforced) ──────────────
 
-test("maxCorrelatedSameDirection: finds the largest same-direction correlated cluster; ignores opposed/uncorrelated", () => {
-  // SPY/QQQ/IWM long = a 3-cluster of the same index/ETF beta; the DIA short and the
-  // uncorrelated NVDA long don't join it.
-  const cluster = maxCorrelatedSameDirection([
-    { ticker: "SPY", direction: "long" },
-    { ticker: "QQQ", direction: "long" },
-    { ticker: "IWM", direction: "long" },
-    { ticker: "DIA", direction: "short" },
-    { ticker: "NVDA", direction: "long" },
-  ]);
-  assert.deepEqual(cluster, { tickers: ["IWM", "QQQ", "SPY"], direction: "long", count: 3 });
-});
-
-test("maxCorrelatedSameDirection: a single correlated plan (or none) is not a cluster → null; two in the same group IS a cluster", () => {
-  assert.equal(maxCorrelatedSameDirection([{ ticker: "SPY", direction: "long" }]), null);
-  // NVDA + AMD are both Semiconductors (v2) → a 2-cluster
-  assert.deepEqual(maxCorrelatedSameDirection([{ ticker: "NVDA", direction: "long" }, { ticker: "AMD", direction: "long" }]),
-    { tickers: ["AMD", "NVDA"], direction: "long", count: 2 });
-  // Two uncorrelated names → no cluster
-  assert.equal(maxCorrelatedSameDirection([{ ticker: "NVDA", direction: "long" }, { ticker: "JPM", direction: "long" }]), null);
-  assert.equal(maxCorrelatedSameDirection([]), null);
-});
-
-test("maxCorrelatedSameDirection: duplicate ticker rows do not inflate the count (distinct exposures only)", () => {
-  const cluster = maxCorrelatedSameDirection([
-    { ticker: "SPY", direction: "long" },
-    { ticker: "SPY", direction: "long" },
-  ]);
-  assert.equal(cluster, null); // one distinct exposure, not a 2-cluster
-});
-
 test("concentrationReasonForCandidate: fires when the candidate would exceed the cap; null under it", () => {
   const twoLongs = [
     { ticker: "SPY", direction: "long" as const },
@@ -492,28 +459,6 @@ test("Q9 enforced (Wave A/B default): evaluateZeroDteGovernor blocks a 3rd corre
   const blocks = evaluateZeroDteGovernor({ ticker: "IWM", direction: "long" }, snap, NOW);
   assert.equal(blocks.length, 1);
   assert.equal(blocks[0]!.code, "governor_concentration");
-});
-
-test("summarizeGovernorForBoard: surfaces the concentration measure without ever setting halted", () => {
-  const summary = summarizeGovernorForBoard(
-    [
-      row({ ticker: "SPY", direction: "long", status: "OPEN" }),
-      row({ ticker: "QQQ", direction: "long", status: "OPEN" }),
-    ],
-    []
-  );
-  assert.equal(summary.max_correlated_same_dir, GOVERNOR_MAX_CORRELATED_SAME_DIR);
-  assert.deepEqual(summary.correlated_concentration, { tickers: ["QQQ", "SPY"], direction: "long", count: 2 });
-  // At the cap → a would-block reason is surfaced…
-  assert.ok(summary.would_block_concentration && /concentration ceiling/.test(summary.would_block_concentration));
-  // …but the measure NEVER halts the desk (only the enforcing halts set that).
-  assert.equal(summary.halted, false);
-});
-
-test("summarizeGovernorForBoard: no correlated cluster → concentration measure is null/quiet", () => {
-  const summary = summarizeGovernorForBoard([row({ ticker: "NVDA", direction: "long", status: "OPEN" })], []);
-  assert.equal(summary.correlated_concentration, null);
-  assert.equal(summary.would_block_concentration, null);
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -637,18 +582,6 @@ test("deriveGovernorFromLedger: a graded hard stop counts ONCE as a realized los
   assert.equal(snap.stops.length, 1);
   assert.equal(snap.realized_losers, 1);
   assert.equal(snap.session_pnl_pct, -50);
-});
-
-// ── maxCorrelatedSameDirection: tie-break favors LONG (checked first, `> best.count`) ─
-test("maxCorrelatedSameDirection: equal long/short clusters → the LONG cluster is returned (long is scanned first)", () => {
-  const cluster = maxCorrelatedSameDirection([
-    { ticker: "SPY", direction: "long" },
-    { ticker: "QQQ", direction: "long" },
-    { ticker: "IWM", direction: "short" },
-    { ticker: "DIA", direction: "short" },
-  ]);
-  // both directions form a 2-cluster; long wins the tie because short only replaces on strictly-greater count.
-  assert.deepEqual(cluster, { tickers: ["QQQ", "SPY"], direction: "long", count: 2 });
 });
 
 // ── correlationGroupOf / correlationGroupId ──────────────────────────────────────────

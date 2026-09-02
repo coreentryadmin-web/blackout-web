@@ -38,24 +38,12 @@ const DEFAULT_CEILING = 150;
 /** Fraction of the qualifying pool kept before the floor/ceiling clamp. */
 const POOL_PCT = 0.3;
 
-function envFlag(name: string): boolean {
-  const raw = process.env[name]?.trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "on";
-}
-
 const TRUTHY = new Set(["1", "true", "on", "yes"]);
 const FALSEY = new Set(["0", "false", "off", "no"]);
 const norm = (v: string | undefined): string | null => {
   const t = v?.trim().toLowerCase();
   return t ? t : null;
 };
-
-/** Emergency kill-switch: set to revert to the static floor (today's pre-2026-08-04 behavior)
- *  without a redeploy, in case dynamic sizing misbehaves live. Default OFF (dynamic-N is live).
- *
- *  NOTE: module-eval snapshot, kept for back-compat. Prefer {@link resolveBreakoutDynamicCapDisabled},
- *  which reads at CALL time and also honours the bare `BREAKOUT_DYNAMIC_CAP` name. */
-export const BREAKOUT_DYNAMIC_CAP_DISABLED = envFlag("BREAKOUT_DYNAMIC_CAP_DISABLED");
 
 /**
  * Resolve the dynamic-cap kill-switch from BOTH env names.

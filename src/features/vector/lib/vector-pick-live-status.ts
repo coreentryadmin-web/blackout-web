@@ -4,6 +4,10 @@
  */
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/features/nighthawk/lib/constants";
 import { pinnedLivePnlPct, resolveZeroDteMark, zeroDteMidOf } from "@/lib/zerodte/marks-math";
+import {
+  resolveInvalidationSpot,
+  type InvalidationBar,
+} from "./vector-pick-invalidation";
 
 export type VectorPickActionStatus = "still_buy" | "caution" | "dont_buy";
 
@@ -29,7 +33,30 @@ export type VectorPickLiveEvalInput = {
   putWall?: number | null;
   gammaFlip?: number | null;
   quote: VectorPickLiveQuote;
+  /**
+   * `fresh_entry` — should a member enter NOW (Vector desk PLYS strip).
+   * `tracked` — server sweep / Night Hawk board row already on the book; never
+   * archive a +50% winner as "chase risk" (found live 2026-09-01: AAPL +205%
+   * marked dont_buy while still the session's top winner).
+   */
+  intent?: "fresh_entry" | "tracked";
+  /** Contract role from ranking — enables per-leg invalidation on range plays. */
+  pickRole?: string | null;
+  /** Optional 1m seed bars for bar-close invalidation (sweep passes these). */
+  bars?: readonly InvalidationBar[];
+  nowMs?: number;
 };
+
+/** Sub-$0.10 entry mids make %-from-entry meaningless on penny quotes. */
+export const VECTOR_PICK_MIN_ENTRY_MID_FOR_PCT = 0.1;
+
+/**
+ * Tick-cross buffer for textual "5m close >/< level" rules — we only have live spot, not a
+ * closed bar. Without this, a $0.46 pierce (AAPL 325.46 vs 325.00) or $0.33 dip (IWM 290.67 vs
+ * 291.00) instant-invalidates high-conviction plays (measured 2026-09-01: 119 setup_invalidated
+ * closures, worst losers all within 0.1–0.5% of the level).
+ */
+export const VECTOR_PICK_INVALIDATION_BUFFER_PCT = 0.15;
 
 export type VectorPickLiveEval = {
   status: VectorPickActionStatus;
@@ -91,17 +118,19 @@ export function isSetupInvalidated(
   bias: VectorPickLiveEvalInput["bias"],
   callWall: number | null | undefined,
   putWall: number | null | undefined,
-  gammaFlip: number | null | undefined
+  gammaFlip: number | null | undefined,
+  pickRole?: string | null
 ): { invalidated: boolean; level: number | null } {
   const text = (invalidation ?? "").toLowerCase();
   const level = parseInvalidationLevel(invalidation);
+  const buf = VECTOR_PICK_INVALIDATION_BUFFER_PCT / 100;
 
   if (level != null) {
     if (text.includes("close >") || text.includes("back >") || text.includes("above")) {
-      if (spot > level) return { invalidated: true, level };
+      if (spot > level * (1 + buf)) return { invalidated: true, level };
     }
     if (text.includes("close <") || text.includes("back <") || text.includes("below")) {
-      if (spot < level) return { invalidated: true, level };
+      if (spot < level * (1 - buf)) return { invalidated: true, level };
     }
     if (text.includes("back through")) {
       if (bias === "long" && spot < level) return { invalidated: true, level };
@@ -109,14 +138,25 @@ export function isSetupInvalidated(
     }
   }
 
-  if (text.includes("short gamma") && gammaFlip != null && spot < gammaFlip) {
+  if (text.includes("short gamma") && gammaFlip != null && spot < gammaFlip * (1 - buf)) {
     return { invalidated: true, level: gammaFlip };
   }
 
-  if (bias === "long" && putWall != null && spot < putWall * 0.995) {
+  // Range plays carry bias "range" — wall-break fallbacks are per-leg via pickRole.
+  if (bias === "range" && pickRole) {
+    if (pickRole === "fade-dip" && putWall != null && spot < putWall * (1 - buf)) {
+      return { invalidated: true, level: putWall };
+    }
+    if (pickRole === "fade-rip" && callWall != null && spot > callWall * (1 + buf)) {
+      return { invalidated: true, level: callWall };
+    }
+    return { invalidated: false, level };
+  }
+
+  if (bias === "long" && putWall != null && spot < putWall * (1 - buf)) {
     return { invalidated: true, level: putWall };
   }
-  if (bias === "short" && callWall != null && spot > callWall * 1.005) {
+  if (bias === "short" && callWall != null && spot > callWall * (1 + buf)) {
     return { invalidated: true, level: callWall };
   }
 
@@ -129,18 +169,42 @@ export function isSetupInvalidated(
  */
 export function evaluateVectorPickLiveStatus(input: VectorPickLiveEvalInput): VectorPickLiveEval {
   const { quote, spot, entryMid } = input;
+  const intent = input.intent ?? "fresh_entry";
   const mid =
     quote.mid ??
     zeroDteMidOf(quote.bid, quote.ask);
   const premiumPct = premiumDriftPct(entryMid, mid);
+  const invSpot = resolveInvalidationSpot({
+    liveSpot: spot,
+    invalidation: input.invalidation,
+    bars: input.bars,
+    nowMs: input.nowMs,
+  });
   const inv = isSetupInvalidated(
-    spot,
+    invSpot,
     input.invalidation,
     input.bias,
     input.callWall,
     input.putWall,
-    input.gammaFlip
+    input.gammaFlip,
+    input.pickRole
   );
+
+  if (
+    entryMid != null &&
+    entryMid > 0 &&
+    entryMid < VECTOR_PICK_MIN_ENTRY_MID_FOR_PCT &&
+    premiumPct != null &&
+    Math.abs(premiumPct) >= 25
+  ) {
+    return {
+      status: "caution",
+      reason: `Sub-$${VECTOR_PICK_MIN_ENTRY_MID_FOR_PCT.toFixed(2)} entry — verify premium at your broker`,
+      premiumPctFromEntry: premiumPct,
+      invalidationLevel: inv.level,
+      setupInvalidated: inv.invalidated,
+    };
+  }
 
   if (inv.invalidated) {
     // Spot broke the play thesis but the contract can still be up big (measured INTC 2026-08-28:
@@ -198,7 +262,35 @@ export function evaluateVectorPickLiveStatus(input: VectorPickLiveEvalInput): Ve
     };
   }
 
+  if (premiumPct != null && premiumPct >= 50) {
+    return {
+      status: "caution",
+      reason: `Winner +${premiumPct.toFixed(0)}% — manage exit, not fresh entry`,
+      premiumPctFromEntry: premiumPct,
+      invalidationLevel: inv.level,
+      setupInvalidated: false,
+    };
+  }
+
   if (premiumPct != null && premiumPct >= 20) {
+    if (intent === "tracked") {
+      if (premiumPct >= 50) {
+        return {
+          status: "caution",
+          reason: `Winner +${premiumPct.toFixed(0)}% — manage exit, not fresh entry`,
+          premiumPctFromEntry: premiumPct,
+          invalidationLevel: inv.level,
+          setupInvalidated: false,
+        };
+      }
+      return {
+        status: "caution",
+        reason: `Extended +${premiumPct.toFixed(0)}% — limit only, not fresh entry`,
+        premiumPctFromEntry: premiumPct,
+        invalidationLevel: inv.level,
+        setupInvalidated: false,
+      };
+    }
     return {
       status: "dont_buy",
       reason: `Premium extended +${premiumPct.toFixed(0)}% since pick — chase risk`,

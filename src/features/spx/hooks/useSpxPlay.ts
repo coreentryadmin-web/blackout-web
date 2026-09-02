@@ -72,17 +72,25 @@ export function clearPlayCache(): void {
 export function useSpxPlay(sessionActive = true) {
   const sessionDate = todayEtYmdClient();
 
-  // Cached payload stored in state so readSessionCache is only called when
-  // new SWR data arrives (onSuccess), not on every render in a useMemo.
-  const [cachedPayload, setCachedPayload] = useState<SpxPlayPayload | undefined>(() =>
-    sessionActive ? readSessionCache<SpxPlayPayload>(PLAY_CACHE_KEY, PLAY_CACHE_MAX_AGE_MS) ?? undefined : undefined
-  );
+  // MUST start undefined, not a lazy initializer reading sessionStorage — that runs during
+  // the render React uses for hydration reconciliation, and readSessionCache() returns
+  // undefined on the server (no `window`) but a real cached play on the client's very first
+  // paint whenever the member reloaded mid-session (onSuccess below persists on every poll
+  // while a play is live). `play` below folds cachedPayload into the merged result, so a
+  // divergent cachedPayload on that first render is a guaranteed React #418 hydration
+  // mismatch — the same defect class fixed in useMergedDesk.ts's deskStable ref, here as a
+  // useState lazy initializer instead of a useRef initializer. Hydrated one tick later via
+  // the effect below instead — a normal post-mount re-render, not part of hydration.
+  const [cachedPayload, setCachedPayload] = useState<SpxPlayPayload | undefined>(undefined);
 
   useEffect(() => {
     if (!sessionActive) {
       clearPlayCache();
       setCachedPayload(undefined);
+      return;
     }
+    const cached = readSessionCache<SpxPlayPayload>(PLAY_CACHE_KEY, PLAY_CACHE_MAX_AGE_MS);
+    if (cached) setCachedPayload(cached);
   }, [sessionActive]);
 
   const { data, isValidating, isLoading } = useSWR(
@@ -96,9 +104,11 @@ export function useSpxPlay(sessionActive = true) {
       revalidateOnReconnect: true,
       keepPreviousData: true,
       dedupingInterval: Math.max(800, PLAY_MS - 500),
-      fallbackData: sessionActive
-        ? readSessionCache<SpxPlayPayload>(PLAY_CACHE_KEY, PLAY_CACHE_MAX_AGE_MS)
-        : undefined,
+      // Deliberately no SWR "initial data from cache" option here — it would reintroduce the
+      // same hydration hazard cachedPayload above was just fixed to avoid (SWR treats it as
+      // the initial `data`, so a value that exists client-side-only would diverge from the
+      // server's render the same way). Not needed either — cachedPayload already carries the
+      // cached play into `play` via mergePlayWithCache below, one tick after mount.
       onSuccess: (payload) => {
         if (!sessionActive || !payload || !shouldPersistPlayPayload(payload)) return;
 

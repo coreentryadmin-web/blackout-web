@@ -889,6 +889,7 @@ export type ZeroDteGateFailure =
   | `cortex_veto:${string}` // a Cortex source hard-vetoed the entry
   | "cortex_veto_blind" // Cortex blind to BOTH veto-capable sources on a fresh commit → HOLD
   | "cortex_net_negative" // no veto, but the evidence score nets < 0 — doesn't print
+  | "cortex_thin_evidence" // 2026-09-01: no veto, score >= 0 but too few sources answered to trust it — distinct from cortex_net_negative, whose score is always negative
   | "cortex_contested" // NH-R9: both a real support case and a real oppose case, net score below the A floor — unresolved internal fight, doesn't print
   | "cortex_gex_walls_oppose_unresolved" // 2026-08-28: a real, active gex-walls oppose below the A floor — evidenced (90-day + same-week live) to grade worse even at net score >= 0
   // ── CONDOR play-type gates (Phase 4, gates.ts) — replace the DIRECTIONAL plan-quality /
@@ -1384,41 +1385,6 @@ export function deriveZeroDteSetups(
   return setups.sort((a, b) => b.score - a.score).slice(0, maxSetups);
 }
 
-// ── Engine card ranking ───────────────────────────────────────────────────────────
-
-export type EngineCard = {
-  kind: "spx_play" | "lotto" | "power_hour";
-  /** ACTIVE = live managed play; ARMED = ready/near-trigger; SCANNING = watching; DONE/OFF. */
-  state: "ACTIVE" | "ARMED" | "SCANNING" | "DONE" | "OFF";
-  rank: number;
-};
-
-/**
- * Deterministic ordering for the engine cards: an ACTIVE managed play always leads,
- * ARMED engines next (lotto before power-hour outside 15:00-15:30, reversed inside
- * the window), then scanning states.
- */
-export function rankEngineCards(
-  cards: Array<Omit<EngineCard, "rank">>,
-  inPowerHourWindow: boolean
-): EngineCard[] {
-  const stateOrder: Record<EngineCard["state"], number> = {
-    ACTIVE: 0,
-    ARMED: 1,
-    SCANNING: 2,
-    DONE: 3,
-    OFF: 4,
-  };
-  const kindOrder = (k: EngineCard["kind"]): number => {
-    if (k === "spx_play") return 0;
-    if (inPowerHourWindow) return k === "power_hour" ? 1 : 2;
-    return k === "lotto" ? 1 : 2;
-  };
-  return [...cards]
-    .sort((a, b) => stateOrder[a.state] - stateOrder[b.state] || kindOrder(a.kind) - kindOrder(b.kind))
-    .map((c, i) => ({ ...c, rank: i + 1 }));
-}
-
 // ── Dossier enrichment (the "very strong" layer) ─────────────────────────────────
 // The top setups get the FULL Night Hawk dossier treatment — the same enrichment +
 // direction-correct deterministic scorer the evening edition uses: flow streaks,
@@ -1474,6 +1440,19 @@ export type SetupDossierView = {
     news_score: number;
     smart_money_score: number;
     catalyst_flags?: string[];
+    // 9-8: fetchTickerDossier (dossier.ts) always assigns the FULL ScoredCandidate
+    // (scorer.ts) here — this local view type had only ever declared the five fields above,
+    // so these six real, always-populated components had no typed path into factor_breakdown
+    // even though the runtime object carried them. Kept optional (matching ScoredCandidate's
+    // own optionality) rather than widened to the full ScoredCandidate type, since this view
+    // is deliberately narrower than the scorer's internal shape (e.g. no regime_multiplier,
+    // no fundamental_block/flags) — only what a consumer here actually needs.
+    fundamental_score?: number;
+    catalyst_score?: number;
+    short_interest_score?: number;
+    wall_proximity_score?: number;
+    vex_alignment_score?: number;
+    skew_score?: number;
   } | null;
   /** Benzinga analyst price-target one-liner (e.g. "PT raised to $210 at MS"). */
   price_target?: string | null;
@@ -1778,6 +1757,20 @@ export function enrichSetup(
     dossier_score: scored?.score ?? null,
     conviction: scored?.conviction ?? null,
     direction_confirmed: scored ? scored.direction === setup.direction : null,
+    // 9-8: scoreCandidate (scorer.ts) always folds ALL of flow/tech/pos/news/smart_money PLUS
+    // fundamental/catalyst/short_interest/wall_proximity/vex_alignment/skew into `score`/
+    // `dossier_score` — this file only ever surfaced the first five, so the "Why this play was
+    // picked" panel for every FLOW/PIN setup silently omitted up to 6 of 11 real scoring inputs
+    // (measured live 2026-09-02: NVDA showed 5 factors summing to 22.4 against a dossier_score of
+    // 35 and a displayed score of 69 — the missing 6 accounted for more of the score than what was
+    // shown). Mirrors the identical, already-shipped mapping in deterministic-edition.ts (Night
+    // Hawk Edition's two `factor_breakdown` builders) so the same `ScoredCandidate` renders the
+    // same breakdown on both surfaces — this file had simply drifted out of sync with that
+    // established pattern, not implemented a different one on purpose. Conditional spreads (not a
+    // flat 0 fallback) keep an inapplicable dimension OUT of the breakdown entirely, exactly as
+    // deterministic-edition.ts already does — a real 0 (dimension scored, contributed nothing) and
+    // an absent input (dimension never scored) are different facts and must not collapse into the
+    // same rendered "0" bar.
     factor_breakdown: scored
       ? {
           flow: scored.flow_score,
@@ -1785,6 +1778,12 @@ export function enrichSetup(
           positioning: scored.pos_score,
           news: scored.news_score,
           smart_money: scored.smart_money_score,
+          ...(scored.fundamental_score != null ? { fundamental: scored.fundamental_score } : {}),
+          ...(scored.catalyst_score != null ? { catalyst: scored.catalyst_score } : {}),
+          ...(scored.short_interest_score != null ? { short_interest: scored.short_interest_score } : {}),
+          ...(scored.wall_proximity_score != null ? { wall_proximity: scored.wall_proximity_score } : {}),
+          ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
+          ...(scored.skew_score != null ? { skew: scored.skew_score } : {}),
         }
       : null,
     trend: tech?.trend ?? null,

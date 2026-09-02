@@ -25,10 +25,30 @@ import { warmGridEarnings } from "@/lib/zerodte/earnings";
 import { warmZeroDteBoard } from "@/lib/zerodte/scan";
 import { refreshZeroDteBoardSnapshot } from "@/lib/platform/zerodte-service";
 import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
+import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
+
+/**
+ * Cross-replica overlap guard. Measured live on prod 2026-09-02: two "[cron/zerodte-warm]
+ * background done" completions logged 2.171s apart (15:28:37.606 and 15:28:39.777 UTC) with
+ * elapsed=168371ms and elapsed=123934ms — their runtimes overlapped for 100+ seconds of
+ * concurrent execution on shared web-tier ECS compute. This route has TWO independent,
+ * uncoordinated trigger sources — EventBridge's own ~5min schedule AND the in-app
+ * rth-warm-leader (rth-warm-leader.ts), which re-dispatches this key the instant its last
+ * recorded run is more than 4 minutes stale (RTH_WRITER_HEAL_AFTER_MIN["zerodte-warm"]) — with
+ * no lock between them, so a fast EventBridge fire and a leader-triggered heal-fire can land
+ * within seconds of each other while the prior run's scanner tick + board-snapshot rebuild is
+ * still in flight, doubling load on the same rate-limited HELIX/UW upstreams and DB writes real
+ * member requests also depend on. Same `sharedCacheSetNx` idempotent-skip pattern already used
+ * by vector-pick-sweep and desk-warm for this exact problem shape. TTL (900s) matches this
+ * cron's own `stale_after_min: 15` alerting threshold (cron-registry.ts) as the safety-net
+ * ceiling if a release is ever missed.
+ */
+const OVERLAP_LOCK_KEY = "zerodte-warm:running";
+const OVERLAP_LOCK_TTL_SEC = 900;
 
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -43,6 +63,21 @@ export async function GET(req: NextRequest) {
       skipped: true,
       reason:
         "Outside extended warm window (weekday 4:00 AM–8:00 PM ET) — use ?force=1 or set CACHE_WARM_ALWAYS=1",
+    };
+    await logCronRun("zerodte-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const acquired = await sharedCacheSetNx(
+    OVERLAP_LOCK_KEY,
+    { startedAt: started },
+    OVERLAP_LOCK_TTL_SEC
+  ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a stuck cron
+  if (!acquired) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: "previous zerodte warm still in flight (idempotent skip)",
     };
     await logCronRun("zerodte-warm", started, payload);
     return NextResponse.json(payload);
@@ -74,6 +109,9 @@ export async function GET(req: NextRequest) {
       })
       .catch((err) => {
         console.error("[cron/zerodte-warm] background warm REJECTED:", err);
+      })
+      .finally(() => {
+        void sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
       });
   };
 

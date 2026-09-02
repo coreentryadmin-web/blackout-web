@@ -123,12 +123,26 @@ export function RadarIcon(props: IconProps) {
   );
 }
 
+/** Meridian — earnings timeline: calendar spine with event markers. */
+export function MeridianIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 4h14v16H5z" />
+      <path d="M8 2.5v3M16 2.5v3M5 9h14" />
+      <circle cx="9" cy="13" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="16" r="1.4" />
+      <path d="M9 13.8 15 15.6" />
+    </Svg>
+  );
+}
+
 const BY_ID: Record<MarketingModuleId, (p: IconProps) => JSX.Element> = {
   spx: LadderIcon,
   helix: HelixIcon,
   thermal: ThermalIcon,
   largo: GraphIcon,
   hawk: ReticleIcon,
+  meridian: MeridianIcon,
   vector: RadarIcon,
 };
 

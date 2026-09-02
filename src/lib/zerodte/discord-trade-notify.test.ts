@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
   buildZeroDteTradePayload,
+  chiefTradeVirtualLots,
   formatZeroDteExpiry,
   formatZeroDteStrike,
 } from "./discord-trade-notify";
@@ -19,7 +20,7 @@ describe("discord-trade-notify formatters", () => {
     assert.equal(formatZeroDteStrike(null, "long"), null);
   });
 
-  test("buildZeroDteTradePayload matches manual desk format", () => {
+  test("buildZeroDteTradePayload matches manual desk format (qty=1 default)", () => {
     const payload = buildZeroDteTradePayload(
       {
         session_date: "2026-10-10",
@@ -40,8 +41,35 @@ describe("discord-trade-notify formatters", () => {
       expiry: "10/10",
       price: 3.55,
       idempotency_key: "zerodte:2026-10-10:SPX:bto",
-      author_name: "BlackOut Desk",
+      author_name: "Night-Hawk-Bot",
     });
+  });
+
+  test("buildZeroDteTradePayload close uses remaining virtual lots after trims", () => {
+    const prev = process.env.CHIEF_TRADE_VIRTUAL_LOTS;
+    process.env.CHIEF_TRADE_VIRTUAL_LOTS = "3";
+    try {
+      assert.equal(chiefTradeVirtualLots(), 3);
+      const payload = buildZeroDteTradePayload(
+        {
+          session_date: "2026-10-10",
+          ticker: "SPX",
+          direction: "long",
+          top_strike: 7650,
+          expiry: "2026-10-10",
+          entry_premium: 3.55,
+          trims_taken: 2,
+        },
+        "STC",
+        5.1,
+        { idempotencySuffix: "stc" }
+      );
+      assert.equal(payload?.qty, 1);
+      assert.equal(payload?.idempotency_key, "zerodte:2026-10-10:SPX:stc");
+    } finally {
+      if (prev === undefined) delete process.env.CHIEF_TRADE_VIRTUAL_LOTS;
+      else process.env.CHIEF_TRADE_VIRTUAL_LOTS = prev;
+    }
   });
 
   test("buildZeroDteTradePayload skips condor rows", () => {

@@ -468,8 +468,13 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
               ) : null
             ) : (
               <EmptyState
-                title="Vector chart launching soon"
-                description="The embedded SPX Vector chart is not enabled for this account yet."
+                title="Vector isn't on your plan yet"
+                description="The embedded SPX Vector chart is a Premium feature. Vector itself is fully live — upgrade to unlock it here."
+                action={
+                  <Button href="/upgrade" variant="primary" size="sm">
+                    Upgrade to Premium
+                  </Button>
+                }
                 className="m-auto max-w-md"
               />
             )}

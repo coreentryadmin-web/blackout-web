@@ -13,7 +13,6 @@ import type { ChainStrikeRow, EditionChainData } from "@/features/nighthawk/lib/
 import { GROUNDING_MIN_OI, tieredMinOi } from "@/features/nighthawk/lib/grounding";
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/features/nighthawk/lib/constants";
 import { todayEtYmd } from "@/lib/providers/spx-session";
-import type { PlayTechnicals, VectorPlay, VectorPlayStyle } from "./vector-play-engine";
 import type { PlayPlatformFlowPrint, PlayPlatformInputs } from "./vector-play-platform";
 import { flowDirection } from "@/features/helix/lib/helix-flow-aggression";
 import type { VectorContractPick } from "./vector-contract-picks";
@@ -21,10 +20,14 @@ import type { VectorRegimePosture } from "./vector-regime";
 import type { ConfluenceZone } from "./vector-confluence";
 import { buildVectorPickEvidence, type VectorPickEvidenceSection } from "./vector-pick-evidence";
 import { rangeMeanReference } from "./vector-play-engine";
+import type { PlayTechnicals, VectorPlay, VectorPlayStyle } from "./vector-play-engine";
 import { effectivePickBias } from "./vector-pick-effective-bias";
 import type { VectorPickEnrichmentData } from "./vector-pick-types";
 import { strikeGexFromTotals, topGexPinStrikes } from "./strike-gex-lookup";
 import { vectorPickOcc } from "./vector-pick-occ";
+
+/** Sub-$0.12 premiums make %-from-entry meaningless and dominated by spread noise (2026-09-01 audit). */
+export const MIN_VECTOR_PICK_PREMIUM = 0.12;
 
 export type VectorPickActionStatus = "still_buy" | "caution" | "dont_buy";
 
@@ -206,7 +209,7 @@ export function pickContractNearTarget(
       if (row.expiry < minExpiry || row.expiry > maxExpiry) continue;
     }
     const premium = contractPremium(row, side);
-    if (premium == null) continue;
+    if (premium == null || premium < MIN_VECTOR_PICK_PREMIUM) continue;
     const oi = contractOi(row, side);
     const entry: Candidate = {
       strike: row.strike,
@@ -306,16 +309,32 @@ function specsForContext(ctx: VectorPlayPickContext): CandidateSpec[] {
   const maxPain = num(ctx.enrichment?.maxPain) ?? num(magnetStrike);
 
   if (play.bias === "long") {
-    const target = num(putWall) ?? spot;
+    const target =
+      play.setup === "momentum-long"
+        ? (num(callWall) ?? spot)
+        : (num(putWall) ?? spot);
     specs.push({ direction: "long", targetStrike: target, role: "primary-long" });
-    // GEX king as support pin when below spot — wall-aligned long leg.
-    if (king != null && king < spot && Math.abs(king - target) / spot > 0.004) {
+    // GEX king as support pin when below spot — wall-aligned long leg (fade / support geometry).
+    if (
+      play.setup !== "momentum-long" &&
+      king != null &&
+      king < spot &&
+      Math.abs(king - target) / spot > 0.004
+    ) {
       specs.push({ direction: "long", targetStrike: king, role: "gex-king-pin" });
     }
   } else if (play.bias === "short") {
-    const target = num(callWall) ?? spot;
+    const target =
+      play.setup === "momentum-short"
+        ? (num(putWall) ?? spot)
+        : (num(callWall) ?? spot);
     specs.push({ direction: "short", targetStrike: target, role: "primary-short" });
-    if (king != null && king > spot && Math.abs(king - target) / spot > 0.004) {
+    if (
+      play.setup !== "momentum-short" &&
+      king != null &&
+      king > spot &&
+      Math.abs(king - target) / spot > 0.004
+    ) {
       specs.push({ direction: "short", targetStrike: king, role: "gex-king-pin" });
     }
   } else if (play.bias === "range") {

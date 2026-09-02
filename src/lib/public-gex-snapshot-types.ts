@@ -47,6 +47,14 @@ export type PublicGexSnapshot = {
   session_date: string | null;
   /** The matrix compute time as an ET wall-clock stamp, beside the raw UTC `asof`. */
   as_of_et: string | null;
+  /** Seconds since `asof` at response time — lets clients and monitors reason about freshness without parsing ISO timestamps. */
+  snapshot_data_age_seconds?: number | null;
+  /** Why the snapshot is unavailable when `available` is false — `warming` (no data yet), `error` (build threw), or omitted when live. */
+  warming_reason?: "warming" | "error" | null;
+  /** True when serving a cached last-good read because the live upstream missed this refresh. */
+  degraded?: boolean;
+  /** Human-readable note for degraded payloads — shown in the UI badge. */
+  degraded_note?: string | null;
 };
 
 const ALLOWED_TICKERS = ["SPX", "SPY", "QQQ"] as const;
@@ -131,6 +139,41 @@ export function correctPublicRead(
   return read.replace(clause, replacement).replace(/\s{2,}/g, " ").trim();
 }
 
+/**
+ * Suppress the ACTIONABLE momentum claim in the regime narration outside RTH.
+ *
+ * `correctPublicRead` above fixes the wall-side clause; this fixes a different defect in the same
+ * string. The narration's directional language ("momentum / vol expansion, moves accelerate" /
+ * "range-bound, fade extremes") is a live trading read — it tells a visitor what dealer hedging is
+ * doing to price RIGHT NOW. `publicFreshnessCopy` already knows, from `market_session` alone
+ * (independent of `asof`), when the underlying quote is NOT live: pre-market, after-hours, or
+ * closed. But nothing connected that fact to this string — `computeGexRegimeCore` (the shared
+ * builder every desk surface reads, including live-member Thermal/Vector) has no concept of quote
+ * freshness at all, and correctly so: for a member trading RTH, spot IS live and the actionable
+ * read is exactly right. The public snapshot is the one place composing this string for a
+ * non-authenticated visitor with no session gate, so it is the one place that must ALSO check
+ * `market_session` before repeating the actionable framing — the fix belongs here, not in the
+ * shared regime builder, so live member reads are untouched.
+ *
+ * Measured: pre-market/after-hours/closed still called `buildSnapshotFromHeatmap` every 5s and
+ * published "dealers are net short gamma at EVERY strike ... momentum / vol expansion, moves
+ * accelerate" beside a spot explicitly marked stale by `priceNote` — a fresh RECOMPUTE timestamp
+ * making a stale INPUT look actionable.
+ */
+export function applyPublicReadFreshnessGate(read: string, marketSession: MarketPhase | null): string {
+  if (marketSession === "OPEN") return read;
+  const structural = read
+    .replace(
+      /→\s*short gamma:\s*momentum \/ vol expansion, moves accelerate/i,
+      "→ short gamma structurally (not a live actionable read)"
+    )
+    .replace(
+      /→\s*long gamma:\s*range-bound, fade extremes/i,
+      "→ long gamma structurally (not a live actionable read)"
+    );
+  return `Prior-session structural reference — ${structural}`;
+}
+
 
 /**
  * ET session facts for a public snapshot, from ONE instant.
@@ -192,4 +235,17 @@ export function publicFreshnessCopy(input: {
     return { levels, priceNote: "After hours — price is the closing print or a late trade, not a live quote" };
   }
   return { levels, priceNote: "Market closed — price is the last session's close, not a live quote" };
+}
+
+/** Alert ops when the public lead magnet has no data beyond this window. */
+export const PUBLIC_GEX_WARMING_ALARM_SEC = 300;
+
+/** Pure helper — unit-tested; drives prolonged-warmup paging without Redis. */
+export function shouldAlarmPublicGexWarming(
+  warmingSinceMs: number | null,
+  nowMs: number,
+  thresholdSec = PUBLIC_GEX_WARMING_ALARM_SEC
+): boolean {
+  if (warmingSinceMs == null || !Number.isFinite(warmingSinceMs)) return false;
+  return nowMs - warmingSinceMs >= thresholdSec * 1000;
 }

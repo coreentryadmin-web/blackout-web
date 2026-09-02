@@ -651,6 +651,28 @@ async function intradayReadFor(ticker: string, today: string): Promise<IntradayR
   );
 }
 
+/**
+ * Keeps BREAKOUT's factor_breakdown reconciling to `score` exactly after attachIntradayEdge
+ * adjusts the score, per breakoutScoreBreakdown's own invariant ("a breakdown whose parts do
+ * not add up to the headline number is worse than none"). That adjustment used to land on
+ * `score` alone, so the deck's "Why this play was picked" panel silently drifted +5/+15 off its
+ * own listed factors (measured live 2026-09-02, 50/54 BREAKOUT setups). FLOW/PIN setups'
+ * factor_breakdown reconciles to the SEPARATE `dossier_score` field instead (enrichSetup in
+ * board.ts) and must not gain a stray entry here — gate on the breakout-only `breakout_core` key
+ * so only breakoutScoreBreakdown's own shape is ever touched. `appliedDelta` must be the
+ * actually-applied score delta (post 0-100 clamp), not the raw adjustment sum, so the parts
+ * still total the displayed score exactly even when the clamp bites.
+ */
+export function applyIntradayEdgeToBreakdown(
+  factorBreakdown: Record<string, number> | null,
+  appliedDelta: number
+): Record<string, number> | null {
+  if (!factorBreakdown || appliedDelta === 0 || !("breakout_core" in factorBreakdown)) {
+    return factorBreakdown;
+  }
+  return { ...factorBreakdown, intraday_edge: appliedDelta };
+}
+
 /** The "is it working RIGHT NOW" layer: each top play's own minute-bar read
  *  (session VWAP / opening range / 5m trend), SPY as the market tape, and the
  *  time-of-day edge window — all folded into the score, with hard intraday
@@ -688,7 +710,9 @@ async function attachIntradayEdge(
     // Only null/stale bias → null (unknown, not a confirmation).
     s.market_aligned = bias == null ? null : bias === "flat" ? true : (bias === "up") === (s.direction === "long");
     s.tod_label = tod.label;
+    const preScore = s.score;
     s.score = Math.max(0, Math.min(100, s.score + adj.delta + align + tod.delta));
+    s.factor_breakdown = applyIntradayEdgeToBreakdown(s.factor_breakdown, s.score - preScore);
   });
   return { bias, biasAsOfMs: spyRead?.last_bar_ms ?? null };
 }
@@ -1968,7 +1992,25 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       });
       const exit =
         preStop.status !== "CLOSED"
-          ? await evaluateLedgerRowExit(r, { syncMark: mark, status: preStop.status }).catch(() => null)
+          ? await evaluateLedgerRowExit(r, { syncMark: mark, status: preStop.status }, {
+              // Persist a newly-armed trim_scale tranche so the NEXT sync pass sees it
+              // via row.trims_taken. A no-op while ZERODTE_TRIM_BANK_LIVE is off.
+              onTrimBank: async (trimsTaken) => {
+                if (!dbConfigured()) return;
+                await updateZeroDteLiveState(r.session_date, r.ticker, {
+                  status: preStop.status,
+                  mark,
+                  trimsTaken,
+                }).catch(() => {});
+                void import("./discord-trade-notify")
+                  .then(({ notifyZeroDteTradeTrim }) =>
+                    notifyZeroDteTradeTrim({ ...r, trims_taken: trimsTaken }, trimsTaken, mark)
+                  )
+                  .catch((err) => {
+                    console.warn(`[zerodte-discord] trim notify failed for ${r.ticker}:`, err);
+                  });
+              },
+            }).catch(() => null)
           : null;
       const state =
         exit == null
@@ -2013,9 +2055,21 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       };
       if (r.status !== "CLOSED" && status === "CLOSED") {
         void import("./discord-trade-notify")
-          .then(({ notifyZeroDteTradeClose }) => notifyZeroDteTradeClose(nextRow, finalMark))
+          .then(({ notifyZeroDteTradeClose }) =>
+            notifyZeroDteTradeClose({ ...nextRow, trims_taken: r.trims_taken ?? 0 }, finalMark)
+          )
           .catch((err) => {
             console.warn(`[zerodte-discord] close notify failed for ${r.ticker}:`, err);
+          });
+      } else if (
+        r.status !== "TRIM" &&
+        status === "TRIM" &&
+        preStop.status === "TRIM"
+      ) {
+        void import("./discord-trade-notify")
+          .then(({ notifyZeroDteTradeTrimLatch }) => notifyZeroDteTradeTrimLatch(r, finalMark))
+          .catch((err) => {
+            console.warn(`[zerodte-discord] trim-latch notify failed for ${r.ticker}:`, err);
           });
       }
       return nextRow;

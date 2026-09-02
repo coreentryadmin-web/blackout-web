@@ -14,7 +14,9 @@ test("site layout: iOS + route CSS deferred off global product shell", () => {
 });
 
 test("nighthawk layout owns nighthawk-v2.css", () => {
-  assert.match(read("src/app/(site)/nighthawk/layout.tsx"), /nighthawk-v2\.css/);
+  const layout = read("src/app/(site)/nighthawk/layout.tsx");
+  assert.match(layout, /nighthawk-v2\.css/);
+  assert.match(layout, /nighthawk-desk-theme\.css/);
 });
 
 // Regression guard for the desktop tab-bar spacing bug (docs/audit/UI-UX-MAP.md §7, finding #8,

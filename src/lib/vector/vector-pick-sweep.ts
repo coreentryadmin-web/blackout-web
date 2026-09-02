@@ -34,6 +34,8 @@ import {
   vectorPickLeaderKey,
 } from "@/lib/vector/vector-pick-sweep-core";
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
+import { fetchVectorSeedBars } from "@/features/vector/lib/vector-seed-bars";
+import { invalidationBarsFromSeed } from "@/features/vector/lib/vector-pick-invalidation";
 import { VECTOR_DEFAULT_DTE_HORIZON } from "@/features/vector/lib/vector-dte-horizon";
 
 export type VectorPickSweepTickerResult = {
@@ -135,6 +137,14 @@ export async function sweepVectorPickForTicker(
     () => new Map<string, import("@/lib/providers/options-snapshot").OptionSnapshot>()
   );
 
+  const seedBars = await fetchVectorSeedBars(ticker).catch(() => ({
+    bars: [] as import("@/features/vector/lib/vector-seed-bars").VectorSeedBar[],
+    sessionYmd: sessionDate,
+    ticker,
+  }));
+  const invalidationBars = invalidationBarsFromSeed(seedBars.bars);
+  const nowMs = Date.now();
+
   const play = state.play;
   let leadersWritten = 0;
   let closuresLogged = 0;
@@ -154,23 +164,28 @@ export async function sweepVectorPickForTicker(
     // showed entry_mid $1.85 next to +0.48% that only reconciles against ~$1.04-1.05).
     const frozenEntryMid = await fetchVectorPickLeaderEntryMid(leaderKey);
     const entryMid = resolveVectorPickEntryMid(frozenEntryMid, pick.entryMid, pick.premium);
+    const evalBias = play.bias === "range" ? "range" : ctx.play.bias;
     const evalResult = evaluateVectorPickLiveStatus({
       spot: state.spot,
       side: pick.side,
       entryMid,
       caveat: pick.caveat,
       invalidation: play.invalidation ?? null,
-      bias: ctx.play.bias, // the COMMITTED bias (ctx.play already carries it, not the raw card bias)
+      bias: evalBias,
       callWall: ctx.callWall ?? null,
       putWall: ctx.putWall ?? null,
       gammaFlip: ctx.gammaFlip ?? null,
       quote,
+      intent: "tracked",
+      pickRole: pick.role ?? null,
+      bars: invalidationBars,
+      nowMs,
     });
 
     const peak = mergePeakPremiumPct(null, evalResult.premiumPctFromEntry);
 
     const playJson = {
-      bias: play.bias,
+      bias: ctx.play.bias,
       conviction: play.conviction,
       grade: play.grade,
       headline: play.headline,
@@ -217,7 +232,7 @@ export async function sweepVectorPickForTicker(
     if (evalResult.status === "dont_buy") {
       const commitKey = vectorPickClosureCommitKey(sessionDate, ticker, occ);
       const exists = await vectorPickClosureExists(commitKey);
-      if (shouldPersistVectorPickClosure(evalResult.status, exists)) {
+      if (shouldPersistVectorPickClosure(evalResult.status, exists, evalResult.reason)) {
         const logged = await insertVectorPickClosure({
           commitKey,
           sessionDate,

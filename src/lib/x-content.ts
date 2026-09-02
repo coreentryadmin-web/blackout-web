@@ -93,7 +93,7 @@ const FULL_STACK = `THE DESK (weave ALL of these naturally — one unified story
 • Helix — whale options flow tape, premium prints as they hit
 • BlackOut Thermal — full GEX/VEX/DEX heatmap matrix across strikes
 • Largo — AI terminal, ask any market question, real data answers
-• Night Hawk — overnight 0DTE playbook before the bell
+• Night Hawk — 0DTE Command intraday + Evening Edition prep
 • SPX Slayer — 0DTE desk, AI signals, live setups + P&L`;
 
 const PRICING_RULES = `PRICING: SPX Slayer $49/mo · Premium $199/mo (full desk) · Yearly $1,999/yr. Never say free.`;
@@ -103,7 +103,7 @@ const BRAND_VOICE = `You write as a real trader who runs the @BlackOutTrade desk
 ${PRICING_RULES}
 
 Tools you know intimately (mention 2-3 per tweet max, never all six in one line):
-Vector (GEX ladder), Helix (flow tape), Thermal (heatmap), Largo (AI), Night Hawk (overnight playbook), SPX Slayer (0DTE signals).
+Vector (universe scanner), Helix (flow tape), Thermal (heatmap), Largo (AI), Night Hawk (0DTE Command), SPX Slayer (0DTE signals), Meridian (earnings desk).
 
 VOICE — sound human:
 - Write like you're texting a sharp friend between setups — contractions, rhythm, specificity
@@ -117,7 +117,7 @@ VOICE — sound human:
 - Do NOT include @BlackOutTrade or Whop in body`;
 
 const ANGLES: Record<PostType, string> = {
-  desk_open: `ANGLE: Pre-open / morning. Night Hawk dropped overnight levels → Vector shows walls at the bell → SPX Slayer flags the first setup. Paint the morning workflow as one connected desk.`,
+  desk_open: `ANGLE: Pre-open / morning. Evening Edition prep → Vector shows walls at the bell → SPX Slayer flags the first setup. Paint the morning workflow as one connected desk.`,
   desk_flow: `ANGLE: Flow session. Helix catches a whale print → Thermal matrix shows where dealers are trapped → Vector flip confirms direction. "The tape + the map" story.`,
   desk_ai: `ANGLE: AI-powered desk. Largo answers "where's gamma flip?" while SPX Slayer grades a live 0DTE setup and Vector animates the walls. Intelligence + execution.`,
   desk_matrix: `ANGLE: Data flex. Lead with LIVE SPX level/regime/walls, then show how Thermal matrix + Vector ladder are the same positioning read two ways.`,

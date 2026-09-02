@@ -126,6 +126,36 @@ test("updateZeroDteLiveState: SQL status CASE is monotonic — CLOSED terminal, 
   assert.match(body, /LEAST\(COALESCE\(trough_premium, \$4\), \$4\)/);
 });
 
+// FIX (2026-09-01, ZERODTE_TRIM_BANK_LIVE): trims_taken must be a monotonic latch
+// (GREATEST), never a plain overwrite — two independent writers (the ~1s live-marks
+// lane and the ~2-min scan.ts cron sync) share this UPDATE, same as peak/trough
+// above, and a stale writer's lower count must never un-bank a tranche a fresher
+// writer already persisted. It must also freeze once CLOSED (same pattern as the
+// other mark-anchored columns) and be skipped entirely (not zeroed) on a tick that
+// doesn't report a trim, or every ordinary heartbeat write would silently regress it.
+test("updateZeroDteLiveState: trims_taken is a monotonic GREATEST latch, frozen at CLOSED, untouched when omitted", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function updateZeroDteLiveState");
+  assert.ok(start > 0, "updateZeroDteLiveState exists");
+  const body = src.slice(start, src.indexOf("stampZeroDteExitContext"));
+
+  const trimsIdx = body.indexOf("trims_taken = CASE");
+  assert.ok(trimsIdx > 0, "trims_taken SET clause present");
+  const clause = body.slice(trimsIdx, body.indexOf("END", trimsIdx) + 3);
+
+  assert.match(clause, /WHEN status = 'CLOSED' THEN trims_taken/, "frozen once closed, same as peak/trough");
+  assert.match(
+    clause,
+    /WHEN \$5::int IS NOT NULL THEN GREATEST\(trims_taken, \$5::int\)/,
+    "a reported count can only raise the latch, never overwrite/regress it"
+  );
+  assert.match(clause, /ELSE trims_taken/, "omitted ($5 IS NULL) leaves the column untouched, not zeroed");
+
+  // The new 5th bind param must actually be threaded through to the query call.
+  const paramsMatch = body.match(/\[sessionDate, ticker\.toUpperCase\(\), s\.status, s\.mark, s\.trimsTaken \?\? null\]/);
+  assert.ok(paramsMatch, "s.trimsTaken must be bound as the 5th query param, defaulting to null when omitted");
+});
+
 // PR-N1 (P0, docs/audit/NIGHTHAWK-OVERNIGHT-DECISION.md §0.1): ensureSchema used to
 // re-issue nighthawk_play_outcomes_outcome_check TWICE — the correct DROP+ADD (with
 // 'unfilled') right after the table DDL, then a stale pre-'unfilled' copy ~270 lines
@@ -169,6 +199,35 @@ test("fetchRecentFlows: ask_pct = COALESCE(ask_side_pct, ask/(ask+bid)*100) with
     /NULLIF\(\s*\(raw_payload->>'total_ask_side_prem'\)::numeric[\s\S]*?total_bid_side_prem[\s\S]*?,\s*0\)/,
     "NULLIF guards a zero two-sided total -> NULL, never 0 (0 would read as 100% sold)"
   );
+});
+
+// Multi-day contract history drilldown (HELIX operator mandate 2026-09-02) needed
+// fetchRecentFlows to scope to ONE contract (ticker+strike+expiry+option_type) over a wide
+// date range, rather than the whole tape — added strike/expiry/option_type as optional filter
+// params, following the exact same clause-push pattern as the existing ticker/min_premium/
+// max_dte/before filters right above them. Raw PG is blocked in CI, so pin by source
+// inspection (same idiom as the ask_pct test above).
+test("fetchRecentFlows: strike/expiry/option_type are optional, parameterized, additive filters", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const fnStart = src.indexOf("export async function fetchRecentFlows");
+  assert.ok(fnStart > 0, "fetchRecentFlows exists");
+  const body = src.slice(fnStart, src.indexOf("FROM flow_alerts", fnStart));
+
+  // Each new filter is a parameterized clause ($N), never raw string interpolation of the
+  // caller's value into the SQL text — the same discipline every existing clause here uses.
+  assert.match(body, /clauses\.push\(`strike = \$\$\{i\+\+\}`\)/, "strike is parameterized");
+  assert.match(body, /clauses\.push\(`expiry = \$\$\{i\+\+\}::date`\)/, "expiry is parameterized and cast to date");
+  assert.match(
+    body,
+    /clauses\.push\(`UPPER\(option_type\) = \$\$\{i\+\+\}`\)/,
+    "option_type is parameterized and case-normalized to match stored values"
+  );
+
+  // Each is gated so an existing caller that never passes these params gets byte-identical
+  // behavior — additive, not a rewrite of the existing filter set.
+  assert.match(body, /if \(params\.strike != null && Number\.isFinite\(params\.strike\)\)/);
+  assert.match(body, /if \(params\.expiry\)/);
+  assert.match(body, /if \(params\.option_type\)/);
 });
 
 test("ensureSchema: nighthawk play-outcome CHECK issued exactly once, allowed set includes 'unfilled'", () => {
@@ -297,4 +356,19 @@ test("updateZeroDteLiveState: last_mark/last_mark_at/peak_premium/trough_premium
   assert.match(body, /WHEN status = 'CLOSED' THEN last_mark_at/);
   assert.match(body, /WHEN status = 'CLOSED' THEN peak_premium/);
   assert.match(body, /WHEN status = 'CLOSED' THEN trough_premium/);
+});
+
+// Pool-teardown race: dbQuery must only reset the pool instance IT queried on, so a concurrent
+// caller's retry cannot end a pool another subsystem is still mid-flight on (2026-09-01 ops #3257).
+test("dbQuery: resetPoolForRetry is identity-guarded against concurrent pool replacement", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const dbQueryStart = src.indexOf("export async function dbQuery");
+  assert.ok(dbQueryStart > 0, "dbQuery exists");
+  const dbQueryBody = src.slice(dbQueryStart, dbQueryStart + 1200);
+  assert.match(dbQueryBody, /const activePool = await getPool\(\)/);
+  assert.match(dbQueryBody, /await resetPoolForRetry\(activePool\)/);
+  const resetStart = src.indexOf("async function resetPoolForRetry");
+  assert.ok(resetStart > 0, "resetPoolForRetry exists");
+  const resetBody = src.slice(resetStart, resetStart + 500);
+  assert.match(resetBody, /if \(failedPool && pool !== failedPool\) return/);
 });

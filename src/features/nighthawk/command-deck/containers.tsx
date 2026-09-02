@@ -28,10 +28,14 @@ import {
   terminalPlayFromEdition,
   type ZeroDteDeckSource,
 } from "./adapters";
-import { fetchNightHawkHorizons } from "@/lib/api";
+import { fetchNightHawkEdition, fetchNightHawkHorizons } from "@/lib/api";
 import type { NightHawkEdition, NightHawkRecordResponse } from "@/features/nighthawk/lib/types";
+import { LegacyPickLogBoard } from "@/features/nighthawk/components/LegacyPickLogBoard";
+import { legacyEditionSessionDates } from "@/features/nighthawk/lib/legacy-board-calendar";
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import type { TerminalPlay } from "./types";
 import { overlayLegacyQuotes, useLegacyStockQuotes } from "./use-legacy-quotes";
+import { overlayLegacyOptionMarks, useLegacyOptionMarks } from "./use-legacy-option-marks";
 import { overlayHorizonWatchTrack } from "./use-live-marks";
 import { useZeroDteLiveDeck } from "./use-zero-dte-live-deck";
 import { zeroDteSources, isBoardDegraded, type BoardResp } from "./zerodte-sources";
@@ -286,7 +290,15 @@ export function HorizonDeck({
 
 // ── Legacy: the evening edition ─────────────────────────────────────────────────────
 
-export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | undefined; error?: unknown }) {
+export function LegacyDeck() {
+  const todaySession = etSessionDate(Date.now()) ?? "";
+  const [selectedEditionDate, setSelectedEditionDate] = useState<string | null>(null);
+  const editionKey = selectedEditionDate ? ["legacy-edition", selectedEditionDate] : "nighthawk-edition";
+  const { data: edition, error } = useSWR<NightHawkEdition>(
+    editionKey,
+    () => fetchNightHawkEdition(selectedEditionDate ?? undefined),
+    { refreshInterval: 120_000 }
+  );
   // Fetch morning confirmation verdicts when an edition is available.
   const editionFor = edition?.edition_for ?? null;
   const { data: confirmData } = useSWR(
@@ -294,16 +306,20 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
     () => fetch(`/api/nighthawk/play-status?date=${editionFor}`, { cache: "no-store", credentials: "same-origin" }).then((r) => r.ok ? r.json() : null),
     { refreshInterval: 60_000 },
   );
-  const confirmByTicker = new Map<string, { status: string; reason: string; swingPromoted?: boolean }>();
-  if (confirmData?.plays) {
-    for (const ps of confirmData.plays) {
-      confirmByTicker.set(ps.ticker?.toUpperCase(), {
-        status: ps.status,
-        reason: ps.reason,
-        swingPromoted: ps.swingPromoted === true,
-      });
+  const confirmByTicker = useMemo(() => {
+    const map = new Map<string, { status: string; reason: string; swingPromoted?: boolean; checkedAt?: string | null }>();
+    if (confirmData?.plays) {
+      for (const ps of confirmData.plays) {
+        map.set(ps.ticker?.toUpperCase(), {
+          status: ps.status,
+          reason: ps.reason,
+          swingPromoted: ps.swingPromoted === true,
+          checkedAt: typeof ps.checked_at === "string" ? ps.checked_at : (confirmData?.checked_at ?? null),
+        });
+      }
     }
-  }
+    return map;
+  }, [confirmData]);
 
   const confirmCheckedAt: string | null = confirmData?.checked_at ?? null;
 
@@ -329,6 +345,7 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       exit_style: p.exit_style ?? null,
       iv_rank: p.iv_rank ?? null,
       rr_ratio: p.rr_ratio ?? null,
+      target_atr_multiple: p.target_atr_multiple ?? null,
       flow_streak_days: p.flow_streak_days ?? null,
       confirming_signals: p.confirming_signals ?? null,
       earnings_risk: p.earnings_risk ?? null,
@@ -339,11 +356,13 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
       gate_warnings: p.gate_warnings ?? null,
       pulled: p.pulled ?? null,
       pulled_reason: p.pulled_reason ?? null,
+      tier: p.tier ?? null,
+      play_type: p.play_type ?? null,
       morning_status: confirm?.status as "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | undefined ?? null,
       morning_reason: confirm?.reason ?? null,
       swing_promoted: confirm?.swingPromoted ?? null,
       published_at: edition?.published_at ?? null,
-      confirmed_at: confirmCheckedAt,
+      confirmed_at: confirm?.checkedAt ?? p.morning_checked_at ?? confirmCheckedAt,
     });
   }), [rawPlays, confirmByTicker, edition?.published_at, confirmCheckedAt]);
 
@@ -386,7 +405,15 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
   // real-time stock-level progress toward target/stop (the "dynamic trade management" overlay).
   const tickers = useMemo(() => rawPlays.map((p) => p.ticker?.toUpperCase()).filter(Boolean), [rawPlays]);
   const stockQuotes = useLegacyStockQuotes(tickers);
-  const plays = overlayLegacyQuotes(playsWithScorecard, stockQuotes, rawPlays);
+  const legacyOccs = useMemo(
+    () => playsWithScorecard.map((p) => p.occ).filter((o): o is string => typeof o === "string" && o.length > 0),
+    [playsWithScorecard],
+  );
+  const optionMarks = useLegacyOptionMarks(legacyOccs);
+  const plays = overlayLegacyOptionMarks(
+    overlayLegacyQuotes(playsWithScorecard, stockQuotes, rawPlays),
+    optionMarks,
+  );
 
   // Morning-confirm staleness: the verdict is a one-time 9am snapshot that never updates.
   // After 4h it misleads if shown without qualification.
@@ -413,9 +440,33 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
             ? "Recap published — no plays cleared the funnel tonight."
             : null;
 
-  return (
+  const editionLabel =
+    edition?.served_for ?? edition?.edition_for ?? (selectedEditionDate ? selectedEditionDate : todaySession);
+  const calendarDates = useMemo(() => legacyEditionSessionDates(14), []);
+
+  const macroContext = useMemo(() => {
+    if (!confirmData || confirmData.available === false) return null;
+    return {
+      spxPremarket: confirmData.spx_premarket ?? null,
+      priorClose: confirmData.prior_close ?? null,
+      overnightGapPts: confirmData.overnight_gap_pts ?? null,
+      regime: confirmData.regime ?? null,
+      gexBias: confirmData.gex_bias ?? null,
+      callWall: confirmData.call_wall ?? null,
+      putWall: confirmData.put_wall ?? null,
+      summary: confirmData.summary ?? null,
+    };
+  }, [confirmData]);
+
+  const emptyDescription = hasFetchError
+    ? "Edition data unavailable right now — retrying. Check back shortly."
+    : isRecapOnly
+      ? "No plays cleared the scoring funnel tonight — market recap is above."
+      : "Five ranked setups land here after the evening scan · ~5:30 PM ET.";
+
+  const bannerSlot = (
     <>
-      {bannerText && (
+      {bannerText ? (
         <div
           role="status"
           className={`mb-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold uppercase tracking-wide ${
@@ -429,8 +480,8 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
           <span aria-hidden>{hasFetchError || isDegraded ? "!" : isStale || isCarry ? "~" : "i"}</span>
           <span>{bannerText}</span>
         </div>
-      )}
-      {confirmStale && checkedAtLabel && (
+      ) : null}
+      {confirmStale && checkedAtLabel ? (
         <div
           role="status"
           className="mb-3 flex items-center gap-2 rounded-lg border border-amber-400/60 bg-amber-500/15 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-amber-200"
@@ -438,34 +489,32 @@ export function LegacyDeck({ edition, error }: { edition: NightHawkEdition | und
           <span aria-hidden>~</span>
           <span>Morning verdict from {checkedAtLabel} — may no longer reflect current conditions.</span>
         </div>
-      )}
-      {edition?.recap_headline && (
+      ) : null}
+      {edition?.recap_headline ? (
         <div className="mb-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
           <div className="text-xs font-bold uppercase tracking-wide text-white">{edition.recap_headline}</div>
-          {edition.recap_summary && <div className="mt-1 text-xs leading-relaxed text-sky-200">{edition.recap_summary}</div>}
+          {edition.recap_summary ? (
+            <div className="mt-1 text-xs leading-relaxed text-sky-200">{edition.recap_summary}</div>
+          ) : null}
         </div>
-      )}
-      <CommandDeck
-        plays={plays}
-        // Was the inline literal "Legacy · Tonight's playbook" (~27 chars) — long enough to
-        // overflow `.nh-deck-cmd-lane`'s shrunk flex box and visually bleed over the adjacent
-        // engine-status/Opps-Top-Edge stat pills on a narrow viewport. See the header comment on
-        // NIGHTHAWK_COMPACT_LANE_LABEL (nighthawk-view.ts) for the full root cause + why a shorter
-        // label (not a CSS change) is this fix's scope.
-        laneLabel={NIGHTHAWK_COMPACT_LANE_LABEL.LEGACY}
-        degraded={hasFetchError || isDegraded}
-        loading={!edition && !error}
-        commandCenter
-        deckHorizon="LEGACY"
-        boardAsOf={edition?.published_at ?? null}
-        emptyHint={
-          hasFetchError
-            ? "Edition data unavailable right now — retrying. Check back shortly."
-            : isRecapOnly
-              ? "No plays cleared the scoring funnel tonight — market recap is above."
-              : "Five ranked setups land here after the evening scan · ~5:30 PM ET."
-        }
-      />
+      ) : null}
     </>
+  );
+
+  return (
+    <LegacyPickLogBoard
+      plays={plays}
+      loading={!edition && !error}
+      degraded={hasFetchError || isDegraded}
+      editionFor={edition?.edition_for ?? null}
+      editionLabel={editionLabel}
+      todaySession={todaySession}
+      selectedEditionDate={selectedEditionDate}
+      onSelectedEditionDateChange={setSelectedEditionDate}
+      calendarDates={calendarDates}
+      bannerSlot={bannerSlot}
+      macroContext={macroContext}
+      emptyDescription={emptyDescription}
+    />
   );
 }

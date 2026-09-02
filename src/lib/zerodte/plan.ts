@@ -20,11 +20,36 @@ export const PLAN_RULES = {
   time_stop_et_minutes: 15 * 60 + 50,
 } as const;
 
+/** `PLAN_RULES.time_stop_et_minutes` as "H:MM" ET, for prose that quotes the hard-exit
+ *  time — derive from here, never hardcode the string. A hardcoded "15:30" copy of this
+ *  (stale since the time stop moved to 15:50) shipped on the public methodology page, the
+ *  0DTE Command FAQ, and five Learn-article passages, all contradicting the actual engine
+ *  and each other — see FINDINGS 2026-09-02. */
+export const PLAN_RULES_TIME_STOP_ET_LABEL = `${Math.floor(PLAN_RULES.time_stop_et_minutes / 60)}:${String(
+  PLAN_RULES.time_stop_et_minutes % 60
+).padStart(2, "0")}`;
+
 /** 0DTE directional commits open at 10:00 ET (G-2 unlock). */
 export const ZERODTE_COMMIT_OPEN_ET_MINUTES = 10 * 60;
 
-/** No NEW 0DTE plays after 15:30 ET — gate G-14 + persist backstop. */
+/** No NEW 0DTE plays of ANY kind (including condor) after 15:30 ET — persist-layer backstop
+ *  and the discovery-layer condor-fresh-eligibility boundary (scan.ts). NOT the directional
+ *  commit cutoff — see DIRECTIONAL_LATE_CUTOFF_ET_MINUTES for that. */
 export const NEW_PLAY_CUTOFF_ET_MINUTES = 15 * 60 + 30;
+
+/** No NEW DIRECTIONAL 0DTE commits after 14:00 ET — gate G-14 (gates.ts) + confluence's
+ *  ENTRY_CUTOFF_ET_MINUTES. Condors are exempt (a credit seller WANTS late-session theta
+ *  crush) and stay eligible through NEW_PLAY_CUTOFF_ET_MINUTES (15:30 ET) above.
+ *
+ *  Evidence: 90-day prod record (FINDINGS 2026-07-28), 14:00-15:30 bucket ran 14.3% WR /
+ *  −19.02% avg P&L — shipped as a hard 14:00 gate. On 2026-08-03 (#1591) this was widened
+ *  to alias NEW_PLAY_CUTOFF_ET_MINUTES (15:30 ET) "to align session discipline with operator
+ *  intent" — but the toxic window kept bleeding: re-measured live 2026-09-01, the reopened
+ *  14:00-15:30 bucket still ran 21.1% WR / −12.72% avg over the 90 days since the widening
+ *  (n=19), materially unchanged from the original evidence. Split back out to its own constant
+ *  so a future change to the general session-exit cutoff (condor/backstop) cannot silently
+ *  drag the directional gate along with it again. */
+export const DIRECTIONAL_LATE_CUTOFF_ET_MINUTES = 14 * 60;
 
 /** Human ET label for the hard exit (derived from PLAN_RULES). */
 export function zerodteTimeStopEtLabel(): string {

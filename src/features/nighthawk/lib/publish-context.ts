@@ -254,6 +254,10 @@ export function buildNighthawkPublishContext(opts: {
         })()
       : null,
 
+    // ── Rescue / backfill provenance (analytics: organic vs gate_promoted WR) ───
+    gate_promoted: play.gate_promoted === true,
+    gate_warnings: Array.isArray(play.gate_warnings) ? play.gate_warnings : null,
+
     // ── The builder's own score/conviction inputs (shared shape with the
     //    rejection audit rows — one snapshot format across the funnel) ──────────
     confluence: confluenceSnapshot(scored),

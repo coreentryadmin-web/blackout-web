@@ -1,29 +1,51 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
-import { Badge, EmptyState, Panel, Skeleton } from "@/components/ui";
+import { clsx } from "clsx";
 import { etDateTimeShort } from "@/lib/et-clock";
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
-import type {
-  VectorClosureReasonFilter,
-  VectorClosureSort,
-} from "@/features/nighthawk/lib/vector-pick-log-board-utils";
+import { VectorBoardCalendar } from "@/features/nighthawk/components/VectorBoardCalendar";
+import { VectorBoardCompareBar } from "@/features/nighthawk/components/VectorBoardCompareBar";
+import { VectorBoardEmptyState } from "@/features/nighthawk/components/VectorBoardEmptyState";
+import { VectorBoardDataTable } from "@/features/nighthawk/components/VectorBoardDataTable";
+import { VectorBoardLoadingSkeleton } from "@/features/nighthawk/components/VectorBoardLoadingSkeleton";
+import { VectorBoardScorecard } from "@/features/nighthawk/components/VectorBoardScorecard";
+import { VectorBoardToolbar } from "@/features/nighthawk/components/VectorBoardToolbar";
+import { VectorPlayDetailPanel } from "@/features/nighthawk/components/VectorPlayDetailPanel";
+import { buildVectorBoardColumns } from "@/features/nighthawk/lib/vector-board-columns";
+import type { VectorBoardTableRow, VectorBoardTab } from "@/features/nighthawk/lib/vector-board-table-utils";
 import {
-  filterVectorClosureRows,
-  filterVectorRunnerLeaders,
-  formatPremiumPct,
-  preferredVectorBoardSection,
+  buildVectorBoardRows,
   premiumPctTone,
-  sortVectorClosureRows,
-} from "@/features/nighthawk/lib/vector-pick-log-board-utils";
-import type {
-  VectorClosurePlay,
-  VectorLeaderPlay,
-  VectorPickBoardResponse,
-} from "@/features/nighthawk/components/VectorPickLogBoard.types";
+  vectorBoardCalendarBuckets,
+} from "@/features/nighthawk/lib/vector-board-table-utils";
+import {
+  filterVectorBoardRowsAdvanced,
+  parseVectorBoardSort,
+  sortVectorBoardRows,
+  type VectorBoardSort,
+  type VectorBoardStatusFilter,
+  type VectorBoardTierFilter,
+} from "@/features/nighthawk/lib/vector-board-filters";
+import {
+  loadVectorBoardPreferences,
+  saveVectorBoardPreferences,
+  type VectorBoardPreferences,
+  type VectorBoardSavedView,
+} from "@/features/nighthawk/lib/vector-board-preferences";
+import {
+  vectorBoardCalendarSlice,
+  vectorBoardExportCsv,
+  vectorBoardRowAtRisk,
+  vectorBoardRowIsLive,
+  vectorBoardScorecard,
+} from "@/features/nighthawk/lib/vector-board-row-utils";
+import type { VectorClosureReasonFilter } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
+import { useVectorBoardMobile } from "@/features/nighthawk/hooks/use-vector-board-mobile";
+import type { VectorPickBoardResponse } from "@/features/nighthawk/components/VectorPickLogBoard.types";
 
-type BoardSection = "winners" | "runners" | "leaders" | "closed";
+const EM = "—";
 
 async function fetchVectorBoard(url: string): Promise<VectorPickBoardResponse> {
   const res = await fetch(url, { cache: "no-store" });
@@ -32,333 +54,437 @@ async function fetchVectorBoard(url: string): Promise<VectorPickBoardResponse> {
 }
 
 function fmtPrice(v: number | null): string {
-  return v != null && Number.isFinite(v) ? `$${v.toFixed(2)}` : "—";
+  return v != null && Number.isFinite(v) ? `$${v.toFixed(2)}` : EM;
 }
 
-function fmtTimestamp(iso: string | null): string {
-  if (!iso) return "—";
+function fmtTimestamp(iso: string): string {
+  if (!iso) return EM;
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return etDateTimeShort(d) ?? "—";
+  if (Number.isNaN(d.getTime())) return EM;
+  return etDateTimeShort(d) ?? EM;
 }
 
-function leaderPct(row: VectorLeaderPlay): number | null {
-  return row.premium_pct_from_entry ?? row.peak_premium_pct;
+function pnlClass(pct: number | null): string {
+  const tone = premiumPctTone(pct);
+  if (tone === "bull") return "is-up";
+  if (tone === "bear") return "is-down";
+  return "is-flat";
 }
 
-function statusBadge(status: string, isWinner: boolean) {
-  if (isWinner) return <Badge tone="bull">Winner</Badge>;
-  if (status === "still_buy") return <Badge tone="bull">Still buy</Badge>;
-  if (status === "caution") return <Badge tone="accent">Caution</Badge>;
-  return <Badge tone="bear">Closed</Badge>;
+function preferredTab(openCount: number, closedCount: number): VectorBoardTab {
+  if (openCount > 0) return "open";
+  if (closedCount > 0) return "closed";
+  return "all";
 }
 
-function LeaderCard({ row }: { row: VectorLeaderPlay }) {
-  const pct = leaderPct(row);
-  return (
-    <Panel className="vector-leader-row shrink-0 p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-bold text-white">{row.ticker}</span>
-            {statusBadge(row.action_status, row.is_winner)}
-            {row.tier === "elite" ? <Badge tone="accent">Elite</Badge> : null}
-            {row.setup_invalidated ? <Badge tone="accent">Thesis stressed</Badge> : null}
-          </div>
-          <p className="mt-1 text-sm font-bold text-sky-100">
-            {row.contract.label ?? `${row.contract.strike}${row.contract.side === "call" ? "C" : "P"}`}
-            {row.rank != null ? ` · rank #${row.rank}` : ""}
-          </p>
-          <p className="mt-1 text-xs leading-snug text-sky-200">{row.action_reason}</p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-          <div className="text-xs text-sky-200">{fmtTimestamp(row.updated_at)}</div>
-          <Badge tone={premiumPctTone(pct)} size="md">
-            {formatPremiumPct(pct) === "—" ? "No %" : `${formatPremiumPct(pct)} premium`}
-          </Badge>
-          <div className="text-xs font-bold text-white">
-            {fmtPrice(row.entry_mid)} → {fmtPrice(row.live_mid)}
-          </div>
-          {row.peak_premium_pct != null &&
-          row.premium_pct_from_entry != null &&
-          row.peak_premium_pct > row.premium_pct_from_entry ? (
-            <div className="text-[11px] font-bold text-sky-300">Peak {formatPremiumPct(row.peak_premium_pct)}</div>
-          ) : null}
-        </div>
-      </div>
-    </Panel>
-  );
+function emptyTitle(tab: VectorBoardTab): string {
+  if (tab === "open") return "No open Vector picks";
+  if (tab === "closed") return "No closed Vector picks match";
+  return "No Vector picks match";
 }
-
-function ClosureCard({ row }: { row: VectorClosurePlay }) {
-  const pct = row.premium_pct_from_entry;
-  return (
-    <Panel className="vector-closure-row shrink-0 p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-bold text-white">{row.ticker}</span>
-            <Badge tone="bear">Don&apos;t buy</Badge>
-            {row.setup_invalidated ? <Badge tone="accent">Setup invalidated</Badge> : null}
-          </div>
-          <p className="mt-1 text-sm font-bold text-sky-100">
-            {row.contract.label ?? `${row.contract.strike}${row.contract.side === "call" ? "C" : "P"}`}
-            {row.rank != null ? ` · rank #${row.rank}` : ""}
-          </p>
-          <p className="mt-1 text-xs leading-snug text-sky-200">{row.close_reason}</p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-          <div className="text-xs text-sky-200">{fmtTimestamp(row.closed_at)}</div>
-          <Badge tone={premiumPctTone(pct)} size="md">
-            {formatPremiumPct(pct) === "—" ? "No %" : `${formatPremiumPct(pct)} premium`}
-          </Badge>
-          <div className="text-xs font-bold text-white">
-            {fmtPrice(row.entry_mid)} → {fmtPrice(row.close_mid)}
-          </div>
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
-const REASON_OPTIONS: { id: VectorClosureReasonFilter; label: string }[] = [
-  { id: "all", label: "All reasons" },
-  { id: "setup_invalidated", label: "Setup invalidated" },
-  { id: "premium_chase", label: "Premium chase" },
-  { id: "premium_cap", label: "Desk cap" },
-  { id: "other", label: "Other" },
-];
-
-const SORT_OPTIONS: { id: VectorClosureSort; label: string }[] = [
-  { id: "newest", label: "Newest" },
-  { id: "oldest", label: "Oldest" },
-  { id: "pct_desc", label: "% high → low" },
-  { id: "pct_asc", label: "% low → high" },
-  { id: "ticker", label: "Ticker A→Z" },
-];
 
 /**
- * Night Hawk Vector tab — universe sweep winners/leaders + closed contract picks.
+ * Night Hawk Vector tab — X Ads Manager table with filters, sorts, premium column, and inspector rail.
+ * Pass `fixtureData` on /vector-board-preview (dev only) to review UI without DB/Clerk.
  */
-export function VectorPickLogBoard() {
+export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBoardResponse }) {
   const todaySession = etSessionDate(Date.now()) ?? "";
-  const [sessionFilter, setSessionFilter] = useState<"today" | "all">("today");
-  const [section, setSection] = useState<BoardSection>("winners");
-  const sectionUserPicked = useRef(false);
-  const [reasonFilter, setReasonFilter] = useState<VectorClosureReasonFilter>("all");
-  const [sort, setSort] = useState<VectorClosureSort>("pct_desc");
+  const [sessionScope, setSessionScope] = useState<"current" | "all">(fixtureData ? "all" : "current");
+  const [tab, setTab] = useState<VectorBoardTab>(fixtureData ? "all" : "open");
+  const tabUserPicked = useRef(Boolean(fixtureData));
   const [tickerQuery, setTickerQuery] = useState("");
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedRow, setSelectedRow] = useState<VectorBoardTableRow | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<VectorBoardStatusFilter>("all");
+  const [tierFilter, setTierFilter] = useState<VectorBoardTierFilter>("all");
+  const [reasonFilter, setReasonFilter] = useState<VectorClosureReasonFilter>("all");
+  const [sort, setSort] = useState<VectorBoardSort>("updated_desc");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [prefs, setPrefs] = useState<VectorBoardPreferences>(() => loadVectorBoardPreferences());
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareKeys, setCompareKeys] = useState<Set<string>>(() => new Set());
+  const [compareLimitHit, setCompareLimitHit] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const tableRef = useRef<HTMLDivElement | null>(null);
+  const isMobile = useVectorBoardMobile();
 
-  const apiUrl =
-    sessionFilter === "today" && todaySession
-      ? `/api/market/vector/pick-closures/board?limit=500&session_date=${todaySession}`
-      : "/api/market/vector/pick-closures/board?limit=500";
+  const persistPrefs = useCallback((next: VectorBoardPreferences) => {
+    setPrefs(next);
+    saveVectorBoardPreferences(next);
+  }, []);
 
-  const { data, error, isLoading } = useSWR<VectorPickBoardResponse>(apiUrl, fetchVectorBoard, {
-    refreshInterval: 30_000,
-  });
+  // Always fetch the full board — calendar buckets need multi-day history. Client-side
+  // sessionScope / selectedDate filters narrow the table without starving the calendar.
+  const apiUrl = fixtureData != null ? null : "/api/market/vector/pick-closures/board?limit=500";
+
+  const { data: swrData, error, isLoading } = useSWR<VectorPickBoardResponse>(
+    apiUrl,
+    fetchVectorBoard,
+    { refreshInterval: fixtureData ? 0 : 30_000 }
+  );
+
+  const data = fixtureData ?? swrData;
 
   const winners = data?.winners ?? [];
   const leaders = data?.leaders ?? [];
   const closed = data?.closed ?? [];
 
-  const filteredRunners = useMemo(() => {
-    const q = tickerQuery.trim().toUpperCase();
-    const runners = filterVectorRunnerLeaders(leaders);
-    if (!q) return runners;
-    return runners.filter((r) => r.ticker.toUpperCase().includes(q));
-  }, [leaders, tickerQuery]);
+  const tabCounts = useMemo(
+    () => ({
+      all: buildVectorBoardRows({ winners, leaders, closed, section: "all" }).length,
+      open: buildVectorBoardRows({ winners, leaders, closed, section: "open" }).length,
+      closed: closed.length,
+    }),
+    [winners, leaders, closed]
+  );
 
   useEffect(() => {
-    if (sectionUserPicked.current || !data) return;
-    const next = preferredVectorBoardSection(winners.length, filteredRunners.length, leaders.length);
-    setSection((cur) => (cur === next ? cur : next));
-  }, [data, winners.length, filteredRunners.length, leaders.length]);
+    if (fixtureData || tabUserPicked.current || !data) return;
+    const next = preferredTab(tabCounts.open, tabCounts.closed);
+    setTab((cur) => (cur === next ? cur : next));
+  }, [fixtureData, data, tabCounts.open, tabCounts.closed]);
 
-  const filteredClosed = useMemo(() => {
-    const filtered = filterVectorClosureRows(closed, {
-      sessionDate: sessionFilter === "today" ? todaySession : null,
-      reason: reasonFilter,
+  const sectionRows = useMemo(
+    () => buildVectorBoardRows({ winners, leaders, closed, section: tab }),
+    [winners, leaders, closed, tab]
+  );
+
+  const calendarSource = useMemo(
+    () => buildVectorBoardRows({ winners, leaders, closed, section: "all" }),
+    [winners, leaders, closed]
+  );
+
+  const calendarBuckets = useMemo(() => {
+    const all = vectorBoardCalendarBuckets(calendarSource);
+    return vectorBoardCalendarSlice(all, prefs.calendarRange) as typeof all;
+  }, [calendarSource, prefs.calendarRange]);
+
+  const sessionDates = useMemo(
+    () => calendarBuckets.map((b) => b.session_date),
+    [calendarBuckets]
+  );
+
+  const sessionDateFilter = selectedDate ? selectedDate : sessionScope === "current" ? todaySession : null;
+
+  const filteredRows = useMemo(() => {
+    return filterVectorBoardRowsAdvanced(sectionRows, {
       tickerQuery,
+      sessionDate: sessionDateFilter,
+      statusFilter,
+      tierFilter,
+      reasonFilter: tab === "closed" ? reasonFilter : "all",
     });
-    return sortVectorClosureRows(filtered, sort);
-  }, [closed, sessionFilter, todaySession, reasonFilter, tickerQuery, sort]);
+  }, [sectionRows, tickerQuery, sessionDateFilter, statusFilter, tierFilter, reasonFilter, tab]);
 
-  const filteredLeaders = useMemo(() => {
-    const q = tickerQuery.trim().toUpperCase();
-    if (!q) return leaders;
-    return leaders.filter((r) => r.ticker.toUpperCase().includes(q));
-  }, [leaders, tickerQuery]);
+  const { key: sortKey, dir: sortDir } = parseVectorBoardSort(sort);
 
-  const filteredWinners = useMemo(() => {
-    const q = tickerQuery.trim().toUpperCase();
-    if (!q) return winners;
-    return winners.filter((r) => r.ticker.toUpperCase().includes(q));
-  }, [winners, tickerQuery]);
+  const boardColumns = useMemo(
+    () =>
+      buildVectorBoardColumns({
+        prefs,
+        compareMode,
+        sortKey,
+        sortDir,
+        onSortPnl: () => setSort(sortKey === "pnl" && sortDir === "desc" ? "pnl_asc" : "pnl_desc"),
+        onSortPeak: () => setSort(sortKey === "peak" && sortDir === "desc" ? "peak_asc" : "peak_desc"),
+        onSortUpdated: () =>
+          setSort(sortKey === "updated" && sortDir === "desc" ? "updated_asc" : "updated_desc"),
+      }),
+    [prefs, compareMode, sortKey, sortDir]
+  );
 
-  const visibleRows = useMemo(() => {
-    if (section === "winners") return filteredWinners;
-    if (section === "runners") return filteredRunners;
-    if (section === "leaders") return filteredLeaders;
-    return filteredClosed;
-  }, [section, filteredWinners, filteredRunners, filteredLeaders, filteredClosed]);
+  const visibleRows = useMemo(
+    () => sortVectorBoardRows(filteredRows, sortKey, sortDir),
+    [filteredRows, sortKey, sortDir]
+  );
 
-  if (isLoading && !data) {
-    return (
-      <div className="nh-deck-rows min-h-0 flex-1 space-y-2 overflow-y-auto">
-        <Skeleton className="h-20 w-full shrink-0" />
-        <Skeleton className="h-20 w-full shrink-0" />
-      </div>
-    );
+  const compareRows = useMemo(
+    () => visibleRows.filter((r) => compareKeys.has(r.key)),
+    [visibleRows, compareKeys]
+  );
+
+  const scorecardRows = useMemo(() => {
+    if (sessionScope !== "current" || !todaySession) return [];
+    const all = buildVectorBoardRows({ winners, leaders, closed, section: "all" });
+    return filterVectorBoardRowsAdvanced(all, {
+      sessionDate: todaySession,
+      statusFilter: "all",
+      tierFilter: "all",
+      reasonFilter: "all",
+      tickerQuery: "",
+    });
+  }, [winners, leaders, closed, sessionScope, todaySession]);
+
+  const scorecard = useMemo(() => vectorBoardScorecard(scorecardRows), [scorecardRows]);
+
+  useEffect(() => {
+    if (!selectedRow) return;
+    const stillVisible = visibleRows.some((r) => r.key === selectedRow.key);
+    if (!stillVisible) setSelectedRow(null);
+  }, [visibleRows, selectedRow]);
+
+  useEffect(() => {
+    if (!selectedRow || !tableRef.current) return;
+    const row = tableRef.current.querySelector(".vector-board-row.is-selected");
+    row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selectedIndex, selectedRow?.key]);
+
+  useEffect(() => {
+    if (!selectedRow) return;
+    const idx = visibleRows.findIndex((r) => r.key === selectedRow.key);
+    if (idx >= 0) setSelectedIndex(idx);
+  }, [visibleRows, selectedRow]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
+      if (e.key === "/" && !typing) {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      if (typing) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = Math.min(visibleRows.length - 1, selectedIndex + 1);
+        setSelectedIndex(next);
+        const row = visibleRows[next];
+        if (row) setSelectedRow(row);
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const next = Math.max(0, selectedIndex - 1);
+        setSelectedIndex(next);
+        const row = visibleRows[next];
+        if (row) setSelectedRow(row);
+      }
+      if (e.key === "Escape") {
+        setSelectedRow(null);
+        setFiltersOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [visibleRows, selectedIndex]);
+
+  const clearFilters = () => {
+    setStatusFilter("all");
+    setTierFilter("all");
+    setReasonFilter("all");
+    setSelectedDate(null);
+    setTickerQuery("");
+  };
+
+  const applyView = (view: VectorBoardSavedView) => {
+    setStatusFilter(view.statusFilter);
+    setTierFilter(view.tierFilter);
+    setReasonFilter(view.reasonFilter);
+    setSort(view.sort);
+  };
+
+  const exportCsv = () => {
+    const csv = vectorBoardExportCsv(visibleRows);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `vector-board-${todaySession || "export"}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const toggleCompare = (key: string) => {
+    setCompareKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+        setCompareLimitHit(false);
+      } else if (next.size < 3) {
+        next.add(key);
+        setCompareLimitHit(false);
+      } else {
+        setCompareLimitHit(true);
+        window.setTimeout(() => setCompareLimitHit(false), 2200);
+      }
+      return next;
+    });
+  };
+
+  if (!fixtureData && isLoading && !data) {
+    return <VectorBoardLoadingSkeleton />;
   }
 
   if (error || data?.degraded) {
     return (
-      <EmptyState
-        title="Vector board unavailable"
-        description="The Vector leaders log could not load right now — it will retry automatically."
-      />
+      <div className="vector-board-shell">
+        <VectorBoardEmptyState
+          title="Vector board unavailable"
+          description="The Vector leaders log could not load right now — it will retry automatically."
+        />
+      </div>
     );
   }
 
-  const coverage = data?.coverage;
-
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col gap-3">
-      <Panel accent="sky" bodyClassName="px-4 py-3 md:px-5 md:py-4 shrink-0">
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="sky" size="md" dot>
-              Vector plays
-            </Badge>
-            {coverage ? (
-              <span className="text-xs font-bold text-sky-100">
-                {coverage.winners} winner{coverage.winners === 1 ? "" : "s"} · {filteredRunners.length} runner
-                {filteredRunners.length === 1 ? "" : "s"} · {coverage.leaders} live · {coverage.closed} closed
-              </span>
-            ) : null}
-          </div>
-          <p className="text-xs leading-snug text-sky-200">
-            {data?.note ??
-              "Premium % is option mid vs pick entry. Leaders come from the server universe sweep every ~2 min RTH."}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {(
-              [
-                ["winners", `Winners (${winners.length})`],
-                ["runners", `Runners (${filteredRunners.length})`],
-                ["leaders", `Live (${leaders.length})`],
-                ["closed", `Closed (${closed.length})`],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                className={
-                  section === id
-                    ? "rounded border border-cyan-400/60 bg-cyan-400/10 px-2 py-1 text-xs font-bold text-white"
-                    : "rounded border border-white/10 px-2 py-1 text-xs font-bold text-sky-200"
-                }
-                onClick={() => {
-                  sectionUserPicked.current = true;
-                  setSection(id);
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wide text-sky-300">
-              Session
-              <select
-                value={sessionFilter}
-                onChange={(e) => setSessionFilter(e.target.value as "today" | "all")}
-                className="min-h-9 rounded-lg border border-white/10 bg-black/40 px-2 text-sm font-bold normal-case text-white"
-              >
-                <option value="today">Today</option>
-                <option value="all">All sessions</option>
-              </select>
-            </label>
-            {section === "closed" ? (
-              <>
-                <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wide text-sky-300">
-                  Reason
-                  <select
-                    value={reasonFilter}
-                    onChange={(e) => setReasonFilter(e.target.value as VectorClosureReasonFilter)}
-                    className="min-h-9 rounded-lg border border-white/10 bg-black/40 px-2 text-sm font-bold normal-case text-white"
-                  >
-                    {REASON_OPTIONS.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wide text-sky-300">
-                  Sort
-                  <select
-                    value={sort}
-                    onChange={(e) => setSort(e.target.value as VectorClosureSort)}
-                    className="min-h-9 rounded-lg border border-white/10 bg-black/40 px-2 text-sm font-bold normal-case text-white"
-                  >
-                    {SORT_OPTIONS.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </>
-            ) : null}
-            <label className="flex min-w-[7rem] flex-1 flex-col gap-1 text-[11px] font-bold uppercase tracking-wide text-sky-300">
-              Ticker
-              <input
-                value={tickerQuery}
-                onChange={(e) => setTickerQuery(e.target.value.toUpperCase())}
-                placeholder="e.g. INTC"
-                className="min-h-9 rounded-lg border border-white/10 bg-black/40 px-2 text-sm font-bold normal-case text-white placeholder:text-sky-300/50"
-              />
-            </label>
-          </div>
-        </div>
-      </Panel>
+    <div
+      className={clsx(
+        "vector-board-shell",
+        prefs.density === "compact" && "is-compact",
+        prefs.focusMode && "is-focus"
+      )}
+    >
+      <VectorBoardToolbar
+        tab={tab}
+        tabCounts={tabCounts}
+        onTabChange={(next) => {
+          tabUserPicked.current = true;
+          setTab(next);
+        }}
+        sessionScope={sessionScope}
+        onSessionScopeChange={(scope) => {
+          setSessionScope(scope);
+          if (scope === "current") setSelectedDate(null);
+        }}
+        tickerQuery={tickerQuery}
+        onTickerQueryChange={setTickerQuery}
+        searchInputRef={searchRef}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        tierFilter={tierFilter}
+        onTierFilterChange={setTierFilter}
+        reasonFilter={reasonFilter}
+        onReasonFilterChange={setReasonFilter}
+        sort={sort}
+        onSortChange={setSort}
+        selectedDate={selectedDate}
+        todaySession={todaySession}
+        onSelectedDateChange={(date) => {
+          if (!date) {
+            setSelectedDate(null);
+            setSessionScope("current");
+            return;
+          }
+          if (date === todaySession) {
+            setSessionScope("current");
+            setSelectedDate(null);
+          } else {
+            setSessionScope("all");
+            setSelectedDate(date);
+          }
+        }}
+        onClearFilters={clearFilters}
+        filtersOpen={filtersOpen}
+        onFiltersOpenChange={setFiltersOpen}
+        prefs={prefs}
+        onPrefsChange={persistPrefs}
+        onApplyView={applyView}
+        onExport={exportCsv}
+        compareMode={compareMode}
+        onCompareModeChange={setCompareMode}
+        visibleCount={visibleRows.length}
+        sectionCount={sectionRows.length}
+        sessionDates={sessionDates}
+      />
 
-      <div className="nh-deck-rows min-h-0 flex-1 space-y-2 overflow-y-auto pb-4">
-        {!visibleRows.length ? (
-          <EmptyState
-            title={
-              section === "winners"
-                ? "No winning Vector picks yet"
-                : section === "runners"
-                  ? "No +15% runners yet"
-                  : section === "leaders"
-                    ? "No live Vector leaders"
-                    : "No closed Vector picks match"
-            }
-            description={
-              section === "winners"
-                ? "Winners are +50% vs pick (or peak) from the universe sweep — INTC-class runners land here after deploy."
-                : section === "runners"
-                  ? "Runners are live names between +15% and +49% premium vs pick entry — the building phase before the +50% winner floor."
-                  : section === "leaders"
-                    ? "Every Vector universe ticker is evaluated every ~2 min during RTH."
-                    : "Try All sessions or clear filters."
-            }
+      {!prefs.focusMode && sessionScope === "current" && scorecardRows.length > 0 ? (
+        <VectorBoardScorecard data={scorecard} sessionLabel={todaySession || "Today"} />
+      ) : null}
+
+      {data?.note && !prefs.focusMode ? (
+        <p className="vector-board-note vector-board-note--inline">{data.note}</p>
+      ) : null}
+
+      {!prefs.focusMode && (calendarBuckets.length > 0 || selectedDate) ? (
+        <div className="vector-board-cal-wrap">
+          <VectorBoardCalendar
+            buckets={calendarBuckets}
+            selectedDate={selectedDate ?? (sessionScope === "current" ? todaySession : null)}
+            onSelectDate={(date) => {
+              if (!date) {
+                setSelectedDate(null);
+                return;
+              }
+              if (date === todaySession) {
+                setSessionScope("current");
+                setSelectedDate(null);
+              } else {
+                setSessionScope("all");
+                setSelectedDate(date);
+              }
+            }}
           />
-        ) : (
-          visibleRows.map((row) =>
-            section === "closed" ? (
-              <ClosureCard key={`c-${row.id}`} row={row as VectorClosurePlay} />
-            ) : (
-              <LeaderCard
-                key={`${(row as VectorLeaderPlay).closed_winner ? "cw" : "l"}-${row.id}-${(row as VectorLeaderPlay).contract.occ}`}
-                row={row as VectorLeaderPlay}
-              />
-            )
-          )
+          {selectedDate ? (
+            <button type="button" className="vector-board-cal-clear" onClick={() => setSelectedDate(null)}>
+              Clear day
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div
+        className={clsx(
+          "vector-board-body vector-board-body--split",
+          selectedRow && "has-detail-open",
+          prefs.focusMode && !selectedRow && "is-focus-awaiting"
         )}
+      >
+        <div className="vector-board-table-pane">
+          <div className="vector-board-panel">
+            <VectorBoardDataTable
+              columns={boardColumns}
+              rows={visibleRows}
+              tableRef={tableRef}
+              selectedKey={selectedRow?.key ?? null}
+              onSelectRow={(row, index) => {
+                setSelectedRow(row);
+                setSelectedIndex(index);
+              }}
+              emptyTitle={emptyTitle(tab)}
+              emptyDescription="Try All sessions, clear filters, or change the sort."
+              getRowCtx={(row) => ({
+                live: vectorBoardRowIsLive(row),
+                atRisk: vectorBoardRowAtRisk(row),
+                compareChecked: compareKeys.has(row.key),
+                onToggleCompare: () => toggleCompare(row.key),
+                fmtPrice,
+                fmtTimestamp,
+                pnlClass,
+              })}
+              rowClassName={(row) =>
+                clsx(
+                  vectorBoardRowIsLive(row) && "is-live",
+                  vectorBoardRowAtRisk(row) && "is-at-risk"
+                )
+              }
+            />
+          </div>
+          <VectorBoardCompareBar
+            rows={compareRows}
+            onClear={() => {
+              setCompareKeys(new Set());
+              setCompareLimitHit(false);
+            }}
+            limitHit={compareLimitHit}
+          />
+        </div>
+
+        {isMobile && selectedRow ? (
+          <button
+            type="button"
+            className="vector-board-detail-backdrop"
+            aria-label="Close detail"
+            onClick={() => setSelectedRow(null)}
+          />
+        ) : null}
+
+        <VectorPlayDetailPanel
+          row={selectedRow}
+          onClose={() => setSelectedRow(null)}
+          sheet={isMobile && !!selectedRow}
+        />
       </div>
     </div>
   );

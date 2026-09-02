@@ -22,6 +22,8 @@ import {
 } from "@/lib/vector/vector-pick-closures-db";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
+import { fetchVectorSeedBars } from "@/features/vector/lib/vector-seed-bars";
+import { invalidationBarsFromSeed } from "@/features/vector/lib/vector-pick-invalidation";
 import { logToken } from "@/lib/log-token";
 
 export const runtime = "nodejs";
@@ -170,6 +172,14 @@ export async function POST(req: NextRequest) {
         rawBias)
       : undefined;
 
+  const seedBars = await fetchVectorSeedBars(rawTicker!).catch(() => ({
+    bars: [] as import("@/features/vector/lib/vector-seed-bars").VectorSeedBar[],
+    sessionYmd: etSessionDate(Date.now()),
+    ticker: rawTicker!,
+  }));
+  const invalidationBars = invalidationBarsFromSeed(seedBars.bars);
+  const nowMs = Date.now();
+
   const live = picks.map((pick) => {
     const snap = snaps.get(pick.occ);
     const quote = quoteFromSources(pick.occ, snap, pick.side);
@@ -179,11 +189,14 @@ export async function POST(req: NextRequest) {
       entryMid: pick.entryMid ?? null,
       caveat: pick.caveat,
       invalidation,
-      bias,
+      bias: rawBias === "range" ? "range" : bias,
       callWall: numOrNull(body.callWall),
       putWall: numOrNull(body.putWall),
       gammaFlip: numOrNull(body.gammaFlip),
       quote,
+      pickRole: pick.role ?? null,
+      bars: invalidationBars,
+      nowMs,
     });
 
     return {
@@ -203,7 +216,6 @@ export async function POST(req: NextRequest) {
     };
   });
 
-  const nowMs = Date.now();
   const sessionDate = etSessionDate(nowMs);
   const ticker = rawTicker!;
   const playJson =
@@ -232,7 +244,7 @@ export async function POST(req: NextRequest) {
       const commitKey = vectorPickClosureCommitKey(sessionDate, ticker, row.occ);
       try {
         const exists = await vectorPickClosureExists(commitKey);
-        if (!shouldPersistVectorPickClosure(row.actionStatus, exists)) continue;
+        if (!shouldPersistVectorPickClosure(row.actionStatus, exists, row.actionReason)) continue;
         await insertVectorPickClosure({
           commitKey,
           sessionDate,

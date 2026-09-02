@@ -187,9 +187,12 @@ function formatMarketBreadth(ctx: MarketWideContext): string {
 function formatMag7GreekFlow(ctx: MarketWideContext): string {
   const g = ctx.mag7_greek_flow;
   if (!g) return "Mag7 greek flow unavailable.";
+  // net_gamma is null (not 0) when this data source carries no gamma field at all — see
+  // summarizeGroupGreekFlow's doc comment. Say so instead of printing a fabricated "Γ 0".
+  const gammaPart = g.net_gamma == null ? "gamma n/a" : `net Γ ${Math.round(g.net_gamma)}`;
   return [
     g.headline,
-    `net Δ ${Math.round(g.net_delta)} · net Γ ${Math.round(g.net_gamma)}`,
+    `net Δ ${Math.round(g.net_delta)} · ${gammaPart}`,
     `bias ${g.bias}`,
   ].join(" · ");
 }

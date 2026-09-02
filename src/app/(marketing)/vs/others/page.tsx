@@ -5,10 +5,11 @@ import { WebPageJsonLd } from "@/components/seo/JsonLd";
 import { Breadcrumbs } from "@/components/seo/Breadcrumbs";
 import { publicPageMetadata } from "@/lib/page-metadata";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
+import { MARKETING_DATA_FRESHNESS, manifestProductCount } from "@/lib/marketing/product-manifest";
 
 export const metadata: Metadata = publicPageMetadata(
   "BlackOut vs Other Options Trading Platforms",
-  "How BlackOut compares to typical options-analytics platforms: live tick-by-tick data vs delayed snapshots, graded track record vs cherry-picked alerts, one desk vs scattered tabs and Discords.",
+  `How BlackOut compares to typical options-analytics platforms: ${MARKETING_DATA_FRESHNESS.comparison} vs delayed snapshots, graded track record vs cherry-picked alerts, one desk vs scattered tabs and Discords.`,
   "/vs/others"
 );
 
@@ -18,9 +19,9 @@ type Row = { feature: string; blackout: string; others: string };
 // defensible statements about how this category of tool typically works,
 // not claims about any specific named competitor.
 const ROWS: Row[] = [
-  { feature: "Data freshness", blackout: "Live, tick-by-tick — zero delay", others: "Delayed snapshots, manual refresh" },
+  { feature: "Data freshness", blackout: MARKETING_DATA_FRESHNESS.comparison, others: "Delayed snapshots, manual refresh" },
   { feature: "Alert accountability", blackout: "Every setup graded A–F with a logged track record", others: "Cherry-picked alerts, no receipts" },
-  { feature: "Where the tools live", blackout: "6 engines, one screen, one membership", others: "Scattered across 5 tabs and 3 Discords" },
+  { feature: "Where the tools live", blackout: `${manifestProductCount()} products, one screen, one membership`, others: "Scattered across 5 tabs and 3 Discords" },
   { feature: "Entry verification", blackout: "AI verification engine gates every play", others: "Gut-feel callouts, no grading" },
   { feature: "Underlying data", blackout: "Institutional flow, GEX, dark pool — streamed live", others: "Stale data repackaged as “signals”" },
   { feature: "Reporting cadence", blackout: "Real-time P&L marks, not end-of-day summaries", others: "Monthly PDF recaps" },

@@ -33,6 +33,7 @@ import {
   useLifecyclePlayCard,
 } from "./play-card-display";
 import { isWatchTrackStatus } from "./play-card-lifecycle";
+import { legacyPrimaryPnlPct } from "@/features/nighthawk/lib/legacy-primary-pnl";
 import { PlayLifecycleCardBody } from "./PlayLifecycleCard";
 import { DeckPlayTableHeader } from "./DeckPlayTableHeader";
 import { groupSwingSections } from "./swing-section-groups";
@@ -78,6 +79,7 @@ export function CommandDeck({
   discoveryFunnel = null,
   spxSlayerBadge,
   focusTicker = null,
+  boardChrome = "default",
 }: {
   plays: TerminalPlay[];
   laneLabel: string;
@@ -113,6 +115,8 @@ export function CommandDeck({
    *  Swings Open" link) — forces the selection to that ticker's row as soon as it's present in
    *  `plays`, overriding the normal preferred-selection logic for one focus event. */
   focusTicker?: string | null;
+  /** Vector board chrome — wider detail rail + premium filter styling (Legacy parity). */
+  boardChrome?: "default" | "vector";
 }) {
   // Counts per status group for the filter badges (and the session-aware default filter).
   const counts = useMemo(() => {
@@ -267,7 +271,13 @@ export function CommandDeck({
   );
 
   return (
-    <div className="nh-deck nh-deck-fill" data-mobile-view={mobileDetailOpen ? "detail" : "list"}>
+    <div
+      className={clsx(
+        "nh-deck nh-deck-fill",
+        boardChrome === "vector" && "nh-deck--vector-chrome",
+      )}
+      data-mobile-view={mobileDetailOpen ? "detail" : "list"}
+    >
       <div className="nh-deck-left">
         {commandCenter ? (
           <DeckCompactHeader
@@ -724,7 +734,7 @@ export const PlayCard = memo(function PlayCard({
   onSelect: (id: string) => void;
   nowMs: number;
 }) {
-  const markFlash = useFlash(p.mark ?? p.pnlPct ?? p.trackPct ?? null);
+  const markFlash = useFlash(p.mark ?? p.pnlPct ?? p.stockMovePct ?? p.trackPct ?? null);
 
   const asOfMs = p.markAsOf ? Date.parse(p.markAsOf) : NaN;
   const hasAsOf = Number.isFinite(asOfMs);
@@ -834,20 +844,18 @@ export const PlayCard = memo(function PlayCard({
             <span className="nh-deck-prem" style={{ display: "block" }}>
               ${p.stockPrice.toFixed(2)}
             </span>
-            <span className="nh-deck-premlab">{p.pnlPct != null ? "P&L" : "STOCK"}</span>
+            <span className="nh-deck-premlab">{p.pnlPct != null ? "Premium" : "Stock"}</span>
             <span
               className={clsx(
                 "nh-deck-pnl",
-                (p.pnlPct ?? p.stockChangePct ?? 0) > 0 && "nh-deck-pos",
-                (p.pnlPct ?? p.stockChangePct ?? 0) < 0 && "nh-deck-neg",
+                (legacyPrimaryPnlPct(p) ?? 0) > 0 && "nh-deck-pos",
+                (legacyPrimaryPnlPct(p) ?? 0) < 0 && "nh-deck-neg",
               )}
               style={{ display: "block" }}
             >
-              {p.pnlPct != null
-                ? `${p.pnlPct >= 0 ? "+" : ""}${p.pnlPct.toFixed(1)}%`
-                : p.stockChangePct != null
-                  ? `${p.stockChangePct >= 0 ? "+" : ""}${p.stockChangePct.toFixed(1)}%`
-                  : "—"}
+              {legacyPrimaryPnlPct(p) != null
+                ? `${legacyPrimaryPnlPct(p)! >= 0 ? "+" : ""}${legacyPrimaryPnlPct(p)!.toFixed(1)}%`
+                : "—"}
             </span>
           </>
         ) : (

@@ -32,7 +32,12 @@ test("rankedCandidateMeritEligible rejects sub-floor scores under global-stronge
   delete process.env.NH_MIN_PUBLISH_SCORE;
   process.env.NH_LEGACY_MIN_TIER = "B";
   try {
-    assert.equal(rankedCandidateMeritEligible(scored("WEAK", 44), {}), false);
+    // Global-strongest's score floor is Math.max(MIN_PUBLISH_SCORE, NH_SCORE_PRIME_MIN) =
+    // Math.max(38, 40) = 40 (edition-quality.ts's effectiveMinPublishScore — deliberately lowered
+    // from the old hardcoded 55 to the measured overnight PRIME band floor, see that function's
+    // own comment). 44 is now legitimately above the floor, not sub-floor — use 35 to still test
+    // genuine rejection.
+    assert.equal(rankedCandidateMeritEligible(scored("WEAK", 35), {}), false);
     assert.equal(rankedCandidateMeritEligible(scored("STRONG", 72), {}), true);
   } finally {
     for (const k of keys) {

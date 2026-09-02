@@ -11,6 +11,205 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-02 (18:16 UTC) — [SEO] Lane heartbeat: #2453/#2448 hold, sitemap-lastmod fix confirmed live, 0 open SEO PRs
+
+**Severity.** — (no defect found)
+
+`/api/og?title=Test` → `HTTP 200 image/png`. Homepage still carries the transform-based reveal
+marker. `agent-pr-sweep.mjs`: 4 open agent PRs fleet-wide (nighthawk ×2, zerodte ×2) — 0 open SEO
+PRs. Confirmed #3350 (sitemap `lastmod` staleness fix, from the coordinator handoff this session)
+is live on `main` — and a different lane already found and fixed the same staleness-bug class in a
+third test (`sitemapLastModified` for `/learn/what-is-gex`) I'd left with a hardcoded literal,
+applying the identical dynamic-assertion pattern. No action needed.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
+## 2026-09-02 (16:34 UTC / Wed 2026-09-02 12:34 ET) — [SEO] RTH window validation, 3rd cycle: quick check, still GOOD
+
+**Severity.** — (no defect found)
+
+Near end of window (27 min to close). `gex-snapshot` spot-checked only (CLS confirmed clean twice
+already this window, no code changed since) — `session: OPEN`, fresh (`age_s: 14`), not degraded.
+No action; standing down for the day's RTH job.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
+## 2026-09-02 (15:35 UTC / Wed 2026-09-02 11:35 ET) — [SEO] RTH window validation, 2nd cycle: CLS + gamma-snapshot still GOOD
+
+**Severity.** — (no defect found)
+
+Second RTH check this session (11:35 ET, still inside 09:30–13:00 window). Purged CF edge, then:
+CLS **0.0001 → GOOD** (66 assets routed ok). `/api/public/gex-snapshot?ticker=SPX` polled 3× at 6s
+intervals: `session: OPEN`, spot ticking real values, `flip` now a real numeric level (7759→7767,
+unlike the null/short-gamma state seen at 09:35 ET — a legitimate regime change intraday, not a
+defect), freshness `age_s` 1–6s. No action.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
+## 2026-09-02 (14:16 UTC) — [SEO] Daily growth cycle: no new striking-distance query, 28d trend logged
+
+**Severity.** — (no defect; trend note, not an on-page action)
+
+**Opportunity scan.** `gsc-opportunities-report.mjs --days=90` (window 2026-06-02 → 2026-08-30):
+still exactly 2 striking-distance queries, both already addressed (`gamma three trading` pos 18.5,
+`is 0dte gambling` pos 11.5, unchanged from prior cycles). 0 CTR-gap queries. No new page-2 entrant
+— per the standing instruction, not touching already-good pages.
+
+**Live re-verify.** Skipped — done twice already today (12:20 UTC heartbeat, 13:35 UTC RTH check),
+inside the "skip if done in last 3 days" window.
+
+**28-day trend** (`gsc-search-analytics.mjs --days=28`, window 2026-08-03 → 2026-08-30): clicks=11,
+impressions=**1589** (up from 908 in the 2026-08-21 baseline in `SEO-GROWTH-STRATEGY.md`), CTR=0.69%
+(down from 1.1%), avg position=38.1 (down from 32.4). Read honestly rather than as a win: the
+striking-distance queries' own positions are unchanged, so the aggregate shift looks driven by
+**more pages/queries now indexed and showing** (e.g. `/learn` alone carries 413 impressions this
+window) diluting the average toward newly-indexed, lower-ranked pages — not a regression on
+previously-tracked ones. Not verified against a per-page before/after, so stated as a plausible
+read, not a measured cause. `staging.blackouttrades.com/terminal` still appears in top pages (2cl
+4imp) — the known dead-URL indexation issue, already delegated to the coordinator/dashboard per
+`SEO-GROWTH-STRATEGY.md` §5, not re-actioned here.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
+## 2026-09-02 (13:35 UTC / Wed 2026-09-02 09:35 ET) — [SEO] RTH window validation: CLS + gamma-snapshot live data check
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Market-open RTH trigger. Checked the clock myself (`TZ=America/New_York date` →
+Wed 09:33 ET) rather than trusting the trigger's UTC firing time — confirmed inside the 09:30–13:00
+ET window on a trading day (not a holiday).
+
+**CLOUDFLARE PURGE** (HTML only, `/` and `/tools/gamma-snapshot`): `success:true` before any
+measurement, so the fix and the snapshot page are measured fresh, not off stale edge cache.
+
+**STEP 1 — CLS ON LIVE DATA:** Homepage desktop 1440×900, post-purge: **CLS 0 → GOOD**
+(`cls-measure.cjs`, 67 assets routed ok, 0 fail). #2453 continues to hold under real RTH rendering.
+
+**STEP 2 — `/api/public/gex-snapshot?ticker=SPX` (PUBLIC, UNAUTHENTICATED, 5s refresh):**
+- Polled 3× at 6s intervals: `market_session: OPEN`, spot ticking real values (7640.69 → 7640.08 →
+  7640.51), `asof` advancing each poll — the 5s refresh is real, not a frozen snapshot.
+- `flip: null` on one poll looked worth checking rather than assuming a gap — the full payload's
+  `read` field explains it: *"No gamma flip — dealers are net short gamma at EVERY strike, so
+  there is no long-gamma region above spot"* — a genuine market state (`posture: "short"`), not a
+  missing value silently defaulted. Absence explained beats absence assumed (rule 7).
+- `call_wall`/`put_wall` (7800/7500) stable and correctly classified (`resistance`/`support`).
+  `spot_source: "redis_cluster"` — no vendor name leaked into the public payload.
+  `snapshot_data_age_seconds: 15`, `degraded: false`.
+- **Licensing audit** (`docs/marketing/RESEARCH-PUBLISH-POSTURE.md`): payload carries only derived
+  fields (flip/walls/regime/read) — no raw OPRA quotes, no strike/expiry matrix. Compliant.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
+## 2026-09-02 (12:20 UTC) — [SEO] Lane heartbeat: #2453/#2448 hold, environment gotcha documented
+
+**Severity.** — (no product defect; real tooling/environment gotcha, documented not fixed)
+
+**Step 1/2.** `/api/og?title=Test` → `HTTP 200 image/png`. Homepage still carries the
+transform-based reveal marker. `agent-pr-sweep.mjs`: 1 open agent PR fleet-wide (`#3335`, unrelated
+docs, another lane) — 0 open SEO PRs.
+
+**Environment note, not a product finding.** This turn's `git branch --show-current` came back as
+the stale local branch `fix/seo-heartbeat-2026-08-24` — the SAME branch that stranded the previous
+heartbeat's commit and was force-deleted afterward. It reappeared, checked out, anyway. Recovered
+with `git checkout main && git reset --hard origin/main` before any edit this cycle. Documented as
+a standing environment-realities note in `CLAUDE.md` ("A container restart can silently revert the
+checked-out branch...") so the next cycle re-verifies instead of trusting a prior turn's branch
+check — this cost two full heartbeat cycles before the pattern was named.
+
+**Step 3.** No new GSC opportunities since the last full sweep; standing down again.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
+## 2026-09-02 (00:16 UTC) — [SEO] Lane heartbeat: #2453/#2448 hold on prod, 0 open SEO PRs
+
+**Severity.** — (no defect found)
+
+**Step 1 — production validation.** `/api/og?title=Test` → `HTTP 200, content-type: image/png`
+(crawlable, #2448 holds). Homepage HTML still renders the transform-based reveal
+(`transform:scaleX(0)`, not a `top`-based property) that #2453's CLS fix depends on — consistent
+with the full browser-measured `CLS 0.0 GOOD` result already logged at 13:33 UTC the same day, so a
+lighter confirmation was proportionate rather than re-running the full harness against an unchanged
+page.
+
+**Step 2 — PR sweep.** `agent-pr-sweep.mjs`: 1 open agent PR fleet-wide, `#3286`
+(nighthawk lane, CI-FAILED) — not this lane's PR, no action owed here.
+
+**Step 3 — new work.** Already swept 5h earlier this same day (19:22 UTC entry below) with the same
+GSC window; GSC data lags days, so re-pulling now would not surface anything new. No new
+striking-distance query, no new reclamation or unlinked-mention opportunity. Standing down again
+rather than re-running an identical check for its own sake.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
+## 2026-09-01 (19:22 UTC) — [SEO] Backlog sweep: no new in-lane work, authority remains the bottleneck
+
+**Severity.** — (no defect found, no PR opened)
+
+**Why it ran.** Coordinator check-in (routine "Refresh SEO lane — no open PR matches its stale
+status") pointed the lane back at its backlog after `claude/growth-controller-charter` (#3274,
+scoreboard/backlog work — see the new `lane:growth` controller in `docs/agents/FLEET.md`) was
+handed off as tracked separately.
+
+**GSC opportunity report re-run** (`gsc-opportunities-report.mjs --days=90`, window 2026-06-01 →
+2026-08-29): still exactly the same 2 striking-distance queries as the last cycle — `gamma three
+trading` (pos 18.5, already enhanced this week — three-part framework + FAQ shipped) and `is 0dte
+gambling` (pos 11.5, already well-optimized per `docs/audit/SEO-GROWTH-STRATEGY.md` §1). No new
+query entered the page-2 band. 0 CTR-gap queries. Deep-demand queries (page 3+) remain
+authority-limited by definition — no on-page lever applies.
+
+**Link-reclamation check** (`docs/agents/SEO-SEARCH-AUTHORITY.md` "do now" list): walked the full
+git history of `src/lib/seo/sitemap-urls.ts` — the file has only ever grown; no path has been
+removed across its tracked history, so there is nothing to redirect. **Result: no reclamation
+opportunity exists today**, not unmeasured — checked, not assumed.
+
+**Unlinked brand-mention check**: web search for `"blackouttrades.com"` and `"BlackOut Trades"
+options flow` (excluding the site's own domain and X) returned zero third-party mentions of any
+kind — the results were unrelated "blackout period" finance boilerplate and BlackOut's own pages.
+**The site has no external mentions to reclaim a link from yet** — consistent with the early-stage
+state already on record (avg position 32.4, `docs/audit/SEO-GROWTH-STRATEGY.md` §1), not a search
+failure.
+
+**Conclusion.** Every in-lane, no-new-tooling lever is genuinely exhausted this cycle — not
+under-checked. This matches the standing diagnosis in `docs/audit/SEO-GROWTH-STRATEGY.md` §2: the
+bottleneck is off-site authority and time, not the site. Manufacturing an on-page PR against
+already-good pages would violate the "don't change stable pages to look productive" rule
+(`COORDINATOR.md` #16). No code change, no PR. Next SEO-lane action: re-run this same sweep at the
+next scheduled Monday 06:00 PT cycle, or immediately if a coordinator message reports a material
+public-site change.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
+## 2026-09-01 (13:33 UTC / Tue 2026-09-01 09:33 ET) — [SEO] RTH window validation: CLS + gamma-snapshot live data check
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Market-open RTH trigger (standing cron, 13:32 UTC weekdays 09:30-13:00 ET). RTH work is time-gated to validation of live public pages that serve REAL (not cached, not off-hours) data.
+
+**CLOUDFLARE PURGE** (HTM L only): Edge cache purged (`success:true`, CF purge API ID `65f2cf7e7b6ba783b775b9010060df76`) before any measurement to ensure fresh page, not stale edge cache.
+
+**STEP 1 — CLS ON LIVE DATA:**
+- **Homepage (/)**:  **CLS 0.0 GOOD** (measured desktop 1440×900 post-purge, 62 assets routed ok, 0 fail). Real-time data rendering, not off-hours frozen page. Validates #2453 (animate transform, not top) continues to hold under real RTH conditions.
+
+**STEP 2 — /tools/gamma-snapshot (PUBLIC, UNAUTHENTICATED, 5S REFRESH):**
+- **Live data rendering verified** — page loads successfully, DOM ready.
+- **Licensing audit** (per docs/marketing/RESEARCH-PUBLISH-POSTURE.md): /tools/gamma-snapshot serves DERIVED data only:
+  - `call_wall`, `put_wall` (computed from GEX heatmap, not raw vendor quotes)
+  - `flip`, `posture` (derived gamma-flip regime classification, not OPRA values)
+  - `read` (regime description with vendor provenance explicitly sanitized)
+  - Spot included only for context. No strike/expiry matrix, no flow overlays.
+  - **Result:** ✅ Compliant with publish posture (derived, not raw vendor republication).
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
 ## 2026-09-01 (06:18 UTC / Tue 2026-09-01 02:18 ET) — [SEO] Lane heartbeat follow-up: State unchanged — shipped fixes holding
 
 **Severity.** — (no defect found)
@@ -395,6 +594,19 @@ Production GSC state is **stable across both cycles today**. The striking-distan
 Production is **stable and unchanged** from 2026-08-24 heartbeat. Fixes hold. GSC opportunities stable. **Bottleneck remains out-of-lane:** authority/backlinks and conversion tracking environment variables. Lane correctly awaits configuration before spending marketing budget (fails closed, no attribution).
 
 ---
+## 2026-09-02 (06:21 UTC) — [SEO] Lane heartbeat: #2453/#2448 hold, 0 open SEO PRs, no new work
+
+**Severity.** — (no defect found)
+
+`agent-pr-sweep.mjs`: 1 open agent PR fleet-wide (`#3327`, unrelated docs, another lane) — 0 open
+SEO PRs. `/api/og?title=Test` → `HTTP 200 image/png`. Homepage still carries the transform-based
+reveal marker. Third identical-result heartbeat in ~30h (00:16 and 19:22 UTC yesterday, this one) —
+noting the repeat rather than re-deriving it, per rule 16 (quality over activity): nothing has
+changed production-side or in GSC since the last full sweep, so no new PR.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
 ## 2026-08-24 (12:20 UTC) — [SEO] Lane heartbeat: Repeat validation cycle — state STABLE
 
 **Severity.** — (no defect found)
@@ -538,6 +750,24 @@ Per the roadmap, the only on-page action gate is: "Act on-page ONLY when a query
 - GA4 (G-YLN4K37KYF) live and firing on every page; client-side Google Ads conversion code ready (`src/lib/analytics/google-ads.ts`). Gap: environment variables not configured (`NEXT_PUBLIC_GOOGLE_ADS_ID`, labels), so conversions never reach Google Ads account. Status: waiting for ads/analytics lane.
 - GSC ground truth available (service account `claude-seo@...`, verified siteOwner on `sc-domain:blackouttrades.com`); reproducible opportunity-finder wired (`gsc-opportunities-report.mjs`).
 - Bing: IndexNow live, pings on every deploy via `deploy-smoke.yml`. Webmaster Tools dashboard only (human login needed).
+
+---
+## 2026-09-01 14:30 UTC — [SEO] Daily gamma-three-trading query opportunity enhancement — PR #3258 CI in progress
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Daily SEO growth cycle detected new striking-distance query: "gamma three trading" entered page 2, position 18.5 (4 impressions, 0 clicks). Per "Monitor, don't churn" standing strategy, triggered targeted on-page depth work on hitting striking distance.
+
+**Query context.** "gamma three trading" is NEW to the opportunity register (not present in prior GSC cycle). Position 18.5 places it squarely in striking-distance band (page 2, positions 10–20). Query intent maps to dealer-gamma-options-flow-guide pillar: traders seeking frameworks for multi-confirmation gamma setups.
+
+**Content added (PR #3258).** Enhanced `src/lib/learn/articles.ts` dealer-gamma-options-flow-guide article with:
+- **"The three-part framework for gamma trading"** section: explicit three-point confirmation (① gamma flip regime, ② call/put wall positioning, ③ aggregate GEX sign) before entry — directly addresses "three" as actionable trading discipline
+- **FAQ expansion**: three questions on three-level alignment and confluence, trader psychology ("Professional traders do not take gamma setups without all three levels confirmed")
+- **Internal link strengthening**: emphasized connections to Thermal, SPX Slayer, related articles on walls/flip/GEX
+
+**Content depth strategy.** Article already contained "Three levels concentrate most of the hedging pressure" concept; enhancement fleshes out into a complete trader-actionable framework. Maintains pillar authority (no strike matrix duplication, proper delegation to deep-dive articles). Captures query variations naturally: "gamma three", "three levels", "three confirmations", "three-part setup", "all three aligned".
+
+**Build status.** TypeScript validation: ✓ PASS. ESLint: ✓ PASS. Analyze (JavaScript-TypeScript): ✓ success. CodeQL: ✓ success. `verify` check: ⟳ in_progress. PR: #3258 (draft, awaiting CI completion + coordinator undraft per CLAUDE.md).
 
 ---
 ## 2026-08-23 — [Helix] Live /flows UI audit on the settled build — PASS both viewports, and it live-validates three merged fixes

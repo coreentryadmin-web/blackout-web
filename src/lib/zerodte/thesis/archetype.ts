@@ -12,9 +12,22 @@ type ArchetypeRule = {
   minCoreAvg: number;
 };
 
+// FLOW_FOLLOWING/MOMENTUM_CONTINUATION do NOT list RS as a core rail — see archetype-gates.ts's
+// MOMENTUM_CONTINUATION case for the full explanation. Short version: scoreRsRail (rails/rs.ts)
+// only ever returns a hit once its OWN internal score already clears 55, and in production it
+// never fires at all (legacyBridgeExtrasFromSetup/thesisEvidenceToLegacyExtras never populate
+// the session-% inputs the rail needs) — so `scores.RS` is null on effectively every real setup.
+// Requiring RS as a core rail here hit the SAME tautology one level up from the gate: scoreArchetype
+// below refuses to score an archetype at all unless every listed core rail is present, so with RS
+// permanently absent, FLOW_FOLLOWING/MOMENTUM_CONTINUATION always scored 0 via this RULES path —
+// not because FLOW/MOMENTUM were weak, but because a rail that never fires can never be "present".
+// That silently pushed real momentum/flow setups either into classifyTradeArchetype's cruder
+// confidence-0 fallback (which skips minCoreAvg entirely) or behind a weaker archetype that
+// happened to clear its own (single-rail) bar. Fixed the same way as the gate: drop RS as a
+// requirement rather than trying to distinguish "RS fetched and weak" from "RS never fetched".
 const RULES: ArchetypeRule[] = [
-  { archetype: "FLOW_FOLLOWING", core: ["FLOW", "RS"], minCoreAvg: 65 },
-  { archetype: "MOMENTUM_CONTINUATION", core: ["MOMENTUM", "RS"], minCoreAvg: 65 },
+  { archetype: "FLOW_FOLLOWING", core: ["FLOW"], minCoreAvg: 65 },
+  { archetype: "MOMENTUM_CONTINUATION", core: ["MOMENTUM"], minCoreAvg: 65 },
   { archetype: "BREAKOUT", core: ["BREAKOUT", "MOMENTUM"], minCoreAvg: 60 },
   { archetype: "MEAN_REVERSION", core: ["REVERSAL", "POSITIONING"], minCoreAvg: 60 },
   { archetype: "GAMMA_BREAK", core: ["POSITIONING", "BREAKOUT"], minCoreAvg: 60 },
@@ -84,17 +97,6 @@ export function scoreForArchetype(archetype: TradeArchetype, scores: RailScoreMa
   if (!rule) return 0;
   return scoreArchetype(rule, scores, structural);
 }
-
-export const ARCHETYPE_EMOJI: Record<TradeArchetype, string> = {
-  MOMENTUM_CONTINUATION: "🔥",
-  BREAKOUT: "⚡",
-  FLOW_FOLLOWING: "🐋",
-  MEAN_REVERSION: "🧲",
-  GAMMA_BREAK: "💥",
-  CATALYST_CONTINUATION: "📰",
-  FAILED_BREAKOUT: "⚔️",
-  VOL_EXPANSION: "🌊",
-};
 
 export const ARCHETYPE_LABEL: Record<TradeArchetype, string> = {
   MOMENTUM_CONTINUATION: "Momentum Continuation",

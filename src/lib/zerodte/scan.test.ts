@@ -1280,3 +1280,49 @@ test("D3 integration: computeQuoteAgeMs(quoteUpdatedMs) drives buildContractPlan
   const noTs = buildContractPlan({ ...base, quoteAgeMs: computeQuoteAgeMs(null, now) });
   assert.equal(noTs.quote_invalid_reason, null);
 });
+
+// Regression for a P1 finding (2026-09-02, live monitor): attachIntradayEdge adjusts a
+// BREAKOUT setup's `score` (time-of-day + market-align + intraday-VWAP nudges) AFTER
+// breakoutScoreBreakdown already pinned `factor_breakdown` to sum to the pre-adjustment score —
+// so the deck's "Why this play was picked" panel silently drifted +5/+15 off its own listed
+// factors on 50/54 live BREAKOUT setups. applyIntradayEdgeToBreakdown is the extracted, pure
+// piece of that fix: it must add the adjustment back as its own named factor ONLY for
+// breakoutScoreBreakdown's shape (detected via the `breakout_core` key), and leave any other
+// breakdown (FLOW/PIN, which reconciles to the separate `dossier_score` field, not `score`)
+// completely untouched.
+test("applyIntradayEdgeToBreakdown adds the applied delta as its own factor for a BREAKOUT breakdown", async () => {
+  const { applyIntradayEdgeToBreakdown } = await mod();
+  const breakdown = { breakout_core: 40, dollar_volume: 20, screen_base: 10 }; // sums to 70
+  const updated = applyIntradayEdgeToBreakdown(breakdown, 5);
+  assert.deepEqual(updated, { breakout_core: 40, dollar_volume: 20, screen_base: 10, intraday_edge: 5 });
+  // The invariant this fix restores: the parts sum to the post-adjustment score exactly.
+  const sum = Object.values(updated!).reduce((a, b) => a + b, 0);
+  assert.equal(sum, 75, "breakdown must reconcile to the post-adjustment score (70 + 5)");
+});
+
+test("applyIntradayEdgeToBreakdown leaves a FLOW/PIN breakdown untouched (reconciles to dossier_score, not score)", async () => {
+  const { applyIntradayEdgeToBreakdown } = await mod();
+  const flowBreakdown = { flow: 30, tech: 18, positioning: 10, news: 8, smart_money: 12 };
+  const updated = applyIntradayEdgeToBreakdown(flowBreakdown, 5);
+  assert.deepEqual(updated, flowBreakdown, "a non-BREAKOUT breakdown must never gain a stray intraday_edge entry");
+});
+
+test("applyIntradayEdgeToBreakdown is a no-op on a zero delta or a null breakdown", async () => {
+  const { applyIntradayEdgeToBreakdown } = await mod();
+  const breakdown = { breakout_core: 40, dollar_volume: 20, screen_base: 10 };
+  assert.deepEqual(applyIntradayEdgeToBreakdown(breakdown, 0), breakdown);
+  assert.equal(applyIntradayEdgeToBreakdown(null, 5), null);
+});
+
+test("applyIntradayEdgeToBreakdown uses the post-clamp applied delta, not the raw adjustment sum", async () => {
+  // If the caller passes the ACTUAL score delta (score_after - score_before, which already
+  // accounts for the Math.max(0, Math.min(100, ...)) clamp in attachIntradayEdge), the
+  // breakdown reconciles exactly even when a setup was clamped at the 0-100 boundary — e.g. a
+  // setup already at score 98 with a +7 raw adjustment sum only actually moves to 100 (+2
+  // applied), and the breakdown must show +2, not +7.
+  const { applyIntradayEdgeToBreakdown } = await mod();
+  const breakdown = { breakout_core: 88, dollar_volume: 8, screen_base: 2 }; // sums to 98
+  const updated = applyIntradayEdgeToBreakdown(breakdown, 2); // caller passes the CLAMPED delta
+  const sum = Object.values(updated!).reduce((a, b) => a + b, 0);
+  assert.equal(sum, 100, "must reconcile to the clamped score (100), not an over-counted 105");
+});

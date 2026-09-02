@@ -1118,7 +1118,8 @@ async function evaluateFlatPlay(
   }
 
   // ── Cortex-based deterministic approval (replaces Claude LLM gate) ──────
-  // Cortex VETO/NET_NEGATIVE are already blocked above. What remains:
+  // Cortex VETO/NET_NEGATIVE/THIN_EVIDENCE/CONTESTED/OPPOSE_UNRESOLVED are already
+  // blocked above (cortexGateBlocks). What remains:
   //   PASS     → evidence supports the play (strongest signal)
   //   ABSTAIN  → no evidence available (Cortex outage or thin data)
   //

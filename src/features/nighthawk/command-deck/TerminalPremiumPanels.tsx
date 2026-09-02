@@ -30,8 +30,13 @@ import {
   entryCenteredExcursionLayout,
   formatExcursionPct,
 } from "./trade-excursion-graphic";
-import { signColorClass } from "@/lib/zerodte/terminal-edge";
+import {
+  legacyPrimaryPeakPct,
+  legacyPrimaryPnlPct,
+  legacyPrimaryTroughPct,
+} from "@/features/nighthawk/lib/legacy-primary-pnl";
 import { formatReturnPct } from "./play-card-display";
+import { signColorClass } from "@/lib/zerodte/terminal-edge";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import { AgeDecayBadge, StatusPill } from "./DeckStatusBadges";
 import { etNowParts } from "@/features/nighthawk/lib/session";
@@ -255,8 +260,12 @@ export function TradeExcursionGraphic({
   markFlash?: boolean;
 }) {
   const closed = play.status === "CLOSED";
-  const currentPct = closed ? (play.exitPnlPct ?? play.pnlPct) : play.pnlPct;
-  const layout = entryCenteredExcursionLayout(play.trough, play.peak, currentPct, { closed });
+  const currentPct = closed
+    ? (play.exitPnlPct ?? play.pnlPct)
+    : legacyPrimaryPnlPct(play);
+  const worst = legacyPrimaryTroughPct(play);
+  const best = legacyPrimaryPeakPct(play);
+  const layout = entryCenteredExcursionLayout(worst, best, currentPct, { closed });
 
   if (!layout) return null;
 

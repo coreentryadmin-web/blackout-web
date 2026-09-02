@@ -792,17 +792,11 @@
   background:var(--faint);transition:background .6s,box-shadow .6s;
 }
 .pipe-stage.pipe-lit .pipe-status{color:var(--g)}
-.pipe-stage.pipe-lit .status-dot{background:var(--g);box-shadow:0 0 8px var(--g);animation:led 2s ease infinite}
-/* NOTE: do not add a ::after{content:"ONLINE"} rule here. LandingRedesignFx.tsx's
-   IntersectionObserver already rewrites .pipe-status's innerHTML to the dot + "ONLINE"
-   text the instant a stage scrolls into view (see the `pipe-lit` class toggle there).
-   A CSS-generated ::after with the same literal text used to sit here too; with
-   position:absolute and no top/left it rendered at its in-flow "static position"
-   (CSS2.1 10.3.7) -- i.e. immediately after the real "ONLINE" text node, not away from
-   it -- so the two labels double-exposed into unreadable overlapping glyphs on every
-   "How BlackOut Thinks" pipeline card (01-04) as soon as it scrolled into view. Fixed
-   by deleting the redundant CSS copy; the JS-authored text (already gated on the same
-   pipe-lit trigger) is the single source of truth for this label. */
+.pipe-stage.pipe-lit .status-dot,.pipe-status.is-live .status-dot{background:var(--g);box-shadow:0 0 8px var(--g);animation:led 2s ease infinite}
+.pipe-status.is-live{color:var(--g)}
+/* NOTE: pipeline stage labels are semantic static copy (SCAN / VERIFY / STRUCTURE / LOGGED).
+   LandingRedesignFx only adds `.is-live` on scroll — it must NOT rewrite label text to
+   OFFLINE/ONLINE, which crawlers and no-JS visitors would read as "the desk is down". */
 .pipe-status span + span{display:none}
 
 /* Stage body — two-column: text + visual */
@@ -1339,6 +1333,39 @@ a.pipe-chip-link:hover{background:rgba(163,230,53,.12);border-color:rgba(163,230
 @keyframes gamma-scan{0%,100%{transform:translateY(0);opacity:0}15%{opacity:.45}50%{transform:translateY(180px);opacity:.25}85%{opacity:0}}
 .rl .gamma-promo-warm{position:relative;padding:2rem 1rem;text-align:center}
 .rl .gamma-promo-warm p{font-family:var(--rl-mono);font-size:11px;color:var(--rl-dim)}
+.rl .gamma-promo-degraded{
+  margin:0 0 .75rem;padding:.45rem .65rem;border-radius:4px;
+  font-family:var(--rl-mono);font-size:10px;line-height:1.45;letter-spacing:.04em;
+  color:var(--rl-amber,#fbbf24);background:rgba(251,191,36,.08);
+  border:1px solid rgba(251,191,36,.22);
+}
+.rl .home-live-strip{
+  border-block:1px solid rgba(163,230,53,.12);
+  background:linear-gradient(180deg,rgba(4,4,7,.92),rgba(4,4,7,.78));
+}
+/* This element also carries the shared `.w` class for max-width+centering, but `.w`'s own
+   `padding:0 1.5rem` is a shorthand and this selector is more specific than `.w`, so it fully
+   overrides all four sides rather than just adding vertical padding on top — the horizontal
+   1.5rem has to be restated here or the strip runs edge-to-edge while every other section on
+   the page keeps the 1.5rem side margin. */
+.rl .home-live-strip-inner{
+  display:flex;flex-wrap:wrap;align-items:center;gap:.45rem .65rem;
+  padding:.65rem 1.5rem;overflow-x:auto;
+}
+.rl .home-live-chip{
+  font-family:var(--m);font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--rl-dim);white-space:nowrap;
+}
+.rl .home-live-chip--accent{color:var(--g);display:inline-flex;align-items:center;gap:.35rem}
+.rl .home-live-chip--muted{color:var(--faint)}
+.rl .home-live-chip--warn{color:var(--rl-amber,#fbbf24)}
+.rl .home-live-chip--link{
+  color:var(--rl-cyan);text-decoration:none;transition:color .2s;
+}
+.rl .home-live-chip--link:hover{color:var(--g)}
+.rl .home-live-divider{
+  width:1px;height:14px;background:rgba(255,255,255,.12);margin:0 .15rem;
+}
 .rl .gamma-promo-warm-scan{
   position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(34,211,238,.08) 50%,transparent 60%);
   animation:rl-shot-scan 3s ease-in-out infinite;

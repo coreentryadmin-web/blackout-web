@@ -397,6 +397,155 @@ test("resolveTrimRegimeLive: off by default — only the exact string '1' opts i
   assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "1" } as NodeJS.ProcessEnv), true);
 });
 
+// ── resolveTrimBankLive: the persisted-tranche-count kill-switch (DEFAULT-OFF, FIX
+//    2026-09-01) — same off-by-default discipline as resolveTrimRegimeLive above.
+test("resolveTrimBankLive: off by default — only the exact string '1' opts in", async () => {
+  const { resolveTrimBankLive } = await import("./exit-sync");
+  assert.equal(resolveTrimBankLive({} as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimBankLive({ ZERODTE_TRIM_BANK_LIVE: "" } as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimBankLive({ ZERODTE_TRIM_BANK_LIVE: "true" } as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimBankLive({ ZERODTE_TRIM_BANK_LIVE: "0" } as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimBankLive({ ZERODTE_TRIM_BANK_LIVE: "1" } as NodeJS.ProcessEnv), true);
+});
+
+// ── THE DEAD-ZONE BUG ITSELF, pinned directly against evaluateLedgerRowExit ─────────
+//
+// Root cause (see db.ts's trims_taken ALTER TABLE comment + exit-sync.ts's trimsTaken
+// derivation for the full writeup): before this fix, "thirds already banked" was
+// RECOMPUTED every tick via trimTranchesArmed(peak, regime) — the EXACT SAME function
+// decideTrimScale (exit-engine.ts) calls internally to compute "thirds the peak has
+// armed". Feeding a function's own recomputed output back in as if it were an
+// independently-tracked "already taken" count makes `armed > taken` structurally
+// unable to ever be true, which had two live consequences at the neutral-regime
+// crossing point (peak exactly +20%, matching BOTH the trim_scale tranche-1 arm AND
+// the shared ratchet-style breakeven floor arm):
+//   (a) the trim ladder's own banking branch could never fire (a tranche never
+//       actually gets banked), and
+//   (b) the 2026-08-27 dead-zone guard's `!trimAvailable` check was permanently a
+//       no-op, so the coarse breakeven-floor EXIT fired anyway and dumped the WHOLE
+//       position — exactly the SLS/TSM regression that guard was written to prevent,
+//       just reintroduced by how the caller computed its own input.
+//
+// A fully-typed row builder (not the loosely-typed `baseRow()`/`as never` idiom the
+// full-integration tests above use) so these two tests type-check evaluateLedgerRowExit's
+// real signature directly, without going through syncLedgerLiveState.
+function trimScaleRow(overrides: Partial<import("@/lib/db").ZeroDteSetupLogRow> = {}): import("@/lib/db").ZeroDteSetupLogRow {
+  return {
+    session_date: "2026-09-01",
+    ticker: "SLS",
+    direction: "long",
+    top_strike: 10,
+    expiry: "2026-09-01",
+    score: 80,
+    score_max: 80,
+    dossier_score: null,
+    conviction: null,
+    gross_premium: 2_000_000,
+    spike: false,
+    underlying_at_flag: 10,
+    underlying_latest: null,
+    flags_json: null,
+    first_flagged_at: new Date(Date.now() - 20 * 60_000).toISOString(),
+    last_seen_at: new Date().toISOString(),
+    close_price: null,
+    move_pct: null,
+    direction_hit: null,
+    graded_at: null,
+    entry_premium: 4.0,
+    flow_avg_fill: 4.0,
+    // Stop at −50% (2.0); target at +100% (8.0) — plain PLAN_RULES-shaped rails, well
+    // clear of the +20%-peak / breakeven-mark scenario these tests exercise.
+    plan_json: { occ: "O:SLS260901C00010000", stop_premium: 2.0, target_premium: 8.0 },
+    plan_outcome: null,
+    plan_pnl_pct: null,
+    status: "OPEN",
+    last_mark: 4.0,
+    last_mark_at: null,
+    // Peak +20% (4.8) — the exact neutral-regime tranche-1 arm AND ratchet-style
+    // breakeven-floor arm crossing point (both thresholds sit at peak +20%).
+    peak_premium: 4.8,
+    trough_premium: 4.0,
+    gate_calibration_json: null,
+    entry_context: null,
+    feature_vector: null,
+    trims_taken: 0,
+    ...overrides,
+  };
+}
+
+test("trim_scale dead-zone FIX: a real persisted trims_taken=0 lets a just-armed tranche bank instead of dumping the whole position at breakeven", async () => {
+  const { evaluateLedgerRowExit } = await import("./exit-sync");
+  const row = trimScaleRow();
+  const banked: number[] = [];
+
+  // onTrimBank only fires once ZERODTE_TRIM_BANK_LIVE is genuinely on (resolveTrimBankLive()
+  // reads process.env directly, no deps override — it's the real production kill-switch,
+  // not a test seam) — flip it for this test only, restore in `finally` so it can never
+  // leak into another test in this file/process.
+  const prevFlag = process.env.ZERODTE_TRIM_BANK_LIVE;
+  process.env.ZERODTE_TRIM_BANK_LIVE = "1";
+  let result: Awaited<ReturnType<typeof evaluateLedgerRowExit>>;
+  try {
+    // Mark back at breakeven (4.0, 0%) after a +20% peak — the crossing scenario. With
+    // the caller supplying the REAL persisted count (0 — nothing banked yet, simulating
+    // ZERODTE_TRIM_BANK_LIVE=1 reading a fresh row.trims_taken) instead of a recompute,
+    // `armed(1) > taken(0)` is genuinely true this time.
+    result = await evaluateLedgerRowExit(
+      row,
+      { syncMark: 4.0, status: "OPEN" },
+      {
+        exitMode: "trim_scale",
+        regime: "neutral",
+        trimsTaken: 0, // the fix: a real "not yet banked" count, not a recompute of `armed`
+        fetchEvidence: async () => [], // no Cortex evidence → thesis-break check is inert
+        readLaneMark: () => undefined, // force the sync snapshot mark to decide
+        onTrimBank: (n) => {
+          banked.push(n);
+        },
+      }
+    );
+  } finally {
+    if (prevFlag === undefined) delete process.env.ZERODTE_TRIM_BANK_LIVE;
+    else process.env.ZERODTE_TRIM_BANK_LIVE = prevFlag;
+  }
+
+  // The row does NOT close — the whole point of the fix is that this tick banks a
+  // third instead of exiting the whole position at breakeven.
+  assert.equal(result, null, "a trim-bank tick must never itself report an EXIT");
+  assert.deepEqual(banked, [1], "onTrimBank must fire exactly once, banking tranche 1");
+});
+
+test("trim_scale dead-zone BUG (unchanged while ZERODTE_TRIM_BANK_LIVE is off): the identical scenario still dumps the whole position at breakeven — the PR is a no-op until the flag flips", async () => {
+  const { evaluateLedgerRowExit } = await import("./exit-sync");
+  const row = trimScaleRow();
+  const banked: number[] = [];
+
+  // SAME row, SAME mark/peak — only difference is `trimsTaken` is NOT overridden, so
+  // evaluateLedgerRowExit recomputes it via trimTranchesArmed(peak, regime), exactly
+  // as it always has. This must reproduce today's shipped (buggy) behavior byte-for-
+  // byte: merging this fix changes nothing live until ZERODTE_TRIM_BANK_LIVE=1.
+  const result = await evaluateLedgerRowExit(
+    row,
+    { syncMark: 4.0, status: "OPEN" },
+    {
+      exitMode: "trim_scale",
+      regime: "neutral",
+      // trimsTaken deliberately omitted — exercises the real resolveTrimBankLive()
+      // (unset in this test process → false) recompute path.
+      fetchEvidence: async () => [],
+      readLaneMark: () => undefined,
+      onTrimBank: (n) => {
+        banked.push(n);
+      },
+    }
+  );
+
+  assert.ok(result, "the coarse breakeven floor still dumps the whole position — the bug is unchanged while the flag is off");
+  assert.equal(result!.decision.action, "EXIT");
+  assert.match(result!.decision.reason, /ratchet_breakeven_floor|ratchet_early_profit_floor/);
+  assert.deepEqual(banked, [], "onTrimBank must never fire while ZERODTE_TRIM_BANK_LIVE is off");
+});
+
 // ── ENTRY-BASIS COHERENCE: the operative stop can never be looser than −50% of the
 //    LEDGER basis, no matter how far the mark ran past the flow fill before commit ───
 //

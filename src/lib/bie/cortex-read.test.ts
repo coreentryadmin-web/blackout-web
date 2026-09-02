@@ -439,22 +439,7 @@ test("cortexCitationFor: all-absent live verdict → 'cannot see', mode unavaila
   assert.match(c!.headline, /cannot see NVDA/);
 });
 
-test("pinnedCortexLinesForSession: one line per ledger ticker, honest on abstain and missing blobs", async () => {
-  ledgerRows = [
-    row(),
-    row({ ticker: "MU", entry_context: { cortex: { abstained: true, reason: "every source absent." } } }),
-    row({ ticker: "OLD", entry_context: null }),
-  ];
-  const map = await mod.pinnedCortexLinesForSession();
-  assert.match(map.get("NVDA")!, /Cortex PASS at commit — score \+1\.85, conviction A/);
-  assert.match(map.get("MU")!, /ABSTAINED/);
-  assert.match(map.get("OLD")!, /no verdict pinned — gates-only commit/);
-});
-
-test("renderCortexCitation + directionFromQuestion", () => {
-  const md = mod.renderCortexCitation({ mode: "pinned", headline: "Cortex PASS: score +1, conviction B", lines: ["+1.00 [gex-walls] x"], asOf: null });
-  assert.match(md, /\*\*Cortex evidence \(0DTE, pinned\):\*\* Cortex PASS/);
-  assert.match(md, /- \+1\.00 \[gex-walls\] x/);
+test("directionFromQuestion", () => {
   assert.equal(mod.directionFromQuestion("should I short NVDA"), "short");
   assert.equal(mod.directionFromQuestion("NVDA puts?"), "short");
   assert.equal(mod.directionFromQuestion("cortex NVDA"), "long");

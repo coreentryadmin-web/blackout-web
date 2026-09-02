@@ -19,59 +19,83 @@ import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { seedUwCacheFromWsStores } from "@/lib/uw-ws-cache-bridge";
 import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
 import { warmFlowsMemberCaches } from "@/lib/flows-member-cache";
+import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+/**
+ * Cross-replica overlap guard. Measured live on prod 2026-09-02: FOUR "[cron/desk-warm]
+ * background done" completions logged within a 17.5s window (15:26:01.386-15:26:18.865 UTC),
+ * each carrying elapsed=9-24s — i.e. multiple invocations of the same UW/Polygon-bound fan-out
+ * (loadMergedSpxDesk + fetchGexHeatmap SPX/SPY + loadBootstrapBundle + warmFlowsMemberCaches)
+ * were genuinely executing concurrently on shared web-tier ECS compute, contending for the same
+ * rate-limited upstreams real member requests also depend on. This route has TWO independent,
+ * uncoordinated trigger sources — EventBridge's own ~5min schedule AND the in-app rth-warm-leader
+ * (rth-warm-leader.ts), which re-dispatches this key the instant its last recorded run is more
+ * than 90s stale (RTH_WRITER_HEAL_AFTER_MIN["desk-warm"], the TIGHTEST heal threshold of any
+ * watched key) — with no lock between them, so a fast EventBridge fire and a leader-triggered
+ * heal-fire can land within seconds of each other while the prior run's background work is still
+ * in flight. Same `sharedCacheSetNx` idempotent-skip pattern already used by vector-pick-sweep
+ * for this exact problem shape. TTL (600s) matches this cron's own `stale_after_min: 10`
+ * alerting threshold (cron-registry.ts) as the safety-net ceiling if a release is ever missed.
+ */
+const OVERLAP_LOCK_KEY = "desk-warm:running";
+const OVERLAP_LOCK_TTL_SEC = 600;
+
 async function runDeskWarm(started: number): Promise<void> {
-  const [mergedResult, gexResults, bootstrapResult, flowsWarmResult] = await Promise.allSettled([
-    loadMergedSpxDesk(),
-    Promise.allSettled(["SPX", "SPY"].map((t) => fetchGexHeatmap(t))),
-    loadBootstrapBundle(),
-    warmFlowsMemberCaches(),
-  ]);
-
   try {
-    const redis = await getUwCacheRedis();
-    if (redis) await seedUwCacheFromWsStores(redis);
-  } catch {
-    /* non-fatal */
-  }
+    const [mergedResult, gexResults, bootstrapResult, flowsWarmResult] = await Promise.allSettled([
+      loadMergedSpxDesk(),
+      Promise.allSettled(["SPX", "SPY"].map((t) => fetchGexHeatmap(t))),
+      loadBootstrapBundle(),
+      warmFlowsMemberCaches(),
+    ]);
 
-  const deskOk = mergedResult.status === "fulfilled";
-  const gexOk =
-    gexResults.status === "fulfilled" &&
-    gexResults.value.some((r) => r.status === "fulfilled");
-  const bootstrapOk = bootstrapResult.status === "fulfilled";
-  const flowsWarmOk =
-    flowsWarmResult.status === "fulfilled" && (flowsWarmResult.value?.warmed ?? 0) > 0;
+    try {
+      const redis = await getUwCacheRedis();
+      if (redis) await seedUwCacheFromWsStores(redis);
+    } catch {
+      /* non-fatal */
+    }
 
-  let enrichOk = false;
-  try {
-    await prefetchSpxDeskEnrichment();
-    enrichOk = true;
-    await loadBootstrapBundle();
-  } catch {
-    enrichOk = false;
-  }
+    const deskOk = mergedResult.status === "fulfilled";
+    const gexOk =
+      gexResults.status === "fulfilled" &&
+      gexResults.value.some((r) => r.status === "fulfilled");
+    const bootstrapOk = bootstrapResult.status === "fulfilled";
+    const flowsWarmOk =
+      flowsWarmResult.status === "fulfilled" && (flowsWarmResult.value?.warmed ?? 0) > 0;
 
-  if (!deskOk) {
-    console.warn(
-      "[cron/desk-warm] background loadMergedSpxDesk failed:",
-      mergedResult.status === "rejected" ? mergedResult.reason : "unknown"
+    let enrichOk = false;
+    try {
+      await prefetchSpxDeskEnrichment();
+      enrichOk = true;
+      await loadBootstrapBundle();
+    } catch {
+      enrichOk = false;
+    }
+
+    if (!deskOk) {
+      console.warn(
+        "[cron/desk-warm] background loadMergedSpxDesk failed:",
+        mergedResult.status === "rejected" ? mergedResult.reason : "unknown"
+      );
+    }
+    if (!gexOk) {
+      console.warn(
+        "[cron/desk-warm] background fetchGexHeatmap(SPX/SPY) failed:",
+        gexResults.status === "rejected" ? gexResults.reason : "all tickers failed"
+      );
+    }
+
+    console.info(
+      `[cron/desk-warm] background done — desk=${deskOk} gex=${gexOk} bootstrap=${bootstrapOk} flowsWarm=${flowsWarmOk} enrich=${enrichOk} elapsed=${Date.now() - started}ms`
     );
+  } finally {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
   }
-  if (!gexOk) {
-    console.warn(
-      "[cron/desk-warm] background fetchGexHeatmap(SPX/SPY) failed:",
-      gexResults.status === "rejected" ? gexResults.reason : "all tickers failed"
-    );
-  }
-
-  console.info(
-    `[cron/desk-warm] background done — desk=${deskOk} gex=${gexOk} bootstrap=${bootstrapOk} flowsWarm=${flowsWarmOk} enrich=${enrichOk} elapsed=${Date.now() - started}ms`
-  );
 }
 
 export async function GET(req: NextRequest) {
@@ -87,6 +111,21 @@ export async function GET(req: NextRequest) {
       skipped: true,
       reason:
         "Outside extended warm window (weekday 4:00 AM–8:00 PM ET) — use ?force=1 or set CACHE_WARM_ALWAYS=1",
+    };
+    await logCronRun("desk-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const acquired = await sharedCacheSetNx(
+    OVERLAP_LOCK_KEY,
+    { startedAt: started },
+    OVERLAP_LOCK_TTL_SEC
+  ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a stuck cron
+  if (!acquired) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: "previous desk warm still in flight (idempotent skip)",
     };
     await logCronRun("desk-warm", started, payload);
     return NextResponse.json(payload);

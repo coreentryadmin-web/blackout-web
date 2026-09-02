@@ -18,6 +18,7 @@ import {
 } from "@/lib/largo/flow-strike-stacks";
 import { contractSizeRounded } from "@/features/helix/lib/helix-contract-size";
 import { HELIX_STRIKE_HITS_WINDOW_MIN } from "@/features/helix/lib/helix-strike-leaders";
+import { signalWindowAgeMs } from "@/features/helix/lib/helix-signal-detection";
 import { buildHelixFlowDeepLink, helixDiscordFlowToDeepLink } from "@/lib/helix-flow-deep-link";
 import { flowContractKey } from "@/lib/helix/contract-identity";
 
@@ -521,7 +522,12 @@ export function contractStackHitsFromFlows(
     const at = row.event_at || row.alerted_at;
     if (!at) continue;
     const ms = new Date(at).getTime();
-    if (!Number.isFinite(ms) || nowMs - ms > windowMs) continue;
+    // signalWindowAgeMs rejects a future-dated print (age < -tolerance -> null) instead of letting
+    // a negative `nowMs - ms` slip under `> windowMs` and count as a fresh hit — the same
+    // future-print bug already fixed in detectVelocitySpikes/countMatchingContractHits, previously
+    // unguarded here.
+    const age = signalWindowAgeMs(Number.isFinite(ms) ? ms : null, nowMs);
+    if (age == null || age > windowMs) continue;
     hits.push({ at, premium: Number(row.premium), fill_price: row.fill_price ?? null });
   }
 
@@ -620,7 +626,11 @@ export function selectHelixDiscordDigest(
   const eligible = flows.filter((f) => passesHelixDiscordFilters(f, opts.now));
   const inWindow = eligible.filter((f) => {
     const ms = eventMs(f);
-    return ms != null && nowMs - ms <= windowMs;
+    // Same future-print guard as contractStackHitsFromFlows above: without signalWindowAgeMs, a
+    // future-dated/clock-skewed print makes nowMs - ms negative, trivially satisfying <= windowMs
+    // and getting picked as the freshest "in window" row for the digest embed.
+    const age = signalWindowAgeMs(ms, nowMs);
+    return age != null && age <= windowMs;
   });
   const pool = inWindow.length > 0 ? inWindow : eligible;
   const sessionFallback = inWindow.length === 0 && pool.length > 0;
