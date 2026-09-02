@@ -1381,7 +1381,292 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
   }
 }
 
-/* ── Legacy board — X Ads table parity (LegacyPickLogBoard) ──────────────── */
+/* ── Legacy board — dual-rail inspector (no page scroll) ─────────────────── */
+.nh-v2-page .legacy-board-shell--inspector .vector-board-cal-wrap,
+.nh-v2-page .legacy-board-shell--inspector .vector-board-scorecard {
+  display: none;
+}
+
+.nh-v2-page .legacy-board-body--inspector {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
+  gap: 0;
+}
+
+.nh-v2-page .legacy-board-upper {
+  display: flex;
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.nh-v2-page .legacy-board-body--inspector .legacy-board-upper .vector-board-table-pane {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.nh-v2-page .legacy-board-body--inspector .legacy-board-upper .vector-board-panel {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.nh-v2-page .legacy-board-body--inspector .legacy-board-upper .vector-board-tablewrap {
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.nh-v2-page .legacy-board-body--inspector .legacy-board-manage {
+  flex: 0 0 min(26vw, 17.5rem);
+  width: min(26vw, 17.5rem);
+  max-width: 17.5rem;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--nh-desk-border);
+}
+
+.nh-v2-page .legacy-board-manage-head {
+  flex-shrink: 0;
+  padding: 0.5rem 0.65rem 0.35rem;
+  border-bottom: 1px solid var(--nh-desk-border-subtle);
+}
+
+.nh-v2-page .legacy-board-manage-body {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.35rem 0.65rem 0.5rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem 0.5rem;
+  align-content: start;
+}
+
+.nh-v2-page .legacy-manage-rec {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.35rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--nh-desk-border-subtle);
+}
+
+.nh-v2-page .legacy-manage-rec.is-buy { color: var(--nh-desk-up); border-color: rgba(0, 217, 163, 0.35); }
+.nh-v2-page .legacy-manage-rec.is-hold { color: var(--nh-desk-text-secondary); }
+.nh-v2-page .legacy-manage-rec.is-trim { color: var(--nh-desk-warn); border-color: rgba(251, 191, 36, 0.35); }
+.nh-v2-page .legacy-manage-rec.is-sell { color: var(--nh-desk-down); border-color: rgba(248, 113, 113, 0.35); }
+
+.nh-v2-page .legacy-manage-levels .nh-deck-grid {
+  display: none;
+}
+
+.nh-v2-page .legacy-manage-levels .nh-deck-track {
+  height: 0.35rem;
+  margin: 0.15rem 0 0.25rem;
+}
+
+.nh-v2-page .legacy-manage-levels .nh-deck-recnote {
+  font-size: 9px;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.nh-v2-page .legacy-manage-swing-link {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--nh-desk-up);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* Bottom technicals rail */
+.nh-v2-page .legacy-board-technicals {
+  flex: 0 0 auto;
+  min-height: 10.5rem;
+  max-height: 38%;
+  overflow: hidden;
+  border-top: 1px solid var(--nh-desk-border);
+  background: var(--nh-desk-surface-muted);
+  padding: 0.4rem 0.65rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.nh-v2-page .legacy-board-technicals-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  flex-shrink: 0;
+}
+
+.nh-v2-page .legacy-board-technicals-ticker {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .legacy-board-technicals-sub {
+  font-size: 10px;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .legacy-board-technicals-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.2rem;
+  border: 1px solid var(--nh-desk-border-subtle);
+  color: var(--nh-desk-text-secondary);
+}
+
+.nh-v2-page .legacy-board-technicals-grid {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem 0.75rem;
+}
+
+.nh-v2-page .legacy-board-technicals-col {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Shared bullet primitives */
+.nh-v2-page .legacy-detail-section-title {
+  margin: 0 0 0.25rem;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .legacy-detail-bullets {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.nh-v2-page .legacy-detail-bullet {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 38%) 1fr;
+  gap: 0.25rem 0.4rem;
+  align-items: baseline;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.nh-v2-page .legacy-detail-bullet-label {
+  color: var(--nh-desk-text-tertiary);
+  font-weight: 600;
+}
+
+.nh-v2-page .legacy-detail-bullet-value {
+  color: var(--nh-desk-text);
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.nh-v2-page .legacy-detail-bullet-value.is-up { color: var(--nh-desk-up); }
+.nh-v2-page .legacy-detail-bullet-value.is-down { color: var(--nh-desk-down); }
+.nh-v2-page .legacy-detail-bullet-value.is-warn { color: var(--nh-desk-warn); }
+.nh-v2-page .legacy-detail-bullet-value.is-muted { color: var(--nh-desk-text-secondary); }
+
+.nh-v2-page .legacy-detail-bullet-sub {
+  grid-column: 2;
+  font-size: 9px;
+  color: var(--nh-desk-text-tertiary);
+  line-height: 1.3;
+}
+
+.nh-v2-page .legacy-detail-prose {
+  margin: 0 0 0.25rem;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--nh-desk-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.nh-v2-page .legacy-board-technicals-checklist .nh-deck-premium__heading,
+.nh-v2-page .legacy-board-technicals-checklist .nh-deck-tierfactors-hd {
+  display: none;
+}
+
+.nh-v2-page .legacy-board-technicals-checklist .nh-deck-confluence__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+}
+
+.nh-v2-page .legacy-board-technicals-checklist .nh-deck-confluence__cell {
+  font-size: 9px;
+  padding: 0.1rem 0.3rem;
+}
+
+.nh-v2-page .legacy-board-technicals-checklist .nh-deck-tierfactors-list {
+  margin: 0.2rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nh-v2-page .legacy-board-technicals-checklist .nh-deck-tierfactor {
+  font-size: 9px;
+  line-height: 1.3;
+}
+
+@media (max-width: 1100px) {
+  .nh-v2-page .legacy-board-technicals-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .nh-v2-page .legacy-board-body--inspector .legacy-board-upper {
+    flex-direction: column;
+  }
+
+  .nh-v2-page .legacy-board-body--inspector .legacy-board-manage:not(.vector-board-detail--sheet) {
+    display: none;
+  }
+
+  .nh-v2-page .legacy-board-technicals {
+    max-height: 32vh;
+  }
+
+  .nh-v2-page .legacy-board-technicals-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Legacy board — X Ads table parity (LegacyPickLogBoard) ──────────────── */
 .nh-v2-page .legacy-board-shell .legacy-board-detail-body {
   display: flex;
   flex-direction: column;
