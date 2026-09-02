@@ -1305,6 +1305,38 @@ test("overlayLegacyQuotes: stock move lands on stockMovePct, NOT pnlPct (SHORT)"
   assert.equal(result.pnlPct, null, "an underlying move must never be published as the option's P&L");
 });
 
+test("Legacy adapter: resolves OCC from options_play for live mark subscription", () => {
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA",
+    direction: "long",
+    rank: 1,
+    score: 70,
+    options_play: "NVDA $500 CALL @ $3.33 — Aug 10",
+    entry_premium: 3.33,
+  });
+  assert.ok(play.occ, "parseable options_play should yield an OCC");
+  assert.match(play.occ!, /^NVDA/);
+});
+
+test("overlayLegacyOptionMarks: populates option pnlPct from live mark", () => {
+  const { overlayLegacyOptionMarks } = require("./use-legacy-option-marks.ts") as typeof import("./use-legacy-option-marks");
+  const play = terminalPlayFromEdition({
+    ticker: "NVDA",
+    direction: "long",
+    rank: 1,
+    score: 70,
+    options_play: "NVDA $500 CALL @ $3.33 — Aug 10",
+    entry_premium: 2.0,
+  });
+  const marks = new Map([
+    [play.occ!, { occ: play.occ!, mark: 3.0, bid: 2.9, ask: 3.1, asof: "2026-09-01T15:00:00.000Z", stale: false }],
+  ]);
+  const [result] = overlayLegacyOptionMarks([play], marks);
+  assert.equal(result.mark, 3.0);
+  assert.equal(result.pnlPct, 50, "entry $2 → mark $3 = +50%");
+  assert.equal(result.execPnlPct, 45, "entry $2 → bid $2.9 = +45%");
+});
+
 test("Legacy adapter: confirming_signals → confluence badge, not a factor", () => {
   const play = terminalPlayFromEdition({ ticker: "AAA", direction: "long", rank: 1, score: 68, confirming_signals: 5 });
   assert.equal(play.confluence, 5);

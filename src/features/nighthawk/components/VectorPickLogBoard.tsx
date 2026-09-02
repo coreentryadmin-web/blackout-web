@@ -41,6 +41,7 @@ import {
   vectorBoardScorecard,
 } from "@/features/nighthawk/lib/vector-board-row-utils";
 import type { VectorClosureReasonFilter } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
+import { useVectorBoardMobile } from "@/features/nighthawk/hooks/use-vector-board-mobile";
 import type { VectorPickBoardResponse } from "@/features/nighthawk/components/VectorPickLogBoard.types";
 
 const EM = "—";
@@ -105,6 +106,7 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
   const [compareLimitHit, setCompareLimitHit] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const tableRef = useRef<HTMLDivElement | null>(null);
+  const isMobile = useVectorBoardMobile();
 
   const persistPrefs = useCallback((next: VectorBoardPreferences) => {
     setPrefs(next);
@@ -156,6 +158,11 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
     const all = vectorBoardCalendarBuckets(calendarSource);
     return vectorBoardCalendarSlice(all, prefs.calendarRange) as typeof all;
   }, [calendarSource, prefs.calendarRange]);
+
+  const sessionDates = useMemo(
+    () => calendarBuckets.map((b) => b.session_date),
+    [calendarBuckets]
+  );
 
   const sessionDateFilter = selectedDate ? selectedDate : sessionScope === "current" ? todaySession : null;
 
@@ -380,6 +387,7 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
         onCompareModeChange={setCompareMode}
         visibleCount={visibleRows.length}
         sectionCount={sectionRows.length}
+        sessionDates={sessionDates}
       />
 
       {!prefs.focusMode && sessionScope === "current" && scorecardRows.length > 0 ? (
@@ -417,7 +425,13 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
         </div>
       ) : null}
 
-      <div className="vector-board-body vector-board-body--split">
+      <div
+        className={clsx(
+          "vector-board-body vector-board-body--split",
+          selectedRow && "has-detail-open",
+          prefs.focusMode && !selectedRow && "is-focus-awaiting"
+        )}
+      >
         <div className="vector-board-table-pane">
           <div className="vector-board-panel">
             <div className="vector-board-tablewrap" ref={tableRef}>
@@ -522,7 +536,20 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
           />
         </div>
 
-        <VectorPlayDetailPanel row={selectedRow} onClose={() => setSelectedRow(null)} />
+        {isMobile && selectedRow ? (
+          <button
+            type="button"
+            className="vector-board-detail-backdrop"
+            aria-label="Close detail"
+            onClick={() => setSelectedRow(null)}
+          />
+        ) : null}
+
+        <VectorPlayDetailPanel
+          row={selectedRow}
+          onClose={() => setSelectedRow(null)}
+          sheet={isMobile && !!selectedRow}
+        />
       </div>
     </div>
   );

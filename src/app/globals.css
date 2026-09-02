@@ -3733,7 +3733,9 @@ html.product-shell .nav-mega {
   }
 
   .vector-board-table thead th {
-    @apply sticky top-0 z-10 border-b px-2 py-2 text-left text-[9px] font-bold uppercase tracking-[0.1em] text-sky-300/65;
+    @apply sticky top-0 z-10 border-b px-2 py-2 text-left text-[9px] font-bold uppercase tracking-[0.1em];
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--nh-desk-text-tertiary, rgba(148, 163, 184, 0.85));
     background: linear-gradient(180deg, rgba(12, 14, 20, 0.98), rgba(9, 10, 14, 0.96));
     border-color: rgba(255, 255, 255, 0.08);
   }
@@ -3750,11 +3752,16 @@ html.product-shell .nav-mega {
 
   .vector-board-row {
     @apply cursor-pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
   }
 
   .vector-board-row:hover td,
   .vector-board-row.is-selected td {
     background: rgba(255, 255, 255, 0.035);
+  }
+
+  .vector-board-row:hover {
+    transform: translateY(-1px);
   }
 
   .vector-board-row.is-selected td {
@@ -3770,7 +3777,9 @@ html.product-shell .nav-mega {
   }
 
   .vector-board-pick-name {
-    @apply text-[13px] font-extrabold tracking-[0.01em] text-sky-50;
+    @apply text-[13px] font-extrabold tracking-[0.01em];
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--nh-desk-text, #f8fafc);
   }
 
   .vector-board-pick-sub {
@@ -3787,12 +3796,10 @@ html.product-shell .nav-mega {
 
   .vector-board-pnl.is-up {
     color: var(--dk-bull, #00d9a3);
-    text-shadow: 0 0 14px rgba(0, 217, 163, 0.28);
   }
 
   .vector-board-pnl.is-down {
     color: var(--dk-bear, #f0637c);
-    text-shadow: 0 0 14px rgba(240, 99, 124, 0.24);
   }
 
   .vector-board-pnl.is-flat {
