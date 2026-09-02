@@ -296,6 +296,19 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
   trusting any test run. A restart also wipes the scratchpad and any background-task output.
   `npm test` goes through `scripts/run-tests.mjs`, which is the exact command CI runs and prints a
   loud banner on any other major — so a Node 22 run announces itself rather than lying quietly.
+- **A container restart can silently revert the checked-out branch to a stale local one — verify,
+  don't trust `git branch --show-current` from before the restart (measured 2026-09-02).** The SEO
+  lane heartbeat cycle checked out `main` cleanly, then two turns later (after an intervening
+  restart notice) `git branch --show-current` STILL reported `main`, yet the very next heartbeat's
+  commit landed on a long-stale local branch (`fix/seo-heartbeat-2026-08-24`, last touched
+  2026-08-24) and the subsequent `git push origin main` silently no-op'd — rejected as
+  non-fast-forward because local `main` itself hadn't moved, while the real commit sat orphaned on
+  the stale branch. Force-deleting that branch did not fix it either: it reappeared, checked out
+  again, on the FOLLOWING heartbeat. **Do not trust a branch check from a prior turn, and do not
+  assume deleting a stale local branch once is durable.** Before any commit, re-verify in the SAME
+  turn: `git branch --show-current` (expect `main`), and if it is anything else, recover with
+  `git checkout main && git reset --hard origin/main` before touching any file — never assume the
+  working tree is where you left it.
 - **All infrastructure runs on AWS ECS only** — there is no Railway. Docker images are built and pushed to ECR, ECS services are force-deployed, Cloudflare cache is purged. **Production is now the ONLY environment** (`blackout-production-cluster` / `blackout-production-web` at `blackouttrades.com`) — the entire `blackout-staging-*` stack was decommissioned 2026-07-25 (see the Vector-validation note above). The `blackout-web` ECR repo is shared and still in use by production; it was deliberately NOT deleted.
 - **WebSockets WORK from this sandbox — inside a CONNECT tunnel (corrected 2026-08-09).** The old
   note here said "WS upgrades unsupported"; that is true only of asking the proxy to proxy an
