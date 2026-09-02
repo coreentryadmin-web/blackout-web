@@ -122,7 +122,7 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
     },
     {
       q: "Is the data really real-time?",
-      a: "Yes — everything streams live, tick by tick. Quotes, options flow, dealer gamma, dark-pool activity, and your alerts all update the instant the market moves, not on a delay. When a sweep hits or positioning shifts, you see it as it prints — the screen in front of you is always the market as it is right now, never a stale snapshot.",
+      a: "Yes — quotes, options flow, dealer gamma, dark-pool activity, and your alerts stream in real time wherever the underlying feed supports it, with a visible freshness indicator so you can see exactly how current a number is. Third-party market data can occasionally be delayed, inaccurate, or incomplete (see our Risk Disclaimer) — the freshness indicator tells you when that's happening rather than leaving you to assume.",
     },
     {
       q: "Do you track your performance?",

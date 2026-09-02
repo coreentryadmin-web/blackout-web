@@ -411,9 +411,9 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
               <div className="vs-col vs-us">
                 <div className="vs-label">BlackOut</div>
                 <ul className="vs-list">
-                  <li>Live tick-by-tick — zero delay</li>
+                  <li>Real-time streaming where the underlying feed supports it</li>
                   <li>Every setup graded A–F with a logged track record</li>
-                  <li>6 engines, one screen, one membership</li>
+                  <li>{MARKETING_PRODUCTS.length} engines, one screen, one membership</li>
                   <li>AI verification engine gates every play</li>
                   <li>Institutional flow, GEX, dark pool — streamed live</li>
                   <li>Real-time P&amp;L marks, not end-of-day summaries</li>
