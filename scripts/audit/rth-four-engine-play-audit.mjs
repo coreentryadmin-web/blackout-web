@@ -7,12 +7,10 @@
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { fetchAuditJson, releaseAuditClerkSession } from "./lib/audit-auth-fetch.mjs";
-import { auditSecret } from "./lib/prod-secrets.mjs";
 
 const BASE = (process.env.VALIDATE_BASE || process.env.AUDIT_APP_URL || "https://blackouttrades.com").replace(/\/$/, "");
 const OUT = process.env.SCREENSHOT_OUT || "/opt/cursor/artifacts/rth-monitor";
 const JSON_ONLY = process.argv.includes("--json");
-const CRON = auditSecret("CRON_SECRET");
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
