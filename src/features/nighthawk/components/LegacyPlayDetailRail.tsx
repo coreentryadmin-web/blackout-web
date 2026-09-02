@@ -32,8 +32,9 @@ export function LegacyPlayDetailRail({
       <aside className="vector-board-detail vector-board-detail--empty" aria-label="Play detail">
         <p className="vector-board-detail-empty-title">Select a play</p>
         <p className="vector-board-detail-empty-copy">
-          Click any row to inspect thesis, contract, morning verdict, and target geometry — same
-          drill-down model as the Vector board. Use ↑/↓ to navigate, / to search.
+          Click any row to see why we picked it, what to watch, contract expression, pre-market
+          verdict, and gate caveats — full desk reasoning in one scroll. Use ↑/↓ to navigate, / to
+          search.
         </p>
       </aside>
     );
