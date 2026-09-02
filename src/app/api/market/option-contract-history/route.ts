@@ -7,6 +7,7 @@ import { HELIX_FLOW_MAX_SINCE_HOURS } from "@/features/helix/lib/helix-flow-limi
 import { serverCache, TTL } from "@/lib/server-cache";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { sanitizeForLog } from "@/lib/log-sanitize";
 
 export const dynamic = "force-dynamic";
 // nodejs runtime is required: fetchRecentFlows (pg Pool) pulls node-only modules the edge
@@ -78,7 +79,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
   } catch (err) {
-    console.error("[market/option-contract-history]", contractId, err);
+    console.error("[market/option-contract-history]", sanitizeForLog(contractId), err);
     return NextResponse.json({ error: "Contract history unavailable" }, { status: 502, headers: NO_STORE_HEADERS });
   }
 }

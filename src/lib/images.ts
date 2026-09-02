@@ -10,7 +10,12 @@ export const MARKETING_MODULE_IMAGES = {
   thermal: "/images/marketing/thermal.webp",
   largo: "/images/marketing/largo.webp",
   hawk: "/images/marketing/hawk.webp",
-  meridian: "/images/marketing/thermal.webp",
+  // No dedicated Meridian screenshot exists yet — deliberately NOT reusing Thermal's real
+  // desk screenshot here (a member would see Thermal's actual UI mislabeled "Meridian
+  // screenshot", which is misleading, not just a stale asset). The brand emblem is an honest
+  // placeholder pending a real capture; swap this the moment a real
+  // /images/marketing/meridian.webp exists (same convention as every other module).
+  meridian: "/images/blackout-emblem.webp",
   vector: "/images/marketing/vector.webp",
 } as const;
 

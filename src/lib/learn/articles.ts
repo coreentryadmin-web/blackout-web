@@ -1272,7 +1272,7 @@ When a wall breaks, it flips from resistance to a momentum signal — see [Call 
 
 ## A practical workflow
 
-Before selecting any strike: (1) open Thermal and note the flip, call wall, put wall, and King node from the [KeyLevelBox](/learn/thermal-heatmap-reading-guide); (2) check the GEX regime — positive or negative; (3) layer on HELIX flow and dark pool lines to see whether activity is converging with or diverging from the gamma levels; (4) then pick your structure (directional, condor, spread) and your strikes based on where the levels sit. This takes about 60 seconds and replaces guesswork with data. [Get access →](/pricing)
+Before selecting any strike: (1) open Thermal and note the flip, call wall, put wall, and King node from the [Key Levels panel](/learn/thermal-heatmap-reading-guide); (2) check the GEX regime — positive or negative; (3) layer on HELIX flow and dark pool lines to see whether activity is converging with or diverging from the gamma levels; (4) then pick your structure (directional, condor, spread) and your strikes based on where the levels sit. This takes about 60 seconds and replaces guesswork with data. [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -1345,7 +1345,7 @@ Clicking a ticker opens a slide-out panel showing all qualifying prints for that
 
 ## Practical workflow
 
-Set the premium floor at $500K, scan for names with high Ask% and SWEEP rules. Click into the TickerDrawer for the full picture. Cross-check the signals column for gamma proximity and dark pool correlation. For interpreting the Tide bar, anomaly banners, and AI brief, see [HELIX Flow Signals Explained](/learn/helix-flow-signals-explained). For separating signal from noise, see [How to Read Options Flow](/learn/how-to-read-options-flow). For the underlying tape-reading techniques, see [Options Volume Analysis](/learn/options-volume-analysis). [Get access →](/pricing)
+Set the premium floor at $500K, scan for names with high Ask% and SWEEP rules. Click into the ticker detail view for the full picture. Cross-check the signals column for gamma proximity and dark pool correlation. For interpreting the Tide bar, anomaly banners, and AI brief, see [HELIX Flow Signals Explained](/learn/helix-flow-signals-explained). For separating signal from noise, see [How to Read Options Flow](/learn/how-to-read-options-flow). For the underlying tape-reading techniques, see [Options Volume Analysis](/learn/options-volume-analysis). [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -2206,9 +2206,9 @@ The regime — positive vs. negative gamma — determines which side of the thet
 
 The [Night Hawk 0DTE system](/learn/night-hawk-0dte-command-guide) embeds theta management directly into its rules:
 
-**-50% hard stops:** If a position loses half its entry premium, it is closed. No exceptions. This prevents theta from bleeding a directional bet to zero on a slow day.
+**-50% hard stops:** If a tracked play loses half its entry premium, BlackOut marks it closed and alerts you. No exceptions. BlackOut is analytics-only — it surfaces the exit, it does not route the order at your broker — but the rule leaves no room for hoping a directional bet bleeds back to even on a slow day.
 
-**15:30 ET time stops:** Any open 0DTE position is closed by 3:30 PM Eastern, 30 minutes before the close. This avoids the final window where theta is at its most extreme and gamma unwind makes price action chaotic. See [SPX Slayer's lotto power hour guide](/learn/spx-slayer-lotto-power-hour) for how the system handles the end-of-day window.
+**15:30 ET time stops:** Any open 0DTE play in BlackOut's tracking is marked closed by 3:30 PM Eastern, 30 minutes before the close, and you're alerted to exit at your own broker. This avoids the final window where theta is at its most extreme and gamma unwind makes price action chaotic. See [SPX Slayer's lotto power hour guide](/learn/spx-slayer-lotto-power-hour) for how the system handles the end-of-day window.
 
 **Premium caps:** The system caps entry premium on 0DTE trades to limit the absolute dollar amount exposed to theta. A $500 max premium on a directional call means theta can take at most $500 — and the -50% stop cuts it to $250. Bounded losses, not open-ended decay.
 
@@ -2451,7 +2451,11 @@ On a 0DTE contract, the pinning effect is compressed into hours instead of days.
 
 However, 0DTE also introduces a natural mitigation: **SPX options are cash-settled**. There is no stock assignment — just a cash difference. A SPX 5,500 call that finishes ITM by $2.00 settles for $200 per contract in cash. No short stock, no after-hours surprise, no weekend gap risk. This is one reason SPX is the preferred vehicle for 0DTE over SPY: cash settlement eliminates the assignment tail risk entirely.
 
+<<<<<<< HEAD
 For equity options (SPY, QQQ, individual stocks), **assignment risk** applies when you are **short** calls or puts into expiration. BlackOut's 0DTE Command and Night Hawk directional plays are **long-option** structures (buy-to-open, sell-to-close) — assignment is not the primary tail risk for those tickets. The **15:30 ET time stop** instead exits long premium before the final 30 minutes when theta collapse and pin dynamics are most chaotic. If you sell premium separately, close or roll short legs before the close; never hold uncovered short equity options into expiration without understanding assignment math.
+=======
+For equity options (SPY, QQQ, individual stocks), 0DTE pin risk is real — but it never touches BlackOut's own tracked plays in the first place: [Night Hawk's 0DTE Command](/learn/night-hawk-0dte-command-guide) plays are long-premium (calls or puts you'd buy), never a sold/short equity option, so there is no assignment exposure to structure around. The **15:30 ET time stop** is a separate, complementary discipline: BlackOut marks any tracked 0DTE play closed 30 minutes before the 4:00 PM close and alerts you to exit at your own broker (BlackOut is analytics-only — it does not route the order). A member following that alert on their OWN equity-option position is never holding it into the final pinning window where assignment uncertainty peaks, which is exactly why the last 30 minutes of an expiration session are the most dangerous and least predictable window to ride out.
+>>>>>>> origin/main
 
 ## Gamma walls as pin indicators
 
