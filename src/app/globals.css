@@ -3697,39 +3697,25 @@ html.product-shell .nav-mega {
   .vector-board-table {
     @apply w-full min-w-[52rem] border-separate font-mono text-[11px];
     table-layout: fixed;
+    width: 100%;
     border-spacing: 0;
   }
 
+  .vector-board-table th,
+  .vector-board-table td {
+    box-sizing: border-box;
+    overflow: hidden;
+    vertical-align: middle;
+  }
+
+  .vector-board-table tbody td.vector-board-col-num,
+  .vector-board-table thead th.vector-board-col-num {
+    text-align: right;
+  }
+
+/* Column widths are computed inline per visible column set — see vector-board-column-layout.ts */
   .vector-board-table col.vector-board-col-check {
     width: 2.25rem;
-  }
-
-  .vector-board-table col.vector-board-col-pick {
-    width: 20%;
-  }
-
-  .vector-board-table col.vector-board-col-status {
-    width: 12%;
-  }
-
-  .vector-board-table col.vector-board-col-premium {
-    width: 11%;
-  }
-
-  .vector-board-table col.vector-board-col-entry {
-    width: 14%;
-  }
-
-  .vector-board-table col.vector-board-col-peak {
-    width: 9%;
-  }
-
-  .vector-board-table col.vector-board-col-path {
-    width: 18%;
-  }
-
-  .vector-board-table col.vector-board-col-updated {
-    width: 16%;
   }
 
   .vector-board-table thead th {

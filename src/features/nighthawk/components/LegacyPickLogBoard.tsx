@@ -7,6 +7,7 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { VectorBoardCalendar } from "@/features/nighthawk/components/VectorBoardCalendar";
 import { VectorBoardCompareBar } from "@/features/nighthawk/components/VectorBoardCompareBar";
 import { VectorBoardEmptyState } from "@/features/nighthawk/components/VectorBoardEmptyState";
+import { VectorBoardDataTable } from "@/features/nighthawk/components/VectorBoardDataTable";
 import { VectorBoardLoadingSkeleton } from "@/features/nighthawk/components/VectorBoardLoadingSkeleton";
 import { VectorBoardScorecard } from "@/features/nighthawk/components/VectorBoardScorecard";
 import { VectorBoardToolbar } from "@/features/nighthawk/components/VectorBoardToolbar";
@@ -202,8 +203,6 @@ export function LegacyPickLogBoard({
     [prefs, compareMode, sortKey, sortDir]
   );
 
-  const visibleColumnCount = Math.max(boardColumns.length, 1);
-
   const visibleRows = useMemo(
     () => sortVectorBoardRows(filteredRows, sortKey, sortDir) as LegacyBoardTableRow[],
     [filteredRows, sortKey, sortDir]
@@ -332,9 +331,11 @@ export function LegacyPickLogBoard({
     <div
       className={clsx(
         "vector-board-shell legacy-board-shell",
+        "legacy-board-xads",
         prefs.density === "compact" && "is-compact",
         prefs.focusMode && "is-focus"
       )}
+      data-board="legacy-xads-table"
     >
       <VectorBoardToolbar
         tab={tab}
@@ -431,99 +432,37 @@ export function LegacyPickLogBoard({
       >
         <div className="vector-board-table-pane">
           <div className="vector-board-panel">
-            <div className="vector-board-tablewrap" ref={tableRef}>
-              <table className="vector-board-table">
-                <colgroup>
-                  {boardColumns.map((column) => (
-                    <col key={column.key} className={column.colClass} />
-                  ))}
-                </colgroup>
-                <thead>
-                  <tr>
-                    {boardColumns.map((column) => (
-                      <th
-                        key={column.key}
-                        className={column.thClass}
-                        aria-sort={column.ariaSort}
-                        aria-label={column.key === "compare" ? "Compare" : undefined}
-                        title={column.headerTitle}
-                        onClick={column.onHeaderClick}
-                      >
-                        {column.header}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {!visibleRows.length ? (
-                    <tr className="vector-board-empty-row">
-                      <td colSpan={visibleColumnCount}>
-                        <div className="vector-board-empty">
-                          <VectorBoardEmptyState
-                            title={emptyTitle(tab)}
-                            description={
-                              emptyDescription && plays.length === 0
-                                ? emptyDescription
-                                : "Try another tab, clear filters, or pick a different edition date."
-                            }
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    visibleRows.map((row) => {
-                      const selected = selectedRow?.key === row.key;
-                      const live = vectorBoardRowIsLive(row);
-                      const atRisk = vectorBoardRowAtRisk(row);
-                      const rowCtx = {
-                        live,
-                        atRisk,
-                        compareChecked: compareKeys.has(row.key),
-                        onToggleCompare: () => toggleCompare(row.key),
-                        fmtPrice,
-                        fmtTimestamp,
-                        pnlClass,
-                      };
-                      return (
-                        <tr
-                          key={row.key}
-                          className={clsx(
-                            "vector-board-row",
-                            selected && "is-selected",
-                            live && "is-live",
-                            atRisk && "is-at-risk"
-                          )}
-                          tabIndex={selected ? 0 : -1}
-                          onClick={() => {
-                            setSelectedRow(row);
-                            setSelectedIndex(visibleRows.findIndex((r) => r.key === row.key));
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              setSelectedRow(row);
-                              setSelectedIndex(visibleRows.findIndex((r) => r.key === row.key));
-                            }
-                          }}
-                        >
-                          {boardColumns.map((column) => (
-                            <td
-                              key={column.key}
-                              className={column.colClass}
-                              onClick={
-                                column.key === "compare" ? (e) => e.stopPropagation() : undefined
-                              }
-                            >
-                              {column.renderCell(row, rowCtx)}
-                            </td>
-                          ))}
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <VectorBoardDataTable
+              columns={boardColumns}
+              rows={visibleRows}
+              tableRef={tableRef}
+              selectedKey={selectedRow?.key ?? null}
+              onSelectRow={(row, index) => {
+                setSelectedRow(row);
+                setSelectedIndex(index);
+              }}
+              emptyTitle={emptyTitle(tab)}
+              emptyDescription={
+                emptyDescription && plays.length === 0
+                  ? emptyDescription
+                  : "Try another tab, clear filters, or pick a different edition date."
+              }
+              getRowCtx={(row) => ({
+                live: vectorBoardRowIsLive(row),
+                atRisk: vectorBoardRowAtRisk(row),
+                compareChecked: compareKeys.has(row.key),
+                onToggleCompare: () => toggleCompare(row.key),
+                fmtPrice,
+                fmtTimestamp,
+                pnlClass,
+              })}
+              rowClassName={(row) =>
+                clsx(
+                  vectorBoardRowIsLive(row) && "is-live",
+                  vectorBoardRowAtRisk(row) && "is-at-risk"
+                )
+              }
+            />
           </div>
           <VectorBoardCompareBar
             rows={compareRows}

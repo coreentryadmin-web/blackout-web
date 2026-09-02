@@ -127,8 +127,8 @@ export function buildLegacyBoardColumns(opts: {
 
   cols.push({
     key: "stock",
-    colClass: "vector-board-col-num vector-board-col-entry",
-    thClass: "vector-board-col-num vector-board-col-entry",
+    colClass: "vector-board-col-num vector-board-col-stock",
+    thClass: "vector-board-col-num vector-board-col-stock",
     header: "Stock move",
     headerTitle: "Underlying move from entry band — not option P&L",
     renderCell: (row, ctx) => (

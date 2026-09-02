@@ -6,14 +6,19 @@ test("LegacyPickLogBoard: X Ads shell — table, toolbar, detail rail (Vector pa
   const board = readFileSync(new URL("./LegacyPickLogBoard.tsx", import.meta.url), "utf8");
   const columns = readFileSync(new URL("../lib/legacy-board-columns.tsx", import.meta.url), "utf8");
   const rail = readFileSync(new URL("./LegacyPlayDetailRail.tsx", import.meta.url), "utf8");
+  const dataTable = readFileSync(new URL("./VectorBoardDataTable.tsx", import.meta.url), "utf8");
 
   assert.match(board, /vector-board-shell legacy-board-shell/, "must use Vector viewport-locked shell");
+  assert.match(board, /data-board="legacy-xads-table"/, "legacy shell must expose xads table marker");
   assert.match(board, /VectorBoardToolbar/, "must use X Ads-style toolbar");
-  assert.match(board, /<colgroup>/, "table must pin column widths via colgroup");
+  assert.match(board, /VectorBoardDataTable/, "must use shared data table with computed column widths");
+  assert.match(dataTable, /<colgroup>/, "table must pin column widths via colgroup for header/body alignment");
+  assert.match(dataTable, /computeBoardColumnWidths/, "colgroup widths must be computed per visible columns");
   assert.match(board, /LegacyPlayDetailRail/, "row click must open right-rail inspector");
   assert.doesNotMatch(board, /CommandDeck/, "Legacy must not render card-based CommandDeck");
   assert.doesNotMatch(board, /PlayLifecycleCard/, "Legacy must not render card rows");
   assert.match(columns, /Premium vs entry/, "table must expose premium vs entry column");
+  assert.match(columns, /vector-board-col-stock/, "legacy stock column must have dedicated width key");
   assert.match(columns, /VectorBoardMeter/, "table must render premium path meters");
   assert.match(rail, /LegacyPlayDetailPanel/, "detail rail must embed Legacy play breakdown");
 });
