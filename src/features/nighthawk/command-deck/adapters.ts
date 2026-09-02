@@ -678,6 +678,7 @@ export interface EditionDeckSource {
   published_at?: string | null;
   /** Morning confirm snapshot instant — OPEN "Confirmed" clock when verified. */
   confirmed_at?: string | null;
+  play_type?: "stock" | "index" | "etf" | null;
 }
 
 /** Parse a dollar-level string ("$205", "$205.50") to a numeric value. Used for target/stop
@@ -868,5 +869,11 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
       ms === "CONFIRMED" && typeof src.confirmed_at === "string" && src.confirmed_at.length > 0
         ? src.confirmed_at
         : null,
+    playType: src.play_type ?? null,
+    flowStreakDays: src.flow_streak_days ?? null,
+    gatePromoted: src.gate_promoted === true,
+    riskNote: src.risk_note ?? null,
+    pulledReason: src.pulled_reason ?? null,
+    morningReason: src.morning_reason ?? null,
   };
 }

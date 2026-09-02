@@ -36,6 +36,7 @@ that repo's `AGENTS.md` for staging-only policy (never merge staging → prod wi
 - **Setup:** `apps/blackout-ios/APP_STORE.md` (Apple ID `6787797476`, bundle `com.blackout-trades.app`).
 - **Mobile UI E2E (Playwright):** `npm run test:ios-ui-e2e` — iPhone viewport + `BlackOutiOSApp` UA, Clerk temp-user auth, clicks every bottom tab + primary segment/control, screenshots → `/opt/cursor/artifacts/ios-ui-e2e/`. Requires `CLERK_SECRET_KEY` + publishable key. Static guards: `npm run validate:ios-mobile-desk`.
 - **Live prod UI (standing — Cloud Agent):** Playwright Chromium **works**. For any UI validation request: mint temp Clerk **admin+premium** (`scripts/audit/lib/ios-playwright-auth.mjs` or `prod-clerk-session.mjs`), launch browser, navigate + click + screenshot. Also: `node scripts/validate-prod-ui-full.mjs`, `npm run validate:prod-admin-ui`, `node scripts/spx-dashboard-e2e-audit.mjs`. **Do not** claim pixel/UI validation is unavailable. See `.cursor/rules/live-ui-validation.mdc`.
+- **Post-deploy UI delivery (standing):** After merging UI to `main`, **automatically** monitor `ECR push (production)`, verify live, screenshot the fix, and post artifacts — **do not ask** the operator for permission. Night Hawk: `node scripts/audit/nighthawk-boards-prod-screenshots.mjs`.
 
 ### Ops auto-fix (cron/errors → agent)
 - **`npm run ops:collect`** — scan prod Postgres + live watchdog; JSON action items (exit 1 if any).

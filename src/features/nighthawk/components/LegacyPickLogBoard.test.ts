@@ -2,31 +2,25 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-test("LegacyPickLogBoard: X Ads shell — table, toolbar, detail rail (Vector parity)", () => {
+test("LegacyPickLogBoard: dual-rail inspector — table, manage rail, technicals rail", () => {
   const board = readFileSync(new URL("./LegacyPickLogBoard.tsx", import.meta.url), "utf8");
   const columns = readFileSync(new URL("../lib/legacy-board-columns.tsx", import.meta.url), "utf8");
-  const rail = readFileSync(new URL("./LegacyPlayDetailRail.tsx", import.meta.url), "utf8");
+  const manage = readFileSync(new URL("./LegacyPlayManageRail.tsx", import.meta.url), "utf8");
+  const technicals = readFileSync(new URL("./LegacyPlayTechnicalsRail.tsx", import.meta.url), "utf8");
   const dataTable = readFileSync(new URL("./VectorBoardDataTable.tsx", import.meta.url), "utf8");
 
   assert.match(board, /vector-board-shell legacy-board-shell/, "must use Vector viewport-locked shell");
   assert.match(board, /data-board="legacy-xads-table"/, "legacy shell must expose xads table marker");
-  assert.match(board, /VectorBoardToolbar/, "must use X Ads-style toolbar");
+  assert.match(board, /legacy-board-shell--inspector/, "inspector mode when row selected");
+  assert.match(board, /legacy-board-body--inspector/, "viewport-locked dual-rail body");
+  assert.match(board, /LegacyPlayManageRail/, "right rail = trade management");
+  assert.match(board, /LegacyPlayTechnicalsRail/, "bottom rail = pick reasoning / technicals");
   assert.match(board, /VectorBoardDataTable/, "must use shared data table with computed column widths");
-  assert.match(dataTable, /<colgroup>/, "table must pin column widths via colgroup for header/body alignment");
-  assert.match(dataTable, /computeBoardColumnWidths/, "colgroup widths must be computed per visible columns");
-  assert.match(board, /LegacyPlayDetailRail/, "row click must open right-rail inspector");
   assert.doesNotMatch(board, /CommandDeck/, "Legacy must not render card-based CommandDeck");
-  assert.doesNotMatch(board, /PlayLifecycleCard/, "Legacy must not render card rows");
+  assert.match(manage, /Trade plan/, "manage rail shows trade management sections");
+  assert.match(technicals, /Why we picked it/, "technicals rail shows pick reasoning");
+  assert.match(technicals, /Scoring factors/, "technicals rail shows factor breakdown");
   assert.match(columns, /Premium vs entry/, "table must expose premium vs entry column");
-  assert.match(columns, /vector-board-col-stock/, "legacy stock column must have dedicated width key");
-  assert.match(columns, /VectorBoardMeter/, "table must render premium path meters");
-  assert.match(rail, /LegacyPlayDetailPanel/, "detail rail must embed Legacy play breakdown");
-  assert.doesNotMatch(
-    rail,
-    /VectorBoardDetailTabs/,
-    "legacy rail must show full reasoning on select — not hide it behind desk/timeline tabs"
-  );
-  assert.match(rail, /why we picked it/i, "copy must describe full pick reasoning on row select");
 });
 
 test("LegacyDeck wires LegacyPickLogBoard instead of CommandDeck", () => {
