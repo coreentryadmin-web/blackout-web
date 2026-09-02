@@ -113,6 +113,15 @@ export function buildZeroDteTradePayload(
   };
 }
 
+/** HTTP 200 with `{ duplicate: true }` still counts as success — idempotent replay. */
+export function chiefTradePostBodySucceeded(body: unknown): boolean {
+  if (!body || typeof body !== "object") return true;
+  const rec = body as { duplicate?: boolean; ok?: boolean };
+  if (rec.duplicate === true) return true;
+  if (rec.ok === false) return false;
+  return true;
+}
+
 export async function postChiefTrade(payload: ChiefTradePayload): Promise<boolean> {
   const base = chiefTradeBotUrl();
   const secret = chiefTradeApiSecret();
@@ -131,12 +140,17 @@ export async function postChiefTrade(payload: ChiefTradePayload): Promise<boolea
       },
       body: JSON.stringify(payload),
     });
+    const text = await res.text().catch(() => "");
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
       console.warn(`[zerodte-discord] chief trade POST ${res.status}: ${text.slice(0, 240)}`);
       return false;
     }
-    return true;
+    if (!text.trim()) return true;
+    try {
+      return chiefTradePostBodySucceeded(JSON.parse(text));
+    } catch {
+      return true;
+    }
   } catch (err) {
     console.warn("[zerodte-discord] chief trade POST error:", err);
     return false;

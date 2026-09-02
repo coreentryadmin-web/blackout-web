@@ -15,7 +15,7 @@ import { fetchStockSnapshots } from "@/lib/providers/polygon";
 import { fetchLegacyOptionMarksServer } from "@/features/nighthawk/lib/legacy-option-marks-server";
 import { hydrateLegacyLiveSyncRow, runLegacyLiveSync } from "@/features/nighthawk/lib/legacy-live-sync";
 import {
-  legacyInputFromOutcomeRow,
+  legacyInputFromLiveRow,
   notifyLegacyScaleOutPartial,
   notifyLegacyTradeClose,
   notifyLegacyTradeTrimLatch,
@@ -28,7 +28,7 @@ export const maxDuration = 60;
 const CRON_KEY = "legacy-live-sync";
 
 function discordInput(row: LegacyDiscordLiveRow) {
-  const input = legacyInputFromOutcomeRow(row);
+  const input = legacyInputFromLiveRow(row);
   if (!input) return null;
   const live = row.discord_live_state;
   return {

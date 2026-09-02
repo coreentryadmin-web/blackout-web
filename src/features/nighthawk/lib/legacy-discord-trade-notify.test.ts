@@ -3,6 +3,7 @@ import { describe, test } from "node:test";
 import type { PlaybookPlay } from "./types";
 import {
   buildLegacyTradePayload,
+  legacyInputFromLiveRow,
   legacyInputFromPlaybookPlay,
   legacyInputFromOutcomeRow,
   legacyOptionDirection,
@@ -135,6 +136,42 @@ describe("legacy-discord-trade-notify", () => {
     assert.equal(input?.ticker, "DELL");
     assert.equal(input?.top_strike, 490);
     assert.equal(input?.entry_premium, 12.85);
+  });
+
+  test("legacyInputFromLiveRow uses resolved contract without publish_context", () => {
+    const input = legacyInputFromLiveRow({
+      id: 1,
+      edition_for: "2026-09-03",
+      ticker: "DELL",
+      direction: "LONG",
+      conviction: "A",
+      outcome: "pending",
+      contract_occ: "DELL260904C00490000",
+      entry_premium: 12.85,
+      exit_style: "scale_out",
+      options_play: "DELL $490 CALL @ $12.85 — Sep 4",
+    } as never);
+    assert.equal(input?.ticker, "DELL");
+    assert.equal(input?.top_strike, 490);
+    assert.equal(input?.entry_premium, 12.85);
+    assert.equal(input?.direction, "long");
+  });
+
+  test("legacyInputFromLiveRow falls back to OCC when options_play missing", () => {
+    const input = legacyInputFromLiveRow({
+      id: 1,
+      edition_for: "2026-09-02",
+      ticker: "NVDA",
+      direction: "LONG",
+      conviction: "A",
+      outcome: "pending",
+      contract_occ: "NVDA260919C00180000",
+      entry_premium: 4,
+      exit_style: null,
+      options_play: "",
+    } as never);
+    assert.equal(input?.top_strike, 180);
+    assert.equal(input?.expiry, "2026-09-19");
   });
 
   test("legacyOutcomeExitPremium scales target/stop", () => {

@@ -8884,7 +8884,23 @@ export type LegacyDiscordLiveRow = NighthawkPlayOutcomeRow & {
   contract_occ: string;
   entry_premium: number;
   exit_style: "scale_out" | null;
+  options_play: string;
 };
+
+/** Outcome row id for edition+ticker — used to latch discord_live_state after publish BTO. */
+export async function fetchNighthawkPlayOutcomeId(
+  editionFor: string,
+  ticker: string
+): Promise<number | null> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `SELECT id FROM nighthawk_play_outcomes
+     WHERE edition_for = $1::date AND ticker = $2`,
+    [editionFor, ticker.toUpperCase()]
+  );
+  const id = res.rows[0]?.id;
+  return typeof id === "number" && Number.isFinite(id) ? id : null;
+}
 
 /** Open Legacy plays for the Chief Trade Alert Bot live-sync loop — active edition date(s),
  *  pending outcome, not morning-pulled, not already closed in discord_live_state. */
@@ -8960,6 +8976,7 @@ export async function fetchLegacyDiscordLiveRows(editionFor?: string): Promise<L
       contract_occ: occ,
       entry_premium: entryPremium,
       exit_style: exitStyle,
+      options_play: optionsPlay,
     });
   }
   return out;
