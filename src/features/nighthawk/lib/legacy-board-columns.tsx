@@ -82,6 +82,11 @@ export function buildLegacyBoardColumns(opts: {
           <div className="vector-board-pick-name">
             {ctx.live ? <span className="vector-board-live-dot" aria-label="Live" /> : null}
             {row.ticker}
+            {row.play.gatePromoted ? (
+              <span className="legacy-pick-badge" title="Gate promoted — best available after funnel">
+                GP
+              </span>
+            ) : null}
           </div>
           <div className="vector-board-pick-sub">{row.contractLabel}</div>
           <div className="vector-board-pick-id">

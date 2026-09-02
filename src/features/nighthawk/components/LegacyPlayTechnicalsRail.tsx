@@ -5,6 +5,7 @@ import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
 import { targetReachabilityNote } from "@/features/nighthawk/lib/target-reachability";
 import {
   legacyMorningHeadline,
+  legacyScorecardLine,
   legacyTopFactors,
   legacyWhyPickedSummary,
 } from "@/features/nighthawk/lib/legacy-board-detail-copy";
@@ -49,6 +50,12 @@ export function LegacyPlayTechnicalsRail({ row }: { row: LegacyBoardTableRow | n
         {play.score > 0 ? (
           <span className="legacy-board-technicals-badge">Score {play.score}</span>
         ) : null}
+        {play.gatePromoted ? (
+          <span className="legacy-board-technicals-badge is-warn">Gate promoted</span>
+        ) : null}
+        {play.playType ? (
+          <span className="legacy-board-technicals-badge">{play.playType.toUpperCase()}</span>
+        ) : null}
       </div>
 
       <div className="legacy-board-technicals-grid">
@@ -72,11 +79,20 @@ export function LegacyPlayTechnicalsRail({ row }: { row: LegacyBoardTableRow | n
             {play.whyNow?.label ? (
               <LegacyDetailBullet label="Trigger" value={play.whyNow.label} />
             ) : null}
-            {play.scorecard ? (
-              <LegacyDetailBullet
-                label="Track record"
-                value={`${Math.round(play.scorecard.winRate)}% WR · avg ${play.scorecard.avg >= 0 ? "+" : ""}${play.scorecard.avg.toFixed(0)}% · n=${play.scorecard.n}`}
-              />
+            {play.flowStreakDays != null && play.flowStreakDays > 0 ? (
+              <LegacyDetailBullet label="Flow streak" value={`${play.flowStreakDays} sessions`} tone="up" />
+            ) : null}
+            {play.discoveryOrigin?.includes("FLOW") ? (
+              <LegacyDetailBullet label="Discovery" value="FLOW accumulation" />
+            ) : null}
+            {legacyScorecardLine(play) ? (
+              <LegacyDetailBullet label="Track record" value={legacyScorecardLine(play)!} />
+            ) : null}
+            {play.riskNote?.trim() ? (
+              <LegacyDetailBullet label="Risk" value={play.riskNote.trim()} tone="warn" />
+            ) : null}
+            {play.pulledReason ? (
+              <LegacyDetailBullet label="Pulled" value={play.pulledReason} tone="down" />
             ) : null}
           </LegacyDetailBullets>
         </LegacyDetailSection>
@@ -166,10 +182,16 @@ export function LegacyPlayTechnicalsRail({ row }: { row: LegacyBoardTableRow | n
                 <LegacyDetailBullet
                   key={g.label}
                   label={g.label}
-                  value={g.ok ? "Pass" : "Fail"}
+                  value={g.ok ? "Pass" : "Caveat"}
                   tone={g.ok ? "up" : "down"}
                 />
               ))
+            ) : play.gatePromoted ? (
+              <LegacyDetailBullet
+                label="Publish"
+                value="Promoted as best available — validate levels"
+                tone="warn"
+              />
             ) : (
               <LegacyDetailBullet label="Publish gates" value="Cleared standard funnel" tone="up" />
             )}

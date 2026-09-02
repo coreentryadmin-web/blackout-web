@@ -13,6 +13,8 @@ import { VectorBoardScorecard } from "@/features/nighthawk/components/VectorBoar
 import { VectorBoardToolbar } from "@/features/nighthawk/components/VectorBoardToolbar";
 import { LegacyPlayManageRail } from "@/features/nighthawk/components/LegacyPlayManageRail";
 import { LegacyPlayTechnicalsRail } from "@/features/nighthawk/components/LegacyPlayTechnicalsRail";
+import { LegacyMacroStrip } from "@/features/nighthawk/components/LegacyMacroStrip";
+import type { LegacyMacroContext } from "@/features/nighthawk/lib/legacy-macro-types";
 import { buildLegacyBoardColumns } from "@/features/nighthawk/lib/legacy-board-columns";
 import {
   buildLegacyBoardRows,
@@ -89,6 +91,7 @@ export type LegacyPickLogBoardProps = {
   calendarDates: string[];
   bannerSlot?: React.ReactNode;
   emptyDescription?: string | null;
+  macroContext?: LegacyMacroContext | null;
 };
 
 /**
@@ -106,6 +109,7 @@ export function LegacyPickLogBoard({
   calendarDates,
   bannerSlot,
   emptyDescription,
+  macroContext = null,
 }: LegacyPickLogBoardProps) {
   const [sessionScope, setSessionScope] = useState<"current" | "all">("current");
   const [tab, setTab] = useState<VectorBoardTab>("open");
@@ -395,6 +399,8 @@ export function LegacyPickLogBoard({
       />
 
       {bannerSlot}
+
+      {!selectedRow && macroContext ? <LegacyMacroStrip macro={macroContext} /> : null}
 
       {!prefs.focusMode && !selectedRow && scorecardRows.length > 0 ? (
         <VectorBoardScorecard data={scorecard} sessionLabel={editionLabel ?? editionFor ?? "Edition"} />

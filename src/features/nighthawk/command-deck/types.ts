@@ -223,4 +223,13 @@ export interface TerminalPlay {
   entryStatus?: SwingEntryState | null;
   /** The serving section (serving.ts) this play resolved to, for the section-grouped terminal. */
   servingSection?: SwingServingSection | null;
+
+  // ── legacy edition metadata (surfaced for X Ads inspector) ──
+  playType?: "stock" | "index" | "etf" | null;
+  flowStreakDays?: number | null;
+  gatePromoted?: boolean | null;
+  riskNote?: string | null;
+  pulledReason?: string | null;
+  /** Specific morning-confirm reason string (not the generic headline). */
+  morningReason?: string | null;
 }

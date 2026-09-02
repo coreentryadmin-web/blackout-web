@@ -6,8 +6,11 @@ import { formatPremiumCapLabel } from "@/features/nighthawk/lib/play-constraints
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/features/nighthawk/lib/constants";
 import { dispatchGotoSwing } from "@/features/nighthawk/lib/goto-swing";
 import {
+  legacyMarkAgeLabel,
   legacyMorningHeadline,
 } from "@/features/nighthawk/lib/legacy-board-detail-copy";
+import { TradeExcursionGraphic } from "@/features/nighthawk/command-deck/TerminalPremiumPanels";
+import { useFlash } from "@/features/nighthawk/command-deck/use-deck-live";
 import { VectorBoardStatusPill } from "@/features/nighthawk/components/VectorBoardStatus";
 import {
   LegacyDetailBullet,
@@ -49,9 +52,10 @@ export function LegacyPlayManageRail({
   }
 
   const play: TerminalPlay = row.play;
-  const pctTone = premiumPctTone(row.premiumPct);
   const morningLine = legacyMorningHeadline(play);
   const stockTone = pnlTone(play.stockMovePct ?? null);
+  const markFlash = useFlash(play.stockMovePct ?? play.pnlPct ?? null);
+  const markAge = legacyMarkAgeLabel(play.markAsOf);
 
   return (
     <aside
@@ -76,6 +80,8 @@ export function LegacyPlayManageRail({
           <span className={clsx("legacy-manage-rec", `is-${play.recommendation.toLowerCase()}`)}>
             {play.recommendation}
           </span>
+          {play.gatePromoted ? <span className="legacy-manage-badge">Gate promoted</span> : null}
+          {play.exitModel === "SCALE_OUT" ? <span className="legacy-manage-badge">Scale-out</span> : null}
         </div>
       </div>
 
@@ -90,7 +96,16 @@ export function LegacyPlayManageRail({
             <LegacyDetailBullet
               label="Entry → mark"
               value={`${row.entryMid != null ? usd(row.entryMid) : "—"} → ${row.markMid != null ? usd(row.markMid) : "—"}`}
+              sub={markAge ? `Quote ${markAge}` : undefined}
             />
+            {play.execPnlPct != null ? (
+              <LegacyDetailBullet
+                label="Exec (bid)"
+                value={formatPremiumPct(play.execPnlPct)}
+                tone={pnlTone(play.execPnlPct)}
+                sub="Honest sell-side exit vs entry"
+              />
+            ) : null}
             <LegacyDetailBullet label="Peak" value={formatPremiumPct(row.peakPct)} tone={pnlTone(row.peakPct)} />
             <LegacyDetailBullet
               label="Stock move"
@@ -115,6 +130,12 @@ export function LegacyPlayManageRail({
             {play.entryCostPerContract != null ? (
               <LegacyDetailBullet label="Option premium" value={`${usd(play.entryCostPerContract)}/sh`} />
             ) : null}
+            {play.exitModel === "SCALE_OUT" ? (
+              <LegacyDetailBullet label="Exit style" value="Scale-out banger — trim into strength" tone="warn" />
+            ) : null}
+            {play.riskNote?.trim() ? (
+              <LegacyDetailBullet label="Risk note" value={play.riskNote.trim()} tone="warn" />
+            ) : null}
             <LegacyDetailBullet
               label="Premium cap"
               value={
@@ -130,6 +151,11 @@ export function LegacyPlayManageRail({
           <div className="legacy-manage-levels">
             <LegacyManageGeometry play={play} />
           </div>
+          {(play.stockPeakPct != null || play.stockTroughPct != null) && (
+            <div className="legacy-manage-excursion">
+              <TradeExcursionGraphic play={play} markFlash={markFlash} />
+            </div>
+          )}
           <LegacyDetailBullets>
             {play.stopLevel ? <LegacyDetailBullet label="Stop" value={play.stopLevel} tone="down" /> : null}
             {play.entryRange ? <LegacyDetailBullet label="Entry zone" value={play.entryRange} /> : null}
@@ -144,7 +170,7 @@ export function LegacyPlayManageRail({
           </LegacyDetailBullets>
         </LegacyDetailSection>
 
-        {(morningLine || play.swingPromoted) && (
+        {(morningLine || play.swingPromoted || play.pulledReason) && (
           <LegacyDetailSection title="Session status">
             <LegacyDetailBullets>
               {morningLine ? (
@@ -161,6 +187,9 @@ export function LegacyPlayManageRail({
                           : "muted"
                   }
                 />
+              ) : null}
+              {play.pulledReason ? (
+                <LegacyDetailBullet label="Pulled" value={play.pulledReason} tone="down" />
               ) : null}
               {play.thesisBreak?.note && play.morningStatus !== "CONFIRMED" ? (
                 <LegacyDetailBullet label="Thesis" value={play.thesisBreak.note} tone="warn" />
