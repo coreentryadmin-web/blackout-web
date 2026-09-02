@@ -32,6 +32,18 @@ test("manifest defines seven live products including Meridian and Vector", () =>
   assert.equal(PRODUCT_MANIFEST.meridian.launchStatus, "live");
 });
 
+// Regression for a P2/P3 finding (2026-09-02): Meridian's "Read the guide" and "Open Meridian"
+// buttons both pointed at /meridian (learnHref === href), so "Read the guide" was a dead-end
+// duplicate rather than real documentation — the only product on the homepage without one. The
+// fix ships a real Meridian Academy guide at /learn/meridian-earnings-desk-guide and re-points
+// learnHref at it, which also un-hides the CTA via RedesignHome's existing
+// `m.learnHref !== m.href` gate.
+test("Meridian has a real, distinct Academy guide (not a duplicate of the product route)", () => {
+  const meridian = PRODUCT_MANIFEST.meridian;
+  assert.notEqual(meridian.learnHref, meridian.href);
+  assert.equal(meridian.learnHref, "/learn/meridian-earnings-desk-guide");
+});
+
 test("Night Hawk manifest positions 0DTE Command first, not swing-only", () => {
   const hawk = PRODUCT_MANIFEST.hawk;
   assert.match(hawk.positioning, /0DTE Command/i);

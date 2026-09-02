@@ -1159,7 +1159,7 @@ Alerts are timestamped and persist for the session so you can scroll back to see
 
 Start with the Key Levels panel for the five-second read. Check the profile shape and King node. Layer on HELIX flow and dark pool lines for activity convergence. Use the expiry filter chips to isolate 0DTE vs. monthly contributions, and watch the alerts strip for wall breaks and flip crosses.
 
-For the four exposure lenses, see [Thermal's Four Lenses Explained](/learn/thermal-four-lenses-explained). For strike selection, see [Using Thermal for Strike Selection](/learn/thermal-strike-selection-guide). [Get access →](/pricing)
+For the four exposure lenses, see [Thermal's Four Lenses Explained](/learn/thermal-four-lenses-explained). For strike selection, see [Using Thermal for Strike Selection](/learn/thermal-strike-selection-guide). For how this same gamma structure reads on a specific earnings print, see [Meridian: The Earnings Desk](/learn/meridian-earnings-desk-guide). [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -1345,7 +1345,7 @@ Clicking a ticker opens a slide-out panel showing all qualifying prints for that
 
 ## Practical workflow
 
-Set the premium floor at $500K, scan for names with high Ask% and SWEEP rules. Click into the ticker detail view for the full picture. Cross-check the signals column for gamma proximity and dark pool correlation. For interpreting the Tide bar, anomaly banners, and AI brief, see [HELIX Flow Signals Explained](/learn/helix-flow-signals-explained). For separating signal from noise, see [How to Read Options Flow](/learn/how-to-read-options-flow). For the underlying tape-reading techniques, see [Options Volume Analysis](/learn/options-volume-analysis). [Get access →](/pricing)
+Set the premium floor at $500K, scan for names with high Ask% and SWEEP rules. Click into the ticker detail view for the full picture. Cross-check the signals column for gamma proximity and dark pool correlation. For interpreting the Tide bar, anomaly banners, and AI brief, see [HELIX Flow Signals Explained](/learn/helix-flow-signals-explained). For separating signal from noise, see [How to Read Options Flow](/learn/how-to-read-options-flow). For the underlying tape-reading techniques, see [Options Volume Analysis](/learn/options-volume-analysis). For this same flow read pulled onto a specific earnings print, see [Meridian: The Earnings Desk](/learn/meridian-earnings-desk-guide). [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
   },
@@ -2942,6 +2942,60 @@ An **iron butterfly** builds the same payoff shape using a short straddle (sell 
 BlackOut Thermal plots max pain, the call wall, and put wall for SPX live, so a butterfly can be centered on real structure instead of a round number — [see Thermal live →](/learn/heat-maps). Pair it with [SPX Slayer](/learn/spx-slayer) for the live 0DTE read on the session. New to the terminology? Start with the [Options Trading Glossary](/learn/options-trading-glossary). [Get access →](/pricing)
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options trading involves substantial risk and is not suitable for every investor.*`,
+  },
+  // ── Meridian Earnings Desk Guide ──────────────────────────────────────────────
+  {
+    slug: "meridian-earnings-desk-guide",
+    path: "/learn/meridian-earnings-desk-guide",
+    metaTitle: "Meridian: Earnings Desk & Catalyst Calendar | BlackOut",
+    metaDescription:
+      "How to read Meridian: the earnings timeline, the five-tab print desk, timing-aware reaction anchoring, and cross-tool context on every print.",
+    targetKeyword: "earnings calendar options trading",
+    type: "article",
+    title: "Meridian: The Earnings Desk and Catalyst Calendar",
+    description:
+      "How to read Meridian: the earnings timeline, the five-tab print desk, timing-aware reaction anchoring, and cross-tool context on every print.",
+    body: `[Thermal](/learn/thermal-heatmap-reading-guide) and [HELIX](/learn/helix-flow-scanner-guide) tell you where dealer structure and flow sit right now. **Meridian** answers a different question: what's coming, and what happened last time. It's the catalyst calendar and earnings desk — a timeline of upcoming and recent prints with estimate history, reaction data, and the same [dealer gamma](/learn/what-is-dealer-gamma-exposure) and flow context Thermal and HELIX read live, pulled onto one event.
+
+![Meridian earnings desk](/images/blackout-emblem.webp)
+
+## The catalyst timeline
+
+The core view is a searchable, filterable timeline spanning a configurable look-ahead window, grouped by month. It's not earnings-only: four catalyst kinds share the same rail — **earnings**, **macro** releases, **OpEx** (options expiration), and **FDA** decision dates. Filters narrow to All, Macro, Earnings, high-importance prints, FDA, OpEx, your watchlist, or your board. Selecting an event opens a detail panel scoped to its kind — a macro release gets consensus and SPX positioning context, an OpEx date gets a pin-accuracy read, an FDA date gets the decision window and related activity. Earnings is the deepest of the four, with its own five-tab sub-desk.
+
+## The earnings desk: five tabs, one event
+
+Open an earnings print and Meridian splits into **Summary, Report, Estimates, Positioning,** and **History**. Summary opens by default and auto-switches to Estimates the moment a real print or headline lands, so a session spent watching a name mid-report shows the numbers instead of the pre-print read.
+
+- **Summary** — the "what now" tab: a call idea and a put idea shown side by side (neither side is hidden, even when one looks weaker), a probability of closing beyond a given level derived from the market's own implied move — labeled a distribution, not a chance of profit — base rates that always carry their sample size, and a countdown to the print.
+- **Report** — headlines, the analyst-revision list, insider activity, print history, price targets, and an embedded [Largo](/learn/largo-ai-terminal-guide) pre-earnings brief generated from the same live data.
+- **Estimates** — EPS and revenue, estimate vs. actual, surprise %, historical beat rate, management guidance range, and a rolling estimate-revision timeline.
+- **Positioning** — the dealer structure for that print's own expiry: call wall, put wall, gamma king strike, max pain, and [gamma-flip](/learn/gamma-flip-explained) distance, explicitly scoped as event-expiry rather than the whole book, plus a dark-pool print tape and a peer cohort of names reporting the same window.
+- **History** — the full beat/miss track record with a reaction flag on every print, plus prior analyst and insider activity.
+
+## Reaction, anchored to when it actually printed
+
+A raw same-day price move is a common way to misread an earnings reaction, and it's the one thing Meridian is built to get right: a print that lands before the bell moves on the **premarket gap**, not the regular session that follows it, and a print that lands after the close moves the **next** session — the report day's own session is drift before the numbers were public. Meridian classifies each print's timing and anchors its reaction number accordingly, and flags a reaction that spans a closed market as possibly carrying some pre-print drift rather than presenting it as a clean read. A reaction still inside its anchor session is marked as **still forming**, not settled — the honest version of "too soon to tell" instead of a number that looks final before it is.
+
+## The analytics grid: the wide view
+
+Switch off the timeline and Meridian trades depth for breadth: an EPS-vs-revenue surprise scatter across the current window, a clickable print calendar with day drill-down, a filterable prints table, a mega-cap earnings-week grid with a universe-wide beat-rate banner, rolling estimate- and calendar-revision lists, and an after-hours movers feed. It's the same underlying data as the timeline, reshaped for scanning a whole week of prints at once instead of drilling into one.
+
+## Cross-tool context, not a second dashboard
+
+The same structural reads Thermal and HELIX serve live get pulled onto the event itself: [dealer gamma](/learn/what-is-dealer-gamma-exposure) walls and flip from Thermal, options-flow skew from HELIX, and dark-pool prints — so you're reading one event with full context instead of tabbing between four desks to reconstruct it yourself. [Largo](/learn/largo-ai-terminal-guide) can answer most Meridian questions in plain English too, grounded in the same live timeline and event data.
+
+## What Meridian won't tell you
+
+Every probability and rate Meridian surfaces travels with its sample size or cohort, and says so when there isn't enough to rank — a thin peer cohort reports as too few to rank rather than a fabricated order. The advisory read on each print (bullish, bearish, neutral, or avoid-directional) comes with an explicit note that it's context, not a trade recommendation. And coverage depends on what the market actually provides for a given name — some enrichment, like valuation ratios, is genuinely rare even on large caps. Where the data isn't there, Meridian says so instead of filling the gap.
+
+## How Meridian fits the desk
+
+[Thermal](/learn/thermal-heatmap-reading-guide) gives you the live dealer-gamma heatmap; [HELIX](/learn/helix-flow-scanner-guide) gives you the live flow tape; [Vector](/learn/vector-scanner-guide) extends both across the whole universe. [SPX Slayer](/learn/spx-slayer-dashboard-guide) and [Night Hawk](/learn/night-hawk-0dte-command-guide) execute same-day setups. Meridian is the calendar that tells you when the next catalyst lands and what the market's own structure looked like going into the last one — and [Largo AI](/learn/largo-ai-terminal-guide) can pull any of it into a conversational answer.
+
+New to the underlying concepts? Start with [dealer gamma exposure](/learn/what-is-dealer-gamma-exposure), the [gamma flip](/learn/gamma-flip-explained), [call and put walls](/learn/call-wall-put-wall-explained), and [max pain](/learn/max-pain-options-explained) — or the full [Options Trading Glossary](/learn/options-trading-glossary). [Get access →](/pricing)
+
+> *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
   },
 ];
 
