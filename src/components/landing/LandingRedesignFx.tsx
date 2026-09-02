@@ -6,7 +6,24 @@ import { mobileStickyBlockedByContent, shouldShowMobileStickyCta } from "@/lib/m
 export function LandingRedesignFx() {
   useEffect(() => {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) return;
+    if (reduce) {
+      // Reduced motion correctly skips every animation below (canvas atmosphere, scroll
+      // reveals, parallax) — but the "Intelligence Pipeline" stage status (OFFLINE -> ONLINE)
+      // is information, not decoration. Without this fallback, a reduced-motion browser (an
+      // accessibility setting, or a crawler/audit tool that defaults to it) never fires the
+      // IntersectionObserver below and sees all four "How BlackOut thinks" stages stuck at
+      // OFFLINE forever — reading as the platform being down while the rest of the page
+      // markets it as live.
+      document.querySelectorAll<HTMLElement>("[data-pipe-stage]").forEach((el) => {
+        el.classList.add("pipe-lit");
+        const statusEl = el.querySelector(".pipe-status");
+        if (statusEl) statusEl.innerHTML = '<span class="status-dot"></span>ONLINE';
+      });
+      document.querySelectorAll<HTMLElement>("[data-pipe-conduit]").forEach((el) => {
+        el.classList.add("pipe-lit");
+      });
+      return;
+    }
 
     const cleanups: Array<() => void> = [];
     let destroyed = false;
