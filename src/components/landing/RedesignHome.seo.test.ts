@@ -64,9 +64,31 @@ test("RedesignHome hero and modules link to free gamma + learn guides", () => {
 // Regression for a P2 finding (2026-09-02): the comparison table claimed "N products, one
 // screen, one membership" — but the seven products are seven distinct routes/surfaces, not one
 // unified screen. "One platform" is the claim the product can actually back up.
-test("RedesignHome comparison list does not overclaim a single unified screen", () => {
+//
+// Corrected AGAIN the same day (second user report): "one platform, one membership" was itself
+// still an overclaim — the pricing section on this same page immediately offers a separate $49
+// SPX Slayer membership alongside the $199 Full Desk membership, so "one membership" is false as
+// a platform-wide claim (it's true only of the Full Desk plan specifically, which is what
+// RedesignPricing.tsx's "Every product · one membership" line correctly scopes to — that one was
+// left unchanged). The comparison bullet now claims what's actually true of every product:
+// they're unified under one Full Desk plan, without asserting there is only one membership tier.
+test("RedesignHome comparison list does not overclaim a single unified screen or a single membership tier", () => {
   assert.doesNotMatch(REDESIGN, /one screen/i);
-  assert.match(REDESIGN, /one platform, one membership/);
+  assert.doesNotMatch(
+    REDESIGN,
+    /products, one platform, one membership/i,
+    "must not claim a single membership tier platform-wide when a cheaper SPX Slayer tier exists"
+  );
+  assert.match(REDESIGN, /products, one unified Full Desk/);
+});
+
+// Regression for a P3 finding (2026-09-02): "No add-ons, no upsells: the whole desk is one
+// price" read as claiming a single price point site-wide, contradicting the two-tier pricing
+// section (SPX Slayer $49/mo, Full Desk $199/mo) on the same page. The corrected claim scopes to
+// what's actually true: Full Desk bundles every product with no per-product add-on pricing.
+test("RedesignHome does not claim a single site-wide price when two membership tiers exist", () => {
+  assert.doesNotMatch(REDESIGN, /whole desk is one price/i);
+  assert.match(REDESIGN, /Full Desk includes every product — no per-product add-ons/);
 });
 
 // Regression for a P2 finding (2026-09-02): Meridian's product-manifest entry has

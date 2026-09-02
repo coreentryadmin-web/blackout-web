@@ -164,7 +164,7 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
   start: [
     {
       q: "How do I get started in 5 minutes?",
-      a: "Create your account, unlock Premium, and open the SPX Slayer desk — the live read is there immediately. Ask Largo your first question ('what's the SPX setup right now?'), and if you're newer to options, start with the in-app Learn layer. Inside your first session you'll have the desk's full read in front of you.",
+      a: "Create your account, then open the desk that matches how you trade — not everyone's first stop should be the same product. Focused on SPX/SPXW 0DTE? Start with the SPX Slayer desk. On Premium: flow-driven? Start with HELIX. Trade earnings? Start with Meridian. Scan the whole market for setups? Start with Vector. Then ask Largo your first question ('what's the setup right now?') and, if you're newer to options, work through the in-app Learn layer. Inside your first session you'll have that desk's full read in front of you.",
     },
     {
       q: "How do I reach the team?",

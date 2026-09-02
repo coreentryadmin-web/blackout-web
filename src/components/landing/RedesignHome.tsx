@@ -120,7 +120,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
         <div className="cmd-header">
           <span className="kk"><span className="dot" />Every product, in depth</span>
           <h2>{modulesHeadline}<br /><span className="gt">One edge.</span></h2>
-          <p className="cmd-sub">Each product is a full desk — purpose-built for one dimension of the tape, unified by BlackOut Intelligence. No add-ons, no upsells: the whole desk is one price.</p>
+          <p className="cmd-sub">Each product is a full desk — purpose-built for one dimension of the tape, unified by BlackOut Intelligence. Full Desk includes every product — no per-product add-ons.</p>
         </div>
 
         {/* Carousel */}
@@ -422,7 +422,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
                 <ul className="vs-list">
                   <li>{MARKETING_DATA_FRESHNESS.comparison}</li>
                   <li>Every setup graded A–F with a logged track record</li>
-                  <li>{productCount} products, one platform, one membership</li>
+                  <li>{productCount} products, one unified Full Desk</li>
                   <li>AI verification engine gates every play</li>
                   <li>Institutional flow, GEX, dark pool — streamed live</li>
                   <li>Real-time P&amp;L marks, not end-of-day summaries</li>
