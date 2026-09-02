@@ -176,13 +176,31 @@ export function executionTaxBps(midPnlPct: number | null, execPnlPct: number | n
   return Math.round((midPnlPct - execPnlPct) * 100);
 }
 
+/** A mark timestamped further ahead of `now` than this is untrustworthy, not "extra fresh" — same
+ *  shape as Helix's FUTURE_PRINT_TOLERANCE_MS (helix-signal-detection.ts). A SEPARATE, more
+ *  generous bound than `ZERODTE_MARK_STALE_MS` on purpose: ordinary clock skew between a quote
+ *  source and this server is real but small, and this codebase's own test fixtures (see
+ *  zerodte-service-marks.test.ts's TIMING DISCIPLINE comment, exit-sync.test.ts) deliberately
+ *  future-date a "definitely fresh" seed by +30s to stay immune to CI scheduler stalls between
+ *  seeding and the real-clock check — a tight bound here would flag that legitimate fixture
+ *  pattern as stale. 60s is generous enough to cover both, while a mark claiming to be minutes
+ *  ahead of `now` is still rejected as corrupted, not read as the freshest quote on the tape. */
+export const ZERODTE_MARK_FUTURE_TOLERANCE_MS = 60_000;
+
 /** Staleness predicate every renderer must apply (>ZERODTE_MARK_STALE_MS = dim). */
 export function isZeroDteMarkStale(
   asOfMs: number,
   nowMs: number,
   staleAfterMs = ZERODTE_MARK_STALE_MS
 ): boolean {
-  return !(asOfMs > 0) || nowMs - asOfMs > staleAfterMs;
+  if (!(asOfMs > 0)) return true;
+  const age = nowMs - asOfMs;
+  // A WS tick or REST snapshot timestamped AHEAD of `now` makes `age` negative. Un-guarded, that
+  // negative age never exceeds a positive `staleAfterMs`, so a garbage future-dated mark read as
+  // trustworthy/fresh instead of stale — reject it once it's further ahead than ordinary clock
+  // skew (or test-fixture headroom) can explain, same as the staleness check does for the past.
+  if (age < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) return true;
+  return age > staleAfterMs;
 }
 
 /**

@@ -25,6 +25,7 @@ import {
   zeroDteMidOf,
   ZERODTE_DEFAULT_HALF_SPREAD_FRAC,
   ZERODTE_MARK_STALE_MS,
+  ZERODTE_MARK_FUTURE_TOLERANCE_MS,
 } from "./marks-math";
 import {
   gradePlanExecutableFromBars,
@@ -290,6 +291,20 @@ test("isZeroDteMarkStale: custom bound is honored", () => {
   const now = 1_000_000;
   assert.equal(isZeroDteMarkStale(now - 900, now, 1_000), false);
   assert.equal(isZeroDteMarkStale(now - 1_001, now, 1_000), true);
+});
+
+test("isZeroDteMarkStale: a timestamp far AHEAD of now is stale, not treated as freshest — but ordinary future skew (and the +30s test-fixture headroom this codebase relies on) is not", () => {
+  // A WS tick or REST snapshot timestamped ahead of `now` (clock skew between the quote source
+  // and this server) makes the raw `nowMs - asOfMs` age negative, which never exceeds a positive
+  // staleAfterMs under a plain `>` comparison — so a garbage future-dated mark read as MORE fresh
+  // than a genuinely current one instead of being flagged untrustworthy. The rejection bound is
+  // the separate, more generous ZERODTE_MARK_FUTURE_TOLERANCE_MS (60s), not staleAfterMs (5s) —
+  // exit-sync.test.ts and zerodte-service-marks.test.ts both deliberately future-date a "fresh"
+  // fixture seed by +30s for CI-scheduler-stall immunity, which must stay fresh under this check.
+  const now = 1_000_000;
+  assert.equal(isZeroDteMarkStale(now + 30_000, now), false); // the exact fixture pattern this codebase relies on
+  assert.equal(isZeroDteMarkStale(now + ZERODTE_MARK_FUTURE_TOLERANCE_MS, now), false); // exactly the bound → NOT stale
+  assert.equal(isZeroDteMarkStale(now + (ZERODTE_MARK_FUTURE_TOLERANCE_MS + 1), now), true); // 1ms further ahead → stale
 });
 
 // ── closedStopReason: a stopped CLOSED row books the stop P&L, not a frozen last_mark ─
