@@ -30,8 +30,26 @@ test("parseInvalidationLevel: a sub-$10 level parses (no arbitrary floor beyond 
 });
 
 test("isSetupInvalidated: spot above ceiling invalidates fade", () => {
-  const r = isSetupInvalidated(7610, "5m close > 7,600", "short", 7600, 7500, null);
+  const r = isSetupInvalidated(7620, "5m close > 7,600", "short", 7600, 7500, null);
   assert.equal(r.invalidated, true);
+});
+
+test("isSetupInvalidated: sub-tick pierce below buffer does NOT invalidate (2026-09-01 IWM/AAPL noise)", () => {
+  const r = isSetupInvalidated(325.46, "5m close > 325", "short", null, null, null);
+  assert.equal(r.invalidated, false, "0.14% pierce should not fire with 0.15% buffer");
+  const r2 = isSetupInvalidated(290.67, "5m close < 291", "long", null, null, null);
+  assert.equal(r2.invalidated, false, "0.11% dip should not fire with 0.15% buffer");
+});
+
+test("isSetupInvalidated: range fade-dip invalidates when spot breaks put wall", () => {
+  const r = isSetupInvalidated(566, "5m close < 570", "range", 580, 570, null, "fade-dip");
+  assert.equal(r.invalidated, true);
+  assert.equal(r.level, 570);
+});
+
+test("isSetupInvalidated: range fade-dip does NOT invalidate on call-wall side noise", () => {
+  const r = isSetupInvalidated(578, "5m close < 570", "range", 580, 570, null, "fade-dip");
+  assert.equal(r.invalidated, false);
 });
 
 test("isSetupInvalidated: a sub-$10 ticker's invalidation level still fires (was silently unreachable)", () => {
@@ -53,6 +71,19 @@ test("evaluateVectorPickLiveStatus: still_buy on fresh quote near entry", () => 
   assert.equal(r.status, "still_buy");
 });
 
+test("evaluateVectorPickLiveStatus: +50% winner is caution even for fresh_entry intent", () => {
+  const r = evaluateVectorPickLiveStatus({
+    spot: 230,
+    side: "call",
+    entryMid: 2.0,
+    quote: { bid: 3.0, ask: 3.2, mid: 3.1, delta: 0.5 },
+    bias: "long",
+    intent: "fresh_entry",
+  });
+  assert.equal(r.status, "caution");
+  assert.match(r.reason, /Winner/i);
+});
+
 test("evaluateVectorPickLiveStatus: dont_buy when premium extended", () => {
   const r = evaluateVectorPickLiveStatus({
     spot: 576,
@@ -63,6 +94,69 @@ test("evaluateVectorPickLiveStatus: dont_buy when premium extended", () => {
   });
   assert.equal(r.status, "dont_buy");
   assert.match(r.reason, /extended/i);
+});
+
+test("evaluateVectorPickLiveStatus: tracked intent — +200% winner is caution, not dont_buy (2026-09-01 AAPL)", () => {
+  const r = evaluateVectorPickLiveStatus({
+    spot: 230,
+    side: "call",
+    entryMid: 1.5,
+    quote: { bid: 4.4, ask: 4.8, mid: 4.6, delta: 0.55 },
+    bias: "long",
+    intent: "tracked",
+  });
+  assert.equal(r.status, "caution");
+  assert.match(r.reason, /manage exit/i);
+  assert.equal(r.setupInvalidated, false);
+});
+
+test("evaluateVectorPickLiveStatus: tracked intent — +30% extended is caution, not chase-risk close", () => {
+  const r = evaluateVectorPickLiveStatus({
+    spot: 576,
+    side: "call",
+    entryMid: 3.0,
+    quote: { bid: 3.8, ask: 4.0, mid: 3.9, delta: 0.42 },
+    bias: "long",
+    intent: "tracked",
+  });
+  assert.equal(r.status, "caution");
+  assert.match(r.reason, /limit only/i);
+});
+
+test("evaluateVectorPickLiveStatus: sub-$0.10 entry with wild % is caution, not chase risk", () => {
+  const r = evaluateVectorPickLiveStatus({
+    spot: 12,
+    side: "call",
+    entryMid: 0.05,
+    quote: { bid: 0.12, ask: 0.16, mid: 0.14, delta: 0.35 },
+    bias: "long",
+    intent: "fresh_entry",
+  });
+  assert.equal(r.status, "caution");
+  assert.match(r.reason, /verify premium/i);
+});
+
+test("evaluateVectorPickLiveStatus: bar close prevents tick-noise invalidation (2026-09-01 AAPL)", () => {
+  const tf = 5;
+  const tfSec = tf * 60;
+  const nowMs = (tfSec * 4 + 120) * 1000;
+  const bucketStart = Math.floor(nowMs / 1000 / tfSec) * tfSec - tfSec;
+  const bars = [
+    { time: bucketStart, open: 324, high: 325, low: 323.5, close: 324.2 },
+    { time: bucketStart + 60, open: 324.2, high: 324.6, low: 324, close: 324.5 },
+  ];
+  const r = evaluateVectorPickLiveStatus({
+    spot: 325.46,
+    side: "put",
+    entryMid: 2.5,
+    quote: { bid: 2.1, ask: 2.3, mid: 2.2, delta: -0.4 },
+    invalidation: "5m close > 325",
+    bias: "short",
+    bars,
+    nowMs,
+    intent: "tracked",
+  });
+  assert.equal(r.setupInvalidated, false);
 });
 
 test("evaluateVectorPickLiveStatus: dont_buy when setup invalidated and premium not favorable", () => {

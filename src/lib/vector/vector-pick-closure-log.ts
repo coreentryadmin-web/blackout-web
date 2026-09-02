@@ -8,12 +8,21 @@ export function vectorPickClosureCommitKey(sessionDate: string, ticker: string, 
   return `${sessionDate}:${ticker.trim().toUpperCase()}:${occ.trim().toUpperCase()}`;
 }
 
+/** True when the close reason is a fresh-entry chase-risk block (not a thesis failure). */
+export function isVectorPickChaseRiskCloseReason(closeReason: string | null | undefined): boolean {
+  return typeof closeReason === "string" && /chase risk/i.test(closeReason);
+}
+
 /** Log the first Don't buy for this commit_key per session (idempotent at DB layer). */
 export function shouldPersistVectorPickClosure(
   actionStatus: VectorPickActionStatus,
-  alreadyLogged: boolean
+  alreadyLogged: boolean,
+  closeReason?: string | null
 ): boolean {
-  return actionStatus === "dont_buy" && !alreadyLogged;
+  if (actionStatus !== "dont_buy" || alreadyLogged) return false;
+  // Desk PLYS fresh-entry chase risk is not a board closure — only setup/cap failures are.
+  if (isVectorPickChaseRiskCloseReason(closeReason)) return false;
+  return true;
 }
 
 export type VectorPickClosurePayload = {

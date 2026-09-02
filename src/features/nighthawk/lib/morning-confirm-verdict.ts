@@ -15,6 +15,8 @@ export type PlayStatus = {
   direction: string;
   status: PlayConfirmStatus;
   reason: string;
+  /** Per-play verdict instant — usually identical across the edition (cron batch time). */
+  checked_at?: string | null;
   /** True once this CONFIRMED ticker was actually promoted into the Swing serving snapshot —
    *  stamped after promoteLegacyConfirmedToSwing runs (see nighthawk-morning-confirm/route.ts
    *  Phase 3.8). Promotion can fail per-ticker (e.g. "no chain rows") even when status is
@@ -89,8 +91,9 @@ export function computePlayVerdict(
   // was checked, so a stock that gapped clean through its own stop (or target)
   // on stock-specific news still confirmed.
   const stockPx = context.stockPremarket ?? null;
+  const { entry_range_high: entryHi, entry_range_low: entryLo, target, stop } = parsePlayLevels(play);
+
   if (stockPx != null && stockPx > 0) {
-    const { entry_range_high: entryHi, entry_range_low: entryLo, target, stop } = parsePlayLevels(play);
     if (target != null || stop != null || entryHi != null) checksEvaluated++;
     if (stop != null && (isLong ? stockPx <= stop : stockPx >= stop)) {
       status = "INVALIDATED";
@@ -124,13 +127,28 @@ export function computePlayVerdict(
 
   // ── Hard invalidation checks ──────────────────────────────────────────────
 
-  // 1. Gap against the play's direction
+  // 1. Gap against the play's direction — SPX is a weak proxy for single names when
+  // the stock's own premarket is available and still within plan levels.
   if (gapPts !== null) checksEvaluated++;
   if (gapPts !== null && Math.abs(gapPts) > GAP_PTS_THRESHOLD) {
     const gapAgainst = isLong ? gapPts < -GAP_PTS_THRESHOLD : gapPts > GAP_PTS_THRESHOLD;
     if (gapAgainst) {
-      status = "INVALIDATED";
-      reasons.push(`SPX gapped ${gapPts > 0 ? "+" : ""}${gapPts.toFixed(1)} pts against ${direction} direction`);
+      const stockConfirms =
+        stockPx != null &&
+        stockPx > 0 &&
+        isSingleName &&
+        !(
+          stop != null && (isLong ? stockPx <= stop : stockPx >= stop)
+        );
+      if (stockConfirms) {
+        if (status === "CONFIRMED") status = "DEGRADED";
+        reasons.push(
+          `SPX gapped ${gapPts > 0 ? "+" : ""}${gapPts.toFixed(1)} pts against ${direction} direction — ${play.ticker} pre-market still within plan, treat as caution`,
+        );
+      } else {
+        status = "INVALIDATED";
+        reasons.push(`SPX gapped ${gapPts > 0 ? "+" : ""}${gapPts.toFixed(1)} pts against ${direction} direction`);
+      }
     }
   }
 

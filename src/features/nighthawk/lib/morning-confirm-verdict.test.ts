@@ -86,8 +86,15 @@ test("stock inside its entry range with no other signals → CONFIRMED", () => {
   assert.equal(v.reason, "All checks passed");
 });
 
-test("SPX gap against direction still INVALIDATES (existing behavior preserved)", () => {
+test("SPX gap against direction degrades (not invalidates) when single-name premarket is within plan", () => {
   const v = computePlayVerdict(play(), { ...NO_CONTEXT, gapPts: -25, stockPremarket: 102 });
+  assert.equal(v.status, "DEGRADED");
+  assert.ok(v.reason.includes("SPX gapped"));
+  assert.ok(v.reason.includes("treat as caution"));
+});
+
+test("SPX gap against direction still INVALIDATES index plays without stock override", () => {
+  const v = computePlayVerdict(play({ ticker: "SPY", play_type: "etf" }), { ...NO_CONTEXT, gapPts: -25 });
   assert.equal(v.status, "INVALIDATED");
   assert.ok(v.reason.includes("SPX gapped"));
 });

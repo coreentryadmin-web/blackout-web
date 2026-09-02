@@ -340,6 +340,21 @@ test("grade thresholds: A ≥75, B 55–74, C <55", () => {
 });
 
 // ── Starred watch set ────────────────────────────────────────────────────────
+test("starred: confluence uses zone nearest spot, not board-wide zones[0]", () => {
+  const play = buildVectorPlay(
+    base({
+      spot: 7598,
+      proximity: proximity("call", 7600, "at"),
+      confluenceZones: [
+        { center: 8000, low: 7999, high: 8001, score: 12, kinds: ["call-wall"], levels: [] } as ConfluenceZone,
+        { center: 7600, low: 7599, high: 7601, score: 6, kinds: ["call-wall", "max-pain"], levels: [] } as ConfluenceZone,
+      ],
+    })
+  )!;
+  assert.ok(play.starred.some((s) => /Confluence 7,600/.test(s)));
+  assert.ok(!play.starred.some((s) => /Confluence 8,000/.test(s)));
+});
+
 test("starred: headline always first; wall-at and confluence added", () => {
   const play = buildVectorPlay(
     base({

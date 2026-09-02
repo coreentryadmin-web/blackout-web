@@ -9,18 +9,15 @@ import { VectorBoardCalendar } from "@/features/nighthawk/components/VectorBoard
 import { VectorBoardCompareBar } from "@/features/nighthawk/components/VectorBoardCompareBar";
 import { VectorBoardEmptyState } from "@/features/nighthawk/components/VectorBoardEmptyState";
 import { VectorBoardLoadingSkeleton } from "@/features/nighthawk/components/VectorBoardLoadingSkeleton";
-import { VectorBoardMeter } from "@/features/nighthawk/components/VectorBoardMeter";
 import { VectorBoardScorecard } from "@/features/nighthawk/components/VectorBoardScorecard";
-import { VectorBoardStatusPill } from "@/features/nighthawk/components/VectorBoardStatus";
 import { VectorBoardToolbar } from "@/features/nighthawk/components/VectorBoardToolbar";
 import { VectorPlayDetailPanel } from "@/features/nighthawk/components/VectorPlayDetailPanel";
+import { buildVectorBoardColumns } from "@/features/nighthawk/lib/vector-board-columns";
 import type { VectorBoardTableRow, VectorBoardTab } from "@/features/nighthawk/lib/vector-board-table-utils";
 import {
   buildVectorBoardRows,
-  formatPremiumPct,
   premiumPctTone,
   vectorBoardCalendarBuckets,
-  vectorBoardMeter,
 } from "@/features/nighthawk/lib/vector-board-table-utils";
 import {
   filterVectorBoardRowsAdvanced,
@@ -33,7 +30,6 @@ import {
 import {
   loadVectorBoardPreferences,
   saveVectorBoardPreferences,
-  type VectorBoardColumnId,
   type VectorBoardPreferences,
   type VectorBoardSavedView,
 } from "@/features/nighthawk/lib/vector-board-preferences";
@@ -79,11 +75,6 @@ function preferredTab(openCount: number, closedCount: number): VectorBoardTab {
   return "all";
 }
 
-function ariaSort(active: boolean, dir: "asc" | "desc"): "none" | "ascending" | "descending" {
-  if (!active) return "none";
-  return dir === "asc" ? "ascending" : "descending";
-}
-
 function emptyTitle(tab: VectorBoardTab): string {
   if (tab === "open") return "No open Vector picks";
   if (tab === "closed") return "No closed Vector picks match";
@@ -120,12 +111,9 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
     saveVectorBoardPreferences(next);
   }, []);
 
-  const apiUrl =
-    fixtureData != null
-      ? null
-      : sessionScope === "current" && todaySession
-        ? `/api/market/vector/pick-closures/board?limit=500&session_date=${todaySession}`
-        : "/api/market/vector/pick-closures/board?limit=500";
+  // Always fetch the full board — calendar buckets need multi-day history. Client-side
+  // sessionScope / selectedDate filters narrow the table without starving the calendar.
+  const apiUrl = fixtureData != null ? null : "/api/market/vector/pick-closures/board?limit=500";
 
   const { data: swrData, error, isLoading } = useSWR<VectorPickBoardResponse>(
     apiUrl,
@@ -183,6 +171,23 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
 
   const { key: sortKey, dir: sortDir } = parseVectorBoardSort(sort);
 
+  const boardColumns = useMemo(
+    () =>
+      buildVectorBoardColumns({
+        prefs,
+        compareMode,
+        sortKey,
+        sortDir,
+        onSortPnl: () => setSort(sortKey === "pnl" && sortDir === "desc" ? "pnl_asc" : "pnl_desc"),
+        onSortPeak: () => setSort(sortKey === "peak" && sortDir === "desc" ? "peak_asc" : "peak_desc"),
+        onSortUpdated: () =>
+          setSort(sortKey === "updated" && sortDir === "desc" ? "updated_asc" : "updated_desc"),
+      }),
+    [prefs, compareMode, sortKey, sortDir]
+  );
+
+  const visibleColumnCount = Math.max(boardColumns.length, 1);
+
   const visibleRows = useMemo(
     () => sortVectorBoardRows(filteredRows, sortKey, sortDir),
     [filteredRows, sortKey, sortDir]
@@ -192,21 +197,6 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
     () => visibleRows.filter((r) => compareKeys.has(r.key)),
     [visibleRows, compareKeys]
   );
-
-  const col = (id: VectorBoardColumnId) => prefs.columns[id] !== false;
-
-  const visibleColumnCount = useMemo(() => {
-    let n = 0;
-    if (col("pick")) n += 1;
-    if (col("status")) n += 1;
-    if (col("premium")) n += 1;
-    if (col("entryMark")) n += 1;
-    if (col("peak")) n += 1;
-    if (col("path")) n += 1;
-    if (col("updated")) n += 1;
-    if (compareMode) n += 1;
-    return Math.max(n, 1);
-  }, [prefs.columns, compareMode]);
 
   const scorecardRows = useMemo(() => {
     if (sessionScope !== "current" || !todaySession) return [];
@@ -364,6 +354,21 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
         sort={sort}
         onSortChange={setSort}
         selectedDate={selectedDate}
+        todaySession={todaySession}
+        onSelectedDateChange={(date) => {
+          if (!date) {
+            setSelectedDate(null);
+            setSessionScope("current");
+            return;
+          }
+          if (date === todaySession) {
+            setSessionScope("current");
+            setSelectedDate(null);
+          } else {
+            setSessionScope("all");
+            setSelectedDate(date);
+          }
+        }}
         onClearFilters={clearFilters}
         filtersOpen={filtersOpen}
         onFiltersOpenChange={setFiltersOpen}
@@ -385,12 +390,24 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
         <p className="vector-board-note vector-board-note--inline">{data.note}</p>
       ) : null}
 
-      {!prefs.focusMode && calendarBuckets.length > 0 ? (
+      {!prefs.focusMode && (calendarBuckets.length > 0 || selectedDate) ? (
         <div className="vector-board-cal-wrap">
           <VectorBoardCalendar
             buckets={calendarBuckets}
-            selectedDate={selectedDate}
-            onSelectDate={setSelectedDate}
+            selectedDate={selectedDate ?? (sessionScope === "current" ? todaySession : null)}
+            onSelectDate={(date) => {
+              if (!date) {
+                setSelectedDate(null);
+                return;
+              }
+              if (date === todaySession) {
+                setSessionScope("current");
+                setSelectedDate(null);
+              } else {
+                setSessionScope("all");
+                setSelectedDate(date);
+              }
+            }}
           />
           {selectedDate ? (
             <button type="button" className="vector-board-cal-clear" onClick={() => setSelectedDate(null)}>
@@ -405,43 +422,25 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
           <div className="vector-board-panel">
             <div className="vector-board-tablewrap" ref={tableRef}>
               <table className="vector-board-table">
+                <colgroup>
+                  {boardColumns.map((column) => (
+                    <col key={column.key} className={column.colClass} />
+                  ))}
+                </colgroup>
                 <thead>
                   <tr>
-                    {compareMode ? <th className="vector-board-col-check" aria-label="Compare" /> : null}
-                    {col("pick") ? <th className="vector-board-col-pick">Pick</th> : null}
-                    {col("status") ? <th className="vector-board-col-status">Status</th> : null}
-                    {col("premium") ? (
+                    {boardColumns.map((column) => (
                       <th
-                        className="vector-board-col-num vector-board-col-premium vector-board-th-sortable"
-                        aria-sort={ariaSort(sortKey === "pnl", sortDir)}
-                        onClick={() => setSort(sortKey === "pnl" && sortDir === "desc" ? "pnl_asc" : "pnl_desc")}
-                        title="Option premium vs pick entry — not managed 0DTE P&L"
+                        key={column.key}
+                        className={column.thClass}
+                        aria-sort={column.ariaSort}
+                        aria-label={column.key === "compare" ? "Compare" : undefined}
+                        title={column.headerTitle}
+                        onClick={column.onHeaderClick}
                       >
-                        Premium vs entry {sortKey === "pnl" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                        {column.header}
                       </th>
-                    ) : null}
-                    {col("entryMark") ? <th className="vector-board-col-num vector-board-col-entry">Entry → mark</th> : null}
-                    {col("peak") ? (
-                      <th
-                        className="vector-board-col-num vector-board-col-peak vector-board-th-sortable"
-                        aria-sort={ariaSort(sortKey === "peak", sortDir)}
-                        onClick={() => setSort(sortKey === "peak" && sortDir === "desc" ? "peak_asc" : "peak_desc")}
-                      >
-                        Peak {sortKey === "peak" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-                      </th>
-                    ) : null}
-                    {col("path") ? <th className="vector-board-col-num vector-board-col-path">Premium path</th> : null}
-                    {col("updated") ? (
-                      <th
-                        className="vector-board-col-updated vector-board-th-sortable"
-                        aria-sort={ariaSort(sortKey === "updated", sortDir)}
-                        onClick={() =>
-                          setSort(sortKey === "updated" && sortDir === "desc" ? "updated_asc" : "updated_desc")
-                        }
-                      >
-                        Updated {sortKey === "updated" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-                      </th>
-                    ) : null}
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -461,6 +460,15 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
                       const selected = selectedRow?.key === row.key;
                       const live = vectorBoardRowIsLive(row);
                       const atRisk = vectorBoardRowAtRisk(row);
+                      const rowCtx = {
+                        live,
+                        atRisk,
+                        compareChecked: compareKeys.has(row.key),
+                        onToggleCompare: () => toggleCompare(row.key),
+                        fmtPrice,
+                        fmtTimestamp,
+                        pnlClass,
+                      };
                       return (
                         <tr
                           key={row.key}
@@ -483,67 +491,19 @@ export function VectorPickLogBoard({ fixtureData }: { fixtureData?: VectorPickBo
                             }
                           }}
                         >
-                          {compareMode ? (
-                            <td className="vector-board-col-check" onClick={(e) => e.stopPropagation()}>
-                              <input
-                                type="checkbox"
-                                className="vector-board-compare-check"
-                                checked={compareKeys.has(row.key)}
-                                onChange={() => toggleCompare(row.key)}
-                                aria-label={`Compare ${row.ticker}`}
-                              />
-                            </td>
-                          ) : null}
-                          {col("pick") ? (
-                            <td className="vector-board-col-pick">
-                              <div className="vector-board-pick-name">
-                                {live ? <span className="vector-board-live-dot" aria-label="Live" /> : null}
-                                {row.ticker}
-                              </div>
-                              <div className="vector-board-pick-sub">{row.contractLabel}</div>
-                              <div className="vector-board-pick-id">
-                                {row.tier === "elite" ? "Elite · " : ""}
-                                ID: {row.occ.slice(-8)}
-                              </div>
-                            </td>
-                          ) : null}
-                          {col("status") ? (
-                            <td className="vector-board-col-status">
-                              <div className="vector-board-status-cell">
-                                <VectorBoardStatusPill status={row.status} label={row.statusLabel} />
-                                {atRisk ? <span className="vector-board-at-risk">At risk</span> : null}
-                              </div>
-                            </td>
-                          ) : null}
-                          {col("premium") ? (
+                          {boardColumns.map((column) => (
                             <td
-                              className={clsx(
-                                "vector-board-col-num vector-board-col-premium vector-board-pnl vector-board-pnl-hero tabular-nums",
-                                pnlClass(row.premiumPct)
-                              )}
-                              title="Premium vs pick entry"
+                              key={column.key}
+                              className={column.colClass}
+                              onClick={
+                                column.key === "compare"
+                                  ? (e) => e.stopPropagation()
+                                  : undefined
+                              }
                             >
-                              {formatPremiumPct(row.premiumPct)}
+                              {column.renderCell(row, rowCtx)}
                             </td>
-                          ) : null}
-                          {col("entryMark") ? (
-                            <td className="vector-board-col-num vector-board-col-entry vector-board-mid tabular-nums">
-                              {fmtPrice(row.entryMid)} → {fmtPrice(row.markMid)}
-                            </td>
-                          ) : null}
-                          {col("peak") ? (
-                            <td className={clsx("vector-board-col-num vector-board-col-peak tabular-nums", pnlClass(row.peakPct))}>
-                              {formatPremiumPct(row.peakPct)}
-                            </td>
-                          ) : null}
-                          {col("path") ? (
-                            <td className="vector-board-col-num vector-board-col-path">
-                              <VectorBoardMeter meter={vectorBoardMeter(row)} />
-                            </td>
-                          ) : null}
-                          {col("updated") ? (
-                            <td className="vector-board-col-updated vector-board-col-time tabular-nums">{fmtTimestamp(row.timestamp)}</td>
-                          ) : null}
+                          ))}
                         </tr>
                       );
                     })

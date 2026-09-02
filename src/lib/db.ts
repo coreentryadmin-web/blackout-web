@@ -9136,6 +9136,33 @@ export type NighthawkPulledPlay = {
   pulled_at: string | null;
 };
 
+export type NighthawkEditionOutcomeOverlayRow = {
+  ticker: string;
+  publish_context: Record<string, unknown> | null;
+  morning_verdict: Record<string, unknown> | null;
+};
+
+/** Durable outcome-row pins for one edition — tier assignment + morning verdict. */
+export async function fetchNighthawkEditionOutcomeOverlays(
+  editionFor: string
+): Promise<NighthawkEditionOutcomeOverlayRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `
+    SELECT ticker, publish_context, morning_verdict
+    FROM nighthawk_play_outcomes
+    WHERE edition_for = $1::date
+    ORDER BY ticker ASC
+    `,
+    [editionFor]
+  );
+  return res.rows.map((r) => ({
+    ticker: String(r.ticker).toUpperCase(),
+    publish_context: (r.publish_context as Record<string, unknown>) ?? null,
+    morning_verdict: (r.morning_verdict as Record<string, unknown>) ?? null,
+  }));
+}
+
 /** PR-N4: the pulled plays for one edition — the read half of the pull latch, merged onto
  *  the member edition payload at read time (the edition row itself is never mutated). */
 export async function fetchNighthawkPulledPlays(editionFor: string): Promise<NighthawkPulledPlay[]> {

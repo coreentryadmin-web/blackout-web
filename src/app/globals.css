@@ -3560,6 +3560,21 @@ html.product-shell .nav-mega {
     box-shadow: 0 2px 10px -2px rgba(0, 217, 163, 0.5);
   }
 
+  .vector-board-date-picker {
+    @apply flex items-center gap-1.5 rounded-full border px-2.5 py-1;
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(4, 4, 7, 0.35);
+  }
+
+  .vector-board-date-picker-label {
+    @apply font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-sky-300/55;
+  }
+
+  .vector-board-date-input {
+    @apply border-0 bg-transparent font-mono text-[11px] font-semibold text-sky-100 outline-none;
+    color-scheme: dark;
+  }
+
   .vector-board-search {
     @apply flex items-center gap-1.5 rounded-full border px-2.5 py-1;
     border-color: rgba(255, 255, 255, 0.08);
@@ -3666,6 +3681,7 @@ html.product-shell .nav-mega {
     @apply min-h-0 flex-1 overflow-auto;
     scrollbar-width: thin;
     scrollbar-color: rgba(0, 217, 163, 0.25) transparent;
+    scrollbar-gutter: stable;
   }
 
   .vector-board-tablewrap::-webkit-scrollbar {
@@ -3679,46 +3695,55 @@ html.product-shell .nav-mega {
   }
 
   .vector-board-table {
-    @apply w-full min-w-0 border-collapse font-mono text-[11px];
+    @apply w-full min-w-[52rem] border-separate font-mono text-[11px];
     table-layout: fixed;
+    border-spacing: 0;
   }
 
-  .vector-board-col-pick {
-    width: 16%;
+  .vector-board-table col.vector-board-col-check {
+    width: 2.25rem;
   }
 
-  .vector-board-col-status {
-    width: 11%;
+  .vector-board-table col.vector-board-col-pick {
+    width: 20%;
   }
 
-  .vector-board-col-premium {
-    width: 10%;
-  }
-
-  .vector-board-col-entry {
-    width: 14%;
-  }
-
-  .vector-board-col-peak {
-    width: 8%;
-  }
-
-  .vector-board-col-path {
-    width: 16%;
-  }
-
-  .vector-board-col-updated {
+  .vector-board-table col.vector-board-col-status {
     width: 12%;
   }
 
+  .vector-board-table col.vector-board-col-premium {
+    width: 11%;
+  }
+
+  .vector-board-table col.vector-board-col-entry {
+    width: 14%;
+  }
+
+  .vector-board-table col.vector-board-col-peak {
+    width: 9%;
+  }
+
+  .vector-board-table col.vector-board-col-path {
+    width: 18%;
+  }
+
+  .vector-board-table col.vector-board-col-updated {
+    width: 16%;
+  }
+
   .vector-board-table thead th {
-    @apply sticky top-0 z-10 border-b px-2.5 py-2 text-left text-[9px] font-bold uppercase tracking-[0.1em] text-sky-300/65;
+    @apply sticky top-0 z-10 border-b px-2 py-2 text-left text-[9px] font-bold uppercase tracking-[0.1em] text-sky-300/65;
     background: linear-gradient(180deg, rgba(12, 14, 20, 0.98), rgba(9, 10, 14, 0.96));
     border-color: rgba(255, 255, 255, 0.08);
   }
 
+  .vector-board-table thead th.vector-board-col-num {
+    text-align: right;
+  }
+
   .vector-board-table tbody td {
-    @apply border-b px-2.5 py-2.5 text-sky-100/85;
+    @apply border-b px-2 py-2 text-sky-100/85;
     border-color: rgba(255, 255, 255, 0.035);
     transition: background-color 0.15s ease;
   }
@@ -21994,6 +22019,15 @@ html.product-shell .nav-mega {
 .nh-deck-command-technicals__body{display:flex;flex-direction:column;gap:10px}
 .nh-deck-command-live .nh-deck-premium-stack{margin-bottom:0}
 .nh-deck-command-thesis-prose{font-style:italic}
+.nh-deck-legacy-panel .nh-deck-legacy-bullets{margin:8px 0 0;padding:0 0 0 16px;display:flex;flex-direction:column;gap:6px;font-size:12px;line-height:1.45;color:var(--dk-text-secondary)}
+.nh-deck-legacy-panel .nh-deck-legacy-bullets li{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.nh-deck-legacy-panel .nh-deck-legacy-bullets li.is-neg{color:var(--dk-red,#f87171)}
+.nh-deck-legacy-panel .nh-deck-legacy-bullets strong{color:#fff;font-weight:700}
+.nh-deck-legacy-panel .nh-deck-legacy-reach{margin-top:8px;font-size:11px;line-height:1.45;color:var(--dk-amber,#fbbf24)}
+.nh-deck-legacy-panel .nh-deck-legacy-verdict{margin:0;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.nh-deck-legacy-panel .nh-deck-legacy-verdict.is-ok{color:var(--dk-green)}
+.nh-deck-legacy-panel .nh-deck-legacy-verdict.is-warn{color:var(--dk-amber)}
+.nh-deck-legacy-panel .nh-deck-legacy-verdict.is-brk{color:var(--dk-red,#f87171)}
 /* ── Premium 0DTE terminal panels ── */
 .nh-deck-premium-stack{display:flex;flex-direction:column;gap:16px;margin-bottom:16px}
 .nh-deck-premium__heading{margin:0 0 8px;font-size:10px;font-weight:800;letter-spacing:.12em;

@@ -16,12 +16,14 @@ test("VectorPickLogBoard: uses viewport-locked shell with internal table scrollp
 test("VectorPickLogBoard: X Ads toolbar, premium column, meters, and detail rail", () => {
   const board = readFileSync(new URL("./VectorPickLogBoard.tsx", import.meta.url), "utf8");
   const toolbar = readFileSync(new URL("./VectorBoardToolbar.tsx", import.meta.url), "utf8");
+  const columns = readFileSync(new URL("../lib/vector-board-columns.tsx", import.meta.url), "utf8");
   assert.match(board, /VectorBoardToolbar/, "board must use dedicated X Ads-style toolbar");
-  assert.match(board, /Premium vs entry/, "table must expose premium vs entry column");
-  assert.match(board, /VectorBoardMeter/, "table must render X Ads-style premium path meters");
+  assert.match(columns, /Premium vs entry/, "table must expose premium vs entry column");
+  assert.match(columns, /VectorBoardMeter/, "table must render X Ads-style premium path meters");
+  assert.match(board, /<colgroup>/, "table must pin column widths via colgroup for header/body alignment");
   assert.match(board, /VectorPlayDetailPanel/, "row click must open right-rail inspector");
   assert.doesNotMatch(board, /vector-board-summary-row/, "summary row removed — analytics live in detail rail");
-  assert.match(board, /formatPremiumPct/, "premium % must render prominently");
+  assert.match(columns, /formatPremiumPct/, "premium % must render prominently");
   assert.match(toolbar, /VectorBoardFiltersDrawer/, "filters must use drawer pattern");
   assert.match(toolbar, /"Open"/, "tabs use Open/Closed desk language");
   assert.match(board, /VectorBoardScorecard/, "session scorecard mounted for today analytics");

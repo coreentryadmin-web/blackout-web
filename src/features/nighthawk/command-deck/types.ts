@@ -71,6 +71,8 @@ export interface TerminalPlay {
   /** OCC symbol for the live greeks/marks subscription, when known. */
   occ?: string | null;
   score: number;
+  /** Edition funnel rank (1–5 on Legacy). */
+  rank?: number | null;
   status: DeckStatus;
   horizon: "ZERO_DTE" | "SWING" | "LEAPS" | "LEGACY";
   exitModel: ExitModel;
@@ -179,6 +181,8 @@ export interface TerminalPlay {
   /** Sector classification (lower-cased), when known. */
   sector?: string | null;
   /** Morning confirmation status for Legacy plays (CONFIRMED/DEGRADED/INVALIDATED/UNVERIFIED). */
+  /** True when morning-confirm invalidated/pulled this play pre-open. */
+  pulled?: boolean | null;
   morningStatus?: "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | null;
 
   // ── legacy edition geometry (entry/target/stop as raw strings for the thesis panel) ──
@@ -201,6 +205,11 @@ export interface TerminalPlay {
   // ── legacy stock-level overlay (populated by overlayLegacyQuotes, not the adapter) ──
   stockPrice?: number | null;
   stockChangePct?: number | null;
+  /** Underlying move from entry band midpoint — NOT option P&L. */
+  stockMovePct?: number | null;
+  /** Session excursion of the underlying on the same basis as stockMovePct. */
+  stockPeakPct?: number | null;
+  stockTroughPct?: number | null;
 
   // ── swing-only enrichment (all OPTIONAL, ADDITIVE — 0DTE/LEAPS/Legacy leave them undefined; PR-12
   //    populates them through the horizon adapter). The observable swing state the serving router keys on. ──

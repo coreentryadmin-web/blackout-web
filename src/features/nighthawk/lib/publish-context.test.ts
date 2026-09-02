@@ -113,6 +113,22 @@ function market(overrides: Partial<PublishContextMarket> = {}): PublishContextMa
   };
 }
 
+test("pin records gate_promoted provenance for analytics joins", () => {
+  const ctx = buildNighthawkPublishContext({
+    play: {
+      ...play(),
+      gate_promoted: true,
+      gate_warnings: ["band detached"],
+    },
+    scored: scored(),
+    dossier: dossier(),
+    market: market(),
+    builtAt: "2026-07-14T21:35:00.000Z",
+  });
+  assert.equal(ctx.gate_promoted, true);
+  assert.deepEqual(ctx.gate_warnings, ["band detached"]);
+});
+
 test("pin captures spot/prior-close/geometry the builder saw — the AMD 7/07 shape becomes reconstructable", () => {
   const ctx = buildNighthawkPublishContext({
     play: play(),

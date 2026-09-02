@@ -15,6 +15,7 @@ import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-re
 import { thesisManagementOverlay } from "@/lib/zerodte/thesis-health";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
 import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
+import { resolveLegacyPlayOcc } from "@/features/nighthawk/lib/legacy-play-contract";
 import type {
   DeckCondor,
   DeckDirection,
@@ -714,7 +715,10 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
 
   // Morning confirmation drives the status + regime display.
   const ms = src.morning_status;
-  const status: DeckStatus = pulled ? "CLOSED" : ms === "INVALIDATED" ? "SKIP" : ms === "CONFIRMED" ? "OPEN" : "WATCH";
+  const status: DeckStatus =
+    ms === "INVALIDATED" || pulled ? "SKIP"
+    : ms === "CONFIRMED" ? "OPEN"
+    : "WATCH";
   const regime = ms
     ? ms === "CONFIRMED"
       ? "pre-market CONFIRMED"
@@ -820,6 +824,8 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     ticker: src.ticker.toUpperCase(),
     direction,
     contract: contractLabel,
+    occ: resolveLegacyPlayOcc(src.ticker, src.options_play ?? null),
+    rank: src.rank ?? null,
     score: rawScore != null ? Math.round(rawScore) : 0,
     status,
     horizon: "LEGACY",
@@ -852,6 +858,7 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     premiumCapOk: src.premium_cap_ok ?? null,
     sector: src.sector?.toLowerCase() ?? null,
     morningStatus: ms ?? null,
+    pulled: pulled || ms === "INVALIDATED",
     confluence,
     discoveryOrigin: discoveryOrigin.length > 0 ? discoveryOrigin : undefined,
     whyNow: whyNow ?? undefined,

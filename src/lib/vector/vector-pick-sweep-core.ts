@@ -108,7 +108,9 @@ export function isVectorPickWinner(row: {
   const peak = row.peak_premium_pct;
   const floor = VECTOR_PICK_WINNER_PCT_FLOOR;
   if (live != null && live >= floor) return true;
-  if (peak != null && peak >= floor && row.action_status !== "dont_buy") return true;
+  // Peak-based winner: a pick that tagged +50% then setup-invalidated at a lower live %
+  // must still surface in Winners (found 2026-09-01: AAPL +205% peak archived as dont_buy).
+  if (peak != null && peak >= floor) return true;
   return false;
 }
 

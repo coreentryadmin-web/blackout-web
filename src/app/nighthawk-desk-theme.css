@@ -1381,3 +1381,26 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
   }
 }
 
+/* ── Legacy board — X Ads table parity (LegacyPickLogBoard) ──────────────── */
+.nh-v2-page .legacy-board-shell .legacy-board-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.nh-v2-page .legacy-board-shell .legacy-board-detail-body .nh-deck-legacy-panel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.nh-v2-page[data-desk-theme="light"] .vector-board-date-input {
+  color-scheme: light;
+}
+
+.nh-v2-page[data-desk-theme="light"] .vector-board-date-picker {
+  background: var(--nh-desk-input-bg);
+  border-color: var(--nh-desk-border);
+}
+

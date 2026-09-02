@@ -429,8 +429,10 @@ export type { NightHawkEdition, HuntMode, HuntRequest, HuntResponse, PlayExplain
 export const fetchNightHawkPlays = () =>
   intelFetch<{ plays: NightHawkPlay[] }>("/nighthawk/plays");
 
-export const fetchNightHawkEdition = () =>
-  marketFetch<import("@/features/nighthawk/lib/types").NightHawkEdition>("/nighthawk/edition");
+export const fetchNightHawkEdition = (date?: string) =>
+  marketFetch<import("@/features/nighthawk/lib/types").NightHawkEdition>(
+    `/nighthawk/edition${date ? `?date=${encodeURIComponent(date)}` : ""}`
+  );
 
 export const fetchNightHawkPlayStatus = (date?: string) =>
   fetch(

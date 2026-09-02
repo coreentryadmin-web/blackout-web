@@ -545,26 +545,34 @@ function makeCandidate(overrides: Partial<ScoredCandidate>): ScoredCandidate {
   };
 }
 
+// NOTE: rankingScore ALSO applies overnightRankingBandAdjust(c.score) — a flat band adjustment
+// on the ORIGINAL base score (+8 for [40,55] prime band, -2 for (55,70) mid band, -6 for [70,∞)
+// top band) added alongside the confluence bonus / fundamental penalty below. Every expected
+// value in this block includes that term; each comment spells out the exact breakdown so a
+// score choice bumping into a different band doesn't silently drift these numbers again.
+
 test("rankingScore: clean candidate returns base score when < 3 confirming signals", () => {
   const c = makeCandidate({ score: 60, confirming_signals: 2 });
-  assert.equal(rankingScore(c), 60);
+  // base 60, no confluence bonus (signals<3), mid-band penalty (60 in (55,70)): 60 - 2 = 58
+  assert.equal(rankingScore(c), 58);
 });
 
 test("rankingScore: confluence bonus adds +2 per signal above floor", () => {
   const c = makeCandidate({ score: 50, confirming_signals: 5 });
-  // 5 signals: (5 - 3 + 1) * 2 = 6 bonus
-  assert.equal(rankingScore(c), 56);
+  // base 50 + confluence (5-3+1)*2=6 + prime-band bonus (50 in [40,55]) +8 = 64
+  assert.equal(rankingScore(c), 64);
 });
 
 test("rankingScore: fundamental_block applies -10 penalty", () => {
   const c = makeCandidate({ score: 70, fundamental_block: true, confirming_signals: 2 });
-  assert.equal(rankingScore(c), 60);
+  // base 70 - fundamental 10 - top-band penalty (70 in [70,∞)) 6 = 54
+  assert.equal(rankingScore(c), 54);
 });
 
 test("rankingScore: penalty + bonus combine correctly", () => {
   const c = makeCandidate({ score: 70, fundamental_block: true, confirming_signals: 5 });
-  // -10 penalty + (5-3+1)*2 = -10 + 6 = -4 net
-  assert.equal(rankingScore(c), 66);
+  // base 70 - fundamental 10 + confluence (5-3+1)*2=6 - top-band penalty 6 = 60
+  assert.equal(rankingScore(c), 60);
 });
 
 test("rankCandidates: high-scoring flagged candidate outranks low-scoring clean one", () => {

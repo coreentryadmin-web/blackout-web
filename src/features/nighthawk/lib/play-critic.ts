@@ -42,14 +42,21 @@ function scoredForPlay(
   return dossier?.scored;
 }
 
-/** Count how many of the 5 core scoring dimensions are positive (>0). */
+/** Count how many scoring dimensions are materially positive — mirrors scorer.ts. */
 function countConfirmingSignals(scored: ScoredCandidate): number {
+  if (scored.confirming_signals != null && scored.confirming_signals >= 0) {
+    return scored.confirming_signals;
+  }
   let count = 0;
-  if (scored.flow_score > 0) count++;
-  if (scored.tech_score > 0) count++;
-  if (scored.pos_score > 0) count++;
-  if (scored.news_score > 0) count++;
-  if (scored.smart_money_score > 0) count++;
+  if (scored.flow_score >= 8) count++;
+  if (scored.tech_score >= 6) count++;
+  if (scored.pos_score >= 4) count++;
+  if (scored.news_score >= 2) count++;
+  if (scored.smart_money_score >= 2) count++;
+  if ((scored.fundamental_score ?? 0) >= 2) count++;
+  if ((scored.short_interest_score ?? 0) >= 2) count++;
+  if ((scored.wall_proximity_score ?? 0) >= 3) count++;
+  if ((scored.vex_alignment_score ?? 0) >= 2) count++;
   return count;
 }
 
