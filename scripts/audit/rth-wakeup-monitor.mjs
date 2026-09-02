@@ -19,13 +19,15 @@ const LOG = join(OUT, "wakeup-monitor.log");
 
 function etNow() {
   const p = etParts(new Date());
-  return { ...p, minutes: p.hour * 60 + p.minute };
+  const hour = Math.floor(p.mins / 60);
+  const minute = p.mins % 60;
+  const dow = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[p.weekday] ?? -1;
+  return { ...p, hour, minute, minutes: p.mins, dow };
 }
 
 function marketOpen(et) {
   if (FORCE) return true;
-  const dow = et.dow;
-  if (dow === 0 || dow === 6) return false;
+  if (et.weekday === "Sat" || et.weekday === "Sun") return false;
   return et.minutes >= 9 * 60 + 30 && et.minutes < 16 * 60;
 }
 

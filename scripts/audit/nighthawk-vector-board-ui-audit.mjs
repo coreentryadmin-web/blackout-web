@@ -7,7 +7,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { chromium } from "playwright";
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
 
-const BASE = (process.env.VALIDATE_BASE || "http://localhost:3000").replace(/\/$/, "");
+const BASE = (process.env.VALIDATE_BASE || process.env.AUDIT_APP_URL || "https://blackouttrades.com").replace(/\/$/, "");
 const OUT = "/opt/cursor/artifacts/nighthawk-vector-board-ui";
 
 function cookiesFromHeader(header, domain) {
