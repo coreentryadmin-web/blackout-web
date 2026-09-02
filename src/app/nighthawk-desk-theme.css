@@ -1424,14 +1424,16 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 }
 
 .nh-v2-page .legacy-board-body--inspector .legacy-board-manage {
-  flex: 0 0 min(28vw, 19rem);
-  width: min(28vw, 19rem);
-  max-width: 19rem;
+  flex: 0 0 min(32vw, 22rem);
+  width: min(32vw, 22rem);
+  max-width: 22rem;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--nh-desk-border);
+  writing-mode: horizontal-tb;
 }
 
 .nh-v2-page .legacy-board-manage-head {
@@ -1443,17 +1445,20 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 .nh-v2-page .legacy-board-manage-body {
   flex: 1 1 0%;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0.35rem 0.65rem 0.5rem;
+  padding: 0.45rem 0.75rem 0.55rem;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.55rem;
   align-content: start;
+  writing-mode: horizontal-tb;
 }
 
 .nh-v2-page .legacy-board-manage-body .legacy-detail-section {
   min-width: 0;
+  width: 100%;
 }
 
 .nh-v2-page .legacy-manage-rec {
@@ -1482,9 +1487,14 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 }
 
 .nh-v2-page .legacy-manage-levels .nh-deck-recnote {
-  font-size: 9px;
-  line-height: 1.3;
+  font-size: 10px;
+  line-height: 1.45;
   margin: 0;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+  writing-mode: horizontal-tb;
+  max-width: 100%;
 }
 
 .nh-v2-page .legacy-manage-swing-link {
@@ -1501,15 +1511,15 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 /* Bottom technicals rail */
 .nh-v2-page .legacy-board-technicals {
   flex: 0 0 auto;
-  min-height: 10.5rem;
-  max-height: 38%;
+  min-height: 13.5rem;
+  max-height: 44%;
   overflow: hidden;
   border-top: 1px solid var(--nh-desk-border);
   background: var(--nh-desk-surface-muted);
-  padding: 0.4rem 0.65rem 0.5rem;
+  padding: 0.55rem 0.8rem 0.65rem;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.45rem;
 }
 
 .nh-v2-page .legacy-board-technicals-head {
@@ -1522,18 +1532,18 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 
 .nh-v2-page .legacy-board-technicals-ticker {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 800;
   color: var(--nh-desk-text);
 }
 
 .nh-v2-page .legacy-board-technicals-sub {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--nh-desk-text-tertiary);
 }
 
 .nh-v2-page .legacy-board-technicals-badge {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1549,7 +1559,7 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
   overflow: hidden;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.5rem 0.75rem;
+  gap: 0.65rem 0.85rem;
 }
 
 .nh-v2-page .legacy-board-technicals-col {
@@ -1559,11 +1569,11 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 
 /* Shared bullet primitives */
 .nh-v2-page .legacy-detail-section-title {
-  margin: 0 0 0.25rem;
+  margin: 0 0 0.3rem;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--nh-desk-text-tertiary);
 }
@@ -1574,16 +1584,34 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.22rem;
 }
 
 .nh-v2-page .legacy-detail-bullet {
   display: grid;
-  grid-template-columns: minmax(4.5rem, 38%) 1fr;
-  gap: 0.25rem 0.4rem;
+  grid-template-columns: minmax(5rem, 40%) 1fr;
+  gap: 0.3rem 0.5rem;
   align-items: baseline;
-  font-size: 10px;
-  line-height: 1.35;
+  font-size: 11px;
+  line-height: 1.4;
+  min-width: 0;
+  writing-mode: horizontal-tb;
+}
+
+.nh-v2-page .legacy-detail-bullet--stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.15rem;
+}
+
+.nh-v2-page .legacy-detail-bullet--stacked .legacy-detail-bullet-value {
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.nh-v2-page .legacy-detail-bullet--stacked .legacy-detail-bullet-sub {
+  grid-column: unset;
 }
 
 .nh-v2-page .legacy-detail-bullet-label {
@@ -1611,14 +1639,15 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 }
 
 .nh-v2-page .legacy-detail-prose {
-  margin: 0 0 0.25rem;
-  font-size: 10px;
-  line-height: 1.4;
+  margin: 0 0 0.3rem;
+  font-size: 11px;
+  line-height: 1.45;
   color: var(--nh-desk-text-secondary);
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 5;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  writing-mode: horizontal-tb;
 }
 
 .nh-v2-page .legacy-board-technicals-checklist .nh-deck-premium__heading,
@@ -1633,8 +1662,8 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 }
 
 .nh-v2-page .legacy-board-technicals-checklist .nh-deck-confluence__cell {
-  font-size: 9px;
-  padding: 0.1rem 0.3rem;
+  font-size: 10px;
+  padding: 0.12rem 0.35rem;
 }
 
 .nh-v2-page .legacy-board-technicals-checklist .nh-deck-tierfactors-list {

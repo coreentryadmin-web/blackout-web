@@ -121,7 +121,9 @@ export function LegacyPlayManageRail({
 
         <LegacyDetailSection title="Trade plan">
           <LegacyDetailBullets>
-            {play.recNote ? <LegacyDetailBullet label="Desk note" value={play.recNote} /> : null}
+            {play.recNote ? (
+              <LegacyDetailBullet label="Desk note" value={play.recNote} stacked />
+            ) : null}
             {play.optionsPlay ? (
               <LegacyDetailBullet label="Contract" value={play.optionsPlay} />
             ) : (
@@ -135,7 +137,7 @@ export function LegacyPlayManageRail({
               <LegacyDetailBullet label="Exit style" value="Scale-out banger — trim into strength" tone="warn" />
             ) : null}
             {play.riskNote?.trim() ? (
-              <LegacyDetailBullet label="Risk note" value={play.riskNote.trim()} tone="warn" />
+              <LegacyDetailBullet label="Risk note" value={play.riskNote.trim()} tone="warn" stacked />
             ) : null}
             <LegacyDetailBullet
               label="Premium cap"
