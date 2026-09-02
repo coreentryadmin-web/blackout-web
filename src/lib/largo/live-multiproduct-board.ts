@@ -61,12 +61,13 @@ export async function assembleMultiproductBoard(
   const setups: UnifiedSetup[] = [];
 
   // Fetch from each product in parallel
-  const [nh, thermal, vector, spx, helix] = await Promise.allSettled([
+  const [nh, thermal, vector, spx, helix, meridian] = await Promise.allSettled([
     fetchNightHawkSetups(tools),
     fetchThermalSetups(tools),
     fetchVectorSetups(tools),
     fetchSpxSetups(tools),
     fetchHelixSetups(tools),
+    fetchMeridianSetups(tools),
   ]);
 
   // Collect results, skipping errors
@@ -75,6 +76,7 @@ export async function assembleMultiproductBoard(
   if (vector.status === "fulfilled") setups.push(...(vector.value || []));
   if (spx.status === "fulfilled") setups.push(...(spx.value || []));
   if (helix.status === "fulfilled") setups.push(...(helix.value || []));
+  if (meridian.status === "fulfilled") setups.push(...(meridian.value || []));
 
   const totalAvailable = setups.length;
 
@@ -235,6 +237,33 @@ async function fetchHelixSetups(tools: any): Promise<UnifiedSetup[]> {
       live: true,
       rationale: `Earnings signal, ${signal.reaction_type}, ${signal.historical_edge_pct?.toFixed(1)}% edge`,
       freshness_minutes: 60,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchMeridianSetups(tools: any): Promise<UnifiedSetup[]> {
+  try {
+    const events = await tools.get_earnings_market?.();
+    if (!events?.length) return [];
+
+    // Meridian focuses on earnings calendar events
+    return events.slice(0, 2).map((event: any) => ({
+      rank: 0,
+      product: "meridian",
+      ticker: event.ticker,
+      setup_type: `Earnings event`,
+      direction: event.expected_move_pct && event.expected_move_pct > 0 ? "bull" : "bear",
+      entry_level: event.current_price ?? 0,
+      target_level: null,
+      stop_level: 0,
+      edge_pct: null,
+      confidence: 0.6, // earnings data is reliable
+      expires_at_et: event.earnings_date ?? new Date().toISOString(),
+      live: false, // Meridian is calendar-based, not active trading
+      rationale: `Earnings calendar, ${event.expected_move_pct?.toFixed(1)}% expected move`,
+      freshness_minutes: 120,
     }));
   } catch {
     return [];

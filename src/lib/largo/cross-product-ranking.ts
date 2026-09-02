@@ -259,11 +259,27 @@ async function scoreHelix(input: CrossProductRankingInput, tools: any): Promise<
 }
 
 async function scoreMeridian(input: CrossProductRankingInput, tools: any): Promise<ProductScore | null> {
-  // Score Meridian (sector themes, flows)
+  // Score Meridian (sector themes, flows, earnings calendar)
   try {
-    // Meridian is secondary — only score if specific event data is available
-    // This would require deeper sector analysis which isn't in the basic flow
-    return null; // Placeholder: Meridian scoring TBD pending get_meridian_timeline tool
+    const earnings = await tools.get_earnings_market?.();
+    if (!earnings?.length) return null;
+
+    const relevant = earnings.find((e: any) => e.ticker === input.ticker);
+    if (!relevant) return null;
+
+    // Meridian adds value when there's earnings + expected move
+    const moveScore = normalizeScore(relevant.expected_move_pct ?? 0, 10);
+
+    return {
+      product: "meridian",
+      rank: 0,
+      score: moveScore,
+      raw_value: relevant.expected_move_pct ?? 0,
+      confidence: 0.7, // earnings data is reliable but historical
+      reason: `Earnings calendar signal, ${relevant.expected_move_pct?.toFixed(1)}% expected move`,
+      data_source: "get_earnings_market",
+      freshness_minutes: 120, // earnings data ages slowly
+    };
   } catch {
     return null;
   }
