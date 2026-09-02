@@ -518,7 +518,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
                   Lock in yearly <span className="cta-arrow">&rarr;</span>
                 </MarketingAuthAnchor>
               )}
-              <p className="trust">Cancel anytime &middot; No contracts</p>
+              <p className="trust">7-day money-back guarantee &middot; cancel anytime</p>
             </div>
           </div>
         </div>
