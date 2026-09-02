@@ -1,5 +1,6 @@
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
+import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "./vector-ticker";
 
 /**
@@ -76,7 +77,22 @@ export function pruneDynamicUniverse(
   return Object.fromEntries(fresh.slice(0, cap));
 }
 
-/** Record that a member opened `ticker` on Vector. Fire-and-forget; never throws. */
+/**
+ * Record that a member opened `ticker` on Vector. Fire-and-forget; never throws.
+ *
+ * `isVectorTickerAllowed` (vector-ticker.ts) is a SYNTAX gate only, by design — Vector serves any
+ * well-formed symbol on demand so a member can look up a name outside the preset universe. That
+ * design is correct for the live, on-demand view, but this function feeds a DIFFERENT, higher-
+ * stakes path: the cron-recorded, every-member-visible shared universe. A one-time typo view (a
+ * real live incident: "NFLIX" for NFLX) satisfied the syntax gate and got pinned into this map
+ * forever, since nothing here ever asked whether the symbol has real options data — the 5-min
+ * recorder cron then kept re-warming a name that will never produce one, and every member's
+ * `/api/market/vector/universe` served a permanent dead row (spot: null). This confirms the
+ * ticker resolves to a REAL, optionable symbol (a non-null spot from the live matrix) before
+ * writing it into the shared map — `fetchGexHeatmap` is Redis-cache-first, so this costs nothing
+ * extra once a ticker is warm, and the debounce below still applies to failed lookups so a
+ * repeatedly-opened typo isn't re-validated on every view.
+ */
 export async function touchDynamicUniverse(rawTicker: string): Promise<void> {
   try {
     if (!isVectorTickerAllowed(rawTicker)) return;
@@ -86,6 +102,8 @@ export async function touchDynamicUniverse(rawTicker: string): Promise<void> {
     const prev = lastTouch.get(ticker);
     if (prev != null && now - prev < TOUCH_DEBOUNCE_MS) return;
     lastTouch.set(ticker, now);
+    const hm = await fetchGexHeatmap(ticker).catch(() => null);
+    if (hm?.spot == null) return;
     const map = (await sharedCacheGet<DynamicMap>(KEY)) ?? {};
     map[ticker] = now;
     await sharedCacheSet(KEY, pruneDynamicUniverse(map, now), KEY_TTL_SEC);
