@@ -261,6 +261,24 @@ test("selectHelixDiscordDigest prefers in-window score then premium", () => {
   assert.equal(picked.rows[0]?.ticker, "HOT");
 });
 
+test("selectHelixDiscordDigest rejects a future-dated print instead of picking it as freshest", () => {
+  // Same future-print bug already fixed in contractStackHitsFromFlows: an event_at ahead of `now`
+  // makes `nowMs - ms` negative, which trivially satisfies `<= windowMs` and would let a
+  // clock-skewed print win the digest pick on score alone.
+  const now = new Date("2026-08-04T14:32:00.000Z");
+  const recent = now.toISOString();
+  const future = new Date(now.getTime() + 10 * 60_000).toISOString();
+  const picked = selectHelixDiscordDigest(
+    [
+      { ...base, ticker: "REAL", premium: 700_000, score: 6, fill_price: 4, dte: 5, event_at: recent },
+      { ...base, ticker: "FUTURE", premium: 5_000_000, score: 9, fill_price: 5, dte: 5, event_at: future },
+    ],
+    { windowMin: 15, now, limit: 3 }
+  );
+  assert.equal(picked.inWindowCount, 1);
+  assert.equal(picked.rows[0]?.ticker, "REAL");
+});
+
 test("buildHelixBurstEmbed collapses multiple prints on one ticker", () => {
   const emb = buildHelixBurstEmbed({
     ticker: "NVDA",

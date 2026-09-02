@@ -45,6 +45,44 @@ test("computeFlowStrikeStacks: recent_hit_count respects windowMs", () => {
   assert.equal(stacks[0]!.recent_hits.length, 2);
 });
 
+test("computeFlowStrikeStacks: rejects a future-dated alert instead of counting it as a recent hit", () => {
+  // Same future-print bug already fixed in the sibling Helix/Discord digest filters: an
+  // event_at/alerted_at ahead of `now` makes `nowMs - ms` negative, which trivially satisfies
+  // `<= windowMs` and would inflate recent_hit_count — a value Largo reads directly before Claude
+  // writes about it.
+  const now = Date.parse("2026-07-20T16:00:00.000Z");
+  const future = new Date(now + 10 * 60_000).toISOString();
+  const alerts = [
+    {
+      ticker: "NVDA",
+      strike: 180,
+      option_type: "CALL",
+      expiry: "2026-07-25",
+      premium: 500_000,
+      event_at: "2026-07-20T15:50:00.000Z",
+      alerted_at: "2026-07-20T15:50:00.000Z",
+    },
+    {
+      ticker: "NVDA",
+      strike: 180,
+      option_type: "CALL",
+      expiry: "2026-07-25",
+      premium: 900_000,
+      event_at: future,
+      alerted_at: future,
+    },
+  ];
+  const stacks = computeFlowStrikeStacks(alerts, {
+    minAlerts: 2,
+    limit: 5,
+    windowMs: 15 * 60 * 1000,
+    nowMs: now,
+  });
+  assert.equal(stacks.length, 1);
+  assert.equal(stacks[0]!.recent_hit_count, 1);
+  assert.equal(stacks[0]!.recent_hits.length, 1);
+});
+
 test("computeFlowStrikeStacks: input cap keeps most recent alerts, not tape head", () => {
   const now = Date.parse("2026-07-20T16:00:00.000Z");
   const staleHead = Array.from({ length: 600 }, (_, i) => ({
