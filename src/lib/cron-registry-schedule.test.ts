@@ -51,6 +51,8 @@ const NO_BACKING_TOML: Record<string, string> = {
     "Hand-added to cron-jobs.json with no railway.x-analytics.toml. Same regeneration hazard as x-autopost.",
   "banger-live-sync":
     "Hand-added to cron-jobs.json with no railway.banger-live-sync.toml. Worst of the five: produces_member_alert is true, so a sync run would silently stop the live banger board updating during the session with nothing to indicate it.",
+  "legacy-live-sync":
+    "Hand-added to cron-jobs.json with no railway.legacy-live-sync.toml. Same regeneration hazard as banger-live-sync; produces_member_alert is true.",
 };
 
 /**

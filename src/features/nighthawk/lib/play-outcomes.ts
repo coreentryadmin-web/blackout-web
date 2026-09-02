@@ -694,11 +694,16 @@ export async function resolvePendingNighthawkOutcomes(opts?: {
       });
 
       if (verdict.outcome === "target" || verdict.outcome === "stop") {
-        void import("@/features/nighthawk/lib/legacy-discord-trade-notify")
-          .then(({ notifyLegacyOutcomeClose }) => notifyLegacyOutcomeClose(row, verdict.outcome as "target" | "stop"))
-          .catch((err) => {
-            console.warn(`[nighthawk-outcomes] legacy discord STC failed for ${row.ticker}:`, err);
-          });
+        const alreadyClosed = Boolean(
+          (row.discord_live_state as { closed?: boolean } | null | undefined)?.closed
+        );
+        if (!alreadyClosed) {
+          void import("@/features/nighthawk/lib/legacy-discord-trade-notify")
+            .then(({ notifyLegacyOutcomeClose }) => notifyLegacyOutcomeClose(row, verdict.outcome as "target" | "stop"))
+            .catch((err) => {
+              console.warn(`[nighthawk-outcomes] legacy discord STC failed for ${row.ticker}:`, err);
+            });
+        }
       }
 
       resolved += 1;

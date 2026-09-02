@@ -4,8 +4,9 @@
  *
  * Hooks:
  *   - Edition publish → BTO for every ranked play with a parseable option contract
+ *   - legacy-live-sync cron → TRIM/STC on premium + stock stop/target (plan) or scale-out rule
  *   - Morning INVALIDATED → STC (clears virtual book when pre-market pulls a play)
- *   - Outcomes target/stop → STC at session grade
+ *   - Outcomes target/stop → STC at real option session mark (Polygon bar, heuristic fallback)
  *
  * Fire-and-forget: never throws into edition/morning/outcomes crons.
  */
@@ -29,6 +30,8 @@ export type LegacyTradeDiscordInput = {
   expiry: string;
   entry_premium: number;
   options_play?: string | null;
+  last_mark?: number | null;
+  trims_taken?: number;
 };
 
 export function legacyDiscordAlertsEnabled(): boolean {
@@ -128,8 +131,9 @@ export function buildLegacyTradePayload(
 
   const ticker = row.ticker.toUpperCase();
   const virtualLots = chiefTradeVirtualLots();
+  const trimmed = row.trims_taken ?? 0;
 
-  let qty = opts.qty ?? virtualLots;
+  let qty = opts.qty ?? (action === "BTO" ? virtualLots : Math.max(1, virtualLots - trimmed));
   qty = Math.max(1, Math.floor(qty));
 
   const suffix = opts.idempotencySuffix ?? action.toLowerCase();
@@ -146,7 +150,7 @@ export function buildLegacyTradePayload(
   };
 }
 
-/** Rough option exit for EOD grade when no live mark is available. */
+/** Rough option exit fallback when no live/session mark is available. */
 export function legacyOutcomeExitPremium(
   entryPremium: number,
   outcome: "target" | "stop" | "open" | "ambiguous" | "unfilled"
@@ -154,6 +158,41 @@ export function legacyOutcomeExitPremium(
   if (outcome === "target") return Number((entryPremium * 1.35).toFixed(2));
   if (outcome === "stop") return Number((entryPremium * 0.65).toFixed(2));
   return entryPremium;
+}
+
+/** Fetch the option session close mark for EOD grade / STC. Falls back to heuristic. */
+export async function resolveLegacyOutcomeExitPremium(
+  input: LegacyTradeDiscordInput,
+  outcome: "target" | "stop" | "open" | "ambiguous" | "unfilled",
+  sessionDate: string
+): Promise<number> {
+  const fallback = legacyOutcomeExitPremium(input.entry_premium, outcome);
+  if (!input.options_play) return fallback;
+
+  try {
+    const { resolveLegacyPlayOcc } = await import("@/features/nighthawk/lib/legacy-play-contract");
+    const occ = resolveLegacyPlayOcc(input.ticker, input.options_play);
+    if (!occ) return fallback;
+
+    const { fetchPolygonOptionBars } = await import("@/lib/providers/polygon-largo");
+    const bars = await fetchPolygonOptionBars(occ, 1, "day", sessionDate, sessionDate, "5");
+    const close = bars[bars.length - 1]?.c;
+    if (close != null && Number.isFinite(close) && close > 0) {
+      return Number(close.toFixed(2));
+    }
+
+    const { fetchLegacyOptionMarksServer } = await import(
+      "@/features/nighthawk/lib/legacy-option-marks-server"
+    );
+    const marks = await fetchLegacyOptionMarksServer([occ], { includeStale: true });
+    const live = marks.get(occ.toUpperCase())?.mark;
+    if (live != null && Number.isFinite(live) && live > 0) {
+      return Number(live.toFixed(2));
+    }
+  } catch {
+    // fail-soft — heuristic below
+  }
+  return fallback;
 }
 
 /** Edition publish → BTO every ranked play with a valid option contract. */
@@ -186,6 +225,46 @@ export async function notifyLegacyTradeOpen(
   return postChiefTrade(payload);
 }
 
+/** trim_scale tranche banked → partial STC (only when CHIEF_TRADE_VIRTUAL_LOTS > 1). */
+export async function notifyLegacyTradeTrim(
+  input: LegacyTradeDiscordInput,
+  trimIndex: number,
+  trimPrice?: number | null
+): Promise<boolean> {
+  if (!legacyDiscordAlertsEnabled()) return false;
+  if (chiefTradeVirtualLots() <= 1) return false;
+  const price = trimPrice ?? input.last_mark;
+  if (price == null || !Number.isFinite(price) || price <= 0) return false;
+  const payload = buildLegacyTradePayload(input, "STC", price, {
+    qty: 1,
+    idempotencySuffix: `trim:${trimIndex}`,
+  });
+  if (!payload) return false;
+  return postChiefTrade(payload);
+}
+
+/** Ratchet / first TRIM latch → bank one virtual lot when lots ≥ 2. */
+export async function notifyLegacyTradeTrimLatch(
+  input: LegacyTradeDiscordInput,
+  trimPrice?: number | null
+): Promise<boolean> {
+  if (!legacyDiscordAlertsEnabled()) return false;
+  if (chiefTradeVirtualLots() < 2) return false;
+  if ((input.trims_taken ?? 0) > 0) return false;
+  return notifyLegacyTradeTrim(input, 1, trimPrice);
+}
+
+/** Scale-out partial at 2× → STC one lot (virtual lots ≥ 2) or status-only. */
+export async function notifyLegacyScaleOutPartial(
+  input: LegacyTradeDiscordInput,
+  trimIndex: number,
+  trimPrice?: number | null
+): Promise<boolean> {
+  if (!legacyDiscordAlertsEnabled()) return false;
+  if (chiefTradeVirtualLots() <= 1) return false;
+  return notifyLegacyTradeTrim({ ...input, trims_taken: trimIndex - 1 }, trimIndex, trimPrice);
+}
+
 /** Morning pull or EOD grade → STC. */
 export async function notifyLegacyTradeClose(
   input: LegacyTradeDiscordInput,
@@ -202,13 +281,14 @@ export async function notifyLegacyTradeClose(
   return postChiefTrade(payload);
 }
 
-/** Outcome row resolved to target/stop → STC with graded exit estimate. */
+/** Outcome row resolved to target/stop → STC with real session option mark. */
 export async function notifyLegacyOutcomeClose(
   row: NighthawkPlayOutcomeRow,
   outcome: "target" | "stop"
 ): Promise<boolean> {
   const input = legacyInputFromOutcomeRow(row);
   if (!input) return false;
-  const exit = legacyOutcomeExitPremium(input.entry_premium, outcome);
+  const { outcomeSessionDate } = await import("@/features/nighthawk/lib/play-outcomes");
+  const exit = await resolveLegacyOutcomeExitPremium(input, outcome, outcomeSessionDate(row));
   return notifyLegacyTradeClose(input, exit, { idempotencySuffix: `stc:${outcome}` });
 }
