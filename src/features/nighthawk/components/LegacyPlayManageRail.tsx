@@ -39,7 +39,10 @@ export function LegacyPlayManageRail({
   onClose: () => void;
   sheet?: boolean;
 }) {
-  if (!row) {
+  const play: TerminalPlay | null = row?.play ?? null;
+  const markFlash = useFlash(play?.stockMovePct ?? play?.pnlPct ?? null);
+
+  if (!row || !play) {
     return (
       <aside className="vector-board-detail legacy-board-manage vector-board-detail--empty" aria-label="Trade management">
         <p className="vector-board-detail-empty-title">Select a play</p>
@@ -51,10 +54,8 @@ export function LegacyPlayManageRail({
     );
   }
 
-  const play: TerminalPlay = row.play;
   const morningLine = legacyMorningHeadline(play);
   const stockTone = pnlTone(play.stockMovePct ?? null);
-  const markFlash = useFlash(play.stockMovePct ?? play.pnlPct ?? null);
   const markAge = legacyMarkAgeLabel(play.markAsOf);
 
   return (
