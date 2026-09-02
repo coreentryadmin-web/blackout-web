@@ -51,7 +51,7 @@ import { contextualFollowupsFromAnswer } from "@/lib/largo/contextual-followups"
 import { withResolutionChips } from "@/lib/largo/core/resolution-chips";
 import { loadLargoPlatformSnapshotBlock } from "@/lib/largo/platform-snapshot-block";
 import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-live-feed";
-import { polygonConfigured, uwConfigured } from "@/lib/providers/config";
+import { polygonConfigured, uwConfigured, largoMemberRouteDeadlineMs } from "@/lib/providers/config";
 import { webSearchConfigured } from "@/lib/providers/web-search";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import {
@@ -256,13 +256,40 @@ export { isRichBieEnvelope } from "@/lib/bie/envelope-richness";
  * suggestion chips. Fail-open: returns [] on any error / no key / spend-ceiling, so
  * follow-ups are a pure enhancement that never blocks or breaks the answer.
  */
+/** The follow-up call's own request timeout — a second Anthropic round-trip AFTER the main tool
+ *  loop already returned. `FOLLOWUP_CALL_TIMEOUT_MS` (14s) plus its one retry can cost up to ~28s,
+ *  which is unaccounted for by the tool loop's own budget (`largoLoopBudgetMs`) and by the route's
+ *  hard deadline race (`largoRouteDeadlineRace`, route.ts) — that race DISCARDS the whole answer,
+ *  tool loop included, if this second call pushes total elapsed past `largoMemberRouteDeadlineMs()`.
+ *  Measured live 2026-09-02: a four-desk synthesis question ("why is SPX bullish, what does Helix
+ *  show, how does Thermal align, what invalidates Night Hawk") returned a bare HTTP 503 at
+ *  100358ms — 358ms past the 100s route deadline — with the member-visible fallback message
+ *  quoting a generic "ran long" reason. The tool loop had almost certainly already produced a real
+ *  answer by then (deep mode's own loopBudgetMs caps it at 75s); this follow-up call is what spent
+ *  the remaining ~25s headroom the loop budget was supposed to leave for post-loop work. */
+const FOLLOWUP_CALL_TIMEOUT_MS = 14_000;
+/** Skip the LLM follow-up call (falling back to the free, synchronous `deterministicLargoFollowups`)
+ *  once less than this much route-deadline headroom remains — the call's own timeout plus a margin
+ *  for the retry attempt and the cheap work still left after it (persistClaudeTurn, envelope build). */
+const FOLLOWUP_MIN_REMAINING_MS = FOLLOWUP_CALL_TIMEOUT_MS + 8_000;
+
 export async function generateLargoFollowups(
   question: string,
   answer: string,
-  tickerHint?: string | null
+  tickerHint?: string | null,
+  /** Route-deadline headroom left when this is called, in ms. Omit to always attempt the LLM
+   *  call (existing behavior) — only a caller that tracks `startedAt` against the route deadline
+   *  can supply this, so it stays optional rather than forcing every call site to compute it. */
+  remainingBudgetMs?: number
 ): Promise<string[]> {
   const fallback = deterministicLargoFollowups(question, tickerHint);
   if (!largoClaudeEnabled() || !answer.trim()) return fallback;
+  if (remainingBudgetMs !== undefined && remainingBudgetMs < FOLLOWUP_MIN_REMAINING_MS) {
+    console.warn(
+      `[largo] skipping follow-up LLM call — only ${remainingBudgetMs}ms of route-deadline headroom left`
+    );
+    return fallback;
+  }
 
   const focus = tickerHint ? ` Focus ticker: ${tickerHint}.` : "";
   const prompt = `You generate follow-up questions for Largo — the AI desk lead on BlackOut Trading (SPX Slayer, HELIX flow, Thermal GEX, Vector, Night Hawk, 0DTE Command, Cortex gates, track record).${focus}
@@ -283,7 +310,7 @@ Return ONLY the 3 questions, one per line.`;
     const out = await anthropicText(prompt, 200, undefined, {
       model: COMMENTARY_MODEL,
       temperature: 0.65,
-      timeoutMs: 14_000,
+      timeoutMs: FOLLOWUP_CALL_TIMEOUT_MS,
       maxRetries: 1,
       aiGate: "largo",
     });
@@ -1153,7 +1180,12 @@ export async function runLargoQuery(
           compareCard,
           ticker: tickerHint,
         }),
-        ...(await generateLargoFollowups(question, text, tickerHint)),
+        ...(await generateLargoFollowups(
+          question,
+          text,
+          tickerHint,
+          largoMemberRouteDeadlineMs() - (Date.now() - startedAt)
+        )),
       ],
       envelope?.headline ?? ""
     );
@@ -1450,7 +1482,12 @@ export async function runLargoQueryStream(
           compareCard,
           ticker: tickerHint,
         }),
-        ...(await generateLargoFollowups(question, text, tickerHint)),
+        ...(await generateLargoFollowups(
+          question,
+          text,
+          tickerHint,
+          largoMemberRouteDeadlineMs() - (Date.now() - startedAt)
+        )),
       ],
       envelope?.headline ?? ""
     );
