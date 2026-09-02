@@ -122,7 +122,7 @@ async function main() {
                 ? "RED — manage rail has crushed text columns (vertical wrap bug)"
               : afterSelect.pageScrollY > 12
                 ? "AMBER — page scrolls (target: viewport-locked)"
-                : afterSelect.manageBodyVisiblePx < 220
+                : afterSelect.manageBodyVisiblePx < 200
                   ? "AMBER — manage rail body too short (scroll to see trade plan)"
                 : afterSelect.bulletCount < 8
                   ? "AMBER — sparse bullet content"

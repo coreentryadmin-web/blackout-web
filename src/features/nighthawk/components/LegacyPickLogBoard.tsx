@@ -338,6 +338,7 @@ export function LegacyPickLogBoard({
         "vector-board-shell legacy-board-shell",
         "legacy-board-xads",
         selectedRow && "legacy-board-shell--inspector",
+        selectedRow && "is-compact",
         prefs.density === "compact" && "is-compact",
         prefs.focusMode && "is-focus"
       )}
