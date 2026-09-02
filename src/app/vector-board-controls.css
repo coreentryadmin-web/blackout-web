@@ -465,3 +465,292 @@
     overflow-y: auto;
   }
 }
+
+/* ── Date preset dropdown (X Ads range picker) ───────────────────────────── */
+.nh-v2-page .vector-board-date-dropdown {
+  position: relative;
+}
+
+.nh-v2-page .vector-board-date-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: var(--vb-control-h);
+  padding: 0 0.75rem;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: var(--vb-pill-radius);
+  background: var(--nh-desk-input-bg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--nh-desk-text);
+  transition: border-color var(--vb-transition), box-shadow var(--vb-transition), transform var(--vb-transition);
+}
+
+.nh-v2-page .vector-board-date-trigger:hover,
+.nh-v2-page .vector-board-date-trigger.is-open {
+  border-color: var(--nh-desk-tab-underline);
+  box-shadow: var(--vb-focus-ring);
+}
+
+.nh-v2-page .vector-board-date-trigger-caret {
+  font-size: 10px;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-date-panel {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 40;
+  min-width: 13.5rem;
+  padding: 0.35rem;
+  border: 1px solid var(--nh-desk-border);
+  border-radius: calc(var(--vb-control-radius) + 2px);
+  background: var(--nh-desk-surface, rgba(12, 14, 20, 0.98));
+  box-shadow: var(--vb-shadow-pop);
+  animation: vb-panel-in 0.16s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nh-v2-page .vector-board-date-opt {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 0.45rem;
+  text-align: left;
+  transition: background var(--vb-transition);
+}
+
+.nh-v2-page .vector-board-date-opt:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nh-v2-page .vector-board-date-opt.is-active {
+  background: rgba(0, 217, 163, 0.1);
+}
+
+.nh-v2-page .vector-board-date-opt-title {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .vector-board-date-opt-sub {
+  font-size: 10px;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-date-divider {
+  height: 1px;
+  margin: 0.25rem 0;
+  background: var(--nh-desk-border-subtle);
+}
+
+.nh-v2-page .vector-board-date-section {
+  margin: 0.15rem 0.35rem 0.25rem;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-date-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.45rem 0.55rem;
+}
+
+/* ── Compare inspector grid ──────────────────────────────────────────────── */
+.nh-v2-page .vector-board-compare-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.nh-v2-page .vector-board-compare-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.nh-v2-page .vector-board-compare-grid-head,
+.nh-v2-page .vector-board-compare-grid-row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1.4fr) repeat(4, minmax(4rem, 1fr));
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.nh-v2-page .vector-board-compare-grid-head {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-compare-grid-row {
+  padding: 0.35rem 0;
+  border-top: 1px solid var(--nh-desk-border-subtle);
+}
+
+.nh-v2-page .vector-board-compare-grid-ticker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 11px;
+}
+
+.nh-v2-page .vector-board-compare-grid-sub {
+  font-size: 9px;
+  color: var(--nh-desk-text-tertiary);
+}
+
+.nh-v2-page .vector-board-compare-grid-val {
+  font-size: 11px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.nh-v2-page .vector-board-compare-grid-val.is-up {
+  color: var(--nh-desk-up);
+}
+
+.nh-v2-page .vector-board-compare-grid-val.is-down {
+  color: var(--nh-desk-down);
+}
+
+.nh-v2-page .vector-board-compare-grid-mid {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* ── Detail rail tabs ────────────────────────────────────────────────────── */
+.nh-v2-page .vector-board-detail-tabs {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  border-bottom: 1px solid var(--nh-desk-border-subtle);
+}
+
+.nh-v2-page .vector-board-detail-tab {
+  position: relative;
+  padding: 0.35rem 0 0.5rem;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--nh-desk-text-tertiary);
+  transition: color var(--vb-transition);
+}
+
+.nh-v2-page .vector-board-detail-tab.is-active {
+  color: var(--nh-desk-text);
+}
+
+.nh-v2-page .vector-board-detail-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--nh-desk-tab-underline);
+  border-radius: 2px;
+}
+
+.nh-v2-page .vector-board-detail-panel {
+  animation: vb-panel-in 0.14s ease;
+}
+
+/* ── Focus mode — table-first until a row is selected ────────────────────── */
+.nh-v2-page .vector-board-body.is-focus-awaiting .vector-board-detail {
+  display: none;
+}
+
+.nh-v2-page .vector-board-body.is-focus-awaiting .vector-board-table-pane {
+  flex: 1 1 100%;
+  max-width: 100%;
+}
+
+.nh-v2-page .vector-board-shell.is-compact .vector-board-table tbody td {
+  padding: 0.3rem 0.45rem;
+}
+
+.nh-v2-page .vector-board-shell.is-compact .vector-board-pick-sub {
+  display: none;
+}
+
+.nh-v2-page .vector-board-shell.is-compact .vector-board-pnl-hero {
+  font-size: 11px;
+}
+
+/* ── Mobile detail sheet ─────────────────────────────────────────────────── */
+.nh-v2-page .vector-board-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  border: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  animation: vb-fade-in 0.18s ease;
+}
+
+.nh-v2-page .vector-board-detail--sheet {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 50;
+  width: 100%;
+  max-width: none;
+  max-height: min(88vh, 100%);
+  border-left: 0;
+  border-top: 1px solid var(--nh-desk-border);
+  border-radius: 1rem 1rem 0 0;
+  box-shadow: 0 -18px 48px -12px rgba(0, 0, 0, 0.55);
+  animation: vb-sheet-in 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes vb-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes vb-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 820px) {
+  .nh-v2-page .vector-board-body:not(.has-detail-open) .vector-board-detail:not(.vector-board-detail--sheet) {
+    display: none;
+  }
+
+  .nh-v2-page .vector-board-compare-grid-head,
+  .nh-v2-page .vector-board-compare-grid-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .nh-v2-page .vector-board-compare-grid-head span:nth-child(n + 3),
+  .nh-v2-page .vector-board-compare-grid-row .vector-board-compare-grid-val:nth-child(n + 3) {
+    display: none;
+  }
+}

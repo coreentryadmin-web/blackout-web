@@ -41,6 +41,7 @@ import {
   vectorBoardScorecard,
 } from "@/features/nighthawk/lib/vector-board-row-utils";
 import type { VectorClosureReasonFilter } from "@/features/nighthawk/lib/vector-pick-log-board-utils";
+import { useVectorBoardMobile } from "@/features/nighthawk/hooks/use-vector-board-mobile";
 
 const EM = "—";
 
@@ -113,7 +114,7 @@ export function LegacyPickLogBoard({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [statusFilter, setStatusFilter] = useState<VectorBoardStatusFilter>("all");
   const [tierFilter, setTierFilter] = useState<VectorBoardTierFilter>("all");
-  const [reasonFilter] = useState<VectorClosureReasonFilter>("all");
+  const [reasonFilter, setReasonFilter] = useState<VectorClosureReasonFilter>("all");
   const [sort, setSort] = useState<VectorBoardSort>("updated_desc");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [prefs, setPrefs] = useState<VectorBoardPreferences>(() => loadVectorBoardPreferences());
@@ -122,6 +123,7 @@ export function LegacyPickLogBoard({
   const [compareLimitHit, setCompareLimitHit] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const tableRef = useRef<HTMLDivElement | null>(null);
+  const isMobile = useVectorBoardMobile();
 
   useEffect(() => {
     setSelectedDate(selectedEditionDate);
@@ -162,6 +164,11 @@ export function LegacyPickLogBoard({
     return vectorBoardCalendarSlice(all, prefs.calendarRange) as typeof all;
   }, [allRows, calendarDates, prefs.calendarRange]);
 
+  const sessionDates = useMemo(
+    () => calendarBuckets.map((b) => b.session_date),
+    [calendarBuckets]
+  );
+
   const sessionDateFilter = selectedDate
     ? selectedDate
     : sessionScope === "current"
@@ -174,9 +181,9 @@ export function LegacyPickLogBoard({
       sessionDate: sessionDateFilter,
       statusFilter,
       tierFilter,
-      reasonFilter: "all",
+      reasonFilter: tab === "closed" ? reasonFilter : "all",
     });
-  }, [sectionRows, tickerQuery, sessionDateFilter, statusFilter, tierFilter]);
+  }, [sectionRows, tickerQuery, sessionDateFilter, statusFilter, tierFilter, reasonFilter, tab]);
 
   const { key: sortKey, dir: sortDir } = parseVectorBoardSort(sort);
 
@@ -352,7 +359,7 @@ export function LegacyPickLogBoard({
         tierFilter={tierFilter}
         onTierFilterChange={setTierFilter}
         reasonFilter={reasonFilter}
-        onReasonFilterChange={() => undefined}
+        onReasonFilterChange={setReasonFilter}
         sort={sort}
         onSortChange={setSort}
         selectedDate={selectedDate}
@@ -381,6 +388,7 @@ export function LegacyPickLogBoard({
         onCompareModeChange={setCompareMode}
         visibleCount={visibleRows.length}
         sectionCount={sectionRows.length}
+        sessionDates={sessionDates}
       />
 
       {bannerSlot}
@@ -414,7 +422,13 @@ export function LegacyPickLogBoard({
         </div>
       ) : null}
 
-      <div className="vector-board-body vector-board-body--split">
+      <div
+        className={clsx(
+          "vector-board-body vector-board-body--split",
+          selectedRow && "has-detail-open",
+          prefs.focusMode && !selectedRow && "is-focus-awaiting"
+        )}
+      >
         <div className="vector-board-table-pane">
           <div className="vector-board-panel">
             <div className="vector-board-tablewrap" ref={tableRef}>
@@ -521,7 +535,20 @@ export function LegacyPickLogBoard({
           />
         </div>
 
-        <LegacyPlayDetailRail row={selectedRow} onClose={() => setSelectedRow(null)} />
+        {isMobile && selectedRow ? (
+          <button
+            type="button"
+            className="vector-board-detail-backdrop"
+            aria-label="Close detail"
+            onClick={() => setSelectedRow(null)}
+          />
+        ) : null}
+
+        <LegacyPlayDetailRail
+          row={selectedRow}
+          onClose={() => setSelectedRow(null)}
+          sheet={isMobile && !!selectedRow}
+        />
       </div>
     </div>
   );

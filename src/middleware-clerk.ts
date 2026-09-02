@@ -26,8 +26,11 @@ const isProtectedRoute = createRouteMatcher([
   "/account(.*)",
 ]);
 
-/** Dev-only Vector board UI preview — must not match `/vector(.*)` auth above. */
-const isVectorBoardDevPreview = createRouteMatcher(["/vector-board-preview"]);
+/** Dev-only board UI previews — must not match `/vector(.*)` or `/nighthawk(.*)` auth above. */
+const isVectorBoardDevPreview = createRouteMatcher([
+  "/vector-board-preview",
+  "/nighthawk-boards-preview",
+]);
 
 const isWebhookRoute = createRouteMatcher(["/api/webhook/(.*)", "/api/webhooks/(.*)"]);
 const isPublicTelemetryRoute = createRouteMatcher([
