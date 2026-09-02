@@ -10,10 +10,6 @@ function getResendClient(): Resend | null {
   return client;
 }
 
-export function resendConfigured(): boolean {
-  return Boolean(process.env.RESEND_API_KEY?.trim());
-}
-
 const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL?.trim() || "BlackOut Trades <hello@send.blackouttrades.com>";
 
 export type SendEmailResult = { ok: boolean; id?: string; error?: string };
