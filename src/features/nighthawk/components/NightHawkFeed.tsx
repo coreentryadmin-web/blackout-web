@@ -30,7 +30,7 @@ const HorizonDeck = dynamic(
 );
 const LegacyDeck = dynamic(
   () => import("@/features/nighthawk/command-deck/containers").then((m) => m.LegacyDeck),
-  { loading: () => <NightHawkLoadingSkeleton /> }
+  { loading: () => <VectorBoardLoadingSkeleton /> }
 );
 const BangerBoard = dynamic(
   () => import("@/features/nighthawk/components/BangerBoard").then((m) => m.BangerBoard),
