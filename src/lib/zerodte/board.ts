@@ -1440,6 +1440,19 @@ export type SetupDossierView = {
     news_score: number;
     smart_money_score: number;
     catalyst_flags?: string[];
+    // 9-8: fetchTickerDossier (dossier.ts) always assigns the FULL ScoredCandidate
+    // (scorer.ts) here — this local view type had only ever declared the five fields above,
+    // so these six real, always-populated components had no typed path into factor_breakdown
+    // even though the runtime object carried them. Kept optional (matching ScoredCandidate's
+    // own optionality) rather than widened to the full ScoredCandidate type, since this view
+    // is deliberately narrower than the scorer's internal shape (e.g. no regime_multiplier,
+    // no fundamental_block/flags) — only what a consumer here actually needs.
+    fundamental_score?: number;
+    catalyst_score?: number;
+    short_interest_score?: number;
+    wall_proximity_score?: number;
+    vex_alignment_score?: number;
+    skew_score?: number;
   } | null;
   /** Benzinga analyst price-target one-liner (e.g. "PT raised to $210 at MS"). */
   price_target?: string | null;
@@ -1744,6 +1757,20 @@ export function enrichSetup(
     dossier_score: scored?.score ?? null,
     conviction: scored?.conviction ?? null,
     direction_confirmed: scored ? scored.direction === setup.direction : null,
+    // 9-8: scoreCandidate (scorer.ts) always folds ALL of flow/tech/pos/news/smart_money PLUS
+    // fundamental/catalyst/short_interest/wall_proximity/vex_alignment/skew into `score`/
+    // `dossier_score` — this file only ever surfaced the first five, so the "Why this play was
+    // picked" panel for every FLOW/PIN setup silently omitted up to 6 of 11 real scoring inputs
+    // (measured live 2026-09-02: NVDA showed 5 factors summing to 22.4 against a dossier_score of
+    // 35 and a displayed score of 69 — the missing 6 accounted for more of the score than what was
+    // shown). Mirrors the identical, already-shipped mapping in deterministic-edition.ts (Night
+    // Hawk Edition's two `factor_breakdown` builders) so the same `ScoredCandidate` renders the
+    // same breakdown on both surfaces — this file had simply drifted out of sync with that
+    // established pattern, not implemented a different one on purpose. Conditional spreads (not a
+    // flat 0 fallback) keep an inapplicable dimension OUT of the breakdown entirely, exactly as
+    // deterministic-edition.ts already does — a real 0 (dimension scored, contributed nothing) and
+    // an absent input (dimension never scored) are different facts and must not collapse into the
+    // same rendered "0" bar.
     factor_breakdown: scored
       ? {
           flow: scored.flow_score,
@@ -1751,6 +1778,12 @@ export function enrichSetup(
           positioning: scored.pos_score,
           news: scored.news_score,
           smart_money: scored.smart_money_score,
+          ...(scored.fundamental_score != null ? { fundamental: scored.fundamental_score } : {}),
+          ...(scored.catalyst_score != null ? { catalyst: scored.catalyst_score } : {}),
+          ...(scored.short_interest_score != null ? { short_interest: scored.short_interest_score } : {}),
+          ...(scored.wall_proximity_score != null ? { wall_proximity: scored.wall_proximity_score } : {}),
+          ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
+          ...(scored.skew_score != null ? { skew: scored.skew_score } : {}),
         }
       : null,
     trend: tech?.trend ?? null,

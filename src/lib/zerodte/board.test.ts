@@ -664,6 +664,63 @@ test("enrich: full dossier merges score, factors, technicals, streak, dark pool"
   assert.equal(e.news_hot, null);
 });
 
+// 9-8: scoreCandidate (scorer.ts) always folds fundamental/catalyst/short_interest/
+// wall_proximity/vex_alignment/skew into `score` alongside the original five — enrichSetup
+// dropped all six when building factor_breakdown, so the "Why this play was picked" panel
+// for every FLOW/PIN 0DTE setup silently under-represented the real score (live 2026-09-02:
+// NVDA showed 5 factors summing to 22.4 against a dossier_score of 35). Mirrors
+// deterministic-edition.ts's own (already-correct) mapping from the same ScoredCandidate shape.
+test("enrich: factor_breakdown carries the six named subscores scoreCandidate also folds into score", () => {
+  const dossier = fakeDossier({
+    scored: {
+      score: 78,
+      direction: "long",
+      conviction: "HIGH",
+      flow_score: 30,
+      tech_score: 18,
+      pos_score: 10,
+      news_score: 8,
+      smart_money_score: 12,
+      fundamental_score: 4,
+      catalyst_score: -3,
+      short_interest_score: 2,
+      wall_proximity_score: 5,
+      vex_alignment_score: 1,
+      skew_score: -2,
+      catalyst_flags: ["analyst PT raise"],
+    },
+  });
+  const e = enrichSetup(baseSetup(), dossier);
+  assert.deepEqual(e.factor_breakdown, {
+    flow: 30,
+    tech: 18,
+    positioning: 10,
+    news: 8,
+    smart_money: 12,
+    fundamental: 4,
+    catalyst: -3,
+    short_interest: 2,
+    wall_proximity: 5,
+    vex: 1,
+    skew: -2,
+  });
+});
+
+// A dimension the scorer never evaluated (field absent, not zero) must stay OUT of the
+// breakdown entirely — a real 0 (scored, contributed nothing) and an absent input (never
+// scored) are different facts and must not render as the same "0" bar. Covers the base
+// fakeDossier() fixture, which omits these six fields exactly as older `scored` payloads do.
+test("enrich: factor_breakdown omits (not zero-fills) subscores the scorer never returned", () => {
+  const e = enrichSetup(baseSetup(), fakeDossier());
+  assert.deepEqual(e.factor_breakdown, { flow: 30, tech: 18, positioning: 10, news: 8, smart_money: 12 });
+  assert.ok(!("fundamental" in (e.factor_breakdown ?? {})));
+  assert.ok(!("catalyst" in (e.factor_breakdown ?? {})));
+  assert.ok(!("short_interest" in (e.factor_breakdown ?? {})));
+  assert.ok(!("wall_proximity" in (e.factor_breakdown ?? {})));
+  assert.ok(!("vex" in (e.factor_breakdown ?? {})));
+  assert.ok(!("skew" in (e.factor_breakdown ?? {})));
+});
+
 test("enrich: earnings + hot-news extras pass through", () => {
   const e = enrichSetup(baseSetup(), null, {
     earnings: { when: "afterhours", report_date: "2026-07-06", expected_move_pct: 8.2 },
