@@ -12,3 +12,18 @@ export function resolveLegacyPlayOcc(ticker: string, optionsPlay: string | null 
   const optionType = parsed.side === "put" ? "PUT" : "CALL";
   return buildOccContractId(ticker, parsed.expiryYmd, optionType, parsed.strike);
 }
+
+/** Polygon unified snapshot keys use the `O:` prefix; Legacy play rows store bare OCC. */
+export function legacyOccForSnapshot(occ: string): string {
+  const bare = occ.trim().toUpperCase().replace(/^O:/, "");
+  return bare ? `O:${bare}` : occ;
+}
+
+export function lookupLegacyOptionSnapshot<T>(
+  snaps: Map<string, T>,
+  occ: string
+): T | undefined {
+  const bare = occ.trim().toUpperCase().replace(/^O:/, "");
+  const prefixed = `O:${bare}`;
+  return snaps.get(occ) ?? snaps.get(bare) ?? snaps.get(prefixed);
+}

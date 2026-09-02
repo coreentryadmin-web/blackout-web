@@ -80,7 +80,8 @@ export function overlayLegacyOptionMarks(
     const occ = p.occ?.toUpperCase();
     if (!occ) return p;
     const row = marks.get(occ);
-    if (!row || row.stale) return p;
+    if (!row || row.mark == null || !Number.isFinite(row.mark) || row.mark <= 0) return p;
+    // Use REST-backed marks even when WS is quiet (weekly names). Stale only affects freshness label.
 
     const entryPrem =
       typeof p.entryCostPerContract === "number" && p.entryCostPerContract > 0
@@ -102,7 +103,7 @@ export function overlayLegacyOptionMarks(
       execMark: row.bid ?? p.execMark,
       execPnlPct,
       markAsOf: row.asof ?? p.markAsOf,
-      markIsSync: false,
+      markIsSync: row.stale,
       peak: latch.peak,
       trough: latch.trough,
       exitPolicy: latch.exitPolicy,

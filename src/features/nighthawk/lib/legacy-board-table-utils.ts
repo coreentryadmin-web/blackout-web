@@ -122,10 +122,14 @@ export function legacyBoardMeter(row: LegacyBoardTableRow): VectorBoardMeter | n
 
   if (row.progressPct != null) {
     const stockTone = premiumPctTone(stockMove);
+    const premiumLabel = pct != null ? formatPremiumPct(pct) : null;
     return {
-      valueLabel: formatPremiumPct(stockMove),
+      valueLabel: premiumLabel ?? formatPremiumPct(stockMove),
       fillPct: row.progressPct,
-      caption: `${row.progressPct}% stock path`,
+      caption:
+        pct != null
+          ? `${row.progressPct}% to stock target`
+          : `${row.progressPct}% stock → target (not option P&L)`,
       tone: stockTone === "bull" ? "up" : stockTone === "bear" ? "down" : "flat",
     };
   }

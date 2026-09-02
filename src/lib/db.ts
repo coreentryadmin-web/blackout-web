@@ -649,6 +649,11 @@ async function runMigrations(): Promise<void> {
   await p.query(`
     ALTER TABLE nighthawk_play_outcomes ADD COLUMN IF NOT EXISTS scale_out_grade JSONB;
   `);
+  // Legacy Chief Trade Alert Bot live state — trims, scale-out latch, peak/trough, closed flag.
+  // JSONB so the live-sync cron can persist management state without a wide ALTER per field.
+  await p.query(`
+    ALTER TABLE nighthawk_play_outcomes ADD COLUMN IF NOT EXISTS discord_live_state JSONB;
+  `);
   // PR-N2 boot backfill: a resolved row with no methodology stamp was, by construction,
   // graded before stamping existed (every post-PR-N2 grade write stamps at write time), so
   // its provenance is unprovable from the row — tag it LEGACY. Deliberately conservative:
@@ -8694,6 +8699,20 @@ export type NighthawkPlayOutcomeRow = {
    *  pass once the option's full forward window exists. NULL until then; stays NULL forever for
    *  non-banger plays (exit_style ≠ "scale_out"). The nighthawk-side scale-out reader graduates on it. */
   scale_out_grade?: Record<string, unknown> | null;
+  /** Live Chief Trade Alert Bot management state (trims, scale-out latch, closed flag). */
+  discord_live_state?: LegacyDiscordLiveState | null;
+};
+
+export type LegacyDiscordLiveState = {
+  closed?: boolean;
+  closed_reason?: string | null;
+  last_mark?: number | null;
+  peak_premium?: number | null;
+  trough_premium?: number | null;
+  trims_taken?: number;
+  scaled_already?: boolean;
+  last_action?: string | null;
+  last_sync_at?: string | null;
 };
 
 function mapNighthawkPlayOutcomeRow(r: QueryResultRow): NighthawkPlayOutcomeRow {
@@ -8725,6 +8744,7 @@ function mapNighthawkPlayOutcomeRow(r: QueryResultRow): NighthawkPlayOutcomeRow 
     legacy_grade: (r.legacy_grade as Record<string, unknown>) ?? null,
     debrief: (r.debrief as Record<string, unknown>) ?? null,
     scale_out_grade: (r.scale_out_grade as Record<string, unknown>) ?? null,
+    discord_live_state: (r.discord_live_state as LegacyDiscordLiveState) ?? null,
   };
 }
 
@@ -8848,7 +8868,7 @@ export async function fetchPendingNighthawkOutcomes(lookbackDays = 14): Promise<
            next_day_open, next_day_close, session_high, session_low,
            hit_target, hit_stop, outcome, created_at,
            pulled, pulled_reason, publish_context, morning_verdict,
-           grade_methodology, legacy_grade, debrief
+           grade_methodology, legacy_grade, debrief, discord_live_state
     FROM nighthawk_play_outcomes
     WHERE outcome = 'pending'
       AND edition_for >= ((NOW() AT TIME ZONE 'America/New_York')::date - ($1::int || ' days')::interval)
@@ -8857,6 +8877,135 @@ export async function fetchPendingNighthawkOutcomes(lookbackDays = 14): Promise<
     [safeLookbackDays]
   );
   return res.rows.map(mapNighthawkPlayOutcomeRow);
+}
+
+export type LegacyDiscordLiveRow = NighthawkPlayOutcomeRow & {
+  contract_occ: string;
+  entry_premium: number;
+  exit_style: "scale_out" | null;
+};
+
+/** Open Legacy plays for the Chief Trade Alert Bot live-sync loop — today's edition,
+ *  pending outcome, not morning-pulled, not already closed in discord_live_state. */
+export async function fetchLegacyDiscordLiveRows(editionFor?: string): Promise<LegacyDiscordLiveRow[]> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `
+    SELECT id, edition_for, ticker, direction, conviction,
+           entry_range_low, entry_range_high, target, stop, score, sector,
+           next_day_open, next_day_close, session_high, session_low,
+           hit_target, hit_stop, outcome, created_at,
+           pulled, pulled_reason, publish_context, morning_verdict,
+           grade_methodology, legacy_grade, debrief, scale_out_grade, discord_live_state
+    FROM nighthawk_play_outcomes
+    WHERE outcome = 'pending'
+      AND COALESCE(pulled, FALSE) = FALSE
+      AND COALESCE((discord_live_state->>'closed')::boolean, FALSE) = FALSE
+      AND edition_for = COALESCE($1::date, (NOW() AT TIME ZONE 'America/New_York')::date)
+      AND publish_context IS NOT NULL
+    ORDER BY ticker ASC
+    `,
+    [editionFor ?? null]
+  );
+
+  const out: LegacyDiscordLiveRow[] = [];
+  const { resolveLegacyPlayOcc } = await import("@/features/nighthawk/lib/legacy-play-contract");
+  for (const r of res.rows) {
+    const row = mapNighthawkPlayOutcomeRow(r);
+    const ctx = row.publish_context as { final_output?: Record<string, unknown> } | null | undefined;
+    const finalOut = ctx?.final_output;
+    const optionsPlay = typeof finalOut?.options_play === "string" ? finalOut.options_play : null;
+    const entryPremium =
+      typeof finalOut?.entry_premium === "number" && Number.isFinite(finalOut.entry_premium)
+        ? finalOut.entry_premium
+        : null;
+    if (!optionsPlay || entryPremium == null || entryPremium <= 0) continue;
+
+    const occ = resolveLegacyPlayOcc(row.ticker, optionsPlay);
+    if (!occ) continue;
+
+    const exitStyle = finalOut?.exit_style === "scale_out" ? "scale_out" : null;
+    out.push({
+      ...row,
+      contract_occ: occ,
+      entry_premium: entryPremium,
+      exit_style: exitStyle,
+    });
+  }
+  return out;
+}
+
+export type LegacyDiscordLiveStateUpdate = {
+  closed?: boolean;
+  closedReason?: string | null;
+  mark?: number | null;
+  peakPremium?: number | null;
+  troughPremium?: number | null;
+  trimsTaken?: number | null;
+  scaledNow?: boolean;
+  lastAction?: string | null;
+};
+
+/** Latch Legacy discord live state on an open outcome row. Closed is one-way;
+ *  peak ratchets up, trough down; trims_taken is monotonic GREATEST. */
+export async function updateLegacyDiscordLiveState(
+  id: number,
+  update: LegacyDiscordLiveStateUpdate
+): Promise<void> {
+  await ensureSchema();
+  await (await getPool()).query(
+    `
+    UPDATE nighthawk_play_outcomes
+    SET discord_live_state = COALESCE(discord_live_state, '{}'::jsonb)
+      || jsonb_strip_nulls(jsonb_build_object(
+           'closed', CASE
+             WHEN COALESCE((discord_live_state->>'closed')::boolean, FALSE) THEN TRUE
+             WHEN $2::boolean IS TRUE THEN TRUE
+             ELSE FALSE
+           END,
+           'closed_reason', COALESCE(discord_live_state->>'closed_reason', $3),
+           'last_mark', COALESCE($4::numeric, (discord_live_state->>'last_mark')::numeric),
+           'peak_premium', CASE
+             WHEN $4::numeric IS NOT NULL THEN GREATEST(
+               COALESCE((discord_live_state->>'peak_premium')::numeric, $4::numeric),
+               $4::numeric
+             )
+             ELSE (discord_live_state->>'peak_premium')::numeric
+           END,
+           'trough_premium', CASE
+             WHEN $4::numeric IS NOT NULL THEN LEAST(
+               COALESCE((discord_live_state->>'trough_premium')::numeric, $4::numeric),
+               $4::numeric
+             )
+             ELSE (discord_live_state->>'trough_premium')::numeric
+           END,
+           'trims_taken', CASE
+             WHEN $5::int IS NOT NULL THEN GREATEST(
+               COALESCE((discord_live_state->>'trims_taken')::int, 0),
+               $5::int
+             )
+             ELSE COALESCE((discord_live_state->>'trims_taken')::int, 0)
+           END,
+           'scaled_already', COALESCE((discord_live_state->>'scaled_already')::boolean, FALSE)
+             OR COALESCE($6::boolean, FALSE),
+           'last_action', COALESCE($7, discord_live_state->>'last_action'),
+           'last_sync_at', NOW()
+         )),
+        updated_at = NOW()
+    WHERE id = $1
+      AND outcome = 'pending'
+      AND COALESCE(pulled, FALSE) = FALSE
+    `,
+    [
+      id,
+      update.closed ?? null,
+      update.closedReason ?? null,
+      update.mark ?? null,
+      update.trimsTaken ?? null,
+      update.scaledNow ?? null,
+      update.lastAction ?? null,
+    ]
+  );
 }
 
 /** PR-N8: fetch the most recent N editions' outcomes for the cross-edition governor.
