@@ -226,7 +226,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             <div className="pipe-stage pipe-s1" data-pipe-stage="identify">
               <div className="pipe-stage-chrome">
                 <div className="pipe-num">01</div>
-                <div className="pipe-status" data-status-id="identify"><span className="status-dot" />OFFLINE</div>
+                <div className="pipe-status" data-status-id="identify"><span className="status-dot" />LIVE</div>
               </div>
               <div className="pipe-stage-body">
                 <div className="pipe-stage-text">
@@ -253,7 +253,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             <div className="pipe-stage pipe-s2" data-pipe-stage="validate">
               <div className="pipe-stage-chrome">
                 <div className="pipe-num">02</div>
-                <div className="pipe-status" data-status-id="validate"><span className="status-dot" />OFFLINE</div>
+                <div className="pipe-status" data-status-id="validate"><span className="status-dot" />LIVE</div>
               </div>
               <div className="pipe-stage-body">
                 <div className="pipe-stage-visual">
@@ -280,7 +280,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             <div className="pipe-stage pipe-s3" data-pipe-stage="execute">
               <div className="pipe-stage-chrome">
                 <div className="pipe-num">03</div>
-                <div className="pipe-status" data-status-id="execute"><span className="status-dot" />OFFLINE</div>
+                <div className="pipe-status" data-status-id="execute"><span className="status-dot" />LIVE</div>
               </div>
               <div className="pipe-stage-body">
                 <div className="pipe-stage-text">
@@ -307,7 +307,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             <div className="pipe-stage pipe-s4" data-pipe-stage="results">
               <div className="pipe-stage-chrome">
                 <div className="pipe-num">04</div>
-                <div className="pipe-status" data-status-id="results"><span className="status-dot" />OFFLINE</div>
+                <div className="pipe-status" data-status-id="results"><span className="status-dot" />LIVE</div>
               </div>
               <div className="pipe-stage-body">
                 <div className="pipe-stage-visual pipe-results-visual">
