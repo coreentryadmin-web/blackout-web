@@ -390,7 +390,14 @@ function extractFlowContracts(
         out.push({
           ticker: tk ?? want ?? "?",
           strike: strike ?? occ!.strike,
-          expiry: expiry ?? occ!.expiry,
+          // NOT occ!.expiry: the guard above only proves strike!=null OR occ truthy, not both —
+          // a row with a real strike but no expiry field and an unparseable symbol has strike
+          // resolved (occ unneeded there) while occ is still null, so `occ!.expiry` threw
+          // "Cannot read properties of null (reading 'expiry')" in production (CloudWatch,
+          // 2026-09-02) whenever Largo's positioning tool alone (no chain fetch) fed this walker
+          // a strike-only row. classifyOptionHorizon already treats "" as UNKNOWN, so an
+          // unresolvable expiry degrades honestly instead of crashing the whole turn.
+          expiry: expiry ?? occ?.expiry ?? "",
           right: String(obj.option_type ?? occ?.right ?? "C")
             .toUpperCase()
             .startsWith("P")
