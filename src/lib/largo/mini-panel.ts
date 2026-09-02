@@ -198,7 +198,10 @@ export async function fetchMiniPanelPayload(input: {
           ];
         } else if (subId === "vector") {
           const { fetchVectorFullState } = await import("@/lib/bie/vector-full-state");
-          const state = await fetchVectorFullState("SPX").catch(() => null);
+          // Explicit "all" — the implicit default ("0dte") scopes regime/flip to today's
+          // expiries only, which can disagree with the SPX/Thermal panel a member is looking
+          // at right next to this one for the same ticker.
+          const state = await fetchVectorFullState("SPX", "all").catch(() => null);
           base.rows = [
             { label: "Spot", value: state?.spot != null ? String(Math.round(state.spot)) : "—" },
             { label: "Regime", value: state?.regime?.posture ?? "—", tone: biasTone(state?.regime?.posture) },
@@ -315,7 +318,9 @@ export async function fetchMiniPanelPayload(input: {
       }
       case "vector": {
         const { fetchVectorFullState } = await import("@/lib/bie/vector-full-state");
-        const state = await fetchVectorFullState(ticker).catch(() => null);
+        // Explicit "all" — see the SPX "vector" subId case above for why the implicit "0dte"
+        // default must not leak into a general desk-scoped Vector read.
+        const state = await fetchVectorFullState(ticker, "all").catch(() => null);
         const play = state?.play;
         if (subId === "regime") {
           base.rows = [

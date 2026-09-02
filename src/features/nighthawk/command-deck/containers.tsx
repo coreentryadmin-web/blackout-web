@@ -357,6 +357,7 @@ export function LegacyDeck() {
       pulled: p.pulled ?? null,
       pulled_reason: p.pulled_reason ?? null,
       tier: p.tier ?? null,
+      play_type: p.play_type ?? null,
       morning_status: confirm?.status as "CONFIRMED" | "DEGRADED" | "INVALIDATED" | "UNVERIFIED" | undefined ?? null,
       morning_reason: confirm?.reason ?? null,
       swing_promoted: confirm?.swingPromoted ?? null,
@@ -443,6 +444,20 @@ export function LegacyDeck() {
     edition?.served_for ?? edition?.edition_for ?? (selectedEditionDate ? selectedEditionDate : todaySession);
   const calendarDates = useMemo(() => legacyEditionSessionDates(14), []);
 
+  const macroContext = useMemo(() => {
+    if (!confirmData || confirmData.available === false) return null;
+    return {
+      spxPremarket: confirmData.spx_premarket ?? null,
+      priorClose: confirmData.prior_close ?? null,
+      overnightGapPts: confirmData.overnight_gap_pts ?? null,
+      regime: confirmData.regime ?? null,
+      gexBias: confirmData.gex_bias ?? null,
+      callWall: confirmData.call_wall ?? null,
+      putWall: confirmData.put_wall ?? null,
+      summary: confirmData.summary ?? null,
+    };
+  }, [confirmData]);
+
   const emptyDescription = hasFetchError
     ? "Edition data unavailable right now — retrying. Check back shortly."
     : isRecapOnly
@@ -498,6 +513,7 @@ export function LegacyDeck() {
       onSelectedEditionDateChange={setSelectedEditionDate}
       calendarDates={calendarDates}
       bannerSlot={bannerSlot}
+      macroContext={macroContext}
       emptyDescription={emptyDescription}
     />
   );

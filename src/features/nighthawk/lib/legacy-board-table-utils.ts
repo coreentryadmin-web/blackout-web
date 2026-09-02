@@ -124,20 +124,20 @@ export function legacyBoardMeter(row: LegacyBoardTableRow): VectorBoardMeter | n
     return {
       valueLabel,
       fillPct: row.progressPct,
-      caption: `${row.progressPct}% to target`,
+      caption: `${row.progressPct}% stock path`,
       tone: tone === "bull" ? "up" : tone === "bear" ? "down" : "flat",
     };
   }
 
   if (pct == null || !Number.isFinite(pct)) return null;
   if (pct >= 50) {
-    return { valueLabel, fillPct: 100, caption: "100%", tone: tone === "bull" ? "up" : tone === "bear" ? "down" : "flat" };
+    return { valueLabel, fillPct: 100, caption: "premium at floor", tone: tone === "bull" ? "up" : tone === "bear" ? "down" : "flat" };
   }
   const towardFloor = Math.max(0, Math.min(100, Math.round((Math.max(0, pct) / 50) * 100)));
   return {
     valueLabel,
     fillPct: towardFloor,
-    caption: `${towardFloor}%`,
+    caption: `${towardFloor}% premium path`,
     tone: tone === "bull" ? "up" : tone === "bear" ? "down" : "flat",
   };
 }
@@ -172,18 +172,34 @@ export function legacyBoardCalendarBuckets(
 }
 
 export function legacyBoardExportCsv(rows: LegacyBoardTableRow[]): string {
-  const header = ["ticker", "contract", "status", "premium_pct", "stock_move_pct", "peak_pct", "tier", "updated"];
-  const lines = rows.map((r) =>
-    [
+  const header = [
+    "ticker", "contract", "status", "premium_pct", "exec_pnl_pct", "stock_move_pct", "peak_pct",
+    "tier", "rank", "direction", "stop", "target", "entry_range", "morning_status", "gate_promoted",
+    "risk_note", "factors", "updated",
+  ];
+  const lines = rows.map((r) => {
+    const p = r.play;
+    const factors = p.factors.map((f) => `${f.label}:${f.points}`).join("|");
+    return [
       r.ticker,
       JSON.stringify(r.contractLabel),
       r.statusLabel,
       r.premiumPct ?? "",
-      r.play.stockMovePct ?? "",
+      p.execPnlPct ?? "",
+      p.stockMovePct ?? "",
       r.peakPct ?? "",
-      r.play.tierLabel ?? "",
+      p.tierLabel ?? "",
+      p.rank ?? "",
+      p.direction ?? "",
+      JSON.stringify(p.stopLevel ?? ""),
+      JSON.stringify(p.targetLevel ?? ""),
+      JSON.stringify(p.entryRange ?? ""),
+      p.morningStatus ?? "",
+      p.gatePromoted ? "yes" : "",
+      JSON.stringify(p.riskNote ?? ""),
+      JSON.stringify(factors),
       r.timestamp,
-    ].join(",")
-  );
+    ].join(",");
+  });
   return [header.join(","), ...lines].join("\n");
 }

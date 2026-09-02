@@ -85,6 +85,11 @@ let appended: AppendedCall[] = [];
 let runLargoQuery: typeof import("./largo-terminal").runLargoQuery;
 let runLargoQueryStream: typeof import("./largo-terminal").runLargoQueryStream;
 let isRichBieEnvelope: typeof import("./largo-terminal").isRichBieEnvelope;
+let generateLargoFollowups: typeof import("./largo-terminal").generateLargoFollowups;
+// Counts calls into the mocked anthropicText below — regression coverage for the
+// route-deadline-headroom guard on generateLargoFollowups's second, post-tool-loop
+// Anthropic round-trip (see the dedicated test block near the bottom of this file).
+let anthropicTextCallCount = 0;
 
 // logBie() (largo-terminal.ts) fires the DB write as a detached
 // `void import("./db").then((m) => m.insertBieInteraction(row))` — deliberately
@@ -120,7 +125,10 @@ before(async () => {
   mock.module("./providers/anthropic", {
     namedExports: {
       anthropicConfigured: () => true,
-      anthropicText: async () => "",
+      anthropicText: async () => {
+        anthropicTextCallCount++;
+        return "";
+      },
       // Simulates a real Largo turn: the model calls two tools, then answers.
       anthropicToolLoop: async (params: {
         runTool: (name: string, input: Record<string, unknown>) => Promise<unknown>;
@@ -261,7 +269,8 @@ before(async () => {
   });
 
   // Imported dynamically, AFTER every mock above is registered
-  ({ runLargoQuery, runLargoQueryStream, isRichBieEnvelope } = await import("./largo-terminal"));
+  ({ runLargoQuery, runLargoQueryStream, isRichBieEnvelope, generateLargoFollowups } =
+    await import("./largo-terminal"));
 });
 
 test("runLargoQuery: every turn uses the Claude tool loop (no BIE router)", async () => {
@@ -547,4 +556,38 @@ test("they are APPENDED, so an explicitly-called tool still wins", () => {
   const at = TERMINAL_SRC.indexOf("capturedResults.push(...liveFeedResults)");
   const loopAt = TERMINAL_SRC.indexOf("runTool: makeGuardedToolRunner");
   assert.ok(at > loopAt, "the fold must come after the tool loop, not before it");
+});
+
+/*
+ * generateLargoFollowups: route-deadline-headroom guard.
+ *
+ * Regression for a live 2026-09-02 crash: a four-desk synthesis question ("why is SPX bullish or
+ * bearish right now, what does Helix show on the tape, how does Thermal's dealer positioning
+ * align, and what would invalidate the Night Hawk thesis?") returned a bare HTTP 503 at 100358ms —
+ * 358ms past `largoMemberRouteDeadlineMs()`'s 100s deadline — with the generic "ran long" fallback,
+ * discarding whatever answer the tool loop had already produced. The tool loop's OWN budget
+ * (`largoLoopBudgetMs`, 75s for deep mode) is deliberately kept under the route deadline so there
+ * is headroom left for post-loop work — but `generateLargoFollowups` makes a SECOND, unaccounted
+ * Anthropic round-trip (14s timeout + one retry, up to ~28s) on top of that, which is exactly the
+ * kind of work the headroom was supposed to cover and wasn't. The fix passes the caller's remaining
+ * route-deadline headroom in, and skips the LLM call (falling back to the free, synchronous
+ * `deterministicLargoFollowups`) once too little of it is left.
+ */
+test("generateLargoFollowups: skips the follow-up LLM call when route-deadline headroom is too low", async () => {
+  anthropicTextCallCount = 0;
+  const out = await generateLargoFollowups("What's the setup on NVDA?", "Some real answer.", "NVDA", 5_000);
+  assert.equal(anthropicTextCallCount, 0, "must not attempt a second Anthropic call with only 5s left");
+  assert.ok(out.length > 0, "must still return deterministic fallback follow-ups, not an empty list");
+});
+
+test("generateLargoFollowups: attempts the follow-up LLM call when plenty of headroom remains", async () => {
+  anthropicTextCallCount = 0;
+  await generateLargoFollowups("What's the setup on NVDA?", "Some real answer.", "NVDA", 60_000);
+  assert.equal(anthropicTextCallCount, 1, "must attempt the LLM call when headroom is ample");
+});
+
+test("generateLargoFollowups: omitting remainingBudgetMs preserves the old always-attempt behavior", async () => {
+  anthropicTextCallCount = 0;
+  await generateLargoFollowups("What's the setup on NVDA?", "Some real answer.", "NVDA");
+  assert.equal(anthropicTextCallCount, 1, "no remainingBudgetMs arg must not skip the call (back-compat)");
 });

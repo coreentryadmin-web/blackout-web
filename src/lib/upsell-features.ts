@@ -55,6 +55,13 @@ export const FEATURE_MATRIX: FeatureRow[] = [
     mark: "nighthawk",
   },
   {
+    label: "Thermal dealer-gamma heatmaps",
+    detail: PRODUCT_MANIFEST.thermal.positioning,
+    free: false,
+    premium: true,
+    mark: "heatmap",
+  },
+  {
     label: "Vector universe scanner",
     detail: PRODUCT_MANIFEST.vector.positioning,
     free: false,
@@ -66,13 +73,6 @@ export const FEATURE_MATRIX: FeatureRow[] = [
     detail: PRODUCT_MANIFEST.meridian.positioning,
     free: false,
     premium: true,
-  },
-  {
-    label: "Strike-level heatmaps",
-    detail: "Dealer positioning mapped across the full chain",
-    free: false,
-    premium: true,
-    mark: "heatmap",
   },
   {
     label: "SPX AI commentary",

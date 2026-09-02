@@ -2719,6 +2719,13 @@ export async function fetchRecentFlows(params: {
   max_dte?: number;
   /** ISO timestamp — return rows strictly OLDER than this (cursor pagination for HELIX tape). */
   before?: string;
+  /** Exact strike match — combined with ticker/expiry/option_type to scope to ONE contract
+   *  (multi-day contract history drilldown). Not used by any existing caller. */
+  strike?: number;
+  /** Exact expiry match, 'YYYY-MM-DD'. Same contract-scoping use as `strike`. */
+  expiry?: string;
+  /** Exact option_type match ('CALL'/'PUT'). Same contract-scoping use as `strike`. */
+  option_type?: string;
 }): Promise<FlowRow[]> {
   await ensureSchema();
   const clauses: string[] = [];
@@ -2737,6 +2744,18 @@ export async function fetchRecentFlows(params: {
   if (params.min_premium && params.min_premium > 0) {
     clauses.push(`COALESCE(total_premium, 0) >= $${i++}`);
     values.push(params.min_premium);
+  }
+  if (params.strike != null && Number.isFinite(params.strike)) {
+    clauses.push(`strike = $${i++}`);
+    values.push(params.strike);
+  }
+  if (params.expiry) {
+    clauses.push(`expiry = $${i++}::date`);
+    values.push(params.expiry);
+  }
+  if (params.option_type) {
+    clauses.push(`UPPER(option_type) = $${i++}`);
+    values.push(params.option_type.toUpperCase());
   }
   if (params.max_dte != null && params.max_dte >= 0) {
     // ET calendar date to match the SELECT's dte expression; BETWEEN 0 AND N also

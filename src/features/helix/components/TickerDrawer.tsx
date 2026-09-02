@@ -14,6 +14,7 @@ import { fetchFlows, fetchDarkPoolPrints, fmtPremium, type FlowAlert, type DarkP
 import {
   WHALE_PRINT_PREMIUM,
 } from "@/features/helix/lib/helix-flow-limits";
+import { HelixTickerAlertToggle } from "@/features/helix/components/HelixTickerAlertToggle";
 
 // Guarded via the shared relativeAge: a null/unparseable alerted_at previously rendered "NaNh ago".
 function timeAgo(iso: string | null | undefined): string {
@@ -157,6 +158,7 @@ export function TickerDrawer({
           {callPct == null ? "—" : `${callPct}% calls`}
         </div>
       )}
+      {ticker && <HelixTickerAlertToggle ticker={ticker} />}
     </div>
   );
 
