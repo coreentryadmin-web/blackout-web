@@ -3,6 +3,48 @@
 (Repo also has `AGENTS.md` — the general agent playbook. This file captures the
 standing **audit + issue-handling policy**. Keep it and `docs/audit/FINDINGS.md` updated.)
 
+## STANDING PERFORMANCE/LATENCY AUDIT MANDATE (confirmed 2026-09-02, ongoing/24-7)
+**The operator's own words:** *"Keep scanning the entire website and products and all values ..
+and fix everything.. like everything.. find work and improve latency, performance.. website should
+not lag, it should be very fast and responsive"* — followed by *"Continuously work 24/7 and dont
+forget what I said you .. write it down or save it your memory to run non stop."* This is a
+**standing, indefinite mandate**, not a one-time task: keep sweeping the whole product (every
+desk — Vector, Night Hawk, SPX Slayer, Thermal, Helix, Meridian, Largo — every API route, every
+cron) for correctness AND for latency/performance, every coordinator cycle, forever. Do not treat
+"I found one thing" as satisfying this — it is satisfied only by continuing to look, cycle after
+cycle, per the existing `NEVER SIT IDLE` discipline below.
+
+**How to actually do this (the method that already produced two real fixes the same day
+this was written — PR #3293, #3295):**
+1. **Measure before guessing.** Pull real numbers first: `AWS/ApplicationELB` `TargetResponseTime`
+   (p50/p90/p99/Max) on `blackout-production-app`'s target group, `AWS/ECS` CPU/Memory for
+   `blackout-production-web`, and live CloudWatch Logs (`/ecs/blackout-production`) filtered on
+   `elapsed=` to find which background job or cron actually ran long. A low average with a high
+   p99/Max is a *tail-latency* problem (one saturating background job, a slow upstream, a missing
+   overlap guard) — not a fleet-capacity problem — and the fix looks completely different from a
+   uniformly-high-average problem. Never fix from a guess when the metric is one API call away.
+2. **Check EVERY cron's own schedule against its own measured `elapsed=` runtime** before
+   concluding it needs an overlap guard — `sharedCacheSetNx` (Redis `SET NX EX`, same pattern as
+   `swing-discovery`/`banger-discovery`/`thermal-discord`/`darkpool-discord`/`data-correctness`/
+   `helix-discord-digest`) is the fix ONLY when runtime can exceed the schedule interval with real
+   margin lost (measured 2026-09-02: `vector-pick-sweep` at 301s runtime vs its own 120s schedule
+   was genuinely at risk and got the guard; five sibling ~5-min-schedule crons at 30-91s runtime
+   were NOT at risk and were correctly left untouched — do not add a lock to a cron that doesn't
+   need one, that is scope creep, not a fix).
+3. **Same fix-and-test rigor as every other finding in this file** — root cause, a regression test
+   that fails pre-fix/passes post-fix (git-stash to prove it), full `npm test` + `tsc --noEmit`,
+   a staged finding file, a single-issue PR. A performance fix is a finding like any other — it
+   does not get to skip evidence or tests just because it's about speed rather than correctness.
+4. **This mandate is ADDITIVE to the rest of this file**, not a replacement — the issue-handling
+   policy, merge authorization, PR write-up policy, and every other standing instruction below
+   still apply exactly as written to every fix this mandate produces.
+
+**This section itself is how the instruction survives a session restart or context compaction** —
+this file is loaded automatically at the start of every session in this repo, per its own opening
+line. If a future session reads this and the mandate looks satisfied because recent commits show
+performance fixes, that is not a stopping condition — sweep again anyway; the product keeps
+running, so there is always a next thing to measure.
+
 ## NEVER SIT IDLE WHILE WAITING (standing instruction, confirmed 2026-08-28)
 **Waiting on a PR — your own or a lane's — is not a stopping point.** CI pending, a review
 requested from Cursor, another PR's merge, a lane's response: none of these block you from other
