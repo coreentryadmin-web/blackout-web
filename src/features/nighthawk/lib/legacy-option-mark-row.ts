@@ -3,7 +3,7 @@
  * Used by the legacy-marks API route, server live-sync, and unit tests.
  */
 import type { OptionSnapshot } from "@/lib/providers/options-snapshot";
-import { ZERODTE_MARK_STALE_MS } from "@/lib/zerodte/marks-math";
+import { isZeroDteMarkStale } from "@/lib/zerodte/marks-math";
 
 export type LegacyOptionMarkRow = {
   occ: string;
@@ -38,12 +38,12 @@ export function buildLegacyOptionMarkRow(
   const asofMs = wsAsofMs ?? snapAsofMs;
   const asof = asofMs != null ? new Date(asofMs).toISOString() : null;
 
+  // Delegates to the shared isZeroDteMarkStale predicate ("every renderer must apply", marks-math.ts)
+  // instead of reimplementing the age check inline — the inline copy previously carried its own
+  // future-timestamp gap independently of the shared one.
   const stale =
-    mark == null ||
-    !Number.isFinite(mark) ||
-    mark <= 0 ||
-    asofMs == null ||
-    nowMs - asofMs > ZERODTE_MARK_STALE_MS;
+    mark == null || !Number.isFinite(mark) || mark <= 0 || asofMs == null ||
+    isZeroDteMarkStale(asofMs, nowMs);
 
   return { occ, mark, bid, ask, asof, stale };
 }
