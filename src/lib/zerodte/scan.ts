@@ -1564,6 +1564,32 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   if (freshlyFlagged.size > 0) {
     const freshRows = eligible.filter((s) => freshlyFlagged.has(s.ticker.toUpperCase()));
     recordZeroDteAuditTrail(freshRows, today);
+    for (const setup of freshRows) {
+      void import("./discord-trade-notify")
+        .then(({ notifyZeroDteTradeOpen }) =>
+          notifyZeroDteTradeOpen({
+            session_date: today,
+            ticker: setup.ticker,
+            direction: setup.direction,
+            top_strike: setup.top_strike ?? null,
+            expiry: setup.expiry || null,
+            entry_premium:
+              setup.play_type === "CONDOR"
+                ? setup.condor_plan?.net_credit != null
+                  ? Math.round((setup.condor_plan.net_credit / 100) * 100) / 100
+                  : null
+                : resolveLedgerEntryPremium(
+                    setup.plan?.entry_max,
+                    setup.top_strike_avg_fill,
+                    setup.plan?.mark
+                  ),
+            play_type: setup.play_type ?? null,
+          })
+        )
+        .catch((err) => {
+          console.warn(`[zerodte-discord] open notify failed for ${setup.ticker}:`, err);
+        });
+    }
     void persistDiscoveryCommitEvents(
       committedFresh.filter((s) => freshlyFlagged.has(s.ticker.toUpperCase()))
     ).catch((err) => {
@@ -2013,7 +2039,21 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
         finalMark != null ? (peak != null ? Math.max(peak, finalMark) : finalMark) : peak;
       const troughOut =
         finalMark != null ? (trough != null ? Math.min(trough, finalMark) : finalMark) : trough;
-      return { ...r, status, last_mark: finalMark ?? r.last_mark, peak_premium: peakOut, trough_premium: troughOut };
+      const nextRow = {
+        ...r,
+        status,
+        last_mark: finalMark ?? r.last_mark,
+        peak_premium: peakOut,
+        trough_premium: troughOut,
+      };
+      if (r.status !== "CLOSED" && status === "CLOSED") {
+        void import("./discord-trade-notify")
+          .then(({ notifyZeroDteTradeClose }) => notifyZeroDteTradeClose(nextRow, finalMark))
+          .catch((err) => {
+            console.warn(`[zerodte-discord] close notify failed for ${r.ticker}:`, err);
+          });
+      }
+      return nextRow;
     })
   );
   if (stopEvents.length > 0) {
