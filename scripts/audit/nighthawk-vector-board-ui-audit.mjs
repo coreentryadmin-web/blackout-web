@@ -43,7 +43,10 @@ async function main() {
 
   const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
   const host = new URL(BASE).hostname;
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const ctx = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    colorScheme: "dark",
+  });
   await ctx.addCookies(cookiesFromHeader(session.cookieHeader, host));
 
   const page = await ctx.newPage();
@@ -88,20 +91,38 @@ async function main() {
 
   await page.screenshot({ path: `${OUT}/vector-board-desktop.png`, fullPage: false });
 
-  // Light mode toggle
+  // Light mode toggle — normalize to dark first, then toggle once to light (don't assume start state)
   const themeBtn = page.locator(".nh-desk-theme-toggle");
   if (await themeBtn.count()) {
-    await themeBtn.click();
-    await page.waitForTimeout(400);
+    for (let i = 0; i < 3; i++) {
+      const current = await page.evaluate(() => ({
+        html: document.documentElement.getAttribute("data-nighthawk-desk-theme"),
+        page: document.querySelector(".nh-v2-page")?.getAttribute("data-desk-theme"),
+      }));
+      if (current.html === "light" && current.page === "light") break;
+      await themeBtn.click();
+      await page.waitForTimeout(400);
+    }
     const lightDom = await page.evaluate(() => {
       const th = document.querySelector(".vector-board-table thead th");
       const pick = document.querySelector(".vector-board-pick-name");
+      const pageRoot = document.querySelector(".nh-v2-page");
       const cs = (el) => (el ? getComputedStyle(el) : null);
+      const thBg = cs(th)?.backgroundColor ?? "";
+      const deskThead = pageRoot
+        ? getComputedStyle(pageRoot).getPropertyValue("--nh-desk-thead-bg").trim()
+        : "";
       return {
         theme: document.documentElement.getAttribute("data-nighthawk-desk-theme"),
-        thBg: cs(th)?.backgroundColor,
+        deskTheme: pageRoot?.getAttribute("data-desk-theme"),
+        thBg,
+        deskTheadToken: deskThead,
         pickColor: cs(pick)?.color,
-        hasLightHeader: (cs(th)?.backgroundColor || "").includes("247, 249, 249"),
+        hasLightHeader:
+          thBg.includes("247, 249, 249") ||
+          thBg.includes("247,249,249") ||
+          deskThead === "#f7f9f9" ||
+          deskThead === "rgb(247, 249, 249)",
       };
     });
     dom = { ...dom, lightMode: lightDom };
@@ -161,7 +182,9 @@ async function main() {
               ? "RED — legacy summary/KPI chrome still present"
               : !dom.hasOpenTab
                 ? "RED — Open tab missing (desk tabs not migrated)"
-                : dom.lightMode && !dom.lightMode.hasLightHeader
+                : dom.lightMode && dom.lightMode.deskTheme !== "light"
+                  ? "RED — desk theme did not switch to light"
+                  : dom.lightMode && !dom.lightMode.hasLightHeader
                   ? "RED — light mode table header still dark"
                   : dom.rowCount === 0 && (apiJson?.closed?.length ?? 0) + (apiJson?.leaders?.length ?? 0) > 0
               ? "RED — API has rows but table empty"
