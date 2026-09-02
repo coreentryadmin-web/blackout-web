@@ -11,6 +11,36 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-02 (13:35 UTC / Wed 2026-09-02 09:35 ET) — [SEO] RTH window validation: CLS + gamma-snapshot live data check
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Market-open RTH trigger. Checked the clock myself (`TZ=America/New_York date` →
+Wed 09:33 ET) rather than trusting the trigger's UTC firing time — confirmed inside the 09:30–13:00
+ET window on a trading day (not a holiday).
+
+**CLOUDFLARE PURGE** (HTML only, `/` and `/tools/gamma-snapshot`): `success:true` before any
+measurement, so the fix and the snapshot page are measured fresh, not off stale edge cache.
+
+**STEP 1 — CLS ON LIVE DATA:** Homepage desktop 1440×900, post-purge: **CLS 0 → GOOD**
+(`cls-measure.cjs`, 67 assets routed ok, 0 fail). #2453 continues to hold under real RTH rendering.
+
+**STEP 2 — `/api/public/gex-snapshot?ticker=SPX` (PUBLIC, UNAUTHENTICATED, 5s refresh):**
+- Polled 3× at 6s intervals: `market_session: OPEN`, spot ticking real values (7640.69 → 7640.08 →
+  7640.51), `asof` advancing each poll — the 5s refresh is real, not a frozen snapshot.
+- `flip: null` on one poll looked worth checking rather than assuming a gap — the full payload's
+  `read` field explains it: *"No gamma flip — dealers are net short gamma at EVERY strike, so
+  there is no long-gamma region above spot"* — a genuine market state (`posture: "short"`), not a
+  missing value silently defaulted. Absence explained beats absence assumed (rule 7).
+- `call_wall`/`put_wall` (7800/7500) stable and correctly classified (`resistance`/`support`).
+  `spot_source: "redis_cluster"` — no vendor name leaked into the public payload.
+  `snapshot_data_age_seconds: 15`, `degraded: false`.
+- **Licensing audit** (`docs/marketing/RESEARCH-PUBLISH-POSTURE.md`): payload carries only derived
+  fields (flip/walls/regime/read) — no raw OPRA quotes, no strike/expiry matrix. Compliant.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
 ## 2026-09-02 (12:20 UTC) — [SEO] Lane heartbeat: #2453/#2448 hold, environment gotcha documented
 
 **Severity.** — (no product defect; real tooling/environment gotcha, documented not fixed)
