@@ -29,14 +29,17 @@ export function LegacyDetailBullet({
   value,
   sub,
   tone,
+  stacked = false,
 }: {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
   tone?: "up" | "down" | "warn" | "muted";
+  /** Full-width label above value — for long desk notes / risk copy in the manage rail. */
+  stacked?: boolean;
 }) {
   return (
-    <li className="legacy-detail-bullet">
+    <li className={clsx("legacy-detail-bullet", stacked && "legacy-detail-bullet--stacked")}>
       <span className="legacy-detail-bullet-label">{label}</span>
       <span className={clsx("legacy-detail-bullet-value", tone && `is-${tone}`)}>{value}</span>
       {sub ? <span className="legacy-detail-bullet-sub">{sub}</span> : null}
