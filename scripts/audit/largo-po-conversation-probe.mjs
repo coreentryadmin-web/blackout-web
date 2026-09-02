@@ -332,6 +332,12 @@ async function runBreadthTest(session) {
 async function testQuestion(q, session) {
   const { id, q: question, grade } = q;
 
+  // Refresh session to keep JWT alive (60s lifetime, fixed not idle)
+  const refreshed = await session.refresh?.();
+  if (refreshed?.cookieHeader) {
+    session.cookieHeader = refreshed.cookieHeader;
+  }
+
   const t0 = Date.now();
   try {
     const res = await fetch(`${BASE}/api/market/largo/query`, {
