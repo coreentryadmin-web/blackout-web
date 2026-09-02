@@ -300,7 +300,11 @@ async function buildNighthawkPrompts(): Promise<SlashPrompt[]> {
 async function buildVectorPrompts(): Promise<SlashPrompt[]> {
   const out: SlashPrompt[] = [];
   const { fetchVectorFullState } = await import("@/lib/bie/vector-full-state");
-  const state = await fetchVectorFullState("SPX").catch(() => null);
+  // Explicit "all": this flip/regime preview is what a member sees BEFORE asking a question,
+  // and it needs to match whatever SPX Slayer/Thermal would report for the same instant — the
+  // implicit default ("0dte") scopes gammaFlip to today's expiries only, which can genuinely
+  // differ from the canonical all-expiry flip the rest of the desk quotes.
+  const state = await fetchVectorFullState("SPX", "all").catch(() => null);
 
   if (state?.spot != null) {
     pushUnique(out, {
