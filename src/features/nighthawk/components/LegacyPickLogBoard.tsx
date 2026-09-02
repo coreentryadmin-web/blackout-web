@@ -11,7 +11,8 @@ import { VectorBoardDataTable } from "@/features/nighthawk/components/VectorBoar
 import { VectorBoardLoadingSkeleton } from "@/features/nighthawk/components/VectorBoardLoadingSkeleton";
 import { VectorBoardScorecard } from "@/features/nighthawk/components/VectorBoardScorecard";
 import { VectorBoardToolbar } from "@/features/nighthawk/components/VectorBoardToolbar";
-import { LegacyPlayDetailRail } from "@/features/nighthawk/components/LegacyPlayDetailRail";
+import { LegacyPlayManageRail } from "@/features/nighthawk/components/LegacyPlayManageRail";
+import { LegacyPlayTechnicalsRail } from "@/features/nighthawk/components/LegacyPlayTechnicalsRail";
 import { buildLegacyBoardColumns } from "@/features/nighthawk/lib/legacy-board-columns";
 import {
   buildLegacyBoardRows,
@@ -332,6 +333,7 @@ export function LegacyPickLogBoard({
       className={clsx(
         "vector-board-shell legacy-board-shell",
         "legacy-board-xads",
+        selectedRow && "legacy-board-shell--inspector",
         prefs.density === "compact" && "is-compact",
         prefs.focusMode && "is-focus"
       )}
@@ -394,11 +396,11 @@ export function LegacyPickLogBoard({
 
       {bannerSlot}
 
-      {!prefs.focusMode && scorecardRows.length > 0 ? (
+      {!prefs.focusMode && !selectedRow && scorecardRows.length > 0 ? (
         <VectorBoardScorecard data={scorecard} sessionLabel={editionLabel ?? editionFor ?? "Edition"} />
       ) : null}
 
-      {!prefs.focusMode && calendarBuckets.length > 0 ? (
+      {!prefs.focusMode && !selectedRow && calendarBuckets.length > 0 ? (
         <div className="vector-board-cal-wrap">
           <VectorBoardCalendar
             buckets={calendarBuckets}
@@ -425,69 +427,74 @@ export function LegacyPickLogBoard({
 
       <div
         className={clsx(
-          "vector-board-body vector-board-body--split",
+          "vector-board-body legacy-board-body",
+          selectedRow ? "legacy-board-body--inspector" : "vector-board-body--split",
           selectedRow && "has-detail-open",
           prefs.focusMode && !selectedRow && "is-focus-awaiting"
         )}
       >
-        <div className="vector-board-table-pane">
-          <div className="vector-board-panel">
-            <VectorBoardDataTable
-              columns={boardColumns}
-              rows={visibleRows}
-              tableRef={tableRef}
-              selectedKey={selectedRow?.key ?? null}
-              onSelectRow={(row, index) => {
-                setSelectedRow(row);
-                setSelectedIndex(index);
+        <div className="legacy-board-upper">
+          <div className="vector-board-table-pane">
+            <div className="vector-board-panel">
+              <VectorBoardDataTable
+                columns={boardColumns}
+                rows={visibleRows}
+                tableRef={tableRef}
+                selectedKey={selectedRow?.key ?? null}
+                onSelectRow={(row, index) => {
+                  setSelectedRow(row);
+                  setSelectedIndex(index);
+                }}
+                emptyTitle={emptyTitle(tab)}
+                emptyDescription={
+                  emptyDescription && plays.length === 0
+                    ? emptyDescription
+                    : "Try another tab, clear filters, or pick a different edition date."
+                }
+                getRowCtx={(row) => ({
+                  live: vectorBoardRowIsLive(row),
+                  atRisk: vectorBoardRowAtRisk(row),
+                  compareChecked: compareKeys.has(row.key),
+                  onToggleCompare: () => toggleCompare(row.key),
+                  fmtPrice,
+                  fmtTimestamp,
+                  pnlClass,
+                })}
+                rowClassName={(row) =>
+                  clsx(
+                    vectorBoardRowIsLive(row) && "is-live",
+                    vectorBoardRowAtRisk(row) && "is-at-risk"
+                  )
+                }
+              />
+            </div>
+            <VectorBoardCompareBar
+              rows={compareRows}
+              onClear={() => {
+                setCompareKeys(new Set());
+                setCompareLimitHit(false);
               }}
-              emptyTitle={emptyTitle(tab)}
-              emptyDescription={
-                emptyDescription && plays.length === 0
-                  ? emptyDescription
-                  : "Try another tab, clear filters, or pick a different edition date."
-              }
-              getRowCtx={(row) => ({
-                live: vectorBoardRowIsLive(row),
-                atRisk: vectorBoardRowAtRisk(row),
-                compareChecked: compareKeys.has(row.key),
-                onToggleCompare: () => toggleCompare(row.key),
-                fmtPrice,
-                fmtTimestamp,
-                pnlClass,
-              })}
-              rowClassName={(row) =>
-                clsx(
-                  vectorBoardRowIsLive(row) && "is-live",
-                  vectorBoardRowAtRisk(row) && "is-at-risk"
-                )
-              }
+              limitHit={compareLimitHit}
             />
           </div>
-          <VectorBoardCompareBar
-            rows={compareRows}
-            onClear={() => {
-              setCompareKeys(new Set());
-              setCompareLimitHit(false);
-            }}
-            limitHit={compareLimitHit}
+
+          {isMobile && selectedRow ? (
+            <button
+              type="button"
+              className="vector-board-detail-backdrop"
+              aria-label="Close detail"
+              onClick={() => setSelectedRow(null)}
+            />
+          ) : null}
+
+          <LegacyPlayManageRail
+            row={selectedRow}
+            onClose={() => setSelectedRow(null)}
+            sheet={isMobile && !!selectedRow}
           />
         </div>
 
-        {isMobile && selectedRow ? (
-          <button
-            type="button"
-            className="vector-board-detail-backdrop"
-            aria-label="Close detail"
-            onClick={() => setSelectedRow(null)}
-          />
-        ) : null}
-
-        <LegacyPlayDetailRail
-          row={selectedRow}
-          onClose={() => setSelectedRow(null)}
-          sheet={isMobile && !!selectedRow}
-        />
+        <LegacyPlayTechnicalsRail row={selectedRow} />
       </div>
     </div>
   );
