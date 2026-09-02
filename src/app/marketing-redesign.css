@@ -1343,9 +1343,14 @@ a.pipe-chip-link:hover{background:rgba(163,230,53,.12);border-color:rgba(163,230
   border-block:1px solid rgba(163,230,53,.12);
   background:linear-gradient(180deg,rgba(4,4,7,.92),rgba(4,4,7,.78));
 }
+/* This element also carries the shared `.w` class for max-width+centering, but `.w`'s own
+   `padding:0 1.5rem` is a shorthand and this selector is more specific than `.w`, so it fully
+   overrides all four sides rather than just adding vertical padding on top — the horizontal
+   1.5rem has to be restated here or the strip runs edge-to-edge while every other section on
+   the page keeps the 1.5rem side margin. */
 .rl .home-live-strip-inner{
   display:flex;flex-wrap:wrap;align-items:center;gap:.45rem .65rem;
-  padding:.65rem 0;overflow-x:auto;
+  padding:.65rem 1.5rem;overflow-x:auto;
 }
 .rl .home-live-chip{
   font-family:var(--m);font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;
