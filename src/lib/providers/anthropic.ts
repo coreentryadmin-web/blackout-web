@@ -569,7 +569,9 @@ export type ToolLoopStopReason =
   /** The loop's wall-clock budget ran out between rounds. */
   | "loop_budget"
   /** `maxRounds` exhausted and the final synthesis pass produced nothing usable. */
-  | "max_rounds";
+  | "max_rounds"
+  /** The model hit max_tokens limit — answer is incomplete/truncated. */
+  | "incomplete_max_tokens";
 
 export async function anthropicToolLoop(params: {
   system: AnthropicSystem;
@@ -947,6 +949,23 @@ export async function anthropicToolLoop(params: {
     trackSpend(activeModel, final.usage);
     logCacheUsage("tool-loop-final", final.usage);
     const finalText = extractTextFromBlocks(final.content as Array<{ type: string; text?: string }>) || null;
+
+    // DETECT MID-SENTENCE TRUNCATION: check stop_reason, not just text presence
+    if (final.stop_reason !== "end_turn" && finalText) {
+      console.warn(
+        `[anthropic] TRUNCATION RISK: stop_reason="${final.stop_reason}" but got non-empty text (${finalText.length} chars). ` +
+        `Text may be incomplete. First 100 chars: "${finalText.substring(0, 100)}..."`
+      );
+    }
+
+    // If model hit max_tokens, treat as incomplete even if we got text
+    if (final.stop_reason === "max_tokens") {
+      console.error(
+        `[anthropic] INCOMPLETE ANSWER: max_tokens reached. Text is truncated at ${finalText?.length || 0} chars`
+      );
+      return stop("incomplete_max_tokens", finalText, "Model hit max_tokens limit — answer is incomplete");
+    }
+
     return finalText ? stop("answered", finalText) : stop("max_rounds", null);
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
