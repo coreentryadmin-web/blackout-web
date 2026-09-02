@@ -877,6 +877,9 @@ export const TOOL_GROUPS = {
     // Cross-product comparison — routed here (not spx_desk) so it's reachable
     // whenever NIGHTHAWK_RE fires, same as the two tools above it.
     "get_spx_vs_nighthawk_comparison",
+    // New Phase 2d cross-product tools (Phase 2d P1)
+    "get_cross_product_ranking",
+    "get_live_multiproduct_board",
     // The BIE-authored tools (ecosystem-context, hot-tickers, market-regime,
     // confluence-outcomes) — see BIE_TOOL_NAMES above for the canonical list.
     ...BIE_TOOL_NAMES,
