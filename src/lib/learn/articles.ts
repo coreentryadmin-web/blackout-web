@@ -1481,14 +1481,14 @@ For dark pool fundamentals, see [What Is Dark Pool Trading?](/learn/what-is-dark
     slug: "night-hawk-evening-edition-guide",
     path: "/learn/night-hawk-evening-edition-guide",
     metaTitle: "Night Hawk Evening Edition Guide | BlackOut",
-    metaDescription: "How to read the Night Hawk Evening Edition: ranked overnight plays, conviction tiers, track record, market context, and morning confirmation workflow.",
-    targetKeyword: "overnight options playbook",
+    metaDescription: "How to read the Night Hawk Evening Edition: ranked session prep, conviction tiers, track record, market context, and morning confirmation workflow.",
+    targetKeyword: "night hawk evening edition",
     type: "article",
-    title: "Night Hawk Evening Edition: Your Overnight Playbook",
-    description: "How to read the Night Hawk Evening Edition: ranked overnight plays, conviction tiers, track record, market context, and morning confirmation workflow.",
+    title: "Night Hawk Evening Edition: Prep for the Next Session",
+    description: "How to read the Night Hawk Evening Edition: ranked session prep, conviction tiers, track record, market context, and morning confirmation workflow.",
     body: `Every trading session starts the night before. While most retail traders wait for the opening bell, the BlackOut **Night Hawk Evening Edition** publishes a ranked playbook after the close — five ideas for the next session, each scored, tiered, and managed to hard invalidation levels before you even sit down at the desk.
 
-![Night Hawk — overnight playbook and 0DTE command board](/images/learn/night-hawk-board.webp)
+![Night Hawk — 0DTE Command board and Evening Edition prep](/images/learn/night-hawk-board.webp)
 
 ## What the Evening Edition delivers
 

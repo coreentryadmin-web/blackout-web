@@ -50,3 +50,18 @@ test("no Learn article promises zero-delay/instant/never-stale data", () => {
   }
   assert.deepEqual(offenders, [], `these articles overclaim data freshness: ${offenders.join(", ")}`);
 });
+
+test("no Learn article title or description uses banned overnight-playbook positioning", () => {
+  const offenders: string[] = [];
+  for (const article of LEARN_ARTICLES) {
+    const combined = `${article.title}\n${article.description}\n${article.metaDescription ?? ""}`;
+    if (/overnight playbook/i.test(combined)) {
+      offenders.push(article.slug);
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `these articles still position Night Hawk as an overnight playbook in title/description: ${offenders.join(", ")}`
+  );
+});
