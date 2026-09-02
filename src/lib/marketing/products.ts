@@ -107,15 +107,15 @@ export const MARKETING_PRODUCTS: readonly MarketingProduct[] = [
     id: "hawk",
     index: 5,
     label: "Night Hawk",
-    tag: "Swing playbook",
-    audience: "Swing traders",
+    tag: "Evening playbook + 0DTE Command",
+    audience: "Overnight & intraday 0DTE traders",
     accent: "#ff6b2b",
-    headline: "Overnight and swing setups with receipts.",
-    lede: "Graded playbook, evening scanner, and push alerts when structure clears the gate.",
-    heroBlurb: "Graded swing playbook with A–F log, evening scanner, and gated push alerts.",
+    headline: "The evening playbook, then a live 0DTE scanner all session.",
+    lede: "A graded overnight playbook after the close, plus 0DTE Command — a continuously running intraday scanner that tracks setups through the session.",
+    heroBlurb: "Graded evening playbook with A–F log, plus 0DTE Command's live intraday scanner.",
     bullets: [
       "Transparent A–F play log with full thesis trail",
-      "Evening scanner tied to HELIX anomalies",
+      "0DTE Command scans and tracks setups all session, not just at the open",
       "Alerts when gates clear — not noise for noise's sake",
     ],
     stat: { k: "A–F", v: "graded play log" },
@@ -131,14 +131,14 @@ export const MARKETING_PRODUCTS: readonly MarketingProduct[] = [
     audience: "Universe scanners",
     accent: "#7c5cff",
     headline: "Broaden the hunt beyond SPX.",
-    lede: "Cross-ticker flow and gamma context — ranked setups from the same verification engine as the desk.",
-    heroBlurb: "Cross-ticker flow and gamma radar — ranked setups from the same BIE engine.",
+    lede: "Cross-ticker GEX ladders, regime detection, and confluence zones — ranked setups from the same verification engine as the desk, across the entire scanner universe.",
+    heroBlurb: "Cross-ticker gamma radar — GEX ladders, wall integrity, and confluence zones, live.",
     bullets: [
-      "Multi-ticker flow and positioning context",
-      "Ranked setups from BlackOut Intelligence",
-      "Rolling out as desk coverage expands",
+      "Universe screener ranked by regime, wall dominance, and confluence",
+      "Per-ticker GEX ladder, gamma magnet, and wall-integrity scoring",
+      "Session replay and alerts on flip crosses and wall breaks",
     ],
-    stat: { k: "Soon", v: "universe scan" },
+    stat: { k: "Live", v: "universe scan" },
     learnHref: "/learn/vector-scanner-guide",
     href: "/vector",
     launchStatus: "live",
@@ -151,4 +151,20 @@ export function marketingProductById(id: string): MarketingProduct | undefined {
 
 export function marketingProductLearnHref(id: MarketingProductId): string {
   return marketingProductById(id)?.learnHref ?? "/learn";
+}
+
+/**
+ * Capitalized number word for small counts (1-9), used ONLY for the homepage's stylized
+ * "Six engines. One edge." headline — so that heading derives from MARKETING_PRODUCTS.length
+ * instead of a hardcoded word that silently drifts whenever a module is added or removed
+ * (see the 2026-09 finding: the homepage said "Six engines" and "6 live engines" while the
+ * manifest below it was already missing a real 7th entry — Meridian — for want of a
+ * screenshot asset). Falls back to the numeral for anything outside 1-9.
+ */
+const SMALL_NUMBER_WORDS = [
+  "Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+] as const;
+
+export function capitalizedNumberWord(n: number): string {
+  return SMALL_NUMBER_WORDS[n] ?? String(n);
 }
