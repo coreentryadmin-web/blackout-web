@@ -63,6 +63,7 @@ Secrets Manager. **Never commit real values.**
 | `CHIEF_TRADE_BOT_URL` | Public Railway URL for `chief-trade-alert-bot` (`POST /api/trade`) |
 | `CHIEF_TRADE_API_SECRET` | Bearer token shared with the trade bot |
 | `CHIEF_TRADE_AUTHOR_NAME` | Embed author label (default `Night-Hawk-Bot`) |
+| `CHIEF_TRADE_VIRTUAL_LOTS` | Virtual contract count for desk PnL book (default `1`; use `3` for trim_scale partial banking) |
 | `DISCORD_THERMAL_WEBHOOK_URL` | Thermal triple-desk PNG → designated Discord channel (`/api/cron/thermal-discord` 15m RTH + shift leaders; `?breach_only=1` poller 5m RTH for SPY/SPX/QQQ wall/flip alerts; ~4:05 PM ET session recap) |
 | `DISCORD_HELIX_WEBHOOK_URL` | HELIX community flow embeds + digests (`#blackout-helix`; live + `/api/cron/helix-discord-digest`) |
 | `HELIX_DISCORD_ALERTS` | Opt-in `1`/`true` — live HELIX flow embeds (≥$500K · fill <$10 · ≤30 DTE) on persist + 15m RTH digests; uses `DISCORD_HELIX_WEBHOOK_URL` |
