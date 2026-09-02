@@ -14,6 +14,7 @@ import {
   type ZeroDteRecordBucket,
   type ZeroDteRecordRollup,
 } from "@/lib/zerodte/record";
+import { PLAN_RULES, PLAN_RULES_TIME_STOP_ET_LABEL } from "@/lib/zerodte/plan";
 
 /** Shape returned by GET /api/track-record — shared with TrackRecordView. */
 export type TrackRecordPagePayload = {
@@ -50,7 +51,7 @@ export type TrackRecordPagePayload = {
    * 0DTE Command's multi-day record (P-3) — a THIRD, separately-labeled methodology:
    * option-premium returns, never blended with Slayer pnl-points or Night Hawk stock-move
    * percentages. The headline W/L is the AS-MANAGED grade (the exit the member was
-   * live-guided to take); the fixed -50/+100/15:30 plan grade rides beside it as a labeled
+   * live-guided to take); the fixed -50/+100/15:50 plan grade rides beside it as a labeled
    * comparison (`mechanical`). Optional/additive like nightHawk.unresolved: undefined on
    * older cached payloads means "not computed." Buckets carry low_n (n<5) so the UI can
    * badge thin evidence.
@@ -70,7 +71,7 @@ export type TrackRecordPagePayload = {
     byTimeOfDay: ZeroDteRecordBucket[];
     byDirection: ZeroDteRecordBucket[];
     byScoreBand: ZeroDteRecordBucket[];
-    /** The fixed -50/+100/15:30 plan grade over the same rows — labeled comparison only. */
+    /** The fixed -50/+100/15:50 plan grade over the same rows — labeled comparison only. */
     mechanical: ZeroDteRecordRollup;
   };
   methodology: string;
@@ -84,7 +85,7 @@ export const TRACK_RECORD_METHODOLOGY =
   "Night Hawk results are resolved target/stop outcomes from published editions. " +
   "Night Hawk returns reflect next-day underlying stock price movement from the published entry range midpoint — " +
   "not option-premium returns. Actual option P&L will differ based on strike selection, expiry, and implied volatility at entry. " +
-  "0DTE Command results are plan-outcome grades on the printed contract plan (stop -50% / trim +100% / hard exit 15:50 ET) " +
+  `0DTE Command results are plan-outcome grades on the printed contract plan (stop ${PLAN_RULES.stop_pct}% / trim +${PLAN_RULES.target_pct}% / hard exit ${PLAN_RULES_TIME_STOP_ET_LABEL} ET) ` +
   "against the option's own premium, from the scanner ledger (every committed setup). " +
   "The three methodologies measure different things and are never blended into one win rate. " +
   "Scratch/breakeven counts appear in the embed and desk panels where applicable.";

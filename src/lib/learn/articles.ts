@@ -1630,7 +1630,7 @@ Every committed play follows the same mechanical risk rules:
 
 - **-50% stop** — cut when premium loses half its entry value
 - **+100% target** — take at least a trim when premium doubles
-- **15:30 ET time stop** — hard exit before the close; 0DTE theta collapse is unforgiving
+- **15:50 ET time stop** — hard exit before the close; 0DTE theta collapse is unforgiving
 - **55% chase protection** — if the option has already moved 55% from the flag point, the entry is stale
 
 These are rules, not predictions. The system manages to the plan, and the [track record](/learn/spx-slayer-play-grades-explained) grades every play against these exact levels.
@@ -2098,7 +2098,7 @@ The gamma effect is equally compressed. Intraday dealer positioning becomes the 
 
 ## Managing expiration risk
 
-The practical rules: (1) Know when your contracts expire — checking the calendar is free, getting surprised by assignment is not. (2) Close or roll positions before the final hour unless you have a specific reason to hold into the pin zone. (3) On 0DTE, respect the time stop — BlackOut's system uses a 15:30 ET cutoff to avoid the final 30 minutes of chaotic gamma unwind. (4) Never hold a short equity option into expiration without understanding the assignment math — after-hours moves can turn a breakeven into a liability.
+The practical rules: (1) Know when your contracts expire — checking the calendar is free, getting surprised by assignment is not. (2) Close or roll positions before the final hour unless you have a specific reason to hold into the pin zone. (3) On 0DTE, respect the time stop — BlackOut's system uses a 15:50 ET cutoff to avoid the final 10 minutes of chaotic gamma unwind. (4) Never hold a short equity option into expiration without understanding the assignment math — after-hours moves can turn a breakeven into a liability.
 
 > *BlackOut provides educational tools and market analysis only and does not provide investment advice. Options and equities trading involve substantial risk and are not suitable for every investor.*`,
   },
@@ -2208,7 +2208,7 @@ The [Night Hawk 0DTE system](/learn/night-hawk-0dte-command-guide) embeds theta 
 
 **-50% hard stops:** If a tracked play loses half its entry premium, BlackOut marks it closed and alerts you. No exceptions. BlackOut is analytics-only — it surfaces the exit, it does not route the order at your broker — but the rule leaves no room for hoping a directional bet bleeds back to even on a slow day.
 
-**15:30 ET time stops:** Any open 0DTE play in BlackOut's tracking is marked closed by 3:30 PM Eastern, 30 minutes before the close, and you're alerted to exit at your own broker. This avoids the final window where theta is at its most extreme and gamma unwind makes price action chaotic. See [SPX Slayer's lotto power hour guide](/learn/spx-slayer-lotto-power-hour) for how the system handles the end-of-day window.
+**15:50 ET time stops:** Any open 0DTE play in BlackOut's tracking is marked closed by 3:50 PM Eastern, 10 minutes before the close, and you're alerted to exit at your own broker. This avoids the final window where theta is at its most extreme and gamma unwind makes price action chaotic. See [SPX Slayer's lotto power hour guide](/learn/spx-slayer-lotto-power-hour) for how the system handles the end-of-day window.
 
 **Premium caps:** The system caps entry premium on 0DTE trades to limit the absolute dollar amount exposed to theta. A $500 max premium on a directional call means theta can take at most $500 — and the -50% stop cuts it to $250. Bounded losses, not open-ended decay.
 
@@ -2451,11 +2451,9 @@ On a 0DTE contract, the pinning effect is compressed into hours instead of days.
 
 However, 0DTE also introduces a natural mitigation: **SPX options are cash-settled**. There is no stock assignment — just a cash difference. A SPX 5,500 call that finishes ITM by $2.00 settles for $200 per contract in cash. No short stock, no after-hours surprise, no weekend gap risk. This is one reason SPX is the preferred vehicle for 0DTE over SPY: cash settlement eliminates the assignment tail risk entirely.
 
-<<<<<<< HEAD
-For equity options (SPY, QQQ, individual stocks), **assignment risk** applies when you are **short** calls or puts into expiration. BlackOut's 0DTE Command and Night Hawk directional plays are **long-option** structures (buy-to-open, sell-to-close) — assignment is not the primary tail risk for those tickets. The **15:30 ET time stop** instead exits long premium before the final 30 minutes when theta collapse and pin dynamics are most chaotic. If you sell premium separately, close or roll short legs before the close; never hold uncovered short equity options into expiration without understanding assignment math.
-=======
-For equity options (SPY, QQQ, individual stocks), 0DTE pin risk is real — but it never touches BlackOut's own tracked plays in the first place: [Night Hawk's 0DTE Command](/learn/night-hawk-0dte-command-guide) plays are long-premium (calls or puts you'd buy), never a sold/short equity option, so there is no assignment exposure to structure around. The **15:30 ET time stop** is a separate, complementary discipline: BlackOut marks any tracked 0DTE play closed 30 minutes before the 4:00 PM close and alerts you to exit at your own broker (BlackOut is analytics-only — it does not route the order). A member following that alert on their OWN equity-option position is never holding it into the final pinning window where assignment uncertainty peaks, which is exactly why the last 30 minutes of an expiration session are the most dangerous and least predictable window to ride out.
->>>>>>> origin/main
+For equity options (SPY, QQQ, individual stocks), **assignment risk** applies when you are **short** calls or puts into expiration. BlackOut's 0DTE Command and Night Hawk directional plays are **long-option** structures (buy-to-open, sell-to-close) — assignment is not the primary tail risk for those tickets. The **15:50 ET time stop** instead exits long premium before the final 10 minutes when theta collapse and pin dynamics are most chaotic. If you sell premium separately, close or roll short legs before the close; never hold uncovered short equity options into expiration without understanding assignment math.
+
+0DTE pin risk on equity options is real, but it never touches BlackOut's own tracked plays in the first place: [Night Hawk's 0DTE Command](/learn/night-hawk-0dte-command-guide) plays are long-premium (calls or puts you'd buy), never a sold/short equity option, so there is no assignment exposure to structure around. The 15:50 ET time stop is a separate, complementary discipline: BlackOut marks any tracked 0DTE play closed 10 minutes before the 4:00 PM close and alerts you to exit at your own broker (BlackOut is analytics-only — it does not route the order). A member following that alert on their OWN equity-option position is never holding it into the final pinning window where assignment uncertainty peaks, which is exactly why the last 10 minutes of an expiration session are the most dangerous and least predictable window to ride out.
 
 ## Gamma walls as pin indicators
 

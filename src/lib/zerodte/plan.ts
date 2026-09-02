@@ -20,6 +20,15 @@ export const PLAN_RULES = {
   time_stop_et_minutes: 15 * 60 + 50,
 } as const;
 
+/** `PLAN_RULES.time_stop_et_minutes` as "H:MM" ET, for prose that quotes the hard-exit
+ *  time — derive from here, never hardcode the string. A hardcoded "15:30" copy of this
+ *  (stale since the time stop moved to 15:50) shipped on the public methodology page, the
+ *  0DTE Command FAQ, and five Learn-article passages, all contradicting the actual engine
+ *  and each other — see FINDINGS 2026-09-02. */
+export const PLAN_RULES_TIME_STOP_ET_LABEL = `${Math.floor(PLAN_RULES.time_stop_et_minutes / 60)}:${String(
+  PLAN_RULES.time_stop_et_minutes % 60
+).padStart(2, "0")}`;
+
 /** 0DTE directional commits open at 10:00 ET (G-2 unlock). */
 export const ZERODTE_COMMIT_OPEN_ET_MINUTES = 10 * 60;
 
