@@ -118,9 +118,9 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
 
         {/* Dominating headline */}
         <div className="cmd-header">
-          <span className="kk"><span className="dot" />Every module, in depth</span>
+          <span className="kk"><span className="dot" />Every product, in depth</span>
           <h2>{modulesHeadline}<br /><span className="gt">One edge.</span></h2>
-          <p className="cmd-sub">Each module is a full product — purpose-built for one dimension of the tape, unified by BlackOut Intelligence. No add-ons, no upsells: the whole desk is one price.</p>
+          <p className="cmd-sub">Each product is a full desk — purpose-built for one dimension of the tape, unified by BlackOut Intelligence. No add-ons, no upsells: the whole desk is one price.</p>
         </div>
 
         {/* Carousel */}
@@ -474,7 +474,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
               <span className="badge">FULL DESK</span>
               <div className="plan" style={{ color: "var(--g)" }}>Premium</div>
               <div className="amt">{usd(MEMBERSHIP_PRICING.monthly)}<small> / mo</small></div>
-              <div className="sub">Every module — one membership</div>
+              <div className="sub">Every product — one membership</div>
               <ul className="perks">
                 {pricingPerks.map((perk) => (
                   <li key={perk}>{perk}</li>
@@ -570,7 +570,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             >
               Open the desk <span className="cta-arrow">&rarr;</span>
             </MarketingAuthCta>
-            <MarketingHashLink href="#modules" className="btn-g">Browse modules</MarketingHashLink>
+            <MarketingHashLink href="#modules" className="btn-g">Browse products</MarketingHashLink>
           </div>
         </div>
       </section>
@@ -580,9 +580,9 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
       <div className="mobile-sticky-cta" id="mobile-sticky-cta">
         <div className="sticky-text">
           <strong>
-            <MarketingAuthLabel serverSignedIn={false} signedInLabel="Open desk" signedOutLabel="Get access" />
+            <MarketingAuthLabel serverSignedIn={false} signedInLabel="Open desk" signedOutLabel="Get Full Desk" />
           </strong>
-          From {usd(MEMBERSHIP_PRICING.monthly)}/mo
+          {usd(MEMBERSHIP_PRICING.monthly)}/mo
         </div>
         <MarketingAuthCta
           serverSignedIn={false}

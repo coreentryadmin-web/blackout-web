@@ -4,9 +4,50 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const REDESIGN = readFileSync(join(__dirname, "RedesignHome.tsx"), "utf8");
+const PRICING = readFileSync(join(__dirname, "RedesignPricing.tsx"), "utf8");
 const PROMO = readFileSync(join(__dirname, "HomeGammaPromo.tsx"), "utf8");
 const FX = readFileSync(join(__dirname, "LandingRedesignFx.tsx"), "utf8");
 const CSS = readFileSync(join(__dirname, "..", "..", "app", "marketing-redesign.css"), "utf8");
+
+// Regression for a P2 finding (2026-09-02): the homepage's headline correctly says "Seven
+// products" (post the 6->7 catalog migration) but the surrounding eyebrow/subhead/pricing copy
+// still said "module" — leftover terminology from before the rename, inconsistent with the FAQ
+// and headline, which already say "product". User-visible text only; the `#modules` anchor,
+// `sec-cmd`/`cmd-*` CSS classes, and MARKETING_MODULE_GALLERY/marketingModulesHeadline
+// identifiers are a URL/code contract, not copy, and are deliberately left untouched.
+test("RedesignHome + RedesignPricing user-visible copy says 'product', not the retired 'module'", () => {
+  const visibleCopyPatterns = [
+    /Every product, in depth/,
+    /Each product is a full desk/,
+    /Every product — one membership/,
+    /Browse products<\/MarketingHashLink>/,
+  ];
+  for (const p of visibleCopyPatterns) assert.match(REDESIGN, p);
+  assert.match(PRICING, /Every product · one membership/);
+
+  // No stray "module" text should remain in a JSX text position (children between > and <).
+  // This is deliberately narrow — it must NOT flag the #modules anchor, sec-cmd/cmd-* CSS
+  // classes, or MARKETING_MODULE_GALLERY/marketingModulesHeadline identifiers, which are a
+  // URL/code contract, not copy.
+  assert.doesNotMatch(REDESIGN, />[^<]*\bmodule\b[^<]*</i, "no visible 'module' text should remain on the homepage");
+  assert.doesNotMatch(PRICING, />[^<]*\bmodule\b[^<]*</i, "no visible 'module' text should remain on /pricing");
+});
+
+// Regression for a P2 finding (2026-09-02): the mobile sticky CTA said "Get access — From
+// $199/mo", but $199/mo is the FULL DESK premium price, not a floor — SPX Slayer is a genuinely
+// cheaper $49/mo tier shown elsewhere on the same page. "From $X" is a floor claim; asserting it
+// against the higher tier's price contradicts the page's own pricing section. This CTA routes to
+// /upgrade (the premium checkout flow), so the fix relabels it to match what it actually sells
+// instead of changing which price it shows.
+test("RedesignHome mobile sticky CTA is honestly labeled Full Desk at the premium price, not a false 'From' floor", () => {
+  assert.match(REDESIGN, /signedOutLabel="Get Full Desk"/);
+  assert.doesNotMatch(
+    REDESIGN,
+    /From \{usd\(MEMBERSHIP_PRICING\.monthly\)\}/,
+    "must not claim the premium price as a site-wide floor when a cheaper SPX Slayer tier exists"
+  );
+  assert.match(REDESIGN, /\{usd\(MEMBERSHIP_PRICING\.monthly\)\}\/mo/);
+});
 
 test("RedesignHome wires HomeGammaPromo with live initial snapshot", () => {
   assert.match(REDESIGN, /HomeGammaPromo initial=\{initialGamma\}/);
