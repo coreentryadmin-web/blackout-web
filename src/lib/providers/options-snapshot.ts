@@ -301,6 +301,19 @@ export function chunkOccs<T>(arr: T[], size: number): T[][] {
 }
 
 /**
+ * `/v3/snapshot?ticker.any_of=` requires the Massive/Polygon-canonical `O:`-prefixed option
+ * ticker (e.g. `O:MU260904C00930000`) — VERIFIED live 2026-09-02: the identical bare OCC
+ * (`MU260904C00930000`, no prefix) returns `{"error":"NOT_FOUND"}` on BOTH api.massive.com and
+ * api.polygon.io, while the `O:`-prefixed form returns a full live quote in the same call.
+ * Exported so `fetchOptionsUnifiedSnapshot` can normalize the OUTGOING request while a caller's
+ * own (possibly bare) OCC string stays the map key — see that function's comment for why.
+ */
+export function withOccPrefix(occ: string): string {
+  const trimmed = occ.trim();
+  return trimmed.startsWith("O:") ? trimmed : `O:${trimmed}`;
+}
+
+/**
  * Per-OCC outcome diagnostics for ONE snapshot fetch — so a caller (the warm cron) can log
  * exactly which requested contracts did NOT come back priced and why, instead of only a bare
  * "warmed N/M" count. Purely observational: it NEVER changes the returned snapshot map.
@@ -337,6 +350,23 @@ export type SnapshotFetchDiagnostics = {
  * - BEST-EFFORT: a failed chunk contributes nothing (the partial map from other chunks is
  *   still returned); a total failure returns an empty map. Never throws.
  *
+ * REQUEST NORMALIZATION (fix, 2026-09-02 — see withOccPrefix's comment for the live proof):
+ * the provider's `ticker.any_of` ONLY resolves the `O:`-prefixed canonical form; a bare OCC
+ * comes back as an unfound-ticker `error` row for EVERY chunk element, silently emptying the
+ * whole map. This codebase has TWO OCC builders — `buildOcc` (`src/lib/ws/options-socket.ts`,
+ * plus a structurally-identical local copy in `option-chain-prompt.ts`) and `vectorPickOcc`
+ * (Vector) both already return the `O:`-prefixed form and were unaffected; `buildOccContractId`
+ * (`src/lib/helix/occ-contract-id.ts`) deliberately returns BARE OCC for its UW callers, and its
+ * own header comment says so — but Legacy's `legacy-play-contract.ts` (`resolveLegacyPlayOcc`)
+ * also uses it and feeds the bare result straight into THIS function via `legacy-marks/route.ts`,
+ * which is the one confirmed-broken caller (verified: every real open Legacy contract's live
+ * mark reads null). The fix normalizes the OUTGOING request here — the one shared choke point —
+ * rather than special-casing that one route, so any FUTURE caller built the bare way can't
+ * silently reproduce this: `unique` (and every diagnostic/return key) stays whatever format the
+ * CALLER passed in,
+ * so a caller doing `snaps.get(occ)` with its own bare or `O:`-prefixed string keeps working
+ * unchanged; only the wire request to Polygon is normalized via a request→original reverse map.
+ *
  * When `diag` is passed it is POPULATED with per-OCC outcomes (found / unfound+reason /
  * missing / no-quote) so the caller can log exactly WHICH requested contracts didn't price and
  * why — turning a silent "warmed N/M" into an actionable line. Diagnostics never change the map.
@@ -350,8 +380,8 @@ export async function fetchOptionsUnifiedSnapshot(
   if (diag) diag.requested = unique.length;
   if (unique.length === 0) return out;
 
-  // Track which requested OCCs we saw a row for (any row), so we can derive `missing` (no row
-  // at all) afterward. The provider echoes the OCC in `ticker` even on an error/unfound row.
+  // Track which requested OCCs (in the CALLER's original format) we saw a row for, so we can
+  // derive `missing` (no row at all) afterward.
   const seen = new Set<string>();
   const noQuote: string[] = [];
   const unfound: Array<{ occ: string; reason: string }> = [];
@@ -360,8 +390,12 @@ export async function fetchOptionsUnifiedSnapshot(
   await Promise.all(
     chunks.map(async (group) => {
       try {
+        // Normalize to the provider's required `O:`-prefixed form for the wire request only;
+        // recover the caller's ORIGINAL string via this reverse map when reading the response,
+        // so the returned Map (and every diag list) stays keyed the way the caller expects.
+        const byRequestTicker = new Map(group.map((occ) => [withOccPrefix(occ), occ]));
         const params = new URLSearchParams({
-          "ticker.any_of": group.join(","),
+          "ticker.any_of": Array.from(byRequestTicker.keys()).join(","),
           limit: String(UNIFIED_SNAPSHOT_MAX_PER_CALL),
         });
         const json = await polygonRawJson<UnifiedSnapshotResponse>(
@@ -369,7 +403,10 @@ export async function fetchOptionsUnifiedSnapshot(
           "/v3/snapshot"
         );
         for (const r of json?.results ?? []) {
-          const occ = typeof r?.ticker === "string" ? r.ticker : "";
+          const providerTicker = typeof r?.ticker === "string" ? r.ticker : "";
+          // The provider echoes back exactly the ticker form it was asked for, so this always
+          // resolves for a row this call produced; the raw ticker is a harmless last-resort.
+          const occ = byRequestTicker.get(providerTicker) ?? providerTicker;
           if (occ) seen.add(occ);
           // Unfound/error row: provider returned the OCC with an `error`/`message` (almost always
           // an UNLISTED / non-existent contract). Record the reason so warming can explain the gap.
@@ -381,9 +418,9 @@ export async function fetchOptionsUnifiedSnapshot(
           if (snap) {
             // Observation clock = this fetch. Commit G-9 uses observedAtMs so a live NBBO
             // just returned here is never blocked by a stale last_quote.last_updated.
-            out.set(snap.ticker, { ...snap, observedAtMs: Date.now() });
+            out.set(occ, { ...snap, observedAtMs: Date.now() });
             // A row that mapped but has no usable price is a real-but-quote-less contract.
-            if (diag && snap.mark == null) noQuote.push(snap.ticker);
+            if (diag && snap.mark == null) noQuote.push(occ);
           }
         }
       } catch {
