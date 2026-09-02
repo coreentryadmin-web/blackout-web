@@ -40,7 +40,7 @@ describe("discord-trade-notify formatters", () => {
       expiry: "10/10",
       price: 3.55,
       idempotency_key: "zerodte:2026-10-10:SPX:bto",
-      author_name: "BlackOut Desk",
+      author_name: "Night-Hawk-Bot",
     });
   });
 

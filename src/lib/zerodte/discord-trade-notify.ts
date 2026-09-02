@@ -77,7 +77,7 @@ export function buildZeroDteTradePayload(
     expiry,
     price,
     idempotency_key: `zerodte:${row.session_date}:${ticker}:${action.toLowerCase()}`,
-    author_name: process.env.CHIEF_TRADE_AUTHOR_NAME?.trim() || "BlackOut Desk",
+    author_name: process.env.CHIEF_TRADE_AUTHOR_NAME?.trim() || "Night-Hawk-Bot",
   };
 }
 
