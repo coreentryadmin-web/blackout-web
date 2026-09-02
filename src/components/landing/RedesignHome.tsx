@@ -181,9 +181,11 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
                       <span className="cmd-stat-k">{m.stat.v}</span>
                     </div>
                     <div className="cmd-actions">
-                      <Link href={m.learnHref} prefetch={false} className="cmd-learn">
-                        Read the guide
-                      </Link>
+                      {m.learnHref !== m.href && (
+                        <Link href={m.learnHref} prefetch={false} className="cmd-learn">
+                          Read the guide
+                        </Link>
+                      )}
                       <Link href={m.href} prefetch={false} className="cmd-cta">
                         {m.launchStatus === "soon" ? "Get early access" : `Open ${m.label}`}
                       </Link>

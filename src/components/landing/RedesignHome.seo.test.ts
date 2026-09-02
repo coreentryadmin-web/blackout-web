@@ -28,6 +28,17 @@ test("RedesignHome comparison list does not overclaim a single unified screen", 
   assert.match(REDESIGN, /one platform, one membership/);
 });
 
+// Regression for a P2 finding (2026-09-02): Meridian's product-manifest entry has
+// `learnHref === href === "/meridian"` (no dedicated Academy guide exists yet), so the
+// unconditional "Read the guide" CTA sent visitors to the exact same product-shell route as
+// "Open Meridian" — two differently-labeled actions to one destination, with the "guide" label
+// promising educational content the click never delivers. Every other product's `learnHref`
+// points at a distinct `/learn/...` article. The fix hides "Read the guide" whenever a product
+// has no guide of its own yet, rather than rendering a dead-end duplicate.
+test("RedesignHome module cards hide the guide CTA when a product has no distinct guide yet", () => {
+  assert.match(REDESIGN, /m\.learnHref\s*!==\s*m\.href/, "must gate the 'Read the guide' link on a distinct guideHref");
+});
+
 test("HomeGammaPromo links to the free gamma snapshot tool", () => {
   assert.match(PROMO, /href="\/tools\/gamma-snapshot"/);
   assert.match(PROMO, /Free gamma snapshot/);

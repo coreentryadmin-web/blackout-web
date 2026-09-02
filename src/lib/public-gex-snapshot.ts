@@ -2,6 +2,7 @@ import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { captureError } from "@/lib/error-sink";
 import { sharedCacheGet, sharedCacheSet, sharedCacheDel } from "@/lib/shared-cache";
 import {
+  applyPublicReadFreshnessGate,
   classifyWall,
   correctPublicRead,
   publicSnapshotSessionFacts,
@@ -14,6 +15,7 @@ import {
 
 export type { PublicGexSnapshot, PublicGexTicker, PublicWallRole } from "@/lib/public-gex-snapshot-types";
 export {
+  applyPublicReadFreshnessGate,
   classifyWall,
   correctPublicRead,
   isPublicGexTicker,
@@ -201,11 +203,14 @@ function buildSnapshotFromHeatmap(
     posture: heatmap.gex.regime.posture,
     call_wall_role: classifyWall("call", constrainedCallWall, heatmap.spot),
     put_wall_role: classifyWall("put", constrainedPutWall, heatmap.spot),
-    read: correctPublicRead(sanitizePublicRead(heatmap.gex.regime.read), {
-      spot: heatmap.spot,
-      call_wall: constrainedCallWall,
-      put_wall: constrainedPutWall,
-    }),
+    read: applyPublicReadFreshnessGate(
+      correctPublicRead(sanitizePublicRead(heatmap.gex.regime.read), {
+        spot: heatmap.spot,
+        call_wall: constrainedCallWall,
+        put_wall: constrainedPutWall,
+      }),
+      session.market_session
+    ),
     ...(heatmap.spot_source !== undefined ? { spot_source: heatmap.spot_source } : {}),
     ...(heatmap.chain_truncated ? { chain_truncated: true } : {}),
     degraded: false,
