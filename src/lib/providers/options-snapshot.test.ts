@@ -287,13 +287,17 @@ test("fetchOptionsUnifiedSnapshot: not configured (no key) → empty map, never 
 //
 // LIVE-VERIFIED 2026-09-02: `/v3/snapshot?ticker.any_of=` on BOTH api.massive.com and
 // api.polygon.io returns `{"error":"NOT_FOUND"}` for a bare OCC (e.g. "MU260904C00930000") and a
-// full live quote for the SAME contract `O:`-prefixed — yet `buildOcc`/`buildOccContractId`
-// (used by Legacy's legacy-marks route, Vector contract-picks/pick-sweep, zerodte scan/live-marks/
-// contract-attach, banger-live-sync, option-chain-prompt) deliberately return BARE OCC (UW wants
-// it bare). Only `occSymbolFromSwingRow` normalized to `O:` before calling this function. Every
-// other caller's live marks silently came back null/stale — reproduced live via
-// GET /api/market/nighthawk/legacy-marks on 2026-09-02 (all 5 real open Legacy contracts during
-// RTH returned mark:null/stale:true).
+// full live quote for the SAME contract `O:`-prefixed. `buildOccContractId`
+// (src/lib/helix/occ-contract-id.ts) deliberately returns BARE OCC (its own header comment: UW
+// wants it bare) — correct for its UW callers, but Legacy's `resolveLegacyPlayOcc` also uses it
+// and fed the bare result straight into this function via `legacy-marks/route.ts`, which is the
+// one confirmed-broken caller: reproduced live via GET /api/market/nighthawk/legacy-marks on
+// 2026-09-02 (all 5 real open Legacy contracts during RTH returned mark:null/stale:true). The
+// OTHER `fetchOptionsUnifiedSnapshot` callers (zerodte scan/live-marks/contract-attach,
+// banger-live-sync, option-chain-prompt, Vector contract-picks/pick-sweep) already use a
+// DIFFERENT builder (`buildOcc` in options-socket.ts, or Vector's `vectorPickOcc`) that returns
+// `O:`-prefixed OCC and were verified unaffected — this fix protects them too, since any FUTURE
+// caller built the bare way would otherwise silently reproduce the same defect.
 
 test("withOccPrefix: adds O: to a bare OCC, leaves an already-prefixed one untouched", async () => {
   const { withOccPrefix } = await import("./options-snapshot");

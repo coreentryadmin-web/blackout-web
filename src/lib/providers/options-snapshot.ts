@@ -352,14 +352,18 @@ export type SnapshotFetchDiagnostics = {
  *
  * REQUEST NORMALIZATION (fix, 2026-09-02 — see withOccPrefix's comment for the live proof):
  * the provider's `ticker.any_of` ONLY resolves the `O:`-prefixed canonical form; a bare OCC
- * (what `buildOcc`/`buildOccContractId` deliberately return, since UW wants it bare) comes back
- * as an unfound-ticker `error` row for EVERY chunk element, silently emptying the whole map. Only
- * one caller (`occSymbolFromSwingRow`) had been normalizing to `O:` before calling this function;
- * every other caller (Legacy's `legacy-marks` route, Vector contract-picks live + pick-sweep,
- * zerodte `scan.ts`/`live-marks.ts`/`contract-attach.ts`, `banger-live-sync`,
- * `option-chain-prompt.ts`) passed bare OCC straight through and got nothing back. The fix
- * normalizes the OUTGOING request here — the one shared choke point — instead of touching every
- * caller: `unique` (and every diagnostic/return key) stays whatever format the CALLER passed in,
+ * comes back as an unfound-ticker `error` row for EVERY chunk element, silently emptying the
+ * whole map. This codebase has TWO OCC builders — `buildOcc` (`src/lib/ws/options-socket.ts`,
+ * plus a structurally-identical local copy in `option-chain-prompt.ts`) and `vectorPickOcc`
+ * (Vector) both already return the `O:`-prefixed form and were unaffected; `buildOccContractId`
+ * (`src/lib/helix/occ-contract-id.ts`) deliberately returns BARE OCC for its UW callers, and its
+ * own header comment says so — but Legacy's `legacy-play-contract.ts` (`resolveLegacyPlayOcc`)
+ * also uses it and feeds the bare result straight into THIS function via `legacy-marks/route.ts`,
+ * which is the one confirmed-broken caller (verified: every real open Legacy contract's live
+ * mark reads null). The fix normalizes the OUTGOING request here — the one shared choke point —
+ * rather than special-casing that one route, so any FUTURE caller built the bare way can't
+ * silently reproduce this: `unique` (and every diagnostic/return key) stays whatever format the
+ * CALLER passed in,
  * so a caller doing `snaps.get(occ)` with its own bare or `O:`-prefixed string keeps working
  * unchanged; only the wire request to Polygon is normalized via a request→original reverse map.
  *
