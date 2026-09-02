@@ -18,7 +18,7 @@ type Row = { feature: string; blackout: string; others: string };
 // defensible statements about how this category of tool typically works,
 // not claims about any specific named competitor.
 const ROWS: Row[] = [
-  { feature: "Data freshness", blackout: "Live, tick-by-tick — zero delay", others: "Delayed snapshots, manual refresh" },
+  { feature: "Data freshness", blackout: "Live tick-by-tick — quote age shown on every read", others: "Delayed snapshots, manual refresh" },
   { feature: "Alert accountability", blackout: "Every setup graded A–F with a logged track record", others: "Cherry-picked alerts, no receipts" },
   { feature: "Where the tools live", blackout: "6 engines, one screen, one membership", others: "Scattered across 5 tabs and 3 Discords" },
   { feature: "Entry verification", blackout: "AI verification engine gates every play", others: "Gut-feel callouts, no grading" },

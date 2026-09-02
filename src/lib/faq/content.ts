@@ -74,7 +74,7 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
     },
     {
       q: "Do I need to connect a broker?",
-      a: "No. BlackOut is a pure intelligence layer — you execute on your own broker. We surface the data, structure, and setups before price moves; you pull the trigger wherever you already trade.",
+      a: "No. BlackOut is a pure intelligence layer — you execute on your own broker. We surface live structure, positioning, and graded setups from observable market data; you pull the trigger wherever you already trade.",
     },
     {
       q: "Is any of this financial advice?",

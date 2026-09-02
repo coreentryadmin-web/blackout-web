@@ -881,7 +881,7 @@ export function LandingRedesignFx() {
               }
               // Update status text
               const statusEl = el.querySelector(".pipe-status");
-              if (statusEl) statusEl.innerHTML = '<span class="status-dot"></span>ONLINE';
+              if (statusEl) statusEl.classList.add("is-live");
             }
           }
         },

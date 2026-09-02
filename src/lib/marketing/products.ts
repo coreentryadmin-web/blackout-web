@@ -107,18 +107,19 @@ export const MARKETING_PRODUCTS: readonly MarketingProduct[] = [
     id: "hawk",
     index: 5,
     label: "Night Hawk",
-    tag: "Swing playbook",
-    audience: "Swing traders",
+    tag: "0DTE command desk",
+    audience: "Intraday traders",
     accent: "#ff6b2b",
-    headline: "Overnight and swing setups with receipts.",
-    lede: "Graded playbook, evening scanner, and push alerts when structure clears the gate.",
-    heroBlurb: "Graded swing playbook with A–F log, evening scanner, and gated push alerts.",
+    headline: "Intraday scanner with evening prep.",
+    lede: "0DTE Command during RTH, graded play lifecycle, Cortex thesis health, and Evening Edition prep — one desk for the full session arc.",
+    heroBlurb: "Live 0DTE scanner + play lifecycle — evening preparation when the cash session ends.",
     bullets: [
-      "Transparent A–F play log with full thesis trail",
-      "Evening scanner tied to HELIX anomalies",
-      "Alerts when gates clear — not noise for noise's sake",
+      "0DTE Command: whole-market intraday scanner",
+      "Thesis health and Cortex gates on every commit",
+      "Evening Edition prep for the next session",
+      "Graded play log with full thesis trail",
     ],
-    stat: { k: "A–F", v: "graded play log" },
+    stat: { k: "Live", v: "0DTE command" },
     learnHref: "/learn/night-hawk-0dte-command-guide",
     href: "/nighthawk",
     launchStatus: "live",
@@ -135,15 +136,53 @@ export const MARKETING_PRODUCTS: readonly MarketingProduct[] = [
     heroBlurb: "Cross-ticker flow and gamma radar — ranked setups from the same BIE engine.",
     bullets: [
       "Multi-ticker flow and positioning context",
+      "Wall integrity, confluence zones, and session replay",
       "Ranked setups from BlackOut Intelligence",
-      "Rolling out as desk coverage expands",
     ],
-    stat: { k: "Soon", v: "universe scan" },
+    stat: { k: "Live", v: "universe scan" },
     learnHref: "/learn/vector-scanner-guide",
     href: "/vector",
     launchStatus: "live",
   },
+  {
+    id: "meridian",
+    index: 7,
+    label: "Meridian",
+    tag: "Earnings intelligence",
+    audience: "Event traders",
+    accent: "#38bdf8",
+    headline: "Earnings prints with positioning context.",
+    lede: "Calendar, estimates, reactions, and cross-tool intel for every major earnings event — not a generic screener.",
+    heroBlurb: "Earnings calendar with estimate revisions, reaction history, and Thermal/flow context per print.",
+    bullets: [
+      "Timeline of upcoming and recent earnings events",
+      "Estimate revisions and beat-rate history",
+      "Positioning and flow context tied to each print",
+    ],
+    stat: { k: "Live", v: "earnings desk" },
+    learnHref: "/meridian",
+    href: "/meridian",
+    launchStatus: "live",
+  },
 ] as const;
+
+/** Live products only — drives homepage counts and pricing copy (never hardcode "6 engines"). */
+export const LIVE_MARKETING_PRODUCTS = MARKETING_PRODUCTS.filter((p) => p.launchStatus === "live");
+
+export function marketingProductCount(): number {
+  return LIVE_MARKETING_PRODUCTS.length;
+}
+
+/** Product names for Premium pricing bullets — one line per desk surface. */
+export function premiumPricingPerks(): string[] {
+  return LIVE_MARKETING_PRODUCTS.map((p) => p.label);
+}
+
+export function marketingModulesHeadline(): string {
+  const n = marketingProductCount();
+  const word = n === 7 ? "Seven" : n === 6 ? "Six" : String(n);
+  return `${word} products.`;
+}
 
 export function marketingProductById(id: string): MarketingProduct | undefined {
   return MARKETING_PRODUCTS.find((p) => p.id === id);

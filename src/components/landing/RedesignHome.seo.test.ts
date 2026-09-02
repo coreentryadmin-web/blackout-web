@@ -29,25 +29,20 @@ test("HomeGammaPromo links to the free gamma snapshot tool", () => {
 
 test("pipeline .pipe-status label has exactly one text source, not two overlapping renders", () => {
   // Regression guard for the "How BlackOut Thinks" 01-04 stage badges rendering as
-  // garbled double-exposed text (e.g. "ONLINE" overlapping itself) on every homepage
-  // visit. Root cause: LandingRedesignFx.tsx's IntersectionObserver already rewrites
-  // .pipe-status's innerHTML to "<dot/>ONLINE" the instant a stage scrolls into view —
-  // that must stay the ONE place the label text is authored. A CSS
-  // `.pipe-status::after{content:"ONLINE"}` used to duplicate it: with no top/left set,
-  // an absolutely-positioned ::after renders at its in-flow "static position" (CSS2.1
-  // 10.3.7), landing directly on top of the JS-authored text instead of away from it.
-  // RedesignHome.tsx seeds the same nodes with static "OFFLINE" markup pre-hydration,
-  // which is expected (and is never lit at first paint) — only guard the CSS/JS pair
-  // that actually fires once a stage goes live.
+  // garbled double-exposed text on every homepage visit. Stage labels are semantic
+  // static copy (SCAN / VERIFY / STRUCTURE / LOGGED). LandingRedesignFx only adds
+  // `.is-live` on scroll — it must NOT rewrite innerHTML to a second label.
   assert.match(
     FX,
-    /statusEl\.innerHTML = .*ONLINE/,
-    "LandingRedesignFx.tsx must still author the lit .pipe-status label text",
+    /statusEl\.classList\.add\("is-live"\)/,
+    "LandingRedesignFx.tsx must light stages via class only, not rewrite label text",
   );
   assert.doesNotMatch(
     CSS,
-    /\.pipe-status::after\s*\{[^}]*content:\s*["'][^"']*(ONLINE|OFFLINE)/i,
-    "marketing-redesign.css must not re-add a ::after{content:\"ONLINE\"} on .pipe-status — " +
-      "it double-renders on top of the JS-authored label (see the comment above pipe-status in that file)",
+    /\.pipe-status::after\s*\{[^}]*content:\s*["'][^"']*(ACTIVE|ONLINE|OFFLINE|STANDBY)/i,
+    "marketing-redesign.css must not add a ::after label on .pipe-status",
   );
+  assert.match(REDESIGN, /SCAN/, "Identify stage uses semantic SCAN label");
+  assert.match(REDESIGN, /VERIFY/, "Validate stage uses semantic VERIFY label");
+  assert.doesNotMatch(REDESIGN, />OFFLINE</, "pipeline must never seed OFFLINE on the public homepage");
 });

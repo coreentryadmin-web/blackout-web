@@ -2,7 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import type { CSSProperties } from "react";
 import { HOME_FAQ_IDS, selectFaqItems } from "@/lib/faq/content";
-import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
+import { MARKETING_PRODUCTS, marketingModulesHeadline, marketingProductCount, premiumPricingPerks } from "@/lib/marketing/products";
 import { IMAGES, MARKETING_MODULE_GALLERY } from "@/lib/images";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { SITE } from "@/lib/site";
@@ -11,11 +11,16 @@ import type { PublicGexSnapshot } from "@/lib/public-gex-snapshot";
 import { LandingRedesignFxLazy } from "./LandingRedesignFxLazy";
 import { MarketingAuthAnchor, MarketingAuthCta, MarketingAuthLabel } from "./MarketingAuthCta";
 import { HomeGammaHeroLink, HomeGammaPromo } from "./HomeGammaPromo";
+import { HomeLiveDeskStrip } from "./HomeLiveDeskStrip";
 import { HomeCommunityRail } from "./HomeCommunityRail";
 import { MarketingHashLink } from "./MarketingHashLink";
 
 /** Redesigned homepage body — server-rendered content + one client FX layer (canvas, reveal, ticker). */
 export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot }) {
+  const productCount = marketingProductCount();
+  const pricingPerks = premiumPricingPerks();
+  const modulesHeadline = marketingModulesHeadline();
+
   return (
     <div className="rl">
       {/* ═══ Atmosphere layers ═══ */}
@@ -62,7 +67,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
         </div>
 
         <div className="hero-sub">
-          <p><b>See what the dealers see.</b> Trade before the crowd moves.</p>
+          <p><b>See what the dealers see.</b> Live positioning, flow, and graded setups — with quote age on every read.</p>
           <div className="cta-row">
             <MarketingAuthCta
               serverSignedIn={false}
@@ -73,14 +78,11 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
               className="btn-p"
             />
             <HomeGammaHeroLink />
-            <MarketingHashLink href="#modules" className="btn-g hero-btn-ghost">
-              Explore the desk
-            </MarketingHashLink>
           </div>
           <ul className="hero-creds">
-            <li>6 live engines</li>
+            <li>{productCount} desk products</li>
             <li>12,400+ contracts scanned daily</li>
-            <li>Every setup graded A–F</li>
+            <li>Trade Grade A–F on every setup</li>
             <li>
               <Link href="/methodology" prefetch={false} className="hero-cred-link">
                 Public track record
@@ -94,6 +96,10 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
           </ul>
         </div>
       </section>
+
+      <div className="node" aria-hidden="true" />
+
+      <HomeLiveDeskStrip gamma={initialGamma} />
 
       <div className="node" aria-hidden="true" />
 
@@ -112,7 +118,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
         {/* Dominating headline */}
         <div className="cmd-header">
           <span className="kk"><span className="dot" />Every module, in depth</span>
-          <h2>Six engines.<br /><span className="gt">One edge.</span></h2>
+          <h2>{modulesHeadline}<br /><span className="gt">One edge.</span></h2>
           <p className="cmd-sub">Each module is a full product — purpose-built for one dimension of the tape, unified by BlackOut Intelligence. No add-ons, no upsells: the whole desk is one price.</p>
         </div>
 
@@ -226,13 +232,13 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             <div className="pipe-stage pipe-s1" data-pipe-stage="identify">
               <div className="pipe-stage-chrome">
                 <div className="pipe-num">01</div>
-                <div className="pipe-status" data-status-id="identify"><span className="status-dot" />OFFLINE</div>
+                <div className="pipe-status" data-status-id="identify"><span className="status-dot" />SCAN</div>
               </div>
               <div className="pipe-stage-body">
                 <div className="pipe-stage-text">
                   <h3>Identify</h3>
-                  <p className="pipe-hl">Read the floor before anyone else.</p>
-                  <p className="pipe-desc">Dealer gamma, dark-pool blocks, institutional sweeps, and GEX walls — every signal that moves SPX, surfaced before the tape catches up.</p>
+                  <p className="pipe-hl">Map dealer positioning from live options flow.</p>
+                  <p className="pipe-desc">Dealer gamma, dark-pool blocks, institutional sweeps, and GEX walls — every signal that moves SPX, surfaced as positioning shifts on the tape.</p>
                   <div className="pipe-chips">
                     <span className="pipe-chip live">SCANNING</span>
                     <span className="pipe-chip">GEX WALLS</span>
@@ -253,7 +259,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             <div className="pipe-stage pipe-s2" data-pipe-stage="validate">
               <div className="pipe-stage-chrome">
                 <div className="pipe-num">02</div>
-                <div className="pipe-status" data-status-id="validate"><span className="status-dot" />OFFLINE</div>
+                <div className="pipe-status" data-status-id="validate"><span className="status-dot" />VERIFY</div>
               </div>
               <div className="pipe-stage-body">
                 <div className="pipe-stage-visual">
@@ -280,7 +286,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             <div className="pipe-stage pipe-s3" data-pipe-stage="execute">
               <div className="pipe-stage-chrome">
                 <div className="pipe-num">03</div>
-                <div className="pipe-status" data-status-id="execute"><span className="status-dot" />OFFLINE</div>
+                <div className="pipe-status" data-status-id="execute"><span className="status-dot" />STRUCTURE</div>
               </div>
               <div className="pipe-stage-body">
                 <div className="pipe-stage-text">
@@ -307,7 +313,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             <div className="pipe-stage pipe-s4" data-pipe-stage="results">
               <div className="pipe-stage-chrome">
                 <div className="pipe-num">04</div>
-                <div className="pipe-status" data-status-id="results"><span className="status-dot" />OFFLINE</div>
+                <div className="pipe-status" data-status-id="results"><span className="status-dot" />LOGGED</div>
               </div>
               <div className="pipe-stage-body">
                 <div className="pipe-stage-visual pipe-results-visual">
@@ -411,9 +417,9 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
               <div className="vs-col vs-us">
                 <div className="vs-label">BlackOut</div>
                 <ul className="vs-list">
-                  <li>Live tick-by-tick — zero delay</li>
+                  <li>Live tick-by-tick — quote age shown on every read</li>
                   <li>Every setup graded A–F with a logged track record</li>
-                  <li>6 engines, one screen, one membership</li>
+                  <li>{productCount} products, one screen, one membership</li>
                   <li>AI verification engine gates every play</li>
                   <li>Institutional flow, GEX, dark pool — streamed live</li>
                   <li>Real-time P&amp;L marks, not end-of-day summaries</li>
@@ -467,14 +473,10 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
               <div className="amt">{usd(MEMBERSHIP_PRICING.monthly)}<small> / mo</small></div>
               <div className="sub">Every module — one membership</div>
               <ul className="perks">
-                <li>HELIX live options-flow</li>
-                <li>SPX Slayer 0DTE desk</li>
-                <li>Largo AI analyst</li>
-                <li>Dealer gamma / GEX</li>
-                <li>Dark-pool prints</li>
-                <li>Night Hawk scanner</li>
-                <li>Strike-level heatmaps</li>
-                <li>Graded play log A-F</li>
+                {pricingPerks.map((perk) => (
+                  <li key={perk}>{perk}</li>
+                ))}
+                <li>Trade Grade A–F play log</li>
               </ul>
               {WHOP_CHECKOUT.monthly ? (
                 <a href={WHOP_CHECKOUT.monthly} className="btn-p">Get full access <span className="cta-arrow">&rarr;</span></a>
@@ -498,14 +500,10 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
               <div className="amt">{usd(MEMBERSHIP_PRICING.yearly)}<small> / yr</small></div>
               <div className="sub">{usd(MEMBERSHIP_PRICING.yearlyEffectiveMonthly)}/mo &middot; save {usd(MEMBERSHIP_PRICING.yearlySavingsVsMonthly)} vs monthly</div>
               <ul className="perks">
-                <li>HELIX live options-flow</li>
-                <li>SPX Slayer 0DTE desk</li>
-                <li>Largo AI analyst</li>
-                <li>Dealer gamma / GEX</li>
-                <li>Dark-pool prints</li>
-                <li>Night Hawk scanner</li>
-                <li>Strike-level heatmaps</li>
-                <li>Graded play log A-F</li>
+                {pricingPerks.map((perk) => (
+                  <li key={perk}>{perk}</li>
+                ))}
+                <li>Trade Grade A–F play log</li>
               </ul>
               {WHOP_CHECKOUT.yearly ? (
                 <a href={WHOP_CHECKOUT.yearly} className="btn-p">Lock in yearly <span className="cta-arrow">&rarr;</span></a>
@@ -569,7 +567,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             >
               Open the desk <span className="cta-arrow">&rarr;</span>
             </MarketingAuthCta>
-            <MarketingHashLink href="#modules" className="btn-g">See the desk</MarketingHashLink>
+            <MarketingHashLink href="#modules" className="btn-g">Browse modules</MarketingHashLink>
           </div>
         </div>
       </section>

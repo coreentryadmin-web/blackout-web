@@ -10,6 +10,7 @@ export const MARKETING_MODULE_IMAGES = {
   thermal: "/images/marketing/thermal.webp",
   largo: "/images/marketing/largo.webp",
   hawk: "/images/marketing/hawk.webp",
+  meridian: "/images/marketing/thermal.webp",
   vector: "/images/marketing/vector.webp",
 } as const;
 
@@ -30,6 +31,7 @@ export const MARKETING_MODULE_GALLERY: Record<MarketingModuleId, readonly string
   thermal: [MARKETING_MODULE_IMAGES.thermal, "/images/marketing/thermal-2.webp", "/images/marketing/thermal-3.webp", "/images/marketing/thermal-4.webp"],
   largo: [MARKETING_MODULE_IMAGES.largo, "/images/marketing/largo-2.webp"],
   hawk: [MARKETING_MODULE_IMAGES.hawk],
+  meridian: [MARKETING_MODULE_IMAGES.meridian],
   vector: [MARKETING_MODULE_IMAGES.vector, "/images/marketing/vector-2.webp", "/images/marketing/vector-3.webp", "/images/marketing/vector-4.webp"],
 };
 

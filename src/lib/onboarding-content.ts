@@ -43,7 +43,7 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
     id: "spx",
     kicker: "SPX · 0DTE desk",
     title: "SPX Slayer",
-    body: "Live 0DTE SPX desk: GEX walls, VWAP, regime detection, and dealer positioning. Watch the levels; wait for the setup; the desk surfaces structure as it aligns — before price moves.",
+    body: "Live 0DTE SPX desk: GEX walls, VWAP, regime detection, and dealer positioning. Watch the levels; wait for the setup; the desk surfaces structure as positioning aligns — not after the move has already printed.",
     href: "/dashboard",
     cta: "Open SPX Slayer",
   },
