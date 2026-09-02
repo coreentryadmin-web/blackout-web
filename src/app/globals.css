@@ -3709,8 +3709,17 @@ html.product-shell .nav-mega {
   }
 
   .vector-board-table tbody td.vector-board-col-num,
-  .vector-board-table thead th.vector-board-col-num {
+  .vector-board-table thead th.vector-board-col-num,
+  .vector-board-table tbody td.vector-board-col-updated,
+  .vector-board-table thead th.vector-board-col-updated {
     text-align: right;
+  }
+
+  .vector-board-table thead th.vector-board-col-pick,
+  .vector-board-table tbody td.vector-board-col-pick,
+  .vector-board-table thead th.vector-board-col-status,
+  .vector-board-table tbody td.vector-board-col-status {
+    text-align: left;
   }
 
 /* Column widths are computed inline per visible column set — see vector-board-column-layout.ts */
