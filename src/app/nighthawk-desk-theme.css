@@ -1424,9 +1424,9 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 }
 
 .nh-v2-page .legacy-board-body--inspector .legacy-board-manage {
-  flex: 0 0 min(26vw, 17.5rem);
-  width: min(26vw, 17.5rem);
-  max-width: 17.5rem;
+  flex: 0 0 min(28vw, 19rem);
+  width: min(28vw, 19rem);
+  max-width: 19rem;
   min-height: 0;
   overflow: hidden;
   display: flex;
@@ -1443,12 +1443,17 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 .nh-v2-page .legacy-board-manage-body {
   flex: 1 1 0%;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 0.35rem 0.65rem 0.5rem;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.35rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
   align-content: start;
+}
+
+.nh-v2-page .legacy-board-manage-body .legacy-detail-section {
+  min-width: 0;
 }
 
 .nh-v2-page .legacy-manage-rec {
@@ -1589,7 +1594,8 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 .nh-v2-page .legacy-detail-bullet-value {
   color: var(--nh-desk-text);
   font-weight: 700;
-  word-break: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .nh-v2-page .legacy-detail-bullet-value.is-up { color: var(--nh-desk-up); }
