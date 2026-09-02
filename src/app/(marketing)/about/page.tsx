@@ -25,7 +25,7 @@ We are **not a broker**. BlackOut does not execute trades, route orders, or mana
 
 const TOOLS = `## The Tools
 
-Six modules, one desk — use them individually or together:
+Seven modules, one desk — use them individually or together:
 
 - **SPX Slayer** — The 0DTE command center. Live dealer gamma, A–F graded setups, and real-time positioning for same-day SPX options. Starts at $49/month.
 - **Thermal** — GEX, VEX, DEX, and CHARM heatmaps that show where dealer hedging will accelerate or dampen price movement.
@@ -33,8 +33,9 @@ Six modules, one desk — use them individually or together:
 - **Night Hawk** — Overnight playbook plus an intraday 0DTE scanner. Identifies setups before the bell and tracks them through the session.
 - **Largo AI** — An AI desk analyst that synthesizes positioning, flow, and structure into actionable context.
 - **Vector** — Cross-ticker gamma scanner that finds names where dealer positioning is setting up the next move.
+- **Meridian** — Earnings intelligence: expected move, historical reaction, and positioning ahead of every print.
 
-All six ship with Premium ($199/month or $1,999/year). [See all plans](/pricing).`;
+All seven ship with Premium ($199/month or $1,999/year). [See all plans](/pricing).`;
 
 const APPROACH = `## Our Approach
 
