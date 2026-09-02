@@ -97,7 +97,10 @@ export async function isMembershipInDunningGrace(
 
   const cached = await sharedCacheGet<number>(DUNNING_PREFIX + membershipId);
   if (cached === 1) return true;
-  if (cached === 0) return false;
+  // Do NOT short-circuit on cached === 0: markMembershipDunningGrace can durably write
+  // Postgres while Redis still holds a stale negative (e.g. Redis write failed on mark,
+  // or a prior miss cached "not in grace" milliseconds before payment.failed landed).
+  // Only a positive Redis hit is authoritative enough to skip Postgres.
 
   if (!dbConfigured()) return false;
   try {

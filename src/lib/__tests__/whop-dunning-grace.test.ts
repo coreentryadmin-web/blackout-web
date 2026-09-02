@@ -101,12 +101,14 @@ test("Redis miss + no Postgres row is not in grace, with a negative backfill", a
   assert.equal(state.cache.get("whop:dunning:mem_4"), 0);
 });
 
-test("fresh negative cache (0) short-circuits without touching Postgres", async () => {
+test("stale Redis negative (0) still falls through to Postgres when grace exists", async () => {
   const { isMembershipInDunningGrace } = await mod();
   resetState();
-  state.cache.set("whop:dunning:mem_5", 0);
-  assert.equal(await isMembershipInDunningGrace("mem_5"), false);
-  assert.equal(state.dbCalls.length, 0);
+  const future = new Date(Date.now() + 86_400_000).toISOString();
+  state.dbRows.set("mem_5b", future);
+  state.cache.set("whop:dunning:mem_5b", 0);
+  assert.equal(await isMembershipInDunningGrace("mem_5b"), true);
+  assert.equal(state.cache.get("whop:dunning:mem_5b"), 1);
 });
 
 test("mark: Postgres write succeeding is enough even when Redis verification fails", async () => {
