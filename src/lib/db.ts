@@ -1095,6 +1095,17 @@ async function runMigrations(): Promise<void> {
       revoked_at TIMESTAMPTZ DEFAULT NOW()
     );
 
+    -- past_due payment-retry grace — Postgres is the durable source of truth
+    -- (a paying member in webhook-granted grace must survive a Redis outage);
+    -- whop-dunning.ts keeps Redis in front as the hot cache. Rows carry an
+    -- expires_at so stale grace self-invalidates without a cleanup cron.
+    CREATE TABLE IF NOT EXISTS whop_dunning_grace (
+      membership_id TEXT PRIMARY KEY,
+      expires_at TIMESTAMPTZ NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS whop_dunning_grace_expires_idx
+      ON whop_dunning_grace (expires_at);
+
     -- spx_signal_observations/spx_signal_weight_reports: moved here from spx-signal-db.ts's
     -- initSpxSignalTables() (2026-07-03, live deadlock — see docs/audit/FINDINGS.md). That
     -- function guarded its own CREATE TABLE/INDEX/ALTER block with an in-process boolean,
