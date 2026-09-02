@@ -195,6 +195,10 @@ export function buildNighthawkPublishContext(opts: {
   const geo = computeNighthawkPublishGeometry(play, dossier);
 
   return {
+    // ── Option contract the member sees (Legacy Discord + live-sync read this) ─
+    options_play: play.options_play ?? null,
+    exit_style: play.exit_style ?? null,
+
     context_version: PUBLISH_CONTEXT_VERSION,
     pinned_at: builtAt,
     direction: geo.direction,

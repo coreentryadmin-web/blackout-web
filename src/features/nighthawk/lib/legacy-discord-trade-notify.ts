@@ -12,6 +12,8 @@
  */
 import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
 import type { NighthawkPlayOutcomeRow } from "@/lib/db";
+import type { LegacyPublishFieldSource } from "@/features/nighthawk/lib/legacy-publish-fields";
+import { legacyPublishFieldsFrom } from "@/features/nighthawk/lib/legacy-publish-fields";
 import { parseOptionsContract } from "@/features/nighthawk/lib/option-contract-parse";
 import {
   chiefTradeVirtualLots,
@@ -87,16 +89,14 @@ export function legacyInputFromPlaybookPlay(
 }
 
 export function legacyInputFromOutcomeRow(
-  row: NighthawkPlayOutcomeRow
+  row: NighthawkPlayOutcomeRow,
+  editionPlay?: LegacyPublishFieldSource["editionPlay"]
 ): LegacyTradeDiscordInput | null {
-  const ctx = row.publish_context as { final_output?: Record<string, unknown> } | null | undefined;
-  const finalOut = ctx?.final_output;
-  const optionsPlay = typeof finalOut?.options_play === "string" ? finalOut.options_play : null;
-  const entryPremium =
-    typeof finalOut?.entry_premium === "number" && Number.isFinite(finalOut.entry_premium)
-      ? finalOut.entry_premium
-      : null;
-  if (!optionsPlay || entryPremium == null || entryPremium <= 0) return null;
+  const { options_play: optionsPlay, entry_premium: entryPremium } = legacyPublishFieldsFrom({
+    publish_context: row.publish_context as Record<string, unknown> | null | undefined,
+    editionPlay,
+  });
+  if (!optionsPlay || entryPremium == null) return null;
 
   const parsed = parseOptionsContract(optionsPlay);
   if (!parsed?.expiryYmd || !Number.isFinite(parsed.strike) || parsed.strike <= 0) return null;
