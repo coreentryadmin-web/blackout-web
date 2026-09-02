@@ -1387,6 +1387,7 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
   flex-direction: column;
   gap: 0.5rem;
   min-height: 0;
+  padding: 0.65rem 0.85rem 1rem;
 }
 
 .nh-v2-page .legacy-board-shell .legacy-board-detail-body .nh-deck-legacy-panel {

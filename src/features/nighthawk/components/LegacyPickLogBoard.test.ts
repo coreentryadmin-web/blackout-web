@@ -21,6 +21,12 @@ test("LegacyPickLogBoard: X Ads shell — table, toolbar, detail rail (Vector pa
   assert.match(columns, /vector-board-col-stock/, "legacy stock column must have dedicated width key");
   assert.match(columns, /VectorBoardMeter/, "table must render premium path meters");
   assert.match(rail, /LegacyPlayDetailPanel/, "detail rail must embed Legacy play breakdown");
+  assert.doesNotMatch(
+    rail,
+    /VectorBoardDetailTabs/,
+    "legacy rail must show full reasoning on select — not hide it behind desk/timeline tabs"
+  );
+  assert.match(rail, /why we picked it/i, "copy must describe full pick reasoning on row select");
 });
 
 test("LegacyDeck wires LegacyPickLogBoard instead of CommandDeck", () => {
