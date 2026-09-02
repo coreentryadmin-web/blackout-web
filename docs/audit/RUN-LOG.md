@@ -11,6 +11,32 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-02 (14:16 UTC) — [SEO] Daily growth cycle: no new striking-distance query, 28d trend logged
+
+**Severity.** — (no defect; trend note, not an on-page action)
+
+**Opportunity scan.** `gsc-opportunities-report.mjs --days=90` (window 2026-06-02 → 2026-08-30):
+still exactly 2 striking-distance queries, both already addressed (`gamma three trading` pos 18.5,
+`is 0dte gambling` pos 11.5, unchanged from prior cycles). 0 CTR-gap queries. No new page-2 entrant
+— per the standing instruction, not touching already-good pages.
+
+**Live re-verify.** Skipped — done twice already today (12:20 UTC heartbeat, 13:35 UTC RTH check),
+inside the "skip if done in last 3 days" window.
+
+**28-day trend** (`gsc-search-analytics.mjs --days=28`, window 2026-08-03 → 2026-08-30): clicks=11,
+impressions=**1589** (up from 908 in the 2026-08-21 baseline in `SEO-GROWTH-STRATEGY.md`), CTR=0.69%
+(down from 1.1%), avg position=38.1 (down from 32.4). Read honestly rather than as a win: the
+striking-distance queries' own positions are unchanged, so the aggregate shift looks driven by
+**more pages/queries now indexed and showing** (e.g. `/learn` alone carries 413 impressions this
+window) diluting the average toward newly-indexed, lower-ranked pages — not a regression on
+previously-tracked ones. Not verified against a per-page before/after, so stated as a plausible
+read, not a measured cause. `staging.blackouttrades.com/terminal` still appears in top pages (2cl
+4imp) — the known dead-URL indexation issue, already delegated to the coordinator/dashboard per
+`SEO-GROWTH-STRATEGY.md` §5, not re-actioned here.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-02 (13:35 UTC / Wed 2026-09-02 09:35 ET) — [SEO] RTH window validation: CLS + gamma-snapshot live data check
 
 **Severity.** — (no defect found)
