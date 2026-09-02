@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * Full Chief Trade Alert Bot scenario suite — unit + live API.
+ * Run: node --import tsx scripts/test-chief-trade-scenarios.mjs
  */
 import { execSync } from "node:child_process";
 import {
