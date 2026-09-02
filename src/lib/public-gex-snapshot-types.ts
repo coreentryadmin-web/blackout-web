@@ -139,6 +139,41 @@ export function correctPublicRead(
   return read.replace(clause, replacement).replace(/\s{2,}/g, " ").trim();
 }
 
+/**
+ * Suppress the ACTIONABLE momentum claim in the regime narration outside RTH.
+ *
+ * `correctPublicRead` above fixes the wall-side clause; this fixes a different defect in the same
+ * string. The narration's directional language ("momentum / vol expansion, moves accelerate" /
+ * "range-bound, fade extremes") is a live trading read — it tells a visitor what dealer hedging is
+ * doing to price RIGHT NOW. `publicFreshnessCopy` already knows, from `market_session` alone
+ * (independent of `asof`), when the underlying quote is NOT live: pre-market, after-hours, or
+ * closed. But nothing connected that fact to this string — `computeGexRegimeCore` (the shared
+ * builder every desk surface reads, including live-member Thermal/Vector) has no concept of quote
+ * freshness at all, and correctly so: for a member trading RTH, spot IS live and the actionable
+ * read is exactly right. The public snapshot is the one place composing this string for a
+ * non-authenticated visitor with no session gate, so it is the one place that must ALSO check
+ * `market_session` before repeating the actionable framing — the fix belongs here, not in the
+ * shared regime builder, so live member reads are untouched.
+ *
+ * Measured: pre-market/after-hours/closed still called `buildSnapshotFromHeatmap` every 5s and
+ * published "dealers are net short gamma at EVERY strike ... momentum / vol expansion, moves
+ * accelerate" beside a spot explicitly marked stale by `priceNote` — a fresh RECOMPUTE timestamp
+ * making a stale INPUT look actionable.
+ */
+export function applyPublicReadFreshnessGate(read: string, marketSession: MarketPhase | null): string {
+  if (marketSession === "OPEN") return read;
+  const structural = read
+    .replace(
+      /→\s*short gamma:\s*momentum \/ vol expansion, moves accelerate/i,
+      "→ short gamma structurally (not a live actionable read)"
+    )
+    .replace(
+      /→\s*long gamma:\s*range-bound, fade extremes/i,
+      "→ long gamma structurally (not a live actionable read)"
+    );
+  return `Prior-session structural reference — ${structural}`;
+}
+
 
 /**
  * ET session facts for a public snapshot, from ONE instant.
