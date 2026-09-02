@@ -49,3 +49,15 @@ auth helpers above — or run the committed scripts first.
 
 If Playwright fails, diagnose (chunk load, auth cookie, deploy mid-rollout) and retry — do not
 fall back to claiming UI validation is unavailable.
+
+## Post-deploy delivery (standing — do NOT ask the operator)
+
+After **any** UI-facing merge to `main` (especially Night Hawk / Vector / Legacy boards):
+
+1. **Monitor** `ECR push (production)` on `main` until `completed` (poll `gh run list --workflow ecr-push-production.yml`).
+2. **Verify live** on `https://blackouttrades.com` with Playwright + Clerk admin auth — do not stop at merge.
+3. **Screenshot** the changed surface (click rows, open rails, exercise the fix) → `/opt/cursor/artifacts/`.
+4. **Deliver** screenshots + deploy verdict in the same thread — **never ask** "want me to monitor?" or "should I screenshot?".
+
+Night Hawk boards: `node scripts/audit/nighthawk-boards-prod-screenshots.mjs` (Vector + Legacy);
+Legacy detail rail must show `Why we picked it` / `What to watch` on row select without extra tab clicks.
