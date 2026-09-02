@@ -2,6 +2,12 @@
  * Push committed 0DTE Command plays into the Chief Trade Alert Bot so members get
  * the same BTO/STC embed format and FIFO PnL tracking as manual desk entries.
  *
+ * Qty model (CHIEF_TRADE_VIRTUAL_LOTS):
+ *   1 (default) — one normalized "desk lot"; PnL % matches the board. TRIM/HOLD are
+ *                 status-only on the board; only OPEN + final CLOSE hit Discord.
+ *   3           — virtual 3-lot book for trim_scale: BTO×3, STC×1 per trim bank,
+ *                 STC×remainder on close. Matches partial-banking guidance.
+ *
  * Fire-and-forget: never throws into scan.ts.
  */
 import type { ZeroDteSetupLogRow } from "@/lib/db";
@@ -12,6 +18,7 @@ export type ZeroDteTradeDiscordInput = Pick<
 > & {
   last_mark?: number | null;
   play_type?: string | null;
+  trims_taken?: number;
 };
 
 export type ChiefTradePayload = {
@@ -25,9 +32,22 @@ export type ChiefTradePayload = {
   author_name?: string;
 };
 
+export type BuildTradePayloadOpts = {
+  qty?: number;
+  idempotencySuffix?: string;
+};
+
 export function zerodteDiscordAlertsEnabled(): boolean {
   const raw = process.env.ZERODTE_DISCORD_ALERTS?.trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes";
+}
+
+/** Virtual contract count for the desk book (default 1 = normalized lot). */
+export function chiefTradeVirtualLots(): number {
+  const raw = process.env.CHIEF_TRADE_VIRTUAL_LOTS?.trim();
+  const n = raw ? Number(raw) : 1;
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(10, Math.floor(n));
 }
 
 export function chiefTradeBotUrl(): string | null {
@@ -62,7 +82,8 @@ export function formatZeroDteStrike(
 export function buildZeroDteTradePayload(
   row: ZeroDteTradeDiscordInput,
   action: "BTO" | "STC",
-  price: number
+  price: number,
+  opts: BuildTradePayloadOpts = {}
 ): ChiefTradePayload | null {
   if (row.play_type === "CONDOR") return null;
   const strike = formatZeroDteStrike(row.top_strike, row.direction);
@@ -70,14 +91,22 @@ export function buildZeroDteTradePayload(
   if (!strike || !expiry || !Number.isFinite(price) || price <= 0) return null;
 
   const ticker = row.ticker.toUpperCase();
+  const virtualLots = chiefTradeVirtualLots();
+  const trimmed = row.trims_taken ?? 0;
+
+  let qty = opts.qty ?? (action === "BTO" ? virtualLots : Math.max(1, virtualLots - trimmed));
+  qty = Math.max(1, Math.floor(qty));
+
+  const suffix = opts.idempotencySuffix ?? action.toLowerCase();
+
   return {
     action,
-    qty: 1,
+    qty,
     ticker,
     strike,
     expiry,
     price,
-    idempotency_key: `zerodte:${row.session_date}:${ticker}:${action.toLowerCase()}`,
+    idempotency_key: `zerodte:${row.session_date}:${ticker}:${suffix}`,
     author_name: process.env.CHIEF_TRADE_AUTHOR_NAME?.trim() || "Night-Hawk-Bot",
   };
 }
@@ -122,7 +151,36 @@ export async function notifyZeroDteTradeOpen(row: ZeroDteTradeDiscordInput): Pro
   return postChiefTrade(payload);
 }
 
-/** Lifecycle CLOSED → STC embed with exit mark (PnL realized). */
+/** trim_scale tranche banked → partial STC (only when CHIEF_TRADE_VIRTUAL_LOTS > 1). */
+export async function notifyZeroDteTradeTrim(
+  row: ZeroDteTradeDiscordInput,
+  trimIndex: number,
+  trimPrice?: number | null
+): Promise<boolean> {
+  if (!zerodteDiscordAlertsEnabled()) return false;
+  if (chiefTradeVirtualLots() <= 1) return false;
+  const price = trimPrice ?? row.last_mark;
+  if (price == null || !Number.isFinite(price) || price <= 0) return false;
+  const payload = buildZeroDteTradePayload(row, "STC", price, {
+    qty: 1,
+    idempotencySuffix: `trim:${trimIndex}`,
+  });
+  if (!payload) return false;
+  return postChiefTrade(payload);
+}
+
+/** Ratchet / first TRIM latch → bank one virtual lot when lots ≥ 2. */
+export async function notifyZeroDteTradeTrimLatch(
+  row: ZeroDteTradeDiscordInput,
+  trimPrice?: number | null
+): Promise<boolean> {
+  if (!zerodteDiscordAlertsEnabled()) return false;
+  if (chiefTradeVirtualLots() < 2) return false;
+  if ((row.trims_taken ?? 0) > 0) return false;
+  return notifyZeroDteTradeTrim(row, 1, trimPrice);
+}
+
+/** Lifecycle CLOSED → STC remaining virtual lots at exit mark. */
 export async function notifyZeroDteTradeClose(
   row: ZeroDteTradeDiscordInput,
   exitPrice?: number | null
@@ -130,7 +188,9 @@ export async function notifyZeroDteTradeClose(
   if (!zerodteDiscordAlertsEnabled()) return false;
   const price = exitPrice ?? row.last_mark;
   if (price == null || !Number.isFinite(price) || price <= 0) return false;
-  const payload = buildZeroDteTradePayload(row, "STC", price);
+  const payload = buildZeroDteTradePayload(row, "STC", price, {
+    idempotencySuffix: "stc",
+  });
   if (!payload) return false;
   return postChiefTrade(payload);
 }

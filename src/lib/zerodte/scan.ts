@@ -2002,6 +2002,13 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
                   mark,
                   trimsTaken,
                 }).catch(() => {});
+                void import("./discord-trade-notify")
+                  .then(({ notifyZeroDteTradeTrim }) =>
+                    notifyZeroDteTradeTrim({ ...r, trims_taken: trimsTaken }, trimsTaken, mark)
+                  )
+                  .catch((err) => {
+                    console.warn(`[zerodte-discord] trim notify failed for ${r.ticker}:`, err);
+                  });
               },
             }).catch(() => null)
           : null;
@@ -2048,9 +2055,21 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       };
       if (r.status !== "CLOSED" && status === "CLOSED") {
         void import("./discord-trade-notify")
-          .then(({ notifyZeroDteTradeClose }) => notifyZeroDteTradeClose(nextRow, finalMark))
+          .then(({ notifyZeroDteTradeClose }) =>
+            notifyZeroDteTradeClose({ ...nextRow, trims_taken: r.trims_taken ?? 0 }, finalMark)
+          )
           .catch((err) => {
             console.warn(`[zerodte-discord] close notify failed for ${r.ticker}:`, err);
+          });
+      } else if (
+        r.status !== "TRIM" &&
+        status === "TRIM" &&
+        preStop.status === "TRIM"
+      ) {
+        void import("./discord-trade-notify")
+          .then(({ notifyZeroDteTradeTrimLatch }) => notifyZeroDteTradeTrimLatch(r, finalMark))
+          .catch((err) => {
+            console.warn(`[zerodte-discord] trim-latch notify failed for ${r.ticker}:`, err);
           });
       }
       return nextRow;
