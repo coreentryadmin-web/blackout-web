@@ -8868,7 +8868,7 @@ export async function fetchPendingNighthawkOutcomes(lookbackDays = 14): Promise<
            next_day_open, next_day_close, session_high, session_low,
            hit_target, hit_stop, outcome, created_at,
            pulled, pulled_reason, publish_context, morning_verdict,
-           grade_methodology, legacy_grade, debrief
+           grade_methodology, legacy_grade, debrief, discord_live_state
     FROM nighthawk_play_outcomes
     WHERE outcome = 'pending'
       AND edition_for >= ((NOW() AT TIME ZONE 'America/New_York')::date - ($1::int || ' days')::interval)
