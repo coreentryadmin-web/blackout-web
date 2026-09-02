@@ -8,6 +8,11 @@ import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/features/nighthawk/lib/constants
 import { dispatchGotoSwing } from "@/features/nighthawk/lib/goto-swing";
 import { ThesisChecklistPanel, TradeExcursionGraphic } from "./TerminalPremiumPanels";
 import { LegacyManageGeometry } from "./legacy-play-geometry";
+import {
+  legacyPrimaryPnlPct,
+  legacyPrimaryPeakPct,
+  legacyPrimaryTroughPct,
+} from "@/features/nighthawk/lib/legacy-primary-pnl";
 import { useFlash } from "./use-deck-live";
 
 const usd = (n: number | null | undefined): string => (n != null ? `$${n.toFixed(2)}` : "—");
@@ -40,8 +45,8 @@ function whyPickedSummary(play: TerminalPlay): string {
 
 /** Legacy command deck v2 — single scroll: why picked, what to watch, contract, risks. */
 export function LegacyPlayDetailPanel({ play }: { play: TerminalPlay }) {
-  const markFlash = useFlash(play.stockMovePct ?? play.pnlPct ?? null);
-  const movePct = play.stockMovePct ?? play.pnlPct ?? null;
+  const markFlash = useFlash(legacyPrimaryPnlPct(play));
+  const movePct = legacyPrimaryPnlPct(play);
   const dayChg = play.stockChangePct;
   const spot = play.stockPrice;
   const reachability =

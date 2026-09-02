@@ -3731,8 +3731,8 @@ html.product-shell .nav-mega {
     @apply sticky top-0 z-10 border-b px-2 py-2 text-left text-[9px] font-bold uppercase tracking-[0.1em];
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     color: var(--nh-desk-text-tertiary, rgba(148, 163, 184, 0.85));
-    background: linear-gradient(180deg, rgba(12, 14, 20, 0.98), rgba(9, 10, 14, 0.96));
-    border-color: rgba(255, 255, 255, 0.08);
+    background: var(--nh-desk-thead-bg, linear-gradient(180deg, rgba(12, 14, 20, 0.98), rgba(9, 10, 14, 0.96)));
+    border-color: var(--nh-desk-border, rgba(255, 255, 255, 0.08));
   }
 
   .vector-board-table thead th.vector-board-col-num {

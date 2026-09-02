@@ -2,6 +2,7 @@ import type { DeckStatus, TerminalPlay } from "./types";
 import { isoToEtClock, parseCommittedAtEt } from "@/lib/zerodte/play-timeline";
 import { trimScaleBlendedPnlAtStop } from "@/lib/zerodte/marks-math";
 import { PLAN_RULES } from "@/lib/zerodte/plan";
+import { legacyPrimaryPeakPct, legacyPrimaryPnlPct } from "@/features/nighthawk/lib/legacy-primary-pnl";
 
 /** Which lifecycle bucket drives the left-rail card layout. */
 export type PlayLifecyclePhase = "open" | "watch" | "closed";
@@ -440,10 +441,13 @@ export function closedCapturePct(play: TerminalPlay): number | null {
   return Number.isFinite(pct) ? pct : null;
 }
 
-/** Open-row primary metric labels — legacy uses stock progress, others use option P&L. */
+
+/** Open-row primary metric labels — legacy prefers option premium when marks are live. */
 export function openMetricsLabels(play: TerminalPlay): { current: string; peak: string } {
   if (play.horizon === "LEGACY") {
-    return { current: "Stock", peak: "Session" };
+    return play.pnlPct != null
+      ? { current: "Premium", peak: "Peak" }
+      : { current: "Stock", peak: "Session" };
   }
   return { current: "Current", peak: "Peak" };
 }
@@ -455,8 +459,8 @@ export function openMetricsValues(play: TerminalPlay): {
 } {
   if (play.horizon === "LEGACY") {
     return {
-      currentPct: play.stockMovePct ?? play.pnlPct ?? null,
-      peakPct: play.stockPeakPct ?? play.peak ?? null,
+      currentPct: legacyPrimaryPnlPct(play),
+      peakPct: legacyPrimaryPeakPct(play),
     };
   }
   return {
