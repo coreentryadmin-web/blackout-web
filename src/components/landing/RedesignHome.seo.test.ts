@@ -20,6 +20,14 @@ test("RedesignHome hero and modules link to free gamma + learn guides", () => {
   assert.match(REDESIGN, /Read the guide/);
 });
 
+// Regression for a P2 finding (2026-09-02): the comparison table claimed "N products, one
+// screen, one membership" — but the seven products are seven distinct routes/surfaces, not one
+// unified screen. "One platform" is the claim the product can actually back up.
+test("RedesignHome comparison list does not overclaim a single unified screen", () => {
+  assert.doesNotMatch(REDESIGN, /one screen/i);
+  assert.match(REDESIGN, /one platform, one membership/);
+});
+
 // Regression for a P2 finding (2026-09-02): Meridian's product-manifest entry has
 // `learnHref === href === "/meridian"` (no dedicated Academy guide exists yet), so the
 // unconditional "Read the guide" CTA sent visitors to the exact same product-shell route as
