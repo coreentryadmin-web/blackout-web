@@ -20,6 +20,35 @@ function flag(play, code, severity, detail) {
   return { code, severity, detail, ticker: play.ticker ?? play.symbol ?? "SPX" };
 }
 
+function entryBandMid(entryRange) {
+  if (!entryRange || typeof entryRange !== "string") return null;
+  const nums = [...entryRange.matchAll(/\$?([\d.]+)/g)]
+    .map((m) => Number(m[1]))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (!nums.length) return null;
+  if (nums.length === 1) return nums[0];
+  return (nums[0] + nums[nums.length - 1]) / 2;
+}
+
+function stockMoveFromQuote(play, price) {
+  const mid = entryBandMid(play.entry_range ?? play.entryRange);
+  if (mid == null || !Number.isFinite(price)) return null;
+  const dir = String(play.direction ?? "LONG").toUpperCase();
+  if (dir === "SHORT") return ((mid - price) / mid) * 100;
+  return ((price - mid) / mid) * 100;
+}
+
+async function fetchLegacyQuoteOverlay(tickers) {
+  const out = new Map();
+  await Promise.all(
+    tickers.map(async (t) => {
+      const r = await fetchAuditJson(BASE, `/api/market/quote?ticker=${encodeURIComponent(t)}`);
+      if (r.ok && r.json?.available && r.json?.price != null) out.set(t, Number(r.json.price));
+    })
+  );
+  return out;
+}
+
 function analyzeSpx(play) {
   const issues = [];
   if (!play) return { issues: [flag({}, "NO_PLAY", "RED", "SPX play payload null")] };
@@ -70,7 +99,11 @@ function analyzeLegacyPlay(p, i) {
   }
   const score = num(p.score);
   const rr = num(p.rr_ratio ?? p.rrRatio);
-  if (rr != null && rr < 1) issues.push(flag({ ticker }, "LOW_RR", "WARN", `R:R ${rr.toFixed(1)}:1`));
+  if (rr != null && rr < 1) {
+    const rank = num(p.rank) ?? 99;
+    const severity = rr < 0.75 && rank <= 3 ? "AMBER" : "WARN";
+    issues.push(flag({ ticker }, "LOW_RR", severity, `R:R ${rr.toFixed(1)}:1`));
+  }
   if (score != null && score < 55) issues.push(flag({ ticker }, "LOW_SCORE", "AMBER", `Score ${score}`));
   if (p.premium_cap_ok === false || p.premiumCapOk === false) {
     issues.push(flag({ ticker }, "PREMIUM_CAP", "WARN", "Above premium cap"));
@@ -168,8 +201,13 @@ async function main() {
   const statusByTicker = new Map(
     (nhStatus.json?.plays ?? []).map((p) => [String(p.ticker ?? "").toUpperCase(), p])
   );
+  const legacyTickers = [...new Set(editionPlays.map((p) => String(p.ticker ?? "").toUpperCase()).filter(Boolean))];
+  const liveQuotes = await fetchLegacyQuoteOverlay(legacyTickers);
   const legacyAnalysis = editionPlays.map((p, i) => {
-    const confirm = statusByTicker.get(String(p.ticker ?? "").toUpperCase());
+    const ticker = String(p.ticker ?? "").toUpperCase();
+    const confirm = statusByTicker.get(ticker);
+    const livePrice = liveQuotes.get(ticker);
+    const liveStockMove = livePrice != null ? stockMoveFromQuote(p, livePrice) : null;
     const merged = confirm
       ? {
           ...p,
@@ -177,7 +215,8 @@ async function main() {
           morning_reason: confirm.reason ?? p.morning_reason,
           swing_promoted: confirm.swingPromoted ?? p.swing_promoted,
         }
-      : p;
+      : { ...p };
+    if (liveStockMove != null) merged.stock_move_pct = liveStockMove;
     return analyzeLegacyPlay(merged, i);
   });
   report.systems.legacy = {
@@ -186,6 +225,7 @@ async function main() {
     playCount: legacyAnalysis.length,
     morningConfirmAvailable: nhStatus.json?.available === true,
     morningCheckedAt: nhStatus.json?.checked_at ?? nhStatus.json?.checkedAt ?? null,
+    liveQuotesResolved: liveQuotes.size,
     plays: legacyAnalysis,
     macro: nhStatus.json?.macro ?? nhStatus.json?.morning_confirm ?? null,
     issueCount: legacyAnalysis.reduce((n, p) => n + p.issues.length, 0),
