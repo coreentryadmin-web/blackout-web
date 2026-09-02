@@ -216,6 +216,52 @@ export async function notifyLegacyEditionPlays(
   return { posted, skipped };
 }
 
+/** BTO from a resolved LegacyTradeDiscordInput (outcome row / backfill path). */
+export async function notifyLegacyBtoFromInput(input: LegacyTradeDiscordInput): Promise<boolean> {
+  if (!legacyDiscordAlertsEnabled()) return false;
+  const payload = buildLegacyTradePayload(input, "BTO", input.entry_premium);
+  if (!payload) return false;
+  return postChiefTrade(payload);
+}
+
+export type LegacyDiscordBtoBackfillRow = {
+  id: number;
+  discord_live_state?: { bto_posted?: boolean } | null;
+};
+
+/** Post missing BTO embeds for open rows (e.g. edition published before alerts were live). */
+export async function ensureLegacyDiscordBtos<T extends LegacyDiscordBtoBackfillRow>(
+  rows: T[],
+  inputForRow: (row: T) => LegacyTradeDiscordInput | null,
+  markPosted: (row: T) => Promise<void>
+): Promise<{ bto_posted: number; bto_skipped: number }> {
+  if (!legacyDiscordAlertsEnabled()) {
+    return { bto_posted: 0, bto_skipped: rows.length };
+  }
+
+  let bto_posted = 0;
+  let bto_skipped = 0;
+  for (const row of rows) {
+    if (row.discord_live_state?.bto_posted) {
+      bto_skipped += 1;
+      continue;
+    }
+    const input = inputForRow(row);
+    if (!input) {
+      bto_skipped += 1;
+      continue;
+    }
+    const ok = await notifyLegacyBtoFromInput(input);
+    if (!ok) {
+      bto_skipped += 1;
+      continue;
+    }
+    await markPosted(row);
+    bto_posted += 1;
+  }
+  return { bto_posted, bto_skipped };
+}
+
 /** Single play BTO at publish / confirm. */
 export async function notifyLegacyTradeOpen(
   editionFor: string,

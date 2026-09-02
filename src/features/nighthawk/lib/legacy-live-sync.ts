@@ -10,7 +10,11 @@
 import type { LegacyDiscordLiveRow } from "@/lib/db";
 import { deriveScaleOutAction, SCALE_OUT_RULES, type ScaleOutAction } from "@/lib/zerodte/scale-out";
 import { PLAN_RULES } from "@/lib/zerodte/plan";
-import { legacyDiscordAlertsEnabled } from "./legacy-discord-trade-notify";
+import {
+  ensureLegacyDiscordBtos,
+  legacyDiscordAlertsEnabled,
+  legacyInputFromOutcomeRow,
+} from "./legacy-discord-trade-notify";
 
 export type LegacyLiveSyncRow = LegacyDiscordLiveRow & {
   peak_premium: number | null;
@@ -28,6 +32,7 @@ export type LegacyLiveSyncDeps = {
     update: {
       closed?: boolean;
       closedReason?: string | null;
+      btoPosted?: boolean;
       mark?: number | null;
       peakPremium?: number | null;
       troughPremium?: number | null;
@@ -49,6 +54,8 @@ export type LegacyLiveSyncResult = {
   rows: number;
   refreshed: number;
   noQuote: number;
+  bto_posted?: number;
+  bto_skipped?: number;
   transitions: Array<{ id: number; ticker: string; action: string }>;
 };
 
@@ -143,6 +150,22 @@ export async function runLegacyLiveSync(deps: LegacyLiveSyncDeps): Promise<Legac
     return { ok: true, skipped: false, rows: 0, refreshed: 0, noQuote: 0, transitions: [] };
   }
 
+  const bto = await ensureLegacyDiscordBtos(
+    rows,
+    (row) => legacyInputFromOutcomeRow(row),
+    (row) =>
+      deps.updateLiveState(row.id, {
+        btoPosted: true,
+        mark: row.entry_premium,
+        peakPremium: row.peak_premium ?? row.entry_premium,
+        troughPremium: row.trough_premium ?? row.entry_premium,
+        lastAction: "BTO",
+      })
+  );
+  if (bto.bto_posted > 0) {
+    console.info(`[legacy-live-sync] posted ${bto.bto_posted} missing BTO(s), skipped ${bto.bto_skipped}`);
+  }
+
   const occs = [...new Set(rows.map((r) => r.contract_occ))];
   const tickers = [...new Set(rows.map((r) => r.ticker))];
   const [marks, stocks] = await Promise.all([
@@ -217,7 +240,16 @@ export async function runLegacyLiveSync(deps: LegacyLiveSyncDeps): Promise<Legac
     transitions.push({ id: row.id, ticker: row.ticker, action: "CLOSE" });
   }
 
-  return { ok: true, skipped: false, rows: rows.length, refreshed, noQuote, transitions };
+  return {
+    ok: true,
+    skipped: false,
+    rows: rows.length,
+    refreshed,
+    noQuote,
+    bto_posted: bto.bto_posted,
+    bto_skipped: bto.bto_skipped,
+    transitions,
+  };
 }
 
 async function handleScaleOutAction(
