@@ -420,7 +420,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
                 <ul className="vs-list">
                   <li>{MARKETING_DATA_FRESHNESS.comparison}</li>
                   <li>Every setup graded A–F with a logged track record</li>
-                  <li>{productCount} products, one screen, one membership</li>
+                  <li>{productCount} products, one platform, one membership</li>
                   <li>AI verification engine gates every play</li>
                   <li>Institutional flow, GEX, dark pool — streamed live</li>
                   <li>Real-time P&amp;L marks, not end-of-day summaries</li>
