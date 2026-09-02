@@ -11,6 +11,19 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-02 (15:35 UTC / Wed 2026-09-02 11:35 ET) — [SEO] RTH window validation, 2nd cycle: CLS + gamma-snapshot still GOOD
+
+**Severity.** — (no defect found)
+
+Second RTH check this session (11:35 ET, still inside 09:30–13:00 window). Purged CF edge, then:
+CLS **0.0001 → GOOD** (66 assets routed ok). `/api/public/gex-snapshot?ticker=SPX` polled 3× at 6s
+intervals: `session: OPEN`, spot ticking real values, `flip` now a real numeric level (7759→7767,
+unlike the null/short-gamma state seen at 09:35 ET — a legitimate regime change intraday, not a
+defect), freshness `age_s` 1–6s. No action.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
 ## 2026-09-02 (14:16 UTC) — [SEO] Daily growth cycle: no new striking-distance query, 28d trend logged
 
 **Severity.** — (no defect; trend note, not an on-page action)
