@@ -1303,6 +1303,19 @@ export async function buildEveningEdition(opts?: {
       });
       await syncNighthawkPlayOutcomes(editionFor, finalPlays, sectorByTicker, publishContexts);
 
+      void import("@/features/nighthawk/lib/legacy-discord-trade-notify")
+        .then(({ notifyLegacyEditionPlays }) => notifyLegacyEditionPlays(editionFor, finalPlays))
+        .then((r) => {
+          if (r.posted > 0) {
+            console.info(
+              `[nighthawk/edition] legacy discord: posted ${r.posted} BTO(s), skipped ${r.skipped}`
+            );
+          }
+        })
+        .catch((err) => {
+          console.warn("[nighthawk/edition] legacy discord notify failed:", err);
+        });
+
       await upsertNighthawkJob(editionFor, {
         status: "published",
         current_stage: "published",

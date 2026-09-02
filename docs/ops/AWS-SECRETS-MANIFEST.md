@@ -60,6 +60,8 @@ Secrets Manager. **Never commit real values.**
 | `DISCORD_OPS_WEBHOOK_URL` | Ops alerts |
 | `DISCORD_TRADE_WEBHOOK_URL` | Trade notifications (legacy webhook path — unused by 0DTE auto-post) |
 | `ZERODTE_DISCORD_ALERTS` | Opt-in `1`/`true` — push committed 0DTE plays to Chief Trade Alert Bot |
+| `LEGACY_DISCORD_ALERTS` | Opt-in `1`/`true` — push Night Hawk legacy playbook plays to Chief Trade Alert Bot (same channel) |
+| `LEGACY_DISCORD_AUTHOR_NAME` | Optional legacy embed author (defaults to `CHIEF_TRADE_AUTHOR_NAME`) |
 | `CHIEF_TRADE_BOT_URL` | Public Railway URL for `chief-trade-alert-bot` (`POST /api/trade`) |
 | `CHIEF_TRADE_API_SECRET` | Bearer token shared with the trade bot |
 | `CHIEF_TRADE_AUTHOR_NAME` | Embed author label (default `Night-Hawk-Bot`) |

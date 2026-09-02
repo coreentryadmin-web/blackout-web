@@ -111,7 +111,7 @@ export function buildZeroDteTradePayload(
   };
 }
 
-async function postChiefTrade(payload: ChiefTradePayload): Promise<boolean> {
+export async function postChiefTrade(payload: ChiefTradePayload): Promise<boolean> {
   const base = chiefTradeBotUrl();
   const secret = chiefTradeApiSecret();
   if (!base || !secret) {

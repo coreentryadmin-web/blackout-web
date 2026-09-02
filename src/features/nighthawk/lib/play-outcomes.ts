@@ -692,6 +692,15 @@ export async function resolvePendingNighthawkOutcomes(opts?: {
         hit_stop: verdict.hit_stop,
         outcome: verdict.outcome,
       });
+
+      if (verdict.outcome === "target" || verdict.outcome === "stop") {
+        void import("@/features/nighthawk/lib/legacy-discord-trade-notify")
+          .then(({ notifyLegacyOutcomeClose }) => notifyLegacyOutcomeClose(row, verdict.outcome as "target" | "stop"))
+          .catch((err) => {
+            console.warn(`[nighthawk-outcomes] legacy discord STC failed for ${row.ticker}:`, err);
+          });
+      }
+
       resolved += 1;
     } catch (err) {
       errors.push(`${row.ticker}@${row.edition_for}: ${err instanceof Error ? err.message : String(err)}`);
