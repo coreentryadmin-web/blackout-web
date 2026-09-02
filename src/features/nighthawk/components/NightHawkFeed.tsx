@@ -10,7 +10,7 @@ import {
   NIGHTHAWK_VIEWS,
   NIGHTHAWK_VIEW_META,
   DEFAULT_NIGHTHAWK_VIEW,
-  parseNightHawkView,
+  resolveNightHawkView,
   type NightHawkView,
 } from "@/features/nighthawk/lib/nighthawk-view";
 import type { NightHawkSeedProps } from "@/features/nighthawk/lib/nighthawk-seed-props";
@@ -56,9 +56,10 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
   const nativeShell = useIosNativeShell();
   // SSR may pass view from ?view=; client still re-reads URL on mount for soft-nav edge cases.
   const [view, setView] = useState<NightHawkView>(seed?.view ?? DEFAULT_NIGHTHAWK_VIEW);
-  // Set by a Legacy play's "moved to Swings Open" link (dispatchGotoSwing) — HorizonDeck uses it
-  // to auto-select that ticker's row once the SWING view mounts/refetches.
-  const [swingFocusTicker, setSwingFocusTicker] = useState<string | null>(null);
+  // Set by a Legacy play's "moved to Swings Open" link (dispatchGotoSwing), OR by an incoming
+  // `?ticker=` cross-product deep link (e.g. from HELIX's context header, seed.ticker/page.tsx) —
+  // HorizonDeck uses it to auto-select that ticker's row once the SWING view mounts/refetches.
+  const [swingFocusTicker, setSwingFocusTicker] = useState<string | null>(seed?.ticker ?? null);
 
   /** Keep App Router URL in sync — raw replaceState breaks <Link> nav after view toggles. */
   const selectView = useCallback(
@@ -72,8 +73,15 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
   );
 
   useEffect(() => {
-    const raw = new URLSearchParams(window.location.search).get("view");
-    if (raw) setView(parseNightHawkView(raw));
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("view");
+    const ticker = params.get("ticker")?.trim();
+    // Same soft-nav edge case as the pre-existing view re-read — a client-side transition to
+    // /nighthawk?ticker=X (e.g. clicking HELIX's "Night Hawk →" link without a full page load)
+    // never runs page.tsx's server seed. `resolveNightHawkView` is the SAME function that seed
+    // uses, so the two entry points cannot silently drift on the "ticker defaults to SWING" rule.
+    if (raw || ticker) setView(resolveNightHawkView(raw, ticker));
+    if (ticker) setSwingFocusTicker(ticker.toUpperCase());
   }, []);
 
   useEffect(() => {
