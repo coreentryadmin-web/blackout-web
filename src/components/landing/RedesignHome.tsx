@@ -2,7 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import type { CSSProperties } from "react";
 import { HOME_FAQ_IDS, selectFaqItems } from "@/lib/faq/content";
-import { MARKETING_PRODUCTS } from "@/lib/marketing/products";
+import { MARKETING_PRODUCTS, capitalizedNumberWord } from "@/lib/marketing/products";
 import { IMAGES, MARKETING_MODULE_GALLERY } from "@/lib/images";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { SITE } from "@/lib/site";
@@ -78,7 +78,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             </MarketingHashLink>
           </div>
           <ul className="hero-creds">
-            <li>6 live engines</li>
+            <li>{MARKETING_PRODUCTS.length} live engines</li>
             <li>12,400+ contracts scanned daily</li>
             <li>Every setup graded A–F</li>
             <li>
@@ -112,7 +112,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
         {/* Dominating headline */}
         <div className="cmd-header">
           <span className="kk"><span className="dot" />Every module, in depth</span>
-          <h2>Six engines.<br /><span className="gt">One edge.</span></h2>
+          <h2>{capitalizedNumberWord(MARKETING_PRODUCTS.length)} engines.<br /><span className="gt">One edge.</span></h2>
           <p className="cmd-sub">Each module is a full product — purpose-built for one dimension of the tape, unified by BlackOut Intelligence. No add-ons, no upsells: the whole desk is one price.</p>
         </div>
 
