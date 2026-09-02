@@ -20,6 +20,7 @@ test("LegacyPickLogBoard: dual-rail inspector — table, manage rail, technicals
   assert.match(manage, /Trade plan/, "manage rail shows trade management sections");
   assert.match(technicals, /Why we picked it/, "technicals rail shows pick reasoning");
   assert.match(technicals, /Scoring factors/, "technicals rail shows factor breakdown");
+  assert.match(board, /selectedRow \? null : bannerSlot/, "hide edition banner in inspector to reclaim height");
   assert.match(columns, /Premium vs entry/, "table must expose premium vs entry column");
 });
 

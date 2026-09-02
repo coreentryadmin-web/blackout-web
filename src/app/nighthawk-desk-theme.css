@@ -1401,6 +1401,12 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
   flex: 1 1 0%;
   min-height: 0;
   overflow: hidden;
+  align-items: stretch;
+}
+
+.nh-v2-page .legacy-board-body--inspector .legacy-board-upper {
+  flex: 1 1 52%;
+  min-height: 14rem;
 }
 
 .nh-v2-page .legacy-board-body--inspector .legacy-board-upper .vector-board-table-pane {
@@ -1429,6 +1435,8 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
   max-width: 22rem;
   min-height: 0;
   min-width: 0;
+  height: 100%;
+  align-self: stretch;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1478,7 +1486,37 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 .nh-v2-page .legacy-manage-rec.is-sell { color: var(--nh-desk-down); border-color: rgba(248, 113, 113, 0.35); }
 
 .nh-v2-page .legacy-manage-levels .nh-deck-grid {
-  display: none;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.2rem;
+  margin: 0 0 0.35rem;
+}
+
+.nh-v2-page .legacy-manage-levels .nh-deck-grid div {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 42%) 1fr;
+  gap: 0.25rem 0.4rem;
+  align-items: baseline;
+  border-bottom: 0;
+  padding: 0;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.nh-v2-page .legacy-manage-levels .nh-deck-grid .k {
+  color: var(--nh-desk-text-tertiary);
+  font-weight: 600;
+}
+
+.nh-v2-page .legacy-manage-levels .nh-deck-grid .v {
+  color: var(--nh-desk-text);
+  font-weight: 700;
+}
+
+.nh-v2-page .legacy-manage-levels .nh-deck-grid .nh-deck-dist {
+  font-weight: 500;
+  color: var(--nh-desk-text-tertiary);
+  font-size: 9px;
 }
 
 .nh-v2-page .legacy-manage-levels .nh-deck-track {
@@ -1510,9 +1548,9 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 
 /* Bottom technicals rail */
 .nh-v2-page .legacy-board-technicals {
-  flex: 0 0 auto;
+  flex: 0 1 46%;
   min-height: 13.5rem;
-  max-height: 44%;
+  max-height: 46%;
   overflow: hidden;
   border-top: 1px solid var(--nh-desk-border);
   background: var(--nh-desk-surface-muted);
@@ -1556,7 +1594,9 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 .nh-v2-page .legacy-board-technicals-grid {
   flex: 1 1 0%;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.65rem 0.85rem;
@@ -1564,7 +1604,8 @@ html[data-nighthawk-desk-theme="light"] .desk-sidebar-item--active {
 
 .nh-v2-page .legacy-board-technicals-col {
   min-width: 0;
-  overflow: hidden;
+  min-height: 0;
+  overflow: visible;
 }
 
 /* Shared bullet primitives */

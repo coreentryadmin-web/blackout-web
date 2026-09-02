@@ -202,9 +202,11 @@ export function LegacyPlayTechnicalsRail({ row }: { row: LegacyBoardTableRow | n
               <LegacyDetailBullet label="Premium cap" value="Above desk cap at publish" tone="down" />
             ) : null}
           </LegacyDetailBullets>
-          <div className="legacy-board-technicals-checklist">
-            <ThesisChecklistPanel play={play} />
-          </div>
+          {tierFactors.length === 0 ? (
+            <div className="legacy-board-technicals-checklist">
+              <ThesisChecklistPanel play={play} />
+            </div>
+          ) : null}
         </LegacyDetailSection>
       </div>
     </footer>
