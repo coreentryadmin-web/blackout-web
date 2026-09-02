@@ -29,7 +29,7 @@ BlackOut is intelligence, not a brokerage. There's no broker lock-in and no orde
 
 ## 5. Built for how you actually trade
 
-Six tools, one desk: **SPX Slayer** (0DTE desk), **HELIX** (institutional flow), **BlackOut Thermal** (dealer gamma heatmap), **Largo** (AI desk analyst), **Night Hawk** (0DTE Command + Evening Edition), **Vector** (universe scanner), and **Meridian** (earnings desk). Start with just the 0DTE desk, or run the full stack — it scales to how you trade.
+${manifestProductCount()} tools, one desk: **SPX Slayer** (0DTE desk), **HELIX** (institutional flow), **BlackOut Thermal** (dealer gamma heatmap), **Largo** (AI desk analyst), **Night Hawk** (0DTE Command + Evening Edition), **Vector** (universe scanner), and **Meridian** (earnings desk). Start with just the 0DTE desk, or run the full stack — it scales to how you trade.
 
 ## Who it's for (and who it isn't)
 
