@@ -11,6 +11,27 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-02 (12:20 UTC) — [SEO] Lane heartbeat: #2453/#2448 hold, environment gotcha documented
+
+**Severity.** — (no product defect; real tooling/environment gotcha, documented not fixed)
+
+**Step 1/2.** `/api/og?title=Test` → `HTTP 200 image/png`. Homepage still carries the
+transform-based reveal marker. `agent-pr-sweep.mjs`: 1 open agent PR fleet-wide (`#3335`, unrelated
+docs, another lane) — 0 open SEO PRs.
+
+**Environment note, not a product finding.** This turn's `git branch --show-current` came back as
+the stale local branch `fix/seo-heartbeat-2026-08-24` — the SAME branch that stranded the previous
+heartbeat's commit and was force-deleted afterward. It reappeared, checked out, anyway. Recovered
+with `git checkout main && git reset --hard origin/main` before any edit this cycle. Documented as
+a standing environment-realities note in `CLAUDE.md` ("A container restart can silently revert the
+checked-out branch...") so the next cycle re-verifies instead of trusting a prior turn's branch
+check — this cost two full heartbeat cycles before the pattern was named.
+
+**Step 3.** No new GSC opportunities since the last full sweep; standing down again.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
 ## 2026-09-02 (00:16 UTC) — [SEO] Lane heartbeat: #2453/#2448 hold on prod, 0 open SEO PRs
 
 **Severity.** — (no defect found)
