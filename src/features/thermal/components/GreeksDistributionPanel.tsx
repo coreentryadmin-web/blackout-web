@@ -27,7 +27,7 @@ export function GreeksDistributionPanel({
     return (
       <Panel>
         <PanelLabel>Greeks Distribution</PanelLabel>
-        <EmptyState>No exposure data available</EmptyState>
+        <EmptyState title="No exposure data available" />
       </Panel>
     );
   }
@@ -41,12 +41,12 @@ export function GreeksDistributionPanel({
         <PanelLabel>Greeks Distribution</PanelLabel>
         <div className="flex gap-2">
           {analysis.concentrationStrikes.length > 0 && (
-            <Badge variant="warning" className="text-xs">
+            <Badge tone="bear" size="sm">
               {analysis.concentrationStrikes.length} concentration
             </Badge>
           )}
           {analysis.maxGap > 5 && (
-            <Badge variant="default" className="text-xs">
+            <Badge tone="neutral" size="sm">
               Gap: {analysis.maxGap.toFixed(0)}
             </Badge>
           )}
@@ -72,7 +72,7 @@ export function GreeksDistributionPanel({
                   >
                     {bucket.pctOfTotal.toFixed(1)}%
                   </span>
-                  {bucket.rank === 1 && <Badge className="text-xs">Peak</Badge>}
+                  {bucket.rank === 1 && <Badge tone="accent" size="sm">Peak</Badge>}
                 </div>
               </div>
               <div className="h-2 w-full overflow-hidden rounded-sm bg-gray-100 dark:bg-gray-800">

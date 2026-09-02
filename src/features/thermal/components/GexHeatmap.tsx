@@ -26,6 +26,7 @@ import ThermalTripleDesk, {
 } from "@/features/thermal/components/ThermalTripleDesk";
 import { ThermalGridSectorPicker } from "@/features/thermal/components/ThermalGridSectorPicker";
 import { GreeksDistributionPanel } from "@/features/thermal/components/GreeksDistributionPanel";
+import { ThetaDistributionPanel } from "@/features/thermal/components/ThetaDistributionPanel";
 import {
   buildThermalUrlSearch,
   keyLevelsKicker,
@@ -4521,19 +4522,28 @@ export function GexHeatmap({
                 )}
               </TabPanel>
               <TabPanel value="pair-d">
-                <GreeksDistributionPanel
-                  cells={
-                    lens === "gex"
-                      ? data?.gex?.cells ?? null
-                      : lens === "vex"
-                        ? data?.vex?.cells ?? null
-                        : lens === "dex"
-                          ? data?.dex?.cells ?? null
-                          : data?.charm?.cells ?? null
-                  }
-                  spot={data?.spot ?? null}
-                  ticker={ticker}
-                />
+                <div className="space-y-6">
+                  <GreeksDistributionPanel
+                    cells={
+                      lens === "gex"
+                        ? data?.gex?.cells ?? null
+                        : lens === "vex"
+                          ? data?.vex?.cells ?? null
+                          : lens === "dex"
+                            ? data?.dex?.cells ?? null
+                            : data?.charm?.cells ?? null
+                    }
+                    spot={data?.spot ?? null}
+                    ticker={ticker}
+                  />
+                  {lens === "charm" && (
+                    <ThetaDistributionPanel
+                      cells={data?.charm?.cells ?? null}
+                      spot={data?.spot ?? null}
+                      ticker={ticker}
+                    />
+                  )}
+                </div>
               </TabPanel>
             </TabPanels>
           </Tabs>
