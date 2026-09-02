@@ -7,6 +7,7 @@ import { playDynamicTargetPts } from "@/features/spx/lib/spx-play-config";
 import type { FlowStrikeStack } from "@/lib/largo/flow-strike-stacks";
 import { todayEt } from "@/lib/et-date";
 import { spxFlowSkew, spxTapeSkew, spxTapeVerdict } from "@/features/spx/lib/spx-tape-direction";
+import { signalWindowAgeMs } from "@/features/helix/lib/helix-signal-detection";
 
 export type SpxSignalAction = "BUY_CALL" | "BUY_PUT" | "HOLD" | "WAIT";
 export type SpxPlayAction = "SCANNING" | "WATCHING" | "BUY" | "HOLD" | "TRIM" | "SELL";
@@ -100,8 +101,12 @@ function scoreHelixFlowAlignment(
     if (ticker !== "SPX" && ticker !== "SPXW" && ticker !== "SPY") continue;
     if (!f.has_sweep) continue;
     if (f.expiry !== todayYmd) continue;
-    const alertedAt = f.alerted_at ? new Date(f.alerted_at).getTime() : 0;
-    if (!alertedAt || nowMs - alertedAt > thirtyMinMs) continue;
+    const alertedAtRaw = f.alerted_at ? new Date(f.alerted_at).getTime() : NaN;
+    // signalWindowAgeMs rejects a future-dated print (age < -tolerance -> null) instead of letting
+    // a negative `nowMs - alertedAt` slip under `> thirtyMinMs` and count a clock-skewed/mis-stamped
+    // UW flow alert toward the bull/bear premium skew that feeds this scoring factor.
+    const age = signalWindowAgeMs(Number.isFinite(alertedAtRaw) ? alertedAtRaw : null, nowMs);
+    if (age == null || age > thirtyMinMs) continue;
     matching.push(f);
   }
 

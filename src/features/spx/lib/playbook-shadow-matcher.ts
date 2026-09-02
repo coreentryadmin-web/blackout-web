@@ -17,6 +17,7 @@ import {
   type PlaybookSessionWindow,
 } from "@/features/spx/lib/playbook-registry";
 import { isPlaybookEligible } from "@/features/spx/lib/playbook-regime-router";
+import { signalWindowAgeMs } from "@/features/helix/lib/helix-signal-detection";
 import {
   pb14LongBreakReady,
   pb14ShortBreakReady,
@@ -702,8 +703,12 @@ function matchPb09(
     const ticker = (f.ticker ?? "").toUpperCase();
     if (ticker !== "SPX" && ticker !== "SPXW") continue;
     if (!f.has_sweep || f.premium < 1_000_000) continue;
-    const alertedAt = f.alerted_at ? new Date(f.alerted_at).getTime() : 0;
-    if (!alertedAt || nowMs - alertedAt > 120_000) continue;
+    const alertedAtRaw = f.alerted_at ? new Date(f.alerted_at).getTime() : NaN;
+    // signalWindowAgeMs rejects a future-dated print (age < -tolerance -> null) instead of letting
+    // a negative `nowMs - alertedAt` slip under `> 120_000` and count a clock-skewed/mis-stamped
+    // UW flow alert as the fresh surge that fires PB-09's precondition/trigger.
+    const age = signalWindowAgeMs(Number.isFinite(alertedAtRaw) ? alertedAtRaw : null, nowMs);
+    if (age == null || age > 120_000) continue;
     if (!bestSurge || f.premium > bestSurge.premium) bestSurge = f;
   }
 

@@ -260,3 +260,31 @@ test("HELIX sweeps factor: aggressively SOLD calls read BEARISH, not bullish (re
   assert.equal(sweepFactor!.weight, -15, "sold calls must score as a BEARISH sweep, not bullish");
   assert.match(sweepFactor!.detail, /bearish sweeps dominant/);
 });
+
+test("HELIX sweeps factor: a future-dated flow alert is rejected, not counted as fresh sweep premium", (t) => {
+  // Same future-print bug shape already fixed in Helix's contractStackHitsFromFlows/
+  // selectHelixDiscordDigest et al.: an alerted_at ahead of `now` made `nowMs - alertedAt`
+  // negative, which trivially satisfied `<= thirtyMinMs` and would count a clock-skewed/
+  // mis-stamped UW flow alert toward this factor's bull/bear premium skew.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-07-04T18:00:00.000Z") });
+  const desk = richDesk();
+  desk.spx_flows = [
+    {
+      ticker: "SPX",
+      premium: 1_500_000,
+      option_type: "CALL",
+      strike: 7425,
+      expiry: "2026-07-04",
+      ask_pct: 75,
+      direction: "bullish",
+      alerted_at: "2026-07-04T18:05:00.000Z", // 5 min AHEAD of the mocked `now`
+      alert_rule: null,
+      trade_count: 10,
+      has_sweep: true,
+    },
+  ];
+  const result = computeSpxConfluence(desk);
+  assert.ok(result);
+  const sweepFactor = result.factors.find((f) => f.label === "HELIX sweeps");
+  assert.equal(sweepFactor, undefined, "a future-dated print must not count toward the sweep factor");
+});
