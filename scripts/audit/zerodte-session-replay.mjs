@@ -20,6 +20,7 @@
  *
  *   --date   filter to one ET session (defaults to latest session_date in the export window)
  *   --days   tier-export lookback (default 3 — enough to catch today even on a Monday)
+ *   --sessions=N  replay the last N session dates (overrides --date; use with --days=14+)
  */
 
 if (!process.env.POLYGON_API_BASE || !/^https?:\/\//.test(process.env.POLYGON_API_BASE)) {
@@ -56,6 +57,7 @@ const argv = Object.fromEntries(
 const BASE = String(argv.base ?? process.env.AUDIT_APP_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const DAYS = Math.max(1, Math.min(30, Number(argv.days ?? 3) || 3));
 const FILTER_DATE = typeof argv.date === "string" && argv.date !== "true" ? argv.date : null;
+const SESSION_COUNT = Math.max(1, Math.min(30, Number(argv.sessions ?? 1) || 1));
 const JSON_OUT = argv.json === true || argv.json === "true";
 
 function etTodayYmd() {
@@ -212,24 +214,44 @@ async function gradeDirectionalPlay(p, ctx) {
   };
 }
 
-async function main() {
-  const res = await fetchAuditJson(BASE, `/api/admin/zerodte/tier-export?days=${DAYS}`);
-  if (!res.ok || !res.json) {
-    const msg = `tier-export unreachable (${res.status} via=${res.via ?? "none"})`;
-    if (JSON_OUT) console.log(JSON.stringify({ ok: false, error: msg }, null, 2));
-    else console.error(msg);
-    await releaseAuditClerkSession();
-    process.exitCode = 1;
-    return;
-  }
+function summarizeResults(sessionDate, plays, results, barsFailed, via) {
+  const graded = results.filter((r) => r.replay_exec_pnl != null || r.replay_mid_pnl != null);
+  const avgExec =
+    graded.length > 0
+      ? Math.round((graded.reduce((s, r) => s + (r.replay_exec_pnl ?? 0), 0) / graded.length) * 10) / 10
+      : null;
+  const avgStoredExec =
+    graded.filter((r) => r.stored_exec_pnl != null).length > 0
+      ? Math.round(
+          (graded.reduce((s, r) => s + (r.stored_exec_pnl ?? 0), 0) /
+            graded.filter((r) => r.stored_exec_pnl != null).length) *
+            10
+        ) / 10
+      : null;
+  const winners = graded.filter((r) => (r.replay_exec_pnl ?? 0) > 0).length;
+  const bigWinners = graded.filter((r) => (r.replay_exec_pnl ?? 0) >= 100).length;
+  const runners200 = graded.filter((r) => (r.replay_exec_pnl ?? 0) >= 200).length;
+  const runners300 = graded.filter((r) => (r.replay_exec_pnl ?? 0) >= 300).length;
 
-  const all = Array.isArray(res.json?.plays) ? res.json.plays : [];
-  const dates = [...new Set(all.map((p) => p.session_date))].sort();
-  const sessionDate = FILTER_DATE ?? dates[dates.length - 1] ?? etTodayYmd();
-  const plays = all.filter((p) => p.session_date === sessionDate);
+  return {
+    session_date: sessionDate,
+    total_commits: plays.length,
+    repriceable: results.length + barsFailed,
+    bars_failed: barsFailed,
+    replayed: graded.length,
+    avg_replay_exec_pnl_pct: avgExec,
+    avg_stored_exec_pnl_pct: avgStoredExec,
+    win_rate_exec: graded.length ? Math.round((winners / graded.length) * 1000) / 10 : null,
+    runners_100pct_plus: bigWinners,
+    runners_200pct_plus: runners200,
+    runners_300pct_plus: runners300,
+    frozen_policy_rows: graded.filter((r) => r.has_frozen_policy).length,
+    plays: results,
+  };
+}
 
+async function replaySession(sessionDate, plays) {
   const repriceable = plays.filter(isRepriceable);
-
   const results = [];
   let barsFailed = 0;
 
@@ -240,6 +262,7 @@ async function main() {
     if (replay.error) {
       barsFailed += 1;
       results.push({
+        session_date: sessionDate,
         ticker: p.ticker,
         tier: p.tier,
         play_type: p.play_type ?? "DIRECTIONAL",
@@ -249,6 +272,7 @@ async function main() {
     }
 
     results.push({
+      session_date: sessionDate,
       ticker: p.ticker,
       tier: p.tier,
       play_type: p.play_type ?? "DIRECTIONAL",
@@ -273,83 +297,146 @@ async function main() {
     });
   }
 
-  const graded = results.filter((r) => r.replay_exec_pnl != null || r.replay_mid_pnl != null);
+  return summarizeResults(sessionDate, plays, results, barsFailed);
+}
+
+function rollupSessions(sessions) {
+  const allPlays = sessions.flatMap((s) => s.plays.filter((p) => p.replay_exec_pnl != null));
   const avgExec =
-    graded.length > 0
-      ? Math.round((graded.reduce((s, r) => s + (r.replay_exec_pnl ?? 0), 0) / graded.length) * 10) / 10
+    allPlays.length > 0
+      ? Math.round((allPlays.reduce((s, r) => s + (r.replay_exec_pnl ?? 0), 0) / allPlays.length) * 10) / 10
       : null;
-  const avgStoredExec =
-    graded.filter((r) => r.stored_exec_pnl != null).length > 0
-      ? Math.round(
-          (graded.reduce((s, r) => s + (r.stored_exec_pnl ?? 0), 0) /
-            graded.filter((r) => r.stored_exec_pnl != null).length) *
-            10
-        ) / 10
-      : null;
-  const winners = graded.filter((r) => (r.replay_exec_pnl ?? 0) > 0).length;
-  const bigWinners = graded.filter((r) => (r.replay_exec_pnl ?? 0) >= 100).length;
+  const winners = allPlays.filter((r) => (r.replay_exec_pnl ?? 0) > 0).length;
+  return {
+    sessions: sessions.length,
+    total_commits: sessions.reduce((s, x) => s + x.total_commits, 0),
+    replayed: allPlays.length,
+    avg_replay_exec_pnl_pct: avgExec,
+    win_rate_exec: allPlays.length ? Math.round((winners / allPlays.length) * 1000) / 10 : null,
+    runners_100pct_plus: allPlays.filter((r) => (r.replay_exec_pnl ?? 0) >= 100).length,
+    runners_200pct_plus: allPlays.filter((r) => (r.replay_exec_pnl ?? 0) >= 200).length,
+    runners_300pct_plus: allPlays.filter((r) => (r.replay_exec_pnl ?? 0) >= 300).length,
+    top_runners: [...allPlays]
+      .sort((a, b) => (b.replay_exec_pnl ?? 0) - (a.replay_exec_pnl ?? 0))
+      .slice(0, 15),
+  };
+}
+
+async function main() {
+  const res = await fetchAuditJson(BASE, `/api/admin/zerodte/tier-export?days=${DAYS}`);
+  if (!res.ok || !res.json) {
+    const msg = `tier-export unreachable (${res.status} via=${res.via ?? "none"})`;
+    if (JSON_OUT) console.log(JSON.stringify({ ok: false, error: msg }, null, 2));
+    else console.error(msg);
+    await releaseAuditClerkSession();
+    process.exitCode = 1;
+    return;
+  }
+
+  const all = Array.isArray(res.json?.plays) ? res.json.plays : [];
+  const dates = [...new Set(all.map((p) => p.session_date))].sort();
+  const targetDates = FILTER_DATE
+    ? [FILTER_DATE]
+    : SESSION_COUNT > 1
+      ? dates.slice(-SESSION_COUNT)
+      : [dates[dates.length - 1] ?? etTodayYmd()];
+
+  const sessionSummaries = [];
+  for (const sessionDate of targetDates) {
+    const plays = all.filter((p) => p.session_date === sessionDate);
+    sessionSummaries.push(await replaySession(sessionDate, plays));
+  }
 
   const summary = {
     ok: true,
-    session_date: sessionDate,
+    session_dates: targetDates,
     source: `${BASE}/api/admin/zerodte/tier-export?days=${DAYS}`,
     via: res.via,
-    total_commits: plays.length,
-    repriceable: repriceable.length,
-    bars_failed: barsFailed,
-    replayed: graded.length,
-    avg_replay_exec_pnl_pct: avgExec,
-    avg_stored_exec_pnl_pct: avgStoredExec,
-    win_rate_exec: graded.length ? Math.round((winners / graded.length) * 1000) / 10 : null,
-    runners_100pct_plus: bigWinners,
-    frozen_policy_rows: graded.filter((r) => r.has_frozen_policy).length,
-    plays: results,
+    ...(sessionSummaries.length === 1
+      ? sessionSummaries[0]
+      : { rollup: rollupSessions(sessionSummaries), sessions: sessionSummaries }),
   };
 
   if (JSON_OUT) {
     console.log(JSON.stringify(summary, null, 2));
+  } else if (sessionSummaries.length === 1) {
+    printSessionReport(summary);
   } else {
-    console.log(`\n=== 0DTE SESSION REPLAY — ${sessionDate} ===`);
-    console.log(`Source: ${summary.source} (via=${summary.via})`);
-    console.log(
-      `Commits: ${plays.length} total, ${repriceable.length} re-priceable, ${graded.length} replayed (${barsFailed} bar-fetch misses)`
-    );
-    if (avgExec != null) {
-      console.log(
-        `Executable lane: avg replay ${fmtPct(avgExec)}` +
-          (avgStoredExec != null ? ` vs stored ${fmtPct(avgStoredExec)}` : "") +
-          ` | WR ${summary.win_rate_exec}% | ≥100%: ${bigWinners}`
-      );
-    }
-    console.log("");
-    const frozenCount = graded.filter((r) => r.policy_source === "frozen").length;
-    const rebuiltCount = graded.filter((r) => r.policy_source === "rebuilt").length;
-    if (graded.length) {
-      console.log(
-        `Exit policy: ${frozenCount} frozen snapshot, ${rebuiltCount} rebuilt from commit metadata`
-      );
-    }
-    console.log(
-      `${"TICKER".padEnd(8)} ${"TYPE".padEnd(5)} ${"TIER".padEnd(5)} ${"EXIT".padEnd(10)} ${"RUN%".padStart(5)} ` +
-        `${"REPLAY".padStart(8)} ${"STORED".padStart(8)} ${"Δ".padStart(7)} OUTCOME`
-    );
-    console.log("─".repeat(80));
-    for (const r of graded.sort((a, b) => (b.replay_exec_pnl ?? 0) - (a.replay_exec_pnl ?? 0))) {
-      console.log(
-        `${r.ticker.padEnd(8)} ${String(r.play_type ?? "DIR").slice(0, 5).padEnd(5)} ${String(r.tier ?? "—").padEnd(5)} ` +
-          `${String(r.exit_policy ?? "—").padEnd(10)} ` +
-          `${String(r.runner_target_pct ?? "—").padStart(5)} ` +
-          `${fmtPct(r.replay_exec_pnl).padStart(8)} ${fmtPct(r.stored_exec_pnl).padStart(8)} ` +
-          `${fmtPct(r.exec_delta_vs_stored).padStart(7)} ${r.replay_exec_outcome ?? "—"}`
-      );
-    }
-    const skipped = results.filter((r) => r.error);
-    if (skipped.length) {
-      console.log(`\nSkipped/failed: ${skipped.map((r) => `${r.ticker}:${r.error}`).join(", ")}`);
-    }
+    printMultiSessionReport(summary);
   }
 
   await releaseAuditClerkSession();
+}
+
+function printSessionReport(summary) {
+  const graded = summary.plays.filter((r) => r.replay_exec_pnl != null || r.replay_mid_pnl != null);
+  console.log(`\n=== 0DTE SESSION REPLAY — ${summary.session_date} ===`);
+  console.log(`Source: ${summary.source ?? ""} (via=${summary.via ?? "—"})`);
+  console.log(
+    `Commits: ${summary.total_commits} total, ${summary.repriceable} re-priceable, ${summary.replayed} replayed (${summary.bars_failed} bar-fetch misses)`
+  );
+  if (summary.avg_replay_exec_pnl_pct != null) {
+    console.log(
+      `Executable lane: avg replay ${fmtPct(summary.avg_replay_exec_pnl_pct)}` +
+        (summary.avg_stored_exec_pnl_pct != null ? ` vs stored ${fmtPct(summary.avg_stored_exec_pnl_pct)}` : "") +
+        ` | WR ${summary.win_rate_exec}% | ≥100%: ${summary.runners_100pct_plus}`
+    );
+  }
+  printPlayTable(graded);
+  const skipped = summary.plays.filter((r) => r.error);
+  if (skipped.length) {
+    console.log(`\nSkipped/failed: ${skipped.map((r) => `${r.ticker}:${r.error}`).join(", ")}`);
+  }
+}
+
+function printMultiSessionReport(summary) {
+  const { rollup, sessions } = summary;
+  console.log(`\n=== 0DTE SESSION REPLAY — LAST ${sessions.length} SESSIONS ===`);
+  console.log(`Dates: ${summary.session_dates.join(", ")}`);
+  console.log(`Source: ${summary.source} (via=${summary.via})`);
+  console.log(
+    `Rollup: ${rollup.replayed} plays | avg ${fmtPct(rollup.avg_replay_exec_pnl_pct)} | WR ${rollup.win_rate_exec}%`
+  );
+  console.log(
+    `Runners: ≥100%: ${rollup.runners_100pct_plus} | ≥200%: ${rollup.runners_200pct_plus} | ≥300%: ${rollup.runners_300pct_plus}`
+  );
+  console.log("\nPer-session:");
+  console.log(`${"DATE".padEnd(12)} ${"PLAYS".padStart(5)} ${"AVG".padStart(8)} ${"WR".padStart(6)} ${"≥100".padStart(5)}`);
+  console.log("─".repeat(42));
+  for (const s of sessions) {
+    console.log(
+      `${s.session_date.padEnd(12)} ${String(s.replayed).padStart(5)} ${fmtPct(s.avg_replay_exec_pnl_pct).padStart(8)} ` +
+        `${String(s.win_rate_exec ?? "—").padStart(5)}% ${String(s.runners_100pct_plus).padStart(5)}`
+    );
+  }
+  if (rollup.top_runners.length) {
+    console.log("\nTop runners (executable lane):");
+    printPlayTable(rollup.top_runners, true);
+  }
+}
+
+function printPlayTable(graded, showDate = false) {
+  console.log("");
+  const frozenCount = graded.filter((r) => r.policy_source === "frozen").length;
+  const rebuiltCount = graded.filter((r) => r.policy_source === "rebuilt").length;
+  if (graded.length) {
+    console.log(`Exit policy: ${frozenCount} frozen snapshot, ${rebuiltCount} rebuilt from commit metadata`);
+  }
+  const dateCol = showDate ? `${"DATE".padEnd(12)} ` : "";
+  console.log(
+    `${dateCol}${"TICKER".padEnd(8)} ${"TYPE".padEnd(5)} ${"TIER".padEnd(5)} ${"EXIT".padEnd(10)} ${"RUN%".padStart(5)} ` +
+      `${"REPLAY".padStart(8)} ${"MID".padStart(8)} OUTCOME`
+  );
+  console.log("─".repeat(showDate ? 92 : 80));
+  for (const r of graded.sort((a, b) => (b.replay_exec_pnl ?? 0) - (a.replay_exec_pnl ?? 0))) {
+    console.log(
+      `${showDate ? `${(r.session_date ?? "").padEnd(12)} ` : ""}` +
+        `${r.ticker.padEnd(8)} ${String(r.play_type ?? "DIR").slice(0, 5).padEnd(5)} ${String(r.tier ?? "—").padEnd(5)} ` +
+        `${String(r.exit_policy ?? "—").padEnd(10)} ` +
+        `${String(r.runner_target_pct ?? "—").padStart(5)} ` +
+        `${fmtPct(r.replay_exec_pnl).padStart(8)} ${fmtPct(r.replay_mid_pnl).padStart(8)} ${r.replay_exec_outcome ?? "—"}`
+    );
+  }
 }
 
 main().catch(async (e) => {
