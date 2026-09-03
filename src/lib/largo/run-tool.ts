@@ -1057,11 +1057,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
     case "get_setup_stats":
       return marketPlatform.spx.getSpxSetupStats();
-    case "get_postgres_flows":
-      return marketPlatform.flows.getFlowTape({
+    case "get_postgres_flows": {
+      const rows = await marketPlatform.flows.getFlowTape({
         limit: Number(input.limit ?? 25),
         ticker: input.ticker ? uwTicker(String(input.ticker)) : undefined,
       });
+      const { fitPostgresFlowsForModel } = await import("@/lib/largo/postgres-flows-fit");
+      return fitPostgresFlowsForModel(rows).fitted;
+    }
     case "get_signal_log": {
       // spx-signal-log.ts persists the SAME uncalibrated formula as get_spx_play/get_spx_confluence
       // but under the key `confidence` (not `rawScore`) — see insertSpxSignalLog's
@@ -1072,8 +1075,12 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const rows = await marketPlatform.spx.getSpxSignalLog(Number(input.limit ?? 20));
       return rows.map((row) => omitUncalibratedSpxConfidence(row));
     }
-    case "get_spx_engine_snapshots":
-      return marketPlatform.spx.getSpxEngineSnapshots(Number(input.limit ?? 20));
+    case "get_spx_engine_snapshots": {
+      const limit = Number(input.limit ?? 20);
+      const rows = await marketPlatform.spx.getSpxEngineSnapshots(limit);
+      const { fitSpxEngineSnapshotsForModel } = await import("@/lib/largo/spx-engine-snapshots-fit");
+      return fitSpxEngineSnapshotsForModel(rows, limit).fitted;
+    }
     case "get_lotto_state":
       return marketPlatform.spx.getSpxLottoState();
 

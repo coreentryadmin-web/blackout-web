@@ -58,7 +58,9 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 ## P2 — desk polish
 
 - [x] Persist SPX matrix lens toggle to `sessionStorage` and document read path for future server-side hint (optional — today client-only is honest)
-- [ ] Post-deploy: re-run `scripts/audit/largo-truncation-probe.mjs` on prod and confirm `get_ecosystem_context` COMPLETE
+- [x] Largo fit `get_postgres_flows` + `get_spx_engine_snapshots` at model boundary (explicit truncation flags)
+- [ ] Post-deploy: re-run `scripts/audit/largo-truncation-probe.mjs` on prod and confirm `get_ecosystem_context` + `get_flow_tape` + `get_postgres_flows` COMPLETE
+- [ ] P1: `get_spx_play` Largo fit — cap confluence factor detail lists under transport budget
 
 ---
 
@@ -66,6 +68,8 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 
 | Date | Item | PR |
 |------|------|-----|
+| 2026-09-03 | P2 postgres_flows + spx_engine_snapshots Largo fit | (this branch) |
+| 2026-09-03 | P1 get_flow_tape Largo fit (recent print cap + truncation flags) | (this branch) |
 | 2026-09-03 | P1 ecosystem_context Largo fit + cross-product SPX Slayer source | (this branch) |
 | 2026-09-03 | P2 SPX matrix lens sessionStorage persistence | (this branch) |
 | 2026-09-03 | P1 ecosystem_context spx_desk_convergence field + CI tool count sync | (this branch) |

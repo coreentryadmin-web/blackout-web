@@ -25,3 +25,9 @@ test("get_flow_tape fits at the Largo boundary only", () => {
   const runTool = readFileSync(join(ROOT, "src/lib/largo/run-tool.ts"), "utf8");
   assert.match(runTool, /fitFlowTapeForModel\(/);
 });
+
+test("get_postgres_flows and get_spx_engine_snapshots fit at the Largo boundary", () => {
+  const runTool = readFileSync(join(ROOT, "src/lib/largo/run-tool.ts"), "utf8");
+  assert.match(runTool, /fitPostgresFlowsForModel\(/);
+  assert.match(runTool, /fitSpxEngineSnapshotsForModel\(/);
+});
