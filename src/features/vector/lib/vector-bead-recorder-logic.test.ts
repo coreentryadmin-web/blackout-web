@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { trackTickerFailures, evaluateSweepBudget } from "./vector-bead-recorder-logic";
+import { trackTickerFailures, evaluateSweepBudget, shouldLogZeroSamples } from "./vector-bead-recorder-logic";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // P1 2026-08-07: ASTS lost ~10 min of rail inside RTH and left ZERO log trace.
@@ -132,4 +132,36 @@ test("evaluateSweepBudget: junk inputs never fabricate an alarm", () => {
   assert.equal(evaluateSweepBudget(NaN, 5_000, 1, 1, 1, st).kind, "ok");
   assert.equal(evaluateSweepBudget(31_000, 0, 1, 1, 1, st).kind, "ok");
   assert.equal(evaluateSweepBudget(31_000, NaN, 1, 1, 1, st).kind, "ok");
+});
+
+// ── Zero-samples log rate limit ───────────────────────────────────────────────────────────────
+// `total>0, recorded=0` has two causes that share the same counters: every ticker skipped as
+// `busy` (self-throttle, expected) or every ticker genuinely FAILED. Only the busy case (failed=0)
+// should be rate-limited — a real failure is new information every time and must never be
+// suppressed, the same rule trackTickerFailures already applies per-ticker.
+
+test("shouldLogZeroSamples: a genuine failure is never rate-limited", () => {
+  const st = { lastLoggedAt: 1_000_000 };
+  assert.equal(shouldLogZeroSamples(20, 1_000_001, st), true);
+  assert.equal(shouldLogZeroSamples(1, 1_000_002, st), true);
+  assert.equal(st.lastLoggedAt, 1_000_000, "the failure path never consumes the rate limiter");
+});
+
+test("shouldLogZeroSamples: an all-busy pass (failed=0) logs once, then goes quiet for 60s", () => {
+  const st = { lastLoggedAt: 0 };
+  const now = 1_000_000;
+  assert.equal(shouldLogZeroSamples(0, now, st), true);
+  assert.equal(shouldLogZeroSamples(0, now + 1_000, st), false);
+  assert.equal(shouldLogZeroSamples(0, now + 59_000, st), false);
+  // ...but it must not go quiet forever: still worth knowing about a minute later.
+  assert.equal(shouldLogZeroSamples(0, now + 60_000, st), true);
+});
+
+test("shouldLogZeroSamples: switching from failed>0 to failed=0 does not skip the busy rate limit", () => {
+  const st = { lastLoggedAt: 0 };
+  const now = 1_000_000;
+  assert.equal(shouldLogZeroSamples(5, now, st), true, "a real failure logs, but leaves the limiter untouched");
+  assert.equal(st.lastLoggedAt, 0);
+  assert.equal(shouldLogZeroSamples(0, now + 1_000, st), true, "the busy case starts its own 60s window");
+  assert.equal(shouldLogZeroSamples(0, now + 2_000, st), false);
 });

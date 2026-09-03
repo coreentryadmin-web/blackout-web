@@ -313,3 +313,41 @@ export function evaluateSweepBudget(
     total,
   };
 }
+
+/** Don't emit more than one all-busy zero-samples line per this interval — see
+ *  `shouldLogZeroSamples`'s own doc comment for why a genuine failure is never subject to this. */
+const ZERO_SAMPLES_BUSY_LOG_INTERVAL_MS = 60_000;
+
+export type ZeroSamplesLogState = { lastLoggedAt: number };
+
+/**
+ * Decide whether a `recorded=0` pass is worth its own log line, rate-limited — but ONLY when
+ * nothing actually failed.
+ *
+ * A pass with `total>0, recorded=0` has two very different causes that land in the same counters:
+ * (a) every ticker was skipped as `busy` (the previous sweep for that ticker is still running —
+ * "Expected self-throttling, not a fault", per `VectorBeadRecordResult.busy`'s own doc comment),
+ * or (b) every ticker genuinely FAILED. `failed` already tells them apart in the log message
+ * (`0/20 failed` vs `20/20 failed`), but nothing rate-limited the busy case, so it fired
+ * unconditionally — measured live 2026-09-03: 100+ times in 30 minutes during RTH, all `0/N
+ * failed`, all near-instant (elapsed 1-17ms — the fast "everything already busy" return path, not
+ * a slow sweep). That is a REDUNDANT echo of the same condition `evaluateSweepBudget`'s own
+ * rate-limited "SWEEP OVER BUDGET" line already alarms on (the shard's real sweep taking longer
+ * than its 5s tick, so faster ticks landing mid-sweep find every ticker already in flight) — not a
+ * second, distinct fault, and not member-visible data loss (the wall-history rail keeps recording,
+ * just at the degraded cadence the budget line already reports).
+ *
+ * A genuine all-failed pass (`failed > 0`) is never rate-limited here: that IS new information
+ * every time it happens, the same "never suppress a real failure" reasoning `trackTickerFailures`
+ * already applies per-ticker.
+ */
+export function shouldLogZeroSamples(
+  failed: number,
+  nowMs: number,
+  state: ZeroSamplesLogState
+): boolean {
+  if (failed > 0) return true;
+  if (nowMs - state.lastLoggedAt < ZERO_SAMPLES_BUSY_LOG_INTERVAL_MS) return false;
+  state.lastLoggedAt = nowMs;
+  return true;
+}
