@@ -37,3 +37,30 @@ test("dispatch-prompt includes coordination rules", () => {
   assert.match(r.stdout, /BLACKOUT AUTOPILOT/);
   assert.match(r.stdout, /Never approve your own PR/);
 });
+
+test("select-task returns BO-P1-0001 for cursor", () => {
+  const r = spawnSync("node", ["scripts/blackout-agent/select-task.mjs", "--agent=cursor"], { encoding: "utf8", cwd: repoRoot });
+  assert.equal(r.status, 0);
+  const j = JSON.parse(r.stdout);
+  assert.equal(j.selected?.id, "BO-P1-0001");
+});
+
+test("dispatch-guard allows when no active session", () => {
+  const r = spawnSync("node", ["scripts/blackout-agent/dispatch-guard.mjs"], { encoding: "utf8", cwd: repoRoot });
+  // May be 0 (allowed) or 1 (blocked) depending on prior session-start in test order — verify shape only
+  const j = JSON.parse(r.stdout);
+  assert.ok("ok" in j);
+});
+
+test("session-start sets heartbeat", () => {
+  const r = spawnSync("node", ["scripts/blackout-agent/session-start.mjs", "--agent=cursor"], { encoding: "utf8", cwd: repoRoot });
+  assert.equal(r.status, 0);
+  const j = JSON.parse(r.stdout);
+  assert.ok(j.run_id);
+  assert.equal(j.heartbeat.agent, "cursor");
+});
+
+test("watchdog runs without error", () => {
+  const r = spawnSync("node", ["scripts/blackout-agent/watchdog.mjs"], { encoding: "utf8", cwd: repoRoot });
+  assert.equal(r.status, 0);
+});

@@ -87,6 +87,23 @@ export function releaseLock(taskId, owner) {
   return { ok: true, released: true };
 }
 
+export function renewLock(taskId, owner, opts = {}) {
+  const existing = readLock(taskId);
+  if (!existing) return { ok: false, reason: "no_lock" };
+  if (existing.owner !== owner) return { ok: false, reason: "not_owner", lock: existing };
+  const leaseMs = opts.leaseMs ?? DEFAULT_LEASE_MS;
+  const lock = {
+    ...existing,
+    lease_until: new Date(Date.now() + leaseMs).toISOString(),
+    phase: opts.phase ?? existing.phase,
+    branch: opts.branch ?? existing.branch,
+    pr: opts.pr ?? existing.pr,
+    run_id: opts.runId ?? existing.run_id,
+  };
+  writeFileSync(lockPath(taskId), `${JSON.stringify(lock, null, 2)}\n`);
+  return { ok: true, lock };
+}
+
 export function expireStaleLocksSync() {
   ensureLocksDir();
   const expired = [];

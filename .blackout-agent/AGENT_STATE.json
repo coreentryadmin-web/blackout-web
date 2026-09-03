@@ -1,14 +1,111 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-03T23:45:00.000Z",
-  "tasks": {},
+  "updated_at": "2026-09-03T23:46:15.941Z",
+  "tasks": {
+    "BO-P1-0001": {
+      "task_id": "BO-P1-0001",
+      "owner": "cursor",
+      "claimed_at": "2026-09-03T23:46:15.831Z",
+      "lease_until": "2026-09-04T01:16:15.831Z",
+      "phase": "IMPLEMENTING",
+      "branch": "cursor/blackout-autopilot",
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": "BLACKOUT Autopilot"
+    },
+    "BO-P1-0006": {
+      "task_id": "BO-P1-0006",
+      "owner": "cursor",
+      "claimed_at": "2026-09-03T23:46:15.940Z",
+      "lease_until": "2026-09-04T01:16:15.940Z",
+      "phase": "IMPLEMENTING",
+      "branch": "cursor/blackout-autopilot",
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": "Autopilot hardening"
+    }
+  },
   "reviews": {},
   "agents": {
-    "claude": { "status": "unknown", "last_seen": null },
-    "cursor": { "status": "unknown", "last_seen": null }
+    "claude": {
+      "status": "unknown",
+      "last_seen": null
+    },
+    "cursor": {
+      "status": "active",
+      "last_seen": "2026-09-03T23:46:15.941Z",
+      "current_task": "BO-P1-0006"
+    }
   },
-  "deploy": { "last_main_sha": null, "last_deploy_status": null, "last_deploy_at": null },
+  "deploy": {
+    "last_main_sha": "aa08b98d9ffdab369aa27030f999502edfc862dd",
+    "last_deploy_status": "",
+    "last_deploy_at": "2026-09-03T23:32:56Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33817874895",
+    "last_deploy_sha": "f86613f5b0cd72d6971655f79d4ea5e440b0defa"
+  },
   "open_prs": [],
-  "events": [{ "at": "2026-09-03T23:45:00.000Z", "type": "autopilot_initialized" }]
+  "events": [
+    {
+      "at": "2026-09-03T23:45:00.000Z",
+      "type": "autopilot_initialized"
+    },
+    {
+      "at": "2026-09-03T23:45:07.056Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-03T23:46:02.378Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-03T23:46:03.105Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-03T23:46:03.919Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-03T23:46:14.071Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-03T23:46:14.852Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-03T23:46:15.659Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-03T23:46:15.832Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0001",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-03T23:46:15.941Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0006",
+      "owner": "cursor"
+    }
+  ]
 }

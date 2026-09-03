@@ -1,11 +1,13 @@
-# BLACKOUT Autopilot — event-driven agent dispatch
+# BLACKOUT Autopilot — event-driven + scheduled agent dispatch
 #
-# Wakes Cursor on CI failure, deploy success, deploy smoke failure, or peer review approval.
-# Requires: CURSOR_API_KEY
+# Wakes Cursor on CI failure, deploy success, deploy smoke failure, peer review,
+# or every 30 min fallback. Requires: CURSOR_API_KEY
 
 name: BLACKOUT Autopilot dispatch
 
 on:
+  schedule:
+    - cron: "*/30 * * * *"
   workflow_run:
     workflows:
       - CI
@@ -23,6 +25,7 @@ concurrency:
 jobs:
   dispatch:
     if: >-
+      github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' && (
         (github.event.workflow_run.name == 'CI' && github.event.workflow_run.conclusion == 'failure') ||
@@ -39,7 +42,22 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Skip if Cursor session already active
+        id: guard
+        run: |
+          set +e
+          node scripts/blackout-agent/dispatch-guard.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 1 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Active Cursor session — skipping duplicate dispatch"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Launch Cursor Cloud Agent
+        if: steps.guard.outputs.skip != 'true'
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
         run: |
@@ -49,6 +67,7 @@ jobs:
             exit 0
           fi
           EXTRA="Event: ${{ github.event_name }}"
+          export PROMPT
           PROMPT=$(node scripts/blackout-agent/dispatch-prompt.mjs --agent=cursor --extra="$EXTRA")
           payload=$(node -e "
             console.log(JSON.stringify({

@@ -5,6 +5,8 @@
 Claude and Cursor are peer engineers; `.blackout-agent/` is the controller.
 Task leases prevent duplicate work. Peer review required before merge.
 
-## D-002 — G-19 FLOW-only (2026-09-03)
+## D-003 — Autopilot hardening (2026-09-03)
 
-F-5 top-band block applies only to FLOW-origin commits. PR #3425.
+Cursor audit found gaps in v1: no session-start, select-task, record-review,
+watchdog, dispatch-guard, or scheduled fallback. Added in BO-P1-0006.
+Claude heartbeat integration still pending (Claude must call session-start).

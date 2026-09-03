@@ -78,6 +78,8 @@ jobs:
             EXTRA='Grid RTH verify. Run validate:grid-rth, validate:zerodte-logic, validate:grid-e2e. Summary only — no docs/ commits on verify passes.'
             AUTO_PR=false
           fi
+          export PROMPT
+          export AUTO_PR
           PROMPT="${BOOTSTRAP}
 
 ${EXTRA}"

@@ -7,11 +7,15 @@ Both agents read/write `.blackout-agent/`. Individual sessions are disposable.
 ## Commands
 
 ```bash
+npm run blackout:session -- --agent=cursor   # sync + heartbeat + resume leases
 npm run blackout:bootstrap -- --agent=cursor
+npm run blackout:select -- --agent=cursor    # pick highest non-conflicting task
 npm run blackout:sync
 npm run blackout:claim -- --id=BO-P1-0001 --owner=cursor --phase=IMPLEMENTING
 npm run blackout:heartbeat -- --agent=cursor --task=BO-P1-0001 --phase=IMPLEMENTING
+npm run blackout:review -- --pr=123 --head=<sha> --verdict=APPROVED
 npm run blackout:handoff -- --agent=cursor --summary="..."
+npm run blackout:watchdog
 npm run blackout:prompt -- --agent=cursor
 ```
 

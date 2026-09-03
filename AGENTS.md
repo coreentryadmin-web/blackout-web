@@ -161,6 +161,11 @@ If peer owns highest task, pick next independent task. Never idle because peer i
 Architecture: `.blackout-agent/README.md`. Constitution: **`CLAUDE.md`** (do not fork).
 Dispatch prompt: `npm run blackout:prompt -- --agent=cursor`
 
+**Session entry:** `npm run blackout:session -- --agent=cursor` (sync + heartbeat + resume leases)  
+**Task selection:** `npm run blackout:select -- --agent=cursor`  
+**PR review record:** `npm run blackout:review -- --pr=N --head=<sha> --verdict=APPROVED`  
+**Watchdog:** `npm run blackout:watchdog` (stale heartbeats + lease expiry)
+
 ### Autonomous RTH resume (Cloud Agent — do NOT wait for user)
 
 On **every weekday** Cloud Agent session when **America/New_York ≥ 09:00**:

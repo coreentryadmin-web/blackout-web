@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { claimLock } from "./lib/locks.mjs";
 import { appendEvent, readAgentState, writeAgentState } from "./lib/state.mjs";
+import { withStateLock } from "./lib/state-lock.mjs";
 
 function parseArgs(argv) {
   const out = {};
@@ -35,9 +36,18 @@ if (!result.ok) {
   process.exit(2);
 }
 
-const state = readAgentState();
-state.tasks[taskId] = { ...result.lock, title: args.title ?? state.tasks[taskId]?.title ?? null };
-state.agents[owner] = { ...(state.agents[owner] ?? {}), status: "active", last_seen: new Date().toISOString(), current_task: taskId };
-appendEvent(state, { type: "task_claimed", task_id: taskId, owner });
-writeAgentState(state);
+const stateResult = withStateLock(() => {
+  const state = readAgentState();
+  state.tasks[taskId] = { ...result.lock, title: args.title ?? state.tasks[taskId]?.title ?? null };
+  state.agents[owner] = { ...(state.agents[owner] ?? {}), status: "active", last_seen: new Date().toISOString(), current_task: taskId };
+  appendEvent(state, { type: "task_claimed", task_id: taskId, owner });
+  writeAgentState(state);
+  return state;
+}, { owner });
+
+if (!stateResult.ok) {
+  console.error(JSON.stringify(stateResult, null, 2));
+  process.exit(3);
+}
+
 console.log(JSON.stringify({ ok: true, lock: result.lock }, null, 2));
