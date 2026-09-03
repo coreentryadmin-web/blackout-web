@@ -46,74 +46,85 @@ mock.module("./providers/polygon-options-gex", {
 
 const mod = () => import("./public-gex-snapshot.ts");
 
-test("readPublicGexSnapshotSeed never calls fetchGexHeatmap — cache hit", async () => {
-  const { readPublicGexSnapshotSeed } = await mod();
-  state.cache.clear();
-  state.fetchCalls = 0;
-  state.cache.set("public-gex-snapshot:SPX", {
-    available: true,
-    ticker: "SPX",
-    spot: 5500,
-    change_pct: 0.5,
-    asof: "2026-09-03T00:00:00.000Z",
-    market_session: "OPEN",
-    session_date: "2026-09-02",
-    as_of_et: "2026-09-02 20:00 ET",
-    call_wall: 5600,
-    put_wall: 5400,
-    flip: 5480,
-    posture: "long",
-    call_wall_role: "resistance",
-    put_wall_role: "support",
-    read: "Long gamma regime.",
-    degraded: false,
-    degraded_note: null,
+// Exercised separately for all three public tickers (SPX, SPY, QQQ) — the homepage only ever
+// seeds SPX today, but the bug this guards against (a live-compute call from an ISR page) is a
+// property of readPublicGexSnapshotSeed itself, not of any one ticker, and the three tickers use
+// distinct cache keys (`public-gex-snapshot:<ticker>`), so a regression scoped to one ticker's key
+// derivation would not be caught by testing SPX alone.
+const TICKERS = ["SPX", "SPY", "QQQ"] as const;
+const SAMPLE_SPOT: Record<(typeof TICKERS)[number], number> = { SPX: 5500, SPY: 550, QQQ: 460 };
+const LAST_GOOD_SPOT: Record<(typeof TICKERS)[number], number> = { SPX: 5480, SPY: 548, QQQ: 458 };
+
+for (const ticker of TICKERS) {
+  test(`readPublicGexSnapshotSeed never calls fetchGexHeatmap — cache hit (${ticker})`, async () => {
+    const { readPublicGexSnapshotSeed } = await mod();
+    state.cache.clear();
+    state.fetchCalls = 0;
+    state.cache.set(`public-gex-snapshot:${ticker}`, {
+      available: true,
+      ticker,
+      spot: SAMPLE_SPOT[ticker],
+      change_pct: 0.5,
+      asof: "2026-09-03T00:00:00.000Z",
+      market_session: "OPEN",
+      session_date: "2026-09-02",
+      as_of_et: "2026-09-02 20:00 ET",
+      call_wall: SAMPLE_SPOT[ticker] * 1.02,
+      put_wall: SAMPLE_SPOT[ticker] * 0.98,
+      flip: SAMPLE_SPOT[ticker] * 0.996,
+      posture: "long",
+      call_wall_role: "resistance",
+      put_wall_role: "support",
+      read: "Long gamma regime.",
+      degraded: false,
+      degraded_note: null,
+    });
+
+    const seed = await readPublicGexSnapshotSeed(ticker);
+    assert.equal(seed.available, true);
+    assert.equal(seed.spot, SAMPLE_SPOT[ticker]);
+    assert.equal(state.fetchCalls, 0, "a hot cache read must never touch the live compute path");
   });
 
-  const seed = await readPublicGexSnapshotSeed("SPX");
-  assert.equal(seed.available, true);
-  assert.equal(seed.spot, 5500);
-  assert.equal(state.fetchCalls, 0, "a hot cache read must never touch the live compute path");
-});
+  test(`readPublicGexSnapshotSeed falls back to last-known-good without ever computing live (${ticker})`, async () => {
+    const { readPublicGexSnapshotSeed } = await mod();
+    state.cache.clear();
+    state.fetchCalls = 0;
+    state.cache.set(`public-gex-snapshot:last-good:${ticker}`, {
+      available: true,
+      ticker,
+      spot: LAST_GOOD_SPOT[ticker],
+      change_pct: -0.1,
+      asof: "2026-09-02T23:55:00.000Z",
+      market_session: "CLOSED",
+      session_date: "2026-09-02",
+      as_of_et: "2026-09-02 23:55 ET",
+      call_wall: LAST_GOOD_SPOT[ticker] * 1.01,
+      put_wall: LAST_GOOD_SPOT[ticker] * 0.99,
+      flip: LAST_GOOD_SPOT[ticker] * 0.996,
+      posture: "short",
+      call_wall_role: "resistance",
+      put_wall_role: "support",
+      read: "Short gamma regime.",
+      degraded: false,
+      degraded_note: null,
+    });
 
-test("readPublicGexSnapshotSeed falls back to last-known-good without ever computing live", async () => {
-  const { readPublicGexSnapshotSeed } = await mod();
-  state.cache.clear();
-  state.fetchCalls = 0;
-  state.cache.set("public-gex-snapshot:last-good:SPX", {
-    available: true,
-    ticker: "SPX",
-    spot: 5480,
-    change_pct: -0.1,
-    asof: "2026-09-02T23:55:00.000Z",
-    market_session: "CLOSED",
-    session_date: "2026-09-02",
-    as_of_et: "2026-09-02 23:55 ET",
-    call_wall: 5550,
-    put_wall: 5400,
-    flip: 5460,
-    posture: "short",
-    call_wall_role: "resistance",
-    put_wall_role: "support",
-    read: "Short gamma regime.",
-    degraded: false,
-    degraded_note: null,
+    const seed = await readPublicGexSnapshotSeed(ticker);
+    assert.equal(seed.available, true);
+    assert.equal(seed.degraded, true);
+    assert.equal(seed.spot, LAST_GOOD_SPOT[ticker]);
+    assert.equal(state.fetchCalls, 0, "a last-known-good fallback must never touch the live compute path");
   });
 
-  const seed = await readPublicGexSnapshotSeed("SPX");
-  assert.equal(seed.available, true);
-  assert.equal(seed.degraded, true);
-  assert.equal(seed.spot, 5480);
-  assert.equal(state.fetchCalls, 0, "a last-known-good fallback must never touch the live compute path");
-});
+  test(`readPublicGexSnapshotSeed returns a warming placeholder when there is nothing cached at all (${ticker})`, async () => {
+    const { readPublicGexSnapshotSeed } = await mod();
+    state.cache.clear();
+    state.fetchCalls = 0;
 
-test("readPublicGexSnapshotSeed returns a warming placeholder when there is nothing cached at all", async () => {
-  const { readPublicGexSnapshotSeed } = await mod();
-  state.cache.clear();
-  state.fetchCalls = 0;
-
-  const seed = await readPublicGexSnapshotSeed("SPX");
-  assert.equal(seed.available, false);
-  assert.equal(seed.spot, null);
-  assert.equal(state.fetchCalls, 0, "no cache at all must still never touch the live compute path");
-});
+    const seed = await readPublicGexSnapshotSeed(ticker);
+    assert.equal(seed.available, false);
+    assert.equal(seed.spot, null);
+    assert.equal(state.fetchCalls, 0, "no cache at all must still never touch the live compute path");
+  });
+}
