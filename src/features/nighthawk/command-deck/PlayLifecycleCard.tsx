@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
 import {
@@ -85,6 +86,26 @@ export function PlayLifecycleCardBody({
         <DirectionChip play={play} />
         {playSymbolLine(play)}
         <OriginDot play={play} />
+        {play.vectorPulse?.isWinner && (
+          <Link
+            href={`/vector?ticker=${encodeURIComponent(play.ticker)}`}
+            className="nh-deck-vector-dot is-winner"
+            title={`Vector winner — open ${play.ticker} in Vector`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            V+
+          </Link>
+        )}
+        {!play.vectorPulse?.isWinner && play.vectorPulse?.isRunner && (
+          <Link
+            href={`/vector?ticker=${encodeURIComponent(play.ticker)}`}
+            className="nh-deck-vector-dot is-runner"
+            title={`Vector runner — open ${play.ticker} in Vector`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            V
+          </Link>
+        )}
       </span>
       <span className="nh-deck-play-cell nh-deck-play-cell--rating" role="cell">
         {grade != null && (

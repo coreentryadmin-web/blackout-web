@@ -188,13 +188,16 @@ import { asManagedPnlPct, officialPlanPnlPct } from "./record";
  *  edition tickers are listed as covered_elsewhere but remain eligible for 0DTE. */
 const STATIC_EXCLUDES = new Set<string>([...LEVERAGED_ETP_SET, "VIX", "UVXY"]);
 
-/** Top finds get the full Night Hawk dossier — capped to stay inside UW budgets. */
-const ENRICH_TOP_N = 12; // raised 5→12 so ranks 6–12 get dossier/Cortex inputs (was starving mid-board commits)
+/** Top finds get the full Night Hawk dossier — aligned with FLOW maxSetups (48) so ranks
+ *  13–48 are no longer Cortex-starved. Batched (ENRICH_BATCH_SIZE) to avoid a 48-wide
+ *  UW fan-out thundering herd on the cron warm path. */
+export const ENRICH_TOP_N = 48;
+const ENRICH_BATCH_SIZE = 8;
 const DOSSIER_CACHE_TTL_MS = 10 * 60 * 1000;
 /** How long a caller waits for a COLD dossier before serving the un-enriched setup.
  *  The cache loader keeps running after we stop waiting, so the next scan (~2 min)
  *  or poll (~15s) gets the enriched row instantly — the board "heats up". */
-const ENRICH_WAIT_MS = 3_000;
+const ENRICH_WAIT_MS = 4_000;
 
 import {
   resolveFirewallEarnings,
@@ -338,26 +341,37 @@ export async function scanZeroDteBoard(flags?: {
   const candidateDerivedAt = Date.now();
 
   const buildCache = createDossierBuildCache();
-  const setups = await Promise.all(
-    rawSetups.map(async (setup, i) => {
-      const extras = {
-        earnings: flags?.earnings?.get(setup.ticker) ?? null,
-        news_hot: flags?.news?.get(setup.ticker) ?? null,
-      };
-      if (i >= ENRICH_TOP_N) return enrichSetup(setup, null, extras);
-      // Single-flight per ticker per 10-min window across all pollers AND the cron
-      // warmer (Redis-backed), so nothing multiplies dossier builds.
-      const dossier = await within(
-        withServerCache<SetupDossierView>(
-          `zerodte:dossier:${setup.ticker}:${today}`,
-          DOSSIER_CACHE_TTL_MS,
-          () => fetchTickerDossier(setup.ticker, null, buildCache)
-        ),
-        ENRICH_WAIT_MS
-      );
-      return enrichSetup(setup, dossier, extras);
-    })
-  );
+  const extrasFor = (ticker: string) => ({
+    earnings: flags?.earnings?.get(ticker) ?? null,
+    news_hot: flags?.news?.get(ticker) ?? null,
+  });
+  const enrichCap = Math.min(ENRICH_TOP_N, rawSetups.length);
+  const setups: EnrichedZeroDteSetup[] = [];
+  // Ranks beyond the cap: no dossier (batch halt/earnings still cover G-11).
+  for (let i = enrichCap; i < rawSetups.length; i++) {
+    const setup = rawSetups[i]!;
+    setups[i] = await enrichSetup(setup, null, extrasFor(setup.ticker));
+  }
+  // Top ranks: dossier in bounded parallel batches so UW budget stays predictable.
+  for (let start = 0; start < enrichCap; start += ENRICH_BATCH_SIZE) {
+    const end = Math.min(start + ENRICH_BATCH_SIZE, enrichCap);
+    const batch = await Promise.all(
+      rawSetups.slice(start, end).map(async (setup) => {
+        const dossier = await within(
+          withServerCache<SetupDossierView>(
+            `zerodte:dossier:${setup.ticker}:${today}`,
+            DOSSIER_CACHE_TTL_MS,
+            () => fetchTickerDossier(setup.ticker, null, buildCache)
+          ),
+          ENRICH_WAIT_MS
+        );
+        return enrichSetup(setup, dossier, extrasFor(setup.ticker));
+      })
+    );
+    for (let j = 0; j < batch.length; j++) {
+      setups[start + j] = batch[j]!;
+    }
+  }
 
   // ── BREAKOUT discovery origin (Phase 3a, §1a) — the SECOND, INDEPENDENT discovery source ──
   // Flag-gated via ZERODTE_WHOLE_MARKET + ZERODTE_SRC_BREAKOUT (default ON; set to "0" to disable). When enabled, the

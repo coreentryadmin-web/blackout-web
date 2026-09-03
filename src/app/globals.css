@@ -22899,6 +22899,20 @@ html.product-shell .nav-mega {
 .nh-deck-origin-dot.is-flow{background:var(--dk-flow)}
 .nh-deck-origin-dot.is-breakout{background:var(--dk-bull)}
 .nh-deck-origin-dot.is-pin{background:var(--dk-ai)}
+.nh-deck-vector-dot{display:inline-flex;align-items:center;margin-left:6px;padding:1px 4px;border-radius:3px;font-size:8px;font-weight:800;letter-spacing:.04em;text-decoration:none;vertical-align:1px;border:1px solid rgba(139,92,246,.35);color:#c4b5fd;background:rgba(139,92,246,.12)}
+.nh-deck-vector-dot.is-winner{border-color:rgba(0,217,163,.45);color:var(--dk-bull);background:rgba(0,217,163,.12)}
+.nh-deck-vector-dot.is-runner{border-color:rgba(250,204,21,.35);color:#fde68a;background:rgba(250,204,21,.08)}
+.nh-deck-vector-xlink{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 10px;padding:8px 10px;border-radius:8px;border:1px solid rgba(139,92,246,.25);background:rgba(139,92,246,.06);font-size:11px}
+.nh-deck-vector-xlink__lab{font-family:var(--font-mono,monospace);font-size:9px;text-transform:uppercase;letter-spacing:.14em;color:#c4b5fd}
+.nh-deck-vector-xlink__val{font-weight:800;color:var(--dk-text-primary)}
+.nh-deck-vector-xlink__val.is-winner{color:var(--dk-bull)}
+.nh-deck-vector-xlink__link{margin-left:auto;font-weight:700;color:#c4b5fd;text-decoration:none}
+.nh-deck-vector-xlink__link:hover{text-decoration:underline}
+.nh-deck-gate-blocks__list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+.nh-deck-gate-blocks__item{display:flex;flex-direction:column;gap:4px}
+.nh-deck-gate-blocks__code{display:inline-flex;align-self:flex-start;padding:2px 6px;border-radius:4px;border:1px solid rgba(56,189,248,.28);font-family:var(--font-mono,monospace);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#7dd3fc}
+.nh-deck-gate-blocks__code.is-veto{border-color:rgba(240,99,124,.35);color:var(--dk-bear)}
+.nh-deck-gate-blocks__reason{font-size:11px;line-height:1.45;color:var(--dk-text-secondary)}
 .nh-deck-row-lifecycle-compact,.nh-deck-row-lifecycle{display:block;width:100%;text-align:left;padding:0;border-left-width:3px;border-left-color:transparent}
 .nh-deck-row-lifecycle-compact .nh-deck-lc-strip,.nh-deck-row-lifecycle .nh-deck-lc-strip{padding:10px 12px}
 .nh-deck-row-lifecycle{margin:2px 6px;border-radius:4px}

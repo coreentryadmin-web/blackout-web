@@ -16,6 +16,8 @@ import { ledgerRowDte } from "./ledger-dte";
 import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
 import type { SpxSlayerBadge } from "@/features/spx/lib/spx-slayer-badge-map";
+import type { ZeroDteSessionBoardStats } from "@/lib/zerodte/session-board-stats";
+import type { ZeroDteVectorPulse } from "@/lib/zerodte/vector-crosslink";
 
 export interface BoardResp {
   available?: boolean;
@@ -33,6 +35,10 @@ export interface BoardResp {
   /** feat/nh-spx-badge — SPX Slayer's own live play, read-only display badge (4th tile). Not a
    *  Night Hawk discovery lane; does not feed setups/ledger/allocation above. */
   spx_slayer_badge?: SpxSlayerBadge | null;
+  /** Scan vs commit counters for the session stats strip. */
+  session_stats?: ZeroDteSessionBoardStats | null;
+  /** Per-ticker Vector pulse for cross-desk links. */
+  vector_pulse_by_ticker?: Record<string, ZeroDteVectorPulse> | null;
 }
 
 /** Ledger statuses that represent a WORKING (member-held) position — always rendered (9-4). */
@@ -57,6 +63,7 @@ function sourceFrom(
   lg: Record<string, unknown> | null,
   allocation: { role: string; sizing: string; reasons?: string[] } | null,
   heatState: SessionHeatState | undefined,
+  vectorPulse: ZeroDteVectorPulse | null,
 ): ZeroDteDeckSource {
   const setupPlanEarly = (s?.plan as Record<string, unknown> | null | undefined) ?? null;
   const gateVerdict = (s?.gate as { verdict?: string } | undefined)?.verdict;
@@ -124,6 +131,9 @@ function sourceFrom(
   // straight off the ledger row (server payload) or the sim frame; confluence off the setup. All
   // OPTIONAL: a legacy payload that omits them yields undefined and the terminal degrades to "—".
   const confl = s?.confluence as { confirmations?: number } | undefined;
+  const gateObj = s?.gate as { verdict?: string; blocks?: Array<{ code: string; reason: string; unlock_et?: string | null; threshold?: number | null }> } | undefined;
+  const gate_blocks =
+    gateObj?.verdict === "BLOCKED" && Array.isArray(gateObj.blocks) ? gateObj.blocks : null;
   return {
     ticker: tk,
     strike: (s?.top_strike as number) ?? (lg?.top_strike as number) ?? null,
@@ -176,6 +186,8 @@ function sourceFrom(
       lg?.thesis_first && typeof lg.thesis_first === "object"
         ? (lg.thesis_first as Record<string, unknown>)
         : null,
+    gate_blocks,
+    vector_pulse: vectorPulse,
   };
 }
 
@@ -191,6 +203,7 @@ export function zeroDteSources(resp: BoardResp | null): ZeroDteDeckSource[] {
   const heatState = resp.session?.heat?.state as SessionHeatState | undefined;
   const sessionClosed = heatState === "CLOSED" || heatState === undefined;
 
+  const vectorByTk = resp.vector_pulse_by_ticker ?? {};
   const out: ZeroDteDeckSource[] = [];
   const seen = new Set<string>();
   for (const s of resp.setups ?? []) {
@@ -199,7 +212,16 @@ export function zeroDteSources(resp: BoardResp | null): ZeroDteDeckSource[] {
     // After close (or unknown heat) fresh finds are NOT plays — mirror mergePlays (ZeroDteBoard.tsx).
     if (sessionClosed && !ledgerByTk.has(tk)) continue;
     seen.add(tk);
-    out.push(sourceFrom(tk, s, ledgerByTk.get(tk) ?? null, allocByTk.get(tk) ?? null, heatState));
+    out.push(
+      sourceFrom(
+        tk,
+        s,
+        ledgerByTk.get(tk) ?? null,
+        allocByTk.get(tk) ?? null,
+        heatState,
+        vectorByTk[tk] ?? null
+      )
+    );
   }
   // Union ALL ledger rows the scan didn't surface: WORKING positions (9-4) AND CLOSED plays so
   // they remain visible in the "Closed" filter instead of vanishing when the scanner drops them.
@@ -207,7 +229,7 @@ export function zeroDteSources(resp: BoardResp | null): ZeroDteDeckSource[] {
     if (seen.has(tk)) continue;
     const st = String(lg.status ?? "").toUpperCase();
     if (!WORKING_STATUSES.has(st) && st !== "CLOSED") continue;
-    out.push(sourceFrom(tk, null, lg, allocByTk.get(tk) ?? null, heatState));
+    out.push(sourceFrom(tk, null, lg, allocByTk.get(tk) ?? null, heatState, vectorByTk[tk] ?? null));
   }
   return out;
 }

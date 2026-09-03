@@ -72,10 +72,15 @@ test("deriveTodaysEdge: empty board → null", () => {
 
 test("buildDeckCommandCenterStats aggregates opportunities + top + edge", () => {
   const stats = buildDeckCommandCenterStats([
-    play({ ticker: "META", tierLabel: "A+" }),
-    play({ id: "2", ticker: "AMD", tierLabel: "B" }),
+    play({ ticker: "META", tierLabel: "A+", status: "WATCH" }),
+    play({ id: "2", ticker: "AMD", tierLabel: "B", status: "SKIP" }),
+    play({ id: "3", ticker: "NVDA", tierLabel: "A", status: "OPEN" }),
   ]);
-  assert.equal(stats.opportunities, 2);
+  assert.equal(stats.opportunities, 3);
+  assert.equal(stats.scanned, 2);
+  assert.equal(stats.committed, 1);
+  assert.equal(stats.commitReady, 1);
+  assert.equal(stats.gateBlocked, 1);
   assert.deepEqual(stats.topRated, { ticker: "META", grade: "A+" });
   assert.equal(stats.edge, "High");
 });
