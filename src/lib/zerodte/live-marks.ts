@@ -802,13 +802,24 @@ export function buildZeroDteLiveMarksPayloadFrom(
   /** When set, prefer the 1s lane's latched lifecycle over the 10s active-set cache. */
   latchedStatus?: (play: ActiveZeroDtePlay) => PlayStatus | null
 ): ZeroDteLiveMarksPayload {
-  const marks: ZeroDteLiveMarkRow[] = plays.map((p) => {
+  const marks: ZeroDteLiveMarkRow[] = plays.flatMap((p) => {
     const resolved = resolveActivePlayStoreMark(p, readMark);
     const asOf = resolved.asOf;
     const stale = isZeroDteMarkStale(asOf, nowMs);
     const status = latchedStatus?.(p) ?? p.status;
+    // A play the 1s lane has already latched CLOSED must never re-enter the live lane just
+    // because ACTIVE_SET_TTL_MS (10s) hasn't re-fetched the ledger yet — `plays` here can still
+    // carry a CLOSED play for up to that whole window (the entered-set cache only drops it on
+    // its next DB refetch), and without this guard this builder kept computing a FRESH, moving
+    // `mark`/`live_pnl_pct` and `stale:false` for it from the still-ticking mark store, so a
+    // just-closed play kept rendering as an actively-updating "● LIVE" position for up to 10s
+    // after it actually closed (`toActivePlay`'s own contract: "CLOSED = frozen by design").
+    // `latchedStatus` already reflects the true per-tick status a full 10s cache cycle sooner
+    // than `p.status`, so filtering on it (not `p.status`) drops the row the same tick the 1s
+    // lane discovers the close, not the next active-set refresh.
+    if (status === "CLOSED") return [];
     const pnlMark = resolved.mark;
-    return {
+    const row: ZeroDteLiveMarkRow = {
       ticker: p.ticker,
       occ: p.occ,
       direction: p.direction,
@@ -835,6 +846,7 @@ export function buildZeroDteLiveMarksPayloadFrom(
           : pinnedLivePnlPct(p.entry_premium, resolved.bid),
       greeks: resolved.greeks,
     };
+    return [row];
   });
   // Round HERE, not in the routes: this is the single build that BOTH the SSE lane
   // (getZeroDteLiveMarksFrame → /marks/stream) and the REST fallback (/marks) serialize,
