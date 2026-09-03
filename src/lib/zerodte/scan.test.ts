@@ -29,6 +29,8 @@ const state = {
   /** When true, fetchZeroDteSetupLog throws — drives the P0 ledger-read-failure tests. */
   ledgerReadFails: false,
   liveMark: null as number | null,
+  /** Per-OCC marks for multi-leg condor sync tests; falls back to liveMark when absent. */
+  liveMarksByOcc: new Map<string, number>(),
   updateCalls: [] as Array<{ session_date: string; ticker: string; patch: unknown }>,
   // gradeZeroDteLedger wiring (index-root mapping test below)
   ungradedRows: [] as LedgerRow[],
@@ -61,6 +63,7 @@ function resetState() {
   state.flows = [];
   state.ledgerReadFails = false;
   state.liveMark = null;
+  state.liveMarksByOcc = new Map();
   state.updateCalls = [];
   state.ungradedRows = [];
   state.gradeCalls = [];
@@ -224,8 +227,9 @@ mock.module("../providers/options-snapshot", {
     fetchOptionsUnifiedSnapshot: async (occs: string[]) => {
       const map = new Map<string, { mark: number | null; bid: number | null; ask: number | null; underlyingPrice: number | null }>();
       for (const occ of occs) {
-        if (state.liveMark != null) {
-          map.set(occ, { mark: state.liveMark, bid: state.liveMark, ask: state.liveMark, underlyingPrice: null });
+        const mark = state.liveMarksByOcc.get(occ) ?? state.liveMark;
+        if (mark != null) {
+          map.set(occ, { mark, bid: mark, ask: mark, underlyingPrice: null });
         }
       }
       return map;
@@ -380,6 +384,46 @@ test("zeroDtePlaysFeed: a still-live play with no quote change stays exactly as 
 
   assert.equal(feed.plays[0]!.status, "OPEN");
   assert.equal(feed.plays[0]!.last_mark, 4.2);
+});
+
+test("zeroDtePlaysFeed: condor row syncs 4-leg net mark when plan_json.occ is absent", async () => {
+  resetState();
+  const condorLegs = [
+    { role: "short", occ: "O:SPXW260706P00545000" },
+    { role: "long", occ: "O:SPXW260706P00543000" },
+    { role: "short", occ: "O:SPXW260706C00555000" },
+    { role: "long", occ: "O:SPXW260706C00557000" },
+  ];
+  state.liveMarksByOcc = new Map([
+    ["O:SPXW260706P00545000", 1.0],
+    ["O:SPXW260706P00543000", 0.3],
+    ["O:SPXW260706C00555000", 0.8],
+    ["O:SPXW260706C00557000", 0.2],
+  ]);
+  state.ledgerRows = [
+    baseRow({
+      ticker: "SPX",
+      status: "OPEN",
+      last_mark: null,
+      entry_premium: 1.3,
+      plan_json: null,
+      entry_context: {
+        play_type: "CONDOR",
+        condor: { legs: condorLegs, breach_lower: 545, breach_upper: 555, net_credit: 130 },
+      },
+    }),
+  ];
+
+  const { zeroDtePlaysFeed } = await mod();
+  const feed = (await zeroDtePlaysFeed()) as { plays: Array<Record<string, unknown>> };
+
+  assert.equal(feed.plays[0]!.last_mark, 1.3, "shorts 1.8 − longs 0.5 = 1.3 net debit to close");
+  assert.ok(
+    state.updateCalls.some(
+      (c) => c.ticker === "SPX" && (c.patch as { mark?: number })?.mark === 1.3
+    ),
+    "sync must persist the 4-leg net mark"
+  );
 });
 
 // ── C3: absence is not emptiness ─────────────────────────────────────────────────

@@ -423,6 +423,13 @@ describe("zeroDteActionDisplay — grounded ACTION vocabulary (2026-08-29)", () 
 });
 
 describe("closedCapturePct — honest post-trade attribution (2026-08-29)", () => {
+  it("prefers server-pinned mfeCapturePct when present", () => {
+    assert.equal(
+      closedCapturePct(base({ status: "CLOSED", exitPnlPct: 80, peak: 150, mfeCapturePct: 53 })),
+      53,
+    );
+  });
+
   it("captures the real ratio of realized to peak, as a percentage", () => {
     // exitPnlPct 45.5, peak 91 → banked exactly half the best-ever excursion.
     assert.equal(

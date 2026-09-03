@@ -190,7 +190,10 @@ export type TrimLadderVisual = {
 };
 
 /** Visual trim ladder segments for the management tab. */
-export function trimLadderVisual(exitPolicy: TerminalExitLadder | null | undefined): TrimLadderVisual[] {
+export function trimLadderVisual(
+  exitPolicy: TerminalExitLadder | null | undefined,
+  runnerTargetPct?: number | null
+): TrimLadderVisual[] {
   if (!exitPolicy || exitPolicy.policy !== "trim_scale") return [];
   const rows: TrimLadderVisual[] = exitPolicy.trim_levels.map((t, i) => ({
     label: `Target ${i + 1}`,
@@ -199,11 +202,13 @@ export function trimLadderVisual(exitPolicy: TerminalExitLadder | null | undefin
     triggerPct: t.trigger_pct,
   }));
   const anyFired = exitPolicy.trim_levels.some((t) => t.fired);
+  const runnerLabel =
+    runnerTargetPct != null && runnerTargetPct > 100 ? `Runner ${Math.round(runnerTargetPct)}%` : "Runner";
   rows.push({
-    label: "Runner",
+    label: runnerLabel,
     fill: anyFired ? 0.55 : 0.2,
     state: anyFired ? "live" : "pending",
-    triggerPct: null,
+    triggerPct: runnerTargetPct != null && runnerTargetPct > 100 ? runnerTargetPct : null,
   });
   return rows;
 }

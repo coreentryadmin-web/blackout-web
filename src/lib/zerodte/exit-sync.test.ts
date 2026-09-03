@@ -383,16 +383,16 @@ test("resolveExitMode: trim_scale is the default; only exact 'trim_scale' env op
   assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "trim" } as NodeJS.ProcessEnv), "trim_scale");
 });
 
-// ── resolveTrimRegimeLive: the regime-conditioning kill-switch. Was DEFAULT-OFF (FINDING
-//    2026-08-29 — trend/range tranche thresholds were uncalibrated v1 heuristics). Flipped
-//    ON by default 2026-09-03 alongside resolveTrimBankLive above: runner-profile commits
-//    now stamp a real session_regime at commit, so the live engine should honor it; opt out
-//    with an explicit 0/false/off.
-test("resolveTrimRegimeLive: on by default (2026-09-03) — opt out with 0/false/off", async () => {
+// ── resolveTrimRegimeLive: the regime-conditioning kill-switch (DEFAULT-OFF) — FINDING
+//    2026-08-29. Off by default because trend/range tranche thresholds are uncalibrated
+//    v1 heuristics (only `neutral` is E5-measured) — flipping this on lets the live engine
+//    condition real trims on the row's stamped session_regime; unset/anything-but-exact-"1"
+//    must stay off so a typo'd env value can never silently change live exit behavior.
+test("resolveTrimRegimeLive: off by default — only the exact string '1' opts in", async () => {
   const { resolveTrimRegimeLive } = await import("./exit-sync");
-  assert.equal(resolveTrimRegimeLive({} as NodeJS.ProcessEnv), true);
-  assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "" } as NodeJS.ProcessEnv), true);
-  assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "true" } as NodeJS.ProcessEnv), true);
+  assert.equal(resolveTrimRegimeLive({} as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "" } as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "true" } as NodeJS.ProcessEnv), false);
   assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "0" } as NodeJS.ProcessEnv), false);
   assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "1" } as NodeJS.ProcessEnv), true);
 });

@@ -434,6 +434,9 @@ export function closedRealizedPct(play: TerminalPlay): number | null {
  */
 export function closedCapturePct(play: TerminalPlay): number | null {
   if (play.status !== "CLOSED") return null;
+  if (play.mfeCapturePct != null && Number.isFinite(play.mfeCapturePct)) {
+    return play.mfeCapturePct;
+  }
   const realized = closedRealizedPct(play);
   if (realized == null || !Number.isFinite(realized)) return null;
   if (play.peak == null || !Number.isFinite(play.peak) || play.peak <= 0) return null;

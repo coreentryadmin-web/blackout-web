@@ -140,6 +140,22 @@ test("trimLadderVisual: banked + runner states", () => {
   assert.equal(rows[rows.length - 1]?.state, "live");
 });
 
+test("trimLadderVisual: runner row shows frozen 300% target", () => {
+  const rows = trimLadderVisual(
+    {
+      policy: "trim_scale",
+      trim_levels: [{ fraction: 0.4, trigger_pct: 40, premium: 2, fired: false }],
+      runner_fraction: 0.6,
+      stop_premium: 1,
+      target_premium: 4,
+      time_stop_et: "15:30",
+    },
+    300
+  );
+  assert.match(rows[rows.length - 1]!.label, /300%/);
+  assert.equal(rows[rows.length - 1]!.triggerPct, 300);
+});
+
 test("tradeOutcomeDisplay: closed loss verdict", () => {
   const o = tradeOutcomeDisplay(play({ status: "CLOSED", pnlPct: -50 }));
   assert.equal(o.verdict, "LOSS");

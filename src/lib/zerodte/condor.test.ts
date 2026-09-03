@@ -2,6 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  condorLegOccs,
+  condorLegRoles,
+  condorNetMarkPerShare,
   buildCondorPlan,
   buildCondorSetup,
   condorEligibleTicker,
@@ -520,4 +523,23 @@ test("buildCondorSetup: a condor is delta-neutral — premium/dominance/otm are 
   assert.equal(s.side_dominance, 0.5, "no directional flow side");
   assert.equal(s.otm_pct, null, "a 4-leg neutral structure has no single moneyness");
   assert.equal(s.top_strike, s.condor_plan!.short_call, "nominal anchor is the upper breach");
+});
+
+test("condorNetMarkPerShare: sums short legs minus long legs in per-share premium", () => {
+  const legs = condorLegRoles({
+    legs: [
+      { role: "short", occ: "O:SPXW260706P00545000" },
+      { role: "long", occ: "O:SPXW260706P00543000" },
+      { role: "short", occ: "O:SPXW260706C00555000" },
+      { role: "long", occ: "O:SPXW260706C00557000" },
+    ],
+  });
+  const marks = new Map([
+    ["O:SPXW260706P00545000", 1.2],
+    ["O:SPXW260706P00543000", 0.4],
+    ["O:SPXW260706C00555000", 0.9],
+    ["O:SPXW260706C00557000", 0.3],
+  ]);
+  assert.equal(condorNetMarkPerShare(legs, (occ) => marks.get(occ) ?? null), 1.4);
+  assert.equal(condorLegOccs({ legs: legs.map((l) => ({ occ: l.occ, role: l.role })) }).length, 4);
 });
