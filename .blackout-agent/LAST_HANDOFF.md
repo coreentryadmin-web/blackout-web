@@ -1,6 +1,17 @@
-# LAST HANDOFF
+# LAST HANDOFF — cursor
 
-## 2026-09-03 — cursor
+**At:** 2026-09-03T23:46:43.649Z
+**Run:** b6a6f190-ae16-419f-b758-eb4c74961bc0
 
-**Merged:** #3425 G-18/G-19 loss gates  
-**Next:** Land BLACKOUT Autopilot; post-deploy 0DTE replay; review Claude PRs when green.
+## Summary
+
+Autopilot v1+v2 on cursor/blackout-autopilot. Audited Claude implementation, added session/review/watchdog/guard. PR opened. Next: BO-P1-0004 post-deploy 0DTE replay after merge.
+
+## Deploy
+
+- main: `aa08b98d9ffdab369aa27030f999502edfc862dd`
+- status: 
+
+## Open PRs
+
+_none_
