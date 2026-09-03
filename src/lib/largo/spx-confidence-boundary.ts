@@ -77,3 +77,39 @@ export function omitUncalibratedSpxConfidence<T>(payload: T): T {
   const { rawScore: _dropped, confidence: _confidenceOmitted, ...rest } = obj;
   return { ...rest, confidence_omitted: SPX_CONFIDENCE_OMITTED } as unknown as T;
 }
+
+export const SPX_UNASSESSED_MEASUREMENT_OMITTED =
+  "omitted — no confluence was computed for this payload (`assessed:false`). Grade/score/rawScore " +
+  "are placeholder literals (D/0), not measurements. Use headline/thesis/gates for why the desk " +
+  "is idle; if an open position exists, read grade from `open_play`.";
+
+type MaybeAssessedPlay = {
+  assessed?: boolean;
+  grade?: unknown;
+  score?: unknown;
+  open_play?: { grade?: unknown } | null;
+} & Record<string, unknown>;
+
+/**
+ * Full Largo sanitizer for SPX play payloads — strips uncalibrated confidence AND suppresses
+ * fabricated grade/score when `assessed === false` (matches SpxPlayVerdictBar contract).
+ */
+export function sanitizeSpxPlayPayloadForLargo<T>(payload: T): T {
+  const stripped = omitUncalibratedSpxConfidence(payload);
+  if (stripped == null || typeof stripped !== "object" || Array.isArray(stripped)) return stripped;
+  const obj = stripped as MaybeAssessedPlay;
+  if (obj.assessed !== false) return stripped;
+
+  const openGrade =
+    obj.open_play && typeof obj.open_play === "object" && obj.open_play.grade != null
+      ? obj.open_play.grade
+      : null;
+
+  const { grade: _g, score: _s, ...rest } = obj;
+  return {
+    ...rest,
+    grade: openGrade,
+    score: null,
+    measurement_omitted: SPX_UNASSESSED_MEASUREMENT_OMITTED,
+  } as unknown as T;
+}

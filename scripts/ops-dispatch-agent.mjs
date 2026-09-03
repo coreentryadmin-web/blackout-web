@@ -34,6 +34,11 @@ const repo = process.env.GITHUB_REPOSITORY ?? "coreentryadmin-web/blackout-web";
 const ghToken = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN ?? "";
 const cursorKey = process.env.CURSOR_API_KEY?.trim() ?? "";
 const fp = payload.fingerprint;
+const issueLabel = process.env.OPS_ISSUE_LABEL?.trim() || "ops-auto-fix";
+const titlePrefix = process.env.OPS_DISPATCH_TITLE_PREFIX?.trim() || "[ops-auto]";
+const agentDoc = process.env.OPS_AGENT_DOC?.trim() || "docs/ops/OPS-AUTO-FIX.md";
+const collectScript = process.env.OPS_COLLECT_SCRIPT?.trim() || "scripts/ops-collect-action-items.mjs";
+const dispatchMarker = process.env.OPS_DISPATCH_MARKER?.trim() || "ops-auto-fix";
 
 function gh(args) {
   if (!ghToken) throw new Error("GH_TOKEN or GITHUB_TOKEN required");
@@ -51,11 +56,11 @@ const topPriority = payload.items.reduce(
   "P2"
 );
 
-const title = `[ops-auto] ${topPriority}: ${payload.count} action item(s) · fp:${fp}`;
+const title = `${titlePrefix} ${topPriority}: ${payload.count} action item(s) · fp:${fp}`;
 const body = `<!-- ops-fingerprint:${fp} -->
-<!-- ops-auto-fix -->
+<!-- ${dispatchMarker} -->
 
-## Autonomous ops action items
+## Autonomous action items
 
 Generated: \`${payload.generated_at}\`
 
@@ -72,9 +77,9 @@ ${payload.items
 
 A Cursor Cloud Agent should be dispatched automatically to:
 
-1. Read \`docs/ops/OPS-AUTO-FIX.md\` and \`docs/ops/RTH-OPEN-RUNBOOK.md\`
+1. Read \`${agentDoc}\` and \`docs/ops/RTH-OPEN-RUNBOOK.md\`
 2. Fix every item above (code, ECS config, or infra as needed)
-3. Commit, push, poll deploy, re-run \`npm run validate:cron\` and \`node scripts/ops-collect-action-items.mjs\` until **zero items**
+3. Commit, push, poll deploy, re-run \`node ${collectScript}\` until **zero items**
 4. Comment on this issue with what was fixed; close when GREEN
 
 **Do not ask the user for permission.**
@@ -91,7 +96,7 @@ if (dryRun) {
   // Find open issue with same fingerprint
   const search = spawnSync(
     "gh",
-    ["issue", "list", "--repo", repo, "--label", "ops-auto-fix", "--state", "open", "--json", "number,title,body", "--limit", "50"],
+    ["issue", "list", "--repo", repo, "--label", issueLabel, "--state", "open", "--json", "number,title,body", "--limit", "50"],
     { encoding: "utf8", env: { ...process.env, GH_TOKEN: ghToken } }
   );
   let existing = null;
@@ -122,7 +127,7 @@ if (dryRun) {
       "--body",
       body,
       "--label",
-      "ops-auto-fix",
+      issueLabel,
     ]);
     issueNumber = Number(issueUrl.match(/\/issues\/(\d+)/)?.[1] ?? 0);
     console.log(`[ops-dispatch] Created issue #${issueNumber}: ${issueUrl}`);
@@ -130,16 +135,16 @@ if (dryRun) {
 }
 
 const itemList = payload.items.map((i) => `- [${i.priority}] ${i.title}: ${i.detail}`).join("\n");
-const prompt = `Autonomous ops fix session (GitHub issue ${issueUrl ?? "dry-run"}).
+const prompt = `Autonomous fix session (GitHub issue ${issueUrl ?? "dry-run"}).
 
 Action items (${payload.count}, fingerprint ${fp}):
 ${itemList}
 
-Execute docs/ops/OPS-AUTO-FIX.md end-to-end:
+Execute ${agentDoc} end-to-end:
 - Diagnose and fix each item (code, ECS cron config-as-code, secrets, etc.)
 - Commit, push to main (via PR if branch-protected), poll ECS deploy SUCCESS
-- Re-run: node scripts/ops-collect-action-items.mjs (must exit 0)
-- Re-run: npm run validate:deploy and npm run validate:cron
+- Re-run: node ${collectScript} (must exit 0)
+- Re-run: npm run validate:deploy and npm run validate:cron when applicable
 - Comment on the GitHub issue with fixes; close the issue when all items are cleared
 
 Do NOT ask the user for permission. Work until GREEN.`;

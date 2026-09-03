@@ -1,11 +1,53 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import { test } from "node:test";
 import {
   omitUncalibratedSpxConfidence,
+  sanitizeSpxPlayPayloadForLargo,
   SPX_CONFIDENCE_OMITTED,
+  SPX_UNASSESSED_MEASUREMENT_OMITTED,
 } from "./spx-confidence-boundary";
 import { computeSpxConfluence } from "@/features/spx/lib/spx-signals";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
+
+test("sanitizeSpxPlayPayloadForLargo: assessed:false suppresses fabricated grade/score", () => {
+  const out = sanitizeSpxPlayPayloadForLargo({
+    assessed: false,
+    grade: "D",
+    score: 0,
+    rawScore: 24,
+    headline: "Desk warming",
+  }) as Record<string, unknown>;
+  assert.equal(out.grade, null);
+  assert.equal(out.score, null);
+  assert.ok(!("rawScore" in out));
+  assert.equal(out.confidence_omitted, SPX_CONFIDENCE_OMITTED);
+  assert.equal(out.measurement_omitted, SPX_UNASSESSED_MEASUREMENT_OMITTED);
+});
+
+test("sanitizeSpxPlayPayloadForLargo: assessed:false keeps open_play grade", () => {
+  const out = sanitizeSpxPlayPayloadForLargo({
+    assessed: false,
+    grade: "D",
+    score: 0,
+    rawScore: 0,
+    open_play: { grade: "A", direction: "long", entry_price: 7440, stop: 7425, target: 7465 },
+  }) as Record<string, unknown>;
+  assert.equal(out.grade, "A");
+  assert.equal(out.score, null);
+});
+
+test("sanitizeSpxPlayPayloadForLargo: assessed:true leaves measured grade/score", () => {
+  const out = sanitizeSpxPlayPayloadForLargo({
+    assessed: true,
+    grade: "B",
+    score: 52,
+    rawScore: 61,
+  }) as Record<string, unknown>;
+  assert.equal(out.grade, "B");
+  assert.equal(out.score, 52);
+  assert.ok(!("rawScore" in out));
+  assert.equal(out.confidence_omitted, SPX_CONFIDENCE_OMITTED);
+});
 
 test("strips confidence and names the absence", () => {
   const out = omitUncalibratedSpxConfidence({ score: 40, grade: "B", rawScore: 61 }) as Record<

@@ -6,6 +6,7 @@ import {
   helixContribution,
   meridianContribution,
   nighthawkContribution,
+  spxContribution,
   thermalContribution,
   vectorContribution,
 } from "./product-adapters";
@@ -126,10 +127,24 @@ test("night hawk votes from what the desk actually committed", () => {
   assert.match(String(empty.missingReason), /no committed plays/);
 });
 
+test("spx votes from the play-engine direction on SPX/SPXW only", () => {
+  const bullish = spxContribution({ available: true, direction: "long", grade: "A", phase: "OPEN", action: "HOLD" });
+  assert.equal(bullish.signal?.direction, "bullish");
+  assert.equal(bullish.signal?.ticker_class, "index");
+
+  const scanning = spxContribution({ available: true, phase: "SCANNING", action: "SCANNING", direction: null });
+  assert.equal(scanning.signal, null);
+  assert.match(String(scanning.missingReason), /no committed direction/);
+
+  const offScope = spxContribution({ available: true, direction: "long" }, "NVDA");
+  assert.equal(offScope.signal, null);
+  assert.match(String(offScope.missingReason), /only tracks SPX\/SPXW/);
+});
+
 test("every adapter survives a garbage payload rather than taking the read down", () => {
   // Five agents are rewriting these payloads concurrently. An adapter that throws would fail the
   // whole cross-product read instead of degrading one product.
-  for (const fn of [helixContribution, thermalContribution, vectorContribution, meridianContribution, nighthawkContribution]) {
+  for (const fn of [helixContribution, thermalContribution, vectorContribution, meridianContribution, nighthawkContribution, spxContribution]) {
     for (const junk of [null, undefined, 42, "nope", [], { unexpected: true }]) {
       const c = fn(junk);
       assert.equal(c.signal, null);

@@ -3,9 +3,13 @@
  * (spx-largo-feed-cache.ts) so Largo can answer "what changed on the desk this session?"
  */
 import {
+  composeBiasHeaderLine,
+  deriveSpxBias,
+  detectPlayVoiceEvents,
   detectSpxVoiceEvents,
   voiceSnapshotFromDesk,
   type SpxVoiceEvent,
+  type SpxVoicePlayState,
   type SpxVoiceSnapshot,
 } from "@/lib/bie/spx-live-voice";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
@@ -33,9 +37,21 @@ let prevBySession: { sessionDate: string; snap: SpxVoiceSnapshot | null } = {
   snap: null,
 };
 
+let prevBiasKeyBySession: { sessionDate: string; key: string | null } = {
+  sessionDate: "",
+  key: null,
+};
+
+let prevPlayBySession: { sessionDate: string; play: SpxVoicePlayState } = {
+  sessionDate: "",
+  play: null,
+};
+
 /** Test-only reset of the in-process previous snapshot. */
 export function resetSpxVoiceFeedObserverForTests(): void {
   prevBySession = { sessionDate: "", snap: null };
+  prevBiasKeyBySession = { sessionDate: "", key: null };
+  prevPlayBySession = { sessionDate: "", play: null };
 }
 
 export function voiceEventsToFeedEntries(
@@ -99,10 +115,66 @@ export async function observeSpxDeskVoiceTransitions(
   prevBySession = { sessionDate, snap: next };
   if (!prev) return [];
 
-  const events = detectSpxVoiceEvents(prev, next);
+  const events: SpxVoiceEvent[] = [...detectSpxVoiceEvents(prev, next)];
+
+  const bias = deriveSpxBias(next);
+  if (prevBiasKeyBySession.sessionDate !== sessionDate) {
+    prevBiasKeyBySession = { sessionDate, key: bias.key };
+  } else if (prevBiasKeyBySession.key != null && prevBiasKeyBySession.key !== bias.key) {
+    events.push({
+      key: `bias:${bias.key}`,
+      kind: "bias",
+      tone: bias.direction === "bullish" ? "bull" : bias.direction === "bearish" ? "bear" : "warn",
+      at: next.at,
+      line: `🧭 ${composeBiasHeaderLine(next, bias)}`,
+    });
+    prevBiasKeyBySession = { sessionDate, key: bias.key };
+  } else {
+    prevBiasKeyBySession = { sessionDate, key: bias.key };
+  }
+
   if (!events.length) return [];
 
   const entries = voiceEventsToFeedEntries(events, sessionDate, next.at);
+  await appendSpxVoiceFeedEntries(sessionDate, entries);
+  return entries;
+}
+
+export type SpxPlayVoiceSlice = {
+  action?: string | null;
+  direction?: "long" | "short" | null;
+  open_play?: {
+    direction: "long" | "short";
+    entry_price: number | null;
+    stop: number | null;
+    target: number | null;
+  } | null;
+};
+
+/** Play lifecycle transitions (armed / fired / closed) — parity with SpxCommentaryRail. */
+export async function observeSpxPlayVoiceTransitions(
+  play: SpxPlayVoiceSlice | null | undefined,
+  sessionDate: string
+): Promise<SpxVoiceFeedEntry[]> {
+  const slice: SpxVoicePlayState = play
+    ? {
+        action: play.action,
+        direction: play.direction ?? null,
+        open_play: play.open_play ?? null,
+      }
+    : null;
+
+  if (prevPlayBySession.sessionDate !== sessionDate) {
+    prevPlayBySession = { sessionDate, play: slice };
+    return [];
+  }
+
+  const prev = prevPlayBySession.play;
+  prevPlayBySession = { sessionDate, play: slice };
+  const events = detectPlayVoiceEvents(prev, slice, Date.now());
+  if (!events.length) return [];
+
+  const entries = voiceEventsToFeedEntries(events, sessionDate);
   await appendSpxVoiceFeedEntries(sessionDate, entries);
   return entries;
 }

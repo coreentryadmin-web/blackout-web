@@ -3,7 +3,7 @@ import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 /**
  * LARGO CAPABILITY REGISTRY — the data catalog Largo queries to discover what it can answer.
  *
- * THE PROBLEM THIS SOLVES. Largo is handed 134 tools, each with a one-line description. That is
+ * THE PROBLEM THIS SOLVES. Largo is handed 137 tools, each with a one-line description. That is
  * enough for "which tool fetches an SPX quote" and nowhere near enough for the questions that make
  * Largo worth having: *"what changed on SPX in the last 30 minutes"*, *"which Helix flow eventually
  * became a Night Hawk trade"*, *"where do Helix and Thermal disagree"*. Those need facts a tool
@@ -269,6 +269,45 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     entitlement: "premium",
     keywords: ["journal", "notes", "my note", "annotated", "tags"],
     caveat: "Per-member annotation only — requires a signed-in user.",
+  },
+  {
+    id: "spx.playbook_shadow_history",
+    product: "SPX_SLAYER",
+    tool: "get_playbook_shadow_history",
+    answers: "What named playbooks fired in shadow mode this session (historical evidence)?",
+    temporal: "event_log",
+    freshness: "historical",
+    entities: ["session"],
+    entitlement: "premium",
+    keywords: ["shadow", "playbook", "PB-", "matcher", "evidence", "history"],
+    joinsWith: ["spx.play", "spx.engine_snapshots"],
+    caveat: "Shadow observations only — not committed Slayer trades.",
+  },
+  {
+    id: "platform.discord_alert_history",
+    product: "PLATFORM",
+    tool: "get_discord_alert_history",
+    answers: "What outbound Discord trade alerts were posted recently?",
+    temporal: "event_log",
+    freshness: "historical",
+    entities: ["ticker", "session"],
+    entitlement: "premium",
+    keywords: ["discord", "alert", "history", "BTO", "STC", "posted", "outbound", "audit"],
+    joinsWith: ["record.trade_history"],
+    caveat: "Postgres alert_audit_log only — final_output is the member-visible payload, not webhook internals.",
+  },
+  {
+    id: "spx.playbook_promotion_evidence",
+    product: "SPX_SLAYER",
+    tool: "get_playbook_promotion_evidence",
+    answers: "What is the out-of-sample promotion evidence for named SPX playbooks?",
+    temporal: "point_in_time",
+    freshness: "historical",
+    entities: ["session"],
+    entitlement: "admin",
+    keywords: ["playbook", "promotion", "OOS", "evidence", "PB-", "analytics", "gates"],
+    joinsWith: ["spx.playbook_shadow_history"],
+    caveat: "Admin-only — same OOS promotion report as the admin API.",
   },
   {
     id: "platform.concept",
@@ -928,7 +967,7 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
   // uncatalogued that was almost never. The guard was armed and dormant: a turn mixing one
   // catalogued source with three unknown ones passed the check without the check meaning anything.
   //
-  // That pass closed the gap and the catalog has stayed complete since: coverage is 134 of 134
+  // That pass closed the gap and the catalog has stayed complete since: coverage is 137 of 137
   // today, held 1:1 by `registry.test.ts`. The numbers above are the state BEFORE this block, kept
   // as the reason it exists — do not read them as current.
   //
@@ -1132,7 +1171,7 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
       "answer what the products agreed about last Tuesday; nothing here is a stored history. " +
       "A `split` verdict is REPORTED, never resolved — four products against one is not a vote, and " +
       "the lone dissenter is often the reason to look twice. Always state `coverage`: an agreement " +
-      "among two products is not an agreement among five. Thermal deliberately casts no directional " +
+      "among two products is not an agreement among six. Thermal deliberately casts no directional " +
       "vote (dealer gamma is not a directional measurement), so its absence from the camps is " +
       "correct behaviour and must not be reported as an outage.",
   },
@@ -1988,7 +2027,7 @@ export function uncataloguedTools(): string[] {
  * question it lists the past-capable capabilities FIRST and states plainly that they are the ones
  * that can cover the window.
  *
- * RANKING, NEVER FILTERING. This block adds information; it removes nothing. All 134 tools stay in
+ * RANKING, NEVER FILTERING. This block adds information; it removes nothing. All 137 tools stay in
  * the request, so a capability that ranks poorly is merely further down a hint list — it can still
  * be called. That distinction is the entire lesson of the deleted intent allowlist
  * (FINDINGS 2026-08-10): a discovery mechanism that can HIDE a capability can make an answer

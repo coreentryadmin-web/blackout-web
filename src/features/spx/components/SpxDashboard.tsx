@@ -79,7 +79,7 @@ type SpxDashboardProps = {
 
 export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
   const { isLoaded, tier } = useAppAuth();
-  const { desk, live, deskLoading, deskLaneFailed, sessionActive } = useMergedDesk();
+  const { desk, live, deskLoading, deskLaneFailed, sessionActive, laneFreshness } = useMergedDesk();
   const nativeShell = useIosNativeShell();
   const compactPanels = useCompactDeskPanels(nativeShell);
   const [iosPanel, setIosPanel] = useState<"vector" | "matrix" | "intel">("vector");
@@ -284,6 +284,7 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
                 sessionActive={sessionActive}
                 iosVectorFocus={iosPanel === "vector"}
                 stripOnly={iosPanel === "vector"}
+                laneFreshness={laneFreshness}
               />
             </div>
           </SpxPanelErrorBoundary>
@@ -310,6 +311,7 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
             nativeShell={nativeShell}
             sessionActive={sessionActive}
             iosVectorFocus={compactPanels && iosPanel === "vector"}
+            laneFreshness={laneFreshness}
           />
         </SpxPanelErrorBoundary>
       ) : null}

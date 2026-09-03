@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { clsx } from "clsx";
 import { Panel } from "@/components/ui";
@@ -16,6 +16,10 @@ import {
   kingFromStrikeTotals,
 } from "@/lib/correctness/gex-odte-scope";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import {
+  readSpxMatrixLensFromSession,
+  writeSpxMatrixLensToSession,
+} from "@/features/spx/lib/spx-matrix-lens";
 import {
   fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
@@ -167,7 +171,19 @@ export function SpxGexMatrixHeatmap({
   priceScaleMap,
   focus,
 }: DeskProps) {
-  const [lens, setLens] = useState<GexHeatmapLens>("gex");
+  const [lens, setLensState] = useState<GexHeatmapLens>("gex");
+
+  const setLens = useCallback((next: GexHeatmapLens | ((prev: GexHeatmapLens) => GexHeatmapLens)) => {
+    setLensState((prev) => {
+      const resolved = typeof next === "function" ? next(prev) : next;
+      writeSpxMatrixLensToSession(resolved);
+      return resolved;
+    });
+  }, []);
+
+  useEffect(() => {
+    setLensState(readSpxMatrixLensFromSession());
+  }, []);
   const pollMs = useDeskSessionPollIntervalMs(
     sessionActive ?? deskLive,
     MATRIX_POLL_RTH_MS,

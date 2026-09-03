@@ -13,7 +13,7 @@ import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 
 const premiumTool = LARGO_CAPABILITIES.find((c) => c.entitlement === "premium")!.tool;
 
-// A SYNTHETIC catalog. The real registry declares `premium` on all 134 of its capabilities today,
+// A SYNTHETIC catalog. The real registry declares `premium` on most capabilities and one `admin` today,
 // so enforcement against it is armed but inert — testing the gate against the real catalog would
 // pass vacuously and prove nothing. This proves the mechanism; the test below pins the real
 // catalog's current state separately, so the day a capability is marked admin it is a deliberate,
@@ -52,13 +52,20 @@ test("the fixtures this file depends on actually exist", () => {
   );
 });
 
-test("the real registry currently restricts nothing — recorded, not assumed", () => {
-  // Honest state, pinned. Every one of the 134 catalogued capabilities declares `premium`, so this
-  // gate denies nothing in production today. It is here so that marking a capability `admin` is a
-  // one-line change that takes effect in CODE. If this assertion ever fails, someone added a real
-  // restriction — update it deliberately and check the blast radius.
+test("the real registry admin capabilities are pinned — enforcement is live for them", () => {
+  // 137 catalogued capabilities — one declares `admin`, the rest `premium`.
   const admin = LARGO_CAPABILITIES.filter((c) => c.entitlement === "admin").map((c) => c.id);
-  assert.deepEqual(admin, [], "an admin capability appeared — enforcement is now live, verify intent");
+  assert.deepEqual(
+    admin,
+    ["spx.playbook_promotion_evidence"],
+    "admin capability set changed — verify entitlement blast radius"
+  );
+});
+
+test("get_playbook_promotion_evidence is denied to non-admins via the real catalog", () => {
+  const denial = checkToolEntitlement("get_playbook_promotion_evidence", MEMBER);
+  assert.ok(denial, "admin promotion tool must be denied to a member");
+  assert.equal(checkToolEntitlement("get_playbook_promotion_evidence", ADMIN), null);
 });
 
 test("an admin-only tool is denied to a non-admin, in code", () => {

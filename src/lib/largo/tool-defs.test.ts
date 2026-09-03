@@ -651,6 +651,9 @@ test("new product tools are registered in LARGO_TOOL_DEFS", () => {
     "get_spx_desk_convergence",
     "get_spx_voice_feed",
     "get_spx_journal",
+    "get_playbook_shadow_history",
+    "get_discord_alert_history",
+    "get_playbook_promotion_evidence",
     "get_concept",
   ]) {
     assert.ok(names.has(tool), `${tool} missing from LARGO_TOOL_DEFS`);

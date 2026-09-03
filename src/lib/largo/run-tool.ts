@@ -2,7 +2,7 @@ import { serverCache, TTL } from "@/lib/server-cache";
 import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { getLargoSpxLiveDesk } from "@/lib/largo/spx-desk-cache";
 import { computeSpxConfluence } from "@/features/spx/lib/spx-signals";
-import { omitUncalibratedSpxConfidence } from "@/lib/largo/spx-confidence-boundary";
+import { omitUncalibratedSpxConfidence, sanitizeSpxPlayPayloadForLargo } from "@/lib/largo/spx-confidence-boundary";
 import { fitSpxStructureForModel } from "@/lib/largo/spx-structure-fit";
 import { loadLottoRecord } from "@/features/spx/lib/spx-lotto-store";
 import { loadPowerHourRecord } from "@/features/spx/lib/spx-power-hour-store";
@@ -1026,7 +1026,9 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     case "get_spx_play": {
       // Same uncalibrated `confidence` as get_spx_confluence — the play payload carries the
       // confluence's value verbatim at its top level. See spx-confidence-boundary.ts.
-      return omitUncalibratedSpxConfidence(await marketPlatform.spx.getSpxPlayState());
+      const { fitSpxPlayForModel } = await import("@/lib/largo/spx-play-fit");
+      const raw = sanitizeSpxPlayPayloadForLargo(await marketPlatform.spx.getSpxPlayState());
+      return fitSpxPlayForModel(raw as Record<string, unknown>).fitted;
     }
     case "get_open_plays":
       return marketPlatform.spx.getSpxOpenPlay();
@@ -1057,23 +1059,26 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
     case "get_setup_stats":
       return marketPlatform.spx.getSpxSetupStats();
-    case "get_postgres_flows":
-      return marketPlatform.flows.getFlowTape({
+    case "get_postgres_flows": {
+      const rows = await marketPlatform.flows.getFlowTape({
         limit: Number(input.limit ?? 25),
         ticker: input.ticker ? uwTicker(String(input.ticker)) : undefined,
       });
-    case "get_signal_log": {
-      // spx-signal-log.ts persists the SAME uncalibrated formula as get_spx_play/get_spx_confluence
-      // but under the key `confidence` (not `rawScore`) — see insertSpxSignalLog's
-      // `confidence: play.rawScore`. This tool served that shape completely unwrapped for as long
-      // as it existed: no other get_signal_log call site applied the Largo confidence boundary, so
-      // every row's fabricated conviction reached the model verbatim. Map each row through the same
-      // boundary the other two call sites use — see spx-confidence-boundary.ts.
-      const rows = await marketPlatform.spx.getSpxSignalLog(Number(input.limit ?? 20));
-      return rows.map((row) => omitUncalibratedSpxConfidence(row));
+      const { fitPostgresFlowsForModel } = await import("@/lib/largo/postgres-flows-fit");
+      return fitPostgresFlowsForModel(rows).fitted;
     }
-    case "get_spx_engine_snapshots":
-      return marketPlatform.spx.getSpxEngineSnapshots(Number(input.limit ?? 20));
+    case "get_signal_log": {
+      const rows = await marketPlatform.spx.getSpxSignalLog(Number(input.limit ?? 20));
+      const sanitized = rows.map((row) => omitUncalibratedSpxConfidence(row));
+      const { fitSpxSignalLogForModel } = await import("@/lib/largo/spx-signal-log-fit");
+      return fitSpxSignalLogForModel(sanitized as Record<string, unknown>[]).fitted;
+    }
+    case "get_spx_engine_snapshots": {
+      const limit = Number(input.limit ?? 20);
+      const rows = await marketPlatform.spx.getSpxEngineSnapshots(limit);
+      const { fitSpxEngineSnapshotsForModel } = await import("@/lib/largo/spx-engine-snapshots-fit");
+      return fitSpxEngineSnapshotsForModel(rows, limit).fitted;
+    }
     case "get_lotto_state":
       return marketPlatform.spx.getSpxLottoState();
 
@@ -1226,7 +1231,12 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         since_hours,
       });
       const recent = await enrichFlowsWithGex(summary.recent);
-      return { ...summary, recent, ordered_by: since_hours != null && since_hours <= 6 ? "recent" : "premium" };
+      const { fitFlowTapeForModel } = await import("@/lib/largo/flow-tape-fit");
+      const { fitted } = fitFlowTapeForModel({ ...summary, recent });
+      return {
+        ...fitted,
+        ordered_by: since_hours != null && since_hours <= 6 ? "recent" : "premium",
+      };
     }
 
     case "get_platform_snapshot": {
@@ -1245,8 +1255,12 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
 
     case "get_ecosystem_context": {
+      // MEASURED TRUNCATED live — SPX ecosystem context (flow tape + vector + arsenal) exceeds 16k.
+      // Product fetch stays full; fitting is Largo-boundary only (ecosystem-context-fit.ts).
       const { fetchEcosystemContext } = await import("@/lib/bie/ecosystem-context");
-      return fetchEcosystemContext(ticker);
+      const { fitEcosystemContextForModel } = await import("@/lib/largo/ecosystem-context-fit");
+      const raw = await fetchEcosystemContext(ticker);
+      return fitEcosystemContextForModel(raw).fitted;
     }
 
     case "call_internal_api": {
@@ -1700,12 +1714,11 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       // Pure compute on the already-cached per-user desk — no extra API calls.
       const desk = await getLargoSpxLiveDesk(userId);
       const confluence = computeSpxConfluence(desk);
-      // `confidence` here is a formula over |score| and a COUNT of factors (conflicting ones
-      // included), fitted to no outcome data. The product contract requires omitting a confidence
-      // a product cannot calibrate, because the model ranks it against lanes that measure theirs.
-      return omitUncalibratedSpxConfidence(
+      const { fitSpxPlayForModel } = await import("@/lib/largo/spx-play-fit");
+      const raw = omitUncalibratedSpxConfidence(
         confluence ?? { error: "No confluence available — SPX desk not live yet." }
       );
+      return fitSpxPlayForModel(raw as Record<string, unknown>).fitted;
     }
     case "get_positioning": {
       const sym = uwTicker(ticker);
@@ -2096,18 +2109,18 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     case "get_spx_voice_feed": {
       const { readSpxVoiceFeed } = await import("@/features/spx/lib/spx-voice-feed-store");
       const { todayEtYmd } = await import("@/lib/providers/spx-session");
+      const { fitSpxVoiceFeedForModel } = await import("@/lib/largo/spx-voice-feed-fit");
       const limit = Math.min(120, Math.max(1, Number(input.limit ?? 40) || 40));
       const sessionDate = todayEtYmd();
       const events = await readSpxVoiceFeed(sessionDate, limit);
-      return {
+      return fitSpxVoiceFeedForModel({
         session_date: sessionDate,
-        count: events.length,
-        events,
+        events: events as unknown as Record<string, unknown>[],
         note:
           events.length === 0
             ? "No persisted transition events yet this session — feed fills as the merged desk updates."
             : undefined,
-      };
+      }).fitted;
     }
     case "get_spx_journal": {
       const { spxJournalForLargo } = await import("@/lib/largo/spx-journal-for-largo");
@@ -2116,6 +2129,50 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
           ? Number(input.open_play_id)
           : undefined;
       return spxJournalForLargo(userId, openPlayId);
+    }
+    case "get_playbook_shadow_history": {
+      const { spxPlaybookShadowHistoryForLargo } = await import(
+        "@/lib/largo/spx-playbook-shadow-for-largo"
+      );
+      const { fitPlaybookShadowHistoryForModel } = await import(
+        "@/lib/largo/playbook-shadow-history-fit"
+      );
+      const limit =
+        input.limit != null && Number.isFinite(Number(input.limit)) ? Number(input.limit) : undefined;
+      const sessionDate =
+        input.session_date != null ? String(input.session_date).trim() : undefined;
+      const raw = await spxPlaybookShadowHistoryForLargo({ session_date: sessionDate, limit });
+      if (!raw.available) return raw;
+      return fitPlaybookShadowHistoryForModel({
+        session_date: raw.session_date,
+        observations: raw.observations as unknown as Record<string, unknown>[],
+        note: raw.note,
+      }).fitted;
+    }
+    case "get_discord_alert_history": {
+      const { discordAlertHistoryForLargo } = await import(
+        "@/lib/largo/discord-alert-history-for-largo"
+      );
+      const limit =
+        input.limit != null && Number.isFinite(Number(input.limit)) ? Number(input.limit) : undefined;
+      const sinceDays =
+        input.since_days != null && Number.isFinite(Number(input.since_days))
+          ? Number(input.since_days)
+          : undefined;
+      return discordAlertHistoryForLargo({
+        limit,
+        alert_type: input.alert_type != null ? String(input.alert_type) : undefined,
+        ticker: input.ticker != null ? String(input.ticker) : undefined,
+        since_days: sinceDays,
+      });
+    }
+    case "get_playbook_promotion_evidence": {
+      const { spxPlaybookPromotionEvidenceForLargo } = await import(
+        "@/lib/largo/spx-playbook-promotion-for-largo"
+      );
+      const sinceDate =
+        input.since_date != null ? String(input.since_date).trim() : undefined;
+      return spxPlaybookPromotionEvidenceForLargo({ since_date: sinceDate });
     }
     case "get_concept": {
       const { conceptForLargo } = await import("@/lib/largo/concept-for-largo");

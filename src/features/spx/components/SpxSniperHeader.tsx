@@ -7,6 +7,7 @@ import { ProductMark } from "@/components/marks/ProductMark";
 import { SpxLiveSpotPrice, priceVsLevel, PriceLevelIndicator } from "./SpxLiveSpotPrice";
 import { SpxIosMarketStrip } from "./ios/SpxIosMarketStrip";
 import { SpxIosMetricGroups } from "./ios/SpxIosMetricGroups";
+import { SpxDeskLaneFreshness } from "./SpxDeskLaneFreshness";
 import { SPX_DESK_MAX_PAIN_LABEL } from "@/features/spx/lib/spx-metric-labels";
 
 type Props = {
@@ -19,6 +20,16 @@ type Props = {
   iosVectorFocus?: boolean;
   /** Strip-only mode — price + live chips, no metric cards. */
   stripOnly?: boolean;
+  laneFreshness?: {
+    pulsePolledAt?: string | null;
+    deskPolledAt?: string | null;
+    flowPolledAt?: string | null;
+    pulseValidating?: boolean;
+    deskValidating?: boolean;
+    flowValidating?: boolean;
+    pulseSseConnected?: boolean;
+    feedStalled?: boolean;
+  };
 };
 
 export function SpxSniperHeader({
@@ -28,6 +39,7 @@ export function SpxSniperHeader({
   sessionActive = false,
   iosVectorFocus = false,
   stripOnly = false,
+  laneFreshness,
 }: Props) {
   const hasQuote = Boolean(desk?.available && (desk?.price ?? 0) > 0);
   const showValues = Boolean(live || hasQuote);
@@ -43,6 +55,13 @@ export function SpxSniperHeader({
         )}
       >
         <SpxIosMarketStrip desk={desk} live={live} sessionActive={sessionActive} />
+        {laneFreshness ? (
+          <SpxDeskLaneFreshness
+            sessionActive={sessionActive}
+            className="px-1 pb-1"
+            {...laneFreshness}
+          />
+        ) : null}
         {!metricsOnly ? (
           <details className="spx-ios-metrics-details" open={!iosVectorFocus}>
             <summary className="spx-ios-metrics-summary">Market context</summary>
@@ -83,6 +102,13 @@ export function SpxSniperHeader({
           </div>
         </div>
         <div className="spx-sniper-command-stats w-full min-w-0">{topStatsRow}</div>
+        {laneFreshness ? (
+          <SpxDeskLaneFreshness
+            sessionActive={sessionActive}
+            className="mt-1.5"
+            {...laneFreshness}
+          />
+        ) : null}
       </div>
     </header>
   );

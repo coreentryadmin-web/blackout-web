@@ -17,6 +17,7 @@ if a field is listed here, a dedicated tool or nested object can return it — d
 
 **Left rail — GEX matrix heatmap:** strike×expiry 0DTE matrix, GEX/VEX lens toggle, live spot row in ladder.
 - Tool: get_gex_heatmap (ticker=SPX, lens=gex|vex) or get_positioning (summary scalars + cross_validation)
+- get_spx_desk_convergence also returns matrix_ui — available lenses (GEX/VEX), default GEX, lane_freshness (Pulse/Desk/Flow per-lane status), and client-only notes (focus mode / iOS panel / active lens toggle are NOT readable server-side)
 - SPX desk bundle: get_spx_structure (price, GEX snapshot, flow tape, dark pool, macro, tide, internals)
 
 **Center — suggested play + desk execution (2026-09):** Vector suggests the trade idea (VectorPlayCard: bias/setup/grade/conviction); Slayer verdict bar tracks desk execution (phase, gates, commits, open position). Chart merges Vector structure levels when Slayer is flat/scanning.
@@ -31,6 +32,15 @@ gate pass/fail checklist, confirmation items, adaptive-gate telemetry, AI arbite
 
 **Session transition feed:** flip crosses, king migrations, VWAP/EMA shifts (Pulse/commentary rail events, server-persisted).
 - Tool: get_spx_voice_feed
+
+**Playbook shadow history:** named-playbook matcher observations (PB-01..14) logged on state transitions — shadow evidence, not live commits.
+- Tool: get_playbook_shadow_history
+
+**Discord alert history:** outbound trade-alert audit trail (member-visible final_output from alert_audit_log).
+- Tool: get_discord_alert_history
+
+**Playbook promotion evidence (admin):** OOS named-playbook gate evaluation and closed-outcome rollup.
+- Tool: get_playbook_promotion_evidence (admin only)
 
 **Open positions / member plays:** OPEN/HOLD/TRIM plays with entry, mark, P&L, stop state.
 - Tool: get_open_plays
@@ -77,7 +87,7 @@ gate pass/fail checklist, confirmation items, adaptive-gate telemetry, AI arbite
 - Tool: get_helix_derived
 
 **Raw tape:** individual prints with premium, strike, expiry, route, score, direction, gex_proximity enrichment.
-- Tools: get_flow_tape (aggregated + recent list), get_postgres_flows (raw DB list), get_options_flow (per-ticker merge UW+Postgres)
+- Tools: get_flow_tape (aggregated + recent list with truncation flags), get_postgres_flows (prints envelope + pull_skew), get_options_flow (per-ticker merge UW+Postgres)
 
 **Dark pool panel:** lit vs dark prints, block size, side.
 - Tool: get_dark_pool (per ticker) or dark pool section in get_spx_structure for SPX

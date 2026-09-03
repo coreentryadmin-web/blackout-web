@@ -244,3 +244,71 @@ export function nighthawkContribution(payload: unknown): ProductContribution {
     },
   };
 }
+
+function spxDirectionFromPlay(raw: string | null | undefined): Direction | null {
+  const d = String(raw ?? "").toLowerCase();
+  if (d === "long" || d === "bullish") return "bullish";
+  if (d === "short" || d === "bearish") return "bearish";
+  return null;
+}
+
+/**
+ * SPX SLAYER — the single-instrument play engine. SPX/SPXW only.
+ *
+ * Direction comes from the engine's committed stance (`direction` on the play payload, or the open
+ * play's direction when live). SCANNING/WATCHING with no direction is an explained absence — not a
+ * neutral vote — because the engine has not committed a stance yet.
+ */
+export function spxContribution(payload: unknown, queriedTicker = "SPX"): ProductContribution {
+  const ticker = canonicalTicker(queriedTicker) || "SPX";
+  if (ticker !== "SPX" && ticker !== "SPXW") {
+    return {
+      product: "spx",
+      signal: null,
+      missingReason: "SPX Slayer only tracks SPX/SPXW — no play-engine read for this ticker",
+    };
+  }
+
+  const p = obj(payload);
+  if (!p || p.available === false) {
+    return { product: "spx", signal: null, missingReason: "SPX Slayer play engine unavailable" };
+  }
+
+  const direction =
+    spxDirectionFromPlay(typeof p.direction === "string" ? p.direction : null) ??
+    spxDirectionFromPlay(
+      obj(p.open_play)?.direction != null ? String(obj(p.open_play)!.direction) : null
+    );
+
+  if (direction === null) {
+    const phase = String(p.phase ?? p.action ?? "unknown");
+    return {
+      product: "spx",
+      signal: null,
+      missingReason: `SPX Slayer has no committed direction yet (phase ${phase})`,
+    };
+  }
+
+  const evidence: string[] = [];
+  if (p.headline) evidence.push(String(p.headline).slice(0, 140));
+  if (p.grade) evidence.push(`grade ${String(p.grade)}`);
+  if (p.phase) evidence.push(`phase ${String(p.phase)}`);
+  if (p.action) evidence.push(`action ${String(p.action)}`);
+  if (p.signal_committed === true) evidence.push("signal committed");
+
+  return {
+    product: "spx",
+    signal: {
+      ticker: "SPX",
+      ticker_class: "index",
+      direction,
+      evidence: evidence.length ? evidence : [`SPX Slayer direction ${direction}`],
+      native: {
+        phase: p.phase ?? null,
+        action: p.action ?? null,
+        score: num(p.score),
+        signal_committed: p.signal_committed ?? null,
+      },
+    },
+  };
+}

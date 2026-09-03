@@ -2,7 +2,7 @@
  * SPX desk convergence — Vector suggested play vs Slayer execution in one read.
  * Mirrors the SpxVectorPlayRail on /dashboard without requiring two tool calls.
  */
-import { omitUncalibratedSpxConfidence } from "@/lib/largo/spx-confidence-boundary";
+import { sanitizeSpxPlayPayloadForLargo } from "@/lib/largo/spx-confidence-boundary";
 import { gateRulesForLargo } from "@/lib/largo/gate-rules";
 import { vectorFullStateForLargo } from "@/lib/largo/product-reads";
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-payload";
@@ -13,6 +13,8 @@ import {
   slayerSuggestedBias,
   vectorSuggestedBias,
 } from "@/lib/largo/spx-desk-convergence-core";
+import { spxMatrixUiStateForLargo } from "@/lib/largo/spx-matrix-ui-for-largo";
+import { deskConvergenceLaneFreshness } from "@/lib/largo/spx-desk-convergence-lane-freshness";
 
 export type { DeskAlignment, DeskPlayBias } from "@/lib/largo/spx-desk-convergence-core";
 export { computeDeskAlignment, slayerSuggestedBias, vectorSuggestedBias } from "@/lib/largo/spx-desk-convergence-core";
@@ -77,12 +79,16 @@ function summarizeSlayer(play: SpxPlayPayload | null) {
 
 export async function spxDeskConvergenceForLargo() {
   const { marketPlatform } = await import("@/lib/platform");
-  const [rawPlay, vector, gate_rules] = await Promise.all([
+  const { fetchGexHeatmap } = await import("@/lib/providers/polygon-options-gex");
+  const { loadMergedSpxDesk } = await import("@/features/spx/lib/spx-desk-loader");
+  const [rawPlay, vector, gate_rules, heatmap, deskBundle] = await Promise.all([
     marketPlatform.spx.getSpxPlayState(),
     vectorFullStateForLargo("SPX"),
     gateRulesForLargo(),
+    fetchGexHeatmap("SPX").catch(() => null),
+    loadMergedSpxDesk().catch(() => null),
   ]);
-  const slayerPlay = omitUncalibratedSpxConfidence(rawPlay) as SpxPlayPayload | null;
+  const slayerPlay = sanitizeSpxPlayPayloadForLargo(rawPlay) as SpxPlayPayload | null;
   const slayerBias = slayerSuggestedBias(slayerPlay);
   const vectorBias =
     vector && (vector as { available?: boolean }).available !== false
@@ -109,5 +115,7 @@ export async function spxDeskConvergenceForLargo() {
     vector: summarizeVector(vector),
     slayer: summarizeSlayer(slayerPlay),
     gate_rules,
+    matrix_ui: spxMatrixUiStateForLargo(heatmap),
+    lane_freshness: deskBundle ? deskConvergenceLaneFreshness(deskBundle) : null,
   };
 }

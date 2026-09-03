@@ -6310,6 +6310,78 @@ export function mapAlertAuditTrailRow(r: QueryResultRow): AlertAuditTrailRow {
 /** Stage 4 query surface — the unified cross-product view over `alert_audit_log`
  *  (0DTE, Night Hawk published, Night Hawk rejected). Reads only what the three
  *  write-paths already wrote; this function itself has zero decision logic. */
+export type AlertAuditLargoRow = AlertAuditTrailRow & {
+  source_table: string | null;
+  final_output: Record<string, unknown> | null;
+};
+
+/** Largo-facing mapper — includes member-visible `final_output` (Discord/card payload). */
+export function mapAlertAuditLargoRow(r: QueryResultRow): AlertAuditLargoRow {
+  const base = mapAlertAuditTrailRow(r);
+  const finalOutput = r.final_output;
+  return {
+    ...base,
+    source_table: r.source_table != null ? String(r.source_table) : null,
+    final_output:
+      finalOutput != null && typeof finalOutput === "object" && !Array.isArray(finalOutput)
+        ? (finalOutput as Record<string, unknown>)
+        : null,
+  };
+}
+
+/** Filtered alert_audit_log read for Largo — includes `final_output` for Discord history. */
+export async function fetchAlertAuditRowsForLargo(opts?: {
+  limit?: number;
+  alert_type?: string;
+  ticker?: string;
+  since_days?: number;
+}): Promise<{ rows: AlertAuditLargoRow[]; counts_by_type: Record<string, number> }> {
+  await ensureSchema();
+  const cappedLimit = Math.min(Math.max(Number(opts?.limit ?? 40) || 40, 1), 100);
+  const sinceDays =
+    opts?.since_days != null ? Math.min(Math.max(Number(opts.since_days) || 7, 1), 365) : null;
+
+  const where: string[] = [];
+  const params: unknown[] = [];
+  let i = 1;
+
+  if (opts?.alert_type?.trim()) {
+    where.push(`alert_type = $${i++}`);
+    params.push(opts.alert_type.trim());
+  }
+  if (opts?.ticker?.trim()) {
+    where.push(`ticker = $${i++}`);
+    params.push(opts.ticker.trim().toUpperCase());
+  }
+  if (sinceDays != null) {
+    where.push(`fired_at >= NOW() - ($${i++} || ' days')::interval`);
+    params.push(String(sinceDays));
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+  const [recentRes, countsRes] = await Promise.all([
+    dbQuery<QueryResultRow>(
+      `SELECT id, alert_type, source_table, ticker, direction, fired_at, confidence_score,
+              confidence_label, trigger_reason, outcome, final_output
+       FROM alert_audit_log
+       ${whereSql}
+       ORDER BY fired_at DESC
+       LIMIT $${i}`,
+      [...params, cappedLimit]
+    ),
+    dbQuery<QueryResultRow>(`SELECT alert_type, COUNT(*)::int AS n FROM alert_audit_log GROUP BY alert_type`),
+  ]);
+
+  const counts_by_type: Record<string, number> = {};
+  for (const r of countsRes.rows) counts_by_type[String(r.alert_type)] = Number(r.n) || 0;
+
+  return {
+    rows: recentRes.rows.map(mapAlertAuditLargoRow),
+    counts_by_type,
+  };
+}
+
 export async function fetchAlertAuditTrail(limit = 20): Promise<AlertAuditTrailSummary> {
   await ensureSchema();
   const cappedLimit = Math.min(Math.max(limit, 1), 100);

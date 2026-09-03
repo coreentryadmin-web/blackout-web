@@ -48,6 +48,8 @@ test("buildPlayVerdictBarModel: hunting shows gate block and play idea", () => {
   assert.equal(model.badge, "HUNTING");
   assert.match(model.gateLine ?? "", /Score below full entry floor/);
   assert.match(model.detailLine ?? "", /7450 Call/);
+  assert.equal(model.topGateBlockers.length, 1);
+  assert.match(model.topGateBlockers[0] ?? "", /Score below full entry floor/);
 });
 
 test("buildPlayVerdictBarModel: open play surfaces contract, levels, and est PnL", () => {
