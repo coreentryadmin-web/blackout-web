@@ -3,6 +3,7 @@ import { directionalPremium, directionLabel } from "@/features/helix/lib/helix-f
 import { flowTimeMs } from "@/features/helix/lib/helix-flow-format";
 import { WHALE_PRINT_PREMIUM } from "@/features/helix/lib/helix-flow-limits";
 import { positionIntent } from "@/features/helix/lib/helix-position-intent";
+import { signalWindowAgeMs } from "@/features/helix/lib/helix-signal-detection";
 
 export type HelixSessionPulse = {
   printCount: number;
@@ -44,8 +45,13 @@ export function computeHelixSessionPulse(
 
     if (positionIntent(f).intent === "opening") openingCount += 1;
 
+    // BUG FIX (2026-09-03): signalWindowAgeMs (not a raw nowMs - t subtraction) — a print
+    // stamped in the future beyond FUTURE_PRINT_TOLERANCE_MS (UW clock skew / bad alerted_at)
+    // used to produce a negative age that trivially satisfied `<= 15min`, inflating this count
+    // with prints that cannot actually be verified as recent.
     const t = flowTimeMs(f);
-    if (t != null && nowMs - t <= FIFTEEN_MIN_MS) printsLast15m += 1;
+    const age = t != null ? signalWindowAgeMs(t, nowMs) : null;
+    if (age != null && age <= FIFTEEN_MIN_MS) printsLast15m += 1;
 
     const ticker = String(f.ticker ?? "").toUpperCase();
     if (ticker) byTicker.set(ticker, (byTicker.get(ticker) ?? 0) + premium);
