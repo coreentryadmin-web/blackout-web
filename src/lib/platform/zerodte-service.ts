@@ -607,7 +607,7 @@ async function attachLiveMarkMeta(rows: ZeroDteSetupLogRow[]): Promise<Map<strin
     const now = Date.now();
     for (const r of rows) {
       const resolved = resolveLedgerRowLiveMark(r, getZeroDteLiveMark, now, ZERODTE_MARK_STALE_MS);
-      if (!resolved) continue;
+      if (!resolved || resolved.mark == null) continue;
       out.set(r.ticker.toUpperCase(), {
         mark: resolved.mark,
         mark_as_of: new Date(resolved.asOf).toISOString(),
