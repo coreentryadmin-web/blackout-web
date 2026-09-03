@@ -25,11 +25,29 @@ import { comparePresetWarmTickers } from "@/features/thermal/lib/thermal-compare
 import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
 import { calculateMatrixDelta, type GexMatrix } from "@/lib/gex-matrix-delta";
 import { broadcastMatrixDelta } from "@/lib/gex-matrix-broadcast";
-import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
+import { sharedCacheDel, sharedCacheGet, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
+
+/**
+ * Cross-replica overlap guard. This route runs synchronously (no background dispatch) and had
+ * NO overlap guard despite being one of the RTH-leader-watched warmers (rth-warm-leader-logic.ts
+ * sets its heal-after threshold to a tight 20s — "in-app leader fills the gap so Thermal
+ * SPY/QQQ don't sit on minute-old asof"). Measured live 2026-09-03 (48h, /ecs/blackout-production,
+ * n=1000 runs): p50=46.5s, p90=81.1s, p99=181.1s, max=209.2s — every run finishes well past the
+ * 20s heal threshold, so the leader (rth-warm-leader.ts's `dispatchCronWarm`, which invokes this
+ * exact GET handler in-process) treats it as perpetually overdue and re-dispatches on almost every
+ * cycle, landing a second full warm pass on top of one already in flight. Both instances then
+ * sweep the shared ≤100-ticker universe concurrently through the same Polygon chain fetches and
+ * SSE delta broadcasts real member requests also depend on — same "no lock, schedule tighter than
+ * runtime" shape already fixed for vector-pick-sweep/desk-warm/zerodte-warm/vector-dark-pool-warm.
+ * TTL (240s) comfortably covers the measured max (209.2s) as the safety-net ceiling if a release
+ * is ever missed (crash mid-warm).
+ */
+const OVERLAP_LOCK_KEY = "heatmap-warm:running";
+const OVERLAP_LOCK_TTL_SEC = 240;
 
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -49,6 +67,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  const acquired = await sharedCacheSetNx(
+    OVERLAP_LOCK_KEY,
+    { startedAt: started },
+    OVERLAP_LOCK_TTL_SEC
+  ).catch(() => true); // fail OPEN on a Redis error — a missed overlap guard is safer than a stuck cron
+  if (!acquired) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: "previous warm still in flight (idempotent skip)",
+    };
+    await logCronRun("heatmap-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  try {
+    return await runHeatmapWarm(req, started);
+  } finally {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+  }
+}
+
+async function runHeatmapWarm(req: NextRequest, started: number): Promise<NextResponse> {
   // Shared with Vector bead recording: static allowlist ∪ dynamic (≤100, 14d retention).
   const tickers = await listSharedUniverseTickers();
   // Every Thermal compare-preset name — cache-first warm so opening Mag7/Semis paints instantly.
