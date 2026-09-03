@@ -66,6 +66,8 @@ import {
 import { fetchDiscoveryFunnelHint, type DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import { computeZeroDteSessionBoardStats } from "@/lib/zerodte/session-board-stats";
 import { fetchZeroDteVectorPulseByTicker } from "@/lib/zerodte/vector-crosslink";
+import { computeVectorNearMisses } from "@/lib/zerodte/vector-near-miss";
+import { zeroDteGateLabel } from "@/lib/zerodte/pane";
 // Read-only SPX Slayer badge (feat/nh-spx-badge) — additive display field only, see
 // spx-slayer-badge.ts for the full scope note. NOT part of scoring/gates/governor above.
 // Lazy dynamic import below (not a static import): spx-slayer-badge.ts's module graph
@@ -290,6 +292,8 @@ export type ZeroDteBoardPayload = {
   session_stats: import("@/lib/zerodte/session-board-stats").ZeroDteSessionBoardStats | null;
   /** Per-ticker Vector pick pulse for cross-desk links (today's session leaders). */
   vector_pulse_by_ticker: Record<string, import("@/lib/zerodte/vector-crosslink").ZeroDteVectorPulse>;
+  /** Vector winner/runner names gate-blocked on 0DTE — shadow-book calibration signal. */
+  vector_near_misses: import("@/lib/zerodte/vector-near-miss").ZeroDteVectorNearMiss[];
 };
 
 // ── Shared, converged board snapshot (fix/zerodte-board-convergence) ──────────────
@@ -727,6 +731,11 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     ledgerRows,
     discovery_funnel?.top_gate ?? null
   );
+  const vector_near_misses = computeVectorNearMisses(
+    displaySetups,
+    vector_pulse_by_ticker,
+    zeroDteGateLabel
+  );
 
   const payload = roundFloats({
     available: true,
@@ -760,6 +769,7 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     spx_slayer_badge,
     session_stats,
     vector_pulse_by_ticker,
+    vector_near_misses,
   }) as ZeroDteBoardPayload;
 
   // roundFloats() rounds entry_premium/last_mark independently; recompute PnL from the
@@ -1055,6 +1065,7 @@ function buildMinimalBoardFallback(): ZeroDteBoardPayload {
     spx_slayer_badge: null,
     session_stats: null,
     vector_pulse_by_ticker: {},
+    vector_near_misses: [],
   };
 }
 

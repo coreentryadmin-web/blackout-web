@@ -38,6 +38,26 @@ export const ZERODTE_COMMAND_DEV_FIXTURE: BoardResp = {
       is_runner: true,
     },
   },
+  vector_near_misses: [
+    {
+      ticker: "META",
+      block_code: "cortex_gex_walls",
+      block_label: "Cortex · gex walls",
+      block_reason: "Cortex gex-walls oppose — dealer wall in path on the long side.",
+      vector_premium_pct: null,
+      vector_peak_pct: null,
+      vector_band: "tracking",
+    },
+    {
+      ticker: "TSLA",
+      block_code: "score_floor",
+      block_label: "G-3 · score floor",
+      block_reason: "Score 69 is below the 75 prime floor for single-rail BREAKOUT.",
+      vector_premium_pct: 22,
+      vector_peak_pct: 28,
+      vector_band: "runner",
+    },
+  ],
   market_state: {
     regime_label: "trend",
     regime_structure: "trend",

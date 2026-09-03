@@ -18,6 +18,7 @@ import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
 import type { SpxSlayerBadge } from "@/features/spx/lib/spx-slayer-badge-map";
 import type { ZeroDteSessionBoardStats } from "@/lib/zerodte/session-board-stats";
 import type { ZeroDteVectorPulse } from "@/lib/zerodte/vector-crosslink";
+import type { ZeroDteVectorNearMiss } from "@/lib/zerodte/vector-near-miss";
 
 export interface BoardResp {
   available?: boolean;
@@ -39,6 +40,8 @@ export interface BoardResp {
   session_stats?: ZeroDteSessionBoardStats | null;
   /** Per-ticker Vector pulse for cross-desk links. */
   vector_pulse_by_ticker?: Record<string, ZeroDteVectorPulse> | null;
+  /** Vector tracking + 0DTE gate-blocked — shadow-book near misses. */
+  vector_near_misses?: ZeroDteVectorNearMiss[] | null;
 }
 
 /** Ledger statuses that represent a WORKING (member-held) position — always rendered (9-4). */
