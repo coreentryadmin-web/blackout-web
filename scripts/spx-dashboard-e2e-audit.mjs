@@ -355,13 +355,31 @@ async function browserDashboard(session, hm) {
   });
   page.on("pageerror", (err) => consoleErrors.push(String(err.message)));
 
-  /** ECS rolling deploy / ALB drain — transient origin 502s are not product defects. */
+  /** ECS rolling deploy / ALB drain — transient origin 5xx and stale-chunk 404s are not product defects. */
   const isTransientConsoleNoise = (msg) =>
-    /\b(502|503|504|524)\b/.test(msg) || /Failed to load resource.*502/.test(msg);
+    /\b(502|503|504|524)\b/.test(msg) ||
+    /Failed to load resource.*502/.test(msg) ||
+    /ChunkLoadError/i.test(msg) ||
+    /MIME type.*not executable/i.test(msg) ||
+    /Failed to load resource:.*404/.test(msg) ||
+    /_next\/static\/chunks\//.test(msg);
 
-  try {
+  const loadDashboard = async () => {
+    consoleErrors.length = 0;
     await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded", timeout: 120_000 });
     await page.waitForFunction(() => window.Clerk?.user?.id, { timeout: 60_000 });
+    await page.waitForTimeout(2_000);
+  };
+
+  try {
+    await loadDashboard();
+    // Mid-rollout HTML can reference chunks the draining replica no longer serves — one reload.
+    const chunkOnly =
+      consoleErrors.length > 0 && consoleErrors.every((e) => isTransientConsoleNoise(e));
+    if (chunkOnly) {
+      await page.waitForTimeout(5_000);
+      await loadDashboard();
+    }
     rec("ui:sign-in-dashboard", "PASS");
 
     const deskText = await page.locator(".spx-sniper-desk").innerText().catch(() => "");
