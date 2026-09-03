@@ -356,6 +356,25 @@ export function condorNetMarkPerShare(
   return Math.round(net * 10000) / 10000;
 }
 
+/**
+ * Conservative executable debit to close a sold condor: buy back shorts at ASK, sell longs at BID.
+ * Same per-share units as `condorNetMarkPerShare` (mid lane). Null when any required side is missing.
+ */
+export function condorNetDebitToCloseExec(
+  legs: CondorLegRoleOcc[],
+  quoteOf: (occ: string) => { bid: number | null; ask: number | null } | undefined
+): number | null {
+  if (legs.length !== 4) return null;
+  let net = 0;
+  for (const { role, occ } of legs) {
+    const q = quoteOf(occ);
+    const px = role === "short" ? q?.ask : q?.bid;
+    if (px == null || !(px >= 0)) return null;
+    net += role === "short" ? px : -px;
+  }
+  return Math.round(net * 10000) / 10000;
+}
+
 // ── Condor liquidity gate (the directional plan-quality replacement) ───────────────────
 // A condor is neutral, so the directional G-8/G-9 (chase / single-leg spread) do NOT apply. This is
 // the SELL-side equivalent: the four legs must be tradeable AND the credit must clear a floor for the

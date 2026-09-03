@@ -35,7 +35,7 @@
 
 import { dbConfigured, fetchZeroDteSetupLog, updateZeroDteLiveState, type ZeroDteSetupLogRow } from "@/lib/db";
 import { evaluateLedgerRowExit } from "./exit-sync";
-import { condorLegRoles, condorNetMarkPerShare, type CondorLegRoleOcc } from "./condor";
+import { condorLegRoles, condorNetDebitToCloseExec, condorNetMarkPerShare, type CondorLegRoleOcc } from "./condor";
 import { etNowParts, todayEt } from "@/features/nighthawk/lib/session";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { fetchOptionsUnifiedSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
@@ -43,6 +43,7 @@ import { roundFloats, type RoundFloatsKeyDp } from "@/lib/round-floats";
 import { getLiveOptionMark, subscribeContracts, unsubscribeContracts } from "@/lib/ws/options-socket";
 import {
   advancePlayLatch,
+  condorSellerPnlPct,
   isZeroDteMarkStale,
   livePnlPctFor,
   pinnedLivePnlPct,
@@ -824,10 +825,14 @@ export function buildZeroDteLiveMarksPayloadFrom(
       mark_age_ms: asOf > 0 ? Math.max(0, nowMs - asOf) : null,
       stale,
       live_pnl_pct: livePnlPctFor(p.is_condor === true, p.entry_premium, pnlMark),
-      // WS-10 monitoring lane: mark the long at the BID (the exit side) — null bid → null.
-      // Condor exec debit (4-leg ask/bid) is a follow-up; mid net mark only for now.
+      // WS-10 monitoring lane: longs mark at BID; condors use conservative 4-leg ask/bid debit.
       live_pnl_pct_exec:
-        p.is_condor === true ? null : pinnedLivePnlPct(p.entry_premium, resolved.bid),
+        p.is_condor === true && p.condor_legs?.length === 4
+          ? condorSellerPnlPct(
+              p.entry_premium,
+              condorNetDebitToCloseExec(p.condor_legs, (occ) => readMark(occ))
+            )
+          : pinnedLivePnlPct(p.entry_premium, resolved.bid),
       greeks: resolved.greeks,
     };
   });

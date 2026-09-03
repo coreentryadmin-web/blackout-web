@@ -890,11 +890,18 @@ test("toActivePlay + payload: condor row quotes four legs and prices net debit m
     ["O:SPXW260714C00557000", 0.2],
   ]);
   const now = Date.now();
-  for (const [occ, mark] of marks) {
+  const legQuotes: Array<[string, number, number]> = [
+    ["O:SPXW260714P00545000", 0.95, 1.05],
+    ["O:SPXW260714P00543000", 0.28, 0.32],
+    ["O:SPXW260714C00555000", 0.75, 0.85],
+    ["O:SPXW260714C00557000", 0.18, 0.22],
+  ];
+  for (const [occ, bid, ask] of legQuotes) {
+    const mark = (bid + ask) / 2;
     lm.putZeroDteLiveMark({
       occ,
-      bid: mark,
-      ask: mark,
+      bid,
+      ask,
       mid: mark,
       last: null,
       mark,
@@ -919,4 +926,6 @@ test("toActivePlay + payload: condor row quotes four legs and prices net debit m
   const payload = lm.buildZeroDteLiveMarksPayloadFrom([active!], now, "2026-07-14");
   assert.equal(payload.marks[0]!.mark, 1.3);
   assert.equal(payload.marks[0]!.live_pnl_pct, 0);
+  // Exec: shorts at ask (1.05+0.85) − longs at bid (0.28+0.18) = 1.44 debit → (1.3−1.44)/1.3
+  assert.equal(payload.marks[0]!.live_pnl_pct_exec, -10.77);
 });
