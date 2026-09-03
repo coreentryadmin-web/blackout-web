@@ -43,4 +43,5 @@ test("get_signal_log and get_spx_voice_feed fit at the Largo boundary", () => {
   const runTool = readFileSync(join(ROOT, "src/lib/largo/run-tool.ts"), "utf8");
   assert.match(runTool, /fitSpxSignalLogForModel\(/);
   assert.match(runTool, /fitSpxVoiceFeedForModel\(/);
+  assert.match(runTool, /fitPlaybookShadowHistoryForModel\(/);
 });

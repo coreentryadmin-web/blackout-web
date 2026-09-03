@@ -2134,11 +2134,20 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const { spxPlaybookShadowHistoryForLargo } = await import(
         "@/lib/largo/spx-playbook-shadow-for-largo"
       );
+      const { fitPlaybookShadowHistoryForModel } = await import(
+        "@/lib/largo/playbook-shadow-history-fit"
+      );
       const limit =
         input.limit != null && Number.isFinite(Number(input.limit)) ? Number(input.limit) : undefined;
       const sessionDate =
         input.session_date != null ? String(input.session_date).trim() : undefined;
-      return spxPlaybookShadowHistoryForLargo({ session_date: sessionDate, limit });
+      const raw = await spxPlaybookShadowHistoryForLargo({ session_date: sessionDate, limit });
+      if (!raw.available) return raw;
+      return fitPlaybookShadowHistoryForModel({
+        session_date: raw.session_date,
+        observations: raw.observations as unknown as Record<string, unknown>[],
+        note: raw.note,
+      }).fitted;
     }
     case "get_discord_alert_history": {
       const { discordAlertHistoryForLargo } = await import(
