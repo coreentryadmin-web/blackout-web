@@ -453,7 +453,7 @@ test("G-4: extreme VIX (>=20) blocks single names outright", () => {
 });
 
 test("G-4: extreme VIX (>=20) lets index/ETF products through (half-size in calibration)", () => {
-  const qqq = evaluateZeroDteGates(input({ vixDayOpen: 22, score: 90 }));
+  const qqq = evaluateZeroDteGates(input({ vixDayOpen: 22, score: 78 }));
   assert.equal(qqq.verdict, "COMMIT");
   assert.equal(qqq.calibration.g4_vix.tier, "extreme");
   assert.equal(qqq.calibration.g4_vix.would_halve_size, true);
@@ -573,7 +573,7 @@ test("G-6: score >= 65 overrides the conflict — CONFLICT still flagged but com
     input({
       ticker: "META",
       direction: "short",
-      score: 85,
+      score: 78,
       nighthawkTake: { direction: "long", edition_for: "2026-07-10" },
     })
   );
@@ -785,7 +785,7 @@ test("planQualityGateBlocks: exported helper matches gate evaluation", () => {
 
 test("refreshPlanQualityGateBlocks: drops stale plan_no_quote after deferred attach", () => {
   const stale = evaluateZeroDteGates(
-    input({ plan: null, deferPlanQualityGates: true, score: 88 })
+    input({ plan: null, deferPlanQualityGates: true, score: 80 })
   );
   assert.equal(stale.verdict, "COMMIT");
   assert.equal(stale.blocks.some((b) => b.code === "plan_no_quote"), false);
@@ -878,7 +878,7 @@ test("evaluateZeroDteGates: a CONDOR is exempt from the moneyness re-check even 
 test("refreshMoneynessGateBlocks: re-applies the caps after a deferred (thesis-first) contract-plan attach", () => {
   // Gates ran first (thesis-first order) with the PRE-refresh otm_pct (inside caps) — no
   // moneyness block yet.
-  const preRefresh = evaluateZeroDteGates(input({ otmPct: 1, score: 88 }));
+  const preRefresh = evaluateZeroDteGates(input({ otmPct: 1, score: 80 }));
   assert.equal(preRefresh.verdict, "COMMIT");
   assert.equal(preRefresh.blocks.some((b) => b.code === "max_itm_pct"), false);
 
@@ -889,7 +889,7 @@ test("refreshMoneynessGateBlocks: re-applies the caps after a deferred (thesis-f
 
   // And the inverse: a candidate that started BLOCKED on a stale reading clears once the
   // refreshed otm_pct is back inside both caps (drift can go either direction).
-  const badPreRefresh = evaluateZeroDteGates(input({ otmPct: -9.55, score: 88 }));
+  const badPreRefresh = evaluateZeroDteGates(input({ otmPct: -9.55, score: 80 }));
   assert.equal(badPreRefresh.verdict, "BLOCKED");
   const goodPostRefresh = refreshMoneynessGateBlocks(badPreRefresh, 1, false);
   assert.equal(goodPostRefresh.blocks.some((b) => b.code === "max_itm_pct"), false);
@@ -897,7 +897,7 @@ test("refreshMoneynessGateBlocks: re-applies the caps after a deferred (thesis-f
 
 test("refreshMoneynessGateBlocks: a CONDOR stays exempt through the refresh", () => {
   const gate = evaluateZeroDteGates(
-    input({ play_type: "CONDOR", condorPlan: null, score: 88 })
+    input({ play_type: "CONDOR", condorPlan: null, score: 80 })
   );
   const refreshed = refreshMoneynessGateBlocks(gate, -50, true);
   assert.equal(refreshed.blocks.some((b) => b.code === "max_itm_pct" || b.code === "max_otm_pct"), false);
@@ -910,7 +910,7 @@ test("refreshMoneynessGateBlocks: a CONDOR stays exempt through the refresh", ()
 // passed explicitly here since the flag is read once at module load and cannot be flipped
 // at runtime by a test.
 test("refreshGovernorPremiumBudgetBlocks: recomputes the budget using the REAL post-attach premium, not the stale plan=null 0", () => {
-  const base = evaluateZeroDteGates(input({ plan: null, score: 88 }));
+  const base = evaluateZeroDteGates(input({ plan: null, score: 80 }));
   assert.equal(base.blocks.some((b) => b.code === "governor_premium_budget"), false);
 
   // premiumAtRisk sits just under the cap; only a real (now-attached) entry_premium pushes
@@ -930,7 +930,7 @@ test("refreshGovernorPremiumBudgetBlocks: recomputes the budget using the REAL p
 });
 
 test("deferPlanQualityGates: evaluateZeroDteGates skips plan blocks when plan is null", () => {
-  const v = evaluateZeroDteGates(input({ plan: null, deferPlanQualityGates: true, score: 88 }));
+  const v = evaluateZeroDteGates(input({ plan: null, deferPlanQualityGates: true, score: 80 }));
   assert.equal(v.verdict, "COMMIT");
   assert.equal(v.blocks.some((b) => b.code === "plan_no_quote"), false);
 });
@@ -1299,7 +1299,7 @@ test("G-4: 16.999 is normal, exactly 17 is elevated, 19.999 is elevated, exactly
   assert.equal(at17null.calibration.g4_vix.tier, "elevated");
   assert.ok(at17null.blocks.some((b) => b.code === "vix_elevated"));
   // 19.999 → still elevated (a single name at 90 clears the 75 elevated floor).
-  const nvdaHi = evaluateZeroDteGates(input({ ticker: "NVDA", vixDayOpen: 19.999, score: 90, bias: "flat" }));
+  const nvdaHi = evaluateZeroDteGates(input({ ticker: "NVDA", vixDayOpen: 19.999, score: 78, bias: "flat" }));
   assert.equal(nvdaHi.calibration.g4_vix.tier, "elevated");
   assert.equal(nvdaHi.verdict, "COMMIT");
   // Exactly 20 (>= extreme) → the same single name is blocked outright (index/ETF only).
@@ -1652,4 +1652,58 @@ test("stack fix: single name with null SPY tape does not fail G-12 when VWAP-sid
   assert.equal(v.verdict, "COMMIT");
   assert.ok(!v.blocks.some((b) => b.code === "confluence_floor"));
   assert.ok(!v.blocks.some((b) => b.code === "no_market_bias"));
+});
+
+test("G-18: early window sub-prime score (70) is BLOCKED", () => {
+  const v = evaluateZeroDteGates(input({ score: 70, nowEtMinutes: EARLY_ET }));
+  assert.ok(v.blocks.some((b) => b.code === "early_window_prime_score"));
+});
+
+test("G-18: early window prime score (78) commits", () => {
+  const v = evaluateZeroDteGates(input({ score: 78, nowEtMinutes: EARLY_ET }));
+  assert.ok(!v.blocks.some((b) => b.code === "early_window_prime_score"));
+});
+
+test("G-19: score 88+ is BLOCKED without Vector winner", () => {
+  const v = evaluateZeroDteGates(input({ score: 88 }));
+  assert.ok(v.blocks.some((b) => b.code === "score_top_band"));
+});
+
+test("G-19: score 88+ Vector winner aligned commits", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      score: 88,
+      direction: "long",
+      vector_pulse: {
+        premium_pct: 80,
+        peak_premium_pct: 90,
+        action_status: "still_buy",
+        is_winner: true,
+        is_runner: false,
+        side: "call",
+        direction: "long",
+        strike: 100,
+        occ: "TEST",
+        rank: 1,
+        role: "flow-whale",
+      },
+    })
+  );
+  assert.ok(!v.blocks.some((b) => b.code === "score_top_band"));
+});
+
+test("runnerConfluenceCount: uses pinned confirmations when higher than gate leg count", async () => {
+  const { runnerConfluenceCount } = await import("./gates.ts");
+  const c: ZeroDteConfluence = {
+    score: 2,
+    confirmations: 2,
+    timing_ok: true,
+    early_window: false,
+    vwap_ok: true,
+    market_ok: true,
+    tier: "double",
+    label: "double",
+  };
+  assert.equal(runnerConfluenceCount(c, "NVDA", 0), 2);
+  assert.equal(runnerConfluenceCount(c, "NVDA", 1), 3);
 });
