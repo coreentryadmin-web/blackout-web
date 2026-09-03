@@ -2109,18 +2109,18 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     case "get_spx_voice_feed": {
       const { readSpxVoiceFeed } = await import("@/features/spx/lib/spx-voice-feed-store");
       const { todayEtYmd } = await import("@/lib/providers/spx-session");
+      const { fitSpxVoiceFeedForModel } = await import("@/lib/largo/spx-voice-feed-fit");
       const limit = Math.min(120, Math.max(1, Number(input.limit ?? 40) || 40));
       const sessionDate = todayEtYmd();
       const events = await readSpxVoiceFeed(sessionDate, limit);
-      return {
+      return fitSpxVoiceFeedForModel({
         session_date: sessionDate,
-        count: events.length,
-        events,
+        events: events as unknown as Record<string, unknown>[],
         note:
           events.length === 0
             ? "No persisted transition events yet this session — feed fills as the merged desk updates."
             : undefined,
-      };
+      }).fitted;
     }
     case "get_spx_journal": {
       const { spxJournalForLargo } = await import("@/lib/largo/spx-journal-for-largo");

@@ -38,3 +38,9 @@ test("get_spx_play fits at the Largo boundary after confidence sanitize", () => 
   assert.match(runTool, /fitSpxPlayForModel\(raw as Record<string, unknown>\)\.fitted/);
   assert.match(runTool, /case "get_spx_confluence":[\s\S]*fitSpxPlayForModel/);
 });
+
+test("get_signal_log and get_spx_voice_feed fit at the Largo boundary", () => {
+  const runTool = readFileSync(join(ROOT, "src/lib/largo/run-tool.ts"), "utf8");
+  assert.match(runTool, /fitSpxSignalLogForModel\(/);
+  assert.match(runTool, /fitSpxVoiceFeedForModel\(/);
+});
