@@ -61,11 +61,13 @@ mock.module("../../../lib/providers/polygon-options-gex", {
 
 let touchDynamicUniverse: typeof import("./vector-dynamic-universe").touchDynamicUniverse;
 let listDynamicUniverseTickers: typeof import("./vector-dynamic-universe").listDynamicUniverseTickers;
+let removeDynamicUniverseTicker: typeof import("./vector-dynamic-universe").removeDynamicUniverseTicker;
 
 test.before(async () => {
   const mod = await import("./vector-dynamic-universe");
   touchDynamicUniverse = mod.touchDynamicUniverse;
   listDynamicUniverseTickers = mod.listDynamicUniverseTickers;
+  removeDynamicUniverseTicker = mod.removeDynamicUniverseTicker;
 });
 
 test("touchDynamicUniverse: a real, resolvable ticker is written to the shared dynamic universe", async () => {
@@ -112,4 +114,39 @@ test("touchDynamicUniverse: a total fetchGexHeatmap failure (null / rejection) i
   // touchDynamicUniverse means this never throws back to the caller either way.
   await assert.doesNotReject(fresh("BADTICK"));
   assert.deepEqual(await listDynamicUniverseTickers(), []);
+});
+
+// Regression for a P2 follow-up (2026-09-03, live monitor): the write-side spot>0 guard above
+// stops NEW dead tickers from being pinned, but does nothing for one already pinned BEFORE that
+// fix shipped (or one whose chain later stopped resolving). Confirmed live: "NFLIX"/"LAST"/"SOX"
+// were still being served with spot:0 well after the write-guard was in production, because
+// nothing ever removed the already-bad entries. removeDynamicUniverseTicker is the read-side
+// counterpart — called by vector-universe.ts's row builder whenever a dynamic ticker's freshly
+// fetched matrix fails to resolve a real spot, so a dead entry self-heals within one read instead
+// of surviving out the full 14-day retention window.
+test("removeDynamicUniverseTicker: drops an already-pinned dead dynamic entry", async () => {
+  genericCache = new Map();
+  // Seed the map directly (as if "NFLIX" had been pinned before the write-side guard existed) —
+  // bypasses touchDynamicUniverse's own per-process debounce, which would otherwise no-op a
+  // second touch of a ticker already touched by an earlier test in this file.
+  genericCache.set("vector:universe:dynamic", { NFLX: Date.now(), NFLIX: Date.now() });
+  assert.deepEqual((await listDynamicUniverseTickers()).sort(), ["NFLIX", "NFLX"]);
+
+  await removeDynamicUniverseTicker("nflix");
+
+  assert.deepEqual(await listDynamicUniverseTickers(), ["NFLX"], "the dead entry must be gone, the live one untouched");
+});
+
+test("removeDynamicUniverseTicker: no-ops for a static-allowlist ticker (never dynamic, never removable this way)", async () => {
+  genericCache = new Map();
+  genericCache.set("vector:universe:dynamic", { NFLX: Date.now() });
+
+  await removeDynamicUniverseTicker("SPY"); // SPY is in the mocked static allowlist
+
+  assert.deepEqual(await listDynamicUniverseTickers(), ["NFLX"], "a static ticker is never in the dynamic map to begin with");
+});
+
+test("removeDynamicUniverseTicker: a missing/empty map never throws", async () => {
+  genericCache = new Map();
+  await assert.doesNotReject(removeDynamicUniverseTicker("GHOST"));
 });

@@ -140,6 +140,38 @@ export async function listDynamicUniverseTickers(): Promise<string[]> {
 }
 
 /**
+ * Self-heal: drop a dynamic entry that no longer resolves to a real, optionable chain.
+ *
+ * `touchDynamicUniverse` validates `spot > 0` before WRITING a new entry (see its own comment for
+ * the live "NFLIX"/"LAST"/"SOX" incident that guard was built to stop), but that guard only ever
+ * blocked NEW dead writes. An entry pinned BEFORE that fix — or one whose underlying chain later
+ * stopped resolving for some other reason — has no removal path: `pruneDynamicUniverse` only drops
+ * entries by AGE (retention/cap), never by whether the ticker still prices. So a dead row can sit
+ * in every member's `/api/market/vector/universe` response, permanently spot:0, for up to
+ * `DYNAMIC_UNIVERSE_RETENTION_DAYS` (14 days) — confirmed live 2026-09-03: "NFLIX"/"LAST"/"SOX"
+ * were still being served with `spot: 0` well after the write-side fix (#3348/P2-followup) shipped,
+ * because nothing ever removed the already-bad entries the earlier fix could not have prevented.
+ *
+ * Called from the universe row builder (vector-universe.ts) whenever a DYNAMIC ticker's freshly
+ * fetched matrix fails to resolve a real spot — the same `spot > 0` test `touchDynamicUniverse`
+ * already applies on write, now also applied on read so a dead entry self-heals within one cycle
+ * instead of waiting out the retention window. No-ops for static-allowlist tickers (never dynamic,
+ * never removable this way) and is best-effort/fire-and-forget like every other function here.
+ */
+export async function removeDynamicUniverseTicker(rawTicker: string): Promise<void> {
+  try {
+    const ticker = normalizeVectorTicker(rawTicker);
+    if (!ticker || isStatic(ticker)) return;
+    const map = (await sharedCacheGet<DynamicMap>(KEY)) ?? {};
+    if (!(ticker in map)) return;
+    delete map[ticker];
+    await sharedCacheSet(KEY, map, KEY_TTL_SEC);
+  } catch {
+    /* best-effort: universe tracking must never disturb the live stream */
+  }
+}
+
+/**
  * Shared Thermal + Vector warm/record universe: static allowlist ∪ dynamic (≤100, 14d).
  * Pure merge helper also exported for tests — never invents tickers beyond the two inputs.
  */
