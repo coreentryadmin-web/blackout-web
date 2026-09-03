@@ -169,6 +169,19 @@ async function loadWindowBars(
       out.set(session, { open: b.o, high: b.h, low: b.l, close: b.c });
     }
   } catch (err) {
+    // Next's `DynamicServerError` (thrown when a `cache: "no-store"` fetch — see polygon.ts's
+    // `polygonGet` — runs from a page Next is still trying to render STATICALLY, e.g. this route's
+    // ISR `revalidate`) is framework control flow, not a real fetch failure: it must propagate so
+    // Next can fall the route back to dynamic rendering. Swallowing it here identically to a real
+    // Polygon outage produced the exact "poison the shared cache with an empty result" bug #3383
+    // fixed on the homepage (see docs/audit/findings-staging/
+    // 2026-09-03-research-gamma-levels-dynamic-server-usage-cache-poison.md for the full trace on
+    // this route specifically). Duck-typed rather than importing Next's internal
+    // `hooks-server-context` module (not a public API, digest value confirmed against the
+    // installed Next version instead).
+    if (err instanceof Error && (err as { digest?: unknown }).digest === "DYNAMIC_SERVER_USAGE") {
+      throw err;
+    }
     console.warn("[research-gamma] bar load failed", logToken(ticker), err);
   }
   return out;
