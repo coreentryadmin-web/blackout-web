@@ -56,7 +56,7 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 
 ## P2 — desk polish
 
-- [ ] Persist SPX matrix lens toggle to `sessionStorage` and document read path for future server-side hint (optional — today client-only is honest)
+- [x] Persist SPX matrix lens toggle to `sessionStorage` and document read path for future server-side hint (optional — today client-only is honest)
 
 ---
 
@@ -64,6 +64,8 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 
 | Date | Item | PR |
 |------|------|-----|
+| 2026-09-03 | P2 SPX matrix lens sessionStorage persistence | (this branch) |
+| 2026-09-03 | P1 ecosystem_context spx_desk_convergence field + CI tool count sync | (this branch) |
 | 2026-09-03 | P2 re-enable SPX RTH all-day agent schedule (summary-only verify) | (this branch) |
 | 2026-09-03 | P2 matrix lens + focus/iOS client-only UI facts in desk convergence | (this branch) |
 | 2026-09-03 | P1 discord alert history + playbook promotion evidence Largo tools | (this branch) |

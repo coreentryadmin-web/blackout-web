@@ -1,5 +1,6 @@
 import type { GexHeatmapLens } from "@/lib/gex-heatmap-display";
 import { SPX_DESK_FOCUS_STORAGE_KEY } from "@/features/spx/lib/spx-desk-focus";
+import { SPX_MATRIX_LENS_STORAGE_KEY } from "@/features/spx/lib/spx-matrix-lens";
 
 export const SPX_IOS_PANEL_STORAGE_KEY = "spx-ios-panel";
 
@@ -30,7 +31,7 @@ export function spxMatrixUiStateForLargo(heatmap: HeatmapLike) {
      */
     active_lens_readable: false,
     client_only_ui: {
-      matrix_lens_toggle: "SpxGexMatrixHeatmap local state — default GEX; auto-falls back to GEX when VEX empty",
+      matrix_lens_toggle: `SpxGexMatrixHeatmap local state — persisted in sessionStorage (${SPX_MATRIX_LENS_STORAGE_KEY}); default GEX; auto-falls back to GEX when VEX empty`,
       focus_mode: `localStorage key ${SPX_DESK_FOCUS_STORAGE_KEY} (F key / Esc)`,
       ios_panel: `sessionStorage key ${SPX_IOS_PANEL_STORAGE_KEY}`,
     },
