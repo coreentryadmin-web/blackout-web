@@ -17,6 +17,7 @@ if a field is listed here, a dedicated tool or nested object can return it — d
 
 **Left rail — GEX matrix heatmap:** strike×expiry 0DTE matrix, GEX/VEX lens toggle, live spot row in ladder.
 - Tool: get_gex_heatmap (ticker=SPX, lens=gex|vex) or get_positioning (summary scalars + cross_validation)
+- get_spx_desk_convergence also returns matrix_ui — available lenses (GEX/VEX), default GEX, and client-only notes (focus mode / iOS panel / active lens toggle are NOT readable server-side)
 - SPX desk bundle: get_spx_structure (price, GEX snapshot, flow tape, dark pool, macro, tide, internals)
 
 **Center — suggested play + desk execution (2026-09):** Vector suggests the trade idea (VectorPlayCard: bias/setup/grade/conviction); Slayer verdict bar tracks desk execution (phase, gates, commits, open position). Chart merges Vector structure levels when Slayer is flat/scanning.

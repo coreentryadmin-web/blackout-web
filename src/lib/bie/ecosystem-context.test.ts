@@ -49,6 +49,9 @@ let closedPlayCalls = 0;
 let mockFullState: SpxPlayPayload | null = null;
 let fullStateCalls = 0;
 
+let mockDeskConvergence: Record<string, unknown> | null = null;
+let deskConvergenceCalls = 0;
+
 mock.module("../db", {
   namedExports: {
     dbConfigured: () => true,
@@ -234,6 +237,15 @@ mock.module("./market-breadth", {
   },
 });
 
+mock.module("@/lib/largo/spx-desk-convergence", {
+  namedExports: {
+    spxDeskConvergenceForLargo: async () => {
+      deskConvergenceCalls++;
+      return mockDeskConvergence;
+    },
+  },
+});
+
 let fetchEcosystemContext: typeof import("./ecosystem-context").fetchEcosystemContext;
 let ECOSYSTEM_CONTEXT_FIELDS: typeof import("./ecosystem-context").ECOSYSTEM_CONTEXT_FIELDS;
 let mapNighthawkEchoRows: typeof import("./ecosystem-context").mapNighthawkEchoRows;
@@ -255,6 +267,7 @@ test("ECOSYSTEM_CONTEXT_FIELDS: covers every real field with a non-empty descrip
     "recent_anomalies",
     "spx_play",
     "spx_full_state",
+    "spx_desk_convergence",
     "flow_feed_fresh",
     "gex_positioning",
     "vector_full_state",
@@ -454,13 +467,27 @@ test('fetchEcosystemContext("SPXW"): spx_full_state also populates (same single-
 
 test("fetchEcosystemContext: spx_full_state is null for a non-SPX ticker, and getSpxPlayState never runs", async () => {
   fullStateCalls = 0;
-  // Deliberately leave a full-state fixture mocked to prove the ticker gate —
-  // not the data — is what keeps a non-SPX ticker's spx_full_state null.
+  deskConvergenceCalls = 0;
   mockFullState = SPX_FULL_STATE_FIXTURE;
+  mockDeskConvergence = { alignment: "aligned" };
 
   const ctx = await fetchEcosystemContext("AAPL");
   assert.equal(ctx.spx_full_state, null);
+  assert.equal(ctx.spx_desk_convergence, null);
   assert.equal(fullStateCalls, 0, "getSpxPlayState must not run for a non-SPX ticker");
+  assert.equal(deskConvergenceCalls, 0, "spxDeskConvergenceForLargo must not run for a non-SPX ticker");
+});
+
+test('fetchEcosystemContext("SPX"): spx_desk_convergence reuses spxDeskConvergenceForLargo() verbatim', async () => {
+  deskConvergenceCalls = 0;
+  mockDeskConvergence = {
+    alignment: "aligned",
+    matrix_ui: { default_lens: "gex", available_lenses: ["gex", "vex"] },
+  };
+
+  const ctx = await fetchEcosystemContext("SPX");
+  assert.equal(deskConvergenceCalls, 1);
+  assert.deepEqual(ctx.spx_desk_convergence, mockDeskConvergence);
 });
 
 // Regression: fetchEcosystemContext()'s recent_flow hand-rolled its own raw

@@ -18,7 +18,7 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 |----------|---------|------|
 | `ops-auto-fix.yml` | 20 min | Prod errors/cron failures → agent fix loop |
 | `cron-staleness-watchdog` | 20 min | Discord alert on stale crons |
-| `spx-rth-all-day-agent.yml` | manual | RTH verify / post-close fix (schedule disabled — docs spam) |
+| `spx-rth-all-day-agent.yml` | weekdays RTH | RTH verify (summary-only) + post-close fix |
 
 **Agent rules:**
 
@@ -48,6 +48,15 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 - [x] Matrix lens UI state — expose active GEX/VEX lens to Largo via desk convergence payload
 - [x] Focus mode / iOS panel state — document as client-only (no false claims in Largo)
 - [x] Re-enable SPX RTH all-day agent schedule with **summary-only** agent output (no OPEN-ISSUES PR spam)
+
+## P1 — Largo / convergence follow-ups (#3378+)
+
+- [x] `get_ecosystem_context` SPX — attach `desk_convergence` (or `matrix_ui`) so cross-product reads see Vector/Slayer alignment without a second tool call
+- [ ] Largo truncation probe — re-run `scripts/audit/largo-truncation-probe.mjs` and fix any tool still returning TRUNCATED at 16KB cap
+
+## P2 — desk polish
+
+- [ ] Persist SPX matrix lens toggle to `sessionStorage` and document read path for future server-side hint (optional — today client-only is honest)
 
 ---
 
