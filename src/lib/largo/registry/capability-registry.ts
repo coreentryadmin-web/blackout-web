@@ -3,7 +3,7 @@ import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 /**
  * LARGO CAPABILITY REGISTRY — the data catalog Largo queries to discover what it can answer.
  *
- * THE PROBLEM THIS SOLVES. Largo is handed 130 tools, each with a one-line description. That is
+ * THE PROBLEM THIS SOLVES. Largo is handed 134 tools, each with a one-line description. That is
  * enough for "which tool fetches an SPX quote" and nowhere near enough for the questions that make
  * Largo worth having: *"what changed on SPX in the last 30 minutes"*, *"which Helix flow eventually
  * became a Night Hawk trade"*, *"where do Helix and Thermal disagree"*. Those need facts a tool
@@ -928,7 +928,7 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
   // uncatalogued that was almost never. The guard was armed and dormant: a turn mixing one
   // catalogued source with three unknown ones passed the check without the check meaning anything.
   //
-  // That pass closed the gap and the catalog has stayed complete since: coverage is 130 of 130
+  // That pass closed the gap and the catalog has stayed complete since: coverage is 134 of 134
   // today, held 1:1 by `registry.test.ts`. The numbers above are the state BEFORE this block, kept
   // as the reason it exists — do not read them as current.
   //
@@ -1988,7 +1988,7 @@ export function uncataloguedTools(): string[] {
  * question it lists the past-capable capabilities FIRST and states plainly that they are the ones
  * that can cover the window.
  *
- * RANKING, NEVER FILTERING. This block adds information; it removes nothing. All 130 tools stay in
+ * RANKING, NEVER FILTERING. This block adds information; it removes nothing. All 134 tools stay in
  * the request, so a capability that ranks poorly is merely further down a hint list — it can still
  * be called. That distinction is the entire lesson of the deleted intent allowlist
  * (FINDINGS 2026-08-10): a discovery mechanism that can HIDE a capability can make an answer

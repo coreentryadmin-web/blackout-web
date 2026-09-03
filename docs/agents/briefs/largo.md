@@ -31,7 +31,7 @@ yours.
 | Member surface | `/terminal` (`src/features/largo/components/LargoTerminal.tsx`). **That is the whole member surface.** This row used to add "plus mini-panels embedded on other product pages (`LargoDeskMiniPanel.tsx`)" — corrected 2026-08-23: #2358 added those panels and #2387 (*"drop the two side panels"*) removed the mount. `LargoDeskMiniPanel.tsx` still exists and **nothing imports it**; its premium-gated route `/api/market/largo/mini-panel` is still live and serves no caller. Verified by grep across `src/**/*.tsx` and by `git log -S`. See the map's L-11. |
 | Admin preview | `/admin/largo-answer-preview` |
 | Core engine | `src/lib/largo/` — 138 files, 18,947 lines. Largest: `run-tool.ts` (1942 — the tool-call loop itself), `product-reads.ts` (1395 — the read functions every tool calls into), `tool-defs.ts` (1178 — the 127 tool schemas), `largo-live-feed.ts`, `slash-submodules.ts`, `slash-prompts.ts`, `question-intent.ts`, `largo-store.ts`, `answer-contract.ts`, `system-prompt.ts` (460 — what the model is told about itself and every product) |
-| Tool registry | `src/lib/largo/registry/capability-registry.ts` — 1987 lines, 130 tools, one capability entry each |
+| Tool registry | `src/lib/largo/registry/capability-registry.ts` — 1987 lines, 134 tools, one capability entry each |
 | The contract | `src/lib/largo/contract/` — `product-read.ts` (the 10-point `ProductRead<T>` wrapper: time, freshness, absence, identity, direction, confidence, evidence, provenance, precision, historical context), `cross-product.ts`/`cross-product-read.ts` (joining reads across products, computing `coverage`), `session-anchor.ts` test (contract C1 ratchet — every `as_of`/`asOf` must anchor to an ET session, not a bare UTC instant), `product-adapters.ts` |
 | Grounding / verification | `src/lib/bie/verifier.ts` — `extractNumericClaims` + `verifyClaims`, the Layer-4 numeric-claim verifier that produces `ClaimVerification.coverage`; `src/lib/largo/turn-outcome.ts` — `applyVerificationCaveat`, the caveat footer a low-coverage answer gets |
 | Empty/degraded answers | `src/lib/largo/empty-answer-fallback.ts` — `classifyEmptyAnswer`, decides what a member sees when the model returns nothing usable |
@@ -39,7 +39,7 @@ yours.
 | Spend ceiling | `src/lib/ai-spend-headroom.ts`, folded into `src/lib/admin-health.ts`'s `ai_spend` / `health_ok` |
 | Member APIs | `/api/market/largo/{query,session,status,context,mini-panel,slash-prompts,draft-x-post,share-discord}` — `mini-panel` is live but **orphaned** (no caller since #2387). |
 | Crons | `largo-cleanup`, `largo-morning-brief` |
-| Tool count by product (roughly) | 130 tools total across Helix, Thermal, Vector, Meridian, Night Hawk, SPX, plus cross-cutting (`get_cross_product_read`, `get_market_context`, `get_news`, `get_web_search`, etc.) |
+| Tool count by product (roughly) | 134 tools total across Helix, Thermal, Vector, Meridian, Night Hawk, SPX, plus cross-cutting (`get_cross_product_read`, `get_market_context`, `get_news`, `get_web_search`, etc.) |
 
 ## Read before writing anything
 
@@ -70,7 +70,7 @@ USER QUESTION → intent classification → tool selection → tool dispatch →
   → caveat decision → answer assembly → UI render
 ```
 
-For each of the 130 tools, record: which product it reads, whether it returns a `ProductRead<T>`
+For each of the 134 tools, record: which product it reads, whether it returns a `ProductRead<T>`
 wrapper or a bare shape, whether its typical payload size is near or over `MAX_TOOL_RESULT_CHARS`,
 and whether it has ever been probed by `largo-truncation-probe.mjs`. Where you cannot establish
 something, write **UNKNOWN** — an honest gap is a finding, a plausible guess is a lie that outlives
@@ -82,7 +82,7 @@ you.
 
 ### 1. Tool dispatch and payload integrity
 
-Run `scripts/audit/largo-truncation-probe.mjs` against every one of the 130 tools, not just the
+Run `scripts/audit/largo-truncation-probe.mjs` against every one of the 134 tools, not just the
 seven already checked. Read the CONTROL line every time: if the control tool does not come back
 TRUNCATED, every COMPLETE that run reports is **UNVERIFIED**, not clean — the instrument itself must
 be proven each run, because an all-COMPLETE result is indistinguishable from a run whose question
@@ -203,7 +203,7 @@ NOT DONE. ONLY LIVE-VALIDATED IS DONE.**
 
 Write-ups carry root cause, evidence (a real turn trace, not an assertion), blast radius (every
 tool/consumer sharing the defect), and fix rationale. A fix on one tool of a shared defect class is
-a hypothesis, not a fix — you own 130 tools through one transport layer, so a defect found in one is
+a hypothesis, not a fix — you own 134 tools through one transport layer, so a defect found in one is
 a reason to check all of them, not a reason to stop.
 
 ---
