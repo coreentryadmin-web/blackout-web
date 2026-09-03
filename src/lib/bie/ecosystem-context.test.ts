@@ -237,7 +237,10 @@ mock.module("./market-breadth", {
   },
 });
 
-mock.module("@/lib/largo/spx-desk-convergence", {
+// Relative specifier, not "@/..." — matches the production dynamic import() in ecosystem-context.ts
+// (also fixed to a relative specifier), since tsx does not rewrite "@/..." aliases for either
+// mock.module()'s specifier or a dynamic import() call, only statically-parsed top-level imports.
+mock.module("../largo/spx-desk-convergence", {
   namedExports: {
     spxDeskConvergenceForLargo: async () => {
       deskConvergenceCalls++;

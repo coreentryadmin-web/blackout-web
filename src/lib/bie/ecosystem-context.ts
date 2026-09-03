@@ -789,7 +789,12 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
       isSpxSlayerTicker(upper) ? fetchSpxPlaySummary() : Promise.resolve(null),
       isSpxSlayerTicker(upper) ? fetchSpxFullState() : Promise.resolve(null),
       isSpxSlayerTicker(upper)
-        ? import("@/lib/largo/spx-desk-convergence")
+        ? // Relative specifier, not "@/..." — tsx's alias rewrite only applies to statically-parsed
+          // top-level `import ... from` statements, not a dynamic import() call (confirmed the hard
+          // way: see flow-gex-enrichment.test.ts). An "@/..." specifier here resolves fine under
+          // Next.js's webpack/turbopack bundler at runtime but fails under the test-runner's tsx,
+          // which is exactly the failure this line produced in CI.
+          import("../largo/spx-desk-convergence")
             .then((m) => m.spxDeskConvergenceForLargo())
             .catch(() => null)
         : Promise.resolve(null),
