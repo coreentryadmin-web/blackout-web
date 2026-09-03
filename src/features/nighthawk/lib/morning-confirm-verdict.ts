@@ -4,6 +4,7 @@
 import type { PlaybookPlay } from "./types";
 import { parsePlayLevels } from "./play-levels";
 import { INDEX_SET, INDEX_ETF_PLAYS } from "./constants";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 
 const SPX_RELEVANT_TICKERS = new Set<string>([...INDEX_SET, ...INDEX_ETF_PLAYS]);
 
@@ -44,7 +45,13 @@ export function isMorningConfirmStale(checkedAt: string | null | undefined, nowM
   if (!checkedAt) return false;
   const checkedMs = Date.parse(checkedAt);
   if (Number.isNaN(checkedMs)) return false;
-  return nowMs - checkedMs > MORNING_CONFIRM_STALE_MS;
+  const ageMs = nowMs - checkedMs;
+  // BUG FIX (2026-09-03): checked_at is written by a separate cron process, so cross-process
+  // clock skew is real — a future-dated checked_at used to produce a negative ageMs that never
+  // exceeded MORNING_CONFIRM_STALE_MS, leaving the "as of" qualifier off a verdict whose real age
+  // cannot be verified. Same tolerance marks-math.ts's isZeroDteMarkStale applies to option marks.
+  if (ageMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) return true;
+  return ageMs > MORNING_CONFIRM_STALE_MS;
 }
 
 /** Format an ISO timestamp as Eastern clock time for the badge tooltip, e.g. "9:16 AM ET". */

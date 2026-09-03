@@ -1,4 +1,5 @@
 import type { FlowStrikeStack } from "@/lib/largo/flow-strike-stacks";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 import type { BenzingaCatalyst, BenzingaPriceTarget, FundamentalSignals, PolygonFinancialRatios } from "@/lib/providers/polygon";
 import type { PredictionConsensusSignal } from "@/lib/providers/unusual-whales";
 import type { TickerGreekFlowSummary } from "./dossier";
@@ -767,7 +768,13 @@ function congressTradeDecayMultiplier(row: Record<string, unknown>, nowMs: numbe
   if (raw == null || raw === "") return 0.4;
   const d = new Date(String(raw));
   if (Number.isNaN(d.getTime())) return 0.4;
-  const ageDays = (nowMs - d.getTime()) / 86_400_000;
+  const ageMs = nowMs - d.getTime();
+  // BUG FIX (2026-09-03): a filed_at/disclosure date from the FUTURE (external congressional-trade
+  // disclosure feeds are known to carry messy/malformed dates) used to produce a negative ageDays
+  // that trivially satisfied `<= 7`, handing a bad date the MAXIMUM 1.0x recency multiplier instead
+  // of being discounted like any other date whose real age cannot be verified.
+  if (ageMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) return 0.4;
+  const ageDays = ageMs / 86_400_000;
   if (ageDays <= 7) return 1.0;
   if (ageDays <= 14) return 0.7;
   return 0.4;
