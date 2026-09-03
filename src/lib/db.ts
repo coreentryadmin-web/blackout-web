@@ -2545,6 +2545,10 @@ export async function pingDatabaseConnectivity(): Promise<{
 }> {
   if (!dbConfigured()) return { ok: false, error: "DATABASE_URL not set" };
   try {
+    // Deliberately NOT routed through dbQuery: this probe exists to report the connection's
+    // real, immediate state (e.g. for admin health/status endpoints) — masking a live outage
+    // behind dbQuery's 3-attempt retry+backoff would make this ping lie about being healthy
+    // for several seconds while it silently retries, defeating its purpose as a connectivity check.
     await (await getPool()).query("SELECT 1");
     return { ok: true, mode: activeMode };
   } catch (error) {
@@ -2643,7 +2647,7 @@ export async function releaseAdvisoryLock(lockKey: string): Promise<void> {
 
 export async function getMeta(key: string): Promise<string | null> {
   await ensureSchema();
-  const res = await (await getPool()).query<{ value: string }>(
+  const res = await dbQuery<{ value: string }>(
     "SELECT value FROM platform_meta WHERE key = $1",
     [key]
   );
@@ -2652,12 +2656,32 @@ export async function getMeta(key: string): Promise<string | null> {
 
 export async function setMeta(key: string, value: string, db?: Db): Promise<void> {
   await ensureSchema();
-  const q = db ?? (await getPool());
-  if (value === "") {
-    await q.query("DELETE FROM platform_meta WHERE key = $1", [key]);
+  // Two paths, not one shared `q.query(...)`: a caller-supplied `db` is a transaction client
+  // (already scoped, must use exactly that connection — dbQuery's retry would silently escape
+  // the transaction onto a fresh pool connection). The no-`db` path is the common one (every
+  // getMeta/setMeta caller outside an explicit transaction, e.g. play-engine-heartbeat.ts) and
+  // now goes through dbQuery so it gets the same transient-error retry every other write in this
+  // file has — this was the exact bug behind live "[play-engine-heartbeat] persist failed: Cannot
+  // use a pool after calling end on the pool" warnings (2026-09-03), the same pool-teardown race
+  // documented on isTransientPgError/resetPoolForRetry.
+  if (db) {
+    if (value === "") {
+      await db.query("DELETE FROM platform_meta WHERE key = $1", [key]);
+      return;
+    }
+    await db.query(
+      `INSERT INTO platform_meta (key, value, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [key, value]
+    );
     return;
   }
-  await q.query(
+  if (value === "") {
+    await dbQuery("DELETE FROM platform_meta WHERE key = $1", [key]);
+    return;
+  }
+  await dbQuery(
     `INSERT INTO platform_meta (key, value, updated_at)
      VALUES ($1, $2, NOW())
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
@@ -2799,7 +2823,7 @@ export async function fetchRecentFlows(params: {
       ? `ORDER BY COALESCE(created_at, inserted_at) DESC NULLS LAST`
       : `ORDER BY COALESCE(total_premium, 0) DESC NULLS LAST`;
 
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `
     SELECT alert_id,
            ticker,
@@ -2996,7 +3020,7 @@ export async function fetchTrailingSessionSkew(params: {
     tickerClause = `AND ticker = $2`;
   }
 
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `
     WITH by_session AS (
       SELECT (COALESCE(created_at, inserted_at) AT TIME ZONE 'America/New_York')::date AS session_date,
@@ -3089,7 +3113,7 @@ export function pgNumericOrNull(v: unknown): number | null {
 export async function fetchRecentHelixSignalOutcomes(limit = 50): Promise<HelixSignalOutcomeRow[]> {
   await ensureSchema();
   const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(Math.trunc(limit), 200) : 50;
-  const res = await (await getPool()).query<HelixSignalOutcomeRow>(
+  const res = await dbQuery<HelixSignalOutcomeRow>(
     `
     SELECT id, signal_type, ticker, direction, fired_at::text AS fired_at,
            price_at_fire, price_5m, price_15m, price_1h, outcome
@@ -3185,7 +3209,7 @@ export async function fetchPendingHelixSignalCheckpoints(
   maxAgeDays = HELIX_CHECKPOINT_MAX_AGE_DAYS
 ): Promise<HelixSignalOutcomePendingRow[]> {
   await ensureSchema();
-  const res = await (await getPool()).query<HelixSignalOutcomePendingRow>(
+  const res = await dbQuery<HelixSignalOutcomePendingRow>(
     `
     SELECT id, signal_type, ticker, direction,
            fired_at::text AS fired_at, price_at_fire
@@ -3219,7 +3243,7 @@ export async function updateHelixSignalCheckpoint(
   await ensureSchema();
   const setOutcome = outcome ? `, outcome = $3` : ``;
   const params: Array<number | string> = outcome ? [id, price, outcome] : [id, price];
-  await (await getPool()).query(
+  await dbQuery(
     `UPDATE helix_signal_outcomes SET ${checkpoint} = $2${setOutcome} WHERE id = $1`,
     params
   );
@@ -3343,7 +3367,7 @@ export async function insertFlowAlert(row: {
   raw_payload: unknown;
 }): Promise<boolean> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     INSERT INTO flow_alerts (
       alert_id, ticker, strike, expiry, option_type,
@@ -3382,7 +3406,7 @@ export async function insertSpxSignalLog(row: {
   factors: unknown;
 }): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     INSERT INTO spx_signal_log (
       signal_key, action, bias, score, confidence, price,
@@ -3426,7 +3450,7 @@ export async function insertShadowFactorObservation(row: {
   actual_grade: string | null;
 }): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     INSERT INTO spx_confluence_shadow_observations (
       session_date, factor_name, available, implied_weight, direction, detail,
@@ -3468,7 +3492,7 @@ export async function insertSpxEngineSnapshot(row: {
   as_of: string | null;
 }): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     INSERT INTO spx_engine_snapshots (
       session_date, phase, action, direction, score,
@@ -3506,7 +3530,7 @@ export async function fetchRecentSpxEngineSnapshots(limit = 50): Promise<
   }>
 > {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, observed_at, session_date, phase, action, direction, score,
            gates_passed, gates_blocks, thesis, as_of
@@ -3548,7 +3572,7 @@ export async function insertPlaybookShadowObservation(row: {
   first_block_category?: string | null;
 }): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     INSERT INTO spx_playbook_shadow_observations (
       session_date, primary_playbook_id, regime, gamma_regime,
@@ -3604,7 +3628,7 @@ export async function loadPlaybookInstanceStates(
   }>
 > {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT instance_id, playbook_id, direction, state,
            COALESCE(armed_poll_count, 0) AS armed_poll_count,
@@ -3662,7 +3686,7 @@ export async function loadPlaybookArmedPollCounts(sessionDate: string): Promise<
 /** Count trigger episodes per playbook for session risk governor (includes invalidated-without-open). */
 export async function loadPlaybookTriggerCountsByPb(sessionDate: string): Promise<Map<string, number>> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT playbook_id, COUNT(*)::int AS trigger_count
     FROM spx_playbook_instances
@@ -3878,7 +3902,7 @@ export async function patchPlaybookInstanceBlocked(input: {
   executable: boolean;
 }): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     UPDATE spx_playbook_instances
     SET reason_blocked = $2, executable = $3, updated_at = NOW()
@@ -3895,7 +3919,7 @@ export async function patchPlaybookInstanceOpened(input: {
   executable?: boolean;
 }): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     UPDATE spx_playbook_instances
     SET opened_at = COALESCE($2::timestamptz, NOW()),
@@ -3927,7 +3951,7 @@ export async function loadTriggeredPlaybookInstances(sessionDate: string): Promi
   }>
 > {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT instance_id, playbook_id, direction, trigger_price,
            (EXTRACT(EPOCH FROM triggered_at) * 1000)::bigint AS triggered_at_ms,
@@ -3968,7 +3992,7 @@ export async function finalizePlaybookCounterfactualIfActive(
   nowMs: number
 ): Promise<void> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `SELECT counterfactual_eval FROM spx_playbook_instances WHERE instance_id = $1`,
     [instanceId]
   );
@@ -3976,7 +4000,7 @@ export async function finalizePlaybookCounterfactualIfActive(
   if (!raw || typeof raw !== "object") return;
   const o = raw as { exit_reason_counterfactual?: string };
   if (o.exit_reason_counterfactual !== "active") return;
-  await (await getPool()).query(
+  await dbQuery(
     `
     UPDATE spx_playbook_instances
     SET counterfactual_eval = jsonb_set(
@@ -3996,7 +4020,7 @@ export async function patchPlaybookInstanceCounterfactualEval(
   evalPayload: unknown
 ): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     UPDATE spx_playbook_instances
     SET counterfactual_eval = $2::jsonb,
@@ -4013,7 +4037,7 @@ export async function updatePlaybookInstanceCounterfactual(
   maePts: number
 ): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     UPDATE spx_playbook_instances
     SET counterfactual_mfe_pts = GREATEST(COALESCE(counterfactual_mfe_pts, 0), $2),
@@ -4055,7 +4079,7 @@ export async function fetchPlaybookEvidenceRows(opts?: {
   await ensureSchema();
   const oosOnly = opts?.oos_only !== false;
   const since = opts?.since_date ?? "2026-07-10";
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT
       i.instance_id,
@@ -4154,7 +4178,7 @@ export async function fetchPlaybookPromotionEvidenceRows(opts?: {
   await ensureSchema();
   const oosOnly = opts?.oos_only !== false;
   const since = opts?.since_date ?? "2026-07-10";
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT
       i.instance_id,
@@ -4252,7 +4276,17 @@ export async function fetchPlaybookShadowObservationsForSession(
   }>
 > {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery<{
+    id: number;
+    observed_at: string;
+    primary_playbook_id: string | null;
+    regime: string | null;
+    gamma_regime: string | null;
+    price_at_observation: number | null;
+    engine_action: string;
+    engine_score: number;
+    verdicts: unknown;
+  }>(
     `
     SELECT id, observed_at, primary_playbook_id, regime, gamma_regime,
            price_at_observation, engine_action, engine_score, verdicts
@@ -4294,7 +4328,7 @@ export async function insertZeroDteScanRejection(row: {
   reason?: string | null;
 }): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     INSERT INTO zerodte_scan_rejections (
       session_date, ticker, gate_failed, threshold, gross_premium,
@@ -4353,22 +4387,22 @@ export async function fetchZeroDteScanRejections(opts?: {
            first_seen, last_seen, reason`;
   let res;
   if (ticker && sessionDate) {
-    res = await (await getPool()).query(
+    res = await dbQuery(
       `SELECT ${cols} FROM zerodte_scan_rejections WHERE ticker = $1 AND session_date = $2 ORDER BY observed_at DESC LIMIT $3`,
       [ticker, sessionDate, limit]
     );
   } else if (ticker) {
-    res = await (await getPool()).query(
+    res = await dbQuery(
       `SELECT ${cols} FROM zerodte_scan_rejections WHERE ticker = $1 ORDER BY observed_at DESC LIMIT $2`,
       [ticker, limit]
     );
   } else if (sessionDate) {
-    res = await (await getPool()).query(
+    res = await dbQuery(
       `SELECT ${cols} FROM zerodte_scan_rejections WHERE session_date = $1 ORDER BY observed_at DESC LIMIT $2`,
       [sessionDate, limit]
     );
   } else {
-    res = await (await getPool()).query(
+    res = await dbQuery(
       `SELECT ${cols} FROM zerodte_scan_rejections ORDER BY observed_at DESC LIMIT $1`,
       [limit]
     );
@@ -4422,7 +4456,7 @@ export async function countZeroDteDiscoveryEventsByKind(
   sessionDate: string
 ): Promise<Record<string, number>> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `SELECT kind, COUNT(*)::int AS n FROM zerodte_discovery_events WHERE session_date = $1 GROUP BY kind`,
     [sessionDate]
   );
@@ -4439,7 +4473,7 @@ export async function countZeroDteDiscoveryEventsByKind(
  */
 export async function countZeroDteDetectedTickers(sessionDate: string): Promise<number> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `SELECT COUNT(DISTINCT ticker)::int AS n FROM zerodte_discovery_events WHERE session_date = $1 AND kind = 'detected'`,
     [sessionDate]
   );
@@ -4488,7 +4522,7 @@ export async function fetchZeroDteDiscoveryEvents(opts?: {
   }
   params.push(limit);
   const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `SELECT ${cols} FROM zerodte_discovery_events ${where} ORDER BY observed_at DESC LIMIT $${params.length}`,
     params
   );
@@ -4519,7 +4553,7 @@ export async function insertZeroDteDiscoveryEvent(row: {
   payload?: Record<string, unknown> | null;
 }): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `INSERT INTO zerodte_discovery_events (
       session_date, ticker, kind, origins, score, weighted_score, gate_code, detail, payload
     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
@@ -4558,7 +4592,7 @@ export async function insertGexRegimeEvent(row: {
   detected_at: string | null;
 }): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     INSERT INTO gex_regime_events (
       session_date, ticker, event_type, severity, message,
@@ -4603,11 +4637,11 @@ export async function fetchGexRegimeEventRows(opts?: { ticker?: string; limit?: 
   const cols = `id, observed_at, session_date, ticker, event_type, severity, message,
            level, direction, from_value, to_value, detected_at`;
   const res = ticker
-    ? await (await getPool()).query(
+    ? await dbQuery(
         `SELECT ${cols} FROM gex_regime_events WHERE ticker = $1 ORDER BY observed_at DESC LIMIT $2`,
         [ticker, limit]
       )
-    : await (await getPool()).query(
+    : await dbQuery(
         `SELECT ${cols} FROM gex_regime_events ORDER BY observed_at DESC LIMIT $1`,
         [limit]
       );
@@ -4647,7 +4681,7 @@ export async function insertFlowAnomalyNearMiss(row: {
   detail: string;
 }): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     INSERT INTO flow_anomaly_near_misses (
       anomaly_type, ticker, reason, metric_value, threshold,
@@ -4690,11 +4724,11 @@ export async function fetchFlowAnomalyNearMisses(opts?: { ticker?: string; limit
   const cols = `id, observed_at, anomaly_type, ticker, reason, metric_value,
            threshold, premium, direction, severity, detail`;
   const res = ticker
-    ? await (await getPool()).query(
+    ? await dbQuery(
         `SELECT ${cols} FROM flow_anomaly_near_misses WHERE ticker = $1 ORDER BY observed_at DESC LIMIT $2`,
         [ticker, limit]
       )
-    : await (await getPool()).query(
+    : await dbQuery(
         `SELECT ${cols} FROM flow_anomaly_near_misses ORDER BY observed_at DESC LIMIT $1`,
         [limit]
       );
@@ -4741,7 +4775,7 @@ export type FlowAnomalyRow = {
 export async function fetchFlowAnomalies(opts?: { limit?: number }): Promise<FlowAnomalyRow[]> {
   await ensureSchema();
   const limit = opts?.limit ?? 500;
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `SELECT id, detected_at, anomaly_type, ticker, detail, premium, direction, severity
      FROM flow_anomalies ORDER BY detected_at DESC LIMIT $1`,
     [limit]
@@ -4776,7 +4810,7 @@ export async function fetchRecentSpxSignalLogs(limit = 50): Promise<
   }>
 > {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, signal_key, action, bias, score, confidence, price,
            entry, stop, target, headline, factors, created_at
@@ -4825,7 +4859,7 @@ export async function fetchOpenSpxPlay(sessionDate: string): Promise<{
   playbook_id?: string | null;
 } | null> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, session_date, direction, entry_price, entry_score, stop, target, grade, headline,
            trim_done, mfe_pts, mae_pts, opened_at, status,
@@ -4867,7 +4901,7 @@ export async function fetchTodaySpxSessionCounts(
   sessionDate: string
 ): Promise<{ entries: number; losses: number }> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT
       (SELECT COUNT(*)::int FROM spx_open_play WHERE session_date = $1::date) AS entries,
@@ -4900,7 +4934,7 @@ export async function fetchTodaySpxSessionCounts(
  */
 export async function fetchTodaySpxConsecutiveLosses(sessionDate: string): Promise<number> {
   await ensureSchema();
-  const res = await (await getPool()).query<{ outcome: string }>(
+  const res = await dbQuery<{ outcome: string }>(
     `
     SELECT outcome FROM spx_play_outcomes
     WHERE session_date = $1::date AND outcome <> 'open'
@@ -5099,7 +5133,7 @@ export async function updateOpenSpxPlayRow(
   }
   if (!sets.length) return;
   vals.push(id);
-  await (await getPool()).query(
+  await dbQuery(
     `UPDATE spx_open_play SET ${sets.join(", ")} WHERE id = $${i} AND status = 'open'`,
     vals
   );
@@ -5107,10 +5141,17 @@ export async function updateOpenSpxPlayRow(
 
 export async function closeOpenSpxPlayRow(id: number, db?: Db): Promise<number> {
   await ensureSchema();
-  const res = await (db ?? await getPool()).query(
-    `UPDATE spx_open_play SET status = 'closed', closed_at = NOW() WHERE id = $1 AND status = 'open'`,
-    [id]
-  );
+  // db-optional dual path (see setMeta's comment above for why): a transaction client must stay
+  // on its own connection; the no-db common case now gets dbQuery's transient-error retry.
+  const res = db
+    ? await db.query(
+        `UPDATE spx_open_play SET status = 'closed', closed_at = NOW() WHERE id = $1 AND status = 'open'`,
+        [id]
+      )
+    : await dbQuery(
+        `UPDATE spx_open_play SET status = 'closed', closed_at = NOW() WHERE id = $1 AND status = 'open'`,
+        [id]
+      );
   return res.rowCount ?? 0;
 }
 
@@ -5164,7 +5205,7 @@ export async function insertPlayOutcomeEntry(row: {
   entry_context?: Record<string, unknown> | null;
 }): Promise<number> {
   await ensureSchema();
-  const res = await (await getPool()).query<{ id: string }>(
+  const res = await dbQuery<{ id: string }>(
     `
     INSERT INTO spx_play_outcomes (
       open_play_id, session_date, direction, entry_path, grade, score, confidence,
@@ -5215,8 +5256,7 @@ export async function closePlayOutcomeRow(
   db?: Db
 ): Promise<number> {
   await ensureSchema();
-  const res = await (db ?? await getPool()).query(
-    `
+  const sql = `
     UPDATE spx_play_outcomes
     SET exit_price = $2,
         exit_action = $3,
@@ -5227,19 +5267,21 @@ export async function closePlayOutcomeRow(
         outcome = $8,
         closed_at = $9::timestamptz
     WHERE open_play_id = $1 AND outcome = 'open'
-    `,
-    [
-      openPlayId,
-      close.exit_price,
-      close.exit_action,
-      close.mfe_pts,
-      close.mae_pts,
-      close.trim_done,
-      close.pnl_pts,
-      close.outcome,
-      close.closed_at,
-    ]
-  );
+    `;
+  const params = [
+    openPlayId,
+    close.exit_price,
+    close.exit_action,
+    close.mfe_pts,
+    close.mae_pts,
+    close.trim_done,
+    close.pnl_pts,
+    close.outcome,
+    close.closed_at,
+  ];
+  // db-optional dual path (see setMeta's comment above): transaction client stays on its own
+  // connection; the no-db common case now gets dbQuery's transient-error retry.
+  const res = db ? await db.query(sql, params) : await dbQuery(sql, params);
   // rowCount lets the recorder detect the silent "play closed but no outcome row
   // to grade" case (the empty-ledger bug). null-coalesce for driver safety.
   return res.rowCount ?? 0;
@@ -5288,7 +5330,7 @@ function mapUserJournalRow(r: QueryResultRow): UserJournalRow {
 
 export async function fetchUserJournalRows(userId: string): Promise<UserJournalRow[]> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `SELECT open_play_id, note, tags, updated_at FROM user_journal WHERE user_id = $1 ORDER BY updated_at DESC`,
     [userId]
   );
@@ -5302,7 +5344,7 @@ export async function upsertUserJournalEntry(
   tags: string[]
 ): Promise<UserJournalRow> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     INSERT INTO user_journal (user_id, open_play_id, note, tags, updated_at)
     VALUES ($1, $2, $3, $4::jsonb, NOW())
@@ -5317,7 +5359,7 @@ export async function upsertUserJournalEntry(
 
 export async function deleteUserJournalEntry(userId: string, openPlayId: number): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `DELETE FROM user_journal WHERE user_id = $1 AND open_play_id = $2`,
     [userId, openPlayId]
   );
@@ -5327,7 +5369,7 @@ export async function fetchClosedPlayOutcomes(limit = 500): Promise<
   import("@/features/spx/lib/spx-play-outcomes").PlayOutcomeRow[]
 > {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, open_play_id, session_date, direction, entry_path, grade, score, confidence,
            entry_price, exit_price, stop, target, mfe_pts, mae_pts, trim_done, pnl_pts,
@@ -5346,7 +5388,7 @@ export async function fetchRecentPlayOutcomeRows(limit = 50): Promise<
   import("@/features/spx/lib/spx-play-outcomes").PlayOutcomeRow[]
 > {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, open_play_id, session_date, direction, entry_path, grade, score, confidence,
            entry_price, exit_price, stop, target, mfe_pts, mae_pts, trim_done, pnl_pts,
@@ -5532,7 +5574,7 @@ export async function insertLottoPlay(row: {
 }): Promise<number | null> {
   if (!dbConfigured()) return null;
   await ensureSchema();
-  const res = await (await getPool()).query<{ id: string }>(
+  const res = await dbQuery<{ id: string }>(
     `
     INSERT INTO lotto_plays (
       session_date, pick_index, is_reversal, phase, direction, strike, contract_label,
@@ -5579,7 +5621,7 @@ export async function updateLottoPlay(
 ): Promise<void> {
   if (!dbConfigured()) return;
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     UPDATE lotto_plays
     SET phase = $2,
@@ -5621,7 +5663,7 @@ export async function fetchLottoPlaysForDate(sessionDate: string): Promise<
 > {
   if (!dbConfigured()) return [];
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, session_date, pick_index, phase, direction, strike, contract_label,
            catalyst_summary, outcome, headline, picked_at, buy_at, closed_at
@@ -5669,7 +5711,7 @@ export async function upsertNighthawkEdition(row: {
   meta?: Record<string, unknown>;
 }): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     INSERT INTO nighthawk_editions (
       edition_for, session_date, published_at,
@@ -5705,7 +5747,7 @@ export async function fetchNighthawkEditionByDate(
   const normalized = normalizeIsoDateInput(editionFor);
   if (!normalized) return null;
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `
     SELECT edition_for, session_date, published_at,
            recap_headline, recap_summary, market_recap, plays, meta
@@ -5731,7 +5773,7 @@ export async function fetchNighthawkEditionByDate(
 
 export async function fetchLatestNighthawkEdition(): Promise<NighthawkEditionRow | null> {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `
     SELECT edition_for, session_date, published_at,
            recap_headline, recap_summary, market_recap, plays, meta
@@ -6690,7 +6732,7 @@ export async function fetchZeroDteSetupLog(sessionDate: string): Promise<ZeroDte
   await ensureSchema();
   const normalized = normalizeIsoDateInput(sessionDate);
   if (!normalized) return [];
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM zerodte_setup_log WHERE session_date = $1::date ORDER BY score_max DESC, first_flagged_at ASC LIMIT 30`,
     [normalized]
   );
@@ -6702,7 +6744,7 @@ export async function fetchZeroDteSetupLogRange(sinceDate: string, limit = 500):
   await ensureSchema();
   const normalized = normalizeIsoDateInput(sinceDate);
   if (!normalized) return [];
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM zerodte_setup_log WHERE session_date >= $1::date ORDER BY session_date DESC, score_max DESC LIMIT $2`,
     [normalized, limit]
   );
@@ -6743,7 +6785,7 @@ export async function fetchUngradedZeroDteRows(beforeDate: string, limit = 12): 
   await ensureSchema();
   const normalized = normalizeIsoDateInput(beforeDate);
   if (!normalized) return [];
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM zerodte_setup_log
      WHERE graded_at IS NULL AND session_date < $1::date
      ORDER BY session_date DESC LIMIT $2`,
@@ -6783,7 +6825,7 @@ export type GradedFeatureVectorRow = {
  */
 export async function fetchGradedFeatureVectorRows(limit = 5000): Promise<GradedFeatureVectorRow[]> {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT ticker, session_date, feature_vector, plan_outcome, plan_pnl_pct, entry_context
        FROM zerodte_setup_log
       WHERE feature_vector IS NOT NULL
@@ -6865,7 +6907,7 @@ export async function gradeZeroDteSetupRow(
   grade: { close_price: number | null; move_pct: number | null; direction_hit: boolean | null }
 ): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `UPDATE zerodte_setup_log
      SET close_price = $3, move_pct = $4, direction_hit = $5, graded_at = NOW()
      WHERE session_date = $1::date AND ticker = $2`,
@@ -6904,7 +6946,7 @@ export async function updateZeroDteLiveState(
   s: { status: string; mark: number | null; trimsTaken?: number }
 ): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `UPDATE zerodte_setup_log SET
        status = CASE
          WHEN status = 'CLOSED' THEN status
@@ -6981,7 +7023,7 @@ export async function stampZeroDteExitContext(
   exit: Record<string, unknown>
 ): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `UPDATE zerodte_setup_log
      SET entry_context = COALESCE(entry_context, '{}'::jsonb) || jsonb_build_object('exit', $3::jsonb)
      WHERE session_date = $1::date AND ticker = $2 AND (entry_context -> 'exit') IS NULL`,
@@ -7320,9 +7362,10 @@ export async function insertSwingPosition(pos: SwingPositionInsert, db?: Db): Pr
   await ensureSchema();
   // `db` lets the caller run this write on an already-open transaction client (withSwingRollTx) instead of a
   // fresh autocommit pool connection — so a roll's child insert + parent grade share ONE atomic transaction.
-  const executor = db ?? (await getPool());
-  const res = await executor.query<{ id: string }>(
-    `
+  // No-db common case now goes through dbQuery for the same transient-error retry every other
+  // write in this file gets (see setMeta's comment above); a supplied transaction client must
+  // stay on exactly that connection.
+  const sql = `
     INSERT INTO swing_positions (
       commit_key, root_position_id, parent_position_id, roll_seq, session_date, ticker,
       direction, sub_lane, archetype, top_flow_strike, contract_strike, contract_expiry,
@@ -7345,8 +7388,8 @@ export async function insertSwingPosition(pos: SwingPositionInsert, db?: Db): Pr
         ${coalescePinnedColumns("swing_positions", SWING_POSITION_PINNED_COLUMNS)},
         updated_at = NOW()
     RETURNING id
-    `,
-    [
+    `;
+  const params = [
       pos.commit_key,
       pos.root_position_id ?? null,
       pos.parent_position_id ?? null,
@@ -7371,8 +7414,10 @@ export async function insertSwingPosition(pos: SwingPositionInsert, db?: Db): Pr
       toJsonbParam(pos.feature_vector ?? null),
       toJsonbParam(pos.plan_json ?? null),
       pos.status ?? "OPEN",
-    ]
-  );
+  ];
+  const res = db
+    ? await db.query<{ id: string }>(sql, params)
+    : await dbQuery<{ id: string }>(sql, params);
   return Number(res.rows[0]!.id);
 }
 
@@ -7393,7 +7438,7 @@ export async function updateSwingLiveState(
   }
 ): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `UPDATE swing_positions SET
        status = CASE
          WHEN status IN ('CLOSED','ROLLED') THEN status                      -- terminal frozen
@@ -7456,9 +7501,7 @@ export async function gradeSwingPosition(
   db?: Db
 ): Promise<number> {
   await ensureSchema();
-  const executor = db ?? (await getPool());
-  const res = await executor.query(
-    `UPDATE swing_positions SET
+  const sql = `UPDATE swing_positions SET
        grade_json = $2::jsonb,
        grade_methodology = $3,
        legacy_grade = COALESCE($4::jsonb, legacy_grade),
@@ -7467,16 +7510,18 @@ export async function gradeSwingPosition(
        closed_at = COALESCE(closed_at, NOW()),
        graded_at = NOW(),
        updated_at = NOW()
-     WHERE id = $1 AND graded_at IS NULL`,
-    [
-      id,
-      toJsonbParam(g.grade_json),
-      g.grade_methodology,
-      toJsonbParam(g.legacy_grade ?? null),
-      g.realized_pnl_pct ?? null,
-      g.status ?? "CLOSED",
-    ]
-  );
+     WHERE id = $1 AND graded_at IS NULL`;
+  const params = [
+    id,
+    toJsonbParam(g.grade_json),
+    g.grade_methodology,
+    toJsonbParam(g.legacy_grade ?? null),
+    g.realized_pnl_pct ?? null,
+    g.status ?? "CLOSED",
+  ];
+  // db-optional dual path (see setMeta's comment above): transaction client stays on its own
+  // connection; the no-db common case now gets dbQuery's transient-error retry.
+  const res = db ? await db.query(sql, params) : await dbQuery(sql, params);
   return res.rowCount ?? 0;
 }
 
@@ -7551,7 +7596,7 @@ export async function withSwingRollTx<T>(
  *  closed the play is frozen; a later re-grade against fresher bars must not rewrite it. */
 export async function pinSwingScaleOutGrade(id: number, scaleOutGrade: Record<string, unknown>): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `UPDATE swing_positions
        SET scale_out_grade = $2::jsonb, updated_at = NOW()
      WHERE id = $1 AND scale_out_grade IS NULL`,
@@ -7565,7 +7610,7 @@ export async function fetchLatestSwingSnapshotEvents(
 ): Promise<Map<number, Record<string, unknown>>> {
   await ensureSchema();
   if (positionIds.length === 0) return new Map();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT DISTINCT ON (position_id) position_id, event_json, thesis_state
        FROM swing_position_snapshots
       WHERE position_id = ANY($1::bigint[])
@@ -7585,7 +7630,7 @@ export async function fetchLatestSwingSnapshotEvents(
 /** Every live position (the manager/refresh loop's working set). */
 export async function fetchOpenSwingPositions(): Promise<SwingPositionRow[]> {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM swing_positions WHERE status NOT IN ('CLOSED','ROLLED') ORDER BY session_date DESC, id DESC`
   );
   return res.rows.map(mapSwingPositionRow);
@@ -7715,7 +7760,7 @@ export async function insertSwingShadowPosition(pos: SwingShadowPositionInsert):
 /** OPEN shadow positions — read-only observability (admin debug), never fed into the real book/budget. */
 export async function fetchOpenSwingShadowPositions(): Promise<SwingShadowPositionRow[]> {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM swing_shadow_positions WHERE status = 'OPEN' ORDER BY session_date DESC, id DESC`
   );
   return res.rows.map(mapSwingShadowPositionRow);
@@ -7726,7 +7771,7 @@ export async function fetchSwingPositionsRange(sinceDate: string, limit = 1000):
   await ensureSchema();
   const normalized = normalizeIsoDateInput(sinceDate);
   if (!normalized) return [];
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM swing_positions WHERE session_date >= $1::date ORDER BY session_date DESC, id DESC LIMIT $2`,
     [normalized, limit]
   );
@@ -7737,7 +7782,7 @@ export async function fetchSwingPositionsRange(sinceDate: string, limit = 1000):
  *  CLOSED/ROLLED and its forward bars exist). Capped — grading is incremental. */
 export async function fetchUngradedSwingPositions(limit = 25): Promise<SwingPositionRow[]> {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM swing_positions
       WHERE graded_at IS NULL AND status IN ('CLOSED','ROLLED')
       ORDER BY session_date ASC, id ASC
@@ -7753,7 +7798,7 @@ export async function fetchUngradedSwingPositions(limit = 25): Promise<SwingPosi
  *  assembled by the record layer (PR-14), never by netting rows here. */
 export async function fetchSwingPositionChain(rootPositionId: number): Promise<SwingPositionRow[]> {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM swing_positions
       WHERE id = $1 OR root_position_id = $1
       ORDER BY roll_seq ASC, id ASC`,
@@ -7766,7 +7811,7 @@ export async function fetchSwingPositionChain(rootPositionId: number): Promise<S
  *  rows that are both graded and feature-bearing are evidence; anything else stays in the DB. */
 export async function fetchGradedSwingFeatureRows(limit = 5000): Promise<SwingPositionRow[]> {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM swing_positions
       WHERE graded_at IS NOT NULL AND feature_vector IS NOT NULL
       ORDER BY session_date DESC, id DESC
@@ -7787,7 +7832,7 @@ export type SwingExposureRow = {
  *  read (how much premium is already committed to a name/side). */
 export async function fetchOpenSwingExposure(): Promise<SwingExposureRow[]> {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT ticker, direction,
             COUNT(*)::int AS open_positions,
             SUM(entry_premium) AS total_entry_premium
@@ -7823,7 +7868,7 @@ export type SwingSnapshotInsert = {
  *  a distinct observation of the path, so history is preserved. Returns the snapshot id. */
 export async function insertSwingSnapshot(s: SwingSnapshotInsert): Promise<number> {
   await ensureSchema();
-  const res = await (await getPool()).query<{ id: string }>(
+  const res = await dbQuery<{ id: string }>(
     `INSERT INTO swing_position_snapshots (
        position_id, snapshot_kind, dte_remaining, underlying_px, option_mark,
        running_mfe, running_mae, thesis_state, feature_vector, event_json
@@ -7848,7 +7893,7 @@ export async function insertSwingSnapshot(s: SwingSnapshotInsert): Promise<numbe
 /** A position's snapshot series, oldest→newest (the grader/trajectory walk order). */
 export async function fetchSwingSnapshots(positionId: number, limit = 2000): Promise<SwingSnapshotRow[]> {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM swing_position_snapshots WHERE position_id = $1 ORDER BY created_at ASC, id ASC LIMIT $2`,
     [positionId, limit]
   );
@@ -7889,7 +7934,7 @@ export async function upsertSwingAccum(a: {
     a.archetype && String(a.archetype).trim().length > 0
       ? String(a.archetype).trim().toUpperCase()
       : "UNCLASSIFIED";
-  await (await getPool()).query(
+  await dbQuery(
     `INSERT INTO swing_candidate_accumulation (
        ticker, direction, archetype, observation_count, distinct_session_days, last_session_day,
        phases_seen, signal_kinds, last_session_signal_kinds, first_seen_at, last_seen_at
@@ -7943,7 +7988,7 @@ export async function upsertSwingAccum(a: {
  *  filters to those that have cleared the cross-session persistence bar. */
 export async function fetchAccumulating(minSessionDays = 1, limit = 500): Promise<SwingAccumRow[]> {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT * FROM swing_candidate_accumulation
       WHERE promoted_position_id IS NULL AND distinct_session_days >= $1
       ORDER BY last_seen_at DESC
@@ -7967,7 +8012,7 @@ export async function markAccumPromoted(
     archetype && String(archetype).trim().length > 0
       ? String(archetype).trim().toUpperCase()
       : "UNCLASSIFIED";
-  await (await getPool()).query(
+  await dbQuery(
     `UPDATE swing_candidate_accumulation
        SET promoted_position_id = $3, last_seen_at = NOW()
      WHERE ticker = $1 AND direction = $2 AND archetype = $4`,
@@ -7981,7 +8026,7 @@ export async function fadeStaleAccum(beforeIso: string): Promise<number> {
   await ensureSchema();
   const cutoff = parseTimestamptz(beforeIso);
   if (!cutoff) return 0;
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `DELETE FROM swing_candidate_accumulation
       WHERE promoted_position_id IS NULL AND last_seen_at < $1::timestamptz`,
     [cutoff]
@@ -8024,7 +8069,7 @@ export async function insertBieKnowledge(
 export async function fetchExistingBieHashes(hashes: string[]): Promise<Map<string, boolean>> {
   if (hashes.length === 0) return new Map();
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT chunk_hash, (embedding IS NOT NULL) AS embedded FROM bie_knowledge WHERE chunk_hash = ANY($1)`,
     [hashes]
   );
@@ -8055,11 +8100,11 @@ export async function fetchBieKnowledge(opts?: { kind?: string; limit?: number }
   await ensureSchema();
   const limit = Math.min(opts?.limit ?? 400, 1000);
   const res = opts?.kind
-    ? await (await getPool()).query<QueryResultRow>(
+    ? await dbQuery<QueryResultRow>(
         `SELECT id, kind, source, chunk, embedding, created_at FROM bie_knowledge WHERE kind = $1 ORDER BY created_at DESC LIMIT $2`,
         [opts.kind, limit]
       )
-    : await (await getPool()).query<QueryResultRow>(
+    : await dbQuery<QueryResultRow>(
         `SELECT id, kind, source, chunk, embedding, created_at FROM bie_knowledge ORDER BY created_at DESC LIMIT $1`,
         [limit]
       );
@@ -8082,7 +8127,7 @@ export async function fetchBieKnowledgeStats(): Promise<{
   newest_at: string | null;
 }> {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT kind, COUNT(*)::int AS total, COUNT(embedding)::int AS embedded, MAX(created_at) AS newest_at
      FROM bie_knowledge GROUP BY kind ORDER BY kind`
   );
@@ -8115,7 +8160,7 @@ export async function fetchBieInteractionStats(sinceHours = 24): Promise<{
   avg_latency_claude_ms: number | null;
 }> {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT
        COUNT(*)::int AS total,
        COUNT(*) FILTER (WHERE answer_source = 'bie-router')::int AS routed,
@@ -8160,7 +8205,7 @@ export async function insertBieInteraction(row: {
   intent_bucket: string;
 }): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `INSERT INTO bie_interactions
        (user_id, question, intent, answer_source, claims_total, claims_verified, latency_ms, tools_used, intent_bucket)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)`,
@@ -8215,7 +8260,7 @@ export async function fetchSpxToolCallingBieInteractions(
   }>
 > {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT tools_used, intent_bucket, answer_source, claims_total, claims_verified, latency_ms, created_at
      FROM bie_interactions
      WHERE created_at >= $1::date
@@ -8271,7 +8316,7 @@ export async function fetchHelixToolCallingBieInteractions(
   }>
 > {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT tools_used, intent_bucket, answer_source, claims_total, claims_verified, latency_ms, created_at
      FROM bie_interactions
      WHERE created_at >= $1::date
@@ -8327,7 +8372,7 @@ export async function fetchThermalToolCallingBieInteractions(
   }>
 > {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT tools_used, intent_bucket, answer_source, claims_total, claims_verified, latency_ms, created_at
      FROM bie_interactions
      WHERE created_at >= $1::date
@@ -8385,7 +8430,7 @@ export async function fetchNighthawkToolCallingBieInteractions(
   }>
 > {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT tools_used, intent_bucket, answer_source, claims_total, claims_verified, latency_ms, created_at
      FROM bie_interactions
      WHERE created_at >= $1::date
@@ -8458,7 +8503,7 @@ export async function fetchZeroDteToolCallingBieInteractions(
   }>
 > {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT tools_used, intent_bucket, answer_source, claims_total, claims_verified, latency_ms, created_at
      FROM bie_interactions
      WHERE created_at >= $1::date
@@ -8515,7 +8560,7 @@ export async function fetchMarketContextToolCallingBieInteractions(
   }>
 > {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `SELECT tools_used, intent_bucket, answer_source, claims_total, claims_verified, latency_ms, created_at
      FROM bie_interactions
      WHERE created_at >= $1::date
@@ -8541,7 +8586,7 @@ export async function updateZeroDtePlanOutcome(
   grade: { plan_outcome: string; plan_pnl_pct: number | null }
 ): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `UPDATE zerodte_setup_log SET plan_outcome = $3, plan_pnl_pct = $4
      WHERE session_date = $1::date AND ticker = $2`,
     [sessionDate, ticker.toUpperCase(), grade.plan_outcome, grade.plan_pnl_pct]
@@ -8563,7 +8608,7 @@ export async function stampZeroDteExecutableGrade(
   executable: Record<string, unknown>
 ): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `UPDATE zerodte_setup_log
      SET entry_context = COALESCE(entry_context, '{}'::jsonb) || jsonb_build_object('executable', $3::jsonb)
      WHERE session_date = $1::date AND ticker = $2 AND (entry_context -> 'executable') IS NULL`,
@@ -8573,7 +8618,7 @@ export async function stampZeroDteExecutableGrade(
 
 export async function fetchLatestPlayableNighthawkEdition(): Promise<NighthawkEditionRow | null> {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `
     SELECT edition_for, session_date, published_at,
            recap_headline, recap_summary, market_recap, plays, meta
@@ -8604,7 +8649,7 @@ export async function cacheNighthawkPlayExplanation(
   explanation: string
 ): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     UPDATE nighthawk_editions
     SET meta = jsonb_set(
@@ -8624,7 +8669,7 @@ export async function fetchTickerFlowDailyNet(
   lookbackDays = 10
 ): Promise<Array<{ day: string; net: number; call: number; put: number }>> {
   await ensureSchema();
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `
     SELECT
       (COALESCE(created_at, inserted_at) AT TIME ZONE 'America/New_York')::date AS day,
@@ -8658,7 +8703,7 @@ export async function fetchTickersAvgDailyPremium(
   if (!tickers.length) return {};
   await ensureSchema();
   const syms = Array.from(new Set(tickers.map((t) => t.toUpperCase())));
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `
     SELECT ticker,
            COALESCE(AVG(daily_prem), 0) AS avg_premium
@@ -8691,7 +8736,7 @@ export async function fetchTickersFlowDailyNets(
   if (!tickers.length) return {};
   await ensureSchema();
   const syms = Array.from(new Set(tickers.map((t) => t.toUpperCase())));
-  const res = await (await getPool()).query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `
     SELECT
       ticker,
@@ -8916,7 +8961,7 @@ export async function pruneNighthawkPlayOutcomesForEdition(
   const normalized = Array.from(
     new Set(tickers.map((ticker) => ticker.trim().toUpperCase()).filter(Boolean))
   );
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     DELETE FROM nighthawk_play_outcomes
     WHERE edition_for = $1::date
@@ -8934,7 +8979,7 @@ export async function fetchPendingNighthawkOutcomes(lookbackDays = 14): Promise<
   // can crash pg through this day-param.
   const safeLookbackDays =
     Number.isFinite(lookbackDays) && lookbackDays > 0 ? Math.trunc(lookbackDays) : 14;
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, edition_for, ticker, direction, conviction,
            entry_range_low, entry_range_high, target, stop, score, sector,
@@ -8965,7 +9010,7 @@ export async function fetchNighthawkPlayOutcomeId(
   ticker: string
 ): Promise<number | null> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `SELECT id FROM nighthawk_play_outcomes
      WHERE edition_for = $1::date AND ticker = $2`,
     [editionFor, ticker.toUpperCase()]
@@ -8982,7 +9027,7 @@ export async function fetchLegacyDiscordLiveRows(editionFor?: string): Promise<L
     "@/features/nighthawk/lib/legacy-edition-dates"
   );
   const editionDates = editionFor ? [editionFor] : activeLegacyEditionDates();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, edition_for, ticker, direction, conviction,
            entry_range_low, entry_range_high, target, stop, score, sector,
@@ -9073,7 +9118,7 @@ export async function updateLegacyDiscordLiveState(
   update: LegacyDiscordLiveStateUpdate
 ): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     UPDATE nighthawk_play_outcomes
     SET discord_live_state = COALESCE(discord_live_state, '{}'::jsonb)
@@ -9142,7 +9187,7 @@ export async function fetchRecentNighthawkOutcomesForGovernor(
   await ensureSchema();
   const safeN =
     Number.isFinite(lookbackEditions) && lookbackEditions > 0 ? Math.trunc(lookbackEditions) : 3;
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT edition_for, ticker, direction, outcome, sector
     FROM nighthawk_play_outcomes
@@ -9181,7 +9226,7 @@ export async function updateNighthawkPlayOutcome(
   }
 ): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     UPDATE nighthawk_play_outcomes
     SET next_day_open = $2,
@@ -9222,7 +9267,7 @@ export async function pinNighthawkScaleOutGrade(
   grade: Record<string, unknown>
 ): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     UPDATE nighthawk_play_outcomes
     SET scale_out_grade = COALESCE(scale_out_grade, $2::jsonb), updated_at = NOW()
@@ -9240,7 +9285,7 @@ export async function fetchNighthawkRowsMissingScaleOutGrade(
 ): Promise<Array<{ id: number; edition_for: string; ticker: string }>> {
   await ensureSchema();
   const safe = Number.isFinite(lookbackDays) && lookbackDays > 0 ? Math.trunc(lookbackDays) : 21;
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, edition_for, ticker
     FROM nighthawk_play_outcomes
@@ -9266,7 +9311,7 @@ export async function fetchNighthawkScaleOutGrades(
 ): Promise<Array<{ edition_for: string; ticker: string; scale_out_grade: Record<string, unknown> | null }>> {
   await ensureSchema();
   const safe = Number.isFinite(lookbackDays) && lookbackDays > 0 ? Math.trunc(lookbackDays) : 120;
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT edition_for, ticker, scale_out_grade
     FROM nighthawk_play_outcomes
@@ -9293,7 +9338,7 @@ export async function fetchLegacyGradedNighthawkOutcomes(
 ): Promise<NighthawkPlayOutcomeRow[]> {
   await ensureSchema();
   const safeWindowDays = Number.isFinite(windowDays) && windowDays > 0 ? Math.trunc(windowDays) : 90;
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, edition_for, ticker, direction, conviction,
            entry_range_low, entry_range_high, target, stop, score, sector,
@@ -9337,7 +9382,7 @@ export async function regradeLegacyNighthawkOutcome(
   }
 ): Promise<boolean> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     UPDATE nighthawk_play_outcomes
     SET legacy_grade = COALESCE(legacy_grade, jsonb_build_object(
@@ -9383,7 +9428,7 @@ export async function recordNighthawkMorningVerdict(row: {
   pull_reason: string | null;
 }): Promise<{ matched: boolean; verdict_written: boolean; pulled: boolean }> {
   await ensureSchema();
-  const res = await (await getPool()).query<{
+  const res = await dbQuery<{
     wrote_verdict: boolean;
     pulled: boolean;
   }>(
@@ -9421,7 +9466,7 @@ export async function reanchorNighthawkEntryBand(row: {
   entry_range_high: number;
 }): Promise<boolean> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     UPDATE nighthawk_play_outcomes
     SET entry_range_low = $3,
@@ -9452,7 +9497,7 @@ export async function fetchNighthawkEditionOutcomeOverlays(
   editionFor: string
 ): Promise<NighthawkEditionOutcomeOverlayRow[]> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT ticker, publish_context, morning_verdict
     FROM nighthawk_play_outcomes
@@ -9472,7 +9517,7 @@ export async function fetchNighthawkEditionOutcomeOverlays(
  *  the member edition payload at read time (the edition row itself is never mutated). */
 export async function fetchNighthawkPulledPlays(editionFor: string): Promise<NighthawkPulledPlay[]> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT ticker, pulled_reason, pulled_at
     FROM nighthawk_play_outcomes
@@ -9499,7 +9544,7 @@ export async function fetchNighthawkDebriefPendingOutcomes(
   const safeLookbackDays =
     Number.isFinite(lookbackDays) && lookbackDays > 0 ? Math.trunc(lookbackDays) : 60;
   const safeLimit = Math.min(500, Math.max(1, Number.isFinite(limit) ? Math.trunc(limit) : 200));
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, edition_for, ticker, direction, conviction,
            entry_range_low, entry_range_high, target, stop, score, sector,
@@ -9529,7 +9574,7 @@ export async function pinNighthawkPlayDebrief(
   debrief: Record<string, unknown>
 ): Promise<{ matched: boolean; written: boolean }> {
   await ensureSchema();
-  const res = await (await getPool()).query<{ wrote: boolean }>(
+  const res = await dbQuery<{ wrote: boolean }>(
     `
     WITH before AS (
       SELECT id, (debrief IS NULL) AS was_empty
@@ -9577,7 +9622,7 @@ export async function fetchNighthawkPublishGateRejections(
   const safeWindowDays =
     Number.isFinite(windowDays) && windowDays > 0 ? Math.trunc(windowDays) : 30;
   const safeLimit = Math.min(1000, Math.max(1, Math.trunc(opts.limit ?? 500)));
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, ticker, direction, fired_at, input_snapshot, counterfactual_json,
            source_key->>'edition_for' AS edition_for
@@ -9609,7 +9654,7 @@ export async function setNighthawkRejectionCounterfactual(
   counterfactual: Record<string, unknown>
 ): Promise<boolean> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     UPDATE alert_audit_log
     SET counterfactual_json = COALESCE(counterfactual_json, $2::jsonb)
@@ -9780,7 +9825,7 @@ export async function upsertNighthawkJob(
   if (fields.error !== undefined) add("error", fields.error);
   if (fields.published_at !== undefined) add("published_at", fields.published_at);
 
-  await (await getPool()).query(
+  await dbQuery(
     `
     INSERT INTO nighthawk_jobs (edition_for, status, current_stage)
     VALUES ($1::date, 'running', 'stage_context')
@@ -9792,7 +9837,7 @@ export async function upsertNighthawkJob(
 
 export async function fetchNighthawkJob(editionFor: string): Promise<NighthawkJobRow | null> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, edition_for, status, current_stage, context_json, candidates_json, scored_json,
            synthesis_json, error, started_at, updated_at, published_at
@@ -9821,7 +9866,7 @@ export async function saveDossierStaging(
   scoredJson?: Record<string, unknown> | null
 ): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  await dbQuery(
     `
     INSERT INTO nighthawk_dossiers_staging (edition_for, ticker, dossier_json, scored_json)
     VALUES ($1::date, $2, $3::jsonb, $4::jsonb)
@@ -9838,7 +9883,7 @@ export async function fetchStagedDossiers(
   editionFor: string
 ): Promise<Array<{ ticker: string; dossier: Record<string, unknown>; scored: Record<string, unknown> | null }>> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT ticker, dossier_json, scored_json
     FROM nighthawk_dossiers_staging
@@ -9856,7 +9901,7 @@ export async function fetchStagedDossiers(
 
 export async function fetchStagedDossierTickers(editionFor: string): Promise<string[]> {
   await ensureSchema();
-  const res = await (await getPool()).query<{ ticker: string }>(
+  const res = await dbQuery<{ ticker: string }>(
     `SELECT ticker FROM nighthawk_dossiers_staging WHERE edition_for = $1::date ORDER BY ticker ASC`,
     [editionFor]
   );
@@ -9873,7 +9918,7 @@ export function logNighthawkJob(
   void (async () => {
     try {
       await ensureSchema();
-      await (await getPool()).query(
+      await dbQuery(
         `
         INSERT INTO nighthawk_job_log (edition_for, level, stage, message, meta_json)
         VALUES ($1::date, $2, $3, $4, $5::jsonb)
@@ -9888,7 +9933,7 @@ export function logNighthawkJob(
 
 export async function clearNighthawkStaging(editionFor: string): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(`DELETE FROM nighthawk_dossiers_staging WHERE edition_for = $1::date`, [editionFor]);
+  await dbQuery(`DELETE FROM nighthawk_dossiers_staging WHERE edition_for = $1::date`, [editionFor]);
 }
 
 /**
@@ -9905,7 +9950,7 @@ export async function clearNighthawkStaging(editionFor: string): Promise<void> {
  */
 export async function archiveNighthawkStaging(editionFor: string): Promise<number> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     INSERT INTO nighthawk_scoring_history (edition_for, ticker, dossier_json, scored_json, staged_at)
     SELECT edition_for, ticker, dossier_json, scored_json, created_at
@@ -9942,7 +9987,7 @@ export async function fetchNighthawkScoringHistory(
 > {
   await ensureSchema();
   const res = ticker
-    ? await (await getPool()).query(
+    ? await dbQuery(
         `
         SELECT ticker, dossier_json, scored_json, staged_at, archived_at
         FROM nighthawk_scoring_history
@@ -9950,7 +9995,7 @@ export async function fetchNighthawkScoringHistory(
         `,
         [editionFor, ticker.toUpperCase()]
       )
-    : await (await getPool()).query(
+    : await dbQuery(
         `
         SELECT ticker, dossier_json, scored_json, staged_at, archived_at
         FROM nighthawk_scoring_history
@@ -9978,7 +10023,7 @@ export async function failStaleNighthawkJobs(
     staleAfterMinutes != null && Number.isFinite(staleAfterMinutes) && staleAfterMinutes > 0
       ? staleAfterMinutes
       : nighthawkStaleJobIdleMinutes();
-  const res = await (await getPool()).query<{ edition_for: string }>(
+  const res = await dbQuery<{ edition_for: string }>(
     `
     UPDATE nighthawk_jobs j
     SET status = 'failed',
@@ -10004,7 +10049,7 @@ export async function failStaleNighthawkJobs(
 
 export async function fetchLatestNighthawkJob(): Promise<NighthawkJobRow | null> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, edition_for, status, current_stage, context_json, candidates_json, scored_json,
            synthesis_json, error, started_at, updated_at, published_at
@@ -10097,7 +10142,7 @@ export async function recordCronJobRun(input: {
  */
 export async function fetchLatestCronJobRun(jobKey: string): Promise<CronJobRunRow | null> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, job_key, status, started_at, duration_ms, message, meta_json
     FROM cron_job_runs
@@ -10113,7 +10158,7 @@ export async function fetchLatestCronJobRun(jobKey: string): Promise<CronJobRunR
 
 export async function fetchCronJobLastRuns(): Promise<CronJobRunRow[]> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT DISTINCT ON (job_key)
       id, job_key, status, started_at, duration_ms, message, meta_json
@@ -10126,7 +10171,7 @@ export async function fetchCronJobLastRuns(): Promise<CronJobRunRow[]> {
 
 export async function fetchCronJobRecentRuns(limit = 48): Promise<CronJobRunRow[]> {
   await ensureSchema();
-  const res = await (await getPool()).query(
+  const res = await dbQuery(
     `
     SELECT id, job_key, status, started_at, duration_ms, message, meta_json
     FROM cron_job_runs
@@ -10140,7 +10185,7 @@ export async function fetchCronJobRecentRuns(limit = 48): Promise<CronJobRunRow[
 
 export async function fetchCronJobRunCount(): Promise<number> {
   await ensureSchema();
-  const res = await (await getPool()).query<{ count: string }>(
+  const res = await dbQuery<{ count: string }>(
     `SELECT COUNT(*)::int AS count FROM cron_job_runs`
   );
   return Number(res.rows[0]?.count ?? 0);

@@ -400,3 +400,88 @@ test("recordCronJobRun: both writes go through dbQuery, not a raw pool.query", (
     "must not bypass dbQuery's transient-error retry with a raw pool.query"
   );
 });
+
+// BUG FIX (2026-09-03, live evidence: the SPX Slayer 0DTE play flickered to the fully-degraded
+// "closed" placeholder DURING live RTH, correlating exactly with
+// `[play-engine-heartbeat] init hydration failed/persist failed: Cannot use a pool after calling
+// end on the pool`). recordCronJobRun (above) was only ONE instance of a much wider pattern: 135
+// other call sites in this file used a raw `(await getPool()).query(...)` instead of dbQuery,
+// including getMeta/setMeta — the shared key-value store play-engine-heartbeat.ts's
+// recordPlayEngineTick/loadPlayEngineHeartbeat (and 50+ other callers across the app) go through
+// for every persisted read/write. Every one of those bypassed dbQuery's transient-error retry, so
+// ANY of them could surface the exact pool-teardown race isTransientPgError documents as a bare,
+// unretried failure — not just the cron-run logging path already fixed. Swept and fixed the whole
+// file in one pass rather than chasing each call site as its own live incident (PR write-up policy
+// "blast radius" — this file already had one instance fixed and 135 more of the identical bug).
+//
+// Two call shapes needed different treatment, both asserted below:
+//  - A PLAIN raw pool query (no way to run inside a caller's transaction) always converts straight
+//    to dbQuery.
+//  - A `db?: Db`-optional helper (setMeta, closeOpenSpxPlayRow, closePlayOutcomeRow,
+//    insertSwingPosition, gradeSwingPosition) must keep two paths: when a transaction client IS
+//    supplied, the write MUST stay on that exact connection (dbQuery always grabs the shared pool,
+//    which would silently escape the transaction) — only the no-`db` common case should route
+//    through dbQuery.
+//  - The lone deliberate exception is pingDatabaseConnectivity, a raw connectivity PROBE — dbQuery's
+//    retry+backoff would mask a real outage behind a false-healthy read for several seconds, which
+//    defeats the point of a health check.
+test("db.ts: no stray raw pool.query left outside the one deliberate exception (pingDatabaseConnectivity)", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const rawCalls = [...src.matchAll(/\(await getPool\(\)\)\.query/g)];
+  // Every remaining raw call must be the ping's — locate it once and require every match to fall
+  // inside that function's body, not just count them (a count-based assertion would silently pass
+  // if a NEW raw call appeared elsewhere while the ping's own call happened to disappear).
+  const pingStart = src.indexOf("export async function pingDatabaseConnectivity");
+  assert.ok(pingStart > 0, "pingDatabaseConnectivity exists");
+  const pingEnd = src.indexOf("\nexport async function", pingStart + 1);
+  const pingBody = src.slice(pingStart, pingEnd > 0 ? pingEnd : undefined);
+  assert.match(
+    pingBody,
+    /\(await getPool\(\)\)\.query\("SELECT 1"\)/,
+    "pingDatabaseConnectivity must keep its raw, unretried connectivity probe"
+  );
+  for (const m of rawCalls) {
+    const idx = m.index ?? -1;
+    assert.ok(
+      idx >= pingStart && idx < (pingEnd > 0 ? pingEnd : src.length),
+      `unexpected raw pool.query outside pingDatabaseConnectivity at offset ${idx}`
+    );
+  }
+});
+
+test("getMeta/setMeta: both route the no-transaction common case through dbQuery", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const getStart = src.indexOf("export async function getMeta");
+  const getEnd = src.indexOf("\nexport async function", getStart + 1);
+  const getBody = src.slice(getStart, getEnd);
+  assert.match(getBody, /await dbQuery</, "getMeta must use dbQuery");
+
+  const setStart = src.indexOf("export async function setMeta");
+  const setEnd = src.indexOf("\nexport async function", setStart + 1);
+  const setBody = src.slice(setStart, setEnd);
+  assert.match(setBody, /await dbQuery\(/, "setMeta's no-db path must use dbQuery");
+  assert.match(setBody, /if \(db\)/, "setMeta must still special-case a supplied transaction client");
+  assert.match(setBody, /await db\.query\(/, "setMeta's db-supplied path must stay on that exact client");
+});
+
+test("db-optional swing/SPX writers: transaction client path preserved, no-db path uses dbQuery", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  for (const fn of [
+    "closeOpenSpxPlayRow",
+    "closePlayOutcomeRow",
+    "insertSwingPosition",
+    "gradeSwingPosition",
+  ]) {
+    const start = src.indexOf(`export async function ${fn}`);
+    assert.ok(start > 0, `${fn} exists`);
+    const end = src.indexOf("\nexport async function", start + 1);
+    const body = src.slice(start, end > 0 ? end : undefined);
+    assert.match(body, /db\s*\?\s*await db\.query/, `${fn} must keep a supplied transaction client on its own connection`);
+    assert.match(body, /await dbQuery/, `${fn}'s no-db path must use dbQuery`);
+    assert.doesNotMatch(
+      body,
+      /\(await getPool\(\)\)\.query|const executor = db \?\? /,
+      `${fn} must not still bypass dbQuery via a shared executor/raw pool call`
+    );
+  }
+});
