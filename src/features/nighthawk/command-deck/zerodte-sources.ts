@@ -44,6 +44,8 @@ export interface BoardResp {
   vector_near_misses?: ZeroDteVectorNearMiss[] | null;
   /** Cortex veto shadow calibration summary. */
   veto_shadow?: import("@/lib/zerodte/veto-shadow-summary").VetoShadowSummary | null;
+  /** Night Hawk edition tickers surfaced for dedupe context (informational). */
+  covered_elsewhere?: string[];
 }
 
 /** Ledger statuses that represent a WORKING (member-held) position — always rendered (9-4). */

@@ -11,7 +11,7 @@ export const ZERODTE_COMMAND_DEV_FIXTURE: BoardResp = {
   session: {
     date: "2026-09-03",
     trading_day: true,
-    heat: { state: "ACTIVE", note: "Dev fixture — RTH active" },
+    heat: { state: "RTH" },
   },
   session_stats: {
     scanned: 4,
@@ -58,8 +58,10 @@ export const ZERODTE_COMMAND_DEV_FIXTURE: BoardResp = {
     summary: "1 Vector runner blocked — watch calibration",
   },
   market_state: {
-    regime_label: "trend",
-    regime_structure: "trend",
+    session_date: "2026-09-03",
+    regime_label: "TREND_UP",
+    regime_structure: "TREND_UP",
+    regime_vol: "NORMAL_IV",
     confidence: 0.72,
     summary: "Fixture regime — FLOW weight elevated",
     rail_weights: { FLOW: 1.2, BREAKOUT: 1.0, PIN: 0.9 },
