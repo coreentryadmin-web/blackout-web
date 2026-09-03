@@ -706,6 +706,44 @@ test("enrich: factor_breakdown carries the six named subscores scoreCandidate al
   });
 });
 
+// 9-9: scoreCandidate also folds ivAdjustment/anomalyPenalty/flowConvictionBonus and the regime
+// multiplier's own net effect into `score`/dossier_score, and until now none of those four had a
+// rendered line item either (live 2026-09-03: an NVDA case with a nonzero flowConvictionBonus
+// showed dossier_score=81 vs a factor_breakdown sum of 77). Same fix shape as the six-subscore gap
+// above: scorer.ts now exposes them on ScoredCandidate, this test proves board.ts carries them
+// through and that the breakdown's own sum reconciles exactly to dossier_score.
+test("enrich: factor_breakdown carries iv/anomaly/flow-conviction/regime adjustments and sums to dossier_score", () => {
+  const dossier = fakeDossier({
+    scored: {
+      score: 81,
+      direction: "long",
+      conviction: "HIGH",
+      flow_score: 30,
+      tech_score: 18,
+      pos_score: 10,
+      news_score: 8,
+      smart_money_score: 12,
+      iv_adjustment: -3,
+      flow_conviction_bonus: 4,
+      regime_adjustment: 2,
+    },
+  });
+  const e = enrichSetup(baseSetup(), dossier);
+  assert.deepEqual(e.factor_breakdown, {
+    flow: 30,
+    tech: 18,
+    positioning: 10,
+    news: 8,
+    smart_money: 12,
+    iv_adjustment: -3,
+    flow_conviction_bonus: 4,
+    regime_adjustment: 2,
+  });
+  assert.ok(!("anomaly_penalty" in (e.factor_breakdown ?? {})), "a real zero must be omitted like every other dimension");
+  const sum = Object.values(e.factor_breakdown ?? {}).reduce((a, b) => a + b, 0);
+  assert.equal(sum, e.dossier_score, "factor_breakdown must now reconcile to dossier_score");
+});
+
 // A dimension the scorer never evaluated (field absent, not zero) must stay OUT of the
 // breakdown entirely — a real 0 (scored, contributed nothing) and an absent input (never
 // scored) are different facts and must not render as the same "0" bar. Covers the base
