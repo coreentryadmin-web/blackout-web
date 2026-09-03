@@ -42,7 +42,7 @@ import {
 import { buildTerminalExitLadder, executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-render";
 import { readPinnedWhyNow, type WhyNow } from "@/lib/zerodte/why-now";
-import { readFrozenExitMode, readFrozenExitPolicy } from "@/lib/zerodte/exit-sync";
+import { readFrozenExitMode, readFrozenExitPolicy, playRailsFromRow } from "@/lib/zerodte/exit-sync";
 import { buildResolvedExitPolicy } from "@/lib/zerodte/strategy-version";
 import type { ZeroDteGreeks } from "@/lib/zerodte/live-marks";
 import {
@@ -64,6 +64,16 @@ import {
   type ZeroDteGovernorSummary,
 } from "@/lib/zerodte/governor";
 import { fetchDiscoveryFunnelHint, type DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
+import { computeZeroDteSessionBoardStats } from "@/lib/zerodte/session-board-stats";
+import { fetchZeroDteVectorPulseByTicker } from "@/lib/zerodte/vector-crosslink";
+
+function mfeCapturePct(exitPnlPct: number | null, peakPnlPctVal: number | null): number | null {
+  if (exitPnlPct == null || peakPnlPctVal == null || peakPnlPctVal <= 0) return null;
+  return Math.round((exitPnlPct / peakPnlPctVal) * 100);
+}
+import { computeVectorNearMisses } from "@/lib/zerodte/vector-near-miss";
+import { zeroDteGateLabel } from "@/lib/zerodte/pane";
+import { buildVetoShadowSummary } from "@/lib/zerodte/veto-shadow-summary";
 // Read-only SPX Slayer badge (feat/nh-spx-badge) — additive display field only, see
 // spx-slayer-badge.ts for the full scope note. NOT part of scoring/gates/governor above.
 // Lazy dynamic import below (not a static import): spx-slayer-badge.ts's module graph
@@ -113,6 +123,8 @@ export type ZeroDteBoardLedgerRow = {
   trough_premium: number | null;
   /** Latched peak excursion vs pinned entry — the high-water mark for closed-card display. */
   peak_pnl_pct: number | null;
+  /** Closed rows: realized exit P&L as % of peak MFE (how much of the move was captured). */
+  mfe_capture_pct: number | null;
   /**
    * The exit policy this row was COMMITTED under (entry_context.exit_policy_at_commit, Q13), or
    * null for a legacy row that predates the pin. Carried on the payload because `live_pnl_pct` is
@@ -121,6 +133,11 @@ export type ZeroDteBoardLedgerRow = {
    * trim tranches on a stopped close.
    */
   exit_policy_at_commit: "ratchet" | "trim_scale" | null;
+  /** Frozen runner target % and trim regime — drives latch/status + stopped P&L blend. */
+  target_pct: number | null;
+  trim_regime: "trend" | "neutral" | "range" | null;
+  /** Runner profile frozen at commit (300%/400% targets). */
+  runner_profile: { target_pct: number; tag: string; regime: string } | null;
   live_pnl_pct: number | null;
   /** Why a CLOSED play closed — now DISTINGUISHES the exit type (pre-this-change a
    *  ratchet exit and a target trim were both null, indistinguishable). "stopped" uses
@@ -284,6 +301,14 @@ export type ZeroDteBoardPayload = {
    *  src/lib/zerodte/gates.ts. Null only for a payload built before this field existed (old cached
    *  snapshot); a live build always resolves to at least the unavailable badge, never undefined. */
   spx_slayer_badge: SpxSlayerBadge | null;
+  /** Scan vs commit funnel — how many candidates scanned, blocked, and committed this session. */
+  session_stats: import("@/lib/zerodte/session-board-stats").ZeroDteSessionBoardStats | null;
+  /** Per-ticker Vector pick pulse for cross-desk links (today's session leaders). */
+  vector_pulse_by_ticker: Record<string, import("@/lib/zerodte/vector-crosslink").ZeroDteVectorPulse>;
+  /** Vector winner/runner names gate-blocked on 0DTE — shadow-book calibration signal. */
+  vector_near_misses: import("@/lib/zerodte/vector-near-miss").ZeroDteVectorNearMiss[];
+  /** Cortex veto shadow calibration — near-miss + funnel read (display only). */
+  veto_shadow: import("@/lib/zerodte/veto-shadow-summary").VetoShadowSummary | null;
 };
 
 // ── Shared, converged board snapshot (fix/zerodte-board-convergence) ──────────────
@@ -401,6 +426,11 @@ function mapLedgerRow(
   // seller-framed (see reconcileLedgerLivePnlPct); the directional stop-pin/ratchet-floor
   // concepts below do not apply to it. Read once here and reused across the row build.
   const isCondor = r.entry_context?.play_type === "CONDOR";
+  const rails = playRailsFromRow({ entry_context: r.entry_context, plan_json: r.plan_json });
+  const runnerProfile =
+    r.entry_context && typeof r.entry_context.runner_profile === "object"
+      ? (r.entry_context.runner_profile as { target_pct?: number; tag?: string; regime?: string })
+      : null;
   // D-1 fix: a stopped play's displayed P&L is the stop P&L (what the grader will
   // stamp), never the frozen last_mark of whichever tick happened to cross it. This
   // "stopped" verdict is ALSO the only closed_reason that pins P&L (below) — every other
@@ -410,6 +440,7 @@ function mapLedgerRow(
     entry_premium: r.entry_premium,
     peak_premium: r.peak_premium,
     trough_premium: r.trough_premium,
+    target_pct: rails.targetPct,
   });
 
   // ── Exit-engine visibility (additive, no computation change) ──────────────────────
@@ -460,6 +491,7 @@ function mapLedgerRow(
     peak_premium: r.peak_premium,
     trough_premium: r.trough_premium,
     peak_pnl_pct: peakPnlPct(r.entry_premium, r.peak_premium),
+    mfe_capture_pct: mfeCapturePct(exitStamp.pnl_pct, peakPnlPct(r.entry_premium, r.peak_premium)),
     // Structure-aware: seller-framed for a credit condor; directional stopped closes use
     // trim-scale AS-MANAGED when peak armed tranches — the ONE derivation both build sites share.
     // The row's FROZEN exit policy, carried on the payload so the post-roundFloats re-price below
@@ -467,6 +499,15 @@ function mapLedgerRow(
     // trim ladder for a row that never committed to one; the P&L had no such guard, and credited
     // trim tranches to ratchet-committed rows.
     exit_policy_at_commit: readFrozenExitMode(r.entry_context),
+    target_pct: rails.targetPct,
+    trim_regime: rails.regime,
+    runner_profile: runnerProfile?.target_pct
+      ? {
+          target_pct: runnerProfile.target_pct,
+          tag: String(runnerProfile.tag ?? "runner"),
+          regime: String(runnerProfile.regime ?? rails.regime ?? "neutral"),
+        }
+      : null,
     live_pnl_pct: reconcileLedgerLivePnlPct({
       is_condor: isCondor,
       closed_reason: closedReason === "stopped" ? "stopped" : null,
@@ -476,6 +517,8 @@ function mapLedgerRow(
       trough_premium: r.trough_premium,
       status: r.status,
       exit_policy_at_commit: readFrozenExitMode(r.entry_context),
+      trim_regime: rails.regime,
+      target_pct: rails.targetPct,
     }),
     closed_reason: boardClosedReason,
     floor_pnl_pct: floorPnlPct,
@@ -707,6 +750,27 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
 
   const setupByTicker = new Map(displaySetups.map((s) => [s.ticker.toUpperCase(), s]));
 
+  const boardTickers = [
+    ...new Set([
+      ...displaySetups.map((s) => s.ticker.toUpperCase()),
+      ...ledgerRows.map((r) => r.ticker.toUpperCase()),
+    ]),
+  ];
+  const [vector_pulse_by_ticker] = await Promise.all([
+    fetchZeroDteVectorPulseByTicker(today, boardTickers).catch(() => ({})),
+  ]);
+  const session_stats = computeZeroDteSessionBoardStats(
+    displaySetups,
+    ledgerRows,
+    discovery_funnel?.top_gate ?? null
+  );
+  const vector_near_misses = computeVectorNearMisses(
+    displaySetups,
+    vector_pulse_by_ticker,
+    zeroDteGateLabel
+  );
+  const veto_shadow = buildVetoShadowSummary(vector_near_misses, discovery_funnel, session_stats);
+
   const payload = roundFloats({
     available: true,
     as_of: new Date().toISOString(),
@@ -737,6 +801,10 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     market_state,
     discovery_funnel,
     spx_slayer_badge,
+    session_stats,
+    vector_pulse_by_ticker,
+    vector_near_misses,
+    veto_shadow,
   }) as ZeroDteBoardPayload;
 
   // roundFloats() rounds entry_premium/last_mark independently; recompute PnL from the
@@ -1030,6 +1098,10 @@ function buildMinimalBoardFallback(): ZeroDteBoardPayload {
     market_state: null,
     discovery_funnel: null,
     spx_slayer_badge: null,
+    session_stats: null,
+    vector_pulse_by_ticker: {},
+    vector_near_misses: [],
+    veto_shadow: null,
   };
 }
 

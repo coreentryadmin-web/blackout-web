@@ -3,10 +3,13 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import { PlayTerminal, etClock } from "./PlayTerminal";
-import { DiscoveryFunnelStrip, MarketStateStrip, SpxSlayerBadgeStrip } from "@/features/nighthawk/components/zerodte-board-strips";
+import { DiscoveryFunnelStrip, MarketStateStrip, SessionStatsStrip, SpxSlayerBadgeStrip, VectorNearMissStrip, VetoShadowStrip } from "@/features/nighthawk/components/zerodte-board-strips";
+import type { VetoShadowSummary } from "@/lib/zerodte/veto-shadow-summary";
+import type { ZeroDteVectorNearMiss } from "@/lib/zerodte/vector-near-miss";
 import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
 import type { SpxSlayerBadge } from "@/features/spx/lib/spx-slayer-badge-map";
+import type { ZeroDteSessionBoardStats } from "@/lib/zerodte/session-board-stats";
 import { sortPlaysForDeckBy, type DeckSortMode } from "./deck-sort";
 import {
   deployedRisk,
@@ -77,6 +80,9 @@ export function CommandDeck({
   upstreamOk = null,
   marketState = null,
   discoveryFunnel = null,
+  sessionStats = null,
+  vectorNearMisses = null,
+  vetoShadow = null,
   spxSlayerBadge,
   focusTicker = null,
   boardChrome = "default",
@@ -107,6 +113,12 @@ export function CommandDeck({
   marketState?: MarketStateSnapshot | null;
   /** 0DTE only — top session gate hint (Phase 2c). */
   discoveryFunnel?: DiscoveryFunnelHint | null;
+  /** 0DTE only — scan vs commit session counters. */
+  sessionStats?: ZeroDteSessionBoardStats | null;
+  /** 0DTE only — Vector winner/runner blocked by gates (shadow book). */
+  vectorNearMisses?: ZeroDteVectorNearMiss[] | null;
+  /** 0DTE only — Cortex veto shadow calibration summary. */
+  vetoShadow?: VetoShadowSummary | null;
   /** 0DTE only — SPX Slayer's own live play, read-only board badge (feat/nh-spx-badge). Undefined
    *  on lanes that don't pass it (Swings/LEAPS/Legacy) — the badge renders nothing, never idle
    *  chrome for a lane that was never meant to carry it. */
@@ -280,6 +292,11 @@ export function CommandDeck({
     >
       <div className="nh-deck-left">
         {commandCenter ? (
+          // Command-center header is filters-only by explicit product direction (2026-08-28
+          // declutter, see the test above): the regime/funnel/session-stats strips are
+          // redundant with the view toggle and push the trade queue below the fold. Do NOT
+          // render nh-deck-context-strips here even though the full (non-command-center)
+          // header below does — that asymmetry is intentional, not an oversight.
           <DeckCompactHeader
             statusFilter={statusFilter}
             setStatusFilter={setStatusFilter}
@@ -301,8 +318,11 @@ export function CommandDeck({
                     : `${directed.length} of ${plays.length}`}
               </span>
             </div>
-            {deckHorizon === "ZERO_DTE" && !degraded && (marketState || discoveryFunnel?.summary || spxSlayerBadge !== undefined) ? (
+            {deckHorizon === "ZERO_DTE" && !degraded && (sessionStats || vectorNearMisses?.length || marketState || discoveryFunnel?.summary || spxSlayerBadge !== undefined) ? (
               <div className="nh-deck-context-strips mb-2 space-y-2 px-0.5">
+                <SessionStatsStrip stats={sessionStats} />
+                <VectorNearMissStrip nearMisses={vectorNearMisses} />
+                <VetoShadowStrip shadow={vetoShadow} />
                 <MarketStateStrip ms={marketState} />
                 <DiscoveryFunnelStrip funnel={discoveryFunnel} />
                 <SpxSlayerBadgeStrip badge={spxSlayerBadge} />

@@ -777,6 +777,13 @@ export const SETUP_MAX_OTM_PCT = ((): number => {
   return Number.isFinite(raw) && raw > 0 ? raw : 12;
 })();
 
+/** Relaxed far-OTM cap for Vector-confirmed runner/winner attaches (100–500% geometry).
+ *  Default 20% — wider than SETUP_MAX_OTM_PCT (12) but still blocks egregious lotto tails. */
+export const RUNNER_SETUP_MAX_OTM_PCT = ((): number => {
+  const raw = Number(process.env.ZERODTE_RUNNER_MAX_OTM_PCT);
+  return Number.isFinite(raw) && raw > SETUP_MAX_OTM_PCT ? raw : 20;
+})();
+
 /** How much of a print's premium counts DIRECTIONALLY, by aggressor side.
  *  At/near the ask = conviction buying; bid-side = sold premium (opposite intent);
  *  unknown = partial credit so thin metadata doesn't zero the board. */

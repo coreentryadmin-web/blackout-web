@@ -43,6 +43,8 @@ import { commitAuthorizedBySourceHealth, type SourceHealthState } from "@/lib/ws
 import { EARLY_ENTRY_WINDOW_END_ET_MINUTES } from "./confluence";
 import { evaluateMacroHardBlock, hasHighImpactMacroEvent, type MacroEventLike } from "@/lib/macro-hard-block";
 import { condorLiquidityGateBlocks, condorRangeBreaking, type CondorPlan } from "./condor";
+import type { ZeroDteVectorPulse } from "./vector-crosslink";
+import { vectorExemptsG17PrimeBand } from "./vector-commit-boost";
 
 /** Read a positive-integer tuning knob from the environment, falling back to `def` when unset,
  *  non-numeric, or ≤0. Evaluated ONCE at module load so the gate FUNCTIONS stay pure (they only
@@ -157,9 +159,20 @@ export function confluenceFloorAt(nowEtMinutes: number): number {
   return early ? ZERODTE_CONFLUENCE_MIN_EARLY : ZERODTE_CONFLUENCE_MIN;
 }
 
-/** G-12 floor — single names only gate VWAP-side (G-1 exempts them from SPY tape). */
-export function g12ConfluenceFloor(ticker: string, nowEtMinutes: number): number {
-  if (isIndexEtfTicker(ticker)) return confluenceFloorAt(nowEtMinutes);
+/** G-12 floor — index ETFs need VWAP + market; BREAKOUT high-score gets a single confirm. */
+export function g12ConfluenceFloor(
+  ticker: string,
+  nowEtMinutes: number,
+  opts?: { score?: number; discovery_origin?: readonly string[] | null }
+): number {
+  if (isIndexEtfTicker(ticker)) {
+    const floor = confluenceFloorAt(nowEtMinutes);
+    const origins = opts?.discovery_origin ?? [];
+    const score = opts?.score ?? 0;
+    // BREAKOUT momentum at top decile: one VWAP+market leg is enough (Vector-style chase).
+    if (origins.includes("BREAKOUT") && score >= 80 && floor > 1) return 1;
+    return floor;
+  }
   return 1;
 }
 
@@ -464,6 +477,15 @@ export type ZeroDteGateInput = {
    * attach), the caller must re-apply via {@link refreshMoneynessGateBlocks} once the refresh has run.
    */
   otmPct?: number | null;
+  /** Vector desk pulse for this ticker (read-only cross-link). When aligned + winner/runner,
+   *  relaxes G-17 and can credit confluence — see vector-commit-boost.ts. */
+  vector_pulse?: ZeroDteVectorPulse | null;
+  /** Pre-computed Vector gate boost (score bump already applied upstream). */
+  vector_g17_exempt?: boolean;
+  /** Extra confluence credit from Vector alignment (0 or 1). */
+  vector_confluence_credit?: number;
+  /** Override far-OTM lotto cap (runner relax). Defaults to SETUP_MAX_OTM_PCT. */
+  max_otm_pct?: number | null;
 };
 
 /**
@@ -586,7 +608,11 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   if (
     !isCondor &&
     input.score >= scoreFloorForOrigins(input.discovery_origin) &&
-    input.score < ZERODTE_SINGLE_RAIL_PRIME_MIN
+    input.score < ZERODTE_SINGLE_RAIL_PRIME_MIN &&
+    !(
+      input.vector_g17_exempt === true ||
+      vectorExemptsG17PrimeBand(input.direction, input.score, input.vector_pulse)
+    )
   ) {
     const single = isSingleRailWithoutFlow(input.discovery_origin);
     const rail = single ? ((input.discovery_origin ?? [])[0] ?? "whole-market") : "multi-rail/FLOW";
@@ -606,8 +632,12 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   // direction to confirm, so this gate does not apply to it (the sell-regime router + range-intact
   // check are the condor's equivalent "is the structure right" test).
   if (!isCondor && input.confluence != null) {
-    const floor = g12ConfluenceFloor(input.ticker, input.nowEtMinutes);
-    const have = g12ConfirmationCount(input.confluence, input.ticker);
+    const floor = g12ConfluenceFloor(input.ticker, input.nowEtMinutes, {
+      score: input.score,
+      discovery_origin: input.discovery_origin,
+    });
+    const credit = Math.max(0, Math.min(1, input.vector_confluence_credit ?? 0));
+    const have = g12ConfirmationCount(input.confluence, input.ticker) + credit;
     const legLabel = g12ConfirmationLegLabel(input.ticker);
     if (have < floor) {
       const early = floor > ZERODTE_CONFLUENCE_MIN;
@@ -654,7 +684,11 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   // pass-through to moneynessGateBlocks, which is also exported standalone so scan.ts can
   // re-run it after a deferred (thesis-first) contract-plan attach — see
   // refreshMoneynessGateBlocks below, mirroring refreshPlanQualityGateBlocks.
-  blocks.push(...moneynessGateBlocks(input.otmPct, isCondor));
+  blocks.push(
+    ...moneynessGateBlocks(input.otmPct, isCondor, {
+      maxOtmPct: input.max_otm_pct ?? null,
+    })
+  );
 
   // G-4 — VIX regime hard gate (promoted from calibration 2026-07-16).
   // F-1: 69.2% WR at VIX<17 vs 25.0% at ≥17 — the strongest measured factor.
@@ -1126,9 +1160,14 @@ const QUOTE_INVALID_SENTENCE: Record<
  */
 export function moneynessGateBlocks(
   otmPct: number | null | undefined,
-  isCondor: boolean
+  isCondor: boolean,
+  opts?: { maxOtmPct?: number | null }
 ): ZeroDteGateBlock[] {
   if (isCondor || otmPct == null) return [];
+  const otmCap =
+    opts?.maxOtmPct != null && Number.isFinite(opts.maxOtmPct) && opts.maxOtmPct > 0
+      ? opts.maxOtmPct
+      : SETUP_MAX_OTM_PCT;
   const blocks: ZeroDteGateBlock[] = [];
   if (otmPct < -SETUP_MAX_ITM_PCT) {
     blocks.push({
@@ -1139,13 +1178,13 @@ export function moneynessGateBlocks(
       threshold: -SETUP_MAX_ITM_PCT,
       unlock_et: null,
     });
-  } else if (otmPct > SETUP_MAX_OTM_PCT) {
+  } else if (otmPct > otmCap) {
     blocks.push({
       code: "max_otm_pct",
       reason:
-        `Top strike is ${otmPct.toFixed(2)}% OTM — past the ${SETUP_MAX_OTM_PCT}% far-OTM lotto ` +
+        `Top strike is ${otmPct.toFixed(2)}% OTM — past the ${otmCap}% far-OTM lotto ` +
         "cap on the live-refreshed underlying (re-checked post live-spot refresh).",
-      threshold: SETUP_MAX_OTM_PCT,
+      threshold: otmCap,
       unlock_et: null,
     });
   }
@@ -1161,10 +1200,11 @@ const MONEYNESS_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set(["max_itm_
 export function refreshMoneynessGateBlocks(
   gate: ZeroDteGateVerdict,
   otmPct: number | null | undefined,
-  isCondor: boolean
+  isCondor: boolean,
+  opts?: { maxOtmPct?: number | null }
 ): ZeroDteGateVerdict {
   const rest = gate.blocks.filter((b) => !MONEYNESS_GATE_CODES.has(b.code));
-  const blocks = [...rest, ...moneynessGateBlocks(otmPct, isCondor)];
+  const blocks = [...rest, ...moneynessGateBlocks(otmPct, isCondor, opts)];
   return {
     ...gate,
     verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
@@ -1241,6 +1281,64 @@ export function refreshGovernorPremiumBudgetBlocks(
           },
         ]
       : nonPremium;
+  return {
+    ...gate,
+    verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
+    blocks,
+  };
+}
+
+const GOVERNOR_CYCLE_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
+  "governor_session_stops",
+  "governor_session_loss_halt",
+  "governor_max_concurrent",
+  "governor_premium_budget",
+  "governor_gamma_budget",
+  "correlated_conflict",
+  "governor_concentration",
+  "governor_reentry_lock",
+]);
+
+/**
+ * Re-apply G-5 governor cycle blocks after thesis-first deferred plan attach (scan.ts).
+ * The first gate pass may have counted phantom commits in `committedThisCycle` before plan
+ * quality / moneyness refresh flipped verdicts — this pass threads the ACCURATE cycle set.
+ */
+export function refreshGovernorCycleBlocks(
+  gate: ZeroDteGateVerdict,
+  input: {
+    ticker: string;
+    direction: "long" | "short";
+    plan: ContractPlan | null;
+    gamma_regime: string | null;
+    governor: GovernorSnapshot;
+    nowMs: number;
+    nowEtMinutes: number;
+    governorPremiumAtRisk: number;
+    governorShortGammaOpen: number;
+    committedThisCycle: GovernorOpenPlan[];
+  }
+): ZeroDteGateVerdict {
+  const nonGov = gate.blocks.filter((b) => !GOVERNOR_CYCLE_GATE_CODES.has(b.code));
+  const blocks = [
+    ...nonGov,
+    ...evaluateZeroDteGovernor(
+      {
+        ticker: input.ticker,
+        direction: input.direction,
+        entry_premium: input.plan?.entry_max ?? input.plan?.mark ?? null,
+        gamma_regime: input.gamma_regime,
+      },
+      input.governor,
+      input.nowMs,
+      input.committedThisCycle,
+      {
+        etMinutes: input.nowEtMinutes,
+        premiumAtRisk: input.governorPremiumAtRisk,
+        shortGammaOpen: input.governorShortGammaOpen,
+      }
+    ),
+  ];
   return {
     ...gate,
     verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",

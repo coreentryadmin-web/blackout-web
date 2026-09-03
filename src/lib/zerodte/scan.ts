@@ -65,7 +65,6 @@ import { etNowParts, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/
 import { fetchAggBars } from "@/lib/providers/polygon-largo";
 import { macroEventsOnDateLive } from "@/lib/providers/macro-events";
 import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
-import { buildOcc } from "@/lib/ws/options-socket";
 import { requireHealthySourceEnabled } from "@/lib/ws/source-health";
 import { getFlowSourceHealthState } from "@/lib/ws/uw-socket";
 import { withServerCache } from "@/lib/server-cache";
@@ -116,7 +115,7 @@ import {
   buildResolvedExitPolicy,
   exitPolicyGraderParams,
 } from "./strategy-version";
-import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy } from "./exit-sync";
+import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy, playRailsFromRow } from "./exit-sync";
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
 import { applyCortexVetoDwell } from "./cortex-veto-dwell";
 import { persistZeroDteRejections } from "./rejections";
@@ -133,12 +132,22 @@ import {
   evaluateZeroDteGates,
   freshCommitBlockedByPlan,
   gateRejectionFor,
+  g12ConfirmationCount,
   planQualityGateBlocks,
   refreshPlanQualityGateBlocks,
   refreshMoneynessGateBlocks,
   refreshGovernorPremiumBudgetBlocks,
+  refreshGovernorCycleBlocks,
   recentNighthawkTake,
 } from "./gates";
+import { fetchZeroDteVectorPulseByTicker, type ZeroDteVectorPulse } from "./vector-crosslink";
+import {
+  fetchChainsForVectorRank,
+  resolveZeroDteContractAttach,
+  vectorRankContractsEnabled,
+} from "./vector-contract-resolve";
+import { computeVectorGateBoost } from "./vector-commit-boost";
+import { resolveRunnerProfile, effectiveMaxOtmPct, vectorRunnerOtmRelax } from "./runner-profile";
 import { buildRegimePlaneSnapshot, inferRegimeGexQuality } from "./regime-plane";
 import {
   deriveGovernorFromLedger,
@@ -188,13 +197,16 @@ import { asManagedPnlPct, officialPlanPnlPct } from "./record";
  *  edition tickers are listed as covered_elsewhere but remain eligible for 0DTE. */
 const STATIC_EXCLUDES = new Set<string>([...LEVERAGED_ETP_SET, "VIX", "UVXY"]);
 
-/** Top finds get the full Night Hawk dossier — capped to stay inside UW budgets. */
-const ENRICH_TOP_N = 12; // raised 5→12 so ranks 6–12 get dossier/Cortex inputs (was starving mid-board commits)
+/** Top finds get the full Night Hawk dossier — aligned with FLOW maxSetups (48) so ranks
+ *  13–48 are no longer Cortex-starved. Batched (ENRICH_BATCH_SIZE) to avoid a 48-wide
+ *  UW fan-out thundering herd on the cron warm path. */
+export const ENRICH_TOP_N = 48;
+const ENRICH_BATCH_SIZE = 8;
 const DOSSIER_CACHE_TTL_MS = 10 * 60 * 1000;
 /** How long a caller waits for a COLD dossier before serving the un-enriched setup.
  *  The cache loader keeps running after we stop waiting, so the next scan (~2 min)
  *  or poll (~15s) gets the enriched row instantly — the board "heats up". */
-const ENRICH_WAIT_MS = 3_000;
+const ENRICH_WAIT_MS = 4_000;
 
 import {
   resolveFirewallEarnings,
@@ -338,26 +350,37 @@ export async function scanZeroDteBoard(flags?: {
   const candidateDerivedAt = Date.now();
 
   const buildCache = createDossierBuildCache();
-  const setups = await Promise.all(
-    rawSetups.map(async (setup, i) => {
-      const extras = {
-        earnings: flags?.earnings?.get(setup.ticker) ?? null,
-        news_hot: flags?.news?.get(setup.ticker) ?? null,
-      };
-      if (i >= ENRICH_TOP_N) return enrichSetup(setup, null, extras);
-      // Single-flight per ticker per 10-min window across all pollers AND the cron
-      // warmer (Redis-backed), so nothing multiplies dossier builds.
-      const dossier = await within(
-        withServerCache<SetupDossierView>(
-          `zerodte:dossier:${setup.ticker}:${today}`,
-          DOSSIER_CACHE_TTL_MS,
-          () => fetchTickerDossier(setup.ticker, null, buildCache)
-        ),
-        ENRICH_WAIT_MS
-      );
-      return enrichSetup(setup, dossier, extras);
-    })
-  );
+  const extrasFor = (ticker: string) => ({
+    earnings: flags?.earnings?.get(ticker) ?? null,
+    news_hot: flags?.news?.get(ticker) ?? null,
+  });
+  const enrichCap = Math.min(ENRICH_TOP_N, rawSetups.length);
+  const setups: EnrichedZeroDteSetup[] = [];
+  // Ranks beyond the cap: no dossier (batch halt/earnings still cover G-11).
+  for (let i = enrichCap; i < rawSetups.length; i++) {
+    const setup = rawSetups[i]!;
+    setups[i] = await enrichSetup(setup, null, extrasFor(setup.ticker));
+  }
+  // Top ranks: dossier in bounded parallel batches so UW budget stays predictable.
+  for (let start = 0; start < enrichCap; start += ENRICH_BATCH_SIZE) {
+    const end = Math.min(start + ENRICH_BATCH_SIZE, enrichCap);
+    const batch = await Promise.all(
+      rawSetups.slice(start, end).map(async (setup) => {
+        const dossier = await within(
+          withServerCache<SetupDossierView>(
+            `zerodte:dossier:${setup.ticker}:${today}`,
+            DOSSIER_CACHE_TTL_MS,
+            () => fetchTickerDossier(setup.ticker, null, buildCache)
+          ),
+          ENRICH_WAIT_MS
+        );
+        return enrichSetup(setup, dossier, extrasFor(setup.ticker));
+      })
+    );
+    for (let j = 0; j < batch.length; j++) {
+      setups[start + j] = batch[j]!;
+    }
+  }
 
   // ── BREAKOUT discovery origin (Phase 3a, §1a) — the SECOND, INDEPENDENT discovery source ──
   // Flag-gated via ZERODTE_WHOLE_MARKET + ZERODTE_SRC_BREAKOUT (default ON; set to "0" to disable). When enabled, the
@@ -534,10 +557,15 @@ export async function scanZeroDteBoard(flags?: {
   // window just leaves every context null.
   attachFlowAccumulation(setups, accumulationSignalsFromFlow(multiDayFlows, Date.now()));
 
+  const boardTickers = [...new Set(setups.map((s) => s.ticker.toUpperCase()))];
+  const vectorPulseByTicker = await fetchZeroDteVectorPulseByTicker(todayEt(), boardTickers).catch(
+    () => ({} as Record<string, ZeroDteVectorPulse>)
+  );
+
   const thesisEnv = thesisFirstEnv();
   const thesisLive = thesisEnv.enabled;
   if (!thesisLive) {
-    await attachContractPlans(setups);
+    await attachContractPlans(setups, vectorPulseByTicker);
   }
   const chainReceivedAt = Date.now();
   const tape = await attachIntradayEdge(setups);
@@ -579,30 +607,61 @@ export async function scanZeroDteBoard(flags?: {
   }
 
   // Hard-gate verdicts — Cortex runs inside on gate survivors.
-  const { governorPremiumAtRisk } = await attachGateVerdicts(setups, tape.bias, tape.biasAsOfMs, nowEtMinutes);
+  const { governorPremiumAtRisk, governorSnapshot, governorShortGammaOpen } = await attachGateVerdicts(
+    setups,
+    tape.bias,
+    tape.biasAsOfMs,
+    nowEtMinutes,
+    vectorPulseByTicker
+  );
 
   // Live thesis-first: contract engine picks expression AFTER thesis + gates + Cortex.
   if (thesisLive) {
     await attachThesisContractPlans(setups);
-    await attachContractPlans(setups);
+    await attachContractPlans(setups, vectorPulseByTicker);
+    const committedLedger = dbConfigured()
+      ? new Set(
+          (await fetchZeroDteSetupLog(todayEt()).catch(() => [])).map((r) => r.ticker.toUpperCase())
+        )
+      : new Set<string>();
+    const governorAccurate: GovernorOpenPlan[] = [];
+    const reconcileNowMs = Date.now();
     for (const s of setups) {
+      if (committedLedger.has(s.ticker.toUpperCase())) continue;
       if (s.gate) {
         s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null);
-        // Moneyness re-check (P0 fix, 2026-08-27): attachContractPlans (just above) is what runs
-        // refreshUnderlyingFromLiveSpot in this (thesis-first) pipeline, i.e. AFTER
-        // attachGateVerdicts already evaluated the moneyness caps against the PRE-refresh
-        // otm_pct — the exact "deferred, never reconciled" shape refreshPlanQualityGateBlocks
-        // exists to fix for G-8/G-9. Re-apply the same two caps against the now-refreshed
-        // s.otm_pct so a candidate whose live moneyness drifted past a cap during this pass
-        // still gets caught (mirrors refreshGovernorPremiumBudgetBlocks below).
-        s.gate = refreshMoneynessGateBlocks(s.gate, s.otm_pct ?? null, s.play_type === "CONDOR");
-        // G-5 premium budget was computed with plan=null (entry_premium 0) above, same
-        // "deferred, never reconciled" shape as G-8/G-9 — see refreshGovernorPremiumBudgetBlocks.
+        s.gate = refreshMoneynessGateBlocks(
+          s.gate,
+          s.otm_pct ?? null,
+          s.play_type === "CONDOR",
+          {
+            maxOtmPct: effectiveMaxOtmPct(
+              vectorRunnerOtmRelax(s.direction, s.score, vectorPulseByTicker[s.ticker.toUpperCase()] ?? null)
+            ),
+          }
+        );
         s.gate = refreshGovernorPremiumBudgetBlocks(
           s.gate,
           s.plan?.entry_max ?? s.plan?.mark ?? null,
           governorPremiumAtRisk
         );
+        if (s.gate.verdict === "COMMIT" && governorSnapshot) {
+          s.gate = refreshGovernorCycleBlocks(s.gate, {
+            ticker: s.ticker,
+            direction: s.direction,
+            plan: s.plan ?? null,
+            gamma_regime: s.gamma_regime ?? null,
+            governor: governorSnapshot,
+            nowMs: reconcileNowMs,
+            nowEtMinutes,
+            governorPremiumAtRisk,
+            governorShortGammaOpen,
+            committedThisCycle: governorAccurate,
+          });
+        }
+        if (s.gate.verdict === "COMMIT") {
+          governorAccurate.push({ ticker: s.ticker.toUpperCase(), direction: s.direction });
+        }
       }
     }
   }
@@ -726,15 +785,24 @@ async function attachGateVerdicts(
   setups: EnrichedZeroDteSetup[],
   bias: MarketBias | null,
   biasAsOfMs: number | null,
-  nowEtMinutes: number
-): Promise<{ governorPremiumAtRisk: number }> {
-  if (setups.length === 0) return { governorPremiumAtRisk: 0 };
+  nowEtMinutes: number,
+  vectorPulseByTicker: Record<string, ZeroDteVectorPulse> = {}
+): Promise<{
+  governorPremiumAtRisk: number;
+  governorSnapshot: GovernorSnapshot | null;
+  governorShortGammaOpen: number;
+}> {
+  if (setups.length === 0) {
+    return { governorPremiumAtRisk: 0, governorSnapshot: null, governorShortGammaOpen: 0 };
+  }
   const today = todayEt();
   const nowMs = Date.now();
   const ledgerRows = dbConfigured()
     ? await fetchZeroDteSetupLog(today).catch(() => null)
     : ([] as ZeroDteSetupLogRow[]);
-  if (ledgerRows == null) return { governorPremiumAtRisk: 0 }; // gates stay null → fresh commits fail closed downstream
+  if (ledgerRows == null) {
+    return { governorPremiumAtRisk: 0, governorSnapshot: null, governorShortGammaOpen: 0 };
+  }
   const committed = new Set(ledgerRows.map((r) => r.ticker.toUpperCase()));
 
   // G-5 snapshot: open/stop counts from the shared Postgres ledger (authoritative),
@@ -911,6 +979,12 @@ async function attachGateVerdicts(
   const committedThisCycle: Array<{ ticker: string; direction: "long" | "short" }> = [];
   for (const s of setups) {
     if (committed.has(s.ticker.toUpperCase())) continue;
+    const pulse = vectorPulseByTicker[s.ticker.toUpperCase()] ?? null;
+    const boost = computeVectorGateBoost(s.direction, s.score, pulse);
+    const boostedScore = boost.score_bump > 0 ? Math.min(100, Math.round(s.score + boost.score_bump)) : s.score;
+    if (boost.score_bump > 0) s.score = boostedScore;
+    const postBoost = computeVectorGateBoost(s.direction, boostedScore, pulse);
+    const runnerOtmRelax = vectorRunnerOtmRelax(s.direction, boostedScore, pulse);
     s.gate = evaluateZeroDteGates({
       ticker: s.ticker,
       direction: s.direction,
@@ -976,6 +1050,10 @@ async function attachGateVerdicts(
       flowAccumulationAligned: s.flow_accumulation?.aligned ?? null,
       regimeBlockFreshCommits: regimePlane.blockFreshCommits,
       regimeBlockReason: regimePlane.humanReason,
+      vector_pulse: pulse,
+      vector_g17_exempt: postBoost.g17_exempt,
+      vector_confluence_credit: postBoost.confluence_credit,
+      max_otm_pct: runnerOtmRelax ? effectiveMaxOtmPct(true) : null,
     });
     s.regime_plane = regimePlane;
     if (s.thesis_gate_blocks?.length) {
@@ -1017,7 +1095,7 @@ async function attachGateVerdicts(
     }
     committedThisCycle.push({ ticker: s.ticker, direction: s.direction });
   }
-  return { governorPremiumAtRisk };
+  return { governorPremiumAtRisk, governorSnapshot: governor, governorShortGammaOpen };
 }
 
 /**
@@ -1043,7 +1121,18 @@ export function computeQuoteAgeMs(
 /** One batched quote snapshot for every find's top-strike contract, then a pure
  *  plan per find. Soft-deadlined: a slow quote provider degrades to evidence-only
  *  cards (plan stays null), never a stalled scan. */
-async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void> {
+async function attachContractPlans(
+  setups: EnrichedZeroDteSetup[],
+  vectorPulseByTicker: Record<string, ZeroDteVectorPulse> = {}
+): Promise<void> {
+  const rankEnabled = vectorRankContractsEnabled();
+  const chains =
+    rankEnabled && setups.length > 0
+      ? ((await within(fetchChainsForVectorRank(setups, vectorPulseByTicker), 4_000).catch(
+          () => new Map<string, { spot: number; rows: import("@/features/nighthawk/lib/option-chain-prompt").ChainStrikeRow[] }>()
+        )) ?? new Map())
+      : new Map<string, { spot: number; rows: import("@/features/nighthawk/lib/option-chain-prompt").ChainStrikeRow[] }>();
+
   const occOf = new Map<string, string>();
   for (const s of setups) {
     // A CONDOR carries its own 4-leg priced structure (condor_plan, built at discovery); it has no
@@ -1051,8 +1140,14 @@ async function attachContractPlans(setups: EnrichedZeroDteSetup[]): Promise<void
     // forcing it through buildOcc/buildContractPlan would fabricate a one-legged plan the gate stack
     // and grader must never see. Its liquidity is gated on condor_plan instead (gates.ts).
     if (s.play_type === "CONDOR") continue;
-    const occ = buildOcc(s.ticker, s.expiry, s.direction === "long" ? "call" : "put", s.top_strike);
-    if (occ) occOf.set(s.ticker, occ);
+    const pulse = vectorPulseByTicker[s.ticker.toUpperCase()] ?? null;
+    const chain = chains?.get(s.ticker.toUpperCase()) ?? null;
+    const attached = resolveZeroDteContractAttach(s, pulse, chain);
+    if (attached) {
+      s.top_strike = attached.strike;
+      occOf.set(s.ticker, attached.occ);
+      continue;
+    }
   }
   if (occOf.size === 0) return;
   const snaps = await within(
@@ -1169,6 +1264,10 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   });
   if (setups.length === 0) return 0;
   const today = todayEt();
+  const vectorPulseByTicker = await fetchZeroDteVectorPulseByTicker(
+    today,
+    setups.map((s) => s.ticker.toUpperCase())
+  ).catch(() => ({} as Record<string, ZeroDteVectorPulse>));
   const { hour, minute } = etNowParts();
   const pastCutoff = hour * 60 + minute >= NEW_PLAY_CUTOFF_ET_MINUTES;
 
@@ -1277,9 +1376,38 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     );
     const playTier = baseEntryCtx.tier?.tier ?? null;
     const exitPolicyAtCommit = resolveExitModeForTier(playTier);
+    const pulse = vectorPulseByTicker[s.ticker.toUpperCase()] ?? null;
+    const vectorBoost = computeVectorGateBoost(s.direction, s.score, pulse);
+    const confluenceCount =
+      (s.confluence ? g12ConfirmationCount(s.confluence, s.ticker) : 0) + (vectorBoost.confluence_credit ?? 0);
+    const runnerProfile = resolveRunnerProfile({
+      tier: playTier,
+      confluenceCount,
+      vectorPulse: pulse,
+      direction: s.direction,
+    });
     const strategyManifest = buildStrategyManifest({ exitPolicy: exitPolicyAtCommit });
     const strategyHash = strategyConfigHash(strategyManifest);
-    const exitPolicySnapshot = buildResolvedExitPolicy(exitPolicyAtCommit);
+    const exitPolicySnapshot = buildResolvedExitPolicy(exitPolicyAtCommit, {
+      target_pct: runnerProfile?.target_pct,
+      regime: runnerProfile?.regime,
+    });
+    const entryPrem =
+      s.play_type === "CONDOR"
+        ? s.condor_plan?.net_credit != null
+          ? Math.round((s.condor_plan.net_credit / 100) * 100) / 100
+          : null
+        : resolveLedgerEntryPremium(s.plan?.entry_max, s.top_strike_avg_fill, s.plan?.mark);
+    const planJson =
+      s.plan && runnerProfile && entryPrem != null && entryPrem > 0
+        ? ({
+            ...s.plan,
+            target_premium: Math.round(entryPrem * (1 + runnerProfile.target_pct / 100) * 100) / 100,
+            runner_target_pct: runnerProfile.target_pct,
+          } as Record<string, unknown>)
+        : s.plan
+          ? ({ ...s.plan } as unknown as Record<string, unknown>)
+          : null;
     return ({
     session_date: today,
     ticker: s.ticker,
@@ -1321,9 +1449,9 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
         ? s.condor_plan?.net_credit != null
           ? Math.round((s.condor_plan.net_credit / 100) * 100) / 100
           : null
-        : resolveLedgerEntryPremium(s.plan?.entry_max, s.top_strike_avg_fill, s.plan?.mark),
+        : entryPrem,
     flow_avg_fill: s.top_strike_avg_fill,
-    plan_json: s.plan ? ({ ...s.plan } as unknown as Record<string, unknown>) : null,
+    plan_json: planJson,
     // G-4/G-6 calibration verdict at commit (C-2 context columns). Refresh-lane
     // setups carry gate=null and pass null here — the upsert's COALESCE pin keeps
     // the original commit-time verdict untouched either way.
@@ -1397,6 +1525,13 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       // numbers it COMMITTED with, never whatever PLAN_RULES holds at grade time. readFrozenExitPolicy
       // reads it; null (legacy row) → graders fall back to current code, byte-for-byte prior behavior.
       exit_policy_snapshot: exitPolicySnapshot,
+      ...(runnerProfile
+        ? {
+            runner_profile: runnerProfile,
+            session_regime: runnerProfile.regime,
+          }
+        : {}),
+      ...(pulse && vectorBoost.reason ? { vector_commit_boost: vectorBoost.reason } : {}),
       // WS-05 — concentration STATE frozen at commit (MEASURE ONLY, no gating): how concentrated the
       // open book was, from the SAME inputs summarizeGovernorForBoard uses (governor.open_plans +
       // CORRELATION_GROUPS). Lets calibration ask "how concentrated was the book when this committed?"
@@ -1982,6 +2117,7 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       );
       // Exit engine FIRST with plan-stop deferred — a latched trough at −50% must not
       // skip the ratchet floor when peak had armed breakeven (FINDINGS 2026-08-04).
+      const rails = playRailsFromRow(r);
       const preStop = derivePlayStatus({
         entryPremium: r.entry_premium,
         mark: mark ?? r.last_mark,
@@ -1989,6 +2125,8 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
         trough,
         nowEtMinutes,
         deferPlanStop: true,
+        targetPct: rails.targetPct,
+        stopPct: rails.stopPct,
       });
       const exit =
         preStop.status !== "CLOSED"
@@ -2020,6 +2158,8 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
               peak,
               trough,
               nowEtMinutes,
+              targetPct: rails.targetPct,
+              stopPct: rails.stopPct,
             })
           : preStop;
       const status = exit ? ("CLOSED" as const) : state.status;

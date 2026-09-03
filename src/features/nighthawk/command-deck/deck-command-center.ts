@@ -35,6 +35,14 @@ export type TodaysEdgeLevel = "High" | "Medium" | "Low";
 export type DeckCommandCenterStats = {
   /** Total plays on today's board. */
   opportunities: number;
+  /** Fresh candidates scanned this cycle (WATCH + SKIP, not committed). */
+  scanned: number;
+  /** Working + closed committed ledger rows. */
+  committed: number;
+  /** Gate-clearing fresh finds not yet in ledger. */
+  commitReady: number;
+  /** Gate-blocked fresh finds. */
+  gateBlocked: number;
   /** Highest-conviction play ticker + letter grade, when the board carries tier evidence. */
   topRated: { ticker: string; grade: string } | null;
   /** Session edge from today's play quality — null when the board is empty. */
@@ -65,8 +73,27 @@ export function deriveTodaysEdge(plays: TerminalPlay[]): TodaysEdgeLevel | null 
 }
 
 export function buildDeckCommandCenterStats(plays: TerminalPlay[]): DeckCommandCenterStats {
+  let scanned = 0;
+  let committed = 0;
+  let commitReady = 0;
+  let gateBlocked = 0;
+  for (const p of plays) {
+    if (p.status === "WATCH") {
+      scanned += 1;
+      commitReady += 1;
+    } else if (p.status === "SKIP") {
+      scanned += 1;
+      gateBlocked += 1;
+    } else if (p.status === "OPEN" || p.status === "HOLD" || p.status === "TRIM" || p.status === "CLOSED") {
+      committed += 1;
+    }
+  }
   return {
     opportunities: plays.length,
+    scanned,
+    committed,
+    commitReady,
+    gateBlocked,
     topRated: topRatedPlay(plays),
     edge: deriveTodaysEdge(plays),
   };

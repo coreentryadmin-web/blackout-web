@@ -125,6 +125,12 @@ export interface TerminalPlay {
   flagUnderlyingPx?: number | null;
   peak?: number | null;
   trough?: number | null;
+  /** Closed: % of peak MFE captured at exit. */
+  mfeCapturePct?: number | null;
+  /** Frozen runner target profile (300%/400% plays). */
+  runnerProfile?: { targetPct: number; tag: string; regime: string } | null;
+  /** True when runner target is projected for an uncommitted WATCH/SKIP candidate. */
+  runnerProjected?: boolean;
   /** Executable exit fill (the BID a long sells into) + its P&L vs entry — the honest realizable
    *  number beside the mid `mark`/`pnlPct`. Null without a live two-sided book (mid-only). */
   execMark?: number | null;
@@ -166,6 +172,17 @@ export interface TerminalPlay {
   detectedAt?: string | null;
   /** ISO instant capital was committed (swing ledger committed_at). Null when unknown. */
   committedAt?: string | null;
+
+  /** Hard-gate blocks for SKIP rows — rendered in the command panel (never fabricated). */
+  gateBlocks?: Array<{ code: string; reason: string; unlock_et?: string | null; threshold?: number | null }> | null;
+  /** Vector desk pulse for cross-link — today's best pick on this ticker. */
+  vectorPulse?: {
+    premiumPct: number | null;
+    peakPremiumPct: number | null;
+    actionStatus: string | null;
+    isWinner: boolean;
+    isRunner: boolean;
+  } | null;
 
   /** Timeline replay — engine exit + reconstructed tranches (0DTE only, never fabricated). */
   closedReason?: string | null;

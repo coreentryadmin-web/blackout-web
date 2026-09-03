@@ -383,27 +383,27 @@ test("resolveExitMode: trim_scale is the default; only exact 'trim_scale' env op
   assert.equal(resolveExitMode({ ZERODTE_EXIT_MODE: "trim" } as NodeJS.ProcessEnv), "trim_scale");
 });
 
-// ── resolveTrimRegimeLive: the regime-conditioning kill-switch (DEFAULT-OFF) — FINDING
-//    2026-08-29. Off by default because trend/range tranche thresholds are uncalibrated
-//    v1 heuristics (only `neutral` is E5-measured) — flipping this on lets the live engine
-//    condition real trims on the row's stamped session_regime; unset/anything-but-exact-"1"
-//    must stay off so a typo'd env value can never silently change live exit behavior.
-test("resolveTrimRegimeLive: off by default — only the exact string '1' opts in", async () => {
+// ── resolveTrimRegimeLive: the regime-conditioning kill-switch. Was DEFAULT-OFF (FINDING
+//    2026-08-29 — trend/range tranche thresholds were uncalibrated v1 heuristics). Flipped
+//    ON by default 2026-09-03 alongside resolveTrimBankLive above: runner-profile commits
+//    now stamp a real session_regime at commit, so the live engine should honor it; opt out
+//    with an explicit 0/false/off.
+test("resolveTrimRegimeLive: on by default (2026-09-03) — opt out with 0/false/off", async () => {
   const { resolveTrimRegimeLive } = await import("./exit-sync");
-  assert.equal(resolveTrimRegimeLive({} as NodeJS.ProcessEnv), false);
-  assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "" } as NodeJS.ProcessEnv), false);
-  assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "true" } as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimRegimeLive({} as NodeJS.ProcessEnv), true);
+  assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "" } as NodeJS.ProcessEnv), true);
+  assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "true" } as NodeJS.ProcessEnv), true);
   assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "0" } as NodeJS.ProcessEnv), false);
   assert.equal(resolveTrimRegimeLive({ ZERODTE_TRIM_REGIME_LIVE: "1" } as NodeJS.ProcessEnv), true);
 });
 
 // ── resolveTrimBankLive: the persisted-tranche-count kill-switch (DEFAULT-OFF, FIX
 //    2026-09-01) — same off-by-default discipline as resolveTrimRegimeLive above.
-test("resolveTrimBankLive: off by default — only the exact string '1' opts in", async () => {
+test("resolveTrimBankLive: on by default (2026-09-03) — opt out with 0/false/off", async () => {
   const { resolveTrimBankLive } = await import("./exit-sync");
-  assert.equal(resolveTrimBankLive({} as NodeJS.ProcessEnv), false);
-  assert.equal(resolveTrimBankLive({ ZERODTE_TRIM_BANK_LIVE: "" } as NodeJS.ProcessEnv), false);
-  assert.equal(resolveTrimBankLive({ ZERODTE_TRIM_BANK_LIVE: "true" } as NodeJS.ProcessEnv), false);
+  assert.equal(resolveTrimBankLive({} as NodeJS.ProcessEnv), true);
+  assert.equal(resolveTrimBankLive({ ZERODTE_TRIM_BANK_LIVE: "" } as NodeJS.ProcessEnv), true);
+  assert.equal(resolveTrimBankLive({ ZERODTE_TRIM_BANK_LIVE: "true" } as NodeJS.ProcessEnv), true);
   assert.equal(resolveTrimBankLive({ ZERODTE_TRIM_BANK_LIVE: "0" } as NodeJS.ProcessEnv), false);
   assert.equal(resolveTrimBankLive({ ZERODTE_TRIM_BANK_LIVE: "1" } as NodeJS.ProcessEnv), true);
 });
@@ -515,35 +515,36 @@ test("trim_scale dead-zone FIX: a real persisted trims_taken=0 lets a just-armed
   assert.deepEqual(banked, [1], "onTrimBank must fire exactly once, banking tranche 1");
 });
 
-test("trim_scale dead-zone BUG (unchanged while ZERODTE_TRIM_BANK_LIVE is off): the identical scenario still dumps the whole position at breakeven — the PR is a no-op until the flag flips", async () => {
+test("trim_scale dead-zone BUG (legacy path when ZERODTE_TRIM_BANK_LIVE=0): recompute still dumps at breakeven", async () => {
   const { evaluateLedgerRowExit } = await import("./exit-sync");
   const row = trimScaleRow();
   const banked: number[] = [];
+  const prevFlag = process.env.ZERODTE_TRIM_BANK_LIVE;
+  process.env.ZERODTE_TRIM_BANK_LIVE = "0";
 
-  // SAME row, SAME mark/peak — only difference is `trimsTaken` is NOT overridden, so
-  // evaluateLedgerRowExit recomputes it via trimTranchesArmed(peak, regime), exactly
-  // as it always has. This must reproduce today's shipped (buggy) behavior byte-for-
-  // byte: merging this fix changes nothing live until ZERODTE_TRIM_BANK_LIVE=1.
-  const result = await evaluateLedgerRowExit(
-    row,
-    { syncMark: 4.0, status: "OPEN" },
-    {
-      exitMode: "trim_scale",
-      regime: "neutral",
-      // trimsTaken deliberately omitted — exercises the real resolveTrimBankLive()
-      // (unset in this test process → false) recompute path.
-      fetchEvidence: async () => [],
-      readLaneMark: () => undefined,
-      onTrimBank: (n) => {
-        banked.push(n);
-      },
-    }
-  );
+  try {
+    const result = await evaluateLedgerRowExit(
+      row,
+      { syncMark: 4.0, status: "OPEN" },
+      {
+        exitMode: "trim_scale",
+        regime: "neutral",
+        fetchEvidence: async () => [],
+        readLaneMark: () => undefined,
+        onTrimBank: (n) => {
+          banked.push(n);
+        },
+      }
+    );
 
-  assert.ok(result, "the coarse breakeven floor still dumps the whole position — the bug is unchanged while the flag is off");
-  assert.equal(result!.decision.action, "EXIT");
-  assert.match(result!.decision.reason, /ratchet_breakeven_floor|ratchet_early_profit_floor/);
-  assert.deepEqual(banked, [], "onTrimBank must never fire while ZERODTE_TRIM_BANK_LIVE is off");
+    assert.ok(result, "legacy recompute path still dumps at breakeven when flag is off");
+    assert.equal(result!.decision.action, "EXIT");
+    assert.match(result!.decision.reason, /ratchet_breakeven_floor|ratchet_early_profit_floor/);
+    assert.deepEqual(banked, [], "onTrimBank must never fire while ZERODTE_TRIM_BANK_LIVE is off");
+  } finally {
+    if (prevFlag === undefined) delete process.env.ZERODTE_TRIM_BANK_LIVE;
+    else process.env.ZERODTE_TRIM_BANK_LIVE = prevFlag;
+  }
 });
 
 // ── ENTRY-BASIS COHERENCE: the operative stop can never be looser than −50% of the

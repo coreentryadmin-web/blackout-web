@@ -29,6 +29,9 @@ import type {
 } from "./types";
 import { watchReferencePremium, watchTrackPct, watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
 import { thesisFirstFromEntryContext } from "@/lib/zerodte/thesis/thesis-first-rehydrate";
+import { projectRunnerProfileForCandidate } from "@/lib/zerodte/runner-profile";
+import type { ZeroDteVectorPulse } from "@/lib/zerodte/vector-crosslink";
+import { vectorSideToDirection } from "@/lib/zerodte/vector-commit-boost";
 
 const asDir = (d: unknown): DeckDirection =>
   String(d ?? "").toLowerCase().startsWith("s") || String(d ?? "") === "SHORT" ? "SHORT" : "LONG";
@@ -37,6 +40,50 @@ const asStatus = (s: unknown): DeckStatus => {
   return (["OPEN", "HOLD", "TRIM", "CLOSED", "WATCH", "SKIP"].includes(u) ? u : "WATCH") as DeckStatus;
 };
 const fin = (n: unknown): number | null => (typeof n === "number" && Number.isFinite(n) ? n : null);
+
+function cortexPreviewMetrics(cortex: unknown): {
+  cortexScore: number | null;
+  cortexVetoCount: number | null;
+  cortexSupportCount: number | null;
+  cortexAbsentCount: number | null;
+} {
+  if (!cortex || typeof cortex !== "object") {
+    return { cortexScore: null, cortexVetoCount: null, cortexSupportCount: null, cortexAbsentCount: null };
+  }
+  const c = cortex as Record<string, unknown>;
+  if (c.abstained === true) {
+    return { cortexScore: null, cortexVetoCount: null, cortexSupportCount: null, cortexAbsentCount: null };
+  }
+  const verdict =
+    c.verdict && typeof c.verdict === "object" ? (c.verdict as Record<string, unknown>) : c;
+  return {
+    cortexScore: fin(verdict.score),
+    cortexVetoCount: Array.isArray(verdict.vetoes) ? verdict.vetoes.length : null,
+    cortexSupportCount: Array.isArray(verdict.supports) ? verdict.supports.length : null,
+    cortexAbsentCount: Array.isArray(verdict.absent) ? verdict.absent.length : null,
+  };
+}
+
+function vectorPulseForPreview(
+  pulse: ZeroDteDeckSource["vector_pulse"],
+  setupDirection: "long" | "short"
+): ZeroDteVectorPulse | null {
+  if (!pulse) return null;
+  const direction = pulse.direction ?? vectorSideToDirection(pulse.side) ?? setupDirection;
+  return {
+    premium_pct: pulse.premium_pct,
+    peak_premium_pct: pulse.peak_premium_pct,
+    action_status: pulse.action_status,
+    is_winner: pulse.is_winner,
+    is_runner: pulse.is_runner,
+    side: pulse.side ?? (setupDirection === "long" ? "call" : "put"),
+    direction,
+    strike: null,
+    occ: null,
+    rank: null,
+    role: null,
+  };
+}
 
 /** R:R from the plan's target/stop premiums (reward ÷ risk, relative to a hypothetical entry at the mid). */
 function rrFromPlan(plan: { stop_premium?: number | null; target_premium?: number | null } | null | undefined): number | null {
@@ -167,6 +214,8 @@ export interface ZeroDteDeckSource {
     first_seen?: string | null;
     /** Thesis-first pipeline snapshot when ZERODTE_THESIS_FIRST is armed. */
     thesis_first?: import("@/lib/zerodte/thesis/types").ThesisPipelineResult | null;
+    discovery_origin?: string[] | null;
+    cortex?: unknown;
   } | null;
   /** Bare board setups carry thesis_first at the top level (same shape as nested setup). */
   thesis_first?: import("@/lib/zerodte/thesis/types").ThesisPipelineResult | null;
@@ -224,6 +273,22 @@ export interface ZeroDteDeckSource {
   underlying_price?: number | null;
   /** Thesis Health payload from the board ledger row (server-computed each board build). */
   thesis_health?: import("@/lib/zerodte/thesis-health").ThesisHealthPayload | null;
+  /** Hard-gate block sentences for SKIP/WATCH rows (setup.gate.blocks). */
+  gate_blocks?: Array<{ code: string; reason: string; unlock_et?: string | null; threshold?: number | null }> | null;
+  /** Vector desk pulse for this ticker today — cross-desk link only. */
+  vector_pulse?: {
+    premium_pct: number | null;
+    peak_premium_pct: number | null;
+    action_status: string | null;
+    is_winner: boolean;
+    is_runner: boolean;
+    side?: "call" | "put" | null;
+    direction?: "long" | "short" | null;
+  } | null;
+  peak_pnl_pct?: number | null;
+  mfe_capture_pct?: number | null;
+  runner_profile?: { target_pct: number; tag: string; regime: string } | null;
+  target_pct?: number | null;
   closed_reason?: string | null;
   exit_reason?: string | null;
   exit_detail?: string | null;
@@ -272,6 +337,23 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
         .map(([k, v]) => ({ label: FB_LABELS[k] ?? k, points: v as number }));
 
   const gate = setup?.gate ?? null;
+  const gateBlocksFromGate =
+    gate?.verdict === "BLOCKED" && Array.isArray(gate.blocks) ? gate.blocks : [];
+  const gateBlocksRaw =
+    Array.isArray(src.gate_blocks) && src.gate_blocks.length > 0 ? src.gate_blocks : gateBlocksFromGate;
+  const gateBlocks = gateBlocksRaw
+    .map((b) => {
+      const row = b as { code?: string; reason?: string; unlock_et?: string | null; threshold?: number | null };
+      const code = String(row.code ?? "").trim();
+      if (!code) return null;
+      return {
+        code,
+        reason: String(row.reason ?? "").trim() || code,
+        unlock_et: row.unlock_et ?? null,
+        threshold: row.threshold ?? null,
+      };
+    })
+    .filter((b): b is NonNullable<typeof b> => b != null);
   const isWorking = status === "OPEN" || status === "HOLD" || status === "TRIM";
   // CLOSED = already committed and finished. The live setup's current gate (often BLOCKED after
   // the session heat flips) must NOT paint a red "✗ Hard gate" on a play that cleared entry —
@@ -333,11 +415,38 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
         : null;
 
   const mgmtBase = managementFor(exitModel, status, pnlDisplay);
+  const frozenRunner = src.runner_profile;
+  const setupDir = setup?.direction === "short" ? ("short" as const) : ("long" as const);
+  const projectedRunner =
+    !frozenRunner && (status === "WATCH" || status === "SKIP")
+      ? projectRunnerProfileForCandidate({
+          score: fin(src.score),
+          direction: setupDir,
+          confluenceCount: fin(src.confluence) ?? 0,
+          vectorPulse: vectorPulseForPreview(src.vector_pulse, setupDir),
+          tier: (src.tier?.tier === "A" || src.tier?.tier === "B" || src.tier?.tier === "C"
+            ? src.tier.tier
+            : null) as "A" | "B" | "C" | null,
+          discoveryOrigin: src.discovery_origin ?? setup?.discovery_origin ?? null,
+          ...cortexPreviewMetrics(setup?.cortex),
+        })
+      : null;
+  const runnerProfileResolved = frozenRunner ?? projectedRunner;
+  const runnerProjected = !frozenRunner && projectedRunner != null;
+  const runnerTag = runnerProfileResolved?.tag;
+  const runnerTarget = fin(runnerProfileResolved?.target_pct ?? src.target_pct);
+  const mgmtWithRunner =
+    runnerTarget != null && runnerTarget > 100
+      ? {
+          ...mgmtBase,
+          recNote: `${mgmtBase.recNote ? `${mgmtBase.recNote} · ` : ""}Runner ${runnerTarget}% target${runnerTag ? ` (${runnerTag})` : ""}${runnerProjected ? " if committed" : ""}`,
+        }
+      : mgmtBase;
   const thesisHealth = src.thesis_health ?? null;
   const mgmt =
     thesisHealth != null
-      ? thesisManagementOverlay(mgmtBase.recommendation, mgmtBase.recNote, thesisHealth, pnlDisplay)
-      : mgmtBase;
+      ? thesisManagementOverlay(mgmtWithRunner.recommendation, mgmtWithRunner.recNote, thesisHealth, pnlDisplay)
+      : mgmtWithRunner;
   const thesisBreak = thesisHealth
     ? { level: thesisHealth.thesisBreakLevel as ThesisLevel, note: thesisHealth.thesisBreakNote }
     : setup?.market_aligned === false
@@ -381,7 +490,6 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   const trackReference = watchTrack ? watchReferencePremium(setup?.plan ?? null) : null;
   const trackPct = watchTrack ? watchTrackPct(trackReference, markNum) : null;
 
-  const setupDir = setup?.direction === "short" ? ("short" as const) : ("long" as const);
   const thesisFirstResolved =
     setup?.thesis_first ??
     src.thesis_first ??
@@ -420,6 +528,15 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     trackReferencePremium: trackReference,
     peak: peakDisplay,
     trough: troughDisplay,
+    mfeCapturePct: fin(src.mfe_capture_pct),
+    runnerProfile: runnerProfileResolved
+      ? {
+          targetPct: runnerProfileResolved.target_pct,
+          tag: runnerProfileResolved.tag,
+          regime: runnerProfileResolved.regime,
+        }
+      : null,
+    runnerProjected,
     // Executable fill (sell-into-the-BID) is a directional LONG framing — inverted for a credit
     // condor, so it is suppressed (null) on condor rows; the condor's honest number is its decay P&L.
     execMark: isCondor === true ? null : exec.fill,
@@ -445,6 +562,16 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     exitAt: src.exit_at ?? null,
     exitPnlPct: fin(src.exit_pnl_pct),
     timelineTranches: src.timeline_tranches ?? null,
+    gateBlocks: gateBlocks.length > 0 ? gateBlocks : null,
+    vectorPulse: src.vector_pulse
+      ? {
+          premiumPct: src.vector_pulse.premium_pct,
+          peakPremiumPct: src.vector_pulse.peak_premium_pct,
+          actionStatus: src.vector_pulse.action_status,
+          isWinner: src.vector_pulse.is_winner,
+          isRunner: src.vector_pulse.is_runner,
+        }
+      : null,
   };
 }
 
