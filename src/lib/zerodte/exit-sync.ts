@@ -125,7 +125,11 @@ export function resolveExitMode(env: NodeJS.ProcessEnv = process.env): ZeroDteEx
  * justifies flipping it (see docs/audit/INTENTIONAL-DESIGN.md's calibration-first pattern).
  */
 export function resolveTrimRegimeLive(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.ZERODTE_TRIM_REGIME_LIVE === "1";
+  const raw = env.ZERODTE_TRIM_REGIME_LIVE?.trim();
+  if (raw === "0" || raw === "false" || raw === "off") return false;
+  if (raw === "1" || raw === "true" || raw === "on") return true;
+  // ON by default (2026-09-03): runner-profile commits stamp trend regime; live engine should honor it.
+  return true;
 }
 
 /**
@@ -144,7 +148,12 @@ export function resolveTrimRegimeLive(env: NodeJS.ProcessEnv = process.env): boo
  * observation, exactly like ZERODTE_TRIM_REGIME_LIVE above.
  */
 export function resolveTrimBankLive(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.ZERODTE_TRIM_BANK_LIVE === "1";
+  const raw = env.ZERODTE_TRIM_BANK_LIVE?.trim();
+  if (raw === "0" || raw === "false" || raw === "off") return false;
+  if (raw === "1" || raw === "true" || raw === "on") return true;
+  // ON by default (2026-09-03): the persisted trims_taken latch is required for trim_scale
+  // to actually bank tranches; leaving it off made every A/B trim_scale row scratch at breakeven.
+  return true;
 }
 
 /**

@@ -43,6 +43,8 @@ import { commitAuthorizedBySourceHealth, type SourceHealthState } from "@/lib/ws
 import { EARLY_ENTRY_WINDOW_END_ET_MINUTES } from "./confluence";
 import { evaluateMacroHardBlock, hasHighImpactMacroEvent, type MacroEventLike } from "@/lib/macro-hard-block";
 import { condorLiquidityGateBlocks, condorRangeBreaking, type CondorPlan } from "./condor";
+import type { ZeroDteVectorPulse } from "./vector-crosslink";
+import { vectorExemptsG17PrimeBand } from "./vector-commit-boost";
 
 /** Read a positive-integer tuning knob from the environment, falling back to `def` when unset,
  *  non-numeric, or ≤0. Evaluated ONCE at module load so the gate FUNCTIONS stay pure (they only
@@ -157,9 +159,20 @@ export function confluenceFloorAt(nowEtMinutes: number): number {
   return early ? ZERODTE_CONFLUENCE_MIN_EARLY : ZERODTE_CONFLUENCE_MIN;
 }
 
-/** G-12 floor — single names only gate VWAP-side (G-1 exempts them from SPY tape). */
-export function g12ConfluenceFloor(ticker: string, nowEtMinutes: number): number {
-  if (isIndexEtfTicker(ticker)) return confluenceFloorAt(nowEtMinutes);
+/** G-12 floor — index ETFs need VWAP + market; BREAKOUT high-score gets a single confirm. */
+export function g12ConfluenceFloor(
+  ticker: string,
+  nowEtMinutes: number,
+  opts?: { score?: number; discovery_origin?: readonly string[] | null }
+): number {
+  if (isIndexEtfTicker(ticker)) {
+    const floor = confluenceFloorAt(nowEtMinutes);
+    const origins = opts?.discovery_origin ?? [];
+    const score = opts?.score ?? 0;
+    // BREAKOUT momentum at top decile: one VWAP+market leg is enough (Vector-style chase).
+    if (origins.includes("BREAKOUT") && score >= 80 && floor > 1) return 1;
+    return floor;
+  }
   return 1;
 }
 
@@ -464,6 +477,13 @@ export type ZeroDteGateInput = {
    * attach), the caller must re-apply via {@link refreshMoneynessGateBlocks} once the refresh has run.
    */
   otmPct?: number | null;
+  /** Vector desk pulse for this ticker (read-only cross-link). When aligned + winner/runner,
+   *  relaxes G-17 and can credit confluence — see vector-commit-boost.ts. */
+  vector_pulse?: ZeroDteVectorPulse | null;
+  /** Pre-computed Vector gate boost (score bump already applied upstream). */
+  vector_g17_exempt?: boolean;
+  /** Extra confluence credit from Vector alignment (0 or 1). */
+  vector_confluence_credit?: number;
 };
 
 /**
@@ -586,7 +606,11 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   if (
     !isCondor &&
     input.score >= scoreFloorForOrigins(input.discovery_origin) &&
-    input.score < ZERODTE_SINGLE_RAIL_PRIME_MIN
+    input.score < ZERODTE_SINGLE_RAIL_PRIME_MIN &&
+    !(
+      input.vector_g17_exempt === true ||
+      vectorExemptsG17PrimeBand(input.direction, input.score, input.vector_pulse)
+    )
   ) {
     const single = isSingleRailWithoutFlow(input.discovery_origin);
     const rail = single ? ((input.discovery_origin ?? [])[0] ?? "whole-market") : "multi-rail/FLOW";
@@ -606,8 +630,12 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   // direction to confirm, so this gate does not apply to it (the sell-regime router + range-intact
   // check are the condor's equivalent "is the structure right" test).
   if (!isCondor && input.confluence != null) {
-    const floor = g12ConfluenceFloor(input.ticker, input.nowEtMinutes);
-    const have = g12ConfirmationCount(input.confluence, input.ticker);
+    const floor = g12ConfluenceFloor(input.ticker, input.nowEtMinutes, {
+      score: input.score,
+      discovery_origin: input.discovery_origin,
+    });
+    const credit = Math.max(0, Math.min(1, input.vector_confluence_credit ?? 0));
+    const have = g12ConfirmationCount(input.confluence, input.ticker) + credit;
     const legLabel = g12ConfirmationLegLabel(input.ticker);
     if (have < floor) {
       const early = floor > ZERODTE_CONFLUENCE_MIN;

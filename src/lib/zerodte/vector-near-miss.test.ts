@@ -15,8 +15,8 @@ test("computeVectorNearMisses: winner blocked by cortex surfaces first", () => {
       },
     ],
     {
-      NVDA: { premium_pct: 80, peak_premium_pct: 90, action_status: "caution", is_winner: true, is_runner: false },
-      TSLA: { premium_pct: 20, peak_premium_pct: 25, action_status: "still_buy", is_winner: false, is_runner: true },
+      NVDA: { premium_pct: 80, peak_premium_pct: 90, action_status: "caution", is_winner: true, is_runner: false, side: "call", direction: "long", strike: 140, occ: "NVDA", rank: 1, role: "whale" },
+      TSLA: { premium_pct: 20, peak_premium_pct: 25, action_status: "still_buy", is_winner: false, is_runner: true, side: "put", direction: "short", strike: 250, occ: "TSLA", rank: 2, role: "magnet" },
     },
     (c) => c
   );
@@ -32,7 +32,7 @@ test("computeVectorNearMisses: skips COMMIT setups and weak vector tracking", ()
       { ticker: "XYZ", gate: { verdict: "BLOCKED", blocks: [{ code: "tape_alignment", reason: "x" }] } },
     ],
     {
-      XYZ: { premium_pct: 5, peak_premium_pct: 8, action_status: "still_buy", is_winner: false, is_runner: false },
+      XYZ: { premium_pct: 5, peak_premium_pct: 8, action_status: "still_buy", is_winner: false, is_runner: false, side: null, direction: null, strike: null, occ: null, rank: null, role: null },
     },
     (c) => c
   );

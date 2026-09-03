@@ -10,6 +10,13 @@ import {
   isVectorPickWinner,
 } from "@/lib/vector/vector-pick-sweep-core";
 
+function sideToDirection(side: string | null | undefined): "long" | "short" | null {
+  const s = (side ?? "").toLowerCase();
+  if (s === "call") return "long";
+  if (s === "put") return "short";
+  return null;
+}
+
 export type ZeroDteVectorPulse = {
   /** Best live premium % from entry across this ticker's leaders today. */
   premium_pct: number | null;
@@ -19,6 +26,14 @@ export type ZeroDteVectorPulse = {
   is_winner: boolean;
   /** +15%…+49% building band. */
   is_runner: boolean;
+  /** Best leader contract side (call/put). */
+  side: "call" | "put" | null;
+  /** Desk direction implied by side. */
+  direction: "long" | "short" | null;
+  strike: number | null;
+  occ: string | null;
+  rank: number | null;
+  role: string | null;
 };
 
 function bestPct(a: number | null, b: number | null): number | null {
@@ -48,6 +63,8 @@ export async function fetchZeroDteVectorPulseByTicker(
     const existingBest = existing ? bestPct(existing.premium_pct, existing.peak_premium_pct) : null;
     if (existing && existingBest != null && best != null && best <= existingBest) continue;
 
+    const sideRaw = String(row.side ?? "").toLowerCase();
+    const side: "call" | "put" | null = sideRaw === "call" ? "call" : sideRaw === "put" ? "put" : null;
     const pulse: ZeroDteVectorPulse = {
       premium_pct: live,
       peak_premium_pct: peak,
@@ -62,6 +79,12 @@ export async function fetchZeroDteVectorPulseByTicker(
         peak_premium_pct: peak,
         action_status: row.action_status ?? "",
       }),
+      side,
+      direction: sideToDirection(side),
+      strike: typeof row.strike === "number" && Number.isFinite(row.strike) ? row.strike : null,
+      occ: typeof row.occ === "string" && row.occ.trim() ? row.occ.trim() : null,
+      rank: typeof row.rank === "number" && Number.isFinite(row.rank) ? row.rank : null,
+      role: row.role ?? null,
     };
     out[tk] = pulse;
   }

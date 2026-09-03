@@ -255,7 +255,10 @@ function stableStringify(value: unknown): string {
  * fingerprints every exit constant that can move a graded outcome — the drift-guard test
  * pins it to a golden, so a silent numeric edit without an EXIT_VERSION bump fails CI.
  */
-export function buildResolvedExitPolicy(mode: ZeroDteExitMode = EXIT_POLICY): ResolvedExitPolicy {
+export function buildResolvedExitPolicy(
+  mode: ZeroDteExitMode = EXIT_POLICY,
+  opts?: { target_pct?: number }
+): ResolvedExitPolicy {
   const time_stop_et = formatEtMinutes(PLAN_RULES.time_stop_et_minutes);
   const collision_rule = "stop_before_target_same_bar";
 
@@ -287,7 +290,7 @@ export function buildResolvedExitPolicy(mode: ZeroDteExitMode = EXIT_POLICY): Re
     policy: mode,
     version: EXIT_VERSION,
     hard_stop_pct: PLAN_RULES.stop_pct,
-    target_pct: PLAN_RULES.target_pct,
+    target_pct: opts?.target_pct ?? PLAN_RULES.target_pct,
     trim_levels,
     runner_fraction,
     trailing_rule,

@@ -66,6 +66,11 @@ import {
 import { fetchDiscoveryFunnelHint, type DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import { computeZeroDteSessionBoardStats } from "@/lib/zerodte/session-board-stats";
 import { fetchZeroDteVectorPulseByTicker } from "@/lib/zerodte/vector-crosslink";
+
+function mfeCapturePct(exitPnlPct: number | null, peakPnlPctVal: number | null): number | null {
+  if (exitPnlPct == null || peakPnlPctVal == null || peakPnlPctVal <= 0) return null;
+  return Math.round((exitPnlPct / peakPnlPctVal) * 100);
+}
 import { computeVectorNearMisses } from "@/lib/zerodte/vector-near-miss";
 import { zeroDteGateLabel } from "@/lib/zerodte/pane";
 import { buildVetoShadowSummary } from "@/lib/zerodte/veto-shadow-summary";
@@ -118,6 +123,8 @@ export type ZeroDteBoardLedgerRow = {
   trough_premium: number | null;
   /** Latched peak excursion vs pinned entry — the high-water mark for closed-card display. */
   peak_pnl_pct: number | null;
+  /** Closed rows: realized exit P&L as % of peak MFE (how much of the move was captured). */
+  mfe_capture_pct: number | null;
   /**
    * The exit policy this row was COMMITTED under (entry_context.exit_policy_at_commit, Q13), or
    * null for a legacy row that predates the pin. Carried on the payload because `live_pnl_pct` is
@@ -473,6 +480,7 @@ function mapLedgerRow(
     peak_premium: r.peak_premium,
     trough_premium: r.trough_premium,
     peak_pnl_pct: peakPnlPct(r.entry_premium, r.peak_premium),
+    mfe_capture_pct: mfeCapturePct(exitStamp.pnl_pct, peakPnlPct(r.entry_premium, r.peak_premium)),
     // Structure-aware: seller-framed for a credit condor; directional stopped closes use
     // trim-scale AS-MANAGED when peak armed tranches — the ONE derivation both build sites share.
     // The row's FROZEN exit policy, carried on the payload so the post-roundFloats re-price below
