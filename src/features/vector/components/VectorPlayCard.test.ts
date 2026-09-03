@@ -20,8 +20,13 @@ const componentSrc = readFileSync(
 const cssSrc = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
 
 function ruleBody(css: string, selector: string): string {
-  const idx = css.indexOf(`${selector} {`);
-  assert.ok(idx >= 0, `expected a CSS rule for ${selector}`);
+  // Anchor to line start to avoid matching compound selectors that reuse the class name.
+  // Example: `.spx-vector-play-rail__signal .vector-play-card { ... }` should not match
+  // when looking for `.vector-play-card`, only the standalone rule should match.
+  const pattern = new RegExp(`^${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{`, 'm');
+  const match = css.match(pattern);
+  assert.ok(match, `expected a CSS rule for ${selector}`);
+  const idx = match.index!;
   const close = css.indexOf("}", idx);
   return css.slice(idx, close);
 }

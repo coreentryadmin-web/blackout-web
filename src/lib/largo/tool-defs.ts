@@ -1162,7 +1162,7 @@ export const MARKET_ENGINE_TOOL_NAMES = ["get_market_context"];
 /**
  * REMOVED 2026-08-10: `CORE_TOOLS`, `mentionsTicker()` and `getToolsForIntent()`.
  *
- * They implemented a per-question regex ALLOWLIST that decided which of these 130 tools Claude was
+ * They implemented a per-question regex ALLOWLIST that decided which of these 134 tools Claude was
  * shown on a given turn. Measured over 20 realistic member questions it exposed a mean of 21.9
  * tools (19%), and it failed silently rather than loudly — see the block comment at the
  * `filteredTools` assignment in largo-terminal.ts for the full root cause, the measurements, and
