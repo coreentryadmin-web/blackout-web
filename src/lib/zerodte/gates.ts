@@ -44,7 +44,7 @@ import { EARLY_ENTRY_WINDOW_END_ET_MINUTES } from "./confluence";
 import { evaluateMacroHardBlock, hasHighImpactMacroEvent, type MacroEventLike } from "@/lib/macro-hard-block";
 import { condorLiquidityGateBlocks, condorRangeBreaking, type CondorPlan } from "./condor";
 import type { ZeroDteVectorPulse } from "./vector-crosslink";
-import { vectorExemptsG17PrimeBand } from "./vector-commit-boost";
+import { vectorExemptsG17PrimeBand, vectorPulseAlignsDirection } from "./vector-commit-boost";
 
 /** Read a positive-integer tuning knob from the environment, falling back to `def` when unset,
  *  non-numeric, or ≤0. Evaluated ONCE at module load so the gate FUNCTIONS stay pure (they only
@@ -227,6 +227,20 @@ export function g12ConfirmationCount(
 ): number {
   if (isIndexEtfTicker(ticker)) return confluence.confirmations;
   return confluence.vwap_ok ? 1 : 0;
+}
+
+/** Runner-profile confluence — uses the pinned `confirmations` count when it exceeds the
+ *  G-12 gate leg count so A/B commits that passed with VWAP+market agreement get extended
+ *  runner targets (replay 2026-09: runner_profile null despite confirmations: 2). */
+export function runnerConfluenceCount(
+  confluence: ZeroDteConfluence | null | undefined,
+  ticker: string,
+  vectorCredit: number
+): number {
+  if (!confluence) return Math.max(0, Math.min(1, vectorCredit));
+  const gateCount = g12ConfirmationCount(confluence, ticker);
+  const pinned = confluence.confirmations ?? 0;
+  return Math.max(gateCount, pinned) + Math.max(0, Math.min(1, vectorCredit));
 }
 
 export function g12ConfirmationLegLabel(ticker: string): string {
@@ -623,6 +637,53 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         "regardless of rail corroboration (measured 2026-08-28: multi-rail/FLOW in this band ran " +
         "35.7% WR, worse than single-rail at the 75+ floor).",
       threshold: ZERODTE_SINGLE_RAIL_PRIME_MIN,
+      unlock_et: null,
+    });
+  }
+
+  // G-18 — early-window prime score floor (E2 + replay 2026-09: sub-prime scores in [10:00, 10:45)
+  // cluster on full-stop losers). Require the 75+ prime band unless Vector exempts G-17.
+  if (
+    !isCondor &&
+    input.nowEtMinutes >= OPENING_WINDOW_UNLOCK_ET_MINUTES &&
+    input.nowEtMinutes < EARLY_ENTRY_WINDOW_END_ET_MINUTES &&
+    input.score < 75 &&
+    !(
+      input.vector_g17_exempt === true ||
+      vectorExemptsG17PrimeBand(input.direction, input.score, input.vector_pulse)
+    )
+  ) {
+    blocks.push({
+      code: "early_window_prime_score",
+      reason:
+        `Score ${Math.round(input.score)} in the ${OPENING_WINDOW_UNLOCK_LABEL}–10:45 early window ` +
+        "needs the 75+ prime band (E2 negative EV below prime; Vector alignment can exempt).",
+      threshold: 75,
+      unlock_et: "10:45 ET",
+    });
+  }
+
+  // G-19 — F-5 top-band inversion hard block (85+ measured 33% WR vs 63.6% at 75–84).
+  // FLOW-origin only — BREAKOUT/PIN score on independent scales where 85+ is normal.
+  // Vector WINNER alignment exempts — the desk already proved the name out.
+  const g19Origins = input.discovery_origin ?? [];
+  const g19FlowBacked = g19Origins.length === 0 || g19Origins.includes("FLOW");
+  if (
+    !isCondor &&
+    g19FlowBacked &&
+    input.score >= 85 &&
+    !(
+      input.vector_pulse &&
+      vectorPulseAlignsDirection(input.direction, input.vector_pulse) &&
+      input.vector_pulse.is_winner
+    )
+  ) {
+    blocks.push({
+      code: "score_top_band",
+      reason:
+        `Score ${Math.round(input.score)} sits in the 85+ band where measured WR inverted ` +
+        "(33% vs 63.6% prime band, F-5) — only Vector-confirmed winners commit here.",
+      threshold: 85,
       unlock_et: null,
     });
   }

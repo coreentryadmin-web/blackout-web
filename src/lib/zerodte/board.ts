@@ -853,7 +853,9 @@ export type ZeroDteGateFailure =
   | "no_market_bias" // G-1 fail-closed: bias read missing or stale
   | "opening_window" // G-2: no new commits before 10:00 ET
   | "late_afternoon" // G-14: no new directional commits after 15:30 ET
-  | "score_floor" // G-3: post-edge-layer score below 65
+  | "score_floor" // G-3: post-edge-layer score below origin-aware floor (65 FLOW / looser BREAKOUT·PIN)
+  | "score_top_band" // G-19: F-5 top-band inversion (85+ WR collapse)
+  | "early_window_prime_score" // G-18: sub-prime scores in early window
   | "single_rail_corroboration" // G-17: the 65-74 band needs the prime floor (≥75), any origin combo
   | "confluence_floor" // G-12: too few VWAP-side/market-aligned confirmations (0-conf −12.5% EV; higher floor 10:00–10:45)
   | "governor_max_concurrent" // G-5: 3 plans already open

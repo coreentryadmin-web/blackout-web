@@ -132,7 +132,7 @@ import {
   evaluateZeroDteGates,
   freshCommitBlockedByPlan,
   gateRejectionFor,
-  g12ConfirmationCount,
+  runnerConfluenceCount,
   planQualityGateBlocks,
   refreshPlanQualityGateBlocks,
   refreshMoneynessGateBlocks,
@@ -1396,8 +1396,11 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     const exitPolicyAtCommit = resolveExitModeForTier(playTier);
     const pulse = vectorPulseByTicker[s.ticker.toUpperCase()] ?? null;
     const vectorBoost = computeVectorGateBoost(s.direction, s.score, pulse);
-    const confluenceCount =
-      (s.confluence ? g12ConfirmationCount(s.confluence, s.ticker) : 0) + (vectorBoost.confluence_credit ?? 0);
+    const confluenceCount = runnerConfluenceCount(
+      s.confluence,
+      s.ticker,
+      vectorBoost.confluence_credit ?? 0
+    );
     const runnerProfile = resolveRunnerProfile({
       tier: playTier,
       confluenceCount,

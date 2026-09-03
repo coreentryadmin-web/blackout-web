@@ -378,6 +378,7 @@ test("a pin fade bypasses the FLOW evidence gates, clears the shared stack in a 
     ticker: setup.ticker,
     direction: setup.direction, // long fade
     score: setup.score,
+    discovery_origin: setup.discovery_origin,
     nowEtMinutes: 11 * 60,
     nowMs: Date.parse(`${TODAY}T15:00:00Z`),
     bias: "flat", // a flat/ranging broad tape — the pin regime's normal companion (G-1 passes)
