@@ -1,0 +1,27 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { test } from "node:test";
+
+const ROOT = process.cwd();
+
+test("get_ecosystem_context fits at the Largo boundary only", () => {
+  const runTool = readFileSync(join(ROOT, "src/lib/largo/run-tool.ts"), "utf8");
+  assert.match(runTool, /fitEcosystemContextForModel\(raw\)\.fitted/);
+  assert.doesNotMatch(
+    readFileSync(join(ROOT, "src/lib/bie/ecosystem-context.ts"), "utf8"),
+    /fitEcosystemContextForModel/
+  );
+});
+
+test("get_cross_product_read includes SPX Slayer via get_spx_play", () => {
+  const cross = readFileSync(join(ROOT, "src/lib/largo/contract/cross-product-read.ts"), "utf8");
+  assert.match(cross, /get_spx_play/);
+  assert.match(cross, /spxContribution/);
+  assert.match(cross, /isSpxTicker/);
+});
+
+test("get_flow_tape fits at the Largo boundary only", () => {
+  const runTool = readFileSync(join(ROOT, "src/lib/largo/run-tool.ts"), "utf8");
+  assert.match(runTool, /fitFlowTapeForModel\(/);
+});

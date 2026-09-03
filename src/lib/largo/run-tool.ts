@@ -1226,7 +1226,12 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         since_hours,
       });
       const recent = await enrichFlowsWithGex(summary.recent);
-      return { ...summary, recent, ordered_by: since_hours != null && since_hours <= 6 ? "recent" : "premium" };
+      const { fitFlowTapeForModel } = await import("@/lib/largo/flow-tape-fit");
+      const { fitted } = fitFlowTapeForModel({ ...summary, recent });
+      return {
+        ...fitted,
+        ordered_by: since_hours != null && since_hours <= 6 ? "recent" : "premium",
+      };
     }
 
     case "get_platform_snapshot": {
