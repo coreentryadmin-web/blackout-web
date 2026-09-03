@@ -321,7 +321,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   ),
   t(
     "get_playbook_shadow_history",
-    "Named-playbook SHADOW observation history from Postgres — what PB-01..PB-14 matchers WOULD have flagged on state transitions (NOT committed Slayer trades). Use for 'what playbooks fired in shadow today', 'PB-09 history', playbook evidence analytics. Optional `session_date` (YYYY-MM-DD, default today ET) and `limit` (default 50, max 200). Distinct from get_spx_play (live execution) and get_spx_engine_snapshots (gate telemetry).",
+    "Named-playbook SHADOW observation history from Postgres — what PB-01..PB-14 matchers WOULD have flagged on state transitions (NOT committed Slayer trades). Use for 'what playbooks fired in shadow today', 'PB-09 history', playbook evidence analytics. Optional `session_date` (YYYY-MM-DD, default today ET) and `limit` (default 50, max 200). Returns `{ observations, shown, total, truncated }` — when truncated, cite `shown/total`. Distinct from get_spx_play (live execution) and get_spx_engine_snapshots (gate telemetry).",
     { session_date: { type: "string" }, limit: { type: "integer", default: 50 } }
   ),
   t(

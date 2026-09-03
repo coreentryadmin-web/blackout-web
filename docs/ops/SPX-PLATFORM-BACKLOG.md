@@ -74,6 +74,7 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 - [x] `get_signal_log` Largo fit at model boundary
 - [x] L-3 empty-answer honesty — wire `anthropicToolLoop` `onStop` → `emptyAnswerFallback` `stopReason` (both streaming + non-streaming paths)
 - [x] `get_spx_voice_feed` Largo fit at model boundary (event cap + truncation flags)
+- [x] `get_playbook_shadow_history` Largo fit at model boundary (observation cap + truncation flags)
 
 ---
 
@@ -81,6 +82,7 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 
 | Date | Item | PR |
 |------|------|-----|
+| 2026-09-03 | `get_playbook_shadow_history` Largo fit | (this branch) |
 | 2026-09-03 | `get_spx_voice_feed` Largo fit (event cap + truncation flags) | (this branch) |
 | 2026-09-03 | L-3 empty-answer stopReason wiring (onStop → emptyAnswerFallback) | (this branch) |
 | 2026-09-03 | P2 desk convergence lane_freshness for Largo | (this branch) |
