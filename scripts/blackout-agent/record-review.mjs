@@ -28,14 +28,24 @@ if (!pr) {
 }
 
 let head = args.head ?? null;
-if (!head) {
-  const r = spawnSync("gh", ["pr", "view", String(pr), "--json", "headRefOid,author"], { encoding: "utf8" });
+let headBranch = args.branch ?? null;
+if (!head || !headBranch) {
+  const r = spawnSync("gh", ["pr", "view", String(pr), "--json", "headRefOid,headRefName,author"], { encoding: "utf8" });
   if (r.status === 0) {
     const j = JSON.parse(r.stdout);
-    head = j.headRefOid;
+    head = head ?? j.headRefOid;
+    headBranch = headBranch ?? j.headRefName;
     const author = j.author?.login ?? "";
     if (author.includes(args.agent)) {
       console.error(JSON.stringify({ ok: false, reason: "cannot_review_own_pr" }));
+      process.exit(2);
+    }
+    if (args.agent === "cursor" && headBranch?.startsWith("cursor/")) {
+      console.error(JSON.stringify({ ok: false, reason: "cannot_review_own_pr", branch: headBranch }));
+      process.exit(2);
+    }
+    if (args.agent === "claude" && headBranch?.startsWith("claude/")) {
+      console.error(JSON.stringify({ ok: false, reason: "cannot_review_own_pr", branch: headBranch }));
       process.exit(2);
     }
   }
