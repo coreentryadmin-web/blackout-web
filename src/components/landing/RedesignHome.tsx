@@ -82,7 +82,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
           </div>
           <ul className="hero-creds">
             <li>{productCount} desk products</li>
-            <li>12,400+ contracts scanned daily</li>
+            <li>12,400+ stocks screened daily</li>
             <li>Trade Grade A–F on every setup</li>
             <li>
               <Link href="/methodology" prefetch={false} className="hero-cred-link">
@@ -225,7 +225,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             <div className="pipe-ingress" data-pipe-stage="ingress">
               <div className="pipe-ingress-inner">
                 <canvas id="cv-ingest" width={400} height={60} />
-                <span className="pipe-ingress-label">12,400+ contracts scanned daily</span>
+                <span className="pipe-ingress-label">12,400+ stocks screened daily</span>
               </div>
             </div>
 

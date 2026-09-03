@@ -29,6 +29,16 @@ test("/why-blackout's tool count is derived from the manifest, not a hardcoded n
   assert.match(src, /\$\{manifestProductCount\(\)\} tools, one desk/);
 });
 
+// Regression for a P2 finding (2026-09-03): the "12,400+" figure is a real, measured number —
+// Polygon's grouped-daily endpoint returns every US stock for a session (~12,400/day,
+// scripts/audit/market-banger-scan.mjs and docs/audit/0DTE-RESEARCH.md both document this) — but
+// the marketing copy mislabeled it "contracts" (options-chain entries), a metric that is never
+// actually computed anywhere in the codebase. The claim was false as written: BlackOut screens
+// ~12,400 STOCKS daily, not 12,400 options contracts.
+test("the 12,400+ daily-screen figure is labeled stocks/tickers, never contracts (unmeasured metric)", () => {
+  assert.doesNotMatch(src, /12,400\+?\s+contracts/i, "12,400+ is a real stock-universe count, not a contract count — never label it 'contracts'");
+});
+
 test("/why-blackout's tool list names every live product in the manifest", () => {
   for (const id of MANIFEST_PRODUCT_ORDER) {
     const entry = PRODUCT_MANIFEST[id];
