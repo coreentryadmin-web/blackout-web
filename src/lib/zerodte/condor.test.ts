@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   condorLegOccs,
   condorLegRoles,
+  condorNetDebitToCloseExec,
   condorNetMarkPerShare,
   buildCondorPlan,
   buildCondorSetup,
@@ -542,4 +543,25 @@ test("condorNetMarkPerShare: sums short legs minus long legs in per-share premiu
   ]);
   assert.equal(condorNetMarkPerShare(legs, (occ) => marks.get(occ) ?? null), 1.4);
   assert.equal(condorLegOccs({ legs: legs.map((l) => ({ occ: l.occ, role: l.role })) }).length, 4);
+});
+
+test("condorNetDebitToCloseExec: shorts at ask, longs at bid", () => {
+  const legs = condorLegRoles({
+    legs: [
+      { role: "short", occ: "SP" },
+      { role: "long", occ: "LP" },
+      { role: "short", occ: "SC" },
+      { role: "long", occ: "LC" },
+    ],
+  });
+  const quotes = new Map([
+    ["SP", { bid: 1.0, ask: 1.1 }],
+    ["LP", { bid: 0.28, ask: 0.32 }],
+    ["SC", { bid: 0.75, ask: 0.85 }],
+    ["LC", { bid: 0.18, ask: 0.22 }],
+  ]);
+  assert.equal(
+    condorNetDebitToCloseExec(legs, (occ) => quotes.get(occ)),
+    1.49
+  );
 });
