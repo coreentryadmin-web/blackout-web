@@ -23,7 +23,7 @@ function ruleBody(css: string, selector: string): string {
   // Anchor to line start to avoid matching compound selectors that reuse the class name.
   // Example: `.spx-vector-play-rail__signal .vector-play-card { ... }` should not match
   // when looking for `.vector-play-card`, only the standalone rule should match.
-  const pattern = new RegExp(`^\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{`, 'm');
+  const pattern = new RegExp(`^${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{`, 'm');
   const match = css.match(pattern);
   assert.ok(match, `expected a CSS rule for ${selector}`);
   const idx = match.index!;
