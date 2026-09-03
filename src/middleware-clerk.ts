@@ -30,6 +30,7 @@ const isProtectedRoute = createRouteMatcher([
 const isVectorBoardDevPreview = createRouteMatcher([
   "/vector-board-preview",
   "/nighthawk-boards-preview",
+  "/zerodte-command-preview",
 ]);
 
 const isWebhookRoute = createRouteMatcher(["/api/webhook/(.*)", "/api/webhooks/(.*)"]);
