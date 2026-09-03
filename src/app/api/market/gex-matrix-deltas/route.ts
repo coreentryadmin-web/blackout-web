@@ -4,6 +4,7 @@ import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { requireAnyToolApi } from "@/lib/tool-access-server";
 import { subscribeMatrixDeltas } from "@/lib/gex-matrix-broadcast";
 import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats, reconcileStrikeTotal, reconcileCellStrikeTotals } from "@/lib/round-floats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,13 +44,27 @@ export async function GET(req: NextRequest) {
 
   try {
     // Fetch the current heatmap snapshot to send as initial data
-    const snapshot = await fetchGexHeatmap(ticker);
-    if (!snapshot) {
+    const rawSnapshot = await fetchGexHeatmap(ticker);
+    if (!rawSnapshot) {
       return NextResponse.json(
         { error: "Matrix not available for ticker", underlying: ticker },
         { status: 400, headers: NO_STORE_HEADERS }
       );
     }
+
+    // BUG FIX (2026-09-03): this SSE initial snapshot served fetchGexHeatmap's raw
+    // arithmetic output — the same dollar-gamma sums that carry IEEE-754 float noise
+    // (e.g. 7499.360000000001) round-floats.ts exists to strip — while its sibling REST
+    // route (gex-heatmap/route.ts) already rounds the same underlying heatmap object.
+    // Scoped to just the numeric-precision fix (roundFloats + the same two-level
+    // strike-total reconciliation gex-heatmap's route applies) — deliberately NOT
+    // replicating that route's off-hours shift-gating/overlay/cross-validation logic,
+    // which is presentation-layer scope this delta feed's snapshot doesn't carry.
+    const snapshot = roundFloats(rawSnapshot);
+    snapshot.gex = reconcileStrikeTotal(reconcileCellStrikeTotals(snapshot.gex, snapshot.near_term_expiries))!;
+    snapshot.vex = reconcileStrikeTotal(reconcileCellStrikeTotals(snapshot.vex, snapshot.near_term_expiries))!;
+    snapshot.dex = reconcileStrikeTotal(reconcileCellStrikeTotals(snapshot.dex, snapshot.near_term_expiries));
+    snapshot.charm = reconcileStrikeTotal(reconcileCellStrikeTotals(snapshot.charm, snapshot.near_term_expiries));
 
     // Create an SSE response stream
     const encoder = new TextEncoder();
