@@ -311,7 +311,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   ),
   t(
     "get_spx_voice_feed",
-    "Server-persisted SPX transition event feed for TODAY's session — flip crosses, king-wall migrations, VWAP/EMA shifts, regime changes (the same event kinds the Pulse/commentary rail shows client-side). Answers 'what changed on SPX this session', 'when did we cross the flip', 'what events fired today'. Optional `limit` (default 40, max 120). NOT a substitute for get_spx_engine_snapshots (play-engine gate history) or get_signal_log (committed signals).",
+    "Server-persisted SPX transition event feed for TODAY's session — flip crosses, king-wall migrations, VWAP/EMA shifts, regime changes (the same event kinds the Pulse/commentary rail shows client-side). Answers 'what changed on SPX this session', 'when did we cross the flip', 'what events fired today'. Optional `limit` (default 40, max 120). Returns `{ events, shown, total, truncated }` — newest events first; when truncated, cite `shown/total` and do not invent missing lines. NOT a substitute for get_spx_engine_snapshots (play-engine gate history) or get_signal_log (committed signals).",
     { limit: { type: "integer", default: 40 } }
   ),
   t(
