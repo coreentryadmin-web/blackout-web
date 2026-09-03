@@ -3,10 +3,11 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import { PlayTerminal, etClock } from "./PlayTerminal";
-import { DiscoveryFunnelStrip, MarketStateStrip, SpxSlayerBadgeStrip } from "@/features/nighthawk/components/zerodte-board-strips";
+import { DiscoveryFunnelStrip, MarketStateStrip, SessionStatsStrip, SpxSlayerBadgeStrip } from "@/features/nighthawk/components/zerodte-board-strips";
 import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
 import type { SpxSlayerBadge } from "@/features/spx/lib/spx-slayer-badge-map";
+import type { ZeroDteSessionBoardStats } from "@/lib/zerodte/session-board-stats";
 import { sortPlaysForDeckBy, type DeckSortMode } from "./deck-sort";
 import {
   deployedRisk,
@@ -77,6 +78,7 @@ export function CommandDeck({
   upstreamOk = null,
   marketState = null,
   discoveryFunnel = null,
+  sessionStats = null,
   spxSlayerBadge,
   focusTicker = null,
   boardChrome = "default",
@@ -107,6 +109,8 @@ export function CommandDeck({
   marketState?: MarketStateSnapshot | null;
   /** 0DTE only — top session gate hint (Phase 2c). */
   discoveryFunnel?: DiscoveryFunnelHint | null;
+  /** 0DTE only — scan vs commit session counters. */
+  sessionStats?: ZeroDteSessionBoardStats | null;
   /** 0DTE only — SPX Slayer's own live play, read-only board badge (feat/nh-spx-badge). Undefined
    *  on lanes that don't pass it (Swings/LEAPS/Legacy) — the badge renders nothing, never idle
    *  chrome for a lane that was never meant to carry it. */
@@ -280,6 +284,7 @@ export function CommandDeck({
     >
       <div className="nh-deck-left">
         {commandCenter ? (
+          <>
           <DeckCompactHeader
             statusFilter={statusFilter}
             setStatusFilter={setStatusFilter}
@@ -289,6 +294,15 @@ export function CommandDeck({
             directionFilter={directionFilter}
             setDirectionFilter={setDirectionFilter}
           />
+          {deckHorizon === "ZERO_DTE" && !degraded && (sessionStats || marketState || discoveryFunnel?.summary || spxSlayerBadge !== undefined) ? (
+            <div className="nh-deck-context-strips mb-2 space-y-1.5 px-0.5">
+              <SessionStatsStrip stats={sessionStats} compact />
+              <MarketStateStrip ms={marketState} compact />
+              <DiscoveryFunnelStrip funnel={discoveryFunnel} compact />
+              <SpxSlayerBadgeStrip badge={spxSlayerBadge} compact />
+            </div>
+          ) : null}
+          </>
         ) : (
           <>
             <div className="nh-deck-lh">
@@ -301,8 +315,9 @@ export function CommandDeck({
                     : `${directed.length} of ${plays.length}`}
               </span>
             </div>
-            {deckHorizon === "ZERO_DTE" && !degraded && (marketState || discoveryFunnel?.summary || spxSlayerBadge !== undefined) ? (
+            {deckHorizon === "ZERO_DTE" && !degraded && (sessionStats || marketState || discoveryFunnel?.summary || spxSlayerBadge !== undefined) ? (
               <div className="nh-deck-context-strips mb-2 space-y-2 px-0.5">
+                <SessionStatsStrip stats={sessionStats} />
                 <MarketStateStrip ms={marketState} />
                 <DiscoveryFunnelStrip funnel={discoveryFunnel} />
                 <SpxSlayerBadgeStrip badge={spxSlayerBadge} />

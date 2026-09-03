@@ -123,6 +123,39 @@ export function DiscoveryFunnelStrip({
   );
 }
 
+/** Scan vs commit session counters — separates Vector-style breadth from ledger commits. */
+export function SessionStatsStrip({
+  stats,
+  compact = false,
+}: {
+  stats: import("@/lib/zerodte/session-board-stats").ZeroDteSessionBoardStats | null | undefined;
+  compact?: boolean;
+}) {
+  if (!stats || stats.scanned === 0) return null;
+  return (
+    <div
+      className={clsx("nh-deck-context-strip flex flex-wrap items-center gap-1.5", compact && "nh-deck-context-strip--compact")}
+      data-testid="zerodte-session-stats-strip"
+      title="Scanner breadth vs committed ledger — candidates are not positions until commit"
+    >
+      <GovPill label="Scanned" value={String(stats.scanned)} tone="sky" compact={compact} />
+      <GovPill label="Ready" value={String(stats.commit_ready)} tone="bull" compact={compact} title="Cleared all hard gates — eligible to commit" />
+      <GovPill label="Blocked" value={String(stats.gate_blocked)} tone="gold" compact={compact} title="Gate-blocked candidates (watch lane)" />
+      <GovPill label="Open" value={String(stats.committed_open)} tone="bull" compact={compact} title="Committed ledger rows still working" />
+      <GovPill label="Closed" value={String(stats.committed_closed)} tone="sky" compact={compact} title="Graded commits today" />
+      {stats.top_block_label && stats.gate_blocked > 0 && (
+        <GovPill
+          label="Top block"
+          value={stats.top_block_label}
+          tone="bear"
+          compact={compact}
+          title={stats.top_block_code ?? undefined}
+        />
+      )}
+    </div>
+  );
+}
+
 /** feat/nh-spx-badge — SPX Slayer's own live play, surfaced as a READ-ONLY 4th badge/tile on the
  *  Night Hawk 0DTE board. Deliberately styled DIFFERENT from GovPill/MarketStateStrip above (violet
  *  accent + "SPX SLAYER" subtitle + a ⚡ mark) so a member never mistakes this for a 4th Night Hawk

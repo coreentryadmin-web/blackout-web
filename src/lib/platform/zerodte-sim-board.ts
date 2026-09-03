@@ -100,6 +100,8 @@ export function emptySimBoardPayload(): ZeroDteBoardPayload {
     market_state: null,
     discovery_funnel: null,
     spx_slayer_badge: null,
+    session_stats: null,
+    vector_pulse_by_ticker: {},
   };
 }
 

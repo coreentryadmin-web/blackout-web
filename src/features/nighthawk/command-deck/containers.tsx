@@ -143,6 +143,7 @@ export function ZeroDteDeck({
         upstreamOk={data?.upstream_ok ?? null}
         marketState={data?.market_state ?? null}
         discoveryFunnel={data?.discovery_funnel ?? null}
+        sessionStats={data?.session_stats ?? null}
         spxSlayerBadge={data?.spx_slayer_badge}
         emptyHint={zeroDteEmptyHint({
           degraded,

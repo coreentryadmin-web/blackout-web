@@ -167,6 +167,17 @@ export interface TerminalPlay {
   /** ISO instant capital was committed (swing ledger committed_at). Null when unknown. */
   committedAt?: string | null;
 
+  /** Hard-gate blocks for SKIP rows — rendered in the command panel (never fabricated). */
+  gateBlocks?: Array<{ code: string; reason: string; unlock_et?: string | null; threshold?: number | null }> | null;
+  /** Vector desk pulse for cross-link — today's best pick on this ticker. */
+  vectorPulse?: {
+    premiumPct: number | null;
+    peakPremiumPct: number | null;
+    actionStatus: string | null;
+    isWinner: boolean;
+    isRunner: boolean;
+  } | null;
+
   /** Timeline replay — engine exit + reconstructed tranches (0DTE only, never fabricated). */
   closedReason?: string | null;
   exitReason?: string | null;

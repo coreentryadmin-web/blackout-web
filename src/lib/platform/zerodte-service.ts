@@ -64,6 +64,8 @@ import {
   type ZeroDteGovernorSummary,
 } from "@/lib/zerodte/governor";
 import { fetchDiscoveryFunnelHint, type DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
+import { computeZeroDteSessionBoardStats } from "@/lib/zerodte/session-board-stats";
+import { fetchZeroDteVectorPulseByTicker } from "@/lib/zerodte/vector-crosslink";
 // Read-only SPX Slayer badge (feat/nh-spx-badge) — additive display field only, see
 // spx-slayer-badge.ts for the full scope note. NOT part of scoring/gates/governor above.
 // Lazy dynamic import below (not a static import): spx-slayer-badge.ts's module graph
@@ -284,6 +286,10 @@ export type ZeroDteBoardPayload = {
    *  src/lib/zerodte/gates.ts. Null only for a payload built before this field existed (old cached
    *  snapshot); a live build always resolves to at least the unavailable badge, never undefined. */
   spx_slayer_badge: SpxSlayerBadge | null;
+  /** Scan vs commit funnel — how many candidates scanned, blocked, and committed this session. */
+  session_stats: import("@/lib/zerodte/session-board-stats").ZeroDteSessionBoardStats | null;
+  /** Per-ticker Vector pick pulse for cross-desk links (today's session leaders). */
+  vector_pulse_by_ticker: Record<string, import("@/lib/zerodte/vector-crosslink").ZeroDteVectorPulse>;
 };
 
 // ── Shared, converged board snapshot (fix/zerodte-board-convergence) ──────────────
@@ -707,6 +713,21 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
 
   const setupByTicker = new Map(displaySetups.map((s) => [s.ticker.toUpperCase(), s]));
 
+  const boardTickers = [
+    ...new Set([
+      ...displaySetups.map((s) => s.ticker.toUpperCase()),
+      ...ledgerRows.map((r) => r.ticker.toUpperCase()),
+    ]),
+  ];
+  const [vector_pulse_by_ticker] = await Promise.all([
+    fetchZeroDteVectorPulseByTicker(today, boardTickers).catch(() => ({})),
+  ]);
+  const session_stats = computeZeroDteSessionBoardStats(
+    displaySetups,
+    ledgerRows,
+    discovery_funnel?.top_gate ?? null
+  );
+
   const payload = roundFloats({
     available: true,
     as_of: new Date().toISOString(),
@@ -737,6 +758,8 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     market_state,
     discovery_funnel,
     spx_slayer_badge,
+    session_stats,
+    vector_pulse_by_ticker,
   }) as ZeroDteBoardPayload;
 
   // roundFloats() rounds entry_premium/last_mark independently; recompute PnL from the
@@ -1030,6 +1053,8 @@ function buildMinimalBoardFallback(): ZeroDteBoardPayload {
     market_state: null,
     discovery_funnel: null,
     spx_slayer_badge: null,
+    session_stats: null,
+    vector_pulse_by_ticker: {},
   };
 }
 

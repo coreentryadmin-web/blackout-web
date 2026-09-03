@@ -224,6 +224,16 @@ export interface ZeroDteDeckSource {
   underlying_price?: number | null;
   /** Thesis Health payload from the board ledger row (server-computed each board build). */
   thesis_health?: import("@/lib/zerodte/thesis-health").ThesisHealthPayload | null;
+  /** Hard-gate block sentences for SKIP/WATCH rows (setup.gate.blocks). */
+  gate_blocks?: Array<{ code: string; reason: string; unlock_et?: string | null; threshold?: number | null }> | null;
+  /** Vector desk pulse for this ticker today — cross-desk link only. */
+  vector_pulse?: {
+    premium_pct: number | null;
+    peak_premium_pct: number | null;
+    action_status: string | null;
+    is_winner: boolean;
+    is_runner: boolean;
+  } | null;
   closed_reason?: string | null;
   exit_reason?: string | null;
   exit_detail?: string | null;
@@ -272,6 +282,20 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
         .map(([k, v]) => ({ label: FB_LABELS[k] ?? k, points: v as number }));
 
   const gate = setup?.gate ?? null;
+  const gateBlocksRaw = gate?.verdict === "BLOCKED" && Array.isArray(gate.blocks) ? gate.blocks : [];
+  const gateBlocks = gateBlocksRaw
+    .map((b) => {
+      const row = b as { code?: string; reason?: string; unlock_et?: string | null; threshold?: number | null };
+      const code = String(row.code ?? "").trim();
+      if (!code) return null;
+      return {
+        code,
+        reason: String(row.reason ?? "").trim() || code,
+        unlock_et: row.unlock_et ?? null,
+        threshold: row.threshold ?? null,
+      };
+    })
+    .filter((b): b is NonNullable<typeof b> => b != null);
   const isWorking = status === "OPEN" || status === "HOLD" || status === "TRIM";
   // CLOSED = already committed and finished. The live setup's current gate (often BLOCKED after
   // the session heat flips) must NOT paint a red "✗ Hard gate" on a play that cleared entry —
@@ -445,6 +469,16 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     exitAt: src.exit_at ?? null,
     exitPnlPct: fin(src.exit_pnl_pct),
     timelineTranches: src.timeline_tranches ?? null,
+    gateBlocks: gateBlocks.length > 0 ? gateBlocks : null,
+    vectorPulse: src.vector_pulse
+      ? {
+          premiumPct: src.vector_pulse.premium_pct,
+          peakPremiumPct: src.vector_pulse.peak_premium_pct,
+          actionStatus: src.vector_pulse.action_status,
+          isWinner: src.vector_pulse.is_winner,
+          isRunner: src.vector_pulse.is_runner,
+        }
+      : null,
   };
 }
 
