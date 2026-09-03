@@ -664,9 +664,13 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   }
 
   // G-19 — F-5 top-band inversion hard block (85+ measured 33% WR vs 63.6% at 75–84).
+  // FLOW-origin only — BREAKOUT/PIN score on independent scales where 85+ is normal.
   // Vector WINNER alignment exempts — the desk already proved the name out.
+  const g19Origins = input.discovery_origin ?? [];
+  const g19FlowBacked = g19Origins.length === 0 || g19Origins.includes("FLOW");
   if (
     !isCondor &&
+    g19FlowBacked &&
     input.score >= 85 &&
     !(
       input.vector_pulse &&

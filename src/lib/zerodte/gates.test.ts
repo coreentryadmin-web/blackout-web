@@ -1669,6 +1669,11 @@ test("G-19: score 88+ is BLOCKED without Vector winner", () => {
   assert.ok(v.blocks.some((b) => b.code === "score_top_band"));
 });
 
+test("G-19: score 88+ BREAKOUT-only origin is not blocked (F-5 measured on FLOW)", () => {
+  const v = evaluateZeroDteGates(input({ score: 88, discovery_origin: ["BREAKOUT"] }));
+  assert.ok(!v.blocks.some((b) => b.code === "score_top_band"));
+});
+
 test("G-19: score 88+ Vector winner aligned commits", () => {
   const v = evaluateZeroDteGates(
     input({
