@@ -21,6 +21,15 @@ test("product knowledge names new HELIX and Thermal tools", () => {
   assert.match(k, /gex_cross_validation/);
 });
 
+test("product knowledge names SPX convergence and journal tools", () => {
+  const k = LARGO_PRODUCT_KNOWLEDGE;
+  assert.match(k, /get_spx_desk_convergence/);
+  assert.match(k, /get_spx_journal/);
+  assert.match(k, /get_spx_voice_feed/);
+  assert.match(k, /get_concept/);
+  assert.match(k, /suggested play \+ desk execution/i);
+});
+
 test("system prompt embeds full product knowledge block", () => {
   assert.match(LARGO_SYSTEM_PROMPT, /Product knowledge — panels, fields, and tools/);
   assert.match(LARGO_SYSTEM_PROMPT, /get_helix_tape_analytics/);

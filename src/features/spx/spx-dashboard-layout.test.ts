@@ -55,7 +55,7 @@ test("SpxDashboard mounts triple desk: intel rail (Pulse default + Largo toggle)
   assert.match(src, /spx-left-commentary/);
   assert.match(src, /SpxGexMatrixHeatmap/);
   assert.match(src, /spx-left-matrix/);
-  assert.match(src, /SpxPlayVerdictBar/);
+  assert.match(src, /SpxVectorPlayRail/);
   assert.match(src, /spx-left-pin-stack/);
   assert.match(src, /spx-left-pin/);
 
@@ -78,6 +78,7 @@ test("SpxDashboard mounts triple desk: intel rail (Pulse default + Largo toggle)
   assert.match(src, /spx-sniper-vector-col/);
   const embed = readFileSync(join(process.cwd(), "src/features/spx/components/SpxVectorEmbed.tsx"), "utf8");
   assert.match(embed, /embed="chart-only"/);
+  assert.match(embed, /onPlayDeskSnapshot/);
   assert.match(embed, /defaultVectorDeskOpenProps\("SPX"\)/);
   assert.match(embed, /import \{ defaultVectorDeskOpenProps \}/);
   assert.match(src, /spx-sniper-triple--desk-v3/);
@@ -92,7 +93,13 @@ test("SpxDashboard: play poll + verdict bar gate on sessionActive (not resolveDe
   assert.equal(src.includes("playSessionActive"), false, "removed live&&desk gate that caused CLOSED flicker");
   assert.match(
     src,
+    /SpxVectorPlayRail[\s\S]*sessionActive=\{sessionActive\}/,
+    "vector play rail (verdict bar inside) must use sessionActive, not playSessionActive"
+  );
+  const rail = readFileSync(join(process.cwd(), "src/features/spx/components/SpxVectorPlayRail.tsx"), "utf8");
+  assert.match(
+    rail,
     /SpxPlayVerdictBar[\s\S]*sessionActive=\{sessionActive\}/,
-    "verdict bar must use sessionActive, not playSessionActive"
+    "verdict bar must forward sessionActive from the rail"
   );
 });

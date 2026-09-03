@@ -2089,6 +2089,42 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return { source: "benzinga", movers };
     }
 
+    case "get_spx_desk_convergence": {
+      const { spxDeskConvergenceForLargo } = await import("@/lib/largo/spx-desk-convergence");
+      return spxDeskConvergenceForLargo();
+    }
+    case "get_spx_voice_feed": {
+      const { readSpxVoiceFeed } = await import("@/features/spx/lib/spx-voice-feed-store");
+      const { todayEtYmd } = await import("@/lib/providers/spx-session");
+      const limit = Math.min(120, Math.max(1, Number(input.limit ?? 40) || 40));
+      const sessionDate = todayEtYmd();
+      const events = await readSpxVoiceFeed(sessionDate, limit);
+      return {
+        session_date: sessionDate,
+        count: events.length,
+        events,
+        note:
+          events.length === 0
+            ? "No persisted transition events yet this session — feed fills as the merged desk updates."
+            : undefined,
+      };
+    }
+    case "get_spx_journal": {
+      const { spxJournalForLargo } = await import("@/lib/largo/spx-journal-for-largo");
+      const openPlayId =
+        input.open_play_id != null && Number.isFinite(Number(input.open_play_id))
+          ? Number(input.open_play_id)
+          : undefined;
+      return spxJournalForLargo(userId, openPlayId);
+    }
+    case "get_concept": {
+      const { conceptForLargo } = await import("@/lib/largo/concept-for-largo");
+      return conceptForLargo({
+        term: input.term != null ? String(input.term) : undefined,
+        question: input.question != null ? String(input.question) : undefined,
+      });
+    }
+
     default:
       return { error: `Unknown tool: ${name}` };
   }

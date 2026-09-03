@@ -305,6 +305,26 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
     {}
   ),
   t(
+    "get_spx_desk_convergence",
+    "ONE-CALL SPX desk convergence — Vector's suggested play (card bias/setup/grade) AND Slayer's execution layer (phase/action/gates/open play) plus live gate_rules, with an explicit alignment verdict (aligned / divergent / vector_leads / slayer_leads / flat). Prefer this over calling get_vector_full_state(SPX) + get_spx_play separately when the member asks whether Vector and Slayer agree, what the suggested play is vs what the desk committed, or 'are we aligned on SPX'. Slayer execution (commits, open position, signal_committed) always wins for risk — Vector is the narrative suggestion.",
+    {}
+  ),
+  t(
+    "get_spx_voice_feed",
+    "Server-persisted SPX transition event feed for TODAY's session — flip crosses, king-wall migrations, VWAP/EMA shifts, regime changes (the same event kinds the Pulse/commentary rail shows client-side). Answers 'what changed on SPX this session', 'when did we cross the flip', 'what events fired today'. Optional `limit` (default 40, max 120). NOT a substitute for get_spx_engine_snapshots (play-engine gate history) or get_signal_log (committed signals).",
+    { limit: { type: "integer", default: 40 } }
+  ),
+  t(
+    "get_spx_journal",
+    "The signed-in member's SPX trade journal — personal notes and tags keyed by open_play_id (annotation only, never mutates plays). Returns all entries, or pass `open_play_id` for one play. Requires a real member session — unavailable for anonymous/default user context.",
+    { open_play_id: { type: "integer" } }
+  ),
+  t(
+    "get_concept",
+    "BlackOut glossary lookup — deterministic definitions for platform concepts (GEX, gamma flip, king node, Night Hawk, Thermal, Vector, gate vocabulary, etc.). Use for 'what is X' / 'define Y' when X is a BlackOut term — NOT for live desk state (use the desk tools). Pass `term` or `question`. Returns null-found honestly when the term is not in the glossary.",
+    { term: { type: "string" }, question: { type: "string" } }
+  ),
+  t(
     "get_cortex_decision",
     "Cortex commit/skip/exit evidence for a 0DTE-relevant ticker — pinned ledger truth when a play of record exists, otherwise live 'what would Cortex say now'. Pass `ticker`, optional `question` for direction hints, and optional `date` (YYYY-MM-DD) to explain a SPECIFIC PAST session's play — the frozen entry_context.cortex, the WHY OF RECORD exactly as the gate stack saw it when it committed. Without `date` it reads today; WITH `date` it returns that session's pinned evidence, or says plainly there was no play of record that day (it will NOT answer a dated question with a live read, which would describe now, not then). Use for 'why did we commit/skip X [on DATE]', Cortex veto, or gate evidence — NOT SPX Slayer play-engine gates (get_spx_play / get_spx_engine_snapshots).",
     { ticker: { type: "string" }, question: { type: "string" }, date: { type: "string" } }
@@ -746,6 +766,9 @@ export const TOOL_GROUPS = {
     "get_power_hour",
     "get_spx_pin",
     "get_spx_pulse",
+    "get_spx_desk_convergence",
+    "get_spx_voice_feed",
+    "get_spx_journal",
   ],
   flow_analysis: [
     "get_options_flow",
@@ -838,6 +861,7 @@ export const TOOL_GROUPS = {
     "get_ownership",
   ],
   platform: [
+    "get_concept",
     "get_platform_snapshot",
     "get_zerodte_plays",
     "get_zerodte_rejections",
@@ -918,6 +942,7 @@ export const SPX_ENGINE_TOOL_NAMES = [
   "get_trade_history",
   "get_spx_confluence",
   "get_power_hour",
+  "get_spx_desk_convergence",
 ];
 
 // Task #133 — the cohort-membership test for "did this Largo turn touch HELIX's
@@ -1162,7 +1187,7 @@ export const MARKET_ENGINE_TOOL_NAMES = ["get_market_context"];
 /**
  * REMOVED 2026-08-10: `CORE_TOOLS`, `mentionsTicker()` and `getToolsForIntent()`.
  *
- * They implemented a per-question regex ALLOWLIST that decided which of these 130 tools Claude was
+ * They implemented a per-question regex ALLOWLIST that decided which of these 134 tools Claude was
  * shown on a given turn. Measured over 20 realistic member questions it exposed a mean of 21.9
  * tools (19%), and it failed silently rather than loudly — see the block comment at the
  * `filteredTools` assignment in largo-terminal.ts for the full root cause, the measurements, and

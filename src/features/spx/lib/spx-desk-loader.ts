@@ -14,6 +14,7 @@ import {
 } from "@/features/spx/lib/spx-desk";
 import type { SpxDeskFlow, SpxDeskPayload, SpxDeskPulse } from "@/features/spx/lib/spx-desk";
 import { mergeDeskLayers } from "@/features/spx/lib/spx-desk-merge";
+import { observeSpxDeskVoiceTransitions } from "@/features/spx/lib/spx-voice-feed-store";
 // Type-only import — erased at compile. The runtime builder is loaded lazily inside
 // loadSpxPinForecast() so that importing this loader does NOT eagerly pull spx-pin.ts's
 // server-only chain dependency into non-server-condition contexts (e.g. the mocked unit
@@ -155,12 +156,14 @@ async function loadMergedSpxDeskCore(): Promise<MergedSpxDeskBundle> {
 /** Cached merged desk — same fast-lane contract as bootstrap (never block 15s+ on cold desk). */
 export async function loadMergedSpxDesk(): Promise<MergedSpxDeskBundle> {
   const date = todayEtYmd();
-  return withServerCache(`spx-merged:${date}`, deskCacheTtlMs(), loadMergedSpxDeskCore, {
+  const bundle = await withServerCache(`spx-merged:${date}`, deskCacheTtlMs(), loadMergedSpxDeskCore, {
     staleWhileRevalidate: true,
     staleOnInflight: true,
     maxBlockMs: deskBootstrapMaxBlockMs(),
     fallback: buildBootstrapFastLane,
   });
+  void observeSpxDeskVoiceTransitions(bundle.merged, date).catch(() => {});
+  return bundle;
 }
 
 async function buildMergedBundle(): Promise<MergedSpxDeskBundle> {
