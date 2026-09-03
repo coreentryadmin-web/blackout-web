@@ -21,11 +21,25 @@ export const maxDuration = 180;
  * queue-budget.ts's own header describes (ALB TargetResponseTime p99 40-111s measured in this
  * same window, 2026-09-01 20:00-22:00 UTC — CloudWatch). Same `sharedCacheSetNx` idempotent-skip
  * pattern already used by swing-discovery/banger-discovery/thermal-discord for this exact
- * problem shape. TTL (480s / 8min) matches this cron's own `stale_after_min: 8` alerting
- * threshold as the safety-net ceiling if a release is ever missed (crash mid-sweep).
+ * problem shape.
+ *
+ * TTL RAISED 2026-09-03 (480s -> 900s): the original 480s TTL was picked to match this cron's
+ * `stale_after_min: 8` alerting threshold, but CloudWatch (2026-09-03 16:50-19:15 UTC RTH window)
+ * showed real sweeps running LONGER than that TTL — elapsed=693684ms and 644588ms, both above the
+ * 480s lock lifetime. When a sweep outlives its own lock, the lock expires mid-run and the NEXT
+ * scheduled fire acquires it and starts a second sweep while the first is still in flight — the
+ * exact overlap this guard exists to prevent, confirmed by log timestamps: a sweep that started
+ * ~16:55:38 (finishing 17:06:52, elapsed=693684ms) had its lock expire at ~17:03:38, letting a
+ * second sweep start ~17:05:16 and finish 17:09:31 while the first was still running. The two then
+ * contend for the SAME rate-limited Polygon/UW clients this guard was built to protect, which is
+ * the likely reason runtimes climbed further above the 2026-09-01 baseline instead of settling
+ * back down. 900s gives real margin above the worst observed 694s without materially weakening the
+ * safety net (a genuinely crashed/stuck sweep still self-heals within 15 minutes instead of never).
+ * `stale_after_min` in cron-registry.ts is raised to 15 to match, per this file's own stated intent
+ * of keeping the two in lockstep.
  */
 const OVERLAP_LOCK_KEY = "vector:pick-sweep:running";
-const OVERLAP_LOCK_TTL_SEC = 480;
+const OVERLAP_LOCK_TTL_SEC = 900;
 
 async function runPickSweep(started: number): Promise<void> {
   try {
