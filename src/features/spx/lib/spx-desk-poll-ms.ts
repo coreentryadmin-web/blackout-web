@@ -25,7 +25,10 @@ export const SPX_PULSE_REST_POLL_MS = pollMs("NEXT_PUBLIC_SPX_PULSE_REST_POLL_MS
 /** REST pulse when SSE connected (spot still pushes @ 250ms) — default 2s. */
 export const SPX_PULSE_REST_SSE_POLL_MS = pollMs("NEXT_PUBLIC_SPX_PULSE_REST_SSE_POLL_MS", 2_000);
 
-/** Left-rail GEX/VEX matrix during RTH — default 2s (server matrix cache 5–8s; client reads cache). */
+/** Left-rail GEX/VEX matrix during RTH — default 2s (server matrix cache is a flat 5-second TTL
+ *  for every ticker including SPX — see polygon-options-gex.ts's own "every ticker is served on
+ *  a 5s TTL" note. This comment previously quoted a wider range that stopped being true once the
+ *  base TTL dropped to a flat 5s. Client still reads through the server cache either way. */
 export const SPX_MATRIX_POLL_RTH_MS = pollMs("NEXT_PUBLIC_SPX_MATRIX_POLL_RTH_MS", 2_000);
 
 /** EOD Pin Forecaster — recomputes the projected close every 5s during RTH. */
