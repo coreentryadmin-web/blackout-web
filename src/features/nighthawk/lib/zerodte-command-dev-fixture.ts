@@ -40,15 +40,6 @@ export const ZERODTE_COMMAND_DEV_FIXTURE: BoardResp = {
   },
   vector_near_misses: [
     {
-      ticker: "META",
-      block_code: "cortex_gex_walls",
-      block_label: "Cortex · gex walls",
-      block_reason: "Cortex gex-walls oppose — dealer wall in path on the long side.",
-      vector_premium_pct: null,
-      vector_peak_pct: null,
-      vector_band: "tracking",
-    },
-    {
       ticker: "TSLA",
       block_code: "score_floor",
       block_label: "G-3 · score floor",
@@ -58,6 +49,14 @@ export const ZERODTE_COMMAND_DEV_FIXTURE: BoardResp = {
       vector_band: "runner",
     },
   ],
+  veto_shadow: {
+    gate_blocked_scan: 2,
+    cortex_blocks_funnel: 34,
+    vector_winner_misses: 0,
+    vector_runner_misses: 1,
+    top_cortex_gate: "cortex_gex_walls",
+    summary: "1 Vector runner blocked — watch calibration",
+  },
   market_state: {
     regime_label: "trend",
     regime_structure: "trend",

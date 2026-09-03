@@ -37,7 +37,9 @@ const report = {
   has_new_fields:
     body?.session_stats != null &&
     body?.vector_pulse_by_ticker != null &&
-    Array.isArray(body?.vector_near_misses),
+    Array.isArray(body?.vector_near_misses) &&
+    (body?.veto_shadow != null || body?.veto_shadow === null),
+  veto_shadow: body?.veto_shadow ?? null,
 };
 
 console.log(JSON.stringify(report, null, 2));

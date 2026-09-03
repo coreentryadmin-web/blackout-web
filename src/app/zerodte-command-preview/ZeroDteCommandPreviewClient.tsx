@@ -42,6 +42,7 @@ export function ZeroDteCommandPreviewClient() {
             discoveryFunnel={ZERODTE_COMMAND_DEV_FIXTURE.discovery_funnel ?? null}
             sessionStats={ZERODTE_COMMAND_DEV_FIXTURE.session_stats ?? null}
             vectorNearMisses={ZERODTE_COMMAND_DEV_FIXTURE.vector_near_misses ?? null}
+            vetoShadow={ZERODTE_COMMAND_DEV_FIXTURE.veto_shadow ?? null}
             emptyHint="Fixture board empty."
           />
         </main>

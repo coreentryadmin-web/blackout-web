@@ -167,6 +167,34 @@ export function DiscoveryFunnelStrip({
   );
 }
 
+/** Cortex veto shadow calibration — member-facing calibration read. */
+export function VetoShadowStrip({
+  shadow,
+  compact = false,
+}: {
+  shadow: import("@/lib/zerodte/veto-shadow-summary").VetoShadowSummary | null | undefined;
+  compact?: boolean;
+}) {
+  if (!shadow?.summary) return null;
+  return (
+    <p
+      className={clsx(
+        "nh-deck-context-strip font-mono uppercase tracking-widest text-violet-300/90",
+        compact ? "text-[8px]" : "text-[10px]",
+      )}
+      data-testid="zerodte-veto-shadow-strip"
+      title="Cortex veto shadow — Vector near-miss calibration signal, not a trade recommendation"
+    >
+      {compact ? shadow.summary : `Veto shadow · ${shadow.summary}`}
+      {shadow.vector_winner_misses > 0 && (
+        <span className="ml-2 text-bull">
+          ({shadow.vector_winner_misses} V+ miss{shadow.vector_winner_misses === 1 ? "" : "es"})
+        </span>
+      )}
+    </p>
+  );
+}
+
 /** Scan vs commit session counters — separates Vector-style breadth from ledger commits. */
 export function SessionStatsStrip({
   stats,

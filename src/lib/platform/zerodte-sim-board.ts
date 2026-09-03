@@ -103,6 +103,7 @@ export function emptySimBoardPayload(): ZeroDteBoardPayload {
     session_stats: null,
     vector_pulse_by_ticker: {},
     vector_near_misses: [],
+    veto_shadow: null,
   };
 }
 

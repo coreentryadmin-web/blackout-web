@@ -3,7 +3,8 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import { PlayTerminal, etClock } from "./PlayTerminal";
-import { DiscoveryFunnelStrip, MarketStateStrip, SessionStatsStrip, SpxSlayerBadgeStrip, VectorNearMissStrip } from "@/features/nighthawk/components/zerodte-board-strips";
+import { DiscoveryFunnelStrip, MarketStateStrip, SessionStatsStrip, SpxSlayerBadgeStrip, VectorNearMissStrip, VetoShadowStrip } from "@/features/nighthawk/components/zerodte-board-strips";
+import type { VetoShadowSummary } from "@/lib/zerodte/veto-shadow-summary";
 import type { ZeroDteVectorNearMiss } from "@/lib/zerodte/vector-near-miss";
 import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
@@ -81,6 +82,7 @@ export function CommandDeck({
   discoveryFunnel = null,
   sessionStats = null,
   vectorNearMisses = null,
+  vetoShadow = null,
   spxSlayerBadge,
   focusTicker = null,
   boardChrome = "default",
@@ -115,6 +117,8 @@ export function CommandDeck({
   sessionStats?: ZeroDteSessionBoardStats | null;
   /** 0DTE only — Vector winner/runner blocked by gates (shadow book). */
   vectorNearMisses?: ZeroDteVectorNearMiss[] | null;
+  /** 0DTE only — Cortex veto shadow calibration summary. */
+  vetoShadow?: VetoShadowSummary | null;
   /** 0DTE only — SPX Slayer's own live play, read-only board badge (feat/nh-spx-badge). Undefined
    *  on lanes that don't pass it (Swings/LEAPS/Legacy) — the badge renders nothing, never idle
    *  chrome for a lane that was never meant to carry it. */
@@ -302,6 +306,7 @@ export function CommandDeck({
             <div className="nh-deck-context-strips mb-2 space-y-1.5 px-0.5">
               <SessionStatsStrip stats={sessionStats} compact />
               <VectorNearMissStrip nearMisses={vectorNearMisses} compact />
+              <VetoShadowStrip shadow={vetoShadow} compact />
               <MarketStateStrip ms={marketState} compact />
               <DiscoveryFunnelStrip funnel={discoveryFunnel} compact />
               <SpxSlayerBadgeStrip badge={spxSlayerBadge} compact />
@@ -324,6 +329,7 @@ export function CommandDeck({
               <div className="nh-deck-context-strips mb-2 space-y-2 px-0.5">
                 <SessionStatsStrip stats={sessionStats} />
                 <VectorNearMissStrip nearMisses={vectorNearMisses} />
+                <VetoShadowStrip shadow={vetoShadow} />
                 <MarketStateStrip ms={marketState} />
                 <DiscoveryFunnelStrip funnel={discoveryFunnel} />
                 <SpxSlayerBadgeStrip badge={spxSlayerBadge} />

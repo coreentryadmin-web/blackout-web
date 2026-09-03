@@ -42,6 +42,8 @@ export interface BoardResp {
   vector_pulse_by_ticker?: Record<string, ZeroDteVectorPulse> | null;
   /** Vector tracking + 0DTE gate-blocked — shadow-book near misses. */
   vector_near_misses?: ZeroDteVectorNearMiss[] | null;
+  /** Cortex veto shadow calibration summary. */
+  veto_shadow?: import("@/lib/zerodte/veto-shadow-summary").VetoShadowSummary | null;
 }
 
 /** Ledger statuses that represent a WORKING (member-held) position — always rendered (9-4). */

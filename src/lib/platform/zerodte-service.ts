@@ -68,6 +68,7 @@ import { computeZeroDteSessionBoardStats } from "@/lib/zerodte/session-board-sta
 import { fetchZeroDteVectorPulseByTicker } from "@/lib/zerodte/vector-crosslink";
 import { computeVectorNearMisses } from "@/lib/zerodte/vector-near-miss";
 import { zeroDteGateLabel } from "@/lib/zerodte/pane";
+import { buildVetoShadowSummary } from "@/lib/zerodte/veto-shadow-summary";
 // Read-only SPX Slayer badge (feat/nh-spx-badge) — additive display field only, see
 // spx-slayer-badge.ts for the full scope note. NOT part of scoring/gates/governor above.
 // Lazy dynamic import below (not a static import): spx-slayer-badge.ts's module graph
@@ -294,6 +295,8 @@ export type ZeroDteBoardPayload = {
   vector_pulse_by_ticker: Record<string, import("@/lib/zerodte/vector-crosslink").ZeroDteVectorPulse>;
   /** Vector winner/runner names gate-blocked on 0DTE — shadow-book calibration signal. */
   vector_near_misses: import("@/lib/zerodte/vector-near-miss").ZeroDteVectorNearMiss[];
+  /** Cortex veto shadow calibration — near-miss + funnel read (display only). */
+  veto_shadow: import("@/lib/zerodte/veto-shadow-summary").VetoShadowSummary | null;
 };
 
 // ── Shared, converged board snapshot (fix/zerodte-board-convergence) ──────────────
@@ -736,6 +739,7 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     vector_pulse_by_ticker,
     zeroDteGateLabel
   );
+  const veto_shadow = buildVetoShadowSummary(vector_near_misses, discovery_funnel, session_stats);
 
   const payload = roundFloats({
     available: true,
@@ -770,6 +774,7 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     session_stats,
     vector_pulse_by_ticker,
     vector_near_misses,
+    veto_shadow,
   }) as ZeroDteBoardPayload;
 
   // roundFloats() rounds entry_premium/last_mark independently; recompute PnL from the
@@ -1066,6 +1071,7 @@ function buildMinimalBoardFallback(): ZeroDteBoardPayload {
     session_stats: null,
     vector_pulse_by_ticker: {},
     vector_near_misses: [],
+    veto_shadow: null,
   };
 }
 

@@ -70,6 +70,8 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 ## P2 — autonomous follow-ups
 
 - [x] Merge PR #3381 when CI green (merged 2026-09-03 — verify GREEN, `fd7c3486`)
+- [ ] Merge PR for 0DTE engine UI (session stats, Vector cross-links, near-miss strip) when CI green
+- [ ] Post-deploy: run `zerodte-board-ui-monitor.mjs` — confirm `has_new_fields: true` on prod
 - [x] `get_spx_structure` + `get_spx_confluence` — truncation probe COMPLETE on prod (2026-09-03)
 - [x] `get_signal_log` Largo fit at model boundary
 - [x] L-3 empty-answer honesty — wire `anthropicToolLoop` `onStop` → `emptyAnswerFallback` `stopReason` (both streaming + non-streaming paths)
