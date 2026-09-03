@@ -30,7 +30,7 @@ Seven modules, one desk — use them individually or together:
 - **SPX Slayer** — The 0DTE command center. Live dealer gamma, A–F graded setups, and real-time positioning for same-day SPX options. Starts at $49/month.
 - **Thermal** — GEX, VEX, DEX, and CHARM heatmaps that show where dealer hedging will accelerate or dampen price movement.
 - **HELIX** — Institutional flow scanner. Surfaces unusual activity, block prints, and dark pool transactions so you see what the smart money is doing.
-- **Night Hawk** — Overnight playbook plus an intraday 0DTE scanner. Identifies setups before the bell and tracks them through the session.
+- **Night Hawk** — 0DTE Command scans the whole market intraday with graded plays and Cortex thesis health on every commit, then Evening Edition publishes post-close prep for the next session.
 - **Largo AI** — An AI desk analyst that synthesizes positioning, flow, and structure into actionable context.
 - **Vector** — Cross-ticker gamma scanner that finds names where dealer positioning is setting up the next move.
 - **Meridian** — Earnings intelligence: expected move, historical reaction, and positioning ahead of every print.

@@ -87,7 +87,7 @@ export const IOS_TOOLS: IosToolMeta[] = [
     short: "Hawk",
     mark: "nighthawk",
     accent: "#ff2d55",
-    tagline: "Overnight playbook",
+    tagline: "0DTE Command desk",
     code: "HWK",
   },
   {
