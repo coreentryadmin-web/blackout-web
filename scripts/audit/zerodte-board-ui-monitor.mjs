@@ -1,32 +1,23 @@
 #!/usr/bin/env node
 /**
  * Prod monitor — 0DTE board payload shape + session funnel counters.
- * Usage: CRON_SECRET=... node scripts/audit/zerodte-board-ui-monitor.mjs [--base URL]
+ * Usage: node scripts/audit/zerodte-board-ui-monitor.mjs [--base URL]
+ *
+ * Auth: CRON bearer first (AWS Secrets Manager when available), Clerk premium
+ * session fallback — cloud-agent CRON_SECRET often mismatches prod.
  */
-const BASE = (process.argv.find((a) => a.startsWith("--base="))?.split("=")[1] ?? "https://blackouttrades.com").replace(/\/$/, "");
-const SECRET = process.env.CRON_SECRET?.trim();
-if (!SECRET) {
-  console.error("CRON_SECRET required");
-  process.exit(2);
-}
+import { fetchAuditJson, releaseAuditClerkSession } from "./lib/audit-auth-fetch.mjs";
 
-const url = `${BASE}/api/market/zerodte/board`;
-const res = await fetch(url, {
-  headers: { Authorization: `Bearer ${SECRET}` },
-  cache: "no-store",
-});
-const status = res.status;
-let body;
-try {
-  body = await res.json();
-} catch {
-  body = null;
-}
+const BASE = (process.argv.find((a) => a.startsWith("--base="))?.split("=")[1] ?? "https://blackouttrades.com").replace(/\/$/, "");
+
+const { ok, status, json: body, via } = await fetchAuditJson(BASE, "/api/market/zerodte/board");
+await releaseAuditClerkSession();
 
 const report = {
   at: new Date().toISOString(),
   base: BASE,
   http: status,
+  via,
   available: body?.available ?? null,
   upstream_ok: body?.upstream_ok ?? null,
   setups: Array.isArray(body?.setups) ? body.setups.length : null,
@@ -49,4 +40,4 @@ const report = {
 };
 
 console.log(JSON.stringify(report, null, 2));
-process.exit(status === 200 && report.has_new_fields ? 0 : status === 200 ? 1 : 1);
+process.exit(ok && report.has_new_fields ? 0 : 1);
