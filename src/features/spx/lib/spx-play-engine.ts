@@ -2,6 +2,7 @@ import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import { todayEt } from "@/lib/et-date";
 import { notifyPlayDiscord } from "@/features/spx/lib/spx-play-notify";
 import { dbConfigured, fetchLatestNighthawkEdition } from "@/lib/db";
+import { isZeroDteMarkStale } from "@/lib/zerodte/marks-math";
 
 function firePlayTelemetry(label: string, work: () => Promise<unknown>) {
   void work().catch((err) => {
@@ -168,10 +169,13 @@ async function getNhConfluenceBonus(): Promise<{ bonus: number; label: string } 
     const edition = await fetchLatestNighthawkEdition();
     if (!edition) return null;
 
-    // Require the edition to be from today or yesterday (not stale).
+    // Require the edition to be from today or yesterday (not stale). BUG FIX (2026-09-03):
+    // isZeroDteMarkStale (not a raw age subtraction) — published_at is a cross-process
+    // timestamp (a separate Night Hawk cron writes it), so a clock-skewed/bad future stamp
+    // is possible; unguarded, it would trivially pass "not stale" and get used as a valid
+    // morning prior instead of being rejected.
     const publishedAt = new Date(edition.published_at);
-    const ageHours = (Date.now() - publishedAt.getTime()) / 3_600_000;
-    if (ageHours > 20) return null; // Edition older than 20h — too stale to use as a morning prior.
+    if (isZeroDteMarkStale(publishedAt.getTime(), Date.now(), 20 * 3_600_000)) return null;
 
     const plays = Array.isArray(edition.plays) ? edition.plays : [];
     // Infer market_bias from the market_recap field or from plays.

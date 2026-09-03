@@ -5,6 +5,7 @@
  * **full_v2 (planned):** per-trade quote reconciliation, partial fills, delay model.
  */
 import type { OptionTicket } from "@/features/spx/lib/spx-play-options";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { SpxPlayDirection } from "@/features/spx/lib/spx-signals";
 
@@ -140,8 +141,13 @@ export function isOptionQuoteStale(
   nowMs = Date.now()
 ): boolean {
   if (quote.quote_timestamp_ms == null) return true;
-  const ageSec = (nowMs - quote.quote_timestamp_ms) / 1000;
-  return ageSec > optionQuoteMaxAgeSec();
+  const ageMs = nowMs - quote.quote_timestamp_ms;
+  // BUG FIX (2026-09-03): a quote_timestamp_ms from the future (external option-quote provider
+  // clock skew or a bad stamp) used to produce a negative ageSec that trivially passed
+  // `> optionQuoteMaxAgeSec()`, feeding an untrustworthy quote into the execution-sim contract
+  // as if it were fresh. Same tolerance marks-math.ts's isZeroDteMarkStale already applies.
+  if (ageMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) return true;
+  return ageMs / 1000 > optionQuoteMaxAgeSec();
 }
 
 export function buildLiteExecutionSimContract(input: {

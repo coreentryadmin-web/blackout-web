@@ -1,4 +1,5 @@
 import { dbConfigured, getMeta, setMeta } from "@/lib/db";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { SpxPlayDirection } from "@/features/spx/lib/spx-signals";
 import { todayEtYmd } from "@/lib/providers/spx-session";
@@ -146,8 +147,17 @@ export async function evaluateWatchPromote(params: {
     return { eligible: false, reason: "WATCH→ENTRY requires 0DTE flow alignment", record: rec };
   }
 
-  const ageMin = (Date.now() - new Date(rec.first_at).getTime()) / 60_000;
+  const ageMs = Date.now() - new Date(rec.first_at).getTime();
   const maxAge = effectiveWatchMaxAgeMin(params.desk, params.direction);
+  // BUG FIX (2026-09-03): a WATCH record's first_at from the future (clock skew across a
+  // restart/replica writing the shared record) used to produce a negative ageMin that never
+  // exceeded maxAge, extending an untrustworthy record's promotion eligibility indefinitely
+  // instead of expiring it like any other record whose age cannot be verified.
+  if (ageMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) {
+    await clearWatchRecord();
+    return { eligible: false, reason: `WATCH expired (${maxAge}m)`, record: null };
+  }
+  const ageMin = ageMs / 60_000;
   if (ageMin > maxAge) {
     await clearWatchRecord();
     return { eligible: false, reason: `WATCH expired (${maxAge}m)`, record: null };

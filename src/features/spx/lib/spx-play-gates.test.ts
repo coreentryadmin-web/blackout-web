@@ -151,6 +151,24 @@ test("evaluatePlayGates: stale desk blocks entry", () => {
   assert.match(result.blocks.join(" "), /Desk data stale/i);
 });
 
+// BUG FIX (2026-09-03): polled_at from the future (a separate warm cron writes it, so cross-process
+// clock skew is real) used to produce a negative deskStaleSec that never exceeded
+// playGexStaleMaxSec(), silently passing this gate for a snapshot whose real freshness cannot be
+// verified.
+test("evaluatePlayGates: desk polled_at from the future is treated as stale, not extra-fresh", () => {
+  mockHaltBlock = { block: false, reason: null };
+  const result = evaluatePlayGates(
+    baseDesk({
+      polled_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+      gex_age_ms: 1_000,
+    }),
+    baseConfluence(),
+    emptySession,
+    passingConfirmations
+  );
+  assert.match(result.blocks.join(" "), /Desk data stale/i);
+});
+
 test("evaluatePlayGates: mixed tape hard-blocks BUY", () => {
   mockHaltBlock = { block: false, reason: null };
   const result = evaluatePlayGates(

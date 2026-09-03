@@ -33,6 +33,8 @@ process.env.DATABASE_PUBLIC_URL = "";
 process.env.DISCORD_PLAY_WEBHOOK_URL = "";
 
 import { before, beforeEach, test, mock } from "node:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import type { PlayTechnicals } from "@/features/spx/lib/spx-play-technicals";
@@ -256,4 +258,24 @@ test("evaluateOpenPlay TARGET hit, mutate:true: SELL is real — signal_committe
 
   const stillOpen = await loadOpenPlay();
   assert.equal(stillOpen, null, "mutate:true must actually close the play");
+});
+
+// BUG FIX (2026-09-03): getNhConfluenceBonus's staleness check used a raw
+// `(Date.now() - publishedAt.getTime()) / 3_600_000 > 20` comparison. published_at is written by a
+// SEPARATE Night Hawk cron process, so cross-process clock skew is real — a future-dated edition
+// produced a negative ageHours that never exceeded 20, letting an untrustworthy edition be used as
+// a valid morning prior instead of being rejected. getNhConfluenceBonus is unexported and reads
+// live DB state, so this is a source-text regression guard (same idiom as HelixTideBar.test.ts /
+// db.test.ts's SQL CASE checks) rather than a full behavioral test.
+test("getNhConfluenceBonus: staleness check uses isZeroDteMarkStale, not a raw age subtraction", () => {
+  const src = readFileSync(fileURLToPath(new URL("./spx-play-engine.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("async function getNhConfluenceBonus");
+  assert.ok(start > 0, "getNhConfluenceBonus exists");
+  const end = src.indexOf("\nasync function", start + 1);
+  const body = src.slice(start, end > 0 ? end : undefined);
+  assert.match(
+    body,
+    /isZeroDteMarkStale\(publishedAt\.getTime\(\), Date\.now\(\), 20 \* 3_600_000\)/,
+    "must route through the shared future-timestamp-guarded staleness predicate"
+  );
 });

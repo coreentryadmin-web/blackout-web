@@ -28,6 +28,21 @@ test("spxDeskLaneFreshness: desk lane goes stale when polled_at is too old", () 
   assert.equal(desk?.status, "stale");
 });
 
+// BUG FIX (2026-09-03): an asOf from the future (browser/server clock skew) used to produce a
+// negative ageMs that never exceeded staleAfterMs, always reading "live" for a lane whose real
+// freshness cannot be verified.
+test("spxDeskLaneFreshness: a desk lane timestamped well in the future reads stale, not live", () => {
+  const layers = spxDeskLaneFreshness({
+    nowMs: NOW,
+    sessionActive: true,
+    pulsePolledAt: new Date(NOW - 1_000).toISOString(),
+    deskPolledAt: new Date(NOW + 10 * 60_000).toISOString(),
+    flowPolledAt: new Date(NOW - 1_200).toISOString(),
+  });
+  const desk = layers.find((l) => l.lane === "desk");
+  assert.equal(desk?.status, "stale");
+});
+
 test("spxDeskLaneFreshness: feed_stalled downgrades pulse from live to stale", () => {
   const layers = spxDeskLaneFreshness({
     nowMs: NOW,

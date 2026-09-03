@@ -1,8 +1,35 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildLiteExecutionSimContract } from "./playbook-option-execution-contract";
+import { buildLiteExecutionSimContract, isOptionQuoteStale } from "./playbook-option-execution-contract";
 import { buildOptionExecutionSim } from "./playbook-option-sim";
 import type { OptionTicket } from "./spx-play-options";
+
+// BUG FIX (2026-09-03): a quote_timestamp_ms from the future (external provider clock skew, or a
+// bad stamp) used to produce a negative age that trivially passed `> optionQuoteMaxAgeSec()`,
+// reading an untrustworthy quote as fresh instead of stale.
+test("isOptionQuoteStale: a quote timestamped in the future is stale, not freshest-possible", () => {
+  const now = Date.parse("2026-09-01T15:00:00.000Z");
+  assert.equal(
+    isOptionQuoteStale({ quote_timestamp_ms: now + 10 * 60_000 } as never, now),
+    true,
+    "10 minutes ahead of now is well beyond ordinary clock skew"
+  );
+});
+
+test("isOptionQuoteStale: a quote a few hundred ms ahead of now (ordinary clock skew) is not stale", () => {
+  const now = Date.parse("2026-09-01T15:00:00.000Z");
+  assert.equal(isOptionQuoteStale({ quote_timestamp_ms: now + 500 } as never, now), false);
+});
+
+test("isOptionQuoteStale: a genuinely old quote is still stale", () => {
+  const now = Date.parse("2026-09-01T15:00:00.000Z");
+  assert.equal(isOptionQuoteStale({ quote_timestamp_ms: now - 60_000 } as never, now), true);
+});
+
+test("isOptionQuoteStale: a fresh quote in the past is not stale", () => {
+  const now = Date.parse("2026-09-01T15:00:00.000Z");
+  assert.equal(isOptionQuoteStale({ quote_timestamp_ms: now - 2_000 } as never, now), false);
+});
 
 const ticket = {
   underlying: "SPXW",

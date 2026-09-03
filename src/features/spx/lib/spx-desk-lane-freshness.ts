@@ -5,6 +5,7 @@ import {
   SPX_PULSE_REST_POLL_MS,
   SPX_PULSE_REST_SSE_POLL_MS,
 } from "@/features/spx/lib/spx-desk-poll-ms";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 
 export type SpxDeskLaneKey = "pulse" | "desk" | "flow";
 
@@ -67,6 +68,10 @@ function laneStatus(
   if (validating && !asOf) return "syncing";
   if (!asOf) return validating ? "syncing" : "offline";
   const ageMs = nowMs - asOf.getTime();
+  // BUG FIX (2026-09-03): an asOf from the future (browser/server clock skew) used to produce a
+  // negative ageMs that trivially failed `> staleAfterMs`, always reading "live" for a lane whose
+  // real freshness cannot be verified.
+  if (ageMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) return "stale";
   if (ageMs > staleAfterMs) return "stale";
   return "live";
 }
