@@ -3143,7 +3143,6 @@ export async function insertHelixSignalOutcomes(
 ): Promise<number> {
   if (!rows.length) return 0;
   await ensureSchema();
-  const pool = await getPool();
 
   const params: Array<string | number | null> = [];
   const tuples = rows
@@ -3161,7 +3160,7 @@ export async function insertHelixSignalOutcomes(
     })
     .join(", ");
 
-  const res = await pool.query(
+  const res = await dbQuery(
     `
     INSERT INTO helix_signal_outcomes (
       signal_type, ticker, window_start, direction, context, price_at_fire
@@ -3707,9 +3706,8 @@ export async function loadPlaybookTriggerCountsByPb(sessionDate: string): Promis
 export async function syncPlaybookArmedPollCounts(counts: ReadonlyMap<string, number>): Promise<void> {
   if (!counts.size) return;
   await ensureSchema();
-  const pool = await getPool();
   for (const [instanceId, count] of counts) {
-    await pool.query(
+    await dbQuery(
       `
       UPDATE spx_playbook_instances
       SET armed_poll_count = $2, updated_at = NOW()
@@ -3749,7 +3747,6 @@ export async function upsertPlaybookInstances(
 ): Promise<void> {
   if (!rows.length) return;
   await ensureSchema();
-  const pool = await getPool();
 
   // 2026-08-01 CTO perf audit (P2): was one INSERT..ON CONFLICT round-trip per row on the SPX
   // playbook scan hot path — same fixable anti-pattern as upsertNighthawkPlayOutcomes (~line
@@ -3789,7 +3786,7 @@ export async function upsertPlaybookInstances(
     })
     .join(", ");
 
-  await pool.query(
+  await dbQuery(
     `
     INSERT INTO spx_playbook_instances (
       instance_id, session_date, playbook_id, direction, state,
@@ -3851,7 +3848,6 @@ export async function insertPlaybookInstanceEvents(
   const lockKey = `playbook-instance-events:${rows[0]!.session_date}`;
   const locked = await tryAdvisoryLock(lockKey);
   if (!locked) return;
-  const pool = await getPool();
   try {
     // 2026-08-01 CTO perf audit (P1): this loop used to run N sequential INSERTs while HOLDING
     // the advisory lock, so lock hold time (and any other caller blocked on the same
@@ -3880,7 +3876,7 @@ export async function insertPlaybookInstanceEvents(
       })
       .join(", ");
 
-    await pool.query(
+    await dbQuery(
       `
       INSERT INTO spx_playbook_instance_events (
         session_date, instance_id, playbook_id, event_type, direction,
@@ -5302,13 +5298,12 @@ export async function fetchPlayLifecycleCounts(): Promise<{
   open_plays: number;
 }> {
   await ensureSchema();
-  const pool = await getPool();
   const [openOutcomes, everOutcomes, openPlays] = await Promise.all([
-    pool.query<{ n: string }>(
+    dbQuery<{ n: string }>(
       `SELECT COUNT(*)::text AS n FROM spx_play_outcomes WHERE outcome = 'open'`
     ),
-    pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM spx_play_outcomes`),
-    pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM spx_open_play`),
+    dbQuery<{ n: string }>(`SELECT COUNT(*)::text AS n FROM spx_play_outcomes`),
+    dbQuery<{ n: string }>(`SELECT COUNT(*)::text AS n FROM spx_open_play`),
   ]);
   return {
     open_play_outcomes: Number(openOutcomes.rows[0]?.n ?? 0),
@@ -5430,9 +5425,8 @@ export async function fetchSpxAdminRollups(): Promise<{
   recent_signals: Awaited<ReturnType<typeof fetchRecentSpxSignalLogs>>;
 }> {
   await ensureSchema();
-  const pool = await getPool();
 
-  const gradeRes = await pool.query(
+  const gradeRes = await dbQuery(
     `
     SELECT grade,
            COUNT(*)::int AS count,
@@ -5446,7 +5440,7 @@ export async function fetchSpxAdminRollups(): Promise<{
     `
   );
 
-  const exitRes = await pool.query(
+  const exitRes = await dbQuery(
     `
     SELECT COALESCE(exit_action, 'UNKNOWN') AS exit_action,
            COUNT(*)::int AS count,
@@ -5458,7 +5452,7 @@ export async function fetchSpxAdminRollups(): Promise<{
     `
   );
 
-  const dailyRes = await pool.query(
+  const dailyRes = await dbQuery(
     `
     SELECT to_char(closed_at AT TIME ZONE 'America/New_York', 'YYYY-MM-DD') AS day,
            COUNT(*)::int AS trades,
@@ -5474,7 +5468,7 @@ export async function fetchSpxAdminRollups(): Promise<{
     `
   );
 
-  const signalActionsRes = await pool.query(
+  const signalActionsRes = await dbQuery(
     `
     SELECT action, COUNT(*)::int AS count
     FROM spx_signal_log
@@ -5484,19 +5478,19 @@ export async function fetchSpxAdminRollups(): Promise<{
     `
   );
 
-  const signalsTodayRes = await pool.query<{ count: string }>(
+  const signalsTodayRes = await dbQuery<{ count: string }>(
     `SELECT COUNT(*)::int AS count FROM spx_signal_log WHERE (created_at AT TIME ZONE 'America/New_York')::date = (NOW() AT TIME ZONE 'America/New_York')::date`
   );
 
-  const flowTodayRes = await pool.query<{ count: string }>(
+  const flowTodayRes = await dbQuery<{ count: string }>(
     `SELECT COUNT(*)::int AS count FROM flow_alerts WHERE (inserted_at AT TIME ZONE 'America/New_York')::date = (NOW() AT TIME ZONE 'America/New_York')::date`
   );
 
-  const openRes = await pool.query<{ count: string }>(
+  const openRes = await dbQuery<{ count: string }>(
     `SELECT COUNT(*)::int AS count FROM spx_play_outcomes WHERE outcome = 'open'`
   );
 
-  const avgRes = await pool.query<{
+  const avgRes = await dbQuery<{
     avg_pnl: string;
     avg_mfe: string;
     avg_mae: string;
@@ -5960,7 +5954,6 @@ async function upsertOneZeroDteSetupRow(q: Db, r: ZeroDteSetupLogUpsert): Promis
 export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Promise<Set<string>> {
   if (!rows.length) return new Set();
   await ensureSchema();
-  const p = await getPool();
 
   // 2026-08-01 CTO perf audit (P2): was one upsertOneZeroDteSetupRow round-trip per row on
   // every 0DTE scan commit — same anti-pattern already fixed for upsertNighthawkPlayOutcomes.
@@ -6004,7 +5997,7 @@ export async function upsertZeroDteSetupLog(rows: ZeroDteSetupLogUpsert[]): Prom
     })
     .join(", ");
 
-  const res = await p.query<{ ticker: string; inserted: boolean }>(
+  const res = await dbQuery<{ ticker: string; inserted: boolean }>(
     `
     INSERT INTO zerodte_setup_log (
       session_date, ticker, direction, top_strike, expiry, score, score_max,
@@ -6866,7 +6859,6 @@ export async function resetNullGradedZeroDteRows(opts: {
   const normalized = normalizeIsoDateInput(opts.beforeDate);
   if (!normalized || opts.tickers.length === 0 || opts.limit <= 0) return { rows: [], cleared: 0 };
   const tickers = opts.tickers.map((t) => t.toUpperCase());
-  const pool = await getPool();
   const selectSql = `
     SELECT session_date, ticker FROM zerodte_setup_log
     WHERE graded_at IS NOT NULL
@@ -6876,7 +6868,7 @@ export async function resetNullGradedZeroDteRows(opts: {
     ORDER BY session_date ASC, ticker ASC
     LIMIT $3`;
   if (opts.dryRun) {
-    const res = await pool.query<QueryResultRow>(selectSql, [tickers, normalized, opts.limit]);
+    const res = await dbQuery<QueryResultRow>(selectSql, [tickers, normalized, opts.limit]);
     return {
       rows: res.rows.map((r) => ({
         session_date: isoDateString(r.session_date),
@@ -6885,7 +6877,7 @@ export async function resetNullGradedZeroDteRows(opts: {
       cleared: 0,
     };
   }
-  const res = await pool.query<QueryResultRow>(
+  const res = await dbQuery<QueryResultRow>(
     `WITH target AS (${selectSql} FOR UPDATE SKIP LOCKED)
      UPDATE zerodte_setup_log z
      SET graded_at = NULL
@@ -7718,8 +7710,7 @@ function mapSwingShadowPositionRow(row: QueryResultRow): SwingShadowPositionRow 
  *  of "this candidate would have opened here if the risk gates had allowed it." */
 export async function insertSwingShadowPosition(pos: SwingShadowPositionInsert): Promise<number> {
   await ensureSchema();
-  const p = await getPool();
-  const res = await p.query<{ id: string }>(
+  const res = await dbQuery<{ id: string }>(
     `
     INSERT INTO swing_shadow_positions (
       commit_key, session_date, ticker, direction, sub_lane, archetype, contract_strike,
@@ -8049,10 +8040,9 @@ export async function insertBieKnowledge(
 ): Promise<number> {
   if (rows.length === 0) return 0;
   await ensureSchema();
-  const pool = await getPool();
   let inserted = 0;
   for (const r of rows) {
-    const res = await pool.query(
+    const res = await dbQuery(
       `INSERT INTO bie_knowledge (kind, source, chunk, chunk_hash, embedding)
        VALUES ($1,$2,$3,$4,$5)
        ON CONFLICT (chunk_hash) DO NOTHING`,
@@ -8083,10 +8073,9 @@ export async function updateBieKnowledgeEmbeddings(
 ): Promise<number> {
   if (rows.length === 0) return 0;
   await ensureSchema();
-  const pool = await getPool();
   let updated = 0;
   for (const r of rows) {
-    const res = await pool.query(
+    const res = await dbQuery(
       `UPDATE bie_knowledge SET embedding = $2 WHERE chunk_hash = $1 AND embedding IS NULL`,
       [r.chunk_hash, JSON.stringify(r.embedding)]
     );
@@ -8896,7 +8885,6 @@ export async function upsertNighthawkPlayOutcomes(
 ): Promise<Set<string>> {
   if (!rows.length) return new Set();
   await ensureSchema();
-  const pool = await getPool();
 
   // Single multi-row INSERT (one round-trip) instead of an awaited per-row loop (N round-trips).
   // Each row contributes 11 bound params; outcome is the 'pending' literal as before.
@@ -8921,7 +8909,7 @@ export async function upsertNighthawkPlayOutcomes(
     })
     .join(", ");
 
-  const res = await pool.query<{ ticker: string; inserted: boolean }>(
+  const res = await dbQuery<{ ticker: string; inserted: boolean }>(
     `
     INSERT INTO nighthawk_play_outcomes (
       edition_for, ticker, direction, conviction,
@@ -9675,9 +9663,8 @@ export async function fetchNighthawkOutcomeAnalytics(windowDays = 30): Promise<{
   // can crash pg through this day-param.
   const safeWindowDays =
     Number.isFinite(windowDays) && windowDays > 0 ? Math.trunc(windowDays) : 30;
-  const pool = await getPool();
   const [resolvedRes, pendingRes] = await Promise.all([
-    pool.query(
+    dbQuery(
       `
       SELECT o.id, o.edition_for, o.ticker, o.direction, o.conviction,
              o.entry_range_low, o.entry_range_high, o.target, o.stop, o.score, o.sector,
@@ -9693,7 +9680,7 @@ export async function fetchNighthawkOutcomeAnalytics(windowDays = 30): Promise<{
       `,
       [safeWindowDays]
     ),
-    pool.query<{ count: string }>(
+    dbQuery<{ count: string }>(
       `SELECT COUNT(*)::int AS count FROM nighthawk_play_outcomes WHERE outcome = 'pending'`
     ),
   ]);
@@ -9732,15 +9719,14 @@ export async function fetchNighthawkFunnelStats(windowDays = 30): Promise<Nighth
   // caller can crash the $1::int cast below with a non-integer arg.
   const safeWindowDays =
     Number.isFinite(windowDays) && windowDays > 0 ? Math.trunc(windowDays) : 30;
-  const pool = await getPool();
   const [publishedRes, rejectedRes] = await Promise.all([
-    pool.query<{ count: string }>(
+    dbQuery<{ count: string }>(
       `SELECT COUNT(*)::int AS count
        FROM nighthawk_play_outcomes
        WHERE edition_for >= (CURRENT_DATE - ($1::int || ' days')::interval)`,
       [safeWindowDays]
     ),
-    pool.query<{ trigger_reason: string; n: string }>(
+    dbQuery<{ trigger_reason: string; n: string }>(
       `SELECT trigger_reason, COUNT(*)::int AS n
        FROM alert_audit_log
        WHERE alert_type = 'nighthawk_rejected'
@@ -10239,8 +10225,7 @@ export async function recordMeridianReportSnapshot(input: {
 }): Promise<void> {
   if (!dbConfigured()) return;
   try {
-    const p = await getPool();
-    await p.query(
+    await dbQuery(
       `INSERT INTO meridian_report_snapshots
          (ticker, event_date, snapshot_day, score, verdict, confidence, pillars)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -10273,8 +10258,7 @@ export async function readMeridianReportSnapshots(
 ): Promise<MeridianSnapshotRow[]> {
   if (!dbConfigured()) return [];
   try {
-    const p = await getPool();
-    const res = await p.query(
+    const res = await dbQuery(
       `SELECT snapshot_day, score, verdict, confidence, pillars
          FROM meridian_report_snapshots
         WHERE ticker = $1 AND event_date = $2
@@ -10323,8 +10307,7 @@ export type MeridianEstimateRevisionRow = {
 export async function recordMeridianEstimateRevision(entry: MeridianEstimateRevisionRow): Promise<void> {
   if (!dbConfigured()) return;
   try {
-    const p = await getPool();
-    await p.query(
+    await dbQuery(
       `INSERT INTO meridian_estimate_revisions
          (ticker, event_date, change_kind, revised_at, company_name, eps_delta, revenue_delta_pct, estimated_eps, estimated_revenue, headline)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -10363,8 +10346,7 @@ export async function readRecentMeridianEstimateRevisions(
 ): Promise<MeridianEstimateRevisionRow[]> {
   if (!dbConfigured()) return [];
   try {
-    const p = await getPool();
-    const res = await p.query(
+    const res = await dbQuery(
       `SELECT ticker, event_date, change_kind, revised_at, company_name, eps_delta, revenue_delta_pct, estimated_eps, estimated_revenue, headline
          FROM meridian_estimate_revisions
         WHERE revised_at >= $1

@@ -449,6 +449,64 @@ test("db.ts: no stray raw pool.query left outside the one deliberate exception (
   }
 });
 
+// BUG FIX (2026-09-03): the sweep above only matches the CHAINED call shape
+// `(await getPool()).query(...)`. PR #3407's own regex-based fix and this same test both used
+// that pattern, so a SECOND call shape — hoist the pool into a local first, `const pool = await
+// getPool(); ... pool.query(...)` — was invisible to both and 18 functions (~30 call sites) kept
+// bypassing dbQuery's transient-error retry: insertHelixSignalOutcomes, syncPlaybookArmedPollCounts,
+// upsertPlaybookInstances, insertPlaybookInstanceEvents, fetchPlayLifecycleCounts,
+// fetchSpxAdminRollups, upsertZeroDteSetupLog, resetNullGradedZeroDteRows, insertSwingShadowPosition,
+// insertBieKnowledge, updateBieKnowledgeEmbeddings, upsertNighthawkPlayOutcomes,
+// fetchNighthawkOutcomeAnalytics, fetchNighthawkFunnelStats, and all 4 Meridian snapshot/revision
+// read+write functions. This test generalizes the sweep to the hoisted-variable shape too, so
+// EITHER shape reintroducing a raw bypass — in an existing function or a brand-new one — fails here
+// instead of shipping silently. The allowlist below is every function that legitimately keeps a
+// hoisted pool/client handle: a bootstrap migration run before dbQuery/schema exist, a real
+// multi-statement transaction that must stay pinned to one connection, a session-level advisory
+// lock (same one-connection requirement), a deliberately raw connectivity probe, and a pool-stats
+// reader that never calls .query at all.
+test("db.ts: no stray hoisted-pool.query() left outside the documented transaction/bootstrap/probe exceptions", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const ALLOWLISTED_FUNCTIONS = new Set([
+    "runMigrations", // bootstrap: runs before ensureSchema/dbQuery's schema exists — would be circular
+    "deleteUserDataForClerkId", // real BEGIN/COMMIT transaction, must stay on one connection
+    "dbClient", // returns a raw client for the CALLER to manage a transaction with
+    "pingDatabaseConnectivity", // deliberate raw probe — dbQuery's retry would mask a real outage
+    "getDatabasePoolStats", // reads pool.totalCount/idleCount/waitingCount — never calls .query
+    "acquireHeldLock", // session advisory lock: MUST stay on one connection for its whole hold
+    "releaseHeldLock", // releases the same pinned connection acquireHeldLock opened
+    "insertOpenSpxPlay", // real BEGIN/COMMIT transaction (force-close + supersede + insert)
+  ]);
+
+  const functionStarts = [...src.matchAll(/\n(?:export )?async function (\w+)/g)].map((m) => ({
+    name: m[1]!,
+    idx: m.index! + 1,
+  }));
+
+  const hoistPattern = /(?:const|let)\s+(pool|p)\s*=\s*await getPool\(\);/g;
+  for (const hoist of src.matchAll(hoistPattern)) {
+    const varName = hoist[1]!;
+    const hoistIdx = hoist.index!;
+    // Immediately hoisting into a transaction client (`pool.connect()`/`p.connect()` right after)
+    // is the legitimate shape even outside the named allowlist — skip it.
+    const nextChunk = src.slice(hoistIdx, hoistIdx + 200);
+    if (new RegExp(`${varName}\\.connect\\(\\)`).test(nextChunk)) continue;
+
+    const enclosing = [...functionStarts].reverse().find((f) => f.idx <= hoistIdx);
+    const fnName = enclosing?.name ?? "<unknown top-level>";
+    if (ALLOWLISTED_FUNCTIONS.has(fnName)) continue;
+
+    const nextFnIdx = functionStarts.find((f) => f.idx > hoistIdx)?.idx ?? src.length;
+    const body = src.slice(hoistIdx, nextFnIdx);
+    assert.doesNotMatch(
+      body,
+      new RegExp(`${varName}\\.query\\(`),
+      `${fnName} hoists ${varName} = await getPool() and still calls ${varName}.query(...) directly — ` +
+        `route it through dbQuery instead, or add it to ALLOWLISTED_FUNCTIONS with a stated reason`
+    );
+  }
+});
+
 test("getMeta/setMeta: both route the no-transaction common case through dbQuery", () => {
   const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
   const getStart = src.indexOf("export async function getMeta");
