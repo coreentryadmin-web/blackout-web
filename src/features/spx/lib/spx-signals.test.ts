@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
-import { computeSpxConfluence } from "./spx-signals";
+import { computeSpxConfluence, matchingHelixSweepFlows } from "./spx-signals";
 
 // PROOF THIS PR DOES NOT CHANGE LIVE SIGNALS
 // ───────────────────────────────────────────────────────────────────────────
@@ -287,4 +287,20 @@ test("HELIX sweeps factor: a future-dated flow alert is rejected, not counted as
   assert.ok(result);
   const sweepFactor = result.factors.find((f) => f.label === "HELIX sweeps");
   assert.equal(sweepFactor, undefined, "a future-dated print must not count toward the sweep factor");
+});
+
+test("matchingHelixSweepFlows: excludes a future-dated flow directly — the shared filter spx-signal-observe/route.ts now also calls", () => {
+  // This is the extracted, shared implementation behind the test above — exercised directly so a
+  // future change to spx-signal-observe/route.ts (which imports this same function) is covered
+  // without needing its own DB/auth-mocked route test.
+  const now = Date.parse("2026-07-04T18:00:00.000Z");
+  const fresh = {
+    ticker: "SPX", premium: 500_000, option_type: "CALL", strike: 7425, expiry: "2026-07-04",
+    direction: "bullish", alerted_at: "2026-07-04T17:50:00.000Z", alert_rule: null,
+    trade_count: 1, has_sweep: true,
+  };
+  const future = { ...fresh, alerted_at: "2026-07-04T18:05:00.000Z" };
+  const matching = matchingHelixSweepFlows([fresh, future], "2026-07-04", now, 30 * 60_000);
+  assert.equal(matching.length, 1);
+  assert.equal(matching[0], fresh);
 });
