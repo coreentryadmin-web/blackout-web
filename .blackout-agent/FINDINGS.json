@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-03T23:34:00Z",
+  "note": "This is NOT a duplicate of docs/audit/FINDINGS.md (hundreds of historical entries, remains the source of truth for closed/historical findings) or docs/audit/findings-staging/ (per-finding staged files awaiting fold). This tracks ONLY findings currently mid-lifecycle, so a fresh session can see phase without grepping prose. Lifecycle: NEW -> REPRODUCED -> INVESTIGATING -> ROOT_CAUSED -> IMPLEMENTING -> TESTING -> PR_OPEN -> REVIEW -> APPROVED -> MERGED -> DEPLOYED -> PROD_VERIFY -> MONITORING -> CLOSED. Before filing a NEW finding here or in findings-staging, search both this file and docs/audit/FINDINGS.md's own headings/dates for the same issue.",
+  "in_flight": [
+    {
+      "finding_id": "BO-P2-3425",
+      "title": "0DTE G-19 top-band block incorrectly scoped globally across non-comparable BREAKOUT/PIN score scales",
+      "lifecycle": "MERGED",
+      "pr": 3425,
+      "staged_file": null,
+      "history": "cursor's own fix (615d2c771) scopes the gate to FLOW-origin via discovery_origin; this session's own earlier workaround (tuning test fixture inputs) was discarded as inferior once cursor's root-cause fix landed. Confirmed merged 2026-09-03 -- still needs DEPLOYED/PROD_VERIFY/CLOSED before this entry is fully done."
+    },
+    {
+      "finding_id": "BO-P3-3429",
+      "title": "Gamma canonical-source copy claim verification",
+      "lifecycle": "TESTING",
+      "pr": 3429,
+      "staged_file": "docs/audit/findings-staging/2026-09-03-gamma-canonical-source-copy-verified.md",
+      "history": "negative result -- verified accurate, no code change"
+    }
+  ],
+  "recently_closed_this_session": [
+    "2026-09-03-vector-pick-sweep-lock-ttl-shorter-than-runtime.md (PR #3411, merged)",
+    "2026-09-03-... (see findings-staging/ for the full list of 16 staged files, all already merged as of this snapshot)"
+  ]
+}

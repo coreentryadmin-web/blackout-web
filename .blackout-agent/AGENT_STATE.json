@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-03T23:33:25Z",
+  "generated_by": "claude",
+  "note": "This is a hand-authored snapshot as of the timestamp above, not a live-generated file. Re-read open PRs/CI directly (see README RECOVER order step 8) before trusting phase fields against ground truth — they drift the moment a PR's CI finishes or someone pushes.",
+  "active_work": [
+    {
+      "task_id": "BO-AUTOPILOT-0001",
+      "priority": "P2",
+      "title": "Build .blackout-agent/ durable-state + lease/heartbeat/recovery system",
+      "owner": "claude",
+      "reviewer": null,
+      "phase": "IMPLEMENTING",
+      "branch": "fix/blackout-agent-autopilot",
+      "pr": null,
+      "lease_until": "2026-09-04T01:33:25Z",
+      "dependencies": [],
+      "evidence": "scripts/agent-ops/{claim-task,release-task,heartbeat,recover-stale-lease}.mjs written and acceptance-tested live (collision test + both stale-lease branches, see docs/audit/AUTOPILOT-STATUS.md)"
+    },
+    {
+      "task_id": "BO-P2-3425",
+      "priority": "P2",
+      "title": "0DTE G-18/G-19 loss gates + runner confluence fix",
+      "owner": "cursor",
+      "reviewer": "claude",
+      "phase": "CLOSED",
+      "branch": "cursor/zerodte-engine-hardening",
+      "pr": 3425,
+      "lease_until": null,
+      "dependencies": [],
+      "evidence": "MERGED (confirmed live via GitHub API: state=closed, merged=true). This entry was caught STALE (said TESTING) by the fresh-subagent recovery test 2026-09-03 -- see docs/audit/AUTOPILOT-STATUS.md, that's real evidence continuous checkpointing is not fully automatic yet, and evidence the ground-truth cross-check step catches it."
+    },
+    {
+      "task_id": "BO-P3-3428",
+      "priority": "P3",
+      "title": "docs: helix-signal-outcomes writer now live, corrects CLAUDE.md gap note",
+      "owner": "claude",
+      "reviewer": null,
+      "phase": "REVIEW",
+      "branch": "docs/helix-signal-outcomes-writer-now-live",
+      "pr": 3428,
+      "lease_until": null,
+      "dependencies": [],
+      "evidence": "verify=success, CodeQL=success, still draft — needs undraft via GitHub MCP update_pull_request(draft:false) then manual merge (enable-automerge is documented-broken)"
+    },
+    {
+      "task_id": "BO-P3-3429",
+      "priority": "P3",
+      "title": "docs(audit): gamma canonical-source call-graph verification finding",
+      "owner": "claude",
+      "reviewer": null,
+      "phase": "TESTING",
+      "branch": "fix/gamma-canonical-source-verify",
+      "pr": 3429,
+      "lease_until": null,
+      "dependencies": [],
+      "evidence": "verify was in_progress as of last check; docs-only change (no code touched), negative-result finding — see docs/audit/findings-staging/2026-09-03-gamma-canonical-source-copy-verified.md"
+    },
+    {
+      "task_id": "BO-P2-3430",
+      "priority": "P2",
+      "title": "fix(spx): treat deploy chunk 404s as transient in E2E harness",
+      "owner": "unknown-automation",
+      "reviewer": "claude",
+      "phase": "TESTING",
+      "branch": "fix/spx-e2e-chunk-deploy-flake",
+      "pr": 3430,
+      "lease_until": null,
+      "dependencies": [],
+      "evidence": "PR authored by the coreentryadmin-web account (not a named lane session in this conversation) — not yet reviewed by this session as of AGENT_STATE generation; verify was in_progress"
+    }
+  ],
+  "constitution": "CLAUDE.md",
+  "state_dir": ".blackout-agent/",
+  "readiness_report": "docs/audit/AUTOPILOT-STATUS.md"
+}

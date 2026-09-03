@@ -1,0 +1,4 @@
+{"ts":"2026-09-03T23:33:04Z","agent":"claude","task_id":"BO-TEST-COLLISION","event":"ACCEPTANCE_TEST","detail":"Test C (collision) run live: two concurrent claim-task.mjs calls, exactly one succeeded"}
+{"ts":"2026-09-03T23:32:18Z","agent":"claude","task_id":"BO-TEST-STALE-ALIVE","event":"ACCEPTANCE_TEST","detail":"Test D negative case: expired lease_until + fresh heartbeat -> reclaim correctly refused"}
+{"ts":"2026-09-03T23:32:18Z","agent":"claude","task_id":"BO-TEST-STALE-DEAD","event":"ACCEPTANCE_TEST","detail":"Test D positive case: expired lease_until + stale heartbeat (213min) -> reclaim correctly succeeded"}
+{"ts":"2026-09-03T23:33:25Z","agent":"claude","task_id":"BO-AUTOPILOT-0001","event":"LEASE_CLAIMED","detail":"claimed via claim-task.mjs, 120min lease"}

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-03T23:34:00Z",
+  "note": "Seed file. Populated only from audit scripts/runs that actually happened and are documented in CLAUDE.md/docs/audit — nothing fabricated. 'last_checked: unknown' means exactly that: do not infer coverage from a script's existence alone.",
+  "surfaces": {
+    "thermal_gex_heatmap": { "last_checked": "2026-08-12", "how": "scripts/audit/gex-depth-validate.mjs + depth-live-check.mjs + depth-ladder-ui-audit.mjs", "result": "3 real defects found+fixed historically; anchor-vs-provider gap (dividend yield) documented as expected, not a bug" },
+    "meridian_earnings_ui": { "last_checked": "2026-08-18", "how": "scripts/audit/meridian-interaction-audit.mjs (pixel/behavior level, desktop+tablet+phone)", "result": "orbital label collision found+fixed" },
+    "vector_universe_sweep": { "last_checked": "2026-09-02", "how": "CloudWatch elapsed= cross-reference (vector-pick-sweep TTL fix, PR #3411)", "result": "overlap-lock TTL raised 480s->900s" },
+    "zerodte_e2e_pipeline": { "last_checked": "2026-07-25", "how": "scripts/audit/zerodte-e2e-suite.mjs", "result": "all required sections GREEN at last documented run" },
+    "largo_answer_quality": { "last_checked": "unknown", "how": "scripts/audit/largo-truncation-probe.mjs (2026-08-21, payload-arrival only, not answer-quality torture testing)", "result": "answer-quality/torture-testing per Autopilot §14 has not been run by this session" },
+    "spx_slayer_desk": { "last_checked": "unknown", "how": null, "result": "no dedicated audit script found in docs/audit toolkit as of this snapshot; certification-mandates/SPX-SLAYER.md exists, not re-read for coverage detail in this session" },
+    "night_hawk_board": { "last_checked": "2026-08-29", "how": "scripts/audit/tier-exit-mode-ab.mjs, scripts/audit/zerodte-e2e-healthcheck.mjs", "result": "C-tier/untiered ratchet exit confirmed correct vs trim_scale A/B" },
+    "helix_score_signal": { "last_checked": "unknown-recent", "how": "scripts/audit/helix-score-signal.mjs", "result": "score does not rank direction cleanly at any horizon; no gate change made, documented as a real limitation" },
+    "seo_technical": { "last_checked": "2026-08-21", "how": "GSC service-account access confirmed live; cls-measure.cjs", "result": "homepage CLS 0.0002 desktop+mobile post-purge" }
+  },
+  "not_yet_covered_by_any_run": [
+    "the full recursive PAGE->...->STATE interactive testing tree described in Autopilot §8, for any product",
+    "Cursor-side heartbeat/lease integration (see docs/audit/AUTOPILOT-STATUS.md §11)"
+  ]
+}

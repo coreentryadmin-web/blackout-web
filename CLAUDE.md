@@ -3,6 +3,35 @@
 (Repo also has `AGENTS.md` — the general agent playbook. This file captures the
 standing **audit + issue-handling policy**. Keep it and `docs/audit/FINDINGS.md` updated.)
 
+## BLACKOUT AUTOPILOT — durable state & recovery protocol (added 2026-09-03)
+**This file is the constitution — how to operate. `.blackout-agent/` is the durable state — what
+is happening right now.** Built in response to a standing operator directive that BLACKOUT
+engineering continue indefinitely without depending on any one session: individual Claude/Cursor
+sessions are disposable, the system is not. Every new session in this repo — after loading this
+file — should read `.blackout-agent/README.md` and follow its RECOVER → RESUME → DISCOVER order
+(constitution → `LAST_HANDOFF.md` → `AGENT_STATE.json` → `ACTIVE_WORK.md` → `HEARTBEAT/*.json` →
+`WORK_QUEUE.json` → `ROADMAP.md` → open PRs/git ground-truth → `FINDINGS.md`/`findings-staging/`)
+**before starting unrelated work.** Resume unfinished P0/P1 work before entering discovery mode.
+
+**The scheduler is real and pre-existing — do not build a second one.** This account already runs
+dozens of live, cron-based scheduled Routines that wake sessions in this repo on a real interval
+(hourly coordinator cycles, ten-minute-offset "4-engine live monitor" checks, and a `DISCOVERY
+lane — 24/7 new-work sweep` trigger at `15 * * * *` that already implements zero-idle work
+discovery). This is the durable runner satisfying the "prove a scheduler can actually invoke a new
+session" requirement — verify with `list_triggers`, don't assume it's gone or that a new one is
+needed. See `docs/audit/AUTOPILOT-STATUS.md` for the full readiness verification (what's proven
+live vs. what's still a documented gap, notably Cursor-side integration).
+
+**Task claims are leases, not vibes.** Before implementing an item another agent might also be
+working, claim it: `node scripts/agent-ops/claim-task.mjs <task_id> <owner> [lease_minutes]`
+(atomic — fails if already held). Renew liveness with `heartbeat.mjs`; release with
+`release-task.mjs`. Never assume a stale-looking lease is dead — `recover-stale-lease.mjs` checks
+the owner's actual heartbeat before reclaiming, and refuses to steal from a slow-but-alive agent.
+Finding lifecycle is 14 states: `NEW → REPRODUCED → INVESTIGATING → ROOT_CAUSED → IMPLEMENTING →
+TESTING → PR_OPEN → REVIEW → APPROVED → MERGED → DEPLOYED → PROD_VERIFY → MONITORING → CLOSED`.
+Search `.blackout-agent/FINDINGS.json` and `docs/audit/FINDINGS.md` before filing anything new —
+advance an existing finding through its lifecycle rather than re-reporting it.
+
 ## STANDING PERFORMANCE/LATENCY AUDIT MANDATE (confirmed 2026-09-02, ongoing/24-7)
 **The operator's own words:** *"Keep scanning the entire website and products and all values ..
 and fix everything.. like everything.. find work and improve latency, performance.. website should

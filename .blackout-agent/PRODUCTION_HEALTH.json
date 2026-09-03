@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-03T23:34:00Z",
+  "note": "Last-KNOWN readings from documented runs, honestly staled. This session did not re-run zerodte-e2e-healthcheck.mjs or pull fresh CloudWatch metrics as part of building this file -- do that before trusting these numbers for a live decision.",
+  "last_known": {
+    "zerodte_e2e_healthcheck": { "as_of": "2026-07-25", "result": "all required GREEN off-hours; DATA-PATH GREEN (111 graded rows); INFRA SKIPPED (sandbox creds)" },
+    "alb_target_response_time": { "as_of": "2026-09-02", "result": "p50/p90/p99/Max pulled during the vector-pick-sweep investigation; exact values not re-copied here -- see CLAUDE.md's performance mandate section / CloudWatch directly" },
+    "gex_force_rebuild_p95": { "as_of": "2026-08-14 (overnight)", "result": "SPY 5.4s, SPX 7.3s, QQQ 4.4s, IWM 2.1s, 0/20 over the 55s cap -- RTH re-run still outstanding per CLAUDE.md" },
+    "homepage_cls": { "as_of": "2026-08-21", "result": "0.0002 desktop 1440x900 and mobile 430x932, post Cloudflare purge" }
+  },
+  "not_polled_by_this_bootstrap": true
+}

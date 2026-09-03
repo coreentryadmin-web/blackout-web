@@ -1,0 +1,35 @@
+---
+description: BLACKOUT AUTOPILOT — shared durable state with Claude. Read before claiming work.
+alwaysApply: true
+---
+
+# BLACKOUT AUTOPILOT — shared state with Claude (added 2026-09-03)
+
+BlackOut runs both Claude and Cursor sessions against this same repo. `.blackout-agent/` is a
+**shared** durable-state directory — not Claude-only. Read `.blackout-agent/README.md` first; it
+defines the RECOVER → RESUME → DISCOVER read order and the file-by-file purpose table. Do not
+start a second roadmap/findings/work-queue — this repo already has one
+(`.blackout-agent/ROADMAP.md`, `WORK_QUEUE.json`, `FINDINGS.json`, plus the pre-existing
+`docs/audit/FINDINGS.md`).
+
+## Before claiming any task
+
+```bash
+node scripts/agent-ops/claim-task.mjs <task_id> cursor [lease_minutes=30]   # atomic, fails if Claude already holds it
+node scripts/agent-ops/heartbeat.mjs cursor '<json-fields>'                # renew liveness periodically while working
+node scripts/agent-ops/release-task.mjs <task_id> cursor                   # when done or handing off
+```
+
+If a task looks stuck, do **not** assume it's abandoned — run
+`node scripts/agent-ops/recover-stale-lease.mjs <task_id>`, which checks the current owner's
+heartbeat before reclaiming and refuses to steal from an agent that's merely slow. Write your own
+heartbeat to `.blackout-agent/HEARTBEAT/cursor.json` (via the script above, never by hand — the
+staleness check depends on `last_seen` being stamped honestly by the script, not the caller).
+
+## What's proven vs. not yet
+
+`docs/audit/AUTOPILOT-STATUS.md` has the full, evidence-based readiness verdict. As of this
+writing, Cursor-side integration is the biggest documented gap: no `HEARTBEAT/cursor.json` has
+ever been written by a real Cursor session, and no live Claude↔Cursor cross-review has been
+exercised. Read that file before assuming this mechanism is fully proven end-to-end — the honest
+answer as of 2026-09-03 is "structurally ready, not yet exercised by an actual Cursor invocation."

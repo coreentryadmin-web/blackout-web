@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-03T23:34:00Z",
+  "note": "Structured pointer to numbers already established in CLAUDE.md / docs/audit -- not a re-measurement. Update this file's 'as_of' whenever a fresh measurement is taken, and it becomes a real regression baseline over time.",
+  "baselines": [
+    { "metric": "vector-pick-sweep runtime", "value": "up to 694s measured worst-case", "as_of": "2026-09-02", "action_taken": "OVERLAP_LOCK_TTL_SEC raised 480->900, stale_after_min 8->15 (PR #3411)" },
+    { "metric": "5 sibling ~5-min-schedule crons runtime", "value": "30-91s, well under schedule interval", "as_of": "2026-09-02", "action_taken": "none -- correctly left unguarded, not at risk" },
+    { "metric": "gex-heatmap ?force=1 rebuild p95", "value": "SPY 5.4s / SPX 7.3s / QQQ 4.4s / IWM 2.1s (overnight)", "as_of": "2026-08-14", "action_taken": "cap (55s) not changed; RTH re-run still needed" },
+    { "metric": "homepage CLS", "value": "0.0002 (desktop+mobile)", "as_of": "2026-08-21", "action_taken": "confirms PR #2453 fix holds in production" }
+  ]
+}

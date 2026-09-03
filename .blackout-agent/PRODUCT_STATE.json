@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-03T23:34:00Z",
+  "note": "Per-product one-line current-state summary + pointer to the fuller doc. Not a re-audit -- seeded from CLAUDE.md/docs/audit as they stood on this date. 'unknown' is honest, not a placeholder to fill with guesses.",
+  "products": {
+    "vector": { "state": "stable, recent overlap-guard fix (PR #3411)", "doc": null, "last_deep_audit": "2026-09-02" },
+    "night_hawk": { "state": "0DTE gate work in flight (PR #3425)", "doc": "docs/audit/0DTE-UNIFICATION-DESIGN.md", "last_deep_audit": "2026-08-29 (tier-exit-mode-ab)" },
+    "spx_slayer": { "state": "unknown -- no recent session activity noted in this snapshot", "doc": "docs/audit/certification-mandates/SPX-SLAYER.md", "last_deep_audit": "unknown" },
+    "thermal": { "state": "gamma copy claim independently verified accurate 2026-09-03 (PR #3429)", "doc": null, "last_deep_audit": "2026-08-12 (gex-depth-validate)" },
+    "helix": { "state": "conviction score confirmed not cleanly rank-ordering direction at any horizon; no gate changed", "doc": "docs/audit/HELIX-MAP.md", "last_deep_audit": "recent, exact date unknown" },
+    "meridian": { "state": "unknown -- no recent session activity noted in this snapshot", "doc": "docs/audit/MERIDIAN-MAP.md", "last_deep_audit": "2026-08-18 (interaction audit)" },
+    "largo": { "state": "unknown -- payload-arrival proven, answer-quality torture testing (Autopilot §14) not yet run", "doc": "docs/audit/LARGO-PRODUCT-CONTRACT.md", "last_deep_audit": "2026-08-21 (truncation probe)" }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-03T23:34:00Z",
+  "note": "Index of regression tests added per real bug fix. Seed populated from this session's own recent fixes only -- this is not a full retroactive index of every test in the repo (that's the test suite itself; run npm test).",
+  "entries": [
+    {
+      "pr": 3411,
+      "bug": "vector-pick-sweep overlap lock TTL (480s) shorter than measured worst-case runtime (694s)",
+      "test": "asserts OVERLAP_LOCK_TTL_SEC exceeds a hard-coded worst-measured-runtime constant, not just the schedule interval",
+      "proven_red_pre_fix": true,
+      "method": "git stash to confirm fail-then-pass"
+    },
+    {
+      "pr": 3412,
+      "bug": "resolveTrimRegimeLive test/impl silently reverted by a stale first-commit copy during a 3-way merge",
+      "test": "re-applied exact main-branch content for exit-sync.test.ts/exit-sync.ts",
+      "proven_red_pre_fix": "n/a -- this was a revert-of-a-fix, not a novel bug; existing test caught it once content was correct again"
+    }
+  ]
+}

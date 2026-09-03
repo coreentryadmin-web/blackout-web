@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-03T23:34:00Z",
+  "note": "Unclaimed, actionable, NOT-yet-in-progress work. Everything currently being worked is in AGENT_STATE.json's active_work instead. This queue is intentionally short right now — do not pad it with fabricated tickets to look busy (CLAUDE.md's own P2/P3 discipline: weak evidence -> don't change it). An empty actionable queue means enter DISCOVERY MODE (see README.md), it does not mean stop.",
+  "queue": [
+    {
+      "task_id": "BO-HOUSEKEEPING-FOLD",
+      "priority": "P3",
+      "title": "Fold docs/audit/findings-staging/*.md into docs/audit/FINDINGS.md",
+      "owner": null,
+      "phase": "NEW",
+      "evidence": "16 staged finding files present in findings-staging/ as of 2026-09-03, all already merged to main (they persist post-merge until folded) — this is routine housekeeping, not a bug",
+      "action": "node scripts/audit/findings-fold-staging.mjs, then node scripts/audit/findings-reconcile.mjs --apply if src/findings-hygiene.test.ts fails"
+    }
+  ]
+}

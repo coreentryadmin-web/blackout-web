@@ -1,0 +1,15 @@
+{
+  "agent": "cursor",
+  "last_seen": null,
+  "note": "NOT YET INTEGRATED. This session (Claude) cannot write Cursor's own heartbeat on its behalf -- that would fabricate liveness evidence for an agent this session cannot observe. This file exists as a placeholder with the expected schema; Cursor's own harness must write it via scripts/agent-ops/heartbeat.mjs cursor '<fields>' once integrated. See docs/audit/AUTOPILOT-STATUS.md section 11 for exactly what remains before Cursor can join.",
+  "expected_schema": {
+    "agent": "cursor",
+    "last_seen": "ISO 8601 timestamp, stamped by heartbeat.mjs itself",
+    "run_id": "string",
+    "task": "task_id or null",
+    "phase": "one of the 14 lifecycle states",
+    "branch": "string or null",
+    "pr": "number or null",
+    "healthy": "boolean"
+  }
+}
