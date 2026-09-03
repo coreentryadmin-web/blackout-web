@@ -49,6 +49,22 @@ test("the lock is released in a finally block so a thrown sweep still frees the 
   assert.match(routeSrc, finallyBlock, "release must run on both the success and error paths");
 });
 
-test("the lock TTL matches the cron's own stale_after_min safety net (8 min = 480s)", () => {
-  assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 480/);
+test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 900s)", () => {
+  assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 900/);
+});
+
+// REGRESSION 2026-09-03: the original 480s TTL was shorter than real observed runtime
+// (elapsed=693684ms measured on prod 16:55-17:06 UTC RTH), so the lock expired mid-sweep and let
+// a second sweep start while the first was still in flight — the exact overlap this guard exists
+// to prevent, confirmed by overlapping log timestamps the same window. The TTL must stay
+// comfortably above the worst measured elapsed time, not just above the schedule interval.
+test("the lock TTL has real margin above the worst measured sweep runtime (694s observed)", () => {
+  const match = routeSrc.match(/OVERLAP_LOCK_TTL_SEC = (\d+)/);
+  assert.ok(match, "OVERLAP_LOCK_TTL_SEC must be a bare numeric literal for this check to hold");
+  const ttlSec = Number(match[1]);
+  const worstObservedSec = 694; // ceil(693684ms)
+  assert.ok(
+    ttlSec > worstObservedSec,
+    `TTL (${ttlSec}s) must exceed the worst measured runtime (${worstObservedSec}s) or the lock expires mid-sweep`
+  );
 });
