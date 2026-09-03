@@ -109,6 +109,24 @@ test("HomeGammaPromo links to the free gamma snapshot tool", () => {
   assert.match(PROMO, /gamma-academy-teaser/);
 });
 
+// Regression for a P2 finding (2026-09-03): the homepage's Premium · Yearly pricing card said
+// "7-day money-back guarantee · cancel anytime" with no qualifier — the refund is annual-plan-only
+// (monthly billing is non-refundable per the current cycle, per /pricing and /refund-policy), so a
+// visitor scanning the homepage card alone could read it as a platform-wide guarantee. The Pricing
+// page already scopes this correctly (a "Premium · Yearly" heading directly above the same line,
+// plus its own "Full refund policy →" link) — this fix brings the homepage card to the same
+// standard: an explicit "Annual plan:" prefix and a refund-policy link, not just relying on the
+// plan-card heading above it to carry the qualification.
+test("RedesignHome's annual pricing card qualifies the refund guarantee as annual-only and links the policy", () => {
+  assert.doesNotMatch(
+    REDESIGN,
+    />7-day money-back guarantee &middot; cancel anytime</,
+    "must not state the 7-day guarantee unqualified — it's an annual-plan-only term"
+  );
+  assert.match(REDESIGN, /Annual plan: 7-day money-back guarantee/);
+  assert.match(REDESIGN, /href="\/refund-policy"/);
+});
+
 test("pipeline .pipe-status label has exactly one text source, not two overlapping renders", () => {
   // Regression guard for the "How BlackOut Thinks" 01-04 stage badges rendering as garbled
   // double-exposed text (e.g. "ONLINE" overlapping itself) on every homepage visit. Originally

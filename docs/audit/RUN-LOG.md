@@ -2082,3 +2082,41 @@ Re-ran `cron-dst-audit.mjs` to verify the 2026-08-21 findings and catch any drif
 - Registry/manifest mismatches need reconciliation
 
 **No new infrastructure applied.** This is a measurement re-run to confirm drift status, not a remediation. The x-autopost fix from 2026-08-21 did not land.
+
+## 2026-09-03 — Homepage gamma panel: live investigation of a repeatedly-reported "stuck loading" report
+
+User reported (repeated live checks) that the homepage's public gamma snapshot panel
+(`HomeGammaPromo.tsx`) shows a stuck-looking sequence ("GEX snapshot initializing" → "Syncing" →
+"Refreshing…" → "Loading live gamma levels…"), contradicting its "Refreshes live every 5 seconds"
+copy. Same component renders at two call sites in `RedesignHome.tsx` (`variant="band"` hero panel,
+`variant="academy"` teaser) — not two independently-broken widgets.
+
+**Live proxy-browser capture** of `blackouttrades.com/` at T=0/3s/8s/15s:
+- T=0: transitional loading state (expected — this is the mount-fetch correcting a possibly-stale
+  ISR/edge-cached seed, per the same-day PR #3375 fix).
+- T=3s: **resolves to a live SPX read** — spot 7,666.6, flip 7,500, walls populated. The client
+  self-heal fix (`useState(() => !hasLevels(initial))`) works correctly.
+- T=8s: the SAME panel's periodic 5s poll **flips to a degraded read** — spot present, call/flip/put
+  wall all null, `read` text "No options-chain data for this ticker — dealer gamma profile
+  unavailable." Held through T=15s.
+
+**Direct API poll** (`/api/public/gex-snapshot?ticker=SPX`, 8 samples @ 3s): confirmed backend-side,
+not a client bug — the API itself alternates between a fully-populated read (spot 7,666.6) and the
+degraded no-chain read (spot 7,651.6) in ~12s blocks.
+
+**Root cause traced to**: `buildGexHeatmapUncached` (`src/lib/providers/polygon-options-gex.ts`)
+falls back to `emptyHeatmap()` when `fetchHeatmapBand` returns zero contracts and the UW
+strike-exposure fallback also comes up empty; the empty result is then negatively cached
+(`EMPTY_SPOT_NEGATIVE_TTL_MS`), holding the degraded read for a stretch before the next rebuild
+succeeds — matching the observed flap window exactly.
+
+**Not yet determined**: this check ran ~11:30pm ET, right at the daily 0DTE contract
+expiry/rollover boundary — a genuine, expected artifact of "today's" 0DTE chain expiring before
+"tomorrow's" is fully listed (would affect Night Hawk/SPX Slayer/Thermal identically, off-hours
+only) vs. a real intermittent Polygon/UW reliability issue that would also occur during RTH. **Next
+step: re-observe the same flap pattern during RTH** before deciding whether this needs a backend
+fix (e.g. don't negative-cache an empty 0DTE chain at the overnight rollover boundary) or is
+expected off-hours behavior that only needs a copy caveat.
+
+No code changed this pass — investigation only, logged here per policy (not a fixed bug, so not a
+`findings-staging` entry).
