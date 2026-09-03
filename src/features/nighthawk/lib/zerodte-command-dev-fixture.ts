@@ -3,11 +3,12 @@
  * Used by /zerodte-command-preview (dev-only, no Clerk/DB).
  */
 import type { BoardResp } from "@/features/nighthawk/command-deck/zerodte-sources";
+import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 
 export const ZERODTE_COMMAND_DEV_FIXTURE: BoardResp = {
   available: true,
   upstream_ok: true,
-  as_of: new Date().toISOString(),
+  as_of: etStamp(Date.now()) ?? new Date().toISOString(),
   session: {
     date: "2026-09-03",
     trading_day: true,

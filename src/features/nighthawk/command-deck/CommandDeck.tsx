@@ -292,7 +292,11 @@ export function CommandDeck({
     >
       <div className="nh-deck-left">
         {commandCenter ? (
-          <>
+          // Command-center header is filters-only by explicit product direction (2026-08-28
+          // declutter, see the test above): the regime/funnel/session-stats strips are
+          // redundant with the view toggle and push the trade queue below the fold. Do NOT
+          // render nh-deck-context-strips here even though the full (non-command-center)
+          // header below does — that asymmetry is intentional, not an oversight.
           <DeckCompactHeader
             statusFilter={statusFilter}
             setStatusFilter={setStatusFilter}
@@ -302,17 +306,6 @@ export function CommandDeck({
             directionFilter={directionFilter}
             setDirectionFilter={setDirectionFilter}
           />
-          {deckHorizon === "ZERO_DTE" && !degraded && (sessionStats || vectorNearMisses?.length || marketState || discoveryFunnel?.summary || spxSlayerBadge !== undefined) ? (
-            <div className="nh-deck-context-strips mb-2 space-y-1.5 px-0.5">
-              <SessionStatsStrip stats={sessionStats} compact />
-              <VectorNearMissStrip nearMisses={vectorNearMisses} compact />
-              <VetoShadowStrip shadow={vetoShadow} compact />
-              <MarketStateStrip ms={marketState} compact />
-              <DiscoveryFunnelStrip funnel={discoveryFunnel} compact />
-              <SpxSlayerBadgeStrip badge={spxSlayerBadge} compact />
-            </div>
-          ) : null}
-          </>
         ) : (
           <>
             <div className="nh-deck-lh">
