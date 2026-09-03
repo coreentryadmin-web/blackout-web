@@ -607,6 +607,7 @@ export async function GET(req: NextRequest) {
 
       void import("@/features/nighthawk/lib/legacy-discord-trade-notify")
         .then(async ({ legacyInputFromPlaybookPlay, notifyLegacyTradeClose }) => {
+          const { fetchNighthawkPlayOutcomeId, updateLegacyDiscordLiveState } = await import("@/lib/db");
           for (const ps of invalidated) {
             const play = plays.find((p) => p.ticker.toUpperCase() === ps.ticker.toUpperCase());
             if (!play) continue;
@@ -615,6 +616,14 @@ export async function GET(req: NextRequest) {
             await notifyLegacyTradeClose(input, input.entry_premium, {
               idempotencySuffix: "stc:invalidated",
             });
+            const outcomeId = await fetchNighthawkPlayOutcomeId(editionFor, ps.ticker);
+            if (outcomeId != null) {
+              await updateLegacyDiscordLiveState(outcomeId, {
+                closed: true,
+                closedReason: "morning INVALIDATED",
+                lastAction: "CLOSE",
+              }).catch(() => undefined);
+            }
           }
         })
         .catch((err) => {

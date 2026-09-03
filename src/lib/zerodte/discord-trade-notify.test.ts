@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
   buildZeroDteTradePayload,
+  chiefTradePostBodySucceeded,
   chiefTradeVirtualLots,
   formatZeroDteExpiry,
   formatZeroDteStrike,
@@ -70,6 +71,13 @@ describe("discord-trade-notify formatters", () => {
       if (prev === undefined) delete process.env.CHIEF_TRADE_VIRTUAL_LOTS;
       else process.env.CHIEF_TRADE_VIRTUAL_LOTS = prev;
     }
+  });
+
+  test("chiefTradePostBodySucceeded treats duplicate as success", () => {
+    assert.equal(chiefTradePostBodySucceeded({ duplicate: true }), true);
+    assert.equal(chiefTradePostBodySucceeded({ ok: true }), true);
+    assert.equal(chiefTradePostBodySucceeded({ ok: false }), false);
+    assert.equal(chiefTradePostBodySucceeded(null), true);
   });
 
   test("buildZeroDteTradePayload skips condor rows", () => {

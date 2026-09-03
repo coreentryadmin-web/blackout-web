@@ -6,7 +6,7 @@
 import { fetchLegacyDiscordLiveRows, updateLegacyDiscordLiveState } from "../src/lib/db.ts";
 import {
   ensureLegacyDiscordBtos,
-  legacyInputFromOutcomeRow,
+  legacyInputFromLiveRow,
 } from "../src/features/nighthawk/lib/legacy-discord-trade-notify.ts";
 import { hydrateLegacyLiveSyncRow } from "../src/features/nighthawk/lib/legacy-live-sync.ts";
 
@@ -16,7 +16,7 @@ console.log(`[backfill-legacy-discord-bto] open rows: ${rows.length}`);
 
 const result = await ensureLegacyDiscordBtos(
   rows,
-  (row) => legacyInputFromOutcomeRow(row),
+  (row) => legacyInputFromLiveRow(row),
   (row) =>
     updateLegacyDiscordLiveState(row.id, {
       btoPosted: true,

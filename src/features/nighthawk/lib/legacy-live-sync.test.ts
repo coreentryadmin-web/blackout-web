@@ -24,9 +24,10 @@ function baseRow(overrides: Partial<LegacyDiscordLiveRow> = {}): LegacyDiscordLi
     hit_stop: false,
     outcome: "pending",
     created_at: new Date().toISOString(),
-    contract_occ: "O:NVDA260919C00180000",
+    contract_occ: "NVDA260919C00180000",
     entry_premium: 4,
     exit_style: null,
+    options_play: "NVDA $180 CALL @ $4.00 — Sep 19",
     ...overrides,
   };
 }

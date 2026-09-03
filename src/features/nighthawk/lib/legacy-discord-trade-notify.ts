@@ -11,7 +11,8 @@
  * Fire-and-forget: never throws into edition/morning/outcomes crons.
  */
 import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
-import type { NighthawkPlayOutcomeRow } from "@/lib/db";
+import type { LegacyDiscordLiveRow, NighthawkPlayOutcomeRow } from "@/lib/db";
+import { parseOccSymbol } from "@/lib/largo/core/entities";
 import type { LegacyPublishFieldSource } from "@/features/nighthawk/lib/legacy-publish-fields";
 import { legacyPublishFieldsFrom } from "@/features/nighthawk/lib/legacy-publish-fields";
 import { parseOptionsContract } from "@/features/nighthawk/lib/option-contract-parse";
@@ -85,6 +86,38 @@ export function legacyInputFromPlaybookPlay(
     expiry: parsed.expiryYmd,
     entry_premium: premium,
     options_play: play.options_play,
+  };
+}
+
+/** Live-sync row — uses resolved contract fields from fetchLegacyDiscordLiveRows (not publish_context alone). */
+export function legacyInputFromLiveRow(row: LegacyDiscordLiveRow): LegacyTradeDiscordInput | null {
+  const fromPublish = legacyInputFromOutcomeRow(row, {
+    options_play: row.options_play,
+    entry_premium: row.entry_premium,
+    exit_style: row.exit_style,
+  });
+  if (fromPublish) return fromPublish;
+
+  const parsed = parseOccSymbol(row.contract_occ);
+  if (!parsed) return null;
+
+  const direction =
+    parsed.right === "P"
+      ? "short"
+      : parsed.right === "C"
+        ? "long"
+        : row.direction === "SHORT"
+          ? "short"
+          : "long";
+
+  return {
+    edition_for: row.edition_for,
+    ticker: row.ticker.toUpperCase(),
+    direction,
+    top_strike: parsed.strike,
+    expiry: parsed.expiry,
+    entry_premium: row.entry_premium,
+    options_play: row.options_play,
   };
 }
 
@@ -206,12 +239,28 @@ export async function notifyLegacyEditionPlays(
 ): Promise<{ posted: number; skipped: number }> {
   if (!legacyDiscordAlertsEnabled()) return { posted: 0, skipped: plays.length };
 
+  const { fetchNighthawkPlayOutcomeId, updateLegacyDiscordLiveState } = await import("@/lib/db");
+
   let posted = 0;
   let skipped = 0;
   for (const play of plays) {
     const ok = await notifyLegacyTradeOpen(editionFor, play);
-    if (ok) posted += 1;
-    else skipped += 1;
+    if (ok) {
+      posted += 1;
+      const outcomeId = await fetchNighthawkPlayOutcomeId(editionFor, play.ticker);
+      if (outcomeId != null) {
+        const premium = play.entry_premium;
+        await updateLegacyDiscordLiveState(outcomeId, {
+          btoPosted: true,
+          mark: premium ?? undefined,
+          peakPremium: premium ?? undefined,
+          troughPremium: premium ?? undefined,
+          lastAction: "BTO",
+        }).catch(() => undefined);
+      }
+    } else {
+      skipped += 1;
+    }
   }
   return { posted, skipped };
 }
@@ -336,7 +385,15 @@ export async function notifyLegacyOutcomeClose(
   row: NighthawkPlayOutcomeRow,
   outcome: "target" | "stop"
 ): Promise<boolean> {
-  const input = legacyInputFromOutcomeRow(row);
+  let input = legacyInputFromOutcomeRow(row);
+  if (!input) {
+    const { fetchNighthawkEditionByDate } = await import("@/lib/db");
+    const edition = await fetchNighthawkEditionByDate(row.edition_for);
+    const play = (edition?.plays as PlaybookPlay[] | undefined)?.find(
+      (p) => p.ticker.toUpperCase() === row.ticker.toUpperCase()
+    );
+    if (play) input = legacyInputFromPlaybookPlay(row.edition_for, play);
+  }
   if (!input) return false;
   const { outcomeSessionDate } = await import("@/features/nighthawk/lib/play-outcomes");
   const exit = await resolveLegacyOutcomeExitPremium(input, outcome, outcomeSessionDate(row));

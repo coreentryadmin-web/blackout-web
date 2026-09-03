@@ -13,7 +13,7 @@ import { PLAN_RULES } from "@/lib/zerodte/plan";
 import {
   ensureLegacyDiscordBtos,
   legacyDiscordAlertsEnabled,
-  legacyInputFromOutcomeRow,
+  legacyInputFromLiveRow,
 } from "./legacy-discord-trade-notify";
 
 export type LegacyLiveSyncRow = LegacyDiscordLiveRow & {
@@ -152,7 +152,7 @@ export async function runLegacyLiveSync(deps: LegacyLiveSyncDeps): Promise<Legac
 
   const bto = await ensureLegacyDiscordBtos(
     rows,
-    (row) => legacyInputFromOutcomeRow(row),
+    (row) => legacyInputFromLiveRow(row),
     (row) =>
       deps.updateLiveState(row.id, {
         btoPosted: true,
