@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "autopilot": "BLACKOUT",
+  "updated_at": "2026-09-03T23:45:00.000Z",
+  "tasks": {},
+  "reviews": {},
+  "agents": {
+    "claude": { "status": "unknown", "last_seen": null },
+    "cursor": { "status": "unknown", "last_seen": null }
+  },
+  "deploy": { "last_main_sha": null, "last_deploy_status": null, "last_deploy_at": null },
+  "open_prs": [],
+  "events": [{ "at": "2026-09-03T23:45:00.000Z", "type": "autopilot_initialized" }]
+}

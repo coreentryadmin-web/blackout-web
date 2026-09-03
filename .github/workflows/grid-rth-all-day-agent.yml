@@ -1,11 +1,28 @@
 # 0DTE Command + Market Grid — all-day RTH Cloud Agent (verify + post-close fix)
 #
-# SCHEDULE DISABLED 2026-08-06 — hourly verify agents were opening docs-only PRs.
-# Manual only via workflow_dispatch. Runbook: docs/ops/GRID-RTH-ALL-DAY-AGENT.md
+# Re-enabled 2026-09-03 with autopilot bootstrap + no docs/ PR spam on verify passes.
+# Runbook: docs/ops/GRID-RTH-ALL-DAY-AGENT.md
 
 name: Grid RTH all-day agent
 
 on:
+  schedule:
+    - cron: "30 13 * * 1-5"
+    - cron: "30 14 * * 1-5"
+    - cron: "45 13 * * 1-5"
+    - cron: "45 14 * * 1-5"
+    - cron: "0 15 * * 1-5"
+    - cron: "0 16 * * 1-5"
+    - cron: "30 16 * * 1-5"
+    - cron: "30 17 * * 1-5"
+    - cron: "0 18 * * 1-5"
+    - cron: "0 19 * * 1-5"
+    - cron: "30 19 * * 1-5"
+    - cron: "30 20 * * 1-5"
+    - cron: "55 19 * * 1-5"
+    - cron: "55 20 * * 1-5"
+    - cron: "5 20 * * 1-5"
+    - cron: "5 21 * * 1-5"
   workflow_dispatch:
     inputs:
       mode:
@@ -21,6 +38,13 @@ jobs:
   launch:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
       - name: Determine agent mode
         id: mode
         run: |
@@ -43,21 +67,20 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${CURSOR_API_KEY:-}" ]; then
-            echo "CURSOR_API_KEY not set — skipping agent launch."
-            echo "Create Cursor Automations from docs/ops/GRID-RTH-ALL-DAY-AGENT.md (starts 6:30 AM PT)"
+            echo "CURSOR_API_KEY not set — skipping."
             exit 0
           fi
-
+          BOOTSTRAP=$(node scripts/blackout-agent/dispatch-prompt.mjs --agent=cursor)
           if [ "$AGENT_MODE" = "fix" ]; then
-            PROMPT='0DTE Command + Market Grid post-close fix agent (~1:05 PM PT). Read docs/ops/GRID-RTH-ALL-DAY-AGENT.md Section Step 4 completely. Run npm run validate:grid-rth -- --phase=post-close AND npm run validate:zerodte-logic AND npm run validate:grid-e2e. Fix EVERY Grid/0DTE finding from today: gate logic, play picking, trade management (OPEN/HOLD/TRIM/CLOSED), mergePlays UI, grid panel cron bypass, ledger PnL. Branch fix/<slug>, test, PR with CODE fixes only, merge, validate:deploy. Repeat until all three validators are zero FAIL. Do NOT open PRs that only touch docs/. Do NOT ask the user.'
+            EXTRA='Grid post-close fix. Read docs/ops/GRID-RTH-ALL-DAY-AGENT.md Step 4. Run validate:grid-rth --phase=post-close, validate:zerodte-logic, validate:grid-e2e. Claim tasks first. CODE PRs only.'
             AUTO_PR=true
           else
-            PROMPT='0DTE Command + Market Grid RTH verify (manual dispatch). Read docs/ops/GRID-RTH-ALL-DAY-AGENT.md verify mode. Run npm run validate:grid-rth, validate:zerodte-logic, validate:grid-e2e. Report PASS/FAIL in the agent summary ONLY. Do NOT commit, push, or open PRs for verify passes — especially no docs/ edits. Fix P0 code bugs only (fix/<slug> PR with src/ changes). Do NOT ask the user.'
+            EXTRA='Grid RTH verify. Run validate:grid-rth, validate:zerodte-logic, validate:grid-e2e. Summary only — no docs/ commits on verify passes.'
             AUTO_PR=false
           fi
-          export PROMPT
-          export AUTO_PR
+          PROMPT="${BOOTSTRAP}
 
+${EXTRA}"
           payload=$(node -e "
             console.log(JSON.stringify({
               prompt: { text: process.env.PROMPT },
@@ -65,14 +88,11 @@ jobs:
               autoCreatePR: process.env.AUTO_PR === 'true'
             }));
           ")
-
           resp=$(curl -sf -X POST https://api.cursor.com/v1/agents \
             -u "${CURSOR_API_KEY}:" \
             -H 'Content-Type: application/json' \
             -d "$payload")
-
           echo "$resp" | node -e "
             const r = JSON.parse(require('fs').readFileSync(0,'utf8'));
-            const url = r.agent?.url ?? r.url ?? '(see response)';
-            console.log('Grid Cloud Agent started (' + process.env.AGENT_MODE + '):', url);
+            console.log('Grid agent (' + process.env.AGENT_MODE + '):', r.agent?.url ?? r.url);
           "
