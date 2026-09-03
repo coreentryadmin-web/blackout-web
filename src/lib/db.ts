@@ -6762,7 +6762,7 @@ export async function fetchZeroDteSetupLogRange(sinceDate: string, limit = 500):
  *     unconditionally;
  *   · grading is TERMINAL: `gradeZeroDteSetupRow` stamps `graded_at`, which removes the row from
  *     every future pass, so a wrong grade is never revisited;
- *   · `gradePlanFromBars` on an incomplete session sees no bar past the 15:30 time stop and falls
+ *   · `gradePlanFromBars` on an incomplete session sees no bar past the 15:50 time stop and falls
  *     through to `time_stop` priced at the LAST AVAILABLE BAR.
  *
  * Compose those and a mid-session fire would freeze a fabricated outcome — wrong in the

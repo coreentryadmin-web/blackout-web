@@ -223,7 +223,7 @@ export function liquidityQualityScore(row: BreakoutChainRow, side: "call" | "put
  * 0DTE (dte 0) is preferred, then dte 1 (ONE_DTE). HORIZON INTEGRITY (PR-1, design Q2): `maxDte`
  * is clamped to 1 -- the picker DELIBERATELY no longer reaches a 2-7DTE weekly. A mover whose only
  * liquid contract on the chosen side is a weekly returns null here -> the candidate is DROPPED
- * (never committed to the 0DTE ledger, never graded with the same-day 15:30 time-stop that would
+ * (never committed to the 0DTE ledger, never graded with the same-day 15:50 time-stop that would
  * be structurally wrong for a multi-day weekly). ATM = strike closest to spot among liquid rows on
  * the chosen expiry (nearest-expiry wins over ATM-ness, then closest-to-spot, then lower strike --
  * deterministic). Returns null when no liquid same-day/1DTE contract exists (-> dropped).

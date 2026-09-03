@@ -234,7 +234,7 @@ export const SAME_DAY_GRADING_POLICY = "same_day_1530_close";
 /** Derive the horizon from the SELECTED contract's real dte (0→ZERO_DTE, 1..SETUP_MAX_DTE→
  *  ONE_DTE, else→WEEKLY_FALLBACK). Fail-closed: a non-finite/negative dte is treated as
  *  WEEKLY_FALLBACK so an unknown horizon can never be mistaken for same-day and graded with the
- *  15:30 time-stop. Pure. */
+ *  15:50 time-stop. Pure. */
 export function deriveContractHorizon(dte: number): ContractHorizon {
   if (Number.isFinite(dte)) {
     if (dte === 0) return "ZERO_DTE";
