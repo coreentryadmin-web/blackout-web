@@ -6,9 +6,11 @@
  * per-play target on commit (exit_policy_snapshot.target_pct) so historical rows stay honest.
  */
 import type { ZeroDteRegime } from "./exit-engine";
+import { scoreFloorForOrigins } from "./gates";
 import { PLAN_RULES } from "./plan";
+import { assignZeroDteTier } from "./tiers";
 import type { ZeroDteVectorPulse } from "./vector-crosslink";
-import { vectorPulseAlignsDirection } from "./vector-commit-boost";
+import { computeVectorGateBoost, vectorPulseAlignsDirection } from "./vector-commit-boost";
 
 /** Standard runner target for A-tier + double confluence (3× premium). */
 export const RUNNER_TARGET_PCT_A = (() => {
@@ -79,4 +81,49 @@ export function resolveRunnerProfile(input: RunnerProfileInput): RunnerProfile |
     return { target_pct: RUNNER_TARGET_PCT_A, regime: "trend", tag: "runner_a" };
   }
   return null;
+}
+
+export type RunnerProfileCandidateInput = {
+  score: number | null;
+  direction: "long" | "short";
+  /** VWAP-side + market confirmations (before Vector credit). */
+  confluenceCount: number;
+  vectorPulse: ZeroDteVectorPulse | null | undefined;
+  /** Frozen tier when committed; omitted on WATCH — estimated from score + Cortex. */
+  tier?: "A" | "B" | "C" | null;
+  cortexScore?: number | null;
+  cortexVetoCount?: number | null;
+  cortexSupportCount?: number | null;
+  cortexAbsentCount?: number | null;
+  discoveryOrigin?: string[] | null;
+};
+
+/**
+ * Project the runner target a candidate WOULD receive on commit — used for WATCH/SKIP cards
+ * before entry_context pins runner_profile. Mirrors persistZeroDteScan's tier + Vector boost path.
+ */
+export function projectRunnerProfileForCandidate(input: RunnerProfileCandidateInput): RunnerProfile | null {
+  const score = input.score != null && Number.isFinite(input.score) ? input.score : null;
+  let tier = input.tier ?? null;
+  if (!tier && score != null) {
+    const assigned = assignZeroDteTier({
+      score,
+      scoreFloor: scoreFloorForOrigins(input.discoveryOrigin),
+      cortexScore: input.cortexScore ?? null,
+      cortexVetoCount: input.cortexVetoCount ?? null,
+      cortexSupportCount: input.cortexSupportCount ?? null,
+      cortexAbsentCount: input.cortexAbsentCount ?? null,
+      vixOpen: null,
+      committedEtMinutes: null,
+    });
+    tier = assigned.tier;
+  }
+  const boost = computeVectorGateBoost(input.direction, score ?? 0, input.vectorPulse);
+  const confluenceCount = input.confluenceCount + (boost.confluence_credit ?? 0);
+  return resolveRunnerProfile({
+    tier,
+    confluenceCount,
+    vectorPulse: input.vectorPulse,
+    direction: input.direction,
+  });
 }

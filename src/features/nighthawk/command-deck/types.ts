@@ -129,6 +129,8 @@ export interface TerminalPlay {
   mfeCapturePct?: number | null;
   /** Frozen runner target profile (300%/400% plays). */
   runnerProfile?: { targetPct: number; tag: string; regime: string } | null;
+  /** True when runner target is projected for an uncommitted WATCH/SKIP candidate. */
+  runnerProjected?: boolean;
   /** Executable exit fill (the BID a long sells into) + its P&L vs entry — the honest realizable
    *  number beside the mid `mark`/`pnlPct`. Null without a live two-sided book (mid-only). */
   execMark?: number | null;

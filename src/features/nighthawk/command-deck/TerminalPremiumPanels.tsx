@@ -574,6 +574,9 @@ export function TradeOutcomePanel({ play }: { play: TerminalPlay }) {
   const outcome = tradeOutcomeDisplay(play);
   const closePct = outcome.closePct;
   const sign = closePct != null && closePct >= 0 ? "+" : "";
+  const mfeCapture = outcome.mfeCapturePct;
+  const bestPct = outcome.bestPct;
+  const worstPct = outcome.worstPct;
 
   return (
     <section className="nh-deck-outcome" aria-label="Trade outcome">
@@ -589,6 +592,27 @@ export function TradeOutcomePanel({ play }: { play: TerminalPlay }) {
       >
         {closePct != null ? `${sign}${closePct.toFixed(0)}%` : "—"}
       </div>
+      {outcome.verdict !== "OPEN" && (bestPct != null || worstPct != null || mfeCapture != null) && (
+        <div className="nh-deck-outcome__excursion" aria-label="Excursion and capture">
+          {bestPct != null && (
+            <span className="nh-deck-outcome__peak">
+              Peak {bestPct >= 0 ? "+" : ""}
+              {bestPct.toFixed(0)}%
+            </span>
+          )}
+          {mfeCapture != null && bestPct != null && bestPct > 0 && (
+            <span className="nh-deck-outcome__capture">
+              Captured {mfeCapture.toFixed(0)}% of peak
+            </span>
+          )}
+          {worstPct != null && (
+            <span className="nh-deck-outcome__trough">
+              Trough {worstPct >= 0 ? "+" : ""}
+              {worstPct.toFixed(0)}%
+            </span>
+          )}
+        </div>
+      )}
     </section>
   );
 }

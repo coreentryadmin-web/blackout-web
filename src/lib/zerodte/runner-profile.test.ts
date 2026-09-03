@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveRunnerProfile, RUNNER_TARGET_PCT_A, RUNNER_TARGET_PCT_VECTOR } from "./runner-profile";
+import { resolveRunnerProfile, projectRunnerProfileForCandidate, RUNNER_TARGET_PCT_A, RUNNER_TARGET_PCT_VECTOR } from "./runner-profile";
 import type { ZeroDteVectorPulse } from "./vector-crosslink";
 
 const winnerPulse = (dir: "long" | "short"): ZeroDteVectorPulse => ({
@@ -43,6 +43,31 @@ test("resolveRunnerProfile: A-tier + double confluence → 300% target", () => {
 test("resolveRunnerProfile: C-tier with no Vector → null (standard +100%)", () => {
   assert.equal(
     resolveRunnerProfile({ tier: "C", confluenceCount: 2, vectorPulse: null, direction: "long" }),
+    null
+  );
+});
+
+test("projectRunnerProfileForCandidate: WATCH A-tier estimate + Vector winner → 400%", () => {
+  const r = projectRunnerProfileForCandidate({
+    score: 82,
+    direction: "long",
+    confluenceCount: 2,
+    vectorPulse: winnerPulse("long"),
+    tier: "A",
+    discoveryOrigin: ["FLOW"],
+  });
+  assert.ok(r);
+  assert.equal(r!.target_pct, RUNNER_TARGET_PCT_VECTOR);
+});
+
+test("projectRunnerProfileForCandidate: low score → null runner", () => {
+  assert.equal(
+    projectRunnerProfileForCandidate({
+      score: 58,
+      direction: "long",
+      confluenceCount: 0,
+      vectorPulse: null,
+    }),
     null
   );
 });

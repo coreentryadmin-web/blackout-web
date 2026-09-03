@@ -1276,6 +1276,64 @@ export function refreshGovernorPremiumBudgetBlocks(
   };
 }
 
+const GOVERNOR_CYCLE_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
+  "governor_session_stops",
+  "governor_session_loss_halt",
+  "governor_max_concurrent",
+  "governor_premium_budget",
+  "governor_gamma_budget",
+  "correlated_conflict",
+  "governor_concentration",
+  "governor_reentry_lock",
+]);
+
+/**
+ * Re-apply G-5 governor cycle blocks after thesis-first deferred plan attach (scan.ts).
+ * The first gate pass may have counted phantom commits in `committedThisCycle` before plan
+ * quality / moneyness refresh flipped verdicts — this pass threads the ACCURATE cycle set.
+ */
+export function refreshGovernorCycleBlocks(
+  gate: ZeroDteGateVerdict,
+  input: {
+    ticker: string;
+    direction: "long" | "short";
+    plan: ContractPlan | null;
+    gamma_regime: string | null;
+    governor: GovernorSnapshot;
+    nowMs: number;
+    nowEtMinutes: number;
+    governorPremiumAtRisk: number;
+    governorShortGammaOpen: number;
+    committedThisCycle: GovernorOpenPlan[];
+  }
+): ZeroDteGateVerdict {
+  const nonGov = gate.blocks.filter((b) => !GOVERNOR_CYCLE_GATE_CODES.has(b.code));
+  const blocks = [
+    ...nonGov,
+    ...evaluateZeroDteGovernor(
+      {
+        ticker: input.ticker,
+        direction: input.direction,
+        entry_premium: input.plan?.entry_max ?? input.plan?.mark ?? null,
+        gamma_regime: input.gamma_regime,
+      },
+      input.governor,
+      input.nowMs,
+      input.committedThisCycle,
+      {
+        etMinutes: input.nowEtMinutes,
+        premiumAtRisk: input.governorPremiumAtRisk,
+        shortGammaOpen: input.governorShortGammaOpen,
+      }
+    ),
+  ];
+  return {
+    ...gate,
+    verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
+    blocks,
+  };
+}
+
 /** "HH:MM" from ET minutes-since-midnight. */
 function etLabel(etMinutes: number): string {
   const h = Math.floor(etMinutes / 60);

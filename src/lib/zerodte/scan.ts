@@ -138,6 +138,7 @@ import {
   refreshPlanQualityGateBlocks,
   refreshMoneynessGateBlocks,
   refreshGovernorPremiumBudgetBlocks,
+  refreshGovernorCycleBlocks,
   recentNighthawkTake,
 } from "./gates";
 import { fetchZeroDteVectorPulseByTicker, type ZeroDteVectorPulse } from "./vector-crosslink";
@@ -602,7 +603,7 @@ export async function scanZeroDteBoard(flags?: {
   }
 
   // Hard-gate verdicts — Cortex runs inside on gate survivors.
-  const { governorPremiumAtRisk } = await attachGateVerdicts(
+  const { governorPremiumAtRisk, governorSnapshot, governorShortGammaOpen } = await attachGateVerdicts(
     setups,
     tape.bias,
     tape.biasAsOfMs,
@@ -614,24 +615,40 @@ export async function scanZeroDteBoard(flags?: {
   if (thesisLive) {
     await attachThesisContractPlans(setups);
     await attachContractPlans(setups, vectorPulseByTicker);
+    const committedLedger = dbConfigured()
+      ? new Set(
+          (await fetchZeroDteSetupLog(todayEt()).catch(() => [])).map((r) => r.ticker.toUpperCase())
+        )
+      : new Set<string>();
+    const governorAccurate: GovernorOpenPlan[] = [];
+    const reconcileNowMs = Date.now();
     for (const s of setups) {
+      if (committedLedger.has(s.ticker.toUpperCase())) continue;
       if (s.gate) {
         s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null);
-        // Moneyness re-check (P0 fix, 2026-08-27): attachContractPlans (just above) is what runs
-        // refreshUnderlyingFromLiveSpot in this (thesis-first) pipeline, i.e. AFTER
-        // attachGateVerdicts already evaluated the moneyness caps against the PRE-refresh
-        // otm_pct — the exact "deferred, never reconciled" shape refreshPlanQualityGateBlocks
-        // exists to fix for G-8/G-9. Re-apply the same two caps against the now-refreshed
-        // s.otm_pct so a candidate whose live moneyness drifted past a cap during this pass
-        // still gets caught (mirrors refreshGovernorPremiumBudgetBlocks below).
         s.gate = refreshMoneynessGateBlocks(s.gate, s.otm_pct ?? null, s.play_type === "CONDOR");
-        // G-5 premium budget was computed with plan=null (entry_premium 0) above, same
-        // "deferred, never reconciled" shape as G-8/G-9 — see refreshGovernorPremiumBudgetBlocks.
         s.gate = refreshGovernorPremiumBudgetBlocks(
           s.gate,
           s.plan?.entry_max ?? s.plan?.mark ?? null,
           governorPremiumAtRisk
         );
+        if (s.gate.verdict === "COMMIT" && governorSnapshot) {
+          s.gate = refreshGovernorCycleBlocks(s.gate, {
+            ticker: s.ticker,
+            direction: s.direction,
+            plan: s.plan ?? null,
+            gamma_regime: s.gamma_regime ?? null,
+            governor: governorSnapshot,
+            nowMs: reconcileNowMs,
+            nowEtMinutes,
+            governorPremiumAtRisk,
+            governorShortGammaOpen,
+            committedThisCycle: governorAccurate,
+          });
+        }
+        if (s.gate.verdict === "COMMIT") {
+          governorAccurate.push({ ticker: s.ticker.toUpperCase(), direction: s.direction });
+        }
       }
     }
   }
@@ -757,14 +774,22 @@ async function attachGateVerdicts(
   biasAsOfMs: number | null,
   nowEtMinutes: number,
   vectorPulseByTicker: Record<string, ZeroDteVectorPulse> = {}
-): Promise<{ governorPremiumAtRisk: number }> {
-  if (setups.length === 0) return { governorPremiumAtRisk: 0 };
+): Promise<{
+  governorPremiumAtRisk: number;
+  governorSnapshot: GovernorSnapshot | null;
+  governorShortGammaOpen: number;
+}> {
+  if (setups.length === 0) {
+    return { governorPremiumAtRisk: 0, governorSnapshot: null, governorShortGammaOpen: 0 };
+  }
   const today = todayEt();
   const nowMs = Date.now();
   const ledgerRows = dbConfigured()
     ? await fetchZeroDteSetupLog(today).catch(() => null)
     : ([] as ZeroDteSetupLogRow[]);
-  if (ledgerRows == null) return { governorPremiumAtRisk: 0 }; // gates stay null → fresh commits fail closed downstream
+  if (ledgerRows == null) {
+    return { governorPremiumAtRisk: 0, governorSnapshot: null, governorShortGammaOpen: 0 };
+  }
   const committed = new Set(ledgerRows.map((r) => r.ticker.toUpperCase()));
 
   // G-5 snapshot: open/stop counts from the shared Postgres ledger (authoritative),
@@ -1055,7 +1080,7 @@ async function attachGateVerdicts(
     }
     committedThisCycle.push({ ticker: s.ticker, direction: s.direction });
   }
-  return { governorPremiumAtRisk };
+  return { governorPremiumAtRisk, governorSnapshot: governor, governorShortGammaOpen };
 }
 
 /**

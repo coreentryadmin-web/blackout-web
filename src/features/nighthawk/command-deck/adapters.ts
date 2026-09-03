@@ -29,6 +29,8 @@ import type {
 } from "./types";
 import { watchReferencePremium, watchTrackPct, watchUnderlyingTrackPct } from "@/lib/zerodte/watch-track";
 import { thesisFirstFromEntryContext } from "@/lib/zerodte/thesis/thesis-first-rehydrate";
+import { projectRunnerProfileForCandidate } from "@/lib/zerodte/runner-profile";
+import type { ZeroDteVectorPulse } from "@/lib/zerodte/vector-crosslink";
 
 const asDir = (d: unknown): DeckDirection =>
   String(d ?? "").toLowerCase().startsWith("s") || String(d ?? "") === "SHORT" ? "SHORT" : "LONG";
@@ -37,6 +39,48 @@ const asStatus = (s: unknown): DeckStatus => {
   return (["OPEN", "HOLD", "TRIM", "CLOSED", "WATCH", "SKIP"].includes(u) ? u : "WATCH") as DeckStatus;
 };
 const fin = (n: unknown): number | null => (typeof n === "number" && Number.isFinite(n) ? n : null);
+
+function cortexPreviewMetrics(cortex: unknown): {
+  cortexScore: number | null;
+  cortexVetoCount: number | null;
+  cortexSupportCount: number | null;
+  cortexAbsentCount: number | null;
+} {
+  if (!cortex || typeof cortex !== "object") {
+    return { cortexScore: null, cortexVetoCount: null, cortexSupportCount: null, cortexAbsentCount: null };
+  }
+  const c = cortex as Record<string, unknown>;
+  if (c.abstained === true) {
+    return { cortexScore: null, cortexVetoCount: null, cortexSupportCount: null, cortexAbsentCount: null };
+  }
+  const verdict =
+    c.verdict && typeof c.verdict === "object" ? (c.verdict as Record<string, unknown>) : c;
+  return {
+    cortexScore: fin(verdict.score),
+    cortexVetoCount: Array.isArray(verdict.vetoes) ? verdict.vetoes.length : null,
+    cortexSupportCount: Array.isArray(verdict.supports) ? verdict.supports.length : null,
+    cortexAbsentCount: Array.isArray(verdict.absent) ? verdict.absent.length : null,
+  };
+}
+
+function vectorPulseForPreview(
+  pulse: ZeroDteDeckSource["vector_pulse"]
+): ZeroDteVectorPulse | null {
+  if (!pulse) return null;
+  return {
+    premium_pct: pulse.premium_pct,
+    peak_premium_pct: pulse.peak_premium_pct,
+    action_status: pulse.action_status,
+    is_winner: pulse.is_winner,
+    is_runner: pulse.is_runner,
+    side: null,
+    direction: null,
+    strike: null,
+    occ: null,
+    rank: null,
+    role: null,
+  };
+}
 
 /** R:R from the plan's target/stop premiums (reward ÷ risk, relative to a hypothetical entry at the mid). */
 function rrFromPlan(plan: { stop_premium?: number | null; target_premium?: number | null } | null | undefined): number | null {
@@ -167,6 +211,8 @@ export interface ZeroDteDeckSource {
     first_seen?: string | null;
     /** Thesis-first pipeline snapshot when ZERODTE_THESIS_FIRST is armed. */
     thesis_first?: import("@/lib/zerodte/thesis/types").ThesisPipelineResult | null;
+    discovery_origin?: string[] | null;
+    cortex?: unknown;
   } | null;
   /** Bare board setups carry thesis_first at the top level (same shape as nested setup). */
   thesis_first?: import("@/lib/zerodte/thesis/types").ThesisPipelineResult | null;
@@ -364,13 +410,31 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
         : null;
 
   const mgmtBase = managementFor(exitModel, status, pnlDisplay);
-  const runnerTag = src.runner_profile?.tag;
-  const runnerTarget = fin(src.runner_profile?.target_pct ?? src.target_pct);
+  const frozenRunner = src.runner_profile;
+  const setupDir = setup?.direction === "short" ? ("short" as const) : ("long" as const);
+  const projectedRunner =
+    !frozenRunner && (status === "WATCH" || status === "SKIP")
+      ? projectRunnerProfileForCandidate({
+          score: fin(src.score),
+          direction: setupDir,
+          confluenceCount: fin(src.confluence) ?? 0,
+          vectorPulse: vectorPulseForPreview(src.vector_pulse),
+          tier: (src.tier?.tier === "A" || src.tier?.tier === "B" || src.tier?.tier === "C"
+            ? src.tier.tier
+            : null) as "A" | "B" | "C" | null,
+          discoveryOrigin: src.discovery_origin ?? setup?.discovery_origin ?? null,
+          ...cortexPreviewMetrics(setup?.cortex),
+        })
+      : null;
+  const runnerProfileResolved = frozenRunner ?? projectedRunner;
+  const runnerProjected = !frozenRunner && projectedRunner != null;
+  const runnerTag = runnerProfileResolved?.tag;
+  const runnerTarget = fin(runnerProfileResolved?.target_pct ?? src.target_pct);
   const mgmtWithRunner =
     runnerTarget != null && runnerTarget > 100
       ? {
           ...mgmtBase,
-          recNote: `${mgmtBase.recNote ? `${mgmtBase.recNote} · ` : ""}Runner ${runnerTarget}% target${runnerTag ? ` (${runnerTag})` : ""}`,
+          recNote: `${mgmtBase.recNote ? `${mgmtBase.recNote} · ` : ""}Runner ${runnerTarget}% target${runnerTag ? ` (${runnerTag})` : ""}${runnerProjected ? " if committed" : ""}`,
         }
       : mgmtBase;
   const thesisHealth = src.thesis_health ?? null;
@@ -421,7 +485,6 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   const trackReference = watchTrack ? watchReferencePremium(setup?.plan ?? null) : null;
   const trackPct = watchTrack ? watchTrackPct(trackReference, markNum) : null;
 
-  const setupDir = setup?.direction === "short" ? ("short" as const) : ("long" as const);
   const thesisFirstResolved =
     setup?.thesis_first ??
     src.thesis_first ??
@@ -461,13 +524,14 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     peak: peakDisplay,
     trough: troughDisplay,
     mfeCapturePct: fin(src.mfe_capture_pct),
-    runnerProfile: src.runner_profile
+    runnerProfile: runnerProfileResolved
       ? {
-          targetPct: src.runner_profile.target_pct,
-          tag: src.runner_profile.tag,
-          regime: src.runner_profile.regime,
+          targetPct: runnerProfileResolved.target_pct,
+          tag: runnerProfileResolved.tag,
+          regime: runnerProfileResolved.regime,
         }
       : null,
+    runnerProjected,
     // Executable fill (sell-into-the-BID) is a directional LONG framing — inverted for a credit
     // condor, so it is suppressed (null) on condor rows; the condor's honest number is its decay P&L.
     execMark: isCondor === true ? null : exec.fill,
