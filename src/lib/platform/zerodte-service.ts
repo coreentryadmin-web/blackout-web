@@ -598,26 +598,25 @@ async function attachLiveMarkMeta(rows: ZeroDteSetupLogRow[]): Promise<Map<strin
     // ERR_MODULE_NOT_FOUND into this function's fail-soft catch, silently serving NO
     // live marks in tests while Next's bundler (prod) resolved it fine. Relative works
     // under both, and keeps the test's seeded store the SAME module instance.
-    const { getZeroDteLiveMark, ensureZeroDteMarkPoller } = await import("../zerodte/live-marks");
+    const { getZeroDteLiveMark, ensureZeroDteMarkPoller, resolveLedgerRowLiveMark } = await import(
+      "../zerodte/live-marks"
+    );
     // Any board consumer keeps the 1s lane alive (idempotent; self-idles off-RTH),
     // so Largo/BIE reads through this payload stay fresh even with no SSE viewer.
     ensureZeroDteMarkPoller();
     const now = Date.now();
     for (const r of rows) {
-      if (r.status === "CLOSED") continue;
-      const occ = typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null;
-      if (!occ) continue;
-      const m = getZeroDteLiveMark(occ);
-      if (!m || m.mark == null || isZeroDteMarkStale(m.asOf, now, ZERODTE_MARK_STALE_MS)) continue;
+      const resolved = resolveLedgerRowLiveMark(r, getZeroDteLiveMark, now, ZERODTE_MARK_STALE_MS);
+      if (!resolved) continue;
       out.set(r.ticker.toUpperCase(), {
-        mark: m.mark,
-        mark_as_of: new Date(m.asOf).toISOString(),
-        mark_source: m.source,
+        mark: resolved.mark,
+        mark_as_of: new Date(resolved.asOf).toISOString(),
+        mark_source: resolved.source,
         // Two-sided book + greeks from the SAME fresh store entry — feeds the executable
         // fill (sell-into-the-bid) and the terminal greeks strip on the board payload.
-        bid: m.bid ?? null,
-        ask: m.ask ?? null,
-        greeks: m.greeks ?? null,
+        bid: resolved.bid ?? null,
+        ask: resolved.ask ?? null,
+        greeks: resolved.greeks ?? null,
       });
     }
   } catch {

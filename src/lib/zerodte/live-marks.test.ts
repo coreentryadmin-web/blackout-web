@@ -873,3 +873,50 @@ test("wire precision: half-cent mids and integer fields are preserved exactly", 
   assert.equal(typeof row.mark_as_of, "string", "ISO timestamps untouched");
   assert.equal(row.stale, false, "booleans untouched");
 });
+
+test("toActivePlay + payload: condor row quotes four legs and prices net debit mark", async () => {
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const legs = [
+    { role: "short", occ: "O:SPXW260714P00545000" },
+    { role: "long", occ: "O:SPXW260714P00543000" },
+    { role: "short", occ: "O:SPXW260714C00555000" },
+    { role: "long", occ: "O:SPXW260714C00557000" },
+  ];
+  const marks = new Map([
+    ["O:SPXW260714P00545000", 1.0],
+    ["O:SPXW260714P00543000", 0.3],
+    ["O:SPXW260714C00555000", 0.8],
+    ["O:SPXW260714C00557000", 0.2],
+  ]);
+  const now = Date.now();
+  for (const [occ, mark] of marks) {
+    lm.putZeroDteLiveMark({
+      occ,
+      bid: mark,
+      ask: mark,
+      mid: mark,
+      last: null,
+      mark,
+      source: "mid",
+      asOf: now - 500,
+      lane: "rest",
+      greeks: null,
+    });
+  }
+  const row = ledgerRow({
+    ticker: "SPX",
+    plan_json: null,
+    entry_premium: 1.3,
+    entry_context: {
+      play_type: "CONDOR",
+      condor: { legs, breach_lower: 545, breach_upper: 555, net_credit: 130 },
+    },
+  });
+  const active = lm.toActivePlay(row);
+  assert.ok(active?.is_condor);
+  assert.equal(lm.activePlayQuoteOccs(active!).length, 4);
+  const payload = lm.buildZeroDteLiveMarksPayloadFrom([active!], now, "2026-07-14");
+  assert.equal(payload.marks[0]!.mark, 1.3);
+  assert.equal(payload.marks[0]!.live_pnl_pct, 0);
+});
