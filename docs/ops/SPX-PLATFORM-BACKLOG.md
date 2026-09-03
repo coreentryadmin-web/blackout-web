@@ -70,7 +70,7 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 ## P2 — autonomous follow-ups
 
 - [ ] Merge PR #3381 when CI green
-- [ ] `get_spx_structure` — verify truncation probe COMPLETE at default call post-fit deploy
+- [x] `get_spx_structure` + `get_spx_confluence` — truncation probe COMPLETE on prod (2026-09-03)
 
 ---
 
