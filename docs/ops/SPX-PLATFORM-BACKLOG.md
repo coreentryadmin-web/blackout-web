@@ -63,12 +63,17 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 - [x] `get_spx_confluence` — reuse play fitter at Largo boundary
 - [x] Post-deploy truncation probe — `get_ecosystem_context`, `get_flow_tape`, `get_postgres_flows`, `get_spx_play` all COMPLETE on prod (2026-09-03)
 
+## P2 — desk polish (next)
+
+- [x] `get_spx_desk_convergence` — expose `lane_freshness` (Pulse/Desk/Flow) for Largo parity with header strip
+
 ---
 
 ## Completed (agent log)
 
 | Date | Item | PR |
 |------|------|-----|
+| 2026-09-03 | P2 desk convergence lane_freshness for Largo | (this branch) |
 | 2026-09-03 | P2 prod truncation probe — 4 SPX/HELIX tools COMPLETE | (probe log) |
 | 2026-09-03 | P1 get_spx_play + confluence Largo fit | (this branch) |
 | 2026-09-03 | P2 postgres_flows + spx_engine_snapshots Largo fit | (this branch) |
