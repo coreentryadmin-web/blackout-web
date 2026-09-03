@@ -21,6 +21,7 @@
  *   --date   filter to one ET session (defaults to latest session_date in the export window)
  *   --days   tier-export lookback (default 3 — enough to catch today even on a Monday)
  *   --sessions=N  replay the last N session dates (overrides --date; use with --days=14+)
+ *   --ab          compare trim_scale vs ratchet vs tier-runner trim on the same plays
  */
 
 if (!process.env.POLYGON_API_BASE || !/^https?:\/\//.test(process.env.POLYGON_API_BASE)) {
@@ -41,6 +42,10 @@ const { gradeCondorFromBars } = await import(`${SRC}lib/zerodte/condor.ts`);
 const { readFrozenExitPolicy } = await import(`${SRC}lib/zerodte/exit-sync.ts`);
 const { exitPolicyGraderParams, buildResolvedExitPolicy } = await import(`${SRC}lib/zerodte/strategy-version.ts`);
 const {
+  RUNNER_TARGET_PCT_A,
+  RUNNER_TARGET_PCT_B_RUNNER,
+} = await import(`${SRC}lib/zerodte/runner-profile.ts`);
+const {
   zeroDteHalfSpreadFrac,
   ZERODTE_DEFAULT_HALF_SPREAD_FRAC,
   executionTaxBps,
@@ -59,6 +64,7 @@ const DAYS = Math.max(1, Math.min(30, Number(argv.days ?? 3) || 3));
 const FILTER_DATE = typeof argv.date === "string" && argv.date !== "true" ? argv.date : null;
 const SESSION_COUNT = Math.max(1, Math.min(30, Number(argv.sessions ?? 1) || 1));
 const JSON_OUT = argv.json === true || argv.json === "true";
+const AB_MODE = argv.ab === true || argv.ab === "true";
 
 function etTodayYmd() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -103,6 +109,97 @@ function replayCtx(p) {
     regime,
   });
   return { exit_policy_snapshot: rebuilt, plan_json: {}, policy_source: "rebuilt" };
+}
+
+/** Policy scenarios for exit-mode A/B (when tier-export lacks frozen snapshots). */
+function buildPolicyScenario(p, scenario) {
+  if (p.exit_policy_snapshot) {
+    return { ...replayCtx(p), scenario };
+  }
+  const mode = scenario === "ratchet_tier" ? "ratchet" : "trim_scale";
+  let target_pct;
+  let regime = "neutral";
+  if (scenario === "current_trim") {
+    target_pct = undefined;
+  } else if (scenario === "tier_trim" || scenario === "ratchet_tier") {
+    regime = "trend";
+    if (p.tier === "A") target_pct = RUNNER_TARGET_PCT_A;
+    else if (p.tier === "B") target_pct = RUNNER_TARGET_PCT_B_RUNNER;
+    else target_pct = undefined;
+  } else {
+    target_pct = undefined;
+  }
+  const rebuilt = buildResolvedExitPolicy(mode, { target_pct, regime });
+  return { exit_policy_snapshot: rebuilt, plan_json: {}, policy_source: scenario, scenario };
+}
+
+function summarizeScenario(rows, label) {
+  const graded = rows.filter((r) => r.exec_pnl != null);
+  const avg =
+    graded.length > 0
+      ? Math.round((graded.reduce((s, r) => s + r.exec_pnl, 0) / graded.length) * 10) / 10
+      : null;
+  const winners = graded.filter((r) => r.exec_pnl > 0).length;
+  return {
+    scenario: label,
+    replayed: graded.length,
+    avg_exec_pnl_pct: avg,
+    win_rate_pct: graded.length ? Math.round((winners / graded.length) * 1000) / 10 : null,
+    runners_100_plus: graded.filter((r) => r.exec_pnl >= 100).length,
+    runners_200_plus: graded.filter((r) => r.exec_pnl >= 200).length,
+    worst_stop: graded.filter((r) => r.exec_pnl <= -45).length,
+  };
+}
+
+async function fetchDirectionalBars(p) {
+  const side = p.direction === "long" ? "call" : "put";
+  const occ = occSymbol(p.ticker, p.expiry, side, p.top_strike);
+  const bars = await fetchAggBars(occ, 1, "minute", p.session_date, p.session_date, "1500").catch(() => []);
+  if (!bars?.length) return null;
+  return bars.filter((b) => b.t != null && Number.isFinite(b.t)).map((b) => ({ t: b.t, h: b.h, l: b.l, c: b.c }));
+}
+
+async function gradeDirectionalWithBars(p, ctx, planBars) {
+  const flaggedMs = Date.parse(p.first_flagged_at);
+  if (!Number.isFinite(flaggedMs)) return { error: "bad_flag_time" };
+
+  const frozenExitPolicy = readFrozenExitPolicy(ctx);
+  const graderParams = frozenExitPolicy ? exitPolicyGraderParams(frozenExitPolicy) : null;
+  const mid = gradePlanFromBars(planBars, p.entry_premium, flaggedMs, graderParams);
+
+  const planQuote = ctx?.plan_json ?? {};
+  const entryBid = typeof planQuote.bid === "number" ? planQuote.bid : null;
+  const entryAsk = typeof planQuote.ask === "number" ? planQuote.ask : null;
+  const halfSpreadFrac = zeroDteHalfSpreadFrac(entryBid, entryAsk) ?? ZERODTE_DEFAULT_HALF_SPREAD_FRAC;
+
+  const trimSpec =
+    frozenExitPolicy?.policy === "trim_scale" &&
+    Array.isArray(frozenExitPolicy.trim_levels) &&
+    frozenExitPolicy.trim_levels.length > 0
+      ? { trim_levels: frozenExitPolicy.trim_levels, runner_fraction: frozenExitPolicy.runner_fraction }
+      : null;
+
+  const exec = trimSpec
+    ? reconstructTrimScaleExecutableFromBars(
+        planBars,
+        p.entry_premium,
+        flaggedMs,
+        halfSpreadFrac,
+        trimSpec,
+        graderParams
+      )
+    : gradePlanExecutableFromBars(planBars, p.entry_premium, flaggedMs, halfSpreadFrac, graderParams);
+
+  return {
+    mid_outcome: mid.outcome,
+    mid_pnl_pct: mid.pnl_pct,
+    exec_outcome: exec.outcome,
+    exec_pnl_pct: exec.pnl_pct,
+    execution_tax_bps: executionTaxBps(mid.pnl_pct, exec.pnl_pct),
+    exit_policy: trimSpec ? "trim_scale" : frozenExitPolicy?.policy ?? "ratchet",
+    runner_target_pct: frozenExitPolicy?.target_pct ?? p.runner_target_pct ?? null,
+    tranche_count: exec.tranches?.length ?? 0,
+  };
 }
 
 function isRepriceable(p) {
@@ -167,51 +264,9 @@ async function gradeCondorPlay(p, ctx) {
 }
 
 async function gradeDirectionalPlay(p, ctx) {
-  const side = p.direction === "long" ? "call" : "put";
-  const occ = occSymbol(p.ticker, p.expiry, side, p.top_strike);
-  const bars = await fetchAggBars(occ, 1, "minute", p.session_date, p.session_date, "1500").catch(() => []);
-  if (!bars?.length) return { error: "no_bars" };
-  const planBars = bars.filter((b) => b.t != null && Number.isFinite(b.t)).map((b) => ({ t: b.t, h: b.h, l: b.l, c: b.c }));
-  const flaggedMs = Date.parse(p.first_flagged_at);
-  if (!Number.isFinite(flaggedMs)) return { error: "bad_flag_time" };
-
-  const frozenExitPolicy = readFrozenExitPolicy(ctx);
-  const graderParams = frozenExitPolicy ? exitPolicyGraderParams(frozenExitPolicy) : null;
-  const mid = gradePlanFromBars(planBars, p.entry_premium, flaggedMs, graderParams);
-
-  const planQuote = ctx?.plan_json ?? {};
-  const entryBid = typeof planQuote.bid === "number" ? planQuote.bid : null;
-  const entryAsk = typeof planQuote.ask === "number" ? planQuote.ask : null;
-  const halfSpreadFrac = zeroDteHalfSpreadFrac(entryBid, entryAsk) ?? ZERODTE_DEFAULT_HALF_SPREAD_FRAC;
-
-  const trimSpec =
-    frozenExitPolicy?.policy === "trim_scale" &&
-    Array.isArray(frozenExitPolicy.trim_levels) &&
-    frozenExitPolicy.trim_levels.length > 0
-      ? { trim_levels: frozenExitPolicy.trim_levels, runner_fraction: frozenExitPolicy.runner_fraction }
-      : null;
-
-  const exec = trimSpec
-    ? reconstructTrimScaleExecutableFromBars(
-        planBars,
-        p.entry_premium,
-        flaggedMs,
-        halfSpreadFrac,
-        trimSpec,
-        graderParams
-      )
-    : gradePlanExecutableFromBars(planBars, p.entry_premium, flaggedMs, halfSpreadFrac, graderParams);
-
-  return {
-    mid_outcome: mid.outcome,
-    mid_pnl_pct: mid.pnl_pct,
-    exec_outcome: exec.outcome,
-    exec_pnl_pct: exec.pnl_pct,
-    execution_tax_bps: executionTaxBps(mid.pnl_pct, exec.pnl_pct),
-    exit_policy: trimSpec ? "trim_scale" : frozenExitPolicy?.policy ?? "ratchet",
-    runner_target_pct: frozenExitPolicy?.target_pct ?? p.runner_target_pct ?? null,
-    tranche_count: exec.tranches?.length ?? 0,
-  };
+  const planBars = await fetchDirectionalBars(p);
+  if (!planBars?.length) return { error: "no_bars" };
+  return gradeDirectionalWithBars(p, ctx, planBars);
 }
 
 function summarizeResults(sessionDate, plays, results, barsFailed, via) {
@@ -322,6 +377,84 @@ function rollupSessions(sessions) {
   };
 }
 
+async function runAbReplay(all, targetDates) {
+  const scenarios = [
+    { key: "current_trim", label: "trim_scale +100% neutral (current prod default)" },
+    { key: "tier_trim", label: "trim_scale + tier runners (A=300/B=200 trend)" },
+    { key: "ratchet_tier", label: "ratchet + tier runners (A=300/B=200 trend)" },
+  ];
+  const buckets = Object.fromEntries(scenarios.map((s) => [s.key, []]));
+  let barsFailed = 0;
+
+  for (const sessionDate of targetDates) {
+    const plays = all.filter((p) => p.session_date === sessionDate).filter(isRepriceable);
+    for (const p of plays) {
+      if (p.play_type === "CONDOR") continue;
+      const planBars = await fetchDirectionalBars(p);
+      if (!planBars?.length) {
+        barsFailed += 1;
+        continue;
+      }
+      for (const sc of scenarios) {
+        const ctx = buildPolicyScenario(p, sc.key);
+        const replay = await gradeDirectionalWithBars(p, ctx, planBars);
+        if (replay.error) continue;
+        buckets[sc.key].push({
+          session_date: sessionDate,
+          ticker: p.ticker,
+          tier: p.tier,
+          exec_pnl: replay.exec_pnl_pct,
+          mid_pnl: replay.mid_pnl_pct,
+          outcome: replay.exec_outcome,
+          runner_target_pct: replay.runner_target_pct,
+        });
+      }
+    }
+  }
+
+  const compared = scenarios.map((s) => summarizeScenario(buckets[s.key], s.label));
+  const deltas = [];
+  const current = buckets.current_trim;
+  const tierTrim = buckets.tier_trim;
+  for (let i = 0; i < tierTrim.length; i++) {
+    const cur = current[i];
+    const tier = tierTrim[i];
+    if (!cur || !tier || cur.ticker !== tier.ticker) continue;
+    deltas.push({
+      session_date: tier.session_date,
+      ticker: tier.ticker,
+      tier: tier.tier,
+      current: cur.exec_pnl,
+      tier_trim: tier.exec_pnl,
+      delta: delta(tier.exec_pnl, cur.exec_pnl),
+      mid: tier.mid_pnl,
+    });
+  }
+  deltas.sort((a, b) => (b.delta ?? 0) - (a.delta ?? 0));
+
+  return { scenarios: compared, bars_failed: barsFailed, top_improvements: deltas.slice(0, 10), top_regressions: [...deltas].sort((a, b) => (a.delta ?? 0) - (b.delta ?? 0)).slice(0, 5) };
+}
+
+function printAbReport(ab, targetDates) {
+  console.log(`\n=== 0DTE EXIT MODE A/B — ${targetDates.length} sessions ===`);
+  console.log(`${"SCENARIO".padEnd(48)} ${"N".padStart(4)} ${"AVG".padStart(8)} ${"WR".padStart(6)} ${"≥100".padStart(5)} ${"≥200".padStart(5)} ${"≤-45".padStart(5)}`);
+  console.log("─".repeat(88));
+  for (const s of ab.scenarios) {
+    console.log(
+      `${s.scenario.slice(0, 48).padEnd(48)} ${String(s.replayed).padStart(4)} ${fmtPct(s.avg_exec_pnl_pct).padStart(8)} ` +
+        `${String(s.win_rate_pct ?? "—").padStart(5)}% ${String(s.runners_100_plus).padStart(5)} ` +
+        `${String(s.runners_200_plus).padStart(5)} ${String(s.worst_stop).padStart(5)}`
+    );
+  }
+  if (ab.top_improvements.length) {
+    console.log("\nBiggest gains (tier-trim vs current):");
+    for (const r of ab.top_improvements.filter((x) => (x.delta ?? 0) > 0).slice(0, 8)) {
+      console.log(`  ${r.session_date} ${r.ticker.padEnd(6)} ${fmtPct(r.current)} → ${fmtPct(r.tier_trim)} (${fmtPct(r.delta)}) mid ${fmtPct(r.mid)}`);
+    }
+  }
+  if (ab.bars_failed) console.log(`\nBar-fetch misses: ${ab.bars_failed}`);
+}
+
 async function main() {
   const res = await fetchAuditJson(BASE, `/api/admin/zerodte/tier-export?days=${DAYS}`);
   if (!res.ok || !res.json) {
@@ -337,9 +470,18 @@ async function main() {
   const dates = [...new Set(all.map((p) => p.session_date))].sort();
   const targetDates = FILTER_DATE
     ? [FILTER_DATE]
-    : SESSION_COUNT > 1
-      ? dates.slice(-SESSION_COUNT)
+    : SESSION_COUNT > 1 || AB_MODE
+      ? dates.slice(-(AB_MODE ? Math.max(SESSION_COUNT, 10) : SESSION_COUNT))
       : [dates[dates.length - 1] ?? etTodayYmd()];
+
+  if (AB_MODE) {
+    const ab = await runAbReplay(all, targetDates);
+    const summary = { ok: true, session_dates: targetDates, source: `${BASE}/api/admin/zerodte/tier-export?days=${DAYS}`, via: res.via, ab };
+    if (JSON_OUT) console.log(JSON.stringify(summary, null, 2));
+    else printAbReport(ab, targetDates);
+    await releaseAuditClerkSession();
+    return;
+  }
 
   const sessionSummaries = [];
   for (const sessionDate of targetDates) {

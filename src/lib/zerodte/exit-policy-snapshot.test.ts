@@ -57,6 +57,8 @@ test("WS-02 buildResolvedExitPolicy: resolves the real numeric exit params from 
   const trend = buildResolvedExitPolicy("trim_scale", { target_pct: 300, regime: "trend" });
   assert.deepEqual(trend.trim_levels.map((l) => l.trigger_pct), [40, 80]);
   assert.equal(trend.target_pct, 300);
+  assert.equal(trend.trim_levels[0]!.fraction, 0.25);
+  assert.equal(trend.runner_fraction, 0.5);
 });
 
 test("WS-02 DRIFT-GUARD: resolved config_hash matches the committed golden (a silent numeric edit trips this)", () => {
