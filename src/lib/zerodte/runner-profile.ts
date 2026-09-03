@@ -47,7 +47,7 @@ export type RunnerProfile = {
   /** Trim-scale regime — trend lets the runner breathe (later trims). */
   regime: ZeroDteRegime;
   /** Human tag for telemetry / entry_context. */
-  tag: "standard" | "runner_a" | "runner_vector" | "runner_b_vector" | "runner_b_runner";
+  tag: "standard" | "runner_a" | "runner_vector" | "runner_b_vector" | "runner_b_runner" | "runner_b_baseline";
 };
 
 export type RunnerProfileInput = {
@@ -79,6 +79,15 @@ export function resolveRunnerProfile(input: RunnerProfileInput): RunnerProfile |
     return { target_pct: RUNNER_TARGET_PCT_B_RUNNER, regime: "trend", tag: "runner_b_runner" };
   }
   if (input.tier === "A" && vectorRunner && input.confluenceCount >= 1) {
+    return { target_pct: RUNNER_TARGET_PCT_A, regime: "trend", tag: "runner_a" };
+  }
+  // B-tier with real confluence (VWAP-side or Vector credit) — extend runway without
+  // requiring a Vector winner stamp (replay showed most B commits stuck at +100% default).
+  if (input.tier === "B" && input.confluenceCount >= 1) {
+    return { target_pct: RUNNER_TARGET_PCT_B_RUNNER, regime: "trend", tag: "runner_b_baseline" };
+  }
+  // A-tier with any confluence but no Vector runner path above — still deserves extended target.
+  if (input.tier === "A" && input.confluenceCount >= 1) {
     return { target_pct: RUNNER_TARGET_PCT_A, regime: "trend", tag: "runner_a" };
   }
   return null;

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveRunnerProfile, projectRunnerProfileForCandidate, RUNNER_TARGET_PCT_A, RUNNER_TARGET_PCT_VECTOR } from "./runner-profile";
+import { resolveRunnerProfile, projectRunnerProfileForCandidate, RUNNER_TARGET_PCT_A, RUNNER_TARGET_PCT_VECTOR, RUNNER_TARGET_PCT_B_RUNNER } from "./runner-profile";
 import type { ZeroDteVectorPulse } from "./vector-crosslink";
 
 const winnerPulse = (dir: "long" | "short"): ZeroDteVectorPulse => ({
@@ -38,6 +38,18 @@ test("resolveRunnerProfile: A-tier + double confluence → 300% target", () => {
   });
   assert.ok(r);
   assert.equal(r!.target_pct, RUNNER_TARGET_PCT_A);
+});
+
+test("resolveRunnerProfile: B-tier + confluence → 200% baseline runner", () => {
+  const r = resolveRunnerProfile({
+    tier: "B",
+    confluenceCount: 1,
+    vectorPulse: null,
+    direction: "long",
+  });
+  assert.ok(r);
+  assert.equal(r!.target_pct, RUNNER_TARGET_PCT_B_RUNNER);
+  assert.equal(r!.tag, "runner_b_baseline");
 });
 
 test("resolveRunnerProfile: C-tier with no Vector → null (standard +100%)", () => {

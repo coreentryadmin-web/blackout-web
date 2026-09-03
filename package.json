@@ -40,6 +40,7 @@
     "validate:prod-ux-cto": "node scripts/validate-prod-ux-cto.mjs",
     "validate:vector-gesture-perf": "node scripts/audit/vector-gesture-perf-guard.mjs",
     "sim:0dte": "node --import tsx scripts/audit/zerodte-sim.mjs",
+    "replay:0dte-session": "node --import tsx scripts/audit/zerodte-session-replay.mjs",
     "sim:nighthawk-evening": "node --import tsx scripts/audit/nighthawk-evening-replay.mjs",
     "probe:nighthawk-flow-polarity": "node --import tsx scripts/audit/nighthawk-flow-polarity.mjs",
     "sim:spx-pulse": "node --import tsx scripts/audit/spx-pulse-session-replay.mjs",

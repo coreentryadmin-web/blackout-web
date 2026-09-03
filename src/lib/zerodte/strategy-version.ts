@@ -275,15 +275,21 @@ export function buildResolvedExitPolicy(
     const r = TRIM_SCALE_RULES.tranches_by_regime;
     const activeRegime: ZeroDteRegime = opts?.regime ?? "neutral";
     const tranches = r[activeRegime];
-    // Freeze the ACTIVE regime's ladder at commit — grader + terminal ladder must match live engine.
+    const extendedRunner = (opts?.target_pct ?? PLAN_RULES.target_pct) > PLAN_RULES.target_pct;
+    // Extended runners (200–400% targets): bank 25% at each trim, let 50% ride — captures more
+    // of Vector-style multi-baggers without changing the standard +100% ⅓/⅓/⅓ ladder.
+    const trancheFraction = extendedRunner ? 0.25 : TRIM_SCALE_RULES.tranche_fraction;
     trim_levels = tranches.map((trigger_pct) => ({
       trigger_pct,
-      fraction: TRIM_SCALE_RULES.tranche_fraction,
+      fraction: trancheFraction,
     }));
-    runner_fraction = TRIM_SCALE_RULES.tranche_fraction; // the last third runs to the rails
-    trailing_rule =
-      `trim_scale:no_trailing_stop;active_regime=${activeRegime};tranche_fraction=${TRIM_SCALE_RULES.tranche_fraction};` +
-      `tranches trend=[${r.trend.join(",")}] neutral=[${r.neutral.join(",")}] range=[${r.range.join(",")}]`;
+    runner_fraction = extendedRunner ? 0.5 : TRIM_SCALE_RULES.tranche_fraction;
+    trailing_rule = extendedRunner
+      ? `trim_scale:no_trailing_stop;active_regime=${activeRegime};tranche_fraction=${trancheFraction};` +
+        `runner_fraction=${runner_fraction};extended_runner=true;` +
+        `tranches trend=[${r.trend.join(",")}] neutral=[${r.neutral.join(",")}] range=[${r.range.join(",")}]`
+      : `trim_scale:no_trailing_stop;active_regime=${activeRegime};tranche_fraction=${TRIM_SCALE_RULES.tranche_fraction};` +
+        `tranches trend=[${r.trend.join(",")}] neutral=[${r.neutral.join(",")}] range=[${r.range.join(",")}]`;
   } else {
     // ratchet: bank half at the plan target, then run under the monotonic floor.
     trim_levels = [{ trigger_pct: PLAN_RULES.target_pct, fraction: 0.5 }];
