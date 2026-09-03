@@ -36,4 +36,5 @@ test("get_spx_play fits at the Largo boundary after confidence sanitize", () => 
   const runTool = readFileSync(join(ROOT, "src/lib/largo/run-tool.ts"), "utf8");
   assert.match(runTool, /sanitizeSpxPlayPayloadForLargo\(await marketPlatform\.spx\.getSpxPlayState\(\)\)/);
   assert.match(runTool, /fitSpxPlayForModel\(raw as Record<string, unknown>\)\.fitted/);
+  assert.match(runTool, /case "get_spx_confluence":[\s\S]*fitSpxPlayForModel/);
 });

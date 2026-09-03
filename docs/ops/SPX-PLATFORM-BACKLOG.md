@@ -60,7 +60,8 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 - [x] Persist SPX matrix lens toggle to `sessionStorage` and document read path for future server-side hint (optional — today client-only is honest)
 - [x] Largo fit `get_postgres_flows` + `get_spx_engine_snapshots` at model boundary (explicit truncation flags)
 - [x] `get_spx_play` Largo fit — cap confluence factor detail lists under transport budget
-- [ ] Post-deploy: re-run `scripts/audit/largo-truncation-probe.mjs` on prod and confirm `get_ecosystem_context` + `get_flow_tape` + `get_postgres_flows` + `get_spx_play` COMPLETE
+- [x] `get_spx_confluence` — reuse play fitter at Largo boundary
+- [x] Post-deploy truncation probe — `get_ecosystem_context`, `get_flow_tape`, `get_postgres_flows`, `get_spx_play` all COMPLETE on prod (2026-09-03)
 
 ---
 
@@ -68,7 +69,8 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 
 | Date | Item | PR |
 |------|------|-----|
-| 2026-09-03 | P1 get_spx_play Largo fit (factors/gate blocks sample_notes) | (this branch) |
+| 2026-09-03 | P2 prod truncation probe — 4 SPX/HELIX tools COMPLETE | (probe log) |
+| 2026-09-03 | P1 get_spx_play + confluence Largo fit | (this branch) |
 | 2026-09-03 | P2 postgres_flows + spx_engine_snapshots Largo fit | (this branch) |
 | 2026-09-03 | P1 get_flow_tape Largo fit (recent print cap + truncation flags) | (this branch) |
 | 2026-09-03 | P1 ecosystem_context Largo fit + cross-product SPX Slayer source | (this branch) |

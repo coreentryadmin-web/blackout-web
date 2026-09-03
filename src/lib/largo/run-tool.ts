@@ -1718,12 +1718,11 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       // Pure compute on the already-cached per-user desk — no extra API calls.
       const desk = await getLargoSpxLiveDesk(userId);
       const confluence = computeSpxConfluence(desk);
-      // `confidence` here is a formula over |score| and a COUNT of factors (conflicting ones
-      // included), fitted to no outcome data. The product contract requires omitting a confidence
-      // a product cannot calibrate, because the model ranks it against lanes that measure theirs.
-      return omitUncalibratedSpxConfidence(
+      const { fitSpxPlayForModel } = await import("@/lib/largo/spx-play-fit");
+      const raw = omitUncalibratedSpxConfidence(
         confluence ?? { error: "No confluence available — SPX desk not live yet." }
       );
+      return fitSpxPlayForModel(raw as Record<string, unknown>).fitted;
     }
     case "get_positioning": {
       const sym = uwTicker(ticker);
