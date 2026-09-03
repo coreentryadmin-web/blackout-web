@@ -674,7 +674,7 @@ async function prepareLargoTurn(
   // The model had the tool and no way to know it was the past-capable one, because a description
   // says what a tool returns, never whether it can reach a past window.
   //
-  // Hints only. All 134 tools stay in the request, so this can never make an answer impossible
+  // Hints only. All 135 tools stay in the request, so this can never make an answer impossible
   // the way the deleted intent allowlist could.
   const capabilityBlock = formatCapabilityBlock(question, { historical: timeframe.historical });
 
@@ -697,7 +697,7 @@ async function prepareLargoTurn(
 
   // SUGGESTED PLAN — composed from what code already resolved (entities, timeframe, ranked
   // capabilities, the registry's DECLARED join edges), handed over as a starting point. It routes
-  // nothing and hides nothing; the model may ignore it, and the full 134-tool surface is still in
+  // nothing and hides nothing; the model may ignore it, and the full 135-tool surface is still in
   // the request. Its real value is telling the model which results can be CORRELATED: a join edge
   // here means the two capabilities share an entity key, which registry.test.ts proves, so a
   // cross-product claim built on one is sound rather than a string coincidence.

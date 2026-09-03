@@ -13,7 +13,7 @@ import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 
 const premiumTool = LARGO_CAPABILITIES.find((c) => c.entitlement === "premium")!.tool;
 
-// A SYNTHETIC catalog. The real registry declares `premium` on all 134 of its capabilities today,
+// A SYNTHETIC catalog. The real registry declares `premium` on all 135 of its capabilities today,
 // so enforcement against it is armed but inert — testing the gate against the real catalog would
 // pass vacuously and prove nothing. This proves the mechanism; the test below pins the real
 // catalog's current state separately, so the day a capability is marked admin it is a deliberate,
@@ -53,7 +53,7 @@ test("the fixtures this file depends on actually exist", () => {
 });
 
 test("the real registry currently restricts nothing — recorded, not assumed", () => {
-  // Honest state, pinned. Every one of the 134 catalogued capabilities declares `premium`, so this
+  // Honest state, pinned. Every one of the 135 catalogued capabilities declares `premium`, so this
   // gate denies nothing in production today. It is here so that marking a capability `admin` is a
   // one-line change that takes effect in CODE. If this assertion ever fails, someone added a real
   // restriction — update it deliberately and check the blast radius.

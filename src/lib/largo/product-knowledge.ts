@@ -32,6 +32,9 @@ gate pass/fail checklist, confirmation items, adaptive-gate telemetry, AI arbite
 **Session transition feed:** flip crosses, king migrations, VWAP/EMA shifts (Pulse/commentary rail events, server-persisted).
 - Tool: get_spx_voice_feed
 
+**Playbook shadow history:** named-playbook matcher observations (PB-01..14) logged on state transitions — shadow evidence, not live commits.
+- Tool: get_playbook_shadow_history
+
 **Open positions / member plays:** OPEN/HOLD/TRIM plays with entry, mark, P&L, stop state.
 - Tool: get_open_plays
 

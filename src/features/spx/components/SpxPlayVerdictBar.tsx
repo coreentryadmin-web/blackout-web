@@ -151,6 +151,36 @@ export function SpxPlayVerdictBar({
             </span>
           )}
           <span style={{ color: C.ink, flex: "1 1 100%" }}>{model.statusLine}</span>
+          {model.mode !== "open" && model.topGateBlockers.length > 0 && (
+            <div
+              style={{
+                flex: "1 1 100%",
+                marginTop: 4,
+                padding: "6px 8px",
+                borderRadius: 8,
+                background: "rgba(255,138,61,.08)",
+                border: "1px solid rgba(255,138,61,.28)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 9.5,
+                  fontWeight: 700,
+                  letterSpacing: ".06em",
+                  textTransform: "uppercase",
+                  color: C.warn,
+                  marginBottom: 4,
+                }}
+              >
+                Why not trading?
+              </div>
+              {model.topGateBlockers.map((msg, i) => (
+                <div key={i} style={{ fontSize: 10.5, color: C.muted, lineHeight: 1.35 }}>
+                  • {msg}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <div className="spx-play-verdict-bar__body" style={{ padding: "12px 14px 14px" }}>

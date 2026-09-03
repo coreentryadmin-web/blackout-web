@@ -316,5 +316,15 @@ export function useMergedDesk() {
     deskLaneFailed,
     sessionActive,
     marketLabel: pulse?.market_label ?? merged?.market_label,
+    laneFreshness: {
+      pulsePolledAt: pulse?.polled_at ?? pulseRest?.polled_at ?? merged?.polled_at ?? null,
+      deskPolledAt: desk?.polled_at ?? null,
+      flowPolledAt: flow?.polled_at ?? null,
+      pulseValidating,
+      deskValidating,
+      flowValidating,
+      pulseSseConnected,
+      feedStalled: Boolean(merged?.feed_stalled),
+    },
   };
 }

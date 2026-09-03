@@ -1,0 +1,105 @@
+# SPX platform backlog — autonomous agent
+
+name: SPX platform backlog agent
+
+on:
+  schedule:
+    # Every 2 hours — picks up unchecked items from docs/ops/SPX-PLATFORM-BACKLOG.md
+    - cron: "15 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: spx-platform-backlog-agent
+  cancel-in-progress: false
+
+jobs:
+  collect-and-dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Ensure spx-platform-backlog label exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create spx-platform-backlog \
+            --repo "${{ github.repository }}" \
+            --color 1d76db \
+            --description "Autonomous SPX platform backlog items" \
+            2>/dev/null || true
+
+      - name: Skip when prod ops items are open (fix infra first)
+        id: ops
+        env:
+          CRON_TARGET_BASE_URL: https://blackouttrades.com
+        run: |
+          set +e
+          node scripts/ops-collect-action-items.mjs >/dev/null 2>&1
+          code=$?
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" -ne 0 ]; then
+            echo "Prod ops items open — backlog agent defers to ops-auto-fix."
+          fi
+
+      - name: Collect SPX platform backlog items
+        if: steps.ops.outputs.exit_code == '0'
+        id: collect
+        run: |
+          set +e
+          json=$(node scripts/spx-collect-backlog-items.mjs 2>/dev/null)
+          code=$?
+          set -e
+          echo "$json" > backlog-items.json
+          count=$(node -e "const j=JSON.parse(require('fs').readFileSync('backlog-items.json','utf8')); console.log(j.count||0)")
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$count" -gt 0 ]; then
+            echo "=== Backlog items ($count) ==="
+            node -e "JSON.parse(require('fs').readFileSync('backlog-items.json','utf8')).items.forEach(i=>console.log(i.priority, i.title))"
+          else
+            echo "GREEN — SPX platform backlog empty"
+          fi
+
+      - name: Dispatch GitHub issue + Cloud Agent
+        if: steps.ops.outputs.exit_code == '0' && steps.collect.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          OPS_ISSUE_LABEL: spx-platform-backlog
+          OPS_DISPATCH_TITLE_PREFIX: "[spx-backlog]"
+          OPS_DISPATCH_MARKER: spx-platform-backlog
+          OPS_AGENT_DOC: docs/ops/SPX-PLATFORM-BACKLOG.md
+          OPS_COLLECT_SCRIPT: scripts/spx-collect-backlog-items.mjs
+        run: |
+          node scripts/ops-dispatch-agent.mjs --file backlog-items.json
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f backlog-items.json ]; then
+            node -e "
+              const j=JSON.parse(require('fs').readFileSync('backlog-items.json','utf8'));
+              console.log('Fingerprint:', j.fingerprint, '| Items:', j.count);
+            "
+          fi

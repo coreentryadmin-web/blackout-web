@@ -12,6 +12,7 @@ const NEW_TOOLS = [
   "get_spx_voice_feed",
   "get_spx_journal",
   "get_concept",
+  "get_playbook_shadow_history",
 ] as const;
 
 for (const tool of NEW_TOOLS) {

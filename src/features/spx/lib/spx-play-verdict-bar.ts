@@ -7,6 +7,7 @@ import type { SpxPinForecast } from "@/features/spx/lib/spx-pin";
 import {
   categorizeGateBlocks,
   type CategorizedGateBlocks,
+  type GateBlockCategory,
 } from "@/features/spx/lib/playbook-gate-categories";
 
 export type PlayVerdictMode = "loading" | "closed" | "open" | "watch" | "hunting";
@@ -25,6 +26,8 @@ export type PlayVerdictBarModel = {
   detailLine: string | null;
   gateLine: string | null;
   gateCategories: CategorizedGateBlocks | null;
+  /** Top gate blocks for collapsed "why not trading?" strip (max 3). */
+  topGateBlockers: string[];
   trimHint: string | null;
   signalCommitted: boolean;
   /** When pin magnet drift and structure play direction diverge. */
@@ -33,6 +36,33 @@ export type PlayVerdictBarModel = {
 
 const fmt = (n: number | null | undefined, d = 0) =>
   n == null || !Number.isFinite(n) ? "—" : n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+const GATE_LAYER_ORDER: readonly GateBlockCategory[] = [
+  "operational",
+  "playbook_validity",
+  "risk",
+  "quality",
+];
+
+/** First N gate blocks in layered evaluation order — for collapsed verdict transparency. */
+export function topGateBlockers(
+  categories: CategorizedGateBlocks | null,
+  blocks: readonly string[],
+  max = 3
+): string[] {
+  if (max <= 0) return [];
+  if (categories) {
+    const out: string[] = [];
+    for (const layer of GATE_LAYER_ORDER) {
+      for (const msg of categories[layer]) {
+        if (out.length >= max) return out;
+        out.push(msg);
+      }
+    }
+    return out;
+  }
+  return blocks.slice(0, max);
+}
 
 function contractLabel(play: SpxPlayPayload): string | null {
   return resolveSpxPlayContractChip(play);
@@ -110,6 +140,7 @@ export function buildPlayVerdictBarModel(
       detailLine: null,
       gateLine: null,
       gateCategories: null,
+      topGateBlockers: [],
       trimHint: null,
       signalCommitted: false,
       ...emptyAlign,
@@ -131,6 +162,7 @@ export function buildPlayVerdictBarModel(
       detailLine: null,
       gateLine: null,
       gateCategories: null,
+      topGateBlockers: [],
       trimHint: null,
       signalCommitted: false,
       ...emptyAlign,
@@ -152,6 +184,7 @@ export function buildPlayVerdictBarModel(
       detailLine: null,
       gateLine: null,
       gateCategories: null,
+      topGateBlockers: [],
       trimHint: null,
       signalCommitted: false,
       ...emptyAlign,
@@ -171,6 +204,11 @@ export function buildPlayVerdictBarModel(
     play.gates.passed && play.gates.warnings.length === 0
       ? null
       : categorizeGateBlocks([...play.gates.blocks, ...play.gates.warnings]);
+  const gateBlockers = topGateBlockers(
+    gateCategories,
+    [...play.gates.blocks, ...play.gates.warnings],
+    3
+  );
 
   let statusLine = play.headline || play.thesis || play.idle_message || "Scanning all lanes.";
   if (mode === "watch" && play.watch?.reason) statusLine = play.watch.reason;
@@ -211,6 +249,7 @@ export function buildPlayVerdictBarModel(
     detailLine,
     gateLine,
     gateCategories,
+    topGateBlockers: gateBlockers,
     trimHint,
     signalCommitted: play.signal_committed,
     alignHint,

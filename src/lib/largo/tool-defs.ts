@@ -320,6 +320,11 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
     { open_play_id: { type: "integer" } }
   ),
   t(
+    "get_playbook_shadow_history",
+    "Named-playbook SHADOW observation history from Postgres — what PB-01..PB-14 matchers WOULD have flagged on state transitions (NOT committed Slayer trades). Use for 'what playbooks fired in shadow today', 'PB-09 history', playbook evidence analytics. Optional `session_date` (YYYY-MM-DD, default today ET) and `limit` (default 50, max 200). Distinct from get_spx_play (live execution) and get_spx_engine_snapshots (gate telemetry).",
+    { session_date: { type: "string" }, limit: { type: "integer", default: 50 } }
+  ),
+  t(
     "get_concept",
     "BlackOut glossary lookup — deterministic definitions for platform concepts (GEX, gamma flip, king node, Night Hawk, Thermal, Vector, gate vocabulary, etc.). Use for 'what is X' / 'define Y' when X is a BlackOut term — NOT for live desk state (use the desk tools). Pass `term` or `question`. Returns null-found honestly when the term is not in the glossary.",
     { term: { type: "string" }, question: { type: "string" } }
@@ -769,6 +774,7 @@ export const TOOL_GROUPS = {
     "get_spx_desk_convergence",
     "get_spx_voice_feed",
     "get_spx_journal",
+    "get_playbook_shadow_history",
   ],
   flow_analysis: [
     "get_options_flow",
@@ -943,6 +949,7 @@ export const SPX_ENGINE_TOOL_NAMES = [
   "get_spx_confluence",
   "get_power_hour",
   "get_spx_desk_convergence",
+  "get_playbook_shadow_history",
 ];
 
 // Task #133 — the cohort-membership test for "did this Largo turn touch HELIX's
@@ -1187,7 +1194,7 @@ export const MARKET_ENGINE_TOOL_NAMES = ["get_market_context"];
 /**
  * REMOVED 2026-08-10: `CORE_TOOLS`, `mentionsTicker()` and `getToolsForIntent()`.
  *
- * They implemented a per-question regex ALLOWLIST that decided which of these 134 tools Claude was
+ * They implemented a per-question regex ALLOWLIST that decided which of these 135 tools Claude was
  * shown on a given turn. Measured over 20 realistic member questions it exposed a mean of 21.9
  * tools (19%), and it failed silently rather than loudly — see the block comment at the
  * `filteredTools` assignment in largo-terminal.ts for the full root cause, the measurements, and

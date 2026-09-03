@@ -2117,6 +2117,16 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
           : undefined;
       return spxJournalForLargo(userId, openPlayId);
     }
+    case "get_playbook_shadow_history": {
+      const { spxPlaybookShadowHistoryForLargo } = await import(
+        "@/lib/largo/spx-playbook-shadow-for-largo"
+      );
+      const limit =
+        input.limit != null && Number.isFinite(Number(input.limit)) ? Number(input.limit) : undefined;
+      const sessionDate =
+        input.session_date != null ? String(input.session_date).trim() : undefined;
+      return spxPlaybookShadowHistoryForLargo({ session_date: sessionDate, limit });
+    }
     case "get_concept": {
       const { conceptForLargo } = await import("@/lib/largo/concept-for-largo");
       return conceptForLargo({
