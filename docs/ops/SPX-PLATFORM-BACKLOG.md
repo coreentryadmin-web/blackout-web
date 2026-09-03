@@ -71,7 +71,7 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 
 - [ ] Merge PR #3381 when CI green
 - [x] `get_spx_structure` + `get_spx_confluence` — truncation probe COMPLETE on prod (2026-09-03)
-- [ ] `get_signal_log` Largo fit at model boundary
+- [x] `get_signal_log` Largo fit at model boundary
 
 ---
 
