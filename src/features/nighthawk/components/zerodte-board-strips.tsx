@@ -100,6 +100,50 @@ export function MarketStateStrip({
   );
 }
 
+/** Vector ↔ 0DTE shadow-book — gate-blocked names Vector is tracking as winner/runner. */
+export function VectorNearMissStrip({
+  nearMisses,
+  compact = false,
+}: {
+  nearMisses: import("@/lib/zerodte/vector-near-miss").ZeroDteVectorNearMiss[] | null | undefined;
+  compact?: boolean;
+}) {
+  if (!nearMisses || nearMisses.length === 0) return null;
+  const top = nearMisses.slice(0, 4);
+  return (
+    <div
+      className={clsx("nh-deck-context-strip", compact && "nh-deck-context-strip--compact")}
+      data-testid="zerodte-vector-near-miss-strip"
+      title="Vector is tracking these names positively but 0DTE gates blocked commit — calibration signal, not a trade"
+    >
+      <span className={clsx("font-mono uppercase tracking-widest text-violet-300", compact ? "text-[8px]" : "text-[9px]")}>
+        Vector near-miss
+      </span>
+      <div className={clsx("flex flex-wrap items-center gap-1.5", compact ? "mt-1" : "mt-1.5")}>
+        {top.map((m) => (
+          <GovPill
+            key={m.ticker}
+            label={m.ticker}
+            value={
+              m.vector_band === "winner"
+                ? `V+ ${Math.round(Math.max(m.vector_premium_pct ?? 0, m.vector_peak_pct ?? 0))}%`
+                : m.vector_band === "runner"
+                  ? `V ${Math.round(Math.max(m.vector_premium_pct ?? 0, m.vector_peak_pct ?? 0))}%`
+                  : "tracked"
+            }
+            tone={m.vector_band === "winner" ? "bull" : m.vector_band === "runner" ? "gold" : "sky"}
+            title={[m.block_label, m.block_reason].filter(Boolean).join(" — ")}
+            compact={compact}
+          />
+        ))}
+        {nearMisses.length > top.length && (
+          <GovPill label="more" value={`+${nearMisses.length - top.length}`} tone="sky" compact={compact} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Phase 2c — top session rejection reason from discovery funnel. */
 export function DiscoveryFunnelStrip({
   funnel,

@@ -144,6 +144,7 @@ export function ZeroDteDeck({
         marketState={data?.market_state ?? null}
         discoveryFunnel={data?.discovery_funnel ?? null}
         sessionStats={data?.session_stats ?? null}
+        vectorNearMisses={data?.vector_near_misses ?? null}
         spxSlayerBadge={data?.spx_slayer_badge}
         emptyHint={zeroDteEmptyHint({
           degraded,
