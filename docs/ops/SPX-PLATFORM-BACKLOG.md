@@ -76,12 +76,19 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 - [x] `get_spx_voice_feed` Largo fit at model boundary (event cap + truncation flags)
 - [x] `get_playbook_shadow_history` Largo fit at model boundary (observation cap + truncation flags)
 
----
+## P1 — HELIX Largo follow-ups
+
+- [x] `get_helix_tape_analytics` Largo fit at model boundary (leaders/route/expiry caps + truncation flags)
+- [x] `get_helix_derived` Largo fit at model boundary (panel second-pass budget fit)
+- [x] `get_helix_signal_outcomes` Largo fit at model boundary (row cap preserves summary)
+- [x] `get_helix_thermal_compare` Largo fit at model boundary (prose trim under transport budget)
+- [ ] Post-deploy truncation probe — re-run all four HELIX tools on prod with control
 
 ## Completed (agent log)
 
 | Date | Item | PR |
 |------|------|-----|
+| 2026-09-03 | HELIX lane — all 4 Largo tools fit at model boundary | (this branch) |
 | 2026-09-03 | `get_playbook_shadow_history` Largo fit | (this branch) |
 | 2026-09-03 | `get_spx_voice_feed` Largo fit (event cap + truncation flags) | (this branch) |
 | 2026-09-03 | L-3 empty-answer stopReason wiring (onStop → emptyAnswerFallback) | (this branch) |

@@ -1121,7 +1121,9 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
     case "get_helix_signal_outcomes": {
       const { helixSignalOutcomesForLargo } = await import("@/lib/largo/product-reads");
-      return helixSignalOutcomesForLargo(Number(input.limit ?? 50));
+      const { fitHelixSignalOutcomesForModel } = await import("@/lib/largo/helix-signal-outcomes-fit");
+      const raw = await helixSignalOutcomesForLargo(Number(input.limit ?? 50));
+      return fitHelixSignalOutcomesForModel(raw as Record<string, unknown>).fitted;
     }
     case "get_spx_pin": {
       const { spxPinForLargo } = await import("@/lib/largo/product-reads");
@@ -1170,12 +1172,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
 
     case "get_helix_derived": {
       const { helixDerivedForLargo } = await import("@/lib/largo/product-reads");
+      const { fitHelixDerivedForModel } = await import("@/lib/largo/helix-derived-fit");
       const derivedHours = input.since_hours ?? input.hours;
-      return helixDerivedForLargo(
+      const raw = await helixDerivedForLargo(
         input.ticker ? String(input.ticker) : null,
         Number(input.limit ?? 400),
         derivedHours != null ? Number(derivedHours) : undefined
       );
+      return fitHelixDerivedForModel(raw as Record<string, unknown>).fitted;
     }
 
     case "get_flow_brief": {
@@ -1185,15 +1189,17 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
 
     case "get_helix_tape_analytics": {
       const { helixTapeAnalyticsForLargo } = await import("@/lib/largo/product-reads");
+      const { fitHelixTapeAnalyticsForModel } = await import("@/lib/largo/helix-tape-analytics-fit");
       // `hours` is an accepted alias for since_hours, matching get_flow_tape's own contract —
       // the model reaches for either, and silently ignoring one answers a "right now" question
       // with a week of tape.
       const hours = input.since_hours ?? input.hours;
-      return helixTapeAnalyticsForLargo(
+      const raw = await helixTapeAnalyticsForLargo(
         input.ticker ? String(input.ticker) : null,
         input.limit != null ? Number(input.limit) : undefined,
         hours != null ? Number(hours) : undefined
       );
+      return fitHelixTapeAnalyticsForModel(raw as Record<string, unknown>).fitted;
     }
 
     case "get_thermal_compare": {
@@ -1206,7 +1212,9 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
 
     case "get_helix_thermal_compare": {
       const { helixThermalCompareForLargo } = await import("@/lib/largo/helix-thermal-compare");
-      return helixThermalCompareForLargo(input.ticker ? String(input.ticker) : "SPX");
+      const { fitHelixThermalCompareForModel } = await import("@/lib/largo/helix-thermal-compare-fit");
+      const raw = await helixThermalCompareForLargo(input.ticker ? String(input.ticker) : "SPX");
+      return fitHelixThermalCompareForModel(raw as Record<string, unknown>).fitted;
     }
 
     case "get_vector_analytics": {

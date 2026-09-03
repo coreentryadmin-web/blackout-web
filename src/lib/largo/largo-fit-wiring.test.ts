@@ -45,3 +45,11 @@ test("get_signal_log and get_spx_voice_feed fit at the Largo boundary", () => {
   assert.match(runTool, /fitSpxVoiceFeedForModel\(/);
   assert.match(runTool, /fitPlaybookShadowHistoryForModel\(/);
 });
+
+test("all four HELIX Largo tools fit at the model boundary", () => {
+  const runTool = readFileSync(join(ROOT, "src/lib/largo/run-tool.ts"), "utf8");
+  assert.match(runTool, /fitHelixTapeAnalyticsForModel\(/);
+  assert.match(runTool, /fitHelixDerivedForModel\(/);
+  assert.match(runTool, /fitHelixSignalOutcomesForModel\(/);
+  assert.match(runTool, /fitHelixThermalCompareForModel\(/);
+});
