@@ -1,0 +1,12 @@
+## 2026-09-03 — [FINDING, P4 docs/onboarding] `SDLC_AUTOMATION_PLAN.md` describes a superseded local-Windows-cron automation scheme, still linked from `ONBOARDING.md` with no deprecation notice — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | Follow-up on the 2026-09-02 OPEN write-up-only entry of the same name — re-verified during this cycle's sweep and confirmed unchanged, so picked up as the small, self-contained, already-fully-diagnosed fix it always was. |
+| **Root cause (unchanged from the original write-up)** | `SDLC_AUTOMATION_PLAN.md` describes a **local Windows-machine cron scheme** (`C:/Users/raidu/blackout-cron`, "Railway still deploys from `origin/main`") with no deprecation marker anywhere, while `ONBOARDING.md`'s own "Infra" doc list names it alongside three sibling docs (`CLOUDFLARE_CONFIG.md`, `CLOUDFLARE_SETUP.md`, `PGBOUNCER-SETUP.md`) that DO each self-flag as stale. Railway was fully decommissioned 2026-07-25 (CLAUDE.md); this repo's actual automation today runs as scheduled Claude Code Remote sessions against cloud environments (this DISCOVERY lane included), not a local Windows-machine cron clone. |
+| **Fix** | Added a `> **DEPRECATED**` header note, matching the exact pattern already used by `PGBOUNCER-SETUP.md` (`> **DEPRECATED** — Railway decommissioned 2026-07. ... Retained for historical reference.`): names what's stale (the local-machine cron target, the Railway deploy reference), names what replaced it (this repo's own cloud-based scheduled-trigger lanes, and workflow-based automation like the just-merged `.github/workflows/spx-platform-backlog-agent.yml`), and tells a reader not to stand up the described local machine/cron. No content below the header was rewritten — same "retained for historical reference" posture as the sibling docs, not a rewrite of the plan itself. |
+| **Blast radius** | Single file, header-only addition. `ONBOARDING.md`'s own pointer to this doc is unchanged — the deprecation notice now lives where a reader following that pointer will see it immediately, the same fix shape as the original `ONBOARDING.md` Railway fix (2026-08-30) and the `CLOUDFLARE_CONFIG.md`/`PGBOUNCER-SETUP.md` precedents. |
+| **Regression guard** | None — this is a documentation-only prose fix with no source code or logic to test, matching the precedent set by the sibling `ONBOARDING.md`/`PGBOUNCER-SETUP.md` fixes, neither of which added a test either. |
+| **Gates** | N/A — no source files changed. |
