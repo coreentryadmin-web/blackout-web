@@ -71,8 +71,8 @@ const CLAIM_SITES: ReadonlyArray<{ file: string; label: string; pattern: RegExp 
   },
   {
     file: "src/lib/largo/core/tool-guard.ts",
-    label: "entitlement is armed but inert",
-    pattern: /every one of the (\d{2,4}) catalogued capabilities declares `premium`/,
+    label: "entitlement mix — premium vs admin",
+    pattern: /(\d{2,4}) catalogued capabilities declare an entitlement/,
   },
   {
     file: "src/lib/largo/core/tool-guard.ts",
@@ -91,13 +91,8 @@ const CLAIM_SITES: ReadonlyArray<{ file: string; label: string; pattern: RegExp 
   },
   {
     file: "src/lib/largo/core/tool-guard.test.ts",
-    label: "synthetic catalog rationale",
-    pattern: /declares `premium` on all (\d{2,4}) of its capabilities today/,
-  },
-  {
-    file: "src/lib/largo/core/tool-guard.test.ts",
-    label: "honest-state pin",
-    pattern: /Every one of the (\d{2,4}) catalogued capabilities declares `premium`/,
+    label: "admin capability pin",
+    pattern: /(\d{2,4}) catalogued capabilities — one declares `admin`/,
   },
   {
     file: "scripts/audit/largo-truncation-probe.mjs",
@@ -117,7 +112,7 @@ const CLAIM_SITES: ReadonlyArray<{ file: string; label: string; pattern: RegExp 
   {
     file: "docs/agents/briefs/largo.md",
     label: "charter — registry row",
-    pattern: /capability-registry\.ts` — \d+ lines, (\d{2,4}) tools/,
+    pattern: /capability-registry\.ts` — (\d{2,4}) tools/,
   },
   {
     file: "docs/agents/briefs/largo.md",

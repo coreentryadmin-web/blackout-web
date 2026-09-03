@@ -43,7 +43,7 @@ const JSON_OUT = process.argv.includes("--json");
 const BASE = arg("base", "https://blackouttrades.com").replace(/\/$/, "");
 
 /**
- * Lane tools, with the args each needs. Deliberately the LANES' list rather than all 135 — a
+ * Lane tools, with the args each needs. Deliberately the LANES' list rather than all 137 — a
  * lane's owner is better placed to say which of theirs carry enough data to be at risk, and
  * `--tools=` lets them point this at their own subset.
  *

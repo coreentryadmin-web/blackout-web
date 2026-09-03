@@ -17,7 +17,7 @@
  * allowlist of **RESTRICTED** tools, not of permitted ones. When this shipped only 49 of the
  * then-116 tools were catalogued, and failing closed on the uncatalogued 67 would have silently disabled
  * most of Largo on the spot — with a symptom, "Largo got worse at everything", nearly impossible to
- * trace back here. The catalog has since caught up: 135 of 135 today, and `registry.test.ts` holds
+ * trace back here. The catalog has since caught up: 137 of 137 today, and `registry.test.ts` holds
  * the 1:1. But the rule does NOT rest on that number, and must not be re-argued from it — a gap
  * reopens the moment anyone adds a tool ahead of its capability, and that gap must not be able to
  * take Largo down with it. So a tool is denied only when the catalog explicitly says `admin` and
@@ -74,7 +74,7 @@ export type ToolGuardViewer = {
  * The entitlement the catalog declares for a tool, or null when the tool is uncatalogued.
  *
  * `catalog` is injectable ONLY so the enforcement path can be tested against a synthetic catalog.
- * As of this writing 136 of 137 catalogued capabilities declare `premium` and one declares `admin`;
+ * As of this writing 137 catalogued capabilities declare an entitlement (`premium` or `admin`);
  * against the real registry this mechanism restricts admin-only tools; premium tools are open to all members.
  */
 export function declaredEntitlement(
@@ -113,7 +113,7 @@ export function checkToolEntitlement(
 
 export type GuardedRunnerOptions = {
   viewer: ToolGuardViewer;
-  /** The real executor. Injected so this module stays free of the 135-tool dependency graph. */
+  /** The real executor. Injected so this module stays free of the 137-tool dependency graph. */
   execute: (name: string, input: Record<string, unknown>, userId: string) => Promise<unknown>;
   /** Tools actually CALLED. Denied tools are excluded — see the note in the runner. */
   toolsUsed: string[];

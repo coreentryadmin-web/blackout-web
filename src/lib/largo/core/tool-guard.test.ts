@@ -53,6 +53,7 @@ test("the fixtures this file depends on actually exist", () => {
 });
 
 test("the real registry admin capabilities are pinned — enforcement is live for them", () => {
+  // 137 catalogued capabilities — one declares `admin`, the rest `premium`.
   const admin = LARGO_CAPABILITIES.filter((c) => c.entitlement === "admin").map((c) => c.id);
   assert.deepEqual(
     admin,
