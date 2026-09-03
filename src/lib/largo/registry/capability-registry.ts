@@ -301,7 +301,7 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     product: "SPX_SLAYER",
     tool: "get_playbook_promotion_evidence",
     answers: "What is the out-of-sample promotion evidence for named SPX playbooks?",
-    temporal: "historical",
+    temporal: "point_in_time",
     freshness: "historical",
     entities: ["session"],
     entitlement: "admin",
