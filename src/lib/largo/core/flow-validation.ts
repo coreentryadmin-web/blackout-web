@@ -41,6 +41,7 @@
  *
  * PURE AND TOTAL: no IO, no clock (callers pass `nowMs`), no throw.
  */
+import { signalWindowAgeMs } from "@/features/helix/lib/helix-signal-detection";
 
 export type FlowIssueCode =
   | "strike_missing"
@@ -49,7 +50,8 @@ export type FlowIssueCode =
   | "expired"
   | "premium_is_intrinsic"
   | "strike_implausible"
-  | "stale";
+  | "stale"
+  | "future_dated";
 
 export type FlowIssueSeverity =
   /** Keep it everywhere; just say so. */
@@ -188,12 +190,26 @@ export function validatePrint<T extends FlowPrint>(row: T, spot: number | null, 
 
   if (row.alerted_at) {
     const t = Date.parse(row.alerted_at);
-    if (Number.isFinite(t) && nowMs - t > STALE_PRINT_MS) {
-      issues.push({
-        code: "stale",
-        severity: "note",
-        message: `printed ${Math.round((nowMs - t) / 60000)}m ago`,
-      });
+    if (Number.isFinite(t)) {
+      // signalWindowAgeMs rejects a print timestamped ahead of `now` (age < -tolerance -> null)
+      // instead of letting a negative `nowMs - t` slip under `> STALE_PRINT_MS` and silently pass a
+      // clock-skewed/mis-stamped print with no timing note at all. A genuinely unparseable
+      // alerted_at (t is NaN) is left exactly as before — silently skipped, not a new "future_dated"
+      // false positive.
+      const age = signalWindowAgeMs(t, nowMs);
+      if (age == null) {
+        issues.push({
+          code: "future_dated",
+          severity: "note",
+          message: "alerted_at is ahead of now — timestamp cannot be trusted",
+        });
+      } else if (age > STALE_PRINT_MS) {
+        issues.push({
+          code: "stale",
+          severity: "note",
+          message: `printed ${Math.round(age / 60000)}m ago`,
+        });
+      }
     }
   }
 

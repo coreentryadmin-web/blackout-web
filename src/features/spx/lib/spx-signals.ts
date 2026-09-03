@@ -83,6 +83,36 @@ function nearestWall(
  * was rewritten to fix (see that file's header for the measured 16.8% sign-flip rate) — this sweep
  * factor read the same `desk.spx_flows` array but was never updated to match.
  */
+/**
+ * SPX/SPXW/SPY sweeps expiring today, alerted within `windowMs` of `nowMs` — the shared filter
+ * behind `scoreHelixFlowAlignment` below AND `spx-signal-observe/route.ts`'s own independent copy
+ * of this exact loop (that route's own comment: "same logic as scoreHelixFlowAlignment"). Kept as
+ * one function so the two call sites can't drift out of sync on this filter again, the way they
+ * already had on the future-print guard (FINDINGS 2026-09-02).
+ */
+export function matchingHelixSweepFlows(
+  flows: readonly SpxFlowBrief[] | null | undefined,
+  todayYmd: string,
+  nowMs: number,
+  windowMs: number
+): SpxFlowBrief[] {
+  const matching: SpxFlowBrief[] = [];
+  for (const f of flows ?? []) {
+    const ticker = (f.ticker ?? "").toUpperCase();
+    if (ticker !== "SPX" && ticker !== "SPXW" && ticker !== "SPY") continue;
+    if (!f.has_sweep) continue;
+    if (f.expiry !== todayYmd) continue;
+    const alertedAtRaw = f.alerted_at ? new Date(f.alerted_at).getTime() : NaN;
+    // signalWindowAgeMs rejects a future-dated print (age < -tolerance -> null) instead of letting
+    // a negative `nowMs - alertedAt` slip under `> windowMs` and count a clock-skewed/mis-stamped
+    // UW flow alert as a fresh sweep.
+    const age = signalWindowAgeMs(Number.isFinite(alertedAtRaw) ? alertedAtRaw : null, nowMs);
+    if (age == null || age > windowMs) continue;
+    matching.push(f);
+  }
+  return matching;
+}
+
 function scoreHelixFlowAlignment(
   desk: SpxDeskPayload,
   factors: SpxSignalFactor[]
@@ -95,20 +125,7 @@ function scoreHelixFlowAlignment(
   // Today in ET — expiry strings are YYYY-MM-DD (UTC date would flip at 7 PM ET)
   const todayYmd = todayEt(new Date(nowMs));
 
-  const matching: SpxFlowBrief[] = [];
-  for (const f of flows) {
-    const ticker = (f.ticker ?? "").toUpperCase();
-    if (ticker !== "SPX" && ticker !== "SPXW" && ticker !== "SPY") continue;
-    if (!f.has_sweep) continue;
-    if (f.expiry !== todayYmd) continue;
-    const alertedAtRaw = f.alerted_at ? new Date(f.alerted_at).getTime() : NaN;
-    // signalWindowAgeMs rejects a future-dated print (age < -tolerance -> null) instead of letting
-    // a negative `nowMs - alertedAt` slip under `> thirtyMinMs` and count a clock-skewed/mis-stamped
-    // UW flow alert toward the bull/bear premium skew that feeds this scoring factor.
-    const age = signalWindowAgeMs(Number.isFinite(alertedAtRaw) ? alertedAtRaw : null, nowMs);
-    if (age == null || age > thirtyMinMs) continue;
-    matching.push(f);
-  }
+  const matching = matchingHelixSweepFlows(flows, todayYmd, nowMs, thirtyMinMs);
 
   const { bull: bullPrem, bear: bearPrem } = spxFlowSkew(matching);
 

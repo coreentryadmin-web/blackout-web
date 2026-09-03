@@ -14,7 +14,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guards";
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
-import { computeSpxConfluence } from "@/features/spx/lib/spx-signals";
+import { computeSpxConfluence, matchingHelixSweepFlows } from "@/features/spx/lib/spx-signals";
 import { etMinutes, etClock } from "@/features/spx/lib/spx-play-session-time";
 import {
   initSpxSignalTables,
@@ -102,7 +102,10 @@ export async function GET(req: NextRequest) {
         helix_ratio: null as number | null,
       };
 
-      // Extract HELIX premiums from today's sweeps (same logic as scoreHelixFlowAlignment)
+      // Extract HELIX premiums from today's sweeps — shares its filter with
+      // scoreHelixFlowAlignment via matchingHelixSweepFlows (see that function's doc comment for
+      // why: this route used to reimplement the same loop inline and carried its own independent
+      // copy of a future-print guard gap, FINDINGS 2026-09-02).
       if (merged.spx_flows?.length) {
         const nowMs = Date.now();
         const thirtyMinMs = 30 * 60 * 1000;
@@ -111,12 +114,7 @@ export async function GET(req: NextRequest) {
         }).format(new Date(nowMs));
         let callPrem = 0;
         let putPrem = 0;
-        for (const f of merged.spx_flows) {
-          const ticker = (f.ticker ?? "").toUpperCase();
-          if (ticker !== "SPX" && ticker !== "SPXW" && ticker !== "SPY") continue;
-          if (!f.has_sweep || f.expiry !== todayYmd) continue;
-          const alertedAt = f.alerted_at ? new Date(f.alerted_at).getTime() : 0;
-          if (!alertedAt || nowMs - alertedAt > thirtyMinMs) continue;
+        for (const f of matchingHelixSweepFlows(merged.spx_flows, todayYmd, nowMs, thirtyMinMs)) {
           const t = (f.option_type ?? "").toUpperCase();
           if (t.startsWith("C")) callPrem += f.premium;
           else if (t.startsWith("P")) putPrem += f.premium;
