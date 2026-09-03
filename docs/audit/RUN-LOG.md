@@ -11,6 +11,22 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-03 (13:35 UTC / Thu 2026-09-03 09:35 ET) — [SEO] RTH window validation: CLS + gamma-snapshot live data check
+
+**Severity.** — (no defect found)
+
+Checked the clock myself (`TZ=America/New_York date` → Thu 09:34 ET) — inside 09:30–13:00 ET on a
+trading day. Purged CF edge HTML (`/`, `/tools/gamma-snapshot`) before measuring.
+
+**CLS**: homepage desktop 1440×900, post-purge — **0 → GOOD** (68 assets routed ok). #2453 holds.
+
+**`/api/public/gex-snapshot?ticker=SPX`**: polled 3× at 6s intervals — `session: OPEN`, spot
+ticking real values (7705.94 → 7707.18 → 7707.89), `flip` present and moving (7766.54 → 7759.18 →
+7761.06), `asof` advancing, `degraded: false`. 5s refresh confirmed live, not a frozen snapshot.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
 ## 2026-09-03 (12:19 UTC) — [SEO] Lane heartbeat: #2453/#2448 hold, no new opportunity, 0 open PRs
 
 **Severity.** — (no defect found)
