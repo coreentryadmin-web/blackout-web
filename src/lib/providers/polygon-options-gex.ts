@@ -481,6 +481,30 @@ export type GexHeatmap = {
   chain_truncated?: boolean;
   asof: string;
   /**
+   * Cross-product compute identity (added 2026-09-03). `fetchGexHeatmap` is already the ONE
+   * shared cache-reader every product (public snapshot, SPX Slayer, Vector, Thermal) sits on top
+   * of — they were never independent computations — but nothing on the payload let a consumer
+   * PROVE two reads came from the same build without diffing every field by hand. These five are
+   * additive and OPTIONAL (omitted on payloads built before this field existed, e.g. anything
+   * still sitting in a live cache entry at deploy time):
+   *  - `calculation_id`: opaque `${root}:${calculatedAtEpochMs}` — two reads with the same id are
+   *    byte-identical (the same cache entry); different ids mean a rebuild happened between reads.
+   *  - `calculated_at`: same instant as `asof` (kept for back-compat), exposed under the name the
+   *    cross-product contract asked for.
+   *  - `spot_timestamp` / `chain_timestamp`: when the spot price and the options chain were each
+   *    actually read — genuinely distinct instants (`resolveSpotSnapshot` completes before
+   *    `fetchHeatmapBand` does), so a caller doing basis/regime math off spot vs a chain-derived
+   *    wall can see the true skew between them instead of assuming both came from `asof`. Omitted
+   *    (not fabricated) on the empty/degraded builds that don't resolve a fresh spot or chain.
+   *  - `expires_at`: `calculated_at` + the TTL this build was cached under — when a consumer
+   *    should stop trusting this read as "current" without a re-fetch.
+   */
+  calculation_id?: string;
+  calculated_at?: string;
+  spot_timestamp?: string;
+  chain_timestamp?: string;
+  expires_at?: string;
+  /**
    * Ascending expiry axis (SHARED by all metrics): the ~8 NEAREST expirations (dailies/weeklies)
    * FOLLOWED BY a bounded set of far-dated standard monthly / quarterly OpEx columns (3rd-Friday,
    * out ~6 months) — the strikes where the dominant dealer-gamma walls park. The near-term block is
@@ -3004,11 +3028,20 @@ async function buildGexHeatmapFromUwStrikeExposures(
     const charmZero = computeZeroGammaFlip(charmStrikeTotals, spot);
     const charmRegime = computeCharmRegime(totalCharm);
 
+    const calculatedAt = new Date(now).toISOString();
     const heatmap: GexHeatmap = {
       underlying: root,
       spot,
       change_pct: changePct,
-      asof: new Date(now).toISOString(),
+      asof: calculatedAt,
+      calculation_id: `${root}:${now}`,
+      calculated_at: calculatedAt,
+      // spot was resolved by the caller just before this fallback ran — `now` is the closest
+      // instant this function has to it. chain_timestamp is this fallback's OWN read (the UW
+      // strike-exposures fetch above), a genuinely later instant.
+      spot_timestamp: calculatedAt,
+      chain_timestamp: new Date().toISOString(),
+      expires_at: new Date(now + ttlMs).toISOString(),
       expiries: [today],
       near_term_expiries: [today],
       strikes,
@@ -3105,6 +3138,10 @@ async function buildGexHeatmapUncached(
   const snap = await resolveSpotSnapshot(optionsRoot);
   const spot = snap?.price ?? 0;
   const spotSource = snap?.source;
+  // Captured the instant the spot read actually completed — genuinely earlier than the chain
+  // read below, and both earlier than `asof`/`calculated_at` (stamped once the whole build
+  // finishes). See the calculation-envelope comment on GexHeatmap for why these are separate.
+  const spotTimestamp = new Date().toISOString();
   // Graceful empty: no spot (thin / unknown / dead name) → valid empty payload, NOT a throw.
   // CRITICAL: cache this empty result with the SAME ctx the sibling empty paths pass (below),
   // otherwise a dead/unknown ticker re-runs resolveSpotSnapshot — a fresh Polygon spot fetch —
@@ -3136,6 +3173,7 @@ async function buildGexHeatmapUncached(
   ]);
   const contracts = chainResult.contracts;
   const chainTruncated = chainResult.truncated;
+  const chainTimestamp = new Date().toISOString();
   if (!contracts.length) {
     console.warn(
       `[gex-heatmap] 0 contracts for ${optionsRoot} @ ${spot} via ${hostOf(BASE)} — trying UW strike-exposure fallback.`
@@ -3653,11 +3691,18 @@ async function buildGexHeatmapUncached(
     historyContext = undefined;
   }
 
+  const calculatedAtDate = new Date();
+  const calculatedAt = calculatedAtDate.toISOString();
   const heatmap: GexHeatmap = {
     underlying: root,
     spot,
     change_pct: changePct,
-    asof: new Date().toISOString(),
+    asof: calculatedAt,
+    calculation_id: `${root}:${calculatedAtDate.getTime()}`,
+    calculated_at: calculatedAt,
+    spot_timestamp: spotTimestamp,
+    chain_timestamp: chainTimestamp,
+    expires_at: new Date(calculatedAtDate.getTime() + ttlMs).toISOString(),
     expiries,
     near_term_expiries: nearKeep,
     strikes: finalStrikes,
@@ -3757,11 +3802,17 @@ function emptyHeatmap(
   underlying: string,
   ctx?: { spot?: number; changePct?: number; now?: number; cacheKey?: string; ttlMs?: number; spotSource?: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic" }
 ): GexHeatmap {
+  const calculatedAtMs = ctx?.now ?? Date.now();
+  const calculatedAt = new Date(calculatedAtMs).toISOString();
   const heatmap: GexHeatmap = {
     underlying,
     spot: ctx?.spot ?? 0,
     change_pct: ctx?.changePct ?? 0,
-    asof: new Date().toISOString(),
+    asof: calculatedAt,
+    calculation_id: `${underlying}:${calculatedAtMs}`,
+    calculated_at: calculatedAt,
+    // No real spot/chain read backs this empty payload — omitted rather than fabricated.
+    expires_at: ctx?.ttlMs != null ? new Date(calculatedAtMs + ctx.ttlMs).toISOString() : undefined,
     expiries: [],
     near_term_expiries: [],
     strikes: [],

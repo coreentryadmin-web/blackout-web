@@ -47,6 +47,22 @@ export type GexPositioning = {
   /** ISO timestamp the underlying matrix was computed. UTC — see the ET fields below. */
   asof: string;
   /**
+   * Cross-product compute identity, passed through verbatim from the underlying `GexHeatmap`
+   * (see that type's own comment for the full rationale). Two `GexPositioning` reads — for
+   * SPX Slayer, Vector, Thermal, or the public Gamma Snapshot — with the SAME `calculation_id`
+   * are reasoning from the literally identical matrix build; this is how a consumer proves that
+   * instead of diffing every field. Omitted only on a matrix built before this field existed.
+   */
+  calculation_id?: string;
+  /** Same instant as `asof`, exposed under the cross-product contract's requested name. */
+  calculated_at?: string;
+  /** When the spot price feeding this matrix was read — may predate `chain_timestamp`. */
+  spot_timestamp?: string;
+  /** When the options chain feeding this matrix was read. */
+  chain_timestamp?: string;
+  /** When a consumer should stop treating this read as current without a re-fetch. */
+  expires_at?: string;
+  /**
    * WHEN, in the terms a consumer can actually reason about.
    *
    * `asof` alone was this contract's only time signal, and it is a UTC instant describing the
@@ -363,6 +379,11 @@ export function gexPositioningFromHeatmap(
     spot,
     change_pct: hm.change_pct,
     asof: hm.asof,
+    calculation_id: hm.calculation_id,
+    calculated_at: hm.calculated_at,
+    spot_timestamp: hm.spot_timestamp,
+    chain_timestamp: hm.chain_timestamp,
+    expires_at: hm.expires_at,
     as_of_et: session.as_of_et,
     session_date: session.session_date,
     market_session: session.market_session,

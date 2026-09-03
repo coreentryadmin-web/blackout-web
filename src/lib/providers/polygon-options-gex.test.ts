@@ -134,6 +134,29 @@ test("SPX matrix build applies UW 0DTE overlay before cache write (#2503)", () =
   assert.match(src, /markSpxOdteOverlayFailed\(pruned, "overlay_timeout"\)/);
 });
 
+// Cross-product compute identity (2026-09-03) — calculation_id/calculated_at/spot_timestamp/
+// chain_timestamp/expires_at must be stamped at EVERY GexHeatmap construction site (the main
+// happy-path build, the UW strike-exposure fallback, and emptyHeatmap), not just the common
+// case — a matrix that fell back to a degraded path is exactly when a consumer most needs to
+// know it's looking at a different compute than its sibling products. Source-text, matching
+// this file's existing convention for asserting internal (non-exported) build-path wiring.
+test("every GexHeatmap construction site stamps the cross-product calculation envelope", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  const matches = src.match(/calculation_id: `\$\{[a-zA-Z]+\}:\$\{[a-zA-Z.()]+\}`,/g) ?? [];
+  assert.equal(
+    matches.length,
+    3,
+    "expected calculation_id stamped at all 3 sites: main build, UW fallback, emptyHeatmap"
+  );
+  assert.match(src, /const spotTimestamp = new Date\(\)\.toISOString\(\);/);
+  assert.match(src, /const chainTimestamp = new Date\(\)\.toISOString\(\);/);
+  assert.match(src, /spot_timestamp: spotTimestamp,/);
+  assert.match(src, /chain_timestamp: chainTimestamp,/);
+});
+
 test("gex heatmap Redis TTL covers SWR window (not 5s matrix TTL only)", () => {
   const src = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),

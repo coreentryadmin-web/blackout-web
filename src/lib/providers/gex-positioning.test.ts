@@ -117,6 +117,41 @@ test("gexPositioningFromHeatmap: gex_king_strike is the argmax |net-gamma| strik
   assert.equal(p!.gex_king_strike, 95);
 });
 
+// Cross-product compute identity (added 2026-09-03, following an operator request for one
+// canonical payload SPX Slayer/Thermal/Vector/Largo can use to prove they're reasoning from the
+// same positioning state). gexPositioningFromHeatmap must pass calculation_id/calculated_at/
+// spot_timestamp/chain_timestamp/expires_at through from the underlying GexHeatmap VERBATIM —
+// it must never re-derive or re-stamp them, or two products reading the same matrix could get
+// different values and the whole point (provable sameness) breaks.
+test("gexPositioningFromHeatmap: passes calculation-envelope fields through verbatim from the heatmap", () => {
+  const hm = makeHeatmap({ "100": 40, "95": -70 });
+  hm.calculation_id = "TEST:1234567890";
+  hm.calculated_at = "2026-09-03T05:00:00.000Z";
+  hm.spot_timestamp = "2026-09-03T04:59:59.500Z";
+  hm.chain_timestamp = "2026-09-03T04:59:59.800Z";
+  hm.expires_at = "2026-09-03T05:00:05.000Z";
+
+  const p = gexPositioningFromHeatmap("TEST", hm);
+  assert.ok(p);
+  assert.equal(p!.calculation_id, "TEST:1234567890");
+  assert.equal(p!.calculated_at, "2026-09-03T05:00:00.000Z");
+  assert.equal(p!.spot_timestamp, "2026-09-03T04:59:59.500Z");
+  assert.equal(p!.chain_timestamp, "2026-09-03T04:59:59.800Z");
+  assert.equal(p!.expires_at, "2026-09-03T05:00:05.000Z");
+});
+
+test("gexPositioningFromHeatmap: omits calculation-envelope fields when the heatmap predates them", () => {
+  // Older cached payloads (built before this field existed) simply don't have these keys —
+  // the mapper must not fabricate them.
+  const p = gexPositioningFromHeatmap("TEST", makeHeatmap({ "100": 40, "95": -70 }));
+  assert.ok(p);
+  assert.equal(p!.calculation_id, undefined);
+  assert.equal(p!.calculated_at, undefined);
+  assert.equal(p!.spot_timestamp, undefined);
+  assert.equal(p!.chain_timestamp, undefined);
+  assert.equal(p!.expires_at, undefined);
+});
+
 test("gexPositioningFromHeatmap: gex_king_strike is null when strike_totals has no entries", () => {
   // hm.strikes must stay non-empty so gexPositioningFromHeatmap doesn't treat the whole
   // matrix as cold (that's the SEPARATE strikes.length===0 guard, tested by the cold-matrix

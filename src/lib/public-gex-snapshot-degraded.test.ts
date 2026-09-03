@@ -8,6 +8,11 @@ const state = {
     change_pct: 0.5,
     asof: "2026-09-01T20:00:00.000Z",
     spot_source: "rest" as const,
+    calculation_id: "SPX:1756756800000",
+    calculated_at: "2026-09-01T20:00:00.000Z",
+    spot_timestamp: "2026-09-01T19:59:59.500Z",
+    chain_timestamp: "2026-09-01T19:59:59.800Z",
+    expires_at: "2026-09-01T20:00:05.000Z",
     gex: {
       call_wall: 5600,
       put_wall: 5400,
@@ -38,6 +43,22 @@ mock.module("./providers/polygon-options-gex", {
 });
 
 const mod = () => import("./public-gex-snapshot.ts");
+
+// Cross-product compute identity (2026-09-03) — the free public snapshot is one of the two
+// payloads the operator explicitly named as needing to prove sameness with SPX Slayer's paid
+// matrix. buildSnapshotFromHeatmap must pass the envelope through verbatim on a live read.
+test("buildPublicGexSnapshot passes the calculation-envelope fields through on a live read", async () => {
+  const { buildPublicGexSnapshot } = await mod();
+  state.cache.clear();
+  state.failLive = false;
+
+  const live = await buildPublicGexSnapshot("SPX");
+  assert.equal(live.calculation_id, "SPX:1756756800000");
+  assert.equal(live.calculated_at, "2026-09-01T20:00:00.000Z");
+  assert.equal(live.spot_timestamp, "2026-09-01T19:59:59.500Z");
+  assert.equal(live.chain_timestamp, "2026-09-01T19:59:59.800Z");
+  assert.equal(live.expires_at, "2026-09-01T20:00:05.000Z");
+});
 
 test("buildPublicGexSnapshot serves last-good with degraded badge when live fetch returns null", async () => {
   const { buildPublicGexSnapshot } = await mod();

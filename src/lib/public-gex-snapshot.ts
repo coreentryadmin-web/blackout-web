@@ -213,6 +213,11 @@ function buildSnapshotFromHeatmap(
     ),
     ...(heatmap.spot_source !== undefined ? { spot_source: heatmap.spot_source } : {}),
     ...(heatmap.chain_truncated ? { chain_truncated: true } : {}),
+    ...(heatmap.calculation_id !== undefined ? { calculation_id: heatmap.calculation_id } : {}),
+    ...(heatmap.calculated_at !== undefined ? { calculated_at: heatmap.calculated_at } : {}),
+    ...(heatmap.spot_timestamp !== undefined ? { spot_timestamp: heatmap.spot_timestamp } : {}),
+    ...(heatmap.chain_timestamp !== undefined ? { chain_timestamp: heatmap.chain_timestamp } : {}),
+    ...(heatmap.expires_at !== undefined ? { expires_at: heatmap.expires_at } : {}),
     degraded: false,
     degraded_note: null,
   };

@@ -55,6 +55,18 @@ export type PublicGexSnapshot = {
   degraded?: boolean;
   /** Human-readable note for degraded payloads — shown in the UI badge. */
   degraded_note?: string | null;
+  /**
+   * Cross-product compute identity, passed through verbatim from the underlying `GexHeatmap` /
+   * `GexPositioning` (same matrix build — see those types' own comments). A `calculation_id`
+   * matching what SPX Slayer, Vector, or Thermal are reading for the same ticker means this free
+   * snapshot and that paid surface are reasoning from the literally identical positioning state.
+   * Omitted on a degraded/last-known-good or warming-placeholder read (nothing was computed).
+   */
+  calculation_id?: string;
+  calculated_at?: string;
+  spot_timestamp?: string;
+  chain_timestamp?: string;
+  expires_at?: string;
 };
 
 const ALLOWED_TICKERS = ["SPX", "SPY", "QQQ"] as const;
