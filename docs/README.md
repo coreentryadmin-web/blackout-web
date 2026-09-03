@@ -35,7 +35,7 @@ History: consolidated 2026-06-24. The June 2026 audit pile was removed from the 
 |---|---|
 | [`HEATMAP_DATA_CONTRACT.md`](HEATMAP_DATA_CONTRACT.md) | Canonical GEX/VEX dealer-positioning data contract. |
 | [`NIGHTHAWK_GROUNDING.md`](NIGHTHAWK_GROUNDING.md) | Night Hawk edition grounding rules. |
-| [`NIGHTS_WATCH.md`](NIGHTS_WATCH.md) | Night's Watch position manager. |
+| [`audit/NIGHTHAWK-MAP.md`](audit/NIGHTHAWK-MAP.md) | Night Hawk architecture map. (`NIGHTS_WATCH.md` no longer exists — that product was absorbed into Night Hawk and removed.) |
 
 ### Infrastructure & ops
 | File | What it is |
