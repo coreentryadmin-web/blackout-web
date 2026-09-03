@@ -282,7 +282,10 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
         .map(([k, v]) => ({ label: FB_LABELS[k] ?? k, points: v as number }));
 
   const gate = setup?.gate ?? null;
-  const gateBlocksRaw = gate?.verdict === "BLOCKED" && Array.isArray(gate.blocks) ? gate.blocks : [];
+  const gateBlocksFromGate =
+    gate?.verdict === "BLOCKED" && Array.isArray(gate.blocks) ? gate.blocks : [];
+  const gateBlocksRaw =
+    Array.isArray(src.gate_blocks) && src.gate_blocks.length > 0 ? src.gate_blocks : gateBlocksFromGate;
   const gateBlocks = gateBlocksRaw
     .map((b) => {
       const row = b as { code?: string; reason?: string; unlock_et?: string | null; threshold?: number | null };
