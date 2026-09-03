@@ -45,9 +45,9 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 
 ## P2 — convergence / polish
 
-- [ ] Matrix lens UI state — expose active GEX/VEX lens to Largo via desk convergence payload
-- [ ] Focus mode / iOS panel state — document as client-only (no false claims in Largo)
-- [ ] Re-enable SPX RTH all-day agent schedule with **summary-only** agent output (no OPEN-ISSUES PR spam)
+- [x] Matrix lens UI state — expose active GEX/VEX lens to Largo via desk convergence payload
+- [x] Focus mode / iOS panel state — document as client-only (no false claims in Largo)
+- [x] Re-enable SPX RTH all-day agent schedule with **summary-only** agent output (no OPEN-ISSUES PR spam)
 
 ---
 
@@ -55,6 +55,8 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 
 | Date | Item | PR |
 |------|------|-----|
+| 2026-09-03 | P2 re-enable SPX RTH all-day agent schedule (summary-only verify) | (this branch) |
+| 2026-09-03 | P2 matrix lens + focus/iOS client-only UI facts in desk convergence | (this branch) |
 | 2026-09-03 | P1 discord alert history + playbook promotion evidence Largo tools | (this branch) |
 | 2026-09-03 | P0 confidence sanitize + voice feed play/bias parity | (this branch) |
 | 2026-09-03 | Gate blockers collapsed strip + lane freshness + shadow history tool + backlog pipeline | #3381 |

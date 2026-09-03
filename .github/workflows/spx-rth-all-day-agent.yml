@@ -1,12 +1,30 @@
 # SPX Slayer — all-day RTH Cloud Agent (verify + post-close fix)
 #
-# SCHEDULE DISABLED 2026-08-06 — hourly verify agents were opening docs-only PRs
-# (OPEN-ISSUES / FINDINGS spam). Manual only via workflow_dispatch until re-enabled
-# with a non-repo logging path. Runbook: docs/ops/SPX-RTH-ALL-DAY-AGENT.md
+# Re-enabled 2026-09-03 — verify passes are summary-only (no docs/ PR spam).
+# Fix pass still opens code PRs post-close. Runbook: docs/ops/SPX-RTH-ALL-DAY-AGENT.md
 
 name: SPX RTH all-day agent
 
 on:
+  schedule:
+    # --- VERIFY passes (ET) — dual cron covers EDT + EST ---
+    - cron: "28 13 * * 1-5"
+    - cron: "28 14 * * 1-5"
+    - cron: "40 13 * * 1-5"
+    - cron: "40 14 * * 1-5"
+    - cron: "0 15 * * 1-5"
+    - cron: "0 16 * * 1-5"
+    - cron: "30 16 * * 1-5"
+    - cron: "30 17 * * 1-5"
+    - cron: "0 18 * * 1-5"
+    - cron: "0 19 * * 1-5"
+    - cron: "30 19 * * 1-5"
+    - cron: "30 20 * * 1-5"
+    - cron: "55 19 * * 1-5"
+    - cron: "55 20 * * 1-5"
+    # --- FIX pass: 16:05 ET post-close (~1:05 PM PT) ---
+    - cron: "5 20 * * 1-5"
+    - cron: "5 21 * * 1-5"
   workflow_dispatch:
     inputs:
       mode:
@@ -53,7 +71,7 @@ jobs:
             PROMPT='SPX Slayer post-close fix agent (~1:05 PM PT). Read docs/ops/SPX-RTH-ALL-DAY-AGENT.md Section Step 6 completely. Run npm run validate:spx-rth -- --phase=post-close AND npm run validate:spx-e2e. Fix EVERY SPX finding from today: every matrix cell GEX/VEX, desk/pulse/flow cache lanes, play confirmations, Thermal/HELIX/Largo/Grid/0DTE/BIE integration. Branch fix/<slug>, test, PR with CODE fixes only, merge, validate:deploy. Repeat until validate:spx-rth AND validate:spx-e2e are zero FAIL. Do NOT open PRs that only touch docs/. Do NOT ask the user.'
             AUTO_PR=true
           else
-            PROMPT='SPX Slayer RTH verify (manual dispatch). Read docs/ops/SPX-RTH-ALL-DAY-AGENT.md verify mode. Run npm run validate:spx-rth then npm run validate:spx-e2e. Report PASS/FAIL in the agent summary ONLY. Do NOT commit, push, or open PRs for verify passes — especially no docs/ edits (OPEN-ISSUES, FINDINGS, audit logs). Fix P0 code bugs only (fix/<slug> PR with src/ changes). Do NOT ask the user.'
+            PROMPT='SPX Slayer RTH verify (scheduled). Read docs/ops/SPX-RTH-ALL-DAY-AGENT.md verify mode. Run npm run validate:spx-rth then npm run validate:spx-e2e. Report PASS/FAIL counts and top failures in the agent summary ONLY — no repo commits on green or yellow verify passes. Do NOT edit docs/api-audit/OPEN-ISSUES.md, docs/audit/FINDINGS.md, or any docs/ path during verify. Fix P0 code bugs only (fix/<slug> PR with src/ changes, autoCreatePR allowed for that case). Do NOT ask the user.'
             AUTO_PR=false
           fi
           export PROMPT

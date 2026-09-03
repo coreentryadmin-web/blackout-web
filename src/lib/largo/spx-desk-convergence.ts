@@ -13,6 +13,7 @@ import {
   slayerSuggestedBias,
   vectorSuggestedBias,
 } from "@/lib/largo/spx-desk-convergence-core";
+import { spxMatrixUiStateForLargo } from "@/lib/largo/spx-matrix-ui-for-largo";
 
 export type { DeskAlignment, DeskPlayBias } from "@/lib/largo/spx-desk-convergence-core";
 export { computeDeskAlignment, slayerSuggestedBias, vectorSuggestedBias } from "@/lib/largo/spx-desk-convergence-core";
@@ -77,10 +78,12 @@ function summarizeSlayer(play: SpxPlayPayload | null) {
 
 export async function spxDeskConvergenceForLargo() {
   const { marketPlatform } = await import("@/lib/platform");
-  const [rawPlay, vector, gate_rules] = await Promise.all([
+  const { fetchGexHeatmap } = await import("@/lib/providers/polygon-options-gex");
+  const [rawPlay, vector, gate_rules, heatmap] = await Promise.all([
     marketPlatform.spx.getSpxPlayState(),
     vectorFullStateForLargo("SPX"),
     gateRulesForLargo(),
+    fetchGexHeatmap("SPX").catch(() => null),
   ]);
   const slayerPlay = sanitizeSpxPlayPayloadForLargo(rawPlay) as SpxPlayPayload | null;
   const slayerBias = slayerSuggestedBias(slayerPlay);
@@ -109,5 +112,6 @@ export async function spxDeskConvergenceForLargo() {
     vector: summarizeVector(vector),
     slayer: summarizeSlayer(slayerPlay),
     gate_rules,
+    matrix_ui: spxMatrixUiStateForLargo(heatmap),
   };
 }

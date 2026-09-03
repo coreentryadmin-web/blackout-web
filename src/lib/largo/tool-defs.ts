@@ -306,7 +306,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   ),
   t(
     "get_spx_desk_convergence",
-    "ONE-CALL SPX desk convergence — Vector's suggested play (card bias/setup/grade) AND Slayer's execution layer (phase/action/gates/open play) plus live gate_rules, with an explicit alignment verdict (aligned / divergent / vector_leads / slayer_leads / flat). Prefer this over calling get_vector_full_state(SPX) + get_spx_play separately when the member asks whether Vector and Slayer agree, what the suggested play is vs what the desk committed, or 'are we aligned on SPX'. Slayer execution (commits, open position, signal_committed) always wins for risk — Vector is the narrative suggestion.",
+    "ONE-CALL SPX desk convergence — Vector's suggested play (card bias/setup/grade) AND Slayer's execution layer (phase/action/gates/open play) plus live gate_rules, with an explicit alignment verdict (aligned / divergent / vector_leads / slayer_leads / flat). Includes `matrix_ui` — available GEX/VEX lenses, default GEX, and honest client-only notes for focus mode / iOS panel (server cannot read the member's active lens toggle). Prefer this over calling get_vector_full_state(SPX) + get_spx_play separately when the member asks whether Vector and Slayer agree, what the suggested play is vs what the desk committed, or 'are we aligned on SPX'. Slayer execution (commits, open position, signal_committed) always wins for risk — Vector is the narrative suggestion.",
     {}
   ),
   t(
