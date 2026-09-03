@@ -62,6 +62,22 @@ test("rows nobody refreshes eventually expire, so the universe CAN shrink", () =
   assert.equal(merged.expired, 1);
 });
 
+// BUG FIX (2026-09-03): a future-dated stamp (cross-process clock skew across the ECS tasks that
+// write asOf/updatedAt) used to produce a negative age that never exceeded maxAgeMs, carrying an
+// untrustworthy row forward indefinitely instead of expiring it.
+test("a row stamped well in the future is expired, not carried forward as extra-fresh", () => {
+  const stored = snap(["FUTURE"], -10 * 60_000); // asOf 10 minutes AHEAD of NOW
+  const merged = mergeUniverseSnapshot(stored, [], NOW);
+  assert.deepEqual(merged.rows, []);
+  assert.equal(merged.expired, 1);
+});
+
+test("a row stamped a few seconds ahead of now (ordinary clock skew) still survives", () => {
+  const stored = snap(["A"], -2_000); // asOf 2s AHEAD of NOW
+  const merged = mergeUniverseSnapshot(stored, [], NOW);
+  assert.equal(merged.rows.length, 1);
+});
+
 test("a row just inside the age limit survives; just outside it does not", () => {
   const inside = mergeUniverseSnapshot(snap(["A"], UNIVERSE_ROW_MAX_AGE_MS - 1), [], NOW);
   assert.equal(inside.rows.length, 1);

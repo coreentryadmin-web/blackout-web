@@ -132,6 +132,22 @@ test("isMorningConfirmStale: exactly at the threshold is not yet stale (> not >=
   assert.equal(isMorningConfirmStale(checkedAt, now), false);
 });
 
+// BUG FIX (2026-09-03): checked_at is written by a separate cron process, so cross-process clock
+// skew is real — a future-dated checked_at used to produce a negative age that never exceeded
+// MORNING_CONFIRM_STALE_MS, leaving the "as of" qualifier off a verdict whose real age cannot be
+// verified.
+test("isMorningConfirmStale: a checked_at well in the future is stale, not freshest-possible", () => {
+  const now = Date.now();
+  const checkedAt = new Date(now + 10 * 60_000).toISOString();
+  assert.equal(isMorningConfirmStale(checkedAt, now), true);
+});
+
+test("isMorningConfirmStale: a checked_at a few seconds ahead of now (ordinary clock skew) is not stale", () => {
+  const now = Date.now();
+  const checkedAt = new Date(now + 2_000).toISOString();
+  assert.equal(isMorningConfirmStale(checkedAt, now), false);
+});
+
 test("isMorningConfirmStale: missing/invalid timestamp never flags stale (older cached payloads)", () => {
   assert.equal(isMorningConfirmStale(undefined, Date.now()), false);
   assert.equal(isMorningConfirmStale("not-a-date", Date.now()), false);

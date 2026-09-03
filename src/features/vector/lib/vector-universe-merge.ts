@@ -58,6 +58,10 @@ export type UniverseSnapshotLike<TRow extends UniverseRowLike = UniverseRowLike>
  */
 export const UNIVERSE_ROW_MAX_AGE_MS = 15 * 60 * 1000;
 
+/** A stamp further ahead of `nowMs` than this is untrustworthy (cross-process clock skew writing
+ *  `asOf`/`updatedAt`), not "extra fresh" — same shape as Helix's FUTURE_PRINT_TOLERANCE_MS. */
+const FUTURE_STAMP_TOLERANCE_MS = 60 * 1000;
+
 export type MergeResult<TRow extends UniverseRowLike> = {
   rows: TRow[];
   /** Rows taken from the fresh build. */
@@ -92,7 +96,12 @@ export function mergeUniverseSnapshot<TRow extends UniverseRowLike>(
     // the snapshot's own timestamp rather than keeping it forever — an undated row that nothing
     // has refreshed in 15 minutes is exactly as stale as a dated one.
     const stamp = Number.isFinite(row?.asOf as number) ? (row.asOf as number) : previous?.updatedAt;
-    if (!Number.isFinite(stamp as number) || nowMs - (stamp as number) > maxAgeMs) {
+    const ageMs = Number.isFinite(stamp as number) ? nowMs - (stamp as number) : NaN;
+    // BUG FIX (2026-09-03): a future-dated stamp (cross-process clock skew across the ECS tasks
+    // that write asOf/updatedAt) used to produce a negative age that never exceeded maxAgeMs,
+    // carrying an untrustworthy row forward indefinitely instead of expiring it like any other
+    // row whose age cannot be verified.
+    if (!Number.isFinite(ageMs) || ageMs > maxAgeMs || ageMs < -FUTURE_STAMP_TOLERANCE_MS) {
       expired += 1;
       continue;
     }
