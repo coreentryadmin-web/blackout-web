@@ -8442,6 +8442,54 @@ html.product-shell .nav-mega {
     min-height: 0;
   }
 
+  /* Vector suggested play + Slayer execution — pin column play rail (2026-09). */
+  .spx-vector-play-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .spx-vector-play-rail__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0 0.125rem;
+  }
+
+  .spx-vector-play-rail__title {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgb(125 211 252 / 0.85);
+  }
+
+  .spx-vector-play-rail__full-link {
+    font-size: 0.625rem;
+    color: rgb(163 230 53 / 0.9);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .spx-vector-play-rail__full-link:hover {
+    text-decoration: underline;
+  }
+
+  .spx-vector-play-rail__signal .vector-play-card {
+    margin: 0;
+  }
+
+  .spx-vector-play-rail__intel {
+    margin-top: -0.125rem;
+  }
+
+  .spx-vector-play-rail__execution .spx-play-verdict-bar {
+    margin: 0;
+  }
+
   /* ── EOD Pin Forecaster: sized against ITS RAIL, not the viewport ──────────────────────────
      This panel sits in the desk's left rail, whose width comes from the desk grid. Measured live
      on /dashboard at a 1440px viewport the rail gave it 229px — so every viewport media query
