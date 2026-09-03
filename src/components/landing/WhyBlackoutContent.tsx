@@ -17,7 +17,7 @@ Retail traders watch price. Professional desks watch dealer positioning — the 
 
 ## 2. Signal, not noise
 
-Our engine scans **12,400+ contracts daily** and grades every setup **A–F**. Only the highest-conviction setups make it through our filters. You don't get forty alerts a day to sift through — you get the handful that actually passed. In a world of information overload, ruthless filtering is the feature.
+Our engine screens **the entire U.S. stock market — 12,400+ tickers — every day** and grades every setup **A–F**. Only the highest-conviction setups make it through our filters. You don't get forty alerts a day to sift through — you get the handful that actually passed. In a world of information overload, ruthless filtering is the feature.
 
 ## 3. We log every trade publicly
 

@@ -159,3 +159,12 @@ test("pipeline .pipe-status label has exactly one text source, not two overlappi
   assert.match(REDESIGN, /VERIFY/, "Validate stage uses semantic VERIFY label");
   assert.doesNotMatch(REDESIGN, />OFFLINE</, "pipeline must never seed OFFLINE on the public homepage");
 });
+
+// Regression for a P2 finding (2026-09-03): the "12,400+" figure is a real, measured count of
+// US stocks in Polygon's grouped-daily endpoint (scripts/audit/market-banger-scan.mjs,
+// docs/audit/0DTE-RESEARCH.md) — never options contracts, which is not a metric this codebase
+// computes anywhere. The hero credibility bullet and pipeline ingress label both said
+// "contracts", which is a false claim as written.
+test("the homepage's 12,400+ daily-screen figure is labeled stocks/tickers, never contracts", () => {
+  assert.doesNotMatch(REDESIGN, /12,400\+?\s+contracts/i, "12,400+ is a real stock-universe count, not a contract count — never label it 'contracts'");
+});
