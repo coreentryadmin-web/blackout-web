@@ -229,6 +229,38 @@ test("Largo's member-facing record sentence never pairs a rate with a mismatched
   );
 });
 
+// ── "No deleted calls" contract (2026-09-03) ──────────────────────────────────────────
+//
+// The live defect this pins: `pruneNighthawkPlayOutcomesForEdition` (db.ts) — the
+// sync-side cleanup `syncNighthawkPlayOutcomes` calls right after every edition
+// publish/rebuild to drop stale ticker rows — issued a bare `DELETE FROM
+// nighthawk_play_outcomes WHERE edition_for = $1 AND NOT (ticker = ANY($2))` with no
+// guard on `outcome`. Every OTHER write against this table enforces its invariant in
+// the SQL itself (`upsertNighthawkPlayOutcomes`'s `WHERE outcome = 'pending'` two
+// calls above this one, `updateNighthawkPlayOutcome`'s identical guard,
+// `regradeLegacyNighthawkOutcome`'s COALESCE-pinned `legacy_grade`) — this DELETE was
+// the one write path in the file that relied on caller discipline instead. The admin
+// historical-recovery route (`POST /api/admin/nighthawk/run?asOfEt=<past
+// date>&persist=1`, edition-builder.ts's documented "admin recovery only" escape
+// hatch) re-runs the full synthesis pipeline against a PAST edition_for and can easily
+// reconstruct a different ticker set than what originally published — every ticker
+// missing from the new list, GRADED wins and losses included, was hard-deleted with
+// zero trace. This directly falsifies the public claim quoted on `/methodology`:
+// "No cherry-picking, no deleted calls — the full ledger, always."
+
+test("db.ts: pruneNighthawkPlayOutcomesForEdition can never delete a graded row — SQL guard, not caller discipline", () => {
+  const src = read("src/lib/db.ts");
+  const fn = src.slice(
+    src.indexOf("export async function pruneNighthawkPlayOutcomesForEdition"),
+    src.indexOf("export async function fetchPendingNighthawkOutcomes")
+  );
+  assert.match(
+    fn,
+    /DELETE FROM nighthawk_play_outcomes\s+WHERE edition_for = \$1::date\s+AND NOT \(ticker = ANY\(\$2::varchar\[\]\)\)\s+AND outcome = 'pending'/,
+    "the prune must stay scoped to still-pending (ungraded) rows — a graded row has a real win/loss to preserve, not a speculative pick to clean up"
+  );
+});
+
 test("the tags name the rule, not a date, and stay distinct", () => {
   assert.equal(GRADE_METHODOLOGY_LEGACY, "v1_level_touch");
   assert.equal(GRADE_METHODOLOGY_CURRENT, "v2_fillability");
