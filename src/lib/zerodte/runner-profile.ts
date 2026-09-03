@@ -31,13 +31,20 @@ export const RUNNER_TARGET_PCT_B_VECTOR = (() => {
   return Number.isFinite(n) && n > PLAN_RULES.target_pct ? n : 250;
 })();
 
+/** B-tier Vector runner building band (2×). */
+export const RUNNER_TARGET_PCT_B_RUNNER = (() => {
+  const raw = process.env.ZERODTE_RUNNER_TARGET_B_RUNNER?.trim();
+  const n = raw ? Number(raw) : 200;
+  return Number.isFinite(n) && n > PLAN_RULES.target_pct ? n : 200;
+})();
+
 export type RunnerProfile = {
   /** Profit target % of entry premium frozen at commit. */
   target_pct: number;
   /** Trim-scale regime — trend lets the runner breathe (later trims). */
   regime: ZeroDteRegime;
   /** Human tag for telemetry / entry_context. */
-  tag: "standard" | "runner_a" | "runner_vector" | "runner_b_vector";
+  tag: "standard" | "runner_a" | "runner_vector" | "runner_b_vector" | "runner_b_runner";
 };
 
 export type RunnerProfileInput = {
@@ -64,6 +71,9 @@ export function resolveRunnerProfile(input: RunnerProfileInput): RunnerProfile |
   }
   if (input.tier === "B" && vectorWinner) {
     return { target_pct: RUNNER_TARGET_PCT_B_VECTOR, regime: "trend", tag: "runner_b_vector" };
+  }
+  if (input.tier === "B" && vectorRunner && input.confluenceCount >= 1) {
+    return { target_pct: RUNNER_TARGET_PCT_B_RUNNER, regime: "trend", tag: "runner_b_runner" };
   }
   if (input.tier === "A" && vectorRunner && input.confluenceCount >= 1) {
     return { target_pct: RUNNER_TARGET_PCT_A, regime: "trend", tag: "runner_a" };

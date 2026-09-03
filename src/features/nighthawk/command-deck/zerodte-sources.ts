@@ -195,6 +195,13 @@ function sourceFrom(
         : null,
     gate_blocks,
     vector_pulse: vectorPulse,
+    peak_pnl_pct: (lg?.peak_pnl_pct as number) ?? null,
+    mfe_capture_pct: (lg?.mfe_capture_pct as number) ?? null,
+    runner_profile:
+      lg?.runner_profile && typeof lg.runner_profile === "object"
+        ? (lg.runner_profile as { target_pct: number; tag: string; regime: string })
+        : null,
+    target_pct: (lg?.target_pct as number) ?? planNum(ledgerPlan, "runner_target_pct"),
   };
 }
 

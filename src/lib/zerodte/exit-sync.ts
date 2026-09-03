@@ -226,6 +226,29 @@ export function readFrozenExitPolicy(
   return null;
 }
 
+/** Frozen plan rails for latch/status derivation — target/stop/regime from commit snapshot. */
+export function playRailsFromRow(row: {
+  entry_context?: Record<string, unknown> | null;
+  plan_json?: Record<string, unknown> | null;
+}): { targetPct: number; stopPct: number; regime: ZeroDteRegime | null } {
+  const frozen = readFrozenExitPolicy(row.entry_context ?? null);
+  const plan = row.plan_json ?? null;
+  const ctx = row.entry_context ?? null;
+  const runnerTarget =
+    typeof plan?.runner_target_pct === "number" && Number.isFinite(plan.runner_target_pct)
+      ? (plan.runner_target_pct as number)
+      : null;
+  const regime =
+    ctx?.session_regime === "trend" || ctx?.session_regime === "neutral" || ctx?.session_regime === "range"
+      ? (ctx.session_regime as ZeroDteRegime)
+      : null;
+  return {
+    targetPct: frozen?.target_pct ?? runnerTarget ?? PLAN_RULES.target_pct,
+    stopPct: frozen?.hard_stop_pct ?? PLAN_RULES.stop_pct,
+    regime,
+  };
+}
+
 /** Injectable IO seams (cortex-gate.ts's CortexCommitDeps idiom) so the wiring is
  *  unit-testable without module mocks or a live platform. */
 export type ExitSyncDeps = {

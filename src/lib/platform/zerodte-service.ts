@@ -42,7 +42,7 @@ import {
 import { buildTerminalExitLadder, executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-render";
 import { readPinnedWhyNow, type WhyNow } from "@/lib/zerodte/why-now";
-import { readFrozenExitMode, readFrozenExitPolicy } from "@/lib/zerodte/exit-sync";
+import { readFrozenExitMode, readFrozenExitPolicy, playRailsFromRow } from "@/lib/zerodte/exit-sync";
 import { buildResolvedExitPolicy } from "@/lib/zerodte/strategy-version";
 import type { ZeroDteGreeks } from "@/lib/zerodte/live-marks";
 import {
@@ -133,6 +133,11 @@ export type ZeroDteBoardLedgerRow = {
    * trim tranches on a stopped close.
    */
   exit_policy_at_commit: "ratchet" | "trim_scale" | null;
+  /** Frozen runner target % and trim regime — drives latch/status + stopped P&L blend. */
+  target_pct: number | null;
+  trim_regime: "trend" | "neutral" | "range" | null;
+  /** Runner profile frozen at commit (300%/400% targets). */
+  runner_profile: { target_pct: number; tag: string; regime: string } | null;
   live_pnl_pct: number | null;
   /** Why a CLOSED play closed — now DISTINGUISHES the exit type (pre-this-change a
    *  ratchet exit and a target trim were both null, indistinguishable). "stopped" uses
@@ -421,6 +426,11 @@ function mapLedgerRow(
   // seller-framed (see reconcileLedgerLivePnlPct); the directional stop-pin/ratchet-floor
   // concepts below do not apply to it. Read once here and reused across the row build.
   const isCondor = r.entry_context?.play_type === "CONDOR";
+  const rails = playRailsFromRow({ entry_context: r.entry_context, plan_json: r.plan_json });
+  const runnerProfile =
+    r.entry_context && typeof r.entry_context.runner_profile === "object"
+      ? (r.entry_context.runner_profile as { target_pct?: number; tag?: string; regime?: string })
+      : null;
   // D-1 fix: a stopped play's displayed P&L is the stop P&L (what the grader will
   // stamp), never the frozen last_mark of whichever tick happened to cross it. This
   // "stopped" verdict is ALSO the only closed_reason that pins P&L (below) — every other
@@ -430,6 +440,7 @@ function mapLedgerRow(
     entry_premium: r.entry_premium,
     peak_premium: r.peak_premium,
     trough_premium: r.trough_premium,
+    target_pct: rails.targetPct,
   });
 
   // ── Exit-engine visibility (additive, no computation change) ──────────────────────
@@ -488,6 +499,15 @@ function mapLedgerRow(
     // trim ladder for a row that never committed to one; the P&L had no such guard, and credited
     // trim tranches to ratchet-committed rows.
     exit_policy_at_commit: readFrozenExitMode(r.entry_context),
+    target_pct: rails.targetPct,
+    trim_regime: rails.regime,
+    runner_profile: runnerProfile?.target_pct
+      ? {
+          target_pct: runnerProfile.target_pct,
+          tag: String(runnerProfile.tag ?? "runner"),
+          regime: String(runnerProfile.regime ?? rails.regime ?? "neutral"),
+        }
+      : null,
     live_pnl_pct: reconcileLedgerLivePnlPct({
       is_condor: isCondor,
       closed_reason: closedReason === "stopped" ? "stopped" : null,
@@ -497,6 +517,8 @@ function mapLedgerRow(
       trough_premium: r.trough_premium,
       status: r.status,
       exit_policy_at_commit: readFrozenExitMode(r.entry_context),
+      trim_regime: rails.regime,
+      target_pct: rails.targetPct,
     }),
     closed_reason: boardClosedReason,
     floor_pnl_pct: floorPnlPct,

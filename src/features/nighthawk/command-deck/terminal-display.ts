@@ -213,14 +213,16 @@ export type TradeOutcomeDisplay = {
   closePct: number | null;
   bestPct: number | null;
   worstPct: number | null;
+  mfeCapturePct: number | null;
 };
 
 export function tradeOutcomeDisplay(play: TerminalPlay): TradeOutcomeDisplay {
   const closePct = play.status === "CLOSED" ? play.pnlPct : play.pnlPct;
   const bestPct = play.peak ?? null;
   const worstPct = play.trough ?? null;
+  const mfeCapturePct = play.mfeCapturePct ?? null;
   if (play.status !== "CLOSED") {
-    return { verdict: "OPEN", closePct: closePct ?? null, bestPct, worstPct };
+    return { verdict: "OPEN", closePct: closePct ?? null, bestPct, worstPct, mfeCapturePct: null };
   }
   const p = closePct ?? 0;
   return {
@@ -228,6 +230,7 @@ export function tradeOutcomeDisplay(play: TerminalPlay): TradeOutcomeDisplay {
     closePct: closePct ?? null,
     bestPct,
     worstPct,
+    mfeCapturePct,
   };
 }
 

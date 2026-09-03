@@ -34,8 +34,8 @@ import {
 // (PLAN_RULES stop/target/time-stop, EXIT_RULES arm/lock/runner floors, TRIM_SCALE tranches)
 // changes config_hash; if that edit is NOT accompanied by an EXIT_VERSION bump, THIS test
 // fails, forcing the deliberate version bump the calibration cohort relies on.
-const GOLDEN_RATCHET_HASH = "exitcfg-1d29aab8";
-const GOLDEN_TRIM_SCALE_HASH = "exitcfg-8b449eb3";
+const GOLDEN_RATCHET_HASH = "exitcfg-26da6211";
+const GOLDEN_TRIM_SCALE_HASH = "exitcfg-1ace50c7";
 
 test("WS-02 buildResolvedExitPolicy: resolves the real numeric exit params from the sources of truth", () => {
   const r = buildResolvedExitPolicy("ratchet");
@@ -54,6 +54,9 @@ test("WS-02 buildResolvedExitPolicy: resolves the real numeric exit params from 
   // trim_scale's neutral ladder: ⅓@+25%, ⅓@+50%.
   assert.equal(t.trim_levels.length, 2);
   assert.deepEqual(t.trim_levels.map((l) => l.trigger_pct), [20, 50]);
+  const trend = buildResolvedExitPolicy("trim_scale", { target_pct: 300, regime: "trend" });
+  assert.deepEqual(trend.trim_levels.map((l) => l.trigger_pct), [40, 80]);
+  assert.equal(trend.target_pct, 300);
 });
 
 test("WS-02 DRIFT-GUARD: resolved config_hash matches the committed golden (a silent numeric edit trips this)", () => {

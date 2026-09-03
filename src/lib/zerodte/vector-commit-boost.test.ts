@@ -29,7 +29,8 @@ test("vectorExemptsG17PrimeBand: opposite direction does not exempt", () => {
   assert.equal(vectorExemptsG17PrimeBand("short", 68, pulse({ is_winner: true, direction: "long" })), false);
 });
 
-test("computeVectorGateBoost: aligned runner at 70+ exempts G-17", () => {
-  const b = computeVectorGateBoost("long", 72, pulse({ is_runner: true, is_winner: false }));
+test("computeVectorGateBoost: score 68 + aligned runner exempts G-17 after bump", () => {
+  const b = computeVectorGateBoost("long", 68, pulse({ is_runner: true, is_winner: false }));
   assert.equal(b.g17_exempt, true);
+  assert.equal(b.score_bump, 4);
 });

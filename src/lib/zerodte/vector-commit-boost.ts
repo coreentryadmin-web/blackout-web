@@ -57,7 +57,7 @@ export function computeVectorGateBoost(
   if (pulse!.is_runner && score >= 68) {
     return {
       score_bump: VECTOR_SCORE_BUMP_RUNNER,
-      g17_exempt: score >= 70,
+      g17_exempt: true,
       confluence_credit: 0,
       reason: `Vector runner building (+${Math.round(pulse!.premium_pct ?? 0)}%) aligns with ${direction}`,
     };

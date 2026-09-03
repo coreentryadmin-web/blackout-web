@@ -716,11 +716,17 @@ export function derivePlayStatus(input: {
   peak: number | null;
   trough: number | null;
   nowEtMinutes: number;
+  /** Frozen plan target % (runner profile). Defaults to PLAN_RULES.target_pct (+100%). */
+  targetPct?: number | null;
+  /** Frozen plan stop %. Defaults to PLAN_RULES.stop_pct (−50%). */
+  stopPct?: number | null;
   /** When true, skip the latched plan-stop close so the exit engine can honor a
    *  protective floor first (scan.ts / live-marks.ts run the engine on this pass). */
   deferPlanStop?: boolean;
 }): LivePlayState {
   const { entryPremium, mark, peak, trough, nowEtMinutes, deferPlanStop } = input;
+  const stopPct = input.stopPct ?? PLAN_RULES.stop_pct;
+  const targetPct = input.targetPct ?? PLAN_RULES.target_pct;
   const pnl =
     entryPremium != null && entryPremium > 0 && mark != null && mark > 0
       ? Math.round(((mark - entryPremium) / entryPremium) * 10000) / 100
@@ -734,8 +740,8 @@ export function derivePlayStatus(input: {
   if (!(entryPremium != null && entryPremium > 0)) {
     return { status: "HOLD", live_pnl_pct: null, closed_reason: null };
   }
-  const stop = entryPremium * (1 + PLAN_RULES.stop_pct / 100);
-  const target = entryPremium * (1 + PLAN_RULES.target_pct / 100);
+  const stop = entryPremium * (1 + stopPct / 100);
+  const target = entryPremium * (1 + targetPct / 100);
 
   // Target checked BEFORE stop. peak/trough are latched extremes with no timestamp,
   // so a naive stop-first check can't tell "hit stop, never recovered" apart from
@@ -761,7 +767,7 @@ export function derivePlayStatus(input: {
     return { status: "TRIM", live_pnl_pct: pnl, closed_reason: null };
   }
   if (!deferPlanStop && trough != null && trough <= stop) {
-    return { status: "CLOSED", live_pnl_pct: PLAN_RULES.stop_pct, closed_reason: "stopped" };
+    return { status: "CLOSED", live_pnl_pct: stopPct, closed_reason: "stopped" };
   }
   // Symmetric band per this function's own doc comment ("within 10% of entry") — a lower
   // bound is required, not just an upper one, or a play sliding toward the stop (but not

@@ -234,6 +234,10 @@ export interface ZeroDteDeckSource {
     is_winner: boolean;
     is_runner: boolean;
   } | null;
+  peak_pnl_pct?: number | null;
+  mfe_capture_pct?: number | null;
+  runner_profile?: { target_pct: number; tag: string; regime: string } | null;
+  target_pct?: number | null;
   closed_reason?: string | null;
   exit_reason?: string | null;
   exit_detail?: string | null;
@@ -360,11 +364,20 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
         : null;
 
   const mgmtBase = managementFor(exitModel, status, pnlDisplay);
+  const runnerTag = src.runner_profile?.tag;
+  const runnerTarget = fin(src.runner_profile?.target_pct ?? src.target_pct);
+  const mgmtWithRunner =
+    runnerTarget != null && runnerTarget > 100
+      ? {
+          ...mgmtBase,
+          recNote: `${mgmtBase.recNote ? `${mgmtBase.recNote} · ` : ""}Runner ${runnerTarget}% target${runnerTag ? ` (${runnerTag})` : ""}`,
+        }
+      : mgmtBase;
   const thesisHealth = src.thesis_health ?? null;
   const mgmt =
     thesisHealth != null
-      ? thesisManagementOverlay(mgmtBase.recommendation, mgmtBase.recNote, thesisHealth, pnlDisplay)
-      : mgmtBase;
+      ? thesisManagementOverlay(mgmtWithRunner.recommendation, mgmtWithRunner.recNote, thesisHealth, pnlDisplay)
+      : mgmtWithRunner;
   const thesisBreak = thesisHealth
     ? { level: thesisHealth.thesisBreakLevel as ThesisLevel, note: thesisHealth.thesisBreakNote }
     : setup?.market_aligned === false
@@ -447,6 +460,14 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
     trackReferencePremium: trackReference,
     peak: peakDisplay,
     trough: troughDisplay,
+    mfeCapturePct: fin(src.mfe_capture_pct),
+    runnerProfile: src.runner_profile
+      ? {
+          targetPct: src.runner_profile.target_pct,
+          tag: src.runner_profile.tag,
+          regime: src.runner_profile.regime,
+        }
+      : null,
     // Executable fill (sell-into-the-BID) is a directional LONG framing — inverted for a credit
     // condor, so it is suppressed (null) on condor rows; the condor's honest number is its decay P&L.
     execMark: isCondor === true ? null : exec.fill,

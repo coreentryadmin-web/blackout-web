@@ -116,7 +116,7 @@ import {
   buildResolvedExitPolicy,
   exitPolicyGraderParams,
 } from "./strategy-version";
-import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy } from "./exit-sync";
+import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy, playRailsFromRow } from "./exit-sync";
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
 import { applyCortexVetoDwell } from "./cortex-veto-dwell";
 import { persistZeroDteRejections } from "./rejections";
@@ -943,9 +943,9 @@ async function attachGateVerdicts(
     if (committed.has(s.ticker.toUpperCase())) continue;
     const pulse = vectorPulseByTicker[s.ticker.toUpperCase()] ?? null;
     const boost = computeVectorGateBoost(s.direction, s.score, pulse);
-    if (boost.score_bump > 0) {
-      s.score = Math.min(100, Math.round(s.score + boost.score_bump));
-    }
+    const boostedScore = boost.score_bump > 0 ? Math.min(100, Math.round(s.score + boost.score_bump)) : s.score;
+    if (boost.score_bump > 0) s.score = boostedScore;
+    const postBoost = computeVectorGateBoost(s.direction, boostedScore, pulse);
     s.gate = evaluateZeroDteGates({
       ticker: s.ticker,
       direction: s.direction,
@@ -1012,8 +1012,8 @@ async function attachGateVerdicts(
       regimeBlockFreshCommits: regimePlane.blockFreshCommits,
       regimeBlockReason: regimePlane.humanReason,
       vector_pulse: pulse,
-      vector_g17_exempt: boost.g17_exempt,
-      vector_confluence_credit: boost.confluence_credit,
+      vector_g17_exempt: postBoost.g17_exempt,
+      vector_confluence_credit: postBoost.confluence_credit,
     });
     s.regime_plane = regimePlane;
     if (s.thesis_gate_blocks?.length) {
@@ -1334,7 +1334,9 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     const playTier = baseEntryCtx.tier?.tier ?? null;
     const exitPolicyAtCommit = resolveExitModeForTier(playTier);
     const pulse = vectorPulseByTicker[s.ticker.toUpperCase()] ?? null;
-    const confluenceCount = s.confluence ? g12ConfirmationCount(s.confluence, s.ticker) : 0;
+    const vectorBoost = computeVectorGateBoost(s.direction, s.score, pulse);
+    const confluenceCount =
+      (s.confluence ? g12ConfirmationCount(s.confluence, s.ticker) : 0) + (vectorBoost.confluence_credit ?? 0);
     const runnerProfile = resolveRunnerProfile({
       tier: playTier,
       confluenceCount,
@@ -1345,8 +1347,8 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     const strategyHash = strategyConfigHash(strategyManifest);
     const exitPolicySnapshot = buildResolvedExitPolicy(exitPolicyAtCommit, {
       target_pct: runnerProfile?.target_pct,
+      regime: runnerProfile?.regime,
     });
-    const vectorBoost = computeVectorGateBoost(s.direction, s.score, pulse);
     const entryPrem =
       s.play_type === "CONDOR"
         ? s.condor_plan?.net_credit != null
@@ -2072,6 +2074,7 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       );
       // Exit engine FIRST with plan-stop deferred — a latched trough at −50% must not
       // skip the ratchet floor when peak had armed breakeven (FINDINGS 2026-08-04).
+      const rails = playRailsFromRow(r);
       const preStop = derivePlayStatus({
         entryPremium: r.entry_premium,
         mark: mark ?? r.last_mark,
@@ -2079,6 +2082,8 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
         trough,
         nowEtMinutes,
         deferPlanStop: true,
+        targetPct: rails.targetPct,
+        stopPct: rails.stopPct,
       });
       const exit =
         preStop.status !== "CLOSED"
@@ -2110,6 +2115,8 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
               peak,
               trough,
               nowEtMinutes,
+              targetPct: rails.targetPct,
+              stopPct: rails.stopPct,
             })
           : preStop;
       const status = exit ? ("CLOSED" as const) : state.status;

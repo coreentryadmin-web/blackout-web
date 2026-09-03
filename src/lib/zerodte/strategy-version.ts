@@ -35,7 +35,13 @@
  * and reproducible anywhere (lib, sim, test) without a dependency.
  */
 
-import { DEFAULT_EXIT_MODE, EXIT_RULES, TRIM_SCALE_RULES, type ZeroDteExitMode } from "./exit-engine";
+import {
+  DEFAULT_EXIT_MODE,
+  EXIT_RULES,
+  TRIM_SCALE_RULES,
+  type ZeroDteExitMode,
+  type ZeroDteRegime,
+} from "./exit-engine";
 import { FEATURE_VECTOR_VERSION } from "./feature-vector";
 import { PLAN_RULES } from "./plan";
 
@@ -88,7 +94,7 @@ export const CONTRACT_SELECTOR_VERSION = "v2";
 export const EXIT_POLICY: ZeroDteExitMode = DEFAULT_EXIT_MODE;
 /** Exit-rule VERSION within the active policy (the numeric thresholds — arm/lock/trim
  *  levels, time-stop). Bump when those move even if the POLICY name is unchanged. */
-export const EXIT_VERSION = "v3";
+export const EXIT_VERSION = "v4";
 /** Grader — how a committed play is turned into a WIN/LOSS + PnL (−50/+100 directional,
  *  condor breach, time-stop rules). Bump when the grading rule changes (it re-labels
  *  the very outcomes calibration counts). */
@@ -257,7 +263,7 @@ function stableStringify(value: unknown): string {
  */
 export function buildResolvedExitPolicy(
   mode: ZeroDteExitMode = EXIT_POLICY,
-  opts?: { target_pct?: number }
+  opts?: { target_pct?: number; regime?: ZeroDteRegime }
 ): ResolvedExitPolicy {
   const time_stop_et = formatEtMinutes(PLAN_RULES.time_stop_et_minutes);
   const collision_rule = "stop_before_target_same_bar";
@@ -267,12 +273,16 @@ export function buildResolvedExitPolicy(
   let trailing_rule: string;
   if (mode === "trim_scale") {
     const r = TRIM_SCALE_RULES.tranches_by_regime;
-    // The shipped/base schedule is the neutral regime; trend/range are encoded in
-    // trailing_rule so a numeric edit to ANY regime's tranches trips the hash.
-    trim_levels = r.neutral.map((trigger_pct) => ({ trigger_pct, fraction: TRIM_SCALE_RULES.tranche_fraction }));
+    const activeRegime: ZeroDteRegime = opts?.regime ?? "neutral";
+    const tranches = r[activeRegime];
+    // Freeze the ACTIVE regime's ladder at commit — grader + terminal ladder must match live engine.
+    trim_levels = tranches.map((trigger_pct) => ({
+      trigger_pct,
+      fraction: TRIM_SCALE_RULES.tranche_fraction,
+    }));
     runner_fraction = TRIM_SCALE_RULES.tranche_fraction; // the last third runs to the rails
     trailing_rule =
-      `trim_scale:no_trailing_stop;tranche_fraction=${TRIM_SCALE_RULES.tranche_fraction};` +
+      `trim_scale:no_trailing_stop;active_regime=${activeRegime};tranche_fraction=${TRIM_SCALE_RULES.tranche_fraction};` +
       `tranches trend=[${r.trend.join(",")}] neutral=[${r.neutral.join(",")}] range=[${r.range.join(",")}]`;
   } else {
     // ratchet: bank half at the plan target, then run under the monotonic floor.

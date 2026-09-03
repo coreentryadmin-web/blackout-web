@@ -125,6 +125,10 @@ export interface TerminalPlay {
   flagUnderlyingPx?: number | null;
   peak?: number | null;
   trough?: number | null;
+  /** Closed: % of peak MFE captured at exit. */
+  mfeCapturePct?: number | null;
+  /** Frozen runner target profile (300%/400% plays). */
+  runnerProfile?: { targetPct: number; tag: string; regime: string } | null;
   /** Executable exit fill (the BID a long sells into) + its P&L vs entry — the honest realizable
    *  number beside the mid `mark`/`pnlPct`. Null without a live two-sided book (mid-only). */
   execMark?: number | null;
