@@ -10,9 +10,9 @@
       "title": "Build .blackout-agent/ durable-state + lease/heartbeat/recovery system",
       "owner": "claude",
       "reviewer": null,
-      "phase": "IMPLEMENTING",
+      "phase": "PR_OPEN",
       "branch": "fix/blackout-agent-autopilot",
-      "pr": null,
+      "pr": 3435,
       "lease_until": "2026-09-04T01:33:25Z",
       "dependencies": [],
       "evidence": "scripts/agent-ops/{claim-task,release-task,heartbeat,recover-stale-lease}.mjs written and acceptance-tested live (collision test + both stale-lease branches, see docs/audit/AUTOPILOT-STATUS.md)"

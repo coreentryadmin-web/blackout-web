@@ -4,10 +4,12 @@ Same 5 items as `AGENT_STATE.json`, in prose, with the "so what do I actually do
 Re-verify phase/CI against GitHub directly — this file is a snapshot, not a live feed.
 
 ## BO-AUTOPILOT-0001 — Autopilot bootstrap (this work)
-Owner: claude. Branch `fix/blackout-agent-autopilot`, no PR yet.
-Building the durable-state system this file lives in. Next action: finish the remaining seed
-files, add the `CLAUDE.md` pointer section, run the fresh-subagent recovery test, write
-`docs/audit/AUTOPILOT-STATUS.md`, commit + push + PR.
+Owner: claude. Branch `fix/blackout-agent-autopilot`, PR #3435 (draft).
+Durable-state system built, fresh-subagent recovery test run live (caught a real staleness bug in
+`AGENT_STATE.json`, corrected), `docs/audit/AUTOPILOT-STATUS.md` readiness report written.
+**Next action:** wait for `verify`/CodeQL on #3435, undraft + merge once green (manually via GitHub
+MCP — `enable-automerge` is documented-broken), then watch for the next scheduled trigger fire to
+close out the "successful scheduled invocation of this new state" NOT-YET-VERIFIED item.
 
 ## BO-P2-3425 — 0DTE G-18/G-19 gates (PR #3425, cursor's branch)
 Owner: cursor, reviewer: claude. Originally, a new G-19 top-band hard block (score ≥85) collided
