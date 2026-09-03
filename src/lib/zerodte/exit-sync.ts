@@ -113,16 +113,15 @@ export function resolveExitMode(env: NodeJS.ProcessEnv = process.env): ZeroDteEx
 }
 
 /**
- * Trim-scale regime-conditioning kill-switch (FINDING 2026-08-29, off by default). The
- * `neutral` tranche thresholds are E5-measured; `trend`/`range` are documented as "v1
- * heuristics... calibrated on the live ledger before they size real risk" (exit-engine.ts's
- * own TRIM_SCALE_RULES comment) — they have never had a live row to calibrate against,
- * because no caller ever passed a `regime` into evaluateExitState. entry-context.ts now
- * stamps `session_regime` at commit (additive, always on), which starts building that
- * ledger; this flag is the separate decision of whether to let the LIVE exit engine
- * actually condition real trims on it, and defaults to false so today's `neutral`-only
- * behavior is unchanged until a backtest against the accumulated session_regime rows
- * justifies flipping it (see docs/audit/INTENTIONAL-DESIGN.md's calibration-first pattern).
+ * Trim-scale regime-conditioning kill-switch (FINDING 2026-08-29, originally off by
+ * default). The `neutral` tranche thresholds are E5-measured; `trend`/`range` were
+ * documented as "v1 heuristics... calibrated on the live ledger before they size real
+ * risk" (exit-engine.ts's own TRIM_SCALE_RULES comment) — they had no live row to
+ * calibrate against, because no caller ever passed a `regime` into evaluateExitState.
+ * entry-context.ts now stamps `session_regime` at commit (additive, always on), and
+ * runner-profile commits rely on that regime being honored live — so this flag flipped
+ * ON by default 2026-09-03, matching resolveTrimBankLive below. An explicit 0/false/off
+ * still forces the old `neutral`-only behavior.
  */
 export function resolveTrimRegimeLive(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = env.ZERODTE_TRIM_REGIME_LIVE?.trim();
