@@ -31,3 +31,9 @@ test("get_postgres_flows and get_spx_engine_snapshots fit at the Largo boundary"
   assert.match(runTool, /fitPostgresFlowsForModel\(/);
   assert.match(runTool, /fitSpxEngineSnapshotsForModel\(/);
 });
+
+test("get_spx_play fits at the Largo boundary after confidence sanitize", () => {
+  const runTool = readFileSync(join(ROOT, "src/lib/largo/run-tool.ts"), "utf8");
+  assert.match(runTool, /sanitizeSpxPlayPayloadForLargo\(await marketPlatform\.spx\.getSpxPlayState\(\)\)/);
+  assert.match(runTool, /fitSpxPlayForModel\(raw as Record<string, unknown>\)\.fitted/);
+});

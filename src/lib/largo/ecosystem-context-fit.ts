@@ -1,5 +1,6 @@
 import type { EcosystemContext } from "@/lib/bie/ecosystem-context";
 import { fitRowsToBudget, LARGO_RESULT_CHAR_BUDGET } from "@/lib/largo/fit-tool-result";
+import { fitSpxPlayForModel } from "@/lib/largo/spx-play-fit";
 
 const MAX_AUDIT = 5;
 const MAX_ANOMALIES = 3;
@@ -44,6 +45,10 @@ export function fitEcosystemContextForModel(raw: EcosystemContext): { fitted: Ec
         recent_truncated: true,
       };
     }
+  }
+
+  if (raw.spx_full_state) {
+    fitted.spx_full_state = fitSpxPlayForModel(raw.spx_full_state as Record<string, unknown>).fitted as typeof raw.spx_full_state;
   }
 
   return { fitted };

@@ -1026,7 +1026,9 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     case "get_spx_play": {
       // Same uncalibrated `confidence` as get_spx_confluence — the play payload carries the
       // confluence's value verbatim at its top level. See spx-confidence-boundary.ts.
-      return sanitizeSpxPlayPayloadForLargo(await marketPlatform.spx.getSpxPlayState());
+      const { fitSpxPlayForModel } = await import("@/lib/largo/spx-play-fit");
+      const raw = sanitizeSpxPlayPayloadForLargo(await marketPlatform.spx.getSpxPlayState());
+      return fitSpxPlayForModel(raw as Record<string, unknown>).fitted;
     }
     case "get_open_plays":
       return marketPlatform.spx.getSpxOpenPlay();
