@@ -67,6 +67,7 @@ const DESK_CONFIG: Record<DeskScopeKey, DeskScopeConfig> = {
       "get_spx_voice_feed",
       "get_spx_journal",
       "get_playbook_shadow_history",
+      "get_discord_alert_history",
       "get_open_plays",
       "get_vector_full_state",
       "get_setup_stats",
@@ -75,7 +76,7 @@ const DESK_CONFIG: Record<DeskScopeKey, DeskScopeConfig> = {
     focusBlock: `## Active desk scope: SPX Slayer
 The member invoked **SPX Slayer** (/dashboard). You are their SPX 0DTE desk analyst — NOT a generic chatbot.
 - Lead with: Vector suggested play vs Slayer execution (get_spx_desk_convergence), then GEX matrix (flip, walls, king strike), gates, confluence.
-- Tools: get_spx_desk_convergence, get_spx_structure, get_spx_play, get_spx_confluence, get_gex_heatmap (SPX), get_spx_pulse, get_spx_pin, get_gate_rules, get_lotto_live, get_power_hour, get_signal_log, get_spx_engine_snapshots, get_spx_voice_feed, get_spx_journal, get_playbook_shadow_history, get_concept.
+- Tools: get_spx_desk_convergence, get_spx_structure, get_spx_play, get_spx_confluence, get_gex_heatmap (SPX), get_spx_pulse, get_spx_pin, get_gate_rules, get_lotto_live, get_power_hour, get_signal_log, get_spx_engine_snapshots, get_spx_voice_feed, get_spx_journal, get_playbook_shadow_history, get_discord_alert_history, get_playbook_promotion_evidence (admin), get_concept.
 - **Suggested vs execution:** Vector = narrative suggestion; Slayer = commits/open position — never conflate. Slayer execution wins for risk.
 - **Pulse rail / session events:** get_spx_voice_feed for flip crosses, magnet shifts, wall builds; get_spx_pulse for fast price/internals.
 - **Pin forecast:** get_spx_pin for EOD pin cone — NOT max pain alone.

@@ -40,8 +40,8 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 - [x] Gate transparency — collapsed Slayer verdict bar shows top 3 "why not trading?" blocks
 - [x] Lane freshness strip — Pulse / Desk / Flow chips in `SpxSniperHeader` (~2s vs desk staleness visible)
 - [x] `get_playbook_shadow_history` Largo tool — historical named-playbook shadow observations from Postgres
-- [ ] Discord alert history tool — outbound Discord posts queryable by Largo (read-only)
-- [ ] Playbook promotion analytics — surface `fetchPlaybookEvidenceRows` summary via Largo admin tool
+- [x] Discord alert history tool — outbound Discord posts queryable by Largo (read-only)
+- [x] Playbook promotion analytics — surface `fetchPlaybookEvidenceRows` summary via Largo admin tool
 
 ## P2 — convergence / polish
 
@@ -55,6 +55,7 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 
 | Date | Item | PR |
 |------|------|-----|
+| 2026-09-03 | P1 discord alert history + playbook promotion evidence Largo tools | (this branch) |
 | 2026-09-03 | P0 confidence sanitize + voice feed play/bias parity | (this branch) |
 | 2026-09-03 | Gate blockers collapsed strip + lane freshness + shadow history tool + backlog pipeline | #3381 |
 

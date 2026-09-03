@@ -325,6 +325,21 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
     { session_date: { type: "string" }, limit: { type: "integer", default: 50 } }
   ),
   t(
+    "get_discord_alert_history",
+    "Outbound Discord/trade-alert history from `alert_audit_log` — read-only audit of what was posted to members (0DTE Command, Night Hawk published/rejected, SPX plays). Returns `final_output` (the member-visible card/embed payload), alert_type, ticker, direction, fired_at, outcome. Optional filters: `alert_type`, `ticker`, `since_days` (default unbounded, max 365), `limit` (default 40, max 100). NOT live Discord API — Postgres audit trail only.",
+    {
+      alert_type: { type: "string" },
+      ticker: { type: "string" },
+      since_days: { type: "integer" },
+      limit: { type: "integer", default: 40 },
+    }
+  ),
+  t(
+    "get_playbook_promotion_evidence",
+    "ADMIN — SPX named-playbook OOS promotion analytics (same report as /api/admin/playbook/promotion-report). Returns per-playbook gate evaluation, closed-outcome stats, train-cutoff exclusion, and ALL_OOS rollup. Optional `since_date` (YYYY-MM-DD, default PLAYBOOK_OOS_START_DATE). Requires admin entitlement — denied to members.",
+    { since_date: { type: "string" } }
+  ),
+  t(
     "get_concept",
     "BlackOut glossary lookup — deterministic definitions for platform concepts (GEX, gamma flip, king node, Night Hawk, Thermal, Vector, gate vocabulary, etc.). Use for 'what is X' / 'define Y' when X is a BlackOut term — NOT for live desk state (use the desk tools). Pass `term` or `question`. Returns null-found honestly when the term is not in the glossary.",
     { term: { type: "string" }, question: { type: "string" } }
@@ -775,6 +790,8 @@ export const TOOL_GROUPS = {
     "get_spx_voice_feed",
     "get_spx_journal",
     "get_playbook_shadow_history",
+    "get_discord_alert_history",
+    "get_playbook_promotion_evidence",
   ],
   flow_analysis: [
     "get_options_flow",
@@ -1194,7 +1211,7 @@ export const MARKET_ENGINE_TOOL_NAMES = ["get_market_context"];
 /**
  * REMOVED 2026-08-10: `CORE_TOOLS`, `mentionsTicker()` and `getToolsForIntent()`.
  *
- * They implemented a per-question regex ALLOWLIST that decided which of these 135 tools Claude was
+ * They implemented a per-question regex ALLOWLIST that decided which of these 137 tools Claude was
  * shown on a given turn. Measured over 20 realistic member questions it exposed a mean of 21.9
  * tools (19%), and it failed silently rather than loudly — see the block comment at the
  * `filteredTools` assignment in largo-terminal.ts for the full root cause, the measurements, and

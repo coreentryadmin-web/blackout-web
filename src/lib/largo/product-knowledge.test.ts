@@ -27,6 +27,8 @@ test("product knowledge names SPX convergence and journal tools", () => {
   assert.match(k, /get_spx_journal/);
   assert.match(k, /get_spx_voice_feed/);
   assert.match(k, /get_playbook_shadow_history/);
+  assert.match(k, /get_discord_alert_history/);
+  assert.match(k, /get_playbook_promotion_evidence/);
   assert.match(k, /get_concept/);
   assert.match(k, /suggested play \+ desk execution/i);
 });

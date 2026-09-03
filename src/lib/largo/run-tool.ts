@@ -2127,6 +2127,31 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         input.session_date != null ? String(input.session_date).trim() : undefined;
       return spxPlaybookShadowHistoryForLargo({ session_date: sessionDate, limit });
     }
+    case "get_discord_alert_history": {
+      const { discordAlertHistoryForLargo } = await import(
+        "@/lib/largo/discord-alert-history-for-largo"
+      );
+      const limit =
+        input.limit != null && Number.isFinite(Number(input.limit)) ? Number(input.limit) : undefined;
+      const sinceDays =
+        input.since_days != null && Number.isFinite(Number(input.since_days))
+          ? Number(input.since_days)
+          : undefined;
+      return discordAlertHistoryForLargo({
+        limit,
+        alert_type: input.alert_type != null ? String(input.alert_type) : undefined,
+        ticker: input.ticker != null ? String(input.ticker) : undefined,
+        since_days: sinceDays,
+      });
+    }
+    case "get_playbook_promotion_evidence": {
+      const { spxPlaybookPromotionEvidenceForLargo } = await import(
+        "@/lib/largo/spx-playbook-promotion-for-largo"
+      );
+      const sinceDate =
+        input.since_date != null ? String(input.since_date).trim() : undefined;
+      return spxPlaybookPromotionEvidenceForLargo({ since_date: sinceDate });
+    }
     case "get_concept": {
       const { conceptForLargo } = await import("@/lib/largo/concept-for-largo");
       return conceptForLargo({

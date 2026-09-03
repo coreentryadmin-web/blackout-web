@@ -35,6 +35,12 @@ gate pass/fail checklist, confirmation items, adaptive-gate telemetry, AI arbite
 **Playbook shadow history:** named-playbook matcher observations (PB-01..14) logged on state transitions — shadow evidence, not live commits.
 - Tool: get_playbook_shadow_history
 
+**Discord alert history:** outbound trade-alert audit trail (member-visible final_output from alert_audit_log).
+- Tool: get_discord_alert_history
+
+**Playbook promotion evidence (admin):** OOS named-playbook gate evaluation and closed-outcome rollup.
+- Tool: get_playbook_promotion_evidence (admin only)
+
 **Open positions / member plays:** OPEN/HOLD/TRIM plays with entry, mark, P&L, stop state.
 - Tool: get_open_plays
 

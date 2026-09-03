@@ -74,10 +74,8 @@ export type ToolGuardViewer = {
  * The entitlement the catalog declares for a tool, or null when the tool is uncatalogued.
  *
  * `catalog` is injectable ONLY so the enforcement path can be tested against a synthetic catalog.
- * As of this writing every one of the 135 catalogued capabilities declares `premium`, so against
- * the real registry this mechanism is armed but inert — it restricts nothing today. That is the
- * honest state: the gate is in place and proven, and the day a capability is marked `admin` it is
- * enforced in code rather than by asking the model nicely.
+ * As of this writing 136 of 137 catalogued capabilities declare `premium` and one declares `admin`;
+ * against the real registry this mechanism restricts admin-only tools; premium tools are open to all members.
  */
 export function declaredEntitlement(
   tool: string,
