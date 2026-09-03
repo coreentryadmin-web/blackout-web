@@ -118,7 +118,7 @@ test("silence means NO PROOF of a problem, never proven fine", () => {
   // tired of it. When this was written 67 of the then-116 tools were uncatalogued, so the case was
   // the common one.
   //
-  // It is now the RARE one — coverage is 134 of 134 — and that is exactly why this test must stay
+  // It is now the RARE one — coverage is 130 of 130 — and that is exactly why this test must stay
   // rather than be retired as unreachable. Complete coverage is not an invariant: it lapses the
   // moment anyone adds a tool ahead of its capability entry, and that is precisely when a
   // silence-means-broken planner would start firing on healthy turns. The tool name below is
