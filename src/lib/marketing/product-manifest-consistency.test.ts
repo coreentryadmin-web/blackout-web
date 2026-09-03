@@ -32,6 +32,28 @@ test("manifest defines seven live products including Meridian and Vector", () =>
   assert.equal(PRODUCT_MANIFEST.meridian.launchStatus, "live");
 });
 
+// Regression for a P2 IA finding (2026-09-03): "dark pool" was promised platform-wide (homepage
+// "what you get" list, /about, /vs/others) and the /about page's hand-authored "Seven modules"
+// prose already (correctly) credited it to HELIX — but the CANONICAL manifest that actually
+// drives the homepage cards/pricing/FAQ/schema gave NO product credit for it at all, so a member
+// reading the product descriptions had no way to find which desk shows it. In reality Helix ships
+// a dedicated dark-pool panel (prints/sparkline/bias) and Vector overlays dark-pool price levels
+// on its chart — both already implemented, this was purely a marketing-copy gap.
+test("HELIX and Vector's manifest entries credit dark pool — the products that actually render it", () => {
+  const helix = PRODUCT_MANIFEST.helix;
+  assert.ok(
+    helix.capabilities.some((c) => /dark pool/i.test(c)),
+    "HELIX ships a dedicated dark-pool panel; its capabilities must say so"
+  );
+  assert.match(helix.faqAnswer, /dark pool/i);
+
+  const vector = PRODUCT_MANIFEST.vector;
+  assert.ok(
+    vector.capabilities.some((c) => /dark pool/i.test(c)),
+    "Vector overlays dark-pool levels on its chart; its capabilities must say so"
+  );
+});
+
 // Regression for a P2/P3 finding (2026-09-02): Meridian's "Read the guide" and "Open Meridian"
 // buttons both pointed at /meridian (learnHref === href), so "Read the guide" was a dead-end
 // duplicate rather than real documentation — the only product on the homepage without one. The

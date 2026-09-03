@@ -69,10 +69,11 @@ export const PRODUCT_MANIFEST: Record<MarketingModuleId, ProductManifestEntry> =
     capabilities: [
       "Live websocket tape with premium-tier filters",
       "Top prints, sweeps, and block detection",
+      "Dark pool prints and bias, in the same tape",
       "Feeds SPX Slayer confluence and Night Hawk scanner",
     ],
     faqAnswer:
-      "Live options flow filtered down to what moves the desk, not a firehose: repeated-hit strike stacks, sweeps versus blocks, call/put pressure, premium and fill counts. The engine merges the live feed with the full session's flow so the big prints never slip past.",
+      "Live options flow filtered down to what moves the desk, not a firehose: repeated-hit strike stacks, sweeps versus blocks, call/put pressure, premium and fill counts — plus a dedicated dark pool panel (prints, sparkline, bias) for the same ticker. The engine merges the live feed with the full session's flow so the big prints never slip past.",
     planInclude: "HELIX live options-flow tape",
     learnHref: "/learn/helix-flow-scanner-guide",
     href: "/flows",
@@ -151,6 +152,7 @@ export const PRODUCT_MANIFEST: Record<MarketingModuleId, ProductManifestEntry> =
     capabilities: [
       "Universe screener presets (nearest flip, most pinned, most explosive)",
       "GEX ladders, wall integrity, gamma magnet, confluence zones",
+      "Dark pool levels overlaid on the chart",
       "GEX-shift leaders, alerts, and session replay",
     ],
     faqAnswer:
