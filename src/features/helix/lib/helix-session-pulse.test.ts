@@ -51,4 +51,46 @@ describe("computeHelixSessionPulse", () => {
     );
     assert.equal(pulse.printsLast15m, 1);
   });
+
+  // BUG FIX (2026-09-03): a print stamped in the future (UW clock skew / bad alerted_at) used
+  // to produce a NEGATIVE `nowMs - t`, which trivially passed the old unguarded `<= 15min` check
+  // and inflated printsLast15m with unverifiable prints. signalWindowAgeMs now rejects anything
+  // more than 60s ahead of `now`.
+  test("a print stamped well in the future is NOT counted in printsLast15m", () => {
+    const now = Date.parse("2026-09-01T15:00:00.000Z");
+    const pulse = computeHelixSessionPulse(
+      [
+        flow({
+          ticker: "SPY",
+          premium: 500_000,
+          alerted_at: new Date(now - 5 * 60_000).toISOString(),
+        }),
+        flow({
+          ticker: "SPY",
+          premium: 500_000,
+          // 10 minutes in the future — well beyond the 60s clock-skew tolerance.
+          alerted_at: new Date(now + 10 * 60_000).toISOString(),
+        }),
+      ],
+      now
+    );
+    assert.equal(pulse.printsLast15m, 1, "the future-dated print must be excluded, not counted as freshest");
+  });
+
+  // A print only slightly ahead of `now` — ordinary clock skew, within tolerance — still counts,
+  // matching signalWindowAgeMs's own documented tolerance rationale.
+  test("a print a few seconds ahead of now (ordinary clock skew) is still counted", () => {
+    const now = Date.parse("2026-09-01T15:00:00.000Z");
+    const pulse = computeHelixSessionPulse(
+      [
+        flow({
+          ticker: "SPY",
+          premium: 500_000,
+          alerted_at: new Date(now + 5_000).toISOString(),
+        }),
+      ],
+      now
+    );
+    assert.equal(pulse.printsLast15m, 1);
+  });
 });

@@ -98,7 +98,12 @@ import {
   VELOCITY_RADAR_DISPLAY_LIMIT,
   VelocityRadar,
 } from "@/features/helix/components/VelocityRadar";
-import { detectSplitFlow, detectVelocitySpikes, signalEligibility } from "@/features/helix/lib/helix-signal-detection";
+import {
+  detectSplitFlow,
+  detectVelocitySpikes,
+  signalEligibility,
+  signalWindowAgeMs,
+} from "@/features/helix/lib/helix-signal-detection";
 import { SectorFlowPanel, type SectorFlowEntry } from "@/features/helix/components/SectorFlowPanel";
 import { NightHawkFlowPanel, type NightHawkPlayWithFlow } from "@/features/helix/components/NightHawkFlowPanel";
 import { ExpiryConcentration } from "@/features/helix/components/ExpiryConcentration";
@@ -833,11 +838,18 @@ export function FlowFeed() {
   // Gap #6: derive "newest" from the freshest row with a TRUSTWORTHY alerted_at —
   // never from a row whose time UW omitted (those would otherwise read as epoch 0 /
   // NaN and either falsely age the tape or mask a genuinely stale one).
+  // BUG FIX (2026-09-03): also exclude a print dated beyond FUTURE_PRINT_TOLERANCE_MS into
+  // the future (UW clock skew / bad alerted_at) — using it as "newest" made dataAgeMs
+  // negative below, which trivially passed `dataAgeMs > 5min` as false and painted the
+  // badge green LIVE for a tape that could actually be dead. signalWindowAgeMs is the same
+  // future-timestamp guard the split/velocity detectors already apply to this exact field.
   const newestAt = useMemo(() => {
     let max = 0;
+    const nowMs = Date.now();
     for (const a of displayAlerts) {
       const ms = flowFreshnessAtMs(a);
-      if (ms != null && ms > max) max = ms;
+      if (ms == null || signalWindowAgeMs(ms, nowMs) == null) continue;
+      if (ms > max) max = ms;
     }
     return max;
   }, [displayAlerts]);

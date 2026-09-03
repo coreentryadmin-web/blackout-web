@@ -1813,13 +1813,20 @@ function fmtAsofSeconds(iso: string | undefined): string | null {
  *  copy after the TTL dropped to 5s (FINDINGS 2026-07-28 Thermal audit). */
 const MATRIX_STALE_MS = 15_000;
 
+/** A browser/ECS clock skew of a few seconds is ordinary; beyond that, an `asof` in the future
+ *  is a bad/misparsed server timestamp, not a genuinely brand-new sample — treat it as untrustworthy
+ *  (stale), never as freshest-possible (BUG FIX 2026-09-03: an unguarded `Date.now() - t` went
+ *  negative for a future `asof`, which trivially failed `> MATRIX_STALE_MS` and rendered green/fresh). */
+const FUTURE_ASOF_TOLERANCE_MS = 5_000;
+
 /** Always-visible "as of HH:MM:SS ET" freshness anchor for the matrix header. Renders null when
  *  there is no usable timestamp so it never fabricates freshness. */
 function MatrixFreshness({ asof }: { asof: string | undefined }) {
   const label = fmtAsofSeconds(asof);
   if (!label) return null;
   const t = asof ? new Date(asof).getTime() : NaN;
-  const stale = Number.isFinite(t) && Date.now() - t > MATRIX_STALE_MS;
+  const ageMs = Number.isFinite(t) ? Date.now() - t : NaN;
+  const stale = Number.isFinite(ageMs) && (ageMs > MATRIX_STALE_MS || ageMs < -FUTURE_ASOF_TOLERANCE_MS);
   return (
     <span
       className={clsx(

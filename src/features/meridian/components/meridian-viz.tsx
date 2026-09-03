@@ -1054,8 +1054,14 @@ export function MeridianFreshness({
 
   const t = asOf ? Date.parse(asOf) : NaN;
   if (!Number.isFinite(t)) return null;
-  const ageMs = Math.max(0, now - t);
-  const stale = ageMs > staleAfterMs;
+  const rawAgeMs = now - t;
+  // BUG FIX (2026-09-03): Math.max(0, ...) alone reads a future `asOf` (server/client clock
+  // skew or a bad timestamp) as "updated 0s ago" — the freshest possible reading, exactly
+  // backwards for data whose real age cannot be verified. A few seconds of ordinary clock
+  // skew is tolerated; beyond that, treat it as stale rather than fresh.
+  const FUTURE_ASOF_TOLERANCE_MS = 5_000;
+  const stale = rawAgeMs > staleAfterMs || rawAgeMs < -FUTURE_ASOF_TOLERANCE_MS;
+  const ageMs = Math.max(0, rawAgeMs);
   const label =
     ageMs < 60_000
       ? `${Math.floor(ageMs / 1000)}s`
