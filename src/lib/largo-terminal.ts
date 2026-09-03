@@ -7,6 +7,7 @@ import {
   type AnthropicMessage,
   type AnthropicSystemBlock,
   type AnthropicToolLoopEvent,
+  type ToolLoopStopReason,
 } from "@/lib/providers/anthropic";
 import { largoAvailable, largoClaudeEnabled } from "@/lib/ai-env";
 import { randomUUID } from "node:crypto";
@@ -1020,6 +1021,7 @@ export async function runLargoQuery(
     // Mark the prefetch/loop boundary so the phase split below can attribute the wall clock. See
     // turn-phase-timings.ts: everything before this line was deterministic prefetch (no model call).
     const loopStartedAt = Date.now();
+    let loopStopReason: ToolLoopStopReason | undefined;
     const answer = await anthropicToolLoop({
       system,
       tools: filteredTools,
@@ -1032,6 +1034,9 @@ export async function runLargoQuery(
       maxRetries: 1,
       cacheSystem: true,
       aiGate: "largo",
+      onStop: ({ reason }) => {
+        loopStopReason = reason;
+      },
       runTool: makeGuardedToolRunner({
         viewer,
         execute: runLargoTool,
@@ -1071,6 +1076,7 @@ export async function runLargoQuery(
         budgetMs: largoLoopBudgetMs(depth),
         toolsUsed,
         ceilingTripped,
+        stopReason: loopStopReason,
       });
     }
 
@@ -1302,6 +1308,7 @@ export async function runLargoQueryStream(
     // Mark the prefetch/loop boundary so the phase split below can attribute the wall clock. See
     // turn-phase-timings.ts: everything before this line was deterministic prefetch (no model call).
     const loopStartedAt = Date.now();
+    let loopStopReason: ToolLoopStopReason | undefined;
     const answer = await anthropicToolLoop({
       system,
       tools: filteredTools,
@@ -1314,6 +1321,9 @@ export async function runLargoQueryStream(
       maxRetries: 1,
       cacheSystem: true,
       aiGate: "largo",
+      onStop: ({ reason }) => {
+        loopStopReason = reason;
+      },
       // PROGRESSIVE ANSWER. Tokens are forwarded as the model writes, so the member watches the
       // answer appear instead of staring at a spinner for 20s while 12 rounds of tools resolve.
       //
@@ -1370,6 +1380,7 @@ export async function runLargoQueryStream(
         budgetMs: largoLoopBudgetMs(depth),
         toolsUsed,
         ceilingTripped,
+        stopReason: loopStopReason,
       });
     }
 

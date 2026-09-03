@@ -72,6 +72,7 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 - [ ] Merge PR #3381 when CI green
 - [x] `get_spx_structure` + `get_spx_confluence` — truncation probe COMPLETE on prod (2026-09-03)
 - [x] `get_signal_log` Largo fit at model boundary
+- [x] L-3 empty-answer honesty — wire `anthropicToolLoop` `onStop` → `emptyAnswerFallback` `stopReason` (both streaming + non-streaming paths)
 
 ---
 
@@ -79,6 +80,7 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 
 | Date | Item | PR |
 |------|------|-----|
+| 2026-09-03 | L-3 empty-answer stopReason wiring (onStop → emptyAnswerFallback) | (this branch) |
 | 2026-09-03 | P2 desk convergence lane_freshness for Largo | (this branch) |
 | 2026-09-03 | P2 prod truncation probe — 4 SPX/HELIX tools COMPLETE | (probe log) |
 | 2026-09-03 | P1 get_spx_play + confluence Largo fit | (this branch) |
