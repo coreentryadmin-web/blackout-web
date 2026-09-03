@@ -67,6 +67,11 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 
 - [x] `get_spx_desk_convergence` — expose `lane_freshness` (Pulse/Desk/Flow) for Largo parity with header strip
 
+## P2 — autonomous follow-ups
+
+- [ ] Merge PR #3381 when CI green
+- [ ] `get_spx_structure` — verify truncation probe COMPLETE at default call post-fit deploy
+
 ---
 
 ## Completed (agent log)
