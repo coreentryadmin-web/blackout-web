@@ -1543,3 +1543,57 @@ test("firstSeenIso: returns null — never a fabricated time — when neither sh
   assert.equal(firstSeenIso({}, {}), null);
   assert.equal(firstSeenIso({ first_seen: "" }, { first_seen: "" }), null);
 });
+
+test("0DTE adapter: WATCH row projects runner target from Vector + confluence", () => {
+  const play = terminalPlayFromZeroDte({
+    ticker: "AMD",
+    status: "WATCH",
+    score: 76,
+    confluence: 2,
+    discovery_origin: ["FLOW"],
+    vector_pulse: {
+      premium_pct: 35,
+      peak_premium_pct: 42,
+      action_status: "still_buy",
+      is_winner: false,
+      is_runner: true,
+      side: "call",
+      direction: "long",
+    },
+    setup: {
+      direction: "long",
+      dte: 0,
+      discovery_origin: ["FLOW"],
+      confluence: { confirmations: 2 },
+      cortex: {
+        abstained: false,
+        verdict: { score: 1.2, vetoes: [], supports: [{ source: "x", detail: "y", weight: 1 }], opposes: [], absent: [] },
+      },
+      plan: { mark: 1.2, entry_max: 1.25 },
+    },
+  });
+  assert.equal(play.runnerProjected, true);
+  assert.ok(play.runnerProfile);
+  assert.ok((play.runnerProfile?.targetPct ?? 0) > 100);
+  assert.match(play.recNote ?? "", /if committed/);
+});
+
+test("0DTE adapter: closed row surfaces mfeCapturePct and frozen runner profile", () => {
+  const play = terminalPlayFromZeroDte({
+    ticker: "CRCL",
+    status: "CLOSED",
+    score: 70,
+    live_pnl_pct: 80,
+    exit_pnl_pct: 80,
+    mfe_capture_pct: 53,
+    peak_pnl_pct: 150,
+    entry_premium: 1.1,
+    last_mark: 1.98,
+    peak_premium: 2.75,
+    runner_profile: { target_pct: 300, tag: "runner_a", regime: "trend" },
+    setup: { direction: "long", dte: 0 },
+  });
+  assert.equal(play.mfeCapturePct, 53);
+  assert.equal(play.runnerProfile?.targetPct, 300);
+  assert.equal(play.runnerProjected, false);
+});

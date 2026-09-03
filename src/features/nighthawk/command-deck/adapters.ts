@@ -31,6 +31,7 @@ import { watchReferencePremium, watchTrackPct, watchUnderlyingTrackPct } from "@
 import { thesisFirstFromEntryContext } from "@/lib/zerodte/thesis/thesis-first-rehydrate";
 import { projectRunnerProfileForCandidate } from "@/lib/zerodte/runner-profile";
 import type { ZeroDteVectorPulse } from "@/lib/zerodte/vector-crosslink";
+import { vectorSideToDirection } from "@/lib/zerodte/vector-commit-boost";
 
 const asDir = (d: unknown): DeckDirection =>
   String(d ?? "").toLowerCase().startsWith("s") || String(d ?? "") === "SHORT" ? "SHORT" : "LONG";
@@ -64,17 +65,19 @@ function cortexPreviewMetrics(cortex: unknown): {
 }
 
 function vectorPulseForPreview(
-  pulse: ZeroDteDeckSource["vector_pulse"]
+  pulse: ZeroDteDeckSource["vector_pulse"],
+  setupDirection: "long" | "short"
 ): ZeroDteVectorPulse | null {
   if (!pulse) return null;
+  const direction = pulse.direction ?? vectorSideToDirection(pulse.side) ?? setupDirection;
   return {
     premium_pct: pulse.premium_pct,
     peak_premium_pct: pulse.peak_premium_pct,
     action_status: pulse.action_status,
     is_winner: pulse.is_winner,
     is_runner: pulse.is_runner,
-    side: null,
-    direction: null,
+    side: pulse.side ?? (setupDirection === "long" ? "call" : "put"),
+    direction,
     strike: null,
     occ: null,
     rank: null,
@@ -279,6 +282,8 @@ export interface ZeroDteDeckSource {
     action_status: string | null;
     is_winner: boolean;
     is_runner: boolean;
+    side?: "call" | "put" | null;
+    direction?: "long" | "short" | null;
   } | null;
   peak_pnl_pct?: number | null;
   mfe_capture_pct?: number | null;
@@ -418,7 +423,7 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
           score: fin(src.score),
           direction: setupDir,
           confluenceCount: fin(src.confluence) ?? 0,
-          vectorPulse: vectorPulseForPreview(src.vector_pulse),
+          vectorPulse: vectorPulseForPreview(src.vector_pulse, setupDir),
           tier: (src.tier?.tier === "A" || src.tier?.tier === "B" || src.tier?.tier === "C"
             ? src.tier.tier
             : null) as "A" | "B" | "C" | null,
