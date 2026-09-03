@@ -35,6 +35,7 @@
 
 import { dbConfigured, fetchZeroDteSetupLog, updateZeroDteLiveState, type ZeroDteSetupLogRow } from "@/lib/db";
 import { evaluateLedgerRowExit } from "./exit-sync";
+import { condorLegRoles, condorNetMarkPerShare, type CondorLegRoleOcc } from "./condor";
 import { etNowParts, todayEt } from "@/features/nighthawk/lib/session";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { fetchOptionsUnifiedSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
@@ -43,10 +44,12 @@ import { getLiveOptionMark, subscribeContracts, unsubscribeContracts } from "@/l
 import {
   advancePlayLatch,
   isZeroDteMarkStale,
+  livePnlPctFor,
   pinnedLivePnlPct,
   resolveZeroDteMark,
   zeroDteMidOf,
   ZERODTE_LIVE_CONTRACT_CAP,
+  ZERODTE_MARK_STALE_MS,
   type PlayLatch,
   type ZeroDteMarkSource,
 } from "./marks-math";
@@ -140,6 +143,10 @@ export type ActiveZeroDtePlay = {
    * an entered ledger play (the priority path that keeps status/persist/exit).
    */
   quote_only?: boolean;
+  /** True for a CREDIT iron condor — quotes all four leg OCCs and prices a net debit mark. */
+  is_condor?: boolean;
+  /** Role + OCC per leg when `is_condor`; `occ` is the nominal anchor (first leg) for identity. */
+  condor_legs?: CondorLegRoleOcc[];
 };
 
 /**
@@ -203,10 +210,92 @@ export type ZeroDteLiveMarksPayload = {
 // Active-set derivation (pure parts exported for tests)
 // ---------------------------------------------------------------------------
 
+/** OCCs the lane must quote for one active play (1 for directional, 4 for condor). */
+export function activePlayQuoteOccs(p: ActiveZeroDtePlay): string[] {
+  if (p.condor_legs?.length === 4) return p.condor_legs.map((l) => l.occ);
+  return p.occ ? [p.occ] : [];
+}
+
+export type ResolvedActivePlayMark = {
+  mark: number | null;
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+  asOf: number;
+  source: ZeroDteMarkSource;
+  greeks: ZeroDteGreeks | null;
+};
+
+/** Resolve the display mark for one active play from the in-memory store (single-leg or 4-leg condor). */
+export function resolveActivePlayStoreMark(
+  p: ActiveZeroDtePlay,
+  readMark: (occ: string) => ZeroDteLiveMark | undefined
+): ResolvedActivePlayMark {
+  if (p.condor_legs?.length === 4) {
+    const legMarks = p.condor_legs.map((l) => readMark(l.occ));
+    const netMark = condorNetMarkPerShare(p.condor_legs, (occ) => readMark(occ)?.mark ?? null);
+    const asOf = legMarks.reduce((min, m) => {
+      const t = m?.asOf ?? 0;
+      return t > 0 && (min === 0 || t < min) ? t : min;
+    }, 0);
+    return {
+      mark: netMark,
+      bid: null,
+      ask: null,
+      mid: netMark,
+      asOf,
+      source: netMark != null ? "mid" : "none",
+      greeks: null,
+    };
+  }
+  const m = readMark(p.occ);
+  return {
+    mark: m?.mark ?? null,
+    bid: m?.bid ?? null,
+    ask: m?.ask ?? null,
+    mid: m?.mid ?? null,
+    asOf: m?.asOf ?? 0,
+    source: m?.source ?? "none",
+    greeks: m?.greeks ?? null,
+  };
+}
+
+/** Board overlay: fresh live mark for a ledger row (directional OCC or 4-leg condor). */
+export function resolveLedgerRowLiveMark(
+  r: ZeroDteSetupLogRow,
+  readMark: (occ: string) => ZeroDteLiveMark | undefined,
+  nowMs: number,
+  staleAfterMs = ZERODTE_MARK_STALE_MS
+): ResolvedActivePlayMark | null {
+  if (r.status === "CLOSED") return null;
+  const play = toActivePlay(r);
+  if (!play) return null;
+  const resolved = resolveActivePlayStoreMark(play, readMark);
+  if (resolved.mark == null || isZeroDteMarkStale(resolved.asOf, nowMs, staleAfterMs)) return null;
+  return resolved;
+}
+
 /** Extract the live-lane view of a ledger row; null when it can't be tracked
- *  (CLOSED = frozen by design; no plan OCC = nothing to quote). */
+ *  (CLOSED = frozen by design; no plan OCC / condor legs = nothing to quote). */
 export function toActivePlay(r: ZeroDteSetupLogRow): ActiveZeroDtePlay | null {
   if (r.status === "CLOSED") return null;
+  const ec = r.entry_context as Record<string, unknown> | null;
+  const condorLegs = condorLegRoles(ec?.condor);
+  if (condorLegs.length === 4 && (ec?.play_type === "CONDOR" || ec?.condor)) {
+    return {
+      session_date: r.session_date,
+      ticker: r.ticker,
+      direction: r.direction,
+      strike: r.top_strike,
+      occ: condorLegs[0]!.occ,
+      is_condor: true,
+      condor_legs: condorLegs,
+      entry_premium: r.entry_premium,
+      status: r.status,
+      peak_premium: r.peak_premium,
+      trough_premium: r.trough_premium,
+    };
+  }
   const occ = typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null;
   if (!occ) return null;
   return {
@@ -284,7 +373,10 @@ export function mergeTrackedContracts(
   cap = ZERODTE_LIVE_CONTRACT_CAP
 ): { enteredPlays: ActiveZeroDtePlay[]; setupPlays: ActiveZeroDtePlay[] } {
   const entered = enteredPlays.slice(0, cap);
-  const seen = new Set(entered.map((p) => p.occ));
+  const seen = new Set<string>();
+  for (const p of entered) {
+    for (const occ of activePlayQuoteOccs(p)) seen.add(occ);
+  }
   const room = cap - entered.length;
   const setupPlays: ActiveZeroDtePlay[] = [];
   for (const q of quotes) {
@@ -439,7 +531,9 @@ export async function runZeroDteMarkTick(deps?: {
     if (entered.length === 0 && setupPlays.length === 0) return;
 
     // Quote the FULL tracked set (entered + watch setups); the persist pass stays entered-only.
-    const occs = Array.from(new Set([...entered, ...setupPlays].map((p) => p.occ)));
+    const occs = Array.from(
+      new Set([...entered, ...setupPlays].flatMap((p) => activePlayQuoteOccs(p)))
+    );
 
     // Reconcile the mark store to the tracked set: drop marks for contracts that
     // are no longer tracked (closed/rolled entered plays, or setups that fell off the
@@ -516,14 +610,19 @@ export async function runZeroDteMarkTick(deps?: {
       const evalExit = deps?.evaluateExit ?? evaluateLedgerRowExit;
       for (const play of entered) {
         const key = `${play.session_date}:${play.ticker}`;
-        const m = markStore.get(play.occ);
+        const resolved = resolveActivePlayStoreMark(play, (occ) => markStore.get(occ));
         // LATCH mark (peak/trough + the plan hard-stop): tolerates up to
         // LATCH_MAX_MARK_AGE_MS. The trough only ever widens, so a slightly-aged
         // mark can only DEEPEN a latched stop, never lift it — and once the trough
         // has crossed the stop, derivePlayStatus fires CLOSED off the LATCH alone,
         // independent of live-mark freshness (a null mark keeps the prior trough).
         // This protective stop path MUST survive staleness, so it keeps the 30s bar.
-        const mark = m && !isZeroDteMarkStale(m.asOf, now, LATCH_MAX_MARK_AGE_MS) ? m.mark : null;
+        const mark =
+          resolved.mark != null &&
+          resolved.asOf > 0 &&
+          !isZeroDteMarkStale(resolved.asOf, now, LATCH_MAX_MARK_AGE_MS)
+            ? resolved.mark
+            : null;
         // ENGINE mark (ratchet floor / thesis / flat-timeout / fresh-mark stop-or-
         // target breach): a DIFFERENT contract. 0DTE premium moves 10–30%/min, so a
         // mark-DRIVEN engine exit may only act on a CURRENT quote (≤ ZERODTE_MARK_STALE_MS,
@@ -531,7 +630,10 @@ export async function runZeroDteMarkTick(deps?: {
         // evaluateLedgerRowExit HOLDs (missing mark = no engine exit, by its own contract),
         // so the engine can never exit at a price nobody currently sees. The latch stop
         // above is unaffected, so capital protection never depends on live-mark freshness.
-        const engineMark = m && !isZeroDteMarkStale(m.asOf, now) ? m.mark : null;
+        const engineMark =
+          resolved.mark != null && resolved.asOf > 0 && !isZeroDteMarkStale(resolved.asOf, now)
+            ? resolved.mark
+            : null;
         let latch = advancePlayLatch(play, latchMemo.get(key) ?? null, mark, nowEtMinutes, {
           deferPlanStop: true,
         });
@@ -700,10 +802,11 @@ export function buildZeroDteLiveMarksPayloadFrom(
   latchedStatus?: (play: ActiveZeroDtePlay) => PlayStatus | null
 ): ZeroDteLiveMarksPayload {
   const marks: ZeroDteLiveMarkRow[] = plays.map((p) => {
-    const m = readMark(p.occ);
-    const asOf = m?.asOf ?? 0;
+    const resolved = resolveActivePlayStoreMark(p, readMark);
+    const asOf = resolved.asOf;
     const stale = isZeroDteMarkStale(asOf, nowMs);
     const status = latchedStatus?.(p) ?? p.status;
+    const pnlMark = resolved.mark;
     return {
       ticker: p.ticker,
       occ: p.occ,
@@ -711,19 +814,21 @@ export function buildZeroDteLiveMarksPayloadFrom(
       strike: p.strike,
       status,
       entry_premium: p.entry_premium,
-      bid: m?.bid ?? null,
-      ask: m?.ask ?? null,
-      mid: m?.mid ?? null,
-      last: m?.last ?? null,
-      mark: m?.mark ?? null,
-      source: m?.source ?? "none",
+      bid: resolved.bid,
+      ask: resolved.ask,
+      mid: resolved.mid,
+      last: null,
+      mark: pnlMark,
+      source: resolved.source,
       mark_as_of: asOf > 0 ? new Date(asOf).toISOString() : null,
       mark_age_ms: asOf > 0 ? Math.max(0, nowMs - asOf) : null,
       stale,
-      live_pnl_pct: pinnedLivePnlPct(p.entry_premium, m?.mark ?? null),
+      live_pnl_pct: livePnlPctFor(p.is_condor === true, p.entry_premium, pnlMark),
       // WS-10 monitoring lane: mark the long at the BID (the exit side) — null bid → null.
-      live_pnl_pct_exec: pinnedLivePnlPct(p.entry_premium, m?.bid ?? null),
-      greeks: m?.greeks ?? null,
+      // Condor exec debit (4-leg ask/bid) is a follow-up; mid net mark only for now.
+      live_pnl_pct_exec:
+        p.is_condor === true ? null : pinnedLivePnlPct(p.entry_premium, resolved.bid),
+      greeks: resolved.greeks,
     };
   });
   // Round HERE, not in the routes: this is the single build that BOTH the SSE lane

@@ -143,6 +143,23 @@ export function ZeroDteCommandPanel({
         </div>
       )}
 
+      {play.runnerProfile && play.runnerProfile.targetPct > 100 && (
+        <div
+          className="nh-deck-runner-xlink"
+          data-testid="zerodte-runner-profile"
+          title={play.runnerProjected ? "Projected target if this candidate commits" : "Frozen runner target at commit"}
+        >
+          <span className="nh-deck-runner-xlink__lab">Runner target</span>
+          <span className="nh-deck-runner-xlink__val">
+            +{Math.round(play.runnerProfile.targetPct)}%
+            {play.runnerProjected ? " (if committed)" : ""}
+          </span>
+          {play.runnerProfile.tag && (
+            <span className="nh-deck-runner-xlink__tag">{play.runnerProfile.tag}</span>
+          )}
+        </div>
+      )}
+
       {isCandidate && play.gateBlocks && play.gateBlocks.length > 0 && (
         <section className="nh-deck-command-section nh-deck-gate-blocks" aria-label="Gate blocks" data-testid="zerodte-gate-blocks">
           <h3 className="nh-deck-command-heading">Why not committed</h3>

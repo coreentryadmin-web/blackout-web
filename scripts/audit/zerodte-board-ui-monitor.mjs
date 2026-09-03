@@ -39,6 +39,12 @@ const report = {
     body?.vector_pulse_by_ticker != null &&
     Array.isArray(body?.vector_near_misses) &&
     (body?.veto_shadow != null || body?.veto_shadow === null),
+  ledger_runner_profiles: Array.isArray(body?.ledger)
+    ? body.ledger.filter((r) => r?.runner_profile != null).length
+    : null,
+  ledger_mfe_capture: Array.isArray(body?.ledger)
+    ? body.ledger.filter((r) => r?.mfe_capture_pct != null).length
+    : null,
   veto_shadow: body?.veto_shadow ?? null,
 };
 

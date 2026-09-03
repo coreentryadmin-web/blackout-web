@@ -88,7 +88,7 @@ import {
   type SetupDossierView,
   type ZeroDteGateRejection,
 } from "./board";
-import { gradeCondorFromBars } from "./condor";
+import { condorLegOccs, condorLegRoles, condorNetMarkPerShare, gradeCondorFromBars } from "./condor";
 import { buildZeroDteEntryContext, fetchZeroDteSessionContext } from "./entry-context";
 import { buildMarketState, weightedScoreForMerge, type MarketStateSnapshot } from "./market-state-engine";
 import {
@@ -184,6 +184,7 @@ import {
 import {
   executionTaxBps,
   latchPremiumBounds,
+  resolveZeroDteMark,
   zeroDteHalfSpreadFrac,
   ZERODTE_DEFAULT_HALF_SPREAD_FRAC,
 } from "./marks-math";
@@ -971,6 +972,23 @@ async function attachGateVerdicts(
     } catch {
       // Pre-warm is best-effort — Cortex still runs with cold reads and the timeout
     }
+  }
+
+  // Pre-warm Cortex reads for the highest-scoring fresh candidates (bounded fan-out).
+  // Populates the per-(ticker,direction) server cache so the sequential gate→cortex loop
+  // below hits warm reads instead of cold 4-6s fetches. Best-effort — failures are ignored.
+  const cortexWarm = setups
+    .filter((s) => !committed.has(s.ticker.toUpperCase()))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6);
+  if (cortexWarm.length > 0) {
+    void Promise.allSettled(
+      cortexWarm.map((s) =>
+        evaluateCortexForCommit(s.ticker, s.direction, new Date(nowMs), {}, {
+          failClosedOnVetoBlind: true,
+        })
+      )
+    );
   }
 
   // Setups arrive score-ranked, so the concurrency budget goes to the best finds:
@@ -2060,9 +2078,15 @@ export function _resetZeroDteLedgerLatchForTest(): void {
 export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<ZeroDteSetupLogRow[]> {
   const live = rows.filter((r) => r.status !== "CLOSED");
   if (live.length === 0) return rows;
-  const occs = live
+  const directionalOccs = live
     .map((r) => (typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null))
     .filter((o): o is string => Boolean(o));
+  const condorOccs = live.flatMap((r) => {
+    const ec = r.entry_context as Record<string, unknown> | null;
+    if (ec?.play_type !== "CONDOR" && !ec?.condor) return [];
+    return condorLegOccs(ec?.condor);
+  });
+  const occs = Array.from(new Set([...directionalOccs, ...condorOccs]));
   const snaps = occs.length
     ? await within(
         fetchOptionsUnifiedSnapshot(occs).catch(
@@ -2086,7 +2110,18 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       // entry still time-stop at 15:30 (data quality never exempts the clock).
       if (r.status === "CLOSED") return r;
       const occ = typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null;
-      const mark = occ ? (snaps.get(occ)?.mark ?? null) : null;
+      const ec = r.entry_context as Record<string, unknown> | null;
+      const isCondor = ec?.play_type === "CONDOR" || Boolean(ec?.condor);
+      const mark = isCondor
+        ? condorNetMarkPerShare(condorLegRoles(ec?.condor), (legOcc) => {
+            const snap = snaps.get(legOcc);
+            if (!snap) return null;
+            if (snap.mark != null) return snap.mark;
+            return resolveZeroDteMark(snap.bid ?? null, snap.ask ?? null, snap.last ?? null).mark;
+          })
+        : occ
+          ? (snaps.get(occ)?.mark ?? null)
+          : null;
       // LATCH ONLY WHAT IS ACTUALLY KNOWN — an absent premium must stay absent.
       //
       // The trough used to read

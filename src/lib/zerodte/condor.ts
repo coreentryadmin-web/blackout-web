@@ -303,6 +303,59 @@ export function buildCondorPlan(input: {
   };
 }
 
+// ── Live mark helpers (4-leg net debit to close) ─────────────────────────────────────
+/** OCCs for the four condor legs (order preserved), empty when unparsable. */
+export function condorLegOccs(raw: unknown): string[] {
+  if (!raw || typeof raw !== "object") return [];
+  const legs = (raw as { legs?: unknown }).legs;
+  if (!Array.isArray(legs)) return [];
+  const occs: string[] = [];
+  for (const leg of legs) {
+    if (!leg || typeof leg !== "object") continue;
+    const occ = (leg as { occ?: unknown }).occ;
+    if (typeof occ === "string" && occ.trim()) occs.push(occ.trim());
+  }
+  return occs;
+}
+
+export type CondorLegRoleOcc = { role: "short" | "long"; occ: string };
+
+/** Role + OCC for each condor leg — the structural input for live net-mark pricing. */
+export function condorLegRoles(raw: unknown): CondorLegRoleOcc[] {
+  if (!raw || typeof raw !== "object") return [];
+  const legs = (raw as { legs?: unknown }).legs;
+  if (!Array.isArray(legs)) return [];
+  const out: CondorLegRoleOcc[] = [];
+  for (const leg of legs) {
+    if (!leg || typeof leg !== "object") continue;
+    const role = (leg as { role?: unknown }).role;
+    const occ = (leg as { occ?: unknown }).occ;
+    if ((role === "short" || role === "long") && typeof occ === "string" && occ.trim()) {
+      out.push({ role, occ: occ.trim() });
+    }
+  }
+  return out;
+}
+
+/**
+ * Per-share debit to close a sold condor from live leg marks — same units as `entry_premium`
+ * (per-share premium; net_credit/100 on commit). Short legs add, long legs subtract: the mirror
+ * of buildCondorPlan's conservative credit formula. Requires all four legs to price; null otherwise.
+ */
+export function condorNetMarkPerShare(
+  legs: CondorLegRoleOcc[],
+  markOf: (occ: string) => number | null
+): number | null {
+  if (legs.length !== 4) return null;
+  let net = 0;
+  for (const { role, occ } of legs) {
+    const m = markOf(occ);
+    if (m == null || !(m >= 0)) return null;
+    net += role === "short" ? m : -m;
+  }
+  return Math.round(net * 10000) / 10000;
+}
+
 // ── Condor liquidity gate (the directional plan-quality replacement) ───────────────────
 // A condor is neutral, so the directional G-8/G-9 (chase / single-leg spread) do NOT apply. This is
 // the SELL-side equivalent: the four legs must be tradeable AND the credit must clear a floor for the

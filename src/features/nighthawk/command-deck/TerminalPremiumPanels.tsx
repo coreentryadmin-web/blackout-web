@@ -544,7 +544,7 @@ export function ManagementActionCard({
 }
 
 export function VisualTrimLadder({ play }: { play: TerminalPlay }) {
-  const rungs = trimLadderVisual(play.exitPolicy);
+  const rungs = trimLadderVisual(play.exitPolicy, play.runnerProfile?.targetPct ?? null);
   if (rungs.length === 0) return null;
   return (
     <section className="nh-deck-trim-visual" aria-label="Trim ladder">
