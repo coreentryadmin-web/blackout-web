@@ -10047,7 +10047,17 @@ export async function recordCronJobRun(input: {
   meta_json?: Record<string, unknown>;
 }): Promise<void> {
   await ensureSchema();
-  await (await getPool()).query(
+  // Routed through dbQuery (not a raw pool.query call) so this benefits from the
+  // same transient-error retry `dbQuery` already gives every other write — including the exact
+  // "Cannot use a pool after calling end on the pool" client-side use-after-teardown race
+  // `isTransientPgError`'s own comment documents (a caller mid-flight on a pool another caller
+  // just reset via `resetPoolForRetry()`, not a real DB failure). Before this fix, that race hit
+  // `logCronRun`'s `try { recordCronJobRun(...) } catch { console.warn(...) }` bypass unretried —
+  // confirmed live 2026-09-03: `[cron-run/spx-evaluate] log failed: Error: Cannot use a pool after
+  // calling end on the pool` fired twice in ECS logs within the same RTH session, both spurious
+  // (the run itself succeeded; only its own log-write raced the pool and gave up instead of
+  // retrying like every other query in this file already does).
+  await dbQuery(
     `
     INSERT INTO cron_job_runs (job_key, status, duration_ms, message, meta_json)
     VALUES ($1, $2, $3, $4, $5::jsonb)
@@ -10067,9 +10077,7 @@ export async function recordCronJobRun(input: {
   // NOTE: timestamp column is started_at (this table has no created_at).
   if (Math.random() < 0.05) {
     try {
-      await (await getPool()).query(
-        `DELETE FROM cron_job_runs WHERE started_at < NOW() - INTERVAL '30 days'`
-      );
+      await dbQuery(`DELETE FROM cron_job_runs WHERE started_at < NOW() - INTERVAL '30 days'`);
     } catch {
       // Best-effort prune; never let retention failures break run recording.
     }

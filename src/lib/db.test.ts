@@ -372,3 +372,31 @@ test("dbQuery: resetPoolForRetry is identity-guarded against concurrent pool rep
   const resetBody = src.slice(resetStart, resetStart + 500);
   assert.match(resetBody, /if \(failedPool && pool !== failedPool\) return/);
 });
+
+// BUG FIX (2026-09-03, live evidence: `[cron-run/spx-evaluate] log failed: Error: Cannot use a
+// pool after calling end on the pool` fired twice in production ECS logs during one RTH session).
+// recordCronJobRun used a raw `(await getPool()).query(...)` for both its insert and its retention
+// prune, bypassing dbQuery's transient-error retry entirely — so the exact pool-teardown race
+// isTransientPgError's own comment documents (a caller mid-flight on a pool another concurrent
+// caller just reset) surfaced as a bare, unretried failure instead of the silent one-retry success
+// every other write in this file already gets. logCronRun's own catch swallows this into a
+// console.warn, so the underlying cron run itself was never actually broken — only its own
+// log-write was needlessly fragile.
+test("recordCronJobRun: both writes go through dbQuery, not a raw pool.query", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const start = src.indexOf("export async function recordCronJobRun");
+  assert.ok(start > 0, "recordCronJobRun exists");
+  const nextExport = src.indexOf("\nexport async function", start + 1);
+  const body = src.slice(start, nextExport > 0 ? nextExport : undefined);
+  assert.match(body, /await dbQuery\(\s*`\s*INSERT INTO cron_job_runs/, "insert must use dbQuery");
+  assert.match(
+    body,
+    /await dbQuery\(`DELETE FROM cron_job_runs WHERE started_at < NOW\(\) - INTERVAL '30 days'`\)/,
+    "retention prune must use dbQuery"
+  );
+  assert.doesNotMatch(
+    body,
+    /\(await getPool\(\)\)\.query/,
+    "must not bypass dbQuery's transient-error retry with a raw pool.query"
+  );
+});
