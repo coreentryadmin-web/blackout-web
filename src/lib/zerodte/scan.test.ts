@@ -53,6 +53,7 @@ const state = {
   // D2 firewall wiring: the halt FEED's staleness (both UW + LULD halt sources cold). Distinct
   // from haltedTickers (an ACTIVE stored halt). isTradingHaltChannelStale() reads this.
   haltFeedStale: false,
+  vectorPulseByTicker: {} as Record<string, Record<string, unknown>>,
 };
 
 function resetState() {
@@ -73,6 +74,7 @@ function resetState() {
   state.earningsItems = [];
   state.haltedTickers = new Set();
   state.haltFeedStale = false;
+  state.vectorPulseByTicker = {};
 }
 
 // scan.ts's exit-engine wiring (./exit-sync) imports ./live-marks, which reaches
@@ -270,6 +272,18 @@ mock.module("../providers/macro-events", {
 });
 mock.module("../bie/vector-full-state", {
   namedExports: { fetchVectorFullState: async () => null },
+});
+mock.module("./vector-crosslink", {
+  namedExports: {
+    fetchZeroDteVectorPulseByTicker: async () => state.vectorPulseByTicker,
+  },
+});
+mock.module("./vector-contract-resolve", {
+  namedExports: {
+    vectorRankContractsEnabled: () => false,
+    fetchChainsForVectorRank: async () => new Map(),
+    resolveZeroDteContractAttach: () => null,
+  },
 });
 
 // ./rejections (left real below) imports @/lib/providers/spx-session directly (for
@@ -719,6 +733,102 @@ test("persistZeroDteScan: a fresh COMMIT's upserted row pins entry_context.tier 
   for (const expected of ["Prime score band", "VIX calm band", "Clean Cortex support"]) {
     assert.ok(labels.includes(expected), `factor "${expected}" must argue the tier (got: ${labels.join(", ")})`);
   }
+});
+
+test("persistZeroDteScan: A-tier + Vector winner pins 400% runner profile on commit", async () => {
+  resetState();
+  state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
+  state.vectorPulseByTicker = {
+    NVDA: {
+      premium_pct: 85,
+      peak_premium_pct: 90,
+      action_status: "still_buy",
+      is_winner: true,
+      is_runner: false,
+      side: "call",
+      direction: "long",
+      strike: 145,
+      occ: "O:NVDA260706C00145000",
+      rank: 1,
+      role: "flow-whale",
+    },
+  };
+
+  const setup = {
+    ticker: "NVDA",
+    direction: "long" as const,
+    top_strike: 145,
+    expiry: "2026-07-06",
+    contract_horizon: "ZERO_DTE" as const,
+    actual_dte_at_commit: 0,
+    grading_policy: "same_day_1530_close",
+    score: 78,
+    dossier_score: null,
+    conviction: null,
+    gross_premium: 2_000_000,
+    spike: false,
+    underlying_price: 140,
+    top_strike_avg_fill: 4.2,
+    last_seen: "2026-07-06T14:59:30.000Z",
+    intraday: { last_bar_ms: Date.parse("2026-07-06T14:59:00.000Z") },
+    discovery_origin: ["FLOW", "BREAKOUT"],
+    confluence: { confirmations: 2, vwap_side: true, market_aligned: true },
+    plan: {
+      occ: "O:NVDA260706C00145000",
+      flow_avg_fill: 4.2,
+      bid: 4.0,
+      ask: 4.4,
+      mark: 4.2,
+      entry_max: 4.2,
+      vs_flow_pct: 0,
+      entry_status: "IN_RANGE",
+      spread_pct: 9.5,
+      illiquid: false,
+      stop_premium: 2.1,
+      target_premium: 8.4,
+      time_stop_et: "15:30",
+      underlying_target: null,
+      underlying_invalid: null,
+    },
+    gamma_regime: null,
+    cortex: {
+      abstained: false as const,
+      decision: "PASS" as const,
+      verdict: {
+        ticker: "NVDA",
+        direction: "long" as const,
+        asOf: "2026-07-06T15:00:00.000Z",
+        score: 2.1,
+        conviction: "A" as const,
+        vetoes: [],
+        supports: [
+          { source: "gex-walls", stance: "supports", weight: 1.0, halfLifeSec: 900, asOf: "2026-07-06T15:00:00.000Z", detail: "path clear" },
+        ],
+        opposes: [],
+        absent: [],
+      },
+    },
+    gate: { verdict: "COMMIT" as const, blocks: [], calibration: {} },
+    play_type: "DIRECTIONAL" as const,
+    earnings: null,
+    news_hot: null,
+    halted: false,
+    fib_note: null,
+    direction_confirmed: null,
+  };
+
+  const { persistZeroDteScan } = await mod();
+  const logged = await persistZeroDteScan([setup as never]);
+  assert.equal(logged, 1);
+  const ctx = state.upsertRows[0]!.entry_context as {
+    runner_profile?: { target_pct: number; tag: string };
+    exit_policy_snapshot?: { target_pct: number; trim_levels?: unknown[] };
+  };
+  assert.equal(ctx.runner_profile?.target_pct, 400);
+  assert.equal(ctx.runner_profile?.tag, "runner_vector");
+  assert.equal(ctx.exit_policy_snapshot?.target_pct, 400);
+  const trims = ctx.exit_policy_snapshot?.trim_levels as Array<{ trigger_pct: number }>;
+  assert.ok(trims?.some((t) => t.trigger_pct >= 40), "trend runner trim ladder should use later triggers");
 });
 
 // ── Condor entry_premium persistence (bug found 2026-08-26) ────────────────────────

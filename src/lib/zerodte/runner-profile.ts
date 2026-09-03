@@ -11,6 +11,7 @@ import { PLAN_RULES } from "./plan";
 import { assignZeroDteTier } from "./tiers";
 import type { ZeroDteVectorPulse } from "./vector-crosslink";
 import { computeVectorGateBoost, vectorPulseAlignsDirection } from "./vector-commit-boost";
+import { RUNNER_SETUP_MAX_OTM_PCT, SETUP_MAX_OTM_PCT } from "./board";
 
 /** Standard runner target for A-tier + double confluence (3× premium). */
 export const RUNNER_TARGET_PCT_A = (() => {
@@ -126,4 +127,20 @@ export function projectRunnerProfileForCandidate(input: RunnerProfileCandidateIn
     vectorPulse: input.vectorPulse,
     direction: input.direction,
   });
+}
+
+/** Whether this setup qualifies for the relaxed runner OTM cap at gate time. */
+export function vectorRunnerOtmRelax(
+  direction: "long" | "short",
+  score: number,
+  pulse: ZeroDteVectorPulse | null | undefined
+): boolean {
+  if (!vectorPulseAlignsDirection(direction, pulse)) return false;
+  if (pulse?.is_winner) return true;
+  return pulse?.is_runner === true && score >= 68;
+}
+
+/** Effective max OTM % for moneyness gate — runner relax or standard cap. */
+export function effectiveMaxOtmPct(runnerRelaxed: boolean): number {
+  return runnerRelaxed ? RUNNER_SETUP_MAX_OTM_PCT : SETUP_MAX_OTM_PCT;
 }

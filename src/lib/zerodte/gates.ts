@@ -484,6 +484,8 @@ export type ZeroDteGateInput = {
   vector_g17_exempt?: boolean;
   /** Extra confluence credit from Vector alignment (0 or 1). */
   vector_confluence_credit?: number;
+  /** Override far-OTM lotto cap (runner relax). Defaults to SETUP_MAX_OTM_PCT. */
+  max_otm_pct?: number | null;
 };
 
 /**
@@ -682,7 +684,11 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   // pass-through to moneynessGateBlocks, which is also exported standalone so scan.ts can
   // re-run it after a deferred (thesis-first) contract-plan attach — see
   // refreshMoneynessGateBlocks below, mirroring refreshPlanQualityGateBlocks.
-  blocks.push(...moneynessGateBlocks(input.otmPct, isCondor));
+  blocks.push(
+    ...moneynessGateBlocks(input.otmPct, isCondor, {
+      maxOtmPct: input.max_otm_pct ?? null,
+    })
+  );
 
   // G-4 — VIX regime hard gate (promoted from calibration 2026-07-16).
   // F-1: 69.2% WR at VIX<17 vs 25.0% at ≥17 — the strongest measured factor.
@@ -1154,9 +1160,14 @@ const QUOTE_INVALID_SENTENCE: Record<
  */
 export function moneynessGateBlocks(
   otmPct: number | null | undefined,
-  isCondor: boolean
+  isCondor: boolean,
+  opts?: { maxOtmPct?: number | null }
 ): ZeroDteGateBlock[] {
   if (isCondor || otmPct == null) return [];
+  const otmCap =
+    opts?.maxOtmPct != null && Number.isFinite(opts.maxOtmPct) && opts.maxOtmPct > 0
+      ? opts.maxOtmPct
+      : SETUP_MAX_OTM_PCT;
   const blocks: ZeroDteGateBlock[] = [];
   if (otmPct < -SETUP_MAX_ITM_PCT) {
     blocks.push({
@@ -1167,13 +1178,13 @@ export function moneynessGateBlocks(
       threshold: -SETUP_MAX_ITM_PCT,
       unlock_et: null,
     });
-  } else if (otmPct > SETUP_MAX_OTM_PCT) {
+  } else if (otmPct > otmCap) {
     blocks.push({
       code: "max_otm_pct",
       reason:
-        `Top strike is ${otmPct.toFixed(2)}% OTM — past the ${SETUP_MAX_OTM_PCT}% far-OTM lotto ` +
+        `Top strike is ${otmPct.toFixed(2)}% OTM — past the ${otmCap}% far-OTM lotto ` +
         "cap on the live-refreshed underlying (re-checked post live-spot refresh).",
-      threshold: SETUP_MAX_OTM_PCT,
+      threshold: otmCap,
       unlock_et: null,
     });
   }
@@ -1189,10 +1200,11 @@ const MONEYNESS_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set(["max_itm_
 export function refreshMoneynessGateBlocks(
   gate: ZeroDteGateVerdict,
   otmPct: number | null | undefined,
-  isCondor: boolean
+  isCondor: boolean,
+  opts?: { maxOtmPct?: number | null }
 ): ZeroDteGateVerdict {
   const rest = gate.blocks.filter((b) => !MONEYNESS_GATE_CODES.has(b.code));
-  const blocks = [...rest, ...moneynessGateBlocks(otmPct, isCondor)];
+  const blocks = [...rest, ...moneynessGateBlocks(otmPct, isCondor, opts)];
   return {
     ...gate,
     verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",

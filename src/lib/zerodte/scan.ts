@@ -65,7 +65,6 @@ import { etNowParts, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/
 import { fetchAggBars } from "@/lib/providers/polygon-largo";
 import { macroEventsOnDateLive } from "@/lib/providers/macro-events";
 import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
-import { buildOcc } from "@/lib/ws/options-socket";
 import { requireHealthySourceEnabled } from "@/lib/ws/source-health";
 import { getFlowSourceHealthState } from "@/lib/ws/uw-socket";
 import { withServerCache } from "@/lib/server-cache";
@@ -142,8 +141,13 @@ import {
   recentNighthawkTake,
 } from "./gates";
 import { fetchZeroDteVectorPulseByTicker, type ZeroDteVectorPulse } from "./vector-crosslink";
+import {
+  fetchChainsForVectorRank,
+  resolveZeroDteContractAttach,
+  vectorRankContractsEnabled,
+} from "./vector-contract-resolve";
 import { computeVectorGateBoost } from "./vector-commit-boost";
-import { resolveRunnerProfile } from "./runner-profile";
+import { resolveRunnerProfile, effectiveMaxOtmPct, vectorRunnerOtmRelax } from "./runner-profile";
 import { buildRegimePlaneSnapshot, inferRegimeGexQuality } from "./regime-plane";
 import {
   deriveGovernorFromLedger,
@@ -626,7 +630,16 @@ export async function scanZeroDteBoard(flags?: {
       if (committedLedger.has(s.ticker.toUpperCase())) continue;
       if (s.gate) {
         s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null);
-        s.gate = refreshMoneynessGateBlocks(s.gate, s.otm_pct ?? null, s.play_type === "CONDOR");
+        s.gate = refreshMoneynessGateBlocks(
+          s.gate,
+          s.otm_pct ?? null,
+          s.play_type === "CONDOR",
+          {
+            maxOtmPct: effectiveMaxOtmPct(
+              vectorRunnerOtmRelax(s.direction, s.score, vectorPulseByTicker[s.ticker.toUpperCase()] ?? null)
+            ),
+          }
+        );
         s.gate = refreshGovernorPremiumBudgetBlocks(
           s.gate,
           s.plan?.entry_max ?? s.plan?.mark ?? null,
@@ -971,6 +984,7 @@ async function attachGateVerdicts(
     const boostedScore = boost.score_bump > 0 ? Math.min(100, Math.round(s.score + boost.score_bump)) : s.score;
     if (boost.score_bump > 0) s.score = boostedScore;
     const postBoost = computeVectorGateBoost(s.direction, boostedScore, pulse);
+    const runnerOtmRelax = vectorRunnerOtmRelax(s.direction, boostedScore, pulse);
     s.gate = evaluateZeroDteGates({
       ticker: s.ticker,
       direction: s.direction,
@@ -1039,6 +1053,7 @@ async function attachGateVerdicts(
       vector_pulse: pulse,
       vector_g17_exempt: postBoost.g17_exempt,
       vector_confluence_credit: postBoost.confluence_credit,
+      max_otm_pct: runnerOtmRelax ? effectiveMaxOtmPct(true) : null,
     });
     s.regime_plane = regimePlane;
     if (s.thesis_gate_blocks?.length) {
@@ -1110,6 +1125,14 @@ async function attachContractPlans(
   setups: EnrichedZeroDteSetup[],
   vectorPulseByTicker: Record<string, ZeroDteVectorPulse> = {}
 ): Promise<void> {
+  const rankEnabled = vectorRankContractsEnabled();
+  const chains =
+    rankEnabled && setups.length > 0
+      ? ((await within(fetchChainsForVectorRank(setups, vectorPulseByTicker), 4_000).catch(
+          () => new Map<string, { spot: number; rows: import("@/features/nighthawk/lib/option-chain-prompt").ChainStrikeRow[] }>()
+        )) ?? new Map())
+      : new Map<string, { spot: number; rows: import("@/features/nighthawk/lib/option-chain-prompt").ChainStrikeRow[] }>();
+
   const occOf = new Map<string, string>();
   for (const s of setups) {
     // A CONDOR carries its own 4-leg priced structure (condor_plan, built at discovery); it has no
@@ -1117,19 +1140,14 @@ async function attachContractPlans(
     // forcing it through buildOcc/buildContractPlan would fabricate a one-legged plan the gate stack
     // and grader must never see. Its liquidity is gated on condor_plan instead (gates.ts).
     if (s.play_type === "CONDOR") continue;
-    const pulse = vectorPulseByTicker[s.ticker.toUpperCase()];
-    const vectorContract =
-      pulse?.occ &&
-      pulse.direction === s.direction &&
-      (pulse.is_winner || pulse.is_runner) &&
-      (s.discovery_origin?.includes("BREAKOUT") || s.discovery_origin?.includes("FLOW"));
-    if (vectorContract && pulse.strike != null && pulse.occ) {
-      s.top_strike = pulse.strike;
-      occOf.set(s.ticker, pulse.occ);
+    const pulse = vectorPulseByTicker[s.ticker.toUpperCase()] ?? null;
+    const chain = chains?.get(s.ticker.toUpperCase()) ?? null;
+    const attached = resolveZeroDteContractAttach(s, pulse, chain);
+    if (attached) {
+      s.top_strike = attached.strike;
+      occOf.set(s.ticker, attached.occ);
       continue;
     }
-    const occ = buildOcc(s.ticker, s.expiry, s.direction === "long" ? "call" : "put", s.top_strike);
-    if (occ) occOf.set(s.ticker, occ);
   }
   if (occOf.size === 0) return;
   const snaps = await within(
