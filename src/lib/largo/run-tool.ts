@@ -2,7 +2,7 @@ import { serverCache, TTL } from "@/lib/server-cache";
 import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { getLargoSpxLiveDesk } from "@/lib/largo/spx-desk-cache";
 import { computeSpxConfluence } from "@/features/spx/lib/spx-signals";
-import { omitUncalibratedSpxConfidence } from "@/lib/largo/spx-confidence-boundary";
+import { omitUncalibratedSpxConfidence, sanitizeSpxPlayPayloadForLargo } from "@/lib/largo/spx-confidence-boundary";
 import { fitSpxStructureForModel } from "@/lib/largo/spx-structure-fit";
 import { loadLottoRecord } from "@/features/spx/lib/spx-lotto-store";
 import { loadPowerHourRecord } from "@/features/spx/lib/spx-power-hour-store";
@@ -1026,7 +1026,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     case "get_spx_play": {
       // Same uncalibrated `confidence` as get_spx_confluence — the play payload carries the
       // confluence's value verbatim at its top level. See spx-confidence-boundary.ts.
-      return omitUncalibratedSpxConfidence(await marketPlatform.spx.getSpxPlayState());
+      return sanitizeSpxPlayPayloadForLargo(await marketPlatform.spx.getSpxPlayState());
     }
     case "get_open_plays":
       return marketPlatform.spx.getSpxOpenPlay();

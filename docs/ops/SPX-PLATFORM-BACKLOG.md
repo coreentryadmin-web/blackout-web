@@ -32,8 +32,8 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 
 ## P0 — correctness / member trust
 
-- [ ] Verify `confidence` is omitted from all Largo SPX play responses when `assessed:false` (boundary: `SPX_CONFIDENCE_OMITTED`)
-- [ ] Server-side commentary feed parity — enrich `get_spx_voice_feed` with Pulse rail headline events not yet persisted
+- [x] Verify `confidence` is omitted from all Largo SPX play responses when `assessed:false` (boundary: `SPX_CONFIDENCE_OMITTED` + `sanitizeSpxPlayPayloadForLargo`)
+- [x] Server-side commentary feed parity — enrich `get_spx_voice_feed` with Pulse rail headline events not yet persisted (bias + play lifecycle via `observeSpxPlayVoiceTransitions`)
 
 ## P1 — desk UX / transparency
 
@@ -55,7 +55,8 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 
 | Date | Item | PR |
 |------|------|-----|
-| 2026-09-03 | Gate blockers collapsed strip + lane freshness + shadow history tool + backlog pipeline | (this branch) |
+| 2026-09-03 | P0 confidence sanitize + voice feed play/bias parity | (this branch) |
+| 2026-09-03 | Gate blockers collapsed strip + lane freshness + shadow history tool + backlog pipeline | #3381 |
 
 ---
 

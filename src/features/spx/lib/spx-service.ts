@@ -5,6 +5,7 @@ import {
   fetchRecentSpxSignalLogs,
   fetchSpxAdminRollups,
 } from "@/lib/db";
+import { observeSpxPlayVoiceTransitions } from "@/features/spx/lib/spx-voice-feed-store";
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { fetchRecentSpxSnapshots } from "@/features/spx/lib/spx-signal-log";
 import { computeFlowStrikeStacks } from "@/lib/largo/flow-strike-stacks";
@@ -133,6 +134,7 @@ async function evaluateSpxPlayState() {
   ).catch((err) => {
     console.warn("[spx-playbook-shadow]", err instanceof Error ? err.message : err);
   });
+  void observeSpxPlayVoiceTransitions(play, sessionDate).catch(() => {});
   return {
     ...play,
     playbook_shadow,

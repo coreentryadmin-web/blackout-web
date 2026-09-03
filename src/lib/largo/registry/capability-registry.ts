@@ -277,7 +277,7 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     answers: "What named playbooks fired in shadow mode this session (historical evidence)?",
     temporal: "event_log",
     freshness: "historical",
-    entities: ["session", "playbook"],
+    entities: ["session"],
     entitlement: "premium",
     keywords: ["shadow", "playbook", "PB-", "matcher", "evidence", "history"],
     joinsWith: ["spx.play", "spx.engine_snapshots"],

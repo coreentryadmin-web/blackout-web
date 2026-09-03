@@ -2,7 +2,7 @@
  * SPX desk convergence — Vector suggested play vs Slayer execution in one read.
  * Mirrors the SpxVectorPlayRail on /dashboard without requiring two tool calls.
  */
-import { omitUncalibratedSpxConfidence } from "@/lib/largo/spx-confidence-boundary";
+import { sanitizeSpxPlayPayloadForLargo } from "@/lib/largo/spx-confidence-boundary";
 import { gateRulesForLargo } from "@/lib/largo/gate-rules";
 import { vectorFullStateForLargo } from "@/lib/largo/product-reads";
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-payload";
@@ -82,7 +82,7 @@ export async function spxDeskConvergenceForLargo() {
     vectorFullStateForLargo("SPX"),
     gateRulesForLargo(),
   ]);
-  const slayerPlay = omitUncalibratedSpxConfidence(rawPlay) as SpxPlayPayload | null;
+  const slayerPlay = sanitizeSpxPlayPayloadForLargo(rawPlay) as SpxPlayPayload | null;
   const slayerBias = slayerSuggestedBias(slayerPlay);
   const vectorBias =
     vector && (vector as { available?: boolean }).available !== false

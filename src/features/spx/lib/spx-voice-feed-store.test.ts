@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
   observeSpxDeskVoiceTransitions,
+  observeSpxPlayVoiceTransitions,
   resetSpxVoiceFeedObserverForTests,
   voiceEventsToFeedEntries,
 } from "./spx-voice-feed-store";
@@ -42,5 +43,30 @@ describe("spx-voice-feed-store", () => {
     const events = await observeSpxDeskVoiceTransitions(mkDesk(7530, 7520), session);
     assert.ok(events.length >= 1);
     assert.equal(events[0]!.kind, "flip-cross");
+  });
+
+  test("observeSpxPlayVoiceTransitions emits when play fires", async () => {
+    resetSpxVoiceFeedObserverForTests();
+    const session = "2026-09-02";
+    await observeSpxPlayVoiceTransitions(
+      { action: "SCANNING", direction: "long", open_play: null },
+      session
+    );
+    const events = await observeSpxPlayVoiceTransitions(
+      {
+        action: "HOLD",
+        direction: "long",
+        open_play: {
+          direction: "long",
+          entry_price: 7440,
+          stop: 7425,
+          target: 7465,
+        },
+      },
+      session
+    );
+    assert.ok(events.length >= 1);
+    assert.equal(events[0]!.kind, "play");
+    assert.match(events[0]!.line, /FIRED/i);
   });
 });
