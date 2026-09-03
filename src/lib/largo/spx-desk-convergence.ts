@@ -92,7 +92,7 @@ export async function spxDeskConvergenceForLargo() {
 
   return {
     as_of: new Date().toISOString(),
-    as_of_et: etStamp(),
+    as_of_et: etStamp(Date.now()),
     alignment,
     slayer_bias: slayerBias,
     vector_bias: vectorBias,

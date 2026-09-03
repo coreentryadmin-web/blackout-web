@@ -19,7 +19,7 @@ export async function spxJournalForLargo(userId: string, openPlayId?: number) {
     return {
       available: true,
       as_of: new Date().toISOString(),
-      as_of_et: etStamp(),
+      as_of_et: etStamp(Date.now()),
       open_play_id: openPlayId,
       entry,
       total_entries: keys.length,
@@ -29,7 +29,7 @@ export async function spxJournalForLargo(userId: string, openPlayId?: number) {
   return {
     available: true,
     as_of: new Date().toISOString(),
-    as_of_et: etStamp(),
+    as_of_et: etStamp(Date.now()),
     total_entries: keys.length,
     entries,
   };
