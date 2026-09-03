@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SPX_DESK_FOCUS_STORAGE_KEY } from "@/features/spx/lib/spx-desk-focus";
+import { SPX_MATRIX_LENS_STORAGE_KEY } from "@/features/spx/lib/spx-matrix-lens";
 import {
   SPX_IOS_PANEL_STORAGE_KEY,
   spxMatrixUiStateForLargo,
@@ -21,6 +22,7 @@ test("spxMatrixUiStateForLargo documents client-only lens with gex default", () 
   assert.match(state.largo_guidance, /get_gex_heatmap/);
   assert.equal(state.client_only_ui.focus_mode, `localStorage key ${SPX_DESK_FOCUS_STORAGE_KEY} (F key / Esc)`);
   assert.equal(state.client_only_ui.ios_panel, `sessionStorage key ${SPX_IOS_PANEL_STORAGE_KEY}`);
+  assert.match(state.client_only_ui.matrix_lens_toggle, new RegExp(SPX_MATRIX_LENS_STORAGE_KEY));
 });
 
 test("spxMatrixUiStateForLargo omits vex lens when data missing", () => {

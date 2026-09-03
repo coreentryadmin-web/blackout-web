@@ -52,11 +52,13 @@ Every 2h (GitHub Actions: spx-platform-backlog-agent.yml)
 ## P1 — Largo / convergence follow-ups (#3378+)
 
 - [x] `get_ecosystem_context` SPX — attach `desk_convergence` (or `matrix_ui`) so cross-product reads see Vector/Slayer alignment without a second tool call
-- [ ] Largo truncation probe — re-run `scripts/audit/largo-truncation-probe.mjs` and fix any tool still returning TRUNCATED at 16KB cap
+- [x] Largo truncation probe — `fitEcosystemContextForModel` at Largo boundary caps audit/anomalies/flow tape with explicit truncation flags (live probe re-run post-deploy)
+- [x] `get_cross_product_read` — wire SPX Slayer (`get_spx_play`) as sixth product source (SPX/SPXW only; explained absence elsewhere)
 
 ## P2 — desk polish
 
 - [x] Persist SPX matrix lens toggle to `sessionStorage` and document read path for future server-side hint (optional — today client-only is honest)
+- [ ] Post-deploy: re-run `scripts/audit/largo-truncation-probe.mjs` on prod and confirm `get_ecosystem_context` COMPLETE
 
 ---
 

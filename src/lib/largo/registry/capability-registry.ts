@@ -1171,7 +1171,7 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
       "answer what the products agreed about last Tuesday; nothing here is a stored history. " +
       "A `split` verdict is REPORTED, never resolved — four products against one is not a vote, and " +
       "the lone dissenter is often the reason to look twice. Always state `coverage`: an agreement " +
-      "among two products is not an agreement among five. Thermal deliberately casts no directional " +
+      "among two products is not an agreement among six. Thermal deliberately casts no directional " +
       "vote (dealer gamma is not a directional measurement), so its absence from the camps is " +
       "correct behaviour and must not be reported as an outage.",
   },

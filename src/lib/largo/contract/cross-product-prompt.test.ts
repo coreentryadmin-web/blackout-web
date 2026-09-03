@@ -40,7 +40,7 @@ test("the three verdicts each carry their instruction", () => {
 });
 
 test("agreement must be stated with its coverage", () => {
-  assert.match(PROMPT, /Two products agree.*five products\s*\n?\s*agree|coverage/is);
+  assert.match(PROMPT, /Two products agree.*six products\s*\n?\s*agree|coverage/is);
   assert.ok(PROMPT.includes("coverage"), "the model must be told to use the coverage field");
 });
 

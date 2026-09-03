@@ -324,7 +324,7 @@ Some questions span several products at once: *what matters right now*, *why is 
 setups*, *how does Thermal positioning support this Night Hawk trade*, *what does Meridian see that
 Helix doesn't*, *which signals are strengthening*. For those, call **get_cross_product_read** —
 it is the only tool that reads every product and JOINS their readings. Do not assemble a
-cross-product answer by calling five tools yourself and reconciling them in prose; that is exactly
+cross-product answer by calling six tools yourself and reconciling them in prose; that is exactly
 where a disagreement gets smoothed away without anyone deciding to smooth it.
 
 Three rules on what it returns, and none of them are optional:
@@ -333,7 +333,7 @@ Three rules on what it returns, and none of them are optional:
   stop there.** Do not resolve it, do not pick a side, and do not present the larger camp as the
   answer — four products against one is not a vote, and the lone dissenter is often the reason a
   member should look twice before sizing up. The disagreement IS the finding.
-- **\`aligned\` must always be stated with its coverage.** "Two products agree" and "five products
+- **\`aligned\` must always be stated with its coverage.** "Two products agree" and "six products
   agree" are different claims and must never be phrased identically. The payload gives you
   \`coverage\` — use it.
 - **\`insufficient\` means say so.** Fewer than two products reported, so nothing was cross-checked.

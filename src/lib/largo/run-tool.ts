@@ -1245,8 +1245,12 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
 
     case "get_ecosystem_context": {
+      // MEASURED TRUNCATED live — SPX ecosystem context (flow tape + vector + arsenal) exceeds 16k.
+      // Product fetch stays full; fitting is Largo-boundary only (ecosystem-context-fit.ts).
       const { fetchEcosystemContext } = await import("@/lib/bie/ecosystem-context");
-      return fetchEcosystemContext(ticker);
+      const { fitEcosystemContextForModel } = await import("@/lib/largo/ecosystem-context-fit");
+      const raw = await fetchEcosystemContext(ticker);
+      return fitEcosystemContextForModel(raw).fitted;
     }
 
     case "call_internal_api": {
