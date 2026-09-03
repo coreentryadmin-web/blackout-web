@@ -1453,6 +1453,10 @@ export type SetupDossierView = {
     wall_proximity_score?: number;
     vex_alignment_score?: number;
     skew_score?: number;
+    iv_adjustment?: number;
+    anomaly_penalty?: number;
+    flow_conviction_bonus?: number;
+    regime_adjustment?: number;
   } | null;
   /** Benzinga analyst price-target one-liner (e.g. "PT raised to $210 at MS"). */
   price_target?: string | null;
@@ -1784,6 +1788,12 @@ export function enrichSetup(
           ...(scored.wall_proximity_score != null ? { wall_proximity: scored.wall_proximity_score } : {}),
           ...(scored.vex_alignment_score != null ? { vex: scored.vex_alignment_score } : {}),
           ...(scored.skew_score != null ? { skew: scored.skew_score } : {}),
+          ...(scored.iv_adjustment != null ? { iv_adjustment: scored.iv_adjustment } : {}),
+          ...(scored.anomaly_penalty != null ? { anomaly_penalty: scored.anomaly_penalty } : {}),
+          ...(scored.flow_conviction_bonus != null
+            ? { flow_conviction_bonus: scored.flow_conviction_bonus }
+            : {}),
+          ...(scored.regime_adjustment != null ? { regime_adjustment: scored.regime_adjustment } : {}),
         }
       : null,
     trend: tech?.trend ?? null,

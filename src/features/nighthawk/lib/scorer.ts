@@ -56,6 +56,15 @@ export type ScoredCandidate = {
   sector?: string;
   /** Cross-edition governor penalty (points subtracted for repeat/loss-streak/sector-cap). */
   govPenalty?: number;
+  /** IV-rank options-pricing penalty (elevated IV → wider spreads, faster decay). Folded into `score`. */
+  iv_adjustment?: number;
+  /** Flow-anomaly demotion (-10) when the ticker was flagged critical in the last 60m. Folded into `score`. */
+  anomaly_penalty?: number;
+  /** +4 bonus when flow.score >= 25/38 (very strong directional flow). Folded into `score`. */
+  flow_conviction_bonus?: number;
+  /** Net point delta from the regime multiplier (dampened 0.6-1.3x) applied to the pre-regime sum.
+   *  Lets a consumer's factor breakdown reconcile to `score` without re-deriving the multiplier. */
+  regime_adjustment?: number;
 };
 
 export function regimeContextFromMarket(ctx: MarketWideContext): NightHawkRegimeContext {
@@ -1095,29 +1104,34 @@ export function scoreCandidate(
   // the composite gets +4 outside the flow component. Lifts high-flow names that
   // might be borderline on tech/positioning into the publish band.
   const flowConvictionBonus = flow.score >= 25 ? 4 : 0;
-  const total = Math.min(
-    100,
-    Math.max(
-      0,
-      Math.round(
-        (flow.score +
-          techScore +
-          posScore +
-          newsScore +
-          smartMoneyScore +
-          skewAdj +
-          fundamentalScore +
-          shortInterestScore +
-          wallProxScore +
-          vexScore +
-          totalCatalystScore +
-          ivAdjustment +
-          anomalyPenalty +
-          flowConvictionBonus) *
-          dampenedRegime
-      )
-    )
-  );
+  const preRegimeSum =
+    flow.score +
+    techScore +
+    posScore +
+    newsScore +
+    smartMoneyScore +
+    skewAdj +
+    fundamentalScore +
+    shortInterestScore +
+    wallProxScore +
+    vexScore +
+    totalCatalystScore +
+    ivAdjustment +
+    anomalyPenalty +
+    flowConvictionBonus;
+  const total = Math.min(100, Math.max(0, Math.round(preRegimeSum * dampenedRegime)));
+  // 9-9: dossier_score folds ivAdjustment/anomalyPenalty/flowConvictionBonus and the regime
+  // multiplier into `total`, but board.ts's `factor_breakdown` (the member-facing "why this play
+  // was picked" panel) only ever rendered the 11 named component scores above — these three extra
+  // terms plus the multiplier's own effect were real contributors to dossier_score that never had
+  // a rendered line item, so factor_breakdown's sum still silently under/over-counted dossier_score
+  // whenever any of them was non-zero (measured live 2026-09-03: an NVDA case with a nonzero
+  // flowConvictionBonus showed dossier_score=81 vs a factor_breakdown sum of 77). Exposing them
+  // here (conditional, same "absent vs real zero" convention as every other optional field in this
+  // type) lets board.ts add matching line items instead of only widening the same five-year-old gap
+  // by three more untracked terms. `regime_adjustment` captures the multiplier's net point delta so
+  // the breakdown's own sum reconciles to `total` even when regime is not neutral.
+  const regimeAdjustment = total - Math.round(preRegimeSum);
 
   const fundCheck = passesFundamentalSanity(
     dossierExtras.fundamental_ratios ?? null,
@@ -1167,6 +1181,10 @@ export function scoreCandidate(
     fundamental_block: !fundCheck.ok,
     fundamental_flags: fundCheck.reasons,
     trading_halt: false,
+    ...(ivAdjustment !== 0 ? { iv_adjustment: ivAdjustment } : {}),
+    ...(anomalyPenalty !== 0 ? { anomaly_penalty: anomalyPenalty } : {}),
+    ...(flowConvictionBonus !== 0 ? { flow_conviction_bonus: flowConvictionBonus } : {}),
+    ...(regimeAdjustment !== 0 ? { regime_adjustment: regimeAdjustment } : {}),
   };
 }
 
