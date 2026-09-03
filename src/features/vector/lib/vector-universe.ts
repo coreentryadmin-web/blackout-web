@@ -6,7 +6,11 @@ import {
   computeGexWalls,
   mapFromStrikeTotalsRecord,
 } from "@/lib/providers/gex-wall-levels";
-import { listSharedUniverseTickers, touchDynamicUniverse } from "./vector-dynamic-universe";
+import {
+  listSharedUniverseTickers,
+  removeDynamicUniverseTicker,
+  touchDynamicUniverse,
+} from "./vector-dynamic-universe";
 import { isVectorTickerAllowed, normalizeVectorTicker } from "./vector-ticker";
 import { roundFloats } from "@/lib/round-floats";
 import { strikeTotalsForHorizonFromCells } from "./vector-narrowed-walls-from-cells";
@@ -110,6 +114,12 @@ async function buildVectorUniverseRow(
   const ticker = normalizeVectorTicker(raw);
   const hm = await fetchGexHeatmap(ticker);
   const spot = hm?.spot ?? null;
+  // Self-heal: a dead dynamic entry (dead before touchDynamicUniverse's spot>0 write-guard
+  // existed, or one whose chain stopped resolving later) never gets removed by age-based pruning
+  // alone. Fire-and-forget, never blocks the row — see removeDynamicUniverseTicker's own comment.
+  if (!(spot != null && spot > 0)) {
+    void removeDynamicUniverseTicker(ticker);
+  }
   const gexWalls = hm?.gex?.strike_totals
     ? computeGexWalls(mapFromStrikeTotalsRecord(hm.gex.strike_totals), {
         maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
