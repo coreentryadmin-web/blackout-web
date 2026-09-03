@@ -238,6 +238,46 @@ async function resolveMiss(
   return empty;
 }
 
+/**
+ * Cache-only read for statically/ISR-rendered pages that just need a reasonable SEED — never
+ * attempts a live provider compute. This is the fix for a real production incident (2026-09-03):
+ * the homepage (`revalidate = 3600` ISR) called `buildPublicGexSnapshot` directly, and on a cache
+ * miss that function's live-compute path reaches `polygonFetchUrl`, which issues a
+ * `fetch(..., { cache: "no-store" })` several layers down. Firing a no-store fetch from a page
+ * Next.js is still trying to render STATICALLY trips Next's "Dynamic server usage" bailout
+ * (`DynamicServerError`, message "Route / couldn't be rendered statically because it used...") —
+ * and `polygonFetchUrl`'s broad `catch` swallows that framework control-flow error exactly like a
+ * real network failure, logging "chain fetch threw" and returning null. That cascades into
+ * `emptyHeatmap` → the "no options-chain data" read, which `buildPublicGexSnapshot` then WRITES to
+ * the shared 5s Redis cache (`public-gex-snapshot:SPX`) — poisoning it for every other reader,
+ * including the client's own live poll (`/api/public/gex-snapshot`) and `/tools/gamma-snapshot`,
+ * until the next successful compute. CloudWatch showed this "Route /" throw recurring dozens of
+ * times across a full day (RTH and off-hours both), matching exactly the user's repeated live
+ * reports of the homepage gamma panel flashing "no options-chain data" moments after loading a
+ * genuinely live read.
+ *
+ * The fix: the homepage's SSR seed should never be the thing that ATTEMPTS the live compute in the
+ * first place — `HomeGammaPromo`/`HomeLiveDeskStrip` already self-heal via their own mount-fetch
+ * against the real dynamic API route (immune to this bug, since Route Handlers are never
+ * statically rendered), so the seed only ever needs to be "best cached value available," not
+ * "freshly computed." `/tools/gamma-snapshot` (`dynamic = "force-dynamic"`) and the API route
+ * itself keep calling `buildPublicGexSnapshot` — they are already fully dynamic, so the live
+ * compute there can never trip this bailout.
+ */
+export async function readPublicGexSnapshotSeed(ticker: PublicGexTicker): Promise<PublicGexSnapshot> {
+  try {
+    const cached = await sharedCacheGet<PublicGexSnapshot>(`public-gex-snapshot:${ticker}`);
+    if (cached) return withAgeFields(cached);
+  } catch {
+    /* fall through to last-known-good */
+  }
+  const lastGood = await loadLastGood(ticker);
+  if (lastGood) {
+    return degradedFromLastGood(lastGood, "Seed read — live refresh happens client-side.");
+  }
+  return withAgeFields(emptySnapshot(ticker));
+}
+
 export async function buildPublicGexSnapshot(ticker: PublicGexTicker): Promise<PublicGexSnapshot> {
   const cacheKey = `public-gex-snapshot:${ticker}`;
   try {
