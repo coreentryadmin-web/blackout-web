@@ -37,3 +37,8 @@ test("SPX Slayer matrix rail surfaces chain_truncated to members", () => {
   assert.match(SPX, /chain_truncated\?: boolean/);
   assert.match(SPX, /data\?\.chain_truncated/);
 });
+
+test("get_gex_heatmap tool description tells Largo to cite truncation", () => {
+  const defs = readFileSync(join(process.cwd(), "src/lib/largo/tool-defs.ts"), "utf8");
+  assert.match(defs, /chain_truncated/);
+});
