@@ -483,6 +483,36 @@ pan states, since tick positions move with the visible time range and the origin
 width and time-range, not a single fixed state. Also spot-check mobile (430×932) to confirm the fix
 didn't regress the already-working sibling labels' layout there.
 
+### 14. Helix `/flows` mobile print card showed a bare negative DTE for an already-expired print — PR pending (branch `fix/helix-mobile-card-expired-dte`)
+
+**What was broken:** the mobile print card (`HelixMobileFlowTape.tsx`) computed
+`dte = flow.dte ?? daysToExpiry(flow.expiry)` and only special-cased `dte === 0` (0DTE, ember
+badge + hidden bare-number segment). UW's own `dte` field goes negative for a print reported after
+its contract's expiry has already passed (an observed, not hypothetical, feed value — see
+`helix-flow-format.ts`'s `fmtIv` doc comment for a live `dte: -1` example) and that raw value is
+what usually reaches the card, since the clamped `daysToExpiry()` fallback only runs when
+`flow.dte` itself is null. So an already-expired print rendered a bare `"-1d"` in the exact same
+plain styling as an ordinary future DTE like `"32d"`, with none of the visual urgency same-day
+(0DTE) prints get from their highlighted treatment one row up. The desktop table
+(`HelixFlowTable.tsx`) has the identical root-cause pattern at its own `dte`/`is0dte` computation
+and DTE table cell — deliberately left unfixed in this PR (out of this finding's stated scope,
+flagged as a follow-up) but worth checking too.
+
+**Fix:** added `dtePrintLabel(dte)` (exported pure helper next to the mobile card component,
+following this repo's `ExpiryConcentration.tsx` pattern of testing a card's display logic directly)
+that returns `{ text: "EXPIRED", expired: true }` for `dte < 0` and `{ text: "${dte}d", expired:
+false }` otherwise; the card now renders `dteLabel.text` with an ember/bold treatment when
+`expired`, matching the sibling 0DTE badge's ember tone, instead of the raw negative number. The
+`!is0dte` gate that hides the whole DTE segment for 0DTE prints is unchanged.
+
+**Check at the open, live tape, mobile viewport (430×932):** open `/flows` on mobile and watch for
+any print whose expiry has just passed intraday (or catch a stale/late print against a prior day's
+expiry, which is the scenario the original evidence captured — `09/03/26 · -1d` observed the day
+after that expiry). Confirm the card shows `EXPIRED` in the highlighted ember/bold treatment, never
+a bare negative number like `-1d`/`-2d`. Also confirm ordinary future-dated prints on the same tape
+are unaffected (still plain `"<n>d"`) and that a genuine same-day 0DTE print still hides the DTE
+segment and shows its own "0DTE" badge unchanged — this fix must not have touched that branch.
+
 ---
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
