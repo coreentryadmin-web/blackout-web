@@ -50,6 +50,7 @@ import {
   vectorExemptsPlanChase,
   vectorPulseAlignsDirection,
 } from "./vector-commit-boost";
+import { planChaseExempt, planG19Exempt, type PlanChaseContext } from "./chase-exempt";
 
 /** Read a positive-integer tuning knob from the environment, falling back to `def` when unset,
  *  non-numeric, or ≤0. Evaluated ONCE at module load so the gate FUNCTIONS stay pure (they only
@@ -438,6 +439,8 @@ export type ZeroDteGateInput = {
   contractHorizon?: "ZERO_DTE" | "ONE_DTE" | "WEEKLY_FALLBACK" | null;
   /** G-10: name's own VWAP/5m trend opposes the play (intraday.ts). */
   intradayConflict?: boolean;
+  /** Play direction vs SPY tape — regime chase / G-19 relief on amplify days. */
+  market_aligned?: boolean | null;
   /** G-11: UW trading halt on the underlying. */
   halted?: boolean;
   /** Phase-0 firewall (D2): TRUE only when the trading-halt FEED is cold — BOTH the UW and LULD
@@ -503,9 +506,26 @@ export type ZeroDteGateInput = {
   vector_g17_exempt?: boolean;
   /** Extra confluence credit from Vector alignment (0 or 1). */
   vector_confluence_credit?: number;
+  /** Market State Engine structure at scan time — amplify chase / G-19 regime relief. */
+  regime_structure?: string | null;
+  market_state_confidence?: number;
   /** Override far-OTM lotto cap (runner relax). Defaults to SETUP_MAX_OTM_PCT. */
   max_otm_pct?: number | null;
 };
+
+/** Build chase-exempt context from a gate evaluation input. */
+export function planChaseContextFromGateInput(input: ZeroDteGateInput): PlanChaseContext {
+  return {
+    direction: input.direction,
+    score: input.score,
+    vector_pulse: input.vector_pulse,
+    discovery_origin: input.discovery_origin,
+    gamma_regime: input.gamma_regime ?? null,
+    market_aligned: input.market_aligned ?? null,
+    regime_structure: input.regime_structure ?? null,
+    market_state_confidence: input.market_state_confidence ?? null,
+  };
+}
 
 /**
  * Evaluate the hard gate stack for ONE fresh (not-yet-committed) setup.
@@ -679,7 +699,14 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     input.score >= 85 &&
     !(
       input.vector_g17_exempt === true ||
-      vectorExemptsG19TopBand(input.direction, input.score, input.vector_pulse)
+      vectorExemptsG19TopBand(input.direction, input.score, input.vector_pulse) ||
+      planG19Exempt(input.direction, input.score, input.vector_pulse, {
+        discovery_origin: input.discovery_origin,
+        gamma_regime: input.gamma_regime ?? null,
+        market_aligned: input.market_aligned ?? null,
+        regime_structure: input.regime_structure ?? null,
+        market_state_confidence: input.market_state_confidence ?? null,
+      })
     )
   ) {
     blocks.push({
@@ -961,11 +988,7 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     // plan without a real quote or fill. UI SKIP already hid these; persist must match.
     blocks.push(
       ...planQualityGateBlocks(input.plan ?? null, {
-        vectorChaseExempt: vectorExemptsPlanChase(
-          input.direction,
-          input.score,
-          input.vector_pulse
-        ),
+        chaseExempt: planChaseExempt(planChaseContextFromGateInput(input)),
       })
     );
 
@@ -1134,8 +1157,10 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
 }
 
 export type PlanQualityGateOpts = {
-  /** Vector-confirmed winner/runner aligned with setup — commit at live mark, skip G-8 chase block. */
+  /** Vector/regime-confirmed momentum — commit at live mark, skip G-8 chase block. */
   vectorChaseExempt?: boolean;
+  /** Alias — same as vectorChaseExempt (regime widen included). */
+  chaseExempt?: boolean;
 };
 
 /** G-8/G-9 plan-quality blocks — pure, unit-testable, reused by persist defense. */
@@ -1162,7 +1187,7 @@ export function planQualityGateBlocks(
       unlock_et: null,
     });
   }
-  if (plan.entry_status === "MOVED" && !opts?.vectorChaseExempt) {
+  if (plan.entry_status === "MOVED" && !(opts?.vectorChaseExempt || opts?.chaseExempt)) {
     const pct = plan.vs_flow_pct != null ? `${Math.round(plan.vs_flow_pct)}%` : `≥${CHASE_PCT}%`;
     blocks.push({
       code: "plan_moved",

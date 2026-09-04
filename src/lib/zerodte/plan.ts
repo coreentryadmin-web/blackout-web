@@ -227,6 +227,8 @@ export function buildContractPlan(input: {
   keySupports: number[];
   keyResistances: number[];
   vwap: number | null;
+  /** Override chase band (default CHASE_PCT) — amplify sessions may use effectiveChasePct(). */
+  chasePct?: number;
 }): ContractPlan {
   const { occ, direction, price, flowAvgFill, bid, ask, mark } = input;
 
@@ -259,9 +261,14 @@ export function buildContractPlan(input: {
     quoteAgeMs: input.quoteAgeMs ?? null,
   });
 
+  const chasePct =
+    input.chasePct != null && Number.isFinite(input.chasePct) && input.chasePct > 0
+      ? input.chasePct
+      : CHASE_PCT;
+
   let status: EntryStatus;
   if (mark == null) status = "NO_QUOTE";
-  else if (vsFlow != null && vsFlow >= CHASE_PCT) status = "MOVED";
+  else if (vsFlow != null && vsFlow >= chasePct) status = "MOVED";
   else if (vsFlow != null && vsFlow <= -10) status = "CHEAPER";
   else status = "IN_RANGE";
 

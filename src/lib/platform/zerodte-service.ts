@@ -1195,7 +1195,12 @@ export async function zeroDtePlaysForLargo(): Promise<Record<string, unknown>> {
           const status =
             s.gate?.verdict === "BLOCKED"
               ? ("SKIP" as const)
-              : resolveFreshFindStatus(heatState, moved, Boolean(s.plan?.illiquid));
+              : resolveFreshFindStatus(
+                  heatState,
+                  moved,
+                  Boolean(s.plan?.illiquid),
+                  Boolean(s.plan_chase_exempt)
+                );
           return {
             ticker: s.ticker,
             // Presentation status for the fresh lane — WATCH (candidate) or SKIP

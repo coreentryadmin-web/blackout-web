@@ -114,6 +114,7 @@ async function runCycle(cycle) {
     // Branch play-engine regression — no secrets required.
     ["node --import tsx --test src/lib/zerodte/gates.test.ts", "zerodte-gates-unit", 120_000],
     ["node --import tsx --test src/lib/zerodte/vector-commit-boost.test.ts", "zerodte-vector-boost-unit", 60_000],
+    ["node --import tsx --test src/lib/zerodte/chase-exempt.test.ts", "zerodte-chase-exempt-unit", 60_000],
     // Public live regime probe (0DTE board context).
     [
       'curl -sfS "https://blackouttrades.com/api/market/regime" | node -e "let d=\'\';process.stdin.on(\'data\',c=>d+=c);process.stdin.on(\'end\',()=>{const j=JSON.parse(d);if(!j.marketOpen||!j.regime)process.exit(1);console.log(j.regime,j.flowRegime);})"',

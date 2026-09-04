@@ -115,14 +115,16 @@ export function sessionHeat(etMinutes: number, isTradingDay: boolean): SessionHe
 export function resolveFreshFindStatus(
   heatState: SessionHeatState | undefined,
   moved: boolean,
-  illiquid: boolean
+  illiquid: boolean,
+  chaseExempt = false
 ): "WATCH" | "SKIP" {
   const pastCutoff =
     heatState === "POST_COMMIT" ||
     heatState === "LATE_SESSION" ||
     heatState === "CLOSED" ||
     heatState === undefined;
-  return moved || pastCutoff || illiquid ? "SKIP" : "WATCH";
+  const chased = moved && !chaseExempt;
+  return chased || pastCutoff || illiquid ? "SKIP" : "WATCH";
 }
 
 // ── Polygon symbol mapping for index option roots ─────────────────────────────────
@@ -1593,6 +1595,8 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
   origin_contributions?: Partial<Record<DiscoveryOrigin, OriginContribution>>;
   /** Regime Plane snapshot at gate time (Wave A) — pinned onto committed rows via entry_context. */
   regime_plane?: import("./regime-plane").RegimePlaneSnapshot | null;
+  /** Stamped at plan attach — G-8 chase exempt (Vector and/or amplify regime). UI + persist. */
+  plan_chase_exempt?: boolean;
   /** NH-R4 (weekend/holiday gap risk): count of non-trading calendar days the selected contract's
    *  hold spans between today and expiry (0 = normal overnight, 2 = plain weekend, 3+ = holiday
    *  weekend) — see `tradingSessionGapDays` above. EVIDENCE ONLY (calibration-first, same role as

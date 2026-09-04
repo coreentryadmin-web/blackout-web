@@ -402,7 +402,7 @@ export function mergePlays(
     const status =
       s.gate?.verdict === "BLOCKED"
         ? ("SKIP" as const)
-        : resolveFreshFindStatus(heatState, moved, Boolean(s.plan?.illiquid));
+        : resolveFreshFindStatus(heatState, moved, Boolean(s.plan?.illiquid), Boolean(s.plan_chase_exempt));
     rows.push({
       ticker: s.ticker,
       direction: s.direction,

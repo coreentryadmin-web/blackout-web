@@ -92,6 +92,10 @@ test("resolveFreshFindStatus: MOVED or illiquid always SKIP, even during RTH", (
   assert.equal(resolveFreshFindStatus("RTH", false, true), "SKIP");
 });
 
+test("resolveFreshFindStatus: MOVED with chaseExempt stays WATCH during RTH", () => {
+  assert.equal(resolveFreshFindStatus("RTH", true, false, true), "WATCH");
+});
+
 // ── setup derivation ─────────────────────────────────────────────────────────────
 
 function row(overrides: Partial<FlowSetupInput>): FlowSetupInput {
