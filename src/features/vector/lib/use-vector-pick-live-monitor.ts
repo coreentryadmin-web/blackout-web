@@ -6,6 +6,7 @@ import {
   type VectorContractPick,
 } from "@/lib/api";
 import type { VectorPlayEmit } from "./vector-play-engine";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import { pinVectorPickEntryMid } from "./vector-pick-live-status";
 
 const LIVE_POLL_MS = 1_000;
@@ -25,7 +26,11 @@ export function isLiveQuotesStale(
   nowMs: number,
   staleAfterMs: number = LIVE_QUOTES_STALE_MS
 ): boolean {
-  return lastSuccessAtMs != null && nowMs - lastSuccessAtMs > staleAfterMs;
+  if (lastSuccessAtMs == null) return false;
+  const ageMs = nowMs - lastSuccessAtMs;
+  // Clock-skewed future success time must not read as live (same guard as UW/LULD halt gates).
+  if (ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return true;
+  return ageMs > staleAfterMs;
 }
 
 /**

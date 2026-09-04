@@ -36,4 +36,16 @@ describe("isLiveQuotesStale", () => {
     assert.equal(isLiveQuotesStale(1_000, 1_500, 2_000), false);
     assert.equal(isLiveQuotesStale(1_000, 3_500, 2_000), true);
   });
+
+  it("treats clock-skewed future success time as stale", () => {
+    const now = 10_000;
+    const futureSuccess = now + 6_000; // beyond WS_TIMESTAMP_FUTURE_TOLERANCE_MS (5s)
+    assert.equal(isLiveQuotesStale(futureSuccess, now), true);
+  });
+
+  it("allows modest future skew inside tolerance", () => {
+    const now = 10_000;
+    const futureSuccess = now + 4_000; // within 5s tolerance, age not exceeded
+    assert.equal(isLiveQuotesStale(futureSuccess, now), false);
+  });
 });
