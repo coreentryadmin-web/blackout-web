@@ -19,6 +19,7 @@ const DISALLOWED_ROOTS = [
   "/nighthawk",
   "/flows",
   "/heatmap",
+  "/meridian",
   "/grid",
   "/account",
   "/sign-in",
