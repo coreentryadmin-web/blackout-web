@@ -7,7 +7,7 @@ export function uwTickerFromOptionsRoot(optionsRoot: string): string {
   return root;
 }
 
-type SpotQuote = { price: number; change_pct: number };
+type SpotQuote = { price: number; change_pct: number | null };
 
 const mem = new Map<string, { at: number; quote: SpotQuote }>();
 const MEM_TTL_MS = 5_000;
@@ -61,7 +61,7 @@ export async function resolveSpotFromUwStockState(
 
     const prev = Number(row.prev_close ?? row.previous_close ?? 0);
     const change_pct =
-      prev > 0 ? Number((((price - prev) / prev) * 100).toFixed(2)) : 0;
+      prev > 0 ? Number((((price - prev) / prev) * 100).toFixed(2)) : null;
 
     const quote = { price, change_pct };
     if (mem.size > 50) mem.clear();

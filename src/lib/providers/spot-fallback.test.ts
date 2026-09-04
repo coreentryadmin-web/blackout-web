@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -35,4 +38,17 @@ test("does not flag a real equity/ETF root", () => {
 test("resolveSpotFromUwStockState short-circuits to null for an index root without a network call", async () => {
   const result = await resolveSpotFromUwStockState("I:SPX", Date.now());
   assert.equal(result, null);
+});
+
+test("resolveSpotFromUwStockState: never fabricates change_pct as flat 0% when prev_close absent", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "spot-fallback.ts"),
+    "utf8"
+  );
+  assert.match(src, /prev > 0 \? Number\(\(\(\(price - prev\) \/ prev\) \* 100\)\.toFixed\(2\)\) : null/);
+  assert.doesNotMatch(
+    src,
+    /prev > 0 \? Number\(\(\(\(price - prev\) \/ prev\) \* 100\)\.toFixed\(2\)\) : 0/,
+    "must not coalesce unknown change% to 0"
+  );
 });
