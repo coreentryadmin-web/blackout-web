@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-03T23:46:43.649Z
-**Run:** b6a6f190-ae16-419f-b758-eb4c74961bc0
+**At:** 2026-09-04T00:30:41.044Z
+**Run:** 49d14bda-5dd3-4b4b-8deb-b5336a96b8b1
 
 ## Summary
 
-Autopilot v1+v2 on cursor/blackout-autopilot. Audited Claude implementation, added session/review/watchdog/guard. PR opened. Next: BO-P1-0004 post-deploy 0DTE replay after merge.
+PR webhook branch ready: heartbeat-gate fix in claimLock, BO-P1-0007 claimed, peer-reviewed #3438 APPROVED. #3436 merged — autopilot v1 live on main. Next: merge this PR, close duplicate #3435.
 
 ## Deploy
 
-- main: `aa08b98d9ffdab369aa27030f999502edfc862dd`
+- main: `84c5707ac6849b4c048dec6e8a414321f2a76e27`
 - status: 
 
 ## Open PRs
