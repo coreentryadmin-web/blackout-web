@@ -126,6 +126,20 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0u. RTH deep audit false P0 on heatmap walls — `full-site-deep-audit.mjs` unconstrained deriveWalls — fix/full-site-audit-side-constrained-walls (pending)
+
+**What was broken:** Scheduled `gha-rth-audit.mjs` / `full-site-deep-audit.mjs` failed six P0 heatmap
+wall mismatches during RTH (e.g. `SPX.put_wall: reported 7700 != 8000`) while `heatmap-matrix-audit.mjs`
+and Thermal were healthy. The script re-derived walls with unconstrained global argmax/argmin; production
+has been side-constrained since #2417 (call above spot, put below).
+
+**Fix:** import shared `wallsFromStrikeTotals` from `scripts/audit/lib/gex-wall-invariants.mjs` and pass
+`hm.spot` when checking GEX call/put walls. Source regression: `scripts/full-site-deep-audit.test.mjs`.
+
+**Check at the open:** re-run `node scripts/gha-rth-audit.mjs` (or wait for the scheduled workflow) —
+heatmap matrix section should pass with zero P0 wall mismatches on SPX/SPY/NVDA/AAPL/META. Spot-check
+Thermal `/heatmap` SPX GEX lens: call wall label should sit above spot, put wall below.
+
 ### 0t. Two more "every setup logged" overclaim instances (About page + homepage) missed by both #3643 and #3664 — fix/vs-others-remaining-overclaim-instances (pending)
 
 **What was broken:** `RedesignHome.tsx`'s own "them vs us" list bullet (a second, separate copy of
