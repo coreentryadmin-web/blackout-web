@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:52:08.396Z",
+  "updated_at": "2026-09-04T23:38:45.781Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-04T23:32:25.584Z",
+      "lease_until": "2026-09-05T01:02:25.584Z",
+      "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -234,6 +234,38 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3799": {
+      "pr": 3799,
+      "head_sha": "36d9a4f95319489f9ce56dd36d7e606bbd2624cf",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:36:28.542Z",
+      "safe_to_merge": true
+    },
+    "pr-3790": {
+      "pr": 3790,
+      "head_sha": "ce32afa36c17eccbf0923ffbb8a839dbe21d09e9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:36:29.214Z",
+      "safe_to_merge": true
+    },
+    "pr-3789": {
+      "pr": 3789,
+      "head_sha": "292d4c4ee94ff3aa97050163822ef3d5fbc8276c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:36:30.028Z",
+      "safe_to_merge": true
+    },
+    "pr-3786": {
+      "pr": 3786,
+      "head_sha": "626b1e955dc482b39022d3d5da70429cb463e440",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:36:30.791Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,11 +280,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75",
+    "last_main_sha": "767e67374051a11205390d664d992d59173fdeb5",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:42:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
-    "last_deploy_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75"
+    "last_deploy_at": "2026-09-04T23:34:58Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33930043864",
+    "last_deploy_sha": "76dbb35345d8e107f8c932485ebfa41d6a3945f2"
   },
   "open_prs": [],
   "events": [
@@ -1071,6 +1103,59 @@
       "agent": "cursor",
       "run_id": "01ba5e3e-d264-48b8-b6f9-953c859c62cd",
       "summary": "Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty."
+    },
+    {
+      "at": "2026-09-04T23:36:28.543Z",
+      "type": "pr_review",
+      "pr": 3799,
+      "head_sha": "36d9a4f95319489f9ce56dd36d7e606bbd2624cf",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:36:28.542Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T23:36:29.215Z",
+      "type": "pr_review",
+      "pr": 3790,
+      "head_sha": "ce32afa36c17eccbf0923ffbb8a839dbe21d09e9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:36:29.214Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T23:36:30.029Z",
+      "type": "pr_review",
+      "pr": 3789,
+      "head_sha": "292d4c4ee94ff3aa97050163822ef3d5fbc8276c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:36:30.028Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T23:36:30.792Z",
+      "type": "pr_review",
+      "pr": 3786,
+      "head_sha": "626b1e955dc482b39022d3d5da70429cb463e440",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:36:30.791Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T23:38:45.779Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T23:38:45.781Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "907105a0-597f-4625-a502-6c100bf7c9b3",
+      "summary": "PR-event sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14, validate:api-auth GREEN. Peer-reviewed 4 READY Claude fix PRs (#3799 vector universe fanout, #3790 spot change_pct null, #3789 polygon snapshot null, #3786 learn Thermal copy) — all ✅ GO AHEAD MERGE pending verify. Local tests pass on Node 20. CI still running on those 4; #3787 verify already green (not yet reviewed). GraphQL rate-limited for gh pr list — used REST. 15 open PRs total; 6 draft autopilot handoff PRs should be closed as noise."
     }
   ]
 }
