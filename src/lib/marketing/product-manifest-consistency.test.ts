@@ -95,13 +95,15 @@ test("Learn nav's Night Hawk descriptor is not evening-only, matching the manife
 // meridian-types.ts) is "macro" | "earnings" | "opex" | "fda", with dedicated filter chips
 // (MeridianDesk.tsx) and per-kind detail panels (MeridianEventDetailPanel.tsx) for each — Meridian
 // genuinely implements four catalyst classes, not just earnings. The manifest (which drives the
-// homepage card, pricing matrix, and SEO featureList via manifestSchemaFeatureList) undersold the
-// product relative to its own shipped code AND its own Academy guide, which already documented
-// all four classes correctly. Every downstream consumer checked (products.ts -> RedesignHome.tsx
-// homepage card, upsell-features.ts pricing matrix, JsonLd.tsx SEO schema, welcome-sequence.ts
-// email) reads from this one manifest entry rather than duplicating copy — so fixing it here fixes
-// every surface at once, except the one hand-duplicated exception (about/page.tsx, now in
-// PUBLIC_SURFACES above and covered by the banned-phrase test below).
+// homepage card's `detail`/`positioning`, pricing matrix `detail`, and SEO featureList via
+// manifestSchemaFeatureList) undersold the product relative to its own shipped code AND its own
+// Academy guide, which already documented all four classes correctly. The manifest fix does NOT
+// reach every surface automatically, though — `products.ts`'s HEADLINES/STATS (the homepage card's
+// headline + stat pill) and `upsell-features.ts`'s per-row `label` are hand-authored literals per
+// product, same as every other desk's row, not manifest-derived — so those needed their own edit
+// (products.ts, upsell-features.ts + its test, plus the email templates that hand-list product
+// names) alongside about/page.tsx's hand-duplicated exception (now in PUBLIC_SURFACES above and
+// covered by the banned-phrase test below).
 test("Meridian manifest describes all four catalyst classes, not earnings-only", () => {
   const meridian = PRODUCT_MANIFEST.meridian;
   assert.notEqual(meridian.tag, "Earnings intelligence");
@@ -115,6 +117,17 @@ test("Meridian manifest describes all four catalyst classes, not earnings-only",
   assert.match(meridian.faqAnswer, /macro/i);
   assert.match(meridian.faqAnswer, /opex|OpEx/i);
   assert.match(meridian.faqAnswer, /FDA/i);
+});
+
+// The manifest fix above doesn't reach products.ts's hand-authored HEADLINES/STATS (the homepage
+// card's headline + stat pill) — those are per-product literals, not manifest-derived, so an
+// earnings-only manifest fix can land while the homepage card still says "Earnings prints" /
+// "earnings desk". Guards that surface specifically.
+test("marketing products' Meridian headline/stat are not earnings-only", () => {
+  const meridian = MARKETING_PRODUCTS.find((p) => p.id === "meridian");
+  assert.ok(meridian, "MARKETING_PRODUCTS is missing the Meridian entry");
+  assert.doesNotMatch(meridian!.headline, /^Earnings/i);
+  assert.notEqual(meridian!.stat.v, "earnings desk");
 });
 
 test("Vector manifest describes live universe screener capabilities", () => {
