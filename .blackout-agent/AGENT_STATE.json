@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T00:53:36.909Z",
+  "updated_at": "2026-09-04T00:54:12.533Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -51,6 +51,18 @@
       "run_id": null,
       "title": null,
       "released_at": "2026-09-04T00:47:07.074Z"
+    },
+    "BO-P2-0003": {
+      "task_id": "BO-P2-0003",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T00:54:12.532Z",
+      "lease_until": "2026-09-04T02:24:12.532Z",
+      "phase": "IMPLEMENTING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -70,8 +82,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T00:53:11.305Z",
-      "current_task": "BO-P1-0005"
+      "last_seen": "2026-09-04T00:54:12.533Z",
+      "current_task": "BO-P2-0003"
     }
   },
   "deploy": {
@@ -252,6 +264,12 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:54:12.533Z",
+      "type": "task_claimed",
+      "task_id": "BO-P2-0003",
+      "owner": "cursor"
     }
   ]
 }
