@@ -145,6 +145,14 @@ is instrumentation only.
 
 **Check at the open:** Admin System Vitals → Massive LULD tile shows live during RTH when feed is healthy; 0DTE halt gate still blocks when BOTH UW and LULD are genuinely down (not on a single future-skewed stamp).
 
+### 0aa. UW spot fallback fabricated 0% change — fix/spot-fallback-null-change-pct (pending)
+
+**What was broken:** `resolveSpotFromUwStockState` returned `change_pct: 0` when UW `/stock-state` had a price but no `prev_close` — a fabricated flat 0% on `/api/market/quote` UW fallback path.
+
+**Fix:** Return `change_pct: null` when prior close is absent (matches `QuotePayload` and `resolveSpotSnapshot` semantics).
+
+**Check at the open:** Quote header for a ticker on UW fallback without prev_close shows no change chip (null), not `0.00%`.
+
 ### 0z. SPX pulse stream local freshness future guard — fix/spx-pulse-stream-future-guard (pending)
 
 **What was broken:** `refreshSnapshot()` in `/api/market/spx/pulse/stream` preferred local `indexStore` when `Date.now() - fresh < 10_000` with no future-timestamp guard — clock-skewed future `updatedAt` reads as infinitely fresh and skips cross-replica Redis fallback.

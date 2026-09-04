@@ -178,7 +178,7 @@ export async function seedPulseSnapshotFromUwPrices(now = Date.now()): Promise<b
     if (!uw || !(uw.price > 0)) continue;
     snap[sym] = {
       price: uw.price,
-      change_pct: uw.change_pct,
+      change_pct: uw.change_pct ?? undefined,
       updatedAt: now,
       open_source: "rest",
     };
