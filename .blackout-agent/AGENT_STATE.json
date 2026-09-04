@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T18:32:39.500Z",
+  "updated_at": "2026-09-04T18:37:39.229Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,12 +68,12 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-04T18:16:47.624Z",
-      "lease_until": "2026-09-04T19:58:36.761Z",
+      "lease_until": "2026-09-04T20:05:27.726Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "190a2d17-a271-4db6-87d8-073f5a47f64b",
+      "run_id": "f0784e9a-8075-4e9d-a0ae-3214e4c6510f",
       "title": null
     },
     "BO-P1-0101": {
@@ -271,11 +271,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "cddb5a72218950a660d18b85b579537844e65f49",
+    "last_main_sha": "827a3030ef91b4913c4055bc88d5f4dec94e8e8e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T18:26:42Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33905916082",
-    "last_deploy_sha": "bdd3a65fec607cfb7dc8098ed4f76a3a0ae9ed31"
+    "last_deploy_at": "2026-09-04T18:34:02Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33906581445",
+    "last_deploy_sha": "827a3030ef91b4913c4055bc88d5f4dec94e8e8e"
   },
   "open_prs": [],
   "events": [
@@ -1292,6 +1292,19 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T18:32:39.499Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:37:39.228Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T18:37:39.229Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "f6f79db6-024e-4201-87cd-5c157e51771a",
+      "summary": "CI wake: #3699/#3692 merged. #3697 re-approved bc5638dcd verify GREEN. #3686 awaits Claude."
     }
   ],
   "pr_activity": {
