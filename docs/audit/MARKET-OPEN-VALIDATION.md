@@ -126,6 +126,14 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0y. darkpool-discord missing runWithBackgroundUwSweep — fix/darkpool-discord-uw-sweep (pending)
+
+**What was broken:** `darkpool-discord` cron called `fetchUwDarkPoolRecent` (live scan, 15m digest, EOD recap) without the shared `runWithBackgroundUwSweep` tag, competing with member UW REST traffic on cache miss.
+
+**Fix:** Wrapped tick body in `runWithBackgroundUwSweep(() => runDarkpoolDiscordTick(...))`.
+
+**Check at the open:** Admin Operations → UW rate limiter / cron health shows `darkpool-discord` completing without member-facing UW 429s during RTH; Discord #blackout-darkpool live alerts still post during active tape.
+
 ### 0x. Flow WS cluster heartbeat future timestamp falsely fresh — fix/flow-liveness-future-guard (pending)
 
 **What was broken:** `isFlowFrameFreshFromCluster`, `isFlowFrameFreshAnywhere`, and
