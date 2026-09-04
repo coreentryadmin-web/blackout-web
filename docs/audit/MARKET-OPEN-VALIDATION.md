@@ -126,6 +126,22 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0n. "Every setup logged publicly" overclaimed against a 3-of-7-product methodology page — fix/public-record-scope-overclaim (pending)
+
+**What was broken:** About page, homepage, and `WhyBlackoutContent.tsx` all said "Every setup BlackOut
+flags is logged publicly"/"the full ledger, always" and pointed to `/methodology` for "how each
+product is scored" — but `/methodology`'s own payload type (`TrackRecordPagePayload`) is hard-typed
+to exactly SPX Slayer, Night Hawk, and 0DTE Command. HELIX/Thermal/Vector/Meridian/Largo have no
+public ledger section there.
+
+**Fix:** scoped the "every setup"/"each product" claims on all three surfaces to name the three
+products `/methodology` actually covers — no change to whether HELIX/Vector's own internal
+tracking should eventually be exposed publicly (a separate, still-open product question).
+
+**Check at the open:** none — pure marketing-copy correction, no RTH-dependent behavior. Confirm
+the live About/homepage/Why-BlackOut pages name SPX Slayer/Night Hawk/0DTE Command next to the
+transparency claim rather than an unscoped "every setup"/"each product."
+
 ### 0l. Pricing comparison table omitted the $49 SPX Slayer plan entirely — fix/spx-slayer-pricing-comparison-column (pending)
 
 **What was broken:** `/pricing` sells three commercial choices — SPX Slayer $49/mo, Premium Monthly
