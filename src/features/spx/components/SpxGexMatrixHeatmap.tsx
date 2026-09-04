@@ -286,8 +286,12 @@ export function SpxGexMatrixHeatmap({
   // daily expiries settle independently, so a column's King can legitimately
   // differ day to day. Same per-column scoping gives the day's own highest-
   // positive (call wall) and highest-negative (put wall) gamma strikes —
-  // recomputeScopedGexLevels's callWall/putWall selection doesn't depend on
-  // spot, only its flip field does, so 0 is a safe placeholder here.
+  // deliberately the RAW per-column extreme, not a spot-relative resistance/
+  // support read, so this passes spot=0 on purpose: recomputeScopedGexLevels
+  // (2026-09-04) treats spot<=0 as "unconstrained" (same convention as
+  // wallsFromStrikeTotals/computeGexWalls), which is what preserves this
+  // call site's historical "highest |gamma| either side" semantics. Only
+  // `flip` (unused here) depends on spot's actual value.
   const columnKings = useMemo(() => {
     const map = new Map<string, number>();
     for (const expiry of displayExpiries) {
