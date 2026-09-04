@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T10:27:49.654Z",
+  "updated_at": "2026-09-04T10:54:52.230Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -80,8 +80,8 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-04T10:28:03.483Z",
+      "lease_until": "2026-09-04T11:58:03.483Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -175,16 +175,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T07:42:54.932Z",
-      "current_task": "BO-P1-0104"
+      "last_seen": "2026-09-04T10:28:03.484Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "6553d68a0b354d1e92e7b9427381c2b42032dcc8",
+    "last_main_sha": "b8490e8f9183d05ce57b211dba40a242ed71f9c2",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T10:22:44Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33862935955",
-    "last_deploy_sha": "6553d68a0b354d1e92e7b9427381c2b42032dcc8"
+    "last_deploy_at": "2026-09-04T10:51:11Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33865177243",
+    "last_deploy_sha": "24cf915ab6116be3583a9e4cca26c3064667e985"
   },
   "open_prs": [],
   "events": [
@@ -779,6 +779,25 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T10:28:03.484Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T10:54:52.230Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T10:54:52.230Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "7d692ce4-9626-42c2-babc-6211efdae3a2",
+      "summary": "Merge wave complete: main @ b8490e8 (#3553 findings fold + #3549 nighthawk tab overlap + #3552 meridian-warm + #3548 vector + #3550 zerodte-warm). Peer-reviewed #3548 APPROVED; #3549/#3552 locally verified (tests GREEN) before merge. validate:deploy GREEN x2. ops:collect clean. ECR 33864609961 in_progress for b8490e8. GitHub API rate-limited mid-cycle — formal review records deferred where merges landed first."
     }
   ],
   "pr_activity": {
