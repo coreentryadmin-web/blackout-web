@@ -4,27 +4,33 @@
  * Output: public/images/marketing/{spx,helix,thermal,largo,hawk,vector}.webp
  *   and, with SHOTS>1, additional per-module views: {id}-2.webp, {id}-3.webp …
  *
- * MUST run from a browser-capable environment (staging/CI/Cursor) — headless
+ * MUST run from a browser-capable environment (CI/Cursor) — headless
  * Chromium egress is blocked in the Claude sandbox, so this cannot run there.
  *
+ * Was staging-first — the whole `blackout-staging-*` stack (ECS, Secrets Manager's
+ * `blackout-staging/app/env`, `staging.blackouttrades.com` DNS) was decommissioned 2026-07-25
+ * (see CLAUDE.md). `USE_STAGING_SECRET` defaulted true (BASE defaulted to the staging host), so
+ * `loadSecret()` ran unconditionally with no try/catch on every plain `npm run
+ * capture:marketing-modules` invocation and threw `ResourceNotFoundException` from AWS Secrets
+ * Manager before launching a browser. Production is the only environment now, so this is a
+ * single-target capture against it, reading Clerk keys straight from the environment the same
+ * way every other current audit script does.
+ *
  * Env:
- *   CAPTURE_BASE_URL   target host (default staging)
+ *   CAPTURE_BASE_URL   target host (default production)
  *   SHOTS              screenshots per module (default 1; e.g. 3 for a gallery)
  *   SHOT_TICKERS       per-module override, e.g. "spx=SPX,helix=NVDA,thermal=TSLA"
  *                      — the module is loaded, that ticker is searched, THEN captured,
  *                      so the shot shows a deliberate ticker rather than the default.
  *   SHOT_QUALITY       webp quality (default 90 — sharper than the old 84)
  */
-import { execSync } from "node:child_process";
 import { mkdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
 import { chromium } from "playwright";
 import { mintIosPlaywrightSession, onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
 
-const BASE = (process.env.CAPTURE_BASE_URL ?? process.env.STAGING_BASE_URL ?? "https://staging.blackouttrades.com").replace(/\/$/, "");
-const USE_STAGING_SECRET = BASE.includes("staging.");
-const SECRET_NAME = process.env.STAGING_SECRET_NAME ?? "blackout-staging/app/env";
+const BASE = (process.env.CAPTURE_BASE_URL ?? process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const OUT_DIR = join(process.cwd(), "public/images/marketing");
 const VIEWPORT = { width: 1440, height: 900 };
 
@@ -138,14 +144,6 @@ async function searchTicker(page, ticker) {
   console.log(`     (no ticker search on ${page.url()} — captured default)`);
 }
 
-function loadSecret() {
-  const raw = execSync(
-    `aws secretsmanager get-secret-value --secret-id "${SECRET_NAME}" --query SecretString --output text`,
-    { encoding: "utf8" }
-  );
-  return JSON.parse(raw);
-}
-
 async function hasErrorPage(page) {
   const body = await page.locator("body").innerText().catch(() => "");
   return /couldn't load this page|something went wrong/i.test(body);
@@ -198,18 +196,10 @@ async function main() {
   mkdirSync(OUT_DIR, { recursive: true });
   console.log(`\nCapture marketing module shots → ${OUT_DIR}\n`);
 
-  const secret = USE_STAGING_SECRET
-    ? loadSecret()
-    : {
-        CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
-        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
-      };
-  if (!secret.CLERK_SECRET_KEY || !secret.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
-    console.error("Missing Clerk keys — set env or use staging secret");
+  if (!process.env.CLERK_SECRET_KEY || !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+    console.error("Missing Clerk keys — set CLERK_SECRET_KEY / NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY");
     process.exit(1);
   }
-  process.env.CLERK_SECRET_KEY = secret.CLERK_SECRET_KEY;
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = secret.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
   const session = await mintIosPlaywrightSession({ appUrl: BASE });
   if (session.skip) {
