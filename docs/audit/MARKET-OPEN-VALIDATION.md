@@ -154,6 +154,17 @@ via `callWalls`/`putWalls` counts.
 **Check at the open:** `npm run validate:platform-integrity` → 0 warn on `thermal-spx-matrix`,
 `vector-spx-0dte-walls`, `gex-positioning-spx` during RTH with strikes > 0.
 
+### 0i-b. Platform-integrity 401 SKIP when Clerk absent — fix/platform-integrity-tier-skip-v2 (pending #3617)
+
+**What was broken:** When Clerk keys are absent (sandbox / lifecycle without auth), `gex-positioning-spx`,
+`thermal-matrix-SPY/QQQ`, and `vector-spx-0dte-walls` returned HTTP 401 but the probe still WARNed instead
+of SKIP — unlike desk/flows/nighthawk/zerodte probes.
+
+**Fix:** Map 401 → SKIP + `tier-gated` for those three probes (complements #3605 auth mint path).
+
+**Check at the open:** `npm run validate:platform-integrity` with no Clerk keys → **0 warn** (tier-gated
+SKIP). With auth during RTH, premium probes PASS with strikes > 0.
+
 ### 0g. RTH-open options-socket retry false-fail — fix/rth-open-socket-retry-false-fail (merged #3600)
 
 **What was broken:** `validate:rth-open` called `fail()` on the first options-socket probe attempt even
