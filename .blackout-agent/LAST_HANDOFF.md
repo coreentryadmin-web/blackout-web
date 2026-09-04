@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T16:49:45.121Z
-**Run:** 3ff9b37e-fdf4-4e13-b07a-e228472a1c97
+**At:** 2026-09-04T17:01:45.250Z
+**Run:** aeba2966-fe22-449f-9640-c8f5fe4cb9de
 
 ## Summary
 
-Peer review cycle: #3643 merged (public-record scope). #3642 APPROVED+ready, CI trigger blocked (no workflow run on branch). validate:deploy GREEN, ops:collect 0.
+Cycle complete: #3643+#3642 Claude marketing fixes peer-reviewed and merged/auto-merged. validate:deploy GREEN, ops:collect 0. Handoff branch cursor/autopilot-handoff-pr-event-1650 pushed.
 
 ## Deploy
 
