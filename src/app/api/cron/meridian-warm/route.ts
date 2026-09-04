@@ -19,6 +19,20 @@ export const maxDuration = 180;
 const OVERLAP_LOCK_KEY = "meridian-warm:running";
 const OVERLAP_LOCK_TTL_SEC = 600;
 
+/**
+ * Minimum re-run floor — independent of, and IN ADDITION TO, the hours gate below.
+ *
+ * Same structural gap fixed for desk-warm (#3540) and heatmap-warm (#3542): `force=1` bypasses
+ * `shouldRunCacheWarmer`, and OVERLAP_LOCK only guards a second run while the first is in flight —
+ * released the instant the background warm completes, which on warm caches can be far faster than
+ * the full Polygon/UW fan-out. Nothing capped how often `?force=1` could be replayed.
+ *
+ * 60s sits safely below every legitimate cadence: rth-warm-leader's heal threshold for this key is
+ * 5 min (RTH_WRITER_HEAL_AFTER_MIN["meridian-warm"]) and EventBridge's own schedule is ~5 min.
+ */
+const RERUN_COOLDOWN_KEY = "meridian-warm:cooldown";
+const RERUN_COOLDOWN_SEC = 60;
+
 async function runMeridianWarm(started: number): Promise<void> {
   try {
     const result = await warmMeridianCaches(21);
@@ -39,6 +53,21 @@ export async function GET(req: NextRequest) {
   const force = req.nextUrl.searchParams.get("force") === "1";
   if (!shouldRunCacheWarmer(force)) {
     const skipped = { ok: true, status: "skipped", reason: "off-hours gate" };
+    await logCronRun("meridian-warm", started, skipped);
+    return NextResponse.json(skipped);
+  }
+
+  const withinCooldown = !(await sharedCacheSetNx(
+    RERUN_COOLDOWN_KEY,
+    { startedAt: started },
+    RERUN_COOLDOWN_SEC
+  ).catch(() => true));
+  if (withinCooldown) {
+    const skipped = {
+      ok: true,
+      skipped: true,
+      reason: `rate-limited — meridian-warm already ran within the last ${RERUN_COOLDOWN_SEC}s (force=1 does not bypass this floor)`,
+    };
     await logCronRun("meridian-warm", started, skipped);
     return NextResponse.json(skipped);
   }

@@ -64,3 +64,40 @@ test("the lock is released once the background dispatch settles, on both success
 test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 900s)", () => {
   assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 900/);
 });
+
+test("force=1 is rate-limited by a minimum re-run cooldown, independent of the hours gate", () => {
+  assert.match(routeSrc, /RERUN_COOLDOWN_SEC = 60/, "the floor must exist and be tuned below rth-warm-leader's 4min heal threshold");
+  assert.match(routeSrc, /RERUN_COOLDOWN_KEY = "zerodte-warm:cooldown"/, "must be a key distinct from OVERLAP_LOCK_KEY");
+  assert.match(
+    routeSrc,
+    /const withinCooldown = !\(await sharedCacheSetNx\(\s*RERUN_COOLDOWN_KEY,/,
+    "the cooldown claim must be atomic, not a separate read-then-write"
+  );
+  const cooldownIdx = routeSrc.indexOf("RERUN_COOLDOWN_KEY,");
+  const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
+  const dispatchIdx = routeSrc.indexOf("after(dispatchWarm)");
+  assert.ok(cooldownIdx > 0 && overlapClaimIdx > 0 && dispatchIdx > 0);
+  assert.ok(cooldownIdx < overlapClaimIdx, "cooldown must be checked before the overlap lock");
+  assert.ok(overlapClaimIdx < dispatchIdx, "overlap lock must still be checked before dispatch");
+  const skipIdx = routeSrc.indexOf("reason: `rate-limited");
+  assert.ok(skipIdx > cooldownIdx && skipIdx < dispatchIdx);
+  assert.match(
+    routeSrc,
+    /sharedCacheSetNx\(\s*RERUN_COOLDOWN_KEY[\s\S]{0,80}\)\.catch\(\(\) => true\)/,
+    "a Redis error on the cooldown claim must not permanently block every future scan"
+  );
+  assert.doesNotMatch(routeSrc, /sharedCacheDel\(RERUN_COOLDOWN_KEY\)/);
+});
+
+test("the cooldown primitive genuinely refuses a second claim of the same key inside its TTL", async () => {
+  const { sharedCacheSetNx, sharedCacheDel } = await import("@/lib/shared-cache");
+  const key = `zerodte-warm:cooldown:test:${Date.now()}:${Math.random()}`;
+  try {
+    const first = await sharedCacheSetNx(key, { startedAt: Date.now() }, 60);
+    const secondImmediately = await sharedCacheSetNx(key, { startedAt: Date.now() }, 60);
+    assert.equal(first, true);
+    assert.equal(secondImmediately, false);
+  } finally {
+    await sharedCacheDel(key);
+  }
+});
