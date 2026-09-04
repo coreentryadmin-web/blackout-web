@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T11:20:50.708Z",
+  "updated_at": "2026-09-04T12:14:25.992Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,8 +67,8 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:22:03.345Z",
-      "lease_until": "2026-09-04T11:52:03.345Z",
+      "claimed_at": "2026-09-04T12:07:21.461Z",
+      "lease_until": "2026-09-04T13:37:21.461Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -104,8 +104,8 @@
     "BO-P1-0103": {
       "task_id": "BO-P1-0103",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:33:57.540Z",
-      "lease_until": "2026-09-04T12:03:57.540Z",
+      "claimed_at": "2026-09-04T12:14:25.992Z",
+      "lease_until": "2026-09-04T13:44:25.992Z",
       "phase": "MONITORING",
       "branch": null,
       "pr": null,
@@ -186,6 +186,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T10:33:34.705Z",
       "safe_to_merge": true
+    },
+    "pr-3572": {
+      "pr": 3572,
+      "head_sha": "99cae7fc8fb98923e0e73e5a0a73278bf8ce492b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T12:08:53.956Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -195,16 +203,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
+      "last_seen": "2026-09-04T12:14:25.992Z",
       "current_task": "BO-P1-0103"
     }
   },
   "deploy": {
-    "last_main_sha": "0d367bde47b227c73f6e56abb5cc5dc80cf5e44f",
+    "last_main_sha": "74d858bc54d9e36b87fce3b8043b3d3e4024c272",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T10:35:12Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33863935805",
-    "last_deploy_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01"
+    "last_deploy_at": "2026-09-04T12:06:34Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33871126902",
+    "last_deploy_sha": "f84aad3391ddaaeb7a2beb57f9a58e3b73643101"
   },
   "open_prs": [],
   "events": [
@@ -812,6 +820,41 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:08:53.957Z",
+      "type": "pr_review",
+      "pr": 3572,
+      "head_sha": "99cae7fc8fb98923e0e73e5a0a73278bf8ce492b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T12:08:53.956Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T12:14:14.058Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:14:14.058Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "50f1d592-1b8b-4582-b0d2-8fefa3b3b3a0",
+      "summary": "Peer review cycle: #3572 merged (docs heading fix APPROVED). #3574/#3576 autopilot handoffs closed/merged. validate:deploy GREEN. ops:collect 0 items. Open PRs: #2810 dependabot (FAILURE, skip)."
+    },
+    {
+      "at": "2026-09-04T12:14:18.459Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:14:25.992Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0103",
+      "owner": "cursor"
     }
   ]
 }
