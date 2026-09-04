@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T12:33:51.117Z",
+  "updated_at": "2026-09-04T12:45:00.452Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -186,14 +186,6 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T10:33:34.705Z",
       "safe_to_merge": true
-    },
-    "pr-3580": {
-      "pr": 3580,
-      "head_sha": "1db040d17df6",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T12:33:22.454Z",
-      "safe_to_merge": true
     }
   },
   "agents": {
@@ -208,11 +200,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "3887bd8ef85cb7d6ff9ca277aa5bdfa419de5369",
+    "last_main_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:06:34Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33871126902",
-    "last_deploy_sha": "f84aad3391ddaaeb7a2beb57f9a58e3b73643101"
+    "last_deploy_at": "2026-09-04T12:42:15Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
+    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
   },
   "open_prs": [],
   "events": [
@@ -822,33 +814,29 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T12:33:22.454Z",
-      "type": "pr_review",
-      "pr": 3580,
-      "head_sha": "1db040d17df6",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T12:33:22.454Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-04T12:33:43.831Z",
+      "at": "2026-09-04T12:41:17.977Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T12:33:51.117Z",
+      "at": "2026-09-04T12:41:43.255Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T12:33:51.117Z",
+      "at": "2026-09-04T12:45:00.451Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:45:00.452Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "239f4f04-45c0-4fd5-aeed-1e20c4ff4908",
-      "summary": "Peer-reviewed #3580 APPROVED (6/6 tests, tsc clean); verify CI pending — subscribed. SEO 22/22 GREEN. validate:deploy GREEN. ops:collect 0. OFF_HOURS regression tests pass on main. Open PRs: #3580 (Claude, awaiting CI+merge), #3578 (cursor handoff, awaiting Claude review). GitHub API rate-limited for gh CLI."
+      "run_id": "b65ce075-3baa-4f3c-af2d-eb2a2d9fdcc8",
+      "summary": "#3580 merged to main@9cfdf5076 (data-integrity-verifier ageMin guard). ECR deploy in progress. ops:collect 0. Open PRs: #3578 handoff (Claude review), #3581/#3582 drafts. Subscribed to main CI."
     }
   ]
 }
