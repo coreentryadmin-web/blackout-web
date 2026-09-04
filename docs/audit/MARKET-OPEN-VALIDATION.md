@@ -137,6 +137,14 @@ sweep)` tag separates expected cron-sweep queueing from live member-request queu
 what the two prior entries' follow-up measurement needs. No product-facing behavior to check; this
 is instrumentation only.
 
+### 0ac. UW stall + L1 cache + SPX GEX stale future guards — fix/uw-future-timestamp-guards (pending)
+
+**What was broken:** Two paths missed the #3745/#3760 future-timestamp sweep: `isUwSocketStalled()` (OPEN socket with future `freshestMessageAt` never reconnects), `gexStaleFromAge()` (future GEX `asof` clamped to age 0 → `gex_stale: false`). (`readUwCache` on separate branch `fix/uw-cache-index-overlay-future-timestamp`.)
+
+**Fix:** Gate stall via `!isWsUpdatedAtFresh`; treat future GEX age as stale.
+
+**Check at the open:** Admin System Vitals UW socket tile still reconnects on genuine silence; SPX desk GEX stale pill fires on real 30s+ lag (not on normal 10–20s ages).
+
 ### 0ab. LULD halt future-timestamp guard — fix/luld-halt-future-timestamp-guard (pending)
 
 **What was broken:** `isLuldHaltSourceStaleForState()` and `isLuldHaltFeedStale()` used raw `Date.now() - timestamp` age math without a future guard — clock-skewed future cluster/local `last_message_at` stamps read as live/trusted (same class as the UW halt bug fixed in #3745).

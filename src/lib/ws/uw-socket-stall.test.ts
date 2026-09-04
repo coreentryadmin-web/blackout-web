@@ -29,8 +29,13 @@ test("isUwSocketStalled: beyond window -> true", () => {
   assert.equal(isUwSocketStalled(1_000_000 - 80_000, 75_000, 1_000_000), true);
 });
 
-test("isUwSocketStalled: boundary now-freshest === stallMs -> false (strict >)", () => {
-  assert.equal(isUwSocketStalled(1_000_000 - 75_000, 75_000, 1_000_000), false);
+test("isUwSocketStalled: boundary now-freshest === stallMs -> true (isWsUpdatedAtFresh uses strict <)", () => {
+  assert.equal(isUwSocketStalled(1_000_000 - 75_000, 75_000, 1_000_000), true);
+});
+
+test("isUwSocketStalled: clock-skewed future freshest -> true (must not read as live)", () => {
+  const now = 1_000_000;
+  assert.equal(isUwSocketStalled(now + 60_000, 75_000, now), true);
 });
 
 // --- first-message grace period (silent-connection detection) ---
