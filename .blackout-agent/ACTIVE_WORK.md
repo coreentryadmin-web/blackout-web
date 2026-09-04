@@ -2,7 +2,7 @@
 
 | ID | Owner | Phase | Branch/PR | Title |
 |----|-------|-------|-----------|-------|
-| _none_ | — | — | — | — |
+| BO-P1-0008 | cursor | REVIEWING | #3468, #3469 | Peer review Claude cron fixes (meridian-warm overlap + largo DST gate) |
 
 ## Recently completed
 

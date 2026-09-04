@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T02:06:52.193Z",
+  "updated_at": "2026-09-04T02:26:01.102Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -63,6 +63,18 @@
       "run_id": "fa572336-bda3-4a7c-93e8-a09ffc724a3a",
       "title": null,
       "released_at": "2026-09-04T02:06:52.193Z"
+    },
+    "BO-P1-0008": {
+      "task_id": "BO-P1-0008",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T02:22:28.615Z",
+      "lease_until": "2026-09-04T03:52:28.615Z",
+      "phase": "REVIEWING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -121,6 +133,22 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3468": {
+      "pr": 3468,
+      "head_sha": "50439b432315eafcaa2c2fc58edaa0670f6585bd",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T02:22:46.400Z",
+      "safe_to_merge": true
+    },
+    "pr-3469": {
+      "pr": 3469,
+      "head_sha": "6e153695f2a7576cba94ddfdfecf88d8a073606a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T02:22:46.770Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -130,12 +158,12 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T01:48:27.814Z",
-      "current_task": "BO-P1-0004"
+      "last_seen": "2026-09-04T02:22:45.961Z",
+      "current_task": "BO-P1-0008"
     }
   },
   "deploy": {
-    "last_main_sha": "f2285917e0ad04ea57dbe884e9e1004f20b6a04e",
+    "last_main_sha": "46476d10b2e298e2ecc45514aec4f1ca8786c9bd",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-04T02:05:47Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826698258",
@@ -143,24 +171,34 @@
   },
   "open_prs": [
     {
-      "number": 3465,
-      "title": "chore(autopilot): handoff — merged #3454, P1 queue cleared",
-      "branch": "fix/autopilot-handoff-2026-09-04-session2",
+      "number": 3470,
+      "title": "docs(findings): ECS web maximumPercent 120→200 change had no measured effect",
+      "branch": "docs/ecs-web-maxpercent-finding",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T02:04:58Z"
-    },
-    {
-      "number": 3464,
-      "title": "chore(autopilot): cursor handoff — peer review lane BO-P1-0005",
-      "branch": "cursor/autopilot-handoff-peer-reviews-2026-09-04-2",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T02:03:08Z"
+      "updated_at": "2026-09-04T02:25:39Z"
+    },
+    {
+      "number": 3469,
+      "title": "fix(largo): gate morning-brief cron on the 9:25 ET window",
+      "branch": "fix/largo-morning-brief-dst-double-fire",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T02:22:50Z"
+    },
+    {
+      "number": 3468,
+      "title": "fix(cron): add meridian-warm cross-replica overlap guard",
+      "branch": "fix/meridian-warm-overlap-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T02:23:19Z"
     },
     {
       "number": 2810,
@@ -501,6 +539,45 @@
       "type": "task_released",
       "task_id": "BO-P1-0004",
       "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T02:22:45.961Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0008",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T02:22:46.401Z",
+      "type": "pr_review",
+      "pr": 3468,
+      "head_sha": "50439b432315eafcaa2c2fc58edaa0670f6585bd",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T02:22:46.400Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T02:22:46.771Z",
+      "type": "pr_review",
+      "pr": 3469,
+      "head_sha": "6e153695f2a7576cba94ddfdfecf88d8a073606a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T02:22:46.770Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T02:26:01.101Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-04T02:26:01.102Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d8fcd79f-8eca-4f2d-9211-2eb7fe731ebc",
+      "summary": "BO-P1-0008: peer-reviewed #3468+#3469 (APPROVED, tests pass locally). Awaiting verify green to merge."
     }
   ]
 }
