@@ -43,6 +43,13 @@ function ghRun(args) {
   return { ok: r.status === 0, stdout: r.stdout, stderr: r.stderr, status: r.status };
 }
 
+/** GITHUB_REPOSITORY is set in Actions; local agents resolve via gh. */
+export function resolveGithubRepo() {
+  const env = process.env.GITHUB_REPOSITORY?.trim();
+  if (env) return env;
+  return ghJson(["repo", "view", "--json", "nameWithOwner"])?.nameWithOwner ?? null;
+}
+
 const CLAUDE_BODY_MARKERS = [/generated with \[claude code\]/i, /claude\.ai\/code\/session/i];
 const CURSOR_BODY_MARKERS = [/cursor agent/i, /cursor\.com\/agents/i];
 
@@ -338,7 +345,7 @@ export function shouldDispatchDeepReview({ event, prData, checks, agent, reviewi
 }
 
 function findExistingComment(pr, headSha) {
-  const repo = process.env.GITHUB_REPOSITORY;
+  const repo = resolveGithubRepo();
   if (!repo) return null;
   const [owner, name] = repo.split("/");
   const comments = ghJson(["api", `repos/${owner}/${name}/issues/${pr}/comments`, "--paginate"]);
@@ -354,7 +361,8 @@ function postOrUpdateComment(pr, body, headSha, dryRun) {
   if (dryRun) return { action: "dry_run", body_preview: body.slice(0, 200) };
 
   const existing = findExistingComment(pr, headSha);
-  const repo = process.env.GITHUB_REPOSITORY;
+  const repo = resolveGithubRepo();
+  if (!repo) return { action: "skipped", ok: false, error: "GITHUB_REPOSITORY unavailable" };
   const [owner, name] = repo.split("/");
 
   if (existing?.id) {

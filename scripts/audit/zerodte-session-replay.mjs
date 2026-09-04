@@ -25,7 +25,15 @@
  */
 
 if (!process.env.POLYGON_API_BASE || !/^https?:\/\//.test(process.env.POLYGON_API_BASE)) {
-  process.env.POLYGON_API_BASE = "[REDACTED]";
+  // Was literally the string "[REDACTED]" from this file's very first commit (#3419) --
+  // confirmed via `git show <sha>:<path> | sha256sum` against the byte-for-byte literal, not a
+  // display artifact. Whatever wrote this line had its own view of the real URL redacted (same
+  // as this sandbox redacts it for anyone reading this file today) and copied the placeholder
+  // text verbatim instead of the real value, so the self-default guard existed but always
+  // assigned an invalid host -- every bar fetch failed closed with "refusing to fetch disallowed
+  // host" (api-tracked-fetch.ts), which reads like a security block, not a broken default. Real
+  // value matches every sibling script's convention (e.g. market-banger-scan.mjs).
+  process.env.POLYGON_API_BASE = "https://api.massive.com";
 }
 
 import { fetchAuditJson, releaseAuditClerkSession } from "./lib/audit-auth-fetch.mjs";

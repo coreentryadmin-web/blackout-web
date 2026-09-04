@@ -10,6 +10,7 @@ import {
   analyzeDiff,
   deriveDirective,
   summarizeChecks,
+  resolveGithubRepo,
 } from "./pr-feedback.mjs";
 
 test("classifyBranch", () => {
@@ -151,4 +152,16 @@ test("summarizeChecks finds failures", () => {
   ]);
   assert.equal(s.failed.length, 1);
   assert.equal(s.verify.conclusion, "failure");
+});
+
+test("resolveGithubRepo falls back to gh when env unset", () => {
+  const prev = process.env.GITHUB_REPOSITORY;
+  delete process.env.GITHUB_REPOSITORY;
+  try {
+    const repo = resolveGithubRepo();
+    assert.ok(repo, "expected gh repo view to resolve nameWithOwner");
+    assert.match(repo, /\//, "expected owner/name slug");
+  } finally {
+    if (prev !== undefined) process.env.GITHUB_REPOSITORY = prev;
+  }
 });
