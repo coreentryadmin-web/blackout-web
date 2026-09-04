@@ -199,7 +199,7 @@ just for performance findings — and is separate from, and in addition to, each
 
 **Check at the open:** Poll `/api/market/vector/universe` and `/api/market/vector/daily-regime?ticker=SPX` — strike/flip/spot fields should be 2dp with no long float tails. Confirm 0DTE halt gate still blocks entries when UW socket is genuinely down (admin System Vitals).
 
-### 0y. darkpool-discord missing runWithBackgroundUwSweep — fix/darkpool-discord-uw-sweep (pending)
+### 0y. darkpool-discord missing runWithBackgroundUwSweep — fix/darkpool-discord-uw-sweep (merged #3740)
 
 **What was broken:** `darkpool-discord` cron called `fetchUwDarkPoolRecent` (live scan, 15m digest, EOD recap) without the shared `runWithBackgroundUwSweep` tag, competing with member UW REST traffic on cache miss.
 
