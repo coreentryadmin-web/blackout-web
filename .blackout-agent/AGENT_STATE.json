@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:52:08.396Z",
+  "updated_at": "2026-09-04T23:10:51.512Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,8 +67,8 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
+      "claimed_at": "2026-09-04T23:06:12.847Z",
+      "lease_until": "2026-09-05T00:36:12.847Z",
       "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
@@ -248,13 +248,124 @@
     }
   },
   "deploy": {
-    "last_main_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75",
+    "last_main_sha": "6716166239f64a30d67c7c5adc4bd66c889c3d22",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:42:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
-    "last_deploy_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75"
+    "last_deploy_at": "2026-09-04T23:08:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33928319748",
+    "last_deploy_sha": "6716166239f64a30d67c7c5adc4bd66c889c3d22"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3792,
+      "title": "docs(audit): mark banger sub5-DTE visibility fix merged (#3778)",
+      "branch": "fix/market-open-validation-3778-status",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:09:46Z"
+    },
+    {
+      "number": 3791,
+      "title": "fix(learn): correct Night Hawk's stale swing-only SEO metadata",
+      "branch": "fix/guide-seo-night-hawk-stale-metadata",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:09:49Z"
+    },
+    {
+      "number": 3790,
+      "title": "fix(spot): return null change_pct when UW omits prev_close",
+      "branch": "fix/spot-fallback-change-pct-null",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:09:51Z"
+    },
+    {
+      "number": 3789,
+      "title": "fix(polygon): stop fabricating 0% on batch snapshot change_pct",
+      "branch": "fix/polygon-snapshot-change-pct-null",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:09:53Z"
+    },
+    {
+      "number": 3788,
+      "title": "fix(marketing): reposition Meridian from earnings-only to catalyst intelligence",
+      "branch": "fix/meridian-manifest-catalyst-coverage",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:09:56Z"
+    },
+    {
+      "number": 3787,
+      "title": "feat(swing-command): Phase P0 parity — live mgmt, thesis health, cockpit",
+      "branch": "cursor/swing-command-p0",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-04T23:10:40Z"
+    },
+    {
+      "number": 3786,
+      "title": "fix(learn): correct Vector guide's false Thermal-is-SPX-only claim",
+      "branch": "fix/vector-guide-thermal-multiticker-claim",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T23:10:40Z"
+    },
+    {
+      "number": 3784,
+      "title": "fix(learn): stop Learn nav describing Night Hawk as evening-only",
+      "branch": "fix/learn-nav-night-hawk-stale-descriptor",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:10:30Z"
+    },
+    {
+      "number": 3783,
+      "title": "fix(swing): discovery COMMIT without ledger is pre-entry for banger merge",
+      "branch": "cursor/swing-command-bugbot-fixes",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T23:10:05Z"
+    },
+    {
+      "number": 3774,
+      "title": "fix(ws): guard UW L1 cache + stocks/polygon stall against future timestamps",
+      "branch": "fix/ws-stall-uw-cache-future-timestamp",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:10:13Z"
+    },
+    {
+      "number": 3773,
+      "title": "fix(swing-command): Bugbot blockers — banger merge collision + open-book fetch",
+      "branch": "cursor/hourly-autonomous-wake",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T23:10:21Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1071,6 +1182,357 @@
       "agent": "cursor",
       "run_id": "01ba5e3e-d264-48b8-b6f9-953c859c62cd",
       "summary": "Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty."
+    },
+    {
+      "at": "2026-09-04T23:06:52.405Z",
+      "type": "pr_webhook",
+      "pr": 3790,
+      "event": "sweep",
+      "head": "34c78487f344d0d7d13dd2be2a544d0b99ae1016",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:06:54.417Z",
+      "type": "pr_webhook",
+      "pr": 3789,
+      "event": "sweep",
+      "head": "58f12cbd7c9b2dc831e52249be783a364fa4552b",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:06:56.452Z",
+      "type": "pr_webhook",
+      "pr": 3788,
+      "event": "sweep",
+      "head": "d613c4ae7e22ad7cbd5e35f119528ec1f1e215cf",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:06:58.566Z",
+      "type": "pr_webhook",
+      "pr": 3787,
+      "event": "sweep",
+      "head": "b1e8c8960c283f4183b645d988183621aec2be7d",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:07:00.488Z",
+      "type": "pr_webhook",
+      "pr": 3786,
+      "event": "sweep",
+      "head": "814d3c703737c81f37da4426ffc47724a8754fb8",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:07:02.641Z",
+      "type": "pr_webhook",
+      "pr": 3785,
+      "event": "sweep",
+      "head": "0b13600af16bcd3ba8a1bb666b57d2d76cfc9080",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:07:04.547Z",
+      "type": "pr_webhook",
+      "pr": 3784,
+      "event": "sweep",
+      "head": "5ec156426599751bab57ba11a627586c59719606",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:07:06.725Z",
+      "type": "pr_webhook",
+      "pr": 3783,
+      "event": "sweep",
+      "head": "08aaca12e1a03e39bf34908e3e7de7f611f72783",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:07:08.796Z",
+      "type": "pr_webhook",
+      "pr": 3780,
+      "event": "sweep",
+      "head": "ba9cc1db37a5377b72268285b7b97ff5e7d00f25",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:07:10.737Z",
+      "type": "pr_webhook",
+      "pr": 3779,
+      "event": "sweep",
+      "head": "69c5f3c5a7f8ce6c27c579b9c125dab5f6e3f8f6",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:07:12.614Z",
+      "type": "pr_webhook",
+      "pr": 3774,
+      "event": "sweep",
+      "head": "cf8361631f3318d1cdbc6527b11b640c9f356d55",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:07:14.618Z",
+      "type": "pr_webhook",
+      "pr": 3773,
+      "event": "sweep",
+      "head": "4f2447195c2a7f470d853c22ec8a82940f7175dc",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:07:21.000Z",
+      "type": "pr_webhook",
+      "pr": 3790,
+      "event": "sweep",
+      "head": "34c78487f344d0d7d13dd2be2a544d0b99ae1016",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:07:23.182Z",
+      "type": "pr_webhook",
+      "pr": 3789,
+      "event": "sweep",
+      "head": "58f12cbd7c9b2dc831e52249be783a364fa4552b",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:07:25.174Z",
+      "type": "pr_webhook",
+      "pr": 3788,
+      "event": "sweep",
+      "head": "d613c4ae7e22ad7cbd5e35f119528ec1f1e215cf",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:07:27.275Z",
+      "type": "pr_webhook",
+      "pr": 3787,
+      "event": "sweep",
+      "head": "b1e8c8960c283f4183b645d988183621aec2be7d",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:07:29.266Z",
+      "type": "pr_webhook",
+      "pr": 3786,
+      "event": "sweep",
+      "head": "814d3c703737c81f37da4426ffc47724a8754fb8",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:07:31.231Z",
+      "type": "pr_webhook",
+      "pr": 3785,
+      "event": "sweep",
+      "head": "0b13600af16bcd3ba8a1bb666b57d2d76cfc9080",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:07:33.262Z",
+      "type": "pr_webhook",
+      "pr": 3784,
+      "event": "sweep",
+      "head": "5ec156426599751bab57ba11a627586c59719606",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:07:35.272Z",
+      "type": "pr_webhook",
+      "pr": 3783,
+      "event": "sweep",
+      "head": "08aaca12e1a03e39bf34908e3e7de7f611f72783",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:07:37.255Z",
+      "type": "pr_webhook",
+      "pr": 3780,
+      "event": "sweep",
+      "head": "ba9cc1db37a5377b72268285b7b97ff5e7d00f25",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:07:39.258Z",
+      "type": "pr_webhook",
+      "pr": 3779,
+      "event": "sweep",
+      "head": "69c5f3c5a7f8ce6c27c579b9c125dab5f6e3f8f6",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:07:41.222Z",
+      "type": "pr_webhook",
+      "pr": 3774,
+      "event": "sweep",
+      "head": "cf8361631f3318d1cdbc6527b11b640c9f356d55",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:07:43.052Z",
+      "type": "pr_webhook",
+      "pr": 3773,
+      "event": "sweep",
+      "head": "4f2447195c2a7f470d853c22ec8a82940f7175dc",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:10:51.511Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 11
+    },
+    {
+      "at": "2026-09-04T23:10:51.512Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "78cec601-f738-49d5-9bd5-4454579712df",
+      "summary": "workflow_run wake: main@671616623. validate:deploy GREEN, ops:collect 0, platform-integrity 14/14, api-auth GREEN. #3785 merged (dark-pool roundFloats + live-quote future guard) — ECR deploy pending. Peer review #3774 (fix/ws-stall-uw-cache-future-timestamp): diff reviewed locally, 27/27 tests pass — verify CI in_progress, subscribed. Cursor PRs #3783/#3773 need Claude review (banger merge fix). Standing: RTH lifecycle Fri 09:00 ET."
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3790": {
+      "last_event": "sweep",
+      "last_head": "34c78487f344d0d7d13dd2be2a544d0b99ae1016",
+      "last_feedback_at": "2026-09-04T23:07:21.000Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3789": {
+      "last_event": "sweep",
+      "last_head": "58f12cbd7c9b2dc831e52249be783a364fa4552b",
+      "last_feedback_at": "2026-09-04T23:07:23.182Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3788": {
+      "last_event": "sweep",
+      "last_head": "d613c4ae7e22ad7cbd5e35f119528ec1f1e215cf",
+      "last_feedback_at": "2026-09-04T23:07:25.174Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3787": {
+      "last_event": "sweep",
+      "last_head": "b1e8c8960c283f4183b645d988183621aec2be7d",
+      "last_feedback_at": "2026-09-04T23:07:27.275Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3786": {
+      "last_event": "sweep",
+      "last_head": "814d3c703737c81f37da4426ffc47724a8754fb8",
+      "last_feedback_at": "2026-09-04T23:07:29.266Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3785": {
+      "last_event": "sweep",
+      "last_head": "0b13600af16bcd3ba8a1bb666b57d2d76cfc9080",
+      "last_feedback_at": "2026-09-04T23:07:31.231Z",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "comment_action": "updated"
+    },
+    "pr-3784": {
+      "last_event": "sweep",
+      "last_head": "5ec156426599751bab57ba11a627586c59719606",
+      "last_feedback_at": "2026-09-04T23:07:33.262Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3783": {
+      "last_event": "sweep",
+      "last_head": "08aaca12e1a03e39bf34908e3e7de7f611f72783",
+      "last_feedback_at": "2026-09-04T23:07:35.272Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3780": {
+      "last_event": "sweep",
+      "last_head": "ba9cc1db37a5377b72268285b7b97ff5e7d00f25",
+      "last_feedback_at": "2026-09-04T23:07:37.255Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3779": {
+      "last_event": "sweep",
+      "last_head": "69c5f3c5a7f8ce6c27c579b9c125dab5f6e3f8f6",
+      "last_feedback_at": "2026-09-04T23:07:39.258Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3774": {
+      "last_event": "sweep",
+      "last_head": "cf8361631f3318d1cdbc6527b11b640c9f356d55",
+      "last_feedback_at": "2026-09-04T23:07:41.222Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3773": {
+      "last_event": "sweep",
+      "last_head": "4f2447195c2a7f470d853c22ec8a82940f7175dc",
+      "last_feedback_at": "2026-09-04T23:07:43.052Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }
