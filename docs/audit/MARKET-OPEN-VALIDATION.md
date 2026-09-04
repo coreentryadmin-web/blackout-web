@@ -126,6 +126,18 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0n. Admin API Live Feed + SPX Terminal future-timestamp guard — fix/admin-live-feed-time-ago-guard (pending)
+
+**What was broken:** #3641 fixed Operations + X Marketing panels, but `AdminApiLiveFeed` and
+`AdminSpxTerminal` kept local `fmtRel()` using raw `Date.now() - new Date(iso)`. Future-skewed
+timestamps showed **just now** / **now** / negative **open -Ns** on incident rows.
+
+**Fix:** Extended `admin-time-ago.ts` with `timeAgoCompactFromIso()` + `secondsSinceIso()`; wired
+both remaining admin feeds to the shared guard.
+
+**Check at the open:** `/admin` → API Live Feed + SPX Terminal — skewed rows read **clock skew** /
+**skew**, not **just now**.
+
 ### 0l. Pricing comparison table omitted the $49 SPX Slayer plan entirely — fix/spx-slayer-pricing-comparison-column (pending)
 
 **What was broken:** `/pricing` sells three commercial choices — SPX Slayer $49/mo, Premium Monthly
