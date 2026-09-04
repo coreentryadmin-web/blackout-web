@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T12:48:06.884Z",
+  "updated_at": "2026-09-04T15:21:09.344Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -210,6 +210,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
+    },
+    "pr-3605": {
+      "pr": 3605,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge (retrospective; already merged 98880ad5d)",
+      "reviewed_at": "2026-09-04T15:20:18.756Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -224,11 +232,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118",
+    "last_main_sha": "4a26268131c43955daf6c6afe6ef9249a80b54fd",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T15:18:22Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33888707270",
+    "last_deploy_sha": "4a26268131c43955daf6c6afe6ef9249a80b54fd"
   },
   "open_prs": [],
   "events": [
@@ -898,6 +906,47 @@
       "agent": "cursor",
       "run_id": "072758a3-0684-479a-b95a-27416aabb9c3",
       "summary": "Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs."
+    },
+    {
+      "at": "2026-09-04T15:18:40.134Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:18:40.938Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:20:18.757Z",
+      "type": "pr_review",
+      "pr": 3605,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge (retrospective; already merged 98880ad5d)",
+      "reviewed_at": "2026-09-04T15:20:18.756Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-04T15:20:22.635Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:20:22.635Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "91a83eba-c1e9-41dc-9fc6-b9530527d4dd",
+      "summary": "Reviewed PR #3605: MERGE (retrospective — already merged 98880ad5d; APPROVED, verify green, auth probe fix correct)"
+    },
+    {
+      "at": "2026-09-04T15:21:09.344Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
