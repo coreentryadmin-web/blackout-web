@@ -126,6 +126,20 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0y. WS future-timestamp freshness guards — fix/ws-future-timestamp-freshness-guards (pending)
+
+**What was broken:** `getLiveOptionMarkSync`, `isUwChannelFresh`, `isUwHaltSourceStale`, and SPX
+pulse SSE `localFreshAt` used raw `Date.now() - ts` without rejecting clock-skewed future
+timestamps — negative age reads as infinitely fresh. Thermal Triple Desk header change% could
+split-brain when live push spot overlaid matrix snapshot without `rebaseChangePct`.
+
+**Fix:** Route marks through `isZeroDteMarkStale`, UW/pulse paths through `isWsUpdatedAtFresh`;
+Triple Desk header uses `rebaseChangePct` when push spot is live.
+
+**Check at the open:** 0DTE board marks must dim when stale (not stuck fresh on a future ts);
+Thermal Triple Desk SPY/QQQ/IWM column headers — change% must agree with live push spot direction
+(no rising price beside falling %).
+
 ### 0x. Flow WS cluster heartbeat future timestamp falsely fresh — fix/flow-liveness-future-guard (pending)
 
 **What was broken:** `isFlowFrameFreshFromCluster`, `isFlowFrameFreshAnywhere`, and

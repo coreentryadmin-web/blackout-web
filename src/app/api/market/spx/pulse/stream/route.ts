@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { indexStore } from "@/lib/ws/polygon-socket";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { tideStore, darkPoolStore, intervalFlowStore, netFlowStore } from "@/lib/ws/uw-socket";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
@@ -34,7 +35,7 @@ async function refreshSnapshot(): Promise<void> {
     // cross-replica Redis snapshot only when local hasn't been populated recently (e.g.
     // a replica whose indices socket isn't connected yet).
     const fresh = localFreshAt();
-    if (fresh != null && Date.now() - fresh < 10_000) {
+    if (fresh != null && isWsUpdatedAtFresh(fresh, 10_000)) {
       latestSnapshot = indexStore;
       return;
     }

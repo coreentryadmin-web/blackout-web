@@ -28,6 +28,7 @@ import {
   writeGexHeatmapSessionCache,
 } from "@/lib/gex-heatmap-session-cache";
 import { matrixShiftForLens } from "@/lib/gex-shift-leaders";
+import { rebaseChangePct } from "@/lib/providers/change-pct";
 import ThermalCompactMatrix, {
   type ThermalCompareMode,
 } from "@/features/thermal/components/ThermalCompactMatrix";
@@ -220,7 +221,12 @@ function TripleColumn({
     pushQuote?.changePct != null && Number.isFinite(pushQuote.changePct)
       ? pushQuote.changePct
       : null;
-  const headerChangePct = pushChangePct ?? matrixChangePct;
+  const headerChangePct: number | null =
+    pushSpot != null
+      ? (rebaseChangePct(pushSpot, { price: matrixSpot, change_pct: matrixChangePct }) ??
+        pushChangePct ??
+        matrixChangePct)
+      : pushChangePct ?? matrixChangePct;
   const changeUp = (headerChangePct ?? 0) >= 0;
   const columnExpiry = useMemo(() => {
     if (!view?.expiries?.length) return null;

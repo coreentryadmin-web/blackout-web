@@ -23,6 +23,7 @@
  * read bid/ask defensively (bp/ap and bid/ask aliases). If a field is missing we
  * store null and never fabricate a mark.
  */
+import { isZeroDteMarkStale } from "@/lib/zerodte/marks-math";
 import { MASSIVE_WS_OPTIONS } from "@/lib/polygon-docs-nav";
 import {
   isConnectionCapFrame,
@@ -283,7 +284,11 @@ export function getLiveOptionMarkSync(
   maxAgeMs: number = OPTION_MARK_FRESH_MS
 ): { mark: number; bid: number | null; ask: number | null; ts: number } | null {
   const local = optionMarks.get(occ);
-  if (local && local.mark != null && Date.now() - local.ts <= maxAgeMs) {
+  if (
+    local &&
+    local.mark != null &&
+    !isZeroDteMarkStale(local.ts, Date.now(), maxAgeMs)
+  ) {
     return { mark: local.mark, bid: local.bid, ask: local.ask, ts: local.ts };
   }
   return null;
