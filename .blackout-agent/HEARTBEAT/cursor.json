@@ -1,10 +1,10 @@
 {
   "agent": "cursor",
-  "run_id": "94b6ef45-4298-4732-bdb7-344ef14e7958",
-  "last_seen": "2026-09-04T16:16:15.167Z",
+  "run_id": "e0459b29-3887-4f4f-8af1-de7d9d35d98e",
+  "last_seen": "2026-09-04T19:58:43.851Z",
   "last_productive_action": "session_start",
-  "current_task": null,
-  "current_phase": "DISCOVERY",
+  "current_task": "BO-P1-0100",
+  "current_phase": "RESUMED",
   "branch": null,
   "pr": null,
   "healthy": true
