@@ -71,6 +71,48 @@ test("computeSafePgPoolMaxDefault: clamps to a floor of 1 for absurd replica cou
   assert.equal(computeSafePgPoolMaxDefault(20, 0), 20, "replicaCount<=1 must not divide by zero");
 });
 
+// Regression for the 2026-09-04 audit finding: two independently-deployed ECS services
+// (blackout-production-web: 8 replicas x PG_POOL_MAX=2, blackout-production-market-worker: 1 x 4)
+// each self-checked ONLY their own env vars and each passed in isolation, yet together they
+// already consumed the FULL shared PgBouncer/RDS-Proxy budget (16+4=20) with zero headroom —
+// confirmed live via CloudWatch (2740 "Connection terminated due to connection timeout" events in
+// one 10-minute window on 2026-09-01, correlating exactly with the web service's RunningTaskCount
+// spiking to 9-10 against a MaxCapacity of 12 that its own pool math never saw, since it only read
+// the 8-replica floor). `reservedForOtherServices` lets one service's own budget math account for
+// a sibling's known consumption; omitting it (the default) reproduces the exact prior behavior.
+test("computeSafePgPoolMaxDefault: reservedForOtherServices carves out a sibling service's known consumption", () => {
+  // market-worker consumes 4 of the shared 20-slot budget — web's own math (5 replicas) should
+  // divide the REMAINING 16 across its replicas (=3), not the full 20 (which would floor to 4).
+  assert.equal(computeSafePgPoolMaxDefault(20, 5, 4), 3);
+  assert.equal(computeSafePgPoolMaxDefault(20, 5, 0), 4, "explicit 0 matches the omitted-arg default (pre-fix result)");
+});
+
+test("computeSafePgPoolMaxDefault: reservedForOtherServices is omittable and preserves the exact prior (pre-fix) result", () => {
+  assert.equal(computeSafePgPoolMaxDefault(20, 5), computeSafePgPoolMaxDefault(20, 5, 0));
+  assert.equal(computeSafePgPoolMaxDefault(20, 4), computeSafePgPoolMaxDefault(20, 4, 0));
+});
+
+test("computeSafePgPoolMaxDefault: reservedForOtherServices never divides by less than 1 available slot, even if it exceeds the whole budget", () => {
+  assert.equal(computeSafePgPoolMaxDefault(20, 5, 999), 1, "an absurd reservation must not go negative or throw");
+});
+
+test("computeSafePgPoolMaxDefault: a negative reservedForOtherServices is treated as 0, never adds slots back", () => {
+  assert.equal(computeSafePgPoolMaxDefault(20, 5, -10), computeSafePgPoolMaxDefault(20, 5, 0));
+});
+
+test("SAFE_PG_POOL_MAX_DEFAULT wiring actually uses REPLICA_COUNT_MAX_FOR_POOL and PGBOUNCER_RESERVED_FOR_OTHER_SERVICES, not just the floor", () => {
+  // Module-load-time env-derived constants can't be re-imported with different env in this
+  // process, so this pins the WIRING (source text) rather than re-deriving the values — the pure
+  // function itself is exhaustively covered above. Guards against the module-level call site
+  // silently reverting to the pre-fix two-argument call while the function signature stays intact.
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  assert.match(
+    src,
+    /const SAFE_PG_POOL_MAX_DEFAULT = computeSafePgPoolMaxDefault\(\s*PGBOUNCER_BACKEND_BUDGET,\s*REPLICA_COUNT_MAX_FOR_POOL,\s*PGBOUNCER_RESERVED_FOR_OTHER_SERVICES\s*\);/,
+    "SAFE_PG_POOL_MAX_DEFAULT must be derived from the autoscaling ceiling and the reserved-for-siblings budget, not just the floor"
+  );
+});
+
 test("upsertZeroDteSetupLog: direction/top_strike/expiry are pinned (COALESCE-guarded) in the ON CONFLICT UPDATE", () => {
   const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
   // WS-01 extracted the one-and-only upsert SQL into the module-level const
