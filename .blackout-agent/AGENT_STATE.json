@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T14:32:08.481Z",
+  "updated_at": "2026-09-04T16:04:42.514Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T15:55:41.026Z",
+      "lease_until": "2026-09-04T17:28:30.203Z",
+      "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "589af0f7-b518-498a-adbb-068013e75c09",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -111,6 +111,18 @@
       "pr": null,
       "reviewer": null,
       "run_id": null,
+      "title": null
+    },
+    "BO-P1-0105": {
+      "task_id": "BO-P1-0105",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T15:57:42.653Z",
+      "lease_until": "2026-09-04T17:28:30.203Z",
+      "phase": "EXECUTING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "589af0f7-b518-498a-adbb-068013e75c09",
       "title": null
     }
   },
@@ -219,16 +231,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T15:57:42.654Z",
+      "current_task": "BO-P1-0105"
     }
   },
   "deploy": {
-    "last_main_sha": "56bcbcc1b8ccdcb77216b75dcf0b2599eb1ea5c3",
+    "last_main_sha": "a1a9d668c0e2eff63332f193ee3dcafd7e862a09",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T15:55:50Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33892277862",
+    "last_deploy_sha": "a1a9d668c0e2eff63332f193ee3dcafd7e862a09"
   },
   "open_prs": [],
   "events": [
@@ -931,6 +943,55 @@
     },
     {
       "at": "2026-09-04T14:32:08.480Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:57:33.231Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:57:42.654Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0105",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T15:58:30.202Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:58:30.883Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:58:31.660Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:04:08.463Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:04:08.464Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d02e1966-b8fe-4f28-8dd3-c1a838cae79f",
+      "summary": "Hourly wake GREEN: ops:collect 0, lifecycle sweep GREEN (platform-integrity 14/14, vector-rth-quick ok). No open PRs to review. Shipped fix/flow-liveness-future-timestamp — future-dated cluster heartbeats no longer read as infinitely fresh."
+    },
+    {
+      "at": "2026-09-04T16:04:42.514Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
