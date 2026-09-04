@@ -126,7 +126,24 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
-### 0t. Two more "every setup logged" overclaim instances (About page + homepage) missed by both #3643 and #3664 — fix/vs-others-remaining-overclaim-instances (pending)
+### 0u. `/vs/others` comparison table missed the same "every setup graded" overclaim fix — fix/vs-others-track-record-scope (pending)
+
+**What was broken:** #3643 (item 0n below) scoped "every setup logged"-style claims on the About
+page, homepage, and `WhyBlackoutContent.tsx` to the three products `/methodology` actually covers.
+`src/app/(marketing)/vs/others/page.tsx`'s comparison table carried the identical overclaim in
+different wording — "Every setup graded A–F with a logged track record" — and wasn't part of that
+fix's surface search, so it survived unscoped.
+
+**Fix:** reworded the row to "SPX Slayer, Night Hawk, and 0DTE Command plays graded A–F with a
+logged track record", matching #3643's wording pattern. Extended
+`public-record-scope-claims.test.ts`'s `SURFACES` list to include this page so the same claim
+class can't regress here again.
+
+**Check at the open:** none — pure marketing-copy correction, no RTH-dependent behavior. Confirm
+`https://blackouttrades.com/vs/others` names the three products next to the "Alert accountability"
+row rather than an unscoped "every setup".
+
+### 0t. Two more "every setup logged" overclaim instances (About page + homepage) missed by both #3643 and #3664 — fix/vs-others-remaining-overclaim-instances (merged #3683)
 
 **What was broken:** `RedesignHome.tsx`'s own "them vs us" list bullet (a second, separate copy of
 the sentence `/vs/others/page.tsx` mirrors) and `about/page.tsx`'s `WHAT_WE_DO` intro paragraph both
