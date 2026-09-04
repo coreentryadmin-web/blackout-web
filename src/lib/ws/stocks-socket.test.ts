@@ -78,11 +78,31 @@ test("isLuldHaltSourceStaleForState: connection open but localFreshestAt=0 (neve
   );
 });
 
-test("isLuldHaltSourceStaleForState: boundary age === maxAgeMs is fresh (inclusive <=, matches existing cluster-check semantics)", () => {
+test("isLuldHaltSourceStaleForState: boundary age === maxAgeMs is stale (exclusive upper bound via isWsUpdatedAtFresh)", () => {
   const now = 1_000_000;
   const maxAgeMs = 120_000;
   assert.equal(
     isLuldHaltSourceStaleForState(true, now - maxAgeMs, null, now - maxAgeMs, maxAgeMs, now),
+    true
+  );
+  assert.equal(
+    isLuldHaltSourceStaleForState(true, now - maxAgeMs + 1, null, now - maxAgeMs + 1, maxAgeMs, now),
     false
+  );
+});
+
+test("isLuldHaltSourceStaleForState: clock-skewed future timestamps are stale, not falsely fresh", () => {
+  const now = 1_000_000;
+  const maxAgeMs = 120_000;
+  const farFuture = now + 60_000;
+  assert.equal(
+    isLuldHaltSourceStaleForState(true, farFuture, null, farFuture, maxAgeMs, now),
+    true,
+    "far-future localFreshestAt must not read as live"
+  );
+  assert.equal(
+    isLuldHaltSourceStaleForState(false, 0, farFuture, 0, maxAgeMs, now),
+    true,
+    "far-future cluster heartbeat must not read as live"
   );
 });
