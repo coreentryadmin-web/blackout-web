@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0aa. nighthawk-edition missing UW background-sweep tag — fix/nighthawk-edition-uw-sweep (pending)
+
+**What was broken:** `GET /api/cron/nighthawk-edition` dispatched `buildEveningEdition` via `after()` without `runWithBackgroundUwSweep`. The builder's per-ticker UW REST fan-out (dossiers + market-wide context) could contend with live desk/vector traffic on the shared 2-RPS budget.
+
+**Fix:** Wrap background `buildEveningEdition` in `runWithBackgroundUwSweep`, matching sibling crons.
+
+**Check at the open:** Edition cron still returns 202 and publishes; no UW 429 spike on vector/desk routes during the edition build window.
+
 ### 0z. SPX pulse stream local freshness future guard — fix/spx-pulse-stream-future-guard (pending)
 
 **What was broken:** `refreshSnapshot()` in `/api/market/spx/pulse/stream` preferred local `indexStore` when `Date.now() - fresh < 10_000` with no future-timestamp guard — clock-skewed future `updatedAt` reads as infinitely fresh and skips cross-replica Redis fallback.
