@@ -186,6 +186,63 @@ test("getStockLiveCandle: a seed attempt that comes back empty does NOT retry on
   _setSnapshotFetcherForTest(async () => null);
 });
 
+test("seedSessionOpenIfNeeded: a REST seed that resolves AFTER a day rollover must not stamp the new session with the stale prior-day anchor", async (t) => {
+  // Regression for the day-rollover race: recordStockTick's day-rollover branch
+  // resets openSource back to "" (not "rest") on a new ET session day, so the
+  // .then() callback's ORIGINAL guard (`s.openSource === "rest"`) could not detect
+  // a REST fetch that outlived the session it was fired for — it only caught a
+  // concurrent seed that had ALREADY landed for the SAME session. A fetch fired
+  // just before ET midnight and resolving just after would sail past that guard
+  // and permanently stamp the new session with an anchor fetched for the old one
+  // ("rest" is never downgraded back to "ws-bar").
+  //
+  // `recordStockTick`'s day-rollover check compares `todayEtYmd()` — the REAL ET
+  // wall-clock date, with no injection point in this store — against the ticker's
+  // stored sessionDate, so a genuine same-process day rollover can only be produced
+  // by faking Date itself (varying only the `atMs` bar-timestamp argument does not
+  // change what day the store believes it is).
+  _resetStockCandleStoreForTest();
+
+  const dayOne = Date.parse("2026-07-15T23:00:00.000Z"); // 19:00 ET, 2026-07-15 (EDT, UTC-4)
+  t.mock.timers.enable({ apis: ["Date"], now: dayOne });
+
+  recordStockTick("RGLD", 50, undefined, Date.now());
+  // No REST anchor has landed yet -> ws-bar fallback seeds day 1's sessionOpen=50.
+
+  // Fire the REST seed for DAY 1's session but keep its promise pending, simulating
+  // a demanded read whose fetch was in flight right as the session rolled over.
+  let resolveSeed!: (v: { prev_close: number } | null) => void;
+  const pendingSeed = new Promise<{ prev_close: number } | null>((resolve) => {
+    resolveSeed = resolve;
+  });
+  _setSnapshotFetcherForTest(
+    () => pendingSeed as ReturnType<typeof import("../providers/polygon").fetchStockSnapshot>
+  );
+  getStockLiveCandle("RGLD"); // fires seedSessionOpenIfNeeded, captured for day 1
+
+  // Cross the ET midnight boundary (00:00 ET = 04:00 UTC on 2026-07-16) while that
+  // day-1 fetch is still unresolved.
+  t.mock.timers.tick(6 * 60 * 60 * 1000); // +6h -> 01:00 ET, 2026-07-16 (day 2)
+  recordStockTick("RGLD", 70, undefined, Date.now());
+  // recordStockTick's rollover branch has now reset sessionDate/sessionOpen/openSource
+  // for day 2 and re-seeded a fresh ws-bar anchor at 70 — all while the day-1 fetch
+  // above is still in flight.
+
+  // The day-1 fetch NOW resolves with day-1's own prev_close — correct for day 1,
+  // stale for day 2. Pre-fix this landed anyway because openSource was reset to ""
+  // (not "rest") by the rollover, so the old guard never caught it.
+  resolveSeed({ prev_close: 999 });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const snap = getStockLiveCandle("RGLD");
+  // Day 2's own ws-bar anchor (70) must still be authoritative; the stale day-1
+  // REST value (999) must never have been applied to the new session.
+  assert.equal(snap.changePct, computeChangePct(70, 70));
+  assert.notEqual(snap.changePct, computeChangePct(70, 999));
+
+  _setSnapshotFetcherForTest(async () => null);
+});
+
 test("separate tickers have independent state", () => {
   _resetStockCandleStoreForTest();
   const atMs = Date.parse("2026-07-15T14:40:00.000Z");
