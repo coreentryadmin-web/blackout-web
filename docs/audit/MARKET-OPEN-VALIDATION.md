@@ -126,6 +126,19 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0x. Flow WS cluster heartbeat future timestamp falsely fresh — fix/flow-liveness-future-guard (pending)
+
+**What was broken:** `isFlowFrameFreshFromCluster`, `isFlowFrameFreshAnywhere`, and
+`peekFlowLivenessHeartbeat` used raw `Date.now() - record.at <= maxAgeMs`. A far-future heartbeat
+timestamp yields negative age that passes the gate → flow-ingest skips REST and admin health can
+report cluster WS "fresh" when no live frames are arriving.
+
+**Fix:** route all three through `flowHeartbeatAgeMs()` → shared `signalWindowAgeMs()` (same guard as
+`probePgFlowAlertsFresh`).
+
+**Check at the open:** `/admin` Operations → flow liveness tile tracks real WS delivery during RTH;
+after a genuine UW flow stall the tile must not stay green off a corrupted future-dated heartbeat.
+
 ### 0w. Quote route index WS `change_pct` not rebased on ws-bar anchor — fix/quote-index-change-pct-rebase (pending)
 
 **What was broken:** `/api/market/quote` Thermal header tape (SPX/VIX polled ~1.5s) served raw
