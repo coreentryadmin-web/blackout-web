@@ -5622,7 +5622,15 @@ export function VectorChart({
         ) : null}
         <VectorCrosshairLegend ref={crosshairLegendRef} ticker={ticker} />
         <VectorWallEventTooltip ref={wallEventTooltipRef} />
-        <p className="pointer-events-none absolute bottom-2 left-2 z-10 font-mono text-[10px] uppercase tracking-wide text-sky-300">
+        {/* SPY-vol watermark — same overlap class as the two labels below (docs/audit/UI-UX-MAP.md
+            §5, finding #3): it sits in the volume sub-pane's bottom-left corner, the same band as
+            the chart's own canvas-drawn x-axis time-tick labels at the left edge (e.g. "19:00").
+            Those two got an opaque bg-black/70 backdrop-blur-sm pill when the overlap was first
+            found; this label was missed at the time even though it lives in the identical band —
+            confirmed live 2026-09-03 via pixel-zoomed prod screenshot ("SPI9:00VOL" interleaved
+            glyphs). Same fix here: an opaque pill so the label sits above the tick instead of
+            blending into it, regardless of where the tick lands. */}
+        <p className="pointer-events-none absolute bottom-2 left-2 z-10 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-sky-300 backdrop-blur-sm">
           SPY vol
         </p>
         {/* Honesty label — visible whenever any modeled (reconstructed) bead is on screen, absent
