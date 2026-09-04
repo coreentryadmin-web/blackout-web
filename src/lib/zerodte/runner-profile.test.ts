@@ -17,6 +17,20 @@ const winnerPulse = (dir: "long" | "short"): ZeroDteVectorPulse => ({
   role: "flow-whale",
 });
 
+const runnerPulse = (dir: "long" | "short"): ZeroDteVectorPulse => ({
+  premium_pct: 28,
+  peak_premium_pct: 32,
+  action_status: "still_buy",
+  is_winner: false,
+  is_runner: true,
+  side: dir === "long" ? "call" : "put",
+  direction: dir,
+  strike: 100,
+  occ: "TEST",
+  rank: 2,
+  role: "flow-whale",
+});
+
 test("resolveRunnerProfile: A-tier + Vector winner → 400% target", () => {
   const r = resolveRunnerProfile({
     tier: "A",
@@ -29,27 +43,52 @@ test("resolveRunnerProfile: A-tier + Vector winner → 400% target", () => {
   assert.equal(r!.tag, "runner_vector");
 });
 
-test("resolveRunnerProfile: A-tier + double confluence → 300% target", () => {
+test("resolveRunnerProfile: A-tier + double confluence without Vector → null", () => {
+  assert.equal(
+    resolveRunnerProfile({
+      tier: "A",
+      confluenceCount: 2,
+      vectorPulse: null,
+      direction: "long",
+    }),
+    null
+  );
+});
+
+test("resolveRunnerProfile: A-tier + Vector runner + confluence → 300% target", () => {
   const r = resolveRunnerProfile({
     tier: "A",
-    confluenceCount: 2,
-    vectorPulse: null,
+    confluenceCount: 1,
+    vectorPulse: runnerPulse("long"),
     direction: "long",
   });
   assert.ok(r);
   assert.equal(r!.target_pct, RUNNER_TARGET_PCT_A);
+  assert.equal(r!.tag, "runner_a");
 });
 
-test("resolveRunnerProfile: B-tier + confluence → 200% baseline runner", () => {
+test("resolveRunnerProfile: B-tier + confluence without Vector → null", () => {
+  assert.equal(
+    resolveRunnerProfile({
+      tier: "B",
+      confluenceCount: 1,
+      vectorPulse: null,
+      direction: "long",
+    }),
+    null
+  );
+});
+
+test("resolveRunnerProfile: B-tier + Vector runner + confluence → 200% target", () => {
   const r = resolveRunnerProfile({
     tier: "B",
     confluenceCount: 1,
-    vectorPulse: null,
+    vectorPulse: runnerPulse("long"),
     direction: "long",
   });
   assert.ok(r);
   assert.equal(r!.target_pct, RUNNER_TARGET_PCT_B_RUNNER);
-  assert.equal(r!.tag, "runner_b_baseline");
+  assert.equal(r!.tag, "runner_b_runner");
 });
 
 test("resolveRunnerProfile: C-tier with no Vector → null (standard +100%)", () => {

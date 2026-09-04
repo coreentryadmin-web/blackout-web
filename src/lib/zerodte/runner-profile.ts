@@ -1,6 +1,6 @@
 /**
  * Night Hawk 0DTE runner profile — widens the profit runway for the desk's best setups
- * (A-tier + strong confluence, Vector-confirmed momentum) toward Vector-style 100–500% winners.
+ * (A/B-tier + Vector-confirmed winner/runner momentum) toward Vector-style 100–500% winners.
  *
  * Default plan rails stay −50% / +100% (PLAN_RULES). Runner profile raises ONLY the frozen
  * per-play target on commit (exit_policy_snapshot.target_pct) so historical rows stay honest.
@@ -13,7 +13,7 @@ import type { ZeroDteVectorPulse } from "./vector-crosslink";
 import { computeVectorGateBoost, vectorPulseAlignsDirection } from "./vector-commit-boost";
 import { RUNNER_SETUP_MAX_OTM_PCT, SETUP_MAX_OTM_PCT } from "./board";
 
-/** Standard runner target for A-tier + double confluence (3× premium). */
+/** A-tier Vector-runner-confirmed target (3× premium). */
 export const RUNNER_TARGET_PCT_A = (() => {
   const raw = process.env.ZERODTE_RUNNER_TARGET_A?.trim();
   const n = raw ? Number(raw) : 300;
@@ -69,9 +69,6 @@ export function resolveRunnerProfile(input: RunnerProfileInput): RunnerProfile |
   if (input.tier === "A" && vectorWinner) {
     return { target_pct: RUNNER_TARGET_PCT_VECTOR, regime: "trend", tag: "runner_vector" };
   }
-  if (input.tier === "A" && input.confluenceCount >= 2) {
-    return { target_pct: RUNNER_TARGET_PCT_A, regime: "trend", tag: "runner_a" };
-  }
   if (input.tier === "B" && vectorWinner) {
     return { target_pct: RUNNER_TARGET_PCT_B_VECTOR, regime: "trend", tag: "runner_b_vector" };
   }
@@ -79,15 +76,6 @@ export function resolveRunnerProfile(input: RunnerProfileInput): RunnerProfile |
     return { target_pct: RUNNER_TARGET_PCT_B_RUNNER, regime: "trend", tag: "runner_b_runner" };
   }
   if (input.tier === "A" && vectorRunner && input.confluenceCount >= 1) {
-    return { target_pct: RUNNER_TARGET_PCT_A, regime: "trend", tag: "runner_a" };
-  }
-  // B-tier with real confluence (VWAP-side or Vector credit) — extend runway without
-  // requiring a Vector winner stamp (replay showed most B commits stuck at +100% default).
-  if (input.tier === "B" && input.confluenceCount >= 1) {
-    return { target_pct: RUNNER_TARGET_PCT_B_RUNNER, regime: "trend", tag: "runner_b_baseline" };
-  }
-  // A-tier with any confluence but no Vector runner path above — still deserves extended target.
-  if (input.tier === "A" && input.confluenceCount >= 1) {
     return { target_pct: RUNNER_TARGET_PCT_A, regime: "trend", tag: "runner_a" };
   }
   return null;
