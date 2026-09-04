@@ -147,6 +147,17 @@ export function benzingaRowsToTimelineInputs(
 }
 
 /**
+ * Rows that still need a pre-print chain-IV read. Already-printed names are excluded so the
+ * capped `batchLoadEarningsExpectedMovePct` budget is not spent on values `overlayTimelineExpectedMoves`
+ * would discard anyway (#3536 follow-up).
+ */
+export function timelineRowsForExpectedMoveBatch(
+  rows: EarningsTimelineInput[]
+): EarningsTimelineInput[] {
+  return rows.filter((row) => !row.is_printed);
+}
+
+/**
  * Overlay Polygon chain-IV expected move onto timeline rows (keyed by ticker).
  *
  * WITHHELD once the row's own print has already landed (`row.is_printed`, set upstream from

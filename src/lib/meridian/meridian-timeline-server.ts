@@ -7,6 +7,7 @@ import type { EmCoverage } from "@/lib/meridian/meridian-em-priority";
 import {
   benzingaRowsToTimelineInputs,
   overlayTimelineExpectedMoves,
+  timelineRowsForExpectedMoveBatch,
 } from "@/lib/meridian/meridian-benzinga-earnings-core";
 import {
   loadBenzingaBoardEarnings,
@@ -163,8 +164,10 @@ export async function loadMeridianEarningsTimeline(
   if (!skipEnrich) {
     // Hand the ranker what it needs to spend the chain budget on names anyone is watching:
     // importance and proximity, not Map insertion order. See meridian-em-priority.ts.
+    // Skip already-printed rows — overlayTimelineExpectedMoves withholds them anyway (#3536).
+    const emCandidates = timelineRowsForExpectedMoveBatch(rows);
     const em = await batchLoadEarningsExpectedMovePct(
-      rows.map((r) => ({
+      emCandidates.map((r) => ({
         ticker: r.ticker,
         report_date: r.report_date,
         importance: r.importance ?? null,

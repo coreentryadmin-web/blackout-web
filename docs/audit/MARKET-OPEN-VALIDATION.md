@@ -255,7 +255,7 @@ day where OI clusters above spot. No pre-fix baseline exists from this session t
 (cursor-authored, evidence lives in the PR's own commit history) — treat today's open as the first
 live observation.
 
-### 7. Meridian timeline showed a live "implied move" beside "· printed" on a same-day print — PR TBD (DISCOVERY lane)
+### 7. Meridian timeline showed a live "implied move" beside "· printed" on a same-day print — FIXED (#3536)
 
 **What was broken:** `overlayTimelineExpectedMoves` (the Meridian earnings **calendar/timeline**
 lane, a different surface from the earnings-detail panel #3474/#3482 already fixed) stamped the
