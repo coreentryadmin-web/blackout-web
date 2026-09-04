@@ -1198,12 +1198,13 @@ export function planQualityGateBlocks(
     });
   }
   if (plan.illiquid) {
-    const spread = plan.spread_pct != null ? `${plan.spread_pct.toFixed(0)}%` : ">15%";
+    const cap = plan.illiquid_spread_cap ?? 15;
+    const spread = plan.spread_pct != null ? `${plan.spread_pct.toFixed(0)}%` : `>${cap}%`;
     blocks.push({
       code: "plan_illiquid",
       reason:
         `Bid/ask spread is ${spread} of the mark — market too thin for a 0DTE scalp (G-9).`,
-      threshold: 15,
+      threshold: cap,
       unlock_et: null,
     });
   }

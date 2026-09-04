@@ -66,6 +66,8 @@ export function zerodteTimeStopEtLabel(): string {
 // grading honesty by flooring at the flag-time mark, so this guard only needs to
 // catch genuinely "already happened" moves, not routine 0DTE gamma swings.
 const CHASE_PCT_DEFAULT = 55;
+/** G-9 plan_illiquid spread cap (% of mark). Amplify sessions may widen via regime-commit-relief. */
+export const PLAN_ILLIQUID_SPREAD_PCT = 15;
 export const CHASE_PCT = (() => {
   const raw = process.env.ZERODTE_CHASE_PCT?.trim();
   if (!raw) return CHASE_PCT_DEFAULT;
@@ -182,9 +184,11 @@ export type ContractPlan = {
   /** mark vs flow fill, % — positive = paying up vs the smart money. */
   vs_flow_pct: number | null;
   entry_status: EntryStatus;
-  /** Bid/ask spread as % of mark — exit tax. >15% flags the market as too thin. */
+  /** Bid/ask spread as % of mark — exit tax. >cap flags the market as too thin (G-9). */
   spread_pct: number | null;
   illiquid: boolean;
+  /** Spread cap (%) used when `illiquid` was judged — for G-9 block copy. */
+  illiquid_spread_cap?: number;
   /** WS-04: fail-closed malformed-quote verdict. null = quote valid; a non-null reason
    *  is translated to a distinct plan_quote_invalid / plan_quote_stale block in
    *  planQualityGateBlocks (gates.ts). OPTIONAL for back-compat — a historical/hand-built
@@ -229,6 +233,8 @@ export function buildContractPlan(input: {
   vwap: number | null;
   /** Override chase band (default CHASE_PCT) — amplify sessions may use effectiveChasePct(). */
   chasePct?: number;
+  /** Override G-9 illiquid spread cap (default PLAN_ILLIQUID_SPREAD_PCT). */
+  illiquidSpreadPct?: number;
 }): ContractPlan {
   const { occ, direction, price, flowAvgFill, bid, ask, mark } = input;
 
@@ -244,8 +250,14 @@ export function buildContractPlan(input: {
       ? round2(((ask - bid) / mark) * 100)
       : null;
   // Wide markets tax every exit twice — a strong tape on an untradeable contract
-  // is still a pass for a 0DTE scalp.
-  const illiquid = spreadPct != null && spreadPct > 15;
+  // is still a pass for a 0DTE scalp. Amplify sessions may widen the cap (regime-commit-relief).
+  const illiquidSpreadCap =
+    input.illiquidSpreadPct != null &&
+    Number.isFinite(input.illiquidSpreadPct) &&
+    input.illiquidSpreadPct > 0
+      ? input.illiquidSpreadPct
+      : PLAN_ILLIQUID_SPREAD_PCT;
+  const illiquid = spreadPct != null && spreadPct > illiquidSpreadCap;
 
   // WS-04: explicit fail-closed malformed-quote verdict, computed BESIDE the legacy
   // percent-spread check (which is kept untouched). This catches the books the % test
@@ -299,6 +311,7 @@ export function buildContractPlan(input: {
     entry_status: status,
     spread_pct: spreadPct,
     illiquid,
+    illiquid_spread_cap: illiquidSpreadCap,
     quote_invalid_reason: quoteInvalidReason,
     stop_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.stop_pct / 100)) : null,
     target_premium: entryMax != null ? round2(entryMax * (1 + PLAN_RULES.target_pct / 100)) : null,

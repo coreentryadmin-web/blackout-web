@@ -157,6 +157,12 @@ import {
   planChaseExempt,
   type PlanChaseContext,
 } from "./chase-exempt";
+import {
+  effectiveIlliquidSpreadPct,
+  planChaseContextFromSetup,
+  regimeBypassesThesisBlocks,
+  regimeScoreBump,
+} from "./regime-commit-relief";
 import { resolveRunnerProfile, effectiveMaxOtmPct, vectorRunnerOtmRelax } from "./runner-profile";
 import { buildRegimePlaneSnapshot, inferRegimeGexQuality } from "./regime-plane";
 import {
@@ -1030,10 +1036,26 @@ async function attachGateVerdicts(
     if (committed.has(s.ticker.toUpperCase())) continue;
     const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
     const boost = computeVectorGateBoost(s.direction, s.score, pulse);
-    const boostedScore = boost.score_bump > 0 ? Math.min(100, Math.round(s.score + boost.score_bump)) : s.score;
-    if (boost.score_bump > 0) s.score = boostedScore;
-    const postBoost = computeVectorGateBoost(s.direction, boostedScore, pulse);
-    const runnerOtmRelax = vectorRunnerOtmRelax(s.direction, boostedScore, pulse);
+    let gateScore = boost.score_bump > 0 ? Math.min(100, Math.round(s.score + boost.score_bump)) : s.score;
+    if (boost.score_bump > 0) s.score = gateScore;
+    const reliefCtx = planChaseContextFromSetup({
+      direction: s.direction,
+      score: gateScore,
+      discovery_origin: s.discovery_origin,
+      gamma_regime: s.gamma_regime ?? null,
+      market_aligned: s.market_aligned ?? null,
+      regime_structure: marketState?.regime_structure ?? null,
+      market_state_confidence: marketState?.confidence ?? null,
+      vector_pulse: pulse,
+    });
+    const regimeBump = regimeScoreBump(reliefCtx);
+    if (regimeBump > 0) {
+      gateScore = Math.min(100, Math.round(gateScore + regimeBump));
+      s.score = gateScore;
+      reliefCtx.score = gateScore;
+    }
+    const postBoost = computeVectorGateBoost(s.direction, gateScore, pulse);
+    const runnerOtmRelax = vectorRunnerOtmRelax(s.direction, gateScore, pulse);
     s.gate = evaluateZeroDteGates({
       ticker: s.ticker,
       direction: s.direction,
@@ -1041,7 +1063,7 @@ async function attachGateVerdicts(
       // G-12/G-6) and runs the condor liquidity + range + harder VIX/macro gates on condor_plan.
       play_type: s.play_type,
       condorPlan: s.condor_plan ?? null,
-      score: s.score,
+      score: gateScore,
       discovery_origin: s.discovery_origin,
       contractHorizon: s.contract_horizon ?? null,
       nowEtMinutes,
@@ -1108,7 +1130,7 @@ async function attachGateVerdicts(
       max_otm_pct: runnerOtmRelax ? effectiveMaxOtmPct(true) : null,
     });
     s.regime_plane = regimePlane;
-    if (s.thesis_gate_blocks?.length) {
+    if (s.thesis_gate_blocks?.length && !regimeBypassesThesisBlocks(reliefCtx)) {
       const tb = thesisBlocksToGateBlocks(s.thesis_gate_blocks);
       s.gate = {
         ...s.gate,
@@ -1268,6 +1290,7 @@ async function attachContractPlans(
       market_state_confidence: marketState?.confidence,
     };
     const chasePct = effectiveChasePct(chaseCtx);
+    const illiquidSpreadPct = effectiveIlliquidSpreadPct(chaseCtx);
     s.plan = buildContractPlan({
       occ,
       direction: s.direction,
@@ -1283,6 +1306,7 @@ async function attachContractPlans(
       keyResistances: s.key_resistances,
       vwap: s.vwap,
       chasePct,
+      illiquidSpreadPct,
     });
     s.plan_chase_exempt = planChaseExempt(chaseCtx);
   }
