@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T11:20:50.708Z",
+  "updated_at": "2026-09-04T12:33:25.532Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:22:03.345Z",
-      "lease_until": "2026-09-04T11:52:03.345Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-04T12:31:03.984Z",
+      "lease_until": "2026-09-04T14:02:19.300Z",
+      "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "d9b54b50-5a1e-4c73-b24c-23ffa9649e42",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -200,11 +200,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0d367bde47b227c73f6e56abb5cc5dc80cf5e44f",
+    "last_main_sha": "3887bd8ef85cb7d6ff9ca277aa5bdfa419de5369",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T10:35:12Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33863935805",
-    "last_deploy_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01"
+    "last_deploy_at": "2026-09-04T12:06:34Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33871126902",
+    "last_deploy_sha": "f84aad3391ddaaeb7a2beb57f9a58e3b73643101"
   },
   "open_prs": [],
   "events": [
@@ -809,6 +809,43 @@
     },
     {
       "at": "2026-09-04T11:20:50.708Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:32:19.299Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:32:20.386Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:32:21.223Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:33:17.115Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:33:17.115Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b92c8546-350f-4b53-a0a4-7384c96c2a96",
+      "summary": "PR-event cycle: 0 open PRs (GraphQL+pr-sweep). validate:deploy GREEN, ops:collect 0, SEO 22/22 GREEN, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours). RTH lifecycle GREEN (off-hours skip). GitHub PAT rate-limited ~31m. Deploy drift: main@3887bd8ef vs last deploy@f84aad339. OFF_HOURS Sentry already fixed on main."
+    },
+    {
+      "at": "2026-09-04T12:33:25.532Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
