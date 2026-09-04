@@ -55,10 +55,14 @@ Key modules:
 
 ## Remaining P0/P1 (from swing backlog)
 
-1. **Frozen contract re-resolve** on Legacy→Swing promote (`legacy-confirm-promote.ts`) — stale DTE/marks on serve.
-2. **Swing marks SSE** — wire OPEN OCCs to the zerodte marks stream path (today: stock-quote WATCH track only).
-3. **Executable bid/ask P&L** on OPEN rows (partially fixed via manage snapshot quote carry).
-4. **Public swing record API** — member-facing track record like 0DTE `/record`.
+1. ~~**Frozen contract re-resolve**~~ — **DONE** (`refreshCarriedLegacyPlay` on carry)
+2. ~~**Swing marks SSE**~~ — **DONE** (shared marks lane via `live-marks-active.ts`)
+3. ~~**Executable bid/ask P&L**~~ — **DONE** (adapter + marks overlay)
+4. ~~**Public swing record API**~~ — **DONE** (`GET /api/market/swing/record`)
+5. ~~**Pre-entry banger discovery**~~ — **DONE** (`banger:watch:v1` cache → WATCH section)
+6. **Thesis health / gates parity with 0DTE** — partial; not every row carries full `thesis_health`
+7. **Calibration / score floors** — still provisional until backtest graduation
+8. **4–15 literal DTE** — spine is **5–15**; 4-DTE weeklies stay on 0DTE unless spine changes
 
 ## What we did NOT merge
 
