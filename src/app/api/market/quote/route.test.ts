@@ -37,6 +37,19 @@ mock.module("../../../../lib/providers/polygon", {
     fetchIndexSnapshot: async () => null,
   },
 });
+// Without this, an unmocked resolveSpotFromUwStockState (the GET handler's fallback after
+// getRestQuote returns null) makes a REAL network call to UW on every failing-ticker poll —
+// unbounded by wall-clock time and by the real UW rate limiter, so it can log its own
+// unrelated "[uw] queue wait ...ms" warning (unusual-whales.ts) well after this test's own
+// try/finally has already restored console.warn, landing in whichever LATER test happens to
+// still have its own console.warn override installed. That is a real, reproduced flake this
+// suite hit (route.test.ts's second test failed on a queue-wait warning it never triggered) —
+// mock the fallback so this suite tests ONLY the Polygon REST negative-cache it documents.
+mock.module("../../../../lib/providers/spot-fallback", {
+  namedExports: {
+    resolveSpotFromUwStockState: async () => null,
+  },
+});
 mock.module("../../../../lib/shared-cache", {
   namedExports: {
     sharedCacheGet: async () => null,
