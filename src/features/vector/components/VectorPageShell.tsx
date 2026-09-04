@@ -830,6 +830,7 @@ export function VectorPageShell({
         spot={playEmit?.spot ?? liveSpot}
         gammaFlip={playEmit?.gammaFlip ?? null}
         replayPaused={chartReplayMode}
+        liveSession={liveSession}
         className="mb-2"
       />
       <VectorPlayAnalyticsDrawer

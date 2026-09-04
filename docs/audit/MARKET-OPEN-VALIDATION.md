@@ -562,6 +562,39 @@ the ticker, still tone-colored (green/red/amber) and bold. Also confirm Dir/Tier
 reachable (now via swipe or the row's existing tap-to-expand drawer) and that desktop/tablet
 rendering (where the table already fit) is visually unchanged.
 
+### 17. Vector SPX PLAYS card's off-hours loading copy read as a stalled live scan — PR pending (branch `fix/vector-contract-picks-closed-market-loading`)
+
+**What was broken:** a discovery-pass finding reported the mobile `/vector` contract-picks card
+("PLYS · SPX PLAYS · loading" / "Scanning the chain for a contract worth showing…") appearing
+identically across 3 captures ~10 minutes apart, all off-hours, never resolving — unlike the
+adjacent Live Helix panel, which shows an honest "Session closed — Live Helix resumes at the open"
+once it has nothing to show. Independently reproduced live 2026-09-04 (temp Clerk session,
+`proxy-browser.cjs`, 430×932, pre-open ~06:47-06:54 AM ET): the "never resolving" framing did NOT
+hold literally — 2 of 3 fresh page loads resolved to real, populated picks within the capture's own
+wait window (6-20s), and the 3rd (also 6s wait) reproduced the exact reported stuck-looking state.
+So the fetch genuinely runs off-hours and genuinely can resolve with real last-session picks, but
+resolution time off-hours is variable and can run past what a member reasonably waits, and the copy
+gave no signal the delay was expected — read stuck/broken exactly as the discovery pass described,
+even though it wasn't literally permanent. Full evidence, the "why not just copy Helix's exact
+pattern" reasoning (it would hide real off-hours content this card is designed to still show), and
+root cause in `docs/audit/findings-staging/2026-09-04-vector-contract-picks-closed-market-loading-copy.md`.
+
+**Fix:** added an optional `liveSession` prop to `VectorContractPicksCard` (default `true`) and
+branched ONLY the loading-state body copy on it — unchanged live-session wording, vs "Session
+closed — resolving the last session's chain scan (can take longer off-hours)…" when closed. The
+fetch itself, its timing, and every other state (populated picks, "no contract cleared the bar",
+pivot-wait) are untouched. Wired through both real call sites (`VectorPageShell.tsx`,
+`VectorComparePlayStrip.tsx`).
+
+**Check at the open:** this fix was built and verified entirely OFF-HOURS. Once the market is open,
+confirm on `/vector` (`proxy-browser.cjs`, 430×932 mobile, and desktop) that: (1) the loading state,
+if seen at all during RTH, still shows the ORIGINAL "Scanning the chain for a contract worth
+showing…" copy (not the closed-market variant) — `liveSession` should read `true` throughout RTH;
+(2) real contract picks still populate normally once a play exists, at the same cadence as before
+this PR (this fix must not have changed fetch timing, only closed-market copy); (3) re-check the
+card off-hours AFTER today's close and confirm the closed-market copy now appears instead of the
+bare "Scanning the chain…" sentence when the loading state is hit.
+
 ---
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
