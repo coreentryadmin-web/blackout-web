@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T11:20:50.708Z",
+  "updated_at": "2026-09-04T12:15:12.337Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,8 +67,8 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:22:03.345Z",
-      "lease_until": "2026-09-04T11:52:03.345Z",
+      "claimed_at": "2026-09-04T12:07:46.053Z",
+      "lease_until": "2026-09-04T13:37:46.053Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -200,11 +200,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0d367bde47b227c73f6e56abb5cc5dc80cf5e44f",
+    "last_main_sha": "74d858bc54d9e36b87fce3b8043b3d3e4024c272",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T10:35:12Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33863935805",
-    "last_deploy_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01"
+    "last_deploy_at": "2026-09-04T12:06:34Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33871126902",
+    "last_deploy_sha": "f84aad3391ddaaeb7a2beb57f9a58e3b73643101"
   },
   "open_prs": [],
   "events": [
@@ -812,6 +812,25 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:14:04.522Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:15:12.337Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:15:12.337Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "47541c23-d0bc-4a54-8b06-26eac03f70a0",
+      "summary": "Cycle: #3572 peer-reviewed APPROVED (already merged to main@74d858bc5). #3573/#3575/#3571/#3570 also on main. validate:deploy GREEN, ops:collect 0, SEO 22/22 GREEN. GitHub API rate-limited (user 284440397) — could not poll/merge draft handoff PRs #3574/#3576. Standing peer-review complete for actionable non-draft PRs."
     }
   ]
 }
