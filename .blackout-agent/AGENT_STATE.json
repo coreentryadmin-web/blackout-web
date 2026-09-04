@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:43:40.083Z",
+  "updated_at": "2026-09-04T09:03:44.635Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T08:39:53.992Z",
+      "lease_until": "2026-09-04T10:09:53.992Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -172,11 +172,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
+    "last_main_sha": "009c82015acdfca9fbf30102dc702b5013bdcf30",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T07:20:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
-    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
+    "last_deploy_at": "2026-09-04T08:42:38Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33854737528",
+    "last_deploy_sha": "009c82015acdfca9fbf30102dc702b5013bdcf30"
   },
   "open_prs": [],
   "events": [
@@ -672,6 +672,19 @@
       "agent": "cursor",
       "run_id": "bdccad63-d885-46ad-bc02-3362ea4704ec",
       "summary": "Cycle: merged main @ 14c5d815d verified GREEN. Opened #3531 agent state sync (draft, awaiting CI+peer). ECR 33848248248 still in_progress 22m+ (deploy-smoke passed). SEO 22 PASS. Site-latency 3 warm FAILs deferred to RTH. GitHub API rate-limited — peer review of #3531 for Claude."
+    },
+    {
+      "at": "2026-09-04T09:03:44.635Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T09:03:44.635Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "f29791a1-71fe-46e6-a718-04c1e17504a9",
+      "summary": "fix/discord-cron-registry-visibility pushed (2 commits). PR create/edit blocked: Cursor GitHub App lacks pull_request write (Resource not accessible by integration). Branch ready for operator/AGENT_RELEASE_TOKEN to open draft PR → mark ready → automerge."
     }
   ]
 }
