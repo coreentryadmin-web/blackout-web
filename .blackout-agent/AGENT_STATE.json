@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:43:40.083Z",
+  "updated_at": "2026-09-04T10:33:44.178Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T10:22:03.345Z",
+      "lease_until": "2026-09-04T11:52:03.345Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -158,6 +158,22 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3553": {
+      "pr": 3553,
+      "head_sha": "a4545c46eae472ea5ce34ed09b2a0d1adb5486a3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T10:33:34.701Z",
+      "safe_to_merge": true
+    },
+    "pr-3549": {
+      "pr": 3549,
+      "head_sha": "bf21a1bbf7ac75f9491b5d8a768b0220a450db32",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T10:33:34.705Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -172,11 +188,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
+    "last_main_sha": "6553d68a0b354d1e92e7b9427381c2b42032dcc8",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T07:20:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
-    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
+    "last_deploy_at": "2026-09-04T10:22:44Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33862935955",
+    "last_deploy_sha": "6553d68a0b354d1e92e7b9427381c2b42032dcc8"
   },
   "open_prs": [],
   "events": [
@@ -672,6 +688,39 @@
       "agent": "cursor",
       "run_id": "bdccad63-d885-46ad-bc02-3362ea4704ec",
       "summary": "Cycle: merged main @ 14c5d815d verified GREEN. Opened #3531 agent state sync (draft, awaiting CI+peer). ECR 33848248248 still in_progress 22m+ (deploy-smoke passed). SEO 22 PASS. Site-latency 3 warm FAILs deferred to RTH. GitHub API rate-limited — peer review of #3531 for Claude."
+    },
+    {
+      "at": "2026-09-04T10:33:34.702Z",
+      "type": "pr_review",
+      "pr": 3553,
+      "head_sha": "a4545c46eae472ea5ce34ed09b2a0d1adb5486a3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T10:33:34.701Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T10:33:34.705Z",
+      "type": "pr_review",
+      "pr": 3549,
+      "head_sha": "bf21a1bbf7ac75f9491b5d8a768b0220a450db32",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T10:33:34.705Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T10:33:44.177Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T10:33:44.178Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "bbf6867b-aca6-4ea9-b1bd-8d7ad470c72e",
+      "summary": "Post-#3548 merge cycle. Deploy GREEN (main@c0097296e). Rebased #3552 meridian-warm-force-cooldown onto main (conflict resolved in MARKET-OPEN-VALIDATION.md); 7/7 route tests pass; force-pushed. Peer-reviewed #3549 (nighthawk tab overlap, 3/3 tests) and #3553 (findings fold, 17/17 tests) — APPROVED in .blackout-agent, verify still IN_PROGRESS on both. ops:collect clean (0 items). validate:deploy GREEN. GitHub API rate-limited for gh CLI; using ManagePullRequest for CI polls. Standing: await verify green on #3549/#3553/#3552 then Claude merges peer PRs / reviews #3552."
     }
   ]
 }
