@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { normalizeRow } from "./normalize";
 
 test("a print upstream did not date arrives with NO time, not with now", () => {
@@ -37,4 +40,12 @@ test("side still collapses to buy/sell/neutral and a row without a ticker or pre
   assert.equal(normalizeRow({ premium: 1 }), null);
   assert.equal(normalizeRow({ ticker: "X", premium: 0 }), null);
   assert.equal(normalizeRow(null), null);
+});
+
+test("GET response wraps prints in roundFloats at the API boundary", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "route.ts"),
+    "utf8"
+  );
+  assert.match(src, /roundFloats\(\{ prints, count: prints\.length \}\)/);
 });
