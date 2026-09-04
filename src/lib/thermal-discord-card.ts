@@ -5,7 +5,8 @@
  *
  * Target canvas: 3840×2160 (4K UHD) so Discord attachments stay sharp when expanded.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import type { GexHeatmap } from "@/lib/providers/polygon-options-gex";
@@ -679,9 +680,59 @@ export function thermalDiscordCaptionMode(_columns: ThermalCardColumn[]): "NEAR"
   return "NEAR";
 }
 
+let fontconfigCacheDirReady = false;
+
+/**
+ * Point fontconfig's per-user (XDG) cache directory at a writable path before the first sharp
+ * (librsvg) render.
+ *
+ * ROOT CAUSE (2026-09-04, CloudWatch: 72 bare "Fontconfig error: No writable cache directories"
+ * lines/24h, exactly 4 per `thermal-discord` cron firing, RTH-only — matches this cron's own
+ * ~15-30min schedule, `cron-registry.ts` "thermal-discord"): `deploy/Dockerfile`'s runner stage
+ * runs `fc-cache -f` as ROOT at build time, populating fontconfig's system cache dir
+ * (`/var/cache/fontconfig`) as root:root. The task then runs as the unprivileged `nextjs` user
+ * (`useradd --system ... nextjs`, no `-m`, so it has no home directory and `$HOME` is unset in the
+ * container's exec-form CMD). Fontconfig's default `fonts.conf` also lists an XDG per-user cache
+ * dir (`$XDG_CACHE_HOME/fontconfig`, falling back to `~/.cache/fontconfig`) as a fallback whenever
+ * it decides the root-owned system cache isn't writable — and with no `$HOME` and no
+ * `$XDG_CACHE_HOME`, that fallback resolves to nothing it can create either. Fontconfig degrades
+ * gracefully (glyphs still resolve, nothing throws — this is why the SAME cron logs "success"
+ * right around these lines), but it rebuilds its font cache from scratch on every cold render
+ * instead of ever reusing a warm one: a small, silent, recurring latency tax on a cron that fires
+ * every 15-30 minutes throughout RTH.
+ *
+ * FIX: Fargate task ephemeral storage always includes a writable `/tmp`
+ * (`docs/audit` "Environment realities" — the same assumption `os.tmpdir()`-based caches elsewhere
+ * in this repo rely on), so give fontconfig an explicit, writable `XDG_CACHE_HOME` there once per
+ * process. A stale value from an earlier request in the same task is fine to keep reusing for the
+ * task's lifetime — that reuse *is* the fix (a warm cache instead of a cold rebuild every time).
+ * Never overrides an operator-supplied `XDG_CACHE_HOME` (e.g. a future infra-level fix — see the
+ * staged finding doc for the infra follow-up this code-level fix does not attempt).
+ */
+export function ensureFontconfigCacheDir(): void {
+  if (fontconfigCacheDirReady) return;
+  fontconfigCacheDirReady = true;
+  if (process.env.XDG_CACHE_HOME) return;
+  try {
+    const dir = path.join(os.tmpdir(), "blackout-fontconfig-cache");
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    process.env.XDG_CACHE_HOME = dir;
+  } catch {
+    // Best-effort only — if even /tmp is unwritable, leave fontconfig to warn (and rebuild its
+    // cache every call) exactly as it did before this fix rather than let setup itself throw and
+    // break card rendering.
+  }
+}
+
+/** Test-only: forces `ensureFontconfigCacheDir()` to redo its work on the next call. */
+export function __resetFontconfigCacheDirForTest(): void {
+  fontconfigCacheDirReady = false;
+}
+
 export async function renderThermalDiscordCardPng(
   columns: ThermalCardColumn[]
 ): Promise<Buffer> {
+  ensureFontconfigCacheDir();
   const svg = buildThermalDiscordCardSvg(columns);
   // Native 3840×2160 — do NOT raise `density` (default 72). density:144 doubles
   // pixels to 7680×4320 and Discord stops inline-previewing (>~4096px → file download).
