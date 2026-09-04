@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:24:58.522Z",
+  "updated_at": "2026-09-04T16:27:03.029Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,15 +67,14 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T16:26:44.231Z",
+      "lease_until": "2026-09-04T17:56:44.231Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -230,16 +229,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T16:26:44.231Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
     "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T16:19:37Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33892277862",
-    "last_deploy_sha": "a1a9d668c0e2eff63332f193ee3dcafd7e862a09"
+    "last_deploy_at": "2026-09-04T16:26:34Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33895156929",
+    "last_deploy_sha": "edcd719fb525b62b169001917346a347a60a554c"
   },
   "open_prs": [],
   "events": [
@@ -994,6 +993,31 @@
       "agent": "cursor",
       "run_id": "c5c4200e-225b-49b4-84cb-8f5de7ab1ab5",
       "summary": "RTH lifecycle GREEN (platform-integrity 14/14, SEO 22/22, validate:rth-open GREEN). validate:deploy GREEN. ops:collect 0. Open PRs: #3627 fix/admin-store-age-future-guard (verify in progress — awaiting Claude peer review, cursor-owned). 5 stale autopilot handoff drafts (#3626-3631) need consolidation. ECR deploy 33892277862 in_progress @ a1a9d668 (main now 88ca92e03). Peer: Claude last seen 15:39 UTC."
+    },
+    {
+      "at": "2026-09-04T16:26:33.546Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:26:44.231Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T16:27:03.029Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:27:03.029Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "54bced7b-fbf9-4494-93db-b716fda2c6de",
+      "summary": "Hour 16:17 UTC cycle complete. RTH lifecycle GREEN (14/14 platform-integrity, 22/22 SEO, validate:rth-open GREEN). #3627 verify GREEN — Claude peer review requested. #3634 zerodte AMPLIFY relief — 7/7 tests pass, verify pending, Claude review requested. Closed stale handoff drafts #3626-3631/#3628. Opened #3636 agent state sync. ECR 33892277862 still in_progress. ops:collect 0."
     }
   ]
 }
