@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:43:40.083Z",
+  "updated_at": "2026-09-04T10:27:48.059Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,15 +67,14 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T10:12:11.187Z",
+      "lease_until": "2026-09-04T11:57:46.683Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "run_id": "57cb5bbb-b17c-4491-8d4c-c4cc92a2f679",
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -158,6 +157,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3548": {
+      "pr": 3548,
+      "head_sha": "e598e5cd99e22ead01bcfcf0eec6e34333b8027b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T10:23:31.805Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -167,16 +174,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T07:42:54.932Z",
-      "current_task": "BO-P1-0104"
+      "last_seen": "2026-09-04T10:12:11.187Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
+    "last_main_sha": "6553d68a0b354d1e92e7b9427381c2b42032dcc8",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T07:20:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
-    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
+    "last_deploy_at": "2026-09-04T10:22:44Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33862935955",
+    "last_deploy_sha": "6553d68a0b354d1e92e7b9427381c2b42032dcc8"
   },
   "open_prs": [],
   "events": [
@@ -672,6 +679,156 @@
       "agent": "cursor",
       "run_id": "bdccad63-d885-46ad-bc02-3362ea4704ec",
       "summary": "Cycle: merged main @ 14c5d815d verified GREEN. Opened #3531 agent state sync (draft, awaiting CI+peer). ECR 33848248248 still in_progress 22m+ (deploy-smoke passed). SEO 22 PASS. Site-latency 3 warm FAILs deferred to RTH. GitHub API rate-limited — peer review of #3531 for Claude."
+    },
+    {
+      "at": "2026-09-04T10:12:01.192Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-04T10:12:05.662Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-04T10:12:06.628Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-04T10:12:11.187Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T10:12:23.440Z",
+      "type": "pr_webhook",
+      "pr": 3552,
+      "event": "sweep",
+      "head": "ac9853c167c15efdc7c181b9cbc9b7acc8ac16bb",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T10:12:25.526Z",
+      "type": "pr_webhook",
+      "pr": 3550,
+      "event": "sweep",
+      "head": "dc429215fcd6341ab294abdfc09d7c56e5826e68",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T10:12:27.629Z",
+      "type": "pr_webhook",
+      "pr": 3549,
+      "event": "sweep",
+      "head": "04a9d5632d2f730695d1177c8cd196d39ec25101",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T10:12:29.857Z",
+      "type": "pr_webhook",
+      "pr": 3548,
+      "event": "sweep",
+      "head": "e598e5cd99e22ead01bcfcf0eec6e34333b8027b",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T10:12:32.122Z",
+      "type": "pr_webhook",
+      "pr": 2810,
+      "event": "sweep",
+      "head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T10:23:31.806Z",
+      "type": "pr_review",
+      "pr": 3548,
+      "head_sha": "e598e5cd99e22ead01bcfcf0eec6e34333b8027b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T10:23:31.805Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T10:27:33.783Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T10:27:46.682Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T10:27:47.308Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T10:27:48.059Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3552": {
+      "last_event": "sweep",
+      "last_head": "ac9853c167c15efdc7c181b9cbc9b7acc8ac16bb",
+      "last_feedback_at": "2026-09-04T10:12:23.440Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3550": {
+      "last_event": "sweep",
+      "last_head": "dc429215fcd6341ab294abdfc09d7c56e5826e68",
+      "last_feedback_at": "2026-09-04T10:12:25.526Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3549": {
+      "last_event": "sweep",
+      "last_head": "04a9d5632d2f730695d1177c8cd196d39ec25101",
+      "last_feedback_at": "2026-09-04T10:12:27.629Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3548": {
+      "last_event": "sweep",
+      "last_head": "e598e5cd99e22ead01bcfcf0eec6e34333b8027b",
+      "last_feedback_at": "2026-09-04T10:12:29.857Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-2810": {
+      "last_event": "sweep",
+      "last_head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "last_feedback_at": "2026-09-04T10:12:32.122Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "created"
+    }
+  }
 }
