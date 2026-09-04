@@ -455,7 +455,7 @@ likely dominated by Polygon calls or general compute than the UW ceiling #3479 f
 need its own measurement before a fix is warranted, per this file's own "never fix from a guess"
 standing method.
 
-### 16. Vector desk mobile chart collapse — PR pending (branch `fix/vector-mobile-chart-collapse`)
+### 16. Vector desk mobile chart collapse — PR #3556 (pending, branch `fix/vector-mobile-chart-collapse`)
 
 **What was broken:** the standalone `/vector` desk's price chart (candles + wall overlay + volume
 pane) never rendered below the 1280px desktop breakpoint — present in the DOM, laid out with a
