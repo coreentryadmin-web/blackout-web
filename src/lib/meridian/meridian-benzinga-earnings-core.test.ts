@@ -92,6 +92,28 @@ test("overlayTimelineExpectedMoves applies chain-IV expected move by ticker", ()
   assert.equal(out[0]?.expected_move_pct, 6.2);
 });
 
+test("overlayTimelineExpectedMoves withholds the live chain-IV overlay once the row has already printed", () => {
+  // Same-day BMO print: loadMeridianEarningsTimeline keeps report_date >= todayYmd, so a row that
+  // already reported earlier today is still in the batch. Overlaying the NOW-live chain IV onto it
+  // would pair "~X% implied move" with " · printed" in the same rendered string (meridian-timeline.ts)
+  // — a forward-looking expectation asserted for an event the same label says already happened.
+  const rows = [
+    {
+      ticker: "NVDA",
+      name: "NVIDIA",
+      report_date: "2026-08-26",
+      when: "afterhours" as const,
+      expected_move_pct: null,
+      source: "earnings_calendar" as const,
+      is_printed: true,
+    },
+  ];
+  const em = new Map([["NVDA", 6.2]]);
+  const out = overlayTimelineExpectedMoves(rows, em);
+  assert.equal(out[0]?.expected_move_pct, null);
+  assert.equal(out[0]?.source, "earnings_calendar");
+});
+
 test("parseNextEarningsFromBenzinga picks nearest upcoming print", () => {
   const next = parseNextEarningsFromBenzinga(
     "NVDA",
