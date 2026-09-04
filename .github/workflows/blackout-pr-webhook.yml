@@ -160,10 +160,15 @@ jobs:
               autoCreatePR: false
             }));
           ")
-          resp=$(curl -sf -X POST https://api.cursor.com/v1/agents \
+          # Agent launch is best-effort — a failed dispatch must not fail the triage job
+          # (triage comment is already posted; merge/deploy are unaffected).
+          if ! resp=$(curl -sf -X POST https://api.cursor.com/v1/agents \
             -u "${CURSOR_API_KEY}:" \
             -H 'Content-Type: application/json' \
-            -d "$payload")
+            -d "$payload"); then
+            echo "::warning::Cursor agent launch failed — triage comment already posted, continuing"
+            exit 0
+          fi
           echo "$resp" | node -e "
             const r = JSON.parse(require('fs').readFileSync(0,'utf8'));
             const url = r.agent?.url ?? r.url ?? JSON.stringify(r);
