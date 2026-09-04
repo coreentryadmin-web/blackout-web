@@ -124,9 +124,20 @@ test("select-task returns highest-priority P1 task for cursor", async () => {
 
 test("dispatch-guard allows when no active session", () => {
   const r = spawnSync("node", ["scripts/blackout-agent/dispatch-guard.mjs"], { encoding: "utf8", cwd: repoRoot });
-  // May be 0 (allowed) or 1 (blocked) depending on prior session-start in test order — verify shape only
+  assert.equal(r.status, 0);
   const j = JSON.parse(r.stdout);
   assert.ok("ok" in j);
+});
+
+test("dispatch-guard always allows push to main", () => {
+  const r = spawnSync("node", ["scripts/blackout-agent/dispatch-guard.mjs"], {
+    encoding: "utf8",
+    cwd: repoRoot,
+    env: { ...process.env, GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/main" },
+  });
+  assert.equal(r.status, 0);
+  const j = JSON.parse(r.stdout);
+  assert.equal(j.reason, "main_push_always_dispatch");
 });
 
 test("session-start sets heartbeat", () => {

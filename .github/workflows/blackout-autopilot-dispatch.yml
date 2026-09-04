@@ -1,15 +1,17 @@
 # BLACKOUT Autopilot — event-driven + scheduled agent dispatch
 #
-# Wakes Cursor on CI failure, deploy success, deploy smoke failure, peer review,
-# or every 30 min fallback. Requires: CURSOR_API_KEY
+# Wakes Cursor on: push to main (merge), CI green on main, deploy, schedule (10min),
+# PR activity, peer review. Requires: CURSOR_API_KEY
 
 name: BLACKOUT Autopilot dispatch
 
 on:
+  push:
+    branches: [main]
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/10 * * * *"
   pull_request:
-    types: [opened, ready_for_review, synchronize]
+    types: [opened, ready_for_review, synchronize, closed]
   workflow_run:
     workflows:
       - CI
@@ -27,10 +29,15 @@ concurrency:
 jobs:
   dispatch:
     if: >-
+      github.event_name == 'push' ||
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request') ||
+      (github.event_name == 'pull_request' && (
+        github.event.action != 'closed' ||
+        github.event.pull_request.merged == true
+      )) ||
       (github.event_name == 'workflow_run' && (
+        (github.event.workflow_run.name == 'CI' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') ||
         (github.event.workflow_run.name == 'CI' && github.event.workflow_run.conclusion == 'failure') ||
         (github.event.workflow_run.name == 'ECR push (production)' && github.event.workflow_run.conclusion == 'success') ||
         (github.event.workflow_run.name == 'Deploy smoke' && github.event.workflow_run.conclusion == 'failure')
@@ -45,8 +52,13 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Skip if Cursor session already active
+      - name: Dispatch guard
         id: guard
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          GITHUB_WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           set +e
           node scripts/blackout-agent/dispatch-guard.mjs
@@ -54,7 +66,7 @@ jobs:
           set -e
           if [ "$code" -eq 1 ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Active Cursor session — skipping duplicate dispatch"
+            echo "Dispatch guard blocked"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
@@ -70,6 +82,11 @@ jobs:
             exit 0
           fi
           EXTRA="Event: ${{ github.event_name }}"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            EXTRA="MERGE LANDED on main @ ${{ github.sha }} — enter continuous work loop immediately"
+          elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.action }}" = "closed" ]; then
+            EXTRA="PR #${{ github.event.pull_request.number }} MERGED — continue work loop"
+          fi
           export PROMPT
           PROMPT=$(node scripts/blackout-agent/dispatch-prompt.mjs --agent=cursor --extra="$EXTRA")
           payload=$(node -e "
@@ -82,7 +99,10 @@ jobs:
           resp=$(curl -sf -X POST https://api.cursor.com/v1/agents \
             -u "${CURSOR_API_KEY}:" \
             -H 'Content-Type: application/json' \
-            -d "$payload")
+            -d "$payload") || {
+            echo "::warning::Cursor agent launch failed"
+            exit 0
+          }
           echo "$resp" | node -e "
             const r = JSON.parse(require('fs').readFileSync(0,'utf8'));
             console.log('Autopilot agent:', r.agent?.url ?? r.url ?? r);
