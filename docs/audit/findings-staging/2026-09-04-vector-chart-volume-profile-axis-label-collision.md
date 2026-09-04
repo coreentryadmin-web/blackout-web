@@ -1,6 +1,6 @@
 ## 2026-09-04 — [FINDING, P3 member-facing UI, Vector chart / SPX Slayer] Volume-profile POC/VAH/VAL labels are drawn flush against the price axis with no collision awareness — a native price-line axis label (Pin, Gamma flip, VWAP, spot, EMA…) painted on top makes the level label unreadable whenever the two price levels land close together
 
-> **kind:** FINDING
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
