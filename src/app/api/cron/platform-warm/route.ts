@@ -9,6 +9,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { loadBootstrapBundle } from "@/features/spx/lib/spx-desk-loader";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
   }
 
   const dispatchWarm = () => {
-    void runPlatformWarm(started).catch((error) => {
+    void runWithBackgroundUwSweep(() => runPlatformWarm(started)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[cron/platform-warm] background warm REJECTED: ${detail}`);
     });

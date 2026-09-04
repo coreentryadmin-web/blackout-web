@@ -594,7 +594,7 @@ test("VectorChart: real dataAgeMs is captured from live ticks and fed to buildVe
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /dataReceivedAtMsRef/);
   assert.match(src, /dataReceivedAtMsRef\.current = Date\.now\(\)/);
-  assert.match(src, /dataAgeMs: Date\.now\(\) - dataReceivedAtMsRef\.current/);
+  assert.match(src, /dataAgeMs: Math\.max\(0, Date\.now\(\) - dataReceivedAtMsRef\.current\)/);
 });
 
 test("VectorPlayCard: shows a STALE badge once dataAge crosses the play engine's own threshold", () => {

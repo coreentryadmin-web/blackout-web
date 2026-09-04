@@ -8,6 +8,7 @@ import { resolveOptionsRoot } from "@/lib/providers/polygon-options-gex";
 import { fetchStockSnapshot, fetchIndexSnapshot } from "@/lib/providers/polygon";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { resolveSpotFromUwStockState } from "@/lib/providers/spot-fallback";
+import { withFreshPrice } from "@/lib/providers/change-pct";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -190,7 +191,8 @@ export async function GET(req: NextRequest) {
     if (isIndex && WS_INDEX_KEYS.has(optionsRoot)) {
       const entry = indexStore[optionsRoot];
       const ageMs = Date.now() - entry.updatedAt;
-      if (entry.price > 0 && ageMs < WS_STALE_MS) {
+      // Future timestamps (clock skew) must not read as infinitely fresh.
+      if (entry.price > 0 && ageMs >= -WS_STALE_MS && Math.max(0, ageMs) < WS_STALE_MS) {
         const payload: QuotePayload = {
           available: true,
           ticker,
@@ -210,12 +212,31 @@ export async function GET(req: NextRequest) {
     // fall through to REST because wsSpotPrice is local-memory-only.
     if (!isIndex) {
       const candle = getStockLiveCandle(ticker);
-      if (candle.current && candle.current.close > 0) {
+      const ageMs = Date.now() - (candle.updatedAt ?? 0);
+      if (
+        candle.current &&
+        candle.current.close > 0 &&
+        ageMs >= -WS_STALE_MS &&
+        Math.max(0, ageMs) < WS_STALE_MS
+      ) {
+        // WS price is live; rebase change_pct off the shared REST cache when available so the
+        // header doesn't show session-open–anchored drift before the REST seed lands.
+        const mem = quoteMem.get(ticker);
+        let changePct = candle.changePct;
+        if (mem && Date.now() - mem.at < QUOTE_CACHE_MS) {
+          const rebased = withFreshPrice(
+            { price: mem.payload.price, change_pct: mem.payload.change_pct },
+            candle.current.close
+          );
+          if (typeof rebased.change_pct === "number" && Number.isFinite(rebased.change_pct)) {
+            changePct = rebased.change_pct;
+          }
+        }
         const payload: QuotePayload = {
           available: true,
           ticker,
           price: candle.current.close,
-          change_pct: candle.changePct,
+          change_pct: changePct,
           source: "ws",
           asof: new Date(candle.updatedAt).toISOString(),
         };
