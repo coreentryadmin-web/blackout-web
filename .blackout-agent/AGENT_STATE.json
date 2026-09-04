@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:16:15.266Z",
+  "updated_at": "2026-09-04T17:28:57.157Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T16:27:28.851Z",
+      "lease_until": "2026-09-04T18:55:24.544Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "3d92f56b-8025-4114-b283-02359622516f",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -104,13 +104,25 @@
     "BO-P1-0103": {
       "task_id": "BO-P1-0103",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:33:57.540Z",
-      "lease_until": "2026-09-04T12:03:57.540Z",
-      "phase": "MONITORING",
+      "claimed_at": "2026-09-04T16:39:15.458Z",
+      "lease_until": "2026-09-04T18:55:24.545Z",
+      "phase": "AUDITING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "3d92f56b-8025-4114-b283-02359622516f",
+      "title": null
+    },
+    "BO-P1-0102": {
+      "task_id": "BO-P1-0102",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T16:30:01.654Z",
+      "lease_until": "2026-09-04T18:55:24.545Z",
+      "phase": "VALIDATING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "3d92f56b-8025-4114-b283-02359622516f",
       "title": null
     }
   },
@@ -210,6 +222,30 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
+    },
+    "pr-3670": {
+      "pr": 3670,
+      "head_sha": "6f0ff7709d0755d13f0a0e202dbd4d66ffdcd494",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:28:50.712Z",
+      "safe_to_merge": true
+    },
+    "pr-3671": {
+      "pr": 3671,
+      "head_sha": "d254ab8de9a0bf744fc735f4b67edd60f5b22c03",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:28:51.013Z",
+      "safe_to_merge": true
+    },
+    "pr-3673": {
+      "pr": 3673,
+      "head_sha": "f98c4cbbea19c29192226f54781fcb093d22b132",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:28:51.339Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -219,16 +255,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T17:26:43.351Z",
+      "current_task": "BO-P1-0102"
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "28fdcffc4394cfa9208e94a59e437d30123e742f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T17:28:24Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33900754026",
+    "last_deploy_sha": "be9f5473dc056cd15b96098fc145d3a92f8a5312"
   },
   "open_prs": [],
   "events": [
@@ -988,6 +1024,55 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:26:43.351Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0102",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T17:28:50.713Z",
+      "type": "pr_review",
+      "pr": 3670,
+      "head_sha": "6f0ff7709d0755d13f0a0e202dbd4d66ffdcd494",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:28:50.712Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:28:51.014Z",
+      "type": "pr_review",
+      "pr": 3671,
+      "head_sha": "d254ab8de9a0bf744fc735f4b67edd60f5b22c03",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:28:51.013Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:28:51.339Z",
+      "type": "pr_review",
+      "pr": 3673,
+      "head_sha": "f98c4cbbea19c29192226f54781fcb093d22b132",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:28:51.339Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:28:57.156Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:28:57.157Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9cd06195-cc47-4d1f-9352-1f7f7980492a",
+      "summary": "Peer-reviewed #3670/#3671/#3673 APPROVED (tests pass). GitHub API still rate-limited — undraft/merge blocked. RTH+platform-integrity GREEN on main@28fdcffc."
     }
   ]
 }
