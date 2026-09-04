@@ -64,7 +64,7 @@ export type MarketWideContext = {
   tomorrow_earnings: Record<string, unknown>[];
   sector_tides: Array<{ sector: string; tide: Record<string, unknown> | null }>;
   etf_tides: Record<string, Record<string, unknown> | null>;
-  sector_performance: Array<{ name: string; change_pct: number }>;
+  sector_performance: Array<{ name: string; change_pct: number | null }>;
   top_net_impact: Record<string, unknown>[];
   vix_term: Record<string, unknown>[];
   vix_iv_rank: number | null;

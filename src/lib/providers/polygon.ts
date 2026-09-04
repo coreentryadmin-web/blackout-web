@@ -84,7 +84,8 @@ export type StockQuoteSnapshot = {
   ticker: string;
   price: number;
   prev_close: number;
-  change_pct: number;
+  /** Null when neither provider change nor prior-close rebase is available — never fabricate flat 0%. */
+  change_pct: number | null;
   /** Day extremes / VWAP from the day aggregate. NULL when the aggregate is absent (pre-open /
    *  market closed / untraded) — do NOT dress the spot price up as a real HOD/LOD/VWAP
    *  (mirrors the gap #14 HOD/LOD null fix). */
@@ -93,6 +94,22 @@ export type StockQuoteSnapshot = {
   vwap: number | null;
   volume: number;
 };
+
+/** Derive session change % from a Polygon snapshot row — null when it cannot be grounded. */
+export function changePctFromSnapshotTicker(row: SnapshotTicker): number | null {
+  if (row.todaysChangePerc != null && Number.isFinite(Number(row.todaysChangePerc))) {
+    return Number(Number(row.todaysChangePerc).toFixed(2));
+  }
+  const day = row.day ?? {};
+  const prev = row.prevDay ?? {};
+  const last = row.lastTrade ?? {};
+  const price = Number(last.p ?? day.c ?? 0);
+  const prevClose = Number(prev.c ?? 0);
+  if (prevClose > 0 && Number.isFinite(price) && price > 0) {
+    return Number((((price - prevClose) / prevClose) * 100).toFixed(2));
+  }
+  return null;
+}
 
 function _rowToSnapshot(sym: string, row: SnapshotTicker): StockQuoteSnapshot | null {
   const day = row.day ?? {};
@@ -108,12 +125,7 @@ function _rowToSnapshot(sym: string, row: SnapshotTicker): StockQuoteSnapshot | 
     throw new Error(`[polygon] Implausible price for ${sym}: ${price}`);
   }
   const prevClose = Number(prev.c ?? 0);
-  const changePct =
-    row.todaysChangePerc != null
-      ? Number(row.todaysChangePerc.toFixed(2))
-      : prevClose
-        ? Number((((price - prevClose) / prevClose) * 100).toFixed(2))
-        : 0;
+  const changePct = changePctFromSnapshotTicker(row);
   return {
     ticker: sym,
     price,
@@ -182,11 +194,10 @@ async function fetchStockSnapshotPerformance(
 
   return symbols.map((symbol) => {
     const snap = byTicker.get(symbol.ticker);
-    const change = snap?.todaysChangePerc ?? 0;
     return {
       name: symbol.name,
       ticker: symbol.ticker,
-      change_pct: Number(change.toFixed(2)),
+      change_pct: snap ? changePctFromSnapshotTicker(snap) : null,
       volume: snap?.day?.v,
     };
   });
@@ -199,6 +210,15 @@ export function fetchLeaderStockSnapshots() {
 /** Mega-cap leaders + sector ETFs — used for breadth / TICK proxy. */
 export function fetchBreadthUniverseSnapshots() {
   return fetchStockSnapshotPerformance([...LEADER_STOCKS, ...SECTOR_ETFS]);
+}
+
+/** Drop rows with no grounded session change before breadth/TICK proxy math. */
+export function groundedBreadthSamples(
+  rows: Array<{ change_pct: number | null }>
+): Array<{ change_pct: number }> {
+  return rows
+    .filter((r): r is { change_pct: number } => r.change_pct != null)
+    .map((r) => ({ change_pct: r.change_pct }));
 }
 
 export type DailyMarketBar = {
@@ -337,14 +357,15 @@ export async function fetchMarketMovers(limit = 20) {
 
   const mapMover = (t: SnapshotTicker) => ({
     ticker: String(t.ticker ?? "").replace("X:", ""),
-    change_pct: Number((t.todaysChangePerc ?? 0).toFixed(2)),
+    change_pct: changePctFromSnapshotTicker(t),
     price: t.day?.c ?? t.prevDay?.c ?? 0,
     volume: t.day?.v,
   });
 
-  // Filter out warrants (W suffix), reverse-split artifacts (<$1), and
-  // micro-cap shells with negligible volume (<100K shares) that pollute the list.
+  // Filter out warrants (W suffix), reverse-split artifacts (<$1),
+  // micro-cap shells with negligible volume (<100K shares), and rows with no grounded change %.
   const isClean = (m: ReturnType<typeof mapMover>) =>
+    m.change_pct != null &&
     m.price >= 1.0 &&
     !m.ticker.endsWith("W") &&
     !m.ticker.endsWith("R") &&
@@ -353,9 +374,11 @@ export async function fetchMarketMovers(limit = 20) {
   const combined = [
     ...(gainers.tickers ?? []).slice(0, limit).map(mapMover).filter(isClean),
     ...(losers.tickers ?? []).slice(0, limit).map(mapMover).filter(isClean),
-  ];
+  ] as Array<{ ticker: string; change_pct: number; price: number; volume?: number }>;
 
-  return combined.sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+  return combined.sort(
+    (a, b) => Math.abs(b.change_pct ?? 0) - Math.abs(a.change_pct ?? 0)
+  );
 }
 
 type IndexResult = {

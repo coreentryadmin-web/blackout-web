@@ -104,7 +104,7 @@ export const SECTOR_LABEL_TO_ETF: Record<string, string> = {
   "Comm.Svc.": "XLC",
 };
 
-export type SectorPerformanceRow = { name: string; ticker: string; change_pct: number; volume?: number };
+export type SectorPerformanceRow = { name: string; ticker: string; change_pct: number | null; volume?: number };
 
 /** Polygon agg bar (the shared local shape polygon.ts/polygon-largo.ts both use —
  *  neither exports it). `t` is epoch MILLISECONDS. */
@@ -169,7 +169,8 @@ async function loadDefaultDeps(): Promise<CortexFetchDeps> {
     fetchMinuteBars: (sym, from, to) =>
       sym.startsWith("I:") ? polygon.fetchIndexMinuteBars(sym, from, to) : polygon.fetchStockMinuteBars(sym, from, to),
     fetchPreviousDayBar: (sym) => polygonLargo.fetchPreviousDayBar(sym),
-    fetchBreadthUniverseSnapshots: () => polygon.fetchBreadthUniverseSnapshots(),
+    fetchBreadthUniverseSnapshots: () =>
+      polygon.fetchBreadthUniverseSnapshots().then(polygon.groundedBreadthSamples),
     todayEtYmd: () => spxSession.todayEtYmd(),
   };
 }

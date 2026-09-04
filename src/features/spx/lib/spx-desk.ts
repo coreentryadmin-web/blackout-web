@@ -50,6 +50,7 @@ import {
   computeVixTermStructure,
   fetchBenzingaNews,
   fetchBreadthUniverseSnapshots,
+  groundedBreadthSamples,
   computeMarketBreadthFromSummary,
   fetchDailyMarketSummary,
   fetchPriorDayCloses,
@@ -820,7 +821,7 @@ type PulseStructureCache = {
   ema200: number | null;
   sma50: number | null;
   sma200: number | null;
-  leader_stocks: Array<{ name: string; ticker: string; change_pct: number }>;
+  leader_stocks: Array<{ name: string; ticker: string; change_pct: number | null }>;
   breadth_samples: Array<{ change_pct: number }>;
 };
 
@@ -862,7 +863,7 @@ function buildDeskDataQuality(
 }
 
 function leaderStocksFromBreadth(
-  samples: Array<{ name: string; ticker: string; change_pct: number }>
+  samples: Array<{ name: string; ticker: string; change_pct: number | null }>
 ) {
   return samples.filter((s) => LEADER_TICKERS.has(s.ticker));
 }
@@ -996,8 +997,8 @@ export type SpxDeskPayload = {
     structure: string;
     detail: string;
   };
-  sector_heat: Array<{ name: string; ticker: string; change_pct: number }>;
-  leader_stocks: Array<{ name: string; ticker: string; change_pct: number }>;
+  sector_heat: Array<{ name: string; ticker: string; change_pct: number | null }>;
+  leader_stocks: Array<{ name: string; ticker: string; change_pct: number | null }>;
   oi_changes: OiChangeItem[];
   iv_term_structure: IvTermPoint[];
   macro_events: MacroEvent[];
@@ -1677,7 +1678,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
       trin: snaps[TRIN]?.price ?? intel?.trin ?? null,
       add: snaps[ADD]?.price ?? null,
     },
-    breadthAll ?? []
+    groundedBreadthSamples(breadthAll ?? [])
   );
 
   scheduleDeskEnrichmentRefresh(today);
@@ -1839,7 +1840,7 @@ async function refreshPulseStructureCore(today: string): Promise<PulseStructureC
     sma50,
     sma200,
     leader_stocks: leaderStocks,
-    breadth_samples: breadthAll ?? [],
+    breadth_samples: groundedBreadthSamples(breadthAll ?? []),
   };
   return cachedPulseStructure;
 }
