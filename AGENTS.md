@@ -156,7 +156,15 @@ Read: `ACTIVE_WORK.md`, `LAST_HANDOFF.md`, `WORK_QUEUE.md`, `FINDINGS.md` in `.b
 **Handoff on milestones:** `npm run blackout:handoff -- --agent=cursor --summary="..."`
 
 **Peer coordination:** Claude ↔ Cursor are peers. Never approve your own PR. CI green ≠ approval.
-If peer owns highest task, pick next independent task. Never idle because peer is busy.
+If peer owns highest task, pick next independent task. **Never idle — never end your session after one merge.**
+
+**Continuous work loop (mandatory):**
+1. `npm run blackout:session -- --agent=cursor`
+2. `npm run blackout:select -- --agent=cursor` — picks explicit queue OR auto-discovers open PRs + deploy drift
+3. Claim → execute → handoff → **immediately repeat from step 2**
+4. Only pause when select returns empty AND pr-sweep + ops:collect are clean
+
+**Standing perpetual tasks** in WORK_QUEUE (`BO-P1-0100` peer review, `BO-P1-0101` deploy ops, `BO-P2-0100` 0DTE) — never mark DONE.
 
 Architecture: `.blackout-agent/README.md`. Constitution: **`CLAUDE.md`** (do not fork).
 Dispatch prompt: `npm run blackout:prompt -- --agent=cursor`

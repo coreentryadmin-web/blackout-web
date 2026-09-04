@@ -26,10 +26,17 @@ PEER COORDINATION: Claude and Cursor are peers. Never approve your own PR. CI gr
 Cursor PR → Claude reviews → merge. Claude PR → Cursor reviews → merge.
 If peer owns highest task, pick next independent task. Never idle.
 
+CONTINUOUS WORK LOOP — do NOT end your session after one task:
+1. npm run blackout:session -- --agent=${agent}
+2. npm run blackout:select -- --agent=${agent}  (discovers open PRs + deploy drift when queue empty)
+3. Claim → execute → handoff → IMMEDIATELY repeat from step 2
+4. Only stop when: no candidates from select, no open PRs need review, deploy current, ops:collect clean
+5. If select returns empty, run: npm run blackout:pr-sweep && npm run ops:collect
+
 ${constitution}
 
 ${extra}
 
-EXECUTE NOW — recover state and resume highest-priority non-conflicting work.`;
+EXECUTE NOW — recover state and enter the continuous work loop. Do not wait for the user.`;
 
 process.stdout.write(prompt);
