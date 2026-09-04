@@ -4,9 +4,11 @@ import {
   VECTOR_BASE_RIGHT_OFFSET_BARS,
   VECTOR_VP_MAX_BAND_PX,
   VECTOR_VP_RIGHT_OFFSET_PX,
+  VP_LABEL_LEFT_PAD_PX,
   vectorChartTimeScaleGutter,
   volumeProfileBarRect,
   volumeProfileGutter,
+  volumeProfileLabelAnchorX,
   VP_CANDLE_GAP_PX,
 } from "./vector-volume-profile-layout";
 
@@ -42,6 +44,12 @@ test("volumeProfileGutter: caps the band so it never dominates the pane, however
 
 test("volumeProfileGutter: null when the last candle sits flush to the right edge", () => {
   assert.equal(volumeProfileGutter(400, 395), null);
+});
+
+test("volumeProfileLabelAnchorX: labels sit at the left edge of the bar band, away from axis badges", () => {
+  const gutter = volumeProfileGutter(1200, 1100)!;
+  assert.equal(volumeProfileLabelAnchorX(gutter), gutter.gutterLeft + VP_LABEL_LEFT_PAD_PX);
+  assert.ok(volumeProfileLabelAnchorX(gutter) < gutter.rightX - 40);
 });
 
 test("volumeProfileBarRect: bars grow from the right edge inward, never past gutterLeft", () => {

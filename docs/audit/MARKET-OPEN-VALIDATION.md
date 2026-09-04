@@ -1561,6 +1561,12 @@ for the whole session where the design intent is a 20-minute lock. It was left a
 LOOSENS a fail-closed guard on a live risk device, and that deserves a deliberate decision rather
 than an end-of-session patch.
 
+### 20. Vector volume-profile level labels — left-anchor collision fix — 2026-09-04
+
+- **What was broken:** `VolumeProfilePrimitive` drew POC/VAH/VAL text at `rightX - 6`, directly under native lightweight-charts price-line axis badges (Pin, Gamma flip, VWAP…), making level labels unreadable when prices were close.
+- **What changed:** Labels anchor at `gutterLeft + VP_LABEL_LEFT_PAD_PX` with `textAlign: left` via `volumeProfileLabelAnchorX()`.
+- **RTH check:** On `/dashboard` (SPX Slayer) or `/vector` with volume profile enabled, confirm POC/VAH/VAL text is legible at the left edge of the profile bars even when a Pin or gamma-flip axis badge sits at a nearby price.
+
 ### 19. Vector universe GEX wall spot-zero guard — 2026-09-04
 
 - **What was broken:** `vector-universe.ts` passed `spot: 0` into `computeGexWalls` when chain spot was transiently zero, persisting wrong-side walls into narrowed-horizon history.

@@ -16,6 +16,9 @@ export const VECTOR_VP_RIGHT_OFFSET_BARS = 18;
 /** Pixel gap between the last candle and the start of volume-profile bars (member ref). */
 export const VP_CANDLE_GAP_PX = 12;
 
+/** Left padding when POC/VAH/VAL labels anchor at the profile band's left edge (avoids axis-badge collision). */
+export const VP_LABEL_LEFT_PAD_PX = 4;
+
 /**
  * Hard cap on how wide the volume-profile bars are allowed to draw, independent of how much raw
  * whitespace sits between the last candle and the price axis.
@@ -80,6 +83,11 @@ export function volumeProfileGutter(
   // widest bar inward, never touches where bars sit relative to the axis.
   const band = maxBandPx > 0 ? Math.min(rawBand, maxBandPx) : rawBand;
   return { gutterLeft: rightX - band, rightX, maxBarWidth: band };
+}
+
+/** X coordinate for volume-profile level labels — left edge of the bar band, not the price axis. */
+export function volumeProfileLabelAnchorX(gutter: VolumeProfileGutter): number {
+  return gutter.gutterLeft + VP_LABEL_LEFT_PAD_PX;
 }
 
 /** Map a bucket's relative volume (0..1) to a bar rectangle inside the gutter. */
