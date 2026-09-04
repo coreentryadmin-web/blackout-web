@@ -9,19 +9,20 @@ const stockCandle = {
   changePct: 0,
 };
 
-mock.module("@/lib/ws/stock-candle-store", {
+// Relative specifiers — mock.module does not resolve @/ aliases (see flow-gex-enrichment.test.ts).
+mock.module("../../../lib/ws/stock-candle-store", {
   namedExports: {
     getStockLiveCandle: () => stockCandle,
   },
 });
 
-mock.module("@/lib/ws/spx-candle-store", {
+mock.module("../../../lib/ws/spx-candle-store", {
   namedExports: {
     getCurrentSpxCandle: () => ({ current: null, updatedAt: 0 }),
   },
 });
 
-mock.module("@/lib/ws/uw-socket", {
+mock.module("../../../lib/ws/uw-socket", {
   namedExports: {
     hasLiveGexStrikeExpiry: () => false,
     getGexStrikeExpiryLadder: () => null,
@@ -34,7 +35,7 @@ let heatmapPayload: {
   gex?: { strike_totals: Record<string, number> };
 } | null = null;
 
-mock.module("@/lib/providers/polygon-options-gex", {
+mock.module("../../../lib/providers/polygon-options-gex", {
   namedExports: {
     fetchGexHeatmap: async () => heatmapPayload,
   },
