@@ -4,6 +4,7 @@ import { logCronRun } from "@/lib/cron-run";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { runVectorPickUniverseSweep } from "@/lib/vector/vector-pick-sweep";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -86,8 +87,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  // Tagged as a background sweep (runWithBackgroundUwSweep) so it always leaves at least one
+  // UW concurrency slot reachable for live member traffic even while mid-run — see
+  // uw-rate-limiter.ts's block comment for the measured ALB tail-latency evidence.
   const dispatch = () => {
-    void runPickSweep(started);
+    void runWithBackgroundUwSweep(() => runPickSweep(started));
   };
 
   try {

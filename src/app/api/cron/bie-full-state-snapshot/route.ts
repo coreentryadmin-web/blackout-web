@@ -3,6 +3,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { buildBieFullState } from "@/lib/bie/full-platform-snapshot";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 // 24/7 full-platform snapshot — the "brain of BlackOut" feed (task #54).
 //
@@ -46,8 +47,12 @@ export async function GET(req: NextRequest) {
 
   // buildBieFullState() fans out across desk/GEX/Vector loaders and can exceed Cloudflare's
   // ~100s origin timeout when caches are cold — mirror zerodte-warm's fire-and-forget handshake.
+  //
+  // Tagged as a background sweep (runWithBackgroundUwSweep) so it always leaves at least one
+  // UW concurrency slot reachable for live member traffic even while mid-run — see
+  // uw-rate-limiter.ts's block comment for the measured ALB tail-latency evidence.
   const dispatchSnapshot = () => {
-    void runBieFullStateSnapshot(started).catch((error) => {
+    void runWithBackgroundUwSweep(() => runBieFullStateSnapshot(started)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[cron/bie-full-state-snapshot] background snapshot REJECTED: ${detail}`);
     });
