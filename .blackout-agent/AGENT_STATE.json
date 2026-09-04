@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:19:14.963Z",
+  "updated_at": "2026-09-04T17:32:41.406Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T17:05:09.541Z",
+      "lease_until": "2026-09-04T18:44:52.604Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "3d17635d-9310-4e38-8d7e-256d2b77df83",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -248,11 +248,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "8fce57a4f3b3741211723af3a156972a122921d2",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T17:32:39Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33900959005",
+    "last_deploy_sha": "8fce57a4f3b3741211723af3a156972a122921d2"
   },
   "open_prs": [],
   "events": [
@@ -1052,6 +1052,25 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:31:40.239Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:32:41.406Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:32:41.406Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "aa09aa89-6ea1-44db-bc1b-dc56a1ee1a2e",
+      "summary": "pull_request event cycle: bootstrapped + session. Peer-reviewed Claude PRs — #3656 LULD halt staleness (merged before review recorded), #3663 spx-signal NaN guard APPROVED+merged, #3662 gex nearest_wall stale APPROVED+merged. #3667 stock-candle-store day-rollover race APPROVED (verify unavailable on head — awaiting CI). validate:deploy GREEN, validate:platform-integrity 14/14 pass, validate:api-auth GREEN. ops:collect blocked on pg module in default node22 shell — use Node 20 path. Wave of merges on main: #3657-#3668. Standing: Claude review cursor PRs #3670 thermal change_pct, #3671 validate-deploy socket retry. Off-hours — RTH lifecycle skipped."
     }
   ]
 }
