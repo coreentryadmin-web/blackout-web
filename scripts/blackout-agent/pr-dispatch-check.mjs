@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { shouldDispatchDeepReview, classifyBranch, reviewerForBranch } from "./pr-feedback.mjs";
+import {
+  shouldDispatchDeepReview,
+  classifyBranch,
+  reviewerForBranch,
+  GH_PR_CHECKS_JSON_FIELDS,
+} from "./pr-feedback.mjs";
 
 function parseArgs(argv) {
   const out = {
@@ -31,7 +36,7 @@ if (!pr) {
 }
 
 const prData = ghJson(["pr", "view", String(pr), "--json", "headRefOid,headRefName,isDraft,body"]);
-const checksRaw = ghJson(["pr", "checks", String(pr), "--json", "name,state,conclusion"]);
+const checksRaw = ghJson(["pr", "checks", String(pr), "--json", GH_PR_CHECKS_JSON_FIELDS]);
 const checks = Array.isArray(checksRaw) ? checksRaw : checksRaw?.checks ?? [];
 
 const dispatch = shouldDispatchDeepReview({

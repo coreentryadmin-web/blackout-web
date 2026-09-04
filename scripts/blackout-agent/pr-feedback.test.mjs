@@ -11,6 +11,7 @@ import {
   deriveDirective,
   summarizeChecks,
   checkConclusion,
+  GH_PR_CHECKS_JSON_FIELDS,
   resolveGithubRepo,
 } from "./pr-feedback.mjs";
 
@@ -171,6 +172,33 @@ test("checkConclusion maps gh and API shapes", () => {
   assert.equal(checkConclusion({ conclusion: "failure" }), "failure");
   assert.equal(checkConclusion({ state: "IN_PROGRESS" }), "pending");
   assert.equal(checkConclusion({ bucket: "skipping" }), "skipped");
+});
+
+test("GH_PR_CHECKS_JSON_FIELDS excludes invalid gh conclusion field", () => {
+  assert.ok(!GH_PR_CHECKS_JSON_FIELDS.includes("conclusion"));
+  assert.match(GH_PR_CHECKS_JSON_FIELDS, /name/);
+  assert.match(GH_PR_CHECKS_JSON_FIELDS, /state/);
+  assert.match(GH_PR_CHECKS_JSON_FIELDS, /bucket/);
+});
+
+test("buildFeedback recognizes green verify from gh state shape", () => {
+  const fb = buildFeedback({
+    pr: 1,
+    event: "synchronize",
+    prData: {
+      headRefOid: "abc",
+      headRefName: "claude/test",
+      author: { login: "bot" },
+      isDraft: false,
+      files: [],
+      additions: 1,
+      deletions: 0,
+    },
+    checks: [{ name: "verify", state: "SUCCESS", bucket: "pass" }],
+    priorReview: null,
+  });
+  assert.ok(fb.ok.some((line) => line.includes("verify") && line.includes("green")));
+  assert.equal(fb.directive.action, "REVIEW");
 });
 
 test("resolveGithubRepo prefers GITHUB_REPOSITORY when set", () => {

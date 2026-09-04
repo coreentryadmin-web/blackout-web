@@ -144,6 +144,9 @@ export function analyzeDiff(files) {
   return { paths, categories, risks: [...new Set(risks)], highlights: [...new Set(highlights)].slice(0, 8), docsOnly };
 }
 
+/** Valid `gh pr checks --json` fields (no `conclusion` — gh CLI rejects it). */
+export const GH_PR_CHECKS_JSON_FIELDS = "name,state,bucket";
+
 /** Normalize gh `pr checks --json` (state/bucket) and CheckRun API (conclusion) shapes. */
 export function checkConclusion(check) {
   if (!check) return null;
@@ -428,7 +431,7 @@ export function handlePrWebhook(opts) {
   ]);
   if (!prData) throw new Error(`Could not load PR #${pr}`);
 
-  const checks = ghJson(["pr", "checks", String(pr), "--json", "name,state,conclusion,bucket"]) ?? [];
+  const checks = ghJson(["pr", "checks", String(pr), "--json", GH_PR_CHECKS_JSON_FIELDS]) ?? [];
   const checkList = Array.isArray(checks) ? checks : checks.checks ?? [];
 
   const state = readAgentState();
