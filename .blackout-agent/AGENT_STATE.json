@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T05:31:20.827Z",
+  "updated_at": "2026-09-04T06:58:51.654Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -80,15 +80,26 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:31:04.605Z",
-      "lease_until": "2026-09-04T07:01:04.605Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T06:46:53.520Z",
+      "lease_until": "2026-09-04T08:16:53.520Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.756Z"
+      "title": null
+    },
+    "BO-P1-0103": {
+      "task_id": "BO-P1-0103",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T06:58:51.653Z",
+      "lease_until": "2026-09-04T08:28:51.653Z",
+      "phase": "MONITORING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -156,16 +167,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T05:31:04.606Z",
-      "current_task": "BO-P1-0101"
+      "last_seen": "2026-09-04T06:58:51.654Z",
+      "current_task": "BO-P1-0103"
     }
   },
   "deploy": {
-    "last_main_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f",
+    "last_main_sha": "84b92b6b62ff5b6694c856016aa3e5b2d235b5ea",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T05:27:22Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33840544277",
-    "last_deploy_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f"
+    "last_deploy_at": "2026-09-04T06:57:16Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845611594",
+    "last_deploy_sha": "84b92b6b62ff5b6694c856016aa3e5b2d235b5ea"
   },
   "open_prs": [],
   "events": [
@@ -569,6 +580,61 @@
       "agent": "cursor",
       "run_id": "34cc062c-797a-4e80-8a83-6c9e90f11422",
       "summary": "Cycle complete: deploy GREEN @ 0b2ada333 (#3495). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours expected). Peer review: no substantive PRs (#2810 dependabot major skip). RTH lifecycle @ 09:00 ET Fri 2026-09-05. Agent state sync PR opening."
+    },
+    {
+      "at": "2026-09-04T06:46:36.636Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:46:42.111Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:46:42.950Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:46:47.155Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:46:53.521Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T06:57:14.684Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:57:14.685Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2bf82916-6875-4cbb-91ed-302ab6365e66",
+      "summary": "Deploy verify GREEN @ 84b92b6b (ECR push pending/queued). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours). No open PRs for peer review. OFF_HOURS fix already on main (#3502)."
+    },
+    {
+      "at": "2026-09-04T06:57:18.217Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:58:51.654Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0103",
+      "owner": "cursor"
     }
   ]
 }
