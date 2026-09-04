@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T00:47:08.250Z",
+  "updated_at": "2026-09-04T00:53:36.909Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -30,9 +30,9 @@
     "BO-P1-0005": {
       "task_id": "BO-P1-0005",
       "owner": "cursor",
-      "claimed_at": "2026-09-03T23:53:48.679Z",
-      "lease_until": "2026-09-04T01:23:48.679Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-04T00:53:11.304Z",
+      "lease_until": "2026-09-04T02:23:11.304Z",
+      "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -70,12 +70,12 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T00:42:01.008Z",
-      "current_task": "BO-P1-0004"
+      "last_seen": "2026-09-04T00:53:11.305Z",
+      "current_task": "BO-P1-0005"
     }
   },
   "deploy": {
-    "last_main_sha": "6c527fcdfd0be73ff9ab464eae8b76627568a42b",
+    "last_main_sha": "aa08b98d9ffdab369aa27030f999502edfc862dd",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-04T00:32:34Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33822209974",
@@ -234,6 +234,24 @@
       "agent": "cursor",
       "run_id": "1de24f86-544f-4a78-8c46-d0a0158c1c1f",
       "summary": "Recovered on main post-#3436 merge. BO-P1-0004 post-deploy 0DTE replay GREEN: 2026-09-03 session 6 plays replayed, executable WR 66.7% avg +10.7%. validate:deploy GREEN. Next: BO-P1-0005 review any new Claude PRs; findings-staging fold deferred (breaks findings-hygiene idempotent test)."
+    },
+    {
+      "at": "2026-09-04T00:53:07.317Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:53:11.305Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0005",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T00:53:36.908Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
