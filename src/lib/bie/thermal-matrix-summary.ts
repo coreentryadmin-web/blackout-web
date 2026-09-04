@@ -84,7 +84,7 @@ export function compactThermalMatrixSummary(hm: GexHeatmap | null | undefined): 
 export type ThermalPositioningSummary = {
   ticker: string;
   spot: number;
-  change_pct: number;
+  change_pct: number | null;
   asof: string;
   flip: number | null;
   call_wall: number | null;
@@ -106,7 +106,7 @@ export type ThermalPositioningSummary = {
 export function compactThermalPositioning(p: {
   ticker: string;
   spot: number;
-  change_pct: number;
+  change_pct: number | null;
   asof: string;
   flip: number | null;
   call_wall: number | null;

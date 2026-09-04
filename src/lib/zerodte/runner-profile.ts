@@ -9,7 +9,7 @@ import type { ZeroDteRegime } from "./exit-engine";
 import { scoreFloorForOrigins } from "./gates";
 import { PLAN_RULES } from "./plan";
 import { assignZeroDteTier } from "./tiers";
-import type { ZeroDteVectorPulse } from "./vector-crosslink";
+import type { ZeroDteVectorPulse } from "./vector-crosslink-core";
 import { computeVectorGateBoost, vectorPulseAlignsDirection } from "./vector-commit-boost";
 import { RUNNER_SETUP_MAX_OTM_PCT, SETUP_MAX_OTM_PCT } from "./board";
 

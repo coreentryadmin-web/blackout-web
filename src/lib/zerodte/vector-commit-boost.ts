@@ -3,7 +3,7 @@
  * in the SAME direction, relax selective gates and nudge score so Night Hawk can commit the
  * name Vector is proving out (calibration near-misses → action).
  */
-import type { ZeroDteVectorPulse } from "./vector-crosslink";
+import type { ZeroDteVectorPulse } from "./vector-crosslink-core";
 import { ZERODTE_SINGLE_RAIL_PRIME_MIN } from "./gates";
 
 export const VECTOR_SCORE_BUMP_WINNER = 8;
@@ -72,6 +72,31 @@ export function vectorExemptsG17PrimeBand(
   pulse: ZeroDteVectorPulse | null | undefined
 ): boolean {
   return computeVectorGateBoost(direction, score, pulse).g17_exempt;
+}
+
+/** G-19 exemption — same predicate as G-17: aligned Vector winner OR runner at score ≥ 68. */
+export function vectorExemptsG19TopBand(
+  direction: "long" | "short",
+  score: number,
+  pulse: ZeroDteVectorPulse | null | undefined
+): boolean {
+  return vectorExemptsG17PrimeBand(direction, score, pulse);
+}
+
+/**
+ * G-8 chase exemption — when Vector is already printing a winner/runner in the SAME direction,
+ * the premium has often run past the stale UW flow fill by the time quotes attach. Blocking as
+ * "don't chase" on those names empties OPEN on amplification days while the board still shows
+ * huge hypothetical trackPct. Exempt → commit at the live mark (resolveLedgerEntryPremium floors
+ * the ledger basis there) instead of SKIP/PASSED.
+ */
+export function vectorExemptsPlanChase(
+  direction: "long" | "short",
+  score: number,
+  pulse: ZeroDteVectorPulse | null | undefined
+): boolean {
+  if (process.env.ZERODTE_VECTOR_CHASE_EXEMPT === "0") return false;
+  return vectorExemptsG17PrimeBand(direction, score, pulse);
 }
 
 /** Score floor for G-17 when not exempted (unchanged constant re-export for tests). */

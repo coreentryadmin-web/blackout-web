@@ -42,8 +42,8 @@ export type GexPositioning = {
   ticker: string;
   /** Live spot for the underlying. Always > 0 when the object is non-null. */
   spot: number;
-  /** Day change %, signed. */
-  change_pct: number;
+  /** Day change %, signed. Null when the matrix could not recover an honest session change. */
+  change_pct: number | null;
   /** ISO timestamp the underlying matrix was computed. UTC — see the ET fields below. */
   asof: string;
   /**
@@ -472,9 +472,13 @@ export async function gexContextBlock(ticker: string): Promise<string | null> {
 
   const lines: string[] = [];
   lines.push(`Ticker: ${p.ticker}`);
-  lines.push(
-    `Spot: ${fmtNum(p.spot)} (${p.change_pct >= 0 ? "+" : ""}${p.change_pct.toFixed(2)}% on the day)`
-  );
+  if (p.change_pct != null && Number.isFinite(p.change_pct)) {
+    lines.push(
+      `Spot: ${fmtNum(p.spot)} (${p.change_pct >= 0 ? "+" : ""}${p.change_pct.toFixed(2)}% on the day)`
+    );
+  } else {
+    lines.push(`Spot: ${fmtNum(p.spot)} (day change unavailable)`);
+  }
 
   // Gamma regime read is always a string (neutral when thin) — always present.
   lines.push(`GEX regime read: ${p.gamma_regime_read}`);

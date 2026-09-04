@@ -14,6 +14,7 @@
 import { todayEtYmd } from "../providers/spx-session";
 import { sharedCacheGet, sharedCacheSet } from "../shared-cache";
 import { fetchStockSnapshot } from "../providers/polygon";
+import { isWsUpdatedAtFresh } from "./timestamp-freshness";
 
 export type StockCandle = {
   time: number;
@@ -269,7 +270,7 @@ export function wsSpotPrice(ticker: string, maxAgeMs = 60_000): number | null {
   const sym = ticker.toUpperCase();
   const s = stores.get(sym);
   if (!s?.current || !(s.current.close > 0)) return null;
-  if (Date.now() - s.updatedAt >= maxAgeMs) return null;
+  if (!isWsUpdatedAtFresh(s.updatedAt, maxAgeMs)) return null;
   s.demanded = true;
   return s.current.close;
 }

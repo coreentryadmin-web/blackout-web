@@ -37,3 +37,7 @@ test("FlowFeed: newestAt excludes a future-dated print via signalWindowAgeMs, no
     "a print whose age cannot be trusted (future-dated beyond tolerance) must be skipped, never treated as newest"
   );
 });
+
+test("FlowFeed: dataAgeMs clamps negative ages to 0 (defense-in-depth after newestAt filter)", () => {
+  assert.match(src, /Math\.max\(0,\s*Date\.now\(\)\s*-\s*newestAt\)/);
+});

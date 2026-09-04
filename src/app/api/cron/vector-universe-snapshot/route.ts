@@ -4,6 +4,7 @@ import { logCronRun } from "@/lib/cron-run";
 import { refreshVectorUniverseSnapshot, loadSessionWallHistory } from "@/features/vector";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { todayEt } from "@/features/nighthawk/lib/session";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest) {
   // origin timeout when caches are cold (live probe: HTTP 504 @ 120s during #1355 cleanup).
   // Mirror vector-full-state-snapshot: handshake in seconds, recorder in after().
   const dispatchSnapshot = () => {
-    void runVectorUniverseSnapshot(started).catch((error) => {
+    void runWithBackgroundUwSweep(() => runVectorUniverseSnapshot(started)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[cron/vector-universe-snapshot] background snapshot REJECTED: ${detail}`);
     });

@@ -98,6 +98,7 @@ import {
   fetchVixIvRankPercentile,
   computeVixTermStructure,
 } from "@/lib/providers/polygon";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { priorEtYmd, todayEtYmd } from "@/lib/providers/spx-session";
 import {
@@ -278,7 +279,7 @@ async function toolQuote(ticker: string) {
   }
   const ws = wsSpot(wsTicker);
   if (ws != null) {
-    return { ticker: sym, price: ws, change_pct: 0, source: "polygon_ws" };
+    return { ticker: sym, price: ws, change_pct: null, source: "polygon_ws" };
   }
   if (sym.startsWith("I:")) {
     const snap = await fetchIndexSnapshots([sym]);

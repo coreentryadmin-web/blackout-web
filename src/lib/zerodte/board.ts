@@ -115,14 +115,16 @@ export function sessionHeat(etMinutes: number, isTradingDay: boolean): SessionHe
 export function resolveFreshFindStatus(
   heatState: SessionHeatState | undefined,
   moved: boolean,
-  illiquid: boolean
+  illiquid: boolean,
+  chaseExempt = false
 ): "WATCH" | "SKIP" {
   const pastCutoff =
     heatState === "POST_COMMIT" ||
     heatState === "LATE_SESSION" ||
     heatState === "CLOSED" ||
     heatState === undefined;
-  return moved || pastCutoff || illiquid ? "SKIP" : "WATCH";
+  const chased = moved && !chaseExempt;
+  return chased || pastCutoff || illiquid ? "SKIP" : "WATCH";
 }
 
 // ── Polygon symbol mapping for index option roots ─────────────────────────────────
@@ -1293,13 +1295,14 @@ export function deriveZeroDteSetups(
     // Far-OTM lotto cap (Phase 0 firewall): mirror of the ITM gate on the OTM side. The
     // ITM gate catches stock-replacement; this catches the egregious-lotto tail (a huge
     // far-OTM 0DTE stack that clears the premium/dominance gates on size alone but whose
-    // strike is nowhere near a same-day move). Same rejection plumbing, its own code.
-    // Generous default (SETUP_MAX_OTM_PCT) so ordinary slightly-OTM momentum is untouched.
-    if (otmPct > SETUP_MAX_OTM_PCT) {
+    // strike is nowhere near a same-day move). Discovery uses RUNNER_SETUP_MAX_OTM_PCT
+    // (20%) so 12–20% OTM names can reach commit gates; moneynessGateBlocks applies the
+    // tighter SETUP_MAX_OTM_PCT (12%) unless Vector runner relax is active.
+    if (otmPct > RUNNER_SETUP_MAX_OTM_PCT) {
       opts?.rejections?.push({
         ticker,
         gate_failed: "max_otm_pct",
-        threshold: SETUP_MAX_OTM_PCT,
+        threshold: RUNNER_SETUP_MAX_OTM_PCT,
         gross_premium: agg.gross,
         aggression: Math.round(aggression * 100) / 100,
         side_dominance: Math.round(dominance * 100) / 100,
@@ -1592,6 +1595,8 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
   origin_contributions?: Partial<Record<DiscoveryOrigin, OriginContribution>>;
   /** Regime Plane snapshot at gate time (Wave A) — pinned onto committed rows via entry_context. */
   regime_plane?: import("./regime-plane").RegimePlaneSnapshot | null;
+  /** Stamped at plan attach — G-8 chase exempt (Vector and/or amplify regime). UI + persist. */
+  plan_chase_exempt?: boolean;
   /** NH-R4 (weekend/holiday gap risk): count of non-trading calendar days the selected contract's
    *  hold spans between today and expiry (0 = normal overnight, 2 = plain weekend, 3+ = holiday
    *  weekend) — see `tradingSessionGapDays` above. EVIDENCE ONLY (calibration-first, same role as

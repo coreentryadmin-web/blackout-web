@@ -65,6 +65,15 @@ test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 9
   assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 900/);
 });
 
+test("zerodte-warm intentionally omits runWithBackgroundUwSweep (HELIX DB tape, not UW REST fan-out)", () => {
+  assert.doesNotMatch(routeSrc, /\brunWithBackgroundUwSweep\b/);
+  assert.match(
+    routeSrc,
+    /intentionally NOT wrapped in the shared background UW sweep helper/,
+    "must document why this cron is exempt from the UW sweep tag"
+  );
+});
+
 test("force=1 is rate-limited by a minimum re-run cooldown, independent of the hours gate", () => {
   assert.match(routeSrc, /RERUN_COOLDOWN_SEC = 60/, "the floor must exist and be tuned below rth-warm-leader's 4 min heal threshold");
   assert.match(routeSrc, /RERUN_COOLDOWN_KEY = "zerodte-warm:cooldown"/, "must be a key distinct from OVERLAP_LOCK_KEY");

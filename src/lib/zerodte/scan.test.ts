@@ -1,5 +1,6 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
+import { vectorPulseForDirection } from "./vector-crosslink-core";
 
 // scan.ts pulls in the FULL 0DTE provider graph (Night Hawk dossier builder, Polygon
 // bar/quote providers, the options WS socket, server-cache) to run the live scan
@@ -280,6 +281,7 @@ mock.module("../bie/vector-full-state", {
 mock.module("./vector-crosslink", {
   namedExports: {
     fetchZeroDteVectorPulseByTicker: async () => state.vectorPulseByTicker,
+    vectorPulseForDirection,
   },
 });
 mock.module("./vector-contract-resolve", {
@@ -784,17 +786,19 @@ test("persistZeroDteScan: A-tier + Vector winner pins 400% runner profile on com
   state.dailyBars.set("I:VIX", [{ t: Date.parse("2026-07-06T13:30:00Z"), o: 16.1, h: 17, l: 15.8, c: 16.5 }]);
   state.vectorPulseByTicker = {
     NVDA: {
-      premium_pct: 85,
-      peak_premium_pct: 90,
-      action_status: "still_buy",
-      is_winner: true,
-      is_runner: false,
-      side: "call",
-      direction: "long",
-      strike: 145,
-      occ: "O:NVDA260706C00145000",
-      rank: 1,
-      role: "flow-whale",
+      long: {
+        premium_pct: 85,
+        peak_premium_pct: 90,
+        action_status: "still_buy",
+        is_winner: true,
+        is_runner: false,
+        side: "call",
+        direction: "long",
+        strike: 145,
+        occ: "O:NVDA260706C00145000",
+        rank: 1,
+        role: "flow-whale",
+      },
     },
   };
 

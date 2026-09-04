@@ -7,6 +7,7 @@
 | BO-P1-0102 | P1 | Standing: RTH lifecycle sweep (`blackout:rth-lifecycle`) | cursor | QUEUED (standing) |
 | BO-P1-0103 | P2 | Standing: SEO/geo/CWV monitor | cursor | QUEUED (standing) |
 | BO-P1-0104 | P2 | Standing: CloudWatch + latency (RTH only) | cursor | QUEUED (standing) |
+| BO-P1-0105 | P1 | Standing: hourly autonomous wake checklist (`blackout:hourly`) | cursor | QUEUED (standing) |
 | BO-P2-0100 | P2 | Standing: 0DTE lane maintenance (never mark DONE) | cursor | QUEUED (standing) |
 | BO-P1-0008 | P1 | Peer review Claude cron fixes (#3468, #3469) | cursor | DONE (merged) |
 | BO-P1-0007 | P1 | PR webhook triage + peer review dispatch | cursor | DONE (#3439 merged) |

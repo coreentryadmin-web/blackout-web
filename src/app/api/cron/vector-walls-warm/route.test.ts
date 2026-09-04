@@ -65,3 +65,16 @@ test("the lock is released in a finally block so a thrown warm still frees the n
 test("the lock TTL covers maxDuration as the safety-net ceiling (240s = 2× 120s maxDuration)", () => {
   assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 240/);
 });
+
+test("vector-walls-warm intentionally omits runWithBackgroundUwSweep (Polygon-primary, not UW REST fan-out)", () => {
+  assert.doesNotMatch(
+    routeSrc,
+    /\brunWithBackgroundUwSweep\b/,
+    "must not tag — warmVectorWalls is GEX-cache/Polygon heavy; joinGexStrikeExpiryTicker is WS-only"
+  );
+  assert.match(
+    routeSrc,
+    /intentionally NOT wrapped in the shared background UW sweep helper/,
+    "must document why this cron is exempt from the UW sweep tag"
+  );
+});

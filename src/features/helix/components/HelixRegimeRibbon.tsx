@@ -54,10 +54,10 @@ export function HelixRegimeRibbon({ className }: { className?: string }) {
       <span
         className={clsx(
           "font-mono text-[10px] tabular-nums",
-          vix.change_pct >= 0 ? "text-[#ff5c78]" : "text-emerald-400"
+          vix.change_pct != null && vix.change_pct >= 0 ? "text-[#ff5c78]" : "text-emerald-400"
         )}
       >
-        {fmtPct(vix.change_pct)}
+        {vix.change_pct != null ? fmtPct(vix.change_pct) : "—"}
       </span>
     </div>
   );

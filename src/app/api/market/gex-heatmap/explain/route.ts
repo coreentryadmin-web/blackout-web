@@ -75,9 +75,12 @@ async function buildContext(
     // Defensive fallback (helper returned null on a matrix we already validated as
     // non-empty): keep the route honest with the minimal header + regime read.
     lines.push(`Ticker: ${ticker}`);
-    lines.push(
-      `Spot: ${fmtNum(hm.spot)} (${hm.change_pct >= 0 ? "+" : ""}${hm.change_pct.toFixed(2)}% on the day)`
-    );
+    const chg = hm.change_pct;
+    if (chg != null && Number.isFinite(chg)) {
+      lines.push(`Spot: ${fmtNum(hm.spot)} (${chg >= 0 ? "+" : ""}${chg.toFixed(2)}% on the day)`);
+    } else {
+      lines.push(`Spot: ${fmtNum(hm.spot)} (day change unavailable)`);
+    }
     lines.push(`GEX regime read: ${hm.gex.regime.read}`);
   }
 

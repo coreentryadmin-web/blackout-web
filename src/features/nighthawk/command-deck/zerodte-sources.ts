@@ -83,6 +83,7 @@ function sourceFrom(
           heatState,
           setupPlanEarly?.entry_status === "MOVED",
           Boolean(setupPlanEarly?.illiquid),
+          Boolean((s as { plan_chase_exempt?: boolean })?.plan_chase_exempt),
         ));
   // Plan quote (WATCH setups): the board carries plan.mark/bid/ask/occ on every enriched find.
   // Without plumbing these, the right-rail mark/book stay "—" until a fresh SSE tick — and after

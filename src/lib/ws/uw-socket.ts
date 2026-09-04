@@ -70,6 +70,7 @@ import {
   warmClusterHaltsFromRedis,
 } from "@/lib/ws/halt-cluster-store";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { inOptionsMarketHours } from "./options-socket";
 import {
   alertWsLeaderFailClosedOnce,
@@ -966,7 +967,7 @@ export function hasLiveGexStrikeExpiry(ticker: string): boolean {
   const sym = ticker.toUpperCase();
   const state = gexStrikeExpiryByTicker.get(sym);
   if (!state || state.cells.size === 0) return false;
-  return Date.now() - state.updatedAt <= DYNAMIC_GEX_FRESHNESS_MS;
+  return isWsUpdatedAtFresh(state.updatedAt, DYNAMIC_GEX_FRESHNESS_MS);
 }
 
 /** Prune dynamic subscriptions that haven't been accessed recently. */

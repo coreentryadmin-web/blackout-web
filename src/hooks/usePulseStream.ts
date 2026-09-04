@@ -57,7 +57,7 @@ export function overlayFromStream(
     spx_change_pct: pulseChangePctFromPriorClose(
       price,
       base?.prior_close,
-      snap.spx?.change_pct ?? base?.spx_change_pct ?? 0
+      snap.spx?.change_pct ?? base?.spx_change_pct ?? null
     ),
     vix: vix ?? base?.vix ?? null,
     // VIX is left transported: SpxDeskPulse carries no VIX prior close, so there is nothing to

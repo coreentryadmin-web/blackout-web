@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveRunnerProfile, projectRunnerProfileForCandidate, RUNNER_TARGET_PCT_A, RUNNER_TARGET_PCT_VECTOR, RUNNER_TARGET_PCT_B_RUNNER } from "./runner-profile";
-import type { ZeroDteVectorPulse } from "./vector-crosslink";
+import type { ZeroDteVectorPulse } from "./vector-crosslink-core";
 
 const winnerPulse = (dir: "long" | "short"): ZeroDteVectorPulse => ({
   premium_pct: 80,

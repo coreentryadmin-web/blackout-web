@@ -36,6 +36,7 @@ import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
 import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
 import { fetchUwIvRank } from "@/lib/providers/unusual-whales";
 import { todayEt } from "@/lib/et-date";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { buildSwingRollPlan } from "@/lib/swing/roll-plan";
 import { modelRiskUsd, isEventArchetype, type CommitBookPosition } from "@/lib/swing/commit";
 import { resolveProductionPortfolioBudget } from "@/lib/swing/swing-portfolio-budget";
@@ -361,7 +362,7 @@ export async function GET(req: NextRequest) {
   // origin timeout when the open book is non-empty (ops #1364: market_hours_stale with no fresh row).
   // Mirror coaching-alerts / vector-universe-snapshot: handshake in seconds, refresh in after().
   const dispatchRefresh = () => {
-    void runSwingActiveRefreshCron(started).catch((error) => {
+    void runWithBackgroundUwSweep(() => runSwingActiveRefreshCron(started)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[cron/swing-active-refresh] background refresh REJECTED: ${detail}`);
     });

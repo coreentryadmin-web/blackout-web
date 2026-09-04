@@ -43,8 +43,14 @@ import { commitAuthorizedBySourceHealth, type SourceHealthState } from "@/lib/ws
 import { EARLY_ENTRY_WINDOW_END_ET_MINUTES } from "./confluence";
 import { evaluateMacroHardBlock, hasHighImpactMacroEvent, type MacroEventLike } from "@/lib/macro-hard-block";
 import { condorLiquidityGateBlocks, condorRangeBreaking, type CondorPlan } from "./condor";
-import type { ZeroDteVectorPulse } from "./vector-crosslink";
-import { vectorExemptsG17PrimeBand, vectorPulseAlignsDirection } from "./vector-commit-boost";
+import type { ZeroDteVectorPulse } from "./vector-crosslink-core";
+import {
+  vectorExemptsG17PrimeBand,
+  vectorExemptsG19TopBand,
+  vectorExemptsPlanChase,
+  vectorPulseAlignsDirection,
+} from "./vector-commit-boost";
+import { planChaseExempt, planG19Exempt, type PlanChaseContext } from "./chase-exempt";
 
 /** Read a positive-integer tuning knob from the environment, falling back to `def` when unset,
  *  non-numeric, or ≤0. Evaluated ONCE at module load so the gate FUNCTIONS stay pure (they only
@@ -433,6 +439,8 @@ export type ZeroDteGateInput = {
   contractHorizon?: "ZERO_DTE" | "ONE_DTE" | "WEEKLY_FALLBACK" | null;
   /** G-10: name's own VWAP/5m trend opposes the play (intraday.ts). */
   intradayConflict?: boolean;
+  /** Play direction vs SPY tape — regime chase / G-19 relief on amplify days. */
+  market_aligned?: boolean | null;
   /** G-11: UW trading halt on the underlying. */
   halted?: boolean;
   /** Phase-0 firewall (D2): TRUE only when the trading-halt FEED is cold — BOTH the UW and LULD
@@ -498,9 +506,26 @@ export type ZeroDteGateInput = {
   vector_g17_exempt?: boolean;
   /** Extra confluence credit from Vector alignment (0 or 1). */
   vector_confluence_credit?: number;
+  /** Market State Engine structure at scan time — amplify chase / G-19 regime relief. */
+  regime_structure?: string | null;
+  market_state_confidence?: number | null;
   /** Override far-OTM lotto cap (runner relax). Defaults to SETUP_MAX_OTM_PCT. */
   max_otm_pct?: number | null;
 };
+
+/** Build chase-exempt context from a gate evaluation input. */
+export function planChaseContextFromGateInput(input: ZeroDteGateInput): PlanChaseContext {
+  return {
+    direction: input.direction,
+    score: input.score,
+    vector_pulse: input.vector_pulse,
+    discovery_origin: input.discovery_origin,
+    gamma_regime: input.gamma_regime ?? null,
+    market_aligned: input.market_aligned ?? null,
+    regime_structure: input.regime_structure ?? null,
+    market_state_confidence: input.market_state_confidence,
+  };
+}
 
 /**
  * Evaluate the hard gate stack for ONE fresh (not-yet-committed) setup.
@@ -665,7 +690,7 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
 
   // G-19 — F-5 top-band inversion hard block (85+ measured 33% WR vs 63.6% at 75–84).
   // FLOW-origin only — BREAKOUT/PIN score on independent scales where 85+ is normal.
-  // Vector WINNER alignment exempts — the desk already proved the name out.
+  // Vector winner OR runner (≥68 score) alignment exempts — same predicate as G-17/G-18.
   const g19Origins = input.discovery_origin ?? [];
   const g19FlowBacked = g19Origins.length === 0 || g19Origins.includes("FLOW");
   if (
@@ -673,16 +698,22 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     g19FlowBacked &&
     input.score >= 85 &&
     !(
-      input.vector_pulse &&
-      vectorPulseAlignsDirection(input.direction, input.vector_pulse) &&
-      input.vector_pulse.is_winner
+      input.vector_g17_exempt === true ||
+      vectorExemptsG19TopBand(input.direction, input.score, input.vector_pulse) ||
+      planG19Exempt(input.direction, input.score, input.vector_pulse, {
+        discovery_origin: input.discovery_origin,
+        gamma_regime: input.gamma_regime ?? null,
+        market_aligned: input.market_aligned ?? null,
+        regime_structure: input.regime_structure ?? null,
+        market_state_confidence: input.market_state_confidence,
+      })
     )
   ) {
     blocks.push({
       code: "score_top_band",
       reason:
         `Score ${Math.round(input.score)} sits in the 85+ band where measured WR inverted ` +
-        "(33% vs 63.6% prime band, F-5) — only Vector-confirmed winners commit here.",
+        "(33% vs 63.6% prime band, F-5) — only Vector-confirmed winners/runners commit here.",
       threshold: 85,
       unlock_et: null,
     });
@@ -955,7 +986,11 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   } else if (!input.deferPlanQualityGates) {
     // G-8/G-9 — plan quality: no chase (MOVED), no untradeable spread (illiquid), no
     // plan without a real quote or fill. UI SKIP already hid these; persist must match.
-    blocks.push(...planQualityGateBlocks(input.plan ?? null));
+    blocks.push(
+      ...planQualityGateBlocks(input.plan ?? null, {
+        chaseExempt: planChaseExempt(planChaseContextFromGateInput(input)),
+      })
+    );
 
     // G-10 — intraday structure conflict: DEMOTED back to score-only (2026-07-27).
     // Evidence: flow precedes trend changes, and the hard block (promoted 2026-07-18) was
@@ -1121,8 +1156,18 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   };
 }
 
+export type PlanQualityGateOpts = {
+  /** Vector/regime-confirmed momentum — commit at live mark, skip G-8 chase block. */
+  vectorChaseExempt?: boolean;
+  /** Alias — same as vectorChaseExempt (regime widen included). */
+  chaseExempt?: boolean;
+};
+
 /** G-8/G-9 plan-quality blocks — pure, unit-testable, reused by persist defense. */
-export function planQualityGateBlocks(plan: ContractPlan | null): ZeroDteGateBlock[] {
+export function planQualityGateBlocks(
+  plan: ContractPlan | null,
+  opts?: PlanQualityGateOpts
+): ZeroDteGateBlock[] {
   const blocks: ZeroDteGateBlock[] = [];
   if (plan == null) {
     blocks.push({
@@ -1142,7 +1187,7 @@ export function planQualityGateBlocks(plan: ContractPlan | null): ZeroDteGateBlo
       unlock_et: null,
     });
   }
-  if (plan.entry_status === "MOVED") {
+  if (plan.entry_status === "MOVED" && !(opts?.vectorChaseExempt || opts?.chaseExempt)) {
     const pct = plan.vs_flow_pct != null ? `${Math.round(plan.vs_flow_pct)}%` : `≥${CHASE_PCT}%`;
     blocks.push({
       code: "plan_moved",
@@ -1284,10 +1329,11 @@ const PLAN_QUALITY_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
 /** Re-apply G-8/G-9 after thesis-first deferred plan attach (scan.ts). */
 export function refreshPlanQualityGateBlocks(
   gate: ZeroDteGateVerdict,
-  plan: ContractPlan | null
+  plan: ContractPlan | null,
+  opts?: PlanQualityGateOpts
 ): ZeroDteGateVerdict {
   const nonPlan = gate.blocks.filter((b) => !PLAN_QUALITY_GATE_CODES.has(b.code));
-  const blocks = [...nonPlan, ...planQualityGateBlocks(plan)];
+  const blocks = [...nonPlan, ...planQualityGateBlocks(plan, opts)];
   return {
     ...gate,
     verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
@@ -1296,8 +1342,11 @@ export function refreshPlanQualityGateBlocks(
 }
 
 /** Belt-and-suspenders: true when a fresh find must NOT write a ledger row. */
-export function freshCommitBlockedByPlan(plan: ContractPlan | null | undefined): boolean {
-  return planQualityGateBlocks(plan ?? null).length > 0;
+export function freshCommitBlockedByPlan(
+  plan: ContractPlan | null | undefined,
+  opts?: PlanQualityGateOpts
+): boolean {
+  return planQualityGateBlocks(plan ?? null, opts).length > 0;
 }
 
 /**

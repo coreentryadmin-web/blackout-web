@@ -443,7 +443,7 @@ const signalDeskStub = (): SpxDeskPayload => ({
   as_of: new Date().toISOString(),
   source: "pulse+flow",
   price: 0,
-  spx_change_pct: 0,
+  spx_change_pct: null,
   vix: null,
   vix_change_pct: null,
   above_vwap: false,

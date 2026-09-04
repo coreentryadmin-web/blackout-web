@@ -49,6 +49,7 @@
 ```bash
 npm run blackout:rth-lifecycle          # full autonomous sweep
 npm run validate:rth-open               # cron + socket + deploy
+node scripts/audit/data-validator.mjs   # pin direction + quote header % (RTH)
 npm run counterfactual:0dte-g18-g19     # G-18/G-19 report (needs Clerk)
 npm run validate:rth-four-engines       # SPX/NH/Vector/0DTE play paths
 npm run validate:platform-integrity     # expect 0 warn on SPY/QQQ strikes
@@ -69,6 +70,22 @@ npm run validate:seo-cwv                # needs PAGESPEED_API_KEY
 - `/dashboard`, `/heatmap`, `/nighthawk`, `/vector`, SPX Slayer rail
 - Admin `/admin` → System Vitals, play engine heartbeat
 - Meridian earnings card — no implied move after print
+
+---
+
+## Session log — 2026-09-04 RTH (09:30+ ET)
+
+| Time ET | Cycle | Result | Notes |
+|---------|-------|--------|-------|
+| 09:22–09:44 | Monitors 1–5 | 3/3 PASS | Public only — AWS creds not in agent env |
+| 09:44 | Lifecycle | GREEN | ops:collect, deploy, api-auth, platform-integrity, seo, rth-open |
+| 09:44 | zerodte-logic | 10/11 | Unit/pure pass; live board SKIP (no Clerk/CRON) |
+| 09:44 | homepage | 0 issues | Playwright marketing links OK |
+| — | **Branch** | `6d867a282` | G-19 runner, OTM deferral, direction pulse, tier promote — **not deployed** |
+
+**Blocker:** Inject `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` + `AWS_REGION=us-east-1` into Cloud Agent → `eval "$(node scripts/bootstrap-audit-secrets.mjs --export)"` → full four-engine audits unlock.
+
+**Monitors running:** `rth-live-monitor` (5m public), `rth-secrets-wait` (polls for SM creds).
 
 ---
 

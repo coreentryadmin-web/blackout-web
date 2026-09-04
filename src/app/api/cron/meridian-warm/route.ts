@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { warmMeridianCaches } from "@/lib/meridian/meridian-snapshot";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 
@@ -89,7 +90,7 @@ export async function GET(req: NextRequest) {
   }
 
   const dispatchWarm = () => {
-    void runMeridianWarm(started).catch((error) => {
+    void runWithBackgroundUwSweep(() => runMeridianWarm(started)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[cron/meridian-warm] background warm REJECTED: ${detail}`);
     });

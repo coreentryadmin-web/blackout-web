@@ -46,6 +46,14 @@ test("the lock TTL matches the cron's own stale_after_min safety net (10 min = 6
   assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 600/);
 });
 
+test("meridian-warm background dispatch is wrapped in runWithBackgroundUwSweep", () => {
+  assert.match(
+    routeSrc,
+    /import \{[^}]*\brunWithBackgroundUwSweep\b[^}]*\} from "@\/lib\/providers\/uw-rate-limiter"/
+  );
+  assert.match(routeSrc, /runWithBackgroundUwSweep\(\(\) => runMeridianWarm\(started\)\)/);
+});
+
 test("force=1 is rate-limited by a minimum re-run cooldown, independent of the hours gate", () => {
   assert.match(routeSrc, /RERUN_COOLDOWN_SEC = 60/, "the floor must exist and be tuned below rth-warm-leader's 5 min heal threshold");
   assert.match(routeSrc, /RERUN_COOLDOWN_KEY = "meridian-warm:cooldown"/, "must be a key distinct from OVERLAP_LOCK_KEY");

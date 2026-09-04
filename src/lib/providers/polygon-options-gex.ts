@@ -477,7 +477,7 @@ export type GexHeatmap = {
   underlying: string;
   spot: number;
   spot_source?: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic";
-  change_pct: number;
+  change_pct: number | null;
   chain_truncated?: boolean;
   asof: string;
   /**
@@ -1171,6 +1171,14 @@ const GEX_INDEX_WS_STALE_MS = (() => {
   return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 120_000;
 })();
 
+/** Ordinary clock skew — a future WS `updatedAt` must not read as infinitely fresh. */
+const GEX_WS_FUTURE_TOLERANCE_MS = 5_000;
+
+function gexWsTickFresh(updatedAt: number, now = Date.now()): boolean {
+  const ageMs = now - updatedAt;
+  return ageMs >= -GEX_WS_FUTURE_TOLERANCE_MS && Math.max(0, ageMs) < GEX_INDEX_WS_STALE_MS;
+}
+
 /**
  * Best-effort live WS spot for an index options root (only I:SPX / I:VIX are on the indices socket).
  *
@@ -1195,7 +1203,7 @@ async function liveWsIndexSpot(
     const { indexStore } = await import("../ws/polygon-socket");
     const ws = indexStore[root];
     if (!ws || !(ws.price > 0) || !ws.updatedAt) return null;
-    if (now - ws.updatedAt >= GEX_INDEX_WS_STALE_MS) return null;
+    if (!gexWsTickFresh(ws.updatedAt, now)) return null;
     const changeAuthoritative = ws.open_source === "rest";
     return {
       price: ws.price,
@@ -1218,7 +1226,7 @@ async function liveWsStockSpot(
     const { getStockLiveCandle } = await import("../ws/stock-candle-store");
     const snap = getStockLiveCandle(ticker);
     if (!snap.current || !(snap.current.close > 0)) return null;
-    if (now - snap.updatedAt >= GEX_INDEX_WS_STALE_MS) return null;
+    if (!snap.updatedAt || !gexWsTickFresh(snap.updatedAt, now)) return null;
     return { price: snap.current.close };
   } catch {
     return null;
@@ -1244,7 +1252,7 @@ async function liveWsStockSpot(
  */
 async function fetchSpotFromPrevBar(
   symbol: string
-): Promise<{ price: number; change_pct: number } | null> {
+): Promise<{ price: number; change_pct: null } | null> {
   try {
     const { fetchPreviousDayBar } = await import("./polygon-largo");
     // Last-resort previous-session close — not a live quote. Allow ISR on routes (homepage
@@ -1252,7 +1260,8 @@ async function fetchSpotFromPrevBar(
     // was forcing fully dynamic renders (FINDINGS 2026-08-30 homepage ISR).
     const bar = await fetchPreviousDayBar(symbol, { next: { revalidate: 3600 } });
     if (!bar || !(bar.c > 0)) return null;
-    return { price: bar.c, change_pct: 0 };
+    // Prior close is not today's session change — never fabricate 0%.
+    return { price: bar.c, change_pct: null };
   } catch {
     return null;
   }
@@ -1266,7 +1275,7 @@ async function fetchSpotFromPrevBar(
 async function resolveSpotSnapshotLastResort(
   optionsRoot: string,
   isIndex: boolean
-): Promise<{ price: number; change_pct: number; source: "prev_bar" | "synthetic" } | null> {
+): Promise<{ price: number; change_pct: number | null; source: "prev_bar" | "synthetic" } | null> {
   if (isIndex) {
     // I:SPX prev is often plan-gated; SPY prev × 10 tracks within ~0.4% (data-integrity C4).
     if (optionsRoot === "I:SPX") {
@@ -1284,7 +1293,7 @@ async function resolveSpotSnapshotLastResort(
 
 async function resolveSpotSnapshot(
   optionsRoot: string
-): Promise<{ price: number; change_pct: number; source: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic" } | null> {
+): Promise<{ price: number; change_pct: number | null; source: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic" } | null> {
   const root = optionsRoot.toUpperCase();
   const isIndex = root.startsWith("I:") || Object.values(INDEX_ROOTS).includes(root);
 
@@ -1304,7 +1313,7 @@ async function resolveSpotSnapshot(
       const restSnap = await fetchIndexSnapshot(root).catch(() => null);
       return {
         price: ws.price,
-        change_pct: ws.change_pct ?? rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? 0,
+        change_pct: ws.change_pct ?? rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? null,
         source: "ws",
       };
     }
@@ -1327,7 +1336,7 @@ async function resolveSpotSnapshot(
       const restSnap = await fetchStockSnapshot(root).catch(() => null);
       return {
         price: ws.price,
-        change_pct: rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? 0,
+        change_pct: rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? null,
         source: "ws",
       };
     }
@@ -1339,7 +1348,7 @@ async function resolveSpotSnapshot(
     : await fetchStockSnapshot(root).catch(() => null);
   const restPrice = snap && snap.price > 0 ? snap.price : 0;
   if (restPrice > 0) {
-    return { price: restPrice, change_pct: snap?.change_pct ?? 0, source: "rest" };
+    return { price: restPrice, change_pct: snap?.change_pct ?? null, source: "rest" };
   }
   const prevBar = await resolveSpotSnapshotLastResort(root, isIndex);
   if (prevBar && prevBar.price > 0) return prevBar;
@@ -2952,7 +2961,7 @@ export async function fetchGexHeatmap(
 async function buildGexHeatmapFromUwStrikeExposures(
   root: string,
   spot: number,
-  changePct: number,
+  changePct: number | null,
   now: number,
   cacheKey: string,
   ttlMs: number
@@ -3151,14 +3160,14 @@ async function buildGexHeatmapUncached(
   if (!(spot > 0)) {
     return emptyHeatmap(root, {
       spot: 0,
-      changePct: 0,
+      changePct: null,
       now,
       cacheKey,
       ttlMs: Math.min(ttlMs, EMPTY_SPOT_NEGATIVE_TTL_MS),
       spotSource: undefined,
     });
   }
-  const changePct = snap?.change_pct ?? 0;
+  const changePct = snap?.change_pct ?? null;
 
   // Feed the per-ticker fast-move ring on every fresh PRESET compute so isHeatmapFastMove can
   // actually fire on the next cache-read; without this the ring stays empty and the bypass above
@@ -3800,14 +3809,14 @@ async function buildGexHeatmapUncached(
  */
 function emptyHeatmap(
   underlying: string,
-  ctx?: { spot?: number; changePct?: number; now?: number; cacheKey?: string; ttlMs?: number; spotSource?: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic" }
+  ctx?: { spot?: number; changePct?: number | null; now?: number; cacheKey?: string; ttlMs?: number; spotSource?: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic" }
 ): GexHeatmap {
   const calculatedAtMs = ctx?.now ?? Date.now();
   const calculatedAt = new Date(calculatedAtMs).toISOString();
   const heatmap: GexHeatmap = {
     underlying,
     spot: ctx?.spot ?? 0,
-    change_pct: ctx?.changePct ?? 0,
+    change_pct: ctx?.changePct ?? null,
     asof: calculatedAt,
     calculation_id: `${underlying}:${calculatedAtMs}`,
     calculated_at: calculatedAt,

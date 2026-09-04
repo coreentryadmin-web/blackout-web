@@ -11,6 +11,7 @@ import {
 import { askPctFromRaw } from "@/lib/flow-raw-fields";
 import { pulseChangePctFromPriorClose } from "./spx-change-anchor";
 import { rebaseChangePct } from "@/lib/providers/change-pct";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { serverCache } from "@/lib/server-cache";
 // Pure numeric helpers (round + GEX staleness + pulse rounding) live in a server-only-free module
 // so they can be unit-tested in isolation. See spx-desk-numerics.ts.
@@ -463,6 +464,15 @@ const INDEX_STORE_STALE_MS = (() => {
   return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 120_000;
 })();
 
+/** Clock-skew guard — a future `updatedAt` must not read as infinitely fresh. */
+function indexWsFresh(updatedAt: number, now = Date.now()): boolean {
+  return isWsUpdatedAtFresh(updatedAt, INDEX_STORE_STALE_MS, now);
+}
+
+function uwWsStoreFresh(updatedAt: number, staleMs: number, now = Date.now()): boolean {
+  return isWsUpdatedAtFresh(updatedAt, staleMs, now);
+}
+
 let cachedDarkPool: { data: DarkPoolSnapshot | null; fetchedAt: number; key: string } = {
   data: null,
   fetchedAt: 0,
@@ -473,7 +483,7 @@ async function resolveMarketTide(): Promise<Awaited<ReturnType<typeof fetchUwMar
   if (!uwConfigured()) return null;
   try {
     const { tideStore } = await import("@/lib/ws/uw-socket");
-    if (Date.now() - tideStore.updatedAt < TIDE_STALE_MS) {
+    if (uwWsStoreFresh(tideStore.updatedAt, TIDE_STALE_MS)) {
       return tideStore;
     }
   } catch {
@@ -497,7 +507,7 @@ async function resolveFlow0dte(ticker = "SPX"): Promise<{
   try {
     const { getIntervalFlowForTicker } = await import("@/lib/ws/uw-socket");
     const snap = getIntervalFlowForTicker(ticker);
-    if (Date.now() - snap.updatedAt < INTERVAL_FLOW_WS_STALE_MS && snap.rows.length) {
+    if (uwWsStoreFresh(snap.updatedAt, INTERVAL_FLOW_WS_STALE_MS) && snap.rows.length) {
       let calls = 0;
       let puts = 0;
       for (const row of snap.rows) {
@@ -521,7 +531,7 @@ async function resolveDarkPool(
   const now = Date.now();
   try {
     const { darkPoolStore } = await import("@/lib/ws/uw-socket");
-    if (Date.now() - darkPoolStore.updatedAt < DARK_POOL_WS_STALE_MS && darkPoolStore.data) {
+    if (uwWsStoreFresh(darkPoolStore.updatedAt, DARK_POOL_WS_STALE_MS) && darkPoolStore.data) {
       return darkPoolStore.data;
     }
   } catch {
@@ -562,7 +572,7 @@ function mergeWsIndexSnapshots(
     // Breadth indices (TICK/ADD) can be negative; price indices must stay > 0.
     if (
       ws?.updatedAt &&
-      now - ws.updatedAt < INDEX_STORE_STALE_MS &&
+      indexWsFresh(ws.updatedAt, now) &&
       (breadthIndex || ws.price > 0)
     ) {
       // FIX-A: the live WS PRICE is always preferred (sub-second fresh). For the day CHANGE%,
@@ -579,7 +589,7 @@ function mergeWsIndexSnapshots(
       // returns null only when that reference can't be recovered, where the raw REST value stands.
       const restSnap = out[sym];
       const restChangePct =
-        rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? 0;
+        rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? null;
       out[sym] = {
         symbol: sym,
         price: ws.price,
@@ -620,7 +630,7 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
         const breadthIndex = sym === TICK || sym === ADD;
         if (
           e?.updatedAt &&
-          now - e.updatedAt < INDEX_STORE_STALE_MS &&
+          indexWsFresh(e.updatedAt, now) &&
           (breadthIndex || (e.price ?? 0) > 0)
         ) {
           // FIX-A applies HERE TOO, and this is where it was being defeated.
@@ -644,7 +654,7 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
           base[sym] = {
             symbol: sym,
             price: e.price!,
-            change_pct: pulseChange ?? 0,
+            change_pct: pulseChange,
             // The pulse carries no prior close; the REST lane below supplies the authoritative
             // percentage for anything left in `unresolvedChange`.
             prev_close: null,
@@ -670,7 +680,7 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
     const ws = indexStore[sym];
     return (
       !!ws?.updatedAt &&
-      now - ws.updatedAt < INDEX_STORE_STALE_MS &&
+      indexWsFresh(ws.updatedAt, now) &&
       ws.price > 0 &&
       ws.open_source === "rest"
     );
@@ -707,7 +717,7 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
       [SPX]: {
         symbol: SPX,
         price: lastPulseForSignals.price,
-        change_pct: lastPulseForSignals.spx_change_pct ?? 0,
+        change_pct: lastPulseForSignals.spx_change_pct ?? null,
         prev_close: lastPulseForSignals.prior_close ?? null,
       },
     };
@@ -915,7 +925,7 @@ export type SpxDeskPayload = {
   as_of: string;
   source: string;
   price: number;
-  spx_change_pct: number;
+  spx_change_pct: number | null;
   vix: number | null;
   vix_change_pct: number | null;
   above_vwap: boolean;
@@ -1389,7 +1399,7 @@ function emptyPayload(asOf: string): SpxDeskPayload {
     as_of: asOf,
     source: "none",
     price: 0,
-    spx_change_pct: 0,
+    spx_change_pct: null,
     vix: null,
     vix_change_pct: null,
     above_vwap: false,
@@ -1907,7 +1917,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     available: false,
     polled_at: polledAt,
     price: 0,
-    spx_change_pct: 0,
+    spx_change_pct: null,
     vix: null,
     vix_change_pct: null,
     above_vwap: false,
@@ -2103,7 +2113,7 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
     available: false,
     polled_at: polledAt,
     price: 0,
-    spx_change_pct: 0,
+    spx_change_pct: null,
     vix: null,
     vix_change_pct: null,
     above_vwap: false,

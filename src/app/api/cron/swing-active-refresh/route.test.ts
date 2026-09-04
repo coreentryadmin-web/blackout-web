@@ -22,3 +22,11 @@ test("swing-active-refresh dispatches refresh in after() and returns 202", () =>
     "logCronRun must not await the heavy refresh inline"
   );
 });
+
+test("swing-active-refresh background dispatch is wrapped in runWithBackgroundUwSweep", () => {
+  assert.match(
+    routeSrc,
+    /import \{[^}]*\brunWithBackgroundUwSweep\b[^}]*\} from "@\/lib\/providers\/uw-rate-limiter"/
+  );
+  assert.match(routeSrc, /runWithBackgroundUwSweep\(\(\) => runSwingActiveRefreshCron\(started\)\)/);
+});

@@ -140,13 +140,23 @@ import {
   refreshGovernorCycleBlocks,
   recentNighthawkTake,
 } from "./gates";
-import { fetchZeroDteVectorPulseByTicker, type ZeroDteVectorPulse } from "./vector-crosslink";
+import {
+  fetchZeroDteVectorPulseByTicker,
+  vectorPulseForDirection,
+  type ZeroDteVectorPulse,
+  type ZeroDteVectorPulseByTicker,
+} from "./vector-crosslink";
 import {
   fetchChainsForVectorRank,
   resolveZeroDteContractAttach,
   vectorRankContractsEnabled,
 } from "./vector-contract-resolve";
 import { computeVectorGateBoost } from "./vector-commit-boost";
+import {
+  effectiveChasePct,
+  planChaseExempt,
+  type PlanChaseContext,
+} from "./chase-exempt";
 import { resolveRunnerProfile, effectiveMaxOtmPct, vectorRunnerOtmRelax } from "./runner-profile";
 import { buildRegimePlaneSnapshot, inferRegimeGexQuality } from "./regime-plane";
 import {
@@ -560,13 +570,19 @@ export async function scanZeroDteBoard(flags?: {
 
   const boardTickers = [...new Set(setups.map((s) => s.ticker.toUpperCase()))];
   const vectorPulseByTicker = await fetchZeroDteVectorPulseByTicker(todayEt(), boardTickers).catch(
-    () => ({} as Record<string, ZeroDteVectorPulse>)
+    (err) => {
+      console.warn(
+        `[zerodte-scan] Vector pulse fetch failed — alignment/boost/runner rails disabled this cycle:`,
+        err
+      );
+      return {} as ZeroDteVectorPulseByTicker;
+    }
   );
 
   const thesisEnv = thesisFirstEnv();
   const thesisLive = thesisEnv.enabled;
   if (!thesisLive) {
-    await attachContractPlans(setups, vectorPulseByTicker);
+    await attachContractPlans(setups, vectorPulseByTicker, marketState);
   }
   const chainReceivedAt = Date.now();
   const tape = await attachIntradayEdge(setups);
@@ -613,13 +629,14 @@ export async function scanZeroDteBoard(flags?: {
     tape.bias,
     tape.biasAsOfMs,
     nowEtMinutes,
-    vectorPulseByTicker
+    vectorPulseByTicker,
+    marketState
   );
 
   // Live thesis-first: contract engine picks expression AFTER thesis + gates + Cortex.
   if (thesisLive) {
     await attachThesisContractPlans(setups);
-    await attachContractPlans(setups, vectorPulseByTicker);
+    await attachContractPlans(setups, vectorPulseByTicker, marketState);
     const committedLedger = dbConfigured()
       ? new Set(
           (await fetchZeroDteSetupLog(todayEt()).catch(() => [])).map((r) => r.ticker.toUpperCase())
@@ -630,14 +647,27 @@ export async function scanZeroDteBoard(flags?: {
     for (const s of setups) {
       if (committedLedger.has(s.ticker.toUpperCase())) continue;
       if (s.gate) {
-        s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null);
+        const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+        const chaseCtx: PlanChaseContext = {
+          direction: s.direction,
+          score: s.score,
+          vector_pulse: pulse,
+          discovery_origin: s.discovery_origin,
+          gamma_regime: s.gamma_regime ?? null,
+          market_aligned: s.market_aligned ?? null,
+          regime_structure: marketState?.regime_structure ?? null,
+          market_state_confidence: marketState?.confidence,
+        };
+        const planGateOpts = { chaseExempt: planChaseExempt(chaseCtx) };
+        s.plan_chase_exempt = planGateOpts.chaseExempt;
+        s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null, planGateOpts);
         s.gate = refreshMoneynessGateBlocks(
           s.gate,
           s.otm_pct ?? null,
           s.play_type === "CONDOR",
           {
             maxOtmPct: effectiveMaxOtmPct(
-              vectorRunnerOtmRelax(s.direction, s.score, vectorPulseByTicker[s.ticker.toUpperCase()] ?? null)
+              vectorRunnerOtmRelax(s.direction, s.score, vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction))
             ),
           }
         );
@@ -787,7 +817,8 @@ async function attachGateVerdicts(
   bias: MarketBias | null,
   biasAsOfMs: number | null,
   nowEtMinutes: number,
-  vectorPulseByTicker: Record<string, ZeroDteVectorPulse> = {}
+  vectorPulseByTicker: ZeroDteVectorPulseByTicker = {},
+  marketState?: MarketStateSnapshot
 ): Promise<{
   governorPremiumAtRisk: number;
   governorSnapshot: GovernorSnapshot | null;
@@ -997,7 +1028,7 @@ async function attachGateVerdicts(
   const committedThisCycle: Array<{ ticker: string; direction: "long" | "short" }> = [];
   for (const s of setups) {
     if (committed.has(s.ticker.toUpperCase())) continue;
-    const pulse = vectorPulseByTicker[s.ticker.toUpperCase()] ?? null;
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
     const boost = computeVectorGateBoost(s.direction, s.score, pulse);
     const boostedScore = boost.score_bump > 0 ? Math.min(100, Math.round(s.score + boost.score_bump)) : s.score;
     if (boost.score_bump > 0) s.score = boostedScore;
@@ -1044,6 +1075,9 @@ async function attachGateVerdicts(
       // actually happened, exactly like refreshPlanQualityGateBlocks does for G-8/G-9.
       otmPct: s.otm_pct ?? null,
       intradayConflict: s.intraday_conflict,
+      market_aligned: s.market_aligned ?? null,
+      regime_structure: marketState?.regime_structure ?? null,
+      market_state_confidence: marketState?.confidence,
       // G-11 for EVERY committable rank: prefer the cheap batch halt/earnings reads
       // (computed for all fresh tickers above) over the dossier-only flags that ranks
       // 6-10 never receive, so no halted / earnings-today name commits regardless of rank.
@@ -1141,7 +1175,8 @@ export function computeQuoteAgeMs(
  *  cards (plan stays null), never a stalled scan. */
 async function attachContractPlans(
   setups: EnrichedZeroDteSetup[],
-  vectorPulseByTicker: Record<string, ZeroDteVectorPulse> = {}
+  vectorPulseByTicker: ZeroDteVectorPulseByTicker = {},
+  marketState?: MarketStateSnapshot
 ): Promise<void> {
   const rankEnabled = vectorRankContractsEnabled();
   const chains =
@@ -1158,7 +1193,7 @@ async function attachContractPlans(
     // forcing it through buildOcc/buildContractPlan would fabricate a one-legged plan the gate stack
     // and grader must never see. Its liquidity is gated on condor_plan instead (gates.ts).
     if (s.play_type === "CONDOR") continue;
-    const pulse = vectorPulseByTicker[s.ticker.toUpperCase()] ?? null;
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
     const chain = chains?.get(s.ticker.toUpperCase()) ?? null;
     const attached = resolveZeroDteContractAttach(s, pulse, chain);
     if (attached) {
@@ -1221,29 +1256,35 @@ async function attachContractPlans(
     if (refreshed) Object.assign(s, refreshed);
     // No live quote AND no real fill → no plan (evidence only) — never a guess.
     if (!snap?.mark && s.top_strike_avg_fill == null) continue;
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+    const chaseCtx: PlanChaseContext = {
+      direction: s.direction,
+      score: s.score,
+      vector_pulse: pulse,
+      discovery_origin: s.discovery_origin,
+      gamma_regime: s.gamma_regime ?? null,
+      market_aligned: s.market_aligned ?? null,
+      regime_structure: marketState?.regime_structure ?? null,
+      market_state_confidence: marketState?.confidence,
+    };
+    const chasePct = effectiveChasePct(chaseCtx);
     s.plan = buildContractPlan({
       occ,
       direction: s.direction,
-      // s.underlying_price is now the REFRESHED live mark when the batch carried one (see above),
-      // so the plan geometry is priced off the freshest underlying rather than the flow print's.
       price: s.underlying_price ?? snap?.underlyingPrice ?? null,
       flowAvgFill: s.top_strike_avg_fill,
       bid: snap?.bid ?? null,
       ask: snap?.ask ?? null,
       mark: snap?.mark ?? null,
-      // WS-04: resting quote sizes ARE available on OptionSnapshot — thread them through so the
-      // min-size predicate (conditional-on-availability) can enforce.
       bidSize: snap?.bidSize ?? null,
       askSize: snap?.askSize ?? null,
-      // G-9 freshness = observation clock first (when WE received this book), not the exchange
-      // last_quote.last_updated. Live REST often stamps prior close on last_updated while still
-      // returning a tradeable NBBO — using that alone produced false plan_quote_stale blocks
-      // (FINDINGS 2026-07-29). Fall back to quoteUpdatedMs only when observedAtMs is absent.
       quoteAgeMs: computeQuoteAgeMs(snap?.observedAtMs ?? snap?.quoteUpdatedMs, nowMs),
       keySupports: s.key_supports,
       keyResistances: s.key_resistances,
       vwap: s.vwap,
+      chasePct,
     });
+    s.plan_chase_exempt = planChaseExempt(chaseCtx);
   }
 }
 
@@ -1285,7 +1326,10 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   const vectorPulseByTicker = await fetchZeroDteVectorPulseByTicker(
     today,
     setups.map((s) => s.ticker.toUpperCase())
-  ).catch(() => ({} as Record<string, ZeroDteVectorPulse>));
+  ).catch((err) => {
+    console.warn("[zerodte-persist] Vector pulse fetch failed:", err);
+    return {} as ZeroDteVectorPulseByTicker;
+  });
   const { hour, minute } = etNowParts();
   const pastCutoff = hour * 60 + minute >= NEW_PLAY_CUTOFF_ET_MINUTES;
 
@@ -1308,7 +1352,22 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     // A CONDOR's tradeability is enforced by the condor liquidity gate INSIDE evaluateZeroDteGates
     // (s.gate already reflects it) — the directional freshCommitBlockedByPlan(s.plan) checks a
     // single-leg plan a condor never has (s.plan is null), so it must not fire on a condor.
-    const planBlocked = s.play_type === "CONDOR" ? false : freshCommitBlockedByPlan(s.plan);
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+    const chaseExempt =
+      s.plan_chase_exempt === true ||
+      planChaseExempt({
+        direction: s.direction,
+        score: s.score,
+        vector_pulse: pulse,
+        discovery_origin: s.discovery_origin,
+        gamma_regime: s.gamma_regime ?? null,
+        market_aligned: s.market_aligned ?? null,
+        regime_structure: undefined,
+        market_state_confidence: undefined,
+      });
+    const planGateOpts = { chaseExempt };
+    const planBlocked =
+      s.play_type === "CONDOR" ? false : freshCommitBlockedByPlan(s.plan, planGateOpts);
     if (s.gate?.verdict === "COMMIT" && !planBlocked) {
       committedFresh.push(s);
       continue;
@@ -1318,7 +1377,7 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       verdict = {
         ...s.gate,
         verdict: "BLOCKED",
-        blocks: [...s.gate.blocks, ...planQualityGateBlocks(s.plan ?? null)],
+        blocks: [...s.gate.blocks, ...planQualityGateBlocks(s.plan ?? null, planGateOpts)],
       };
     }
     gateRejections.push(gateRejectionFor(s, verdict ?? null));
@@ -1392,9 +1451,19 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       sessionCtx,
       committedAtMs
     );
-    const playTier = baseEntryCtx.tier?.tier ?? null;
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+    let playTier = baseEntryCtx.tier?.tier ?? null;
+    // F-5 caps raw 85+ at B-tier; Vector winner alignment unlocks A-tier runner_vector (400%).
+    if (
+      playTier === "B" &&
+      s.score >= 85 &&
+      pulse &&
+      computeVectorGateBoost(s.direction, s.score, pulse).g17_exempt &&
+      pulse.is_winner
+    ) {
+      playTier = "A";
+    }
     const exitPolicyAtCommit = resolveExitModeForTier(playTier);
-    const pulse = vectorPulseByTicker[s.ticker.toUpperCase()] ?? null;
     const vectorBoost = computeVectorGateBoost(s.direction, s.score, pulse);
     const confluenceCount = runnerConfluenceCount(
       s.confluence,

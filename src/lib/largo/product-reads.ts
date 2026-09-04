@@ -1348,7 +1348,7 @@ export function ageSecondsFrom(iso: string | null | undefined, now = Date.now())
 /** The subset of `GexPositioning` the compare strip serves. Structural so this stays pure. */
 export type ThermalComparePositioning = {
   spot: number;
-  change_pct: number;
+  change_pct: number | null;
   asof: string;
   flip: number | null;
   call_wall: number | null;

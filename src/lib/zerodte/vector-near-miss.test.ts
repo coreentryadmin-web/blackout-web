@@ -7,10 +7,12 @@ test("computeVectorNearMisses: winner blocked by cortex surfaces first", () => {
     [
       {
         ticker: "NVDA",
+        direction: "long",
         gate: { verdict: "BLOCKED", blocks: [{ code: "cortex_gex_walls", reason: "wall oppose" }] },
       },
       {
         ticker: "TSLA",
+        direction: "short",
         gate: { verdict: "BLOCKED", blocks: [{ code: "score_floor", reason: "low score" }] },
       },
     ],

@@ -22,6 +22,7 @@ import {
   SETUP_MIN_DOMINANCE,
   SETUP_MAX_ITM_PCT,
   SETUP_MAX_OTM_PCT,
+  RUNNER_SETUP_MAX_OTM_PCT,
   type FlowSetupInput,
   type SetupDossierView,
   type ZeroDteGateRejection,
@@ -89,6 +90,10 @@ test("resolveFreshFindStatus: undefined heat state is treated as closed, not ope
 test("resolveFreshFindStatus: MOVED or illiquid always SKIP, even during RTH", () => {
   assert.equal(resolveFreshFindStatus("RTH", true, false), "SKIP");
   assert.equal(resolveFreshFindStatus("RTH", false, true), "SKIP");
+});
+
+test("resolveFreshFindStatus: MOVED with chaseExempt stays WATCH during RTH", () => {
+  assert.equal(resolveFreshFindStatus("RTH", true, false, true), "WATCH");
 });
 
 // ── setup derivation ─────────────────────────────────────────────────────────────
@@ -1240,17 +1245,27 @@ test("gates: deep-ITM top strike (stock replacement) is excluded", () => {
   assert.ok(deriveZeroDteSetups(otm)[0]!.otm_pct! > 0);
 });
 
-test("gates: far-OTM lotto stack is excluded by the SETUP_MAX_OTM_PCT cap (Phase-0 firewall)", () => {
-  // A big CALL stack whose strike sits ~16% OTM (220 vs stock 190): clears premium +
+test("gates: far-OTM lotto stack is excluded by the RUNNER_SETUP_MAX_OTM_PCT cap at discovery", () => {
+  // A big CALL stack whose strike sits ~24% OTM (235 vs stock 190): clears premium +
   // dominance on size alone but is an egregious 0DTE lottery ticket, not a momentum play.
   const rejections: ZeroDteGateRejection[] = [];
-  const lotto = [row({ premium: 3_000_000, option_type: "call", strike: 220, underlying_price: 190 })];
+  const lotto = [row({ premium: 3_000_000, option_type: "call", strike: 235, underlying_price: 190 })];
   const out = deriveZeroDteSetups(lotto, { rejections });
   assert.equal(out.length, 0, "a far-OTM lotto stack must not reach the board");
   assert.equal(rejections.length, 1);
   assert.equal(rejections[0]!.gate_failed, "max_otm_pct");
-  assert.equal(rejections[0]!.threshold, SETUP_MAX_OTM_PCT);
-  assert.ok(rejections[0]!.otm_pct! > SETUP_MAX_OTM_PCT, `otm_pct ${rejections[0]!.otm_pct} should exceed the cap`);
+  assert.equal(rejections[0]!.threshold, RUNNER_SETUP_MAX_OTM_PCT);
+  assert.ok(
+    rejections[0]!.otm_pct! > RUNNER_SETUP_MAX_OTM_PCT,
+    `otm_pct ${rejections[0]!.otm_pct} should exceed the discovery cap`
+  );
+
+  // 13–20% OTM can reach commit gates (tighter SETUP_MAX_OTM_PCT applies unless Vector runner relax).
+  const runnerZone = [row({ premium: 3_000_000, option_type: "call", strike: 215, underlying_price: 190 })];
+  const runnerOut = deriveZeroDteSetups(runnerZone);
+  assert.equal(runnerOut.length, 1);
+  assert.ok(runnerOut[0]!.otm_pct! > SETUP_MAX_OTM_PCT);
+  assert.ok(runnerOut[0]!.otm_pct! <= RUNNER_SETUP_MAX_OTM_PCT);
 
   // A normal slightly-OTM momentum call (~2.7% OTM: 195 vs 190) is untouched by the cap.
   const normal = [row({ premium: 3_000_000, option_type: "call", strike: 195, underlying_price: 190 })];
