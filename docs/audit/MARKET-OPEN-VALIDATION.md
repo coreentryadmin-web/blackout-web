@@ -126,6 +126,21 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0w. Quote route index WS `change_pct` not rebased on ws-bar anchor — fix/quote-index-change-pct-rebase (pending)
+
+**What was broken:** `/api/market/quote` Thermal header tape (SPX/VIX polled ~1.5s) served raw
+`indexStore` `change_pct` on the WS fast path. When `open_source === "ws-bar"` (mid-session cold
+start), that percentage is anchored to the first bar at boot — not prior close — while stock path
+and `indices/route` already rebase via `withFreshPrice` / `overlayRestIndexWithWs`.
+
+**Fix:** `buildIndexWsQuote()` overlays live WS price on shared REST quote cache via
+`overlayRestIndexWithWs`; emits `null` change when no REST baseline and anchor isn't authoritative.
+
+**Check at the open:** On `/heatmap` with SPX selected, compare header day-change% against
+`/api/market/indices` SPX `change_pct` after a mid-session deploy or socket reconnect — they should
+agree within rounding. Specifically watch VIX: ws-bar anchor previously showed +0.07% while REST
+reported -0.35% (measured 2026-09-04).
+
 ### 0v. ISO age helpers treated clock-skewed future timestamps as fresh — fix/iso-age-future-guard-combined (pending)
 
 **What was broken:** `public-gex-snapshot` coerced negative `asof` age to **0 seconds** (reads as just refreshed on the marketing gamma snapshot). Night Hawk Legacy `legacyMarkAgeLabel` and admin Night Hawk playbook `ageMin` used raw `Date.now() - new Date(iso)` without the shared future guard — future-skewed `updated_at` bypassed stuck detection.

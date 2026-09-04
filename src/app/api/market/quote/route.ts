@@ -5,10 +5,11 @@ import { shouldBootDataSockets } from "@/lib/process-role";
 import { indexStore } from "@/lib/ws/polygon-socket";
 import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { resolveOptionsRoot } from "@/lib/providers/polygon-options-gex";
-import { fetchStockSnapshot, fetchIndexSnapshot } from "@/lib/providers/polygon";
+import { fetchStockSnapshot, fetchIndexSnapshot, type IndexQuote } from "@/lib/providers/polygon";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { resolveSpotFromUwStockState } from "@/lib/providers/spot-fallback";
 import { withFreshPrice } from "@/lib/providers/change-pct";
+import { overlayRestIndexWithWs } from "@/lib/providers/index-snapshot-overlay";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { roundFloats } from "@/lib/round-floats";
 
@@ -168,6 +169,81 @@ async function getRestQuote(
   return task;
 }
 
+/**
+ * Index WS ticks carry `open_source` provenance (see polygon-socket). A ws-bar anchor measures
+ * change% from the first bar seen at boot — wrong on a mid-session cold start. Overlay the live
+ * WS price on a REST baseline (shared quote cache when hot, else one coalesced fetch) so the
+ * Thermal header tape matches indices/route and spx-desk.
+ */
+async function buildIndexWsQuote(
+  ticker: string,
+  optionsRoot: string,
+  entry: {
+    price: number;
+    change_pct: number;
+    open_source: string;
+    updatedAt: number;
+  }
+): Promise<QuotePayload> {
+  let restSnap: IndexQuote | null = null;
+  const mem = quoteMem.get(ticker);
+  if (mem && Date.now() - mem.at < QUOTE_CACHE_MS) {
+    restSnap = {
+      symbol: optionsRoot,
+      price: mem.payload.price,
+      change_pct: mem.payload.change_pct,
+      prev_close: null,
+    };
+  } else {
+    const rest = await getRestQuote(ticker, optionsRoot, true);
+    if (rest) {
+      restSnap = {
+        symbol: optionsRoot,
+        price: rest.price,
+        change_pct: rest.change_pct,
+        prev_close: null,
+      };
+    }
+  }
+
+  if (restSnap) {
+    const overlaid = overlayRestIndexWithWs(
+      restSnap,
+      {
+        price: entry.price,
+        change_pct: entry.change_pct,
+        open_source: entry.open_source,
+        updatedAt: entry.updatedAt,
+      },
+      Date.now(),
+      WS_STALE_MS
+    );
+    return {
+      available: true,
+      ticker,
+      price: overlaid.price,
+      change_pct: overlaid.change_pct,
+      source: "ws",
+      asof: new Date(entry.updatedAt).toISOString(),
+    };
+  }
+
+  // No REST baseline — only trust WS change when the anchor is authoritative.
+  const changePct =
+    entry.open_source === "rest" && Number.isFinite(entry.change_pct)
+      ? entry.change_pct
+      : null;
+
+  return {
+    available: true,
+    ticker,
+    price: entry.price,
+    change_pct: changePct,
+    source: "ws",
+    asof: new Date(entry.updatedAt).toISOString(),
+  };
+}
+
 export async function GET(req: NextRequest) {
   const authResult = await authorizeMarketDeskApi(req);
   if (authResult instanceof Response) return authResult;
@@ -194,14 +270,7 @@ export async function GET(req: NextRequest) {
       const ageMs = Date.now() - entry.updatedAt;
       // Future timestamps (clock skew) must not read as infinitely fresh.
       if (entry.price > 0 && ageMs >= -WS_STALE_MS && Math.max(0, ageMs) < WS_STALE_MS) {
-        const payload: QuotePayload = {
-          available: true,
-          ticker,
-          price: entry.price,
-          change_pct: entry.change_pct,
-          source: "ws",
-          asof: new Date(entry.updatedAt).toISOString(),
-        };
+        const payload = await buildIndexWsQuote(ticker, optionsRoot, entry);
         return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
       }
       // else: store cold/stale → fall through to the shared-cached index REST snapshot.
