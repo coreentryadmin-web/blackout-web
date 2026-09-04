@@ -23,14 +23,65 @@ function envNumber(name: string, fallback: number): number {
 // AWS RDS has no shared pool per replica; each ECS task directly connects. PG_POOL_MAX is the
 // per-task connection budget. N tasks × PG_POOL_MAX must fit within RDS max_connections (~NCONNMAX env).
 // Overridable per deployment topology.
-/** Exported for unit testing — pure, no env/module-load-order dependence. */
-export function computeSafePgPoolMaxDefault(pgBouncerBackendBudget: number, replicaCount: number): number {
-  return Math.max(1, Math.floor(pgBouncerBackendBudget / Math.max(1, Math.floor(replicaCount))));
+/**
+ * Exported for unit testing — pure, no env/module-load-order dependence.
+ * `reservedForOtherServices` (default 0, so an existing caller's result is unchanged) carves out
+ * connections this process's own budget math should assume a SIBLING service already owns from
+ * the SAME shared PgBouncer/RDS-Proxy backend budget — see the 2026-09-04 audit finding below.
+ */
+export function computeSafePgPoolMaxDefault(
+  pgBouncerBackendBudget: number,
+  replicaCount: number,
+  reservedForOtherServices = 0
+): number {
+  const available = Math.max(1, pgBouncerBackendBudget - Math.max(0, reservedForOtherServices));
+  return Math.max(1, Math.floor(available / Math.max(1, Math.floor(replicaCount))));
 }
 
 const REPLICA_COUNT_FOR_POOL = Math.max(1, Math.floor(envNumber("REPLICA_COUNT", 1)));
+/**
+ * Real autoscaling ceiling this service can run at — separate from REPLICA_COUNT_FOR_POOL, which
+ * is only ever the steady-state FLOOR. Defaults to REPLICA_COUNT_FOR_POOL when unset, so a
+ * deployment that never sets this keeps the exact prior behavior.
+ *
+ * WHY THIS EXISTS (2026-09-04 audit finding, live production). blackout-production-web's own
+ * Application Auto Scaling target runs MinCapacity=8/MaxCapacity=12, but REPLICA_COUNT (the
+ * env var this pool math read) was only ever the floor (8) — so this self-check stayed "safe"
+ * right up to the exact moment autoscaling did what it is configured to do. Measured live:
+ * RunningTaskCount for the web service routinely spikes to 9-10 during RTH, and each such blip
+ * lines up with a burst of "Connection terminated due to connection timeout" (2740 events in one
+ * 10-minute window, 2026-09-01) across every DB-touching subsystem. Set REPLICA_COUNT_MAX to the
+ * service's real MaxCapacity to close this gap — clamped to never go below the floor.
+ */
+const REPLICA_COUNT_MAX_FOR_POOL = Math.max(
+  REPLICA_COUNT_FOR_POOL,
+  Math.floor(envNumber("REPLICA_COUNT_MAX", REPLICA_COUNT_FOR_POOL))
+);
 const PGBOUNCER_BACKEND_BUDGET = envNumber("PGBOUNCER_DEFAULT_POOL_SIZE", 20);
-const SAFE_PG_POOL_MAX_DEFAULT = computeSafePgPoolMaxDefault(PGBOUNCER_BACKEND_BUDGET, REPLICA_COUNT_FOR_POOL);
+/**
+ * Connections this process's own pool math should assume are ALREADY spoken for by sibling
+ * services sharing the SAME PgBouncer/RDS-Proxy backend budget (e.g.
+ * blackout-production-market-worker, which independently self-checks against the identical
+ * PGBOUNCER_DEFAULT_POOL_SIZE with zero visibility into this service's own connections).
+ * Defaults to 0 — preserves prior behavior exactly for any service that never sets this.
+ *
+ * WHY THIS EXISTS (2026-09-04 audit finding, live production). Two independently-deployed ECS
+ * services each self-checked ONLY their own env vars and each passed in isolation (web:
+ * 8×2=16, market-worker: 1×4=4), yet together they already consumed the FULL shared budget
+ * (16+4=20=PGBOUNCER_DEFAULT_POOL_SIZE) with zero headroom for anything else. Neither
+ * self-check had any way to know the other service existed. Set this on each service to the
+ * connection count its siblings are known to consume, so the shared budget is never
+ * oversubscribed even when every service's own self-check reports clean.
+ */
+const PGBOUNCER_RESERVED_FOR_OTHER_SERVICES = Math.max(
+  0,
+  envNumber("PGBOUNCER_RESERVED_FOR_OTHER_SERVICES", 0)
+);
+const SAFE_PG_POOL_MAX_DEFAULT = computeSafePgPoolMaxDefault(
+  PGBOUNCER_BACKEND_BUDGET,
+  REPLICA_COUNT_MAX_FOR_POOL,
+  PGBOUNCER_RESERVED_FOR_OTHER_SERVICES
+);
 
 let pool: Pool | null = null;
 let poolInit: Promise<Pool> | null = null;
@@ -162,6 +213,25 @@ async function createPool(): Promise<Pool> {
             `${poolMax * REPLICA_COUNT_FOR_POOL} exceeds the PgBouncer backend budget ` +
             `(PGBOUNCER_DEFAULT_POOL_SIZE=${PGBOUNCER_BACKEND_BUDGET}). Cluster-wide Postgres ` +
             `connection oversubscription risk — lower PG_POOL_MAX or raise PgBouncer's pool size.`
+        );
+      }
+      // Same check at this service's real autoscaling CEILING (REPLICA_COUNT_MAX, not the floor)
+      // plus whatever a sibling service is known to already consume — a check that only ever
+      // looks at the steady-state floor stays "safe" right up until autoscaling does what it's
+      // configured to do (2026-09-04 audit finding: web's own ASG runs 8-12 replicas, and the
+      // 8-replica floor alone already summed to 100% of the shared budget with market-worker).
+      // A no-op (identical to the check above) until REPLICA_COUNT_MAX / PGBOUNCER_RESERVED_FOR_
+      // OTHER_SERVICES are actually set, so this changes no behavior on its own.
+      const worstCaseDemand =
+        poolMax * REPLICA_COUNT_MAX_FOR_POOL + PGBOUNCER_RESERVED_FOR_OTHER_SERVICES;
+      if (worstCaseDemand > PGBOUNCER_BACKEND_BUDGET) {
+        console.warn(
+          `[db] At this service's autoscaling ceiling, PG_POOL_MAX=${poolMax} x ` +
+            `REPLICA_COUNT_MAX=${REPLICA_COUNT_MAX_FOR_POOL} + reserved-for-other-services=` +
+            `${PGBOUNCER_RESERVED_FOR_OTHER_SERVICES} = ${worstCaseDemand} would exceed the ` +
+            `PgBouncer backend budget (PGBOUNCER_DEFAULT_POOL_SIZE=${PGBOUNCER_BACKEND_BUDGET}). ` +
+            `A routine scale-out event (rolling deploy overlap, autoscale trigger) can oversubscribe ` +
+            `the shared pooler even though the steady-state check above is clean.`
         );
       }
       const viaPooler = connectionViaPooler(candidate.url);
