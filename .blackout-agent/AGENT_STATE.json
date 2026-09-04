@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T14:44:41.697Z",
+  "updated_at": "2026-09-04T14:45:11.490Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -107,6 +107,18 @@
       "claimed_at": "2026-09-04T10:33:57.540Z",
       "lease_until": "2026-09-04T12:03:57.540Z",
       "phase": "MONITORING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
+    },
+    "BO-P2-0100": {
+      "task_id": "BO-P2-0100",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T14:45:11.490Z",
+      "lease_until": "2026-09-04T16:15:11.490Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -219,8 +231,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T14:44:41.697Z",
-      "current_task": "BO-P1-0101"
+      "last_seen": "2026-09-04T14:45:11.490Z",
+      "current_task": "BO-P2-0100"
     }
   },
   "deploy": {
@@ -927,6 +939,25 @@
       "at": "2026-09-04T14:44:41.697Z",
       "type": "task_claimed",
       "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T14:44:47.371Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:44:47.372Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "60f6de76-e861-4d5a-9b00-d72a1c5eb514",
+      "summary": "RTH lifecycle GREEN. validate:rth-open GREEN. SPX dashboard E2E 18/18 PASS (cross-tool flip fix #3594 verified). Playwright browsers installed in container. ops:collect 0 (transient data-correctness flag cleared). data-validator 37 PASS. GitHub API rate-limited — pr-sweep empty, no open PRs visible. Main at c293cb8. Off-hours peer Claude stale since 11:20 UTC."
+    },
+    {
+      "at": "2026-09-04T14:45:11.490Z",
+      "type": "task_claimed",
+      "task_id": "BO-P2-0100",
       "owner": "cursor"
     }
   ]
