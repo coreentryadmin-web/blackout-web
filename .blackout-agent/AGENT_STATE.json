@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T14:28:01.781Z",
+  "updated_at": "2026-09-04T14:40:48.218Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -224,6 +224,14 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T14:15:41.769Z",
+      "safe_to_merge": true
+    },
+    "pr-3600": {
+      "pr": 3600,
+      "head_sha": "d2884393",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T14:40:48.217Z",
       "safe_to_merge": true
     }
   },
@@ -982,6 +990,16 @@
       "agent": "cursor",
       "run_id": "ff1ae5e7-ba92-450c-9850-2ee6dbca68c8",
       "summary": "PR-event cycle: peer-reviewed #3591 (vector VP label collision, merged), #3592 (data-validator HOD minute bars, merged), #3594 (SPX cross-tool stale matrix, merged). validate:deploy GREEN, ops:collect 0. Open drafts: #3595 docs-only metadata, #3596 agent-state (skip self-approve). Off-hours."
+    },
+    {
+      "at": "2026-09-04T14:40:48.218Z",
+      "type": "pr_review",
+      "pr": 3600,
+      "head_sha": "d2884393",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T14:40:48.217Z",
+      "safe_to_merge": true
     }
   ]
 }
