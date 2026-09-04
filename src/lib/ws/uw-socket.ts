@@ -34,6 +34,7 @@ import {
   mergeFreshestTimestamps,
 } from "./uw-socket-stall";
 import { isUwErrorFrame } from "@/lib/ws/uw-frame";
+import { isWsUpdatedAtFresh, wsUpdatedAtAgeMs } from "./timestamp-freshness";
 import { ladderFromGexStrikeExpiryCells } from "@/lib/providers/gex-strike-expiry-ladder";
 import {
   normalizeDarkPoolWsPayload,
@@ -1068,7 +1069,7 @@ function isUwHaltSourceStale(maxAgeMs = TRADING_HALT_CHANNEL_MAX_AGE_MS): boolea
   if (isUwChannelFresh("trading_halts", maxAgeMs)) return false;
   if (uwSocket.getChannelHealth()?.trading_halts?.auth_failed) return true;
   const freshest = effectiveFreshestUwMessageAt();
-  return freshest == null || Date.now() - freshest > maxAgeMs;
+  return freshest == null || !isWsUpdatedAtFresh(freshest, maxAgeMs);
 }
 
 export function isTradingHaltChannelStale(maxAgeMs = TRADING_HALT_CHANNEL_MAX_AGE_MS): boolean {
@@ -1638,8 +1639,16 @@ export function shutdownUwSocket(): void {
  * just connection status.
  */
 export function isUwChannelFresh(channel: UwWsChannel, maxAgeMs = 120_000): boolean {
-  const at = lastMessageAt[channel];
-  return at != null && Date.now() - at <= maxAgeMs;
+  return isWsUpdatedAtFresh(lastMessageAt[channel], maxAgeMs);
+}
+
+/** @internal test-only — seed per-channel delivery timestamps. */
+export function _setUwChannelLastMessageForTest(
+  channel: UwWsChannel,
+  at: number | undefined
+): void {
+  if (at === undefined) delete lastMessageAt[channel];
+  else lastMessageAt[channel] = at;
 }
 
 export function getUwSocketHealth() {
@@ -1654,11 +1663,11 @@ export function getUwSocketHealth() {
   for (const ch of ALL_CHANNELS) {
     const at = lastMessageAt[ch] ?? null;
     last_message_at[ch] = at;
-    last_message_age_ms[ch] = at ? now - at : null;
+    last_message_age_ms[ch] = at != null ? wsUpdatedAtAgeMs(at, now) : null;
   }
 
   const clusterAt = effectiveFreshestUwMessageAt();
-  const clusterAge = clusterAt != null ? now - clusterAt : null;
+  const clusterAge = clusterAt != null ? wsUpdatedAtAgeMs(clusterAt, now) : null;
 
   return {
     configured: Boolean(UW_API_KEY),
@@ -1666,7 +1675,7 @@ export function getUwSocketHealth() {
     is_leader: uwIsLeader,
     cluster_last_message_at: clusterAt,
     cluster_last_message_age_ms: clusterAge,
-    cluster_live: clusterAge != null && clusterAge <= 120_000,
+    cluster_live: isWsUpdatedAtFresh(clusterAt, 120_000, now),
     auth_failed: authFailedChannels.length > 0,
     auth_failed_channels: authFailedChannels,
     // WS-21: live flow-source recovery state machine + the dead-letter queue stats.
