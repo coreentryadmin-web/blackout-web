@@ -466,6 +466,35 @@ likely dominated by Polygon calls or general compute than the UW ceiling #3479 f
 need its own measurement before a fix is warranted, per this file's own "never fix from a guess"
 standing method.
 
+### 18. Meridian earnings detail header — title overlapped the SUMMARY tab pill on tablet/mobile — PR pending (branch `fix/meridian-earnings-header-tab-overlap`)
+
+**What was broken:** `.meridian-detail-head-v2` (the `<header>` row pairing the earnings event
+title with the SUMMARY/REPORT/ESTIMATES/POSITIONING/HISTORY tab strip in
+`MeridianEventDetailPanel.tsx`) had no `flex-wrap` of its own while its title child
+(`.meridian-detail-title-v2`) IS `flex-wrap: wrap` by design. At >=1440px the title fits on one
+line and nothing overlaps; at 1024px and 430px the title wraps to 2-3 lines, the row grows tall,
+and `align-items: center` centered the still-single-line tab strip vertically against that tall
+block — landing the tail of the title ("earnings", right after the "EARNINGS · HIGH IMPACT"
+kicker) directly on top of the SUMMARY pill's left half. Reproduced on every one of the desk's
+~131 live earnings events, on both tablet and mobile, regardless of which tab was active.
+
+**Fix:** added `flex-wrap: wrap` to `.meridian-detail-head-v2` so the tab strip drops to its own
+row once it no longer fits beside the title, instead of being squeezed onto the same nowrap line
+and centered into the middle of the wrapped text. `.meridian-earnings-tablist`'s own
+`flex-wrap: nowrap` (keeps the five tab pills on one row) is untouched. Full root-cause detail:
+`docs/audit/findings-staging/2026-09-04-meridian-earnings-detail-header-tab-overlap.md`.
+
+**Check at the open:** open any live earnings event's detail on `/meridian` at both 1024px and
+430px viewports (or via `proxy-browser.cjs` against production) and confirm the h2 title and the
+SUMMARY/REPORT/ESTIMATES/POSITIONING/HISTORY tab strip render on visually separate lines with no
+overlapping glyphs, across at least 2-3 different real earnings events (title length varies by
+ticker/company name, and this defect is title-length-and-viewport-width dependent) — this could
+only be confirmed pre-open against static/cached data; the specific value of re-checking at the
+open is seeing it against the FULL, currently-live set of ~131 earnings events (including any that
+rolled onto/off the calendar overnight) rather than the handful captured in the original finding's
+screenshots. Also spot-check that the >=1440px desktop rendering is visually unchanged (title and
+tab strip still share one row) — the fix should be a no-op at that width.
+
 ### 17. Helix print tape signal badges hard-clipped mid-character in FULL columns — PR pending (branch `fix/helix-signals-badge-clip`)
 
 **What was broken:** the `/flows` print tape's Signals cell (`.helix-tape-cell--signals`, FULL
