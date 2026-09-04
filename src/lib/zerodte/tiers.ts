@@ -247,10 +247,14 @@ export function assignZeroDteTier(input: ZeroDteTierInput): ZeroDteTierAssignmen
     });
   } else {
     points += W_SCORE_MID;
+    // Band bounds are DYNAMIC (floor..SCORE_PRIME_MIN-1), not the literal "65-74" —
+    // when floor != 65 (e.g. the 2026-08-25 WS-20 window ran floor=50), a hardcoded
+    // "65-74" mislabeled scores as low as 50 as being in a specific, unrelated band
+    // and credited them with that band's measured stats (2026-09-04 audit finding).
     factors.push({
       label: "Mid score band",
       direction: "up",
-      detail: `Score ${Math.round(input.score)} in 65-74 — positive expectancy on the record (50% WR, +21.1% avg, n=10, F-2).`,
+      detail: `Score ${Math.round(input.score)} in ${floor}-${SCORE_PRIME_MIN - 1} — positive expectancy on the record (50% WR, +21.1% avg, n=10, F-2).`,
     });
   }
 
@@ -396,11 +400,17 @@ export function tierForSkip(
 
 // ── Source-aware scoreFloor (mirrors gates.ts scoreFloorForOrigins) ───────────────
 /**
- * Derive the commit-time scoreFloor from discovery_origin for retroactive tiering.
- * Logic matches {@link scoreFloorForOrigins}: FLOW present → strict 65; BREAKOUT/PIN-only
- * → origin floor (65 by default, restored 2026-08-25); absent → 65.
+ * Derive the scoreFloor from discovery_origin against TODAY's ZERODTE_SCORE_FLOOR*
+ * constants. Logic matches {@link scoreFloorForOrigins}: FLOW present → strict 65;
+ * BREAKOUT/PIN-only → origin floor (65 by default, restored 2026-08-25); absent → 65.
+ *
+ * Exported so entry-context.ts can PIN the floor actually in effect at commit time
+ * into the blob (score_floor) — see the 2026-09-04 audit finding on tierFromEntryContext
+ * below for why a caller must never rely on this function alone to retroactively
+ * reconstruct a past commit's floor (the constants it reads are mutable and have
+ * already changed in production once).
  */
-function scoreFloorForOrigin(origin: string[] | undefined | null): number {
+export function scoreFloorForOrigin(origin: string[] | undefined | null): number {
   if (!origin || origin.length === 0) return ZERODTE_SCORE_FLOOR;
   if (origin.includes("FLOW")) return ZERODTE_SCORE_FLOOR;
   if (origin.includes("BREAKOUT") || origin.includes("PIN")) {
@@ -424,6 +434,23 @@ function scoreFloorForOrigin(origin: string[] | undefined | null): number {
  * - spy_bias / gamma_regime are pinned but deliberately NOT scored: G-1 hard-blocks
  *   counter-tape commits, so alignment is a precondition of every committed row
  *   (no ranking variance left), and gamma regime has no measured prior yet.
+ *
+ * score_floor (2026-09-04 audit finding — FIXED). entry-context.ts's own comment
+ * claims the commit-time tier and a later call to THIS function on the identical
+ * blob "can never disagree" — false as written, because this function used to
+ * re-derive the floor via scoreFloorForOrigin(origin) against TODAY's mutable,
+ * env-overridable ZERODTE_SCORE_FLOOR constants, not something pinned in the blob.
+ * When the floor changed in production (WS-20 lowered it 65→50 then restored it the
+ * same day), every historical BREAKOUT/PIN row's retroactively recomputed tier
+ * silently flipped even though the play's own evidence never changed — 10/269 tiered
+ * plays in one 90-day live window (all 2026-08-25 BREAKOUT commits: APLD, ASST,
+ * CLSK, COIN, LUNR, MRNA, MSTR, OKLO, RIOT, RKLB), with the Play Terminal (reads the
+ * frozen entry_context.tier verbatim) and the track-record/admin-export surfaces
+ * (call this function live) disagreeing on the SAME play's tier right now. Prefer
+ * the blob's own pinned score_floor when present — that IS the invariant the
+ * comment above claims — falling back to scoreFloorForOrigin(origin) only for rows
+ * committed before this field existed (same "pre-WS-20 rows carry none" posture
+ * discovery_origin already documents).
  */
 export function tierFromEntryContext(
   entryContext: Record<string, unknown> | null | undefined
@@ -464,9 +491,16 @@ export function tierFromEntryContext(
     origin = ctx.discovery_origin.filter((s) => typeof s === "string");
   }
 
+  // Prefer the floor PINNED at commit (score_floor) over recomputing it from
+  // today's mutable constants — see this function's own doc comment above for the
+  // live bug this closes. Only rows committed before this field existed fall back
+  // to the (env-drift-prone) recompute.
+  const pinnedFloor = num(ctx.score_floor);
+  const scoreFloor = pinnedFloor != null ? pinnedFloor : scoreFloorForOrigin(origin);
+
   return assignZeroDteTier({
     score: num(ctx.score),
-    scoreFloor: scoreFloorForOrigin(origin),
+    scoreFloor,
     cortexScore,
     cortexVetoCount,
     cortexSupportCount,
