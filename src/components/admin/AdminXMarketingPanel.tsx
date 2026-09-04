@@ -4,20 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { GlassPanel, MegaStat, MetricChip } from "@/components/admin/AdminUi";
 import type { XAdminAnalytics, XCronRunSummary } from "@/lib/admin-x-analytics";
+import { timeAgoFromIso } from "@/components/admin/admin-time-ago";
 
 const REFRESH_MS = 60_000;
-
-function timeAgo(iso: string | null): string {
-  if (!iso) return "—";
-  const diff = Date.now() - new Date(iso).getTime();
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
 
 function BudgetChip({
   label,
@@ -71,7 +60,7 @@ function CronRow({ row }: { row: XCronRunSummary }) {
           {row.status}
         </span>
         <span className="font-mono text-[10px] text-cyan/70">
-          {row.started_at ? timeAgo(row.started_at) : "—"}
+          {row.started_at ? timeAgoFromIso(row.started_at) : "—"}
         </span>
       </div>
     </div>
@@ -114,7 +103,7 @@ export function AdminXMarketingPanel() {
     <GlassPanel
       title="@BlackOutTrade"
       accent="violet"
-      kicker={`X marketing · ${d?.x_api_configured ? "API ok" : "API keys missing"} · ${timeAgo(lastAt)}`}
+      kicker={`X marketing · ${d?.x_api_configured ? "API ok" : "API keys missing"} · ${timeAgoFromIso(lastAt)}`}
     >
       {loading && !d ? (
         <div className="mt-2 space-y-2">
@@ -128,7 +117,7 @@ export function AdminXMarketingPanel() {
         <div className="mt-2 space-y-4">
           {d.rate_limit_paused && (
             <p className="rounded-lg border border-bear/40 bg-bear/10 px-3 py-2 font-mono text-[11px] text-bear">
-              X writes paused until {d.rate_limit_until ? timeAgo(d.rate_limit_until) : "window clears"}
+              X writes paused until {d.rate_limit_until ? timeAgoFromIso(d.rate_limit_until) : "window clears"}
             </p>
           )}
 
@@ -143,7 +132,7 @@ export function AdminXMarketingPanel() {
               label="Avg impressions"
               value={Math.round(d.avg_impressions).toLocaleString()}
               tone={d.avg_impressions >= 100 ? "bull" : "amber"}
-              sub={`snapshot ${timeAgo(d.snapshot_at)}`}
+              sub={`snapshot ${timeAgoFromIso(d.snapshot_at)}`}
             />
             <MegaStat
               label="Avg likes"

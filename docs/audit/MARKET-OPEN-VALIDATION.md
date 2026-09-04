@@ -215,7 +215,16 @@ logic touched.
 430x932`), filter to PASSED/WATCH, and confirm every row's return figure now carries a small
 "Since flag" caption under it, and every CLOSED row carries "Peak Return" — never a bare number.
 
-### 0j-b. Admin ops store-age "just now" on clock-skewed timestamps — fix/admin-store-age-future-guard (pending)
+### 0j-c. Admin panel timeAgo "just now" on clock-skewed ISO timestamps — fix/admin-time-ago-future-guard (pending)
+
+**What was broken:** `timeAgo(iso)` in Operations + X Marketing admin panels used raw `Date.now() - new Date(iso)`
+without a future guard — same failure class as #3627 `storeAge()`.
+
+**Fix:** Shared `timeAgoFromIso()` in `admin-time-ago.ts` with `WS_TIMESTAMP_FUTURE_TOLERANCE_MS`.
+
+**Check at the open:** `/admin` → Operations incidents/audit rows show plausible relative times, not "just now" on skewed timestamps.
+
+### 0j-b. Admin ops store-age "just now" on clock-skewed timestamps — fix/admin-store-age-future-guard (merged #3627)
 
 **What was broken:** `storeAge()` in the admin Operations dashboard computed `Date.now() - updatedAt`
 without a future guard. A timestamp more than a few seconds ahead of wall clock produced negative age;
