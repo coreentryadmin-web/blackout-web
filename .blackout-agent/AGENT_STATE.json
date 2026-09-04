@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:33:14.109Z",
+  "updated_at": "2026-09-04T17:34:29.691Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -232,6 +232,14 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:33:14.108Z",
+      "safe_to_merge": true
+    },
+    "pr-3671": {
+      "pr": 3671,
+      "head_sha": "d254ab8de9a0bf744fc735f4b67edd60f5b22c03",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:34:29.690Z",
       "safe_to_merge": true
     }
   },
@@ -1089,6 +1097,16 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:33:14.108Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:34:29.691Z",
+      "type": "pr_review",
+      "pr": 3671,
+      "head_sha": "d254ab8de9a0bf744fc735f4b67edd60f5b22c03",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:34:29.690Z",
       "safe_to_merge": true
     }
   ]
