@@ -98,6 +98,7 @@ type GexHeatmapResponse = {
     divergence: number | null;
     uw_asof: string | null;
   } | null;
+  chain_truncated?: boolean;
 };
 
 async function fetchGexHeatmap(url: string): Promise<GexHeatmapResponse> {
@@ -664,6 +665,12 @@ export function SpxGexMatrixHeatmap({
           <p className="font-mono text-[9px] leading-snug text-amber-300/90">
             UW oracle diverges {uwCross?.divergence?.toFixed(0)}pt from Polygon walls — treat
             levels as provisional until channels agree.
+          </p>
+        )}
+        {data?.chain_truncated && (
+          <p className="font-mono text-[9px] leading-snug text-amber-300/90">
+            Option chain capped before full pagination — walls and open interest may understate true
+            positioning.
           </p>
         )}
         <GexShiftLeadersStrip
