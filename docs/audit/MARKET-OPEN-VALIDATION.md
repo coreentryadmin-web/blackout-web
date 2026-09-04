@@ -2171,3 +2171,9 @@ than an end-of-session patch.
 - **What changed:** Wrap both success responses in `roundFloats(...)`; add `favPct: 4` to `VECTOR_FRACTION_DP`.
 - **RTH check:** On Vector with an active play, open pick live monitor — confirm option marks are 2dp-clean; BIE evidence line shows a non-zero historical rate when `favPct` is small (e.g. 0.4% not 0.00%).
 
+### 27. Stock spot SSE stream — unrounded IEEE floats on wire — fix/spot-stream-round-floats — 2026-09-04
+
+- **What was broken:** `/api/market/stocks/spot-stream` SSE frames serialized raw `price` and `changePct` from `stock-candle-store` without `roundFloats`, while sibling REST `GET /api/market/quote` already rounds at the boundary.
+- **What changed:** Apply `roundFloats(frame)` inside `encodeSpotFrame` before `JSON.stringify` in `stocks-spot-stream-hub.ts`.
+- **RTH check:** Subscribe to spot-stream for a liquid ticker (Network tab → EventStream on `/api/market/stocks/spot-stream?tickers=NVDA`); confirm `quotes.NVDA.price` and `changePct` are 2dp-clean with no IEEE tails during RTH ticks.
+

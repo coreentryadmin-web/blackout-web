@@ -75,6 +75,23 @@ test("encodeSpotFrame: produces a well-formed SSE data line", () => {
   assert.equal(parsed.quotes.AAPL.price, 230);
 });
 
+test("encodeSpotFrame: rounds member-visible floats at the SSE wire boundary", () => {
+  const encoded = encodeSpotFrame({
+    type: "quotes",
+    quotes: {
+      NVDA: {
+        price: 147.129999999999,
+        changePct: 5.092857142857143,
+        asof: "2026-07-15T14:31:00.000Z",
+      },
+    },
+    ts: 1_750_000_000_123,
+  });
+  const parsed = JSON.parse(encoded.slice("data: ".length).trim());
+  assert.equal(parsed.quotes.NVDA.price, 147.13);
+  assert.equal(parsed.quotes.NVDA.changePct, 5.09);
+});
+
 test("connection cap: acquires up to the limit then rejects", () => {
   _resetSpotStreamHubForTest();
   assert.equal(tryAcquireSpotStreamConnection(2), true);
