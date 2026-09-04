@@ -4,6 +4,7 @@ import { fetchMarketMovers, fetchSectorPerformance } from "@/lib/providers/polyg
 import { polygonConfigured } from "@/lib/providers/config";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { requireToolApi } from "@/lib/tool-access-server";
+import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
@@ -29,12 +30,12 @@ export async function GET(req: NextRequest) {
       serverCache("heatmap:sectors", TTL.MARKET_SNAPSHOT, () => fetchSectorPerformance()),
       serverCache("heatmap:movers:20", TTL.MARKET_SNAPSHOT, () => fetchMarketMovers(20)),
     ]);
-    return NextResponse.json({
+    return NextResponse.json(roundFloats({
       source: "market",
       sectors,
       movers,
       as_of: new Date().toISOString(),
-    }, { headers: NO_STORE_HEADERS });
+    }), { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[market/heatmap]", error);
     return NextResponse.json({ error: "Heatmap fetch failed" }, { status: 502 });

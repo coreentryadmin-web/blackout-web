@@ -62,3 +62,10 @@ test("cold-replica pulse minimal fallback derives change from prior close, not r
     /buildSpxDeskPulseMinimal[\s\S]*priorDayForPulseLane[\s\S]*pulseChangePctFromPriorClose\(price, prior\.pdc, spxSnap\.change_pct\)/
   );
 });
+
+test("last-resort pulse fallback carries prior_close so consumers never invert change_pct", () => {
+  assert.match(
+    src,
+    /lastPulseForSignals\.prior_close \?\? null/
+  );
+});

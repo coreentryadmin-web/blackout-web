@@ -13,7 +13,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { etClock } from "@/lib/et-clock";
-import { clsx } from "clsx";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 
 import type { SpxDeskPayload } from "@/lib/api";
 import { voiceSnapshotFromDesk } from "@/lib/bie/spx-live-voice";
@@ -308,7 +308,9 @@ export function SpxPulseRail({ desk, live, focus, onFocusLevel }: Props) {
     void heartbeat; // re-evaluate on the heartbeat tick
     if (desk?.feed_stalled) return true;
     if (polledAt == null) return false;
-    return Date.now() - polledAt > STALE_AFTER_MS;
+    const ageMs = Date.now() - polledAt;
+    if (ageMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) return true;
+    return ageMs > STALE_AFTER_MS;
   }, [polledAt, desk?.feed_stalled, heartbeat]);
 
   // Regime chip (from the current desk snapshot — always live, grounded).

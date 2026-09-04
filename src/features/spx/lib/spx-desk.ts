@@ -708,7 +708,7 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
         symbol: SPX,
         price: lastPulseForSignals.price,
         change_pct: lastPulseForSignals.spx_change_pct ?? 0,
-        prev_close: null,
+        prev_close: lastPulseForSignals.prior_close ?? null,
       },
     };
   }
