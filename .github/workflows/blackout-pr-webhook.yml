@@ -65,6 +65,8 @@ jobs:
         id: ctx
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # toJson must not be spliced into node -e source — URL fields break JS parsing.
+          PULL_REQUESTS_JSON: ${{ toJson(github.event.workflow_run.pull_requests) }}
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -81,7 +83,7 @@ jobs:
             echo "event=sweep" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event_name }}" = "workflow_run" ]; then
             PR=$(node -e "
-              const prs = ${{ toJson(github.event.workflow_run.pull_requests) }};
+              const prs = JSON.parse(process.env.PULL_REQUESTS_JSON || '[]');
               console.log(prs?.[0]?.number ?? '');
             ")
             echo "pr=$PR" >> "$GITHUB_OUTPUT"
