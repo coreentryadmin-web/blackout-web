@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:34:29.691Z",
+  "updated_at": "2026-09-04T17:41:33.357Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -255,11 +255,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "a7a04bef2a38c4eebffa69004732da98a558e8a1",
+    "last_main_sha": "603d30557f08c8d73e9aaad053738afa93d55804",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T17:30:40Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33900959005",
-    "last_deploy_sha": "8fce57a4f3b3741211723af3a156972a122921d2"
+    "last_deploy_at": "2026-09-04T17:33:21Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33901200754",
+    "last_deploy_sha": "cdfca8a5b3311dff4d4ba5202eb989c63a99fd4e"
   },
   "open_prs": [],
   "events": [
@@ -1108,6 +1108,19 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:34:29.690Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:41:33.356Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:41:33.357Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "95badb2f-1c9b-45c3-b9e2-de035ec76c34",
+      "summary": "Cycle complete: #3666/#3670/#3671 merged. #3678 cron-registry fix tested 3/3 locally — unblocks red main CI from #3668. #3667 needs rebase (conflict). Handoff PR #3679 open. RTH-open GREEN, ops:collect 0."
     }
   ]
 }
