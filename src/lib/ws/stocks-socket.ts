@@ -12,6 +12,10 @@ import {
   reconnectDelayAfterClose,
   shouldResetBackoffOnAuth,
 } from "./ws-connection-cap";
+import {
+  readPolygonAccountCapPauseMs,
+  recordPolygonAccountCapHit,
+} from "./ws-account-cap-latch";
 import { normalizeLuldWsMessages } from "@/lib/providers/polygon-luld";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { inOptionsMarketHours } from "@/lib/ws/options-socket";
@@ -126,7 +130,7 @@ const STOCKS_STALL_MS = (() => {
   return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 60_000;
 })();
 
-function scheduleStocksReconnect(reason: string) {
+async function scheduleStocksReconnect(reason: string) {
   if (stocksShuttingDown || stocksReconnectTimer) return;
   // Jitter (matches polygon-socket.ts/options-socket.ts) so a shared upstream blip that drops
   // every replica's socket at once doesn't have them all retry in lockstep.
@@ -134,11 +138,17 @@ function scheduleStocksReconnect(reason: string) {
   // A capacity refusal ignores the curve — see ws-connection-cap.ts. Without this the socket
   // reconnects ~1/sec forever, because auth_success (which a CAPPED connection also reaches)
   // resets the delay every cycle.
-  const delay = reconnectDelayAfterClose(
-    Math.min(stocksReconnectDelay, 60_000) + jitter,
-    stocksCappedThisConnection
+  const accountPauseMs = await readPolygonAccountCapPauseMs();
+  const delay = Math.max(
+    reconnectDelayAfterClose(
+      Math.min(stocksReconnectDelay, 60_000) + jitter,
+      stocksCappedThisConnection
+    ),
+    accountPauseMs
   );
-  console.warn(`[stocks-socket] reconnect in ${delay}ms (${reason})`);
+  console.warn(
+    `[stocks-socket] reconnect in ${delay}ms (${reason}${accountPauseMs > 0 ? ", account-cap latch" : ""})`
+  );
   stocksReconnectTimer = setTimeout(() => {
     stocksReconnectTimer = null;
     void connectStocks();
@@ -206,6 +216,7 @@ async function connectStocks() {
             // Account-level: the handshake AND auth both succeed, so this is invisible without an
             // explicit branch. No retry rate fixes it; a fast one competes for the scarce slots.
             stocksCappedThisConnection = true;
+            void recordPolygonAccountCapHit();
             console.error(
               "[stocks-socket] REFUSED — Polygon account is at its WebSocket connection limit. " +
                 "Backing off; check for orphaned connections or raise the plan limit."

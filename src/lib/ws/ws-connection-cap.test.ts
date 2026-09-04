@@ -68,8 +68,8 @@ test("reconnectDelayAfterClose: a capacity refusal forces the cooldown", () => {
   assert.equal(reconnectDelayAfterClose(1000, true), WS_CONNECTION_CAP_COOLDOWN_MS);
   assert.equal(
     reconnectDelayAfterClose(120_000, true),
-    120_000,
-    "an already-longer backoff is never SHORTENED by the cooldown"
+    180_000,
+    "cooldown bumps a shorter backoff up to the account-cap floor"
   );
 });
 

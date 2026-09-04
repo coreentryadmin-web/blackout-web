@@ -29,6 +29,10 @@ import {
   reconnectDelayAfterClose,
   shouldResetBackoffOnAuth,
 } from "./ws-connection-cap";
+import {
+  readPolygonAccountCapPauseMs,
+  recordPolygonAccountCapHit,
+} from "./ws-account-cap-latch";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import {
@@ -408,7 +412,7 @@ class OptionsShard {
     this.reconnectTimer = null;
   }
 
-  private scheduleReconnect(reason: string) {
+  private async scheduleReconnect(reason: string) {
     if (this.shuttingDown) return; // shutting down — do not resurrect the socket
     if (this.reconnectTimer) return;
     if (this.symbols.size === 0) return; // nothing to stream — stay idle
@@ -426,12 +430,16 @@ class OptionsShard {
     const jitter = Math.floor(Math.random() * 400);
     // A capacity refusal ignores the curve — see ws-connection-cap.ts. auth_success is reached by
     // a CAPPED connection too, so without this the shard reconnects ~1/sec forever.
-    const delay = reconnectDelayAfterClose(
-      this.consecutiveFailures >= 8 ? 60_000 : base + jitter,
-      this.cappedThisConnection
+    const accountPauseMs = await readPolygonAccountCapPauseMs();
+    const delay = Math.max(
+      reconnectDelayAfterClose(
+        this.consecutiveFailures >= 8 ? 60_000 : base + jitter,
+        this.cappedThisConnection
+      ),
+      accountPauseMs
     );
     console.warn(
-      `[options-socket] shard ${this.id} reconnect in ${delay}ms (${reason}, failures=${this.consecutiveFailures})`
+      `[options-socket] shard ${this.id} reconnect in ${delay}ms (${reason}, failures=${this.consecutiveFailures}${accountPauseMs > 0 ? ", account-cap latch" : ""})`
     );
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -569,6 +577,7 @@ class OptionsShard {
         // Sharding across connections is exactly what exhausts the cap, so this shard must back
         // off rather than race its siblings for a slot.
         this.cappedThisConnection = true;
+        void recordPolygonAccountCapHit();
         console.error(
           `[options-socket] shard ${this.id} REFUSED — Polygon account is at its WebSocket ` +
             "connection limit. Backing off; reduce shards or raise the plan limit."

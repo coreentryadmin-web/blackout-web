@@ -29,7 +29,7 @@
 
 /** Cooldown after a refusal. Long enough to stop competing for slots, short enough to recover
  *  automatically once whatever held the connections lets go (a deploy draining, a task exiting). */
-export const WS_CONNECTION_CAP_COOLDOWN_MS = 60_000;
+export const WS_CONNECTION_CAP_COOLDOWN_MS = 180_000;
 
 /**
  * True when a provider status frame means "no connection slots left for this account".

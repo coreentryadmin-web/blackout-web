@@ -7,6 +7,10 @@ import {
   reconnectDelayAfterClose,
   shouldResetBackoffOnAuth,
 } from "./ws-connection-cap";
+import {
+  readPolygonAccountCapPauseMs,
+  recordPolygonAccountCapHit,
+} from "./ws-account-cap-latch";
 import { etMinutes, etClock } from "@/features/spx/lib/spx-play-session-time";
 import { recordStockTick } from "@/lib/ws/stock-candle-store";
 import { isEtCashRth } from "@/lib/et-market-hours";
@@ -229,7 +233,7 @@ function polygonErrorMessage(err: unknown): string {
  *  connect attempt in connectIndices. */
 let indicesCappedThisConnection = false;
 
-function scheduleIndicesReconnect(reason: string) {
+async function scheduleIndicesReconnect(reason: string) {
   if (indicesShuttingDown) return; // shutting down — do not resurrect the socket
   if (indicesReconnectTimer) return;
   indicesConsecutiveFailures += 1;
@@ -239,9 +243,13 @@ function scheduleIndicesReconnect(reason: string) {
   // A capacity refusal ignores the curve entirely — see ws-connection-cap.ts. The curve rides out
   // transient faults; an account cap is not transient, and retrying it fast occupies the very slots
   // that are scarce.
-  const delay = reconnectDelayAfterClose(normal, indicesCappedThisConnection);
+  const accountPauseMs = await readPolygonAccountCapPauseMs();
+  const delay = Math.max(
+    reconnectDelayAfterClose(normal, indicesCappedThisConnection),
+    accountPauseMs
+  );
   console.warn(
-    `[polygon-socket] indices reconnect in ${delay}ms (${reason}, failures=${indicesConsecutiveFailures})`
+    `[polygon-socket] indices reconnect in ${delay}ms (${reason}, failures=${indicesConsecutiveFailures}${accountPauseMs > 0 ? ", account-cap latch" : ""})`
   );
   indicesReconnectTimer = setTimeout(() => {
     indicesReconnectTimer = null;
@@ -343,6 +351,11 @@ async function connectIndices() {
     console.warn("[polygon-socket] POLYGON_API_KEY not set — WebSocket disabled");
     return;
   }
+  const accountPauseMs = await readPolygonAccountCapPauseMs();
+  if (accountPauseMs > 0) {
+    void scheduleIndicesReconnect("account-cap latch");
+    return;
+  }
   if (
     indicesWs &&
     (indicesWs.readyState === WebSocket.OPEN || indicesWs.readyState === WebSocket.CONNECTING)
@@ -413,6 +426,7 @@ async function connectIndices() {
             // Account-level: no retry rate fixes it, and a fast one makes it worse. Logged loudly
             // because it is invisible otherwise — the handshake and auth both SUCCEED.
             indicesCappedThisConnection = true;
+            void recordPolygonAccountCapHit();
             console.error(
               "[polygon-socket] indices REFUSED — Polygon account is at its WebSocket connection " +
                 "limit. Backing off; check for orphaned connections or raise the plan limit."
