@@ -1488,7 +1488,7 @@ async function applyLiquidStrikeFallback(
  *    unreadable) fails closed, and an unreadable committed set fails the whole
  *    persist closed (can't tell fresh from committed → nothing new may print).
  *
- *  After the 14:00 ET directional cutoff only EXISTING directional plays are refreshed —
+ *  After the 15:30 ET directional cutoff only EXISTING directional plays are refreshed —
  *  a fresh directional flag past NEW_PLAY_CUTOFF never opens. CONDOR is exempt (matches
  *  G-14 + late-theta sell design): fresh index credit seats may still commit when PIN
  *  discovery finds them in the post-cutoff window. */

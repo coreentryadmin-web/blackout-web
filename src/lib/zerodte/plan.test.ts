@@ -310,4 +310,5 @@ test("PLAN_RULES: the fixed 0DTE discipline is what the grades key on", () => {
   assert.equal(PLAN_RULES.target_pct, 100);
   assert.equal(PLAN_RULES.time_stop_et_minutes, 15 * 60 + 50);
   assert.equal(NEW_PLAY_CUTOFF_ET_MINUTES, 15 * 60 + 30);
+  assert.equal(DIRECTIONAL_LATE_CUTOFF_ET_MINUTES, NEW_PLAY_CUTOFF_ET_MINUTES);
 });

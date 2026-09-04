@@ -32,24 +32,25 @@ export const PLAN_RULES_TIME_STOP_ET_LABEL = `${Math.floor(PLAN_RULES.time_stop_
 /** 0DTE directional commits open at 10:00 ET (G-2 unlock). */
 export const ZERODTE_COMMIT_OPEN_ET_MINUTES = 10 * 60;
 
-/** No NEW 0DTE plays of ANY kind (including condor) after 15:30 ET — persist-layer backstop
- *  and the discovery-layer condor-fresh-eligibility boundary (scan.ts). NOT the directional
- *  commit cutoff — see DIRECTIONAL_LATE_CUTOFF_ET_MINUTES for that. */
+/** No NEW 0DTE plays of ANY kind (including condor) after 15:30 ET — persist-layer backstop,
+ *  discovery-layer condor-fresh-eligibility boundary (scan.ts), and directional commit cutoff
+ *  (G-14 / confluence ENTRY_CUTOFF). Operator may tighten via
+ *  ZERODTE_DIRECTIONAL_LATE_CUTOFF_MINUTES (ET minutes since midnight). */
 export const NEW_PLAY_CUTOFF_ET_MINUTES = 15 * 60 + 30;
 
-/** No NEW DIRECTIONAL 0DTE commits after 14:00 ET — gate G-14 (gates.ts) + confluence's
- *  ENTRY_CUTOFF_ET_MINUTES. Condors are exempt (a credit seller WANTS late-session theta
- *  crush) and stay eligible through NEW_PLAY_CUTOFF_ET_MINUTES (15:30 ET) above.
- *
- *  Evidence: 90-day prod record (FINDINGS 2026-07-28), 14:00-15:30 bucket ran 14.3% WR /
- *  −19.02% avg P&L — shipped as a hard 14:00 gate. On 2026-08-03 (#1591) this was widened
- *  to alias NEW_PLAY_CUTOFF_ET_MINUTES (15:30 ET) "to align session discipline with operator
- *  intent" — but the toxic window kept bleeding: re-measured live 2026-09-01, the reopened
- *  14:00-15:30 bucket still ran 21.1% WR / −12.72% avg over the 90 days since the widening
- *  (n=19), materially unchanged from the original evidence. Split back out to its own constant
- *  so a future change to the general session-exit cutoff (condor/backstop) cannot silently
- *  drag the directional gate along with it again. */
-export const DIRECTIONAL_LATE_CUTOFF_ET_MINUTES = 14 * 60;
+/** No NEW DIRECTIONAL 0DTE commits after 15:30 ET — gate G-14 (gates.ts) + confluence
+ *  ENTRY_CUTOFF_ET_MINUTES. Aligned with NEW_PLAY_CUTOFF_ET_MINUTES and the board copy
+ *  ("new plays 10:00–3:30 ET"). The 14:00 hard stop (2026-09-01) was reverted 2026-09-04:
+ *  operator intent is to trade the full RTH commit window and tune quality via gates/score
+ *  rather than forfeit the 14:00–15:30 power hour — late-bucket outcomes stay in calibration. */
+export const DIRECTIONAL_LATE_CUTOFF_ET_MINUTES = ((): number => {
+  const raw = process.env.ZERODTE_DIRECTIONAL_LATE_CUTOFF_MINUTES?.trim();
+  if (raw) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return NEW_PLAY_CUTOFF_ET_MINUTES;
+})();
 
 /** Human ET label for the hard exit (derived from PLAN_RULES). */
 export function zerodteTimeStopEtLabel(): string {

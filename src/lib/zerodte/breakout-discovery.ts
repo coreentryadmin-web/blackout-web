@@ -124,7 +124,7 @@ export function rankMoversForChainFetch<T extends { gain: number; close_strength
  * PRIOR-DAY (carried-over / cached) snapshot served during RTH: its freshest bar is dated to an
  * earlier session, so `now − t` jumps past a full day.
  *
- * THRESHOLD RATIONALE: discoverBreakoutSetups only runs inside the RTH commit window [9:30, 14:00)
+ * THRESHOLD RATIONALE: discoverBreakoutSetups runs inside the RTH commit window [9:30, 15:30)
  * ET, so a genuine same-day live bar's `now − t` is at most ~14h (t ≈ midnight ET) — and up to ~20h
  * once the widest `t`-convention / DST skew is allowed for. A prior-day snapshot is ≥ ~33h old. 24h
  * sits cleanly between the two: strictly above any legitimate same-day age, strictly below any
