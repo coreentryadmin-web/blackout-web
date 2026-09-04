@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "e3fc7de2-cc7b-4f97-9e65-618263e7d432",
-  "last_seen": "2026-09-04T00:54:06.923Z",
+  "run_id": "ce470fc9-8e15-4a2f-9895-074e666e9f87",
+  "last_seen": "2026-09-04T01:20:30.364Z",
   "last_productive_action": "heartbeat",
-  "current_task": "BO-P1-0005",
-  "current_phase": "DONE",
-  "branch": null,
+  "current_task": "BO-P2-0003",
+  "current_phase": "PR_OPEN",
+  "branch": "fix/vector-gated-runners-only",
   "pr": null,
   "healthy": true
 }

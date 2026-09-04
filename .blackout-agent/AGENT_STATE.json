@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T00:54:12.533Z",
+  "updated_at": "2026-09-04T01:20:49.293Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -31,38 +31,24 @@
       "task_id": "BO-P1-0005",
       "owner": "cursor",
       "claimed_at": "2026-09-04T00:53:11.304Z",
-      "lease_until": "2026-09-04T02:23:11.304Z",
+      "lease_until": "2026-09-04T02:25:01.279Z",
       "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "e76a4696-728b-4458-a019-5f501a0ffd0f",
       "title": "Review Claude PR #3434"
-    },
-    "BO-P1-0004": {
-      "task_id": "BO-P1-0004",
-      "owner": "cursor",
-      "claimed_at": "2026-09-04T00:42:01.007Z",
-      "lease_until": "2026-09-04T02:12:01.007Z",
-      "phase": "RELEASED",
-      "branch": null,
-      "pr": null,
-      "reviewer": null,
-      "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T00:47:07.074Z"
     },
     "BO-P2-0003": {
       "task_id": "BO-P2-0003",
       "owner": "cursor",
       "claimed_at": "2026-09-04T00:54:12.532Z",
-      "lease_until": "2026-09-04T02:24:12.532Z",
+      "lease_until": "2026-09-04T02:25:01.279Z",
       "phase": "IMPLEMENTING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
-      "title": null
+      "run_id": "e76a4696-728b-4458-a019-5f501a0ffd0f"
     }
   },
   "reviews": {
@@ -82,18 +68,79 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T00:54:12.533Z",
-      "current_task": "BO-P2-0003"
+      "last_seen": "2026-09-03T23:53:48.680Z",
+      "current_task": "BO-P1-0005"
     }
   },
   "deploy": {
-    "last_main_sha": "aa08b98d9ffdab369aa27030f999502edfc862dd",
+    "last_main_sha": "6c527fcdfd0be73ff9ab464eae8b76627568a42b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T00:32:34Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33822209974",
-    "last_deploy_sha": "6c527fcdfd0be73ff9ab464eae8b76627568a42b"
+    "last_deploy_at": "2026-09-04T01:17:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33825166718",
+    "last_deploy_sha": "f42a3892ba8d01d58142d012344efcc32f9900a0"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3451,
+      "title": "fix(0dte): gate extended runner targets behind Vector winner/runner only (BO-P2-0003)",
+      "branch": "fix/vector-gated-runners-only",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T01:20:39Z"
+    },
+    {
+      "number": 3450,
+      "title": "fix(autopilot): resolve GitHub repo slug when GITHUB_REPOSITORY unset",
+      "branch": "fix/pr-feedback-repo-slug-fallback-v2",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T01:20:16Z"
+    },
+    {
+      "number": 3449,
+      "title": "chore(autopilot): handoff after peer reviews + 0DTE replay validation",
+      "branch": "cursor/autopilot-state-handoff-2026-09-04",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T01:19:12Z"
+    },
+    {
+      "number": 3448,
+      "title": "fix(ci): grid-rth-all-day-agent.yml silently failing every trigger — broken YAML block scalar",
+      "branch": "fix/grid-rth-agent-workflow-yaml-parse-error",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T01:18:51Z"
+    },
+    {
+      "number": 3447,
+      "title": "chore(autopilot): cursor handoff — merged #3441 #3444 #3445",
+      "branch": "fix/cursor-autopilot-handoff-2026-09-04b",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T01:17:44Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-01T19:54:25Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -211,65 +258,35 @@
       "safe_to_merge": true
     },
     {
-      "at": "2026-09-04T00:41:48.409Z",
+      "at": "2026-09-04T00:55:00.447Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T00:41:53.340Z",
+      "at": "2026-09-04T00:55:01.278Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T00:42:01.008Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0004",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-04T00:47:07.074Z",
-      "type": "task_released",
-      "task_id": "BO-P1-0004",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-04T00:47:08.249Z",
+      "at": "2026-09-04T00:55:01.987Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T00:47:08.250Z",
+      "at": "2026-09-04T01:20:49.293Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-04T01:20:49.293Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "1de24f86-544f-4a78-8c46-d0a0158c1c1f",
-      "summary": "Recovered on main post-#3436 merge. BO-P1-0004 post-deploy 0DTE replay GREEN: 2026-09-03 session 6 plays replayed, executable WR 66.7% avg +10.7%. validate:deploy GREEN. Next: BO-P1-0005 review any new Claude PRs; findings-staging fold deferred (breaks findings-hygiene idempotent test)."
-    },
-    {
-      "at": "2026-09-04T00:53:07.317Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T00:53:11.305Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0005",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-04T00:53:36.908Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T00:54:12.533Z",
-      "type": "task_claimed",
-      "task_id": "BO-P2-0003",
-      "owner": "cursor"
+      "run_id": "6cc4979e-4a71-4c66-9c80-fbdf56bc1f72",
+      "summary": "Recovered autopilot state from fix/cursor-autopilot-state-recovery. BO-P1-0005 complete (no open Claude PRs). BO-P2-0003 implemented: resolveRunnerProfile now requires aligned Vector winner/runner — draft PR #3451. validate:deploy GREEN. Peer Claude heartbeat stale since 2026-09-03T23:46Z."
     }
   ]
 }
