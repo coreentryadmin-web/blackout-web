@@ -126,6 +126,17 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0g. RTH-open options-socket retry false-fail — fix/rth-open-socket-retry-false-fail (pending)
+
+**What was broken:** `validate:rth-open` called `fail()` on the first options-socket probe attempt even
+when attempt 2/3 returned green (`ingest leader lock held — marks warming`), leaving a stale failure in
+the harness exit code.
+
+**Fix:** `scripts/lib/rth-socket-probe.mjs` — retry up to 3 times; hard-fail only after all attempts.
+
+**Check at the open:** Run `npm run validate:rth-open` during RTH; transient "no ingest leader" on
+attempt 1 must not fail the run when attempt 2 shows warming/fresh marks.
+
 ### 0f. SPX dashboard E2E cross-tool stale matrix flip — fix/spx-dashboard-cross-tool-stale-matrix (pending)
 
 **What was broken:** `spx-dashboard-e2e-audit.mjs` compared gamma flip from a matrix snapshot fetched
