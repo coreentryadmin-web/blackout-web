@@ -44,12 +44,12 @@
       "owner": "claude",
       "claimed_at": "2026-09-04T00:18:31.910Z",
       "lease_until": "2026-09-04T01:48:31.910Z",
-      "phase": "IMPLEMENTING",
+      "phase": "PR_OPEN",
       "branch": "fix/g18-g19-postdeploy-replay",
-      "pr": null,
+      "pr": 3441,
       "reviewer": null,
       "run_id": null,
-      "title": null
+      "title": "Post-deploy 0DTE replay (found+fixed real POLYGON_API_BASE redaction-placeholder bug)"
     }
   },
   "reviews": {
@@ -57,7 +57,7 @@
       "pr": 3434,
       "head_sha": "5d436c976978fe5bddad53474c688f861bac853a",
       "reviewer": "cursor",
-      "verdict": "APPROVED — safe to merge",
+      "verdict": "APPROVED \u2014 safe to merge",
       "reviewed_at": "2026-09-03T23:53:48.868Z",
       "safe_to_merge": true
     }
@@ -178,7 +178,7 @@
       "pr": 3434,
       "head_sha": "5d436c976978fe5bddad53474c688f861bac853a",
       "reviewer": "cursor",
-      "verdict": "APPROVED — safe to merge",
+      "verdict": "APPROVED \u2014 safe to merge",
       "reviewed_at": "2026-09-03T23:49:07.593Z",
       "safe_to_merge": true
     },
@@ -194,7 +194,7 @@
       "pr": 3434,
       "head_sha": "5d436c976978fe5bddad53474c688f861bac853a",
       "reviewer": "cursor",
-      "verdict": "APPROVED — safe to merge",
+      "verdict": "APPROVED \u2014 safe to merge",
       "reviewed_at": "2026-09-03T23:53:48.868Z",
       "safe_to_merge": true
     },
