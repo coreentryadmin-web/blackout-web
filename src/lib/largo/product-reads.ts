@@ -192,8 +192,25 @@ export async function swingHorizonForLargo() {
       fetchLatestManageEvents: (ids) => fetchLatestSwingSnapshotEvents(ids).catch(() => new Map()),
       spotsByTicker: snap?.spotsByTicker,
     });
+    const nowMs = Date.now();
     return roundFloats({
       available: true,
+      // The Largo product contract's "time"/"freshness" points require every product read to
+      // carry when it was measured. This tool omitted both entirely — a model reading
+      // `sample_plays`/`section_counts` had no way to tell a live-scan lane from one whose
+      // discovery run is hours or days stale. Two different clocks matter here and must not be
+      // conflated: `as_of`/`as_of_et`/`session_date` are THIS read's own clock (matches every
+      // sibling tool's convention, e.g. bangerBoardForLargo above); `scan_as_of`/
+      // `scan_session_day` are the PERSISTED discovery snapshot's own stamp
+      // (SwingServingSnapshot.asOf/sessionDay, already fetched above for spotsByTicker and
+      // silently discarded before this fix) — the actual freshness evidence for the lane
+      // contents. `null` when no scan has ever been persisted (discovery-gated empty lane),
+      // never fabricated as "now".
+      as_of: new Date(nowMs).toISOString(),
+      as_of_et: etStamp(nowMs),
+      session_date: etSessionDate(nowMs),
+      scan_as_of: snap?.asOf ?? null,
+      scan_session_day: snap?.sessionDay ?? null,
       ...(openPositionsRead
         ? {}
         : {
