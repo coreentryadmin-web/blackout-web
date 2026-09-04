@@ -103,9 +103,11 @@ async function fetchCalibration(args, headers) {
   const q = args.days ? `?days=${args.days}` : "";
   const res = await fetch(`${args.base}/api/market/zerodte/calibration${q}`, { headers });
   const report = await res.json().catch(() => ({}));
-  if (!res.ok || report.available === false) {
+  if (!res.ok) {
     throw new Error(`calibration GET failed HTTP ${res.status}: ${JSON.stringify(report).slice(0, 300)}`);
   }
+  // available:false means zero graded plays in the window — still a valid report shape
+  // (off-hours / fresh deploy). Downstream interpretGate() emits INSUFFICIENT_DATA per gate.
   return { grade: gradeJson, report };
 }
 
@@ -144,9 +146,11 @@ async function main() {
     if (args.replay) replay = runReplay(args);
 
     const result = buildReport({ calibration: report, replay });
+    if (!report.available) result.insufficient_data = true;
 
     if (args.json) {
       console.log(JSON.stringify({ ...result, grade_backfill: grade }, null, 2));
+      process.exitCode = 0;
       return;
     }
 

@@ -29,3 +29,18 @@ test("buildReport adds verdict strings", () => {
   assert.match(report.gates.early_window_prime_score.verdict, /KEEP|HOLD|REVIEW/);
   assert.equal(report.replay.replayed, 6);
 });
+
+test("buildReport handles empty calibration window with INSUFFICIENT_DATA verdicts", () => {
+  const report = buildReport({
+    calibration: {
+      available: false,
+      window: { since: "2026-08-27", through: "2026-09-03", days: 7 },
+      blocked_value: [],
+      graded_plays: 0,
+    },
+    replay: null,
+  });
+  assert.equal(report.ok, true);
+  assert.match(report.gates.early_window_prime_score.verdict, /INSUFFICIENT_DATA/);
+  assert.match(report.gates.score_top_band.verdict, /INSUFFICIENT_DATA/);
+});
