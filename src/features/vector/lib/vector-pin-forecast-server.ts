@@ -83,8 +83,6 @@ export async function getVectorPinForecast(
 
     const { recentReturns, macroEvent } = await pinForecastTrendInputs(t, sessionYmd);
 
-    const { recentReturns, macroEvent } = await pinForecastTrendInputs(t, sessionYmd);
-
     const forecast = forecastPin({
       spot,
       priorClose,
