@@ -181,7 +181,7 @@ export function currentStrategyConfigHash(): string {
 // THE PROBLEM this closes: at commit we froze only the exit MODE NAME
 // (entry_context.exit_policy_at_commit) + the EXIT_VERSION string. The actual NUMERIC
 // thresholds that decide a graded outcome — the −50% stop, +100% target, the ⅓/⅓/⅓
-// trim ladder, the ratchet arm/lock floors, the 15:30 time-stop, the stop-before-target
+// trim ladder, the ratchet arm/lock floors, the 15:50 time-stop, the stop-before-target
 // same-bar collision rule — lived ONLY in code (PLAN_RULES / EXIT_RULES / TRIM_SCALE_RULES).
 // So a grader replaying a historical row re-derived them from CURRENT code: a later
 // numeric edit silently re-graded every past play under the new numbers, corrupting the
@@ -225,7 +225,7 @@ export interface ResolvedExitPolicy {
    *  table + "no trailing stop" in trim_scale mode. Embedded in the hash so ANY numeric edit
    *  to those constants changes config_hash even though they have no dedicated field. */
   trailing_rule: string;
-  /** Same-day hard time-stop, ET "H:MM" (15:30). Derived from PLAN_RULES.time_stop_et_minutes. */
+  /** Same-day hard time-stop, ET "H:MM" (15:50). Derived from PLAN_RULES.time_stop_et_minutes. */
   time_stop_et: string;
   /** How a same-bar stop+target collision is resolved by the grader (stop wins — the
    *  conservative intrabar order gradePlanFromBars/gradeCondorFromBars apply). */
@@ -234,7 +234,7 @@ export interface ResolvedExitPolicy {
   config_hash: string;
 }
 
-/** ET "H:MM" for minutes-since-midnight (15*60+30 → "15:30"). */
+/** ET "H:MM" for minutes-since-midnight (15*60+50 → "15:50"). */
 function formatEtMinutes(min: number): string {
   const h = Math.floor(min / 60);
   const m = min % 60;

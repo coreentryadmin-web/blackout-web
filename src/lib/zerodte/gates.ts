@@ -75,14 +75,14 @@ export const MARKET_BIAS_MAX_AGE_MS = 15 * 60 * 1000;
 // fixed entry at 9:45 ran −12.1% expectancy / 26% win — the worst tested time — improving
 // monotonically through the morning (10:00 −7.8%, 10:30 −9.1%, 11:00 +1.5%). 9:45 was
 // literally the worst moment to unlock. The move stops at 10:00 (NOT 11:00) on purpose:
-// (1) the backtest grader holds to stop/target/15:30 and ignores the live exit engine, so
+// (1) the backtest grader holds to stop/target/15:50 and ignores the live exit engine, so
 // it likely UNDERSTATES early-entry outcomes; (2) blocking the whole morning would empty
 // the board 9:30–11:00. The soft 10:00–12:30 gradient is handled by timeOfDayFactor
 // (intraday.ts), a score nudge, not a hard block. The gate still buckets every commit by ET
 // time (gate_calibration_json.committed_at_et), so the ledger — not this backtest — decides
 // whether to push the unlock later. Setups found before 10:00 stay visible as WATCH/SKIP
 // cards carrying the unlock time; the scanner re-evaluates every ~2 min, so a setup still
-// alive at 10:00 commits then. The no-new-plays->=15:00 + hard-exit-15:30 rules are
+// alive at 10:00 commits then. The no-new-plays->=15:00 + hard-exit-15:50 rules are
 // unchanged and live upstream (persistZeroDteScan / PLAN_RULES).
 export const OPENING_WINDOW_UNLOCK_ET_MINUTES = 10 * 60;
 export const OPENING_WINDOW_UNLOCK_LABEL = "10:00 ET";

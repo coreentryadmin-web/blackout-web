@@ -57,7 +57,7 @@ export function condorFlagEnabled(): boolean {
 // assignment model. This is a safety gate, not a tuning dial.
 // Production default: SPX + NDX — both cash-settled, European-style index roots (NO early
 // assignment; defined loss holds) with daily 0DTE expirations that are PM/close-settled, so the
-// 15:30-close grader is valid for both. NDX 0DTE is thinner than SPX, but the condor liquidity
+// 15:50-close grader is valid for both. NDX 0DTE is thinner than SPX, but the condor liquidity
 // gate (4 legs quotable + per-leg spread + credit floor) blocks any bad-fill NDX condor, so adding
 // it can only add REAL condors, never a poorly-priced one. XSP/RUT (also cash-settled index) are
 // research-only via the env override. American ETFs/single names are NEVER eligible (assignment).

@@ -144,7 +144,7 @@ export type ZeroDteBoardLedgerRow = {
    *  trim-scale AS-MANAGED live_pnl_pct when the peak armed tranches (shipped default exit
    *  mode); else the mechanical −50% hold-to-stop pin. Drives the exit badge; "ratchet"/"thesis"/"flat"/"target"
    *  categorize an engine exit from the pinned entry_context.exit; "time_stop" is a plain
-   *  15:30 close with no engine exit; null = a live (still-open) row. Additive: only
+   *  15:50 close with no engine exit; null = a live (still-open) row. Additive: only
    *  "stopped" pins P&L — every other value is a display label. */
   closed_reason: "stopped" | ZeroDteExitReasonCategory | "time_stop" | null;
   /** The active PROTECTIVE ratchet floor in P&L % terms (ratchet mode — the shipped
@@ -464,7 +464,7 @@ function mapLedgerRow(
     ? null
     : ratchetFloorPct(pinnedLivePnlPct(r.entry_premium, r.peak_premium), r.status === "TRIM");
   // The terminal close label, now distinguishing the exit type: a pinned stop pins (and
-  // wins); else an engine exit is categorized; else a plain 15:30 close is "time_stop";
+  // wins); else an engine exit is categorized; else a plain 15:50 close is "time_stop";
   // else the row is still live (null).
   const boardClosedReason: ZeroDteBoardLedgerRow["closed_reason"] =
     closedReason === "stopped"

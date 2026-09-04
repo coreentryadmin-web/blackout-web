@@ -419,7 +419,7 @@ export function etMinutesOf(epochMs: number): number {
  * The flag bar ITSELF is excluded (`bar.t <= flaggedAtMs` is skipped): its own high/low
  * happened around the flag print in unknowable order, so testing them against target/stop
  * would be intrabar clairvoyance — the same discipline the skip grader applies via
- * `entryBar.t + 1`. Past the time stop, exit at the last usable close ≤15:30 ET. No bars
+ * `entryBar.t + 1`. Past the time stop, exit at the last usable close ≤15:50 ET. No bars
  * strictly after the flag → ungradeable.
  *
  * TIE-BREAK DIVERGENCE vs derivePlayStatus (deliberate, documented): on a same-bar
@@ -560,7 +560,7 @@ export function gradePlanExecutableFromBars(
  * to the target — and banks `fractionₖ` of the original at that level. The runner (whatever is
  * left after the trims) then rides to the plan target (bid high ≥ target), the plan stop (bid
  * low ≤ stop, checked FIRST within a bar per the frozen collision rule — stop-before-target),
- * or the 15:30 time-stop (sell the remainder into the closing bid). `f` is the row's OWN pinned
+ * or the 15:50 time-stop (sell the remainder into the closing bid). `f` is the row's OWN pinned
  * half-spread (clamped [0, 0.95] like the single-walk grade), so the reconstruction pays the
  * real committed spread on every leg.
  *

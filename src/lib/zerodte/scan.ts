@@ -1267,7 +1267,7 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   if (!dbConfigured() || setupsIn.length === 0) return 0;
   // HORIZON INTEGRITY fail-closed guard (PR-1, design Q2). The BREAKOUT/PIN/condor pickers are
   // already clamped to dte ≤ 1, so nothing dte≥2 should reach here — but commit is the last gate
-  // before a row is graded with the same-day 15:30 time-stop, so we assert the horizon here too.
+  // before a row is graded with the same-day 15:50 time-stop, so we assert the horizon here too.
   // Any WEEKLY_FALLBACK (dte≥2, or a fail-closed unknown horizon) is DROPPED before commit so it
   // never pollutes the 0DTE ledger/calibration with an invalid same-day-graded outcome. This keeps
   // the 0DTE feature-store population structurally HOMOGENEOUS (all rows same-day) — the precondition
@@ -1526,7 +1526,7 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       ...(s.play_type === "CONDOR" && s.condor_plan ? { condor: s.condor_plan } : {}),
       // Contract HORIZON pinned at first flag (PR-1 horizon integrity). Only ZERO_DTE/ONE_DTE ever
       // reach here (the guard above dropped any weekly fallback), so grading can ASSERT same-day
-      // before applying the 15:30 time-stop instead of inferring the horizon from expiry vs date.
+      // before applying the 15:50 time-stop instead of inferring the horizon from expiry vs date.
       contract_horizon: s.contract_horizon,
       actual_dte_at_commit: s.actual_dte_at_commit,
       grading_policy: s.grading_policy,
@@ -1809,11 +1809,11 @@ export async function gradeZeroDteLedger(force = false): Promise<number> {
       // columns. The directional-move grade still runs afterward (harmless provenance) and stamps
       // graded_at. Guarded strictly on play_type === "CONDOR", so a directional row is byte-identical.
       const ec = row.entry_context ?? null;
-      // HORIZON assertion (PR-1, design Q2): the plan/condor grades below apply the SAME-DAY 15:30
+      // HORIZON assertion (PR-1, design Q2): the plan/condor grades below apply the SAME-DAY 15:50
       // time-stop (plan.ts / condor.ts). That is only valid for a same-day (ZERO_DTE/ONE_DTE)
       // contract. Read the pinned horizon and, if it is KNOWN to be non-same-day (a weekly fallback
       // that somehow reached the ledger despite the commit guard), SKIP the same-day intraday grades
-      // so we never stamp an invalid 15:30 outcome. Legacy rows predate this pin (horizon absent) →
+      // so we never stamp an invalid 15:50 outcome. Legacy rows predate this pin (horizon absent) →
       // undefined, and grade unchanged. `isSameDayHorizon` fail-closes an unknown string to false,
       // so only a horizon explicitly ZERO_DTE/ONE_DTE (or a legacy null) is graded same-day.
       const pinnedHorizon = typeof ec?.contract_horizon === "string" ? ec.contract_horizon : null;
@@ -2110,7 +2110,7 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
   const updated = await Promise.all(
     rows.map(async (r) => {
       // CLOSED is terminal; every other row gets a state pass — rows with no plan/
-      // entry still time-stop at 15:30 (data quality never exempts the clock).
+      // entry still time-stop at 15:50 (data quality never exempts the clock).
       if (r.status === "CLOSED") return r;
       const occ = typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null;
       const ec = r.entry_context as Record<string, unknown> | null;
