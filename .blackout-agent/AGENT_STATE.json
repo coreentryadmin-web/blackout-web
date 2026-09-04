@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:52:08.396Z",
+  "updated_at": "2026-09-04T23:38:52.829Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-04T23:09:13.935Z",
+      "lease_until": "2026-09-05T00:39:13.935Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -234,6 +234,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3774": {
+      "pr": 3774,
+      "head_sha": "a79fd8800",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:28:29.821Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,11 +256,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75",
+    "last_main_sha": "76dbb35345d8e107f8c932485ebfa41d6a3945f2",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:42:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
-    "last_deploy_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75"
+    "last_deploy_at": "2026-09-04T23:34:58Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33930043864",
+    "last_deploy_sha": "76dbb35345d8e107f8c932485ebfa41d6a3945f2"
   },
   "open_prs": [],
   "events": [
@@ -1071,6 +1079,259 @@
       "agent": "cursor",
       "run_id": "01ba5e3e-d264-48b8-b6f9-953c859c62cd",
       "summary": "Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty."
+    },
+    {
+      "at": "2026-09-04T23:22:07.550Z",
+      "type": "pr_webhook",
+      "pr": 3794,
+      "event": "sweep",
+      "head": "61330470a6c8a4c2b639f7195b05ae7d49cc64c0",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:22:09.786Z",
+      "type": "pr_webhook",
+      "pr": 3793,
+      "event": "sweep",
+      "head": "dd64daee88755a5be0f3c40c98b745f7c57ded29",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:22:12.667Z",
+      "type": "pr_webhook",
+      "pr": 3792,
+      "event": "sweep",
+      "head": "0111cf3cb767ec6909d322143a1bbb0e8bae1f69",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:22:15.114Z",
+      "type": "pr_webhook",
+      "pr": 3790,
+      "event": "sweep",
+      "head": "5522e6f899f748bc27e44cd29a015bfc2c106a9f",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:22:17.669Z",
+      "type": "pr_webhook",
+      "pr": 3789,
+      "event": "sweep",
+      "head": "ffee4841e84021cc561c2edd716dbca7600cadf6",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:22:20.171Z",
+      "type": "pr_webhook",
+      "pr": 3788,
+      "event": "sweep",
+      "head": "538b7f5d98c09275ca8051749ee089d7be4f127f",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:22:22.415Z",
+      "type": "pr_webhook",
+      "pr": 3787,
+      "event": "sweep",
+      "head": "6f6ce0f5a879fef5c2e4fd8cd7b79498da4b074c",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:22:24.958Z",
+      "type": "pr_webhook",
+      "pr": 3786,
+      "event": "sweep",
+      "head": "3de0a3b40eed37a79de8fb32b0f9b661ea37300c",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:22:27.309Z",
+      "type": "pr_webhook",
+      "pr": 3784,
+      "event": "sweep",
+      "head": "3c73c2b0fbe21d1f2e5427b8b135aea1c02605f7",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:22:29.966Z",
+      "type": "pr_webhook",
+      "pr": 3783,
+      "event": "sweep",
+      "head": "f1a74e78235ac076708600b03d00b7c892920790",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:22:32.267Z",
+      "type": "pr_webhook",
+      "pr": 3774,
+      "event": "sweep",
+      "head": "a79fd88000093e3eb148dc254ba30cfd0c8172a2",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:22:34.768Z",
+      "type": "pr_webhook",
+      "pr": 3773,
+      "event": "sweep",
+      "head": "44617266e03eee1dd4266952d5d0f3b9fa558499",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:28:29.822Z",
+      "type": "pr_review",
+      "pr": 3774,
+      "head_sha": "a79fd8800",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:28:29.821Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T23:38:46.718Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T23:38:46.719Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "721999be-0d66-4432-a0ba-c50d09a52687",
+      "summary": "Peer-review wave: merged #3784 (Learn nav Night Hawk descriptor) + #3774 (UW cache/WS stall future-timestamp guards). Both approved with local test validation, verify GREEN. validate:deploy GREEN, ops:collect 0 items. GitHub GraphQL rate-limited (user 284440397) — merges via REST GH_TOKEN succeeded."
+    },
+    {
+      "at": "2026-09-04T23:38:50.212Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T23:38:52.829Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3794": {
+      "last_event": "sweep",
+      "last_head": "61330470a6c8a4c2b639f7195b05ae7d49cc64c0",
+      "last_feedback_at": "2026-09-04T23:22:07.550Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3793": {
+      "last_event": "sweep",
+      "last_head": "dd64daee88755a5be0f3c40c98b745f7c57ded29",
+      "last_feedback_at": "2026-09-04T23:22:09.786Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3792": {
+      "last_event": "sweep",
+      "last_head": "0111cf3cb767ec6909d322143a1bbb0e8bae1f69",
+      "last_feedback_at": "2026-09-04T23:22:12.667Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3790": {
+      "last_event": "sweep",
+      "last_head": "5522e6f899f748bc27e44cd29a015bfc2c106a9f",
+      "last_feedback_at": "2026-09-04T23:22:15.114Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3789": {
+      "last_event": "sweep",
+      "last_head": "ffee4841e84021cc561c2edd716dbca7600cadf6",
+      "last_feedback_at": "2026-09-04T23:22:17.669Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3788": {
+      "last_event": "sweep",
+      "last_head": "538b7f5d98c09275ca8051749ee089d7be4f127f",
+      "last_feedback_at": "2026-09-04T23:22:20.171Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3787": {
+      "last_event": "sweep",
+      "last_head": "6f6ce0f5a879fef5c2e4fd8cd7b79498da4b074c",
+      "last_feedback_at": "2026-09-04T23:22:22.415Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3786": {
+      "last_event": "sweep",
+      "last_head": "3de0a3b40eed37a79de8fb32b0f9b661ea37300c",
+      "last_feedback_at": "2026-09-04T23:22:24.958Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3784": {
+      "last_event": "sweep",
+      "last_head": "3c73c2b0fbe21d1f2e5427b8b135aea1c02605f7",
+      "last_feedback_at": "2026-09-04T23:22:27.309Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3783": {
+      "last_event": "sweep",
+      "last_head": "f1a74e78235ac076708600b03d00b7c892920790",
+      "last_feedback_at": "2026-09-04T23:22:29.966Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3774": {
+      "last_event": "sweep",
+      "last_head": "a79fd88000093e3eb148dc254ba30cfd0c8172a2",
+      "last_feedback_at": "2026-09-04T23:22:32.267Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3773": {
+      "last_event": "sweep",
+      "last_head": "44617266e03eee1dd4266952d5d0f3b9fa558499",
+      "last_feedback_at": "2026-09-04T23:22:34.768Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }
