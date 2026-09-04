@@ -29,12 +29,7 @@ jobs:
     if: >-
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && (
-        startsWith(github.head_ref, 'cursor/') ||
-        startsWith(github.head_ref, 'claude/') ||
-        startsWith(github.head_ref, 'fix/') ||
-        startsWith(github.head_ref, 'docs/')
-      )) ||
+      (github.event_name == 'pull_request') ||
       (github.event_name == 'workflow_run' && (
         (github.event.workflow_run.name == 'CI' && github.event.workflow_run.conclusion == 'failure') ||
         (github.event.workflow_run.name == 'ECR push (production)' && github.event.workflow_run.conclusion == 'success') ||

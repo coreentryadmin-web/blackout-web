@@ -7,6 +7,9 @@ import {
   buildFeedback,
   shouldDispatchDeepReview,
   markerFor,
+  analyzeDiff,
+  deriveDirective,
+  summarizeChecks,
 } from "./pr-feedback.mjs";
 
 test("classifyBranch", () => {
@@ -21,12 +24,12 @@ test("classifyBranch", () => {
   );
 });
 
-test("reviewerForBranch peers", () => {
+test("reviewerForBranch — cursor reviews all non-cursor PRs", () => {
   assert.equal(reviewerForBranch("claude/x"), "cursor");
   assert.equal(reviewerForBranch("cursor/x"), "claude");
   assert.equal(reviewerForBranch("fix/x"), "cursor");
   assert.equal(reviewerForBranch("docs/x"), "cursor");
-  assert.equal(reviewerForBranch("main"), null);
+  assert.equal(reviewerForBranch("feature/human"), "cursor");
 });
 
 test("isOwnPr blocks self-review", () => {
@@ -34,11 +37,53 @@ test("isOwnPr blocks self-review", () => {
   assert.equal(isOwnPr("cursor", "claude/foo"), false);
 });
 
-test("buildFeedback marks awaiting peer review", () => {
-  const { body, verdict } = buildFeedback({
+test("analyzeDiff flags risks and docs-only", () => {
+  const a = analyzeDiff([
+    { path: "docs/foo.md" },
+    { path: "docs/bar.md" },
+  ]);
+  assert.equal(a.docsOnly, true);
+
+  const b = analyzeDiff([{ path: ".github/workflows/ci.yml" }, { path: "src/lib/auth/foo.ts" }]);
+  assert.ok(b.risks.some((r) => r.includes("Workflow")));
+  assert.ok(b.risks.some((r) => r.includes("Sensitive")));
+});
+
+test("deriveDirective says FIX on red CI", () => {
+  const d = deriveDirective({
+    agent: "claude",
+    draft: false,
+    verify: { conclusion: "failure" },
+    priorReview: null,
+    head: "abc",
+    issues: [],
+    analysis: { docsOnly: false },
+  });
+  assert.equal(d.action, "FIX");
+  assert.match(d.instruction, /@claude/);
+  assert.match(d.instruction, /do not merge/i);
+});
+
+test("deriveDirective says MERGE when approved at HEAD", () => {
+  const d = deriveDirective({
+    agent: "claude",
+    draft: false,
+    verify: { conclusion: "success" },
+    priorReview: { head_sha: "abc123", safe_to_merge: true },
+    head: "abc123",
+    issues: [],
+    analysis: { docsOnly: false },
+  });
+  assert.equal(d.action, "MERGE");
+  assert.match(d.instruction, /go ahead/i);
+});
+
+test("buildFeedback includes directive and analysis", () => {
+  const { body, directive } = buildFeedback({
     pr: 99,
     event: "synchronize",
     prData: {
+      title: "fix: test",
       headRefOid: "abc123def456",
       headRefName: "claude/test",
       author: { login: "bot" },
@@ -51,10 +96,12 @@ test("buildFeedback marks awaiting peer review", () => {
     priorReview: null,
   });
   assert.match(body, /blackout-pr-webhook:pr-99/);
-  assert.match(verdict, /PEER REVIEW/);
+  assert.match(body, /### Directive/);
+  assert.match(body, /### Analysis/);
+  assert.ok(directive);
 });
 
-test("shouldDispatchDeepReview for claude PR with green verify", () => {
+test("shouldDispatchDeepReview for claude PR", () => {
   const prData = { headRefName: "claude/test", isDraft: false };
   const checks = [{ name: "verify", conclusion: "success" }];
   assert.equal(
@@ -67,7 +114,7 @@ test("shouldDispatchDeepReview for claude PR with green verify", () => {
   );
 });
 
-test("shouldDispatchDeepReview skips drafts", () => {
+test("shouldDispatchDeepReview includes drafts", () => {
   assert.equal(
     shouldDispatchDeepReview({
       event: "opened",
@@ -76,10 +123,32 @@ test("shouldDispatchDeepReview skips drafts", () => {
       agent: "claude",
       reviewingAgent: "cursor",
     }),
-    false
+    true
+  );
+});
+
+test("shouldDispatchDeepReview for human PRs", () => {
+  assert.equal(
+    shouldDispatchDeepReview({
+      event: "opened",
+      prData: { headRefName: "feature/foo", isDraft: false },
+      checks: [],
+      agent: "human",
+      reviewingAgent: "cursor",
+    }),
+    true
   );
 });
 
 test("markerFor is stable per head", () => {
   assert.match(markerFor(1, "abcdef123456"), /head-abcdef123456/);
+});
+
+test("summarizeChecks finds failures", () => {
+  const s = summarizeChecks([
+    { name: "verify", conclusion: "failure" },
+    { name: "lint", conclusion: "success" },
+  ]);
+  assert.equal(s.failed.length, 1);
+  assert.equal(s.verify.conclusion, "failure");
 });

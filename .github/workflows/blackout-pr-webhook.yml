@@ -1,7 +1,8 @@
 # BLACKOUT PR Webhook — aggressive peer feedback on every PR activity
 #
-# Posts structured triage feedback on EVERY PR event.
-# Dispatches Cursor for deep peer review on Claude/fix PRs when verify is green.
+# Posts structured triage + MERGE/FIX/WAIT directive on EVERY PR event.
+# Dispatches Cursor for deep peer review on ALL non-cursor PRs.
+# Re-triages when CI completes. Sweeps open PRs every 15 min as backup.
 # Requires: CURSOR_API_KEY
 
 name: BLACKOUT PR webhook
@@ -20,14 +21,19 @@ on:
     types: [submitted, dismissed]
   issue_comment:
     types: [created]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  schedule:
+    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       pr_number:
-        description: "PR number to triage"
-        required: true
+        description: "PR number to triage (omit to sweep all open PRs)"
+        required: false
 
 concurrency:
-  group: blackout-pr-${{ github.event.pull_request.number || github.event.inputs.pr_number || 'manual' }}
+  group: blackout-pr-${{ github.event.pull_request.number || github.event.inputs.pr_number || 'sweep' }}
   cancel-in-progress: true
 
 permissions:
@@ -39,8 +45,10 @@ jobs:
   triage:
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
       github.event_name == 'pull_request' ||
       github.event_name == 'pull_request_review' ||
+      github.event_name == 'workflow_run' ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request)
     runs-on: ubuntu-latest
     steps:
@@ -58,21 +66,51 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "pr=${{ github.event.inputs.pr_number }}" >> "$GITHUB_OUTPUT"
-            echo "event=workflow_dispatch" >> "$GITHUB_OUTPUT"
+            if [ -n "${{ github.event.inputs.pr_number }}" ]; then
+              echo "pr=${{ github.event.inputs.pr_number }}" >> "$GITHUB_OUTPUT"
+              echo "event=workflow_dispatch" >> "$GITHUB_OUTPUT"
+              echo "mode=single" >> "$GITHUB_OUTPUT"
+            else
+              echo "mode=sweep" >> "$GITHUB_OUTPUT"
+              echo "event=workflow_dispatch" >> "$GITHUB_OUTPUT"
+            fi
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "mode=sweep" >> "$GITHUB_OUTPUT"
+            echo "event=sweep" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            PR=$(node -e "
+              const prs = ${{ toJson(github.event.workflow_run.pull_requests) }};
+              console.log(prs?.[0]?.number ?? '');
+            ")
+            echo "pr=$PR" >> "$GITHUB_OUTPUT"
+            echo "event=ci_completed" >> "$GITHUB_OUTPUT"
+            echo "mode=single" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event_name }}" = "issue_comment" ]; then
             PR=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.issue.number }}" --jq '.pull_request.url // empty' | awk -F/ '{print $NF}')
             echo "pr=$PR" >> "$GITHUB_OUTPUT"
             echo "event=issue_comment" >> "$GITHUB_OUTPUT"
+            echo "mode=single" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event_name }}" = "pull_request_review" ]; then
             echo "pr=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
             echo "event=${{ github.event.action }}" >> "$GITHUB_OUTPUT"
+            echo "mode=single" >> "$GITHUB_OUTPUT"
           else
             echo "pr=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
             echo "event=${{ github.event.action }}" >> "$GITHUB_OUTPUT"
+            echo "mode=single" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Sweep all open PRs (backup)
+        if: steps.ctx.outputs.mode == 'sweep'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          node scripts/blackout-agent/pr-feedback.mjs --sweep
+
       - name: Post/update PR feedback (triage comment)
+        if: steps.ctx.outputs.mode == 'single'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -85,6 +123,7 @@ jobs:
 
       - name: Check if deep peer review dispatch needed
         id: dispatch
+        if: steps.ctx.outputs.mode == 'single'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_PR_NUMBER: ${{ steps.ctx.outputs.pr }}
@@ -101,7 +140,7 @@ jobs:
           " >> "$GITHUB_OUTPUT"
 
       - name: Launch Cursor for deep peer review
-        if: steps.dispatch.outputs.want == 'true'
+        if: steps.ctx.outputs.mode == 'single' && steps.dispatch.outputs.want == 'true'
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           GITHUB_PR_NUMBER: ${{ steps.ctx.outputs.pr }}
@@ -112,7 +151,7 @@ jobs:
             echo "CURSOR_API_KEY not set — triage posted, deep review agent skipped"
             exit 0
           fi
-          PROMPT=$(node scripts/blackout-agent/pr-review-dispatch.mjs --pr="$GITHUB_PR_NUMBER" --event="$GITHUB_EVENT_NAME" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).prompt")
+          PROMPT=$(node scripts/blackout-agent/pr-review-dispatch.mjs --pr="$GITHUB_PR_NUMBER" --event="$GITHUB_EVENT_NAME")
           export PROMPT
           payload=$(node -e "
             console.log(JSON.stringify({
