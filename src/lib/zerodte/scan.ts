@@ -1232,7 +1232,7 @@ async function attachContractPlans(
         )) ?? new Map())
       : new Map<string, { spot: number; rows: ChainStrikeRow[] }>();
 
-  if (setups.length > 0) {
+  if (setups.length > 0 && liquidStrikeFallbackEnabled()) {
     await ensureChainsForSetups(setups, chains, (tk) => resolveTickerChainRows(tk));
   }
 

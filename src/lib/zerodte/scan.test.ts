@@ -307,6 +307,12 @@ mock.module("./vector-contract-resolve", {
     resolveZeroDteContractAttach: () => null,
   },
 });
+// attachContractPlans lazy-imports option-chain-prompt when liquid-strike fallback is on.
+mock.module("../../features/nighthawk/lib/option-chain-prompt", {
+  namedExports: {
+    resolveTickerChainRows: async () => null,
+  },
+});
 
 // ./rejections (left real below) imports @/lib/providers/spx-session directly (for
 // todayEtYmd), which transitively pulls @/lib/et-date's `import "server-only"` —
