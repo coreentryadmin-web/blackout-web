@@ -1,5 +1,6 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
+import { vectorPulseForDirection } from "./vector-crosslink-core";
 
 // scan.ts pulls in the FULL 0DTE provider graph (Night Hawk dossier builder, Polygon
 // bar/quote providers, the options WS socket, server-cache) to run the live scan
@@ -280,6 +281,7 @@ mock.module("../bie/vector-full-state", {
 mock.module("./vector-crosslink", {
   namedExports: {
     fetchZeroDteVectorPulseByTicker: async () => state.vectorPulseByTicker,
+    vectorPulseForDirection,
   },
 });
 mock.module("./vector-contract-resolve", {
