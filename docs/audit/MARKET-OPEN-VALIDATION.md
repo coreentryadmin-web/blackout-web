@@ -118,6 +118,145 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
+
+Every item below was fixed off-hours today (weekday, pre-open) and has **not been seen under a
+moving tape or real member traffic**. Per the newly-recorded `FULL-LIFECYCLE SCOPE EXPANSION`
+standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained every sweep — not
+just for performance findings — and is separate from, and in addition to, each fix's own
+`docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
+
+### 1. `CACHE_WARM_ALWAYS` leftover staging bypass — PR #3512 (merged)
+
+**What was broken:** `shouldRunCacheWarmer()` bypassed its weekday 4am-8pm ET hours gate whenever
+`CACHE_WARM_ALWAYS=1` was set — a knob documented as staging-only. Staging was decommissioned
+2026-07-25, but the **production** secret `blackout-production/app/env` still carried
+`CACHE_WARM_ALWAYS=1`, so `desk-warm`, `zerodte-warm`, `heatmap-warm`, and `meridian-warm` were all
+running 24/7 instead of only 4am-8pm ET.
+
+**Evidence (pre-fix, 2026-09-04 00:21-06:18 UTC):** 40+ `desk-warm` background runs (10-33s
+elapsed) firing every 1-3 minutes overnight; `AWS/ECS` CPUUtilization on `blackout-production-web`
+Max 80-90% against a 2-8% average in nearly every 15-min bucket; `AWS/ApplicationELB`
+TargetResponseTime p50/p90 healthy (37-79ms/91-377ms) but **p99 1.7-3.6s, Max 9-41 seconds**.
+
+**Fix:** removed the `CACHE_WARM_ALWAYS` escape hatch entirely from `cache-warmer-gate.ts`; `force=1`
+remains for on-demand warms. Pure code change — does not touch the stale secret value directly
+(deliberately, to stay inside the reviewed PR path), so the secret is now inert post-deploy rather
+than removed.
+
+**Check at the open:**
+- Re-pull the SAME three CloudWatch series (ECS CPU Max, ALB TargetResponseTime p99/Max, `desk-warm`
+  `elapsed=` log frequency) for an **overnight window AFTER this deploys** and confirm: `desk-warm`
+  (and the 3 sibling warm crons) stop firing outside 4am-8pm ET entirely, ECS CPU Max drops back
+  toward the 2-8% average band overnight, and ALB p99/Max tighten toward the p50/p90 band overnight.
+  A continued 24/7 firing pattern post-deploy means the deploy does not carry this fix — confirm by
+  `git merge-base --is-ancestor` against the deployed SHA before concluding the fix failed.
+- During the 4am-8pm ET window itself (i.e. during today's RTH), confirm the 4 warm crons still run
+  normally — this fix must not have silently narrowed the window itself, only removed the bypass.
+
+### 2. Vector GEX wall spot-side inversion — PR #3495 (merged)
+
+**What was broken:** `computeGexWalls(ladder, {maxPerSide})` picked the top-N call/put walls by
+raw gamma magnitude with no spot-side constraint, so a call wall could resolve BELOW spot (or a
+put wall ABOVE spot) whenever the opposite side carried more total gamma than the correct side —
+inverting which strike Vector's GEX lens, per-expiry DTE walls, and the GEX-reconstruction rail all
+displayed as the nearest resistance/support level.
+
+**Fix:** added an optional `spot` parameter that side-constrains `callWalls` (strike > spot) and
+`putWalls` (strike < spot) with no fallback to the wrong side; wired through all 6 call sites across
+`vector-universe.ts`, `vector-dte-walls-core.ts`, `vector-gex-reconstruct.ts`, and
+`vector-snapshot.ts`'s 3 GEX-lens sites. VEX-lens call sites deliberately left unconstrained
+(different semantics, per the PR's own doc comment).
+
+**Check at the open:** on `/vector` (`proxy-browser.cjs`, desktop + mobile), for several liquid
+tickers (SPX, SPY, QQQ, and at least one where the pre-fix inversion was plausible — a name with a
+lopsided gamma book, e.g. IWM/NDX-shaped), confirm the displayed call wall strike is always ABOVE
+the live spot and the put wall strike always BELOW it, across the GEX matrix tab, the per-expiry DTE
+wall view, and the GEX-reconstruction rail. A call wall at or below spot (or vice versa) means the
+fix is not deployed or a call site was missed.
+
+### 3. PgBouncer cross-service/autoscaling budget blindness — PR #3499 (merged)
+
+**What was broken:** `computeSafePgPoolMaxDefault` derived the per-replica Postgres pool ceiling
+from `PGBOUNCER_BACKEND_BUDGET / REPLICA_COUNT_MAX_FOR_POOL` alone, with no carve-out for other
+services sharing the same PgBouncer backend budget (cron Lambda, market-worker, admin tooling) —
+so under a full autoscale-up, real backend connections could exceed the actual PgBouncer budget.
+
+**Fix:** added `PGBOUNCER_RESERVED_FOR_OTHER_SERVICES` (env, defaults 0) as a third parameter,
+reserved BEFORE dividing by replica count, plus a second oversubscription warning that checks
+`poolMax * REPLICA_COUNT_MAX_FOR_POOL + PGBOUNCER_RESERVED_FOR_OTHER_SERVICES` against the budget.
+
+**Check at the open:** this is an infra/config change with no visible UI surface — confirm instead
+via CloudWatch Logs `/ecs/blackout-production` for absence of new PgBouncer connection-exhaustion
+warnings/errors during RTH (peak concurrent-request load), and confirm `PGBOUNCER_RESERVED_FOR_OTHER_SERVICES`
+is actually set to a non-zero value in the production secret if the operator intends the reservation
+to do anything live (the fix ships a safe default of 0, i.e. no behavior change, until the env var is
+set — this is a capability, not yet an active guard, unless the secret was updated separately).
+
+### 4. Night Hawk tier drift — unpinned `score_floor` — PR #3505 (merged)
+
+**What was broken:** `tierFromEntryContext` recomputed `scoreFloorForOrigin(origin)` fresh every
+read instead of using the floor that was actually in effect at commit time. If `ZERODTE_SCORE_FLOOR*`
+env constants changed between a play's commit and any later read (including the record/tier-export
+endpoints), the SAME historical play could tier differently depending on when it was read — measured
+live on a real ASST play (score 59): tier A under the pinned floor of 50, tier B under a later
+recomputed floor of 65.
+
+**Fix:** `buildZeroDteEntryContext` now pins `score_floor` into `entry_context` at commit time;
+`tierFromEntryContext` reads the pinned value when present, falling back to recompute only for
+legacy rows with no pinned floor.
+
+**Check at the open:** open a handful of TODAY's newly-committed 0DTE plays (post-open) in the
+Night Hawk board and the `/api/market/zerodte/record` / tier-export endpoints, and confirm the same
+play reports the SAME tier across both surfaces and across repeated reads through the session — a
+play that tiers differently between two reads (without an intervening `ZERODTE_SCORE_FLOOR*` env
+change) means the pin did not take effect.
+
+### 5. Largo consensus extractor — HELIX/VECTOR field mismatches — PR #3508 (merged)
+
+**What was broken:** `extractHelixRead` read `get_flow_tape`/`get_helix_derived` payload shapes that
+do not carry a real aggressor-aware direction field (only `call_pct`, which per the repo's own C3
+precedent must never be read as bullish/bearish — a bought call is bullish but a sold call is
+bearish). `extractVectorRead` read a non-existent top-level `bias`/`magnet` shape instead of the
+real `result.play.bias` / `result.magnet.pull`. Both fed Largo's cross-product consensus verdict
+with either fabricated or absent directional signal.
+
+**Fix:** `extractHelixRead` now reads `get_helix_tape_analytics`'s real `session.direction` (falling
+back to `directionFromCallPct` only when no real direction field is present); `extractVectorRead`
+now reads `result.play.bias` for direction and `result.magnet.pull` only as supporting strength
+evidence, never as a direction override. The old mismatched tool calls (`get_flow_tape`,
+`get_helix_derived`, `get_vector_pulse`) no longer contribute a vote at all.
+
+**Check at the open, live, with real flow:** ask Largo *"is the flow on \<ticker\> bullish or
+bearish?"* for a ticker whose Helix/Vector panels show a clear, high-confidence direction, and
+confirm Largo's answer matches the panel. Then ask about a ticker where Helix's own panel would
+read neutral/unreadable (e.g. one dominated by unreadable aggressor-side flow) and confirm Largo
+also declines to assert a direction rather than fabricating one from `call_pct`. This is the exact
+CG-incident shape (2026-08-23: 100% call premium, panel BEARISH, old Largo logic BULLISH) — the
+check is whether that disagreement can recur.
+
+### 6. SPX EOD pin forecaster long-gamma bearish lock — PR #3497 (cursor, merged — not authored by this session, logged here for completeness)
+
+**What was broken (per PR description):** the EOD pin forecaster's magnet-selection logic could
+lock onto a distant max-pain strike below spot even in a long-gamma regime where the nearest
+meaningful OI concentration (the "king" node) sat above spot, producing a persistently bearish
+projected close regardless of where dealer positioning actually clustered.
+
+**Fix:** added `pickLongGammaMagnet` — prefers the nearest meaningful OI concentration to spot
+(king node) over a distant max-pain strike when closer, so a long-gamma session can now project a
+close ABOVE spot when warranted. Also wires real prior-day OHLC (`vector-prior-day-server.ts`,
+new) and recent-returns/macro-event trend inputs into the Vector pin forecast, replacing a
+derived-from-day-change approximation.
+
+**Check at the open, on a genuinely long-gamma session:** compare the SPX/Vector EOD pin forecast's
+projected close and drift direction against where the GEX wall/king-node structure actually sits
+relative to spot — confirm the forecast is no longer mechanically pinned bearish/below-spot on a
+day where OI clusters above spot. No pre-fix baseline exists from this session to diff against
+(cursor-authored, evidence lives in the PR's own commit history) — treat today's open as the first
+live observation.
+
+---
+
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
 
 **Every item below is a HELIX fix merged over 2026-08-22/23 that has not been seen under a moving
