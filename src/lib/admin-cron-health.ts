@@ -7,7 +7,7 @@ import {
   fetchLatestNighthawkJob,
   type CronJobRunRow,
 } from "@/lib/db";
-import { loadPlayEngineHeartbeat } from "@/lib/play-engine-heartbeat";
+import { clampedHeartbeatAgeMs, loadPlayEngineHeartbeat } from "@/lib/play-engine-heartbeat";
 import {
   formatEtDate,
   isTradingDayEt,
@@ -225,7 +225,7 @@ export function evaluateJob(
     };
   }
 
-  const ageMin = (now.getTime() - new Date(last.started_at).getTime()) / 60_000;
+  const ageMin = clampedHeartbeatAgeMs(last.started_at, now.getTime()) / 60_000;
   const { effective: staleThreshold, multiplier: staleMultiplier } = effectiveStaleMinutes(job);
 
   // Market-hours-only crons (flow-ingest, spx-evaluate, heatmap-warm, gex-alerts, …)
@@ -364,7 +364,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       const updatedAt = latestNhJob.updated_at;
       const ageMin =
         updatedAt != null
-          ? Math.round((Date.now() - new Date(updatedAt).getTime()) / 60_000)
+          ? Math.round(clampedHeartbeatAgeMs(updatedAt, Date.now()) / 60_000)
           : null;
       let status = health.status;
       let statusLabel = health.status_label;
