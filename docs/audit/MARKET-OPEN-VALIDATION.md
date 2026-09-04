@@ -177,6 +177,28 @@ specifically at the open): `curl` the route with a valid `CRON_SECRET` Bearer to
 days of data exist) instead of a `500` — proving the fix holds against the live route, not just the
 mocked unit test.
 
+### 0p. `GexPositioning.nearest_wall` went stale across the live-WS wall override — fix/gex-positioning-nearest-wall-stale (pending)
+
+**What was broken:** `getGexPositioning()` overwrites `call_wall`/`put_wall` in place with fresher
+UW WS strike-ladder walls during RTH (`hasLiveGexStrikeExpiry(root)` true), but `nearest_wall` was
+computed once, earlier, inside `gexPositioningFromHeatmap()` from the **pre-override** Polygon-only
+walls and never re-derived. So a live RTH response could serve `call_wall`/`put_wall` from the WS
+ladder while `nearest_wall` still named a stale strike/side/distance from before the override —
+read directly by `spx-desk-intel.ts` (Live Desk brief grounding numbers), Largo's positioning tools,
+`/api/market/gex-positioning`, the mobile ticker route, and the Meridian positioning panel.
+
+**Fix:** extracted the "closer of call_wall/put_wall to spot" logic into a shared
+`nearestWallFromLevels()` helper in `gex-positioning.ts`; the WS-override block now recomputes
+`nearest_wall` from the POST-override `call_wall`/`put_wall` whenever either one actually changed,
+using the same helper the base derivation uses (so the two can't drift apart again).
+
+**Check at the open:** on a WS-active ticker (SPX/SPY/QQQ) during RTH, confirm the served
+`nearest_wall.strike` always equals either `call_wall` or `put_wall` in the SAME
+`/api/market/gex-positioning?ticker=SPX` (or equivalent Largo tool call) response, with the correct
+side (`resistance` for call_wall, `support` for put_wall) and a `distance_pts` consistent with
+`nearest_wall.strike - spot`. Pay particular attention right after a fast intraday gamma migration
+(a real WS wall move), since that's the moment pre-fix and post-fix values would have diverged most.
+
 ### 0n. "Every setup logged publicly" overclaimed against a 3-of-7-product methodology page — fix/public-record-scope-overclaim (pending)
 
 **What was broken:** About page, homepage, and `WhyBlackoutContent.tsx` all said "Every setup BlackOut
