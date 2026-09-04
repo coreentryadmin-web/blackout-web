@@ -173,6 +173,11 @@ export function overlayTimelineExpectedMoves(
   });
 }
 
+/** Printed rows never receive the live chain-IV overlay — do not spend the EM budget on them. */
+export function rowsNeedingExpectedMoveOverlay(rows: EarningsTimelineInput[]): EarningsTimelineInput[] {
+  return rows.filter((r) => !r.is_printed);
+}
+
 /** Next upcoming print from Benzinga structured earnings (Meridian/Largo — no UW REST). */
 export function parseNextEarningsFromBenzinga(
   ticker: string,

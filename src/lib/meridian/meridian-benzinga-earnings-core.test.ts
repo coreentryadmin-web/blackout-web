@@ -11,6 +11,7 @@ import {
   earningsWhenFromTime,
   impactFromEarningsImportance,
   overlayTimelineExpectedMoves,
+  rowsNeedingExpectedMoveOverlay,
   parseNextEarningsFromBenzinga,
   mergeEarningsTimelineSources,
   mergeStreetEstimates,
@@ -112,6 +113,32 @@ test("overlayTimelineExpectedMoves withholds the live chain-IV overlay once the 
   const out = overlayTimelineExpectedMoves(rows, em);
   assert.equal(out[0]?.expected_move_pct, null);
   assert.equal(out[0]?.source, "earnings_calendar");
+});
+
+test("rowsNeedingExpectedMoveOverlay excludes printed rows from the EM chain budget", () => {
+  const rows = [
+    {
+      ticker: "NVDA",
+      name: "NVIDIA",
+      report_date: "2026-08-26",
+      when: "afterhours" as const,
+      expected_move_pct: null,
+      source: "earnings_calendar" as const,
+      is_printed: true,
+    },
+    {
+      ticker: "AAPL",
+      name: "Apple",
+      report_date: "2026-08-28",
+      when: "afterhours" as const,
+      expected_move_pct: null,
+      source: "earnings_calendar" as const,
+      is_printed: false,
+    },
+  ];
+  const need = rowsNeedingExpectedMoveOverlay(rows);
+  assert.equal(need.length, 1);
+  assert.equal(need[0]?.ticker, "AAPL");
 });
 
 test("parseNextEarningsFromBenzinga picks nearest upcoming print", () => {
