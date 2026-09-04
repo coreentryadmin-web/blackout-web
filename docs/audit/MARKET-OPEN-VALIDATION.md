@@ -126,7 +126,7 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
-### 0. Discord digest crons on admin health board — PR (pending)
+### 0. Discord digest crons on admin health board — PR #3543 (merged)
 
 **What was broken:** `darkpool-discord`, `thermal-discord`, and `helix-discord-digest` were live
 EventBridge crons logging `cron_job_runs` rows, but absent from `CRON_JOBS` — invisible to
@@ -139,17 +139,21 @@ EventBridge crons logging `cron_job_runs` rows, but absent from `CRON_JOBS` — 
 - `GET /api/admin/cron/health` (admin) shows all three with recent `last_run_at` during RTH.
 - If any Discord channel goes quiet, confirm the watchdog would now alert (not first noticed by members).
 
-### 0b. `zerodte-warm` force=1 replay floor — PR (pending)
+### 0b. Warm-cron `force=1` replay floors — PR #3540, #3542, #3550 (merged); meridian-warm (pending)
 
-**What was broken:** `zerodte-warm` had `OVERLAP_LOCK` only — `force=1` could replay the 0DTE
-scanner tick + board snapshot rebuild as fast as requests could be sent once each background pass
-completed (same gap as desk-warm #3540 / heatmap-warm #3542).
+**What was broken:** `desk-warm`, `heatmap-warm`, `zerodte-warm`, and `meridian-warm` had overlap
+locks but no minimum re-run floor — `?force=1` could replay the full warm pass in a tight loop
+faster than any legitimate trigger.
 
-**Fix:** 60s `RERUN_COOLDOWN_KEY` via atomic `sharedCacheSetNx`, checked before overlap lock; fails
-open on Redis error.
+**Fix:** atomic `sharedCacheSetNx` cooldown keys checked before overlap lock (desk-warm 60s,
+heatmap-warm 10s, zerodte-warm 60s, meridian-warm 60s pending).
 
-**Check at the open:** no burst of `[cron/zerodte-warm] background done` log lines closer than 60s
-apart from an external `?force=1` replay loop; legitimate 4 min rth-warm-leader heals unchanged.
+**Check at the open:**
+- CloudWatch `/ecs/blackout-production`: no burst of `[cron/zerodte-warm]` or
+  `[cron/meridian-warm] background done` lines closer than 60s apart from an out-of-band
+  `?force=1` caller.
+- ALB `TargetResponseTime` p99 stays bounded during warm windows (no overnight replay storms).
+- Legitimate rth-warm-leader heals unchanged (zerodte-warm 4 min, meridian-warm 5 min thresholds).
 
 ### 1. `CACHE_WARM_ALWAYS` leftover staging bypass — PR #3512 (merged)
 
