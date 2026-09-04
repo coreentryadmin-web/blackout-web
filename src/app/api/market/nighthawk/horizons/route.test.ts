@@ -17,6 +17,23 @@ const RAW_BOARD_FLOAT = 7499.360000000001;
 const RAW_SWING_FLOAT = 1234.5600000000004;
 const EPOCH_MS = 1721835000000; // integer — must pass through roundFloats untouched
 
+mock.module("server-only", { namedExports: {} });
+mock.module("../../../../../lib/vector/vector-pick-leaders-db", {
+  namedExports: { fetchVectorPickLeaderRows: async () => [] },
+});
+mock.module("../../../../../lib/banger/flag", {
+  namedExports: { isBangerEngineEnabled: () => false },
+});
+mock.module("../../../../../lib/banger/positions-db", {
+  namedExports: { fetchBangerBoardRows: async () => [] },
+});
+mock.module("../../../../../lib/banger/watch-cache", {
+  namedExports: { readBangerWatchSnapshot: async () => null },
+});
+mock.module("../../../../../lib/et-date", {
+  namedExports: { todayEt: () => "2026-09-04" },
+});
+
 mock.module("../../../../../lib/db", {
   namedExports: {
     requireDatabaseInProduction: () => null,
@@ -110,21 +127,6 @@ mock.module("../../../../../lib/swing/serving-lane", {
     discoverSwingFromPersisted: async () => null,
     readSwingServingSnapshot: async () => null,
   },
-});
-mock.module("../../../../../lib/banger/flag", {
-  namedExports: { isBangerEngineEnabled: () => false },
-});
-mock.module("../../../../../lib/banger/positions-db", {
-  namedExports: { fetchBangerBoardRows: async () => [] },
-});
-mock.module("../../../../../lib/banger/watch-cache", {
-  namedExports: { readBangerWatchSnapshot: async () => null },
-});
-mock.module("../../../../../lib/vector/vector-pick-leaders-db", {
-  namedExports: { fetchVectorPickLeaderRows: async () => [] },
-});
-mock.module("../../../../../lib/et-date", {
-  namedExports: { todayEt: () => "2026-09-04" },
 });
 
 describe("/api/market/nighthawk/horizons roundFloats at the boundary", () => {
