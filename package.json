@@ -158,6 +158,7 @@
     "blackout:release": "node scripts/blackout-agent/release-task.mjs",
     "blackout:heartbeat": "node scripts/blackout-agent/heartbeat.mjs",
     "blackout:handoff": "node scripts/blackout-agent/handoff.mjs",
+    "blackout:rth-lifecycle": "node scripts/blackout-agent/rth-lifecycle.mjs",
     "blackout:prompt": "node scripts/blackout-agent/dispatch-prompt.mjs",
     "blackout:session": "node scripts/blackout-agent/session-start.mjs",
     "blackout:select": "node scripts/blackout-agent/select-task.mjs",

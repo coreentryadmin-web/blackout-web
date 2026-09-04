@@ -139,6 +139,14 @@ Full policy + exceptions: **`CLAUDE.md`** § Merge authorization.
 
 **Neither Claude nor Cursor is permanent. BLACKOUT Autopilot is permanent.**
 
+**Autopilot dispatch triggers (`.github/workflows/blackout-autopilot-dispatch.yml`):**
+- **Every push to `main`** (merge landed) → wake Cursor immediately
+- **CI green on `main`** → wake Cursor to continue work loop
+- **Every 10 minutes** (schedule fallback)
+- PR opened/sync/merged, deploy success, CI failure, peer review approved
+
+**Do NOT rely on the user to wake you.** After any merge, the next session should already be dispatched.
+
 Both agents share **`.blackout-agent/`** as the authoritative operational state machine.
 Do not create separate roadmaps, findings DBs, or competing source of truth.
 
@@ -163,6 +171,8 @@ If peer owns highest task, pick next independent task. **Never idle — never en
 2. `npm run blackout:select -- --agent=cursor` — picks explicit queue OR auto-discovers open PRs + deploy drift
 3. Claim → execute → handoff → **immediately repeat from step 2**
 4. Only pause when select returns empty AND pr-sweep + ops:collect are clean
+
+**RTH lifecycle:** `npm run blackout:rth-lifecycle` at 09:00 ET weekdays — see `docs/ops/RTH-VALIDATION-LEDGER-2026-09-05.md`
 
 **Standing perpetual tasks** in WORK_QUEUE (`BO-P1-0100` peer review, `BO-P1-0101` deploy ops, `BO-P2-0100` 0DTE) — never mark DONE.
 
