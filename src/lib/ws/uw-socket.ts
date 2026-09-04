@@ -1639,7 +1639,7 @@ export function shutdownUwSocket(): void {
  */
 export function isUwChannelFresh(channel: UwWsChannel, maxAgeMs = 120_000): boolean {
   const at = lastMessageAt[channel];
-  return at != null && Date.now() - at <= maxAgeMs;
+  return isWsUpdatedAtFresh(at, maxAgeMs);
 }
 
 export function getUwSocketHealth() {

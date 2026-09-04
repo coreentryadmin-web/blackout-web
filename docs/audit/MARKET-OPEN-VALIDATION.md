@@ -126,6 +126,20 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0o. Future-skewed timestamps read as infinitely fresh — fix/future-timestamp-freshness-guard (pending)
+
+**What was broken:** `flow-liveness` (`isFlowFrameFreshFromCluster`/`Anywhere`/`peekFlowLivenessHeartbeat`),
+`isUwChannelFresh`, and `getLiveOptionMarkSync` used raw `Date.now() - ts <= maxAgeMs`, so a
+clock-skewed future timestamp (negative age) still passed the freshness gate — SPX desk flow
+liveness, net_flow badge, and 0DTE option marks could read "live" on stale/skewed data.
+
+**Fix:** all three now delegate to `isWsUpdatedAtFresh` (5s future tolerance, same helper the quote
+WS path already uses).
+
+**Check at the open:** Admin → SPX health flow liveness: `fresh` false when no WS frames in 2m.
+SPX desk net_flow badge not "live" when UW channel silent. 0DTE marks fall back to REST when WS
+mark `ts` is future-dated beyond tolerance.
+
 ### 0n. "Every setup logged publicly" overclaimed against a 3-of-7-product methodology page — fix/public-record-scope-overclaim (pending)
 
 **What was broken:** About page, homepage, and `WhyBlackoutContent.tsx` all said "Every setup BlackOut

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
+import { isWsUpdatedAtFresh, wsUpdatedAtAgeMs } from "@/lib/ws/timestamp-freshness";
 
 /**
  * Cluster-wide "the UW flow WebSocket is delivering frames" heartbeat.
@@ -77,7 +78,7 @@ export async function isFlowFrameFreshFromCluster(maxAgeMs = 120_000): Promise<b
     if (!record || typeof record.at !== "number") return false;
     // A heartbeat written by THIS process must not let it skip its own REST work.
     if (record.instance === INSTANCE_ID) return false;
-    return Date.now() - record.at <= maxAgeMs;
+    return isWsUpdatedAtFresh(record.at, maxAgeMs);
   } catch {
     return false;
   }
@@ -105,7 +106,7 @@ export async function isFlowFrameFreshAnywhere(maxAgeMs = 120_000): Promise<bool
   try {
     const record = await sharedCacheGet<HeartbeatRecord>(HEARTBEAT_KEY);
     if (!record || typeof record.at !== "number") return false;
-    return Date.now() - record.at <= maxAgeMs;
+    return isWsUpdatedAtFresh(record.at, maxAgeMs);
   } catch {
     return false;
   }
@@ -145,12 +146,13 @@ export async function peekFlowLivenessHeartbeat(maxAgeMs = 120_000): Promise<Flo
     if (!record || typeof record.at !== "number") {
       return { heartbeat_present: false, last_frame_at: null, age_sec: null, fresh: false };
     }
-    const ageMs = Date.now() - record.at;
+    const now = Date.now();
+    const ageMs = wsUpdatedAtAgeMs(record.at, now);
     return {
       heartbeat_present: true,
       last_frame_at: new Date(record.at).toISOString(),
-      age_sec: Math.max(0, Math.round(ageMs / 1000)),
-      fresh: ageMs <= maxAgeMs,
+      age_sec: Math.round(ageMs / 1000),
+      fresh: isWsUpdatedAtFresh(record.at, maxAgeMs, now),
     };
   } catch {
     return { heartbeat_present: false, last_frame_at: null, age_sec: null, fresh: false };
