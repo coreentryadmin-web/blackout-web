@@ -526,6 +526,20 @@ unchanged from before this fix — this was verified via CSS-cascade inspection 
 regression tests (`vector-chart-viewport.test.ts`) but not via a fresh live desktop screenshot,
 since the fix's own scope was mobile-only.
 
+### 14b. Legacy→Swing promotion dte<5 dual-admission — PR pending (`fix/legacy-swing-dte-floor`)
+
+**What was broken:** Legacy morning-confirm promotions could land on the Swing board with a picked
+contract at dte 3–4 while `HORIZONS.SWING.dteMin` is 5 — the same dual-admission overlap the
+2026-08-06 horizons widening closed for organic discovery, but via a second code path
+(`legacy-confirm-promote.ts`).
+
+**Fix:** filter chain rows to `[SWING.dteMin, SWING.dteMax]` before fan-out; dossier `intendedDte`
+derives from the picked contract's actual DTE (not a hardcoded 14).
+
+**Check at the open:** after a Legacy morning-confirm cycle, inspect `/nighthawk` Swings lane (or
+`GET /api/market/nighthawk/horizons`) for any `signalKinds` containing `NIGHT HAWK` — every such
+row's `contract.dte` must be ≥ 5 and `subLane` must match `subLaneForDte(contract.dte)`.
+
 ### 14. Night Hawk mobile 430x932 — view-tab row overlapped the theme-toggle pill — PR pending (branch `fix/nighthawk-legacy-tab-toggle-overlap`)
 
 **What was broken:** live `/nighthawk` at 430x932 (both default and analytics-expanded states):
