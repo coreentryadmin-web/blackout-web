@@ -11,6 +11,19 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-04 (00:16 UTC) — [SEO] Lane heartbeat: #2453/#2448 hold, no new opportunity, 3 open PRs other lanes
+
+**Severity.** — (no defect found)
+
+`/api/og?title=Test` → `HTTP 200 image/png`. Homepage still carries the transform-based reveal
+marker. `agent-pr-sweep.mjs`: 3 open agent PRs fleet-wide (`#3439` autopilot, `#3438` gex/gamma-
+snapshot raw-float fix, `#3432` audit-verify) — none this lane's, no action owed here.
+`gsc-opportunities-report.mjs --days=90`: same 2 striking-distance queries as every prior cycle,
+both already addressed. No action.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
 ## 2026-09-03 — [Night Hawk / SPX Slayer] Live-verification of the homepage "real-time P&L marks, not end-of-day summaries" claim
 
 **Severity.** — GREEN after one fix (see the 2026-09-03 `nighthawk-closed-play-shows-live-mark`
@@ -2252,3 +2265,34 @@ expected off-hours behavior that only needs a copy caveat.
 
 No code changed this pass — investigation only, logged here per policy (not a fixed bug, so not a
 `findings-staging` entry).
+
+## 2026-09-03 — 0DTE hard-exit "15:30" stale comment sweep (follow-up to the methodology fix)
+
+The 2026-09-02 P1 fix (`fix/0dte-methodology-hard-exit-time-mismatch`) corrected user-facing
+`/methodology` and `/learn` copy that hardcoded the 0DTE mechanical grading hard-exit time as
+"15:30 ET" when the real engine constant (`PLAN_RULES.time_stop_et_minutes`, `plan.ts`) is 15:50 ET.
+That PR deliberately scoped out the same stale "15:30" number where it also appeared in **code
+comments** (never rendered, not user-facing) to keep the fix single-issue.
+
+This pass swept the whole `src/lib/zerodte/` engine plus its immediate consumers (`db.ts`,
+`src/lib/platform/zerodte-service.ts`, `src/features/nighthawk/**`) for that same stale pattern and
+fixed every comment that mislabels the time-stop/hard-exit clock as 15:30 (14 files, 23
+occurrences): `strategy-version.ts`, `terminal-ladder.ts`, `skip-grading.ts`, `pin-source.ts`,
+`breakout-source.ts`, `scan.ts`, `plan.ts`, `board.ts`, `db.ts`, `gates.ts`, `governor.ts`,
+`condor.ts`, `zerodte-service.ts`, `ZeroDteBoard.tsx`.
+
+Two different "15:30" constants share this file family and read identically in prose, so every
+occurrence was checked against its actual referent before touching it. Left untouched: every
+comment/label that actually refers to `NEW_PLAY_CUTOFF_ET_MINUTES` (the genuinely different
+"no new 0DTE plays after 15:30 ET" entry-cutoff rule); the `"late 14:00-15:30"` research bucket
+labels (`record.ts`/`gates.ts`/`plan.ts` — entry-timing evidence buckets, not the exit clock);
+`board.ts`'s `SAME_DAY_GRADING_POLICY = "same_day_1530_close"` and comments naming that frozen,
+DB-persisted policy identifier (a runtime string asserted in tests, out of scope for a comment-only
+change); and `record.ts`/`plan.ts`'s own already-correct historical notes documenting the
+2026-09-02 bug in past tense.
+
+Pure comment cleanup, no runtime behavior changes. `npx tsc --noEmit` clean; full test suites for
+every touched module green on Node 20 (`board`/`pin-source`/`breakout-source`/`gates`/`governor`/
+`condor`/`strategy-version`/`skip-grading`/`plan`/`terminal-ladder`/`scan`, 415+ tests). No
+`findings-staging` entry — not a functional bug, logged here per the RUN-LOG policy for low-severity
+cleanup passes. PR #3433.

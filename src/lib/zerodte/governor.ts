@@ -13,7 +13,7 @@
 // AUDIT SEV-3 (2026-07-24) — realized-loss day-halt (additive, strictly more
 // conservative). The original 3-strike session halt counts ONLY −50% HARD stops
 // (plan_outcome "stopped" / trough ≤ entry·0.5). A LOSING TIME-STOP — a play that
-// closes red at 15:30 (e.g. −25%…−45%) without ever touching the hard stop — was
+// closes red at 15:50 (e.g. −25%…−45%) without ever touching the hard stop — was
 // explicitly excluded, so a chop-and-bleed day where 5–6 committed plays each
 // time-stop red never tripped the halt and the scanner kept committing all day: the
 // SAME capital loss as the 7/13 incident this governor was built for, reached by a

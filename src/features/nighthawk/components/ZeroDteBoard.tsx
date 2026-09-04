@@ -1258,7 +1258,7 @@ function PlayCard({ row, nowMs }: { row: PlayRow; nowMs: number }) {
                 : "stopped −50%"}
             </span>
           )}
-          {/* A non-stop engine exit (ratchet/thesis/flat/target) or a plain 15:30 close —
+          {/* A non-stop engine exit (ratchet/thesis/flat/target) or a plain 15:50 close —
               distinguished now that closed_reason carries the type; detail is the tooltip. */}
           {row.status === "CLOSED" && row.closed_reason != null && row.closed_reason !== "stopped" && (
             <span

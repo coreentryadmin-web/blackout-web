@@ -17,7 +17,7 @@
 // - Entry is the first REAL bar at/after the block time — never the rejection's own
 //   metrics, never an interpolation.
 // - Same plan rules as committed plays (PLAN_RULES: stop -50 / target +100 / hard
-//   exit 15:30 ET), graded by the same walker (gradePlanFromBars) so a blocked play
+//   exit 15:50 ET), graded by the same walker (gradePlanFromBars) so a blocked play
 //   and a committed play can never be scored under different physics.
 // - Ties are conservative AGAINST the counterfactual: a bar that touches stop AND
 //   target grades as the stop (gradePlanFromBars' own rule — intrabar order is

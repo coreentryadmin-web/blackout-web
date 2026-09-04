@@ -166,6 +166,16 @@ Dispatch prompt: `npm run blackout:prompt -- --agent=cursor`
 **PR review record:** `npm run blackout:review -- --pr=N --head=<sha> --verdict=APPROVED`  
 **Watchdog:** `npm run blackout:watchdog` (stale heartbeats + lease expiry)
 
+### PR webhooks (aggressive peer feedback)
+
+**Workflow:** `.github/workflows/blackout-pr-webhook.yml`
+
+On **every** PR event (open, sync, ready, review, comment), Autopilot:
+1. Posts/updates a structured triage comment on the PR (`npm run blackout:pr-feedback`)
+2. Dispatches **Cursor** for deep peer review when a `claude/*` or `fix/*` PR has green `verify`
+
+Peer feedback markers: `<!-- blackout-pr-webhook:pr-N:head-SHA -->` (updates in-place per HEAD, no spam).
+
 ### Autonomous RTH resume (Cloud Agent — do NOT wait for user)
 
 On **every weekday** Cloud Agent session when **America/New_York ≥ 09:00**:
