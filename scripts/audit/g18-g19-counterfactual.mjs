@@ -103,7 +103,7 @@ async function fetchCalibration(args, headers) {
   const q = args.days ? `?days=${args.days}` : "";
   const res = await fetch(`${args.base}/api/market/zerodte/calibration${q}`, { headers });
   const report = await res.json().catch(() => ({}));
-  if (!res.ok || report.available === false) {
+  if (!res.ok) {
     throw new Error(`calibration GET failed HTTP ${res.status}: ${JSON.stringify(report).slice(0, 300)}`);
   }
   return { grade: gradeJson, report };
