@@ -1362,7 +1362,8 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
         discovery_origin: s.discovery_origin,
         gamma_regime: s.gamma_regime ?? null,
         market_aligned: s.market_aligned ?? null,
-        regime_structure: null,
+        regime_structure: undefined,
+        market_state_confidence: undefined,
       });
     const planGateOpts = { chaseExempt };
     const planBlocked =
