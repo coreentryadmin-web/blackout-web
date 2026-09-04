@@ -1,9 +1,5 @@
 {
   "agent": "claude",
-  "run_id": null,
-  "last_seen": null,
-  "current_task": null,
-  "current_phase": "IDLE",
-  "healthy": false,
-  "stale_since": "2026-09-03T23:46:03.954Z"
+  "last_seen": "2026-09-04T00:30:10.016Z",
+  "healthy": true
 }

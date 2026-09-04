@@ -42,7 +42,7 @@ const queue = parseQueue(readFileSync(MARKDOWN_FILES.workQueue, "utf8"));
 const candidates = [];
 
 for (const item of queue) {
-  if (item.status === "DONE" || item.status === "CANCELLED") continue;
+  if (item.status.startsWith("DONE") || item.status.startsWith("CANCELLED")) continue;
   const lock = readLock(item.id) ?? activeLocks[item.id];
   if (lock && Date.parse(lock.lease_until) > Date.now() && lock.owner !== args.agent) {
     continue;
