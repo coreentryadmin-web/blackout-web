@@ -11,6 +11,50 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-04 (18:22 UTC / Fri 2026-09-04 14:22 ET) — [re-verification, Meridian] 2026-08-18 P1 "ESTIMATES/HISTORY empty on every mega-cap" no longer reproduces — FINDINGS.md status stale, not updated here
+
+**Severity.** — this is a re-verification, not a new finding. Logged here (not `findings-staging/`)
+because nothing was fixed THIS pass; logged distinctly from a routine GREEN check because it
+concerns an existing `FINDINGS.md` entry currently marked **OPEN** whose status this run
+contradicts — flagging the discrepancy for whoever next reconciles `FINDINGS.md` rather than
+editing that file directly per the standing "don't hand-edit FINDINGS.md" policy.
+
+**What was re-checked.** The 2026-08-18 P1 finding ("Meridian ESTIMATES/HISTORY are empty on EVERY
+mega-cap while the same payload claims history") reported `enrichment.print_history`/
+`street_estimates`/`earnings_calendar`/`beat_rates` all empty across 8/8 tested mega-caps (KEYS,
+HD, BHP, TJX, TGT, LOW, ADI, BABA) while `pack.history` on the same response carried real rows —
+and left the mechanism an open hypothesis (a `Promise.all` in `loadMeridianEarningsEnrichment`
+silently swallowing failures into a cached empty result).
+
+Re-ran `scripts/audit/meridian-data-validator.mjs` live against prod (the same tool that produced
+the original finding). The original 8 tickers have since rolled off the near-term earnings
+calendar the validator scans, so re-ran against whatever IS currently scheduled instead: **8 real
+upcoming events (ADBE, ORCL, FDX, CASY, SUNB, COO, SAIL, CPRT)**. Result: **1 FAIL, not 8/8** — and
+a DIFFERENT, narrower failure shape (`SUNB · coherence:beat_rates` — pack has 1 print but
+`beat_rates.eps_beat_rate` is null, plausibly correct behavior for a single-print sample rather
+than a defect; not investigated further this pass). None of the systemic "everything empty
+together" signature from the original finding reproduced on any of the 8 events checked.
+
+**Root-cause attribution stays open.** Read `loadMeridianEarningsEnrichment`
+(`meridian-earnings-enrich.ts`) as it stands today: the two calls the finding's own hypothesis
+named (`loadMeridianEarningsPrintHistory`, `loadBenzingaTickerEarnings`) are NOT wrapped in a
+swallowing `.catch()` in the current `Promise.all` — a real failure there would now propagate.
+But `git blame` on those exact lines shows that shape predates the finding itself (committed
+2026-08-17, the finding filed 2026-08-18) — so either the original hypothesis named the wrong
+mechanism, the real cause lived in a caller-level cache (`serverCache`, not visible in this file)
+that has since expired/been fixed elsewhere, or the underlying Benzinga upstream was itself
+degraded that day and has since recovered. No commit could be confidently pinned as "the fix" in
+the time available this pass.
+
+**What this means for `FINDINGS.md`:** the entry is still marked `OPEN`, but today's live
+evidence directly contradicts it. Recommend the entry be updated to reflect this re-verification
+(status → RESOLVED-OR-STALE, with a note that root cause was never conclusively identified) rather
+than left reading as an active P1 that continues to affect every mega-cap — it does not, as of this
+measurement.
+
+No code changed this pass — re-verification only.
+
+---
 ## 2026-09-04 (18:11 UTC / Fri 2026-09-04 14:11 ET) — [performance] `vector-pick-sweep` still running 4-12min against its own 2-min schedule, even after the 2026-09-03 TTL raise — measured, NOT yet fixed
 
 **Severity.** Investigation only — real evidence of an unresolved tail-latency problem, but root
