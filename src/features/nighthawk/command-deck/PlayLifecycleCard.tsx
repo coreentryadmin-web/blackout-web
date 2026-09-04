@@ -12,7 +12,12 @@ import {
   zeroDteActionDisplay,
   legacyActionDisplay,
 } from "./play-card-lifecycle";
-import { formatReturnPct, playEntryDisplay, playGradeLabel } from "./play-card-display";
+import {
+  formatReturnPct,
+  playEntryDisplay,
+  playGradeLabel,
+  primaryReturnLabel,
+} from "./play-card-display";
 import { StatusPill } from "./DeckStatusBadges";
 
 /** L/S direction chip — omitted on a condor row, where "direction" doesn't apply (a credit
@@ -130,6 +135,9 @@ export function PlayLifecycleCardBody({
         <span className={clsx("nh-deck-play-pnl", markFlash && ret != null && "neon")}>
           {ret != null ? formatReturnPct(ret) : "—"}
         </span>
+        {ret != null && (
+          <span className="nh-deck-premlab">{primaryReturnLabel(play)}</span>
+        )}
       </span>
     </div>
   );
