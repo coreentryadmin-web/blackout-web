@@ -84,7 +84,8 @@ export type StockQuoteSnapshot = {
   ticker: string;
   price: number;
   prev_close: number;
-  change_pct: number;
+  /** NULL when neither Polygon's session change nor a prior close can ground a percentage. */
+  change_pct: number | null;
   /** Day extremes / VWAP from the day aggregate. NULL when the aggregate is absent (pre-open /
    *  market closed / untraded) — do NOT dress the spot price up as a real HOD/LOD/VWAP
    *  (mirrors the gap #14 HOD/LOD null fix). */
@@ -93,6 +94,18 @@ export type StockQuoteSnapshot = {
   vwap: number | null;
   volume: number;
 };
+
+/** Derive session change % from a Polygon stock snapshot row — null when ungrounded. */
+function _changePctFromSnapshotRow(row: SnapshotTicker, price: number): number | null {
+  if (row.todaysChangePerc != null && Number.isFinite(Number(row.todaysChangePerc))) {
+    return Number(Number(row.todaysChangePerc).toFixed(2));
+  }
+  const prevClose = Number(row.prevDay?.c ?? 0);
+  if (prevClose > 0 && Number.isFinite(price) && price > 0) {
+    return Number((((price - prevClose) / prevClose) * 100).toFixed(2));
+  }
+  return null;
+}
 
 function _rowToSnapshot(sym: string, row: SnapshotTicker): StockQuoteSnapshot | null {
   const day = row.day ?? {};
@@ -108,12 +121,7 @@ function _rowToSnapshot(sym: string, row: SnapshotTicker): StockQuoteSnapshot | 
     throw new Error(`[polygon] Implausible price for ${sym}: ${price}`);
   }
   const prevClose = Number(prev.c ?? 0);
-  const changePct =
-    row.todaysChangePerc != null
-      ? Number(row.todaysChangePerc.toFixed(2))
-      : prevClose
-        ? Number((((price - prevClose) / prevClose) * 100).toFixed(2))
-        : 0;
+  const changePct = _changePctFromSnapshotRow(row, price);
   return {
     ticker: sym,
     price,
@@ -182,11 +190,17 @@ async function fetchStockSnapshotPerformance(
 
   return symbols.map((symbol) => {
     const snap = byTicker.get(symbol.ticker);
-    const change = snap?.todaysChangePerc ?? 0;
+    const day = snap?.day ?? {};
+    const last = snap?.lastTrade ?? {};
+    const price = Number(last.p ?? day.c ?? 0);
+    const change_pct =
+      snap != null && Number.isFinite(price) && price > 0
+        ? _changePctFromSnapshotRow(snap, price)
+        : null;
     return {
       name: symbol.name,
       ticker: symbol.ticker,
-      change_pct: Number(change.toFixed(2)),
+      change_pct,
       volume: snap?.day?.v,
     };
   });
@@ -335,12 +349,16 @@ export async function fetchMarketMovers(limit = 20) {
     ),
   ]);
 
-  const mapMover = (t: SnapshotTicker) => ({
-    ticker: String(t.ticker ?? "").replace("X:", ""),
-    change_pct: Number((t.todaysChangePerc ?? 0).toFixed(2)),
-    price: t.day?.c ?? t.prevDay?.c ?? 0,
-    volume: t.day?.v,
-  });
+  const mapMover = (t: SnapshotTicker) => {
+    const price = Number(t.day?.c ?? t.lastTrade?.p ?? t.prevDay?.c ?? 0);
+    return {
+      ticker: String(t.ticker ?? "").replace("X:", ""),
+      change_pct:
+        Number.isFinite(price) && price > 0 ? _changePctFromSnapshotRow(t, price) : null,
+      price: t.day?.c ?? t.prevDay?.c ?? 0,
+      volume: t.day?.v,
+    };
+  };
 
   // Filter out warrants (W suffix), reverse-split artifacts (<$1), and
   // micro-cap shells with negligible volume (<100K shares) that pollute the list.
@@ -355,7 +373,9 @@ export async function fetchMarketMovers(limit = 20) {
     ...(losers.tickers ?? []).slice(0, limit).map(mapMover).filter(isClean),
   ];
 
-  return combined.sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+  return combined.sort(
+    (a, b) => Math.abs(b.change_pct ?? 0) - Math.abs(a.change_pct ?? 0)
+  );
 }
 
 type IndexResult = {

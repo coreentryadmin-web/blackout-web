@@ -104,7 +104,12 @@ export const SECTOR_LABEL_TO_ETF: Record<string, string> = {
   "Comm.Svc.": "XLC",
 };
 
-export type SectorPerformanceRow = { name: string; ticker: string; change_pct: number; volume?: number };
+export type SectorPerformanceRow = {
+  name: string;
+  ticker: string;
+  change_pct: number | null;
+  volume?: number;
+};
 
 /** Polygon agg bar (the shared local shape polygon.ts/polygon-largo.ts both use —
  *  neither exports it). `t` is epoch MILLISECONDS. */

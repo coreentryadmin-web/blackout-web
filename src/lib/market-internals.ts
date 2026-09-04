@@ -1,17 +1,20 @@
 /** Breadth-based estimates when Polygon does not return I:TICK / I:TRIN / I:ADD. */
 
-export type BreadthSample = { change_pct: number };
+export type BreadthSample = { change_pct: number | null };
 
 const FLAT_THRESHOLD = 0.03;
 
 function countAdvDec(samples: BreadthSample[]): { adv: number; dec: number; total: number } {
   let adv = 0;
   let dec = 0;
+  let total = 0;
   for (const s of samples) {
+    if (s.change_pct == null || !Number.isFinite(s.change_pct)) continue;
+    total++;
     if (s.change_pct > FLAT_THRESHOLD) adv++;
     else if (s.change_pct < -FLAT_THRESHOLD) dec++;
   }
-  return { adv, dec, total: samples.length };
+  return { adv, dec, total };
 }
 
 /** Map adv/dec spread to a TICK-like reading (-1000..+1000). */

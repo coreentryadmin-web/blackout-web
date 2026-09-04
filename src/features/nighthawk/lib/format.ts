@@ -248,8 +248,11 @@ export function buildMarketRecap(ctx: MarketWideContext): {
   sector_weakness: string;
   catalysts: string;
 } {
-  const leaders = [...ctx.sector_performance].sort((a, b) => b.change_pct - a.change_pct).slice(0, 3);
-  const laggards = [...ctx.sector_performance].sort((a, b) => a.change_pct - b.change_pct).slice(0, 3);
+  const ranked = ctx.sector_performance.filter(
+    (s): s is { name: string; change_pct: number } => s.change_pct != null
+  );
+  const leaders = [...ranked].sort((a, b) => b.change_pct - a.change_pct).slice(0, 3);
+  const laggards = [...ranked].sort((a, b) => a.change_pct - b.change_pct).slice(0, 3);
   const tide = tideSummary(ctx.tide);
   const spx = spxContext(ctx);
 

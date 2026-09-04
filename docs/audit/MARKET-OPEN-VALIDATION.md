@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0ac. Polygon change_pct null-not-zero + dark-pool roundFloats — fix/polygon-change-pct-dark-pool-roundfloats (pending)
+
+**What was broken:** `polygon.ts` stock snapshots, sector performance, and market movers defaulted missing `todaysChangePerc` to `0`, fabricating flat +0.00% on Thermal heatmap sectors/movers. `/api/market/dark-pool` and `/api/market/dark-pool/ticker` returned raw IEEE floats on `premium` without `roundFloats`.
+
+**Fix:** `_changePctFromSnapshotRow()` returns `null` when ungrounded; dark-pool routes wrap success payloads in `roundFloats`.
+
+**Check at the open:** `/heatmap` sector tape — names with missing Polygon session change should show absence, not +0.00%. HELIX dark-pool tape premiums should be 2dp with no float tails.
+
 ### 0aa. UW rate limiter queue-wait observability — fix/uw-rate-limiter-queue-wait-observability (merged #3759)
 
 **What was broken:** a UW request that queued behind the rate limiter for 15+ seconds and then

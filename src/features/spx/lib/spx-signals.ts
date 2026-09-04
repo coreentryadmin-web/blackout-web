@@ -551,7 +551,10 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
     }
   }
 
-  const leaders = desk.leader_stocks ?? [];
+  const leaders = (desk.leader_stocks ?? []).filter(
+    (l): l is { name: string; ticker: string; change_pct: number } =>
+      l.change_pct != null && Number.isFinite(l.change_pct)
+  );
   if (leaders.length) {
     const avg = leaders.reduce((s, l) => s + l.change_pct, 0) / leaders.length;
     // Raised threshold from 0.35% to 0.6% — 0.35% move across mega-caps is routine drift.

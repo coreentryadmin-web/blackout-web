@@ -411,6 +411,7 @@ function laneMovers(ctx: MarketWideContext): Map<string, number> {
     const ticker = m.ticker.toUpperCase();
     if (isExcludedInstrument(ticker)) continue;
     if (m.price < CANDIDATE_MIN_UNDERLYING_PRICE) continue;
+    if (m.change_pct == null || !Number.isFinite(m.change_pct)) continue;
     entries.push({ ticker, rawScore: Math.abs(m.change_pct) });
   }
   return normalizeToMax(entries, LANE_MAX_MOVERS);

@@ -538,8 +538,8 @@ export const postNightHawkPlayExplain = (
 // ── Heatmap ───────────────────────────────────────────────────────────────────
 
 export interface HeatmapData {
-  sectors: Array<{ name: string; change_pct: number; volume?: number }>;
-  movers: Array<{ ticker: string; change_pct: number; price: number; volume?: number }>;
+  sectors: Array<{ name: string; change_pct: number | null; volume?: number }>;
+  movers: Array<{ ticker: string; change_pct: number | null; price: number; volume?: number }>;
   as_of: string;
 }
 
