@@ -39,3 +39,17 @@ test("uw-socket: channel freshness gates use isWsUpdatedAtFresh (source scan)", 
     "isUwHaltSourceStale must not treat negative age as live"
   );
 });
+
+test("uw-socket-stall: isUwSocketStalled uses isWsUpdatedAtFresh (source scan)", () => {
+  const src = readFileSync(new URL("./uw-socket-stall.ts", import.meta.url), "utf8");
+  assert.match(
+    src,
+    /if \(freshest != null\) return !isWsUpdatedAtFresh\(freshest, stallMs, now\)/,
+    "isUwSocketStalled must reject clock-skewed future lastMessageAt stamps"
+  );
+  assert.doesNotMatch(
+    src,
+    /if \(freshest != null\) return now - freshest > stallMs/,
+    "raw now-freshest must not gate UW socket stall"
+  );
+});
