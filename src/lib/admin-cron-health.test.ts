@@ -139,3 +139,25 @@ test("REGRESSION: a job WITH a fresh run is untouched by the never-run branch", 
   assert.equal(health.status, "healthy");
   assert.equal(health.market_hours_stale, false);
 });
+
+test("evaluateJob: future started_at clamps age_min to 0, not negative", () => {
+  // 10 minutes in the future — would be ageMin ≈ -10 without the clamp, falsely reading "healthy"
+  // when the timestamp cannot be trusted (same class as admin-time-ago / storeAge guards).
+  const futureRun = new Date(RTH_WEDNESDAY.getTime() + 10 * 60_000).toISOString();
+  const health = evaluateJob(
+    jobDef({ stale_after_min: 60 }),
+    {
+      id: 1,
+      job_key: "test-job",
+      status: "ok",
+      started_at: futureRun,
+      duration_ms: 120,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    RTH_WEDNESDAY
+  );
+  assert.equal(health.age_min, 0);
+  assert.equal(health.status, "healthy");
+});

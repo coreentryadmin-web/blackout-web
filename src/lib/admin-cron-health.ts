@@ -225,7 +225,9 @@ export function evaluateJob(
     };
   }
 
-  const ageMin = (now.getTime() - new Date(last.started_at).getTime()) / 60_000;
+  // Clamp ≥0: a future started_at (cross-replica clock skew) must not read as negative age
+  // and bypass the stale threshold — same failure class as #3627/#3641 admin time-ago guards.
+  const ageMin = Math.max(0, (now.getTime() - new Date(last.started_at).getTime()) / 60_000);
   const { effective: staleThreshold, multiplier: staleMultiplier } = effectiveStaleMinutes(job);
 
   // Market-hours-only crons (flow-ingest, spx-evaluate, heatmap-warm, gex-alerts, …)
@@ -364,7 +366,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       const updatedAt = latestNhJob.updated_at;
       const ageMin =
         updatedAt != null
-          ? Math.round((Date.now() - new Date(updatedAt).getTime()) / 60_000)
+          ? Math.max(0, Math.round((Date.now() - new Date(updatedAt).getTime()) / 60_000))
           : null;
       let status = health.status;
       let statusLabel = health.status_label;
