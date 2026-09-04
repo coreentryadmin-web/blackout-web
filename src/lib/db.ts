@@ -8941,6 +8941,25 @@ export async function upsertNighthawkPlayOutcomes(
   return freshlyPublished;
 }
 
+/** Drop stale SPECULATIVE rows for tickers a rebuild no longer publishes for this
+ *  edition_for — the sync-side cleanup for a same-day re-run whose ticker set
+ *  shrank before the play ever graded (`syncNighthawkPlayOutcomes` calls this right
+ *  after `upsertNighthawkPlayOutcomes`).
+ *
+ *  `AND outcome = 'pending'` is the load-bearing guard, same discipline as every
+ *  other write against this table (`upsertNighthawkPlayOutcomes`'s own `WHERE
+ *  outcome = 'pending'` two calls above this one; `updateNighthawkPlayOutcome`'s
+ *  identical guard) — "no deleted calls" is a claim this table makes to members
+ *  (docs/audit's `/methodology` "no cherry-picking, no deleted calls — the full
+ *  ledger, always"), so a row that has already graded (target/stop/open/ambiguous/
+ *  unfilled) must survive this DELETE even when a later rebuild's play list drops
+ *  that ticker. Before this guard, the admin historical-recovery path
+ *  (`POST /api/admin/nighthawk/run?asOfEt=<past date>&persist=1`, edition-
+ *  builder.ts's own documented "admin recovery only" escape hatch) could
+ *  hard-delete an already-graded win/loss the moment a re-run's reconstructed pick
+ *  list didn't include that ticker — silently falsifying the ledger the claim
+ *  promises, with no history and no trace. A still-pending row (the case this
+ *  function exists for) is unaffected: it has no grade to lose. */
 export async function pruneNighthawkPlayOutcomesForEdition(
   editionFor: string,
   tickers: string[]
@@ -8954,6 +8973,7 @@ export async function pruneNighthawkPlayOutcomesForEdition(
     DELETE FROM nighthawk_play_outcomes
     WHERE edition_for = $1::date
       AND NOT (ticker = ANY($2::varchar[]))
+      AND outcome = 'pending'
     `,
     [editionFor, normalized]
   );
