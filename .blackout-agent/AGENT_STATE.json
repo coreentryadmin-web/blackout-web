@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T15:05:04.040Z",
+  "updated_at": "2026-09-04T15:05:15.990Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -210,22 +210,6 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
-    },
-    "pr-3601": {
-      "pr": 3601,
-      "head_sha": "0db9b7cc719be41713fe8c8b618237015d0228da",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T14:53:04.114Z",
-      "safe_to_merge": true
-    },
-    "pr-3605": {
-      "pr": 3605,
-      "head_sha": "f25b6c9333c37a6d79cb091c5e7006a127c6a4b6",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T15:05:04.039Z",
-      "safe_to_merge": true
     }
   },
   "agents": {
@@ -240,9 +224,9 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b316d164b0d8ae9ee5b7b699e6b6690cc181e146",
+    "last_main_sha": "98880ad5d10ab726be48a1259b544824d7d67938",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T14:52:27Z",
+    "last_deploy_at": "2026-09-04T15:04:04Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33886237394",
     "last_deploy_sha": "b316d164b0d8ae9ee5b7b699e6b6690cc181e146"
   },
@@ -916,43 +900,17 @@
       "summary": "Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs."
     },
     {
-      "at": "2026-09-04T14:53:04.115Z",
-      "type": "pr_review",
-      "pr": 3601,
-      "head_sha": "0db9b7cc719be41713fe8c8b618237015d0228da",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T14:53:04.114Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-04T14:53:11.412Z",
+      "at": "2026-09-04T15:05:15.990Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:53:11.413Z",
+      "at": "2026-09-04T15:05:15.990Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "69dc88ae-ccd3-4895-809e-3c7baa1a7bd0",
-      "summary": "Peer review cycle: #3600 merged (RTH socket retry false-fail). #3601 merged (Clerk benign denylist + Server Action reload). #3597 duplicate closed. Local tests verified. validate:deploy GREEN. Open: #3605 platform-integrity auth, cursor state PRs awaiting Claude review."
-    },
-    {
-      "at": "2026-09-04T14:53:38.931Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T15:05:04.040Z",
-      "type": "pr_review",
-      "pr": 3605,
-      "head_sha": "f25b6c9333c37a6d79cb091c5e7006a127c6a4b6",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T15:05:04.039Z",
-      "safe_to_merge": true
+      "run_id": "e4a27107-a944-45b4-ba31-aca8f316be5e",
+      "summary": "Cycle complete: peer-reviewed+merged #3600 (RTH socket retry), #3601 (Sentry auth noise), #3605 (platform-integrity Clerk auth). main@98880ad5d. validate:deploy GREEN, ops:collect 0. Agent state pushed cursor/agent-state-handoff-2026-09-04-4 (needs PR — token blocked create). Standing cursor state PRs #3596-3604 await Claude review. Off-hours — RTH skipped."
     }
   ]
 }
