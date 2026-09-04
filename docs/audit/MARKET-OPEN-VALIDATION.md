@@ -144,6 +144,14 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** `GET /api/market/quote?ticker=<equity>` on UW fallback path — missing prior close must show absent change %, not `0.00%`.
 
+### 0al. Pricing's SEO description still said "six trading modules" after the catalog grew to seven — fix/pricing-seo-stale-six-modules (pending)
+
+**What was broken:** `pricing/page.tsx`'s `publicPageMetadata()` description and `WebPageJsonLd` description both hardcoded "all six trading modules plus Discord" — driving `<meta name="description">`, canonical-adjacent title, OG/Twitter copy, and JSON-LD structured data — even though the visible page and `SoftwareApplicationJsonLd`'s `featureList` already correctly describe all 7 products.
+
+**Fix:** Added `manifestProductCountWord()` to derive the spelled-out count from the live manifest instead of a hardcoded word; both description copies now read from one shared constant. Added "six trading modules" to `BANNED_PUBLIC_MARKETING_PHRASES` and `pricing/page.tsx` to the `PUBLIC_SURFACES` scan.
+
+**Check at the open:** View-source (not just rendered DOM) on `/pricing` for `<title>`, `<meta name="description">`, canonical, OG/Twitter tags, and JSON-LD — confirm no "six"/6-module references remain. Once deployed, request a recrawl in Search Console/Bing Webmaster Tools and verify the refreshed SERP description after re-indexing.
+
 ### 0ai. Night Hawk's Learn-chapter SEO metadata still said "Swing Trading Setups" — fix/guide-seo-night-hawk-stale-metadata (merged #3791)
 
 **What was broken:** `GUIDE_SEO["night-hawk"]` (`guide-seo.ts`) — a third, independent copy of the same stale "evening/swing-only" framing already fixed today in `PRODUCT_MANIFEST.hawk` and `LEARN_NAV` — read "Swing Trading Setups Explained" / "runs its evening scanner" as the literal `<title>` and SERP snippet.

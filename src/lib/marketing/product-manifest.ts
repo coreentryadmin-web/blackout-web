@@ -204,10 +204,18 @@ export function manifestPremiumIncludes(): string[] {
   );
 }
 
-export function manifestModulesHeadline(): string {
+/** Lowercase word form of the live product count ("seven"), for embedding mid-sentence
+ *  (SEO descriptions, OG/Twitter copy) — falls back to the digit for counts without a
+ *  spelled-out form so a future product launch never silently prints "undefined". */
+export function manifestProductCountWord(): string {
   const n = manifestProductCount();
-  const word = n === 7 ? "Seven" : n === 6 ? "Six" : String(n);
-  return `${word} products.`;
+  const words: Record<number, string> = { 5: "five", 6: "six", 7: "seven", 8: "eight" };
+  return words[n] ?? String(n);
+}
+
+export function manifestModulesHeadline(): string {
+  const word = manifestProductCountWord();
+  return `${word.charAt(0).toUpperCase()}${word.slice(1)} products.`;
 }
 
 export function manifestPlatformSummary(): string {
@@ -239,4 +247,5 @@ export const BANNED_PUBLIC_MARKETING_PHRASES = [
   "six modules",
   "Six engines",
   "Earnings intelligence",
+  "six trading modules",
 ] as const;
