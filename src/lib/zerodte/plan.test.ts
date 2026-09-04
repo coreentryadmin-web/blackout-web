@@ -11,6 +11,7 @@ import {
   evaluateQuoteValidity,
   gradePlanExecutableFromBars,
   gradePlanFromBars,
+  DIRECTIONAL_LATE_CUTOFF_ET_MINUTES,
   NEW_PLAY_CUTOFF_ET_MINUTES,
   PLAN_ILLIQUID_SPREAD_PCT,
   PLAN_RULES,
