@@ -47,6 +47,13 @@ export function timeAgoCompactFromIso(iso: string, now = Date.now()): string {
   });
 }
 
+/** Age in ms for staleness checks — null when missing/invalid or clock-skewed (treat as stale). */
+export function adminAgeMsFromIso(iso: string | null | undefined, now = Date.now()): number | null {
+  const age = isoAgeSec(iso ?? null, now);
+  if (age.kind !== "ok") return null;
+  return age.sec * 1000;
+}
+
 /** Open-duration label for incident tiles — returns null when MTTA is present. */
 export function openDurationLabelFromIso(
   openedAt: string,

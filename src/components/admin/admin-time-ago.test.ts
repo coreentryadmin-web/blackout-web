@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  adminAgeMsFromIso,
   isoAgeSec,
   openDurationLabelFromIso,
   timeAgoCompactFromIso,
@@ -37,4 +38,14 @@ test("openDurationLabelFromIso: future timestamp beyond tolerance reads as clock
 test("isoAgeSec: small future skew within tolerance clamps to zero", () => {
   const iso = new Date(NOW + 2_000).toISOString();
   assert.deepEqual(isoAgeSec(iso, NOW), { kind: "ok", sec: 0 });
+});
+
+test("adminAgeMsFromIso: future timestamp returns null (treat as stale/untrusted)", () => {
+  const iso = new Date(NOW + 60_000).toISOString();
+  assert.equal(adminAgeMsFromIso(iso, NOW), null);
+});
+
+test("adminAgeMsFromIso: past timestamp returns clamped age", () => {
+  const iso = new Date(NOW - 45_000).toISOString();
+  assert.equal(adminAgeMsFromIso(iso, NOW), 45_000);
 });
