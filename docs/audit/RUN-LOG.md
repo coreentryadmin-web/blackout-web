@@ -11,6 +11,16 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-04 (15:33 UTC / Fri 2026-09-04 11:33 ET) — [SEO] RTH window validation, 2nd cycle: quick check, still GOOD
+
+**Severity.** — (no defect found)
+
+CLS already confirmed clean this window (09:35 ET). Spot-checked `gex-snapshot` only:
+`session: OPEN`, fresh (`age_s: 17`), not degraded. No action.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
 ## 2026-09-04 (14:11 UTC) — [SEO] Daily growth cycle: quiet day, 28d flat vs yesterday
 
 **Severity.** — (no defect; quiet-day entry)
