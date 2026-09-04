@@ -24,6 +24,7 @@
 import type { ConsensusMatrix } from "./consensus-read-extract";
 import type { DeskReadDecision } from "./desk-read-decision";
 import { etClock } from "@/lib/et-clock";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
 export interface ConversationMemoryState {
   /** Current instrument being analyzed (e.g. "SPX", "QQQ", "NVDA") */
@@ -161,7 +162,9 @@ export function isMemoryFresh(memory: ConversationMemoryState, maxAgeSeconds = 3
   if (!memory.lastUpdated) return false;
   if (memory.dataFreshness === "stale") return false;
 
-  const ageSeconds = (Date.now() - memory.lastUpdated.getTime()) / 1000;
+  const rawAgeMs = Date.now() - memory.lastUpdated.getTime();
+  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return false;
+  const ageSeconds = Math.max(0, rawAgeMs) / 1000;
   return ageSeconds < maxAgeSeconds;
 }
 

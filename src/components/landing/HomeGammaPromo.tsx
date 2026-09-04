@@ -6,6 +6,7 @@ import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 import { RetroGrid } from "@/components/ui/motion/RetroGrid";
 import type { PublicGexSnapshot, PublicGexTicker } from "@/lib/public-gex-snapshot-types";
 import { publicGexTickers } from "@/lib/public-gex-snapshot-types";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 
 const TICKERS = publicGexTickers();
 
@@ -35,10 +36,11 @@ function fmtAge(snapshot: PublicGexSnapshot, loading: boolean): string {
 
 function fmtAgeFromAsof(asof: string | null): string {
   if (!asof) return "warming";
-  const ms = Date.now() - new Date(asof).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return "live";
-  const mins = Math.round(ms / 60_000);
-  if (mins < 1) return "just now";
+  const ageSec = ageSecFromIso(asof);
+  if (ageSec == null) return "warming";
+  if (ageSec < 5) return "live";
+  if (ageSec < 60) return `${ageSec}s ago`;
+  const mins = Math.round(ageSec / 60);
   if (mins === 1) return "1m ago";
   return `${mins}m ago`;
 }

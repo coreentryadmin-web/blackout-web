@@ -169,6 +169,14 @@ is instrumentation only.
 
 **Check at the open:** `node --import tsx scripts/audit/helix-score-signal.mjs --source=ledger` returns graded rows when ledger has directional outcomes; re-run weekly as ledger accumulates past the 50-row API cap.
 
+### 0z. Largo memory + marketing GEX promo future-timestamp guards — fix/largo-memory-gamma-promo-future-timestamp (pending)
+
+**What was broken:** `isMemoryFresh()` treated clock-skewed future `lastUpdated` as fresh (negative age still passed max-age). `HomeGammaPromo.fmtAgeFromAsof()` rendered future `asof` as `"live"` on the homepage GEX band.
+
+**Fix:** Reject future `lastUpdated` beyond `WS_TIMESTAMP_FUTURE_TOLERANCE_MS`; route promo `asof` through shared `ageSecFromIso()` (skewed → `"warming"`).
+
+**Check at the open:** Largo follow-up on same ticker after 5+ min should not reuse consensus when memory is stale; homepage GEX promo age chip should not read `"live"` when `asof` is in the future.
+
 ### 0z. vector-walls-warm missing force=1 cooldown — fix/vector-walls-warm-cooldown (pending)
 
 **What was broken:** `vector-walls-warm` had `OVERLAP_LOCK` but no `RERUN_COOLDOWN`. `?force=1` bypasses the cash-RTH gate; on a hot walls cache the background warm can finish in seconds, so replay loops could fan out Polygon chain fetches faster than any legitimate trigger (rth-warm-leader 20s heal threshold).
