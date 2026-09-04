@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T14:32:08.481Z",
+  "updated_at": "2026-09-04T15:18:20.008Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,15 +67,14 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T14:42:55.479Z",
+      "lease_until": "2026-09-04T16:12:55.479Z",
+      "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -210,6 +209,38 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
+    },
+    "pr-3603": {
+      "pr": 3603,
+      "head_sha": "5178354bbc580169b22ce05c4013304d88ea8ab3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T14:49:26.419Z",
+      "safe_to_merge": true
+    },
+    "pr-3601": {
+      "pr": 3601,
+      "head_sha": "0db9b7cc719be41713fe8c8b618237015d0228da",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T14:52:43.460Z",
+      "safe_to_merge": true
+    },
+    "pr-3605": {
+      "pr": 3605,
+      "head_sha": "f25b6c9333c37a6d79cb091c5e7006a127c6a4b6",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T14:55:34.712Z",
+      "safe_to_merge": true
+    },
+    "pr-3610": {
+      "pr": 3610,
+      "head_sha": "6cf40e814535d35f81636e7ad6c8ba8e255880d1",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T15:17:50.498Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -219,16 +250,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T14:42:55.479Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "56bcbcc1b8ccdcb77216b75dcf0b2599eb1ea5c3",
+    "last_main_sha": "91d94674f99ee8ef83df758fca64fcf7927239d1",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T15:17:52Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33888661912",
+    "last_deploy_sha": "91d94674f99ee8ef83df758fca64fcf7927239d1"
   },
   "open_prs": [],
   "events": [
@@ -900,40 +931,106 @@
       "summary": "Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs."
     },
     {
-      "at": "2026-09-04T14:26:50.779Z",
+      "at": "2026-09-04T14:42:46.836Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:26:51.111Z",
+      "at": "2026-09-04T14:42:50.714Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:26:51.206Z",
+      "at": "2026-09-04T14:42:51.403Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:32:08.040Z",
+      "at": "2026-09-04T14:42:52.279Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:32:08.363Z",
+      "at": "2026-09-04T14:42:55.480Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T14:49:26.420Z",
+      "type": "pr_review",
+      "pr": 3603,
+      "head_sha": "5178354bbc580169b22ce05c4013304d88ea8ab3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T14:49:26.419Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T14:52:43.461Z",
+      "type": "pr_review",
+      "pr": 3601,
+      "head_sha": "0db9b7cc719be41713fe8c8b618237015d0228da",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T14:52:43.460Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T14:55:34.713Z",
+      "type": "pr_review",
+      "pr": 3605,
+      "head_sha": "f25b6c9333c37a6d79cb091c5e7006a127c6a4b6",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T14:55:34.712Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T15:00:48.270Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:32:08.480Z",
+      "at": "2026-09-04T15:10:27.754Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
+    },
+    {
+      "at": "2026-09-04T15:10:27.755Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "72e67411-bba5-4b41-ad81-ca04a5a807e0",
+      "summary": "Cycle: peer-reviewed+merged #3603 (meridian protected routes), #3601 (Sentry auth noise), #3605 (platform-integrity Clerk auth), awaiting #3610 (nighthawk trackPct label). validate:deploy GREEN, ops:collect 0. Off-hours."
+    },
+    {
+      "at": "2026-09-04T15:17:50.499Z",
+      "type": "pr_review",
+      "pr": 3610,
+      "head_sha": "6cf40e814535d35f81636e7ad6c8ba8e255880d1",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T15:17:50.498Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T15:18:20.007Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:18:20.008Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "bbaa6ad0-a232-4d05-8fc7-5cc8c1f1868a",
+      "summary": "Cycle complete: merged #3603 meridian routes, #3601 Sentry noise, #3605 platform-integrity auth, #3610 nighthawk trackPct label. validate:deploy GREEN, ops:collect 0."
     }
   ]
 }
