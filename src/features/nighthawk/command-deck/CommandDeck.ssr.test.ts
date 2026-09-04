@@ -112,6 +112,34 @@ test("watch compact row shows track and rank", async () => {
   assert.match(html, />WATCH</);
   assert.match(html, />\+18%/);
   assert.match(html, />11:54</);
+  // 2026-09-04: the compact lifecycle row rendered trackPct with NO qualifier at all — a
+  // never-entered WATCH/PASSED play's hypothetical "since flagged" tracking number looked
+  // identical to a real, closed-out P&L figure. Same bug class as the 2026-08-11 SKIP="FAILED"
+  // incident (play-card-lifecycle.ts), just flipped from false-loss to false-win: a member
+  // screenshotted a mobile PASSED list with huge unqualified "+463%"-style green numbers and
+  // asked why none of the "winners" ever opened. primaryReturnLabel already knew the right
+  // answer ("Since flag") — CommandDeck's now-dead legacy row rendered it; PlayLifecycleCardBody
+  // (the only row every play actually renders through, since useLifecyclePlayCard always returns
+  // true) never called it.
+  assert.match(html, />Since flag</);
+});
+
+test("SKIP (\"PASSED\") compact row labels its return as hypothetical, not P&L", async () => {
+  const html = await render(
+    play({
+      status: "SKIP",
+      detectedAt: "2026-08-03T11:54:00-04:00",
+      firstFlaggedAt: null,
+      pnlPct: null,
+      trackPct: 463,
+      trackReferencePremium: 4.2,
+      peak: null,
+    }),
+    { nowMs: Date.parse("2026-08-03T12:00:00-04:00"), rank: 2 },
+  );
+  assert.match(html, />PASSED</);
+  assert.match(html, />\+463%/);
+  assert.match(html, />Since flag</, "a SKIP row's trackPct must never read as achieved P&L");
 });
 
 test("selected row stays compact — detail on right rail only", async () => {
