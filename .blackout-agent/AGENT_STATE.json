@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T12:48:06.884Z",
+  "updated_at": "2026-09-04T15:06:29.583Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,15 +67,14 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T15:02:07.103Z",
+      "lease_until": "2026-09-04T16:32:07.103Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -210,6 +209,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
+    },
+    "pr-3605": {
+      "pr": 3605,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T15:05:45.684Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -219,16 +226,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T15:02:07.104Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118",
+    "last_main_sha": "b316d164b0d8ae9ee5b7b699e6b6690cc181e146",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T15:04:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33886237394",
+    "last_deploy_sha": "b316d164b0d8ae9ee5b7b699e6b6690cc181e146"
   },
   "open_prs": [],
   "events": [
@@ -898,6 +905,265 @@
       "agent": "cursor",
       "run_id": "072758a3-0684-479a-b95a-27416aabb9c3",
       "summary": "Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs."
+    },
+    {
+      "at": "2026-09-04T15:02:00.810Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:02:01.736Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:02:07.104Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T15:05:45.684Z",
+      "type": "pr_review",
+      "pr": 3605,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T15:05:45.684Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T15:05:49.852Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:05:49.853Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ca5acd46-2d56-4f2d-a71d-2b5a303b0831",
+      "summary": "Reviewed PR #3605: MERGE (already merged @ f25b6c933 — platform-integrity Clerk auth fix, CI green, live 14/0/0)"
+    },
+    {
+      "at": "2026-09-04T15:05:59.720Z",
+      "type": "pr_webhook",
+      "pr": 3612,
+      "event": "sweep",
+      "head": "762977f994d0107c7f887bd82b55071656e99073",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T15:06:02.419Z",
+      "type": "pr_webhook",
+      "pr": 3611,
+      "event": "sweep",
+      "head": "591a5ec7c6ae71b92295e0f2ffaa5c4b80639199",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T15:06:05.035Z",
+      "type": "pr_webhook",
+      "pr": 3610,
+      "event": "sweep",
+      "head": "a965a61bebf245b3eb3351206325f4fba9cd3214",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T15:06:07.693Z",
+      "type": "pr_webhook",
+      "pr": 3609,
+      "event": "sweep",
+      "head": "4dd57c57ec8560010a5e6f0c7858b1f3da19bf9e",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T15:06:10.416Z",
+      "type": "pr_webhook",
+      "pr": 3608,
+      "event": "sweep",
+      "head": "d864d8069962daa38fa29d21373ddad43c6a54bd",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T15:06:13.451Z",
+      "type": "pr_webhook",
+      "pr": 3607,
+      "event": "sweep",
+      "head": "f48a5f7255f37916fc1f03c9b91d6209a212639d",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T15:06:16.237Z",
+      "type": "pr_webhook",
+      "pr": 3606,
+      "event": "sweep",
+      "head": "57af54ef84bc37d10754a916daa1f0608ab419fd",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T15:06:18.887Z",
+      "type": "pr_webhook",
+      "pr": 3604,
+      "event": "sweep",
+      "head": "670e3ca2620fe6bca148ca0146e17e0e4999af60",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T15:06:21.503Z",
+      "type": "pr_webhook",
+      "pr": 3602,
+      "event": "sweep",
+      "head": "f7f0aa485b0ce2d2c16f4a1f81d8b558ea6b6cd9",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T15:06:24.332Z",
+      "type": "pr_webhook",
+      "pr": 3599,
+      "event": "sweep",
+      "head": "5c4bfbc4ed1ad8251b6374de0fa11c7d3a6bc474",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T15:06:26.831Z",
+      "type": "pr_webhook",
+      "pr": 3598,
+      "event": "sweep",
+      "head": "a8943a9024390e3197762a40c0770e35f407da44",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T15:06:29.583Z",
+      "type": "pr_webhook",
+      "pr": 3596,
+      "event": "sweep",
+      "head": "3eb2e8f36d4d5f50e9744aa0e9771fa1790e41e5",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3612": {
+      "last_event": "sweep",
+      "last_head": "762977f994d0107c7f887bd82b55071656e99073",
+      "last_feedback_at": "2026-09-04T15:05:59.720Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3611": {
+      "last_event": "sweep",
+      "last_head": "591a5ec7c6ae71b92295e0f2ffaa5c4b80639199",
+      "last_feedback_at": "2026-09-04T15:06:02.419Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3610": {
+      "last_event": "sweep",
+      "last_head": "a965a61bebf245b3eb3351206325f4fba9cd3214",
+      "last_feedback_at": "2026-09-04T15:06:05.035Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3609": {
+      "last_event": "sweep",
+      "last_head": "4dd57c57ec8560010a5e6f0c7858b1f3da19bf9e",
+      "last_feedback_at": "2026-09-04T15:06:07.692Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3608": {
+      "last_event": "sweep",
+      "last_head": "d864d8069962daa38fa29d21373ddad43c6a54bd",
+      "last_feedback_at": "2026-09-04T15:06:10.416Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3607": {
+      "last_event": "sweep",
+      "last_head": "f48a5f7255f37916fc1f03c9b91d6209a212639d",
+      "last_feedback_at": "2026-09-04T15:06:13.451Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3606": {
+      "last_event": "sweep",
+      "last_head": "57af54ef84bc37d10754a916daa1f0608ab419fd",
+      "last_feedback_at": "2026-09-04T15:06:16.237Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3604": {
+      "last_event": "sweep",
+      "last_head": "670e3ca2620fe6bca148ca0146e17e0e4999af60",
+      "last_feedback_at": "2026-09-04T15:06:18.887Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3602": {
+      "last_event": "sweep",
+      "last_head": "f7f0aa485b0ce2d2c16f4a1f81d8b558ea6b6cd9",
+      "last_feedback_at": "2026-09-04T15:06:21.503Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3599": {
+      "last_event": "sweep",
+      "last_head": "5c4bfbc4ed1ad8251b6374de0fa11c7d3a6bc474",
+      "last_feedback_at": "2026-09-04T15:06:24.332Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3598": {
+      "last_event": "sweep",
+      "last_head": "a8943a9024390e3197762a40c0770e35f407da44",
+      "last_feedback_at": "2026-09-04T15:06:26.831Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3596": {
+      "last_event": "sweep",
+      "last_head": "3eb2e8f36d4d5f50e9744aa0e9771fa1790e41e5",
+      "last_feedback_at": "2026-09-04T15:06:29.583Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }
