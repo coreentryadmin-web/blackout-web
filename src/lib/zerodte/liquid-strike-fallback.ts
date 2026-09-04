@@ -102,6 +102,8 @@ export function rankLiquidStrikeAlternatives(input: {
   direction: "long" | "short";
   maxDte?: number;
   maxCandidates?: number;
+  /** Chain-level spread pre-filter (% of mid). Omit to skip chain spread filter. */
+  spreadCap?: number;
 }): LiquidStrikeCandidate[] {
   const {
     rows,
@@ -113,6 +115,7 @@ export function rankLiquidStrikeAlternatives(input: {
     direction,
     maxDte = ZERODTE_MAX_DTE,
     maxCandidates = LIQUID_STRIKE_FALLBACK_MAX_TRIES,
+    spreadCap,
   } = input;
   if (!(spot > 0) || !(primaryStrike > 0) || rows.length === 0) return [];
 
@@ -129,6 +132,7 @@ export function rankLiquidStrikeAlternatives(input: {
     if (row.strike === primaryStrike && rowExpiry === targetExpiry) continue;
     const breakout = chainRowToBreakout(row);
     if (!sideHasQuote(breakout, side)) continue;
+    if (spreadCap != null && !chainPassesSpreadCap(row, side, spreadCap)) continue;
     if (!strikeWithinMoneynessCaps(direction, spot, row.strike)) continue;
 
     const occ = buildOcc(ticker, rowExpiry, side, row.strike);
@@ -241,4 +245,29 @@ export function chainPassesSpreadCap(
   const pct = chainSpreadPct(bid, ask);
   if (pct == null) return true; // unknown — let attach-time scoring decide
   return pct <= spreadCap;
+}
+
+/** Batch-fetch missing chains for liquid-strike fallback (best-effort, deduped). */
+export async function ensureChainsForSetups(
+  setups: Array<{ ticker: string; play_type?: string }>,
+  chains: Map<string, { spot: number; rows: ChainStrikeRow[] }>,
+  fetchChain: (ticker: string) => Promise<{ spot: number; rows: ChainStrikeRow[] } | null>,
+  timeoutMs = 3_000
+): Promise<void> {
+  if (!liquidStrikeFallbackEnabled()) return;
+  const tickers = new Set<string>();
+  for (const s of setups) {
+    if (s.play_type === "CONDOR") continue;
+    tickers.add(s.ticker.toUpperCase());
+  }
+  await Promise.all(
+    [...tickers].map(async (tk) => {
+      if (chains.has(tk)) return;
+      const chain = await Promise.race([
+        fetchChain(tk).catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+      ]);
+      if (chain) chains.set(tk, chain);
+    })
+  );
 }

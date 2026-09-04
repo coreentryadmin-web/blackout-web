@@ -93,6 +93,25 @@ test("rankLiquidStrikeAlternatives: skips strikes outside moneyness caps", () =>
   assert.equal(ranked.length, 0);
 });
 
+test("rankLiquidStrikeAlternatives: spreadCap filters wide chain quotes", () => {
+  const rows = [
+    row(102.5, { call_bid: 1.0, call_ask: 2.0 }),
+    row(105, { call_bid: 2.3, call_ask: 2.45 }),
+  ];
+  const ranked = rankLiquidStrikeAlternatives({
+    rows,
+    spot: 100,
+    todayYmd: "2026-09-04",
+    ticker: "PL",
+    expiry: "2026-09-04",
+    primaryStrike: 100,
+    direction: "long",
+    spreadCap: 15,
+  });
+  assert.equal(ranked[0]?.strike, 105);
+  assert.equal(ranked.length, 1);
+});
+
 test("otmPctForStrike + chainSpreadPct helpers", () => {
   assert.equal(otmPctForStrike("long", 100, 102.5), 2.5);
   assert.ok(chainSpreadPct(2.4, 2.6)! < 10);

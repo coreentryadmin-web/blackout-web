@@ -54,7 +54,7 @@ const REGIME_SCORE_FLOOR = 65;
 export function regimeScoreBump(ctx: PlanChaseContext): number {
   if (process.env.ZERODTE_AMPLIFY_SCORE_BUMP === "0") return 0;
   if (!isAmplifyMomentumRegime(ctx)) return 0;
-  if (!flowBacked(ctx.discovery_origin)) return 0;
+  if (!tapeBacked(ctx.discovery_origin)) return 0;
   if (ctx.market_aligned !== true) return 0;
   if (ctx.score < REGIME_SCORE_BUMP_MIN || ctx.score >= REGIME_SCORE_FLOOR) return 0;
   return REGIME_SCORE_BUMP;

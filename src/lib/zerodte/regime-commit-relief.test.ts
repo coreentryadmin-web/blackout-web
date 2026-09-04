@@ -40,7 +40,7 @@ test("effectiveIlliquidSpreadPct: amplify session widens cap to 22%", () => {
 test("regimeScoreBump: near-miss 58-64 on aligned amplify FLOW", () => {
   const prev = process.env.ZERODTE_AMPLIFY_SCORE_BUMP;
   delete process.env.ZERODTE_AMPLIFY_SCORE_BUMP;
-  assert.equal(regimeScoreBump({ ...amplifyCtx, score: 62 }), 6);
+  assert.equal(regimeScoreBump({ ...amplifyCtx, score: 62, discovery_origin: ["BREAKOUT"] }), 6);
   assert.equal(regimeScoreBump({ ...amplifyCtx, score: 65 }), 0);
   assert.equal(regimeScoreBump({ ...amplifyCtx, score: 57 }), 0);
   assert.equal(regimeScoreBump({ ...amplifyCtx, score: 62, market_aligned: false }), 0);

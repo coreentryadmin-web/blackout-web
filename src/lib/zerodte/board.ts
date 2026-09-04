@@ -1598,6 +1598,8 @@ export type EnrichedZeroDteSetup = ZeroDteSetup & {
   regime_plane?: import("./regime-plane").RegimePlaneSnapshot | null;
   /** Stamped at plan attach — G-8 chase exempt (Vector and/or amplify regime). UI + persist. */
   plan_chase_exempt?: boolean;
+  /** Primary strike before liquid-strike fallback walked the chain (telemetry). */
+  plan_strike_fallback_from?: number | null;
   /** NH-R4 (weekend/holiday gap risk): count of non-trading calendar days the selected contract's
    *  hold spans between today and expiry (0 = normal overnight, 2 = plain weekend, 3+ = holiday
    *  weekend) — see `tradingSessionGapDays` above. EVIDENCE ONLY (calibration-first, same role as

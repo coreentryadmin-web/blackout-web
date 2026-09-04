@@ -151,6 +151,7 @@ import {
 } from "./vector-crosslink";
 import {
   fetchChainsForVectorRank,
+  rankVectorContractAlternatives,
   resolveZeroDteContractAttach,
   vectorRankContractsEnabled,
 } from "./vector-contract-resolve";
@@ -159,6 +160,7 @@ import {
   planNeedsLiquidityFallback,
   pickLiquidStrikePlan,
   rankLiquidStrikeAlternatives,
+  ensureChainsForSetups,
   type LiquidStrikeCandidate,
 } from "./liquid-strike-fallback";
 import { computeVectorGateBoost } from "./vector-commit-boost";
@@ -1226,6 +1228,11 @@ async function attachContractPlans(
         )) ?? new Map())
       : new Map<string, { spot: number; rows: import("@/features/nighthawk/lib/option-chain-prompt").ChainStrikeRow[] }>();
 
+  if (setups.length > 0) {
+    const { resolveTickerChainRows } = await import("@/features/nighthawk/lib/option-chain-prompt");
+    await ensureChainsForSetups(setups, chains, (tk) => resolveTickerChainRows(tk));
+  }
+
   const occOf = new Map<string, string>();
   for (const s of setups) {
     // A CONDOR carries its own 4-leg priced structure (condor_plan, built at discovery); it has no
@@ -1348,17 +1355,6 @@ async function applyLiquidStrikeFallback(
   if (needing.length === 0) return;
 
   const today = todayEt();
-  const { resolveTickerChainRows } = await import("@/features/nighthawk/lib/option-chain-prompt");
-
-  await Promise.all(
-    needing.map(async (s) => {
-      const tk = s.ticker.toUpperCase();
-      if (chains.has(tk)) return;
-      const chain = await within(resolveTickerChainRows(tk).catch(() => null), 3_000).catch(() => null);
-      if (chain) chains.set(tk, chain);
-    })
-  );
-
   const altByTicker = new Map<string, LiquidStrikeCandidate[]>();
   const altOccs = new Set<string>();
 
@@ -1367,7 +1363,32 @@ async function applyLiquidStrikeFallback(
     if (!chain) continue;
     const spot = s.underlying_price ?? chain.spot;
     if (!(spot > 0) || s.top_strike == null || !s.expiry) continue;
-    const alts = rankLiquidStrikeAlternatives({
+
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+    const chaseCtx: PlanChaseContext = {
+      direction: s.direction,
+      score: s.score,
+      vector_pulse: pulse,
+      discovery_origin: s.discovery_origin,
+      gamma_regime: s.gamma_regime ?? null,
+      market_aligned: s.market_aligned ?? null,
+      regime_structure: marketState?.regime_structure ?? null,
+      market_state_confidence: marketState?.confidence,
+    };
+    const illiquidSpreadPct = effectiveIlliquidSpreadPct(chaseCtx);
+
+    const vectorAlts: LiquidStrikeCandidate[] = rankVectorContractAlternatives(s, pulse, chain, 4)
+      .filter((v) => v.strike !== s.top_strike)
+      .map((v) => ({
+        strike: v.strike,
+        expiry: (v.expiry ?? s.expiry)!.slice(0, 10),
+        dte: v.dte ?? s.actual_dte_at_commit ?? s.dte ?? 0,
+        occ: v.occ,
+        quality: 2,
+        distFromPrimary: Math.abs(v.strike - s.top_strike!),
+      }));
+
+    const chainAlts = rankLiquidStrikeAlternatives({
       rows: chain.rows,
       spot,
       todayYmd: today,
@@ -1375,10 +1396,19 @@ async function applyLiquidStrikeFallback(
       expiry: s.expiry,
       primaryStrike: s.top_strike,
       direction: s.direction,
+      spreadCap: illiquidSpreadPct,
     });
-    if (alts.length === 0) continue;
-    altByTicker.set(s.ticker, alts);
-    for (const a of alts) altOccs.add(a.occ);
+
+    const seen = new Set<string>();
+    const merged: LiquidStrikeCandidate[] = [];
+    for (const c of [...vectorAlts, ...chainAlts]) {
+      if (seen.has(c.occ)) continue;
+      seen.add(c.occ);
+      merged.push(c);
+    }
+    if (merged.length === 0) continue;
+    altByTicker.set(s.ticker, merged);
+    for (const a of merged) altOccs.add(a.occ);
   }
 
   if (altOccs.size === 0) return;
@@ -1422,12 +1452,16 @@ async function applyLiquidStrikeFallback(
     });
     if (!picked) continue;
 
+    const priorStrike = s.top_strike;
     s.top_strike = picked.candidate.strike;
     s.expiry = picked.candidate.expiry;
     s.contract_horizon = deriveContractHorizon(picked.candidate.dte);
     s.actual_dte_at_commit = picked.candidate.dte;
     s.grading_policy = gradingPolicyForHorizon(s.contract_horizon);
     s.plan = picked.plan;
+    if (priorStrike != null && priorStrike !== picked.candidate.strike) {
+      s.plan_strike_fallback_from = priorStrike;
+    }
 
     const snap = altSnaps.get(picked.candidate.occ) ?? null;
     const refreshed = refreshUnderlyingFromLiveSpot({
