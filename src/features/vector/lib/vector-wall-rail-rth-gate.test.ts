@@ -107,19 +107,24 @@ test("the in-process leader and this module agree on the same gate", () => {
 
 test("vector-snapshot: computeGexWalls spot args reject zero/negative (source scan)", () => {
   const src = read(SNAPSHOT);
-  const matches = [
+  const inlineGuards = [
     ...src.matchAll(
       /spot:\s*s\.fallbackSpot\s*!=\s*null\s*&&\s*s\.fallbackSpot\s*>\s*0\s*\?\s*s\.fallbackSpot\s*:\s*undefined/g
     ),
   ];
-  assert.equal(
-    matches.length,
-    3,
-    "all three GAMMA-lens computeGexWalls calls must guard fallbackSpot > 0"
+  const constSpotGuards = [...src.matchAll(/const spot =\s*\n\s*s\.fallbackSpot != null && s\.fallbackSpot > 0 \? s\.fallbackSpot : undefined/g)];
+  assert.ok(
+    inlineGuards.length + constSpotGuards.length >= 2,
+    "GAMMA-lens computeGexWalls calls must guard fallbackSpot > 0"
   );
   assert.doesNotMatch(
     src,
     /spot:\s*s\.fallbackSpot\s*\?\?\s*undefined/,
     "must not pass raw fallbackSpot ?? undefined to computeGexWalls"
+  );
+  assert.match(
+    src,
+    /if \(spot === undefined\) return s\.cachedWalls/,
+    "WS ladder path must defer when spot is not yet known"
   );
 });

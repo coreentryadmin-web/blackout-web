@@ -2163,3 +2163,9 @@ than an end-of-session patch.
 - **What changed:** Wrap both success responses in `roundFloats(...)`; add `favPct: 4` to `VECTOR_FRACTION_DP`.
 - **RTH check:** On Vector with an active play, open pick live monitor — confirm option marks are 2dp-clean; BIE evidence line shows a non-zero historical rate when `favPct` is small (e.g. 0.4% not 0.00%).
 
+### 27. Vector snapshot GEX walls — WS ladder race without spot constraint — fix/vector-snapshot-spot-constraint — 2026-09-04
+
+- **What was broken:** `getVectorGexWalls()` in `vector-snapshot.ts` could compute unconstrained gamma walls from the live UW WS ladder when `fallbackSpot` was still null (heatmap fetch in flight), placing call walls below spot or put walls above spot.
+- **What changed:** WS ladder path returns cached walls until spot is known; horizon WS path skips unconstrained compute when spot missing. Builds on spot > 0 guard from prior commit on this branch.
+- **RTH check:** On `/vector` for SPX/SPY/QQQ at session open (first ~30s after 09:30 ET), confirm call walls sit above spot and put walls below spot — no inverted geometry flash.
+
