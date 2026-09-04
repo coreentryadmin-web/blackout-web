@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:05:39.615Z",
+  "updated_at": "2026-09-04T17:06:38.635Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -226,11 +226,182 @@
   "deploy": {
     "last_main_sha": "8f6ac7df6b87784fe53bf3f1fac082496ccd34c7",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T17:01:12Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33898311494",
-    "last_deploy_sha": "8f6ac7df6b87784fe53bf3f1fac082496ccd34c7"
+    "last_deploy_at": "2026-09-04T17:06:37Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33898798416",
+    "last_deploy_sha": "66b3793547b8364e04160e136f8b3dde211fb4a1"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3661,
+      "title": "chore(autopilot): cursor handoff — #3642 merged, admin fmtRel #3660, RTH GREEN",
+      "branch": "cursor/autopilot-handoff-2026-09-04-cycle3",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-04T17:06:33Z"
+    },
+    {
+      "number": 3660,
+      "title": "fix(admin): guard API feed + SPX terminal fmtRel against clock-skewed timestamps",
+      "branch": "fix/admin-fmtrel-future-guard-rebase",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T17:06:28Z"
+    },
+    {
+      "number": 3659,
+      "title": "fix(nighthawk): readiness chip DELAYED on future-skewed board as_of",
+      "branch": "fix/nighthawk-readiness-future-asof",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T17:06:10Z"
+    },
+    {
+      "number": 3658,
+      "title": "test(zerodte): fix real network/DB leak in zerodte-service.test.ts (5 flaky failures, 13x slower)",
+      "branch": "fix/zerodte-service-test-real-io-leak",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T17:05:49Z"
+    },
+    {
+      "number": 3657,
+      "title": "fix(admin): guard remaining fmtRel/staleMs paths against clock-skewed future ISO timestamps",
+      "branch": "fix/admin-time-ago-future-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T17:04:42Z"
+    },
+    {
+      "number": 3655,
+      "title": "chore(autopilot): cursor handoff — #3647 APPROVED, validations GREEN",
+      "branch": "cursor/autopilot-work-loop-90df",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T16:57:27Z"
+    },
+    {
+      "number": 3654,
+      "title": "fix(admin): guard API Live Feed + SPX Terminal time-ago against clock skew",
+      "branch": "fix/admin-live-feed-time-ago-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T16:53:37Z"
+    },
+    {
+      "number": 3653,
+      "title": "chore(autopilot): cursor handoff — #3648 largo-stress fix, peer reviews #3642/#3643",
+      "branch": "chore/autopilot-handoff-2026-09-04-cycle2",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T17:00:07Z"
+    },
+    {
+      "number": 3652,
+      "title": "fix(admin): guard API feed + SPX terminal fmtRel against clock-skewed timestamps",
+      "branch": "fix/admin-fmtrel-future-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T16:57:48Z"
+    },
+    {
+      "number": 3649,
+      "title": "chore(autopilot): cursor handoff — #3627 merged, RTH lifecycle GREEN",
+      "branch": "cursor/autopilot-work-loop-ee29",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T16:45:16Z"
+    },
+    {
+      "number": 3646,
+      "title": "chore(autopilot): cursor handoff — #3627/#3633 merged, validations GREEN",
+      "branch": "cursor/autopilot-handoff-post-3627-3633",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T16:45:27Z"
+    },
+    {
+      "number": 3645,
+      "title": "chore(autopilot): cursor RTH validation handoff — lifecycle GREEN",
+      "branch": "cursor/autopilot-rth-handoff-2026-09-04",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T16:55:15Z"
+    },
+    {
+      "number": 3644,
+      "title": "chore(autopilot): cursor handoff — peer reviews #3639/#3642, deploy/CI status",
+      "branch": "cursor/autopilot-handoff-pr-event-2026-09-04",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T16:52:33Z"
+    },
+    {
+      "number": 3638,
+      "title": "chore(autopilot): cursor handoff — #3627 merged, deploy GREEN",
+      "branch": "cursor/autopilot-handoff-post-3627-1788539305",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T16:39:41Z"
+    },
+    {
+      "number": 3637,
+      "title": "chore(autopilot): cursor handoff — #3633 peer-reviewed, deploy GREEN",
+      "branch": "cursor/autopilot-handoff-2026-09-04-peer-review",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T16:30:04Z"
+    },
+    {
+      "number": 3636,
+      "title": "chore(autopilot): cursor handoff — RTH lifecycle GREEN, #3627 awaiting Claude review",
+      "branch": "cursor/autopilot-handoff-rth-green-2026-09-04",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T16:40:00Z"
+    },
+    {
+      "number": 3635,
+      "title": "chore(autopilot): cursor handoff — #3610/#3613 merged, #3614 CI green",
+      "branch": "cursor/autopilot-work-loop-8932",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T16:35:42Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -994,6 +1165,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:06:38.634Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 17
+    },
+    {
+      "at": "2026-09-04T17:06:38.635Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "7e9af402-118e-4627-a6c0-a8c12a24b36a",
+      "summary": "Cycle complete. Main @8f6ac7df (#3642 SPX manifest fix merged). RTH lifecycle GREEN. Opened #3660 (admin fmtRel future guard, verify pending) + #3661 (agent state). Peer review #3642 APPROVED recorded. ops:collect 0, platform-integrity 14/14, SEO 22/22, vector-rth-quick ok. Claude: review #3660."
     }
   ]
 }
