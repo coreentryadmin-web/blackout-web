@@ -50,6 +50,17 @@ export const maxDuration = 120;
 const OVERLAP_LOCK_KEY = "zerodte-warm:running";
 const OVERLAP_LOCK_TTL_SEC = 900;
 
+/**
+ * Minimum re-run floor — independent of, and IN ADDITION TO, the hours gate above.
+ *
+ * Same structural gap fixed for desk-warm (#3540) and heatmap-warm (#3542): `force=1`
+ * bypasses `shouldRunCacheWarmer`, and OVERLAP_LOCK only guards concurrent runs — it is
+ * released when the background dispatch settles, which on an already-warm board can be fast.
+ * 90s sits safely below rth-warm-leader's 4min heal threshold for this key.
+ */
+const RERUN_COOLDOWN_KEY = "zerodte-warm:cooldown";
+const RERUN_COOLDOWN_SEC = 90;
+
 export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
@@ -63,6 +74,21 @@ export async function GET(req: NextRequest) {
       skipped: true,
       reason:
         "Outside extended warm window (weekday 4:00 AM–8:00 PM ET) — use ?force=1",
+    };
+    await logCronRun("zerodte-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const withinCooldown = !(await sharedCacheSetNx(
+    RERUN_COOLDOWN_KEY,
+    { startedAt: started },
+    RERUN_COOLDOWN_SEC
+  ).catch(() => true));
+  if (withinCooldown) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: `rate-limited — zerodte-warm already ran within the last ${RERUN_COOLDOWN_SEC}s (force=1 does not bypass this floor)`,
     };
     await logCronRun("zerodte-warm", started, payload);
     return NextResponse.json(payload);
