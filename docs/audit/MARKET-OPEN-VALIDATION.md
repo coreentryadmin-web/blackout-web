@@ -147,6 +147,17 @@ attempt 1 must not fail the run when attempt 2 shows warming/fresh marks.
 
 **Check at the open:** After any deploy rollout, confirm Sentry top issues no longer include these two patterns; members mid-rollout should get a one-shot reload instead of a stuck page on stale Server Actions.
 
+### 0i. Platform-integrity false WARN on tier-gated GEX routes — fix/platform-integrity-tier-gated-skip (pending)
+
+**What was broken:** `validate:platform-integrity` graded `gex-positioning-spx`, `thermal-matrix-SPY/QQQ`,
+and `vector-spx-0dte-walls` as WARN (`strikes=0 spot=—`) when those routes returned **401** after
+#3603 aligned desk auth — the harness already SKIP'd other tier-gated routes but not these four.
+
+**Fix:** `tierGatedStatus()` helper — HTTP 401 → SKIP `tier-gated` for all GEX/vector probes.
+
+**Check at the open:** `npm run validate:platform-integrity` off-session (no Clerk) → **0 warn**,
+10 skip; with admin Clerk session → thermal-matrix SPY/QQQ strikes > 0 PASS.
+
 ### 0f. SPX dashboard E2E cross-tool stale matrix flip — fix/spx-dashboard-cross-tool-stale-matrix (pending)
 
 **What was broken:** `spx-dashboard-e2e-audit.mjs` compared gamma flip from a matrix snapshot fetched
