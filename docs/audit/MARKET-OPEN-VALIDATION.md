@@ -128,6 +128,14 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** SPX desk sector heat rows should show real +/- % or omit/null — never 0.00% for a ticker with no session change data pre-open. Cross-check XLK/XLF on desk vs `GET /api/market/heatmap` sector panel.
 
+### 0al. SPX desk peek served price:0 bootstrap shell — fix/spx-desk-peek-zero-price (pending)
+
+**What was broken:** `GET /api/market/spx/desk` returned any `peekSpxDesk()` cache hit immediately, including bootstrap fast-lane shells with `price: 0` before `buildSpxDesk()` finished — members could flash SPX 0 while Thermal matrix already showed a grounded spot (~7718).
+
+**Fix:** Peek fast-path only when `instant.price > 0`; otherwise fall through to `loadSpxDesk()`.
+
+**Check at the open:** Cold-load `/terminal` after deploy — SPX header spot must match Thermal matrix within 1%, never 0 during a session with live index data.
+
 ### 0ag. UW spot-fallback fabricated flat 0% — fix/spot-fallback-change-pct-null (merged #3790)
 
 **What was broken:** `resolveSpotFromUwStockState()` returned `change_pct: 0` when UW `/stock-state` omitted `prev_close` — members saw "unchanged" with no prior-close anchor.
@@ -2326,3 +2334,8 @@ than an end-of-session patch.
 - **What changed:** Added `runPolygonPool` (`polygon-rate-limiter.ts`, mirrors `runUwPool`), bounded-concurrency default 8 (`POOL_MAX_CONCURRENCY`, env-overridable). `buildVectorUniverseSnapshot`'s ticker fan-out now routes through it instead of the raw `Promise.allSettled`.
 - **RTH check:** During/soon after RTH, hit `GET /api/market/vector/universe` and spot-check a handful of non-preset dynamic-universe tickers (names outside the ~11 warm presets — e.g. whichever mid-liquidity names are currently in the dynamic universe) for `spot: null`/`gammaFlip: null` rows; cross-check any null row directly against `GET /api/market/gex-heatmap?ticker=<T>` — if the direct check returns `available: true` with a real spot, the fan-out is still dropping rows and this fix needs a second look (e.g. `POOL_MAX_CONCURRENCY` too high, or a sibling unbounded fan-out — `heatmap-warm`/`vector-walls-warm`, both flagged as blast-radius follow-ups in the finding — needs the same fix).
 
+### 30. Stock spot SSE stream — unrounded IEEE floats on wire — fix/spot-stream-roundfloats — 2026-09-04
+
+- **What was broken:** `/api/market/stocks/spot-stream` SSE frames serialized raw `price` and `changePct` from `stock-candle-store` without `roundFloats`, so members on the push spot lane could see IEEE tails while REST `/api/market/quote` was already rounded.
+- **What changed:** Apply `roundFloats(frame)` inside `encodeSpotFrame()` in `stocks-spot-stream-hub.ts` before `JSON.stringify`.
+- **RTH check:** Open any desk surface using the spot SSE stream (Network tab → EventStream on `/api/market/stocks/spot-stream?tickers=NVDA,AAPL`); confirm `quotes.*.price` and `changePct` are 2dp-clean with no IEEE tails during RTH ticks.
