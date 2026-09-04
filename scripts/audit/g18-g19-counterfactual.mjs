@@ -124,16 +124,38 @@ async function fetchCalibration(args, headers) {
   return { grade: gradeJson, report: parsed.report };
 }
 
+/**
+ * Extract the replay harness's root JSON object from stdout.
+ * `lastIndexOf("{")` is wrong when the payload contains nested objects (play rows) —
+ * it lands on an inner brace and JSON.parse fails with trailing garbage.
+ */
+export function parseReplayStdout(stdout) {
+  const text = String(stdout ?? "");
+  const marker = text.indexOf('{\n  "ok"');
+  const start = marker >= 0 ? marker : text.indexOf("{");
+  if (start < 0) return { ok: false, error: "no json output" };
+
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return JSON.parse(text.slice(start, i + 1));
+    }
+  }
+  throw new Error("unclosed json in replay stdout");
+}
+
 function runReplay(args) {
-  const r = spawnSync("npm", ["run", "replay:0dte-session", "--", `--days=${args.days}`, "--json"], {
+  const script = join(repoRoot, "scripts/audit/zerodte-session-replay.mjs");
+  const r = spawnSync(process.execPath, ["--import", "tsx", script, `--days=${args.days}`, "--json"], {
     encoding: "utf8",
     cwd: repoRoot,
     env: { ...process.env, VALIDATE_BASE: args.base },
   });
   try {
-    const lastBrace = r.stdout.lastIndexOf("{");
-    const json = lastBrace >= 0 ? JSON.parse(r.stdout.slice(lastBrace)) : { ok: false, error: "no json output" };
-    return json;
+    return parseReplayStdout(r.stdout);
   } catch {
     return { ok: false, error: r.stderr?.slice(0, 200) || "replay parse failed", stdout_tail: r.stdout?.slice(-200) };
   }
