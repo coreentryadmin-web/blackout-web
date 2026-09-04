@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { chromium } from "playwright";
 import { mintIosPlaywrightSession, onboardingInitScript } from "./audit/lib/ios-playwright-auth.mjs";
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
+import { resolveChromiumPath } from "./audit/lib/playwright-chromium-path.mjs";
 
 const args = process.argv.slice(2);
 const API_ONLY = args.includes("--api-only") || process.env.SITE_LATENCY_API_ONLY === "1";
@@ -271,7 +272,12 @@ async function main() {
 
   if (!API_ONLY) {
     console.log("\n--- Browser paint ---");
-    const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+    const executablePath = resolveChromiumPath();
+    const browser = await chromium.launch({
+      headless: true,
+      args: ["--no-sandbox"],
+      ...(executablePath ? { executablePath } : {}),
+    });
     const context = await browser.newContext();
     await context.addInitScript(onboardingInitScript());
     if (browserCookies?.length) await context.addCookies(browserCookies);

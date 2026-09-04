@@ -14,3 +14,10 @@ test("dashboard ready probe passes minRows via waitForFunction arg, not OFF_HOUR
   assert.doesNotMatch(dashboardReady!, /OFF_HOURS/, "OFF_HOURS must not run in browser context");
   assert.match(src, /waitForFunction\(page\.ready, page\.readyMinRows/);
 });
+
+test("browser launch resolves chromium path for cloud agents without /opt/pw-browsers", () => {
+  const src = readFileSync(auditPath, "utf8");
+  assert.match(src, /import \{ resolveChromiumPath \} from "\.\/audit\/lib\/playwright-chromium-path\.mjs"/);
+  assert.match(src, /resolveChromiumPath\(\)/);
+  assert.match(src, /executablePath/);
+});
