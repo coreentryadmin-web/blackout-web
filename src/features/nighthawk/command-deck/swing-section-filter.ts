@@ -21,6 +21,9 @@ export type SwingSectionCounts = Record<SwingSectionFilter, number>;
 /** The `sections` map as it arrives on a lane: any subset of the seven, each possibly absent. */
 export type SwingSectionsMap = Partial<Record<SwingServingSection, unknown[]>>;
 
+/** Per-section row counts returned by `swingSectionCounts`. */
+export type SwingSectionCounts = Record<SwingSectionFilter, number>;
+
 /**
  * Rows for the selected filter, in the canonical section order.
  *
@@ -49,8 +52,8 @@ export function rowsForSwingSection<T>(
  */
 export function swingSectionCounts(
   sections: SwingSectionsMap | null | undefined
-): Record<SwingSectionFilter, number> {
-  const counts = { ALL: 0 } as Record<SwingSectionFilter, number>;
+): SwingSectionCounts {
+  const counts = { ALL: 0 } as SwingSectionCounts;
   for (const s of SWING_SERVING_SECTIONS) {
     const n = sections?.[s]?.length ?? 0;
     counts[s] = n;

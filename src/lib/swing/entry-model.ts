@@ -164,5 +164,7 @@ function entryReason(state: SwingEntryState, dir: PlayDirection | null): string 
       return `${side}: price pulled back into the entry zone — enter on the retest.`;
     case "EXTENDED_CHASE":
       return `${side}: price is >0.5·ATR past the trigger — entering here is a chase (see entry_extended).`;
+    case "EXPIRED":
+      return `${side}: contract expired — no entry available.`;
   }
 }
