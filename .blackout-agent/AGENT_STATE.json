@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T05:31:20.827Z",
+  "updated_at": "2026-09-04T06:41:27.251Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,28 +67,26 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T06:30:40.083Z",
+      "lease_until": "2026-09-04T08:00:40.083Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:31:04.605Z",
-      "lease_until": "2026-09-04T07:01:04.605Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T06:40:54.007Z",
+      "lease_until": "2026-09-04T08:10:54.007Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.756Z"
+      "title": null
     }
   },
   "reviews": {
@@ -147,6 +145,22 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3512": {
+      "pr": 3512,
+      "head_sha": "a3d03bc90",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:39:40.343Z",
+      "safe_to_merge": true
+    },
+    "pr-3511": {
+      "pr": 3511,
+      "head_sha": "888e81d44",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:41:15.747Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -156,16 +170,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T05:31:04.606Z",
+      "last_seen": "2026-09-04T06:40:54.008Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f",
+    "last_main_sha": "aafe12880d194c1c87ab0dfce3ae20aaa84c4106",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T05:27:22Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33840544277",
-    "last_deploy_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f"
+    "last_deploy_at": "2026-09-04T06:40:43Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845362473",
+    "last_deploy_sha": "448f8a3188f84b9878e7ad9e13876e72e484da7f"
   },
   "open_prs": [],
   "events": [
@@ -569,6 +583,173 @@
       "agent": "cursor",
       "run_id": "34cc062c-797a-4e80-8a83-6c9e90f11422",
       "summary": "Cycle complete: deploy GREEN @ 0b2ada333 (#3495). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours expected). Peer review: no substantive PRs (#2810 dependabot major skip). RTH lifecycle @ 09:00 ET Fri 2026-09-05. Agent state sync PR opening."
+    },
+    {
+      "at": "2026-09-04T06:30:28.731Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-04T06:30:32.965Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-04T06:30:33.907Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-04T06:30:34.905Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-04T06:30:40.083Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T06:30:41.983Z",
+      "type": "pr_webhook",
+      "pr": 3512,
+      "event": "sweep",
+      "head": "a3d03bc90823049c4d6c319270a63c24cfdd2e8c",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T06:30:43.775Z",
+      "type": "pr_webhook",
+      "pr": 3511,
+      "event": "sweep",
+      "head": "888e81d449d8554bdce9e5bfb6abaf51d919afeb",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T06:30:45.430Z",
+      "type": "pr_webhook",
+      "pr": 3510,
+      "event": "sweep",
+      "head": "dd2a500090e776ed9d3f6073d8fecd5170dbe9e2",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T06:30:47.096Z",
+      "type": "pr_webhook",
+      "pr": 3506,
+      "event": "sweep",
+      "head": "6ca2f8570bb1e3cad1fabd1b26e83e08d6c1bd8b",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T06:30:48.634Z",
+      "type": "pr_webhook",
+      "pr": 2810,
+      "event": "sweep",
+      "head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T06:39:40.344Z",
+      "type": "pr_review",
+      "pr": 3512,
+      "head_sha": "a3d03bc90",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:39:40.343Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T06:40:54.008Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T06:41:15.748Z",
+      "type": "pr_review",
+      "pr": 3511,
+      "head_sha": "888e81d44",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:41:15.747Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T06:41:21.435Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:41:21.435Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "91e2e730-d760-49be-9f39-2179506f1895",
+      "summary": "Peer-reviewed #3511+#3512 APPROVED (verify green, local tests pass). #3510 superseded by #3509 on main — close when API recovers. #3506 (cursor own) verify green awaiting Claude peer review. validate:deploy GREEN, ops:collect 0. GitHub PAT rate-limited — undraft blocked."
+    },
+    {
+      "at": "2026-09-04T06:41:27.251Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3512": {
+      "last_event": "sweep",
+      "last_head": "a3d03bc90823049c4d6c319270a63c24cfdd2e8c",
+      "last_feedback_at": "2026-09-04T06:30:41.983Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3511": {
+      "last_event": "sweep",
+      "last_head": "888e81d449d8554bdce9e5bfb6abaf51d919afeb",
+      "last_feedback_at": "2026-09-04T06:30:43.775Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3510": {
+      "last_event": "sweep",
+      "last_head": "dd2a500090e776ed9d3f6073d8fecd5170dbe9e2",
+      "last_feedback_at": "2026-09-04T06:30:45.430Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3506": {
+      "last_event": "sweep",
+      "last_head": "6ca2f8570bb1e3cad1fabd1b26e83e08d6c1bd8b",
+      "last_feedback_at": "2026-09-04T06:30:47.096Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-2810": {
+      "last_event": "sweep",
+      "last_head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "last_feedback_at": "2026-09-04T06:30:48.634Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
