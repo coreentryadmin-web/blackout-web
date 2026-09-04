@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  cronRunAgeMin,
   evaluateJob,
   expectedNighthawkEdition,
   nighthawkEditionCoversExpected,
@@ -135,6 +136,33 @@ test("nighthawkJobAgeMin: past updated_at returns clamped minutes", () => {
   const now = Date.parse("2026-09-04T12:00:00Z");
   const past = new Date(now - 90_000).toISOString();
   assert.equal(nighthawkJobAgeMin(past, 60, now), 2);
+});
+
+test("cronRunAgeMin: future started_at exceeds stale threshold (clock skew)", () => {
+  const now = Date.parse("2026-09-04T12:00:00Z");
+  const future = new Date(now + 60_000).toISOString();
+  assert.equal(cronRunAgeMin(future, 60, now), 61);
+});
+
+test("evaluateJob: clock-skewed future started_at reports stale, not falsely fresh", () => {
+  const now = new Date("2026-08-19T18:00:00Z");
+  const futureStarted = new Date(now.getTime() + 120_000).toISOString();
+  const health = evaluateJob(
+    jobDef({ stale_after_min: 60 }),
+    {
+      id: 1,
+      job_key: "test-job",
+      status: "ok",
+      started_at: futureStarted,
+      duration_ms: 120,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "stale");
+  assert.equal(health.age_min, 61);
 });
 
 test("REGRESSION: a job WITH a fresh run is untouched by the never-run branch", () => {

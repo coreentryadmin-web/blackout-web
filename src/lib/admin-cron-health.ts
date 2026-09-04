@@ -41,6 +41,19 @@ export function nighthawkJobAgeMin(
   return null;
 }
 
+/** Cron last-run age in minutes — future-skewed started_at must not read as falsely fresh. */
+export function cronRunAgeMin(
+  startedAt: string | null | undefined,
+  staleThresholdMin: number,
+  now = Date.now()
+): number | null {
+  if (!startedAt) return null;
+  const age = isoAgeSec(startedAt, now);
+  if (age.kind === "ok") return Math.round(age.sec / 60);
+  if (age.kind === "clock-skew") return staleThresholdMin + 1;
+  return null;
+}
+
 function positiveEnvInt(name: string, fallback: number): number {
   const n = Number(process.env[name]);
   return Number.isFinite(n) && n >= 0 ? n : fallback;
@@ -239,8 +252,8 @@ export function evaluateJob(
     };
   }
 
-  const ageMin = (now.getTime() - new Date(last.started_at).getTime()) / 60_000;
   const { effective: staleThreshold, multiplier: staleMultiplier } = effectiveStaleMinutes(job);
+  const ageMin = cronRunAgeMin(last.started_at, staleThreshold, now.getTime());
 
   // Market-hours-only crons (flow-ingest, spx-evaluate, heatmap-warm, gex-alerts, …)
   // intentionally skip off-window. Once the market is closed they CANNOT log a fresh run,
@@ -275,7 +288,7 @@ export function evaluateJob(
     // REST cron intentionally idle while the UW WS (local or cluster) is the live writer.
     status = "healthy";
     statusLabel = `REST skipped (${last.message}) — alternate writer path active`;
-  } else if (ageMin > staleThreshold) {
+  } else if (ageMin != null && ageMin > staleThreshold) {
     status = "stale";
     statusLabel = `No run in ${Math.round(ageMin)}m (limit ${Math.round(staleThreshold)}m${staleMultiplier > 1 ? ` · ${staleMultiplier}× weekend` : ""})`;
   } else if (last.status === "skipped") {
@@ -304,7 +317,7 @@ export function evaluateJob(
     last_status: last.status,
     last_duration_ms: last.duration_ms,
     last_message: last.message,
-    age_min: Math.round(ageMin),
+    age_min: ageMin != null ? Math.round(ageMin) : null,
     stale_after_min: job.stale_after_min,
     effective_stale_min: Math.round(staleThreshold),
     stale_multiplier: staleMultiplier,
