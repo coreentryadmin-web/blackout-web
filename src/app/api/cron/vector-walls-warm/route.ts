@@ -32,6 +32,23 @@ export const maxDuration = 120;
 const OVERLAP_LOCK_KEY = "vector-walls-warm:running";
 const OVERLAP_LOCK_TTL_SEC = 240;
 
+/**
+ * Minimum re-run floor — independent of, and IN ADDITION TO, the cash-RTH gate below.
+ *
+ * Same structural gap fixed for desk-warm (#3540) and heatmap-warm (#3542): `force=1`
+ * completely bypasses the `isEtCashRth()` off-hours skip, and OVERLAP_LOCK above guards only
+ * against a SECOND run starting while the FIRST is still in flight — released the instant the
+ * background warm settles, which on an already-hot walls cache can finish far faster than a
+ * cold universe sweep. Nothing capped how OFTEN `?force=1` could be replayed.
+ *
+ * 10s sits safely BELOW every legitimate cadence: rth-warm-leader's heal threshold for this key
+ * is 20s (RTH_WRITER_HEAL_AFTER_MIN["vector-walls-warm"], rth-warm-leader-logic.ts) and
+ * EventBridge's own schedule is ~5 min — neither path re-requests this key sooner than 10s ever
+ * would allow.
+ */
+const RERUN_COOLDOWN_KEY = "vector-walls-warm:cooldown";
+const RERUN_COOLDOWN_SEC = 10;
+
 async function runVectorWallsWarm(started: number): Promise<void> {
   try {
     const tickers = await getTickersToWarmAsync(await listSharedUniverseTickers());
@@ -62,6 +79,21 @@ export async function GET(req: NextRequest) {
   const force = req.nextUrl.searchParams.get("force") === "1";
   if (!force && !isEtCashRth()) {
     const payload = { ok: true, skipped: true, reason: "Outside cash RTH" };
+    await logCronRun("vector-walls-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const withinCooldown = !(await sharedCacheSetNx(
+    RERUN_COOLDOWN_KEY,
+    { startedAt: started },
+    RERUN_COOLDOWN_SEC
+  ).catch(() => true));
+  if (withinCooldown) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: `rate-limited — vector-walls-warm already ran within the last ${RERUN_COOLDOWN_SEC}s (force=1 does not bypass this floor)`,
+    };
     await logCronRun("vector-walls-warm", started, payload);
     return NextResponse.json(payload);
   }

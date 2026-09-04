@@ -128,6 +128,14 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** `node --import tsx scripts/audit/helix-score-signal.mjs --source=ledger` returns graded rows when ledger has directional outcomes; re-run weekly as ledger accumulates past the 50-row API cap.
 
+### 0z. vector-walls-warm missing force=1 cooldown — fix/vector-walls-warm-cooldown (pending)
+
+**What was broken:** `vector-walls-warm` had `OVERLAP_LOCK` but no `RERUN_COOLDOWN`. `?force=1` bypasses the cash-RTH gate; on a hot walls cache the background warm can finish in seconds, so replay loops could fan out Polygon chain fetches faster than any legitimate trigger (rth-warm-leader 20s heal threshold).
+
+**Fix:** Added `RERUN_COOLDOWN_KEY = "vector-walls-warm:cooldown"` with 10s TTL (below the 20s leader heal threshold, mirroring heatmap-warm).
+
+**Check at the open:** `/admin` → Operations → cron health shows `vector-walls-warm` completing normally during RTH; no burst of concurrent wall-warm completions in CloudWatch within seconds of each other after a mid-session deploy.
+
 Every item below was fixed off-hours today (weekday, pre-open) and has **not been seen under a
 moving tape or real member traffic**. Per the newly-recorded `FULL-LIFECYCLE SCOPE EXPANSION`
 standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained every sweep — not
