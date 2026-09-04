@@ -586,6 +586,48 @@ export const CRON_JOBS: CronJobDefinition[] = [
     schedule_cron_utc: "30 23 * * *",
     description: "Pull X post/profile metrics into analytics",
   },
+  {
+    key: "darkpool-discord",
+    name: "Dark Pool Discord",
+    kind: "http",
+    path: "/api/cron/darkpool-discord",
+    schedule_label: "Every 2 min (cash RTH UTC band)",
+    stale_after_min: 10,
+    schedule_cron_utc: "*/2 11-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Scan cached dark-pool prints → Discord #blackout-darkpool (burst + 15m digest). Opt-in via DARKPOOL_DISCORD_ALERTS.",
+    produces_member_alert: true,
+  },
+  {
+    key: "thermal-discord",
+    name: "Thermal Discord",
+    kind: "http",
+    path: "/api/cron/thermal-discord",
+    schedule_label: "Every 15 min (cash RTH UTC band)",
+    stale_after_min: 45,
+    schedule_cron_utc: "*/15 13-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Thermal desk card PNG → Discord. Route gates to cash RTH; inert without DISCORD_THERMAL_WEBHOOK_URL.",
+    produces_member_alert: true,
+  },
+  {
+    key: "helix-discord-digest",
+    name: "HELIX Discord Digest",
+    kind: "http",
+    path: "/api/cron/helix-discord-digest",
+    schedule_label: "Every 15 min (cash RTH UTC band)",
+    stale_after_min: 45,
+    schedule_cron_utc: "*/15 11-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "HELIX top-hits 15m/30m digests → Discord. Opt-in via HELIX_DISCORD_ALERTS + DISCORD_HELIX_WEBHOOK_URL.",
+    produces_member_alert: true,
+  },
 ];
 
 export const CRON_JOB_BY_KEY = Object.fromEntries(CRON_JOBS.map((j) => [j.key, j])) as Record<

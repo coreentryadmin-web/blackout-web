@@ -44,9 +44,6 @@ const INTENTIONALLY_UNREGISTERED: Record<string, string> = {
   "x-autopost": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
   "x-growth": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
   "x-replies": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
-  "darkpool-discord": "Unscheduled in cron-jobs.json; invoked off another job's path rather than on its own timer, so a stale window computed from a schedule it does not have would be meaningless.",
-  "helix-discord-digest": "Unscheduled in cron-jobs.json — same reason as darkpool-discord.",
-  "thermal-discord": "Unscheduled in cron-jobs.json — same reason as darkpool-discord.",
 };
 
 /** Every `logCronRun(...)` key a route can emit, resolving `CRON_KEY`-style constants. */
@@ -129,4 +126,19 @@ test("INTENTIONALLY_UNREGISTERED carries a real reason for each exemption", () =
   for (const [key, reason] of Object.entries(INTENTIONALLY_UNREGISTERED)) {
     assert.ok(reason.length > 40, `${key} needs a real reason, not a placeholder`);
   }
+});
+
+test("live Discord digest crons are on the health board with deployed schedules", () => {
+  const byKey = Object.fromEntries(CRON_JOBS.map((j) => [j.key, j]));
+  for (const key of ["darkpool-discord", "thermal-discord", "helix-discord-digest"] as const) {
+    const job = byKey[key];
+    assert.ok(job, `${key} must be in CRON_JOBS`);
+    assert.equal(job!.kind, "http");
+    assert.ok(job!.schedule_cron_utc, `${key} needs schedule_cron_utc for off-window stale suppression`);
+    assert.ok(job!.produces_member_alert, `${key} posts member-visible Discord alerts`);
+    assert.ok(job!.stale_after_min >= 10, `${key} stale_after_min too tight`);
+  }
+  assert.equal(byKey["darkpool-discord"]!.stale_after_min, 10);
+  assert.equal(byKey["thermal-discord"]!.stale_after_min, 45);
+  assert.equal(byKey["helix-discord-digest"]!.stale_after_min, 45);
 });
