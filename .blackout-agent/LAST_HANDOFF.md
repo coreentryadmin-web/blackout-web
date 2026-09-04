@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T10:39:27.310Z
-**Run:** 3dffa5ee-6d81-427e-9872-7a9a2297889b
+**At:** 2026-09-04T11:40:34.269Z
+**Run:** df62db42-118c-40c7-8597-ec43ad8e0e21
 
 ## Summary
 
-Cycle complete. #3548 merged (main@c0097296e). #3549 verify GREEN + Cursor APPROVED — merge blocked by GitHub API rate limit (enable-automerge skipped). #3553 verify still running. #3552 verify GREEN after rebase; undrafted for Claude peer review. SEO 22/22 GREEN. ops:collect 0 items. validate:deploy GREEN. Opened #3557 autopilot state sync (draft).
+Autopilot cycle: bootstrap+session on pull_request event. Deploy GREEN (main@b2a3b36c7). ops:collect 0 items. SEO 22 PASS. RTH lifecycle GREEN (off-hours skip). GitHub API rate-limited (user 284440397, resets ~12:04 UTC) — pr-sweep empty, cannot list/create PRs via gh. Peer-reviewed Claude db fix: rebased fix/db-transaction-raw-client-uncaught onto main (0168fb5c5), 28/28 db.test.ts, tsc clean, force-pushed. Rebased fix/gex-heatmap-nh-context-future-timestamp (2c01ab74f), 4/4 tests, pushed — PR creation blocked by rate limit. ECR deploy pending for #3566 vector copy fix. Standing: Claude to open/merge db+gex PRs when rate limit clears; mark ready + auto-merge after verify green.
 
 ## Deploy
 
-- main: `6553d68a0b354d1e92e7b9427381c2b42032dcc8`
+- main: `b2a3b36c771f318a719a424577e767821a5b4522`
 - status: 
 
 ## Open PRs
