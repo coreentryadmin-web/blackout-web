@@ -26,6 +26,16 @@ export function adminAgeMsFromIso(
   return age.sec * 1000;
 }
 
+/** Age in minutes for cron-health staleness — null when missing/invalid/skewed (do not read as fresh). */
+export function adminAgeMinFromIso(
+  iso: string | null | undefined,
+  now = Date.now()
+): number | null {
+  const ms = adminAgeMsFromIso(iso, now);
+  if (ms === null) return null;
+  return ms / 60_000;
+}
+
 /** Human-readable relative time for admin panels — guards clock-skewed future ISO timestamps. */
 export function timeAgoFromIso(iso: string | null, now = Date.now()): string {
   const age = isoAgeSec(iso, now);

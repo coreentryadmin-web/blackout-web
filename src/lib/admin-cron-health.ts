@@ -21,6 +21,7 @@ import {
 } from "@/lib/cron-writer-target-fresh";
 import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
+import { adminAgeMinFromIso } from "@/components/admin/admin-time-ago";
 
 /** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
@@ -225,8 +226,32 @@ export function evaluateJob(
     };
   }
 
-  const ageMin = (now.getTime() - new Date(last.started_at).getTime()) / 60_000;
+  const ageMinRaw = adminAgeMinFromIso(last.started_at, now.getTime());
   const { effective: staleThreshold, multiplier: staleMultiplier } = effectiveStaleMinutes(job);
+  if (ageMinRaw === null) {
+    return {
+      key: job.key,
+      name: job.name,
+      kind: job.kind,
+      path: job.path ?? null,
+      schedule_label: job.schedule_label,
+      description: job.description,
+      status: "warning",
+      status_label: "Last run timestamp clock skew",
+      market_hours_stale: false,
+      last_run_at: last.started_at,
+      last_status: last.status,
+      last_duration_ms: last.duration_ms,
+      last_message: last.message,
+      age_min: null,
+      stale_after_min: job.stale_after_min,
+      effective_stale_min: Math.round(staleThreshold),
+      stale_multiplier: staleMultiplier,
+      runs_24h: counts,
+      meta: last.meta_json ?? undefined,
+    };
+  }
+  const ageMin = ageMinRaw;
 
   // Market-hours-only crons (flow-ingest, spx-evaluate, heatmap-warm, gex-alerts, …)
   // intentionally skip off-window. Once the market is closed they CANNOT log a fresh run,
@@ -364,7 +389,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       const updatedAt = latestNhJob.updated_at;
       const ageMin =
         updatedAt != null
-          ? Math.round((Date.now() - new Date(updatedAt).getTime()) / 60_000)
+          ? adminAgeMinFromIso(updatedAt)
           : null;
       let status = health.status;
       let statusLabel = health.status_label;
@@ -400,7 +425,10 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
           : `Expected ${expectedEdition.expected_edition_for} after ${expectedEdition.deadline_label}; last published ${latestNhJob.edition_for}`;
       } else if (stuck) {
         status = "stale";
-        statusLabel = `Stuck ${ageMin}m at ${latestNhJob.current_stage ?? latestNhJob.status} (no publish, no progress)`;
+        statusLabel = `Stuck ${Math.round(ageMin!)}m at ${latestNhJob.current_stage ?? latestNhJob.status} (no publish, no progress)`;
+      } else if (ageMin === null && updatedAt != null) {
+        status = "warning";
+        statusLabel = `Job timestamp clock skew (${latestNhJob.status}${latestNhJob.current_stage ? ` · ${latestNhJob.current_stage}` : ""})`;
       } else if (health.status === "unknown") {
         status = "warning";
         statusLabel = `${latestNhJob.status}${latestNhJob.current_stage ? ` · ${latestNhJob.current_stage}` : ""}`;
@@ -411,7 +439,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
         status,
         status_label: statusLabel,
         last_run_at: updatedAt ?? health.last_run_at,
-        age_min: ageMin ?? health.age_min,
+        age_min: ageMin != null ? Math.round(ageMin) : health.age_min,
         meta: {
           ...(health.meta ?? {}),
           nighthawk_job: {
