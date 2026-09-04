@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pickGateLines, buildReport } from "./g18-g19-counterfactual.mjs";
+import { pickGateLines, buildReport, parseCalibrationResponse } from "./g18-g19-counterfactual.mjs";
 
 test("pickGateLines extracts G-18 and G-19", () => {
   const blocked = [
@@ -11,6 +11,18 @@ test("pickGateLines extracts G-18 and G-19", () => {
   const picked = pickGateLines(blocked);
   assert.equal(picked.early_window_prime_score.n, 8);
   assert.equal(picked.score_top_band.n, 5);
+});
+
+test("parseCalibrationResponse tolerates available:false", () => {
+  const r = parseCalibrationResponse({ ok: true }, { available: false, reason: "no graded rows" });
+  assert.equal(r.error, "no graded rows");
+  assert.equal(r.report.available, false);
+});
+
+test("buildReport marks ok false when calibration error", () => {
+  const report = buildReport({ calibration: null, replay: null, calibrationError: "empty window" });
+  assert.equal(report.ok, false);
+  assert.equal(report.calibration_error, "empty window");
 });
 
 test("buildReport adds verdict strings", () => {
