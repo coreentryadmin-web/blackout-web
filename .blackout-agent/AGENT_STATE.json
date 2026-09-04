@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:03:52.446Z",
+  "updated_at": "2026-09-04T16:10:46.681Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,12 +68,12 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-04T15:52:00.816Z",
-      "lease_until": "2026-09-04T17:22:00.816Z",
+      "lease_until": "2026-09-04T17:40:44.790Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "2c59013d-db67-4bc3-a0dd-1cc0c725fd70",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -81,12 +81,12 @@
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-04T15:49:48.426Z",
-      "lease_until": "2026-09-04T17:19:48.426Z",
+      "lease_until": "2026-09-04T17:40:44.790Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "2c59013d-db67-4bc3-a0dd-1cc0c725fd70",
       "title": null
     },
     "BO-P1-0104": {
@@ -230,7 +230,28 @@
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33892277862",
     "last_deploy_sha": "a1a9d668c0e2eff63332f193ee3dcafd7e862a09"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3627,
+      "title": "fix(admin): guard storeAge against clock-skewed future timestamps",
+      "branch": "fix/admin-store-age-future-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T16:10:39Z"
+    },
+    {
+      "number": 3626,
+      "title": "chore(state): cursor handoff — lifecycle GREEN post-edbc9739",
+      "branch": "cursor/autopilot-handoff-1788538094",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T16:10:07Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -947,6 +968,30 @@
       "agent": "cursor",
       "run_id": "f3e25dce-7039-4e58-aeef-8e2fbf198ea8",
       "summary": "Cycle: #3617 verified (platform-integrity 14/0). #3624 APPROVED+merged. #3614 merged (zerodte Vector chase). validate:rth-open GREEN, ops:collect 0."
+    },
+    {
+      "at": "2026-09-04T16:10:27.046Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T16:10:44.789Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T16:10:45.769Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T16:10:46.681Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     }
   ]
 }
