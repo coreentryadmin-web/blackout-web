@@ -126,6 +126,14 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0e. Vector narrowed-horizon wall spot guard — fix/vector-narrowed-horizon-spot-guard (pending)
+
+**What was broken:** `buildVectorUniverseRow`'s narrowed-horizon (`horizonWalls`) writer passed `spot: spot ?? undefined` into `computeGexWalls`, so a zero or negative spot still constrained wall picks — persisting wrong-side geometry into durable 0dte/weekly/monthly rails when spot was unresolved.
+
+**Fix:** `spot: spot != null && spot > 0 ? spot : undefined` (matches `spot<=0` unconstrained fallback contract from #3495 follow-up).
+
+**Check at the open:** On `/vector` during RTH, select a dynamic ticker with live 0DTE wall history — call walls must sit above spot and put walls below on both the live rail and the narrowed-horizon bead trail.
+
 ### 0c. HELIX FlowAnomalyBanner future-timestamp recency — fix/flow-anomaly-future-timestamp (pending)
 
 **What was broken:** `FlowAnomalyBanner` on `/flows` treated a future-dated `detectedAt` as "recent"
