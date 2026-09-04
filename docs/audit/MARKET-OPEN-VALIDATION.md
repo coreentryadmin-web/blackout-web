@@ -118,6 +118,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-04 (cursor autopilot, Fri RTH ~13:30 ET)
+
+- **admin-cron-health clock skew (pending PR):** Cron health board used raw `Date.now() - iso` for
+  `evaluateJob` staleness and Night Hawk stuck detection. Fix wires `adminAgeMinFromIso` so
+  future `started_at`/`updated_at` surfaces "clock skew" instead of falsely healthy.
+  **Check at RTH:** `/admin` → Operations → Cron health — no job with a future last-run should
+  show green OK; skewed rows should read "clock skew" warning.
+
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
 Every item below was fixed off-hours today (weekday, pre-open) and has **not been seen under a
