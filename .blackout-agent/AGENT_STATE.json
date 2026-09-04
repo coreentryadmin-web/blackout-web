@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:34:01.957Z",
+  "updated_at": "2026-09-04T07:43:40.083Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -80,9 +80,21 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T06:43:17.654Z",
-      "lease_until": "2026-09-04T08:13:17.654Z",
+      "claimed_at": "2026-09-04T07:10:54.063Z",
+      "lease_until": "2026-09-04T08:40:54.063Z",
       "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
+    },
+    "BO-P1-0104": {
+      "task_id": "BO-P1-0104",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T07:42:54.932Z",
+      "lease_until": "2026-09-04T09:12:54.932Z",
+      "phase": "INVESTIGATING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -155,16 +167,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T06:43:17.655Z",
-      "current_task": "BO-P1-0101"
+      "last_seen": "2026-09-04T07:42:54.932Z",
+      "current_task": "BO-P1-0104"
     }
   },
   "deploy": {
     "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T06:44:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845611594",
-    "last_deploy_sha": "84b92b6b62ff5b6694c856016aa3e5b2d235b5ea"
+    "last_deploy_at": "2026-09-04T07:20:16Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
+    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
   },
   "open_prs": [],
   "events": [
@@ -625,58 +637,41 @@
       "summary": "Post-merge cycle: main@c593449c1, deploy pending@84b92b6b (#3511). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours). Open PRs: 0. Peer review queue empty. RTH lifecycle Fri 09:00 ET."
     },
     {
-      "at": "2026-09-04T07:28:25.691Z",
+      "at": "2026-09-04T07:42:51.171Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T07:28:26.074Z",
+      "at": "2026-09-04T07:42:54.932Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0104",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T07:42:55.728Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T07:28:26.215Z",
+      "at": "2026-09-04T07:43:35.680Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T07:33:00.833Z",
+      "at": "2026-09-04T07:43:40.082Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T07:33:01.233Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T07:33:01.375Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T07:34:01.025Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T07:34:01.813Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T07:34:01.957Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
+      "at": "2026-09-04T07:43:40.083Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "bdccad63-d885-46ad-bc02-3362ea4704ec",
+      "summary": "Cycle: merged main @ 14c5d815d verified GREEN. Opened #3531 agent state sync (draft, awaiting CI+peer). ECR 33848248248 still in_progress 22m+ (deploy-smoke passed). SEO 22 PASS. Site-latency 3 warm FAILs deferred to RTH. GitHub API rate-limited — peer review of #3531 for Claude."
     }
   ]
 }
