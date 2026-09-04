@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T11:48:28.525Z",
+  "updated_at": "2026-09-04T12:12:49.113Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,22 +67,22 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T11:26:27.662Z",
-      "lease_until": "2026-09-04T13:07:25.796Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-04T11:52:32.449Z",
+      "lease_until": "2026-09-04T13:22:32.449Z",
+      "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "26f08245-5660-4887-b8bd-e3fae5310a74",
+      "run_id": null,
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
-      "phase": "VERIFYING",
+      "claimed_at": "2026-09-04T12:06:49.052Z",
+      "lease_until": "2026-09-04T13:36:49.052Z",
+      "phase": "VERIFY",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -208,11 +208,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "01f7ab1db055654b6f0b23a933996d55e87c73ab",
+    "last_main_sha": "74d858bc54d9e36b87fce3b8043b3d3e4024c272",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T11:29:33Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33868193241",
-    "last_deploy_sha": "90e5c7597990b36968f0d63f793e29fbe72f36d4"
+    "last_deploy_at": "2026-09-04T12:06:34Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33871126902",
+    "last_deploy_sha": "f84aad3391ddaaeb7a2beb57f9a58e3b73643101"
   },
   "open_prs": [],
   "events": [
@@ -855,6 +855,19 @@
       "agent": "cursor",
       "run_id": "2ad81c86-6ead-43be-a99f-48ef4daced10",
       "summary": "Cycle complete. Merged #3566 (vector contract-picks closed-market loading copy) via REST after peer approval + verify GREEN. #3564 already merged. #3568 state sync on main. Open PRs: 0. Deploy GREEN (90e5c759 deployed; main 01f7ab1db may need ECR for state-sync commit). SEO 22/22. ops:collect 0. validate:deploy GREEN. GitHub GraphQL rate-limited — used REST/GH_TOKEN for merge."
+    },
+    {
+      "at": "2026-09-04T12:12:49.112Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:12:49.113Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b0b2f951-10d2-42a8-bdc9-cbc12209d58b",
+      "summary": "Peer review cycle complete. #3573 (gex-heatmap NH context future-timestamp gate) and #3575 (HELIX desktop expired DTE) merged to main. Cursor APPROVED both; 4/4 + 3/3 unit tests pass locally. ECR deploy in progress. validate:deploy GREEN. ops:collect 0 items. Open: #3572 docs-only (skip merge per policy), #2810 dependabot TS7 (verify red)."
     }
   ]
 }
