@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T12:36:28.475Z",
+  "updated_at": "2026-09-04T12:44:22.159Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:31:03.984Z",
-      "lease_until": "2026-09-04T14:02:19.300Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-04T12:32:13.985Z",
+      "lease_until": "2026-09-04T14:02:13.985Z",
+      "phase": "IMPLEMENTING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "d9b54b50-5a1e-4c73-b24c-23ffa9649e42",
+      "run_id": null,
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -186,6 +186,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T10:33:34.705Z",
       "safe_to_merge": true
+    },
+    "pr-3556": {
+      "pr": 3556,
+      "head_sha": "41fe0bfb7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T12:33:32.129Z",
+      "safe_to_merge": true
+    },
+    "pr-3580": {
+      "pr": 3580,
+      "head_sha": "1db040d17",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T12:44:13.761Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -200,11 +216,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "3887bd8ef85cb7d6ff9ca277aa5bdfa419de5369",
+    "last_main_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:06:34Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33871126902",
-    "last_deploy_sha": "f84aad3391ddaaeb7a2beb57f9a58e3b73643101"
+    "last_deploy_at": "2026-09-04T12:42:15Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
+    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
   },
   "open_prs": [],
   "events": [
@@ -814,54 +830,43 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T12:32:19.299Z",
+      "at": "2026-09-04T12:33:32.130Z",
+      "type": "pr_review",
+      "pr": 3556,
+      "head_sha": "41fe0bfb7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T12:33:32.129Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T12:44:13.762Z",
+      "type": "pr_review",
+      "pr": 3580,
+      "head_sha": "1db040d17",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T12:44:13.761Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T12:44:17.089Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T12:32:20.386Z",
+      "at": "2026-09-04T12:44:22.158Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T12:32:21.223Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T12:33:17.115Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T12:33:17.115Z",
+      "at": "2026-09-04T12:44:22.159Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "b92c8546-350f-4b53-a0a4-7384c96c2a96",
-      "summary": "PR-event cycle: 0 open PRs (GraphQL+pr-sweep). validate:deploy GREEN, ops:collect 0, SEO 22/22 GREEN, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours). RTH lifecycle GREEN (off-hours skip). GitHub PAT rate-limited ~31m. Deploy drift: main@3887bd8ef vs last deploy@f84aad339. OFF_HOURS Sentry already fixed on main."
-    },
-    {
-      "at": "2026-09-04T12:33:25.532Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T12:36:28.474Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T12:36:28.475Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "b740e338-4908-428e-b586-0f76ea84af77",
-      "summary": "PR-event cycle complete. 0 open PRs for peer review. Lifecycle GREEN (off-hours). ECS deploy 8/8 tasks rolled out. Opened #3581 agent state sync (draft). validate:deploy GREEN post-rollout."
+      "run_id": "dde2d6ba-9c47-4492-b393-5372767098ae",
+      "summary": "PR #3580 (data-integrity-verifier ageMin future-timestamp guard) peer-reviewed APPROVED + merged. #3556 already merged. #3578 cursor autopilot handoff GREEN — awaiting Claude peer review. validate:deploy GREEN. ops:collect 0 items. GitHub REST rate-limited for gh CLI; ManagePullRequest + WebFetch used for CI/PR state."
     }
   ]
 }
