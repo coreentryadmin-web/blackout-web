@@ -48,6 +48,9 @@ test("buildZeroDteEntryContext: rounds at the data layer, passes per-name fields
     committed_at_et: "2026-07-13 09:55 ET",
     cortex: null, // pre-wire-in call shape (no cortex arg) → null, never a fabricated blob
     session_regime: null, // fixture's session has no .regime — never fabricated
+    // No discovery_origin passed → scoreFloorForOrigin(undefined) → the full
+    // ZERODTE_SCORE_FLOOR (65), pinned at commit (2026-09-04 audit finding).
+    score_floor: 65,
   });
   // PR-F: the merit tier is pinned alongside, computed from the SAME values just
   // pinned above (score 68 mid-band +1, VIX 17.23 elevated −2, no Cortex → A capped
@@ -162,6 +165,43 @@ test("buildZeroDteEntryContext: pins the commit-time merit tier — strong pinne
   assert.deepEqual(tierFromEntryContext(ctx as unknown as Record<string, unknown>), ctx.tier);
 });
 
+// 2026-09-04 audit finding: the "parity guarantee" test above only proves agreement
+// AT THE INSTANT of commit, because tierFromEntryContext used to re-derive the score
+// floor from TODAY's mutable ZERODTE_SCORE_FLOOR* constants rather than something
+// pinned in the blob — so a later re-derivation (after the constant changed, as it
+// did live: WS-20 lowered ZERODTE_SCORE_FLOOR_BREAKOUT 65->50 then restored it the
+// same day) could silently disagree with the frozen chip. Fix: pin the floor
+// actually applied, so a retroactive read never depends on what the constant is NOW.
+test("buildZeroDteEntryContext: pins score_floor (the floor actually applied at commit), not just discovery_origin", async () => {
+  const { buildZeroDteEntryContext } = await mod();
+  const { scoreFloorForOrigin } = await import("./tiers");
+
+  const breakout = buildZeroDteEntryContext(
+    { score: 59, gamma_regime: null, discovery_origin: ["BREAKOUT"] },
+    { vix_open: 16.1, spy_bias: "up" },
+    Date.parse("2026-07-13T17:05:00Z")
+  );
+  assert.equal(
+    breakout.score_floor,
+    scoreFloorForOrigin(["BREAKOUT"]),
+    "score_floor must be the floor scoreFloorForOrigin actually resolved for this origin at commit"
+  );
+
+  const flow = buildZeroDteEntryContext(
+    { score: 59, gamma_regime: null, discovery_origin: ["FLOW"] },
+    { vix_open: 16.1, spy_bias: "up" },
+    Date.parse("2026-07-13T17:05:00Z")
+  );
+  assert.equal(flow.score_floor, scoreFloorForOrigin(["FLOW"]));
+
+  const noOrigin = buildZeroDteEntryContext(
+    { score: 59, gamma_regime: null },
+    { vix_open: 16.1, spy_bias: "up" },
+    Date.parse("2026-07-13T17:05:00Z")
+  );
+  assert.equal(noOrigin.score_floor, scoreFloorForOrigin(undefined));
+});
+
 test("buildZeroDteEntryContext: pins the Cortex evidence blob verbatim (commit) and the abstain record (outage)", async () => {
   const { buildZeroDteEntryContext } = await mod();
   // Full-vector shape as cortexEntryContextFor emits it for a committed find —
@@ -226,6 +266,7 @@ test("buildZeroDteEntryContext: null session context never blocks a commit blob"
     committed_at_et: "2026-07-13 09:55 ET",
     cortex: null,
     session_regime: null,
+    score_floor: 65,
   });
   // All-null evidence still tiers (rule 3: gaps degrade) — score missing caps at C.
   assert.equal(tier?.tier, "C");
