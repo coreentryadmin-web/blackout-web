@@ -586,6 +586,56 @@ export const CRON_JOBS: CronJobDefinition[] = [
     schedule_cron_utc: "30 23 * * *",
     description: "Pull X post/profile metrics into analytics",
   },
+  // ---------------------------------------------------------------------------
+  // THREE LIVE DISCORD DIGEST CRONS (added 2026-09-04, PR #3537 finding).
+  //
+  // Each has a deployed EventBridge rule, calls logCronRun on every hit, and posts to a member-
+  // visible Discord channel — but was absent from CRON_JOBS, so buildCronHealthSnapshot never
+  // evaluated staleness. Cadence + schedule_cron_utc copied from railway.*.toml; stale_after_min is
+  // ~3× the schedule interval (same tuning as flow-ingest / helix-signal-outcomes neighbours).
+  // ---------------------------------------------------------------------------
+  {
+    key: "darkpool-discord",
+    name: "Dark Pool Discord",
+    kind: "http",
+    path: "/api/cron/darkpool-discord",
+    schedule_label: "~Every 2 min (market hours)",
+    stale_after_min: 15,
+    schedule_cron_utc: "*/2 11-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Scan cached dark-pool prints → Discord #blackout-darkpool alerts + 15m top-blocks digest (inert without DARKPOOL_DISCORD_ALERTS + webhook)",
+    produces_member_alert: true,
+  },
+  {
+    key: "helix-discord-digest",
+    name: "HELIX Discord Digest",
+    kind: "http",
+    path: "/api/cron/helix-discord-digest",
+    schedule_label: "~Every 15 min (market hours)",
+    stale_after_min: 45,
+    schedule_cron_utc: "*/15 11-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "HELIX top-hits / stacked-flow digests to Discord (inert without HELIX_DISCORD_ALERTS + webhook)",
+    produces_member_alert: true,
+  },
+  {
+    key: "thermal-discord",
+    name: "Thermal Discord",
+    kind: "http",
+    path: "/api/cron/thermal-discord",
+    schedule_label: "~Every 15 min (market hours)",
+    stale_after_min: 45,
+    schedule_cron_utc: "*/15 13-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Thermal triple-desk snapshot (SPY|SPX|QQQ) + wall-breach alerts to Discord (inert without DISCORD_THERMAL_WEBHOOK_URL)",
+    produces_member_alert: true,
+  },
 ];
 
 export const CRON_JOB_BY_KEY = Object.fromEntries(CRON_JOBS.map((j) => [j.key, j])) as Record<
