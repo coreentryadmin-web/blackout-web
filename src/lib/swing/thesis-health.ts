@@ -78,8 +78,6 @@ function entryGeometryScore(status: SwingEntryState | null | undefined): { commi
       return { commit: 0.6, current: 0.6, label: "pre-trigger" };
     case "EXTENDED_CHASE":
       return { commit: 0.35, current: 0.35, label: "chase risk" };
-    case "EXPIRED":
-      return { commit: 0.1, current: 0, label: "expired" };
     default:
       return { commit: 0.5, current: 0.45, label: "n/a" };
   }

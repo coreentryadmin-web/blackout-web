@@ -15,6 +15,9 @@ import { SWING_SERVING_SECTIONS, type SwingServingSection } from "@/lib/swing/se
 /** "ALL" is the default view — every section concatenated, i.e. today's behaviour. */
 export type SwingSectionFilter = SwingServingSection | "ALL";
 
+/** Per-section counts returned by `swingSectionCounts`. */
+export type SwingSectionCounts = Record<SwingSectionFilter, number>;
+
 /** The `sections` map as it arrives on a lane: any subset of the seven, each possibly absent. */
 export type SwingSectionsMap = Partial<Record<SwingServingSection, unknown[]>>;
 
