@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:21:35.559Z",
+  "updated_at": "2026-09-04T17:24:26.174Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -238,9 +238,9 @@
   "deploy": {
     "last_main_sha": "9188622b656c11a992a576e2d11060da1c9713c8",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T17:18:32Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33899869003",
-    "last_deploy_sha": "883121ea4e81a191d5758572d1618b069431a039"
+    "last_deploy_at": "2026-09-04T17:22:53Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33900263328",
+    "last_deploy_sha": "4793248e99a5be0b2a70eec188e5e4875c9cde1d"
   },
   "open_prs": [],
   "events": [
@@ -1030,6 +1030,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:24:26.173Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:24:26.174Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "27bb64d0-9db9-4670-982c-f0c5b04f8ed3",
+      "summary": "Post-#3660 recovery: synced main@9188622, validate:deploy+platform-integrity+api-auth GREEN, ops:collect 0, RTH lifecycle GREEN (options ingest leader warming), vector-rth-quick GREEN, pr-sweep empty. No open PRs. Volume-profile label collision already fixed in main (volumeProfileLabelX). Off-hours socket-health 503 expected without CRON_SECRET in sandbox."
     }
   ]
 }
