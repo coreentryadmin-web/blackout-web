@@ -28,7 +28,7 @@ export type StockCandle = {
 type CandleSnapshot = {
   current: StockCandle | null;
   updatedAt: number;
-  changePct: number;
+  changePct: number | null;
 };
 
 type TickerState = {
@@ -91,8 +91,9 @@ function getOrCreateState(ticker: string): TickerState {
   return s;
 }
 
-export function computeChangePct(close: number, sessionOpen: number): number {
-  return sessionOpen > 0 ? Number((((close - sessionOpen) / sessionOpen) * 100).toFixed(2)) : 0;
+export function computeChangePct(close: number, sessionOpen: number): number | null {
+  if (!(sessionOpen > 0)) return null;
+  return Number((((close - sessionOpen) / sessionOpen) * 100).toFixed(2));
 }
 
 /**
@@ -264,9 +265,9 @@ export function getStockLiveCandle(ticker: string): CandleSnapshot {
   const best: CandleSnapshot | null =
     local && fb.snap && fb.snap.updatedAt > local.updatedAt ? fb.snap : local ?? fb.snap;
 
-  if (!best) return { current: null, updatedAt: 0, changePct: 0 };
+  if (!best) return { current: null, updatedAt: 0, changePct: null };
   if (!isWsUpdatedAtFresh(best.updatedAt, MAX_CANDLE_AGE_MS)) {
-    return { current: null, updatedAt: best.updatedAt, changePct: 0 };
+    return { current: null, updatedAt: best.updatedAt, changePct: null };
   }
   return best;
 }
