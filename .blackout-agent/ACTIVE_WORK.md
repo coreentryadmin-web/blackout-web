@@ -2,7 +2,7 @@
 
 | ID | Owner | Phase | Branch/PR | Title |
 |----|-------|-------|-----------|-------|
-| BO-P1-0102 | cursor | IMPLEMENTING | #3492 | RTH lifecycle + dispatch-on-merge + validation ledger |
+| — | — | — | — | _No active implementation — standing sweeps only_ |
 
 ## Recently completed (this cycle — validate at RTH)
 
