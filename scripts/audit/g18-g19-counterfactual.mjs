@@ -39,7 +39,7 @@ function line(ch = "─", n = 78) {
 }
 
 function fmtBlocked(l) {
-  if (!l) return "  (no graded counterfactuals in window)";
+  if (!l || l.n == null || l.n === 0) return "  (no graded counterfactuals in window)";
   return [
     `  gate: ${l.gate_failed}`,
     `  graded: ${l.n}  ungradeable: ${l.ungradeable}  would_have_won: ${l.would_have_won}`,

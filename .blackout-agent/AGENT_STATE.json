@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T00:30:41.044Z",
+  "updated_at": "2026-09-04T01:57:39.659Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -50,6 +50,18 @@
       "reviewer": null,
       "run_id": null,
       "title": "PR webhook triage + peer review dispatch"
+    },
+    "BO-P1-0004": {
+      "task_id": "BO-P1-0004",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T01:56:41.686Z",
+      "lease_until": "2026-09-04T03:26:41.686Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -77,16 +89,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T00:30:16.848Z",
-      "current_task": "BO-P1-0007"
+      "last_seen": "2026-09-04T01:56:41.686Z",
+      "current_task": "BO-P1-0004"
     }
   },
   "deploy": {
-    "last_main_sha": "84c5707ac6849b4c048dec6e8a414321f2a76e27",
+    "last_main_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T00:18:06Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33821229041",
-    "last_deploy_sha": "271a977cfdc9b5d2cc2d62535f8c7e010374d78d"
+    "last_deploy_at": "2026-09-04T01:41:09Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826698258",
+    "last_deploy_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b"
   },
   "open_prs": [],
   "events": [
@@ -293,6 +305,43 @@
       "agent": "cursor",
       "run_id": "49d14bda-5dd3-4b4b-8deb-b5336a96b8b1",
       "summary": "PR webhook branch ready: heartbeat-gate fix in claimLock, BO-P1-0007 claimed, peer-reviewed #3438 APPROVED. #3436 merged — autopilot v1 live on main. Next: merge this PR, close duplicate #3435."
+    },
+    {
+      "at": "2026-09-04T01:55:36.218Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:55:37.038Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:55:53.946Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:56:41.686Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0004",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T01:57:39.658Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:57:39.659Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "c62035f9-7b90-45fa-b70e-df868712505b",
+      "summary": "Recovered autopilot state. Main at 8fc2542 (deploy GREEN). BO-P1-0007/#3439, BO-P1-0004/#3452, BO-P2-0003/#3451 merged. Fixed counterfactual script empty-cohort bug on fix/g18-g19-counterfactual-empty-cohort (pushed). PR creation blocked by GitHub rate limit — peer review + merge when limit resets. No open PRs in review queue."
     }
   ]
 }
