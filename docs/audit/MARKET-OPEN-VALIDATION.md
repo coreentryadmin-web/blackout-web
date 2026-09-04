@@ -255,6 +255,39 @@ day where OI clusters above spot. No pre-fix baseline exists from this session t
 (cursor-authored, evidence lives in the PR's own commit history) — treat today's open as the first
 live observation.
 
+### 7. desk-warm STILL firing off-hours after item #1's `CACHE_WARM_ALWAYS` fix — `force=1` was a separate, unthrottled bypass — PR pending (branch `fix/desk-warm-off-hours-trigger`)
+
+**What was broken:** item #1 above ("Check at the open" #1) worried a continued 24/7 firing pattern
+post-deploy would mean the deploy didn't carry the `CACHE_WARM_ALWAYS` fix. That did NOT happen —
+re-checked live 2026-09-04: 314 `desk-warm` background completions between 00:29-07:59 UTC, i.e.
+the pathological pattern continued for hours AFTER #3512 deployed (~07:32 UTC). But the deploy DID
+carry the fix — proved directly, not assumed: `rth-warm-leader`'s own `isEtExtendedWarmHours` gate
+(shared code with `shouldRunCacheWarmer`) stayed completely silent (zero log lines of any kind) the
+entire off-hours window and resumed at the exact 08:00:02 UTC ET-4am boundary, which is only
+possible if the underlying hours check is correct on the running image. EventBridge and
+cron-staleness-watchdog's self-heal were also positively ruled out with direct CloudWatch/Lambda log
+evidence (see the findings-staging entry). The real gap: `force=1` was ALWAYS a fully separate,
+unconditional bypass of the hours gate (intentional, for on-demand/debug warms) that nothing rate-
+limited — a caller replaying `?force=1` in a loop could re-trigger the route's full UW/Polygon fan-
+out as fast as it liked, since the only existing protection (`OVERLAP_LOCK`) is released the instant
+each run completes (often under a second). Whatever external caller was doing this (not traced to
+any code path this repo owns — all four scripts that construct that exact request are one-shot/
+manual, not scheduled) is now capped regardless of identity.
+
+**Fix:** a second guard, `RERUN_COOLDOWN_KEY`/`RERUN_COOLDOWN_SEC = 60`, checked before the overlap
+lock and before dispatch, claimed via the same atomic `sharedCacheSetNx` primitive but — unlike
+`OVERLAP_LOCK` — never released early, so it holds for its full 60s TTL regardless of how fast the
+run itself finishes. 60s sits below every legitimate cadence (rth-warm-leader's 90s heal threshold,
+EventBridge's 5-min schedule), so it never blocks real traffic.
+
+**Check at the open:** re-pull `desk-warm` `elapsed=` log frequency for an overnight window AFTER
+this deploys and confirm off-hours completions are now capped at roughly one per 60s at most (i.e.
+whatever is still calling `force=1` gets a `"rate-limited"` skip response, logged via
+`logCronRun("desk-warm", …)`, instead of a full re-run) — a continued sub-60s cadence means this fix
+is not yet deployed, not that it failed. During the 4am-8pm ET window itself, confirm `desk-warm`
+still runs on its normal ~90s (leader-heal) / 5-min (EventBridge) cadence — this fix must not have
+introduced any new throttling of legitimate in-window traffic, since 60s is strictly below both.
+
 ---
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
