@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:43:40.083Z",
+  "updated_at": "2026-09-04T09:22:49.701Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T09:09:52.114Z",
+      "lease_until": "2026-09-04T10:39:52.114Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -80,8 +80,8 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-04T09:20:00.142Z",
+      "lease_until": "2026-09-04T10:50:00.142Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -158,6 +158,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3540": {
+      "pr": 3540,
+      "head_sha": "f09368b3260ba627ea305594b0640f015d1821a7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T09:19:40.401Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -167,18 +175,29 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T07:42:54.932Z",
-      "current_task": "BO-P1-0104"
+      "last_seen": "2026-09-04T09:20:00.142Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
+    "last_main_sha": "f325043aee90401ec4f08f174f29a1f56e7f8042",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T07:20:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
-    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
+    "last_deploy_at": "2026-09-04T09:19:45Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33857787678",
+    "last_deploy_sha": "f325043aee90401ec4f08f174f29a1f56e7f8042"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T09:22:45Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -672,6 +691,68 @@
       "agent": "cursor",
       "run_id": "bdccad63-d885-46ad-bc02-3362ea4704ec",
       "summary": "Cycle: merged main @ 14c5d815d verified GREEN. Opened #3531 agent state sync (draft, awaiting CI+peer). ECR 33848248248 still in_progress 22m+ (deploy-smoke passed). SEO 22 PASS. Site-latency 3 warm FAILs deferred to RTH. GitHub API rate-limited — peer review of #3531 for Claude."
+    },
+    {
+      "at": "2026-09-04T09:19:40.402Z",
+      "type": "pr_review",
+      "pr": 3540,
+      "head_sha": "f09368b3260ba627ea305594b0640f015d1821a7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T09:19:40.401Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T09:19:53.547Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T09:19:53.548Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a1a7574f-79f0-4b16-9c61-d79a30ab237b",
+      "summary": "Peer-reviewed and merged PR #3540 (desk-warm force"
+    },
+    {
+      "at": "2026-09-04T09:20:00.142Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T09:22:30.565Z",
+      "type": "pr_webhook",
+      "pr": 2810,
+      "event": "sweep",
+      "head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T09:22:49.700Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T09:22:49.701Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a0d72d1f-ad45-465f-b98d-cbdb68c7593d",
+      "summary": "Cycle complete: merged #3540 (desk-warm 60s cooldown), validate:deploy GREEN, ops:collect 0, pr-sweep 1 open (#2810 dependabot major — skip). Deploy ECR pending→smoke GREEN. Off-hours — RTH lifecycle deferred to 09:00 ET."
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-2810": {
+      "last_event": "sweep",
+      "last_head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "last_feedback_at": "2026-09-04T09:22:30.565Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "updated"
+    }
+  }
 }
