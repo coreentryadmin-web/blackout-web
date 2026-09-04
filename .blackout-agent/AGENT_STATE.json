@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T02:06:52.193Z",
+  "updated_at": "2026-09-04T03:07:52.917Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -63,6 +63,18 @@
       "run_id": "fa572336-bda3-4a7c-93e8-a09ffc724a3a",
       "title": null,
       "released_at": "2026-09-04T02:06:52.193Z"
+    },
+    "BO-P2-0004": {
+      "task_id": "BO-P2-0004",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T03:00:07.819Z",
+      "lease_until": "2026-09-04T04:30:07.819Z",
+      "phase": "REVIEWING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -121,6 +133,22 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3474": {
+      "pr": 3474,
+      "head_sha": "2b76a98ab3c8ee96db0613ecceb660ef13174808",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T03:00:15.654Z",
+      "safe_to_merge": true
+    },
+    "pr-3476": {
+      "pr": 3476,
+      "head_sha": "64cbe240",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T03:07:44.453Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -130,37 +158,27 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T01:48:27.814Z",
-      "current_task": "BO-P1-0004"
+      "last_seen": "2026-09-04T03:00:07.820Z",
+      "current_task": "BO-P2-0004"
     }
   },
   "deploy": {
-    "last_main_sha": "f2285917e0ad04ea57dbe884e9e1004f20b6a04e",
+    "last_main_sha": "1866f4965b933f031659073a69835f775abb4b67",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T02:05:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826698258",
-    "last_deploy_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b"
+    "last_deploy_at": "2026-09-04T03:00:24Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33831600006",
+    "last_deploy_sha": "f6ab7fa117314eb2f561d321d0323c56029a601f"
   },
   "open_prs": [
     {
-      "number": 3465,
-      "title": "chore(autopilot): handoff — merged #3454, P1 queue cleared",
-      "branch": "fix/autopilot-handoff-2026-09-04-session2",
+      "number": 3477,
+      "title": "fix(autopilot): PR webhook triage survives Cursor agent launch failure",
+      "branch": "fix/pr-webhook-triage-nonblocking-dispatch",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T02:04:58Z"
-    },
-    {
-      "number": 3464,
-      "title": "chore(autopilot): cursor handoff — peer review lane BO-P1-0005",
-      "branch": "cursor/autopilot-handoff-peer-reviews-2026-09-04-2",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T02:03:08Z"
+      "updated_at": "2026-09-04T03:04:48Z"
     },
     {
       "number": 2810,
@@ -501,6 +519,45 @@
       "type": "task_released",
       "task_id": "BO-P1-0004",
       "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T03:00:07.820Z",
+      "type": "task_claimed",
+      "task_id": "BO-P2-0004",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T03:00:15.654Z",
+      "type": "pr_review",
+      "pr": 3474,
+      "head_sha": "2b76a98ab3c8ee96db0613ecceb660ef13174808",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T03:00:15.654Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T03:07:44.454Z",
+      "type": "pr_review",
+      "pr": 3476,
+      "head_sha": "64cbe240",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T03:07:44.453Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T03:07:52.917Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T03:07:52.917Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "8647542d-90ad-45d7-92c4-381668c855af",
+      "summary": "Recovered autopilot state. P1 queue cleared. Peer-reviewed and released #3474 (Meridian expected_move_pct withhold) — merged. Reviewed #3476 (G-18/G-19 replay JSON parse) — merged before undraft. Deploy validation GREEN. Next: review #3477 when verify green."
     }
   ]
 }

@@ -7,5 +7,6 @@
   "current_phase": "RESUMED",
   "branch": null,
   "pr": null,
-  "healthy": true
+  "healthy": false,
+  "stale_since": "2026-09-04T02:58:13.375Z"
 }
