@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T23:26:28.682Z",
+  "updated_at": "2026-09-04T23:35:00.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -243,10 +243,28 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T19:50:51.819Z",
+      "last_seen": "2026-09-04T23:35:00.000Z",
       "current_task": "BO-P1-0103"
     }
   },
+  "awaiting_claude_review": [
+    {
+      "pr": 3783,
+      "head_sha": "f1a74e78235ac076708600b03d00b7c892920790",
+      "title": "fix(swing): discovery COMMIT without ledger is pre-entry for banger merge",
+      "ci": "verify GREEN",
+      "merge_order": 1,
+      "notes": "isPreEntrySwingPlay now !isLiveManagingSwingPlay — discovery COMMIT without ledger capital is replaceable by open banger. Conflict markers removed in test file."
+    },
+    {
+      "pr": 3787,
+      "head_sha": "6f6ce0f5a879fef5c2e4fd8cd7b79498da4b074c",
+      "title": "feat(swing-command): Phase P0 parity — live mgmt, thesis health, cockpit",
+      "ci": "verify GREEN",
+      "merge_order": 2,
+      "notes": "Marked ready for review. Rebase onto main after #3783 merges. swingManagementVerdict: thesis overlay then manage engine wins. HARD MERGE GATE: Claude adversarial review on CURRENT HEAD required."
+    }
+  ],
   "deploy": {
     "last_main_sha": "6716166239f64a30d67c7c5adc4bd66c889c3d22",
     "last_deploy_status": "",
@@ -1084,6 +1102,13 @@
       "agent": "cursor",
       "run_id": "92ab3f9c-b977-43df-8f7a-b4f0975fe4ed",
       "summary": "Autopilot pull_request wake: bootstrap+session GREEN. validate:deploy + platform-integrity 14/14 + ops:collect 0. Peer review #3778 APPROVED (merged). #3774 WAIT→pushed test fix a79fd880 (isWsUpdatedAtFresh scan). #3784/#3786 learn copy fixes — local tests pass, verify pending. Main at 671616623 (#3785 merged)."
+    },
+    {
+      "at": "2026-09-04T23:35:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "swing-command-p0-cycle",
+      "summary": "Swing Command wave: #3783 verify GREEN @ f1a74e782 (banger pre-entry fix). #3787 verify GREEN @ 6f6ce0f5a — marked ready (P0 live deck/thesis/cockpit). Production swing unification validated PASS. Standing: Claude adversarial review CURRENT HEAD on #3783 then #3787 — merge #3783 first, rebase #3787, then P0. CI green ≠ approval."
     }
   ]
 }

@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "8a51b856-110c-4c11-9a8c-37ccc88156ee",
-  "last_seen": "2026-09-04T19:50:51.914Z",
-  "last_productive_action": "heartbeat",
+  "run_id": "swing-command-p0-cycle",
+  "last_seen": "2026-09-04T23:35:00.000Z",
+  "last_productive_action": "swing-command-ci-green-claude-review-request",
   "current_task": "BO-P1-0103",
-  "current_phase": "IMPLEMENTING",
-  "branch": null,
-  "pr": null,
+  "current_phase": "REVIEWING",
+  "branch": "cursor/autopilot-work-loop-6f55",
+  "pr": 3798,
   "healthy": true
 }
