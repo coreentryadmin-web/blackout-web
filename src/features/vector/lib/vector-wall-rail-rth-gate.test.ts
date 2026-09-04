@@ -104,3 +104,22 @@ test("the in-process leader and this module agree on the same gate", () => {
   assert.match(leader, /isEtCashRth\(\)/, "leader still gates on cash RTH");
   assert.match(read(SNAPSHOT), /isEtCashRth/, "snapshot writers gate on the same clock");
 });
+
+test("vector-snapshot: computeGexWalls spot args reject zero/negative (source scan)", () => {
+  const src = read(SNAPSHOT);
+  const matches = [
+    ...src.matchAll(
+      /spot:\s*s\.fallbackSpot\s*!=\s*null\s*&&\s*s\.fallbackSpot\s*>\s*0\s*\?\s*s\.fallbackSpot\s*:\s*undefined/g
+    ),
+  ];
+  assert.equal(
+    matches.length,
+    3,
+    "all three GAMMA-lens computeGexWalls calls must guard fallbackSpot > 0"
+  );
+  assert.doesNotMatch(
+    src,
+    /spot:\s*s\.fallbackSpot\s*\?\?\s*undefined/,
+    "must not pass raw fallbackSpot ?? undefined to computeGexWalls"
+  );
+});

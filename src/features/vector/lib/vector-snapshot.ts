@@ -228,7 +228,7 @@ export function getVectorGexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
     if (ws) {
       s.cachedWalls = computeGexWalls(ws.ladder, {
         maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-        spot: s.fallbackSpot ?? undefined,
+        spot: s.fallbackSpot != null && s.fallbackSpot > 0 ? s.fallbackSpot : undefined,
       });
       s.cachedWallsAt = now;
       return s.cachedWalls;
@@ -238,7 +238,7 @@ export function getVectorGexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   if (s.fallbackStrikeTotals) {
     s.cachedWalls = computeGexWalls(mapFromStrikeTotalsRecord(s.fallbackStrikeTotals), {
       maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-      spot: s.fallbackSpot ?? undefined,
+      spot: s.fallbackSpot != null && s.fallbackSpot > 0 ? s.fallbackSpot : undefined,
     });
     // gexAsOf must report DATA age, not compute time: during a provider outage
     // the fallback never refreshes, and stamping "now" here made members see
@@ -370,7 +370,7 @@ export async function getVectorGexWallsForHorizon(
       if (ws && ws.ladder.size > 0) {
         const wsWalls = computeGexWalls(ws.ladder, {
           maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-          spot: s.fallbackSpot ?? undefined,
+          spot: s.fallbackSpot != null && s.fallbackSpot > 0 ? s.fallbackSpot : undefined,
         });
         const blended = getVectorGexWalls(t);
         return mergeWallSides(wsWalls, wallsHaveNodes(blended) ? blended : null);
