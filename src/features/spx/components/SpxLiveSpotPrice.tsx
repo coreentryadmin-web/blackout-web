@@ -2,7 +2,7 @@
 
 import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
-import { fmtPct, fmtPrice } from "@/lib/api";
+import { dayChangeTextClass, fmtPct, fmtPrice } from "@/lib/api";
 
 type Props = {
   desk?: SpxDeskPayload;
@@ -15,7 +15,7 @@ type Props = {
 export function SpxLiveSpotPrice({ desk, live, size = "panel", className }: Props) {
   const hasQuote = Boolean(desk?.available && (desk?.price ?? 0) > 0);
   const showValues = Boolean(live || hasQuote);
-  const bull = (desk?.spx_change_pct ?? 0) >= 0;
+  const changeTone = dayChangeTextClass(desk?.spx_change_pct ?? null);
 
   return (
     <div className={clsx("spx-live-spot-price", size === "panel" && "spx-live-spot-price-panel", className)}>
@@ -25,7 +25,7 @@ export function SpxLiveSpotPrice({ desk, live, size = "panel", className }: Prop
           size === "hero"
             ? "text-6xl sm:text-7xl md:text-8xl"
             : "text-5xl sm:text-6xl",
-          bull ? "text-bull" : "text-bear-text"
+          changeTone
         )}
       >
         {showValues ? fmtPrice(desk?.price ?? null, 2) : "—"}
@@ -36,12 +36,7 @@ export function SpxLiveSpotPrice({ desk, live, size = "panel", className }: Prop
         </p>
       )}
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
-        <span
-          className={clsx(
-            "t-num text-sm font-semibold sm:text-base",
-            bull ? "text-bull" : "text-bear-text"
-          )}
-        >
+        <span className={clsx("t-num text-sm font-semibold sm:text-base", changeTone)}>
           {showValues ? fmtPct(desk?.spx_change_pct ?? null) : "—"}
         </span>
         <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-secondary">SPX spot</span>

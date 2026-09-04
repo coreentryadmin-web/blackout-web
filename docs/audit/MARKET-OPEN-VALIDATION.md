@@ -2000,3 +2000,9 @@ than an end-of-session patch.
   `alerted_at` before the DB round-trip lands it) and confirm the replay plays in a clean
   chronological order with no visibly out-of-order jump.
 
+### 23. SPX Slayer spot headers — null `spx_change_pct` painted bullish — fix/spx-change-pct-null-neutral-tone — 2026-09-04
+
+- **What was broken:** `SpxLiveSpotPrice`, `SpxSniperHeader` strip spot, and `SpxIosMarketStrip` used `(desk?.spx_change_pct ?? 0) >= 0` for bull/bear text and border classes. When day change was genuinely unknown (`null`), price and % chip showed green bull styling while `fmtPct` correctly rendered `—`.
+- **What changed:** `dayChangeTextClass()` / `dayChangeBorderClass()` in `src/lib/api.ts`; all three surfaces use neutral white tone when change is absent.
+- **RTH check:** On `/dashboard` during a brief window where SPX spot is live but `spx_change_pct` is still warming (or force a null in dev), confirm SPX price/% use neutral white styling — not green bull — while the % reads `—`.
+
