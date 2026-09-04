@@ -14,7 +14,9 @@ export async function GET(req: NextRequest) {
   ensureDataSockets();
   try {
     const instant = await peekSpxDesk();
-    if (instant) {
+    // Bootstrap fast-lane / pulse-minimal shells cache price:0 — serving them on peek would
+    // flash SPX 0 on cold cache while gex-heatmap already has a live spot (platform-integrity FAIL).
+    if (instant && instant.price > 0) {
       return NextResponse.json(
         roundFloats({ ...instant, polled_at: instant.polled_at ?? instant.as_of }),
         { headers: NO_STORE_HEADERS }
