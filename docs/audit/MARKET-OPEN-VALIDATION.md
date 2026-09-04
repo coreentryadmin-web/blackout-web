@@ -126,6 +126,32 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0k. Six orphaned modules removed (SPX/Thermal/marketing) — fix/orphaned-spx-thermal-modules (pending)
+
+**What was broken:** nothing member-visible — `src/features/spx/{hooks/useSpxDayPerformance.ts,
+lib/spx-sniper-backdrops.ts, lib/spx-session-phase.ts}`,
+`src/features/thermal/components/ThermalFreshnessBar.tsx`, `src/components/landing/LandingBackdrop.tsx`,
+and `src/components/learn/LearnPageShell.tsx` had zero importers anywhere in the repo (two
+unfinished features, one dead helper, and three components superseded by a later replacement —
+`ThermalMatrixFreshnessChip`, `StaticLandingBackdrop`, and `/learn/layout.tsx`'s own marketing
+shell, respectively). Pure dead-code removal, no route or rendered output changed. Two other
+same-class orphans were found and deliberately left untouched, both per a **standing prior
+decision already on record in `FINDINGS.md` (2026-08-30)**: `src/components/ScrollProgressBar.tsx`
+(flagged OPEN for the landing-page owner to decide, not this sweep) and
+`src/components/render/DealersLadderBackground.tsx` (a 624-line WebGL shader hero explicitly
+NOT flagged as dead in that same 2026-08-30 sweep, for carrying a deliberate design-intent
+comment) — see the findings-staging entry for the full writeup.
+
+**Fix:** `git rm` the six files; corrected one stale doc-comment that named a removed component
+by name (`thermal-desk-state.ts`); guarded against reintroduction with a `repo-hygiene.test.ts`
+assertion.
+
+**Check at the open:** none — there is no live-RTH-dependent behavior to verify (nothing rendered
+or served by these files was reachable before removal). `tsc --noEmit` clean and the full test
+suite passing (recorded in the PR) are the complete verification for a fix of this kind; listed
+here only because the standing instruction asks every fix to be logged, not because there is an
+RTH-specific check to run.
+
 ### 0j. Night Hawk PASSED/WATCH list rendered trackPct with no qualifier — fix/nighthawk-passed-list-trackpct-label (pending)
 
 **What was broken:** the compact play-list row (`PlayLifecycleCardBody`, every board's actual live
