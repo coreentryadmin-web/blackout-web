@@ -137,6 +137,16 @@ the harness exit code.
 **Check at the open:** Run `npm run validate:rth-open` during RTH; transient "no ingest leader" on
 attempt 1 must not fail the run when attempt 2 shows warming/fresh marks.
 
+### 0i. Indices VIX change_pct wrong sign — fix/indices-vix-change-pct-ws-overlay (pending)
+
+**What was broken:** `/api/market/indices` served VIX `change_pct` with the wrong sign (+0.07% vs Polygon
+-0.35% on 2026-09-04 RTH) because the route overlaid index REST snapshots with stock-candle-store ticks
+(session-open anchor) instead of indices-WS (`I:VIX` / `spx:pulse:snapshot` prior-close anchor).
+
+**Fix:** `index-snapshot-overlay.ts` — same open_source/rest rebase guard as spx-desk `mergeWsIndexSnapshots`.
+
+**Check at the open:** `NODE_USE_ENV_PROXY=1 node scripts/audit/data-validator.mjs` → `VIX change_pct sign matches Polygon` PASS during RTH.
+
 ### 0h. Sentry auth + stale Server Action noise — fix/auth-failure-benign-denylist-and-server-action-reload (pending)
 
 **What was broken:** `validate:deploy` Sentry sample showed `ClerkAuthFailure: You're already signed in`
