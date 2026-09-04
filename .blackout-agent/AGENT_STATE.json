@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:50:59.893Z",
+  "updated_at": "2026-09-04T17:53:32.908Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -211,28 +211,12 @@
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
     },
-    "pr-3670": {
-      "pr": 3670,
-      "head_sha": "6f0ff7709d07",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:40:00.040Z",
-      "safe_to_merge": true
-    },
-    "pr-3671": {
-      "pr": 3671,
-      "head_sha": "d254ab8de9a0",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:40:09.066Z",
-      "safe_to_merge": true
-    },
     "pr-3673": {
       "pr": 3673,
-      "head_sha": "f98c4cbbea19",
+      "head_sha": "39a6f79f5",
       "reviewer": "cursor",
       "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:50:34.541Z",
+      "reviewed_at": "2026-09-04T17:52:53.402Z",
       "safe_to_merge": true
     }
   },
@@ -1014,83 +998,27 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T17:32:56.204Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T17:32:56.965Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T17:32:57.600Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T17:40:00.040Z",
-      "type": "pr_review",
-      "pr": 3670,
-      "head_sha": "6f0ff7709d07",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:40:00.040Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-04T17:40:09.067Z",
-      "type": "pr_review",
-      "pr": 3671,
-      "head_sha": "d254ab8de9a0",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:40:09.066Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-04T17:40:18.995Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T17:40:19.743Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T17:40:20.453Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T17:50:34.542Z",
+      "at": "2026-09-04T17:52:53.402Z",
       "type": "pr_review",
       "pr": 3673,
-      "head_sha": "f98c4cbbea19",
+      "head_sha": "39a6f79f5",
       "reviewer": "cursor",
       "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:50:34.541Z",
+      "reviewed_at": "2026-09-04T17:52:53.402Z",
       "safe_to_merge": true
     },
     {
-      "at": "2026-09-04T17:50:59.892Z",
+      "at": "2026-09-04T17:53:32.907Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T17:50:59.893Z",
+      "at": "2026-09-04T17:53:32.908Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "b68aae10-c713-468c-b6b9-d1b337f374d3",
-      "summary": "Hourly wake: peer-reviewed #3670 (thermal change_pct fail-closed, 3/3 tests), #3671 (validate:deploy socket retry, 7/7 tests, CI green), #3673 (admin-spx-terminal isoAgeSec guard, 2/2 tests — CI red on verify, needs re-run/rebase). validate:deploy/platform-integrity/api-auth GREEN. ops:collect 0. Undraft+merge blocked on GitHub resource_exhausted — mark #3670/#3671 ready when API resets."
+      "run_id": "fcf71906-7a91-495d-ba79-c2ea085523b1",
+      "summary": "Rebased #3673 → 39a6f79f5 (clean single commit). #3670/#3671/#3673 APPROVED. Undraft blocked on GitHub rate limit."
     }
   ]
 }
