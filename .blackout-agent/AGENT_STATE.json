@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T01:41:27.308Z",
+  "updated_at": "2026-09-04T02:05:01.856Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -83,13 +83,54 @@
     }
   },
   "deploy": {
-    "last_main_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b",
+    "last_main_sha": "da36b826ea046361af8f1eaef22ce1ebf04e3807",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-04T01:41:09Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826698258",
     "last_deploy_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3465,
+      "title": "chore(autopilot): handoff — merged #3454, P1 queue cleared",
+      "branch": "fix/autopilot-handoff-2026-09-04-session2",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T02:04:58Z"
+    },
+    {
+      "number": 3464,
+      "title": "chore(autopilot): cursor handoff — peer review lane BO-P1-0005",
+      "branch": "cursor/autopilot-handoff-peer-reviews-2026-09-04-2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T02:03:08Z"
+    },
+    {
+      "number": 3463,
+      "title": "fix(0dte): g18-g19 counterfactual tolerates calibration available:false",
+      "branch": "cursor/g18-g19-calibration-graceful",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T02:03:03Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-01T19:54:25Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -343,6 +384,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T02:05:01.855Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-04T02:05:01.856Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "1404e2ca-39f5-4744-bc21-f518eb445e60",
+      "summary": "Session: peer-reviewed #3450 (resolveGithubRepo) + #3454 (select-task test fixture); closed dup #3455. Fleet merged #3452/#3451. Queue P1/P2 clear. Next: Claude review #3463 (verify green)."
     }
   ]
 }
