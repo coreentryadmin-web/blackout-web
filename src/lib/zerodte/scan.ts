@@ -60,6 +60,10 @@ import {
 } from "./discovery-health";
 import { pinWindowStatus } from "./pin-window";
 import { LEVERAGED_ETP_SET } from "@/features/nighthawk/lib/constants";
+import {
+  resolveTickerChainRows,
+  type ChainStrikeRow,
+} from "@/features/nighthawk/lib/option-chain-prompt";
 import { createDossierBuildCache, fetchTickerDossier } from "@/features/nighthawk/lib/dossier";
 import { etNowParts, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { fetchAggBars } from "@/lib/providers/polygon-largo";
@@ -1224,12 +1228,11 @@ async function attachContractPlans(
   const chains =
     rankEnabled && setups.length > 0
       ? ((await within(fetchChainsForVectorRank(setups, vectorPulseByTicker), 4_000).catch(
-          () => new Map<string, { spot: number; rows: import("@/features/nighthawk/lib/option-chain-prompt").ChainStrikeRow[] }>()
+          () => new Map<string, { spot: number; rows: ChainStrikeRow[] }>()
         )) ?? new Map())
-      : new Map<string, { spot: number; rows: import("@/features/nighthawk/lib/option-chain-prompt").ChainStrikeRow[] }>();
+      : new Map<string, { spot: number; rows: ChainStrikeRow[] }>();
 
   if (setups.length > 0) {
-    const { resolveTickerChainRows } = await import("@/features/nighthawk/lib/option-chain-prompt");
     await ensureChainsForSetups(setups, chains, (tk) => resolveTickerChainRows(tk));
   }
 
