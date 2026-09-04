@@ -44,6 +44,7 @@ const INTENTIONALLY_UNREGISTERED: Record<string, string> = {
   "x-autopost": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
   "x-growth": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
   "x-replies": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
+  "cron-staleness-watchdog-self-heal": "Not a scheduled cron — a second, distinctly-keyed row cron-staleness-watchdog/route.ts writes ONLY when a self-heal re-warm actually dispatches (a rare RTH incident), carrying the real per-job outcome once the after()-backgrounded work settles. It has no fixed cadence by design (it can go days without firing), so a CRON_JOBS entry's required stale_after_min would flag it 'stale' on every ordinary day — exactly the always-stuck-reading failure mode this file's own docstring (case 2, welcome-sequence) warns against. The watchdog's OWN scheduled run is already registered under its own key and IS health-board-covered.",
 };
 
 /** Every `logCronRun(...)` key a route can emit, resolving `CRON_KEY`-style constants. */
