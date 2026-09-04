@@ -280,3 +280,15 @@ test("warmDynamicTickerSessionWall: skips static allowlist tickers", async () =>
   assert.deepEqual(fetchCalls, []);
   assert.deepEqual(wallSampleCalls, []);
 });
+
+test("vector-universe: computeGexWalls spot args reject zero/negative (source scan)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("./vector-universe.ts", import.meta.url), "utf8");
+  const matches = [...src.matchAll(/spot:\s*spot\s*!=\s*null\s*&&\s*spot\s*>\s*0\s*\?\s*spot\s*:\s*undefined/g)];
+  assert.equal(
+    matches.length,
+    2,
+    "both blended and narrowed-horizon computeGexWalls calls must guard spot > 0"
+  );
+  assert.doesNotMatch(src, /spot:\s*spot\s*\?\?\s*undefined/, "must not pass raw spot ?? undefined to computeGexWalls");
+});
