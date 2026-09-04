@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:43:40.083Z",
+  "updated_at": "2026-09-04T11:26:50.196Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -158,6 +158,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3563": {
+      "pr": 3563,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T11:26:49.231Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -172,11 +180,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
+    "last_main_sha": "bcbb33fd27f2b318d3bd806cdb5560b9d9c1535e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T07:20:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
-    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
+    "last_deploy_at": "2026-09-04T11:21:57Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33867594673",
+    "last_deploy_sha": "bcbb33fd27f2b318d3bd806cdb5560b9d9c1535e"
   },
   "open_prs": [],
   "events": [
@@ -672,6 +680,29 @@
       "agent": "cursor",
       "run_id": "bdccad63-d885-46ad-bc02-3362ea4704ec",
       "summary": "Cycle: merged main @ 14c5d815d verified GREEN. Opened #3531 agent state sync (draft, awaiting CI+peer). ECR 33848248248 still in_progress 22m+ (deploy-smoke passed). SEO 22 PASS. Site-latency 3 warm FAILs deferred to RTH. GitHub API rate-limited — peer review of #3531 for Claude."
+    },
+    {
+      "at": "2026-09-04T11:26:49.231Z",
+      "type": "pr_review",
+      "pr": 3563,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T11:26:49.231Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T11:26:50.195Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T11:26:50.196Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6048d710-b8ef-4d63-98e6-f9edd764dd62",
+      "summary": "Reviewed PR #3563: MERGE — green CI, flex-wrap fix correct, regression tests pass (2/2), already merged to main @ bcbb33fd"
     }
   ]
 }
