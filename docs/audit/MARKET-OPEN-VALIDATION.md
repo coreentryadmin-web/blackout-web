@@ -228,6 +228,21 @@ suite passing (recorded in the PR) are the complete verification for a fix of th
 here only because the standing instruction asks every fix to be logged, not because there is an
 RTH-specific check to run.
 
+### 0n. Night Hawk readiness chip falsely green on future `as_of` — fix/nighthawk-readiness-future-asof (pending)
+
+**What was broken:** On `/nighthawk`, the header readiness chip could show green **READY** when the
+board's `as_of` timestamp was materially in the future (client/server clock skew). Negative
+`asOfAgeMs` never exceeded the 60s stale threshold, so freshness could not be verified but the
+chip still read ready.
+
+**Fix:** `resolveZeroDteReadiness` in `pane.ts` now treats `asOfAgeMs <
+-ZERODTE_MARK_FUTURE_TOLERANCE_MS` the same as stale age — amber **DELAYED** — matching sibling
+`resolveZeroDteFreshness` in `ZeroDteBoard.tsx`.
+
+**Check at the open:** On `/nighthawk` during RTH with live board data, confirm the readiness chip
+is **READY** only when `as_of` is plausibly current; if a skew incident occurs, chip should read
+**DELAYED** not **READY**.
+
 ### 0k. Six orphaned modules removed (SPX/Thermal/marketing) — fix/orphaned-spx-thermal-modules (pending)
 
 **What was broken:** nothing member-visible — `src/features/spx/{hooks/useSpxDayPerformance.ts,
