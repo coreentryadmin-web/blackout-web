@@ -1,9 +1,11 @@
 {
   "agent": "claude",
-  "run_id": null,
-  "last_seen": null,
+  "run_id": "e8a9c5f4-8161-4cb2-82a9-636450de7b4f",
+  "last_seen": "2026-09-04T00:16:06.583Z",
+  "last_productive_action": "session_start",
   "current_task": null,
-  "current_phase": "IDLE",
-  "healthy": false,
-  "stale_since": "2026-09-03T23:46:03.954Z"
+  "current_phase": "DISCOVERY",
+  "branch": null,
+  "pr": null,
+  "healthy": true
 }
