@@ -770,6 +770,35 @@ to `spx-evaluate` (holds the SPX-eval advisory lock for its whole run via `acqui
 longest-held, highest-risk checkout of the 7) and any DB reconnect/blip windows already visible in
 RDS/PgBouncer metrics that day.
 
+### 23. `data-integrity-verifier.ts`'s own `ageMin()` read a future-dated timestamp as trustworthy — PR pending (branch `fix/data-integrity-verifier-future-timestamps`)
+
+**What was broken:** the shared `ageMin(thenMs, now)` helper every freshness check in
+`data-integrity-verifier.ts` goes through (Postgres `flow_alerts`/`cron_job_runs` latest-row age,
+the Redis GEX matrix `asof` age, and the writer target-freshness reconciliation that suppresses a
+stale `failed` cron handshake row) computed a plain `(now - thenMs) / 60_000` with no guard for
+`thenMs` being in the future. A future-dated row (cross-process clock skew, or a corrupted/
+miswritten timestamp) produced a NEGATIVE age, which trivially passes every `aMin <= threshold`
+freshness check in the file — this is the DATA-CORRECTNESS AUDITOR's own core age computation, so
+being blind to this exact corruption shape undermines the surface whose entire job is to catch it
+(see the file's own "HONESTY" comment: "Nothing here is a false green"). Same bug shape as 16+
+sites already fixed this session (SPX Slayer #3423, coaching alerts #3442, GEX heatmap cache
+#3481, GEX heatmap context editions #3573, Helix flow-anomaly banner #3559, …) — found by sweeping
+for un-guarded `Date.now() - <timestamp>` age comparisons per the standing mandate's named angle 2.
+
+**Fix:** `ageMin()` now returns `Infinity` (the SAME sentinel this file already uses for a NaN/
+unparseable timestamp) when `thenMs` is more than `ZERODTE_MARK_FUTURE_TOLERANCE_MS` (60s — the
+same constant SPX Slayer's #3423 fix uses for this identical shape) ahead of `now`, so a future-
+dated row now surfaces as a FLAG instead of a silent PASS. The one inline duplicate of this same
+calculation (the writer target-freshness check, `targetFreshDespiteFailedHandshake`) was rewired to
+call the now-guarded `ageMin()` instead of re-deriving its own unguarded copy, closing all 4 call
+sites in the file at once rather than one at a time.
+
+**Check at the open:** this is an audit-tooling correctness fix with no member-facing UI surface —
+nothing to visually confirm on a live desk/board. Instead, confirm the `data-correctness` cron
+(`GET /api/cron/data-correctness`) still reports its DATALAYER scorecard normally during RTH (no
+new unexpected FLAGs — a genuine future-dated row should now show as a FLAG where previously it
+would have silently PASSED, so a new FLAG here is the fix working as intended, not a regression).
+
 ---
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
