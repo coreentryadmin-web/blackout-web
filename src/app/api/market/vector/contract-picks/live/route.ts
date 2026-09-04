@@ -25,6 +25,7 @@ import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { fetchVectorSeedBars } from "@/features/vector/lib/vector-seed-bars";
 import { invalidationBarsFromSeed } from "@/features/vector/lib/vector-pick-invalidation";
 import { logToken } from "@/lib/log-token";
+import { roundFloats } from "@/lib/round-floats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -280,11 +281,11 @@ export async function POST(req: NextRequest) {
   })();
 
   return NextResponse.json(
-    {
+    roundFloats({
       live: live.map(({ pick: _pick, ...row }) => row),
       asOf: etStamp(nowMs),
       session_date: sessionDate,
-    },
+    }),
     { headers: NO_STORE_HEADERS }
   );
 }

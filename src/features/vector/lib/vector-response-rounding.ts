@@ -56,4 +56,6 @@ export const VECTOR_FRACTION_DP = {
   p: 4,
   /** pin-forecast: driver weight 0..1 — the ordering key for the click-to-explain list. */
   weight: 3,
+  /** play-bie: historical favorable-resolution rate 0..1 — 2dp quantizes small samples to 0. */
+  favPct: 4,
 } as const;

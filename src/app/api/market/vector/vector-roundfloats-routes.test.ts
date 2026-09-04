@@ -9,6 +9,8 @@ const ROUTES = [
   "daily-regime/route.ts",
   "rail-bootstrap/route.ts",
   "contract-picks/route.ts",
+  "contract-picks/live/route.ts",
+  "play-bie/route.ts",
 ] as const;
 
 for (const rel of ROUTES) {

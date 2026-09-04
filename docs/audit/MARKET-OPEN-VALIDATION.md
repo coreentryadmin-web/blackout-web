@@ -2134,9 +2134,17 @@ than an end-of-session patch.
 - **What changed:** Wrap the SSE payload in `roundFloats()` before `JSON.stringify` in `pulse/stream/route.ts`.
 - **RTH check:** Open SPX desk with pulse stream connected (Network tab → EventStream on `/api/market/spx/pulse/stream`); confirm `spx.price` and tide `net`/`call_premium` values are 2dp-clean with no IEEE tails during RTH ticks.
 
+<<<<<<< HEAD
 ### 25. HELIX flows SSE stream — unrounded IEEE floats on wire — fix/flows-stream-round-floats — 2026-09-04
 
 - **What was broken:** `/api/market/flows/stream` SSE events serialized raw flow premiums/strikes without `roundFloats`, so members on the live HELIX tape could still see IEEE tails while REST `/flows` was already rounded.
 - **What changed:** Wrap the SSE payload in `roundFloats()` before `JSON.stringify` in `flows/stream/route.ts`.
 - **RTH check:** Open `/flows` with live stream connected (Network tab → EventStream on `/api/market/flows/stream`); confirm `premium`, `strike`, and GEX enrichment numbers are 2dp-clean with no IEEE tails on incoming flow events during RTH.
+=======
+### 25. Vector contract-picks/live + play-bie — unrounded floats at API boundary — fix/vector-live-picks-bie-roundfloats — 2026-09-04
+
+- **What was broken:** `POST /api/market/vector/contract-picks/live` (live bid/ask/mid/greeks on pick monitor) and `POST /api/market/vector/play-bie` (`favPct` historical rate) returned raw IEEE floats while sibling Vector reads already call `roundFloats`.
+- **What changed:** Wrap both success responses in `roundFloats(...)`; add `favPct: 4` to `VECTOR_FRACTION_DP`.
+- **RTH check:** On Vector with an active play, open pick live monitor — confirm option marks are 2dp-clean; BIE evidence line shows a non-zero historical rate when `favPct` is small (e.g. 0.4% not 0.00%).
+>>>>>>> 2819af4cc (fix(vector): roundFloats on contract-picks/live + play-bie routes)
 
