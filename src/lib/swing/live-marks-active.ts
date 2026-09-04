@@ -4,7 +4,7 @@
 // guarantee — rather than building a second quote path members would have to reconcile.
 
 import { fetchOpenSwingPositions, type SwingPositionRow } from "@/lib/db";
-import { fetchBangerBoardRows, type BangerPositionRow } from "@/lib/banger/positions-db";
+import { fetchBangerOpenBookRows, type BangerPositionRow } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import type { ActiveZeroDtePlay } from "@/lib/zerodte/live-marks";
 import { ZERODTE_LIVE_CONTRACT_CAP } from "@/lib/zerodte/marks-math";
@@ -90,7 +90,7 @@ export async function fetchActiveSwingPlaysForMarks(): Promise<ActiveZeroDtePlay
   }
   if (isBangerEngineEnabled()) {
     try {
-      const bangers = await fetchBangerBoardRows(40);
+      const bangers = await fetchBangerOpenBookRows(80);
       for (const row of bangers) {
         const p = bangerRowToActivePlay(row);
         if (p) out.push(p);

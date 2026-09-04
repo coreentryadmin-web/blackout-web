@@ -141,9 +141,20 @@ export function horizonPlayFromBangerWatch(
 }
 
 /**
- * Merge banger open-book rows into an existing SWING play list. Banger rows win on ticker collision when
- * they carry live capital (an open banger position supersedes a pre-entry WATCH on the same symbol).
+ * Merge banger open-book rows into an existing SWING play list. Banger rows win on ticker collision only
+ * against pre-entry WATCH/SKIP rows — a live swing ledger OPEN/HOLD/TRIM position is canonical and must
+ * not be evicted when Engine B also has capital on the same symbol.
  */
+export function isPreEntrySwingPlay(play: HorizonPlay): boolean {
+  const ls = play.liveStatus;
+  if (ls === "OPEN" || ls === "HOLD" || ls === "TRIM") return false;
+  if (play.serving === "MANAGING" || play.serving === "SCALING_OUT" || play.serving === "EXITING") {
+    return false;
+  }
+  if (play.status === "WATCH" || play.serving === "WATCH") return true;
+  return false;
+}
+
 export function mergeBangerPositionsIntoSwingPlays(
   plays: readonly HorizonPlay[],
   bangerRows: readonly BangerPositionRow[],
@@ -154,7 +165,15 @@ export function mergeBangerPositionsIntoSwingPlays(
     .filter((p): p is HorizonPlay => p != null);
   if (bangerPlays.length === 0) return [...plays];
 
-  const bangerTickers = new Set(bangerPlays.map((p) => p.ticker.toUpperCase()));
-  const withoutCollision = plays.filter((p) => !bangerTickers.has(p.ticker.toUpperCase()));
-  return [...withoutCollision, ...bangerPlays];
+  const managingTickers = new Set(
+    plays
+      .filter((p) => !isPreEntrySwingPlay(p))
+      .map((p) => p.ticker.toUpperCase()),
+  );
+  const bangerToAdd = bangerPlays.filter((p) => !managingTickers.has(p.ticker.toUpperCase()));
+  const bangerTickers = new Set(bangerToAdd.map((p) => p.ticker.toUpperCase()));
+  const kept = plays.filter(
+    (p) => !bangerTickers.has(p.ticker.toUpperCase()) || !isPreEntrySwingPlay(p),
+  );
+  return [...kept, ...bangerToAdd];
 }
