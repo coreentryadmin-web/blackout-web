@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T04:20:36.763Z",
+  "updated_at": "2026-09-04T04:21:40.867Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,8 +67,8 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T04:14:54.828Z",
-      "lease_until": "2026-09-04T05:44:54.828Z",
+      "claimed_at": "2026-09-04T04:20:35.198Z",
+      "lease_until": "2026-09-04T05:50:35.198Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -79,8 +79,8 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T04:20:28.764Z",
-      "lease_until": "2026-09-04T05:50:28.764Z",
+      "claimed_at": "2026-09-04T04:21:06.354Z",
+      "lease_until": "2026-09-04T05:51:06.354Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -145,6 +145,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-2810": {
+      "pr": 2810,
+      "head_sha": "f987884d6021fac525a99376ca40429a4f164f64",
+      "reviewer": "cursor",
+      "verdict": "CHANGES_REQUESTED — major TS 7 bump, verify red; hold per Dependabot major policy",
+      "reviewed_at": "2026-09-04T04:20:44.126Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -154,7 +162,7 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T04:20:28.764Z",
+      "last_seen": "2026-09-04T04:21:06.355Z",
       "current_task": "BO-P1-0101"
     }
   },
@@ -174,7 +182,7 @@
       "agent": "cursor",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T04:16:44Z"
+      "updated_at": "2026-09-04T04:21:15Z"
     },
     {
       "number": 2810,
@@ -184,7 +192,7 @@
       "agent": "human",
       "draft": false,
       "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-04T04:04:47Z"
+      "updated_at": "2026-09-04T04:21:31Z"
     }
   ],
   "events": [
@@ -517,85 +525,57 @@
       "owner": "cursor"
     },
     {
-      "at": "2026-09-04T04:14:51.779Z",
+      "at": "2026-09-04T04:20:23.383Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
     },
     {
-      "at": "2026-09-04T04:14:54.829Z",
+      "at": "2026-09-04T04:20:31.845Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T04:20:35.199Z",
       "type": "task_claimed",
       "task_id": "BO-P1-0100",
       "owner": "cursor"
     },
     {
-      "at": "2026-09-04T04:20:05.101Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-04T04:20:24.143Z",
-      "type": "pr_webhook",
-      "pr": 3488,
-      "event": "sweep",
-      "head": "613a3db004e93534d02ffb2f79ad62c8ac9d87c7",
-      "verdict": "⏳ **WAIT** — CI pending",
-      "directive": "WAIT",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-04T04:20:25.475Z",
-      "type": "pr_webhook",
+      "at": "2026-09-04T04:20:44.127Z",
+      "type": "pr_review",
       "pr": 2810,
-      "event": "sweep",
-      "head": "f987884d6021fac525a99376ca40429a4f164f64",
-      "verdict": "⏳ **WAIT** — CI pending",
-      "directive": "WAIT",
-      "dispatch": false
+      "head_sha": "f987884d6021fac525a99376ca40429a4f164f64",
+      "reviewer": "cursor",
+      "verdict": "CHANGES_REQUESTED — major TS 7 bump, verify red; hold per Dependabot major policy",
+      "reviewed_at": "2026-09-04T04:20:44.126Z",
+      "safe_to_merge": false
     },
     {
-      "at": "2026-09-04T04:20:28.765Z",
+      "at": "2026-09-04T04:21:06.355Z",
       "type": "task_claimed",
       "task_id": "BO-P1-0101",
       "owner": "cursor"
     },
     {
-      "at": "2026-09-04T04:20:32.897Z",
+      "at": "2026-09-04T04:21:16.642Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
     },
     {
-      "at": "2026-09-04T04:20:32.898Z",
+      "at": "2026-09-04T04:21:40.866Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T04:21:40.867Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "66a8630e-2ea0-46c7-a7d1-b6832ae6bae6",
-      "summary": "Peer-reviewed and merged #3486 (vector logical-range guard) + #3487 (thermal chain_truncated UI/Largo). validate:deploy GREEN, ops:collect 0 items. #2810 TS7 held per major-version policy. #3488 handoff PR awaits Claude review."
-    },
-    {
-      "at": "2026-09-04T04:20:36.763Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
+      "run_id": "25ab92dc-3754-4ead-af3c-82c119a26609",
+      "summary": "Standing loop: synced main a52e140. Peer-reviewed #2810 CHANGES_REQUESTED (TS7 major, verify red). validate:deploy GREEN, ops:collect 0. 0DTE counterfactual+replay OK (6 plays 2026-09-03). #3488 verify pending — awaits Claude merge."
     }
-  ],
-  "pr_activity": {
-    "pr-3488": {
-      "last_event": "sweep",
-      "last_head": "613a3db004e93534d02ffb2f79ad62c8ac9d87c7",
-      "last_feedback_at": "2026-09-04T04:20:24.143Z",
-      "verdict": "⏳ **WAIT** — CI pending",
-      "directive": "WAIT",
-      "comment_action": "updated"
-    },
-    "pr-2810": {
-      "last_event": "sweep",
-      "last_head": "f987884d6021fac525a99376ca40429a4f164f64",
-      "last_feedback_at": "2026-09-04T04:20:25.475Z",
-      "verdict": "⏳ **WAIT** — CI pending",
-      "directive": "WAIT",
-      "comment_action": "updated"
-    }
-  }
+  ]
 }
