@@ -126,6 +126,19 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0y. Halt-source freshness future timestamp falsely fresh — fix/halt-freshness-future-skew-guard (pending)
+
+**What was broken:** `isUwHaltSourceStale` (UW multiplex fallback), `isLuldHaltSourceStaleForState`,
+and `isLuldHaltFeedStale` used raw `Date.now() - at` comparisons. Far-future timestamps read as
+live, so `isTradingHaltChannelStale()` could report fresh when neither halt source was actually
+delivering — same class as #3733 for UW channel freshness.
+
+**Fix:** route halt staleness decisions through `isWsUpdatedAtFresh` from `timestamp-freshness.ts`.
+
+**Check at the open:** `/admin` Operations → trading-halt / LULD tiles during RTH; after a genuine
+UW socket stall, halt channel must not stay green off a skewed future `last_message_at`. Confirm
+0DTE/SPX play gates still fail-closed when both halt feeds are genuinely stale.
+
 ### 0x. Flow WS cluster heartbeat future timestamp falsely fresh — fix/flow-liveness-future-guard (pending)
 
 **What was broken:** `isFlowFrameFreshFromCluster`, `isFlowFrameFreshAnywhere`, and
