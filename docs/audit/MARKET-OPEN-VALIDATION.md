@@ -126,7 +126,7 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
-### 0. Discord digest crons on admin health board — PR (pending)
+### 0. Discord digest crons on admin health board — PR #3543 (merged)
 
 **What was broken:** `darkpool-discord`, `thermal-discord`, and `helix-discord-digest` were live
 EventBridge crons logging `cron_job_runs` rows, but absent from `CRON_JOBS` — invisible to
@@ -138,6 +138,20 @@ EventBridge crons logging `cron_job_runs` rows, but absent from `CRON_JOBS` — 
 **Check at the open:**
 - `GET /api/admin/cron/health` (admin) shows all three with recent `last_run_at` during RTH.
 - If any Discord channel goes quiet, confirm the watchdog would now alert (not first noticed by members).
+
+### 0b. Warm-cron `force=1` replay floors — PR #3540, #3542, meridian-warm (pending)
+
+**What was broken:** `desk-warm`, `heatmap-warm`, and `meridian-warm` (and peers) had overlap locks
+but no minimum re-run floor — `?force=1` could replay the full warm pass in a tight loop faster
+than any legitimate trigger.
+
+**Fix:** atomic `sharedCacheSetNx` cooldown keys checked before overlap lock (desk-warm 60s,
+heatmap-warm 10s, meridian-warm 60s).
+
+**Check at the open:**
+- CloudWatch `/ecs/blackout-production`: no burst of `[cron/meridian-warm] background done` lines
+  closer than 60s apart from an out-of-band `?force=1` caller.
+- ALB `TargetResponseTime` p99 stays bounded during warm windows (no overnight replay storms).
 
 ### 1. `CACHE_WARM_ALWAYS` leftover staging bypass — PR #3512 (merged)
 
