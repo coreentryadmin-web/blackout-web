@@ -126,6 +126,21 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0x. Admin cron health `ageMin` falsely fresh on clock-skewed future `started_at` — fix/admin-cron-health-age-skew (pending)
+
+**What was broken:** `evaluateJob()` computed cron last-run age as raw `(now - started_at) / 60_000`.
+A clock-skewed **future** `started_at` produced a negative age that never tripped the stale
+threshold — the job read healthy on `/admin` Operations while the timestamp was untrustworthy.
+Night Hawk playbook age already used `nighthawkJobAgeMin()` with the shared `isoAgeSec` guard; general
+cron rows did not.
+
+**Fix:** `cronRunAgeMin()` mirrors `nighthawkJobAgeMin()` — future-skewed timestamps return
+`staleThreshold + 1` so the row surfaces as stale.
+
+**Check at the open:** `/admin` → Operations → Cron health — no cron with a future `started_at`
+should show negative or near-zero `age_min` with status healthy. If a job is genuinely stale during
+RTH, `market_hours_stale` should trip.
+
 ### 0w. Quote route index WS `change_pct` not rebased on ws-bar anchor — fix/quote-index-change-pct-rebase (pending)
 
 **What was broken:** `/api/market/quote` Thermal header tape (SPX/VIX polled ~1.5s) served raw
