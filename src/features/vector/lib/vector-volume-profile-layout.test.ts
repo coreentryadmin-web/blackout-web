@@ -7,7 +7,9 @@ import {
   vectorChartTimeScaleGutter,
   volumeProfileBarRect,
   volumeProfileGutter,
+  volumeProfileLevelLabelX,
   VP_CANDLE_GAP_PX,
+  VP_LEVEL_LABEL_PAD_PX,
 } from "./vector-volume-profile-layout";
 
 test("vectorChartTimeScaleGutter: pixel gutter when VP on, bar offset when off", () => {
@@ -55,4 +57,11 @@ test("volumeProfileBarRect: bars grow from the right edge inward, never past gut
   assert.ok(half);
   assert.ok(half.xLeft > gutter.gutterLeft);
   assert.equal(half.xLeft + half.width, gutter.rightX);
+});
+
+test("volumeProfileLevelLabelX: anchors POC/VAH/VAL text at the profile band's left edge", () => {
+  const gutter = volumeProfileGutter(1200, 1100)!;
+  assert.ok(gutter);
+  assert.equal(volumeProfileLevelLabelX(gutter), gutter.gutterLeft + VP_LEVEL_LABEL_PAD_PX);
+  assert.ok(volumeProfileLevelLabelX(gutter) < gutter.rightX - 40, "labels must sit left of axis badges");
 });

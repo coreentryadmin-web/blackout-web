@@ -126,6 +126,20 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0f. Vector volume-profile POC/VAH/VAL label collision with price-axis badges — fix/vector-vp-label-gutter-anchor (pending)
+
+**What was broken:** On SPX Slayer `/dashboard` (and any surface embedding `VectorChart` with volume
+profile enabled), POC/VAH/VAL labels were drawn at `rightX - 6` — directly under lightweight-charts
+native price-line axis badges (Pin, gamma flip, VWAP, spot). When a pin projection and POC landed
+within one label-height in price-space, the gray "POC" text was painted over by the orange Pin badge.
+
+**Fix:** Anchor level labels at `gutterLeft + 4px` (left-aligned at the profile band's left edge),
+clear of the price-axis badge layer.
+
+**Check at the open:** On `/dashboard` or `/vector` with volume profile on, when Pin (or any price
+line) is near POC/VAH/VAL in price-space, both labels must be independently legible in a
+`proxy-browser.cjs` capture of the chart's right-edge region.
+
 ### 0c. HELIX FlowAnomalyBanner future-timestamp recency — fix/flow-anomaly-future-timestamp (pending)
 
 **What was broken:** `FlowAnomalyBanner` on `/flows` treated a future-dated `detectedAt` as "recent"

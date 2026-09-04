@@ -10,7 +10,11 @@ import type {
   SeriesAttachedParameter,
 } from "lightweight-charts";
 import type { VolumeProfile } from "./vector-volume-profile";
-import { volumeProfileBarRect, volumeProfileGutter } from "./vector-volume-profile-layout";
+import {
+  volumeProfileBarRect,
+  volumeProfileGutter,
+  volumeProfileLevelLabelX,
+} from "./vector-volume-profile-layout";
 
 /**
  * SESSION VOLUME PROFILE as a lightweight-charts SERIES PRIMITIVE — horizontal bars anchored to the
@@ -55,6 +59,7 @@ type ProjectedLevel = { y: number; label: string; color: string; dash: number[] 
 type ProjectedBucket = { yTop: number; yBottom: number; xLeft: number; isPoc: boolean; inValueArea: boolean };
 type Projected = {
   rightX: number;
+  labelX: number;
   bars: ProjectedBucket[];
   levels: ProjectedLevel[];
 };
@@ -70,7 +75,7 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
       const ctx = scope.context;
       ctx.save();
       ctx.globalAlpha = this._overlayDim;
-      const { rightX, bars, levels } = this._p;
+      const { rightX, labelX, bars, levels } = this._p;
       const paneW = scope.mediaSize.width;
 
       for (const b of bars) {
@@ -92,9 +97,9 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
 
         ctx.font = LABEL_FONT;
         ctx.fillStyle = VP_LABEL_COLOR;
-        ctx.textAlign = "right";
+        ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.fillText(lvl.label, rightX - 6, lvl.y);
+        ctx.fillText(lvl.label, labelX, lvl.y);
       }
 
       ctx.restore();
@@ -202,6 +207,6 @@ export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
     addLevel(profile.valueAreaHigh, "VAH", VP_VA_LINE, [6, 4]);
     addLevel(profile.valueAreaLow, "VAL", VP_VA_LINE, [6, 4]);
 
-    return { rightX: gutter.rightX, bars, levels };
+    return { rightX: gutter.rightX, labelX: volumeProfileLevelLabelX(gutter), bars, levels };
   }
 }

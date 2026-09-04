@@ -82,6 +82,13 @@ export function volumeProfileGutter(
   return { gutterLeft: rightX - band, rightX, maxBarWidth: band };
 }
 
+/** Horizontal anchor for POC/VAH/VAL text — left edge of the profile band, away from price-axis badges. */
+export const VP_LEVEL_LABEL_PAD_PX = 4;
+
+export function volumeProfileLevelLabelX(gutter: VolumeProfileGutter): number {
+  return gutter.gutterLeft + VP_LEVEL_LABEL_PAD_PX;
+}
+
 /** Map a bucket's relative volume (0..1) to a bar rectangle inside the gutter. */
 export function volumeProfileBarRect(
   gutter: VolumeProfileGutter,
