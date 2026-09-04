@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T00:30:41.044Z",
+  "updated_at": "2026-09-04T01:38:19.538Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -30,13 +30,13 @@
     "BO-P1-0005": {
       "task_id": "BO-P1-0005",
       "owner": "cursor",
-      "claimed_at": "2026-09-03T23:53:48.679Z",
-      "lease_until": "2026-09-04T01:23:48.679Z",
+      "claimed_at": "2026-09-04T01:29:57.992Z",
+      "lease_until": "2026-09-04T03:08:12.948Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "2059990b-3d67-4f1a-9944-942afab94d70",
       "title": "Review Claude PR #3434"
     },
     "BO-P1-0007": {
@@ -68,6 +68,22 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T00:30:30.525Z",
       "safe_to_merge": true
+    },
+    "pr-3451": {
+      "pr": 3451,
+      "head_sha": "3f27970c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:35:27.565Z",
+      "safe_to_merge": true
+    },
+    "pr-3448": {
+      "pr": 3448,
+      "head_sha": "f94bb764",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:35:27.590Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -77,16 +93,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T00:30:16.848Z",
-      "current_task": "BO-P1-0007"
+      "last_seen": "2026-09-04T01:29:57.993Z",
+      "current_task": "BO-P1-0005"
     }
   },
   "deploy": {
-    "last_main_sha": "84c5707ac6849b4c048dec6e8a414321f2a76e27",
+    "last_main_sha": "f42a3892ba8d01d58142d012344efcc32f9900a0",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T00:18:06Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33821229041",
-    "last_deploy_sha": "271a977cfdc9b5d2cc2d62535f8c7e010374d78d"
+    "last_deploy_at": "2026-09-04T01:33:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826240425",
+    "last_deploy_sha": "9b7756c7201250e31c460077f1c6cc378f3affa0"
   },
   "open_prs": [],
   "events": [
@@ -293,6 +309,63 @@
       "agent": "cursor",
       "run_id": "49d14bda-5dd3-4b4b-8deb-b5336a96b8b1",
       "summary": "PR webhook branch ready: heartbeat-gate fix in claimLock, BO-P1-0007 claimed, peer-reviewed #3438 APPROVED. #3436 merged — autopilot v1 live on main. Next: merge this PR, close duplicate #3435."
+    },
+    {
+      "at": "2026-09-04T01:29:57.993Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0005",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T01:35:27.566Z",
+      "type": "pr_review",
+      "pr": 3451,
+      "head_sha": "3f27970c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:35:27.565Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T01:35:27.591Z",
+      "type": "pr_review",
+      "pr": 3448,
+      "head_sha": "f94bb764",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:35:27.590Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T01:38:12.167Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:38:12.948Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:38:13.886Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:38:19.537Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:38:19.538Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "8ecb94f9-ffe5-43e4-af12-14804ed2d61e",
+      "summary": "Recovered autopilot state. BO-P1-0007 marked DONE (#3439 merged). BO-P1-0005 claimed: peer-reviewed #3448/#3451/#3450 (all merged). #3454 select-task test isolation verified locally (9/9 pass) — awaiting green verify + undraft. #3452 cursor/0dte BO-P1-0004 needs Claude review. validate:deploy GREEN, ops:collect 0 items."
     }
   ]
 }
