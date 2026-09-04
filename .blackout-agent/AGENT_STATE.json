@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:19:14.963Z",
+  "updated_at": "2026-09-04T20:01:12.938Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T20:01:04.495Z",
+      "lease_until": "2026-09-04T21:31:04.495Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -234,6 +234,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3742": {
+      "pr": 3742,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T20:01:08.375Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,11 +256,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T19:56:18Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
+    "last_deploy_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75"
   },
   "open_prs": [],
   "events": [
@@ -1052,6 +1060,35 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T20:01:08.376Z",
+      "type": "pr_review",
+      "pr": 3742,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T20:01:08.375Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T20:01:09.182Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T20:01:09.182Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e34b4fc3-f44b-4b5b-aec7-d029e3b4f6db",
+      "summary": "Reviewed PR #3742: MERGE — green CI, ledger-mode probe verified live, no blockers"
+    },
+    {
+      "at": "2026-09-04T20:01:12.938Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
