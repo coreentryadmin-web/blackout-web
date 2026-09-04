@@ -120,6 +120,20 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0ab. Polygon fabricated 0% + Vector cold-start wall spot guard — fix/polygon-change-pct-null-vector-spot-guard (pending)
+
+**What was broken:** `fetchMarketMovers` and sector/leader snapshot reads defaulted missing Polygon
+`todaysChangePerc` to flat **0%** instead of prior-close rebase or honest null. Separately,
+`getVectorGexWalls` could emit wrong-side gamma walls on cold start when `fallbackSpot` was still
+null (spot omitted from `computeGexWalls`).
+
+**Fix:** Shared `changePctFromSnapshotTicker()` (provider → prev-close rebase → null); movers/breadth
+filter ungrounded rows; Vector GEX walls return null until spot is grounded, then side-constrain.
+
+**Check at the open:** Thermal movers strip has no fabricated +0.00% on names with missing provider
+change pre-open; Vector 0DTE walls never show call wall below spot / put wall above spot on first
+paint after cold load.
+
 ### 0aa. UW rate limiter queue-wait observability — fix/uw-rate-limiter-queue-wait-observability (pending)
 
 **What was broken:** a UW request that queued behind the rate limiter for 15+ seconds and then
