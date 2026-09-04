@@ -120,7 +120,7 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
-### 0aa. UW rate limiter queue-wait observability — fix/uw-rate-limiter-queue-wait-observability (pending)
+### 0aa. UW rate limiter queue-wait observability — fix/uw-rate-limiter-queue-wait-observability (merged #3759)
 
 **What was broken:** a UW request that queued behind the rate limiter for 15+ seconds and then
 successfully acquired a slot left zero trace anywhere — `RateLimiterQueueTimeoutError` only fires
@@ -136,6 +136,14 @@ timing, concurrency, or rate limiting itself.
 sweep)` tag separates expected cron-sweep queueing from live member-request queueing, which is
 what the two prior entries' follow-up measurement needs. No product-facing behavior to check; this
 is instrumentation only.
+
+### 0ab. LULD halt future-timestamp guard — fix/luld-halt-future-timestamp-guard (pending)
+
+**What was broken:** `isLuldHaltSourceStaleForState()` and `isLuldHaltFeedStale()` used raw `Date.now() - timestamp` age math without a future guard — clock-skewed future cluster/local `last_message_at` stamps read as live/trusted (same class as the UW halt bug fixed in #3745).
+
+**Fix:** Gate all LULD freshness probes through shared `isWsUpdatedAtFresh`.
+
+**Check at the open:** Admin System Vitals → Massive LULD tile shows live during RTH when feed is healthy; 0DTE halt gate still blocks when BOTH UW and LULD are genuinely down (not on a single future-skewed stamp).
 
 ### 0z. SPX pulse stream local freshness future guard — fix/spx-pulse-stream-future-guard (pending)
 
