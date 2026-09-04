@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { fetchOptionMinuteBars } from "@/lib/providers/polygon";
+import { roundFloats } from "@/lib/round-floats";
 import { withServerCache } from "@/lib/server-cache";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
@@ -85,7 +86,7 @@ export async function GET(req: NextRequest) {
       .map((b) => ({ t: new Date(b.t!).toISOString(), c: b.c }));
 
     return NextResponse.json(
-      { occ, since: sinceIso, points },
+      roundFloats({ occ, since: sinceIso, points }),
       { headers: NO_STORE_HEADERS }
     );
   } catch (err) {

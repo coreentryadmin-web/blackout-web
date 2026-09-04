@@ -1,5 +1,6 @@
 import { before, describe, test, mock } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { NextRequest } from "next/server";
 
 // Auth/tool-gate faked to "cron" (always allowed) so these tests exercise the route's OWN
@@ -84,5 +85,10 @@ describe("/api/market/nighthawk/play-bars", () => {
     } finally {
       failNext = false;
     }
+  });
+
+  test("route wraps JSON with roundFloats at the boundary", () => {
+    const src = readFileSync(new URL("./route.ts", import.meta.url), "utf8");
+    assert.match(src, /roundFloats\(/);
   });
 });

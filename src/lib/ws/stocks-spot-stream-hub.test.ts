@@ -43,6 +43,15 @@ test("parseTickerList: default cap matches MAX_TICKERS_PER_STREAM", () => {
   assert.match(parseTickerList(many).error ?? "", /Too many tickers/);
 });
 
+test("buildSpotFrame: rounds fractional price noise before SSE encode", () => {
+  _resetStockCandleStoreForTest();
+  const atMs = Date.parse("2026-07-15T14:30:00.000Z");
+  recordStockTick("AAPL", 230.000000000001, undefined, atMs);
+
+  const frame = buildSpotFrame(["AAPL"], atMs);
+  assert.equal(frame.quotes.AAPL.price, 230);
+});
+
 test("buildSpotFrame: includes only tickers with a live candle, omits the rest", () => {
   _resetStockCandleStoreForTest();
   const atMs = Date.parse("2026-07-15T14:30:00.000Z");

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { fetchOptionsUnifiedSnapshot, type OptionSnapshot } from "@/lib/providers/options-snapshot";
+import { roundFloats } from "@/lib/round-floats";
 import { getLiveOptionMarkSync } from "@/lib/ws/options-socket";
 import { ZERODTE_MARK_STALE_MS } from "@/lib/zerodte/marks-math";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
@@ -54,5 +55,5 @@ export async function GET(req: NextRequest) {
     return buildLegacyOptionMarkRow(occ, ws, snap, now);
   });
 
-  return NextResponse.json({ available: true, marks }, { headers: NO_STORE_HEADERS });
+  return NextResponse.json(roundFloats({ available: true, marks }), { headers: NO_STORE_HEADERS });
 }
