@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       skipped: true,
       reason:
-        "Outside extended warm window (weekday 4:00 AM–8:00 PM ET) — use ?force=1 or set CACHE_WARM_ALWAYS=1",
+        "Outside extended warm window (weekday 4:00 AM–8:00 PM ET) — use ?force=1",
     };
     await logCronRun("desk-warm", started, payload);
     return NextResponse.json(payload);
