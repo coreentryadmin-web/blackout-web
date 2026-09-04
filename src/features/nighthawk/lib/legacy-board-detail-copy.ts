@@ -1,4 +1,5 @@
 import type { TerminalPlay } from "@/features/nighthawk/command-deck/types";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 
 export function legacyWhyPickedSummary(play: TerminalPlay): string {
   if (play.thesis?.trim()) return play.thesis.trim();
@@ -38,10 +39,8 @@ export function legacyScorecardLine(play: TerminalPlay): string | null {
 }
 
 export function legacyMarkAgeLabel(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const ms = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return null;
-  const sec = Math.round(ms / 1000);
+  const sec = ageSecFromIso(iso);
+  if (sec == null) return null;
   if (sec < 60) return `${sec}s ago`;
   const min = Math.round(sec / 60);
   if (min < 60) return `${min}m ago`;

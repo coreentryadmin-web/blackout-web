@@ -126,7 +126,7 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
-### 0u. `/vs/others` comparison table missed the same "every setup graded" overclaim fix — fix/vs-others-track-record-scope (pending)
+### 0u. `/vs/others` comparison table missed the same "every setup graded" overclaim fix — fix/vs-others-track-record-scope (merged #3664)
 
 **What was broken:** #3643 (item 0n below) scoped "every setup logged"-style claims on the About
 page, homepage, and `WhyBlackoutContent.tsx` to the three products `/methodology` actually covers.
@@ -179,6 +179,14 @@ already fires the standard Discord alert on a failed re-warm.
 
 **Check at the open:** none — pure CI/test-coverage fix, no production behavior changed. Confirm
 `main`'s own `verify` check is green on its latest commit once this merges.
+
+### 0r. ISO age helpers treated clock-skewed future timestamps as fresh — fix/iso-age-future-guard-sweep (pending)
+
+**What was broken:** `public-gex-snapshot` coerced negative `asof` age to **0 seconds** (reads as just refreshed on the marketing gamma snapshot). Night Hawk Legacy `legacyMarkAgeLabel` and admin Night Hawk playbook `ageMin` used raw `Date.now() - new Date(iso)` without the shared future guard.
+
+**Fix:** `ageSecFromIso` / `ageMinFromIso` in `timestamp-freshness.ts` (reuses `WS_TIMESTAMP_FUTURE_TOLERANCE_MS`); wired into public GEX snapshot age, Legacy mark-age label, and admin cron health.
+
+**Check at the open:** `/tools/gamma-snapshot` `snapshot_data_age_seconds` stays honest during RTH; Legacy Night Hawk manage rail mark age does not read "0s ago" on skewed `markAsOf`.
 
 ### 0q. cron-staleness-watchdog's self-heal outcome never reached the persisted `cron_job_runs` record — fix/cron-staleness-watchdog-healed-array (pending)
 

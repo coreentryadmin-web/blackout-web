@@ -21,6 +21,7 @@ import {
 } from "@/lib/cron-writer-target-fresh";
 import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
+import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
 
 /** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
@@ -362,10 +363,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
 
     if (job.key === "nighthawk-playbook" && latestNhJob) {
       const updatedAt = latestNhJob.updated_at;
-      const ageMin =
-        updatedAt != null
-          ? Math.round((Date.now() - new Date(updatedAt).getTime()) / 60_000)
-          : null;
+      const ageMin = ageMinFromIso(updatedAt);
       let status = health.status;
       let statusLabel = health.status_label;
 

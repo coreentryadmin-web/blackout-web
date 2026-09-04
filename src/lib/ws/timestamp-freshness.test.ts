@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isWsUpdatedAtFresh, wsUpdatedAtAgeMs } from "./timestamp-freshness";
+import { ageMinFromIso, ageSecFromIso, isWsUpdatedAtFresh, wsUpdatedAtAgeMs } from "./timestamp-freshness";
 
 test("wsUpdatedAtAgeMs clamps negative skew to 0", () => {
   const now = 1_000_000;
@@ -14,4 +14,22 @@ test("isWsUpdatedAtFresh rejects future timestamps beyond tolerance", () => {
   assert.equal(isWsUpdatedAtFresh(now + 4_000, 60_000, now), true);
   assert.equal(isWsUpdatedAtFresh(now - 30_000, 60_000, now), true);
   assert.equal(isWsUpdatedAtFresh(now - 90_000, 60_000, now), false);
+});
+
+test("ageSecFromIso returns null for clock-skewed future ISO timestamps", () => {
+  const now = Date.UTC(2026, 8, 4, 17, 0, 0);
+  const future = new Date(now + 60_000).toISOString();
+  assert.equal(ageSecFromIso(future, now), null);
+});
+
+test("ageSecFromIso clamps small future skew within tolerance", () => {
+  const now = Date.UTC(2026, 8, 4, 17, 0, 0);
+  const nearFuture = new Date(now + 2_000).toISOString();
+  assert.equal(ageSecFromIso(nearFuture, now), 0);
+});
+
+test("ageMinFromIso rounds trusted age to whole minutes", () => {
+  const now = Date.UTC(2026, 8, 4, 17, 0, 0);
+  const past = new Date(now - 125_000).toISOString();
+  assert.equal(ageMinFromIso(past, now), 2);
 });
