@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:10:48.532Z",
+  "updated_at": "2026-09-04T19:17:55.843Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -249,112 +249,11 @@
   "deploy": {
     "last_main_sha": "6776238a905a08affe9527887aae21f0c15e325a",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:02:29Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33909058935",
-    "last_deploy_sha": "6776238a905a08affe9527887aae21f0c15e325a"
+    "last_deploy_at": "2026-09-04T19:16:33Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33910315173",
+    "last_deploy_sha": "8a923afe679c4a87e324650f2dba8a46bd314ceb"
   },
-  "open_prs": [
-    {
-      "number": 3733,
-      "title": "fix(ws): guard UW/flow/options freshness against clock-skewed future stamps",
-      "branch": "fix/uw-channel-future-timestamp-freshness",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-04T19:10:03Z"
-    },
-    {
-      "number": 3732,
-      "title": "fix(seo): exit 0 on auth-only AMBER in deploy-smoke SEO audit",
-      "branch": "fix/seo-audit-auth-amber-exit",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T19:09:31Z"
-    },
-    {
-      "number": 3731,
-      "title": "fix(audit): retry Clerk FAPI curl on TLS reset in SEO deploy smoke",
-      "branch": "fix/seo-audit-clerk-curl-retry",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T19:10:23Z"
-    },
-    {
-      "number": 3730,
-      "title": "fix(seo-audit): retry Clerk mint + AMBER exit on auth-only flake",
-      "branch": "fix/seo-audit-clerk-mint-retry",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T19:10:06Z"
-    },
-    {
-      "number": 3729,
-      "title": "fix(ci): rotate Largo nightly stress banks to fit 45m budget",
-      "branch": "fix/largo-stress-nightly-bank-rotation",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T19:09:58Z"
-    },
-    {
-      "number": 3728,
-      "title": "chore(autopilot): cursor session handoff — RTH lifecycle GREEN",
-      "branch": "cursor/autopilot-work-loop-85e2",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T19:09:39Z"
-    },
-    {
-      "number": 3727,
-      "title": "fix(seo): retry transient Clerk FAPI curls in deploy smoke audit",
-      "branch": "fix/seo-audit-clerk-fapi-retry",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T19:09:41Z"
-    },
-    {
-      "number": 3726,
-      "title": "fix(audit): retry Clerk FAPI in SEO audit; auth-only AMBER non-blocking",
-      "branch": "fix/seo-audit-fapi-retry",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T19:09:43Z"
-    },
-    {
-      "number": 3725,
-      "title": "chore(autopilot): cursor handoff — RTH lifecycle GREEN, data-validator 44/44",
-      "branch": "chore/autopilot-handoff-2026-09-04-1906",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T19:09:46Z"
-    },
-    {
-      "number": 3698,
-      "title": "feat(zerodte): liquid strike fallback + BREAKOUT cortex/thesis relief",
-      "branch": "cursor/hourly-autonomous-wake",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "QUEUED/",
-      "updated_at": "2026-09-04T19:10:27Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1211,6 +1110,38 @@
       "type": "task_claimed",
       "task_id": "BO-P1-0101",
       "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T19:14:53.344Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:14:53.345Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "1a26db3e-61bb-4254-a7ca-28bb49a5b4b9",
+      "summary": "Merged #3726 (SEO audit curl retry + auth-only AMBER). #3698 verify in_progress → Claude review. ECR 33909058935 still pending (Actions backlog). Platform integrity 14/14 GREEN, ops:collect 0. Open: #3698, drafts #3733/#3729/#3728."
+    },
+    {
+      "at": "2026-09-04T19:14:58.759Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:17:55.842Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:17:55.843Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "77b33aca-6a2d-4e2b-a3a4-1c2089097fb9",
+      "summary": "Cycle complete: #3726 merged (SEO audit). #3698 verify still running → Claude. #3733 draft reviewed locally (10/10 tests). Deploy/ops GREEN. ECR backlog. Agent state → #3734."
     }
   ],
   "pr_activity": {
