@@ -126,6 +126,34 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0l. Pricing comparison table omitted the $49 SPX Slayer plan entirely — fix/spx-slayer-pricing-comparison-column (pending)
+
+**What was broken:** `/pricing` sells three commercial choices — SPX Slayer $49/mo, Premium Monthly
+$199/mo, Premium Yearly — but `FeatureComparison` (the "What you get" matrix) only had Free and
+Premium columns. Every SPX Slayer-only row (the SPX Slayer desk itself included) rendered as
+`— / ✓`, giving a $49 visitor zero representation of what they'd actually get in the page's primary
+feature matrix — reported as a P3 pricing/conversion defect (concrete purchase-decision gap: no way
+to compare $49 vs $199 in the matrix a visitor is looking at to decide).
+
+**Root cause:** `FeatureComparison`/`FEATURE_MATRIX` still modeled the original Free|Premium
+entitlement structure and was never migrated when SPX Slayer became an independently purchasable
+tier — each row's `community` (SPX Slayer) access was a marketing boolean nobody had ever checked
+against a real gate.
+
+**Fix:** new `src/lib/desk-tier-requirements.ts` — the minimum `Tier` each desk's own
+`layout.tsx` actually enforces (`requireDeskTool`/`requireTier`), verified against those layout
+files by `desk-tier-requirements.test.ts` (source-scan, same pattern
+`desk-protected-route-coverage.test.ts` already proved for the protected-route lists). Every desk
+row in `FEATURE_MATRIX` now derives its SPX Slayer/Premium columns from that manifest via
+`tierAtLeast` instead of a hand-typed boolean; the two rows with no code-level gate (0DTE graded
+plays, private Discord) are cross-checked against `PLAN_MATRIX.spx_slayer.includes`'s own canonical
+perk list instead. `FeatureComparison` now renders Free | SPX Slayer ($49/mo) | Premium ($199/mo).
+
+**Check at the open:** none — this is a static marketing page with no RTH-dependent data; `/pricing`
+should show three columns with the SPX Slayer desk row (and every other SPX-desk-scoped row) marked
+✓ under SPX Slayer, and every premium-only desk (HELIX, Largo, Night Hawk, Thermal, Vector,
+Meridian) marked — under SPX Slayer / ✓ under Premium.
+
 ### 0k. Six orphaned modules removed (SPX/Thermal/marketing) — fix/orphaned-spx-thermal-modules (pending)
 
 **What was broken:** nothing member-visible — `src/features/spx/{hooks/useSpxDayPerformance.ts,
