@@ -51,6 +51,7 @@ async function main() {
     rec("auth", "PASS", "temp admin+premium session");
   }
 
+  let exitCode = 0;
   try {
   const health = await fetchJson("/api/health");
   rec("health", health.status === 200 ? "PASS" : "FAIL", `status=${health.status}`);
@@ -173,13 +174,16 @@ async function main() {
 
   console.log(`\nSummary: ${pass} pass, ${warn} warn, ${fail} fail, ${skip} skip`);
   console.log(`Report: ${outPath}\n`);
-  process.exit(fail > 0 ? 1 : 0);
+  exitCode = fail > 0 ? 1 : 0;
   } finally {
     if (!session.skip && session.cleanup) await session.cleanup();
   }
+  return exitCode;
 }
 
-main().catch((e) => {
-  console.error("FAIL:", e.message);
-  process.exit(1);
-});
+main()
+  .then((code) => process.exit(code ?? 0))
+  .catch((e) => {
+    console.error("FAIL:", e.message);
+    process.exit(1);
+  });
