@@ -734,7 +734,7 @@ async function resolvePulseFeedStalled(now = Date.now()): Promise<boolean | null
     if (raw) {
       const snap = JSON.parse(raw) as Record<string, { updatedAt?: number }>;
       const at = snap["I:SPX"]?.updatedAt;
-      if (at && at > 0) return now - at > INDEX_FEED_STALL_MS;
+      if (at && at > 0) return !isWsUpdatedAtFresh(at, INDEX_FEED_STALL_MS, now);
     }
   } catch {
     /* fall through */
