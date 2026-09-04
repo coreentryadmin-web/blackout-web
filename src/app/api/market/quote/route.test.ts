@@ -95,4 +95,13 @@ describe("/api/market/quote negative-result caching", () => {
     assert.equal(body.available, true);
     assert.equal(body.price, 123.45);
   });
+
+  test("rounds IEEE float noise at the response boundary", async () => {
+    mockStockSnapshot = { price: 7499.360000000001, change_pct: 0.123456789 };
+    const res = await GET(new NextRequest("http://localhost/api/market/quote?ticker=QQQ"));
+    const body = await res.json();
+    assert.equal(body.available, true);
+    assert.equal(body.price, 7499.36);
+    assert.equal(body.change_pct, 0.12);
+  });
 });
