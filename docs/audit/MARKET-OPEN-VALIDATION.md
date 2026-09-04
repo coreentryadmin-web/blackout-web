@@ -128,6 +128,14 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** SPX desk feed-stalled pill still fires on genuine index silence (not on normal ticks); VIX/SPX index overlays fall back to REST when WS stamp is skewed; homepage gamma promo chip does not show "live" beside a warming snapshot.
 
+### 0ac. Vector GEX walls spot constraint — fix/vector-gex-walls-spot-constraint (pending)
+
+**What was broken:** on a cold Vector task before heatmap primed `fallbackSpot`, `getVectorGexWalls()` called `computeGexWalls()` without a spot — unconstrained mode lets call walls sit below spot and put walls above it (inverted resistance/support).
+
+**Fix:** `resolveVectorWallSpot()` prefers heatmap spot, falls back to live candle close; returns `null` (honest empty) when neither is available instead of unconstrained walls.
+
+**Check at the open:** load `/terminal` or `/vector` for a non-oracle ticker immediately after a deploy/cold task — walls should be briefly absent rather than showing inverted call/put levels; once spot resolves, call walls must sit above spot and put walls below.
+
 ### 0aa. UW rate limiter queue-wait observability — fix/uw-rate-limiter-queue-wait-observability (merged #3759)
 
 **What was broken:** a UW request that queued behind the rate limiter for 15+ seconds and then
