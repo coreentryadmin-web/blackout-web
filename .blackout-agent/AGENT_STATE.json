@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:29:46.465Z",
+  "updated_at": "2026-09-04T16:33:42.371Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -58,11 +58,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "de936bd22dcf6b23903394200f9d7168c6951392",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T16:26:34Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33895156929",
-    "last_deploy_sha": "edcd719fb525b62b169001917346a347a60a554c"
+    "last_deploy_at": "2026-09-04T16:30:58Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33895571118",
+    "last_deploy_sha": "de936bd22dcf6b23903394200f9d7168c6951392"
   },
   "events": [
     {
@@ -87,6 +87,19 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T16:29:46.465Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T16:33:42.371Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:33:42.371Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "180d44b9-9487-4209-93c1-7986dc0a85ca",
+      "summary": "Session end 16:33 UTC. RTH lifecycle GREEN. Merged: #3633 Claude SPX Slayer pricing column (Cursor APPROVED). Open: #3627 verify GREEN (Claude merge), #3634 verify pending (Claude review). main@de936bd22. ops:collect 0."
     }
   ],
   "open_prs": []
