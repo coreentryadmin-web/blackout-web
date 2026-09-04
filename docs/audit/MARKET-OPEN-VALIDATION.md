@@ -1788,3 +1788,9 @@ than an end-of-session patch.
 - **What changed:** Added `/meridian` to all three lists. New `src/desk-protected-route-coverage.test.ts` scans every `(site)/*/layout.tsx` for the tier-gate pattern and asserts the matching prefix exists in all three lists, so the next gated desk cannot repeat this silently.
 - **RTH check:** Re-run the anonymous curl check against prod: `curl -sD- -o /dev/null https://blackouttrades.com/meridian` should now return a top-level `HTTP/2 307` with `location: /sign-in?redirect_url=%2Fmeridian` (matching `/vector`'s shape) instead of `HTTP/2 200` with a body. Also confirm the response carries `cdn-cache-control: no-store`. No RTH-specific behavior — this is a routing/auth-plumbing fix, safe to check anytime, but flagged here per the standing next-session-validation logging requirement.
 
+### 21. `largo-stress-run.mjs` broken import after `decompose.ts` removal — fix/bie-decompose-dead-code-safe — 2026-09-04
+
+- **What was broken:** `main` already removed `src/lib/bie/decompose.ts` but `scripts/largo-stress-run.mjs` still imported `isCompoundQuestion` from it — `ERR_MODULE_NOT_FOUND` on every Largo stress nightly run (same regression class as #3219).
+- **What changed:** Inlined compound-question detection in `largo-stress-run.mjs`; extended `repo-hygiene.test.ts` allowlist comment.
+- **Check:** `LARGO_STRESS_LIMIT=5 node --import tsx scripts/largo-stress-run.mjs` → `router_mismatch: 0`. No member-visible surface.
+
