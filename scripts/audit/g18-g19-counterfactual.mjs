@@ -103,8 +103,14 @@ async function fetchCalibration(args, headers) {
   const q = args.days ? `?days=${args.days}` : "";
   const res = await fetch(`${args.base}/api/market/zerodte/calibration${q}`, { headers });
   const report = await res.json().catch(() => ({}));
-  if (!res.ok || report.available === false) {
+  if (!res.ok) {
     throw new Error(`calibration GET failed HTTP ${res.status}: ${JSON.stringify(report).slice(0, 300)}`);
+  }
+  // `available:false` means zero graded committed plays in the window — a valid empty
+  // cohort, not a transport failure. blocked_value lines can still carry skip
+  // counterfactuals; only the route's catch path sets degraded:true.
+  if (report.degraded === true) {
+    throw new Error(`calibration GET degraded: ${JSON.stringify(report).slice(0, 300)}`);
   }
   return { grade: gradeJson, report };
 }

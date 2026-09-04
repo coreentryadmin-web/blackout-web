@@ -13,6 +13,21 @@ test("pickGateLines extracts G-18 and G-19", () => {
   assert.equal(picked.score_top_band.n, 5);
 });
 
+test("buildReport handles available:false empty cohort", () => {
+  const report = buildReport({
+    calibration: {
+      available: false,
+      window: { since: "2026-08-21", through: "2026-09-04", days: 14 },
+      blocked_value: [],
+      graded_plays: 0,
+    },
+    replay: null,
+  });
+  assert.equal(report.ok, true);
+  assert.match(report.gates.early_window_prime_score.verdict, /INSUFFICIENT_DATA/);
+  assert.match(report.gates.score_top_band.verdict, /INSUFFICIENT_DATA/);
+});
+
 test("buildReport adds verdict strings", () => {
   const report = buildReport({
     calibration: {
