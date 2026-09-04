@@ -173,6 +173,29 @@ test("checkConclusion maps gh and API shapes", () => {
   assert.equal(checkConclusion({ bucket: "skipping" }), "skipped");
 });
 
+test("buildFeedback recognizes green verify from gh state-only checks", () => {
+  const { body, directive } = buildFeedback({
+    pr: 1,
+    event: "synchronize",
+    prData: {
+      title: "fix: test",
+      headRefOid: "abc123def456",
+      headRefName: "claude/test",
+      author: { login: "bot" },
+      isDraft: false,
+      files: [{ path: "scripts/blackout-agent/pr-feedback.mjs" }],
+      additions: 5,
+      deletions: 1,
+    },
+    checks: [{ name: "verify", state: "SUCCESS", bucket: "pass" }],
+    priorReview: null,
+  });
+  assert.equal(directive.action, "REVIEW");
+  assert.match(body, /`verify`: SUCCESS\/success/);
+  assert.doesNotMatch(body, /`verify`: missing/);
+  assert.doesNotMatch(directive.headline, /CI pending/);
+});
+
 test("resolveGithubRepo prefers GITHUB_REPOSITORY when set", () => {
   const prev = process.env.GITHUB_REPOSITORY;
   process.env.GITHUB_REPOSITORY = "coreentryadmin-web/blackout-web";

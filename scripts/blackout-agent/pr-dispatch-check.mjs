@@ -31,7 +31,7 @@ if (!pr) {
 }
 
 const prData = ghJson(["pr", "view", String(pr), "--json", "headRefOid,headRefName,isDraft,body"]);
-const checksRaw = ghJson(["pr", "checks", String(pr), "--json", "name,state,conclusion"]);
+const checksRaw = ghJson(["pr", "checks", String(pr), "--json", "name,state,bucket"]);
 const checks = Array.isArray(checksRaw) ? checksRaw : checksRaw?.checks ?? [];
 
 const dispatch = shouldDispatchDeepReview({
