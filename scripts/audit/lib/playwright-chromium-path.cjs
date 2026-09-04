@@ -12,6 +12,9 @@ function resolveChromiumPath() {
   const candidates = [
     "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
     "/home/ubuntu/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome",
+    "/usr/local/bin/google-chrome",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium",
   ];
   for (const p of candidates) {
     if (existsSync(p)) return p;
