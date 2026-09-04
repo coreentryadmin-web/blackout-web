@@ -18,7 +18,6 @@ import { horizonPlayFromBangerWatch } from "@/lib/swing/banger-lane-merge";
 import { persistBangerWatchSnapshot } from "@/lib/banger/watch-cache";
 import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 import type { HorizonPlay } from "@/lib/horizon-plays";
-import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 
 export type BangerCommitDeps = {
   /** Whole-market grouped-daily rows for the session being scanned. */
@@ -133,7 +132,7 @@ export async function runBangerCommit(deps: BangerCommitDeps): Promise<BangerCom
   }
 
   await persistBangerWatchSnapshot({
-    asOf: etStamp(Date.now()),
+    asOf: etStamp(Date.now()) ?? new Date().toISOString(),
     sessionDate: deps.sessionDate,
     plays: watchPlays,
   });
