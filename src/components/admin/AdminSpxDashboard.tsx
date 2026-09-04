@@ -942,7 +942,9 @@ export function AdminSpxDashboard() {
   const wr = stats?.outcome_stats.overall.win_rate ?? 0;
   const cold = stats?.outcome_stats.cold_buy.win_rate ?? 0;
   const promote = stats?.outcome_stats.watch_promote.win_rate ?? 0;
-  const staleMs = data ? Date.now() - new Date(data.generated_at).getTime() : 0;
+  const staleMs = data
+    ? Math.max(0, Date.now() - new Date(data.generated_at).getTime())
+    : 0;
   const isStale = staleMs > 90_000;
 
   return (

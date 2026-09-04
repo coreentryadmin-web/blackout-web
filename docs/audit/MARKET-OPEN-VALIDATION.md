@@ -120,11 +120,69 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+- **Admin SPX terminal lib incident open duration (fix/admin-spx-terminal-lib-clock-skew, pending PR):** server-side `buildSpxTerminalFeed` missed the #3660 clock-skew guard — future `opened_at` rendered `open -Ns`. Fix reuses `isoAgeSec`; check `/admin` SPX terminal with an open incident during RTH — meta must never show negative seconds; future-skew reads `open clock skew`.
+
 Every item below was fixed off-hours today (weekday, pre-open) and has **not been seen under a
 moving tape or real member traffic**. Per the newly-recorded `FULL-LIFECYCLE SCOPE EXPANSION`
 standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained every sweep — not
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
+
+### 0o. `spx-signal-weight-optimize` cron threw an uncaught RangeError on `?days=`/`?days=abc` — fix/spx-signal-weight-optimize-nan-crash (pending)
+
+**What was broken:** `GET /api/cron/spx-signal-weight-optimize?days=` (empty value, or a bare
+`?days`) or `?days=abc` (non-numeric) hit `parseInt("", 10)` = `NaN` (the `??` fallback only fires
+on `null`/`undefined`, and `URLSearchParams.get()` returns `""` not `null`), which flowed into
+`new Date(NaN).toISOString()` and **threw** `RangeError: Invalid time value` ABOVE the route's own
+try/catch — so the crash was never caught, `logCronRun` never fired, and the failure was invisible
+to `cron_job_runs`/`cron-staleness-watchdog`. Sibling crons (`largo-cleanup`, `nighthawk-outcomes`)
+already guarded the identical kind of `?days` override; this one had not.
+
+**Fix:** guard the parsed value with the same idiom `nighthawk-outcomes/route.ts` already uses —
+`Number.isFinite(rawLookbackDays) && rawLookbackDays > 0 ? rawLookbackDays :
+DEFAULT_LOOKBACK_DAYS` — before it reaches any date arithmetic. A valid numeric override still
+works unchanged; only the malformed/missing cases changed, from an uncaught crash to a clean
+fallback to the 30-day default.
+
+**Check at the open:** no RTH-dependent behavior — this cron reads `spx_signal_observations` and
+runs on its own nightly 10 PM UTC schedule with no query param, so the scheduled run was never
+affected by this bug and needs no re-check. The one thing worth confirming once, at any time (not
+specifically at the open): `curl` the route with a valid `CRON_SECRET` Bearer token and
+`?days=`/`?days=abc` and confirm a clean `200 {"ok":true,"skipped":...}` (or a real report once 10+
+days of data exist) instead of a `500` — proving the fix holds against the live route, not just the
+mocked unit test.
+
+### 0n. "Every setup logged publicly" overclaimed against a 3-of-7-product methodology page — fix/public-record-scope-overclaim (pending)
+
+**What was broken:** About page, homepage, and `WhyBlackoutContent.tsx` all said "Every setup BlackOut
+flags is logged publicly"/"the full ledger, always" and pointed to `/methodology` for "how each
+product is scored" — but `/methodology`'s own payload type (`TrackRecordPagePayload`) is hard-typed
+to exactly SPX Slayer, Night Hawk, and 0DTE Command. HELIX/Thermal/Vector/Meridian/Largo have no
+public ledger section there.
+
+**Fix:** scoped the "every setup"/"each product" claims on all three surfaces to name the three
+products `/methodology` actually covers — no change to whether HELIX/Vector's own internal
+tracking should eventually be exposed publicly (a separate, still-open product question).
+
+**Check at the open:** none — pure marketing-copy correction, no RTH-dependent behavior. Confirm
+the live About/homepage/Why-BlackOut pages name SPX Slayer/Night Hawk/0DTE Command next to the
+transparency claim rather than an unscoped "every setup"/"each product."
+
+### 0m. SPX Slayer marketing claimed GEX/VEX/DEX/CHARM lenses — real UI only has GEX/VEX — fix/spx-slayer-lens-overclaim (pending)
+
+**What was broken:** homepage/pricing copy said SPX Slayer provides "GEX / VEX / DEX / CHARM lenses
+on the 0DTE ladder" (`PRODUCT_MANIFEST.spx`). SPX Slayer's own live matrix component
+(`SpxGexMatrixHeatmap.tsx`) only ever renders a GEX/VEX toggle — confirmed by an exact-string grep
+across `src/features/spx/*.tsx` returning zero hits for `"dex"`/`"charm"` as a UI value. The
+dedicated Academy guide already correctly documented only 2 lenses; the marketing copy was the one
+that overclaimed, likely copied from Thermal's genuinely-accurate 4-lens entry in the same file.
+
+**Fix:** corrected `PRODUCT_MANIFEST.spx.lifecycle`/`.capabilities` to say GEX/VEX only; Thermal's
+real 4-lens entry is untouched.
+
+**Check at the open:** none — pure marketing-copy correction, no RTH-dependent behavior. Confirm
+`https://blackouttrades.com/` no longer shows "GEX / VEX / DEX / CHARM" attributed to SPX Slayer
+specifically (Thermal's own card should still show all four, correctly).
 
 ### 0l. Pricing comparison table omitted the $49 SPX Slayer plan entirely — fix/spx-slayer-pricing-comparison-column (pending)
 
@@ -153,6 +211,39 @@ perk list instead. `FeatureComparison` now renders Free | SPX Slayer ($49/mo) | 
 should show three columns with the SPX Slayer desk row (and every other SPX-desk-scoped row) marked
 ✓ under SPX Slayer, and every premium-only desk (HELIX, Largo, Night Hawk, Thermal, Vector,
 Meridian) marked — under SPX Slayer / ✓ under Premium.
+
+### 0m. `bie/decompose.ts` — dead compound-question splitter removed — fix/remove-dead-bie-decompose (pending)
+
+**What was broken:** nothing member-visible — `src/lib/bie/decompose.ts` (a pure "15 questions in
+one ask" splitter, task #57) was never wired into `composeCompound` or called by anything else;
+zero non-test importers anywhere in `src/`. Flagged 2026-08-30 in `FINDINGS.md` as the one of four
+related `bie/*` files that was safe to delete outright (its three siblings — `router.ts` still
+needed for a live type import, `composers.ts`/`dynamic-format.ts` referenced only by a test that
+can't run in this sandbox — were correctly left untouched then and remain untouched now).
+
+**Fix:** `git rm src/lib/bie/decompose.ts src/lib/bie/decompose.test.ts`; extended
+`repo-hygiene.test.ts`'s existing orphan allowlist so it can't silently be reintroduced dead.
+
+**Check at the open:** none — there is no live-RTH-dependent behavior to verify (the module was
+never reachable from any request path before removal). `tsc --noEmit` clean and the full test
+suite passing (recorded in the PR) are the complete verification for a fix of this kind; listed
+here only because the standing instruction asks every fix to be logged, not because there is an
+RTH-specific check to run.
+
+### 0n. Night Hawk readiness chip falsely green on future `as_of` — fix/nighthawk-readiness-future-asof (pending)
+
+**What was broken:** On `/nighthawk`, the header readiness chip could show green **READY** when the
+board's `as_of` timestamp was materially in the future (client/server clock skew). Negative
+`asOfAgeMs` never exceeded the 60s stale threshold, so freshness could not be verified but the
+chip still read ready.
+
+**Fix:** `resolveZeroDteReadiness` in `pane.ts` now treats `asOfAgeMs <
+-ZERODTE_MARK_FUTURE_TOLERANCE_MS` the same as stale age — amber **DELAYED** — matching sibling
+`resolveZeroDteFreshness` in `ZeroDteBoard.tsx`.
+
+**Check at the open:** On `/nighthawk` during RTH with live board data, confirm the readiness chip
+is **READY** only when `as_of` is plausibly current; if a skew incident occurs, chip should read
+**DELAYED** not **READY**.
 
 ### 0k. Six orphaned modules removed (SPX/Thermal/marketing) — fix/orphaned-spx-thermal-modules (pending)
 
@@ -197,7 +288,16 @@ logic touched.
 430x932`), filter to PASSED/WATCH, and confirm every row's return figure now carries a small
 "Since flag" caption under it, and every CLOSED row carries "Peak Return" — never a bare number.
 
-### 0j-b. Admin ops store-age "just now" on clock-skewed timestamps — fix/admin-store-age-future-guard (pending)
+### 0j-c. Admin panel timeAgo "just now" on clock-skewed ISO timestamps — fix/admin-time-ago-future-guard (pending)
+
+**What was broken:** `timeAgo(iso)` in Operations + X Marketing admin panels used raw `Date.now() - new Date(iso)`
+without a future guard — same failure class as #3627 `storeAge()`.
+
+**Fix:** Shared `timeAgoFromIso()` in `admin-time-ago.ts` with `WS_TIMESTAMP_FUTURE_TOLERANCE_MS`.
+
+**Check at the open:** `/admin` → Operations incidents/audit rows show plausible relative times, not "just now" on skewed timestamps.
+
+### 0j-b. Admin ops store-age "just now" on clock-skewed timestamps — fix/admin-store-age-future-guard (merged #3627)
 
 **What was broken:** `storeAge()` in the admin Operations dashboard computed `Date.now() - updatedAt`
 without a future guard. A timestamp more than a few seconds ahead of wall clock produced negative age;
@@ -208,6 +308,18 @@ returns `{ label: "clock skew", ok: false }`; otherwise clamps with `Math.max(0,
 
 **Check at the open:** `/admin` → Operations → UW/Polygon store tiles show plausible ages during RTH
 (e.g. "12s ago"), not "just now" on a store that hasn't ticked.
+
+### 0j-c. Admin API feed + SPX terminal fmtRel future-skew — fix/admin-fmtrel-future-guard (pending)
+
+**What was broken:** `AdminApiLiveFeed.tsx` and `AdminSpxTerminal.tsx` had local `fmtRel()` helpers
+computing `Date.now() - new Date(iso)` without a future guard — same false **"just now"** / **"now"**
+class as #3627/#3641.
+
+**Fix:** Extended `admin-time-ago.ts` with shared `isoAgeSec()` + compact/open-duration formatters;
+removed duplicate local helpers.
+
+**Check at the open:** `/admin` API live feed + SPX terminal show plausible relative times (or
+"clock skew"), not "just now" on skewed event timestamps.
 
 ### 0i. Platform-integrity probe tier-gate false-WARN — fix/platform-integrity-clerk-auth (merged #3605)
 
@@ -1744,4 +1856,10 @@ than an end-of-session patch.
 - **What was broken:** `/meridian` (a real tier-gated premium desk) was absent from `isProtectedRoute` (middleware-clerk.ts), `PROTECTED_PREFIXES` (middleware-shared.ts), and `DISALLOWED_ROOTS` (robots.ts). Live-confirmed: anonymous `curl` to `/meridian` returned HTTP 200 with a 1s `<meta http-equiv="refresh">` client-side redirect instead of the clean top-level 307 `/vector` gets from Clerk's `auth.protect()`; `/meridian` also fell through to a no-op edge-cache header in production (no `CDN-Cache-Control: no-store`) instead of the explicit no-store every other protected desk gets.
 - **What changed:** Added `/meridian` to all three lists. New `src/desk-protected-route-coverage.test.ts` scans every `(site)/*/layout.tsx` for the tier-gate pattern and asserts the matching prefix exists in all three lists, so the next gated desk cannot repeat this silently.
 - **RTH check:** Re-run the anonymous curl check against prod: `curl -sD- -o /dev/null https://blackouttrades.com/meridian` should now return a top-level `HTTP/2 307` with `location: /sign-in?redirect_url=%2Fmeridian` (matching `/vector`'s shape) instead of `HTTP/2 200` with a body. Also confirm the response carries `cdn-cache-control: no-store`. No RTH-specific behavior — this is a routing/auth-plumbing fix, safe to check anytime, but flagged here per the standing next-session-validation logging requirement.
+
+### 21. `largo-stress-run.mjs` broken import after `decompose.ts` removal — fix/bie-decompose-dead-code-safe — 2026-09-04
+
+- **What was broken:** `main` already removed `src/lib/bie/decompose.ts` but `scripts/largo-stress-run.mjs` still imported `isCompoundQuestion` from it — `ERR_MODULE_NOT_FOUND` on every Largo stress nightly run (same regression class as #3219).
+- **What changed:** Inlined compound-question detection in `largo-stress-run.mjs`; extended `repo-hygiene.test.ts` allowlist comment.
+- **Check:** `LARGO_STRESS_LIMIT=5 node --import tsx scripts/largo-stress-run.mjs` → `router_mismatch: 0`. No member-visible surface.
 
