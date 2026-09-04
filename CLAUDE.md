@@ -45,6 +45,51 @@ line. If a future session reads this and the mandate looks satisfied because rec
 performance fixes, that is not a stopping condition — sweep again anyway; the product keeps
 running, so there is always a next thing to measure.
 
+## FULL-LIFECYCLE SCOPE EXPANSION + MARKET-OPEN VALIDATION LOG (confirmed 2026-09-04, ongoing/24-7)
+**The operator's own words:** *"Fix all the issues and make a note of every issue you fixed so you
+can validate them during tomorrows market open and continue to pick up work automatically without
+me telling you or prompting you to.. scanning the entire live UI and code base, cloud watch,
+performance, latency, seo, geo, product enhancement, bugs, issues .. and working on your own
+end-end like a lifecycle and only stopping when there is literally zero work left to do and only
+when the platform is 0 errors"*. This is a **reconfirmation and explicit widening** of the standing
+performance/latency mandate above — same "ongoing, cycle after cycle, no stopping condition"
+posture, but the scope is now stated to cover, every cycle, not just perf/latency:
+- **Live UI** (every desk, `proxy-browser.cjs` — see the "Access reality" section below) — not just
+  data correctness, actual rendered/visual/interaction defects.
+- **Codebase** correctness sweeps (bugs, dead code, logic errors) — the pre-existing issue-handling
+  policy's normal target.
+- **CloudWatch / performance / latency** — the mandate above, unchanged.
+- **SEO** — sitemap, meta tags, robots.txt, Search Console data (`blackout-production/seo/gsc-service-account`,
+  §3b below), structured data, Core Web Vitals/CLS (`scripts/audit/cls-measure.cjs`).
+- **GEO (Generative Engine Optimization)** — AI-answer-engine visibility: `llms.txt` presence/
+  correctness, schema.org/structured-data completeness for AI crawlers, content clarity for
+  extraction by ChatGPT/Perplexity/Google AI Overviews/etc. Distinct from classic SEO; audit both.
+- **Product enhancement** — genuine UX/feature gaps worth a small, scoped PR, not just defects.
+- **Bugs/issues** generally, wherever found.
+
+**Every fix still goes through the exact same pipeline** as the rest of this file (Issue-handling
+policy below): branch off `main`, fix + regression test with RED→GREEN proof, staged finding in
+`docs/audit/findings-staging/`, small single-issue PR, merge per the existing merge authorization.
+This expansion changes SCOPE (what to look for), not RIGOR (how a fix gets shipped) — a UI/SEO/GEO/
+product fix earns the same evidence bar as a data-correctness or performance one.
+
+**Additionally: every fix must be logged for next-session market-open validation.** Add an entry to
+`docs/audit/MARKET-OPEN-VALIDATION.md` (follow the existing "WATCH LIST" pattern already in that
+file for HELIX, 2026-08-24 — one dated section per sweep, one bullet per fix, each naming: what
+was broken, what the fix changed, and the SPECIFIC thing to check on the live site/board once the
+market opens that could only be confirmed under real RTH conditions). This is separate from — and
+in addition to — the `docs/audit/findings-staging/` entry every fix already requires; the staging
+entry is the audit record, the MARKET-OPEN-VALIDATION.md entry is the next-session checklist.
+
+**The stated stopping condition — "only stopping when there is literally zero work left to do and
+only when the platform is 0 errors" — is asymptotic, not a real terminal state**, and this file
+already says why: the product keeps running, so there is always a next thing to measure. Reading
+this literally as "eventually stop" would be a misread; the correct reading, consistent with the
+`NEVER SIT IDLE` discipline immediately below and the performance mandate above, is: never
+conclude "done" — keep the coordinator loop running indefinitely, cycle after cycle, treating
+"nothing found this cycle" as a report on this cycle only, never as a reason to stop scheduling the
+next one.
+
 ## NEVER SIT IDLE WHILE WAITING (standing instruction, confirmed 2026-08-28)
 **Waiting on a PR — your own or a lane's — is not a stopping point.** CI pending, a review
 requested from Cursor, another PR's merge, a lane's response: none of these block you from other
