@@ -107,15 +107,20 @@ test("the in-process leader and this module agree on the same gate", () => {
 
 test("vector-snapshot: computeGexWalls spot args reject zero/negative (source scan)", () => {
   const src = read(SNAPSHOT);
-  const inlineGuards = [
-    ...src.matchAll(
-      /spot:\s*s\.fallbackSpot\s*!=\s*null\s*&&\s*s\.fallbackSpot\s*>\s*0\s*\?\s*s\.fallbackSpot\s*:\s*undefined/g
-    ),
-  ];
-  const constSpotGuards = [...src.matchAll(/const spot =\s*\n\s*s\.fallbackSpot != null && s\.fallbackSpot > 0 \? s\.fallbackSpot : undefined/g)];
+  assert.match(
+    src,
+    /function resolveVectorWallSpot\(/,
+    "GAMMA-lens walls must resolve spot through a single guarded helper"
+  );
+  assert.match(
+    src,
+    /typeof s\.fallbackSpot === "number" && Number\.isFinite\(s\.fallbackSpot\) && s\.fallbackSpot > 0/,
+    "resolveVectorWallSpot must reject non-finite and non-positive heatmap spot"
+  );
+  const resolvedSpotCalls = [...src.matchAll(/const spot = resolveVectorWallSpot\(s, t\)/g)];
   assert.ok(
-    inlineGuards.length + constSpotGuards.length >= 2,
-    "GAMMA-lens computeGexWalls calls must guard fallbackSpot > 0"
+    resolvedSpotCalls.length >= 2,
+    "GAMMA-lens computeGexWalls paths must resolve spot via resolveVectorWallSpot"
   );
   assert.doesNotMatch(
     src,
@@ -124,7 +129,7 @@ test("vector-snapshot: computeGexWalls spot args reject zero/negative (source sc
   );
   assert.match(
     src,
-    /if \(spot === undefined\) return s\.cachedWalls/,
-    "WS ladder path must defer when spot is not yet known"
+    /if \(!spot\) \{\s*\n\s*s\.cachedWalls = null/,
+    "getVectorGexWalls must fail closed when spot is not yet known"
   );
 });
