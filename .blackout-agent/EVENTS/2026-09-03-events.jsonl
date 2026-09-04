@@ -8,3 +8,4 @@
 {"ts":"2026-09-03T23:47:05Z","agent":"claude","task_id":"BO-P3-GEXSNAP-ROUND","event":"LEASE_CLAIMED","detail":"claimed via claim-task.mjs, 60min lease"}
 {"ts":"2026-09-03T23:52:00Z","agent":"claude","task_id":"BO-P3-GEXSNAP-ROUND","event":"ROOT_CAUSED","detail":"buildSnapshotFromHeatmap copies heatmap fields with no roundFloats wrap, unlike gex-heatmap/route.ts"}
 {"ts":"2026-09-03T23:55:00Z","agent":"claude","task_id":"BO-P3-GEXSNAP-ROUND","event":"TESTING","detail":"regression test written, proven RED pre-fix / GREEN post-fix via git stash, tsc clean, full npm test running"}
+{"ts":"2026-09-04T00:03:00Z","agent":"claude","task_id":"BO-P3-GEXSNAP-ROUND","event":"PR_OPENED","detail":"PR #3438 opened as draft; converged independently with #3431 (same bug class, different endpoint, zero file overlap)"}
