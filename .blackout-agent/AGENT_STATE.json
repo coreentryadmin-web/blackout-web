@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T00:30:30.525Z",
+  "updated_at": "2026-09-04T00:30:41.044Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -280,6 +280,19 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T00:30:30.525Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T00:30:41.044Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:30:41.044Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "49d14bda-5dd3-4b4b-8deb-b5336a96b8b1",
+      "summary": "PR webhook branch ready: heartbeat-gate fix in claimLock, BO-P1-0007 claimed, peer-reviewed #3438 APPROVED. #3436 merged — autopilot v1 live on main. Next: merge this PR, close duplicate #3435."
     }
   ]
 }
