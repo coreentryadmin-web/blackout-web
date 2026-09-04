@@ -11,6 +11,68 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-04 (22:16 UTC / Fri 2026-09-04 18:16 ET) — [UW rate limiter, follows up PR #3759] First live data from the new queue-wait instrumentation: MANY untagged waits of 11-19s, far more than the tagged "(background sweep)" waits — source not yet conclusively identified
+
+**Severity.** — investigation only, real new evidence, but the causal attribution below is
+explicitly a hypothesis, not confirmed. No code change this pass.
+
+**What the new instrumentation showed, immediately.** PR #3759 (merged ~21:39 UTC today) added
+`[uw] queue wait <ms>ms` logging whenever a UW admission takes ≥500ms, tagged `(background
+sweep)` when the caller is inside `runWithBackgroundUwSweep`. Querying CloudWatch Logs for the
+hour after merge shows the instrumentation working exactly as designed — and immediately
+surfacing something worth flagging: a 30-second window (22:13:20–22:13:49 UTC) on a single ECS
+task/log stream shows **dense, near-continuous queue-wait lines, the large majority NOT tagged
+`(background sweep)`, with waits of 10.5s–19s** (examples: `18469ms`, `17026ms`, `16463ms`,
+`19043ms`, `18382ms`). The tagged background-sweep waits in the same window are comparatively
+few and mostly shorter (562ms–18026ms, more scattered). This is the opposite of what the design
+intent describes: background sweeps are the ones EXPECTED to queue behind live traffic, but the
+untagged bucket dominates the sample and reaches the same severity.
+
+**What "untagged" does and doesn't mean.** Only FOUR crons are wrapped in
+`runWithBackgroundUwSweep` (`vector-full-state-snapshot`, `vector-dark-pool-warm`,
+`bie-full-state-snapshot`, `vector-pick-sweep`, per that helper's own doc comment). Every OTHER
+UW caller — live member requests, but ALSO every other cron that touches UW (`flow-ingest`,
+`swing-active-refresh`, `swing-discovery`, `meridian-warm`, `platform-warm`, `darkpool-discord`,
+`vector-universe-snapshot`, `desk-warm`, `uw-cache-refresh`, and the 0DTE/Night Hawk board-scan
+path) — shows up as "untagged" identically to genuine live traffic. So "untagged" does NOT mean
+"confirmed live member request"; it means "not one of the four already-fixed crons."
+
+**A plausible but NOT CONFIRMED lead.** Non-`queue-wait` log lines on the SAME log stream in the
+same window include `[zerodte-scan]` entries (the 0DTE/Night Hawk whole-market board scan,
+triggered by the `zerodte-warm` cron's call into `refreshZeroDteBoardSnapshot()` →
+`scanZeroDteBoard()`). That code path is explicitly, deliberately NOT wrapped in
+`runWithBackgroundUwSweep` — `zerodte-warm/route.ts`'s own comment states why: *"warmZeroDteBoard
+reads the HELIX flow tape from Postgres — not a UW REST fan-out — and the board snapshot rebuild
+is platform-local. Tagging this as a background UW sweep would mis-account budget without
+protecting live UW traffic."* If that premise is accurate, `zerodte-scan` is NOT the source and
+the untagged burst is genuine live traffic (or one of the other untagged crons). If the premise
+is stale or was only ever true for `warmZeroDteBoard` and not the deeper `scanZeroDteBoard` call
+tree (`enrichSetup`/per-ticker enrichment paths not fully traced this pass), it would be a strong
+candidate.
+
+**Why this is NOT confirmed and NOT fixed this pass.** CloudWatch's `@logStream` field is
+per-ECS-TASK (per container), not per-request — multiple concurrent requests/crons on the same
+web-tier task interleave into the same stream. Seeing `[zerodte-scan]` lines and dense untagged
+`[uw] queue wait` lines on the same stream in the same 30s window is suggestive but not proof of
+causation; the same task could simultaneously be serving live member traffic or another untagged
+cron. Confirming this needs either (a) tracing `scanZeroDteBoard`'s full call tree for an actual
+`throttleUw`/UW-fetch call site, which this pass did not complete, or (b) a request-scoped
+correlation (not available from `@logStream` alone). Given CLAUDE.md's own performance-audit
+discipline ("never fix from a guess when the metric is one API call away"), retagging
+`zerodte-warm`'s scan call — which would directly contradict an existing, deliberate, documented
+design decision — needs that confirmation first, not a plausible correlation.
+
+**Next step, not yet done:** grep `scanZeroDteBoard`'s full transitive call tree
+(`enrichSetup`/`extrasFor`/per-ticker enrichment paths in `board.ts` and siblings) for any
+`throttleUw`/`uw-rate-limiter` import, to settle whether `zerodte-warm/route.ts`'s "platform-local,
+not a UW REST fan-out" comment is still accurate. If it calls UW and isn't tagged, wrapping just
+the cron route's `refreshZeroDteBoardSnapshot()` call (not the shared function itself, which is
+also called from live routes `/api/market/zerodte/board` and `/api/market/nighthawk/horizons` and
+must stay untagged there) would follow the exact precedent the four existing crons already use.
+
+No code changed this pass — investigation only.
+
+---
 ## 2026-09-04 (19:19 UTC / Fri 2026-09-04 15:19 ET) — [Vector, follows up 18:11 UTC entry below] Live UI spot-check reproduces the vector-pick-sweep tail-latency problem hitting a REAL member-facing request — `POST /api/market/vector/contract-picks` timed out (>20s) twice in one page load, RTH
 
 **Severity.** — corroborating evidence for the still-open investigation logged 18:11 UTC below; not
