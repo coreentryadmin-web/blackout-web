@@ -1,10 +1,18 @@
 {
   "agent": "cursor",
+<<<<<<< Updated upstream
   "run_id": "0f5ca4f3-82e5-428e-89e4-f41350dbdd78",
   "last_seen": "2026-09-04T17:57:47.430Z",
   "last_productive_action": "heartbeat",
   "current_task": "BO-P1-0100 peer review #3664/#3667/#3686/#3688",
   "current_phase": "REVIEWING",
+=======
+  "run_id": "6f226085-c70b-4d99-b8f6-5d1a7ac49349",
+  "last_seen": "2026-09-04T18:00:51.252Z",
+  "last_productive_action": "session_start",
+  "current_task": "BO-P1-0100",
+  "current_phase": "RESUMED",
+>>>>>>> Stashed changes
   "branch": null,
   "pr": null,
   "healthy": true
