@@ -11,6 +11,57 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-03 — [Night Hawk / SPX Slayer] Live-verification of the homepage "real-time P&L marks, not end-of-day summaries" claim
+
+**Severity.** — GREEN after one fix (see the 2026-09-03 `nighthawk-closed-play-shows-live-mark`
+finding for the fix itself; this entry is the full live-verification record).
+
+User QA report (2026-09-02) asked for this claim to be validated against actual production
+behavior. Checked all 5 requested points, live against `blackouttrades.com` (temp Clerk
+admin+premium user, deleted after) plus a static read of `src/lib/zerodte/live-marks.ts`,
+`marks-math.ts`, and the SPX play engine:
+
+1. **Contract identity (right strike/expiry).** Live `GET /api/market/zerodte/board`: every
+   ledger row's `occ` (embedded YYMMDD/strike/C-P) matches that same row's own
+   `top_strike`/`expiry`/`direction` columns exactly, across 6 real rows checked (CRCL, BULL,
+   MARA, RIOT, CLS, CLSK). SPX Slayer's `quoteSpxOdteContract` re-quotes off the row's OWN
+   persisted `option_strike`/`option_type` (never re-derived from current price), and always
+   expires 0DTE (today's date) — correct by construction since every SPX Slayer play IS 0DTE.
+   **CORRECT.**
+2. **Quote-side/mid methodology.** `resolveZeroDteMark` (marks-math.ts): mid of a valid two-sided
+   book, else last-trade FLAGGED as such (`source: "last"`), else `none` — never a stale/prior-day
+   close. Applied identically at every call site (one shared function). SPX Slayer's
+   `quoteSpxOdteContract` mirrors the same mid-preferred logic independently (bid/ask average,
+   falling back to whichever side is quoted). **CONSISTENT.**
+3. **Entry basis.** Night Hawk pins `entry_premium` on the ledger row at first flag/commit
+   (`ActiveZeroDtePlay.entry_premium` — "the ONLY entry reference P&L may use", never re-derived);
+   confirmed live that the `/marks` row's `entry_premium` is copied verbatim from the ledger.
+   SPX Slayer stores `option_premium: optionTicket.premium_range` from the SAME quote taken at
+   the moment of commit (`openPlay(...)` in spx-play-engine.ts), not re-fetched later. **CORRECT.**
+4. **Closed positions continuing to show a live mark.** **FOUND A REAL BUG, FIXED.** The 1s
+   live-marks poller's "which contracts are tracked" cache (`ACTIVE_SET_TTL_MS` = 10s) lagged the
+   1s tick's own close detection (`latchMemo`), so a play the 1s lane had already closed (and
+   already persisted CLOSED to the DB) kept appearing in `/api/market/zerodte/marks` (SSE + REST)
+   with a continuing-to-move mark/P&L and `stale:false` for up to ~10s after the actual close —
+   on every single close, not a rare race. See the paired `docs/audit/findings-staging/
+   2026-09-03-nighthawk-closed-play-shows-live-mark.md` entry for the full root-cause/fix/test
+   writeup. SPX Slayer verified separately, live, off-hours: `open_play` cleanly goes `null` with
+   no leftover premium once a session/play closes — the different engine (no shared active-set
+   cache) doesn't share this root cause.
+5. **UI staleness/quote-age indicator.** Night Hawk: **present**, in both UI generations — the
+   production Command Deck (`PlayTerminal.tsx`) renders an explicit LIVE / SYNC / STALE / SESSION
+   CLOSED badge plus a dimmed panel driven by `mark_as_of`/`mark_is_sync`/`stale`; the legacy board
+   (`ZeroDteBoard.tsx`) shows a "· stale" suffix + tooltip. SPX Slayer: **gap, not fixed here** —
+   `SpxDeskTerminal.tsx`/`SpxPlayVerdictBar.tsx` have no age/staleness disclosure on the option
+   ticket's mid; `SpxDeskLaneFreshness.tsx` covers `pulse`/`desk`/`flow` lanes but not
+   `play`/`option_ticket`. The mid is shown as plain text with no indication of how old it is.
+   Flagging as a follow-up (out of scope for the single-issue fix PR above) rather than bundling a
+   UI change into a data-correctness fix.
+
+**Result — one real bug found and fixed (item 4); items 1-3 confirmed correct live; item 5 is a
+real, documented gap on SPX Slayer only, not yet fixed.**
+
+---
 ## 2026-09-03 (18:16 UTC) — [SEO] Lane heartbeat: #2453/#2448 hold, 1 open PR another lane
 
 **Severity.** — (no defect found)

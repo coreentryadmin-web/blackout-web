@@ -334,6 +334,34 @@ test("SSE payload shape: pinned-entry P&L, per-quote asOf, stale flag, idle mark
   assert.equal(idle.marks.length, 0);
 });
 
+test("buildZeroDteLiveMarksPayloadFrom: a play the 1s lane already latched CLOSED is dropped from the payload, even while the 10s active-set cache still carries it", async () => {
+  // BUG (found 2026-09-03): `plays` here can carry an already-closed play for up to
+  // ACTIVE_SET_TTL_MS (10s) after it closes — the entered-set cache only drops it on its
+  // next DB refetch — but `latchedStatus` (the 1s lane's own latchMemo) already knows it's
+  // CLOSED a full cache cycle sooner. Before this fix the builder ignored that and kept
+  // computing a FRESH, moving mark/live_pnl_pct + stale:false for it from the still-ticking
+  // mark store, so a just-closed play kept rendering as an actively-updating "LIVE" position
+  // for up to 10s after it actually closed — the exact claim ("real-time marks, not
+  // end-of-day summaries") this lane exists to keep honest, violated in the other direction.
+  const lm = await loadLane();
+  lm._resetZeroDteLiveMarksForTest();
+  const occ = "O:NVDA260714C00180000";
+  const now = Date.now();
+  // The mark store keeps ticking for this OCC — same as the poller still quoting it because
+  // it's still in the stale active set — a FRESH quote, not a frozen one.
+  lm.putZeroDteLiveMark({ occ, bid: 4.3, ask: 4.5, mid: 4.4, last: 4.35, mark: 4.4, source: "mid", asOf: now, lane: "rest" });
+  const plays = lm.boundActivePlays([ledgerRow({})]); // ledger row's OWN status is still "HOLD"
+  const payload = lm.buildZeroDteLiveMarksPayloadFrom(plays, now, "2026-07-14", lm.getZeroDteLiveMark, () => "CLOSED");
+  assert.equal(payload.marks.length, 0, "the CLOSED-latched row must not appear in the live lane");
+  assert.equal(payload.idle, true, "with nothing else tracked, the payload reports idle");
+
+  // A play the 1s lane has NOT (yet) latched closed still rides through normally.
+  const open = lm.buildZeroDteLiveMarksPayloadFrom(plays, now, "2026-07-14", lm.getZeroDteLiveMark, () => "HOLD");
+  assert.equal(open.marks.length, 1);
+  assert.equal(open.marks[0]!.status, "HOLD");
+  assert.equal(open.marks[0]!.stale, false);
+});
+
 test("poller tick: WS-fresh contracts skip REST; misses get ONE batched snapshot call", async () => {
   const lm = await loadLane();
   lm._resetZeroDteLiveMarksForTest();
