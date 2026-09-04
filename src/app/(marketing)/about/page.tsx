@@ -19,7 +19,7 @@ export const metadata: Metadata = publicPageMetadata(
 
 const WHAT_WE_DO = `BlackOut Trades is an options analytics platform built on one idea: the data that moves the market should be available to everyone, not just the desks.
 
-We map **dealer gamma exposure**, **institutional options flow**, and **dark pool activity** into a single positioning picture — the same lens professional desks trade through. Then we grade every setup, log every outcome publicly, and explain the reasoning in plain language. No black boxes, no hidden ledgers.
+We map **dealer gamma exposure**, **institutional options flow**, and **dark pool activity** into a single positioning picture — the same lens professional desks trade through. Then we grade every SPX Slayer, Night Hawk, and 0DTE Command setup, log every outcome publicly, and explain the reasoning in plain language. No black boxes, no hidden ledgers.
 
 We are **not a broker**. BlackOut does not execute trades, route orders, or manage money. Everything on the platform is analytics and education — you make your own decisions in your own account.`;
 
