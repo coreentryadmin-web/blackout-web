@@ -1,6 +1,6 @@
 ## 2026-09-04 — [BUG, P3 correctness-audit tooling] Night Hawk verifier's premium-vs-chain freshness gate treated a future-dated `published_at` as "fresh" — same clock-skew shape already fixed at 17+ other sites this session
 
-> **kind:** FINDING
+> **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
