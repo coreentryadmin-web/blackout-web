@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { roundFloats } from "@/lib/round-floats";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { normalizeRow, type DarkPoolRow } from "./normalize";
@@ -26,7 +27,10 @@ export async function GET(req: NextRequest) {
       .filter((r) => r.premium >= min_premium)
       .sort((a, b) => b.premium - a.premium);
 
-    return NextResponse.json({ prints, count: prints.length }, { headers: NO_STORE_HEADERS });
+    return NextResponse.json(
+      roundFloats({ prints, count: prints.length }),
+      { headers: NO_STORE_HEADERS }
+    );
   } catch (err) {
     console.error("[dark-pool]", err);
     return NextResponse.json({ prints: [], count: 0 }, { status: 503 });
