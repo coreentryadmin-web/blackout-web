@@ -2185,3 +2185,9 @@ than an end-of-session patch.
 - **What changed:** WS ladder path returns cached walls until spot is known; horizon WS path skips unconstrained compute when spot missing. Builds on spot > 0 guard from prior commit on this branch.
 - **RTH check:** On `/vector` for SPX/SPY/QQQ at session open (first ~30s after 09:30 ET), confirm call walls sit above spot and put walls below spot — no inverted geometry flash.
 
+### 28. 0DTE admin sim board — unrounded floats at API boundary — fix/zerodte-board-sim-roundfloats — 2026-09-04
+
+- **What was broken:** `GET /api/market/zerodte/board?sim=1` (admin-only) served sim frames from Redis without `roundFloats` at the route boundary. Member path rounds inside `zerodte-service.ts`, but sim ingest bypasses that pipeline — synthetic/replay frames could expose IEEE float tails on the admin sim desk.
+- **What changed:** Wrap both sim and member board success responses in `roundFloats()` at `board/route.ts`.
+- **RTH check:** Seed admin sim (`/nighthawk?sim=1`), inspect board JSON or rendered premiums/PnL — confirm 2dp-clean values with no IEEE tails on sim frames.
+
