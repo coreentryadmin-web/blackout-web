@@ -40,7 +40,9 @@ const prData = prView.status === 0 ? JSON.parse(prView.stdout) : {};
 const branch = prData.headRefName ?? "";
 const builder = classifyBranch(branch, prData);
 const builderTag = builderLabel(builder);
-const reviewer = reviewerForBranch(branch, prData) ?? args.agent;
+// reviewerForBranch always returns "claude" or "cursor" now (never null), so a `?? args.agent`
+// fallback here was dead code -- CodeQL's "useless conditional" flagged it correctly.
+const reviewer = reviewerForBranch(branch, prData);
 
 const bootstrap = spawnSync("node", ["scripts/blackout-agent/dispatch-prompt.mjs", `--agent=${reviewer}`], {
   encoding: "utf8",
