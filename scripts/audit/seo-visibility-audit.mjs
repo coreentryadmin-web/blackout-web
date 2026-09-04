@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
 import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
+import { isTransientCurlFailure, withTransientRetry } from "./lib/curl-transient-retry.mjs";
 
 const APP = (process.env.AUDIT_APP_URL || process.env.VALIDATE_BASE || "https://blackouttrades.com").replace(/\/$/, "");
 const SECRET = process.env.CLERK_SECRET_KEY?.trim();
@@ -120,24 +121,27 @@ async function mintSession() {
     return null;
   }
 
-  const si = curl({
-    method: "POST",
-    url: `${FAPI}/v1/client/sign_ins?_clerk_js_version=${CJS}`,
-    headers: { Origin: APP, Referer: `${APP}/`, "Content-Type": "application/x-www-form-urlencoded" },
-    form: { strategy: "ticket" },
-    urlencodeForm: { ticket },
-    saveJar: true,
-    jar: true,
-  });
+  const si = await withTransientRetry(() =>
+    curl({
+      method: "POST",
+      url: `${FAPI}/v1/client/sign_ins?_clerk_js_version=${CJS}`,
+      headers: { Origin: APP, Referer: `${APP}/`, "Content-Type": "application/x-www-form-urlencoded" },
+      form: { strategy: "ticket" },
+      urlencodeForm: { ticket },
+      saveJar: true,
+      jar: true,
+    }),
+  );
   const sid = J(si)?.response?.created_session_id;
   if (!sid) {
-    rec("auth", "FAIL", "Clerk ticket exchange failed");
+    const hint = isTransientCurlFailure(si) ? ` (${si.err?.slice(0, 80) || "transient network"})` : "";
+    rec("auth", "FAIL", `Clerk ticket exchange failed${hint}`);
     await backend("DELETE", `/users/${userId}`);
     return null;
   }
 
   const clientUat = Math.floor(Date.now() / 1000);
-  const tok = J(
+  const tokRes = await withTransientRetry(() =>
     curl({
       method: "POST",
       url: `${FAPI}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`,
@@ -145,10 +149,12 @@ async function mintSession() {
       jar: true,
       saveJar: true,
     }),
-  )?.jwt;
+  );
+  const tok = J(tokRes)?.jwt;
 
   if (!tok) {
-    rec("auth", "FAIL", "session JWT missing");
+    const hint = isTransientCurlFailure(tokRes) ? ` (${tokRes.err?.slice(0, 80) || "transient network"})` : "";
+    rec("auth", "FAIL", `session JWT missing${hint}`);
     await backend("DELETE", `/users/${userId}`);
     return null;
   }
