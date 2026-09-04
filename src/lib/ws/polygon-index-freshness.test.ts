@@ -13,3 +13,16 @@ test("getIndexFeedFreshness rejects far-future updatedAt as stalled (source scan
     "far-future index ticks must not read as live via Math.max(0, now - updatedAt)"
   );
 });
+
+test("getIndexStoreStatus: symbol ageMs comes from getIndexFeedFreshness, not raw Date.now()-updatedAt", () => {
+  assert.match(
+    src,
+    /getIndexStoreStatus[\s\S]*?getIndexFeedFreshness\(sym\)/,
+    "admin/socket-health index ages must share the same future-timestamp guard as getIndexFeedFreshness"
+  );
+  assert.doesNotMatch(
+    src,
+    /getIndexStoreStatus[\s\S]*?Date\.now\(\)\s*-\s*indexStore\[sym\]\.updatedAt/,
+    "raw age math in getIndexStoreStatus would report clock-skewed future ticks as live"
+  );
+});
