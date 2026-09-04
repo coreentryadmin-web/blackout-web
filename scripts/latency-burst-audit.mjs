@@ -1,9 +1,23 @@
 #!/usr/bin/env node
 /**
- * Burst latency probe — N rounds across hot paths, staging vs prod.
- * Usage: node scripts/latency-burst-audit.mjs [--rounds=5]
+ * Burst latency probe — N rounds across production hot paths.
+ *
+ * Was "staging vs prod". Two independent dead dependencies made every run of this
+ * npm-wired script (`validate:latency-burst`) fail before probing anything:
+ *   - `loadStagingCron()` read Secrets Manager's `blackout-staging/app/env`, which no longer
+ *     exists — the whole `blackout-staging-*` stack was permanently decommissioned 2026-07-25
+ *     (CLAUDE.md: "Do NOT reference the deleted blackout-staging-* stack or
+ *     staging.blackouttrades.com"), confirmed live via `secretsmanager.describe_secret` ->
+ *     ResourceNotFoundException.
+ *   - `loadProdCron()` shelled out to the `railway` CLI, a tool this project stopped using when
+ *     infra moved to AWS ECS — dead on any machine without it installed for this purpose (it does
+ *     fall back to `process.env.CRON_SECRET` on failure, so this half was latent rather than
+ *     fatal, but it is still a reference to infrastructure that no longer runs this app).
+ * Production is the only environment now; this is a single-target burst probe against it, reading
+ * CRON_SECRET from the environment the way every other current audit script does.
+ *
+ * Usage: CRON_SECRET=... node scripts/latency-burst-audit.mjs [--rounds=5]
  */
-import { execSync, spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
@@ -25,33 +39,6 @@ const PATHS = [
   "/api/market/regime",
   "/api/market/vector/universe",
 ];
-
-function loadProdCron() {
-  const res = spawnSync(
-    "railway",
-    [
-      "variables",
-      "--service",
-      "blackout-web",
-      "--environment",
-      "production",
-      "--project",
-      process.env.RAILWAY_PROJECT_ID ?? "9282f541-a288-4c8b-a174-ee22016f4b1a",
-      "--json",
-    ],
-    { encoding: "utf8", env: process.env }
-  );
-  if (res.status !== 0) return process.env.CRON_SECRET?.trim() ?? null;
-  return JSON.parse(res.stdout).CRON_SECRET?.trim() ?? process.env.CRON_SECRET?.trim() ?? null;
-}
-
-function loadStagingCron() {
-  const raw = execSync(
-    'aws secretsmanager get-secret-value --secret-id blackout-staging/app/env --query SecretString --output text',
-    { encoding: "utf8" }
-  );
-  return JSON.parse(raw).CRON_SECRET?.trim();
-}
 
 async function warm(base, cron) {
   for (const p of ["/api/cron/desk-warm?force=1", "/api/cron/heatmap-warm?force=1"]) {
@@ -121,26 +108,14 @@ async function runEnv(label, base, cron) {
 }
 
 async function main() {
-  const stagingCron = loadStagingCron();
-  const prodCron = loadProdCron();
-  if (!stagingCron || !prodCron) {
-    console.error("Need staging secret + CRON_SECRET for prod");
+  const prodCron = process.env.CRON_SECRET?.trim();
+  if (!prodCron) {
+    console.error("Need CRON_SECRET for prod");
     process.exit(1);
   }
-  const staging = await runEnv("STAGING", "https://staging.blackouttrades.com", stagingCron);
   const prod = await runEnv("PRODUCTION", "https://blackouttrades.com", prodCron);
 
-  console.log("\n=== Head-to-head (p50 ms, lower wins) ===\n");
-  for (let i = 0; i < PATHS.length; i++) {
-    const p = PATHS[i];
-    const s = staging[i].p50;
-    const pr = prod[i].p50;
-    const delta = s - pr;
-    const winner = delta < -10 ? "staging" : delta > 10 ? "prod" : "tie";
-    console.log(`  ${p.padEnd(42)} staging=${String(s).padStart(4)} prod=${String(pr).padStart(4)} Δ${delta >= 0 ? "+" : ""}${delta}ms → ${winner}`);
-  }
-
-  const report = { ts: new Date().toISOString(), rounds: ROUNDS, staging, prod };
+  const report = { ts: new Date().toISOString(), rounds: ROUNDS, prod };
   const outPath = join(OUT, `latency-burst-${Date.now()}.json`);
   writeFileSync(outPath, JSON.stringify(report, null, 2));
   console.log(`\nReport: ${outPath}`);
