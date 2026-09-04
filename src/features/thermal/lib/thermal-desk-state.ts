@@ -157,8 +157,9 @@ const CROSS_CHECK_OFF_TITLE =
  * helper takes the answer as an input rather than calling it, to stay pure and testable.
  *
  * `marketOpen: null` means NOT YET KNOWN (pre-hydration — the caller resolves the clock in an
- * effect to avoid an SSR/client mismatch, the same way ThermalFreshnessBar does). Unknown must
- * never render as live: claiming live and correcting it a tick later is the failure we are fixing.
+ * effect to avoid an SSR/client mismatch, the same way `ThermalMatrixFreshnessChip` in
+ * `ThermalTripleDesk.tsx` does). Unknown must never render as live: claiming live and correcting
+ * it a tick later is the failure we are fixing.
  */
 /**
  * The compare strip's cadence/liveness label.

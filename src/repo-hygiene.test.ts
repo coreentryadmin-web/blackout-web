@@ -84,6 +84,62 @@ test("no scripts/audit/*.mjs POLYGON_API_BASE self-default is a non-URL placehol
   assert.deepEqual(bad, [], `these self-defaults are broken:\n  ${bad.join("\n  ")}`);
 });
 
+/**
+ * Guards against these six modules being reintroduced dead.
+ *
+ * All shipped between #684 ("modular monolith feature folders") and #1210, and were never
+ * imported by anything else in the repo — no component, no route, no barrel re-export, no test.
+ * Confirmed by grepping the whole tree for each file's basename and every symbol it exports; each
+ * hit was the file's own declaration (or, for the three "superseded" ones below, a prose comment
+ * in the file that replaced it, explaining why it isn't used — never an actual import).
+ *
+ * Two are simply unfinished: `useSpxDayPerformance` computes a "today's SPX win rate" stat off
+ * the live `/api/market/spx/outcomes` route but was never wired into a card, and
+ * `spx-sniper-backdrops.ts` names ONE of four shipped `/spx-sniper/*.webp` hero images and emits
+ * `spx-sniper-tint-*` CSS classes that are defined nowhere — even wired up today it would render
+ * unstyled. `spx-session-phase.ts`'s doc comment claims it feeds "commentary + BIE composers",
+ * neither of which calls it.
+ *
+ * The other three were SUPERSEDED, not abandoned:
+ *  - `ThermalFreshnessBar` — `ThermalTripleDesk.tsx` grew its own inline
+ *    `ThermalMatrixFreshnessChip`, a strict subset (Matrix chip only) of what this showed (Matrix
+ *    + overlays + cross-val + wall-scope label); nothing pointed back at the fuller original.
+ *  - `LandingBackdrop` — replaced by `StaticLandingBackdrop.tsx` (same idea, no framer-motion
+ *    loops); `PricingBackdrop.tsx`'s own doc comment names it only to contrast itself against it.
+ *  - `LearnPageShell` — `/learn`'s layout explicitly "drops the inner LearnPageShell/PageShell"
+ *    per its own comment, to avoid a duplicate `<main id="main">` once `/learn` moved under the
+ *    marketing group's shell.
+ *
+ * `src/components/ScrollProgressBar.tsx` is the SAME kind of zero-importer orphan and was found in
+ * this same sweep, but is deliberately NOT on this list and was NOT removed — FINDINGS.md
+ * (2026-08-30, "ScrollProgressBar.tsx is a fully-built, never-wired-in component") already flagged
+ * it for the landing-page owner to decide wire-in-vs-delete rather than removing it unilaterally,
+ * and that decision has not been made yet. Re-flagging, not re-deciding.
+ *
+ * A file with zero importers is easy to miss forever — nothing fails, nothing lints, `tsc` is
+ * silent, and each one predates most of the tests in this repo. This is a narrow allowlist of
+ * PATHS, not a live orphan scanner: a generic "grep every file's basename" check would misfire on
+ * Next.js `page.tsx`/`route.ts`/`layout.tsx` files, which the framework wires by filesystem
+ * convention rather than by import.
+ */
+test("known-orphaned modules stay removed", () => {
+  const removed = [
+    "src/features/spx/hooks/useSpxDayPerformance.ts",
+    "src/features/spx/lib/spx-sniper-backdrops.ts",
+    "src/features/spx/lib/spx-session-phase.ts",
+    "src/features/thermal/components/ThermalFreshnessBar.tsx",
+    "src/components/landing/LandingBackdrop.tsx",
+    "src/components/learn/LearnPageShell.tsx",
+  ];
+  const present = tracked().filter((p) => removed.includes(p));
+  assert.deepEqual(
+    present,
+    [],
+    `these dead files were removed as unused (see comment above) — do not reintroduce without ` +
+      `wiring them into something that imports them:\n  ${present.join("\n  ")}`
+  );
+});
+
 test("gitignore entries for node_modules have no trailing slash", () => {
   // A trailing slash restricts the pattern to directories, leaving a same-named symlink or file
   // un-ignored. Every node_modules rule must match regardless of file type.
