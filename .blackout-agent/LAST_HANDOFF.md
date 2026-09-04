@@ -1,17 +1,18 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T12:48:06.884Z
-**Run:** 072758a3-0684-479a-b95a-27416aabb9c3
+**At:** 2026-09-04T19:06:18.160Z
+**Run:** a75321b9-dff2-45fc-89e3-18ea7077653d
 
 ## Summary
 
-Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs.
+workflow_run wake: full RTH lifecycle GREEN. ops:collect 0, data-validator 44/44 PASS, rth-sweep 0 P0/P1, platform-integrity 14/14, seo 22/22, vector-rth-quick GREEN. No open PRs. ECR deploy #33908011589 pending but live healthy. Playwright installed for rth-sweep.
 
 ## Deploy
 
-- main: `9cfdf5076156a14f2dcc2653a280705ab4e4e118`
+- main: `7df56d9a91eb8581722ae51d9d4915bcecf353e3`
 - status: 
 
 ## Open PRs
 
-_none_
+- #3724 [cursor] chore(autopilot): cursor handoff — merged #3700/#3717, #3698 awaiting Claude review
+- #3698 [cursor] feat(zerodte): liquid strike fallback + BREAKOUT cortex/thesis relief
