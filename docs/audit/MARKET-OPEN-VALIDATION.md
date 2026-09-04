@@ -153,6 +153,22 @@ under job key `cron-staleness-watchdog-self-heal` (query `GET /api/admin/cron-he
 `cron_job_runs` table directly) with a `healed` array naming the re-warmed job(s) and their real
 `ok`/`status` — not just the watchdog's own always-`ok:true` row. No self-heal firing at all during
 RTH (the common case) means nothing to check — the fix is dormant, not exercised, that day.
+
+### 0r. flow-liveness heartbeat age/freshness false-positive on cross-replica clock skew — fix/flow-liveness-clock-skew (pending)
+
+**What was broken:** `peekFlowLivenessHeartbeat`, `isFlowFrameFreshFromCluster`, and
+`isFlowFrameFreshAnywhere` used raw `Date.now() - record.at` for freshness. A replica whose clock
+reads ahead of the writer reported negative `ageMs`, which still satisfied `ageMs <= maxAgeMs` —
+marking a heartbeat as fresh when `age_sec` display was already clamped to 0 (inconsistent admin
+panel) and potentially letting the flow-ingest REST-skip gate trust a future-dated heartbeat.
+
+**Fix:** Shared `flowHeartbeatAgeMs()` clamps to `Math.max(0, now - at)` before every freshness
+comparison and `age_sec` display.
+
+**Check at the open:** Admin → System Vitals → flow heartbeat `age_sec` never negative during RTH;
+if a replica's `flow_data_age_ms` reads stale but cluster heartbeat is present, corroboration via
+`peekFlowLivenessHeartbeat` should agree (no false "fresh elsewhere" from skew alone).
+
 ### 0o. `spx-signal-weight-optimize` cron threw an uncaught RangeError on `?days=`/`?days=abc` — fix/spx-signal-weight-optimize-nan-crash (pending)
 
 **What was broken:** `GET /api/cron/spx-signal-weight-optimize?days=` (empty value, or a bare

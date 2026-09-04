@@ -44,6 +44,11 @@ let lastWriteAt = 0;
 // wasteful. One write per 5s keeps the heartbeat fresh without hammering Redis.
 const WRITE_THROTTLE_MS = 5_000;
 
+/** Clamp cross-replica clock skew so a future `at` never reads as negative age or false-fresh. */
+export function flowHeartbeatAgeMs(at: number, now = Date.now()): number {
+  return Math.max(0, now - at);
+}
+
 /**
  * Record that THIS replica just delivered a live UW flow frame. Best-effort and
  * never throws — a heartbeat write failure must never break flow persistence.
@@ -77,7 +82,8 @@ export async function isFlowFrameFreshFromCluster(maxAgeMs = 120_000): Promise<b
     if (!record || typeof record.at !== "number") return false;
     // A heartbeat written by THIS process must not let it skip its own REST work.
     if (record.instance === INSTANCE_ID) return false;
-    return Date.now() - record.at <= maxAgeMs;
+    const ageMs = flowHeartbeatAgeMs(record.at);
+    return ageMs <= maxAgeMs;
   } catch {
     return false;
   }
@@ -105,7 +111,8 @@ export async function isFlowFrameFreshAnywhere(maxAgeMs = 120_000): Promise<bool
   try {
     const record = await sharedCacheGet<HeartbeatRecord>(HEARTBEAT_KEY);
     if (!record || typeof record.at !== "number") return false;
-    return Date.now() - record.at <= maxAgeMs;
+    const ageMs = flowHeartbeatAgeMs(record.at);
+    return ageMs <= maxAgeMs;
   } catch {
     return false;
   }
@@ -145,11 +152,11 @@ export async function peekFlowLivenessHeartbeat(maxAgeMs = 120_000): Promise<Flo
     if (!record || typeof record.at !== "number") {
       return { heartbeat_present: false, last_frame_at: null, age_sec: null, fresh: false };
     }
-    const ageMs = Date.now() - record.at;
+    const ageMs = flowHeartbeatAgeMs(record.at);
     return {
       heartbeat_present: true,
       last_frame_at: new Date(record.at).toISOString(),
-      age_sec: Math.max(0, Math.round(ageMs / 1000)),
+      age_sec: Math.round(ageMs / 1000),
       fresh: ageMs <= maxAgeMs,
     };
   } catch {
