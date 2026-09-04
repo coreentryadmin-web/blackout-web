@@ -8,6 +8,7 @@
 // never to a fabricated value.
 
 import { CONVICTION_A_MIN_SCORE } from "@/lib/nighthawk/cortex/compose";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "./marks-math";
 // Type-only (erased): the tier shapes come from the engine so the reader below can
 // never drift from what assignZeroDteTier/tierForSkip actually emit.
 import type { TierFactor, ZeroDteTier, ZeroDteTierAssignment } from "./tiers";
@@ -397,7 +398,10 @@ export function resolveZeroDteReadiness(input: {
   if (!input.sessionLive) {
     return { tone: "green", label: "OFF-HOURS", detail: "Session closed — board frozen at the final state." };
   }
-  if (input.asOfAgeMs != null && input.asOfAgeMs > staleAfter) {
+  if (
+    input.asOfAgeMs != null &&
+    (input.asOfAgeMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS || input.asOfAgeMs > staleAfter)
+  ) {
     return { tone: "amber", label: "DELAYED", detail: "Board response is stale — numbers may lag the tape." };
   }
   if (input.hasLivePlays && input.marksTransport == null) {
