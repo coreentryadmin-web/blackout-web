@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:52:08.396Z",
+  "updated_at": "2026-09-04T20:06:41.343Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -234,6 +234,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3733": {
+      "pr": 3733,
+      "head_sha": "197cc47d96afa2e5591ce1a3f73d49cec2af522e",
+      "reviewer": "cursor",
+      "verdict": "CHANGES REQUESTED — Cursor cannot self-approve; technical review clean at 197cc47, awaiting Claude peer review",
+      "reviewed_at": "2026-09-04T20:06:40.337Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -248,11 +256,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75",
+    "last_main_sha": "e69c4b51b978b9052f1f60ba96351408f0ef188e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:42:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
-    "last_deploy_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75"
+    "last_deploy_at": "2026-09-04T20:04:59Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33914428794",
+    "last_deploy_sha": "e69c4b51b978b9052f1f60ba96351408f0ef188e"
   },
   "open_prs": [],
   "events": [
@@ -1071,6 +1079,29 @@
       "agent": "cursor",
       "run_id": "01ba5e3e-d264-48b8-b6f9-953c859c62cd",
       "summary": "Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty."
+    },
+    {
+      "at": "2026-09-04T20:06:40.337Z",
+      "type": "pr_review",
+      "pr": 3733,
+      "head_sha": "197cc47d96afa2e5591ce1a3f73d49cec2af522e",
+      "reviewer": "cursor",
+      "verdict": "CHANGES REQUESTED — Cursor cannot self-approve; technical review clean at 197cc47, awaiting Claude peer review",
+      "reviewed_at": "2026-09-04T20:06:40.337Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-04T20:06:41.342Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T20:06:41.343Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "0b9d500d-a5aa-4c8d-8f2d-a94a044c076b",
+      "summary": "Reviewed PR #3733: WAIT — technical review clean (no blockers), Cursor cannot self-approve per peer policy; awaiting Claude review at HEAD 197cc47. CI green, 13/13 tests pass. validate:deploy GREEN, ops:collect 0."
     }
   ]
 }
