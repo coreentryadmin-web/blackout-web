@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T14:20:14.954Z",
+  "updated_at": "2026-09-04T15:03:14.324Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T13:43:05.343Z",
-      "lease_until": "2026-09-04T15:23:56.050Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-04T14:47:43.761Z",
+      "lease_until": "2026-09-04T16:30:43.280Z",
+      "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "74873524-b5bc-42e8-aca1-5f017c4abdfe",
+      "run_id": "53ea6f27-7d88-49aa-9270-6beef0199606",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -112,6 +112,17 @@
       "reviewer": null,
       "run_id": null,
       "title": null
+    },
+    "BO-P1-0102": {
+      "task_id": "BO-P1-0102",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T15:00:42.329Z",
+      "lease_until": "2026-09-04T16:30:43.280Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "53ea6f27-7d88-49aa-9270-6beef0199606"
     }
   },
   "reviews": {
@@ -232,11 +243,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "c293cb8ac791424b19dfceb6837b0f972ab61312",
+    "last_main_sha": "b316d164b0d8ae9ee5b7b699e6b6690cc181e146",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T14:09:49Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33882136477",
-    "last_deploy_sha": "c946460d35053d600b70bb20ba2a64acc4c4acc2"
+    "last_deploy_at": "2026-09-04T14:52:27Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33886237394",
+    "last_deploy_sha": "b316d164b0d8ae9ee5b7b699e6b6690cc181e146"
   },
   "open_prs": [],
   "events": [
@@ -929,6 +940,19 @@
       "agent": "cursor",
       "run_id": "15e56a32-3580-483b-b708-1947c034aff9",
       "summary": "Cycle complete: peer-reviewed+merged #3588 (regime-dead-zone audit), #3591 (VP label collision), #3592 (data-validator HOD minutes), #3594 (SPX cross-tool stale matrix). #3589 approved (superseded). Agent state on cursor/agent-state-handoff-2026-09-04. validate:deploy GREEN, ops:collect 0. Off-hours — no open PRs pending review."
+    },
+    {
+      "at": "2026-09-04T15:03:14.324Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:03:14.324Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "928f313e-bd61-4e84-8be6-ce82ba9c0231",
+      "summary": "pull_request dispatch cycle: pr-sweep empty (0 open PRs). Merged #3603 meridian protected-route + #3601 telemetry Sentry noise fix on main b316d164b. ECR deploy 33886237394 pending. validate:deploy + validate:rth-open + full RTH lifecycle GREEN (11:01 ET Fri). ops:collect 0. GitHub GraphQL rate-limited. Post-deploy: verify /meridian 307 + robots disallow after ECS rollout."
     }
   ]
 }
