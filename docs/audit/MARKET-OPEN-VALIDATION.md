@@ -1545,9 +1545,9 @@ for the whole session where the design intent is a 20-minute lock. It was left a
 LOOSENS a fail-closed guard on a live risk device, and that deserves a deliberate decision rather
 than an end-of-session patch.
 
-### 19. Vector universe GEX wall spot-zero guard — 2026-09-04
+### 20. Vector SPX SSE candle REST fallback — 2026-09-04
 
-- **What was broken:** `vector-universe.ts` passed `spot: 0` into `computeGexWalls` when chain spot was transiently zero, persisting wrong-side walls into narrowed-horizon history.
-- **What changed:** Both blended and narrowed-horizon `computeGexWalls` calls now use `spot != null && spot > 0 ? spot : undefined`.
-- **RTH check:** On `/vector` during RTH, pick a dynamic ticker (e.g. INVERT fixture row in admin) and confirm top call/put walls sit on the correct side of spot; no wall-history samples with inverted geometry after a spot=0 chain miss.
+- **What was broken:** `getVectorLiveCandle("SPX")` returned null on the SSE stream at the 09:30 open when `getCurrentSpxCandle()` had no bar yet (WS cold / replica handoff), while walls and flip were already present — `vector-e2e-audit` FAIL `candle null during RTH`.
+- **What changed:** SPX now falls through to `getRestFallbackCandle()` (`fetchIndexSnapshot("I:SPX")`) when the WS store is empty, matching non-SPX tickers.
+- **RTH check:** During the first 5 minutes after 09:30 ET, open `/vector` (or probe `GET /api/market/vector/stream?ticker=SPX`) and confirm the first SSE frame carries `candle.close > 0` alongside walls; re-run `node scripts/vector-e2e-audit.mjs` — `api:vector-stream-payload` must PASS.
 
