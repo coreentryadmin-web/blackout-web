@@ -33,7 +33,12 @@ export type BreadthTone =
   | "strongly_negative"
   | "unknown";
 
-export type BreadthMover = { ticker: string; change_pct: number; price: number; volume?: number };
+export type BreadthMover = {
+  ticker: string;
+  change_pct: number | null;
+  price: number;
+  volume?: number;
+};
 
 export type MarketBreadthBundle = {
   /** Session date (YYYY-MM-DD ET) the breadth was computed for. */

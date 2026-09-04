@@ -83,7 +83,7 @@ export type MarketWideContext = {
   /** UW market-wide unusual trades — flagged by UW's internal algo as abnormal activity. */
   unusual_trades: Record<string, unknown>[];
   /** Polygon gainers/losers — today's biggest % movers (momentum candidates). */
-  market_movers: Array<{ ticker: string; change_pct: number; price: number; volume?: number }>;
+  market_movers: Array<{ ticker: string; change_pct: number | null; price: number; volume?: number }>;
   /** Whole-market breakout screen (P2b) — closed-strong, high-volume movers from the grouped-daily
    *  summary already fetched for breadth (no extra API call). Feeds the discovery `breakout` lane. */
   breakout_movers: import("./candidates").BreakoutMover[];

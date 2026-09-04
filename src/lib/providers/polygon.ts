@@ -335,12 +335,17 @@ export async function fetchMarketMovers(limit = 20) {
     ),
   ]);
 
-  const mapMover = (t: SnapshotTicker) => ({
-    ticker: String(t.ticker ?? "").replace("X:", ""),
-    change_pct: Number((t.todaysChangePerc ?? 0).toFixed(2)),
-    price: t.day?.c ?? t.prevDay?.c ?? 0,
-    volume: t.day?.v,
-  });
+  const mapMover = (t: SnapshotTicker) => {
+    const raw = t.todaysChangePerc;
+    const change_pct =
+      raw != null && Number.isFinite(Number(raw)) ? Number(Number(raw).toFixed(2)) : null;
+    return {
+      ticker: String(t.ticker ?? "").replace("X:", ""),
+      change_pct,
+      price: t.day?.c ?? t.prevDay?.c ?? 0,
+      volume: t.day?.v,
+    };
+  };
 
   // Filter out warrants (W suffix), reverse-split artifacts (<$1), and
   // micro-cap shells with negligible volume (<100K shares) that pollute the list.
@@ -355,7 +360,9 @@ export async function fetchMarketMovers(limit = 20) {
     ...(losers.tickers ?? []).slice(0, limit).map(mapMover).filter(isClean),
   ];
 
-  return combined.sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+  return combined.sort(
+    (a, b) => Math.abs(b.change_pct ?? 0) - Math.abs(a.change_pct ?? 0)
+  );
 }
 
 type IndexResult = {
