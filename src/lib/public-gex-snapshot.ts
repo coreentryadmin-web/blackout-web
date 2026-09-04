@@ -1,6 +1,7 @@
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { captureError } from "@/lib/error-sink";
 import { sharedCacheGet, sharedCacheSet, sharedCacheDel } from "@/lib/shared-cache";
+import { roundFloats } from "@/lib/round-floats";
 import {
   applyPublicReadFreshnessGate,
   classifyWall,
@@ -188,7 +189,18 @@ function buildSnapshotFromHeatmap(
     heatmap.gex.put_wall != null && heatmap.gex.put_wall < heatmap.spot
       ? heatmap.gex.put_wall
       : null;
-  return {
+  // roundFloats: heatmap.spot/change_pct/call_wall/put_wall/flip come straight from
+  // fetchGexHeatmap's own IEEE-754 money-math (spot is frequently `spy.price * 10`, see
+  // polygon-options-gex.ts) with no rounding applied at the source — every OTHER consumer
+  // (gex-heatmap/route.ts's Thermal route, mobile/ticker, track-record, etc.) wraps its
+  // response in roundFloats() before serving it; this endpoint is public/unauthenticated
+  // (the /tools/gamma-snapshot lead magnet + homepage promo) and was missing that same
+  // wrap, so it could serve a value like `spot: 7499.360000000001` verbatim on the one
+  // gamma surface with the LEAST context to explain a stray 13-digit float to a visitor
+  // who was never a member. Applied only to the freshly-computed object (not the whole
+  // return value) so string/boolean/enum fields above are untouched and only genuine
+  // float noise gets rounded (integers pass through roundFloats unchanged).
+  return roundFloats({
     available: true,
     ticker,
     spot: heatmap.spot,
@@ -220,7 +232,7 @@ function buildSnapshotFromHeatmap(
     ...(heatmap.expires_at !== undefined ? { expires_at: heatmap.expires_at } : {}),
     degraded: false,
     degraded_note: null,
-  };
+  });
 }
 
 async function resolveMiss(
