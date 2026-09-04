@@ -180,6 +180,45 @@ test("the reconciler is idempotent — a second --apply is a no-op", () => {
   );
 });
 
+test("a body mention of a pass-log phrase does not sweep a real FINDING into RUN-LOG.md", () => {
+  // classify() scans a 1500-char window (heading + body), not just the heading. PASS_LOG's
+  // "Post-close fix agent" / "all validators GREEN" patterns are meant to catch a pass log's own
+  // self-describing HEADING (`## ... Post-close fix agent — all validators GREEN`) — but unanchored,
+  // they also match a real FINDING whose body prose merely mentions either phrase as context (e.g.
+  // "the post-close fix agent reported a FAIL" or "regression check: all validators GREEN"). Found
+  // 2026-09-04: exactly this swept a real P2 harness-bug FINDING into RUN-LOG.md. Both patterns are
+  // now heading-anchored (`^##`); this pins that a body-only mention stays classified as a FINDING.
+  const heading = "2026-01-01 — [FINDING, P2 infra] harness falsely FAILed — FIXED";
+  const body = [
+    `## ${heading}`,
+    "",
+    "| Field | Detail |",
+    "|---|---|",
+    "| **What prompted this** | The post-close fix agent reported a FAIL that turned out to be a harness bug. |",
+    "| **Regression guard** | Post-fix, all validators GREEN on prod. |",
+  ].join("\n");
+
+  const dir = mkdtempSync(join(tmpdir(), "findings-passlog-anchor-"));
+  const f = join(dir, "FINDINGS.md");
+  const r = join(dir, "RUN-LOG.md");
+  writeFileSync(f, body + "\n");
+  execFileSync("node", ["scripts/audit/findings-reconcile.mjs", "--apply"], {
+    env: { ...process.env, FINDINGS_RECONCILE_FINDINGS: f, FINDINGS_RECONCILE_RUNLOG: r },
+    encoding: "utf8",
+  });
+  const findingsOut = readFileSync(f, "utf8");
+  let runlogOut = "";
+  try {
+    runlogOut = readFileSync(r, "utf8");
+  } catch {
+    // no RUN-LOG.md written is the expected/passing case when nothing was moved
+  }
+  rmSync(dir, { recursive: true, force: true });
+
+  assert.match(findingsOut, /> \*\*kind:\*\* `FINDING`/, "the entry should stay classified as a FINDING");
+  assert.doesNotMatch(runlogOut, new RegExp(heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), "a real FINDING was swept into RUN-LOG.md by a body-only phrase match");
+});
+
 test("entry headings are never glued onto the end of another line", () => {
   // A merge that drops the newline between two entries produces
   //   | **Status** | FIXED. |## 2026-08-21 — [FINDING, ...
