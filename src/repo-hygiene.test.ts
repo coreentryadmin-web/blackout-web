@@ -130,15 +130,9 @@ test("known-orphaned modules stay removed", () => {
     "src/features/thermal/components/ThermalFreshnessBar.tsx",
     "src/components/landing/LandingBackdrop.tsx",
     "src/components/learn/LearnPageShell.tsx",
-    // src/lib/bie/decompose.ts — a pure compound-question splitter (task #57) that never got
-    // wired into composeCompound or any other caller. Zero imports anywhere in src/ (verified by
-    // exact-path grep) except its own decompose.test.ts. Flagged 2026-08-30 in FINDINGS.md
-    // alongside three siblings in the same file (router.ts, composers.ts, dynamic-format.ts) that
-    // were NOT safe to delete — router.ts is still imported (BieRoute type) by several live bie/*
-    // files, and composers.ts/dynamic-format.ts are referenced by a test (largo-terminal.test.ts)
-    // that cannot run in this sandbox (node:test's mock.module gap) so their liveness could not be
-    // confirmed here. decompose.ts carried no such ambiguity — it is the one file of the four the
-    // 2026-08-30 finding confirmed "genuinely dead by static analysis" with no caveat attached.
+    // src/lib/bie/decompose.ts — removed 2026-09-04; compound detection for Largo stress lives
+    // inline in scripts/largo-stress-run.mjs (the only non-src consumer). router.ts/composers.ts/
+    // dynamic-format.ts siblings were NOT deleted — see FINDINGS 2026-08-30.
     "src/lib/bie/decompose.ts",
   ];
   const present = tracked().filter((p) => removed.includes(p));

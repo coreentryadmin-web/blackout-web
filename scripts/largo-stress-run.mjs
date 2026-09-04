@@ -27,7 +27,24 @@ import { join } from "node:path";
 import { scoreAnswer } from "./largo-stress-scoring.mjs";
 import { loadStressBank, bankStats } from "./largo-stress-banks.mjs";
 import { classifyBieIntent, classifyBieStagingFallback } from "../src/lib/bie/router.ts";
-import { isCompoundQuestion } from "../src/lib/bie/decompose.ts";
+
+/** Mirrors deleted src/lib/bie/decompose.ts — stress bank expects compound_lookup routing. */
+function isCompoundQuestion(question) {
+  const q = (question ?? "").trim();
+  if (!q) return false;
+  if ((q.match(/\?/g) ?? []).length >= 2) return true;
+  if (/\band also\b/i.test(q)) {
+    const parts = q.split(/\band also\b/i).map((s) => s.trim()).filter((s) => s.length >= 8);
+    if (parts.length >= 2) return true;
+  }
+  const markerRe = /(?:\(\d{1,2}\)|\b\d{1,2}\)|\b\d{1,2}\.)\s+/g;
+  if ([...q.matchAll(markerRe)].length >= 2) return true;
+  if (q.length >= 100) {
+    const parts = q.split(/;|,|\band\b/i).map((s) => s.trim()).filter((s) => s.length >= 16);
+    if (parts.length >= 3) return true;
+  }
+  return false;
+}
 
 const OUT = join(process.cwd(), "audit-output");
 mkdirSync(OUT, { recursive: true });

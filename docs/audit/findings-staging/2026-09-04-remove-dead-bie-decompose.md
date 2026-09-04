@@ -44,17 +44,15 @@ existing baseline exactly, since this diff only removes an already-unreferenced 
 
 ### Fix
 
-`git rm src/lib/bie/decompose.ts src/lib/bie/decompose.test.ts`; extended
-`repo-hygiene.test.ts`'s orphan allowlist with a comment explaining why this file (unlike its three
-2026-08-30 siblings) was safe to delete outright.
+`git rm src/lib/bie/decompose.ts src/lib/bie/decompose.test.ts`; inlined `isCompoundQuestion` in
+`scripts/largo-stress-run.mjs` (the only non-`src/` consumer — #3219 restored this file after
+#3203 deleted it without checking `scripts/`). Extended `repo-hygiene.test.ts`'s orphan allowlist.
 
 ### Blast radius
 
-None beyond the two removed files — confirmed via exact-path grep that nothing in `src/` imports
-`decompose.ts` by any path form (aliased, relative, `require`, or dynamic `import()`), and the
-module itself imports nothing external to lose. `router.ts`, `composers.ts`, and
-`dynamic-format.ts` are unchanged and remain OPEN per the 2026-08-30 finding — this PR does not
-attempt to resolve that entry's still-unconfirmed `composers.ts`/`dynamic-format.ts` question.
+None beyond the two removed files — `scripts/largo-stress-run.mjs` updated to inline compound
+detection (`LARGO_STRESS_LIMIT=5` smoke: 0 router mismatches). `router.ts`, `composers.ts`, and
+`dynamic-format.ts` unchanged.
 
 ### What was deliberately NOT done
 
