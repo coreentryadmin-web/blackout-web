@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:13:46.918Z",
+  "updated_at": "2026-09-04T19:19:44.809Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -256,64 +256,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "6776238a905a08affe9527887aae21f0c15e325a",
+    "last_main_sha": "8a923afe679c4a87e324650f2dba8a46bd314ceb",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:02:29Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33909058935",
-    "last_deploy_sha": "6776238a905a08affe9527887aae21f0c15e325a"
+    "last_deploy_at": "2026-09-04T19:16:33Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33910315173",
+    "last_deploy_sha": "8a923afe679c4a87e324650f2dba8a46bd314ceb"
   },
-  "open_prs": [
-    {
-      "number": 3728,
-      "title": "chore(autopilot): cursor session handoff — RTH lifecycle GREEN",
-      "branch": "cursor/autopilot-work-loop-85e2",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T19:08:20Z"
-    },
-    {
-      "number": 3727,
-      "title": "fix(seo): retry transient Clerk FAPI curls in deploy smoke audit",
-      "branch": "fix/seo-audit-clerk-fapi-retry",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T19:07:55Z"
-    },
-    {
-      "number": 3726,
-      "title": "fix(audit): retry Clerk FAPI in SEO audit; auth-only AMBER non-blocking",
-      "branch": "fix/seo-audit-fapi-retry",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T19:07:47Z"
-    },
-    {
-      "number": 3725,
-      "title": "chore(autopilot): cursor handoff — RTH lifecycle GREEN, data-validator 44/44",
-      "branch": "chore/autopilot-handoff-2026-09-04-1906",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T19:07:49Z"
-    },
-    {
-      "number": 3698,
-      "title": "feat(zerodte): liquid strike fallback + BREAKOUT cortex/thesis relief",
-      "branch": "cursor/hourly-autonomous-wake",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T19:07:51Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1134,6 +1083,25 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T19:13:46.917Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T19:19:44.124Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:19:44.808Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:19:44.809Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "786ca9f1-4676-4497-a5f4-f07aa6252d46",
+      "summary": "Cycle complete: merged #3717+#3718+#3726+#3729. validate:deploy GREEN, ops:collect 0. Open: #3698, #3733, #3735."
     }
   ]
 }
