@@ -126,6 +126,20 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0y. UW per-channel freshness future timestamp falsely fresh — cursor/uw-channel-future-timestamp-guard (pending)
+
+**What was broken:** `isUwChannelFresh()` and `getUwSocketHealth().cluster_live` used raw
+`Date.now() - lastMessageAt`. A clock-skewed future delivery timestamp yields negative age that
+always satisfies `<= maxAgeMs` → flow-ingest skips REST, UW cache-refresh tasks skip, and admin
+health reports channels "live" when delivery is absent.
+
+**Fix:** route `isUwChannelFresh`, `getUwSocketHealth` ages, and halt-source staleness proxy through
+`isWsUpdatedAtFresh` / `wsUpdatedAtAgeMs` (5s future tolerance, same as `timestamp-freshness.ts`).
+
+**Check at the open:** `/admin` Operations → UW socket health: per-channel ages must climb during a
+genuine UW stall (not stay at 0s off a skewed timestamp). Flow ingest must fall back to REST when
+`flow_alerts` channel is silent >120s.
+
 ### 0x. Flow WS cluster heartbeat future timestamp falsely fresh — fix/flow-liveness-future-guard (pending)
 
 **What was broken:** `isFlowFrameFreshFromCluster`, `isFlowFrameFreshAnywhere`, and
