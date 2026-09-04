@@ -6,10 +6,13 @@ import { join } from "node:path";
 const src = readFileSync(join(process.cwd(), "src/lib/providers/unusual-whales.ts"), "utf8");
 
 test("readUwCache rejects far-future fetchedAt (source scan)", () => {
-  assert.match(src, /WS_TIMESTAMP_FUTURE_TOLERANCE_MS/);
+  // readUwCache delegates the future-skew guard to the shared isWsUpdatedAtFresh() helper
+  // (same pattern the sibling stocks-socket.ts/polygon-socket.ts source-scan tests in this
+  // PR assert) rather than inlining a second copy of the WS_TIMESTAMP_FUTURE_TOLERANCE_MS
+  // comparison — assert the delegation, not a literal re-implementation.
   assert.match(
     src,
-    /function readUwCache[\s\S]*?age < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS\) return undefined/,
+    /function readUwCache[\s\S]*?isWsUpdatedAtFresh\(slot\.fetchedAt, ttl\)/,
     "in-process UW REST cache must not treat clock-skewed future fetchedAt as fresh"
   );
 });
