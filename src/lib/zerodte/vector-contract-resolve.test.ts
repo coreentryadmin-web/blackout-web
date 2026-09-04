@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { EnrichedZeroDteSetup } from "./board";
-import type { ZeroDteVectorPulse } from "./vector-crosslink";
+import type { ZeroDteVectorPulse } from "./vector-pulse-shared";
 import {
   resolveVectorPulseContract,
   rankVectorContractOnChain,
