@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T06:41:27.251Z",
+  "updated_at": "2026-09-04T06:41:36.630Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,24 +68,24 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-04T06:30:40.083Z",
-      "lease_until": "2026-09-04T08:00:40.083Z",
+      "lease_until": "2026-09-04T08:11:35.238Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "fa4407fa-3149-4a46-be65-faac159b698e",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-04T06:40:54.007Z",
-      "lease_until": "2026-09-04T08:10:54.007Z",
+      "lease_until": "2026-09-04T08:11:35.238Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "fa4407fa-3149-4a46-be65-faac159b698e",
       "title": null
     }
   },
@@ -705,6 +705,24 @@
     },
     {
       "at": "2026-09-04T06:41:27.251Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:41:35.237Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:41:35.952Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:41:36.630Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
