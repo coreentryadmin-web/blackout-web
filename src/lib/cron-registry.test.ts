@@ -44,9 +44,6 @@ const INTENTIONALLY_UNREGISTERED: Record<string, string> = {
   "x-autopost": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
   "x-growth": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
   "x-replies": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
-  "darkpool-discord": "Unscheduled in cron-jobs.json; invoked off another job's path rather than on its own timer, so a stale window computed from a schedule it does not have would be meaningless.",
-  "helix-discord-digest": "Unscheduled in cron-jobs.json — same reason as darkpool-discord.",
-  "thermal-discord": "Unscheduled in cron-jobs.json — same reason as darkpool-discord.",
 };
 
 /** Every `logCronRun(...)` key a route can emit, resolving `CRON_KEY`-style constants. */
