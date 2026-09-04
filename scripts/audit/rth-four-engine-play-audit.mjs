@@ -7,6 +7,7 @@
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { fetchAuditJson, releaseAuditClerkSession } from "./lib/audit-auth-fetch.mjs";
+import { spxDegradedFlag } from "./lib/rth-spx-play-flags.mjs";
 
 const BASE = (process.env.VALIDATE_BASE || process.env.AUDIT_APP_URL || "https://blackouttrades.com").replace(/\/$/, "");
 const OUT = process.env.SCREENSHOT_OUT || "/opt/cursor/artifacts/rth-monitor";
@@ -55,7 +56,8 @@ function analyzeSpx(play) {
   if (action === "SCANNING" || action === "FLAT") {
     issues.push(flag({ ticker: "SPX" }, "FLAT", "AMBER", `No open play — ${action}`));
   }
-  if (play.degraded) issues.push(flag({ ticker: "SPX" }, "DEGRADED", "RED", "Degraded play payload"));
+  const degraded = spxDegradedFlag(play);
+  if (degraded) issues.push(flag({ ticker: "SPX" }, degraded.code, degraded.severity, degraded.detail));
   const entry = num(play.entry_price ?? play.entry);
   const stop = num(play.stop_price ?? play.stop);
   const target = num(play.target_price ?? play.target);
