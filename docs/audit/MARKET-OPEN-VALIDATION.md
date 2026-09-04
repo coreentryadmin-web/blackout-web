@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0ab. UW L1 cache + index WS overlay future-timestamp guard — fix/uw-cache-index-overlay-future-timestamp (pending)
+
+**What was broken:** `readUwCache()` treated negative age (clock-skewed future `fetchedAt`) as inside TTL forever, so the in-process UW L1 cache never expired. `overlayRestIndexWithWs` / `localWsIndexEntry` / `clusterWsIndexEntry` used raw `now - updatedAt` without rejecting future timestamps — a skewed WS tick could overlay REST index quotes with a falsely "live" price/change_pct.
+
+**Fix:** `readUwCache` rejects `fetchedAt` beyond `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` and clamps age before TTL checks. Index overlay helpers route freshness through `isWsUpdatedAtFresh()`.
+
+**Check at the open:** `/api/market/quote` for `I:SPX` and `I:VIX` — `change_pct` matches Polygon prior-close rebase during RTH; no stuck WS overlay after a bad timestamp. UW-heavy surfaces (HELIX tape, dark pool) should not serve hour-old L1-cached data after upstream TTL expires.
+
 ### 0aa. UW rate limiter queue-wait observability — fix/uw-rate-limiter-queue-wait-observability (pending)
 
 **What was broken:** a UW request that queued behind the rate limiter for 15+ seconds and then
