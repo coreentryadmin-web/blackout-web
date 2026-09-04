@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:19:14.963Z",
+  "updated_at": "2026-09-04T18:31:08.136Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,15 +67,14 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T17:52:07.667Z",
+      "lease_until": "2026-09-04T19:22:07.667Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -234,6 +233,54 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3683": {
+      "pr": 3683,
+      "head_sha": "c4cab75304c08926b095935e632c0a41bec4a3af",
+      "reviewer": "cursor",
+      "verdict": "WAIT — subsumed by #3664 (superset includes vs/others + same about/RedesignHome fixes)",
+      "reviewed_at": "2026-09-04T17:57:54.378Z",
+      "safe_to_merge": false
+    },
+    "pr-3667": {
+      "pr": 3667,
+      "head_sha": "a41ca3e11dc0f3300a9de1a4ba80def4027f4b43",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:15:35.894Z",
+      "safe_to_merge": true
+    },
+    "pr-3664": {
+      "pr": 3664,
+      "head_sha": "95b65131326731143415a9f0b40fcfaae81720a1",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:15:36.220Z",
+      "safe_to_merge": true
+    },
+    "pr-3691": {
+      "pr": 3691,
+      "head_sha": "fb0236e456bf864b767f2f9f0c998f7aa222ee21",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:28:37.792Z",
+      "safe_to_merge": true
+    },
+    "pr-3699": {
+      "pr": 3699,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:28:38.054Z",
+      "safe_to_merge": true
+    },
+    "pr-3697": {
+      "pr": 3697,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:28:38.324Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -243,16 +290,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T17:52:07.668Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "1d545852d20e896c8ecfe2072e0b1306c3aef423",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T18:26:42Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33905916082",
+    "last_deploy_sha": "bdd3a65fec607cfb7dc8098ed4f76a3a0ae9ed31"
   },
   "open_prs": [],
   "events": [
@@ -1052,6 +1099,109 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:51:57.323Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:52:03.057Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:52:03.880Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:52:07.668Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T17:57:54.379Z",
+      "type": "pr_review",
+      "pr": 3683,
+      "head_sha": "c4cab75304c08926b095935e632c0a41bec4a3af",
+      "reviewer": "cursor",
+      "verdict": "WAIT — subsumed by #3664 (superset includes vs/others + same about/RedesignHome fixes)",
+      "reviewed_at": "2026-09-04T17:57:54.378Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-04T18:15:35.895Z",
+      "type": "pr_review",
+      "pr": 3667,
+      "head_sha": "a41ca3e11dc0f3300a9de1a4ba80def4027f4b43",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:15:35.894Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:15:36.221Z",
+      "type": "pr_review",
+      "pr": 3664,
+      "head_sha": "95b65131326731143415a9f0b40fcfaae81720a1",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:15:36.220Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:16:37.947Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 11
+    },
+    {
+      "at": "2026-09-04T18:28:37.792Z",
+      "type": "pr_review",
+      "pr": 3691,
+      "head_sha": "fb0236e456bf864b767f2f9f0c998f7aa222ee21",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:28:37.792Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:28:38.055Z",
+      "type": "pr_review",
+      "pr": 3699,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:28:38.054Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:28:38.324Z",
+      "type": "pr_review",
+      "pr": 3697,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:28:38.324Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:31:08.134Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T18:31:08.136Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b0956111-d58e-4408-b99b-dcb1ae821a69",
+      "summary": "workflow_run wake: peer-reviewed #3664/#3667/#3691/#3699 (all merged). #3683 WAIT (subsumed by #3664). validate:deploy + platform-integrity + api-auth GREEN. ops:collect 0. main @ 1d545852d. Remaining non-draft: #3700 docs (in CI), #3698 cursor/*, #3686 cursor/*. Off-hours — RTH skipped."
     }
   ]
 }
