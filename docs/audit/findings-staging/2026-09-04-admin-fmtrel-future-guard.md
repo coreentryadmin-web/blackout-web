@@ -1,24 +1,28 @@
-# 2026-09-04 — Admin API/SPX feed fmtRel future-timestamp guard
+# 2026-09-04 — admin-fmtrel-future-guard
 
 > **kind:** FINDING
 
+## Admin API feed + SPX terminal relative times lacked future-timestamp guard
+
 | Field | Detail |
 |-------|--------|
+| **Severity** | P3 |
+| **Surface** | `/admin` API live feed + SPX terminal |
 | **Status** | FIXED |
-| **Area** | `AdminApiLiveFeed`, `AdminSpxTerminal`, `AdminSpxDashboard` |
 
-## Symptom
+### Symptom
 
-`timeAgoFromIso` already guarded Operations + X Marketing panels, but three sibling admin surfaces still computed `Date.now() - new Date(iso)` inline: API live-feed `fmtRel`, SPX terminal `fmtRel`/incident open duration, and SPX dashboard staleness (`staleMs`). Clock-skewed future timestamps read as "just now" / falsely fresh.
+`AdminApiLiveFeed.tsx` and `AdminSpxTerminal.tsx` each had local `fmtRel()` helpers computing `Date.now() - new Date(iso)` without a future guard. Clock-skewed timestamps produced negative age → false **"just now"** / **"now"** labels — same failure class fixed in #3627 (`storeAge`) and #3641 (`timeAgoFromIso`).
 
-## Fix
+### Fix
 
-Extended `admin-time-ago.ts` with `timeAgoCompactFromIso`, `timeAgoTerminalFromIso`, and `adminAgeMsFromIso`; wired all three remaining admin surfaces to the shared helper.
+Extended `admin-time-ago.ts` with shared `isoAgeSec()` plus `timeAgoCompactFromIso()` / `openDurationLabelFromIso()`. Replaced duplicate local helpers in both admin surfaces.
 
-## Tests
+### Evidence
 
-`src/components/admin/admin-time-ago.test.ts` — 7 pass.
+- `npx tsx --test src/components/admin/admin-time-ago.test.ts` — 6 pass
 
-## Market-open validation
+### Market-open validation
 
-`/admin` → API live feed + SPX terminal: confirm relative timestamps show "clock skew" (not "just now") if a row carries a future-dated ISO during RTH.
+- `/admin` → API live feed timestamps show plausible ages during RTH, not "just now" on skewed events
+- SPX terminal feed + open-incident duration labels show "clock skew" when appropriate

@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   adminAgeMsFromIso,
+  isoAgeSec,
+  openDurationLabelFromIso,
   timeAgoCompactFromIso,
   timeAgoFromIso,
-  timeAgoTerminalFromIso,
 } from "./admin-time-ago";
 
 const NOW = Date.parse("2026-09-04T16:00:00.000Z");
@@ -24,14 +25,19 @@ test("timeAgoFromIso: null/invalid returns em dash", () => {
   assert.equal(timeAgoFromIso("not-a-date", NOW), "—");
 });
 
-test("timeAgoCompactFromIso: future timestamp reads clock skew", () => {
+test("timeAgoCompactFromIso: future timestamp beyond tolerance reads as clock skew", () => {
   const iso = new Date(NOW + 60_000).toISOString();
   assert.equal(timeAgoCompactFromIso(iso, NOW), "clock skew");
 });
 
-test("timeAgoTerminalFromIso: future timestamp reads skew", () => {
+test("openDurationLabelFromIso: future timestamp beyond tolerance reads as clock skew", () => {
   const iso = new Date(NOW + 60_000).toISOString();
-  assert.equal(timeAgoTerminalFromIso(iso, NOW), "skew");
+  assert.equal(openDurationLabelFromIso(iso, NOW), " · open clock skew");
+});
+
+test("isoAgeSec: small future skew within tolerance clamps to zero", () => {
+  const iso = new Date(NOW + 2_000).toISOString();
+  assert.deepEqual(isoAgeSec(iso, NOW), { kind: "ok", sec: 0 });
 });
 
 test("adminAgeMsFromIso: future timestamp returns null (treat as stale/untrusted)", () => {

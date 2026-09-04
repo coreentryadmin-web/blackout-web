@@ -10,18 +10,12 @@ import { clsx } from "clsx";
 
 import type { ApiCallEvent } from "@/lib/api-telemetry-types";
 import { incidentDedupeKey, isFeedableIncident } from "@/lib/api-telemetry-types";
-import { timeAgoCompactFromIso } from "@/components/admin/admin-time-ago";
-
-
+import { timeAgoFromIso } from "@/components/admin/admin-time-ago";
 
 type FeedGroup = {
-
   key: string;
-
   event: ApiCallEvent;
-
   count: number;
-
 };
 
 
@@ -45,12 +39,6 @@ type RetryRow = {
   started_at?: string;
 
 };
-
-
-
-function fmtRel(iso: string): string {
-  return timeAgoCompactFromIso(iso);
-}
 
 
 
@@ -367,7 +355,7 @@ export function AdminApiLiveFeed({
 
                 {r.attempt}/{r.max_attempts}
 
-                {r.next_retry_at && ` · next ${fmtRel(r.next_retry_at)}`}
+                {r.next_retry_at && ` · next ${timeAgoFromIso(r.next_retry_at)}`}
 
               </span>
 
@@ -439,7 +427,7 @@ export function AdminApiLiveFeed({
 
                   )}
 
-                  <span className="admin-cmd-incident-time">{fmtRel(group.event.at)}</span>
+                  <span className="admin-cmd-incident-time">{timeAgoFromIso(group.event.at)}</span>
 
                 </div>
 

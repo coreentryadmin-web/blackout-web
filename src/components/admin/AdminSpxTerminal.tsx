@@ -5,7 +5,10 @@ import { AnimatePresence, motion } from "framer-motion";
 import { clsx } from "clsx";
 import type { SpxAdminDashboardPayload } from "@/lib/admin-spx-dashboard";
 import type { SpxTerminalLine } from "@/lib/admin-spx-terminal";
-import { timeAgoTerminalFromIso, adminAgeMsFromIso } from "@/components/admin/admin-time-ago";
+import {
+  openDurationLabelFromIso,
+  timeAgoCompactFromIso,
+} from "@/components/admin/admin-time-ago";
 
 type FeedFilter = "all" | "critical" | "warning" | "api" | "pulse" | "info";
 
@@ -26,10 +29,6 @@ function fmtClockEt(): string {
     second: "2-digit",
     hour12: false,
   });
-}
-
-function fmtRel(iso: string): string {
-  return timeAgoTerminalFromIso(iso);
 }
 
 function lineMatchesFilter(line: SpxTerminalLine, filter: FeedFilter): boolean {
@@ -74,7 +73,7 @@ function TerminalLineRow({
             {line.kind === "api" ? "API" : line.kind.toUpperCase()}
           </span>
           <span className="admin-spx-term-cat">{line.category}</span>
-          <span className="admin-spx-term-time">{fmtRel(line.at)}</span>
+          <span className="admin-spx-term-time">{timeAgoCompactFromIso(line.at)}</span>
         </header>
         <h3 className="admin-spx-term-headline">{line.headline}</h3>
         <p className="admin-spx-term-detail">{line.detail}</p>
@@ -222,10 +221,7 @@ export function AdminSpxTerminal({
                     {inc.status.toUpperCase()}
                     {inc.mtta_ms != null
                       ? ` · MTTA ${Math.round(inc.mtta_ms / 1000)}s`
-                      : (() => {
-                          const ageMs = adminAgeMsFromIso(inc.opened_at);
-                          return ageMs == null ? " · open (clock skew)" : ` · open ${Math.round(ageMs / 1000)}s`;
-                        })()}
+                      : openDurationLabelFromIso(inc.opened_at)}
                   </p>
                 </div>
                 <div className="admin-spx-term-incident-actions">
