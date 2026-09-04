@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T15:39:49.130Z",
+  "updated_at": "2026-09-04T16:18:06.713Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T16:05:18.887Z",
+      "lease_until": "2026-09-04T17:39:03.619Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "64ca4c30-d5b9-4afd-97b6-713958f7694e",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -224,11 +224,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "4a26268131c43955daf6c6afe6ef9249a80b54fd",
+    "last_main_sha": "3b5c5d98f69e55751e92a305ed9221d43c892825",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T15:55:50Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33892277862",
+    "last_deploy_sha": "a1a9d668c0e2eff63332f193ee3dcafd7e862a09"
   },
   "open_prs": [],
   "events": [
@@ -970,6 +970,43 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:08:52.097Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T16:09:03.619Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T16:09:04.638Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T16:09:05.756Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T16:18:06.713Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:18:06.713Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "242f70fe-a29c-4b96-8670-c7019e391b8c",
+      "summary": "RTH lifecycle GREEN (ops:collect 0, validate:rth-open, platform-integrity, vector-rth-quick). Closed stale handoff PR churn (5 superseded). Shipped fix/thermal-header-change-pct-null @ 17c3e01 — fail-closed Thermal header change% (no fabricated 0%). Branch pushed; PR create blocked by integration token (403). Open PRs: #3616 (cursor state, needs Claude review), #3623 draft. Main @ 3b5c5d98 CI smoke green."
     }
   ]
 }

@@ -858,6 +858,19 @@ task, not eliminate the very first cold render after a fresh deploy/task start. 
 way, but confirm the fix didn't introduce a regression) via the admin cron-health board or the
 Discord channel itself.
 
+### 22. Thermal header fabricated flat 0% day change — `fix/thermal-header-change-pct-null`
+
+**What was broken:** `/heatmap` header showed **0.00%** when matrix snapshot and quote had no
+`change_pct` — `GexHeatmap` coerced missing values with `?? 0`, and `TickerSwitcher` only hides
+the chip when `changePct == null`.
+
+**Fix:** `resolveHeaderChangePct()` fail-closes to `null` (chip hidden) unless a lane has a real
+measurement; legitimate flat `0%` still renders.
+
+**Check at the open:** on `/heatmap` during RTH, pick a ticker whose matrix loads before quote —
+header shows spot **without** a `0.00%` chip until change% resolves from quote/pulse.
+
+
 ### 19. Vector SPX PLAYS card's off-hours loading copy read as a stalled live scan — PR #3566 (merged, branch `fix/vector-contract-picks-closed-market-loading`)
 
 **What was broken:** a discovery-pass finding reported the mobile `/vector` contract-picks card

@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T12:48:06.884Z
-**Run:** 072758a3-0684-479a-b95a-27416aabb9c3
+**At:** 2026-09-04T16:18:06.713Z
+**Run:** 242f70fe-a29c-4b96-8670-c7019e391b8c
 
 ## Summary
 
-Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs.
+RTH lifecycle GREEN (ops:collect 0, validate:rth-open, platform-integrity, vector-rth-quick). Closed stale handoff PR churn (5 superseded). Shipped fix/thermal-header-change-pct-null @ 17c3e01 — fail-closed Thermal header change% (no fabricated 0%). Branch pushed; PR create blocked by integration token (403). Open PRs: #3616 (cursor state, needs Claude review), #3623 draft. Main @ 3b5c5d98 CI smoke green.
 
 ## Deploy
 
-- main: `9cfdf5076156a14f2dcc2653a280705ab4e4e118`
+- main: `3b5c5d98f69e55751e92a305ed9221d43c892825`
 - status: 
 
 ## Open PRs
