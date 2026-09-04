@@ -231,6 +231,25 @@ test("fetchUwDarkPool returns null when the upstream never answered — it does 
   assert.doesNotMatch(body, /detail: "No large dark pool prints today"/, "the claim must have one home");
 });
 
+test("readUwCache: in-process UW L1 cache freshness uses isWsUpdatedAtFresh (source scan)", () => {
+  const src = readFileSync(join(process.cwd(), "src/lib/providers/unusual-whales.ts"), "utf8");
+  assert.match(
+    src,
+    /function readUwCache[\s\S]*?isWsUpdatedAtFresh\(slot\.fetchedAt, ttl\)/,
+    "readUwCache must reject clock-skewed future fetchedAt stamps for fresh hits"
+  );
+  assert.match(
+    src,
+    /function readUwCache[\s\S]*?isWsUpdatedAtFresh\(slot\.fetchedAt, UW_SLOW_CACHE_MAX_STALE_MS\)/,
+    "readUwCache stale fallback must also reject future fetchedAt stamps"
+  );
+  assert.doesNotMatch(
+    src,
+    /function readUwCache[\s\S]*?Date\.now\(\)\s*-\s*slot\.fetchedAt/,
+    "raw Date.now()-fetchedAt must not gate UW in-process cache"
+  );
+});
+
 test("the Meridian shaper makes no claim when handed an unknown", () => {
   // The other half of the contract: the provider now returns null for "did not answer", and the
   // consumer must render that as silence rather than as a fact. It already did — the provider was
