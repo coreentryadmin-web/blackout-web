@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -63,11 +64,33 @@ test("dispatch-prompt includes coordination rules", () => {
   assert.match(r.stdout, /Never approve your own PR/);
 });
 
-test("select-task returns highest-priority P1 task for cursor", () => {
-  const r = spawnSync("node", ["scripts/blackout-agent/select-task.mjs", "--agent=cursor"], { encoding: "utf8", cwd: repoRoot });
-  assert.equal(r.status, 0);
-  const j = JSON.parse(r.stdout);
-  assert.ok(j.selected?.id?.startsWith("BO-P1-"), `expected P1 task, got ${j.selected?.id}`);
+test("select-task returns highest-priority P1 task for cursor", async () => {
+  // select-task.mjs reads WORK_QUEUE.md from a hardcoded absolute path (lib/paths.mjs), not from
+  // cwd or an env override — so this test previously ran against whatever the LIVE queue happened
+  // to contain. That queue is edited by every autopilot handoff PR, so this assertion (hardcoded
+  // to expect a P1 task) broke repeatedly whenever a PR marked all P1 tasks DONE and left only a
+  // lower-priority task queued (e.g. #3441, #3447, #3449) — a real, recurring CI failure caused by
+  // this test's lack of fixture isolation, not by those PRs' own logic being wrong.
+  const { MARKDOWN_FILES } = await import("./lib/paths.mjs");
+  const original = readFileSync(MARKDOWN_FILES.workQueue, "utf8");
+  try {
+    // IDs must match select-task.mjs's parser regex (`BO-P\d+-\d+`) — a descriptive suffix like
+    // "BO-TEST-P1-FIXTURE" silently fails to parse and yields zero candidates, not a match failure.
+    writeFileSync(
+      MARKDOWN_FILES.workQueue,
+      "# Work Queue (test fixture)\n\n" +
+        "| ID | Pri | Title | Owner | Status |\n" +
+        "|----|-----|-------|-------|--------|\n" +
+        "| BO-P1-9901 | P1 | fixture task for select-task test | cursor | QUEUED |\n" +
+        "| BO-P2-9902 | P2 | lower-priority fixture task | cursor | QUEUED |\n"
+    );
+    const r = spawnSync("node", ["scripts/blackout-agent/select-task.mjs", "--agent=cursor"], { encoding: "utf8", cwd: repoRoot });
+    assert.equal(r.status, 0);
+    const j = JSON.parse(r.stdout);
+    assert.equal(j.selected?.id, "BO-P1-9901", `expected the fixture's P1 task, got ${j.selected?.id}`);
+  } finally {
+    writeFileSync(MARKDOWN_FILES.workQueue, original);
+  }
 });
 
 test("dispatch-guard allows when no active session", () => {
