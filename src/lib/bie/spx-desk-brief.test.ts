@@ -127,4 +127,14 @@ describe("composeSpxDeskBrief", () => {
     assert.ok(result.body.includes("LEVELS"));
     assert.match(result.body, /HOD|PDH/);
   });
+
+  test("LEVELS label GEX king separately from pin forecaster language", () => {
+    const desk = fakeDesk();
+    const confluence = computeSpxConfluence(desk);
+    assert.ok(confluence);
+
+    const result = composeSpxDeskBrief(desk, confluence!, [], "mid-morning");
+    assert.match(result.body, /GEX king/);
+    assert.doesNotMatch(result.body, /pin \{\{[\d,]+\}\} \(price magnet\)/);
+  });
 });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
 import { isCronAuthorized, requireTierApi } from "@/lib/market-api-auth";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export async function GET() {
       "SELECT * FROM flow_anomalies ORDER BY detected_at DESC LIMIT 20",
       []
     );
-    return NextResponse.json({
+    return NextResponse.json(roundFloats({
       anomalies: result.rows.map(r => ({
         id: r.id,
         detectedAt: r.detected_at,
@@ -25,7 +26,7 @@ export async function GET() {
         direction: r.direction,
         severity: r.severity,
       }))
-    }, { status: 200, headers: NO_STORE_HEADERS });
+    }), { status: 200, headers: NO_STORE_HEADERS });
   } catch {
     return NextResponse.json({ anomalies: [] }, { status: 200, headers: NO_STORE_HEADERS });
   }

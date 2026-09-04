@@ -112,3 +112,17 @@ test("candleRangeFromBars: empty or flat returns null", () => {
   assert.equal(candleRangeFromBars([]), null);
   assert.equal(candleRangeFromBars([{ high: 100, low: 100 }]), null);
 });
+
+test("candleRangeFromBars: RTH filter drops extended-hours bars when time is present", () => {
+  // 2026-08-05 Wednesday EDT — same fixture date as vector-session-hours.test.ts
+  const premarket = Date.UTC(2026, 7, 5, 8 + 4, 0, 0) / 1000; // 08:00 ET
+  const rthOpen = Date.UTC(2026, 7, 5, 9 + 4, 30, 0) / 1000; // 09:30 ET
+  const rthMid = Date.UTC(2026, 7, 5, 12 + 4, 0, 0) / 1000; // 12:00 ET
+
+  const range = candleRangeFromBars([
+    { time: premarket, high: 250, low: 240 },
+    { time: rthOpen, high: 222, low: 218 },
+    { time: rthMid, high: 225, low: 217 },
+  ]);
+  assert.deepEqual(range, { minValue: 217, maxValue: 225 });
+});

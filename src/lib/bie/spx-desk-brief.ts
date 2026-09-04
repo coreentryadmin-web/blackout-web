@@ -367,8 +367,7 @@ function buildWhy(
   confluence: SpxConfluence,
   desk: SpxDeskPayload,
   support: ReturnType<typeof nearestWall>,
-  resistance: ReturnType<typeof nearestWall>,
-  pin: number | null | undefined
+  resistance: ReturnType<typeof nearestWall>
 ): string {
   const factors = topFactors(confluence, 2);
   const factorDetails = topFactorDetails(confluence, 3);
@@ -386,8 +385,8 @@ function buildWhy(
   }
   if (!desk.above_gamma_flip && support && desk.price! > support.strike) {
     parts.push(`drops feed toward ${n(support.strike, 0)} air if ${n(support.strike, 0)} cracks`);
-  } else if (desk.above_gamma_flip && pin != null) {
-    parts.push(`pullbacks bought back toward pin ${n(pin, 0)}`);
+  } else if (desk.above_gamma_flip && desk.gex_king != null) {
+    parts.push(`pullbacks bought back toward GEX king ${n(desk.gex_king, 0)}`);
   } else if (resistance && desk.price! < resistance.strike) {
     parts.push(`caps near ${n(resistance.strike, 0)} call wall`);
   }
@@ -438,9 +437,7 @@ export function composeSpxDeskBrief(
   const support = nearestWall(desk.gex_walls, "support", price);
   const resistance = nearestWall(desk.gex_walls, "resistance", price);
   const factors = topFactors(confluence, 2);
-  const pin = desk.gex_king ?? desk.max_pain;
-
-  const why = buildWhy(confluence, desk, support, resistance, pin);
+  const why = buildWhy(confluence, desk, support, resistance);
   const synthesis = synthesizeSpxDeskIntel(desk, confluence, sessionPhase, cross);
   const signals = signalsBriefLine(confluence);
 
@@ -474,8 +471,10 @@ export function composeSpxDeskBrief(
       `S ${n(support.strike, 0)} (${signedPts(support.strike - price)}, γwall${support.net_gex != null ? ` ${fmtPremium(support.net_gex)}` : ""})`
     );
   }
-  if (pin != null && Math.abs(pin - price) <= 25) {
-    levelParts.push(`pin ${n(pin, 0)} (price magnet)`);
+  if (desk.gex_king != null && Math.abs(desk.gex_king - price) <= 25) {
+    levelParts.push(`GEX king ${n(desk.gex_king, 0)} (dealer anchor)`);
+  } else if (desk.max_pain != null && Math.abs(desk.max_pain - price) <= 25) {
+    levelParts.push(`max pain ${n(desk.max_pain, 0)} (expiry magnet)`);
   }
   for (const extra of sessionExtremeLevels(desk, price).slice(0, 2)) {
     levelParts.push(extra);
@@ -541,7 +540,7 @@ export function composeSpxDeskBrief(
     sessionPhase === "power-hour" && !desk.above_gamma_flip && resistance
       ? `NEXT 5M  power-hour neg-γ squeeze risk into ${n(resistance.strike, 0)} if ${n(support?.strike ?? desk.lod, 0)} fails`
       : desk.above_gamma_flip && support
-        ? `NEXT 5M  pos-γ pin toward ${n(pin ?? support.strike, 0)} — fade extensions`
+        ? `NEXT 5M  pos-γ magnet toward ${n(desk.gex_king ?? support.strike, 0)} — fade extensions`
         : !desk.above_gamma_flip && resistance
           ? `NEXT 5M  neg-γ expansion into ${n(resistance.strike, 0)} air if ${n(support?.strike ?? desk.lod, 0)} fails`
           : `NEXT 5M  ${gammaTag(desk)} — watch ${n(desk.gamma_flip ?? price, 0)} and TICK`;

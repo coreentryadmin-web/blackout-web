@@ -12,6 +12,7 @@ import { rowAwareSpanPct, BEAD_VIEW_MAX_PCT, type PriceRange } from "./vector-pr
 import { VECTOR_WALL_NODES_PER_SIDE } from "./vector-bar-timeframes";
 import type { VectorNodeDensity } from "./vector-node-density";
 import { resolveNodeCount } from "./vector-node-density";
+import { filterRthBarsSec } from "./vector-session-hours";
 
 /** Candles must occupy at least this share of the visible price-axis span (member-readable tape).
  *  Raised from 0.16 (2026-08-27, member report — "candles squeezed, fits without scroll"): 0.16
@@ -84,11 +85,15 @@ export function adaptiveAutoNodeCount({
 
 /** High/low from intraday bars — null when the session seed is empty or flat. */
 export function candleRangeFromBars(
-  bars: ReadonlyArray<{ high?: number; low?: number }>
+  bars: ReadonlyArray<{ high?: number; low?: number; time?: number }>
 ): PriceRange | null {
+  const scoped =
+    bars.length > 0 && bars.every((b) => Number.isFinite(b.time))
+      ? filterRthBarsSec(bars as ReadonlyArray<{ high?: number; low?: number; time: number }>)
+      : bars;
   let min = Infinity;
   let max = -Infinity;
-  for (const b of bars) {
+  for (const b of scoped) {
     if (Number.isFinite(b.low)) min = Math.min(min, b.low!);
     if (Number.isFinite(b.high)) max = Math.max(max, b.high!);
   }
