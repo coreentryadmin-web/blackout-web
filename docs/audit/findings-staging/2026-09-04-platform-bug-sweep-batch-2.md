@@ -3,8 +3,8 @@
 | Field | Value |
 |-------|-------|
 | **Severity** | P2 (mix of perf + member-visible correctness) |
-| **Status** | FIXED on `cursor/platform-bug-sweep` |
-| **PR** | (pending) |
+| **Status** | FIXED — rebased onto main@74d858bc5, ready for PR |
+| **PR** | pending (branch `cursor/platform-bug-sweep`) |
 
 ### Findings fixed
 
