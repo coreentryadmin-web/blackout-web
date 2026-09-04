@@ -22,6 +22,7 @@
  */
 
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
+import { directionFromCallPct } from "@/lib/largo/contract/product-adapters";
 
 export type SystemDirectionalRead = {
   /** Which product system made this read. */
@@ -78,56 +79,100 @@ export type ConsensusMatrix = {
 };
 
 /**
- * Extract directional read from HELIX tape result.
- * Expected shape: flow prints, call vs put, sweep data.
+ * Extract directional read from HELIX tape analytics (`get_helix_tape_analytics` — the ONLY
+ * HELIX tool that carries a directional field; see extractConsensusFromTools).
+ *
+ * 2026-09-04 audit finding — FIXED. This used to read invented field names (`call_volume`/
+ * `calls_premium`/`call_prints`/`put_prints`) that exist on NEITHER real HELIX tool payload
+ * (`get_flow_tape`'s `FlowTapeSummary` nests skew under `pull_skew`; `get_helix_derived` has no
+ * call/put split at all), so every real call silently fell through to the hardcoded
+ * `{strength:0, basis:"No flow detected"}` default — a textbook C3 violation (absence presented
+ * as a measured reading).
+ *
+ * The naive fix — read `pull_skew.call_pct` and call it done — would have introduced a SECOND,
+ * worse C3 violation: `call_pct` is a raw call/put PREMIUM SHARE, not a direction. A bought call
+ * is bullish but a SOLD call is bearish, so a name can be 100% call premium and measurably
+ * bearish (measured live 2026-08-23: CG was exactly that, 100% call premium at 100% readable and
+ * BEARISH — the real incident `product-adapters.ts::directionFromCallPct`'s own doc comment
+ * documents as the P0 this exact pattern already caused once). The authoritative field is
+ * `session.direction` (aggressor-aware — bought vs sold), which only `get_helix_tape_analytics`
+ * carries (via `directionFields`/`sessionFlowSkew`, helix-tape-analytics.ts). This mirrors
+ * `helixContribution` (product-adapters.ts), the already-correct, already-battle-tested reference
+ * for this exact rule: prefer `session.direction`, fall back to `directionFromCallPct` ONLY when
+ * `direction` is entirely absent (an older/partial shape) — never when it reads "undetermined",
+ * which is itself a real "no measurable direction" answer, not an invitation to guess from share.
  */
 function extractHelixRead(result: any): SystemDirectionalRead | null {
   if (!result || typeof result !== "object") return null;
+  // A genuine read failure (available:false) casts no vote at all — rule 3, missing evidence
+  // degrades, never upgrades to a fabricated neutral. Distinct from a quiet-but-real tape below.
+  if (result.available === false) return null;
 
-  // Helix reports call/put sweeps and volumes
-  const callVolume = result.call_volume ?? result.calls_premium ?? 0;
-  const putVolume = result.put_volume ?? result.puts_premium ?? 0;
-  const callPrints = result.call_prints ?? 0;
-  const putPrints = result.put_prints ?? 0;
-
-  const totalVolume = callVolume + putVolume;
-  const totalPrints = callPrints + putPrints;
-
-  if (totalVolume === 0 && totalPrints === 0) {
+  if (result.empty_reason) {
     return {
       system: "HELIX",
       direction: "neutral",
       strength: 0,
       basis: "No flow detected",
-      asOf: new Date().toISOString(),
-      sessionDate: etSessionDate(Date.now()) ?? undefined,
+      asOf: result.as_of ?? new Date().toISOString(),
+      sessionDate: result.session_date ?? etSessionDate(Date.now()) ?? undefined,
       freshness: "unknown",
     };
   }
 
-  const callRatio = totalVolume > 0 ? callVolume / totalVolume : 0.5;
-  const printRatio = totalPrints > 0 ? callPrints / totalPrints : callRatio;
+  // No `session` block at all (malformed/partial payload) degrades to the same "no measurable
+  // direction" neutral the direction==null branch below returns — evidence gaps degrade, they
+  // are not excluded from voting entirely (matching extractThermalRead/extractVectorRead's own
+  // graceful-degradation posture for an unrecognized shape).
+  const session = result.session && typeof result.session === "object" ? result.session : {};
 
-  // Strength based on how skewed the ratio is (0-10)
-  const ratio = Math.max(callRatio, printRatio);
-  const strength = Math.round((Math.abs(ratio - 0.5) * 2) * 10);
+  const callPct = typeof session.call_pct === "number" && Number.isFinite(session.call_pct) ? session.call_pct : null;
+  const rawDirection = session.direction;
+  const direction: "bullish" | "bearish" | "neutral" | null =
+    typeof rawDirection === "string"
+      ? rawDirection === "bullish"
+        ? "bullish"
+        : rawDirection === "bearish"
+          ? "bearish"
+          : rawDirection === "mixed"
+            ? "neutral"
+            : null // "undetermined" (or an unrecognized value) — a real "no measurable direction" answer
+      : directionFromCallPct(callPct);
 
-  let direction: "bullish" | "bearish" | "neutral" = "neutral";
-  if (callRatio > 0.6) direction = "bullish";
-  else if (callRatio < 0.4) direction = "bearish";
+  if (direction == null) {
+    return {
+      system: "HELIX",
+      direction: "neutral",
+      strength: 0,
+      basis: "No measurable call/put direction on the tape",
+      asOf: result.as_of ?? new Date().toISOString(),
+      sessionDate: result.session_date ?? undefined,
+      freshness: "unknown",
+    };
+  }
+
+  const alertCount = typeof session.alert_count === "number" ? session.alert_count : null;
+  // Strength reflects CONFIDENCE in the direction read, not skew magnitude: `direction_readable_pct`
+  // is the share of premium whose aggressor side could actually be read, and
+  // `direction_minority_evidence` flags a verdict resting on a minority of premium (the tool's own
+  // description requires stating that share alongside the direction).
+  const readablePct =
+    typeof session.direction_readable_pct === "number" ? session.direction_readable_pct : null;
+  let strength = readablePct != null ? Math.round(Math.min(100, Math.max(0, readablePct)) / 10) : 5;
+  if (session.direction_minority_evidence === true) strength = Math.min(strength, 3);
 
   const basis =
-    callRatio > 0.6
-      ? `Calls ${Math.round(callRatio * 100)}% of flow`
-      : `Puts ${Math.round((1 - callRatio) * 100)}% of flow`;
+    callPct != null
+      ? `${direction} (${callPct}% call share${alertCount != null ? `, ${alertCount} prints` : ""})`
+      : `${direction} (aggressor-read direction, no measurable call share)`;
 
   return {
     system: "HELIX",
     direction,
-    strength: Math.min(strength, 10),
+    strength: Math.min(Math.max(strength, 0), 10),
     basis,
-    asOf: result.asOf ?? new Date().toISOString(),
-    sessionDate: etSessionDate(Date.now()) ?? undefined,
+    asOf: result.as_of ?? new Date().toISOString(),
+    sessionDate: result.session_date ?? etSessionDate(Date.now()) ?? undefined,
     freshness: result.freshness ?? "live",
   };
 }
@@ -199,50 +244,64 @@ function extractThermalRead(result: any): SystemDirectionalRead | null {
 }
 
 /**
- * Extract directional read from VECTOR technical state.
- * Expected shape: walls, beads, magnet, structure (HH/HL/LH/LL).
+ * Extract directional read from VECTOR full-state (`get_vector_full_state` — see
+ * extractConsensusFromTools for why `get_vector_pulse` is no longer fed through this).
+ *
+ * 2026-09-04 audit finding — FIXED. This used to read `result.structure`/`result.market_structure`
+ * (no such top-level field exists on `VectorSnapshot`/`VectorFullState`, vector-play-engine.ts) and
+ * `result.bias` at the TOP level (the real field is nested at `result.play.bias`, `VectorPlay.bias`
+ * — never top-level), and treated `magnet` as a raw number (`magnet > spotPrice*1.005`) when the
+ * real `magnet` field is a `GammaMagnet` OBJECT (`{strike, distancePct, pull, posture, callout}`,
+ * vector-gamma-magnet.ts) — an object-vs-number comparison that coerces to `NaN` and is always
+ * false even when magnet IS present. So every real call silently fell through to the hardcoded
+ * `{strength:5, direction:"neutral", basis:"Structure neutral"}` default, regardless of the play's
+ * real posture/magnet.
+ *
+ * `regime.posture` (dealer gamma posture) is DELIBERATELY not read as direction here — that is the
+ * identical anti-pattern this file's own `extractThermalRead` was already fixed for (see its doc
+ * comment, PR #2422): dealer gamma is not a directional measurement, short gamma amplifies moves
+ * in EITHER direction. The real actionable directional signal on this payload is the derived
+ * play's own bias (`VectorPlay.bias`, "long"|"short"|"range"|"neutral") — an ACTUAL trade thesis,
+ * not dealer posture. Magnet PULL (`GammaMagnet.pull`, "up"|"down"|"at" — the field's own honest
+ * direction indicator) is kept as STRENGTH evidence only, never a direction override, matching how
+ * wall proximity is evidence-only for Thermal.
  */
 function extractVectorRead(result: any): SystemDirectionalRead | null {
   if (!result || typeof result !== "object") return null;
+  // Honest UNAVAILABLE envelope (no live spot / provider failure) casts no vote — rule 3.
+  if (result.available === false) return null;
 
-  const structure = result.structure ?? result.market_structure ?? null;
-  const bias = result.bias ?? null;
-  const magnet = result.magnet ?? result.magnet_level ?? null;
-  const spotPrice = result.spot ?? result.current_price ?? 0;
+  const bias: "long" | "short" | "range" | "neutral" | null =
+    result.play && typeof result.play === "object" ? (result.play.bias ?? null) : null;
+  const magnet = result.magnet && typeof result.magnet === "object" ? result.magnet : null;
 
   let direction: "bullish" | "bearish" | "neutral" = "neutral";
   let strength = 5;
-  let basis = "Structure neutral";
+  let basis = "No actionable Vector play bias";
 
-  // Market structure (higher high/higher low = uptrend)
-  if (structure === "HH" || structure === "higher_high") {
+  if (bias === "long") {
     direction = "bullish";
     strength = 7;
-    basis = "Higher highs/higher lows (uptrend)";
-  } else if (structure === "LL" || structure === "lower_low") {
+    basis = "Vector play bias: long";
+  } else if (bias === "short") {
     direction = "bearish";
     strength = 7;
-    basis = "Lower lows/lower highs (downtrend)";
+    basis = "Vector play bias: short";
+  } else if (bias === "range") {
+    direction = "neutral";
+    strength = 5;
+    basis = "Vector play bias: range (mean-revert)";
   }
 
-  // Bias refinement
-  if (bias === "bullish" || bias === "long") {
-    direction = "bullish";
-    strength = Math.max(strength, 6);
-    basis += "; bullish bias";
-  } else if (bias === "bearish" || bias === "short") {
-    direction = "bearish";
-    strength = Math.max(strength, 6);
-    basis += "; bearish bias";
-  }
-
-  // Magnet position (is price attracted up or down?)
-  if (magnet && spotPrice && magnet > spotPrice * 1.005) {
+  // Gamma magnet pull — a real directional-pull field (GammaMagnet.pull), used as STRENGTH
+  // evidence only, never a direction override (same "evidence, not a vote" posture as Thermal's
+  // wall proximity).
+  if (magnet?.pull === "up") {
     strength = Math.max(strength, 7);
-    basis += "; magnet above";
-  } else if (magnet && spotPrice && magnet < spotPrice * 0.995) {
+    basis += "; magnet pulling up";
+  } else if (magnet?.pull === "down") {
     strength = Math.max(strength, 7);
-    basis += "; magnet below";
+    basis += "; magnet pulling down";
   }
 
   return {
@@ -403,20 +462,28 @@ export function extractConsensusFromTools(toolResults: Record<string, any>): Con
   const validReads: SystemDirectionalRead[] = [];
 
   // Each tool result → try to extract a read. Only push successful extractions.
-  const helixFlow = extractHelixRead(toolResults.get_flow_tape);
-  if (helixFlow) validReads.push(helixFlow);
-  const helixDerived = extractHelixRead(toolResults.get_helix_derived);
-  if (helixDerived) validReads.push(helixDerived);
+  //
+  // 2026-09-04 audit finding: extractHelixRead now reads ONLY `get_helix_tape_analytics` —
+  // the ONE HELIX tool that carries the aggressor-aware `session.direction` field this read is
+  // built on. `get_flow_tape` (FlowTapeSummary) and `get_helix_derived` (stacked_hits/top_prints/
+  // velocity_spikes/split_flow) carry no comparable directional field at all — feeding either
+  // through this extractor is exactly the mismatched-shape bug being fixed here, not a second
+  // legitimate read to keep.
+  const helixTape = extractHelixRead(toolResults.get_helix_tape_analytics);
+  if (helixTape) validReads.push(helixTape);
 
   const thermalPos = extractThermalRead(toolResults.get_positioning);
   if (thermalPos) validReads.push(thermalPos);
   const thermalGex = extractThermalRead(toolResults.get_gex_heatmap);
   if (thermalGex) validReads.push(thermalGex);
 
+  // 2026-09-04 audit finding: extractVectorRead now reads ONLY `get_vector_full_state` (the
+  // snapshot carrying `play.bias`/`magnet`). `get_vector_pulse` returns a DIFFERENTIAL signals
+  // log (regime flips, magnet shifts, wall-integrity changes — buildPulseSignalsForState,
+  // vector-pulse-brief.ts), a structurally different shape with no `play`/`magnet`/`spot` fields
+  // to read — the same mismatched-shape bug, not a second legitimate read to keep.
   const vectorFull = extractVectorRead(toolResults.get_vector_full_state);
   if (vectorFull) validReads.push(vectorFull);
-  const vectorPulse = extractVectorRead(toolResults.get_vector_pulse);
-  if (vectorPulse) validReads.push(vectorPulse);
 
   const spxStruct = extractSpxRead(toolResults.get_spx_structure);
   if (spxStruct) validReads.push(spxStruct);
