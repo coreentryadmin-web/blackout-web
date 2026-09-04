@@ -1,7 +1,11 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
+<<<<<<< HEAD
   "updated_at": "2026-09-04T13:13:05.917Z",
+=======
+  "updated_at": "2026-09-04T13:16:41.977Z",
+>>>>>>> 3a19cf1da (chore(autopilot): update handoff — #3584 merged, #3585 approved)
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -186,6 +190,41 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T10:33:34.705Z",
       "safe_to_merge": true
+<<<<<<< HEAD
+=======
+    },
+    "pr-3556": {
+      "pr": 3556,
+      "head_sha": "41fe0bfb7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T12:33:32.129Z",
+      "safe_to_merge": true
+    },
+    "pr-3580": {
+      "pr": 3580,
+      "head_sha": "1db040d17",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T12:44:13.761Z",
+      "safe_to_merge": true
+    },
+    "pr-3582": {
+      "pr": 3582,
+      "head_sha": "288a44209",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T12:48:01.109Z",
+      "safe_to_merge": true
+    },
+    "pr-3585": {
+      "pr": 3585,
+      "head_sha": "3d49d057",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T13:16:36.213Z",
+      "safe_to_merge": true
+>>>>>>> 3a19cf1da (chore(autopilot): update handoff — #3584 merged, #3585 approved)
     }
   },
   "agents": {
@@ -823,8 +862,59 @@
       "at": "2026-09-04T13:13:05.917Z",
       "type": "handoff",
       "agent": "cursor",
+<<<<<<< HEAD
       "run_id": "5ae1e278-c29c-416f-97e1-81c00544ad55",
       "summary": "Lifecycle GREEN (deploy/SEO/ops/rth-open). PR sweep: #3578 ready (Claude peer review pending — cursor-built). #3584 APPROVED by cursor, verify pending. #3583 draft handoff. GitHub rate limit hit again during verify watch."
+=======
+      "run_id": "dde2d6ba-9c47-4492-b393-5372767098ae",
+      "summary": "PR #3580 (data-integrity-verifier ageMin future-timestamp guard) peer-reviewed APPROVED + merged. #3556 already merged. #3578 cursor autopilot handoff GREEN — awaiting Claude peer review. validate:deploy GREEN. ops:collect 0 items. GitHub REST rate-limited for gh CLI; ManagePullRequest + WebFetch used for CI/PR state."
+    },
+    {
+      "at": "2026-09-04T12:48:01.110Z",
+      "type": "pr_review",
+      "pr": 3582,
+      "head_sha": "288a44209",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T12:48:01.109Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T12:48:06.884Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:48:06.884Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "072758a3-0684-479a-b95a-27416aabb9c3",
+      "summary": "Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs."
+    },
+    {
+      "at": "2026-09-04T13:16:36.214Z",
+      "type": "pr_review",
+      "pr": 3585,
+      "head_sha": "3d49d057",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T13:16:36.213Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T13:16:41.976Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T13:16:41.977Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9ce487f8-33d3-4a49-911e-bd85baad5e87",
+      "summary": "Cycle complete. #3584 merged (TikTok OAuth audit skip). #3585 APPROVED (vector spot-zero guard + pr-feedback rate-limit test skip). #3586 handoff draft. Lifecycle/deploy/SEO/ops all GREEN. Off-hours pre-market."
+>>>>>>> 3a19cf1da (chore(autopilot): update handoff — #3584 merged, #3585 approved)
     }
   ]
 }
