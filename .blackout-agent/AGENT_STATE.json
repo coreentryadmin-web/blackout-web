@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T12:48:06.884Z",
+  "updated_at": "2026-09-04T14:46:43.019Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -80,14 +80,15 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
-      "phase": "VERIFYING",
+      "claimed_at": "2026-09-04T14:31:25.821Z",
+      "lease_until": "2026-09-04T16:14:36.987Z",
+      "phase": "RELEASED",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
-      "title": null
+      "run_id": "b8ba3bc1-ef79-4c24-b047-7ae65c72a7e9",
+      "title": null,
+      "released_at": "2026-09-04T14:46:42.327Z"
     },
     "BO-P1-0104": {
       "task_id": "BO-P1-0104",
@@ -219,16 +220,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T14:31:25.822Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118",
+    "last_main_sha": "c293cb8ac791424b19dfceb6837b0f972ab61312",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T14:46:30Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33885671917",
+    "last_deploy_sha": "e49617e021f56b5f06b1361348c8dd23521e6a1f"
   },
   "open_prs": [],
   "events": [
@@ -898,6 +899,79 @@
       "agent": "cursor",
       "run_id": "072758a3-0684-479a-b95a-27416aabb9c3",
       "summary": "Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs."
+    },
+    {
+      "at": "2026-09-04T14:30:55.478Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:30:59.503Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:31:00.176Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:31:04.119Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:31:25.822Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T14:44:24.600Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:44:36.986Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:44:37.643Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:44:38.352Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:46:42.327Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T14:46:43.019Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:46:43.019Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "43ecf855-2257-4bb2-8df9-478843196c12",
+      "summary": "Workflow_run cycle: bootstrap+session on main e5b104ad. validate:rth-open GREEN, validate:deploy GREEN, ops:collect 0, blackout:rth-lifecycle GREEN (deploy+api-auth+platform-integrity+seo+rth-open). RTH sweep 0 P0/P1 (Playwright installed). Deploy run 33882136477 was in_progress during sweep — terminal chunk 404s are mid-rollout artifact. GH API rate-limited (remaining 0) — pr-sweep empty, cannot list/review PRs. socket-health 503/401 from sandbox CRON_SECRET mismatch (documented). Counterfactual G-18/G-19 INSUFFICIENT_DATA. Peer Claude stale since 11:20 UTC."
     }
   ]
 }
