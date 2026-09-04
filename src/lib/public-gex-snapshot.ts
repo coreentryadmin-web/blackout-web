@@ -2,6 +2,7 @@ import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { captureError } from "@/lib/error-sink";
 import { sharedCacheGet, sharedCacheSet, sharedCacheDel } from "@/lib/shared-cache";
 import { roundFloats } from "@/lib/round-floats";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 import {
   applyPublicReadFreshnessGate,
   classifyWall,
@@ -97,10 +98,7 @@ async function noteWarmingAndMaybeAlarm(ticker: string): Promise<void> {
 }
 
 function snapshotAgeSec(asof: string | null): number | null {
-  if (!asof) return null;
-  const ms = Date.now() - new Date(asof).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return 0;
-  return Math.round(ms / 1000);
+  return ageSecFromIso(asof);
 }
 
 function withAgeFields(snapshot: PublicGexSnapshot): PublicGexSnapshot {
