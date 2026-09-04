@@ -6,9 +6,24 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { LOCKS_DIR, lockPath } from "./paths.mjs";
+import { LOCKS_DIR, heartbeatPath, lockPath } from "./paths.mjs";
 
 const DEFAULT_LEASE_MS = 90 * 60 * 1000;
+const DEFAULT_HEARTBEAT_STALE_MS = Number(process.env.BLACKOUT_HEARTBEAT_STALE_MS ?? 20 * 60 * 1000);
+
+/** True when the owner's heartbeat is missing or older than maxAgeMs. */
+export function isOwnerHeartbeatStale(owner, maxAgeMs = DEFAULT_HEARTBEAT_STALE_MS) {
+  const path = heartbeatPath(owner);
+  if (!existsSync(path)) return true;
+  try {
+    const hb = JSON.parse(readFileSync(path, "utf8"));
+    const last = hb.last_seen ? Date.parse(hb.last_seen) : 0;
+    if (!last) return true;
+    return Date.now() - last > maxAgeMs;
+  } catch {
+    return true;
+  }
+}
 
 export function ensureLocksDir() {
   mkdirSync(LOCKS_DIR, { recursive: true });
@@ -40,6 +55,11 @@ export function claimLock(taskId, owner, opts = {}) {
     }
     if (leaseUntil > now && existing.owner === owner) {
       return { ok: true, lock: existing };
+    }
+    // Lease expired — reclaim ONLY if the recorded owner's heartbeat is stale.
+    // A slow-but-alive agent renewing heartbeat must not be stolen from.
+    if (!isOwnerHeartbeatStale(existing.owner)) {
+      return { ok: false, reason: "lease_expired_owner_alive", lock: existing };
     }
     try {
       unlinkSync(path);

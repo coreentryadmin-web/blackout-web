@@ -31,6 +31,23 @@ test("claimLock: expired lease reclaimed", async () => {
   releaseLock("BO-TEST-0003", "cursor");
 });
 
+test("claimLock: expired lease NOT reclaimed when owner heartbeat is fresh", async () => {
+  const { claimLock, releaseLock } = await import("./lib/locks.mjs");
+  const { writeJsonAtomic } = await import("./lib/state.mjs");
+  const { heartbeatPath } = await import("./lib/paths.mjs");
+  writeJsonAtomic(heartbeatPath("claude"), {
+    agent: "claude",
+    last_seen: new Date().toISOString(),
+    healthy: true,
+  });
+  claimLock("BO-TEST-0004", "claude", { leaseMs: 1 });
+  await new Promise((r) => setTimeout(r, 5));
+  const second = claimLock("BO-TEST-0004", "cursor", { leaseMs: 60_000 });
+  assert.equal(second.ok, false);
+  assert.equal(second.reason, "lease_expired_owner_alive");
+  releaseLock("BO-TEST-0004", "claude");
+});
+
 test("dispatch-prompt includes coordination rules", () => {
   const r = spawnSync("node", ["scripts/blackout-agent/dispatch-prompt.mjs", "--agent=cursor"], { encoding: "utf8", cwd: repoRoot });
   assert.equal(r.status, 0);
