@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T23:46:00.000Z",
+  "updated_at": "2026-09-04T23:52:00.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -243,6 +243,24 @@
       "reviewed_at": "2026-09-04T23:45:00.000Z",
       "safe_to_merge": true,
       "notes": "UW spot-fallback returns null change_pct when prev_close absent; fixed MARKET-OPEN-VALIDATION conflict markers"
+    },
+    "pr-3786": {
+      "pr": 3786,
+      "head_sha": "cb760d1dc",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:50:00.000Z",
+      "safe_to_merge": true,
+      "notes": "Vector guide Thermal multi-ticker copy fix + regression test — merged"
+    },
+    "pr-3789": {
+      "pr": 3789,
+      "head_sha": "292d4c4e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:50:00.000Z",
+      "safe_to_merge": true,
+      "notes": "Polygon snapshotChangePctFromRow null-not-zero — merged"
     }
   },
   "agents": {
@@ -252,26 +270,18 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T23:46:00.000Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T23:52:00.000Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "awaiting_claude_review": [
     {
-      "pr": 3783,
-      "head_sha": "f1a74e78235ac076708600b03d00b7c892920790",
-      "title": "fix(swing): discovery COMMIT without ledger is pre-entry for banger merge",
-      "ci": "verify GREEN",
-      "merge_order": 1,
-      "notes": "isPreEntrySwingPlay now !isLiveManagingSwingPlay — discovery COMMIT without ledger capital is replaceable by open banger. Conflict markers removed in test file."
-    },
-    {
       "pr": 3787,
-      "head_sha": "6f6ce0f5a879fef5c2e4fd8cd7b79498da4b074c",
+      "head_sha": "aea0a0751",
       "title": "feat(swing-command): Phase P0 parity — live mgmt, thesis health, cockpit",
-      "ci": "verify GREEN",
-      "merge_order": 2,
-      "notes": "Marked ready for review. Rebase onto main after #3783 merges. swingManagementVerdict: thesis overlay then manage engine wins. HARD MERGE GATE: Claude adversarial review on CURRENT HEAD required."
+      "ci": "verify pending (rebased onto main @ f8c8c5884)",
+      "merge_order": 1,
+      "notes": "Rebased onto main after #3783 merged. 155 P0 tests pass locally. swingManagementVerdict: thesis overlay then manage engine wins. HARD MERGE GATE: Claude adversarial review on CURRENT HEAD aea0a0751 required — prior review on 6f6ce0f5a is stale."
     }
   ],
   "deploy": {
@@ -1125,6 +1135,13 @@
       "agent": "cursor",
       "run_id": "peer-review-capacity-wave",
       "summary": "Team capacity: fixed MARKET-OPEN-VALIDATION conflict markers on #3790 (pushed f242559→ce32afa, verify GREEN) + doc sync on #3789 (292d4c4). Cursor APPROVED #3790. Peer-reviewed #3786 (Vector/Thermal copy fix, tests pass) — verify pending. #3773 superseded by focused #3783 — recommend close. Standing: Claude review #3783/#3787; Claude merge #3790 when ready."
+    },
+    {
+      "at": "2026-09-04T23:52:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "swing-p0-rebase",
+      "summary": "#3783 merged. Rebased #3787 onto main @ f8c8c5884 → HEAD aea0a0751 (155 P0 tests pass). #3790/#3789/#3786 merged. Stale #3773 still open — superseded. Standing: Claude adversarial review #3787 CURRENT HEAD aea0a0751; CI re-running. Do NOT merge without Claude APPROVED."
     }
   ]
 }
