@@ -17,8 +17,9 @@ build/
 _logs_*.txt
 tsconfig.tsbuildinfo
 
-# clerk configuration (can include secrets)
-/.clerk/
+# BLACKOUT Autopilot runtime leases (task locks are ephemeral; state is in AGENT_STATE.json)
+.blackout-agent/LOCKS/*.lock
+
 
 # data-validator runtime output (may contain live production data)
 audit-output/

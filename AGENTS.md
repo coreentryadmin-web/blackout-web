@@ -135,6 +135,37 @@ Workflow:
 
 Full policy + exceptions: **`CLAUDE.md`** § Merge authorization.
 
+### BLACKOUT Autopilot — shared Claude/Cursor state (standing — 2026-09-03)
+
+**Neither Claude nor Cursor is permanent. BLACKOUT Autopilot is permanent.**
+
+Both agents share **`.blackout-agent/`** as the authoritative operational state machine.
+Do not create separate roadmaps, findings DBs, or competing source of truth.
+
+Every Cursor session MUST begin with:
+
+```bash
+npm run blackout:bootstrap -- --agent=cursor
+npm run blackout:heartbeat -- --agent=cursor --phase=BOOTSTRAP
+```
+
+Read: `ACTIVE_WORK.md`, `LAST_HANDOFF.md`, `WORK_QUEUE.md`, `FINDINGS.md` in `.blackout-agent/`.
+
+**Claim before implement:** `npm run blackout:claim -- --id=BO-P1-xxxx --owner=cursor --phase=IMPLEMENTING`  
+**Heartbeat throughout:** `npm run blackout:heartbeat -- --agent=cursor --task=... --phase=...`  
+**Handoff on milestones:** `npm run blackout:handoff -- --agent=cursor --summary="..."`
+
+**Peer coordination:** Claude ↔ Cursor are peers. Never approve your own PR. CI green ≠ approval.
+If peer owns highest task, pick next independent task. Never idle because peer is busy.
+
+Architecture: `.blackout-agent/README.md`. Constitution: **`CLAUDE.md`** (do not fork).
+Dispatch prompt: `npm run blackout:prompt -- --agent=cursor`
+
+**Session entry:** `npm run blackout:session -- --agent=cursor` (sync + heartbeat + resume leases)  
+**Task selection:** `npm run blackout:select -- --agent=cursor`  
+**PR review record:** `npm run blackout:review -- --pr=N --head=<sha> --verdict=APPROVED`  
+**Watchdog:** `npm run blackout:watchdog` (stale heartbeats + lease expiry)
+
 ### Autonomous RTH resume (Cloud Agent — do NOT wait for user)
 
 On **every weekday** Cloud Agent session when **America/New_York ≥ 09:00**:

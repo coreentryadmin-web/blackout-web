@@ -14,6 +14,10 @@
  */
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const dryRun = process.argv.includes("--dry-run");
 const fileIdx = process.argv.indexOf("--file");
@@ -135,7 +139,11 @@ if (dryRun) {
 }
 
 const itemList = payload.items.map((i) => `- [${i.priority}] ${i.title}: ${i.detail}`).join("\n");
-const prompt = `Autonomous fix session (GitHub issue ${issueUrl ?? "dry-run"}).
+const bootstrapResult = spawnSync("node", ["scripts/blackout-agent/dispatch-prompt.mjs", "--agent=cursor"], { encoding: "utf8", cwd: REPO_ROOT });
+const bootstrap = bootstrapResult.status === 0 ? bootstrapResult.stdout : "Read AGENTS.md BLACKOUT Autopilot section.";
+const prompt = `${bootstrap}
+
+Autonomous fix session (GitHub issue ${issueUrl ?? "dry-run"}).
 
 Action items (${payload.count}, fingerprint ${fp}):
 ${itemList}

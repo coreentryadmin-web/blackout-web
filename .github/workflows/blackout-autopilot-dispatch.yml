@@ -1,0 +1,86 @@
+# BLACKOUT Autopilot — event-driven + scheduled agent dispatch
+#
+# Wakes Cursor on CI failure, deploy success, deploy smoke failure, peer review,
+# or every 30 min fallback. Requires: CURSOR_API_KEY
+
+name: BLACKOUT Autopilot dispatch
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_run:
+    workflows:
+      - CI
+      - ECR push (production)
+      - Deploy smoke
+    types: [completed]
+  pull_request_review:
+    types: [submitted]
+  workflow_dispatch:
+
+concurrency:
+  group: blackout-autopilot-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && (
+        (github.event.workflow_run.name == 'CI' && github.event.workflow_run.conclusion == 'failure') ||
+        (github.event.workflow_run.name == 'ECR push (production)' && github.event.workflow_run.conclusion == 'success') ||
+        (github.event.workflow_run.name == 'Deploy smoke' && github.event.workflow_run.conclusion == 'failure')
+      )) ||
+      (github.event_name == 'pull_request_review' && github.event.review.state == 'approved')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Skip if Cursor session already active
+        id: guard
+        run: |
+          set +e
+          node scripts/blackout-agent/dispatch-guard.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 1 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Active Cursor session — skipping duplicate dispatch"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Launch Cursor Cloud Agent
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CURSOR_API_KEY:-}" ]; then
+            echo "CURSOR_API_KEY not set — skipping."
+            exit 0
+          fi
+          EXTRA="Event: ${{ github.event_name }}"
+          export PROMPT
+          PROMPT=$(node scripts/blackout-agent/dispatch-prompt.mjs --agent=cursor --extra="$EXTRA")
+          payload=$(node -e "
+            console.log(JSON.stringify({
+              prompt: { text: process.env.PROMPT },
+              repos: [{ url: 'https://github.com/coreentryadmin-web/blackout-web', startingRef: 'main' }],
+              autoCreatePR: true
+            }));
+          ")
+          resp=$(curl -sf -X POST https://api.cursor.com/v1/agents \
+            -u "${CURSOR_API_KEY}:" \
+            -H 'Content-Type: application/json' \
+            -d "$payload")
+          echo "$resp" | node -e "
+            const r = JSON.parse(require('fs').readFileSync(0,'utf8'));
+            console.log('Autopilot agent:', r.agent?.url ?? r.url ?? r);
+          "
