@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0ai. Night Hawk's Learn-chapter SEO metadata still said "Swing Trading Setups" — fix/guide-seo-night-hawk-stale-metadata (pending)
+
+**What was broken:** `GUIDE_SEO["night-hawk"]` (`guide-seo.ts`) — a third, independent copy of the same stale "evening/swing-only" framing already fixed today in `PRODUCT_MANIFEST.hawk` and `LEARN_NAV` — read "Swing Trading Setups Explained" / "runs its evening scanner" as the literal `<title>` and SERP snippet.
+
+**Fix:** Updated to "0DTE Command & Evening Edition" / a description leading with 0DTE Command scanning intraday, Evening Edition as next-session prep. Added a regression test.
+
+**Check at the open:** Google/search-console snippet for `/learn/night-hawk` and the Course JSON-LD chapter list should show the corrected title; confirm no SERP-truncation regression (title 49/60 chars, description 146/160 chars).
+
 ### 0ae. `zerodte-warm` cron raced live member requests for the UW rate-limiter ceiling on a false premise — fix/zerodte-warm-uw-sweep-tag (merged #3775)
 
 **What was broken:** the `zerodte-warm` cron's dispatch (`warmZeroDteBoard()` +
