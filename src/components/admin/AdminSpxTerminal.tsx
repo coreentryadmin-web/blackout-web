@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { clsx } from "clsx";
 import type { SpxAdminDashboardPayload } from "@/lib/admin-spx-dashboard";
 import type { SpxTerminalLine } from "@/lib/admin-spx-terminal";
+import { timeAgoTerminalFromIso, adminAgeMsFromIso } from "@/components/admin/admin-time-ago";
 
 type FeedFilter = "all" | "critical" | "warning" | "api" | "pulse" | "info";
 
@@ -28,16 +29,7 @@ function fmtClockEt(): string {
 }
 
 function fmtRel(iso: string): string {
-  const sec = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
-  if (sec < 3) return "now";
-  if (sec < 60) return `${sec}s`;
-  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
-  return new Date(iso).toLocaleTimeString("en-US", {
-    timeZone: "America/New_York",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  return timeAgoTerminalFromIso(iso);
 }
 
 function lineMatchesFilter(line: SpxTerminalLine, filter: FeedFilter): boolean {
@@ -230,7 +222,10 @@ export function AdminSpxTerminal({
                     {inc.status.toUpperCase()}
                     {inc.mtta_ms != null
                       ? ` · MTTA ${Math.round(inc.mtta_ms / 1000)}s`
-                      : ` · open ${Math.round((Date.now() - new Date(inc.opened_at).getTime()) / 1000)}s`}
+                      : (() => {
+                          const ageMs = adminAgeMsFromIso(inc.opened_at);
+                          return ageMs == null ? " · open (clock skew)" : ` · open ${Math.round(ageMs / 1000)}s`;
+                        })()}
                   </p>
                 </div>
                 <div className="admin-spx-term-incident-actions">

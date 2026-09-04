@@ -10,6 +10,7 @@ import { clsx } from "clsx";
 
 import type { ApiCallEvent } from "@/lib/api-telemetry-types";
 import { incidentDedupeKey, isFeedableIncident } from "@/lib/api-telemetry-types";
+import { timeAgoCompactFromIso } from "@/components/admin/admin-time-ago";
 
 
 
@@ -48,15 +49,7 @@ type RetryRow = {
 
 
 function fmtRel(iso: string): string {
-
-  const sec = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
-
-  if (sec < 5) return "just now";
-
-  if (sec < 60) return `${sec}s ago`;
-
-  return `${Math.floor(sec / 60)}m ago`;
-
+  return timeAgoCompactFromIso(iso);
 }
 
 
