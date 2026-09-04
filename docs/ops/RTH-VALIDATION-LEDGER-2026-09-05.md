@@ -27,6 +27,8 @@
 | 12 | #3469 | Largo | Morning-brief DST double-fire gate (9:25 ET) | Only ONE push per member at ~9:25 ET |
 | 13 | #3468 | Cron | meridian-warm overlap guard | No duplicate warm fan-out across replicas |
 | 14 | #3477 | Autopilot | PR webhook non-blocking agent dispatch | Same as #10 row |
+| 15 | #3493 | Cron | `uw-cache-refresh` tagged `runWithBackgroundUwSweep` | RTH: no ALB tail during cache refresh fan-out |
+| 16 | #3494 | Autopilot | `pr-feedback` normalizes gh `state:SUCCESS` → MERGE directive | `npm run blackout:pr-sweep` shows MERGE not WAIT after green verify |
 
 ---
 
