@@ -50,6 +50,24 @@ export const maxDuration = 120;
 const OVERLAP_LOCK_KEY = "zerodte-warm:running";
 const OVERLAP_LOCK_TTL_SEC = 900;
 
+/**
+ * Minimum re-run floor — independent of, and IN ADDITION TO, the hours gate above.
+ *
+ * Same structural gap fixed for desk-warm (#3540) and heatmap-warm (#3542): `force=1` completely
+ * bypasses `shouldRunCacheWarmer`'s hours check, and OVERLAP_LOCK above guards only against a
+ * SECOND run starting while the FIRST is still in flight — it is released the instant the
+ * background dispatch settles, which on an already-warm board can be far faster than the
+ * measured 100+ second overlap window from 2026-09-02. A caller replaying `?force=1` in a tight
+ * loop could re-trigger the scanner tick + board-snapshot rebuild far faster than any legitimate
+ * trigger (rth-warm-leader's 4 min heal threshold, EventBridge's ~5 min schedule) with nothing
+ * capping the rate.
+ *
+ * 60s sits safely BELOW every legitimate cadence for this cron: rth-warm-leader's heal threshold
+ * is 4 min (RTH_WRITER_HEAL_AFTER_MIN["zerodte-warm"]) and EventBridge's own schedule is ~5 min.
+ */
+const RERUN_COOLDOWN_KEY = "zerodte-warm:cooldown";
+const RERUN_COOLDOWN_SEC = 60;
+
 export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
@@ -63,6 +81,21 @@ export async function GET(req: NextRequest) {
       skipped: true,
       reason:
         "Outside extended warm window (weekday 4:00 AM–8:00 PM ET) — use ?force=1",
+    };
+    await logCronRun("zerodte-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const withinCooldown = !(await sharedCacheSetNx(
+    RERUN_COOLDOWN_KEY,
+    { startedAt: started },
+    RERUN_COOLDOWN_SEC
+  ).catch(() => true));
+  if (withinCooldown) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: `rate-limited — zerodte-warm already ran within the last ${RERUN_COOLDOWN_SEC}s (force=1 does not bypass this floor)`,
     };
     await logCronRun("zerodte-warm", started, payload);
     return NextResponse.json(payload);
