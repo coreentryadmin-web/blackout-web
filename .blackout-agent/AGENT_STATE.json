@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T02:06:52.193Z",
+  "updated_at": "2026-09-04T03:00:59.517Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -30,8 +30,8 @@
     "BO-P1-0005": {
       "task_id": "BO-P1-0005",
       "owner": "cursor",
-      "claimed_at": "2026-09-03T23:53:48.679Z",
-      "lease_until": "2026-09-04T01:23:48.679Z",
+      "claimed_at": "2026-09-04T02:50:47.248Z",
+      "lease_until": "2026-09-04T04:20:47.248Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -121,6 +121,22 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3469": {
+      "pr": 3469,
+      "head_sha": "6e153695f2a7576cba94ddfdfecf88d8a073606a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T02:59:58.623Z",
+      "safe_to_merge": true
+    },
+    "pr-3474": {
+      "pr": 3474,
+      "head_sha": "2b76a98ab3c8ee96db0613ecceb660ef13174808",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T03:00:02.266Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -135,44 +151,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f2285917e0ad04ea57dbe884e9e1004f20b6a04e",
+    "last_main_sha": "b8c8c6f949777f1545634ef7825caa6a4e8f2005",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T02:05:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826698258",
-    "last_deploy_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b"
+    "last_deploy_at": "2026-09-04T03:00:24Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33831600006",
+    "last_deploy_sha": "f6ab7fa117314eb2f561d321d0323c56029a601f"
   },
-  "open_prs": [
-    {
-      "number": 3465,
-      "title": "chore(autopilot): handoff — merged #3454, P1 queue cleared",
-      "branch": "fix/autopilot-handoff-2026-09-04-session2",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T02:04:58Z"
-    },
-    {
-      "number": 3464,
-      "title": "chore(autopilot): cursor handoff — peer review lane BO-P1-0005",
-      "branch": "cursor/autopilot-handoff-peer-reviews-2026-09-04-2",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T02:03:08Z"
-    },
-    {
-      "number": 2810,
-      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
-      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
-      "author": "app/dependabot",
-      "agent": "human",
-      "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-01T19:54:25Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -501,6 +486,57 @@
       "type": "task_released",
       "task_id": "BO-P1-0004",
       "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T02:59:58.623Z",
+      "type": "pr_review",
+      "pr": 3469,
+      "head_sha": "6e153695f2a7576cba94ddfdfecf88d8a073606a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T02:59:58.623Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T03:00:02.267Z",
+      "type": "pr_review",
+      "pr": 3474,
+      "head_sha": "2b76a98ab3c8ee96db0613ecceb660ef13174808",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T03:00:02.266Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T03:00:39.900Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T03:00:45.273Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T03:00:51.672Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T03:00:59.516Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T03:00:59.517Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "bb8e7f00-1da0-407d-a21d-21f910fe722b",
+      "summary": "PR webhook resume: peer-reviewed #3469 (largo morning-brief DST gate) and #3474 (meridian pre-earnings expected_move withhold) — both APPROVED, undrafted, merged. validate:deploy GREEN. ops:collect 0 items. P1 queue clear."
     }
   ]
 }
