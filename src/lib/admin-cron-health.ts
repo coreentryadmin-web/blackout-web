@@ -21,10 +21,24 @@ import {
 } from "@/lib/cron-writer-target-fresh";
 import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
+import { isoAgeSec } from "@/components/admin/admin-time-ago";
 
 /** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
   return isEtCashRth(now);
+}
+
+/** Age in minutes for nighthawk job updated_at — future/skewed timestamps exceed stuck threshold. */
+export function nighthawkJobAgeMin(
+  updatedAt: string | null | undefined,
+  stuckThresholdMin: number,
+  now = Date.now()
+): number | null {
+  if (!updatedAt) return null;
+  const age = isoAgeSec(updatedAt, now);
+  if (age.kind === "ok") return Math.round(age.sec / 60);
+  if (age.kind === "clock-skew") return stuckThresholdMin + 1;
+  return null;
 }
 
 function positiveEnvInt(name: string, fallback: number): number {
@@ -362,19 +376,15 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
 
     if (job.key === "nighthawk-playbook" && latestNhJob) {
       const updatedAt = latestNhJob.updated_at;
-      const ageMin =
-        updatedAt != null
-          ? Math.round((Date.now() - new Date(updatedAt).getTime()) / 60_000)
-          : null;
-      let status = health.status;
-      let statusLabel = health.status_label;
-
       // A non-terminal job (anything not published/failed) whose updated_at is older than this is
       // STUCK — with the fire-and-forget builder a healthy build checkpoints every stage within
       // minutes, so >60m without progress and without publishing means the background build died
       // silently (host kill, OOM, hung Claude call). Escalate to `stale` so the watchdog alerts the
       // same night instead of waiting out the 4h registry ceiling. (#77 hardening D, item 10)
       const STUCK_JOB_MIN = isInEditionWindow() ? 15 : 60;
+      const ageMin = nighthawkJobAgeMin(updatedAt, STUCK_JOB_MIN);
+      let status = health.status;
+      let statusLabel = health.status_label;
       const nonTerminal = latestNhJob.status !== "published" && latestNhJob.status !== "failed";
       const stuck = nonTerminal && ageMin != null && ageMin > STUCK_JOB_MIN;
 
