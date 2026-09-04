@@ -26,6 +26,7 @@ import { warmZeroDteBoard } from "@/lib/zerodte/scan";
 import { refreshZeroDteBoardSnapshot } from "@/lib/platform/zerodte-service";
 import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -124,12 +125,23 @@ export async function GET(req: NextRequest) {
   // the heavy work in after() and return 202 in seconds. The ECS worker is long-lived — the build
   // still completes and publishes the shared snapshot; only the HTTP handshake must be short.
   //
-  // UW sweep tag: intentionally NOT wrapped in the shared background UW sweep helper.
-  // warmZeroDteBoard reads the HELIX flow tape from Postgres (fetchRecentFlows) — not a UW REST
-  // fan-out — and the board snapshot rebuild is platform-local. Tagging this as a background UW
-  // sweep would mis-account budget without protecting live UW traffic.
+  // UW sweep tag: WAS "intentionally not wrapped" (claimed platform-local, not a UW REST
+  // fan-out) — that premise was wrong. `warmZeroDteBoard` calls `scanZeroDteBoard` internally,
+  // and `scanZeroDteBoard`'s own top-rank enrichment loop calls `fetchTickerDossier`
+  // (nighthawk/lib/dossier.ts, `runUwPooled` from uw-rate-limiter) in bounded parallel batches —
+  // its own comment says so ("UW budget stays predictable"). `refreshZeroDteBoardSnapshot` ->
+  // `buildZeroDteBoardPayload` -> `scanZeroDteBoard` hits the same path. So this cron's tick was
+  // racing live member requests for the SAME UW rate-limiter ceiling with none of the "leave one
+  // slot for live traffic" protection the four Vector-family crons already have (found live
+  // 2026-09-04: PR #3759's queue-wait instrumentation showed a 30s window of near-continuous
+  // UNTAGGED 10-19s admissions correlating with `[zerodte-scan]` log lines on the same ECS task).
+  // `getZeroDteBoardPayload` (the live read path — `/api/market/zerodte/board`,
+  // `/api/market/nighthawk/horizons`) is a SEPARATE call site and stays untagged, exactly like
+  // the existing four crons: only the CRON'S OWN dispatch is wrapped, never the shared function.
   const dispatchWarm = () => {
-    void Promise.allSettled([warmZeroDteBoard(), refreshZeroDteBoardSnapshot()])
+    void runWithBackgroundUwSweep(() =>
+      Promise.allSettled([warmZeroDteBoard(), refreshZeroDteBoardSnapshot()])
+    )
       .then((results) => {
         let warmed = earningsWarmed;
         for (const r of results) {
