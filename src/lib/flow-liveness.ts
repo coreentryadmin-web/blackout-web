@@ -37,6 +37,19 @@ const HEARTBEAT_TTL_SEC = 90;
 
 const INSTANCE_ID = randomUUID();
 
+/**
+ * True when a heartbeat timestamp is within `maxAgeMs` of `now` and not in the future.
+ * Future-dated stamps (cross-replica clock skew) must not read as infinitely fresh.
+ */
+export function isHeartbeatAtFresh(
+  at: number,
+  now = Date.now(),
+  maxAgeMs = 120_000
+): boolean {
+  const ageMs = now - at;
+  return ageMs >= 0 && ageMs <= maxAgeMs;
+}
+
 type HeartbeatRecord = { at: number; instance: string };
 
 let lastWriteAt = 0;
@@ -77,7 +90,7 @@ export async function isFlowFrameFreshFromCluster(maxAgeMs = 120_000): Promise<b
     if (!record || typeof record.at !== "number") return false;
     // A heartbeat written by THIS process must not let it skip its own REST work.
     if (record.instance === INSTANCE_ID) return false;
-    return Date.now() - record.at <= maxAgeMs;
+    return isHeartbeatAtFresh(record.at, Date.now(), maxAgeMs);
   } catch {
     return false;
   }
@@ -105,7 +118,7 @@ export async function isFlowFrameFreshAnywhere(maxAgeMs = 120_000): Promise<bool
   try {
     const record = await sharedCacheGet<HeartbeatRecord>(HEARTBEAT_KEY);
     if (!record || typeof record.at !== "number") return false;
-    return Date.now() - record.at <= maxAgeMs;
+    return isHeartbeatAtFresh(record.at, Date.now(), maxAgeMs);
   } catch {
     return false;
   }
@@ -145,12 +158,13 @@ export async function peekFlowLivenessHeartbeat(maxAgeMs = 120_000): Promise<Flo
     if (!record || typeof record.at !== "number") {
       return { heartbeat_present: false, last_frame_at: null, age_sec: null, fresh: false };
     }
-    const ageMs = Date.now() - record.at;
+    const now = Date.now();
+    const ageMs = now - record.at;
     return {
       heartbeat_present: true,
       last_frame_at: new Date(record.at).toISOString(),
       age_sec: Math.max(0, Math.round(ageMs / 1000)),
-      fresh: ageMs <= maxAgeMs,
+      fresh: isHeartbeatAtFresh(record.at, now, maxAgeMs),
     };
   } catch {
     return { heartbeat_present: false, last_frame_at: null, age_sec: null, fresh: false };

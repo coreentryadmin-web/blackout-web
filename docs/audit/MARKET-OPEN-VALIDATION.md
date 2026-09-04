@@ -126,6 +126,18 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0l. Flow liveness heartbeat future-dated freshness — fix/flow-liveness-future-timestamp (pending)
+
+**What was broken:** `isFlowFrameFreshFromCluster` / `isFlowFrameFreshAnywhere` /
+`peekFlowLivenessHeartbeat` treated a future-dated Redis heartbeat as fresh (negative age always
+passes `<= maxAgeMs`), which could let flow-ingest skip REST or show a green HELIX admin tile when
+the stamp is clock-skewed forward.
+
+**What the fix changed:** `isHeartbeatAtFresh()` requires `ageMs >= 0 && ageMs <= maxAgeMs`.
+
+**RTH check:** `/admin` → HELIX health — flow heartbeat `fresh` must not stay true on a stale or
+future-dated cluster stamp after a deploy or replica clock skew.
+
 ### 0k. Six orphaned modules removed (SPX/Thermal/marketing) — fix/orphaned-spx-thermal-modules (pending)
 
 **What was broken:** nothing member-visible — `src/features/spx/{hooks/useSpxDayPerformance.ts,
