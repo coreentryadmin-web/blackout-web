@@ -255,6 +255,29 @@ day where OI clusters above spot. No pre-fix baseline exists from this session t
 (cursor-authored, evidence lives in the PR's own commit history) — treat today's open as the first
 live observation.
 
+### 7. Meridian timeline showed a live "implied move" beside "· printed" on a same-day print — PR TBD (DISCOVERY lane)
+
+**What was broken:** `overlayTimelineExpectedMoves` (the Meridian earnings **calendar/timeline**
+lane, a different surface from the earnings-detail panel #3474/#3482 already fixed) stamped the
+LIVE Polygon chain-IV expected move onto every timeline row keyed by ticker, with no check of that
+row's own `is_printed` flag. `loadMeridianEarningsTimeline` keeps rows with `report_date >=
+todayYmd`, so a same-day BMO print that has already reported by the time a member loads the page
+mid-session still reached the overlay — pairing a forward-looking "~X% implied move" with the same
+row's own "· printed" label in one rendered string (`meridian-timeline.ts`'s timeline-item
+subtitle), asserting a pre-print expectation for an event the label itself says already happened.
+
+**Fix:** `overlayTimelineExpectedMoves` now returns the row unchanged (no overlay) when
+`row.is_printed` is true — same withhold-not-relabel treatment #3482 already established for the
+detail panel, applied to the second, independent call site that had the same gap.
+
+**Check at the open:** open the Meridian timeline/calendar strip and find a name that reported
+before or at the open (a real BMO print). Confirm its row shows NO "~X% implied move" text
+alongside "· printed" — either the move fragment is absent entirely, or (if the row has not yet
+been enriched this load) it should never coexist with the printed label. A row that shows both
+means the withhold did not take effect. Also spot-check an UNPRINTED same-day AMC print still shows
+a real chain-IV expected move when a chain exists (the withhold must not have gone too far and
+suppressed the legitimate case).
+
 ---
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
