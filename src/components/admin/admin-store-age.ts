@@ -16,3 +16,19 @@ export function storeAge(updatedAt: number | null): { label: string; ok: boolean
   if (m < 15) return { label: `${m}m ago`, ok: false };
   return { label: `${m}m ago`, ok: false };
 }
+
+/** Relative age for ISO audit/incident timestamps — flags clock-skewed future values. */
+export function timeAgoIso(iso: string | null): string {
+  if (!iso) return "—";
+  const rawAgeMs = Date.now() - new Date(iso).getTime();
+  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return "clock skew";
+  const diff = Math.max(0, rawAgeMs);
+  const s = Math.floor(diff / 1000);
+  if (s < 10) return "just now";
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}

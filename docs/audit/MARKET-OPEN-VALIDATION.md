@@ -126,6 +126,17 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0l. Admin `timeAgoIso` clock-skew guard — fix/admin-timeago-future-guard (pending)
+
+**What was broken:** `timeAgo()` in `/admin` Operations dashboard computed age from ISO timestamps
+without a future guard — clock-skewed future values displayed "just now".
+
+**Fix:** Extracted `timeAgoIso()` into `admin-store-age.ts` with `WS_TIMESTAMP_FUTURE_TOLERANCE_MS`;
+beyond tolerance → `"clock skew"`.
+
+**Check at RTH:** `/admin` → Operations → incident/audit timestamps show honest relative ages;
+no "just now" on deliberately skewed future timestamps (admin-only surface).
+
 ### 0k. Six orphaned modules removed (SPX/Thermal/marketing) — fix/orphaned-spx-thermal-modules (pending)
 
 **What was broken:** nothing member-visible — `src/features/spx/{hooks/useSpxDayPerformance.ts,

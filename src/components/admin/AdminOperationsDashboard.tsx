@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
-import { storeAge } from "@/components/admin/admin-store-age";
+import { storeAge, timeAgoIso } from "@/components/admin/admin-store-age";
 import {
   ActionButton,
   EmptyDeck,
@@ -38,19 +38,6 @@ const REFRESH_MS = 20_000; // incidents + health
 const AUDIT_MS   = 30_000; // audit trail (slower — less volatile)
 
 // ─── Utility helpers ──────────────────────────────────────────────────────────
-function timeAgo(iso: string | null): string {
-  if (!iso) return "—";
-  const diff = Date.now() - new Date(iso).getTime();
-  const s = Math.floor(diff / 1000);
-  if (s < 10) return "just now";
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
-
 function fmtDuration(ms: number | null): string {
   if (ms == null) return "—";
   if (ms < 1000) return `${ms}ms`;
@@ -189,11 +176,11 @@ function IncidentRow({
       <div className="flex items-center gap-4 mt-2 flex-wrap">
         <span className="font-mono text-[10px] text-cyan uppercase tracking-widest">{incident.category}</span>
         <span className="font-mono text-[10px] text-cyan">
-          opened {timeAgo(incident.opened_at)}
+          opened {timeAgoIso(incident.opened_at)}
         </span>
         {incident.status === "acked" && incident.acked_by && (
           <span className="font-mono text-[10px] text-sky-300/70">
-            acked by {incident.acked_by} · {timeAgo(incident.acked_at)}
+            acked by {incident.acked_by} · {timeAgoIso(incident.acked_at)}
           </span>
         )}
         {incident.mtta_ms != null && (
@@ -231,7 +218,7 @@ function AuditEntry({ entry }: { entry: AuditLogEntry }) {
             {fmtAction(entry.action)}
           </span>
           <span className="font-mono text-[10px] text-cyan flex-shrink-0">
-            {timeAgo(entry.created_at)}
+            {timeAgoIso(entry.created_at)}
           </span>
         </div>
         {entry.actor_email && (
@@ -527,7 +514,7 @@ function ErrorEventRowView({ event }: { event: ErrorEventRow }) {
           </p>
           <p className="font-mono text-[10px] text-sky-300 mt-0.5 line-clamp-2">{event.message}</p>
         </div>
-        <span className="font-mono text-[10px] text-cyan flex-shrink-0">{timeAgo(event.created_at)}</span>
+        <span className="font-mono text-[10px] text-cyan flex-shrink-0">{timeAgoIso(event.created_at)}</span>
       </div>
       {hasStack && (
         <button
@@ -703,7 +690,7 @@ export function AdminOperationsDashboard() {
           <GlassPanel
             title="Active Incidents"
             accent="bear"
-            kicker={`${incidents.incidents.length} open · last updated ${timeAgo(incidents.lastAt)}`}
+            kicker={`${incidents.incidents.length} open · last updated ${timeAgoIso(incidents.lastAt)}`}
           >
             <div className="space-y-2 mt-1">
               {incidents.loading && incidents.incidents.length === 0 ? (
@@ -864,7 +851,7 @@ export function AdminOperationsDashboard() {
                       <div key={i} className="font-mono text-[10px] rounded px-2 py-1 bg-bear/10 border border-bear/30">
                         <p className="text-bear font-bold">{e.route ?? "unknown"}</p>
                         <p className="text-cyan truncate">{e.message ?? "Error"}</p>
-                        <p className="text-sky-300/70">{timeAgo(e.at ?? "")}</p>
+                        <p className="text-sky-300/70">{timeAgoIso(e.at ?? "")}</p>
                       </div>
                     ))}
                   </div>
@@ -885,7 +872,7 @@ export function AdminOperationsDashboard() {
       <GlassPanel
         title="Error Sink"
         accent="bear"
-        kicker={`${errors.events.length} recent · Postgres error_events · last updated ${timeAgo(errors.lastAt)}`}
+        kicker={`${errors.events.length} recent · Postgres error_events · last updated ${timeAgoIso(errors.lastAt)}`}
       >
         <div className="mt-2 space-y-2">
           {errors.loading && errors.events.length === 0 ? (
@@ -947,7 +934,7 @@ export function AdminOperationsDashboard() {
             </button>
           )}
           <span className="ml-auto font-mono text-[10px] text-cyan pb-2">
-            last updated {timeAgo(audit.lastAt)}
+            last updated {timeAgoIso(audit.lastAt)}
           </span>
         </div>
 
