@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:13:53.109Z",
+  "updated_at": "2026-09-04T19:33:58.665Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -258,16 +258,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T18:47:53.763Z",
+      "last_seen": "2026-09-04T19:25:33.389Z",
       "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "6776238a905a08affe9527887aae21f0c15e325a",
+    "last_main_sha": "8cc70b48b2d6263973b3ba822ba28a2181604859",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:02:29Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33909058935",
-    "last_deploy_sha": "6776238a905a08affe9527887aae21f0c15e325a"
+    "last_deploy_at": "2026-09-04T19:23:17Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33910899332",
+    "last_deploy_sha": "8cc70b48b2d6263973b3ba822ba28a2181604859"
   },
   "open_prs": [],
   "events": [
@@ -1130,6 +1130,25 @@
       "agent": "cursor",
       "run_id": "84107b43-d121-46d8-85d2-3b4cf5cba790",
       "summary": "Cycle post-#3700: peer-reviewed+merged #3717 (flow-ingest UW sweep + candle freshness), #3718 (flow liveness future guard), #3719 (helix writer docs). Rebased #3698 onto main (fixed duplicate-import tsc failure). validate:deploy GREEN, ops:collect 0. Deploy #3718 run pending. Open: #3698 verify pending, 3x autopilot handoff drafts."
+    },
+    {
+      "at": "2026-09-04T19:25:33.389Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T19:33:58.664Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:33:58.665Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ffb1951d-3707-46ab-937b-63ed5906a872",
+      "summary": "Extended cycle: merged #3717/#3718/#3719/#3698/#3729. Peer-reviewed #3717+#3718 (APPROVED). Rebased #3698 (tsc fix). validate:deploy GREEN, ops:collect 0. #3733 (UW/options WS future-skew guard) verify pending — awaits Claude peer review. Handoff branch cursor/autopilot-handoff-1915 pushed."
     }
   ]
 }
