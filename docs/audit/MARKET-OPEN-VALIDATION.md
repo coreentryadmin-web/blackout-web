@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0af. Options async live-mark future guard — fix/options-socket-async-mark-future-guard (pending)
+
+**What was broken:** `getLiveOptionMark()` (async, Redis cross-instance path used by `live-marks.ts` for 0DTE P&L) gated freshness with raw `Date.now() - ts <= maxAgeMs`. A clock-skewed future `ts` yields negative age and reads as infinitely fresh. `getLiveOptionMarkSync()` was already fixed (#3733) but the async path was left on raw subtraction.
+
+**Fix:** Route both in-memory and Redis hits through `isWsUpdatedAtFresh(ts, maxAgeMs)` — mirror sync path.
+
+**Check at the open:** With open 0DTE positions during RTH, confirm live marks on `/nighthawk` board P&L do not stick on stale quotes after a WS reconnect; admin Operations → options-socket `last_message_age_ms` should not read negative on clock-skewed stamps.
+
 ### 0ae. `zerodte-warm` cron raced live member requests for the UW rate-limiter ceiling on a false premise — fix/zerodte-warm-uw-sweep-tag (pending)
 
 **What was broken:** the `zerodte-warm` cron's dispatch (`warmZeroDteBoard()` +
