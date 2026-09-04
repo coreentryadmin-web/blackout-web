@@ -32,6 +32,18 @@ export const maxDuration = 120;
 const OVERLAP_LOCK_KEY = "vector-walls-warm:running";
 const OVERLAP_LOCK_TTL_SEC = 240;
 
+/**
+ * Minimum re-run floor for `?force=1` — independent of the cash-RTH gate below.
+ *
+ * OVERLAP_LOCK only guards against a SECOND run starting while the FIRST is still in flight.
+ * `force=1` bypasses `isEtCashRth()` with nothing capping how often it could be replayed once
+ * each background pass completes — the same structural gap #3540/#3542 fixed on desk-warm and
+ * heatmap-warm. 60s sits safely below rth-warm-leader's 20s heal threshold cadence floor in
+ * practice (leader won't re-request faster than its own heal loop) and EventBridge's ~5 min schedule.
+ */
+const RERUN_COOLDOWN_KEY = "vector-walls-warm:cooldown";
+const RERUN_COOLDOWN_SEC = 60;
+
 async function runVectorWallsWarm(started: number): Promise<void> {
   try {
     const tickers = await getTickersToWarmAsync(await listSharedUniverseTickers());
@@ -62,6 +74,21 @@ export async function GET(req: NextRequest) {
   const force = req.nextUrl.searchParams.get("force") === "1";
   if (!force && !isEtCashRth()) {
     const payload = { ok: true, skipped: true, reason: "Outside cash RTH" };
+    await logCronRun("vector-walls-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const withinCooldown = !(await sharedCacheSetNx(
+    RERUN_COOLDOWN_KEY,
+    { startedAt: started },
+    RERUN_COOLDOWN_SEC
+  ).catch(() => true));
+  if (withinCooldown) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: `rate-limited — vector-walls-warm already ran within the last ${RERUN_COOLDOWN_SEC}s (force=1 does not bypass this floor)`,
+    };
     await logCronRun("vector-walls-warm", started, payload);
     return NextResponse.json(payload);
   }

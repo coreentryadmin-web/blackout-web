@@ -65,3 +65,30 @@ test("the lock is released in a finally block so a thrown warm still frees the n
 test("the lock TTL covers maxDuration as the safety-net ceiling (240s = 2× 120s maxDuration)", () => {
   assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 240/);
 });
+
+test("force=1 is rate-limited by a minimum re-run cooldown, independent of the cash-RTH gate", () => {
+  assert.match(routeSrc, /RERUN_COOLDOWN_SEC = 60/);
+  assert.match(routeSrc, /RERUN_COOLDOWN_KEY = "vector-walls-warm:cooldown"/);
+
+  assert.match(
+    routeSrc,
+    /const withinCooldown = !\(await sharedCacheSetNx\(\s*RERUN_COOLDOWN_KEY,/
+  );
+
+  const cooldownIdx = routeSrc.indexOf("RERUN_COOLDOWN_KEY,");
+  const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
+  const dispatchIdx = routeSrc.indexOf("after(dispatchWarming)");
+  assert.ok(cooldownIdx > 0 && overlapClaimIdx > 0 && dispatchIdx > 0);
+  assert.ok(cooldownIdx < overlapClaimIdx, "cooldown must be checked before the overlap lock");
+  assert.ok(overlapClaimIdx < dispatchIdx, "overlap lock must still be checked before dispatch");
+
+  const skipIdx = routeSrc.indexOf("reason: `rate-limited");
+  assert.ok(skipIdx > cooldownIdx && skipIdx < dispatchIdx);
+
+  assert.match(
+    routeSrc,
+    /sharedCacheSetNx\(\s*RERUN_COOLDOWN_KEY[\s\S]{0,80}\)\.catch\(\(\) => true\)/
+  );
+
+  assert.doesNotMatch(routeSrc, /sharedCacheDel\(RERUN_COOLDOWN_KEY\)/);
+});

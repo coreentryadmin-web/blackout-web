@@ -60,11 +60,29 @@ import {
   readSwingServingSnapshot,
   persistSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
-import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
+import { sharedCacheDel, sharedCacheGet, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 180;
+
+/**
+ * Cross-replica overlap guard. swing-active-refresh shares the same ~15min EventBridge schedule
+ * band as other RTH crons and can be re-dispatched by rth-warm-leader when stale — without a
+ * lock, concurrent invocations fan out Polygon/UW reads + DB writes on every web-tier replica.
+ * Same `sharedCacheSetNx` idempotent-skip pattern as desk-warm/meridian-warm. TTL (600s) matches
+ * this cron's own `stale_after_min: 25` safety-net ceiling with headroom above maxDuration (180s).
+ */
+const OVERLAP_LOCK_KEY = "swing-active-refresh:running";
+const OVERLAP_LOCK_TTL_SEC = 600;
+
+/**
+ * Minimum re-run floor — caps how fast duplicate trigger sources (EventBridge + rth-warm-leader
+ * heal-fire, or a manual `?force=1` replay via cron-dispatch) can re-dispatch the refresh once a
+ * prior handshake completes. 60s sits safely below this cron's 15min schedule.
+ */
+const RERUN_COOLDOWN_KEY = "swing-active-refresh:cooldown";
+const RERUN_COOLDOWN_SEC = 60;
 
 /** Best-effort live underlying price from Polygon's last-trade (results.p). null when unavailable. */
 async function loadUnderlyingSpot(ticker: string): Promise<number | null> {
@@ -348,6 +366,8 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error(`[cron/swing-active-refresh] background REJECTED: ${detail}`);
+  } finally {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
   }
 }
 
@@ -355,6 +375,36 @@ export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const withinCooldown = !(await sharedCacheSetNx(
+    RERUN_COOLDOWN_KEY,
+    { startedAt: started },
+    RERUN_COOLDOWN_SEC
+  ).catch(() => true));
+  if (withinCooldown) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: `rate-limited — swing-active-refresh already ran within the last ${RERUN_COOLDOWN_SEC}s`,
+    };
+    await logCronRun("swing-active-refresh", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const acquired = await sharedCacheSetNx(
+    OVERLAP_LOCK_KEY,
+    { startedAt: started },
+    OVERLAP_LOCK_TTL_SEC
+  ).catch(() => true); // fail OPEN on Redis error — a missed overlap guard is safer than a stuck cron
+  if (!acquired) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: "previous swing active-refresh still in flight (idempotent skip)",
+    };
+    await logCronRun("swing-active-refresh", started, payload);
+    return NextResponse.json(payload);
   }
 
   // Per-position Polygon/UW reads + serving-spot refresh + beta warm can exceed Cloudflare's ~100s
