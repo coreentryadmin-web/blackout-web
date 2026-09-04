@@ -1070,6 +1070,25 @@ test("refreshSwingManagement maps EXIT manage action to SELL", () => {
   assert.equal(refreshed.recommendation, "SELL");
 });
 
+test("refreshSwingManagement: manage engine wins over thesis overlay (1 Hz parity with board adapter)", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    liveStatus: "OPEN",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 14, mid: 8.0 },
+    entryPremium: 5.0,
+    livePnlPct: 60,
+    peakPremium: 8.0,
+    manageAction: "TAKE_PARTIAL",
+  });
+  const boardRec = play.recommendation;
+  const refreshed = refreshSwingManagement(play);
+  assert.equal(refreshed.recommendation, boardRec);
+  assert.equal(refreshed.recommendation, "TRIM");
+});
+
 test("legacy adapter: UNVERIFIED morning status → WATCH + unknown thesis", () => {
   const p = terminalPlayFromEdition({
     ticker: "NVDA",

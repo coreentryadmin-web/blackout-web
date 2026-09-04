@@ -179,24 +179,32 @@ function recommendationFromManageAction(action: SwingManageAction | null | undef
   }
 }
 
+/** Shared swing verdict: thesis overlay first, then manage-engine action wins (matches board adapter). */
+function swingManagementVerdict(
+  play: Pick<TerminalPlay, "exitModel" | "status" | "pnlPct" | "recNote" | "thesisHealth" | "manageAction">,
+  reasonFallback?: string | null,
+): { recommendation: Recommendation; recNote: string; progress: number | null } {
+  const mgmtBase = managementFor(play.exitModel, play.status, play.pnlPct ?? null);
+  const working = play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM";
+  const note = play.recNote ?? reasonFallback ?? mgmtBase.recNote;
+  const withThesis =
+    play.thesisHealth != null
+      ? thesisManagementOverlay(mgmtBase.recommendation, note, play.thesisHealth, play.pnlPct ?? null)
+      : { recommendation: mgmtBase.recommendation, recNote: note };
+  const fromAction = working ? recommendationFromManageAction(play.manageAction) : null;
+  if (fromAction) withThesis.recommendation = fromAction;
+  return { ...withThesis, progress: mgmtBase.progress };
+}
+
 /** Recompute swing management advisory @ 1 Hz — scale-out ladder + thesis health overlay. */
 export function refreshSwingManagement(play: TerminalPlay): TerminalPlay {
   if (play.horizon !== "SWING") return play;
-  const mgmtBase = managementFor(play.exitModel, play.status, play.pnlPct ?? null);
-  const working = play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM";
-  let rec = mgmtBase.recommendation;
-  let note = play.recNote ?? mgmtBase.recNote;
-  const fromAction = working ? recommendationFromManageAction(play.manageAction) : null;
-  if (fromAction) rec = fromAction;
-  const mgmt =
-    play.thesisHealth != null
-      ? thesisManagementOverlay(rec, note, play.thesisHealth, play.pnlPct ?? null)
-      : { recommendation: rec, recNote: note };
+  const mgmt = swingManagementVerdict(play);
   return {
     ...play,
     recommendation: mgmt.recommendation,
     recNote: mgmt.recNote,
-    progress: mgmtBase.progress,
+    progress: mgmt.progress,
   };
 }
 
@@ -791,14 +799,17 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
         computedAtEt: formatComputedEt(Date.now()),
       })
     : null;
-  const mgmtWithThesis =
-    thesisHealth != null
-      ? thesisManagementOverlay(mgmt.recommendation, src.reason || mgmt.recNote, thesisHealth, livePnl)
-      : { recommendation: mgmt.recommendation, recNote: src.reason || mgmt.recNote };
-  const fromAction = working ? recommendationFromManageAction(src.manageAction) : null;
-  if (fromAction) {
-    mgmtWithThesis.recommendation = fromAction;
-  }
+  const mgmtWithThesis = swingManagementVerdict(
+    {
+      exitModel: "SCALE_OUT",
+      status,
+      pnlPct: livePnl,
+      recNote: undefined,
+      thesisHealth,
+      manageAction: src.manageAction ?? null,
+    },
+    src.reason || mgmt.recNote,
+  );
   const flagPx = fin(src.flagUnderlyingPx);
   const watchTrack = status === "WATCH" || status === "SKIP";
   const trackPct = watchTrack
