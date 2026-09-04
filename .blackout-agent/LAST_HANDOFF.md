@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T12:48:06.884Z
-**Run:** 072758a3-0684-479a-b95a-27416aabb9c3
+**At:** 2026-09-04T17:50:59.892Z
+**Run:** b68aae10-c713-468c-b6b9-d1b337f374d3
 
 ## Summary
 
-Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs.
+Hourly wake: peer-reviewed #3670 (thermal change_pct fail-closed, 3/3 tests), #3671 (validate:deploy socket retry, 7/7 tests, CI green), #3673 (admin-spx-terminal isoAgeSec guard, 2/2 tests — CI red on verify, needs re-run/rebase). validate:deploy/platform-integrity/api-auth GREEN. ops:collect 0. Undraft+merge blocked on GitHub resource_exhausted — mark #3670/#3671 ready when API resets.
 
 ## Deploy
 
-- main: `9cfdf5076156a14f2dcc2653a280705ab4e4e118`
+- main: `a7a04bef2a38c4eebffa69004732da98a558e8a1`
 - status: 
 
 ## Open PRs
