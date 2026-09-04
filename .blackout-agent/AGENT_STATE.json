@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:16:15.266Z",
+  "updated_at": "2026-09-04T17:12:53.727Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,15 +67,14 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T17:08:06.782Z",
+      "lease_until": "2026-09-04T18:38:06.782Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -210,6 +209,38 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
+    },
+    "pr-3652": {
+      "pr": 3652,
+      "head_sha": "2e31a8b73525eb70f4ab6019652e5443aa864ec5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:10:01.779Z",
+      "safe_to_merge": true
+    },
+    "pr-3662": {
+      "pr": 3662,
+      "head_sha": "2ff499554dd0b945cfabf7fb051d2e01031d4297",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:12:43.459Z",
+      "safe_to_merge": true
+    },
+    "pr-3658": {
+      "pr": 3658,
+      "head_sha": "16144b5269249b6c8f33d4c092699549703a9e97",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:12:48.557Z",
+      "safe_to_merge": true
+    },
+    "pr-3659": {
+      "pr": 3659,
+      "head_sha": "e544aba5208fadfcc30fce445f5471349f9e31d4",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:12:43.484Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -219,16 +250,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T17:08:06.783Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "96b405a8de2f25993dd4164e3530cb60564a8e07",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T17:09:36Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33899061329",
+    "last_deploy_sha": "96b405a8de2f25993dd4164e3530cb60564a8e07"
   },
   "open_prs": [],
   "events": [
@@ -988,6 +1019,449 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:07:51.670Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 19
+    },
+    {
+      "at": "2026-09-04T17:07:56.734Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 19
+    },
+    {
+      "at": "2026-09-04T17:07:57.877Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 19
+    },
+    {
+      "at": "2026-09-04T17:07:59.172Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 19
+    },
+    {
+      "at": "2026-09-04T17:08:06.783Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T17:08:10.034Z",
+      "type": "pr_webhook",
+      "pr": 3663,
+      "event": "sweep",
+      "head": "7c2827aaf3662343e7e13a849112ae50b5e59ba8",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T17:08:12.138Z",
+      "type": "pr_webhook",
+      "pr": 3662,
+      "event": "sweep",
+      "head": "2ff499554dd0b945cfabf7fb051d2e01031d4297",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T17:08:14.165Z",
+      "type": "pr_webhook",
+      "pr": 3661,
+      "event": "sweep",
+      "head": "75f690e80f7428c6572c032a6490d0b5505c44c8",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:08:16.114Z",
+      "type": "pr_webhook",
+      "pr": 3660,
+      "event": "sweep",
+      "head": "08b29305a41444f85b76e261bbb645554ba78028",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T17:08:18.079Z",
+      "type": "pr_webhook",
+      "pr": 3659,
+      "event": "sweep",
+      "head": "e544aba5208fadfcc30fce445f5471349f9e31d4",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T17:08:20.032Z",
+      "type": "pr_webhook",
+      "pr": 3658,
+      "event": "sweep",
+      "head": "16144b5269249b6c8f33d4c092699549703a9e97",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T17:08:22.046Z",
+      "type": "pr_webhook",
+      "pr": 3657,
+      "event": "sweep",
+      "head": "adcfbbf5aeaba22c83889c8386bdfe7afb2df5a9",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T17:08:24.014Z",
+      "type": "pr_webhook",
+      "pr": 3655,
+      "event": "sweep",
+      "head": "8e8e9a991a8eb72c12a487cbee55159724d5c353",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:08:25.858Z",
+      "type": "pr_webhook",
+      "pr": 3654,
+      "event": "sweep",
+      "head": "742bd5dba0f5296451f355ddc270ebfff7d6e824",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T17:08:27.918Z",
+      "type": "pr_webhook",
+      "pr": 3653,
+      "event": "sweep",
+      "head": "b21a28ae27f135e19bec3b9921d98d81daa3f34d",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T17:08:29.862Z",
+      "type": "pr_webhook",
+      "pr": 3652,
+      "event": "sweep",
+      "head": "2e31a8b73525eb70f4ab6019652e5443aa864ec5",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T17:08:31.825Z",
+      "type": "pr_webhook",
+      "pr": 3649,
+      "event": "sweep",
+      "head": "dea1fb1bd10019b5eb60cfa50d73d2b9cca6a59c",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:08:33.652Z",
+      "type": "pr_webhook",
+      "pr": 3646,
+      "event": "sweep",
+      "head": "d85279905278391851b54161d140c74f3eddf5d2",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:08:35.729Z",
+      "type": "pr_webhook",
+      "pr": 3645,
+      "event": "sweep",
+      "head": "1a27ee90f8a75b56d947f99e48e0abefdf61d48b",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:08:37.823Z",
+      "type": "pr_webhook",
+      "pr": 3644,
+      "event": "sweep",
+      "head": "53f533586acaeb71ed62247ccd996b67147be822",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:08:39.911Z",
+      "type": "pr_webhook",
+      "pr": 3638,
+      "event": "sweep",
+      "head": "e04905648ae13e202f48bc717aae9b543014d9b0",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:08:41.865Z",
+      "type": "pr_webhook",
+      "pr": 3637,
+      "event": "sweep",
+      "head": "3bbec8426a3d749be1c2bc835d7dea169dbc0542",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:08:43.943Z",
+      "type": "pr_webhook",
+      "pr": 3636,
+      "event": "sweep",
+      "head": "ae207c9028bb2ef3d49f954ddc80fbf73dd33f42",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:08:46.212Z",
+      "type": "pr_webhook",
+      "pr": 3635,
+      "event": "sweep",
+      "head": "92a656b0a9b1e7a685e3b403df8252b29b5a15a0",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:10:01.780Z",
+      "type": "pr_review",
+      "pr": 3652,
+      "head_sha": "2e31a8b73525eb70f4ab6019652e5443aa864ec5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:10:01.779Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:12:43.460Z",
+      "type": "pr_review",
+      "pr": 3662,
+      "head_sha": "2ff499554dd0b945cfabf7fb051d2e01031d4297",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:12:43.459Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:12:43.463Z",
+      "type": "pr_review",
+      "pr": 3658,
+      "head_sha": "16144b526924eb8f0e8c8e0f8e8e8e8e8e8e8e8e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:12:43.463Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:12:43.485Z",
+      "type": "pr_review",
+      "pr": 3659,
+      "head_sha": "e544aba5208fadfcc30fce445f5471349f9e31d4",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:12:43.484Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:12:48.558Z",
+      "type": "pr_review",
+      "pr": 3658,
+      "head_sha": "16144b5269249b6c8f33d4c092699549703a9e97",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:12:48.557Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:12:49.469Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:12:49.471Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a1ce701a-e512-48db-a39e-da06933e3bf1",
+      "summary": "PR event cycle: pr-sweep 19 open PRs. #3652 already merged. Peer-reviewed #3658/#3659/#3662 (local tests GREEN, CI pending). validate:deploy GREEN, ops:collect 0. Subscribed CI for #3658/#3662. Duplicate admin fmtRel PRs #3660/#3654/#3657 need close/rebase after #3652 merge."
+    },
+    {
+      "at": "2026-09-04T17:12:53.727Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3663": {
+      "last_event": "sweep",
+      "last_head": "7c2827aaf3662343e7e13a849112ae50b5e59ba8",
+      "last_feedback_at": "2026-09-04T17:08:10.034Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3662": {
+      "last_event": "sweep",
+      "last_head": "2ff499554dd0b945cfabf7fb051d2e01031d4297",
+      "last_feedback_at": "2026-09-04T17:08:12.138Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3661": {
+      "last_event": "sweep",
+      "last_head": "75f690e80f7428c6572c032a6490d0b5505c44c8",
+      "last_feedback_at": "2026-09-04T17:08:14.165Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3660": {
+      "last_event": "sweep",
+      "last_head": "08b29305a41444f85b76e261bbb645554ba78028",
+      "last_feedback_at": "2026-09-04T17:08:16.114Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3659": {
+      "last_event": "sweep",
+      "last_head": "e544aba5208fadfcc30fce445f5471349f9e31d4",
+      "last_feedback_at": "2026-09-04T17:08:18.079Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3658": {
+      "last_event": "sweep",
+      "last_head": "16144b5269249b6c8f33d4c092699549703a9e97",
+      "last_feedback_at": "2026-09-04T17:08:20.032Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3657": {
+      "last_event": "sweep",
+      "last_head": "adcfbbf5aeaba22c83889c8386bdfe7afb2df5a9",
+      "last_feedback_at": "2026-09-04T17:08:22.046Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3655": {
+      "last_event": "sweep",
+      "last_head": "8e8e9a991a8eb72c12a487cbee55159724d5c353",
+      "last_feedback_at": "2026-09-04T17:08:24.014Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3654": {
+      "last_event": "sweep",
+      "last_head": "742bd5dba0f5296451f355ddc270ebfff7d6e824",
+      "last_feedback_at": "2026-09-04T17:08:25.858Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3653": {
+      "last_event": "sweep",
+      "last_head": "b21a28ae27f135e19bec3b9921d98d81daa3f34d",
+      "last_feedback_at": "2026-09-04T17:08:27.918Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3652": {
+      "last_event": "sweep",
+      "last_head": "2e31a8b73525eb70f4ab6019652e5443aa864ec5",
+      "last_feedback_at": "2026-09-04T17:08:29.862Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3649": {
+      "last_event": "sweep",
+      "last_head": "dea1fb1bd10019b5eb60cfa50d73d2b9cca6a59c",
+      "last_feedback_at": "2026-09-04T17:08:31.825Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3646": {
+      "last_event": "sweep",
+      "last_head": "d85279905278391851b54161d140c74f3eddf5d2",
+      "last_feedback_at": "2026-09-04T17:08:33.652Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3645": {
+      "last_event": "sweep",
+      "last_head": "1a27ee90f8a75b56d947f99e48e0abefdf61d48b",
+      "last_feedback_at": "2026-09-04T17:08:35.729Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3644": {
+      "last_event": "sweep",
+      "last_head": "53f533586acaeb71ed62247ccd996b67147be822",
+      "last_feedback_at": "2026-09-04T17:08:37.823Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3638": {
+      "last_event": "sweep",
+      "last_head": "e04905648ae13e202f48bc717aae9b543014d9b0",
+      "last_feedback_at": "2026-09-04T17:08:39.911Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3637": {
+      "last_event": "sweep",
+      "last_head": "3bbec8426a3d749be1c2bc835d7dea169dbc0542",
+      "last_feedback_at": "2026-09-04T17:08:41.865Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3636": {
+      "last_event": "sweep",
+      "last_head": "ae207c9028bb2ef3d49f954ddc80fbf73dd33f42",
+      "last_feedback_at": "2026-09-04T17:08:43.943Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3635": {
+      "last_event": "sweep",
+      "last_head": "92a656b0a9b1e7a685e3b403df8252b29b5a15a0",
+      "last_feedback_at": "2026-09-04T17:08:46.212Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }
