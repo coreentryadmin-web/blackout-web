@@ -25,6 +25,7 @@ import {
   __test_resolveHeatmapDividendYieldUncached,
   trailingTwelveMonthDividendYield,
   warnChainTruncated,
+  clampedCacheAgeSec,
 } from "./polygon-options-gex";
 
 function contract(
@@ -864,4 +865,22 @@ test("warnChainTruncated: a newline-bearing underlying cannot forge a second log
   assert.equal(calls.length, 1, "one real call must produce exactly one log line, not two");
   assert.ok(!calls[0]!.includes("\n"), "no raw newline survives into the logged message");
   assert.match(calls[0]!, /SPY.*admin override granted/, "the token itself still renders, just flattened");
+});
+
+// peekGexHeatmapCache's age_sec (surfaced on the admin GEX health panel via AdminBieDashboard.tsx's
+// `t.age_sec`) used to be an unclamped `Date.now() - entry.at`, which reports a negative age for
+// any moment the writing replica's clock reads ahead of the reading replica's — cross-replica clock
+// skew, not staleness. `Math.round` does not save this: it rounds a small negative toward 0, not
+// away from it, so this was reachable at a single millisecond of skew (same shape as the
+// coaching-alerts age bug fixed the same day).
+test("clampedCacheAgeSec: ordinary past entry ages normally", () => {
+  const now = 1_000_000_000;
+  assert.equal(clampedCacheAgeSec(now - 5_000, now), 5);
+  assert.equal(clampedCacheAgeSec(now - 90_000, now), 90);
+});
+
+test("clampedCacheAgeSec: an entry.at from the future (cross-replica clock skew) clamps to 0, never negative", () => {
+  const now = 1_000_000_000;
+  assert.equal(clampedCacheAgeSec(now + 2_000, now), 0, "2s of skew must not read as age_sec: -2");
+  assert.equal(clampedCacheAgeSec(now + 1, now), 0, "reachable at 1ms of skew — Math.round(-0.001) would otherwise floor toward -1s");
 });
