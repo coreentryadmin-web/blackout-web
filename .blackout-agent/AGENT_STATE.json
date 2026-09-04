@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T14:32:08.481Z",
+  "updated_at": "2026-09-04T15:48:33.694Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T15:39:10.973Z",
+      "lease_until": "2026-09-04T17:15:53.873Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "b7505f88-6111-49e0-8d67-3cb33ad0f766",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -224,11 +224,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "56bcbcc1b8ccdcb77216b75dcf0b2599eb1ea5c3",
+    "last_main_sha": "29d8a077fbb2c356084f48063fe4dfcbc203797f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T15:41:46Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33888707270",
+    "last_deploy_sha": "4a26268131c43955daf6c6afe6ef9249a80b54fd"
   },
   "open_prs": [],
   "events": [
@@ -931,6 +931,49 @@
     },
     {
       "at": "2026-09-04T14:32:08.480Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:42:10.522Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:45:53.872Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:45:54.684Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:45:55.546Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:48:28.285Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:48:28.286Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "5a184c7c-0640-4c04-a998-a76a7e3d009f",
+      "summary": "Cycle: session recovered on main@29d8a077. GitHub API rate-limited (user 284440397) — pr-sweep empty, peer review blocked. validate:deploy GREEN, validate:rth-open GREEN, blackout:rth-lifecycle 6/6 GREEN, data-validator 36 PASS, validate:spx-e2e 18/18 PASS (bie-play 401 warn). ops:collect 0. ECS deploy #33888707270 still in_progress (#3613 indices overlay). Playwright chromium installed. Standing: retry peer review when API recovers."
+    },
+    {
+      "at": "2026-09-04T15:48:33.694Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
