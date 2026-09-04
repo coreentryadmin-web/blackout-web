@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:08:04.087Z",
+  "updated_at": "2026-09-04T16:26:19.083Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,26 +67,25 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T16:09:27.515Z",
+      "lease_until": "2026-09-04T17:39:27.515Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T15:50:17.326Z",
-      "lease_until": "2026-09-04T17:31:27.526Z",
+      "claimed_at": "2026-09-04T16:19:21.943Z",
+      "lease_until": "2026-09-04T17:49:21.943Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "3956323e-efc6-4f7b-80fe-cea76b1ba73b",
+      "run_id": null,
       "title": null
     },
     "BO-P1-0104": {
@@ -219,29 +218,18 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T16:19:21.944Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
     "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T15:55:50Z",
+    "last_deploy_at": "2026-09-04T16:19:37Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33892277862",
     "last_deploy_sha": "a1a9d668c0e2eff63332f193ee3dcafd7e862a09"
   },
-  "open_prs": [
-    {
-      "number": 3623,
-      "title": "chore(autopilot): cursor handoff — #3610/#3613 merged",
-      "branch": "chore/autopilot-handoff-pr-event-3610-3613",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T16:07:34Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -947,53 +935,98 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T15:34:26.496Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T15:34:26.827Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T15:34:26.965Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T15:39:48.691Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T15:39:49.009Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T15:39:49.130Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T16:08:04.086Z",
+      "at": "2026-09-04T16:09:12.019Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
     },
     {
-      "at": "2026-09-04T16:08:04.087Z",
+      "at": "2026-09-04T16:09:18.462Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T16:09:19.454Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T16:09:20.515Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T16:09:27.516Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T16:09:30.923Z",
+      "type": "pr_webhook",
+      "pr": 3626,
+      "event": "sweep",
+      "head": "34b52d8628ea8b1b6569b53c687f3ba987285117",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T16:19:15.376Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:19:21.944Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T16:21:38.550Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:21:38.551Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "e03ef57e-dd25-4fa6-bd27-3446cd1dbd3b",
-      "summary": "Merge edbc9739 (#3617) + 88ca92e0 landed. Lifecycle GREEN: deploy, rth-open, rth-sweep 0 P0/P1, spx-e2e 17/18, data-validator 37 PASS, healthcheck:0dte AMBER, ops:collect 0. ECR #3613 in_progress, #3614 pending. No open PRs."
+      "run_id": "ec57cbb8-16e3-4474-bbaf-dd16391befe5",
+      "summary": "Cycle: bootstrapped session. PR #3626 verify GREEN → marked ready for Claude peer review (cursor state handoff). ECS deploy 33888707270 success; 33892277862 in progress for a1a9d668. validate:deploy GREEN, validate:seo 22/22, validate:platform-integrity 14/14 pass (RTH live SPX 7724), ops:collect 0. No Claude PRs to review. Standing: monitor deploy 33892277862 + Claude review #3626."
+    },
+    {
+      "at": "2026-09-04T16:21:46.263Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:26:19.083Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:26:19.083Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "09bc9c18-a0fa-4268-adc9-8b0afd6c3f35",
+      "summary": "Cycle: bootstrapped session. PR #3626 verify GREEN → marked ready for Claude peer review. ECS deploy 33888707270 success; 33892277862 rolling a1a9d668. validate:deploy GREEN, validate:seo 22/22, validate:platform-integrity 14/14 pass (RTH SPX 7724), ops:collect 0. No Claude PRs to review."
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3626": {
+      "last_event": "sweep",
+      "last_head": "34b52d8628ea8b1b6569b53c687f3ba987285117",
+      "last_feedback_at": "2026-09-04T16:09:30.923Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }
