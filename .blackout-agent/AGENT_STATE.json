@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:16:15.266Z",
+  "updated_at": "2026-09-04T16:41:30.832Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -210,6 +210,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
+    },
+    "pr-3627": {
+      "pr": 3627,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge (already merged edcd719fb)",
+      "reviewed_at": "2026-09-04T16:41:29.917Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -224,11 +232,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "550c3815c1341977acdc92fe0ccb25c87d9558f0",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T16:40:59Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33896499200",
+    "last_deploy_sha": "550c3815c1341977acdc92fe0ccb25c87d9558f0"
   },
   "open_prs": [],
   "events": [
@@ -972,22 +980,58 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T16:16:14.844Z",
+      "at": "2026-09-04T16:40:25.685Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T16:16:15.166Z",
+      "at": "2026-09-04T16:40:25.686Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "db514e42-2424-4ec8-9b74-be6f7306d4be",
+      "summary": "Reviewed PR #3627: MERGE — admin storeAge clock-skew guard; CI green; already merged edcd719fb; retrospective approval posted"
+    },
+    {
+      "at": "2026-09-04T16:40:29.537Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T16:16:15.266Z",
+      "at": "2026-09-04T16:41:28.925Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:41:29.615Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:41:29.917Z",
+      "type": "pr_review",
+      "pr": 3627,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge (already merged edcd719fb)",
+      "reviewed_at": "2026-09-04T16:41:29.917Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-04T16:41:30.831Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:41:30.832Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "df6fc4aa-c814-4cd6-b284-22b81cfc3e6c",
+      "summary": "Reviewed PR #3627: MERGE — admin storeAge clock-skew guard; CI green; already merged edcd719fb"
     }
   ]
 }
