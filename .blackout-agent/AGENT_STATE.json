@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T14:14:48.134Z",
+  "updated_at": "2026-09-04T14:32:59.023Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,26 +67,26 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T14:07:49.533Z",
-      "lease_until": "2026-09-04T15:37:49.533Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-04T14:12:24.496Z",
+      "lease_until": "2026-09-04T15:58:17.119Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "6e321566-65c5-4397-ba8c-e2e57d4362c1",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T14:14:28.137Z",
-      "lease_until": "2026-09-04T15:44:28.137Z",
-      "phase": "VERIFYING",
+      "claimed_at": "2026-09-04T14:22:49.029Z",
+      "lease_until": "2026-09-04T15:58:17.119Z",
+      "phase": "DEPLOY_VERIFY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "6e321566-65c5-4397-ba8c-e2e57d4362c1",
       "title": null
     },
     "BO-P1-0104": {
@@ -219,14 +219,14 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T14:22:49.030Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "7e680be9d5107b932e12263f7addd59146e6a91a",
+    "last_main_sha": "c293cb8ac791424b19dfceb6837b0f972ab61312",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T14:09:49Z",
+    "last_deploy_at": "2026-09-04T14:30:25Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33882136477",
     "last_deploy_sha": "c946460d35053d600b70bb20ba2a64acc4c4acc2"
   },
@@ -900,17 +900,47 @@
       "summary": "Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs."
     },
     {
-      "at": "2026-09-04T14:14:48.134Z",
+      "at": "2026-09-04T14:22:45.495Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:14:48.134Z",
+      "at": "2026-09-04T14:22:49.030Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T14:28:17.118Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:28:17.753Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:28:18.386Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:32:59.023Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:32:59.023Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "cf836cb2-e88d-49fe-9a76-8220eb868ba4",
-      "summary": "PR event cycle: #3591+#3592 both verify GREEN. Local tests pass (VP label + session extremes). Cursor-authored — awaiting Claude peer review per standing policy (not self-approved). validate:deploy GREEN, ops:collect 0. Peer Claude stale since 12:33 UTC. main"
+      "run_id": "1fe6c89f-7c82-4ff5-b16b-e533c1fa3931",
+      "summary": "Cycle complete: #3592+#3594 merged+reviewed. RTH lifecycle GREEN (validate:deploy, platform-integrity, seo, rth-open). ops:collect 0. Pending peer review: #3595 (docs-only status update, superseded) + #3596 (agent state). ECR deploy queue backlog on older SHAs — monitor c293cb8ac rollout. GitHub API rate-limited at cycle end."
     }
   ]
 }
