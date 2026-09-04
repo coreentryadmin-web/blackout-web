@@ -163,6 +163,14 @@ sweep)` tag separates expected cron-sweep queueing from live member-request queu
 what the two prior entries' follow-up measurement needs. No product-facing behavior to check; this
 is instrumentation only.
 
+### 0ad. Dark-pool roundFloats + Vector live-quote future guard — fix/dark-pool-roundfloats-vector-live-future-guard (pending)
+
+**What was broken:** `/api/market/dark-pool` returned `premium` without `roundFloats` at the JSON boundary; `isLiveQuotesStale()` had no future-timestamp guard (clock-skewed success time read as live).
+
+**Fix:** Wrap dark-pool response with `roundFloats`; gate live-quote staleness with `WS_TIMESTAMP_FUTURE_TOLERANCE_MS`.
+
+**Check at the open:** Poll `/api/market/dark-pool?limit=5` — premiums are clean decimals; Vector contract-pick live badge flips stale when quotes stop updating.
+
 ### 0ac. UW stall + L1 cache + SPX GEX stale future guards — fix/uw-future-timestamp-guards (pending)
 
 **What was broken:** Two paths missed the #3745/#3760 future-timestamp sweep: `isUwSocketStalled()` (OPEN socket with future `freshestMessageAt` never reconnects), `gexStaleFromAge()` (future GEX `asof` clamped to age 0 → `gex_stale: false`). (`readUwCache` on separate branch `fix/uw-cache-index-overlay-future-timestamp`.)
