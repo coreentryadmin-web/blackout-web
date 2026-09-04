@@ -15,6 +15,17 @@ export function isoAgeSec(iso: string | null, now = Date.now()): IsoAgeResult {
   return { kind: "ok", sec: Math.max(0, Math.round(rawAgeMs / 1000)) };
 }
 
+/** Age in ms for staleness checks — null when missing/invalid/skewed (treat as stale). */
+export function adminAgeMsFromIso(
+  iso: string | null | undefined,
+  now = Date.now()
+): number | null {
+  if (!iso) return null;
+  const age = isoAgeSec(iso, now);
+  if (age.kind !== "ok") return null;
+  return age.sec * 1000;
+}
+
 /** Human-readable relative time for admin panels — guards clock-skewed future ISO timestamps. */
 export function timeAgoFromIso(iso: string | null, now = Date.now()): string {
   const age = isoAgeSec(iso, now);
