@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T04:34:13.032Z",
+  "updated_at": "2026-09-04T04:37:48.642Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,20 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T04:24:35.346Z",
-      "lease_until": "2026-09-04T05:54:35.346Z",
+      "claimed_at": "2026-09-04T04:33:48.483Z",
+      "lease_until": "2026-09-04T06:03:48.483Z",
       "phase": "REVIEWING",
-      "branch": null,
-      "pr": null,
-      "reviewer": null,
-      "run_id": null
-    },
-    "BO-P1-0101": {
-      "task_id": "BO-P1-0101",
-      "owner": "cursor",
-      "claimed_at": "2026-09-04T04:33:14.816Z",
-      "lease_until": "2026-09-04T06:03:14.816Z",
-      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -89,8 +78,8 @@
     "BO-P2-0100": {
       "task_id": "BO-P2-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T04:33:49.553Z",
-      "lease_until": "2026-09-04T06:03:49.553Z",
+      "claimed_at": "2026-09-04T04:37:25.338Z",
+      "lease_until": "2026-09-04T06:07:25.338Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -155,6 +144,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3489": {
+      "pr": 3489,
+      "head_sha": "565a9a755538337671cc8c195c79925f67573aa5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T04:37:17.854Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -164,7 +161,7 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T04:33:49.554Z",
+      "last_seen": "2026-09-04T04:37:25.339Z",
       "current_task": "BO-P2-0100"
     }
   },
@@ -177,6 +174,16 @@
   },
   "open_prs": [
     {
+      "number": 3491,
+      "title": "chore(autopilot): cursor handoff after #3489 #3490 peer reviews",
+      "branch": "cursor/autopilot-handoff-2026-09-04-cycle2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T04:34:57Z"
+    },
+    {
       "number": 2810,
       "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
       "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
@@ -184,7 +191,7 @@
       "agent": "human",
       "draft": false,
       "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-04T04:21:51Z"
+      "updated_at": "2026-09-04T04:35:21Z"
     }
   ],
   "events": [
@@ -517,80 +524,52 @@
       "owner": "cursor"
     },
     {
-      "at": "2026-09-04T04:33:15.422Z",
+      "at": "2026-09-04T04:36:32.379Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
     },
     {
-      "at": "2026-09-04T04:33:15.423Z",
+      "at": "2026-09-04T04:37:17.854Z",
+      "type": "pr_review",
+      "pr": 3489,
+      "head_sha": "565a9a755538337671cc8c195c79925f67573aa5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T04:37:17.854Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T04:37:22.106Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T04:37:22.106Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "89a1288f-68d2-4523-a540-7b7d3ffc59dc",
-      "summary": "Peer reviewed and merged #3489 (play-engine heartbeat clock skew clamp) and #3490 (PR webhook triage resilience). Both verify green. main@565a9a755."
+      "run_id": "fb5a4288-4f05-4979-83a5-617ea6210e8f",
+      "summary": "Peer review cycle complete: #3479/#3486/#3487/#3489 merged and reviewed. #3488 closed (superseded). #2810 held (TS7 major, red verify). Deploy GREEN on main@565a9a7, ops:collect 0 items."
     },
     {
-      "at": "2026-09-04T04:33:41.671Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-04T04:33:42.848Z",
-      "type": "pr_webhook",
-      "pr": 3488,
-      "event": "sweep",
-      "head": "ce1c898f15f4221b6fe6f5c6602d0c1ff8b75140",
-      "verdict": "⏳ **WAIT** — CI pending",
-      "directive": "WAIT",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-04T04:33:44.333Z",
-      "type": "pr_webhook",
-      "pr": 2810,
-      "event": "sweep",
-      "head": "f987884d6021fac525a99376ca40429a4f164f64",
-      "verdict": "⏳ **WAIT** — CI pending",
-      "directive": "WAIT",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-04T04:33:49.554Z",
+      "at": "2026-09-04T04:37:25.339Z",
       "type": "task_claimed",
       "task_id": "BO-P2-0100",
       "owner": "cursor"
     },
     {
-      "at": "2026-09-04T04:34:13.031Z",
+      "at": "2026-09-04T04:37:48.642Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 1
+      "open_pr_count": 2
     },
     {
-      "at": "2026-09-04T04:34:13.031Z",
+      "at": "2026-09-04T04:37:48.642Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "b78af2c6-9ae5-43b7-98e8-ee97c702eda0",
-      "summary": "Deploy GREEN (validate:deploy). Merged #3489+#3490 peer reviews. Closed stale #3488. 0DTE counterfactual: session replay 6 plays 10.7% avg exec pnl; G-18/G-19 insufficient off-hours. main@565a9a755."
+      "run_id": "e56bf547-e95a-455a-82d3-cff8b3358f8a",
+      "summary": "Deploy GREEN main@565a9a7. Peer-reviewed #3489/#3490 (merged). #3488 closed. #2810 held (TS7 major). 0DTE off-hours healthcheck AMBER (expected). ops:collect 0 items."
     }
-  ],
-  "pr_activity": {
-    "pr-3488": {
-      "last_event": "sweep",
-      "last_head": "ce1c898f15f4221b6fe6f5c6602d0c1ff8b75140",
-      "last_feedback_at": "2026-09-04T04:33:42.848Z",
-      "verdict": "⏳ **WAIT** — CI pending",
-      "directive": "WAIT",
-      "comment_action": "updated"
-    },
-    "pr-2810": {
-      "last_event": "sweep",
-      "last_head": "f987884d6021fac525a99376ca40429a4f164f64",
-      "last_feedback_at": "2026-09-04T04:33:44.333Z",
-      "verdict": "⏳ **WAIT** — CI pending",
-      "directive": "WAIT",
-      "comment_action": "updated"
-    }
-  }
+  ]
 }
