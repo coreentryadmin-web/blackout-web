@@ -17,6 +17,7 @@ import {
 } from "./leader-lock-shared";
 import { newLockToken, releaseFencedLock, renewFencedLock, type FencedRedis } from "./leader-lock-fencing";
 import { recordSpxTick } from "./spx-candle-store";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 export type PolygonAgg = {
   ev: "A" | "AM";
   sym: string;
@@ -314,10 +315,11 @@ function startIndicesWatchdog() {
     }
 
     // Detect stalled feed: if connected but no messages in >25s, reconnect.
+    const now = Date.now();
     if (
       indicesWs?.readyState === WebSocket.OPEN &&
       lastIndicesMessageAt > 0 &&
-      Date.now() - lastIndicesMessageAt > INDICES_STALL_MS
+      !isWsUpdatedAtFresh(lastIndicesMessageAt, INDICES_STALL_MS, now)
     ) {
       console.warn(
         `[polygon-socket] indices feed STALLED — no frame in ${Math.round(

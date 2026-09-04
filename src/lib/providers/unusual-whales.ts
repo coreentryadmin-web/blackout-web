@@ -21,6 +21,7 @@ import {
 } from "@/lib/providers/uw-shared-cache";
 import { uwConfigured } from "./config";
 import { dteFromExpiry } from "@/lib/flow-dte";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 // REDIS CACHE ACTIVE: with Redis caching most responses are served from cache, so
 // live UW calls are rare. Pacing is owned by uw-rate-limiter.ts (UW_MAX_RPS default 2);
@@ -123,10 +124,9 @@ function uwEffectiveTtlMs(baseMs: number): number {
 function readUwCache<T>(key: string, allowStale: boolean): T | undefined {
   const slot = uwResponseCache.get(key);
   if (!slot) return undefined;
-  const age = Date.now() - slot.fetchedAt;
   const ttl = uwEffectiveTtlMs(slot.ttlMs);
-  if (age <= ttl) return slot.data as T;
-  if (allowStale && age <= UW_SLOW_CACHE_MAX_STALE_MS) return slot.data as T;
+  if (isWsUpdatedAtFresh(slot.fetchedAt, ttl)) return slot.data as T;
+  if (allowStale && isWsUpdatedAtFresh(slot.fetchedAt, UW_SLOW_CACHE_MAX_STALE_MS)) return slot.data as T;
   return undefined;
 }
 

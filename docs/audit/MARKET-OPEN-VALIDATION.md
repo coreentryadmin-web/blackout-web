@@ -137,6 +137,13 @@ sweep)` tag separates expected cron-sweep queueing from live member-request queu
 what the two prior entries' follow-up measurement needs. No product-facing behavior to check; this
 is instrumentation only.
 
+### 0ad. UW L1 cache + stocks/polygon stall future guards — fix/uw-cache-stocks-polygon-stall-freshness (pending)
+
+**What was broken:** Three paths missed the #3745/#3760 future-timestamp sweep: `readUwCache()` (in-process UW REST L1 — future `fetchedAt` reads as fresh forever), `startStocksWatchdog()` (stocks `A.*` stall — future `lastMessageAt` never triggers reconnect), polygon indices watchdog (same on `lastIndicesMessageAt`).
+
+**Fix:** Route all three through `isWsUpdatedAtFresh` from `timestamp-freshness.ts`.
+
+**Check at the open:** Admin System Vitals stocks + indices socket tiles still reconnect on genuine silence; UW-backed desk supplements (dark pool, flow) still serve from cache during normal RTH without false cache hits from skewed clocks.
 ### 0ab. LULD halt future-timestamp guard — fix/luld-halt-future-timestamp-guard (pending)
 
 **What was broken:** `isLuldHaltSourceStaleForState()` and `isLuldHaltFeedStale()` used raw `Date.now() - timestamp` age math without a future guard — clock-skewed future cluster/local `last_message_at` stamps read as live/trusted (same class as the UW halt bug fixed in #3745).

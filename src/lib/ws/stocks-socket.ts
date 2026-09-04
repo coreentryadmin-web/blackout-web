@@ -158,7 +158,8 @@ function startStocksWatchdog() {
     if (!inOptionsMarketHours()) return;
     // Stall detection: use the most recent of ANY message (agg or LULD)
     const at = Math.max(lastStocksMessageAt, luldHaltsStore.last_message_at);
-    if (stocksWs?.readyState === WebSocket.OPEN && at > 0 && Date.now() - at > STOCKS_STALL_MS) {
+    const now = Date.now();
+    if (stocksWs?.readyState === WebSocket.OPEN && at > 0 && !isWsUpdatedAtFresh(at, STOCKS_STALL_MS, now)) {
       console.warn("[stocks-socket] feed stalled — forcing reconnect");
       lastStocksMessageAt = 0;
       touchLuldMessageAt(0);
