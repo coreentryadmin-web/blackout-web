@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T11:20:50.708Z",
+  "updated_at": "2026-09-04T12:00:56.294Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:22:03.345Z",
-      "lease_until": "2026-09-04T11:52:03.345Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-04T11:47:30.038Z",
+      "lease_until": "2026-09-04T13:20:34.088Z",
+      "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "c1bcacab-c811-428c-afc9-c4c6320633a4",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -186,6 +186,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T10:33:34.705Z",
       "safe_to_merge": true
+    },
+    "pr-3571": {
+      "pr": 3571,
+      "head_sha": "a8a45a1f142476fbe67e753e9d039f491633fe02",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T12:00:55.111Z",
+      "safe_to_merge": true
+    },
+    "pr-3573": {
+      "pr": 3573,
+      "head_sha": "2c01ab74f3217b6443e721fb4c7580f17c008f5d",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — pending verify",
+      "reviewed_at": "2026-09-04T12:00:55.423Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -200,11 +216,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0d367bde47b227c73f6e56abb5cc5dc80cf5e44f",
+    "last_main_sha": "45a618e2571bdca3bc90ea3701b5cff69e6aae8a",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T10:35:12Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33863935805",
-    "last_deploy_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01"
+    "last_deploy_at": "2026-09-04T11:56:19Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33870291254",
+    "last_deploy_sha": "45a618e2571bdca3bc90ea3701b5cff69e6aae8a"
   },
   "open_prs": [],
   "events": [
@@ -812,6 +828,45 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:00:54.816Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:00:55.112Z",
+      "type": "pr_review",
+      "pr": 3571,
+      "head_sha": "a8a45a1f142476fbe67e753e9d039f491633fe02",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T12:00:55.111Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T12:00:55.424Z",
+      "type": "pr_review",
+      "pr": 3573,
+      "head_sha": "2c01ab74f3217b6443e721fb4c7580f17c008f5d",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — pending verify",
+      "reviewed_at": "2026-09-04T12:00:55.423Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-04T12:00:56.293Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:00:56.294Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "640ccb36-afc5-4b2f-9b65-862d9d4bd5d6",
+      "summary": "Autopilot cycle: lifecycle GREEN. #3571 merged+APPROVED. #3573 4/4 tests local, verify pending. #3572 docs verify pending. GH rate limit blocks gh merge. Deploy 33870291254 pending."
     }
   ]
 }
