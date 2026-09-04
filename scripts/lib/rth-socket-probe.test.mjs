@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { socketProbeAttemptVerdict, socketProbeFinalFailure } from "./rth-socket-probe.mjs";
+import {
+  socketProbeAttemptVerdict,
+  socketProbeFinalFailure,
+  probeOptionsSocketWithRetries,
+} from "./rth-socket-probe.mjs";
 
 test("socketProbeAttemptVerdict: warming response retries during RTH", () => {
   const warming = { ok: false, detail: "ingest leader lock held — marks warming" };
@@ -27,4 +31,41 @@ test("socketProbeFinalFailure: fails only after all retries exhausted", () => {
 
 test("socketProbeFinalFailure: pre-09:30 does not hard-fail", () => {
   assert.equal(socketProbeFinalFailure(false, "warming", false), null);
+});
+
+test("probeOptionsSocketWithRetries: warming then green passes", async () => {
+  let calls = 0;
+  const result = await probeOptionsSocketWithRetries({
+    afterOpen930: true,
+    fetchSocketHealth: async () => {
+      calls++;
+      if (calls === 1) {
+        return {
+          status: 503,
+          body: { websockets: { options: { ok: false, detail: "marks warming" } } },
+        };
+      }
+      return {
+        status: 200,
+        body: { websockets: { options: { ok: true, detail: "cluster marks fresh" } } },
+      };
+    },
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.ok, true);
+  assert.equal(result.failure, null);
+  assert.equal(result.successDetail, "cluster marks fresh");
+});
+
+test("probeOptionsSocketWithRetries: exhausted retries fail during RTH", async () => {
+  const result = await probeOptionsSocketWithRetries({
+    afterOpen930: true,
+    maxAttempts: 2,
+    fetchSocketHealth: async () => ({
+      status: 503,
+      body: { websockets: { options: { ok: false, detail: "still warming" } } },
+    }),
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.failure ?? "", /still warming/);
 });

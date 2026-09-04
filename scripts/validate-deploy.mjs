@@ -19,6 +19,7 @@ import { ALL_CRON_KEYS } from "./railway-cron-services.mjs";
 import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
+import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const IS_STAGING = BASE.includes("staging.");
@@ -66,6 +67,17 @@ function hasRailwayCli() {
   } catch {
     return false;
   }
+}
+
+function etMinutesNow(now = new Date()) {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(now).map((p) => [p.type, p.value]));
+  return Number(parts.hour) * 60 + Number(parts.minute);
 }
 
 function resolveCronSecret() {
@@ -172,6 +184,36 @@ async function fetchJson(path, opts = {}) {
 async function fetchText(path, opts = {}) {
   const { status, text } = await fetchJson(path, opts);
   return { status, text: typeof text === "string" ? text : String(text) };
+}
+
+async function runSocketHealthProbe(cron, { hardFail = false } = {}) {
+  const afterOpen930 = etMinutesNow() >= 9 * 60 + 30;
+  const result = await probeOptionsSocketWithRetries({
+    afterOpen930,
+    fetchSocketHealth: () =>
+      fetchJson("/api/cron/socket-health", {
+        headers: { Authorization: `Bearer ${cron}` },
+      }),
+    onRetry: (attempt, detail) =>
+      console.log(`  ⚠ options-socket (attempt ${attempt}/3): ${detail} — retrying…`),
+  });
+
+  if (result.preOpenWarn?.includes("CRON_SECRET")) {
+    warn(`options-socket probe HTTP 401 — ${result.preOpenWarn}`);
+    return true;
+  }
+  if (result.failure) {
+    const msg = result.failure.replace(/^options-socket: /, "options-socket (socket-health): ");
+    if (hardFail) fail(msg);
+    else warn(msg);
+    return false;
+  }
+  if (result.preOpenWarn) {
+    warn(`options-socket (socket-health): pre-09:30 — ${result.preOpenWarn}`);
+    return true;
+  }
+  ok(`options-socket (socket-health): ${result.successDetail ?? "ok"}`);
+  return true;
 }
 
 console.log("\n=== BlackOut post-deploy validation ===\n");
@@ -523,17 +565,7 @@ if (replicaCount >= 1 && runningReplicas != null && replicaCount === runningRepl
 console.log("\n5. Socket churn (socket-health + production logs)");
 if (skipCli) {
   if (cronSecret) {
-    try {
-      const { status, body } = await fetchJson("/api/cron/socket-health", {
-        headers: { Authorization: `Bearer ${cronSecret}` },
-      });
-      const opt = body?.websockets?.options;
-      if (status === 200 && opt?.ok) ok(`options-socket (socket-health): ${opt.detail ?? "ok"}`);
-      else if (status === 200 && opt) warn(`options-socket (socket-health): ${opt.detail ?? "not ok"}`);
-      else warn(`socket-health probe HTTP ${status}`);
-    } catch (e) {
-      warn(`socket-health probe failed: ${e.message}`);
-    }
+    await runSocketHealthProbe(cronSecret, { hardFail: false });
   } else {
     warn("Production log checks skipped (no CRON_SECRET)");
   }
@@ -543,22 +575,7 @@ if (skipCli) {
   let socketHealthOk = false;
   const cron = resolveCronSecret();
   if (cron) {
-    try {
-      const { status, body } = await fetchJson("/api/cron/socket-health", {
-        headers: { Authorization: `Bearer ${cron}` },
-      });
-      const opt = body?.websockets?.options;
-      if (status === 200 && opt?.ok) {
-        socketHealthOk = true;
-        ok(`options-socket (socket-health): ${opt.detail ?? "ok"}`);
-      } else if (status === 200 && opt) {
-        fail(`options-socket (socket-health): ${opt.detail ?? "not ok"}`);
-      } else {
-        warn(`socket-health probe HTTP ${status}`);
-      }
-    } catch (e) {
-      warn(`socket-health probe failed: ${e.message}`);
-    }
+    socketHealthOk = await runSocketHealthProbe(cron, { hardFail: true });
   } else {
     warn("CRON_SECRET unset — socket-health probe skipped (log grep only)");
   }
