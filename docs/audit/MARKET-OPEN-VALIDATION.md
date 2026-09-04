@@ -509,7 +509,7 @@ pan states, since tick positions move with the visible time range and the origin
 width and time-range, not a single fixed state. Also spot-check mobile (430×932) to confirm the fix
 didn't regress the already-working sibling labels' layout there.
 
-### 14. Night Hawk mobile play-history table's P&L column was scrolled off-screen — PR pending (branch `fix/nighthawk-mobile-pnl-column-offscreen`)
+### 15. Night Hawk mobile play-history table's P&L column was scrolled off-screen — PR pending (branch `fix/nighthawk-mobile-pnl-column-offscreen`)
 
 **What was broken:** the expanded Session Analytics panel's play-history table renders 6 columns
 (Date, Ticker, Dir, Tier, Outcome, P&L) inside `.nh-history-tablewrap` — `overflow-x-auto` around a
