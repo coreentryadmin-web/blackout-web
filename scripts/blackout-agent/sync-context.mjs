@@ -34,7 +34,13 @@ export function syncContext() {
   state.open_prs = (openPrs ?? []).map((pr) => {
     const verify = (pr.statusCheckRollup ?? []).find((c) => c.name === "verify");
     const authorLogin = pr.author?.login ?? "unknown";
-    const agent = pr.headRefName?.startsWith("claude/") ? "claude" : pr.headRefName?.startsWith("cursor/") ? "cursor" : pr.headRefName?.startsWith("fix/") ? "agent" : "human";
+    const agent = pr.headRefName?.startsWith("claude/")
+      ? "claude"
+      : pr.headRefName?.startsWith("cursor/")
+        ? "cursor"
+        : pr.headRefName?.startsWith("fix/") || pr.headRefName?.startsWith("docs/")
+          ? "agent"
+          : "human";
     return { number: pr.number, title: pr.title, branch: pr.headRefName, author: authorLogin, agent, draft: pr.isDraft, verify: verify ? `${verify.status}/${verify.conclusion ?? "pending"}` : "unknown", updated_at: pr.updatedAt };
   });
 

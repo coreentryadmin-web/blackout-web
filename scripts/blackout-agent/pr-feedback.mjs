@@ -43,17 +43,28 @@ function ghRun(args) {
   return { ok: r.status === 0, stdout: r.stdout, stderr: r.stderr, status: r.status };
 }
 
-export function classifyBranch(headRef) {
-  if (!headRef) return "human";
+const CLAUDE_BODY_MARKERS = [/generated with \[claude code\]/i, /claude\.ai\/code\/session/i];
+const CURSOR_BODY_MARKERS = [/cursor agent/i, /cursor\.com\/agents/i];
+
+export function detectBuilderFromBody(body) {
+  if (!body || typeof body !== "string") return null;
+  if (CLAUDE_BODY_MARKERS.some((re) => re.test(body))) return "claude";
+  if (CURSOR_BODY_MARKERS.some((re) => re.test(body))) return "cursor";
+  return null;
+}
+
+export function classifyBranch(headRef, prData = null) {
+  if (!headRef) return detectBuilderFromBody(prData?.body) ?? "human";
   if (headRef.startsWith("cursor/")) return "cursor";
   if (headRef.startsWith("claude/")) return "claude";
   if (headRef.startsWith("fix/")) return "agent";
+  if (headRef.startsWith("docs/")) return "agent";
   if (headRef.startsWith("dependabot/")) return "dependabot";
-  return "human";
+  return detectBuilderFromBody(prData?.body) ?? "human";
 }
 
-export function reviewerForBranch(headRef) {
-  const who = classifyBranch(headRef);
+export function reviewerForBranch(headRef, prData = null) {
+  const who = classifyBranch(headRef, prData);
   if (who === "claude" || who === "agent") return "cursor";
   if (who === "cursor") return "claude";
   return null;
@@ -73,8 +84,8 @@ export function buildFeedback({ pr, event, prData, checks, priorReview }) {
   const head = prData.headRefOid;
   const branch = prData.headRefName;
   const author = prData.author?.login ?? "unknown";
-  const agent = classifyBranch(branch);
-  const peer = reviewerForBranch(branch);
+  const agent = classifyBranch(branch, prData);
+  const peer = reviewerForBranch(branch, prData);
   const verify = checks.find((c) => c.name === "verify");
   const verifyLine = verify ? `${verify.state}/${verify.conclusion ?? "pending"}` : "unknown";
   const draft = prData.isDraft;
@@ -208,7 +219,7 @@ export function handlePrWebhook(opts) {
     "view",
     String(pr),
     "--json",
-    "number,title,headRefOid,headRefName,author,isDraft,additions,deletions,files,state,url",
+    "number,title,headRefOid,headRefName,author,isDraft,additions,deletions,files,state,url,body",
   ]);
   if (!prData) throw new Error(`Could not load PR #${pr}`);
 

@@ -13,13 +13,19 @@ test("classifyBranch", () => {
   assert.equal(classifyBranch("cursor/foo"), "cursor");
   assert.equal(classifyBranch("claude/bar"), "claude");
   assert.equal(classifyBranch("fix/baz"), "agent");
+  assert.equal(classifyBranch("docs/thermal-stubs"), "agent");
   assert.equal(classifyBranch("dependabot/npm"), "dependabot");
+  assert.equal(
+    classifyBranch("feature/foo", { body: "Generated with [Claude Code](https://claude.com/claude-code)" }),
+    "claude"
+  );
 });
 
 test("reviewerForBranch peers", () => {
   assert.equal(reviewerForBranch("claude/x"), "cursor");
   assert.equal(reviewerForBranch("cursor/x"), "claude");
   assert.equal(reviewerForBranch("fix/x"), "cursor");
+  assert.equal(reviewerForBranch("docs/x"), "cursor");
   assert.equal(reviewerForBranch("main"), null);
 });
 

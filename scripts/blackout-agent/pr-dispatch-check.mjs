@@ -30,7 +30,7 @@ if (!pr) {
   process.exit(0);
 }
 
-const prData = ghJson(["pr", "view", String(pr), "--json", "headRefOid,headRefName,isDraft"]);
+const prData = ghJson(["pr", "view", String(pr), "--json", "headRefOid,headRefName,isDraft,body"]);
 const checksRaw = ghJson(["pr", "checks", String(pr), "--json", "name,state,conclusion"]);
 const checks = Array.isArray(checksRaw) ? checksRaw : checksRaw?.checks ?? [];
 
@@ -38,7 +38,7 @@ const dispatch = shouldDispatchDeepReview({
   event: args.event,
   prData,
   checks,
-  agent: classifyBranch(prData?.headRefName),
+  agent: classifyBranch(prData?.headRefName, prData),
   reviewingAgent: args.agent,
 });
 
@@ -48,8 +48,8 @@ console.log(
     pr,
     event: args.event,
     branch: prData?.headRefName,
-    builder: classifyBranch(prData?.headRefName),
-    reviewer: reviewerForBranch(prData?.headRefName),
+    builder: classifyBranch(prData?.headRefName, prData),
+    reviewer: reviewerForBranch(prData?.headRefName, prData),
     draft: prData?.isDraft,
   })
 );
