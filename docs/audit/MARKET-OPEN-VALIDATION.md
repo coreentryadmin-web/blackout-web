@@ -1810,3 +1810,28 @@ than an end-of-session patch.
 - **What changed:** Inlined compound-question detection in `largo-stress-run.mjs`; extended `repo-hygiene.test.ts` allowlist comment.
 - **Check:** `LARGO_STRESS_LIMIT=5 node --import tsx scripts/largo-stress-run.mjs` → `router_mismatch: 0`. No member-visible surface.
 
+### 22. HELIX `/flows` — earnings-badge TZ off-by-one + replay NaN sort — fix/flowfeed-date-handling-bugs — 2026-09-04
+
+- **What was broken (badge):** `FlowFeed.tsx`'s `earningsDays` computed the EARN/E{n}D badge's
+  day-count against browser-LOCAL midnight (`new Date().setHours(0,0,0,0)` /
+  `new Date(dateStr + "T00:00:00")`), not the ET trading-calendar date `earningsMap` actually
+  carries — a member off US/Eastern could see the badge off by exactly one day for the hours
+  around either midnight where the local and ET calendar dates disagree (verified: a West Coast
+  member at 2026-09-04 22:00 PT, when the ET day has already rolled to 2026-09-05, saw "E1D"
+  instead of "EARN"/E0D for a same-ET-day report).
+- **What changed:** Extracted `earningsDayDiffEt()`, ET-anchored via the same technique
+  `daysToExpiry` already uses (`Intl.DateTimeFormat` → `Date.parse` of literal UTC midnight for
+  both endpoints). Also fixed `startReplay()`'s tape sort, which used raw
+  `new Date(a.alerted_at).getTime() - new Date(...)` and returned `NaN` (an
+  `Array.prototype.sort` contract violation, unspecified ordering) for any row with
+  `alerted_at: ""` (a freshly-streamed SSE row with unknown print time, per `flow-persist.ts`) —
+  now uses the extracted null-safe `compareFlowAlertsByTimeAsc()`, matching `displayAlerts`'s
+  existing convention a few lines below.
+- **RTH check:** On `/flows`, with the ET session open, compare the EARN/E{n}D badge day-count
+  against the ticker's actual next report date for a few names spot-checked against Meridian's own
+  `report_date`; there should be no case where a badge reads one day off from what Meridian shows
+  for the SAME print. Separately, run a live Replay (▶ Replay button) during/soon-after RTH once
+  the tape has accumulated at least one freshly-streamed row (new SSE prints briefly carry no
+  `alerted_at` before the DB round-trip lands it) and confirm the replay plays in a clean
+  chronological order with no visibly out-of-order jump.
+
