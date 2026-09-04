@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:52:08.396Z",
+  "updated_at": "2026-09-04T23:33:31.114Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-04T23:19:44.811Z",
+      "lease_until": "2026-09-05T00:49:44.811Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -234,6 +234,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3774": {
+      "pr": 3774,
+      "head_sha": "a79fd880",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:30:13.520Z",
+      "safe_to_merge": true
+    },
+    "pr-3790": {
+      "pr": 3790,
+      "head_sha": "c3a1e0b0",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:33:12.990Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,11 +264,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75",
+    "last_main_sha": "767e67374051a11205390d664d992d59173fdeb5",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:42:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
-    "last_deploy_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75"
+    "last_deploy_at": "2026-09-04T23:33:29Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33929948391",
+    "last_deploy_sha": "e00faa83ce37af0243ff7565e16d42a654810fbc"
   },
   "open_prs": [],
   "events": [
@@ -1071,6 +1087,84 @@
       "agent": "cursor",
       "run_id": "01ba5e3e-d264-48b8-b6f9-953c859c62cd",
       "summary": "Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty."
+    },
+    {
+      "at": "2026-09-04T23:22:06.124Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 12
+    },
+    {
+      "at": "2026-09-04T23:22:06.125Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a4a477be-d9e7-4082-b174-fdab7f0da560",
+      "summary": "PR webhook wake: peer-reviewed #3774 (UW cache/WS stall future guards) and #3786 (Vector guide Thermal copy) — local tests GREEN, CI pending, WAIT comments posted. validate:deploy GREEN, ops:collect 0. Subscribed to #3774 CI."
+    },
+    {
+      "at": "2026-09-04T23:22:31.063Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 13
+    },
+    {
+      "at": "2026-09-04T23:30:13.521Z",
+      "type": "pr_review",
+      "pr": 3774,
+      "head_sha": "a79fd880",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:30:13.520Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T23:31:00.432Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T23:31:00.432Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2aa4549a-58b4-4b71-9987-a0a2c004034f",
+      "summary": "#3774 CI green — Cursor approved (a79fd880), merge blocked by GitHub API rate limit (user 284440397). Approval comment posted + blackout:review recorded. Retry merge when quota recovers."
+    },
+    {
+      "at": "2026-09-04T23:31:20.233Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T23:31:20.234Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "854455f3-dfc3-4c42-b352-7ef2ce6efe2a",
+      "summary": "#3774 MERGED (a4ff109) — UW cache/WS stall future guards. REST merge bypassed PAT GraphQL rate limit. Monitoring deploy + continuing peer review queue."
+    },
+    {
+      "at": "2026-09-04T23:33:12.990Z",
+      "type": "pr_review",
+      "pr": 3790,
+      "head_sha": "c3a1e0b0",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:33:12.990Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T23:33:31.114Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T23:33:31.114Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "66a0b525-e9aa-4656-bb8a-34ee44036cd1",
+      "summary": "#3790 MERGED (e00faa8) — spot-fallback change_pct null when prev_close absent. #3774+#3790 both landed this cycle. Checking #3786/#3784 queue."
     }
   ]
 }
