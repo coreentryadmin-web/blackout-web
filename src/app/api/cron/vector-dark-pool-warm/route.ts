@@ -4,7 +4,7 @@ import { logCronRun } from "@/lib/cron-run";
 import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
 import { warmVectorDarkPool, type WarmVectorDarkPoolResult } from "@/features/vector/lib/vector-dark-pool-cache";
 import { isEtCashRth } from "@/lib/et-market-hours";
-import { runUwPool } from "@/lib/providers/uw-rate-limiter";
+import { runUwPool, runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,8 +69,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  // Tagged as a background sweep (runWithBackgroundUwSweep) so it always leaves at least one
+  // UW concurrency slot reachable for live member traffic even while mid-run — see
+  // uw-rate-limiter.ts's block comment for the measured ALB tail-latency evidence.
   const dispatchWarm = () => {
-    void runVectorDarkPoolWarm(started).catch((error) => {
+    void runWithBackgroundUwSweep(() => runVectorDarkPoolWarm(started)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[cron/vector-dark-pool-warm] background warm REJECTED: ${detail}`);
     });

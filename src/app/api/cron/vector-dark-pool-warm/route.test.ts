@@ -24,7 +24,7 @@ test("vector-dark-pool-warm bounds its universe fan-out through the shared UW po
   assert.match(routeSrc, /runUwPool/, "must route the per-ticker fetches through the bounded-concurrency pool");
   assert.match(
     routeSrc,
-    /import \{ runUwPool \} from "@\/lib\/providers\/uw-rate-limiter"/,
+    /import \{[^}]*\brunUwPool\b[^}]*\} from "@\/lib\/providers\/uw-rate-limiter"/,
     "must import the pool helper from the shared rate limiter, not reimplement one"
   );
 });

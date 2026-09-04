@@ -7,6 +7,7 @@ import { VECTOR_DTE_HORIZONS } from "@/features/vector/lib/vector-dte-horizon";
 import { computeVectorFullState } from "@/lib/bie/vector-full-state";
 import { writeVectorFullStateCache } from "@/lib/bie/vector-full-state-cache";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 // Continuous Vector full-state ingestion — the "non-stop feed" behind Largo-BIE.
 //
@@ -122,8 +123,12 @@ export async function GET(req: NextRequest) {
   // computeVectorFullState × universe × horizons can exceed Cloudflare's ~100s origin timeout
   // when caches are cold (ops #1355: market_hours_stale with no fresh cron_job_runs row). Mirror
   // bie-full-state-snapshot / vector-dark-pool-warm: handshake in seconds, sweep in after().
+  //
+  // Tagged as a background sweep (runWithBackgroundUwSweep) so it always leaves at least one
+  // UW concurrency slot reachable for live member traffic even while mid-run — see
+  // uw-rate-limiter.ts's block comment for the measured ALB tail-latency evidence.
   const dispatchSnapshot = () => {
-    void runVectorFullStateSnapshot(started).catch((error) => {
+    void runWithBackgroundUwSweep(() => runVectorFullStateSnapshot(started)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[cron/vector-full-state-snapshot] background snapshot REJECTED: ${detail}`);
     });

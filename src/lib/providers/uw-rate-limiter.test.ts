@@ -89,3 +89,53 @@ test("runUwPool tolerates an unbounded task count without ever exceeding its con
 
   assert.ok(maxInFlight <= 3, `55-task fan-out must still respect the concurrency cap, saw ${maxInFlight}`);
 });
+
+// Regression for the RTH ALB tail-latency finding (measured live 2026-09-03): vector-full-state-
+// snapshot / vector-dark-pool-warm / bie-full-state-snapshot / vector-pick-sweep each already
+// carry an overlap guard against a SECOND instance of the SAME cron, but a single non-overlapping
+// run still occupied the whole cluster-wide UW concurrency ceiling (as few as 2 slots) for
+// 90-286s, racing live member requests for the same slots (ALB Max ~119s, p99 up to 39s in the
+// same windows). runWithBackgroundUwSweep/reserveForLiveTraffic is the fix: a tagged background
+// sweep must never see the FULL ceiling, so it can never claim the last slot away from live
+// traffic — these tests prove the reservation math and, critically, that it does NOT leak into a
+// concurrent call outside the tagged context (the whole point is to leave live traffic untouched).
+test("reserveForLiveTraffic leaves the ceiling untouched outside a background sweep", async () => {
+  const { reserveForLiveTraffic } = await import("./uw-rate-limiter");
+  assert.equal(reserveForLiveTraffic(2), 2);
+  assert.equal(reserveForLiveTraffic(1), 1);
+  assert.equal(reserveForLiveTraffic(3), 3);
+});
+
+test("reserveForLiveTraffic reserves exactly one slot for live traffic inside runWithBackgroundUwSweep", async () => {
+  const { reserveForLiveTraffic, runWithBackgroundUwSweep } = await import("./uw-rate-limiter");
+  const observed = await runWithBackgroundUwSweep(async () => reserveForLiveTraffic(2));
+  assert.equal(observed, 1, "a 2-slot ceiling must reserve down to 1 for a tagged background sweep");
+  const observedWide = await runWithBackgroundUwSweep(async () => reserveForLiveTraffic(3));
+  assert.equal(observedWide, 2, "a 3-slot ceiling reserves down to 2");
+});
+
+test("reserveForLiveTraffic never floors below 1 even at a 1-slot ceiling (never fully blocks the sweep itself)", async () => {
+  const { reserveForLiveTraffic, runWithBackgroundUwSweep } = await import("./uw-rate-limiter");
+  const observed = await runWithBackgroundUwSweep(async () => reserveForLiveTraffic(1));
+  assert.equal(observed, 1);
+});
+
+test("runWithBackgroundUwSweep does not leak into a concurrent call outside its context (AsyncLocalStorage isolation)", async () => {
+  const { reserveForLiveTraffic, runWithBackgroundUwSweep } = await import("./uw-rate-limiter");
+  const [inSweep, outsideSweep] = await Promise.all([
+    runWithBackgroundUwSweep(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+      return reserveForLiveTraffic(2);
+    }),
+    (async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      return reserveForLiveTraffic(2);
+    })(),
+  ]);
+  assert.equal(inSweep, 1, "the tagged call sees the reserved ceiling");
+  assert.equal(
+    outsideSweep,
+    2,
+    "a concurrent UNTAGGED call must see the FULL ceiling — live traffic is unaffected by a sweep running alongside it"
+  );
+});
