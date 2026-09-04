@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T10:44:43.334Z",
+  "updated_at": "2026-09-04T10:45:52.603Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -69,25 +69,26 @@
       "owner": "cursor",
       "claimed_at": "2026-09-04T10:37:54.628Z",
       "lease_until": "2026-09-04T12:14:41.850Z",
-      "phase": "PEER_REVIEW",
+      "phase": "RELEASED",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": "678ed64a-c88a-4477-b3ae-c9201146b542",
       "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "released_at": "2026-09-04T10:45:45.666Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-04T10:43:00.445Z",
       "lease_until": "2026-09-04T12:14:41.850Z",
-      "phase": "DEPLOY_VERIFY",
+      "phase": "RELEASED",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": "678ed64a-c88a-4477-b3ae-c9201146b542",
-      "title": null
+      "title": null,
+      "released_at": "2026-09-04T10:45:45.768Z"
     },
     "BO-P1-0104": {
       "task_id": "BO-P1-0104",
@@ -95,6 +96,18 @@
       "claimed_at": "2026-09-04T07:42:54.932Z",
       "lease_until": "2026-09-04T09:12:54.932Z",
       "phase": "INVESTIGATING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
+    },
+    "BO-P2-0100": {
+      "task_id": "BO-P2-0100",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T10:45:52.602Z",
+      "lease_until": "2026-09-04T12:15:52.602Z",
+      "phase": "AUDIT",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -167,8 +180,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:43:00.445Z",
-      "current_task": "BO-P1-0101"
+      "last_seen": "2026-09-04T10:45:52.603Z",
+      "current_task": "BO-P2-0100"
     }
   },
   "deploy": {
@@ -702,6 +715,43 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T10:45:38.885Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T10:45:38.886Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3a3fa6e4-8570-4f6d-91d9-77e6d2a18012",
+      "summary": "Cycle: main@b1bfa6647 synced. Lifecycle GREEN (ops:collect 0, validate:deploy GREEN, validate:seo 22 PASS, rth-open skipped off-hours). Site-latency API-only: 1-2 cold-prewarm FAILs (zerodte-warm/nighthawk edition tail) — defer RTH. ECR run 33863935805 still pending at poll time. GitHub API rate-limited (284440397) — pr-sweep empty, peer review blocked. Agent state sync branch pushed for peer."
+    },
+    {
+      "at": "2026-09-04T10:45:45.666Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T10:45:45.768Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T10:45:49.019Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T10:45:52.603Z",
+      "type": "task_claimed",
+      "task_id": "BO-P2-0100",
+      "owner": "cursor"
     }
   ]
 }
