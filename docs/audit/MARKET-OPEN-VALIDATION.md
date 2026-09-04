@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0al. SPX desk peek served price:0 bootstrap shell — fix/spx-desk-peek-zero-price (pending)
+
+**What was broken:** `GET /api/market/spx/desk` returned any `peekSpxDesk()` cache hit immediately, including bootstrap fast-lane shells with `price: 0` before `buildSpxDesk()` finished — members could flash SPX 0 while Thermal matrix already showed a grounded spot (~7718).
+
+**Fix:** Peek fast-path only when `instant.price > 0`; otherwise fall through to `loadSpxDesk()`.
+
+**Check at the open:** Cold-load `/terminal` after deploy — SPX header spot must match Thermal matrix within 1%, never 0 during a session with live index data.
+
 ### 0ag. UW spot-fallback fabricated flat 0% — fix/spot-fallback-change-pct-null (pending)
 
 **What was broken:** `resolveSpotFromUwStockState()` returned `change_pct: 0` when UW `/stock-state` omitted `prev_close` — members saw "unchanged" with no prior-close anchor.
