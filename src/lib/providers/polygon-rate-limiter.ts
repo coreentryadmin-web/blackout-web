@@ -459,3 +459,48 @@ export function polygonRateLimiterStats(): {
     upstreamHealth: polygonUpstreamHealth().snapshot(),
   };
 }
+
+/**
+ * Concurrency cap for a batch CALLER firing many independent Polygon fetches at once (e.g. a
+ * universe-wide GEX heatmap fan-out), deliberately SMALLER than MAX_CONCURRENCY (the raw
+ * admission ceiling above). MAX_CONCURRENCY bounds how many requests the whole app may have
+ * in flight at once; it does nothing to stop ONE batch job from queuing dozens of tasks that
+ * all try to claim those same slots simultaneously, which starves concurrent LIVE traffic
+ * (desk/GEX/pulse reads sharing the identical limiter) of admission for as long as the batch
+ * is mid-flight. Mirrors runUwPool's role in uw-rate-limiter.ts — same fix shape as the
+ * vector-dark-pool-warm incident (FINDINGS.md 2026-09-02: unbounded ~55-ticker
+ * `Promise.allSettled` fan-out overwhelmed the UW admission queue's wait budget, 83-95%
+ * per-run ticker failures) reproduced here on the Polygon side (2026-09-04: the vector
+ * universe snapshot's ~85-100-ticker unbounded fan-out left several genuinely-available,
+ * liquid tickers — DIA/AAOI/DRAM/ZS/NOK, confirmed live via a solo GET /api/market/gex-heatmap
+ * for each — served as fully-null rows by GET /api/market/vector/universe).
+ */
+const POOL_MAX_CONCURRENCY = Math.max(1, Math.floor(envNumber("POLYGON_POOL_MAX_CONCURRENCY", 8)));
+
+/**
+ * Run Polygon-fetching tasks through a small worker pool instead of firing them all at once.
+ * Each task is expected to catch its own rejection (callers doing a `Promise.allSettled`-style
+ * fan-out should wrap accordingly) — this pool itself does not swallow a throwing task, it just
+ * bounds how many are in flight together. Mirrors runUwPool (uw-rate-limiter.ts) exactly.
+ */
+export async function runPolygonPool<T>(
+  tasks: Array<() => Promise<T>>,
+  concurrency = POOL_MAX_CONCURRENCY
+): Promise<T[]> {
+  if (!tasks.length) return [];
+  const limit = Math.max(1, Math.min(concurrency, tasks.length));
+  const out: T[] = new Array(tasks.length);
+  let next = 0;
+
+  async function worker(): Promise<void> {
+    for (;;) {
+      const i = next;
+      next += 1;
+      if (i >= tasks.length) return;
+      out[i] = await tasks[i]();
+    }
+  }
+
+  await Promise.all(Array.from({ length: limit }, () => worker()));
+  return out;
+}
