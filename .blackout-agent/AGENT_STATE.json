@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T14:46:24.044Z",
+  "updated_at": "2026-09-04T14:58:45.448Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -74,7 +74,8 @@
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null
+      "title": null,
+      "released_at": "2026-09-04T05:31:04.504Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -218,16 +219,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T14:27:19.464Z",
-      "current_task": "BO-P1-0100"
+      "last_seen": "2026-09-04T10:33:57.541Z",
+      "current_task": "BO-P1-0103"
     }
   },
   "deploy": {
-    "last_main_sha": "c293cb8ac791424b19dfceb6837b0f972ab61312",
+    "last_main_sha": "b316d164b0d8ae9ee5b7b699e6b6690cc181e146",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T14:30:25Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33882136477",
-    "last_deploy_sha": "c946460d35053d600b70bb20ba2a64acc4c4acc2"
+    "last_deploy_at": "2026-09-04T14:52:27Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33886237394",
+    "last_deploy_sha": "b316d164b0d8ae9ee5b7b699e6b6690cc181e146"
   },
   "open_prs": [],
   "events": [
@@ -899,60 +900,30 @@
       "summary": "Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs."
     },
     {
-      "at": "2026-09-04T14:27:06.452Z",
+      "at": "2026-09-04T14:58:36.748Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:27:10.524Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T14:27:11.232Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T14:27:16.342Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T14:27:19.464Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0100",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-04T14:41:06.679Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T14:41:06.679Z",
+      "at": "2026-09-04T14:58:36.749Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "b94720f3-feb7-4b79-983c-80da645b60e1",
-      "summary": "Cycle: recovered state, validate:deploy+RTH GREEN, ops:collect 0. Closed redundant PRs blocked (token). #3595 docs-only superseded, #3596 superseded by #3598. ECS deploy #33882136477 in_progress for c946460. Peer Claude stale. Awaiting Claude review on #3598."
+      "run_id": "4ebb547c-8c1d-4676-b189-07314da3dfe4",
+      "summary": "#3601 MERGED (Sentry auth+ServerAction noise). validate:deploy+RTH GREEN, ops:collect 0. #3605 OPEN verify pending — platform-integrity Clerk auth. ECS deploy rolling. 7 duplicate agent-state drafts need Claude consolidation. Peer Claude stale."
     },
     {
-      "at": "2026-09-04T14:46:24.043Z",
+      "at": "2026-09-04T14:58:45.447Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:46:24.044Z",
+      "at": "2026-09-04T14:58:45.448Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "005b108b-3626-4b7e-bb5a-b6dc0d19f033",
-      "summary": "Session 2e9f9360: validate:deploy+RTH GREEN, ops:collect 0. #3595/#3596 should close (superseded). ECS roll in progress. Peer Claude stale."
+      "run_id": "8827f2b7-09eb-4701-ab33-2cb416d6c6b7",
+      "summary": "#3601 MERGED. validate:deploy+RTH GREEN. #3605 pending Claude review. ECS rolling."
     }
   ]
 }
