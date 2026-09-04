@@ -18,6 +18,7 @@ import {
 import { parseNextEarningsFromBenzinga } from "@/lib/meridian/meridian-benzinga-earnings-core";
 import {
   toPreEarningsHistoryRows,
+  earningsAlreadyPrinted,
   type PreEarningsHistoryRow,
 } from "@/lib/largo/pre-earnings-history-rows";
 
@@ -177,6 +178,14 @@ export async function preEarningsPackForLargo(
   // projection is a separate, tested module rather than an inline .map().
   const history = toPreEarningsHistoryRows(historyRes.print_history, 6);
 
+  // WITHHOLD the chain-IV move once the print this pack describes has already happened — see
+  // earningsAlreadyPrinted's doc comment. Withholding (not just relabeling) matches this repo's
+  // established rule for a number a consumer must not pair with a stale frame: `null` here already
+  // renders correctly everywhere downstream (`LargoPreEarningsPackCard.tsx` falls back to "Expected
+  // move unavailable"; `MeridianEarningsIntelPanel` already treats a null `tickerExpectedMovePct`
+  // as absent) so no consumer needed a change to receive an honest answer instead of a stale one.
+  const alreadyPrinted = earningsAlreadyPrinted(resolvedDate, history);
+
   return roundFloats({
     kind: "pre_earnings",
     ticker: t,
@@ -184,7 +193,7 @@ export async function preEarningsPackForLargo(
     days_until: next?.days_until ?? null,
     report_time: next?.report_time ?? null,
     is_confirmed: next?.is_confirmed ?? null,
-    expected_move_pct,
+    expected_move_pct: alreadyPrinted ? null : expected_move_pct,
     positioning: {
       available: pos != null,
       flip: pos?.flip ?? null,
