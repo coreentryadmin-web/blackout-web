@@ -34,6 +34,28 @@ const REPO = join(import.meta.dirname, "..", "..");
 type _AssertPayloadShape = keyof TrackRecordPagePayload;
 const METHODOLOGY_SCOPED_PRODUCTS: readonly _AssertPayloadShape[] = ["spxSlayer", "nightHawk", "zerodte"];
 
+/**
+ * Window (characters) searched around EACH individual claim match for the three product names.
+ * Must be a per-match proximity check, not "do the three names appear anywhere in the file" — a
+ * whole-file check trivially passes on a page like the homepage that names all three products
+ * dozens of times for unrelated reasons, which is exactly how a SECOND unscoped "Every setup
+ * graded A-F with a logged track record" instance (RedesignHome.tsx's own "them vs us" list,
+ * distinct from the pipeline-card instance the first fix caught) survived undetected through both
+ * the original fix (#3643) and a same-day follow-up (#3664) that only fixed vs/others/page.tsx's
+ * copy of the identical sentence.
+ */
+const PROXIMITY_WINDOW = 200;
+
+/** Every place in `body` a broad, unscoped "every setup/play... logged" claim appears. */
+function findBroadClaims(body: string): Array<{ index: number; match: string }> {
+  const claims: Array<{ index: number; match: string }> = [];
+  const re = /every\s+(?:\w+\s+)?(setup|play)\b.{0,80}(logged|flags?)|the full ledger, always/gi;
+  for (const m of body.matchAll(re)) {
+    if (m.index != null) claims.push({ index: m.index, match: m[0] });
+  }
+  return claims;
+}
+
 test("public 'every setup'/'each product' transparency claims name the three products /methodology actually covers", () => {
   assert.equal(
     METHODOLOGY_SCOPED_PRODUCTS.length,
@@ -43,15 +65,17 @@ test("public 'every setup'/'each product' transparency claims name the three pro
 
   for (const rel of SURFACES) {
     const body = readFileSync(join(REPO, rel), "utf8");
-    const hasBroadClaim =
-      /every (setup|play)\b.{0,80}(logged|flags?)/i.test(body) ||
-      /the full ledger, always/i.test(body);
-    if (!hasBroadClaim) continue; // this surface doesn't make the claim at all — nothing to scope
-    assert.ok(
-      /SPX Slayer/.test(body) && /Night Hawk/.test(body) && /0DTE Command/.test(body),
-      `${rel} makes a broad "every setup"/"full ledger" transparency claim but doesn't name the ` +
-        `three products /methodology actually covers (SPX Slayer, Night Hawk, 0DTE Command) near it`
-    );
+    for (const claim of findBroadClaims(body)) {
+      const start = Math.max(0, claim.index - PROXIMITY_WINDOW);
+      const end = Math.min(body.length, claim.index + claim.match.length + PROXIMITY_WINDOW);
+      const nearby = body.slice(start, end);
+      assert.ok(
+        /SPX Slayer/.test(nearby) && /Night Hawk/.test(nearby) && /0DTE Command/.test(nearby),
+        `${rel}: the claim "${claim.match}" doesn't name the three products /methodology actually ` +
+          `covers (SPX Slayer, Night Hawk, 0DTE Command) within ${PROXIMITY_WINDOW} chars of it — a ` +
+          `product name appearing ELSEWHERE in the same file does not scope THIS specific claim`
+      );
+    }
   }
 });
 
