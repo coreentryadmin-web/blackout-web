@@ -83,8 +83,14 @@ async function main() {
   const pos = await fetchJson("/api/market/gex-positioning?ticker=SPX");
   rec(
     "gex-positioning-spx",
-    pos.status === 200 && pos.body?.available !== false ? "PASS" : "WARN",
-    `flip=${pos.body?.flip ?? pos.body?.gamma_flip ?? "—"} king=${pos.body?.gex_king_strike ?? "—"}`
+    pos.status === 401
+      ? "SKIP"
+      : pos.status === 200 && pos.body?.available !== false
+        ? "PASS"
+        : "WARN",
+    pos.status === 401
+      ? "tier-gated"
+      : `flip=${pos.body?.flip ?? pos.body?.gamma_flip ?? "—"} king=${pos.body?.gex_king_strike ?? "—"}`
   );
 
   for (const t of ["SPY", "QQQ"]) {
@@ -92,16 +98,18 @@ async function main() {
     const n = Object.keys(hm.body?.gex?.strike_totals ?? {}).length;
     rec(
       `thermal-matrix-${t}`,
-      hm.status === 200 && n > 0 ? "PASS" : "WARN",
-      `strikes=${n} spot=${hm.body?.spot ?? "—"}`
+      hm.status === 401 ? "SKIP" : hm.status === 200 && n > 0 ? "PASS" : "WARN",
+      hm.status === 401 ? "tier-gated" : `strikes=${n} spot=${hm.body?.spot ?? "—"}`
     );
   }
 
   const vec = await fetchJson("/api/market/vector/walls?ticker=SPX&dte=0dte");
   rec(
     "vector-spx-0dte-walls",
-    vec.status === 200 && spotOk(vec.body?.spot) ? "PASS" : "WARN",
-    `spot=${vec.body?.spot ?? "—"} flip=${vec.body?.gamma_flip ?? "—"}`
+    vec.status === 401 ? "SKIP" : vec.status === 200 && spotOk(vec.body?.spot) ? "PASS" : "WARN",
+    vec.status === 401
+      ? "tier-gated"
+      : `spot=${vec.body?.spot ?? "—"} flip=${vec.body?.gamma_flip ?? "—"}`
   );
 
   const regime = await fetchJson("/api/market/regime");

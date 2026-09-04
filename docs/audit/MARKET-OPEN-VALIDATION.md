@@ -126,6 +126,17 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0e. Platform-integrity tier-gate false WARNs — fix/platform-integrity-401-skip (pending)
+
+**What was broken:** `npm run validate:platform-integrity` reported WARN on `gex-positioning-spx`,
+`thermal-matrix-SPY/QQQ`, and `vector-spx-0dte-walls` when those endpoints returned HTTP 401
+(tier-gated, no auth) — masking real WARNs during RTH lifecycle sweeps.
+
+**Fix:** Map `401 → SKIP` with detail `tier-gated` (same pattern as helix-flows / nighthawk / zerodte).
+
+**Check at the open:** Unauthenticated `validate:platform-integrity` shows 0 warn / 10 skip; authenticated
+run (Clerk temp admin) should show PASS on SPY/QQQ strikes and SPX positioning once matrix cache is warm.
+
 ### 0c. HELIX FlowAnomalyBanner future-timestamp recency — fix/flow-anomaly-future-timestamp (pending)
 
 **What was broken:** `FlowAnomalyBanner` on `/flows` treated a future-dated `detectedAt` as "recent"
