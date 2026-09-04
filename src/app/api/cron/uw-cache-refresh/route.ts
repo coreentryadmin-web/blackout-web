@@ -23,6 +23,7 @@ import {
 import { fetchMarketMovers } from "@/lib/providers/polygon";
 import { seedUwCacheFromWsStores, shouldSkipUwCacheRefreshTask } from "@/lib/uw-ws-cache-bridge";
 import { seedPulseSnapshotFromUwPrices, seedUwClusterHeartbeat } from "@/lib/ws/socket-cluster-health";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 const INDEX_TICKERS = ["SPX", "SPY", "QQQ", "IWM"] as const;
 const FLOW_STRIKE_TICKERS = ["SPX", "SPY"] as const;
@@ -132,8 +133,16 @@ export async function GET(req: NextRequest) {
   // polygon indices WS is ingest-owned. Must complete before the heavy REST fan-out (#1343).
   const pulse_seeded = await seedPulseSnapshotFromUwPrices();
 
+  // Tagged as a background sweep (runWithBackgroundUwSweep) so it always leaves at least one
+  // UW concurrency slot reachable for live member traffic even while mid-run — see
+  // uw-rate-limiter.ts's block comment for the measured ALB tail-latency evidence. This cron's
+  // own 24-way fan-out (5 sector tides + 3 index tickers × 3 fetches + 5 singles + 2 flow-per-
+  // strike) was the one remaining un-tagged caller found in the 2026-09-04 audit sweep: live
+  // CloudWatch showed 939 real member-facing "[uw] flow-alerts failed: rate-limiter queue budget
+  // exceeded" events in one 2.5h RTH window, clustering inside/at-the-start of this cron's own
+  // measured 20-66s run windows (vs. 27 such failures in an equivalent off-hours window).
   const dispatchRefresh = () => {
-    void runUwCacheRefreshTasks(started, redis).catch((error) => {
+    void runWithBackgroundUwSweep(() => runUwCacheRefreshTasks(started, redis)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[cron/uw-cache-refresh] background refresh REJECTED: ${detail}`);
     });
