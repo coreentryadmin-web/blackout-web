@@ -13,6 +13,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
 import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
+import {
+  isTransientCurlFailure,
+  seoVisibilityExitCode,
+  seoVisibilityVerdict,
+} from "./lib/seo-visibility-verdict.mjs";
 
 const APP = (process.env.AUDIT_APP_URL || process.env.VALIDATE_BASE || "https://blackouttrades.com").replace(/\/$/, "");
 const SECRET = process.env.CLERK_SECRET_KEY?.trim();
@@ -99,25 +104,26 @@ async function fetchAuthed(path, sessionCookie, clientUat) {
   return { status: r.s, html: r.b };
 }
 
-async function mintSession() {
-  if (!SECRET || !PUB) {
-    rec("auth", "SKIP", "CLERK keys missing");
-    return null;
-  }
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * One Clerk mint attempt. Caller records PASS/FAIL and handles retries.
+ * @returns {Promise<{ userId: string, session: string, clientUat: number } | { transient: boolean, error: string }>}
+ */
+async function mintSessionOnce() {
   // Shared create-or-adopt: e-mail collision → adopt the leftover user; PHONE collision →
   // redraw a fresh +1415555XXXX and retry.
   const auth = await createOrAdoptAuditUserViaCurl({ curl, api: API, secret: SECRET, email: EMAIL, phone: PHONE });
   if (auth.error) {
-    rec("auth", "FAIL", auth.error.slice(0, 160));
-    return null;
+    return { transient: false, error: auth.error };
   }
   const userId = auth.userId;
 
-  const ticket = J(backend("POST", "/sign_in_tokens", { user_id: userId }))?.token;
+  const ticketResp = backend("POST", "/sign_in_tokens", { user_id: userId });
+  const ticket = J(ticketResp)?.token;
   if (!ticket) {
-    rec("auth", "FAIL", "sign_in_token missing");
     await backend("DELETE", `/users/${userId}`);
-    return null;
+    return { transient: isTransientCurlFailure(ticketResp), error: "sign_in_token missing" };
   }
 
   const si = curl({
@@ -131,30 +137,53 @@ async function mintSession() {
   });
   const sid = J(si)?.response?.created_session_id;
   if (!sid) {
-    rec("auth", "FAIL", "Clerk ticket exchange failed");
     await backend("DELETE", `/users/${userId}`);
-    return null;
+    const detail = si.err ? String(si.err).slice(0, 120) : "Clerk ticket exchange failed";
+    return { transient: isTransientCurlFailure(si), error: detail };
   }
 
   const clientUat = Math.floor(Date.now() / 1000);
-  const tok = J(
-    curl({
-      method: "POST",
-      url: `${FAPI}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`,
-      headers: { Origin: APP, Referer: `${APP}/`, "Content-Type": "application/x-www-form-urlencoded" },
-      jar: true,
-      saveJar: true,
-    }),
-  )?.jwt;
-
+  const tokResp = curl({
+    method: "POST",
+    url: `${FAPI}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`,
+    headers: { Origin: APP, Referer: `${APP}/`, "Content-Type": "application/x-www-form-urlencoded" },
+    jar: true,
+    saveJar: true,
+  });
+  const tok = J(tokResp)?.jwt;
   if (!tok) {
-    rec("auth", "FAIL", "session JWT missing");
     await backend("DELETE", `/users/${userId}`);
+    const detail = tokResp.err ? String(tokResp.err).slice(0, 120) : "session JWT missing";
+    return { transient: isTransientCurlFailure(tokResp), error: detail };
+  }
+
+  return { userId, session: tok, clientUat };
+}
+
+async function mintSession(maxAttempts = 3) {
+  if (!SECRET || !PUB) {
+    rec("auth", "SKIP", "CLERK keys missing");
     return null;
   }
 
-  rec("auth", "PASS", `temp admin ${EMAIL}`);
-  return { userId, session: tok, clientUat };
+  let lastError = "auth failed";
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (attempt > 1) {
+      console.log(`  [auth] retry ${attempt}/${maxAttempts} after transient Clerk flake`);
+      await sleep(1500 * attempt);
+    }
+    const result = await mintSessionOnce();
+    if (result.session) {
+      const suffix = attempt > 1 ? ` (attempt ${attempt})` : "";
+      rec("auth", "PASS", `temp admin ${EMAIL}${suffix}`);
+      return result;
+    }
+    lastError = result.error || lastError;
+    if (!result.transient) break;
+  }
+
+  rec("auth", "FAIL", lastError.slice(0, 160));
+  return null;
 }
 
 function has(html, pattern, label) {
@@ -244,12 +273,15 @@ async function main() {
   }
 
   const fails = checks.filter((c) => c.status === "FAIL");
-  const verdict = fails.length === 0 ? "GREEN" : fails.some((c) => c.name === "auth") ? "AMBER" : "RED";
+  const verdict = seoVisibilityVerdict(checks);
   console.log(`\n=== ${verdict} — ${checks.length} checks, ${fails.length} fail ===\n`);
   if (fails.length) {
     for (const f of fails) console.log(`  ✗ ${f.name}: ${f.detail}`);
   }
-  process.exit(fails.length ? 1 : 0);
+  if (verdict === "AMBER") {
+    console.log("  (auth-only flake — public SEO checks passed; deploy-smoke exits 0)\n");
+  }
+  process.exit(seoVisibilityExitCode(checks));
 }
 
 main().finally(() => {

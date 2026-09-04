@@ -126,6 +126,18 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0y. Deploy-smoke SEO audit failed on transient Clerk FAPI reset — fix/seo-audit-clerk-mint-retry (pending)
+
+**What was broken:** `seo-visibility-audit.mjs` exited 1 when Clerk FAPI token mint hit a transient
+`connection reset by peer`, even though all public SEO checks (robots, sitemap, canonical, GA4,
+llms.txt) passed. Deploy-smoke on `main` (`6776238a`) went red on this flake alone.
+
+**Fix:** Auth-only FAIL → AMBER exit 0; `mintSession()` retries up to 3× on transient curl errors.
+
+**Check at the open:** After merge, confirm the next `deploy-smoke` run on `main` stays green when
+public SEO passes. Optionally re-run `npm run validate:seo` — transient auth flake should log AMBER
+and exit 0, not fail the workflow.
+
 ### 0x. Flow WS cluster heartbeat future timestamp falsely fresh — fix/flow-liveness-future-guard (pending)
 
 **What was broken:** `isFlowFrameFreshFromCluster`, `isFlowFrameFreshAnywhere`, and
