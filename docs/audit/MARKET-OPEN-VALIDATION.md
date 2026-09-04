@@ -672,7 +672,7 @@ the ticker, still tone-colored (green/red/amber) and bold. Also confirm Dir/Tier
 reachable (now via swipe or the row's existing tap-to-expand drawer) and that desktop/tablet
 rendering (where the table already fit) is visually unchanged.
 
-### 21. `thermal-discord` cron logging "Fontconfig error: No writable cache directories" every ~15-30min RTH — PR pending (branch `fix/thermal-discord-fontconfig-cache-dir`)
+### 21. `thermal-discord` cron logging "Fontconfig error: No writable cache directories" every ~15-30min RTH — PR #3571 (merged, branch `fix/thermal-discord-fontconfig-cache-dir`)
 
 **What was broken:** CloudWatch showed 72 occurrences/24h of the bare stderr line `Fontconfig
 error: No writable cache directories`, clustered in groups of exactly 4, RTH-only, on the
@@ -733,7 +733,7 @@ this PR (this fix must not have changed fetch timing, only closed-market copy); 
 card off-hours AFTER today's close and confirm the closed-market copy now appears instead of the
 bare "Scanning the chain…" sentence when the loading state is hit.
 
-### 18. `db.ts` checked-out pool clients had no `'error'` listener — raw `uncaughtException` on connection drop — PR pending (branch `fix/db-transaction-raw-client-uncaught`)
+### 22. `db.ts` checked-out pool clients had no `'error'` listener — raw `uncaughtException` on connection drop — PR #3570 (merged, branch `fix/db-transaction-raw-client-uncaught`)
 
 **What was broken:** one live CloudWatch `uncaughtException: [Error: Connection terminated
 unexpectedly]` in a 24h window, despite `db.ts` already routing essentially every query through
