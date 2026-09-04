@@ -191,11 +191,12 @@ export function persistenceRuleFor(archetype: SwingArchetype | null): ArchetypeP
   return archetype == null ? DEFAULT_PERSISTENCE_RULE : ARCHETYPE_PERSISTENCE[archetype];
 }
 
-// ─── Sub-lane (FM#2 — 2–30 DTE is three contract classes, not one) ─────────────
+// ─── Sub-lane (FM#2 — 5–15 DTE is two contract classes for Swing Command) ─────────────
 // Tactical (5–7, floor derives from HORIZONS.SWING.dteMin — see below): high gamma / fast theta /
 // needs immediate timing → nearest-ITM, harshest theta penalty.
-// Standard (8–21): the balanced directional swing → the default lane.
-// Extended (22–30): slower structures / catalyst run-ups → more convexity, lenient theta, wider gate.
+// Standard (8–15): the balanced directional swing → the default lane.
+// EXTENDED (22–30) retired 2026-09-04 when Swing Command narrowed to 5–15 DTE; the type remains for
+// historical ledger rows and manage policy lookups only — it is no longer in SWING_SUB_LANES_ORDER.
 //
 // TACTICAL.dteMin is NOT a second hardcoded copy of the 0DTE/Swing discovery boundary — it reads
 // HORIZONS.SWING.dteMin directly so this file can never drift out of sync with horizons.ts again.
@@ -207,12 +208,12 @@ export function persistenceRuleFor(archetype: SwingArchetype | null): ArchetypeP
 // would have been simultaneously admissible to BOTH the 0DTE board AND Swing's TACTICAL lane.
 export type SwingSubLane = "TACTICAL" | "STANDARD" | "EXTENDED";
 
-export const SWING_SUB_LANES_ORDER: readonly SwingSubLane[] = ["TACTICAL", "STANDARD", "EXTENDED"] as const;
+export const SWING_SUB_LANES_ORDER: readonly SwingSubLane[] = ["TACTICAL", "STANDARD"] as const;
 
 export interface SwingSubLaneSpec {
   id: SwingSubLane;
   label: string;
-  /** Contiguous, non-overlapping within [HORIZONS.SWING.dteMin,30]. */
+  /** Contiguous, non-overlapping within [HORIZONS.SWING.dteMin, HORIZONS.SWING.dteMax]. */
   dteMin: number;
   dteMax: number;
   /** 0.50–0.75Δ directional stance (NOT the 0.35Δ banger) — the instrument tracks the underlying. */
@@ -249,9 +250,9 @@ export const SWING_SUB_LANES: Record<SwingSubLane, SwingSubLaneSpec> = {
   },
   STANDARD: {
     id: "STANDARD",
-    label: "Standard (8–21d)",
+    label: "Standard (8–15d)",
     dteMin: 8,
-    dteMax: 21,
+    dteMax: HORIZONS.SWING.dteMax,
     contract: { targetDelta: 0.6, deltaBand: [0.5, 0.72], note: "directional 8–21d, breakeven inside target" },
     liquidity: { minOpenInterest: 250, maxSpreadPct: 0.25, maxPremiumPerShare: 45 },
     exit: "SCALE_OUT",
@@ -277,7 +278,7 @@ export const SWING_SUB_LANES: Record<SwingSubLane, SwingSubLaneSpec> = {
   },
 };
 
-/** Which sub-lane owns a calendar DTE inside the SWING window, or null if outside [HORIZONS.SWING.dteMin,30]. */
+/** Which sub-lane owns a calendar DTE inside the SWING window, or null if outside [HORIZONS.SWING.dteMin, dteMax]. */
 export function subLaneForDte(dte: number): SwingSubLane | null {
   if (!Number.isFinite(dte)) return null;
   for (const id of SWING_SUB_LANES_ORDER) {

@@ -19,7 +19,7 @@ import {
   SWING_EDGE_RUNGS,
   type SwingCalibrationRow,
 } from "./calibration.ts";
-import { ARCHETYPE_META, SWING_SUB_LANES } from "./taxonomy.ts";
+import { ARCHETYPE_META, SWING_SUB_LANES, SWING_SUB_LANES_ORDER } from "./taxonomy.ts";
 
 // ── fixture builders ───────────────────────────────────────────────────────────────────────────
 // A graded row: grade stamp + finite realized P&L. `win` sets realized to +10% (win) or −20% (loss).
@@ -233,7 +233,7 @@ test("sub-lane floor — clears the STAGED bar (n>=30 + Wilson-LB) → exactly o
     ...rows(10, 3, { sub_lane: "STANDARD", score: floor - 5 }),
   ];
   const res = analyzeSubLaneRecord(input);
-  assert.equal(res.length, 3);
+  assert.equal(res.length, SWING_SUB_LANES_ORDER.length);
   const std = res.find((r) => r.subLane === "STANDARD")!;
   assert.equal(std.tier, "LIMITED");
   assert.equal(std.graduated, true);

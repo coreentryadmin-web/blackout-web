@@ -15,7 +15,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { deriveContractHorizon, isSameDayHorizon } from "./board";
 import { subLaneForDte } from "../swing/taxonomy";
-import { HORIZONS, ZERODTE_MAX_DTE } from "../horizons";
+import { HORIZONS, ZERODTE_MAX_DTE, SWING_MAX_DTE } from "../horizons";
 
 test("no calendar DTE in [0,90] is admissible to BOTH the 0DTE/Day-Trade board AND Swing's sub-lanes", () => {
   for (let dte = 0; dte <= 90; dte++) {
@@ -28,17 +28,18 @@ test("no calendar DTE in [0,90] is admissible to BOTH the 0DTE/Day-Trade board A
   }
 });
 
-test("the two engines' admission windows are the exact complementary halves of [0,30], with no gap", () => {
-  // 0DTE/Day-Trade admits [0, ZERODTE_MAX_DTE]; Swing admits [HORIZONS.SWING.dteMin, 30]. Together
-  // they must cover every DTE in [0,30] with zero gap and zero overlap.
-  for (let dte = 0; dte <= 30; dte++) {
+test("the two engines' admission windows are the exact complementary halves of [0,15], with no gap", () => {
+  // 0DTE/Day-Trade admits [0, ZERODTE_MAX_DTE]; Swing admits [HORIZONS.SWING.dteMin, SWING_MAX_DTE].
+  // Together they must cover every DTE in [0,15] with zero gap and zero overlap (Swing Command 2026-09-04).
+  for (let dte = 0; dte <= SWING_MAX_DTE; dte++) {
     const zeroDteAdmits = isSameDayHorizon(deriveContractHorizon(dte));
     const swingAdmits = subLaneForDte(dte) != null;
     assert.equal(
       zeroDteAdmits || swingAdmits,
       true,
-      `dte ${dte} is admitted by NEITHER engine — a gap in [0,30] coverage`,
+      `dte ${dte} is admitted by NEITHER engine — a gap in [0,${SWING_MAX_DTE}] coverage`,
     );
   }
   assert.equal(HORIZONS.SWING.dteMin, ZERODTE_MAX_DTE + 1, "Swing's floor is exactly one past the 0DTE ceiling");
+  assert.equal(HORIZONS.SWING.dteMax, SWING_MAX_DTE);
 });

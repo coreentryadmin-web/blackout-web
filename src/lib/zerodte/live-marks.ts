@@ -55,6 +55,7 @@ import {
   type ZeroDteMarkSource,
 } from "./marks-math";
 import type { PlayStatus } from "./plan";
+import { fetchActiveSwingPlaysForMarks, mergeSwingActivePlays } from "@/lib/swing/live-marks-active";
 
 export {
   ZERODTE_LIVE_CONTRACT_CAP,
@@ -508,6 +509,7 @@ const latchMemo = new Map<string, PlayLatch>();
 /** One poll tick, exported for tests (deps injectable). Never throws. */
 export async function runZeroDteMarkTick(deps?: {
   plays?: ActiveZeroDtePlay[];
+  swingPlays?: ActiveZeroDtePlay[];
   setupQuotes?: ZeroDteSetupQuote[];
   rowsByKey?: Map<string, ZeroDteSetupLogRow>;
   fetchSnapshots?: typeof fetchOptionsUnifiedSnapshot;
@@ -526,7 +528,9 @@ export async function runZeroDteMarkTick(deps?: {
     // The merge caps at ZERODTE_LIVE_CONTRACT_CAP with entered FIRST (never evicted) and
     // dedupes setups against entered OCCs — see mergeTrackedContracts. Setups get a quote
     // ONLY; the persist/exit pass below iterates `entered`, never `setupPlays`.
-    const enteredRaw = deps?.plays ?? (await getActivePlays(now));
+    const enteredRawBase = deps?.plays ?? (await getActivePlays(now));
+    const swingEntered = deps?.swingPlays ?? (await fetchActiveSwingPlaysForMarks());
+    const enteredRaw = mergeSwingActivePlays(enteredRawBase, swingEntered);
     const quotesRaw = deps?.setupQuotes ?? getZeroDteSetupQuotes();
     const { enteredPlays: entered, setupPlays } = mergeTrackedContracts(enteredRaw, quotesRaw, todayEt());
     if (entered.length === 0 && setupPlays.length === 0) return;
@@ -880,7 +884,9 @@ export async function getZeroDteLiveMarksFrame(): Promise<{ json: string; conten
   // setup contracts (quote-only). Same merge the poller quotes, so a setup's OCC is in
   // the payload iff the poller quoted it. quote_only rows skip the latched-status
   // lookup (they have no latch) and carry entry_premium:null → live_pnl_pct:null.
-  const enteredRaw = await getActivePlays(now);
+  const enteredRawBase = await getActivePlays(now);
+  const swingEntered = await fetchActiveSwingPlaysForMarks();
+  const enteredRaw = mergeSwingActivePlays(enteredRawBase, swingEntered);
   const { enteredPlays: entered, setupPlays } = mergeTrackedContracts(
     enteredRaw,
     getZeroDteSetupQuotes(),

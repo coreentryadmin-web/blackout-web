@@ -32,21 +32,12 @@ const LegacyDeck = dynamic(
   () => import("@/features/nighthawk/command-deck/containers").then((m) => m.LegacyDeck),
   { loading: () => <VectorBoardLoadingSkeleton /> }
 );
-const BangerBoard = dynamic(
-  () => import("@/features/nighthawk/components/BangerBoard").then((m) => m.BangerBoard),
-  { loading: () => <NightHawkLoadingSkeleton /> }
-);
-const VectorPickLogBoard = dynamic(
-  () => import("@/features/nighthawk/components/VectorPickLogBoard").then((m) => m.VectorPickLogBoard),
-  { loading: () => <VectorBoardLoadingSkeleton /> }
-);
 
 /**
- * Night Hawk — one surface, five views (0DTE / Swings / Bangers / Vector / Legacy), single-select.
+ * Night Hawk — one surface, three views (0DTE / Swing Command / Legacy), single-select.
  * ZERO_DTE/SWING/LEGACY render the COMMAND DECK (a two-panel matrix terminal: plays left, live breakdown
- * right); BANGER renders BangerBoard (Engine B); VECTOR and LEGACY render X Ads Manager table boards
- * (VectorPickLogBoard / LegacyPickLogBoard). Selecting a view scopes the ENTIRE desk to it and only
- * that view's data is fetched. The choice persists in the URL (?view=).
+ * right). Bangers and Vector fold into the Swings view (2026-09-04 unification). Selecting a view scopes
+ * the ENTIRE desk to it and only that view's data is fetched. The choice persists in the URL (?view=).
  *
  * LEAPS was removed from this toggle 2026-08-04 (no live signal adapter fed it, so it only ever rendered an
  * empty lane) — see the header comment in `nighthawk-view.ts` for the full note and revival path.
@@ -121,8 +112,6 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
           <ZeroDteDeck initialBoard={(seed?.board as BoardResp | null | undefined) ?? null} />
         )}
         {view === "SWING" && <HorizonDeck horizon="SWING" focusTicker={swingFocusTicker} />}
-        {view === "BANGER" && <BangerBoard />}
-        {view === "VECTOR" && <VectorPickLogBoard />}
         {isLegacy && <LegacyDeck />}
       </div>
     </div>

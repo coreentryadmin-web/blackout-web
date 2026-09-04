@@ -14,6 +14,10 @@
 import { screenBangerMovers, nearestWeeklyExpiry, type GroupedDailyRow, type BangerMover } from "@/lib/banger/discovery";
 import { pickBangerContract, type FetchBarsFn } from "@/lib/banger/contract";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
+import { horizonPlayFromBangerWatch } from "@/lib/swing/banger-lane-merge";
+import { persistBangerWatchSnapshot } from "@/lib/banger/watch-cache";
+import { etStamp } from "@/lib/largo/temporal/bar-session-date";
+import type { HorizonPlay } from "@/lib/horizon-plays";
 
 export type BangerCommitDeps = {
   /** Whole-market grouped-daily rows for the session being scanned. */
@@ -87,6 +91,7 @@ export async function runBangerCommit(deps: BangerCommitDeps): Promise<BangerCom
   let contractMisses = 0;
   let errors = 0;
   const tickers: string[] = [];
+  const watchPlays: HorizonPlay[] = [];
 
   for (const mover of movers) {
     let pick;
@@ -100,6 +105,8 @@ export async function runBangerCommit(deps: BangerCommitDeps): Promise<BangerCom
       contractMisses += 1;
       continue;
     }
+    const watch = horizonPlayFromBangerWatch(mover, pick, deps.sessionDate);
+    if (watch) watchPlays.push(watch);
     const commitKey = `${deps.sessionDate}:${mover.ticker}:${pick.expiry}:${pick.strike}`;
     try {
       await deps.insertPosition({
@@ -123,6 +130,12 @@ export async function runBangerCommit(deps: BangerCommitDeps): Promise<BangerCom
       errors += 1;
     }
   }
+
+  await persistBangerWatchSnapshot({
+    asOf: etStamp(Date.now()) ?? new Date().toISOString(),
+    sessionDate: deps.sessionDate,
+    plays: watchPlays,
+  });
 
   return {
     ok: true,

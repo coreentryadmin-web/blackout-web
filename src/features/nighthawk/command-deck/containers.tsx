@@ -37,6 +37,7 @@ import type { TerminalPlay } from "./types";
 import { overlayLegacyQuotes, useLegacyStockQuotes } from "./use-legacy-quotes";
 import { overlayLegacyOptionMarks, useLegacyOptionMarks } from "./use-legacy-option-marks";
 import { overlayHorizonWatchTrack } from "./use-live-marks";
+import { useSwingLiveDeck } from "./use-swing-live-deck";
 import { useZeroDteLiveDeck } from "./use-zero-dte-live-deck";
 import { zeroDteSources, isBoardDegraded, type BoardResp } from "./zerodte-sources";
 import { EDITION_TARGET_PLAYS } from "@/features/nighthawk/lib/constants";
@@ -157,7 +158,20 @@ export function ZeroDteDeck({
   );
 }
 
-// ── Swings / LEAPS: the horizon lane ────────────────────────────────────────────────
+/** Swing Command board SWR cadence — faster than the old 30s lane poll; marks overlay still via stock quotes. */
+function swingBoardRefreshMs(): number {
+  try {
+    const { hour, minute, weekday } = etNowParts();
+    if (weekday === "Sat" || weekday === "Sun") return 15_000;
+    const mins = hour * 60 + minute;
+    if (mins >= 9 * 60 + 25 && mins <= 16 * 60 + 5) return 5_000;
+  } catch {
+    /* fall through */
+  }
+  return 15_000;
+}
+
+// ── Swing Command: unified Swings + Banger + Vector on the horizon lane ─────────────
 
 export function HorizonDeck({
   horizon,
@@ -169,7 +183,8 @@ export function HorizonDeck({
   focusTicker?: string | null;
 }) {
   const { data, isLoading } = useSWR(["deck-horizons", horizon], () => fetchNightHawkHorizons(horizon), {
-    refreshInterval: 30_000,
+    refreshInterval: horizon === "SWING" ? swingBoardRefreshMs() : 30_000,
+    revalidateOnFocus: true,
   });
   // fetchNightHawkHorizons (lib/api.ts) fail-softs a network/upstream error to `{board: null}` —
   // otherwise indistinguishable from a genuinely-empty lane (both render zero rows). Surface that
@@ -202,59 +217,70 @@ export function HorizonDeck({
         ? "Swing scan active — names building persistence appear in Research once enriched."
         : "Whole-market swing discovery runs on a phase cadence — first sightings need ≥2 sessions (or corroboration for event setups) before WATCH."
       : `Scanning the whole market for ${horizon === "SWING" ? "Swing" : "LEAPS"} setups — this lane is coming online.`;
-  const plays: TerminalPlay[] = rows.map((p) =>
-    terminalPlayFromHorizon({
-      ticker: p.ticker,
-      direction: p.direction,
-      horizon,
-      score: p.score,
-      status: p.status,
-      reason: p.reason,
-      // Greeks ride through to the deck strip (FINDINGS 2026-08-06): this projection dropped every
-      // greek the payload carried — including `delta`, which has ALWAYS been present — so the strip
-      // had nothing to render no matter what the server sent. Each is null-safe downstream.
-      contract: {
-        strike: p.contract.strike,
-        right: p.contract.right,
-        expiry: p.contract.expiry,
-        dte: p.contract.dte,
-        mid: p.contract.mid,
-        delta: p.contract.delta,
-        gamma: p.contract.gamma,
-        theta: p.contract.theta,
-        vega: p.contract.vega,
-        iv: p.contract.iv,
-      },
-      factors: p.factors,
-      regime: p.regime ?? null,
-      setupState: p.setupState ?? null,
-      entryStatus: p.entryStatus ?? null,
-      archetype: p.archetype ?? null,
-      subLane: p.subLane ?? null,
-      servingSection: p.serving ?? null,
-      firstSeenAt: p.firstSeenAt ?? null,
-      committedAt: p.committedAt ?? null,
-      signalKinds: p.signalKinds ?? null,
-      liveStatus: p.liveStatus ?? null,
-      flagUnderlyingPx: p.flagUnderlyingPx ?? null,
-      entryPremium: p.entryPremium ?? null,
-      livePnlPct: p.livePnlPct ?? null,
-      peakPremium: p.peakPremium ?? null,
-      troughPremium: p.troughPremium ?? null,
-      thesisBreak:
-        p.thesisLevel != null
-          ? { level: p.thesisLevel, note: p.thesisNote ?? undefined }
-          : undefined,
-    }),
+  const basePlays = useMemo<TerminalPlay[]>(
+    () =>
+      rows.map((p) =>
+        terminalPlayFromHorizon({
+          ticker: p.ticker,
+          direction: p.direction,
+          horizon,
+          score: p.score,
+          status: p.status,
+          reason: p.reason,
+          contract: {
+            strike: p.contract.strike,
+            right: p.contract.right,
+            expiry: p.contract.expiry,
+            dte: p.contract.dte,
+            mid: p.contract.mid,
+            bid: p.contract.bid ?? null,
+            ask: p.contract.ask ?? null,
+            delta: p.contract.delta,
+            gamma: p.contract.gamma,
+            theta: p.contract.theta,
+            vega: p.contract.vega,
+            iv: p.contract.iv,
+          },
+          factors: p.factors,
+          regime: p.regime ?? null,
+          setupState: p.setupState ?? null,
+          entryStatus: p.entryStatus ?? null,
+          archetype: p.archetype ?? null,
+          subLane: p.subLane ?? null,
+          servingSection: p.serving ?? null,
+          firstSeenAt: p.firstSeenAt ?? null,
+          committedAt: p.committedAt ?? null,
+          signalKinds: p.signalKinds ?? null,
+          liveStatus: p.liveStatus ?? null,
+          flagUnderlyingPx: p.flagUnderlyingPx ?? null,
+          entryPremium: p.entryPremium ?? null,
+          livePnlPct: p.livePnlPct ?? null,
+          peakPremium: p.peakPremium ?? null,
+          troughPremium: p.troughPremium ?? null,
+          thesisBreak:
+            p.thesisLevel != null
+              ? { level: p.thesisLevel, note: p.thesisNote ?? undefined }
+              : undefined,
+        }),
+      ),
+    [rows, horizon],
   );
+  const swingLivePlays = useSwingLiveDeck(horizon === "SWING" ? basePlays : []);
   const watchTickers = useMemo(
-    () => [...new Set(plays.filter((p) => p.status === "WATCH").map((p) => p.ticker))],
-    [plays],
+    () =>
+      horizon === "SWING"
+        ? []
+        : [...new Set(basePlays.filter((p) => p.status === "WATCH").map((p) => p.ticker))],
+    [horizon, basePlays],
   );
-  const stockQuotes = useLegacyStockQuotes(watchTickers, watchTickers.length > 0, 5_000);
+  const stockQuotes = useLegacyStockQuotes(
+    watchTickers,
+    horizon !== "SWING" && watchTickers.length > 0,
+    5_000,
+  );
   const playsWithTrack = useMemo(
-    () => overlayHorizonWatchTrack(plays, stockQuotes),
-    [plays, stockQuotes],
+    () => (horizon === "SWING" ? swingLivePlays : overlayHorizonWatchTrack(basePlays, stockQuotes)),
+    [horizon, swingLivePlays, basePlays, stockQuotes],
   );
   const sessionHeat = data?.session?.heat?.state ?? null;
   return (
@@ -290,6 +316,9 @@ export function HorizonDeck({
     </>
   );
 }
+
+/** Alias — Swing Command is the member-facing name for the unified SWING horizon deck. */
+export const SwingCommandDeck = HorizonDeck;
 
 // ── Legacy: the evening edition ─────────────────────────────────────────────────────
 

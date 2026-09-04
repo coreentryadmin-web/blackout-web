@@ -380,18 +380,64 @@ export function isCarriedContractLive(play: HorizonPlay, sessionDay: string): bo
   return expiry >= sessionDay;
 }
 
+/**
+ * Refresh a legacy-carried play's contract for the current session — recompute calendar DTE, merge a
+ * fresher quote from today's organic scan when strike/expiry match, and drop stale mids when the DTE
+ * label has drifted (FINDINGS 2026-08-07 frozen-contract serve bug).
+ */
+export function refreshCarriedLegacyPlay(
+  play: HorizonPlay,
+  sessionDay: string,
+  freshPlayByTicker?: ReadonlyMap<string, HorizonPlay>,
+): HorizonPlay | null {
+  if (!isCarriedContractLive(play, sessionDay) || !play.contract) return null;
+  const expiry = carriedContractExpiry(play)!;
+  const dte = calendarDte(sessionDay, expiry);
+  if (!Number.isFinite(dte) || dte < HORIZONS.SWING.dteMin || dte > HORIZONS.SWING.dteMax) return null;
+
+  const fresh = freshPlayByTicker?.get(play.ticker.toUpperCase());
+  const sameContract =
+    fresh?.contract &&
+    fresh.contract.expiry === expiry &&
+    fresh.contract.strike === play.contract.strike &&
+    fresh.contract.right === play.contract.right;
+
+  const staleDte = play.contract.dte !== dte;
+  const mergedContract = sameContract
+    ? { ...play.contract, ...fresh!.contract, dte }
+    : {
+        ...play.contract,
+        dte,
+        // A carried blob with a stale DTE label almost certainly has a stale quote too — drop it
+        // honestly until live marks or the next scan repopulates it.
+        ...(staleDte
+          ? { mid: null, bid: null, ask: null, delta: play.contract.delta ?? null }
+          : {}),
+      };
+
+  const reason =
+    play.reason && staleDte
+      ? play.reason.replace(/\b\d+DTE\b/g, `${dte}DTE`)
+      : play.reason;
+
+  return { ...play, contract: mergedContract, reason };
+}
+
 /** Re-attach morning-confirm legacy promotions after a swing-discovery scan overwrites the snapshot. */
 export function carryLegacyPromotedIntoSnapshot(
   fresh: SwingServingSnapshot,
   prior: SwingServingSnapshot | null,
 ): SwingServingSnapshot {
   if (!prior) return fresh;
-  // Drop carried rows whose frozen contract has expired BEFORE anything else keys off them — the
-  // strip below removes these tickers from the fresh scan, so carrying a dead row would also
-  // suppress the live one the scan just produced. See isCarriedContractLive for the live evidence.
-  const triples = legacyPromotedTriplesFromSnapshot(prior).filter((t) =>
-    isCarriedContractLive(t.play, fresh.sessionDay),
+  const freshByTicker = new Map(
+    (fresh.plays ?? []).map((p) => [p.ticker.toUpperCase(), p] as const),
   );
+  const triples = legacyPromotedTriplesFromSnapshot(prior)
+    .map((t) => {
+      const refreshed = refreshCarriedLegacyPlay(t.play, fresh.sessionDay, freshByTicker);
+      return refreshed ? { ...t, play: refreshed } : null;
+    })
+    .filter((t): t is NonNullable<typeof t> => t != null);
   if (triples.length === 0) return fresh;
   const legacyTickers = new Set(triples.map((t) => t.watch.ticker.toUpperCase()));
   const stripped = stripTickersFromSnapshot(fresh, legacyTickers);

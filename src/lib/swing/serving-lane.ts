@@ -33,6 +33,25 @@ import {
 import type { ChainContract } from "../horizon-fanout";
 import { livePlaysFromOpenPositions } from "./live-plays";
 import type { SwingPositionRow } from "../db";
+import type { BangerPositionRow } from "../banger/positions-db";
+import { mergeBangerPositionsIntoSwingPlays } from "./banger-lane-merge";
+import { enrichSwingPlaysWithVectorLeaders, type VectorLeaderHint } from "./vector-lane-enrich";
+
+/** Add pre-entry banger WATCH rows when the ticker is not already live capital. */
+export function mergeBangerWatchPlays(
+  plays: readonly HorizonPlay[],
+  watch: readonly HorizonPlay[],
+): HorizonPlay[] {
+  if (watch.length === 0) return [...plays];
+  const liveTickers = new Set(
+    plays.filter((p) => p.liveStatus || p.status === "COMMIT").map((p) => p.ticker.toUpperCase()),
+  );
+  const additions = watch.filter((p) => !liveTickers.has(p.ticker.toUpperCase()));
+  if (additions.length === 0) return [...plays];
+  const existing = new Set(plays.map((p) => p.ticker.toUpperCase()));
+  const novel = additions.filter((p) => !existing.has(p.ticker.toUpperCase()));
+  return [...plays, ...novel];
+}
 
 /** What an injected discovery run must hand back: the scored dossiers + the SWING plays produced from them.
  *  (Matches the relevant slice of PR-11's `SwingDiscoveryResult` — `dossiers` + `playSet.SWING`.)
@@ -57,6 +76,12 @@ export interface SwingServingLaneDeps {
   spotsByTicker?: Record<string, number>;
   /** Latest manage snapshot event_json per position id — authoritative EXITING/MANAGING state (#38). */
   fetchLatestManageEvents?: (positionIds: number[]) => Promise<Map<number, Record<string, unknown>>>;
+  /** Engine B open-book rows folded into MANAGING/SCALING_OUT (Swing Command unification). */
+  fetchBangerPositions?: () => Promise<BangerPositionRow[]>;
+  /** Recent Vector pick leaders — corroboration only (signalKinds), not a second ledger. */
+  vectorLeaders?: VectorLeaderHint[];
+  /** Pre-entry banger WATCH rows from the post-close screen cache. */
+  bangerWatchPlays?: HorizonPlay[];
 }
 
 /** Index the scored dossiers by ticker (uppercased) so each play can find the thesis it was produced from. */
@@ -142,7 +167,7 @@ function attachThesisExplanation(
  * failure (no discover, null result, thrown error) degrades to an empty structured lane — never a throw.
  */
 export async function getSwingServingLane(deps: SwingServingLaneDeps = {}): Promise<SwingServingLane> {
-  if (!deps.discover && !deps.fetchOpenPositions) return emptySwingServingLane();
+  if (!deps.discover && !deps.fetchOpenPositions && !deps.fetchBangerPositions) return emptySwingServingLane();
   try {
     const result = deps.discover ? await deps.discover() : null;
     const discoveryPlays = result && Array.isArray(result.plays) ? result.plays : [];
@@ -178,13 +203,26 @@ export async function getSwingServingLane(deps: SwingServingLaneDeps = {}): Prom
       const preEntryOnly = enrichedDiscovery.filter(
         (p) => !liveKeys.has(swingThesisKey(p.ticker, p.direction, p.archetype ?? null)),
       );
-      const merged = [...livePlays, ...preEntryOnly];
+      let merged = [...livePlays, ...preEntryOnly];
+      if (deps.fetchBangerPositions) {
+        const bangerRows = await deps.fetchBangerPositions().catch(() => []);
+        merged = mergeBangerPositionsIntoSwingPlays(merged, bangerRows);
+      }
+      merged = enrichSwingPlaysWithVectorLeaders(merged, deps.vectorLeaders ?? []);
+      merged = mergeBangerWatchPlays(merged, deps.bangerWatchPlays ?? []);
       if (merged.length === 0) return emptySwingServingLane();
       return assembleSwingServingLane(merged);
     }
 
-    if (enrichedDiscovery.length === 0) return emptySwingServingLane();
-    return assembleSwingServingLane(enrichedDiscovery);
+    let merged = enrichedDiscovery;
+    if (deps.fetchBangerPositions) {
+      const bangerRows = await deps.fetchBangerPositions().catch(() => []);
+      merged = mergeBangerPositionsIntoSwingPlays(merged, bangerRows);
+    }
+    merged = enrichSwingPlaysWithVectorLeaders(merged, deps.vectorLeaders ?? []);
+    merged = mergeBangerWatchPlays(merged, deps.bangerWatchPlays ?? []);
+    if (merged.length === 0) return emptySwingServingLane();
+    return assembleSwingServingLane(merged);
   } catch {
     // MEMBER-SAFE: a discovery/DB hiccup must not throw the route or fabricate plays — serve an empty lane.
     return emptySwingServingLane();
