@@ -17,10 +17,33 @@
  * Status: audit-output/rth-live-monitor-status.json
  */
 import { spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { etParts, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
-import { auditSecret } from "./audit/lib/prod-secrets.mjs";
+import { auditSecret, loadProdSecretsFromAws } from "./audit/lib/prod-secrets.mjs";
+
+const ENV_AUDIT = join(process.cwd(), "audit-output", ".env.audit");
+
+/** Hydrate process.env from AWS SM + cached audit-output/.env.audit (best-effort). */
+function hydrateAuditEnv() {
+  const fromAws = loadProdSecretsFromAws();
+  for (const [k, v] of Object.entries(fromAws)) {
+    if (v?.trim() && !process.env[k]?.trim()) process.env[k] = v.trim();
+  }
+  if (existsSync(ENV_AUDIT)) {
+    for (const line of readFileSync(ENV_AUDIT, "utf8").split("\n")) {
+      const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
+      if (!m || process.env[m[1]]?.trim()) continue;
+      try {
+        process.env[m[1]] = JSON.parse(m[2]);
+      } catch {
+        process.env[m[1]] = m[2];
+      }
+    }
+  }
+}
+
+hydrateAuditEnv();
 
 const args = process.argv.slice(2);
 const ONCE = args.includes("--once");
