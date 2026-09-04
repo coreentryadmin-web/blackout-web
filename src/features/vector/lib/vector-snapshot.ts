@@ -226,9 +226,14 @@ export function getVectorGexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   if (hasLiveGexStrikeExpiry(t)) {
     const ws = getGexStrikeExpiryLadder(t, s.wallScope.expiries);
     if (ws) {
+      const spot =
+        s.fallbackSpot != null && s.fallbackSpot > 0 ? s.fallbackSpot : undefined;
+      // WS ladder can be live before the heatmap fetch that seeds fallbackSpot finishes — computing
+      // without spot side-constraint puts call walls below spot / put walls above it (2026-09-04).
+      if (spot === undefined) return s.cachedWalls;
       s.cachedWalls = computeGexWalls(ws.ladder, {
         maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-        spot: s.fallbackSpot ?? undefined,
+        spot,
       });
       s.cachedWallsAt = now;
       return s.cachedWalls;
@@ -238,7 +243,7 @@ export function getVectorGexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   if (s.fallbackStrikeTotals) {
     s.cachedWalls = computeGexWalls(mapFromStrikeTotalsRecord(s.fallbackStrikeTotals), {
       maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-      spot: s.fallbackSpot ?? undefined,
+      spot: s.fallbackSpot != null && s.fallbackSpot > 0 ? s.fallbackSpot : undefined,
     });
     // gexAsOf must report DATA age, not compute time: during a provider outage
     // the fallback never refreshes, and stamping "now" here made members see
@@ -368,12 +373,16 @@ export async function getVectorGexWallsForHorizon(
     if (scoped.length) {
       const ws = getGexStrikeExpiryLadder(t, scoped);
       if (ws && ws.ladder.size > 0) {
-        const wsWalls = computeGexWalls(ws.ladder, {
-          maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-          spot: s.fallbackSpot ?? undefined,
-        });
-        const blended = getVectorGexWalls(t);
-        return mergeWallSides(wsWalls, wallsHaveNodes(blended) ? blended : null);
+        const spot =
+          s.fallbackSpot != null && s.fallbackSpot > 0 ? s.fallbackSpot : undefined;
+        if (spot !== undefined) {
+          const wsWalls = computeGexWalls(ws.ladder, {
+            maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+            spot,
+          });
+          const blended = getVectorGexWalls(t);
+          return mergeWallSides(wsWalls, wallsHaveNodes(blended) ? blended : null);
+        }
       }
     }
   }
