@@ -8,6 +8,7 @@ import {
   coerceMeridianWallLevels,
   flowWindowHours,
   moveArrow,
+  resolveIntelExpectedMove,
   shapeMeridianDarkPool,
 } from "./meridian-earnings-intel-core";
 import { buildMeridianFinancialsContext } from "./meridian-financials-context";
@@ -343,4 +344,73 @@ test("buildErPlayRead: an upcoming print still leans INTO earnings", () => {
   });
   assert.match(upcoming.headline, /into earnings/i);
   assert.doesNotMatch(upcoming.headline, /since the print/i);
+});
+
+// Regression for the intel-layer bypass flagged in cursor's peer review of merged PR #3474
+// (fix(meridian): withhold expected_move_pct once the print already happened). That PR correctly
+// nulled `pack.expected_move_pct` for an already-printed event, but `loadMeridianEarningsIntel`
+// independently re-derived the SAME field from a live chain fetch (`earningsEm`) AND a live
+// Vector weekly quote (`vectorCoversPrint`) whenever the pack value came back null — which is
+// EXACTLY the already-printed case — silently reintroducing the LULU-style stale-IV defect on
+// every consumer of `intel.expected_move_pct` (Summary/Positioning panels, the derived price
+// band) even though the pack-only card was fixed. `resolveIntelExpectedMove` is the fix: withhold
+// unconditionally once `alreadyPrinted` is true, regardless of what either live source resolved.
+test("resolveIntelExpectedMove withholds once already printed, even if BOTH live sources resolved a value", () => {
+  const result = resolveIntelExpectedMove({
+    alreadyPrinted: true,
+    earningsEm: 50.3, // the exact LULU live defect value
+    vectorCoversPrint: true,
+    vectorMovePct: 12.4,
+    packExpectedMovePct: null,
+  });
+  assert.equal(result.expected_move_pct, null, "must WITHHOLD, not relabel, once the print already happened");
+  assert.equal(result.expected_move_source, null);
+});
+
+test("resolveIntelExpectedMove serves the chain-IV read for a genuinely upcoming print", () => {
+  const result = resolveIntelExpectedMove({
+    alreadyPrinted: false,
+    earningsEm: 7.6,
+    vectorCoversPrint: false,
+    vectorMovePct: null,
+    packExpectedMovePct: null,
+  });
+  assert.equal(result.expected_move_pct, 7.6);
+  assert.equal(result.expected_move_source, "chain_iv");
+});
+
+test("resolveIntelExpectedMove falls through to the Vector weekly quote when chain IV is unavailable", () => {
+  const result = resolveIntelExpectedMove({
+    alreadyPrinted: false,
+    earningsEm: null,
+    vectorCoversPrint: true,
+    vectorMovePct: 6.7,
+    packExpectedMovePct: null,
+  });
+  assert.equal(result.expected_move_pct, 6.7);
+  assert.equal(result.expected_move_source, "chain_iv");
+});
+
+test("resolveIntelExpectedMove falls through to the coarser calendar figure, honestly labelled", () => {
+  const result = resolveIntelExpectedMove({
+    alreadyPrinted: false,
+    earningsEm: null,
+    vectorCoversPrint: false,
+    vectorMovePct: null,
+    packExpectedMovePct: 5.1,
+  });
+  assert.equal(result.expected_move_pct, 5.1);
+  assert.equal(result.expected_move_source, "calendar");
+});
+
+test("resolveIntelExpectedMove returns null/null when no source is available and the print hasn't happened", () => {
+  const result = resolveIntelExpectedMove({
+    alreadyPrinted: false,
+    earningsEm: null,
+    vectorCoversPrint: false,
+    vectorMovePct: null,
+    packExpectedMovePct: null,
+  });
+  assert.equal(result.expected_move_pct, null);
+  assert.equal(result.expected_move_source, null);
 });

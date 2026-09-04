@@ -354,3 +354,37 @@ export function beatRateWithCohort(prints: MeridianEarningsPrint[]): {
   if (!graded.length) return { rate: null, graded: 0 };
   return { rate: graded.filter((p) => p.beat).length / graded.length, graded: graded.length };
 }
+
+/**
+ * Resolve the intel-layer `expected_move_pct`/`expected_move_source` once the already-printed
+ * gate is known — extracted so this decision is directly testable (`meridian-earnings-intel.ts`
+ * is `server-only` with dynamic `@/` imports and can't be exercised in a test, same reason
+ * `pre-earnings-history-rows.ts` was split out for `earningsAlreadyPrinted`).
+ *
+ * `alreadyPrinted` must WITHHOLD (null), never relabel — matching the pack-layer fix (PR #3474).
+ * Both fallback sources (`earningsEm`, a chain-IV read; `vectorCoversPrint`, a still-live weekly
+ * expiry) can independently carry POST-print IV once the event has happened, so the gate applies
+ * to the whole derivation, not just the `earningsEm` fetch — a still-live weekly expiry "covers"
+ * the print date in the sense of not having expired yet, which says nothing about whether the
+ * company has already reported.
+ */
+export function resolveIntelExpectedMove(input: {
+  alreadyPrinted: boolean;
+  earningsEm: number | null;
+  vectorCoversPrint: boolean;
+  vectorMovePct: number | null;
+  packExpectedMovePct: number | null;
+}): { expected_move_pct: number | null; expected_move_source: "chain_iv" | "calendar" | null } {
+  if (input.alreadyPrinted) return { expected_move_pct: null, expected_move_source: null };
+  const expected_move_pct =
+    input.earningsEm ??
+    (input.vectorCoversPrint ? input.vectorMovePct : null) ??
+    input.packExpectedMovePct;
+  const expected_move_source =
+    input.earningsEm != null || input.vectorCoversPrint
+      ? "chain_iv"
+      : input.packExpectedMovePct != null
+        ? "calendar"
+        : null;
+  return { expected_move_pct, expected_move_source };
+}
