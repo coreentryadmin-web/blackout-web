@@ -10,6 +10,7 @@ import {
   analyzeDiff,
   deriveDirective,
   summarizeChecks,
+  resolveGithubRepo,
 } from "./pr-feedback.mjs";
 
 test("classifyBranch", () => {
@@ -152,3 +153,32 @@ test("summarizeChecks finds failures", () => {
   assert.equal(s.failed.length, 1);
   assert.equal(s.verify.conclusion, "failure");
 });
+
+test("resolveGithubRepo prefers GITHUB_REPOSITORY when set", () => {
+  const prev = process.env.GITHUB_REPOSITORY;
+  process.env.GITHUB_REPOSITORY = "coreentryadmin-web/blackout-web";
+  try {
+    assert.equal(resolveGithubRepo(), "coreentryadmin-web/blackout-web");
+  } finally {
+    if (prev !== undefined) process.env.GITHUB_REPOSITORY = prev;
+    else delete process.env.GITHUB_REPOSITORY;
+  }
+});
+
+// gh repo view is unavailable in GitHub Actions verify (no gh auth in the test job), so the
+// fallback path is exercised locally/dev only — same pattern as other gh-spawn integration tests.
+test(
+  "resolveGithubRepo falls back to gh when env unset",
+  { skip: process.env.CI ? "gh repo view needs local checkout auth" : false },
+  () => {
+    const prev = process.env.GITHUB_REPOSITORY;
+    delete process.env.GITHUB_REPOSITORY;
+    try {
+      const repo = resolveGithubRepo();
+      assert.ok(repo, "expected gh repo view to resolve nameWithOwner");
+      assert.match(repo, /\//, "expected owner/name slug");
+    } finally {
+      if (prev !== undefined) process.env.GITHUB_REPOSITORY = prev;
+    }
+  }
+);
