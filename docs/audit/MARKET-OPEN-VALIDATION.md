@@ -154,6 +154,24 @@ should show three columns with the SPX Slayer desk row (and every other SPX-desk
 ✓ under SPX Slayer, and every premium-only desk (HELIX, Largo, Night Hawk, Thermal, Vector,
 Meridian) marked — under SPX Slayer / ✓ under Premium.
 
+### 0m. `bie/decompose.ts` — dead compound-question splitter removed — fix/remove-dead-bie-decompose (pending)
+
+**What was broken:** nothing member-visible — `src/lib/bie/decompose.ts` (a pure "15 questions in
+one ask" splitter, task #57) was never wired into `composeCompound` or called by anything else;
+zero non-test importers anywhere in `src/`. Flagged 2026-08-30 in `FINDINGS.md` as the one of four
+related `bie/*` files that was safe to delete outright (its three siblings — `router.ts` still
+needed for a live type import, `composers.ts`/`dynamic-format.ts` referenced only by a test that
+can't run in this sandbox — were correctly left untouched then and remain untouched now).
+
+**Fix:** `git rm src/lib/bie/decompose.ts src/lib/bie/decompose.test.ts`; extended
+`repo-hygiene.test.ts`'s existing orphan allowlist so it can't silently be reintroduced dead.
+
+**Check at the open:** none — there is no live-RTH-dependent behavior to verify (the module was
+never reachable from any request path before removal). `tsc --noEmit` clean and the full test
+suite passing (recorded in the PR) are the complete verification for a fix of this kind; listed
+here only because the standing instruction asks every fix to be logged, not because there is an
+RTH-specific check to run.
+
 ### 0k. Six orphaned modules removed (SPX/Thermal/marketing) — fix/orphaned-spx-thermal-modules (pending)
 
 **What was broken:** nothing member-visible — `src/features/spx/{hooks/useSpxDayPerformance.ts,
