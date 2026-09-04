@@ -53,6 +53,8 @@ const OFF_HOURS = isOffHoursEt();
 const P2_CONTENT_MS = OFF_HOURS ? 1_500 : P2_MS;
 const P1_PREWARM_MS = OFF_HOURS ? 5_000 : P1_MS;
 
+import { dashboardMatrixReady } from "./audit/lib/site-latency-ready.mjs";
+
 const API_PATHS = [
   "/api/health",
   "/api/ready",
@@ -80,21 +82,14 @@ const WARM_PATHS = [
   "/api/market/nighthawk/edition",
 ];
 
+const DASHBOARD_MIN_ROWS = IS_STAGING ? 5 : OFF_HOURS ? 5 : 20;
+
 const PAGES = [
   {
     path: "/dashboard",
     label: "dashboard",
-    ready: IS_STAGING
-      ? () =>
-          document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= 5 ||
-          document.body.innerText.length > 800
-      : () => {
-          const minRows = OFF_HOURS ? 5 : 20;
-          return (
-            document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= minRows ||
-            document.body.innerText.length > 800
-          );
-        },
+    ready: dashboardMatrixReady,
+    readyArg: DASHBOARD_MIN_ROWS,
   },
   {
     path: "/flows",
@@ -291,7 +286,11 @@ async function main() {
         await p.waitForLoadState("domcontentloaded", { timeout: 30_000 }).catch(() => null);
         const domMs = Date.now() - t0;
         await p.waitForFunction(() => window.Clerk?.user?.id, { timeout: 20_000 }).catch(() => null);
-        await p.waitForFunction(page.ready, { timeout: 30_000 }).catch(() => null);
+        if (page.readyArg != null) {
+          await p.waitForFunction(page.ready, page.readyArg, { timeout: 30_000 }).catch(() => null);
+        } else {
+          await p.waitForFunction(page.ready, { timeout: 30_000 }).catch(() => null);
+        }
         const readyMs = Date.now() - t0;
         rec(`page:${page.label}:nav`, grade(navMs, { slowDesk: page.slowDesk }), "commit", navMs);
         rec(`page:${page.label}:dom`, domMs <= P2_MS ? "PASS" : grade(domMs, { slowDesk: page.slowDesk }), "domcontentloaded", domMs);
