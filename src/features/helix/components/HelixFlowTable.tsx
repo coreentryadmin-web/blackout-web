@@ -14,6 +14,7 @@ import {
   type HelixColumnDef,
   type HelixTableDensity,
 } from "@/features/helix/lib/helix-table-columns";
+import { dtePrintLabel } from "@/features/helix/components/HelixMobileFlowTape";
 import {
   daysToExpiry,
   flowSignals,
@@ -212,12 +213,22 @@ function renderCell(
       );
     case "fill":
       return <span className="helix-tape-muted tabular-nums">{fmtFill(flow.fill_price)}</span>;
-    case "dte":
-      return is0dte ? (
-        <span className="helix-tape-dte-zero tabular-nums">0</span>
-      ) : (
-        <span className="helix-tape-muted tabular-nums">{dte}</span>
+    case "dte": {
+      if (is0dte) {
+        return <span className="helix-tape-dte-zero tabular-nums">0</span>;
+      }
+      const dteLabel = dtePrintLabel(dte);
+      return (
+        <span
+          className={clsx(
+            "tabular-nums",
+            dteLabel.expired ? "font-bold text-ember" : "helix-tape-muted"
+          )}
+        >
+          {dteLabel.text}
+        </span>
       );
+    }
     case "spot":
       return <span className="helix-tape-muted tabular-nums">{fmtSpot(flow.underlying_price)}</span>;
     case "ask": {
