@@ -258,8 +258,13 @@ async function validateMatrixApi(app) {
   return hm;
 }
 
-async function crossToolIntegration(app, hm) {
+async function crossToolIntegration(app, _hmPrior) {
+  // Matrix audit may finish well before this block (browser mint, cell checks). The SPX matrix
+  // cache turns over every ~8s RTH — comparing a stale hmPrior flip to a fresh positioning read
+  // produced false 500pt+ FAILs when the book re-crossed zero between fetches. Re-fetch heatmap
+  // in the same breath as positioning (same pattern as spx-rth-all-day-audit cross-endpoint).
   let desk = app("/api/market/spx/desk").json;
+  const hm = app("/api/market/gex-heatmap?ticker=SPX").json;
   const pos = app("/api/market/gex-positioning?ticker=SPX").json;
   const thermalSpy = app("/api/market/gex-heatmap?ticker=SPY").json;
   const flows = app("/api/market/flows?limit=30").json;
@@ -292,7 +297,12 @@ async function crossToolIntegration(app, hm) {
     issues.push(`matrix vs gex-positioning spot`);
   }
   if (hm?.gex?.flip != null && pos?.flip != null && !flipsAgree(hm.gex.flip, pos.flip, hmSpot)) {
-    issues.push(`flip matrix ${hm.gex.flip} vs positioning ${pos.flip}`);
+    const sameGen =
+      hm.calculation_id && pos.calculation_id && hm.calculation_id === pos.calculation_id;
+    issues.push(
+      `flip matrix ${hm.gex.flip} vs positioning ${pos.flip}` +
+        (sameGen ? " (same calculation_id)" : " (calc_id mismatch)")
+    );
   }
   if (play?.available && play?.action === "SCANNING" && play?.confirmations?.checks?.length) {
     issues.push("SCANNING carries stale confirmations");
