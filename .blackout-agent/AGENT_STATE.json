@@ -1,43 +1,59 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-03T23:53:48.869Z",
+  "updated_at": "2026-09-04T00:32:35.076Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
       "owner": "cursor",
       "claimed_at": "2026-09-03T23:46:15.831Z",
       "lease_until": "2026-09-04T01:18:41.515Z",
-      "phase": "IMPLEMENTING",
+      "phase": "RELEASED",
       "branch": "cursor/blackout-autopilot",
       "pr": null,
       "reviewer": null,
       "run_id": "98d30e03-05b5-47ec-aafe-2818dd549761",
-      "title": "BLACKOUT Autopilot"
+      "title": "BLACKOUT Autopilot",
+      "released_at": "2026-09-04T00:31:04.315Z"
     },
     "BO-P1-0006": {
       "task_id": "BO-P1-0006",
       "owner": "cursor",
       "claimed_at": "2026-09-03T23:46:15.940Z",
       "lease_until": "2026-09-04T01:18:41.515Z",
-      "phase": "IMPLEMENTING",
+      "phase": "RELEASED",
       "branch": "cursor/blackout-autopilot",
       "pr": null,
       "reviewer": null,
       "run_id": "98d30e03-05b5-47ec-aafe-2818dd549761",
-      "title": "Autopilot hardening"
+      "title": "Autopilot hardening",
+      "released_at": "2026-09-04T00:31:04.418Z"
     },
     "BO-P1-0005": {
       "task_id": "BO-P1-0005",
       "owner": "cursor",
       "claimed_at": "2026-09-03T23:53:48.679Z",
       "lease_until": "2026-09-04T01:23:48.679Z",
-      "phase": "REVIEWING",
+      "phase": "RELEASED",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": "Review Claude PR #3434"
+      "title": "Review Claude PR #3434",
+      "released_at": "2026-09-04T00:31:04.515Z"
+    },
+    "BO-P1-0004": {
+      "task_id": "BO-P1-0004",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T00:31:04.298Z",
+      "lease_until": "2026-09-04T02:01:04.298Z",
+      "phase": "RELEASED",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null,
+      "released_at": "2026-09-04T00:32:33.913Z"
     }
   },
   "reviews": {
@@ -57,119 +73,18 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-03T23:53:48.680Z",
-      "current_task": "BO-P1-0005"
+      "last_seen": "2026-09-04T00:31:04.299Z",
+      "current_task": "BO-P1-0004"
     }
   },
   "deploy": {
-    "last_main_sha": "aa08b98d9ffdab369aa27030f999502edfc862dd",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-03T23:32:56Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33817874895",
-    "last_deploy_sha": "f86613f5b0cd72d6971655f79d4ea5e440b0defa"
+    "last_main_sha": "84c5707ac6849b4c048dec6e8a414321f2a76e27",
+    "last_deploy_status": "cancelled",
+    "last_deploy_at": "2026-09-04T00:32:34Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33821229041",
+    "last_deploy_sha": "271a977cfdc9b5d2cc2d62535f8c7e010374d78d"
   },
-  "open_prs": [
-    {
-      "number": 3437,
-      "title": "fix(nighthawk): stop closed 0DTE plays from re-appearing as live in the marks lane",
-      "branch": "claude/serene-wozniak-dvg5uu",
-      "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-03T23:47:02Z"
-    },
-    {
-      "number": 3436,
-      "title": "feat(autopilot): shared Claude/Cursor state machine + hardened continuous ops",
-      "branch": "cursor/blackout-autopilot",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-03T23:46:51Z"
-    },
-    {
-      "number": 3435,
-      "title": "feat(agent-ops): bootstrap BLACKOUT AUTOPILOT durable-state + lease/heartbeat/recovery system",
-      "branch": "fix/blackout-agent-autopilot",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-03T23:48:11Z"
-    },
-    {
-      "number": 3434,
-      "title": "fix(nighthawk): prune can never hard-delete a graded ledger row",
-      "branch": "claude/relaxed-archimedes-p1oq61",
-      "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:38:53Z"
-    },
-    {
-      "number": 3433,
-      "title": "fix(0dte): correct stale 15:30 time-stop references in code comments",
-      "branch": "claude/loving-goldberg-1va6dc",
-      "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:37:17Z"
-    },
-    {
-      "number": 3432,
-      "title": "docs(audit): verify 7-day money-back guarantee copy vs Whop enforcement",
-      "branch": "claude/zealous-faraday-7sxb0r",
-      "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:29:54Z"
-    },
-    {
-      "number": 3431,
-      "title": "fix(gex): matrix-deltas SSE feed served raw unrounded GEX floats",
-      "branch": "fix/gex-matrix-deltas-unrounded-floats",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:29:04Z"
-    },
-    {
-      "number": 3430,
-      "title": "fix(spx): treat deploy chunk 404s as transient in E2E harness",
-      "branch": "fix/spx-e2e-chunk-deploy-flake",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:25:52Z"
-    },
-    {
-      "number": 3428,
-      "title": "docs: helix-signal-outcomes writer now live — corrects CLAUDE.md's 2026-08-23 gap note",
-      "branch": "docs/helix-signal-outcomes-writer-now-live",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:18:53Z"
-    },
-    {
-      "number": 2810,
-      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
-      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
-      "author": "app/dependabot",
-      "agent": "human",
-      "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-01T19:54:25Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -285,6 +200,67 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-03T23:53:48.868Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T00:28:37.847Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:28:44.762Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:31:04.299Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0004",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T00:31:04.315Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0001",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T00:31:04.418Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0006",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T00:31:04.515Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0005",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T00:31:29.615Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:32:33.913Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0004",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T00:32:35.075Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:32:35.076Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "156a3831-daf1-4d6b-8da8-51bc9bdf1e93",
+      "summary": "Recovered on main (84c5707). Autopilot #3436 merged — BO-P1-0001/0006 DONE. G-18/G-19 post-deploy replay GREEN (143 gate tests + 7/13 fixture + session replay 2026-09-03). Claude PR queue drained (0 open). validate:deploy GREEN. Next: BO-P2-0003 Vector-gated runners."
     }
   ]
 }

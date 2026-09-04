@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "0b5d2e86-03f2-4668-b7e5-6efb343b6d70",
-  "last_seen": "2026-09-03T23:46:42.889Z",
-  "last_productive_action": "opened PR, hardening complete",
-  "current_task": "BO-P1-0006",
+  "run_id": "a32e0dd0-d088-423e-92c0-7b1f776568e6",
+  "last_seen": "2026-09-04T00:31:04.301Z",
+  "last_productive_action": "post-deploy G-18/G-19 replay",
+  "current_task": "BO-P1-0004",
   "current_phase": "IMPLEMENTING",
-  "branch": "cursor/blackout-autopilot",
+  "branch": null,
   "pr": null,
   "healthy": true
 }
