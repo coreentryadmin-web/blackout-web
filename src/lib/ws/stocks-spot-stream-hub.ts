@@ -10,6 +10,7 @@
  * subscription, not a broadcast-to-everyone-of-all-8000-tickers model) —
  * see docs/audit/FINDINGS.md for why a full-universe broadcast was rejected.
  */
+import { roundFloats } from "@/lib/round-floats";
 import { getStockLiveCandle } from "./stock-candle-store";
 
 const TICKER_RE = /^[A-Z0-9.\-]{1,8}$/;
@@ -70,7 +71,9 @@ export function buildSpotFrame(tickers: string[], now: number = Date.now()): Spo
 
 /** Encode a frame as an SSE `data: ...\n\n` message. */
 export function encodeSpotFrame(frame: SpotFrame): string {
-  return `data: ${JSON.stringify(frame)}\n\n`;
+  // Match /api/market/quote — the REST path already roundFloats at the boundary; the SSE
+  // lane was the one member-facing path still shipping raw IEEE tails on price/changePct.
+  return `data: ${JSON.stringify(roundFloats(frame))}\n\n`;
 }
 
 // --- Connection cap (same atomic claim-before-construct pattern as Vector) ---
