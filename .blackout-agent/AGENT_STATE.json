@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:19:14.963Z",
+  "updated_at": "2026-09-04T20:04:29.818Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T20:02:04.393Z",
+      "lease_until": "2026-09-04T21:32:04.393Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -248,11 +248,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "4d50fad9c46b7cbcb0ed44578af5a68d3a63e788",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T20:02:58Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33914257818",
+    "last_deploy_sha": "df7fde2fb3b5749474f4cf6d87cb75574a7a9416"
   },
   "open_prs": [],
   "events": [
@@ -1052,6 +1052,31 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T20:03:24.011Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T20:04:16.658Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T20:04:29.817Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T20:04:29.818Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ccb281e4-4414-419d-92a0-307628c4c765",
+      "summary": "pull_request wake: main@4d50fad9c deploy GREEN. ops:collect 0. validate:deploy/api-auth/platform-integrity/seo/data-validator all GREEN (37 PASS). pr-sweep 0 open PRs. GitHub API rate-limited (GH_TOKEN invalid) — sync-context reports 0 open PRs. Off-hours — RTH lifecycle skipped. Next: Fri 09:00 ET blackout:rth-lifecycle."
     }
   ]
 }
