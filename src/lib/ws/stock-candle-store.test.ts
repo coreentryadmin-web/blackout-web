@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import {
   recordStockTick,
   getStockLiveCandle,
@@ -8,7 +11,9 @@ import {
   computeChangePct,
   _resetStockCandleStoreForTest,
   _setSnapshotFetcherForTest,
+  _setStockCandleUpdatedAtForTest,
 } from "./stock-candle-store";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "./timestamp-freshness";
 
 // Every test in this file must stay network-free: stub the REST session-open
 // seed to resolve to "no anchor" immediately (same effect as offline/no key),
@@ -112,7 +117,7 @@ test("getStockLiveCandle: returns null for unknown ticker", () => {
   const snap = getStockLiveCandle("ZZZZ");
   assert.equal(snap.current, null);
   assert.equal(snap.updatedAt, 0);
-  assert.equal(snap.changePct, 0);
+  assert.equal(snap.changePct, null);
 });
 
 test("computeChangePct: rounds to 2dp and matches the indexStore sibling's rounding", () => {
@@ -308,4 +313,21 @@ test("wsSpotPrice: normalizes to uppercase", () => {
   const atMs = Date.parse("2026-07-15T14:44:00.000Z");
   recordStockTick("GOOG", 195, undefined, atMs);
   assert.equal(wsSpotPrice("goog"), 195);
+});
+
+test("getStockLiveCandle: future updatedAt does not read as fresh (clock-skew guard)", () => {
+  _resetStockCandleStoreForTest();
+  const atMs = Date.parse("2026-07-15T14:50:00.000Z");
+  recordStockTick("COIN", 300, undefined, atMs);
+  _setStockCandleUpdatedAtForTest("COIN", atMs + WS_TIMESTAMP_FUTURE_TOLERANCE_MS + 1_000);
+
+  const snap = getStockLiveCandle("COIN");
+  assert.equal(snap.current, null);
+  assert.equal(snap.changePct, null);
+});
+
+test("getStockLiveCandle: source uses isWsUpdatedAtFresh for local freshness, not raw Date.now() - updatedAt", () => {
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "stock-candle-store.ts"), "utf8");
+  assert.match(src, /isWsUpdatedAtFresh\(local\.updatedAt, LOCAL_STALE_MS\)/);
+  assert.doesNotMatch(src, /Date\.now\(\) - local\.updatedAt <= LOCAL_STALE_MS/);
 });

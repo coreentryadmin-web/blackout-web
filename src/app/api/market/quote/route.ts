@@ -292,7 +292,8 @@ export async function GET(req: NextRequest) {
         // WS price is live; rebase change_pct off the shared REST cache when available so the
         // header doesn't show session-open–anchored drift before the REST seed lands.
         const mem = quoteMem.get(ticker);
-        let changePct = candle.changePct;
+        let changePct =
+          candle.changePct != null && Number.isFinite(candle.changePct) ? candle.changePct : null;
         if (mem && Date.now() - mem.at < QUOTE_CACHE_MS) {
           const rebased = withFreshPrice(
             { price: mem.payload.price, change_pct: mem.payload.change_pct },

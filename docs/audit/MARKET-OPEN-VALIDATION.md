@@ -126,6 +126,20 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0x. Stock candle future-skew + flow-ingest UW sweep — fix/stock-candle-freshness-flow-ingest-uw-sweep (pending)
+
+**What was broken:** `getStockLiveCandle()` used raw `Date.now() - updatedAt` (future clock-skew
+read as infinitely fresh) and returned `changePct: 0` on empty/stale paths — `/api/market/quote`
+could show a fabricated flat day change. `flow-ingest` REST fallback called `runFlowIngest()` bare
+without `runWithBackgroundUwSweep`, the last UW fan-out cron missing the background-sweep tag.
+
+**Fix:** `isWsUpdatedAtFresh` guard + `changePct: null` when ungrounded; quote route null-guards;
+`runWithBackgroundUwSweep(() => runFlowIngest())`.
+
+**Check at the open:** Poll `/api/market/quote?ticker=NVDA` during RTH — no `+0.00%` when price is
+live but day-change anchor hasn't landed. Watch CloudWatch for `flow-ingest` runs clustering with
+`[uw] rate-limiter queue budget exceeded` (should not spike vs pre-fix).
+
 ### 0w. Quote route index WS `change_pct` not rebased on ws-bar anchor — fix/quote-index-change-pct-rebase (pending)
 
 **What was broken:** `/api/market/quote` Thermal header tape (SPX/VIX polled ~1.5s) served raw

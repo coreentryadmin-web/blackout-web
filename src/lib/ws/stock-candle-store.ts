@@ -28,7 +28,8 @@ export type StockCandle = {
 type CandleSnapshot = {
   current: StockCandle | null;
   updatedAt: number;
-  changePct: number;
+  /** null when price is absent/stale or day-change cannot be grounded — never fabricate flat 0%. */
+  changePct: number | null;
 };
 
 type TickerState = {
@@ -255,7 +256,7 @@ export function getStockLiveCandle(ticker: string): CandleSnapshot {
     ? { current: s.current, updatedAt: s.updatedAt, changePct: computeChangePct(s.current.close, s.sessionOpen) }
     : null;
 
-  const localFresh = local != null && Date.now() - local.updatedAt <= LOCAL_STALE_MS;
+  const localFresh = local != null && isWsUpdatedAtFresh(local.updatedAt, LOCAL_STALE_MS);
   if (localFresh) return local;
 
   refreshFallback(sym);
@@ -264,9 +265,9 @@ export function getStockLiveCandle(ticker: string): CandleSnapshot {
   const best: CandleSnapshot | null =
     local && fb.snap && fb.snap.updatedAt > local.updatedAt ? fb.snap : local ?? fb.snap;
 
-  if (!best) return { current: null, updatedAt: 0, changePct: 0 };
-  if (Date.now() - best.updatedAt > MAX_CANDLE_AGE_MS) {
-    return { current: null, updatedAt: best.updatedAt, changePct: 0 };
+  if (!best) return { current: null, updatedAt: 0, changePct: null };
+  if (!isWsUpdatedAtFresh(best.updatedAt, MAX_CANDLE_AGE_MS)) {
+    return { current: null, updatedAt: best.updatedAt, changePct: null };
   }
   return best;
 }
@@ -298,4 +299,10 @@ export function getStockCandleStoreStats(): { total: number; demanded: number } 
 export function _resetStockCandleStoreForTest(): void {
   stores.clear();
   fallbacks.clear();
+}
+
+/** Test-only: override `updatedAt` to simulate clock-skewed or stale snapshots. */
+export function _setStockCandleUpdatedAtForTest(ticker: string, updatedAt: number): void {
+  const s = stores.get(ticker.toUpperCase());
+  if (s) s.updatedAt = updatedAt;
 }
