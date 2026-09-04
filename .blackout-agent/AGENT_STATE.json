@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:52:08.396Z",
+  "updated_at": "2026-09-04T22:52:23.405Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-04T22:13:38.020Z",
+      "lease_until": "2026-09-04T23:43:38.020Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -80,8 +80,8 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-04T22:51:56.103Z",
+      "lease_until": "2026-09-05T00:21:56.103Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -234,6 +234,30 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3771": {
+      "pr": 3771,
+      "head_sha": "0e441cb1874cf180148f2398f2ddbb71fb74c39e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T22:23:14.901Z",
+      "safe_to_merge": true
+    },
+    "pr-3764": {
+      "pr": 3764,
+      "head_sha": "ef2a26d1d2c61cb3e4839dee1a5dd2bf457bcfc8",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T22:31:36.513Z",
+      "safe_to_merge": true
+    },
+    "pr-3775": {
+      "pr": 3775,
+      "head_sha": "00db333ff0e1af0d67a0a1ab640621d7bc494285",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T22:51:38.529Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -243,16 +267,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T19:50:51.819Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T22:51:56.104Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75",
+    "last_main_sha": "8cc93008a82b11bd09ab425d72d2d1007b6d2752",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:42:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
-    "last_deploy_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75"
+    "last_deploy_at": "2026-09-04T22:32:46Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33925960882",
+    "last_deploy_sha": "e8bf8b147dc887f675858135986dbd181241c8fb"
   },
   "open_prs": [],
   "events": [
@@ -1071,6 +1095,148 @@
       "agent": "cursor",
       "run_id": "01ba5e3e-d264-48b8-b6f9-953c859c62cd",
       "summary": "Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty."
+    },
+    {
+      "at": "2026-09-04T22:23:14.902Z",
+      "type": "pr_review",
+      "pr": 3771,
+      "head_sha": "0e441cb1874cf180148f2398f2ddbb71fb74c39e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T22:23:14.901Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T22:25:31.872Z",
+      "type": "pr_webhook",
+      "pr": 3773,
+      "event": "sweep",
+      "head": "f77e072a0e96f0b4a7d89a17cf3425d70239aab4",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T22:25:34.194Z",
+      "type": "pr_webhook",
+      "pr": 3772,
+      "event": "sweep",
+      "head": "b56d65bb0a8506901a4965acd86d4cfafdf4f3d4",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T22:25:36.722Z",
+      "type": "pr_webhook",
+      "pr": 3769,
+      "event": "sweep",
+      "head": "1f32c00b773de6b001d2f465e696d0514a85cb24",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T22:25:39.220Z",
+      "type": "pr_webhook",
+      "pr": 3764,
+      "event": "sweep",
+      "head": "ef2a26d1d2c61cb3e4839dee1a5dd2bf457bcfc8",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T22:31:36.514Z",
+      "type": "pr_review",
+      "pr": 3764,
+      "head_sha": "ef2a26d1d2c61cb3e4839dee1a5dd2bf457bcfc8",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T22:31:36.513Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T22:33:45.417Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T22:33:45.417Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9d189d98-9b42-421b-8f38-8accd5f8665c",
+      "summary": "Peer review cycle: merged #3771 (UW future-timestamp guards), #3764 (Vector GEX walls spot constraint). #3767/#3768/#3769/#3761 already merged by fleet. validate:deploy GREEN, ops:collect 0. GitHub GraphQL rate-limited on PAT — used REST for merge/review."
+    },
+    {
+      "at": "2026-09-04T22:33:49.449Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T22:51:38.530Z",
+      "type": "pr_review",
+      "pr": 3775,
+      "head_sha": "00db333ff0e1af0d67a0a1ab640621d7bc494285",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T22:51:38.529Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T22:51:56.104Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T22:52:23.404Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T22:52:23.405Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "8b63a581-51c2-40f0-8485-b906281770bb",
+      "summary": "Session complete. Peer-reviewed + merged #3771 (UW future-timestamp guards) and #3764 (Vector GEX walls spot-constraint). Fleet also merged #3767/#3768/#3769/#3761. Approved #3775 (zerodte-warm UW sweep tag, verify GREEN, 8/8 tests) — merge blocked on PAT user 284440397 secondary rate limit; automerge should pick up once limit clears. validate:deploy GREEN, ops:collect 0. Skipped self-review on cursor/* PRs (#3773/#3777). Skipped docs-only (#3776/#3781). Next: merge #3775, review #3774/#3778 when verify green."
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3773": {
+      "last_event": "sweep",
+      "last_head": "f77e072a0e96f0b4a7d89a17cf3425d70239aab4",
+      "last_feedback_at": "2026-09-04T22:25:31.872Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3772": {
+      "last_event": "sweep",
+      "last_head": "b56d65bb0a8506901a4965acd86d4cfafdf4f3d4",
+      "last_feedback_at": "2026-09-04T22:25:34.194Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3769": {
+      "last_event": "sweep",
+      "last_head": "1f32c00b773de6b001d2f465e696d0514a85cb24",
+      "last_feedback_at": "2026-09-04T22:25:36.722Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3764": {
+      "last_event": "sweep",
+      "last_head": "ef2a26d1d2c61cb3e4839dee1a5dd2bf457bcfc8",
+      "last_feedback_at": "2026-09-04T22:25:39.220Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }
