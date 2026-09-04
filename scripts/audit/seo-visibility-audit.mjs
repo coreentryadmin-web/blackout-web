@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
 import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
+import { curlWithRetry } from "./lib/curl-retry.mjs";
 
 const APP = (process.env.AUDIT_APP_URL || process.env.VALIDATE_BASE || "https://blackouttrades.com").replace(/\/$/, "");
 const SECRET = process.env.CLERK_SECRET_KEY?.trim();
@@ -47,7 +48,7 @@ mkdirSync(TMP, { recursive: true });
 const JAR = join(TMP, "cookies.txt");
 let seq = 0;
 
-function curl(opts = {}) {
+function curlOnce(opts = {}) {
   const {
     method = "GET",
     url,
@@ -74,6 +75,11 @@ function curl(opts = {}) {
   } catch (e) {
     return { s: 0, b: "", err: String(e.message || e) };
   }
+}
+
+/** Clerk FAPI ticket exchange can reset mid-TLS — retry before failing deploy smoke. */
+function curl(opts = {}) {
+  return curlWithRetry(curlOnce, opts);
 }
 const J = (r) => {
   try {
