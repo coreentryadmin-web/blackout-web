@@ -2,6 +2,7 @@ import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import type { VectorUniverseSnapshot } from "./vector-universe";
+import { todayEtYmd } from "@/lib/providers/spx-session";
 
 mock.module("server-only", { namedExports: {} });
 
@@ -11,6 +12,11 @@ let cacheStore: VectorUniverseSnapshot | null = null;
 let genericCache = new Map<string, unknown>();
 let fetchCalls: string[] = [];
 let wallSampleCalls: string[] = [];
+let wallSampleWrites: Array<{
+  ticker: string;
+  horizon?: string;
+  sample: { walls?: { callWalls?: { strike: number }[]; putWalls?: { strike: number }[] } };
+}> = [];
 
 mock.module("../../../lib/heatmap-allowlist", {
   namedExports: {
@@ -58,12 +64,23 @@ mock.module("../../../lib/providers/polygon-options-gex", {
       // |gamma| than strike 108 (above spot), so the unconstrained scan used to pick 90 as the
       // "call wall" — a resistance level below current price — the exact live IBIT/SPX shape.
       if (ticker === "INVERT") {
+        // Also carries `expiries`/`gex.cells` (2026-09-04 audit follow-up to #3495) — same
+        // "wrong side of spot" shape reproduced through the narrowed-horizon path
+        // (`strikeTotalsForHorizonFromCells`, which sums `cells` rather than reading the
+        // already-summed `strike_totals` the main gexWalls computation uses).
+        const todayYmd = todayEtYmd();
         return {
           spot: 100,
           asof: new Date().toISOString(),
+          expiries: [todayYmd],
           gex: {
             flip: 101,
             strike_totals: { "90": 5e9, "108": 1e9, "92": -1e9 },
+            cells: {
+              "90": { [todayYmd]: 5e9 },
+              "108": { [todayYmd]: 1e9 },
+              "92": { [todayYmd]: -1e9 },
+            },
           },
           vex: {
             // VEX is deliberately left unconstrained (no above/below-spot geometry) — the fixture
@@ -91,8 +108,14 @@ mock.module("../../../lib/providers/polygon-options-gex", {
 
 mock.module("./vector-wall-write", {
   namedExports: {
-    writeWallHistorySample: async (opts: { sessionYmd: string; ticker: string }) => {
+    writeWallHistorySample: async (opts: {
+      sessionYmd: string;
+      ticker: string;
+      horizon?: string;
+      sample: { walls?: { callWalls?: { strike: number }[]; putWalls?: { strike: number }[] } };
+    }) => {
       wallSampleCalls.push(`${opts.sessionYmd}:${opts.ticker}`);
+      wallSampleWrites.push({ ticker: opts.ticker, horizon: opts.horizon, sample: opts.sample });
       return { written: true };
     },
   },
@@ -108,6 +131,7 @@ let buildVectorUniverseSnapshot: typeof import("./vector-universe").buildVectorU
 let ensureTickerInUniverseSnapshot: typeof import("./vector-universe").ensureTickerInUniverseSnapshot;
 let loadVectorUniverseSnapshot: typeof import("./vector-universe").loadVectorUniverseSnapshot;
 let warmDynamicTickerSessionWall: typeof import("./vector-universe").warmDynamicTickerSessionWall;
+let recordVectorUniverseWallSample: typeof import("./vector-universe").recordVectorUniverseWallSample;
 
 before(async () => {
   const mod = await import("./vector-universe");
@@ -115,6 +139,7 @@ before(async () => {
   ensureTickerInUniverseSnapshot = mod.ensureTickerInUniverseSnapshot;
   loadVectorUniverseSnapshot = mod.loadVectorUniverseSnapshot;
   warmDynamicTickerSessionWall = mod.warmDynamicTickerSessionWall;
+  recordVectorUniverseWallSample = mod.recordVectorUniverseWallSample;
 });
 
 test("buildVectorUniverseSnapshot: plain build unions dynamic tickers", async () => {
@@ -148,6 +173,33 @@ test("buildVectorUniverseSnapshot: GEX wall never lands on the wrong side of spo
   assert.equal(row!.topCallWall, 108, "GEX call wall must sit above spot, not the higher-|gamma| below-spot strike");
   assert.equal(row!.topPutWall, 92, "GEX put wall must sit below spot");
   assert.ok(row!.topCallPct != null && row!.topCallPct > 0, "pct must still be populated for the constrained pick");
+});
+
+// Regression for the 2026-09-04 audit follow-up to #3495: buildVectorUniverseRow's narrowed-
+// horizon writer (`horizonWalls`, feeding the durable 0dte/weekly/monthly wall-history rails via
+// writeWallHistorySample) called computeGexWalls WITHOUT spot even though the main gexWalls
+// computation a few lines above it already had the fix. Same fixture shape as INVERT above,
+// carried through `gex.cells`/`expiries` instead of the blended `strike_totals`.
+test("recordVectorUniverseWallSample: narrowed-horizon (0dte) wall write never lands on the wrong side of spot", async () => {
+  wallSampleWrites = [];
+  wallSampleCalls = [];
+
+  await recordVectorUniverseWallSample("INVERT", { sessionYmd: "2026-09-04" });
+
+  const zeroDte = wallSampleWrites.find((w) => w.ticker === "INVERT" && w.horizon === "0dte");
+  assert.ok(zeroDte, "0dte narrowed-horizon sample must be written");
+  const callWalls = zeroDte!.sample.walls?.callWalls ?? [];
+  const putWalls = zeroDte!.sample.walls?.putWalls ?? [];
+  assert.deepEqual(
+    callWalls.map((w) => w.strike),
+    [108],
+    "narrowed-horizon call wall must sit above spot (100), not the higher-|gamma| strike 90 below it"
+  );
+  assert.deepEqual(
+    putWalls.map((w) => w.strike),
+    [92],
+    "narrowed-horizon put wall must sit below spot"
+  );
 });
 
 test("ensureTickerInUniverseSnapshot: appends missing ticker to warmed snapshot", async () => {
