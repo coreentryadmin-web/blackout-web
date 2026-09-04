@@ -207,6 +207,48 @@ export function partitionGradeable(rows) {
  * thin data rather than as a symbol the probe cannot price. Named here so it is visible on every
  * run. `minRows` avoids reporting a ticker that simply had one print outside bar tolerance.
  */
+/**
+ * Map a graded helix_signal_outcomes row to the probe's `{ win, favorablePct, changePct }` shape.
+ * Uses the job's official outcome (continued/reversed/flat), not a Polygon replay.
+ * Flat and pending return null — they must not dilute bucket win rates.
+ */
+export function ledgerOutcomeToGraded(direction, outcome) {
+  if (direction !== "bullish" && direction !== "bearish") return null;
+  if (outcome === "pending" || outcome === "flat") return null;
+  if (outcome === "continued") {
+    return { changePct: 1, favorablePct: 1, win: true };
+  }
+  if (outcome === "reversed") {
+    return { changePct: -1, favorablePct: -1, win: false };
+  }
+  return null;
+}
+
+/**
+ * Best HELIX conviction score on the flow tape for a ledger firing — same ticker, event_at within
+ * `windowMs` of `firedAtMs`. Returns null when no scored print matches (never fabricates zero).
+ */
+export function matchFlowScoreForLedgerRow(
+  ledgerRow,
+  flows,
+  windowMs = 30 * 60_000
+) {
+  const firedAtMs = Date.parse(ledgerRow?.fired_at ?? "");
+  const ticker = String(ledgerRow?.ticker ?? "").toUpperCase();
+  if (!Number.isFinite(firedAtMs) || !ticker) return null;
+
+  let best = null;
+  for (const f of flows ?? []) {
+    if (String(f?.ticker ?? "").toUpperCase() !== ticker) continue;
+    if (typeof f.score !== "number" || !Number.isFinite(f.score)) continue;
+    const t = Date.parse(f.event_at ?? f.alerted_at ?? "");
+    if (!Number.isFinite(t)) continue;
+    if (Math.abs(t - firedAtMs) > windowMs) continue;
+    if (best == null || f.score > best.score) best = f;
+  }
+  return best?.score ?? null;
+}
+
 export function ungradedTickers(graded, minRows = 3) {
   const tally = new Map();
   for (const g of graded ?? []) {

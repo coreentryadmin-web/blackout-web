@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0y. HELIX score probe lacked real-ledger mode — fix/helix-score-signal-ledger-mode (pending)
+
+**What was broken:** `helix-score-signal.mjs` could only grade flow prints via Polygon minute-bar replay; the signal-outcome ledger writer is live since 2026-09-03 but the probe had no path to use official continued/reversed outcomes.
+
+**Fix:** `--source=ledger` mode — reads `GET /api/market/helix/signal-outcomes`, maps job outcomes, matches conviction score from flow tape (±30m).
+
+**Check at the open:** `node --import tsx scripts/audit/helix-score-signal.mjs --source=ledger` returns graded rows when ledger has directional outcomes; re-run weekly as ledger accumulates past the 50-row API cap.
+
 Every item below was fixed off-hours today (weekday, pre-open) and has **not been seen under a
 moving tape or real member traffic**. Per the newly-recorded `FULL-LIFECYCLE SCOPE EXPANSION`
 standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained every sweep — not
