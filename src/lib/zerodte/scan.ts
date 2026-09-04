@@ -1018,7 +1018,7 @@ async function attachGateVerdicts(
   const cortexWarm = setups
     .filter((s) => !committed.has(s.ticker.toUpperCase()))
     .sort((a, b) => b.score - a.score)
-    .slice(0, 6);
+    .slice(0, 10);
   if (cortexWarm.length > 0) {
     void Promise.allSettled(
       cortexWarm.map((s) =>
