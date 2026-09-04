@@ -142,11 +142,11 @@ export function horizonPlayFromBangerWatch(
 
 /**
  * Merge banger open-book rows into an existing SWING play list. Banger rows win on ticker collision only
- * against pre-entry WATCH/SKIP rows — a live swing ledger OPEN/HOLD/TRIM position is canonical and must
+ * against pre-entry WATCH rows — a live swing ledger OPEN/HOLD/TRIM position is canonical and must
  * not be evicted when Engine B also has capital on the same symbol.
  */
 export function isPreEntrySwingPlay(play: HorizonPlay): boolean {
-  if (play.status === "WATCH" || play.status === "SKIP") return true;
+  if (play.status === "WATCH") return true;
   if (play.serving === "WATCH") return true;
   const ls = play.liveStatus;
   if (ls === "OPEN" || ls === "HOLD" || ls === "TRIM") return false;
