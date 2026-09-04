@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:43:40.083Z",
+  "updated_at": "2026-09-04T10:27:49.654Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T10:08:54.475Z",
+      "lease_until": "2026-09-04T11:38:54.475Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -158,6 +158,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3548": {
+      "pr": 3548,
+      "head_sha": "e598e5cd99e22ead01bcfcf0eec6e34333b8027b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T10:20:59.233Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -172,11 +180,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
+    "last_main_sha": "6553d68a0b354d1e92e7b9427381c2b42032dcc8",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T07:20:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
-    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
+    "last_deploy_at": "2026-09-04T10:22:44Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33862935955",
+    "last_deploy_sha": "6553d68a0b354d1e92e7b9427381c2b42032dcc8"
   },
   "open_prs": [],
   "events": [
@@ -672,6 +680,163 @@
       "agent": "cursor",
       "run_id": "bdccad63-d885-46ad-bc02-3362ea4704ec",
       "summary": "Cycle: merged main @ 14c5d815d verified GREEN. Opened #3531 agent state sync (draft, awaiting CI+peer). ECR 33848248248 still in_progress 22m+ (deploy-smoke passed). SEO 22 PASS. Site-latency 3 warm FAILs deferred to RTH. GitHub API rate-limited — peer review of #3531 for Claude."
+    },
+    {
+      "at": "2026-09-04T10:09:05.243Z",
+      "type": "pr_webhook",
+      "pr": 3552,
+      "event": "sweep",
+      "head": "ac9853c167c15efdc7c181b9cbc9b7acc8ac16bb",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T10:09:07.334Z",
+      "type": "pr_webhook",
+      "pr": 3551,
+      "event": "sweep",
+      "head": "00b7f3df7497502cf70101870f9a98ee0d33d93d",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T10:09:09.682Z",
+      "type": "pr_webhook",
+      "pr": 3550,
+      "event": "sweep",
+      "head": "dc429215fcd6341ab294abdfc09d7c56e5826e68",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T10:09:11.857Z",
+      "type": "pr_webhook",
+      "pr": 3549,
+      "event": "sweep",
+      "head": "207c061ea6976168bd979fe0791dfcc0079e86d6",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T10:09:13.917Z",
+      "type": "pr_webhook",
+      "pr": 3548,
+      "event": "sweep",
+      "head": "e598e5cd99e22ead01bcfcf0eec6e34333b8027b",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T10:09:15.997Z",
+      "type": "pr_webhook",
+      "pr": 3546,
+      "event": "sweep",
+      "head": "b3dd5b8a4caab973b19913ec099eafd92e9a670f",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T10:09:18.161Z",
+      "type": "pr_webhook",
+      "pr": 2810,
+      "event": "sweep",
+      "head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T10:20:59.234Z",
+      "type": "pr_review",
+      "pr": 3548,
+      "head_sha": "e598e5cd99e22ead01bcfcf0eec6e34333b8027b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T10:20:59.233Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T10:27:45.941Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T10:27:45.942Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6619d194-f0f3-43e5-a120-0a48e77137be",
+      "summary": "Cycle after merge @ d1139c4: peer-reviewed #3548 (merged during review — Vector SPY-vol watermark pill fix). #3550 zerodte-warm cooldown already merged to main. Local review GREEN for #3549 (nighthawk 430px tab/toggle overlap — 3/3 CSS tests) and #3552 (meridian-warm force cooldown — 7/7 tests); awaiting CI + GitHub API rate limit to record reviews. validate:deploy GREEN. ops:collect clean. ECR deploy pending for c0097296."
+    },
+    {
+      "at": "2026-09-04T10:27:49.654Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3552": {
+      "last_event": "sweep",
+      "last_head": "ac9853c167c15efdc7c181b9cbc9b7acc8ac16bb",
+      "last_feedback_at": "2026-09-04T10:09:05.243Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3551": {
+      "last_event": "sweep",
+      "last_head": "00b7f3df7497502cf70101870f9a98ee0d33d93d",
+      "last_feedback_at": "2026-09-04T10:09:07.334Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3550": {
+      "last_event": "sweep",
+      "last_head": "dc429215fcd6341ab294abdfc09d7c56e5826e68",
+      "last_feedback_at": "2026-09-04T10:09:09.682Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3549": {
+      "last_event": "sweep",
+      "last_head": "207c061ea6976168bd979fe0791dfcc0079e86d6",
+      "last_feedback_at": "2026-09-04T10:09:11.857Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3548": {
+      "last_event": "sweep",
+      "last_head": "e598e5cd99e22ead01bcfcf0eec6e34333b8027b",
+      "last_feedback_at": "2026-09-04T10:09:13.917Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3546": {
+      "last_event": "sweep",
+      "last_head": "b3dd5b8a4caab973b19913ec099eafd92e9a670f",
+      "last_feedback_at": "2026-09-04T10:09:15.997Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-2810": {
+      "last_event": "sweep",
+      "last_head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "last_feedback_at": "2026-09-04T10:09:18.161Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "updated"
+    }
+  }
 }
