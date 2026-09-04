@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T10:39:27.311Z",
+  "updated_at": "2026-09-04T11:19:08.138Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:22:03.345Z",
-      "lease_until": "2026-09-04T11:52:03.345Z",
+      "claimed_at": "2026-09-04T11:06:29.773Z",
+      "lease_until": "2026-09-04T12:49:06.033Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "58259de8-8ac3-4727-ad4e-c8cd142c070d",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -200,13 +200,64 @@
     }
   },
   "deploy": {
-    "last_main_sha": "6553d68a0b354d1e92e7b9427381c2b42032dcc8",
+    "last_main_sha": "0d367bde47b227c73f6e56abb5cc5dc80cf5e44f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T10:35:12Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33863935805",
-    "last_deploy_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01"
+    "last_deploy_at": "2026-09-04T11:07:50Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33866479204",
+    "last_deploy_sha": "5bf1de5a7e5177853fbd4bfd2bdbff16f11c02c9"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3564,
+      "title": "fix(audit): resolve Playwright chromium path on cloud agents without /opt/pw-browsers",
+      "branch": "fix/playwright-chromium-path-fallback",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T11:19:02Z"
+    },
+    {
+      "number": 3563,
+      "title": "fix(meridian): stop the earnings tablist overlapping the wrapped title <1440px",
+      "branch": "fix/meridian-earnings-header-tab-overlap",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T11:19:05Z"
+    },
+    {
+      "number": 3560,
+      "title": "chore(autopilot): sync agent state after peer-review cycle",
+      "branch": "chore/autopilot-state-sync-20260904T1028",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T11:18:42Z"
+    },
+    {
+      "number": 3554,
+      "title": "chore(autopilot): cursor handoff after merge wave (#3548, #3550, #3552)",
+      "branch": "cursor/blackout-autopilot-state-35be",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T11:18:53Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T11:18:41Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -758,6 +809,122 @@
       "agent": "cursor",
       "run_id": "3dffa5ee-6d81-427e-9872-7a9a2297889b",
       "summary": "Cycle complete. #3548 merged (main@c0097296e). #3549 verify GREEN + Cursor APPROVED — merge blocked by GitHub API rate limit (enable-automerge skipped). #3553 verify still running. #3552 verify GREEN after rebase; undrafted for Claude peer review. SEO 22/22 GREEN. ops:collect 0 items. validate:deploy GREEN. Opened #3557 autopilot state sync (draft)."
+    },
+    {
+      "at": "2026-09-04T11:18:09.280Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-04T11:18:30.644Z",
+      "type": "pr_webhook",
+      "pr": 3564,
+      "event": "sweep",
+      "head": "ec17bf2e0961b4ace751333672795fd7bf593f60",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T11:18:33.402Z",
+      "type": "pr_webhook",
+      "pr": 3563,
+      "event": "sweep",
+      "head": "87af278933df4127b468fa7f837e68074c4a6e37",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T11:18:36.189Z",
+      "type": "pr_webhook",
+      "pr": 3560,
+      "event": "sweep",
+      "head": "2c718a8287a378806240b987360eb7dfa9958f68",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T11:18:39.068Z",
+      "type": "pr_webhook",
+      "pr": 3554,
+      "event": "sweep",
+      "head": "01a8b298d417f9039afeecc2d8deb355056d5681",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T11:18:41.635Z",
+      "type": "pr_webhook",
+      "pr": 2810,
+      "event": "sweep",
+      "head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T11:19:06.032Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-04T11:19:07.035Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-04T11:19:08.138Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3564": {
+      "last_event": "sweep",
+      "last_head": "ec17bf2e0961b4ace751333672795fd7bf593f60",
+      "last_feedback_at": "2026-09-04T11:18:30.644Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3563": {
+      "last_event": "sweep",
+      "last_head": "87af278933df4127b468fa7f837e68074c4a6e37",
+      "last_feedback_at": "2026-09-04T11:18:33.402Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3560": {
+      "last_event": "sweep",
+      "last_head": "2c718a8287a378806240b987360eb7dfa9958f68",
+      "last_feedback_at": "2026-09-04T11:18:36.189Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3554": {
+      "last_event": "sweep",
+      "last_head": "01a8b298d417f9039afeecc2d8deb355056d5681",
+      "last_feedback_at": "2026-09-04T11:18:39.068Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-2810": {
+      "last_event": "sweep",
+      "last_head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "last_feedback_at": "2026-09-04T11:18:41.635Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "created"
+    }
+  }
 }
