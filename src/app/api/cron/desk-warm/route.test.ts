@@ -53,3 +53,11 @@ test("the lock is released in a finally block so a thrown warm still frees the n
 test("the lock TTL matches the cron's own stale_after_min safety net (10 min = 600s)", () => {
   assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 600/);
 });
+
+test("desk-warm background dispatch is wrapped in runWithBackgroundUwSweep", () => {
+  assert.match(
+    routeSrc,
+    /import \{[^}]*\brunWithBackgroundUwSweep\b[^}]*\} from "@\/lib\/providers\/uw-rate-limiter"/
+  );
+  assert.match(routeSrc, /runWithBackgroundUwSweep\(\(\) => runDeskWarm\(started\)\)/);
+});

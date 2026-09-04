@@ -3590,7 +3590,7 @@ export function VectorChart({
         sessionFlows: sessionHelixFlowsRef.current,
         darkPoolLevels: darkPoolRef.current,
       },
-      dataAgeMs: Date.now() - dataReceivedAtMsRef.current,
+      dataAgeMs: Math.max(0, Date.now() - dataReceivedAtMsRef.current),
       bie: bieContextRef.current,
     };
     const bucketKey = vectorPlayBieBucketKey(playInput);

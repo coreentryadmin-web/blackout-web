@@ -265,6 +265,17 @@ function spxDeskSummary(merged: Awaited<ReturnType<typeof getLargoSpxLiveDesk>>)
 async function toolQuote(ticker: string) {
   const sym = largoSymbol(ticker);
   const wsTicker = sym.startsWith("I:") ? sym.replace(/^I:/, "") : sym;
+  if (!sym.startsWith("I:")) {
+    const candle = getStockLiveCandle(wsTicker);
+    if (candle.current && candle.current.close > 0) {
+      return {
+        ticker: sym,
+        price: candle.current.close,
+        change_pct: candle.changePct,
+        source: "polygon_ws",
+      };
+    }
+  }
   const ws = wsSpot(wsTicker);
   if (ws != null) {
     return { ticker: sym, price: ws, change_pct: 0, source: "polygon_ws" };
