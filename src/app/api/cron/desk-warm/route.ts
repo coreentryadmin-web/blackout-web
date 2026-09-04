@@ -45,6 +45,43 @@ export const maxDuration = 300;
 const OVERLAP_LOCK_KEY = "desk-warm:running";
 const OVERLAP_LOCK_TTL_SEC = 600;
 
+/**
+ * Minimum re-run floor — independent of, and IN ADDITION TO, the hours gate above.
+ *
+ * `force=1` is a COMPLETE bypass of `shouldRunCacheWarmer`'s hours check: cron-dispatch.ts marks
+ * desk-warm `force: true` for every in-app dispatcher (rth-warm-leader, cron-staleness-watchdog
+ * self-heal, admin/cron/run), and the same query param is documented as open to ANY CRON_SECRET
+ * holder for on-demand/debug warms (cache-warmer-gate.ts). Nothing capped how OFTEN it could be
+ * replayed — the only existing protection, OVERLAP_LOCK above, guards solely against a SECOND run
+ * starting while the FIRST is still in flight, and is released the instant each run completes,
+ * often well under a second on an already-warm cache. So a caller replaying `?force=1` in a tight
+ * loop could re-trigger the full 5-way UW/Polygon-bound fan-out (loadMergedSpxDesk + 2x
+ * fetchGexHeatmap + loadBootstrapBundle x2 + warmFlowsMemberCaches + prefetchSpxDeskEnrichment) as
+ * fast as it could send requests, with nothing in the code capping the rate.
+ *
+ * Measured live 2026-09-04: 314 "[cron/desk-warm] background done" completions between 00:29 and
+ * 07:59 UTC — deep overnight, weekday, entirely outside the 4:00 AM-8:00 PM ET extended-warm window
+ * — median 40s apart (some under 15s). Positively ruled out, with direct CloudWatch evidence, as the
+ * source: EventBridge (its rule fires every 5 minutes but ONLY inside the 11-21 UTC band, and its
+ * hit-cron Lambda logged ZERO desk-warm invocations anywhere in the window), rth-warm-leader (its own
+ * `isEtExtendedWarmHours` gate correctly kept it fully silent — zero "[rth-warm-leader]" log lines
+ * of ANY kind — until exactly 08:00:02 UTC, the precise ET 4:00 AM boundary), and
+ * cron-staleness-watchdog's self-heal (zero "self-heal"/"cron-staleness-watchdog" log lines all
+ * night, and by construction `market_hours_stale` for a `market_hours_only` job cannot be true
+ * outside cash RTH — see admin-cron-health.ts's `evaluateJob`). #3512 (14c5d815d5) correctly removed
+ * the `CACHE_WARM_ALWAYS` bypass from the NORMAL (non-forced) path — that fix is intact and
+ * verifiably working (the rth-warm-leader silence above proves the shared `isEtExtendedWarmHours`
+ * gate is correct on the deployed image). This closes the SEPARATE, always-on `force=1` path that
+ * fix never touched and that nothing was rate-limiting, so whatever external caller is invoking it
+ * off-hours can no longer do so more than once per minute.
+ *
+ * 60s sits safely BELOW every legitimate cadence so it never blocks real traffic: rth-warm-leader's
+ * own heal threshold for this key is 90s (RTH_WRITER_HEAL_AFTER_MIN["desk-warm"]) and EventBridge's
+ * own schedule is every 5 min — neither path re-requests this key sooner than 60s ever would allow.
+ */
+const RERUN_COOLDOWN_KEY = "desk-warm:cooldown";
+const RERUN_COOLDOWN_SEC = 60;
+
 async function runDeskWarm(started: number): Promise<void> {
   try {
     const [mergedResult, gexResults, bootstrapResult, flowsWarmResult] = await Promise.allSettled([
@@ -112,6 +149,25 @@ export async function GET(req: NextRequest) {
       skipped: true,
       reason:
         "Outside extended warm window (weekday 4:00 AM–8:00 PM ET) — use ?force=1",
+    };
+    await logCronRun("desk-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  // Rate floor — checked even when force=1 legitimately cleared the hours gate above (see
+  // RERUN_COOLDOWN_KEY doc comment). Not deleted on completion like OVERLAP_LOCK below — it is
+  // meant to persist for its full TTL so the cadence floor holds regardless of how fast each
+  // individual run finishes.
+  const withinCooldown = !(await sharedCacheSetNx(
+    RERUN_COOLDOWN_KEY,
+    { startedAt: started },
+    RERUN_COOLDOWN_SEC
+  ).catch(() => true)); // fail OPEN on a Redis error — same posture as OVERLAP_LOCK below
+  if (withinCooldown) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: `rate-limited — desk-warm already ran within the last ${RERUN_COOLDOWN_SEC}s (force=1 does not bypass this floor)`,
     };
     await logCronRun("desk-warm", started, payload);
     return NextResponse.json(payload);
