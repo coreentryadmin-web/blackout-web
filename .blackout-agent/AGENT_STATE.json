@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T01:59:13.490Z",
+  "updated_at": "2026-09-04T02:01:45.346Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -82,11 +82,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "84c5707ac6849b4c048dec6e8a414321f2a76e27",
+    "last_main_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T00:18:06Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33821229041",
-    "last_deploy_sha": "271a977cfdc9b5d2cc2d62535f8c7e010374d78d"
+    "last_deploy_at": "2026-09-04T01:41:09Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826698258",
+    "last_deploy_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b"
   },
   "open_prs": [],
   "events": [
@@ -299,6 +299,19 @@
       "type": "task_claimed",
       "task_id": "BO-P1-0005",
       "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T02:01:45.346Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T02:01:45.346Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b15c62f1-5fbc-4a08-be1d-2cdc6f231352",
+      "summary": "Recovered from PR webhook. BO-P1-0005 claimed. #3463 verify pending (Claude review). #3454 draft undraft blocked by GraphQL rate limit. validate:deploy GREEN. Handoff PR pushed."
     }
   ]
 }
