@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T05:31:20.827Z",
+  "updated_at": "2026-09-04T06:46:54.106Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,22 +67,22 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T06:24:18.121Z",
+      "lease_until": "2026-09-04T07:59:06.877Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "e8843a57-acfa-4f32-b678-65f366d0b546",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:31:04.605Z",
-      "lease_until": "2026-09-04T07:01:04.605Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T06:44:16.519Z",
+      "lease_until": "2026-09-04T08:14:16.519Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -161,11 +161,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f",
+    "last_main_sha": "84b92b6b62ff5b6694c856016aa3e5b2d235b5ea",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T05:27:22Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33840544277",
-    "last_deploy_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f"
+    "last_deploy_at": "2026-09-04T06:44:16Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845611594",
+    "last_deploy_sha": "84b92b6b62ff5b6694c856016aa3e5b2d235b5ea"
   },
   "open_prs": [],
   "events": [
@@ -569,6 +569,31 @@
       "agent": "cursor",
       "run_id": "34cc062c-797a-4e80-8a83-6c9e90f11422",
       "summary": "Cycle complete: deploy GREEN @ 0b2ada333 (#3495). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours expected). Peer review: no substantive PRs (#2810 dependabot major skip). RTH lifecycle @ 09:00 ET Fri 2026-09-05. Agent state sync PR opening."
+    },
+    {
+      "at": "2026-09-04T06:46:37.947Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:46:37.947Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a504ab17-a91b-46d8-be89-11e9a4bc2ab1",
+      "summary": "Deploy cycle GREEN: main@84b92b6 (#3511). validate:deploy/api-auth/platform-integrity/data-validator(22P) all pass. ops:collect 0. Peer reviews #3508+#3509 merged. GH PAT rate-limited — pr list blocked; pr-sweep empty. ECR deploy pending #3511. Off-hours — RTH lifecycle deferred to 09:00 ET Fri."
+    },
+    {
+      "at": "2026-09-04T06:46:44.631Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:46:54.106Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
