@@ -1627,7 +1627,7 @@ html.nav-locked body { overflow: hidden; }
 .mea-cal-cell.is-selected { border-color: #22d3ee; box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.35); }
 .mea-cal-dow { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(148,163,184,0.7); }
 .mea-cal-day { font-size: 15px; font-weight: 700; color: #e2e8f0; line-height: 1; }
-.mea-cal-bar { display: block; width: 100%; height: 34px; display: flex; align-items: flex-end; }
+.mea-cal-bar { width: 100%; height: 34px; display: flex; align-items: flex-end; }
 .mea-cal-bar-fill { display: block; width: 100%; border-radius: 3px; background: currentColor; opacity: 0.55; }
 .mea-cal-count { font-size: 11px; font-variant-numeric: tabular-nums; color: rgba(226,232,240,0.85); }
 .mea-cal-mega { position: absolute; top: 6px; right: 6px; font-size: 9px; font-weight: 700; color: #c4b5fd; }

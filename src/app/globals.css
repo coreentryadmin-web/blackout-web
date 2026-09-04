@@ -12879,7 +12879,7 @@ html.product-shell .nav-mega {
     font-size: 0.8125rem;
     line-height: 1.45;
     color: rgba(226, 232, 240, 0.82);
-    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   /* ── Intel cards ── */
@@ -23305,7 +23305,6 @@ html.product-shell .nav-mega {
   --tt-line-strong: rgba(34, 211, 238, 0.48);
   position: relative;
   isolation: isolate;
-  overflow: visible;
   width: 100%;
   margin-top: 0.35rem;
   padding: 0.75rem 0.65rem 0.85rem;

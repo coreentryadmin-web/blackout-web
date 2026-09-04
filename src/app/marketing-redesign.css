@@ -804,7 +804,6 @@
   display:grid;grid-template-columns:1fr 1.3fr;gap:1.2rem;
   padding:1.2rem 1.5rem;position:relative;overflow:hidden;
   background:linear-gradient(145deg,rgba(255,255,255,.035) 0%,rgba(255,255,255,.008) 100%);
-  border-radius:14px;
   backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   border:1px solid rgba(255,255,255,.05);border-radius:20px;
   box-shadow:0 4px 40px rgba(0,0,0,.5),0 1px 0 rgba(255,255,255,.03) inset;

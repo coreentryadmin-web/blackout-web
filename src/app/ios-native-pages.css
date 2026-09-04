@@ -815,7 +815,6 @@ html.ios-app.ios-native-shell[data-ios-route="largo"] .largo-native-body {
   font-size: 15px;
   line-height: 1.5;
   overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="largo"] .largo-native-tools {

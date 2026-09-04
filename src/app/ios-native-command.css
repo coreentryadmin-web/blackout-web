@@ -191,7 +191,7 @@ html.ios-app.ios-native-shell .ios-app-tab-label {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-  word-break: break-word;
+  overflow-wrap: anywhere;
   hyphens: auto;
 }
 
