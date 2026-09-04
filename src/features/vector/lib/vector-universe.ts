@@ -185,7 +185,6 @@ async function buildVectorUniverseRow(
         // No expiry column in range is a real answer for this horizon on this chain — record
         // nothing rather than a zeroed wall set, which would render as "no gamma anywhere".
         if (!totals) continue;
-<<<<<<< HEAD
         // Same spot-constraint as the main gexWalls computation above (2026-09-04 audit
         // follow-up to #3495) — this narrowed-horizon reduction feeds the durable
         // 0dte/weekly/monthly wall-history rails via writeWallHistorySample below, so an
@@ -194,11 +193,6 @@ async function buildVectorUniverseRow(
         const horizonWalls = computeGexWalls(totals, {
           maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
           spot: spot ?? undefined,
-=======
-        const horizonWalls = computeGexWalls(totals, {
-          maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-          spot: spot > 0 ? spot : undefined,
->>>>>>> 6e94e6209 (fix(platform): sweep pin-class bugs — MC long-γ, pulse anchor, Vector degrade)
         });
         const horizonSample = buildWallHistorySample({
           time: sampleTime,

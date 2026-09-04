@@ -3104,9 +3104,14 @@ export function VectorChart({
   // EOD pin projection — fetch the projected close + band and draw on the price chart (gold axis
   // tag + MC cone in the right margin). SPX keeps the desk `/spx/pin` read (analytic + MC split);
   // every other ticker uses `/api/market/vector/pin-forecast`. Polls at desk cadence (5s) live;
-  // single fetch off-hours. Best-effort: failed fetch keeps the last-drawn overlay.
+  // single fetch off-hours. Best-effort: transient fetch blips on the SAME ticker keep the last
+  // overlay; ticker/horizon changes clear immediately so NVDA never inherits SPX's pin.
   useEffect(() => {
     let cancelled = false;
+    pinProjRef.current = null;
+    pinConeRef.current = null;
+    pinSigRef.current = "";
+    paintOverlays(lastDisplayBarsRef.current);
     const parseCone = (rawCone: unknown): PinConeStep[] | null => {
       if (!Array.isArray(rawCone)) return null;
       const cone = rawCone.filter(
