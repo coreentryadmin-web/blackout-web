@@ -126,6 +126,18 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0r. Night Hawk cron health stuck-detection bypass on clock-skewed `updated_at` — fix/nighthawk-cron-health-clock-skew (pending)
+
+**What was broken:** Admin Operations cron health for `nighthawk-playbook` computed job age with raw
+`Date.now() - updated_at`. A future-skewed timestamp produced negative `ageMin`, so non-terminal
+builds never tripped the stuck threshold and could read healthy with an untrustworthy clock.
+
+**What the fix changed:** `nighthawkJobAgeMin()` reuses `isoAgeSec` — clock-skewed timestamps return
+`stuckThresholdMin + 1` so stuck escalation matches other admin age paths (#3652/#3657).
+
+**Check at RTH / next admin visit:** `/admin` → Operations → Cron health — if a Night Hawk build is
+mid-run with a skewed `updated_at`, status should show `stale` / "Stuck …m" rather than `unknown`.
+
 ### 0q. cron-staleness-watchdog's self-heal outcome never reached the persisted `cron_job_runs` record — fix/cron-staleness-watchdog-healed-array (pending)
 
 **What was broken:** `runSelfHeal` computed a per-job re-warm result (`ok`/`status`/`error`/`detail`)
