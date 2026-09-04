@@ -39,6 +39,8 @@ const CRON_ROUTES_DIR = join(process.cwd(), "src/app/api/cron");
  * should delete its line here in the same change; the test then requires the registry entry.
  */
 const INTENTIONALLY_UNREGISTERED: Record<string, string> = {
+  "cron-staleness-watchdog-self-heal":
+    "Follow-up audit row written by cron-staleness-watchdog's background self-heal after() work — not a separately scheduled EventBridge job. Outcome is surfaced via the parent watchdog run's self_heal_log_key; no independent cadence to monitor.",
   "x-engage": "Outward-facing social posting, gated on xApiEnabled + xMarketingSilentOnly. Unscheduled on purpose — enabling it publishes on our behalf, which is a business decision. (Same reason scripts/audit/cron-schedule-coverage.mjs lists it as intentional.)",
   "x-intel": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule was never provisioned for this one; route.ts and its admin review-queue UI are left in place (not requested for removal), only the schedule is gone.",
   "x-autopost": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
