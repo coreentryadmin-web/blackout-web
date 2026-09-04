@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:19:14.963Z",
+  "updated_at": "2026-09-04T18:06:59.895Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T17:34:35.993Z",
+      "lease_until": "2026-09-04T19:04:35.993Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -234,6 +234,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3664": {
+      "pr": 3664,
+      "head_sha": "5c7de12cecf4",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:06:59.113Z",
+      "safe_to_merge": true
+    },
+    "pr-3667": {
+      "pr": 3667,
+      "head_sha": "a41ca3e11dc0f3300a9de1a4ba80def4027f4b43",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:06:59.894Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,13 +264,284 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "91c3749158b68bbceb9ed0ecfbc434b747960813",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T17:44:32Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33902177943",
+    "last_deploy_sha": "91c3749158b68bbceb9ed0ecfbc434b747960813"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3686,
+      "title": "fix(vector): guard computeGexWalls spot in vector-snapshot GAMMA lens",
+      "branch": "cursor/autopilot-work-loop-fb82",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T17:54:51Z"
+    },
+    {
+      "number": 3685,
+      "title": "fix(admin): guard nighthawk-playbook cron age against clock-skewed updated_at",
+      "branch": "fix/nighthawk-cron-health-clock-skew",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T17:52:04Z"
+    },
+    {
+      "number": 3684,
+      "title": "chore(autopilot): cursor handoff — #3678 merged, main GREEN, #3664/#3667 approved",
+      "branch": "cursor/autopilot-handoff-3678-merged",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T17:51:46Z"
+    },
+    {
+      "number": 3683,
+      "title": "fix(marketing): scope two more \"every setup\" overclaim instances #3643/#3664 missed",
+      "branch": "fix/vs-others-remaining-overclaim-instances",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T17:48:38Z"
+    },
+    {
+      "number": 3682,
+      "title": "fix(spx): neutral tone when spx_change_pct is unknown",
+      "branch": "fix/spx-change-pct-null-neutral-tone",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T17:54:01Z"
+    },
+    {
+      "number": 3681,
+      "title": "fix(age): guard ISO snapshot ages against clock-skewed future timestamps",
+      "branch": "fix/iso-age-future-guard-sweep",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T17:48:42Z"
+    },
+    {
+      "number": 3679,
+      "title": "chore(autopilot): cursor handoff — peer reviews #3666/#3670/#3671 merged",
+      "branch": "cursor/autopilot-work-loop-662e",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T17:48:47Z"
+    },
+    {
+      "number": 3676,
+      "title": "fix(gex-positioning): recompute nearest_wall after live-WS wall override",
+      "branch": "fix/gex-positioning-nearest-wall-rebase",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T17:48:49Z"
+    },
+    {
+      "number": 3675,
+      "title": "fix(admin): guard SPX dashboard stale banner against clock-skewed generated_at",
+      "branch": "fix/admin-spx-dashboard-age-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T17:48:51Z"
+    },
+    {
+      "number": 3674,
+      "title": "chore(autopilot): peer-review #3670/#3671/#3673 APPROVED",
+      "branch": "cursor/autopilot-peer-review-handoff-2026-09-04",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T17:48:53Z"
+    },
+    {
+      "number": 3672,
+      "title": "chore(autopilot): cursor handoff — #3668 approved, #3670/#3671 opened",
+      "branch": "cursor/autopilot-handoff-pr-event-2026-09-04-cycle6",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T17:48:55Z"
+    },
+    {
+      "number": 3669,
+      "title": "chore(autopilot): cursor handoff — #3652 merged, peer reviews released",
+      "branch": "cursor/cursor-work-loop-state-1aab",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T17:48:57Z"
+    },
+    {
+      "number": 3667,
+      "title": "fix(ws): close cross-session gap in stock-candle-store REST session-open seed",
+      "branch": "fix/stock-candle-store-seed-day-rollover-race",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T17:49:00Z"
+    },
+    {
+      "number": 3665,
+      "title": "chore(autopilot): cursor handoff — #3642 merged, #3651 ready for Claude review",
+      "branch": "cursor/autopilot-handoff-3642-3651",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T17:49:02Z"
+    },
+    {
+      "number": 3664,
+      "title": "fix(marketing): scope /vs/others \"every setup graded\" claim to the 3 ledgered products",
+      "branch": "fix/vs-others-track-record-scope",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T17:54:43Z"
+    },
+    {
+      "number": 3661,
+      "title": "chore(autopilot): cursor handoff — #3642 merged, admin fmtRel #3660, RTH GREEN",
+      "branch": "cursor/autopilot-handoff-2026-09-04-cycle3",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T17:49:06Z"
+    },
+    {
+      "number": 3655,
+      "title": "chore(autopilot): cursor handoff — #3647 APPROVED, validations GREEN",
+      "branch": "cursor/autopilot-work-loop-90df",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T17:49:09Z"
+    },
+    {
+      "number": 3654,
+      "title": "fix(admin): guard API Live Feed + SPX Terminal time-ago against clock skew",
+      "branch": "fix/admin-live-feed-time-ago-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T17:49:11Z"
+    },
+    {
+      "number": 3653,
+      "title": "chore(autopilot): cursor handoff — #3648 largo-stress fix, peer reviews #3642/#3643",
+      "branch": "chore/autopilot-handoff-2026-09-04-cycle2",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T17:49:13Z"
+    },
+    {
+      "number": 3649,
+      "title": "chore(autopilot): cursor handoff — #3627 merged, RTH lifecycle GREEN",
+      "branch": "cursor/autopilot-work-loop-ee29",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T17:49:15Z"
+    },
+    {
+      "number": 3646,
+      "title": "chore(autopilot): cursor handoff — #3627/#3633 merged, validations GREEN",
+      "branch": "cursor/autopilot-handoff-post-3627-3633",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T17:49:17Z"
+    },
+    {
+      "number": 3645,
+      "title": "chore(autopilot): cursor RTH validation handoff — lifecycle GREEN",
+      "branch": "cursor/autopilot-rth-handoff-2026-09-04",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T17:49:19Z"
+    },
+    {
+      "number": 3644,
+      "title": "chore(autopilot): cursor handoff — peer reviews #3639/#3642, deploy/CI status",
+      "branch": "cursor/autopilot-handoff-pr-event-2026-09-04",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T17:49:21Z"
+    },
+    {
+      "number": 3638,
+      "title": "chore(autopilot): cursor handoff — #3627 merged, deploy GREEN",
+      "branch": "cursor/autopilot-handoff-post-3627-1788539305",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T17:49:23Z"
+    },
+    {
+      "number": 3637,
+      "title": "chore(autopilot): cursor handoff — #3633 peer-reviewed, deploy GREEN",
+      "branch": "cursor/autopilot-handoff-2026-09-04-peer-review",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T17:49:25Z"
+    },
+    {
+      "number": 3636,
+      "title": "chore(autopilot): cursor handoff — RTH lifecycle GREEN, #3627 awaiting Claude review",
+      "branch": "cursor/autopilot-handoff-rth-green-2026-09-04",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T17:49:27Z"
+    },
+    {
+      "number": 3635,
+      "title": "chore(autopilot): cursor handoff — #3610/#3613 merged, #3614 CI green",
+      "branch": "cursor/autopilot-work-loop-8932",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T17:49:29Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1051,6 +1338,39 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:55:10.964Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 27
+    },
+    {
+      "at": "2026-09-04T17:55:10.966Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "871d8553-a096-4f82-bff9-be4b69f19802",
+      "summary": "PR #3678 merged (cron-registry self-heal exemption — unblocks main verify). #3677 closed as duplicate. #3664/#3667 peer-reviewed locally (tests GREEN); CI verify pending. validate:deploy GREEN. ops:collect 0."
+    },
+    {
+      "at": "2026-09-04T18:06:59.114Z",
+      "type": "pr_review",
+      "pr": 3664,
+      "head_sha": "5c7de12cecf4",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:06:59.113Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:06:59.895Z",
+      "type": "pr_review",
+      "pr": 3667,
+      "head_sha": "a41ca3e11dc0f3300a9de1a4ba80def4027f4b43",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:06:59.894Z",
       "safe_to_merge": true
     }
   ]
