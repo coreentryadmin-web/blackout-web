@@ -128,6 +128,7 @@ async function runCycle(cycle) {
 
     if (secretsReady()) {
     jobs.push(
+      ["node scripts/audit/zerodte-open-ledger-watch.mjs", "zerodte-open-ledger", 30_000],
       ["node scripts/audit/data-validator.mjs", "data-validator", 360_000],
       ["node scripts/audit/rth-four-engine-play-audit.mjs", "four-engine-plays", 240_000],
       ["node scripts/audit/play-engine-quality-audit.mjs", "play-engine-quality", 180_000],
