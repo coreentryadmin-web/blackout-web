@@ -120,7 +120,15 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
-### 0af. Polygon batch snapshot fabricated flat 0% — fix/polygon-snapshot-change-pct-null (pending)
+### 0al. SPX desk peek served price:0 bootstrap shell — fix/spx-desk-peek-zero-price (pending)
+
+**What was broken:** `GET /api/market/spx/desk` returned any `peekSpxDesk()` cache hit immediately, including bootstrap fast-lane shells with `price: 0` before `buildSpxDesk()` finished — members could flash SPX 0 while Thermal matrix already showed a grounded spot (~7718).
+
+**Fix:** Peek fast-path only when `instant.price > 0`; otherwise fall through to `loadSpxDesk()`.
+
+**Check at the open:** Cold-load `/terminal` after deploy — SPX header spot must match Thermal matrix within 1%, never 0 during a session with live index data.
+
+### 0af. Polygon batch snapshot fabricated flat 0% — fix/polygon-snapshot-change-pct-null (merged #3789)
 
 **What was broken:** `fetchStockSnapshotPerformance` (sector ETFs, leader stocks, breadth universe) and `fetchMarketMovers` used `todaysChangePerc ?? 0`, so a missing provider field read as a flat day on SPX desk `sector_heat` / breadth-derived internals.
 
