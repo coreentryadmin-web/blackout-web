@@ -47,6 +47,7 @@ import type { ZeroDteVectorPulse } from "./vector-crosslink";
 import {
   vectorExemptsG17PrimeBand,
   vectorExemptsG19TopBand,
+  vectorExemptsPlanChase,
   vectorPulseAlignsDirection,
 } from "./vector-commit-boost";
 
@@ -958,7 +959,15 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   } else if (!input.deferPlanQualityGates) {
     // G-8/G-9 — plan quality: no chase (MOVED), no untradeable spread (illiquid), no
     // plan without a real quote or fill. UI SKIP already hid these; persist must match.
-    blocks.push(...planQualityGateBlocks(input.plan ?? null));
+    blocks.push(
+      ...planQualityGateBlocks(input.plan ?? null, {
+        vectorChaseExempt: vectorExemptsPlanChase(
+          input.direction,
+          input.score,
+          input.vector_pulse
+        ),
+      })
+    );
 
     // G-10 — intraday structure conflict: DEMOTED back to score-only (2026-07-27).
     // Evidence: flow precedes trend changes, and the hard block (promoted 2026-07-18) was
@@ -1124,8 +1133,16 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
   };
 }
 
+export type PlanQualityGateOpts = {
+  /** Vector-confirmed winner/runner aligned with setup — commit at live mark, skip G-8 chase block. */
+  vectorChaseExempt?: boolean;
+};
+
 /** G-8/G-9 plan-quality blocks — pure, unit-testable, reused by persist defense. */
-export function planQualityGateBlocks(plan: ContractPlan | null): ZeroDteGateBlock[] {
+export function planQualityGateBlocks(
+  plan: ContractPlan | null,
+  opts?: PlanQualityGateOpts
+): ZeroDteGateBlock[] {
   const blocks: ZeroDteGateBlock[] = [];
   if (plan == null) {
     blocks.push({
@@ -1145,7 +1162,7 @@ export function planQualityGateBlocks(plan: ContractPlan | null): ZeroDteGateBlo
       unlock_et: null,
     });
   }
-  if (plan.entry_status === "MOVED") {
+  if (plan.entry_status === "MOVED" && !opts?.vectorChaseExempt) {
     const pct = plan.vs_flow_pct != null ? `${Math.round(plan.vs_flow_pct)}%` : `≥${CHASE_PCT}%`;
     blocks.push({
       code: "plan_moved",
@@ -1287,10 +1304,11 @@ const PLAN_QUALITY_GATE_CODES: ReadonlySet<ZeroDteGateFailure> = new Set([
 /** Re-apply G-8/G-9 after thesis-first deferred plan attach (scan.ts). */
 export function refreshPlanQualityGateBlocks(
   gate: ZeroDteGateVerdict,
-  plan: ContractPlan | null
+  plan: ContractPlan | null,
+  opts?: PlanQualityGateOpts
 ): ZeroDteGateVerdict {
   const nonPlan = gate.blocks.filter((b) => !PLAN_QUALITY_GATE_CODES.has(b.code));
-  const blocks = [...nonPlan, ...planQualityGateBlocks(plan)];
+  const blocks = [...nonPlan, ...planQualityGateBlocks(plan, opts)];
   return {
     ...gate,
     verdict: blocks.length > 0 ? "BLOCKED" : "COMMIT",
@@ -1299,8 +1317,11 @@ export function refreshPlanQualityGateBlocks(
 }
 
 /** Belt-and-suspenders: true when a fresh find must NOT write a ledger row. */
-export function freshCommitBlockedByPlan(plan: ContractPlan | null | undefined): boolean {
-  return planQualityGateBlocks(plan ?? null).length > 0;
+export function freshCommitBlockedByPlan(
+  plan: ContractPlan | null | undefined,
+  opts?: PlanQualityGateOpts
+): boolean {
+  return planQualityGateBlocks(plan ?? null, opts).length > 0;
 }
 
 /**

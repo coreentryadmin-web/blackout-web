@@ -652,6 +652,48 @@ test("G-8: MOVED plan blocks even when every other gate clears", () => {
   assert.equal(v.blocks.some((b) => b.code === "plan_moved"), true);
 });
 
+test("G-8: MOVED plan commits when Vector winner aligns (live mark entry, not PASSED)", () => {
+  const moved: ContractPlan = {
+    ...CLEAN_PLAN,
+    entry_status: "MOVED",
+    vs_flow_pct: 120,
+    mark: 4.4,
+  };
+  const v = evaluateZeroDteGates(
+    input({
+      ticker: "NVDA",
+      plan: moved,
+      score: 88,
+      direction: "long",
+      vector_pulse: {
+        premium_pct: 80,
+        peak_premium_pct: 120,
+        action_status: "still_buy",
+        is_winner: true,
+        is_runner: false,
+        side: "call",
+        direction: "long",
+        strike: 100,
+        occ: "TEST",
+        rank: 1,
+        role: "flow-whale",
+      },
+    })
+  );
+  assert.equal(v.verdict, "COMMIT");
+  assert.equal(v.blocks.some((b) => b.code === "plan_moved"), false);
+});
+
+test("planQualityGateBlocks: vectorChaseExempt skips plan_moved on MOVED plans", () => {
+  const moved: ContractPlan = {
+    ...CLEAN_PLAN,
+    entry_status: "MOVED",
+    vs_flow_pct: 90,
+  };
+  assert.equal(planQualityGateBlocks(moved).some((b) => b.code === "plan_moved"), true);
+  assert.deepEqual(planQualityGateBlocks(moved, { vectorChaseExempt: true }), []);
+});
+
 test("G-9: illiquid spread blocks", () => {
   const illiquid: ContractPlan = { ...CLEAN_PLAN, spread_pct: 22, illiquid: true };
   const v = evaluateZeroDteGates(input({ plan: illiquid }));

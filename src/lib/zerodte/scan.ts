@@ -151,7 +151,7 @@ import {
   resolveZeroDteContractAttach,
   vectorRankContractsEnabled,
 } from "./vector-contract-resolve";
-import { computeVectorGateBoost } from "./vector-commit-boost";
+import { computeVectorGateBoost, vectorExemptsPlanChase } from "./vector-commit-boost";
 import { resolveRunnerProfile, effectiveMaxOtmPct, vectorRunnerOtmRelax } from "./runner-profile";
 import { buildRegimePlaneSnapshot, inferRegimeGexQuality } from "./regime-plane";
 import {
@@ -641,7 +641,11 @@ export async function scanZeroDteBoard(flags?: {
     for (const s of setups) {
       if (committedLedger.has(s.ticker.toUpperCase())) continue;
       if (s.gate) {
-        s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null);
+        const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+        const planGateOpts = {
+          vectorChaseExempt: vectorExemptsPlanChase(s.direction, s.score, pulse),
+        };
+        s.gate = refreshPlanQualityGateBlocks(s.gate, s.plan ?? null, planGateOpts);
         s.gate = refreshMoneynessGateBlocks(
           s.gate,
           s.otm_pct ?? null,
@@ -1322,7 +1326,12 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
     // A CONDOR's tradeability is enforced by the condor liquidity gate INSIDE evaluateZeroDteGates
     // (s.gate already reflects it) — the directional freshCommitBlockedByPlan(s.plan) checks a
     // single-leg plan a condor never has (s.plan is null), so it must not fire on a condor.
-    const planBlocked = s.play_type === "CONDOR" ? false : freshCommitBlockedByPlan(s.plan);
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+    const planGateOpts = {
+      vectorChaseExempt: vectorExemptsPlanChase(s.direction, s.score, pulse),
+    };
+    const planBlocked =
+      s.play_type === "CONDOR" ? false : freshCommitBlockedByPlan(s.plan, planGateOpts);
     if (s.gate?.verdict === "COMMIT" && !planBlocked) {
       committedFresh.push(s);
       continue;
@@ -1332,7 +1341,7 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       verdict = {
         ...s.gate,
         verdict: "BLOCKED",
-        blocks: [...s.gate.blocks, ...planQualityGateBlocks(s.plan ?? null)],
+        blocks: [...s.gate.blocks, ...planQualityGateBlocks(s.plan ?? null, planGateOpts)],
       };
     }
     gateRejections.push(gateRejectionFor(s, verdict ?? null));

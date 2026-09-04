@@ -83,5 +83,21 @@ export function vectorExemptsG19TopBand(
   return vectorExemptsG17PrimeBand(direction, score, pulse);
 }
 
+/**
+ * G-8 chase exemption — when Vector is already printing a winner/runner in the SAME direction,
+ * the premium has often run past the stale UW flow fill by the time quotes attach. Blocking as
+ * "don't chase" on those names empties OPEN on amplification days while the board still shows
+ * huge hypothetical trackPct. Exempt → commit at the live mark (resolveLedgerEntryPremium floors
+ * the ledger basis there) instead of SKIP/PASSED.
+ */
+export function vectorExemptsPlanChase(
+  direction: "long" | "short",
+  score: number,
+  pulse: ZeroDteVectorPulse | null | undefined
+): boolean {
+  if (process.env.ZERODTE_VECTOR_CHASE_EXEMPT === "0") return false;
+  return vectorExemptsG17PrimeBand(direction, score, pulse);
+}
+
 /** Score floor for G-17 when not exempted (unchanged constant re-export for tests). */
 export { ZERODTE_SINGLE_RAIL_PRIME_MIN };
