@@ -523,7 +523,7 @@ export function planChaseContextFromGateInput(input: ZeroDteGateInput): PlanChas
     gamma_regime: input.gamma_regime ?? null,
     market_aligned: input.market_aligned ?? null,
     regime_structure: input.regime_structure ?? null,
-    market_state_confidence: input.market_state_confidence ?? null,
+    market_state_confidence: input.market_state_confidence,
   };
 }
 
@@ -705,7 +705,7 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
         gamma_regime: input.gamma_regime ?? null,
         market_aligned: input.market_aligned ?? null,
         regime_structure: input.regime_structure ?? null,
-        market_state_confidence: input.market_state_confidence ?? null,
+        market_state_confidence: input.market_state_confidence,
       })
     )
   ) {

@@ -656,7 +656,7 @@ export async function scanZeroDteBoard(flags?: {
           gamma_regime: s.gamma_regime ?? null,
           market_aligned: s.market_aligned ?? null,
           regime_structure: marketState?.regime_structure ?? null,
-          market_state_confidence: marketState?.confidence ?? null,
+          market_state_confidence: marketState?.confidence,
         };
         const planGateOpts = { chaseExempt: planChaseExempt(chaseCtx) };
         s.plan_chase_exempt = planGateOpts.chaseExempt;
@@ -1077,7 +1077,7 @@ async function attachGateVerdicts(
       intradayConflict: s.intraday_conflict,
       market_aligned: s.market_aligned ?? null,
       regime_structure: marketState?.regime_structure ?? null,
-      market_state_confidence: marketState?.confidence ?? null,
+      market_state_confidence: marketState?.confidence,
       // G-11 for EVERY committable rank: prefer the cheap batch halt/earnings reads
       // (computed for all fresh tickers above) over the dossier-only flags that ranks
       // 6-10 never receive, so no halted / earnings-today name commits regardless of rank.
@@ -1265,7 +1265,7 @@ async function attachContractPlans(
       gamma_regime: s.gamma_regime ?? null,
       market_aligned: s.market_aligned ?? null,
       regime_structure: marketState?.regime_structure ?? null,
-      market_state_confidence: marketState?.confidence ?? null,
+      market_state_confidence: marketState?.confidence,
     };
     const chasePct = effectiveChasePct(chaseCtx);
     s.plan = buildContractPlan({
@@ -1363,7 +1363,6 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
         gamma_regime: s.gamma_regime ?? null,
         market_aligned: s.market_aligned ?? null,
         regime_structure: null,
-        market_state_confidence: null,
       });
     const planGateOpts = { chaseExempt };
     const planBlocked =
