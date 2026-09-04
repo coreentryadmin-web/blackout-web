@@ -11,6 +11,47 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-04 (19:19 UTC / Fri 2026-09-04 15:19 ET) — [Vector, follows up 18:11 UTC entry below] Live UI spot-check reproduces the vector-pick-sweep tail-latency problem hitting a REAL member-facing request — `POST /api/market/vector/contract-picks` timed out (>20s) twice in one page load, RTH
+
+**Severity.** — corroborating evidence for the still-open investigation logged 18:11 UTC below; not
+a new root cause, and still no fix shipped (same reasoning as that entry: the shared rate limiter
+this traces to is deliberately throttled, so a fix needs the same queue-depth measurement that
+entry already calls for, not a guess).
+
+**What was checked.** Live UI spot-check of `/vector` (SPX) via `proxy-browser.cjs` through an
+authenticated premium Clerk session, desktop viewport, during RTH (19:19 UTC / 15:19 ET). The page
+itself rendered CLEAN — live GEX matrix populated (SPX 7,712 spot, real strikes/walls/VWAP), live
+HELIX SPX trade tape, a live scalp play card with real levels, all four bottom-row analytics panels
+populated. No visible layout defect.
+
+But the request log showed: `FAIL [POST] https://blackouttrades.com/api/market/vector/contract-
+picks: timeout` — **twice**, in one page load. The harness's per-request timeout
+(`proxy-tunnel-context.cjs`'s `requestTimeoutMs` default) is **20000ms** — so this live,
+member-facing POST endpoint took longer than 20 seconds to respond, twice, during a normal RTH page
+load. (The two `HELD` stream lines for `/api/market/flows/stream` and `/api/market/vector/stream`
+are expected — those are long-lived SSE connections, not failures.)
+
+**Why this corroborates, not just repeats, the 18:11 UTC finding.** That entry measured the
+`vector-pick-sweep` CRON's own runtime and flagged — as an unconfirmed risk, not yet measured — that
+its deliberate UW/Polygon rate-limiter throttle "protects live traffic" but a fix attempt without
+measuring the limiter's real queue depth could make things worse if that protection were already
+insufficient. Read `contract-picks/route.ts`: its `resolveTickerChainRows` call
+(`option-chain-prompt.ts`) goes through the SAME Polygon chain-fetch path
+(`polygon-options-gex.ts`/`fetchStockSnapshot`) the cron sweep's `sweepVectorPickForTicker` also
+calls. This live timeout is the first DIRECT evidence — not inference from cron logs and ALB
+aggregates — that a real member-facing request sharing that pipeline can itself take 20+ seconds
+during RTH, i.e. the "leaves at least one UW concurrency slot reachable for live member traffic"
+protection the sweep's own code comment describes is not fully preventing member-facing tail
+latency, at least not always.
+
+**Still no fix shipped, for the same reason as 18:11 UTC:** this doesn't newly justify guessing at
+`SWEEP_CONCURRENCY`/lock-TTL changes — it raises the priority of the queue-depth measurement that
+entry already named as the correct next step, since there is now live evidence of member impact,
+not just an inferred risk.
+
+No code changed this pass — live UI corroboration only.
+
+---
 ## 2026-09-04 (18:52 UTC / Fri 2026-09-04 14:52 ET) — [HELIX] `helix-signal-outcomes` writer confirmed durably healthy (20/20 clean over 6h) — the follow-up `helix-score-signal.mjs` re-run HELIX-MAP §9.7 calls for is now actionable, not yet done
 
 **Severity.** — investigation only, confirming operational state and identifying concrete next
