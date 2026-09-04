@@ -236,6 +236,36 @@ side (`resistance` for call_wall, `support` for put_wall) and a `distance_pts` c
 `nearest_wall.strike - spot`. Pay particular attention right after a fast intraday gamma migration
 (a real WS wall move), since that's the moment pre-fix and post-fix values would have diverged most.
 
+### 0r. `stock-candle-store` REST session-open seed could stamp a new ET session with yesterday's `prev_close` — fix/stock-candle-store-seed-day-rollover-race (pending)
+
+**What was broken:** `seedSessionOpenIfNeeded()`'s `.then()` callback only guarded against a
+*concurrent* REST seed landing twice for the SAME session (`s.openSource === "rest"`) — its own
+comment claimed it also checked "this ticker is still on the session we seeded for", but nothing
+in the code compared the ticker's CURRENT session date against the date active when the fetch
+FIRED. `recordStockTick`'s day-rollover branch resets `openSource` back to `""` (not `"rest"`) on
+a new ET session day, so a REST fetch fired just before an ET session boundary and resolving just
+after would sail past the only guard that existed and permanently stamp the NEW session with an
+anchor fetched for the OLD one — "rest" is never downgraded back to "ws-bar", so the wrong anchor
+then stays authoritative for every `change_pct` computed for that ticker for the rest of the new
+session.
+
+**Fix:** capture the session date at the moment the seed fires (`firedForSessionDate`) and require
+it to still match `s.sessionDate` at resolution time, in addition to the pre-existing
+`openSource === "rest"` concurrent-seed guard (left unchanged, still needed for the in-session
+case). RED→GREEN proof: `git stash` on just the source fix reproduced `changePct` computed off the
+stale anchor (`-92.99` instead of `0`) via a new `t.mock.timers.enable({apis:["Date"]})`-driven test
+that crosses a real ET midnight mid-flight; restoring the fix makes it pass (20/20 in the file,
+139/139 across `src/lib/ws/*.test.ts`).
+
+**Check at the open:** this only manifests right at an ET session boundary for a ticker with an
+in-flight demanded REST seed at that exact moment — genuinely hard to trigger deliberately live.
+The useful live check is a NEGATIVE one: watch any actively-viewed 24-hour-eligible/overnight
+symbol's `change_pct` across today's session open (13:32 UTC / 09:30 ET) for a value that looks
+anchored against a stale multi-day-old close rather than today's real open — that would be this
+exact bug recurring on a boundary this fix did not touch (e.g. a rollover mid-fetch during RTH
+itself, which the fix now also covers, so it should NOT recur at all). No dedicated live probe
+exists for this narrow a race window; the regression test is the durable guard.
+
 ### 0n. "Every setup logged publicly" overclaimed against a 3-of-7-product methodology page — fix/public-record-scope-overclaim (pending)
 
 **What was broken:** About page, homepage, and `WhyBlackoutContent.tsx` all said "Every setup BlackOut
