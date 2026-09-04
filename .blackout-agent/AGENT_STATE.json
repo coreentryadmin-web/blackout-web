@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:36:27.071Z",
+  "updated_at": "2026-09-04T16:41:48.428Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -80,9 +80,9 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
-      "phase": "VERIFYING",
+      "claimed_at": "2026-09-04T16:38:20.617Z",
+      "lease_until": "2026-09-04T18:08:20.617Z",
+      "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -235,16 +235,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T16:38:20.618Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
     "last_main_sha": "3b2cdc0f75a5033b25fc28fabafcaa962afefe26",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T16:30:58Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33895571118",
-    "last_deploy_sha": "de936bd22dcf6b23903394200f9d7168c6951392"
+    "last_deploy_at": "2026-09-04T16:40:59Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33896499200",
+    "last_deploy_sha": "550c3815c1341977acdc92fe0ccb25c87d9558f0"
   },
   "open_prs": [],
   "events": [
@@ -1045,6 +1045,31 @@
       "agent": "cursor",
       "run_id": "58f1c835-70a7-47b4-8647-34323d0e5b5a",
       "summary": "PR event cycle: peer-reviewed #3639 APPROVED (dead bie/decompose, 5/5 tests, merged main). #3642 CHANGES_REQUESTED — branch behind main, would revert #3633 pricing fix; rebase required. #3634 verify GREEN — awaiting Claude peer review (cursor-owned). #3641 verify pending — cursor-owned admin timeAgo guard, awaiting Claude. validate:deploy GREEN, ops:collect 0. ECR deploy pending @ de936bd2. GitHub API rate-limited."
+    },
+    {
+      "at": "2026-09-04T16:38:12.979Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:38:20.618Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T16:41:48.426Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:41:48.428Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "eab0a369-5cdd-494a-ba6e-371ef9f5ce1f",
+      "summary": "Hourly wake complete. Peer reviews: #3639 APPROVED, #3642 CHANGES_REQUESTED (rebase). #3634 verify GREEN awaiting Claude. #3641 verify still running. Opened #3644 agent state sync. Platform integrity 14/14 PASS, api-auth GREEN, validate:deploy GREEN, ops:collect 0. ECR deploy pending. Next: Claude merge #3634/#3639/#3641; rebase #3642."
     }
   ]
 }
