@@ -126,6 +126,19 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0. Discord digest crons on admin health board — PR (pending)
+
+**What was broken:** `darkpool-discord`, `thermal-discord`, and `helix-discord-digest` were live
+EventBridge crons logging `cron_job_runs` rows, but absent from `CRON_JOBS` — invisible to
+`cron-staleness-watchdog` and the admin cron-health board.
+
+**Fix:** added three registry entries with deployed schedules (`*/2`, `*/15`, `*/15` UTC) and
+`stale_after_min` 10/45/45; `produces_member_alert: true`.
+
+**Check at the open:**
+- `GET /api/admin/cron/health` (admin) shows all three with recent `last_run_at` during RTH.
+- If any Discord channel goes quiet, confirm the watchdog would now alert (not first noticed by members).
+
 ### 1. `CACHE_WARM_ALWAYS` leftover staging bypass — PR #3512 (merged)
 
 **What was broken:** `shouldRunCacheWarmer()` bypassed its weekday 4am-8pm ET hours gate whenever
