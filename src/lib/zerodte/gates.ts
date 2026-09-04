@@ -508,7 +508,7 @@ export type ZeroDteGateInput = {
   vector_confluence_credit?: number;
   /** Market State Engine structure at scan time — amplify chase / G-19 regime relief. */
   regime_structure?: string | null;
-  market_state_confidence?: number;
+  market_state_confidence?: number | null;
   /** Override far-OTM lotto cap (runner relax). Defaults to SETUP_MAX_OTM_PCT. */
   max_otm_pct?: number | null;
 };

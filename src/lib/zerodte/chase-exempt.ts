@@ -16,7 +16,7 @@ export type PlanChaseContext = {
   market_aligned?: boolean | null;
   /** Market State Engine structure (TREND_UP / TREND_DOWN / RANGE …). */
   regime_structure?: string | null;
-  market_state_confidence?: number;
+  market_state_confidence?: number | null;
 };
 
 const CHASE_PCT_AMPLIFY_DEFAULT = 75;
