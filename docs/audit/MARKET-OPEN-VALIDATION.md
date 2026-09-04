@@ -126,7 +126,7 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
-### 0. Discord digest crons on admin health board — PR (pending)
+### 0. Discord digest crons on admin health board — PR #3543 (merged)
 
 **What was broken:** `darkpool-discord`, `thermal-discord`, and `helix-discord-digest` were live
 EventBridge crons logging `cron_job_runs` rows, but absent from `CRON_JOBS` — invisible to
@@ -138,6 +138,22 @@ EventBridge crons logging `cron_job_runs` rows, but absent from `CRON_JOBS` — 
 **Check at the open:**
 - `GET /api/admin/cron/health` (admin) shows all three with recent `last_run_at` during RTH.
 - If any Discord channel goes quiet, confirm the watchdog would now alert (not first noticed by members).
+
+### 0b. Warm-cron `force=1` replay floors — desk-warm #3540, heatmap-warm #3542, zerodte-warm #3550 (merged), meridian-warm (pending)
+
+**What was broken:** `desk-warm`, `heatmap-warm`, `zerodte-warm`, and `meridian-warm` (and peers)
+had overlap locks but no minimum re-run floor — `?force=1` could replay the full warm pass (or, for
+`zerodte-warm`, the 0DTE scanner tick + board snapshot rebuild) in a tight loop faster than any
+legitimate trigger.
+
+**Fix:** atomic `sharedCacheSetNx` cooldown keys checked before overlap lock (desk-warm 60s,
+heatmap-warm 10s, zerodte-warm 60s, meridian-warm 60s); all fail open on a Redis error.
+
+**Check at the open:**
+- CloudWatch `/ecs/blackout-production`: no burst of `[cron/<name>] background done` lines closer
+  than each cron's own floor apart from an out-of-band `?force=1` caller, for any of the four crons.
+- ALB `TargetResponseTime` p99 stays bounded during warm windows (no overnight replay storms).
+- `zerodte-warm` specifically: legitimate 4 min rth-warm-leader heals unchanged.
 
 ### 1. `CACHE_WARM_ALWAYS` leftover staging bypass — PR #3512 (merged)
 
@@ -370,7 +386,104 @@ analysis. Not executed this pass.
 market-worker shows real headroom during RTH, and confirm live-data freshness (WS ingestion lag)
 did not regress. If not yet applied, this item stays open.
 
-### 12. Night Hawk mobile play-history table's P&L column was scrolled off-screen — PR pending (branch `fix/nighthawk-mobile-pnl-column-offscreen`)
+### 12. RTH ALB tail latency + real 5xx (`vector-pick-sweep` lock TTL + UW-sweep-concurrency) — PR #3411 + PR #3479 (both merged, NEITHER validated under a live RTH tape yet)
+
+**What was broken:** `AWS/ApplicationELB` `TargetResponseTime` on `blackout-production-app`'s
+target group showed p50 healthy (0.03-1.1s) but p99/Max climbing sharply and staying high across
+nearly every RTH minute — not isolated bursts — with Max repeatedly landing 95-119s, within
+seconds of the ALB's 120s `idle_timeout`. Two independent, previously-shipped fixes target this:
+`vector-pick-sweep`'s cross-replica overlap lock TTL (480s) was shorter than real observed sweep
+runtime (up to 693684ms), so the lock could expire mid-sweep and let a second sweep start while the
+first was still running (#3411, TTL raised to 900s); separately, even a single non-overlapping run
+of any of 4 crons (`vector-pick-sweep`, `vector-dark-pool-warm`, `vector-full-state-snapshot`,
+`bie-full-state-snapshot`) could occupy both of the shared cluster-wide UW rate limiter's ~2
+concurrency slots continuously for up to ~5 minutes, racing live member requests for the same slots
+the whole time (#3479, added `runWithBackgroundUwSweep()`/`reserveForLiveTraffic()` so a tagged
+background sweep can never claim the last slot). Full root-cause detail in both PRs' own
+findings-staging entries: `docs/audit/findings-staging/2026-09-03-vector-pick-sweep-lock-ttl-shorter-than-runtime.md`
+and `docs/audit/findings-staging/2026-09-04-uw-sweep-concurrency-starves-live-traffic.md`.
+
+**Why this item exists separately from those two entries:** neither fix's own "Check at the open"
+step ever made it into this WATCH LIST — a genuine gap in the pipeline the FULL-LIFECYCLE mandate
+above is meant to close. This entry closes it, and adds independent re-confirmation gathered
+2026-09-04 (pre-open) specifically re-measuring the ORIGINAL (pre-#3479) RTH session named in that
+finding, rather than taking its numbers on faith:
+- Re-pulled 1-minute-granularity `TargetResponseTime` (p50/p90/p99/Max) + `HTTPCode_*_5XX_Count` for
+  the FULL 2026-09-03 RTH session (13:00-20:29 UTC): Max ≥95s in **49/450 minutes (11%)** of the
+  session, p99 across the day p50=14.3s/p90=50.2s, while p50 stayed 0.03-1.1s throughout — confirms
+  the tail-latency shape (not a fleet-capacity problem) persisted across the WHOLE session, not a
+  handful of windows. Total 5xx in this RTH-only window: **105 ELB-5xx + 82 target-5xx over 101807
+  requests** — matching the original finding's 24h total of 105 ELB-5xx almost exactly, meaning
+  essentially every ELB-5xx that day happened DURING RTH, consistent with a market-hours-only-cron
+  driven mechanism rather than general traffic volume.
+- Ruled out an ECS rolling deploy as the driver of the worst 5xx cluster (17:04-17:11 UTC, 45
+  ELB-5xx in 8 minutes): `HealthyHostCount`/`UnHealthyHostCount` on the target group stayed pinned
+  at 8/0 for the ENTIRE RTH session — no target ever deregistered, so deploy churn is excluded.
+- Checked raw per-task `AWS/ECS` `CPUUtilization` Max at 1-minute resolution against 5xx
+  occurrence: weak, not the primary driver — `cpu_max` during the 93 minutes carrying any 5xx
+  averaged 77.2%, barely above the day-wide p50 of 78.0% (day-wide p90 89.7%, p99 94.1%); CPU was
+  hot most of the RTH day regardless of whether a 5xx fired that minute.
+- Independently reproduced the exact overlap `CloudWatch Logs /ecs/blackout-production` `elapsed=`
+  timestamps #3479's own commit message cites for the worst cluster: `vector-pick-sweep` "done"
+  lines at 17:06:52 (elapsed=693684ms, i.e. started ~16:55) and 17:09:31 (elapsed=252495ms, started
+  ~17:05:16) — a second sweep starting and finishing while the first was still in flight, landing
+  squarely inside the 17:04-17:11 UTC 5xx cluster — plus dense concurrent completions from
+  `zerodte-warm` (elapsed=212590ms), `vector-dark-pool-warm` (elapsed=173224ms, `failed=12`), and
+  `bie-full-state-snapshot` (elapsed=162304ms) in the same 8-minute window.
+
+**Why this is still unvalidated:** #3411 merged 2026-09-03 20:08 UTC — at the very TAIL of the RTH
+session the evidence above measures (RTH closes 20:00 UTC), so it had essentially no chance to
+affect that session's numbers. #3479 merged 2026-09-04 03:38 UTC — AFTER that RTH session closed
+and BEFORE today's (2026-09-04) open. **Today's open is the first live RTH tape either fix has
+run against.**
+
+**Check at the open:** re-pull the same three series (`TargetResponseTime` p99/Max 1-min, both
+`HTTPCode_*_5XX_Count`, `HealthyHostCount`) for TODAY's RTH session and compare directly against
+the 2026-09-03 baseline above — expect Max to no longer sit repeatedly at 95-119s and the ≥95s
+minute-share to drop well below 11%, and `HTTPCode_ELB_5XX_Count` to drop well below the ~105/day
+baseline. Also grep `elapsed=` for `vector-pick-sweep`/`vector-dark-pool-warm`/
+`vector-full-state-snapshot`/`bie-full-state-snapshot` and confirm no two "done" lines for the SAME
+cron key ever overlap in wall-clock time (start-of-run = done-timestamp minus `elapsed=`). **If the
+pattern is materially unchanged**, that does not necessarily mean the fix is broken — it may mean a
+DIFFERENT cron is now the dominant contributor: `zerodte-warm` (212590ms in the same worst window
+above) does NOT appear to route through `uw-rate-limiter.ts` anywhere in its reachable dependency
+tree (`src/lib/zerodte/scan.ts`, `src/lib/platform/zerodte-service.ts` — no `runWithBackgroundUwSweep`
+wiring, unlike the other four), so it was NOT covered by #3479 and is not yet confirmed either way;
+it already carries its own overlap guard (900s TTL, #3502-era fix) but not a UW/Polygon budget
+reservation. Flagged here as a candidate follow-up, not a confirmed cause — its long runtime is more
+likely dominated by Polygon calls or general compute than the UW ceiling #3479 fixed, and that would
+need its own measurement before a fix is warranted, per this file's own "never fix from a guess"
+standing method.
+
+### 13. Vector chart volume-pane "SPY vol" watermark overlapped the first x-axis tick — PR pending (branch `fix/vector-volume-pane-label-overlap`)
+
+**What was broken:** the volume sub-pane's "SPY vol" watermark label (`VectorChart.tsx`,
+bottom-left corner of the chart stage, just above the x-axis) was a plain transparent `<p>` with no
+background, sitting in the same screen band as the chart's own canvas-drawn x-axis time-tick labels
+at the left edge. Live pixel-zoomed capture of `/vector` (desktop 1440×900) showed it painting
+directly over the first tick ("19:00"), producing garbled interleaved text. Two sibling labels a few
+lines below it in the same file (the "◇ dim = modeled" honesty label and the GEX-scope
+"spot-aligned" chip) already had this exact overlap class fixed on 2026-08-23 (opaque
+`bg-black/70 backdrop-blur-sm` pill) — this third label was simply missed at the time because it
+sits on the opposite corner and the earlier fix was validated on mobile, where this collision does
+not occur (it's a desktop-width-only overlap).
+
+**Fix:** gave the "SPY vol" label the same `rounded bg-black/70 px-1.5 py-0.5 backdrop-blur-sm`
+opaque-pill treatment as its two siblings, position unchanged (`bottom-2 left-2`). Deliberately did
+NOT add the siblings' `max-w-[42%] truncate` width guard — that guard protects variable-length,
+right-anchored text from overrunning the chart's right edge, which doesn't apply to this label's
+short, static text.
+
+**Check at the open, live tape, desktop viewport:** open `/vector` at 1440×900 (or wider) and look
+at the volume sub-pane's bottom-left corner. Confirm "SPY vol" reads cleanly on its own opaque pill
+with the first x-axis time tick (whatever time it now shows, live) visible and legible either beside
+or behind the pill — not interleaved into garbled combined text. Check across a few different zoom/
+pan states, since tick positions move with the visible time range and the original bug's window
+(the label colliding with whichever tick happens to land at the left edge) is a function of viewport
+width and time-range, not a single fixed state. Also spot-check mobile (430×932) to confirm the fix
+didn't regress the already-working sibling labels' layout there.
+
+### 14. Night Hawk mobile play-history table's P&L column was scrolled off-screen — PR pending (branch `fix/nighthawk-mobile-pnl-column-offscreen`)
 
 **What was broken:** the expanded Session Analytics panel's play-history table renders 6 columns
 (Date, Ticker, Dir, Tier, Outcome, P&L) inside `.nh-history-tablewrap` — `overflow-x-auto` around a
