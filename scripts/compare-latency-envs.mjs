@@ -1,10 +1,20 @@
 #!/usr/bin/env node
 /**
- * Compare API latency — staging vs production (cron-authenticated paths).
+ * Production API latency snapshot (cron-authenticated paths).
  *
- * Usage: node scripts/compare-latency-envs.mjs
+ * Was "staging vs production" — the entire `blackout-staging-*` stack (ECS, RDS, Secrets
+ * Manager's `blackout-staging/app/env`, the `staging.blackouttrades.com` DNS) was permanently
+ * decommissioned 2026-07-25 (see CLAUDE.md: "Do NOT reference the deleted blackout-staging-*
+ * stack or staging.blackouttrades.com"). `loadStagingCron()`'s `aws secretsmanager
+ * get-secret-value --secret-id blackout-staging/app/env` throws `ResourceNotFoundException`
+ * unconditionally now (confirmed live via `secretsmanager.describe_secret`), so every call to
+ * this script died before probing anything — dead tooling wired to a live `npm run
+ * validate:latency-compare`. Production is the only environment; this is now a single-target
+ * latency snapshot against it, using the CRON_SECRET env var every other current audit script
+ * already reads this way (data-validator.mjs, zerodte-e2e-suite.mjs, etc.).
+ *
+ * Usage: CRON_SECRET=... node scripts/compare-latency-envs.mjs
  */
-import { execSync, spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
@@ -42,14 +52,6 @@ async function probe(base, cronSecret, path) {
   } catch (e) {
     return { status: 0, ms: Math.round(performance.now() - t0), ok: false, err: e.message };
   }
-}
-
-function loadStagingCron() {
-  const raw = execSync(
-    'aws secretsmanager get-secret-value --secret-id blackout-staging/app/env --query SecretString --output text',
-    { encoding: "utf8" }
-  );
-  return JSON.parse(raw).CRON_SECRET?.trim();
 }
 
 async function warmCaches(base, cronSecret) {
@@ -118,31 +120,24 @@ async function runEnv(label, base, cronSecret) {
 }
 
 async function main() {
-  const stagingCron = loadStagingCron();
   const prodCron = process.env.CRON_SECRET?.trim();
-  if (!stagingCron) {
-    console.error("staging CRON_SECRET missing");
-    process.exit(1);
-  }
   if (!prodCron) {
-    console.error("prod CRON_SECRET env missing — set CRON_SECRET env var for compare");
+    console.error("prod CRON_SECRET env missing — set CRON_SECRET env var");
     process.exit(1);
   }
 
-  const staging = await runEnv("STAGING", "https://staging.blackouttrades.com", stagingCron);
   const prod = await runEnv("PRODUCTION", "https://blackouttrades.com", prodCron);
 
-  const fails = staging.filter((r) => r.grade === "FAIL");
+  const fails = prod.filter((r) => r.grade === "FAIL");
   const report = {
     ts: new Date().toISOString(),
-    staging,
     prod,
-    staging_failures: fails.length,
+    prod_failures: fails.length,
   };
   const outPath = join(OUT, `latency-compare-${Date.now()}.json`);
   writeFileSync(outPath, JSON.stringify(report, null, 2));
   console.log(`\nReport: ${outPath}`);
-  console.log(`Staging FAIL count: ${fails.length}`);
+  console.log(`Prod FAIL count: ${fails.length}`);
   if (fails.length) process.exit(1);
 }
 
