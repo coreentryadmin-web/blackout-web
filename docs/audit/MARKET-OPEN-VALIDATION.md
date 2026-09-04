@@ -126,6 +126,17 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0m. Admin cron health negative age on clock skew — fix/admin-cron-health-future-age-clamp (pending)
+
+**What was broken:** `/admin` Operations cron tiles could compute a negative `age_min` when
+`last.started_at` or Night Hawk edition `updated_at` came from a replica clock slightly ahead of
+the reader — same future-timestamp class as `play-engine-heartbeat.ts` (fixed earlier today).
+
+**Fix:** `evaluateJob` + `nighthawk-playbook` override now use `clampedHeartbeatAgeMs()`.
+
+**Check at RTH:** Open `/admin` → Operations → confirm no cron row shows a negative minute count
+in its status label during normal operation.
+
 ### 0l. Pricing comparison table omitted the $49 SPX Slayer plan entirely — fix/spx-slayer-pricing-comparison-column (pending)
 
 **What was broken:** `/pricing` sells three commercial choices — SPX Slayer $49/mo, Premium Monthly
