@@ -1,12 +1,35 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  aggregateSocketHealthOk,
   buildUwClusterHealth,
   evaluateOptionsClusterOk,
   evaluatePolygonClusterOk,
   evaluateUwClusterOk,
   readUwClusterHealth,
 } from "./socket-cluster-health";
+
+test("aggregateSocketHealthOk: web tier passes when UW live but polygon snapshot missing", () => {
+  const ok = aggregateSocketHealthOk({
+    boot_sockets: false,
+    options_ok: true,
+    luld_ok: true,
+    uw_ok: true,
+    polygon_ok: false,
+  });
+  assert.equal(ok, true);
+});
+
+test("aggregateSocketHealthOk: ingest tier still requires polygon when leader", () => {
+  const ok = aggregateSocketHealthOk({
+    boot_sockets: true,
+    options_ok: true,
+    luld_ok: true,
+    uw_ok: true,
+    polygon_ok: false,
+  });
+  assert.equal(ok, false);
+});
 
 test("evaluateUwClusterOk: follower is healthy when cluster heartbeat is fresh", () => {
   const uw = buildUwClusterHealth({

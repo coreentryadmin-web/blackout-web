@@ -224,6 +224,20 @@ export function evaluateUwClusterOk(
   return { ok: false, detail: "follower — cluster UW heartbeat stale or missing" };
 }
 
+/** Top-level socket-health rollup — web tier does not host polygon indices WS. */
+export function aggregateSocketHealthOk(input: {
+  boot_sockets: boolean;
+  options_ok: boolean;
+  luld_ok: boolean;
+  uw_ok: boolean;
+  polygon_ok: boolean;
+}): boolean {
+  const polygon_ok = input.boot_sockets
+    ? input.polygon_ok
+    : input.polygon_ok || input.uw_ok;
+  return input.options_ok && input.luld_ok && input.uw_ok && polygon_ok;
+}
+
 export function evaluatePolygonClusterOk(
   polygon: PolygonClusterHealth,
   market_hours: boolean

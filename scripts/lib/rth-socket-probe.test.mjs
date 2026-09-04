@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { socketProbeAttemptVerdict, socketProbeFinalFailure } from "./rth-socket-probe.mjs";
+import { socketProbeAttemptVerdict, socketProbeFinalFailure, deploySocketHealthVerdict } from "./rth-socket-probe.mjs";
 
 test("socketProbeAttemptVerdict: warming response retries during RTH", () => {
   const warming = { ok: false, detail: "ingest leader lock held — marks warming" };
@@ -27,4 +27,14 @@ test("socketProbeFinalFailure: fails only after all retries exhausted", () => {
 
 test("socketProbeFinalFailure: pre-09:30 does not hard-fail", () => {
   assert.equal(socketProbeFinalFailure(false, "warming", false), null);
+});
+
+test("deploySocketHealthVerdict: 503 with options.ok passes (web-tier polygon false negative)", () => {
+  const opt = { ok: true, detail: "web tier — ingest leader lock held — marks warming" };
+  assert.equal(deploySocketHealthVerdict(503, opt), "pass");
+});
+
+test("deploySocketHealthVerdict: 200 with options not ok fails", () => {
+  const opt = { ok: false, detail: "auth failed on 1 shard(s)" };
+  assert.equal(deploySocketHealthVerdict(200, opt), "fail");
 });

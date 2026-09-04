@@ -29,3 +29,17 @@ export function socketProbeFinalFailure(socketProbeOk, lastDetail, afterMarketOp
   if (!lastDetail) return "options-socket probe did not return options health";
   return `options-socket: ${lastDetail}`;
 }
+
+/**
+ * validate:deploy socket-health interpretation — options.ok is authoritative even when HTTP is 503
+ * (web-tier probes return 503 when polygon cluster snapshot is absent while options/UW are healthy).
+ *
+ * @param {number} status
+ * @param {SocketHealthOptions | null | undefined} opt
+ * @returns {"pass" | "fail" | "warn"}
+ */
+export function deploySocketHealthVerdict(status, opt) {
+  if (opt?.ok) return "pass";
+  if (status === 200 && opt) return "fail";
+  return "warn";
+}

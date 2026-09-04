@@ -11,6 +11,7 @@ import {
   evaluatePolygonClusterOk,
   evaluateUwClusterOk,
   evaluateOptionsClusterOk,
+  aggregateSocketHealthOk,
   readOptionsClusterHealth,
   readPolygonClusterHealth,
   readUwClusterHealth,
@@ -120,7 +121,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const sockets_healthy = options_ok && luld_ok && uwEval.ok && polygonEval.ok;
+    const sockets_healthy = aggregateSocketHealthOk({
+      boot_sockets: bootSockets,
+      options_ok,
+      luld_ok,
+      uw_ok: uwEval.ok,
+      polygon_ok: polygonEval.ok,
+    });
 
     payload = {
       ok: sockets_healthy,

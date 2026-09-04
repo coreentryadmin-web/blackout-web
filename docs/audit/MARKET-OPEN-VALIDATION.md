@@ -126,6 +126,22 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0l. socket-health HTTP 503 on web tier while desks GREEN — fix/socket-health-web-tier-503-false-negative (pending)
+
+**What was broken:** `GET /api/cron/socket-health` returned HTTP **503** (`ok: false`) on web-tier
+replicas during RTH when `polygon_indices` cluster snapshot was absent, even though `unusual_whales`
+and `options` were healthy (`ingest leader lock held — marks warming`). `validate:deploy` warned
+`socket-health probe HTTP 503` because it only accepted `options.ok` on HTTP 200 — same false-negative
+class as the RTH-open socket retry fix (#3600).
+
+**Fix:** `aggregateSocketHealthOk()` — web tier does not require polygon WS snapshot when UW cluster
+is live; `deploySocketHealthVerdict()` — `validate:deploy` honors `options.ok` regardless of top-level
+HTTP status.
+
+**Check at the open:** during RTH, authenticated `socket-health` on a web replica returns HTTP **200**
+when UW heartbeat is fresh and options ingest leader is held; `npm run validate:deploy` section 5 shows
+`options-socket (socket-health): …` ✓ without a bare `HTTP 503` warn.
+
 ### 0k. Six orphaned modules removed (SPX/Thermal/marketing) — fix/orphaned-spx-thermal-modules (pending)
 
 **What was broken:** nothing member-visible — `src/features/spx/{hooks/useSpxDayPerformance.ts,

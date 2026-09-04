@@ -19,6 +19,7 @@ import { ALL_CRON_KEYS } from "./railway-cron-services.mjs";
 import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } from "./pg-audit.mjs";
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
+import { deploySocketHealthVerdict } from "./lib/rth-socket-probe.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const IS_STAGING = BASE.includes("staging.");
@@ -528,8 +529,9 @@ if (skipCli) {
         headers: { Authorization: `Bearer ${cronSecret}` },
       });
       const opt = body?.websockets?.options;
-      if (status === 200 && opt?.ok) ok(`options-socket (socket-health): ${opt.detail ?? "ok"}`);
-      else if (status === 200 && opt) warn(`options-socket (socket-health): ${opt.detail ?? "not ok"}`);
+      const verdict = deploySocketHealthVerdict(status, opt);
+      if (verdict === "pass") ok(`options-socket (socket-health): ${opt?.detail ?? "ok"}`);
+      else if (verdict === "fail") warn(`options-socket (socket-health): ${opt?.detail ?? "not ok"}`);
       else warn(`socket-health probe HTTP ${status}`);
     } catch (e) {
       warn(`socket-health probe failed: ${e.message}`);
@@ -548,13 +550,18 @@ if (skipCli) {
         headers: { Authorization: `Bearer ${cron}` },
       });
       const opt = body?.websockets?.options;
-      if (status === 200 && opt?.ok) {
+      const verdict = deploySocketHealthVerdict(status, opt);
+      if (verdict === "pass") {
         socketHealthOk = true;
-        ok(`options-socket (socket-health): ${opt.detail ?? "ok"}`);
-      } else if (status === 200 && opt) {
-        fail(`options-socket (socket-health): ${opt.detail ?? "not ok"}`);
+        ok(`options-socket (socket-health): ${opt?.detail ?? "ok"}`);
+      } else if (verdict === "fail") {
+        fail(`options-socket (socket-health): ${opt?.detail ?? "not ok"}`);
       } else {
-        warn(`socket-health probe HTTP ${status}`);
+        warn(
+          opt?.detail
+            ? `options-socket (socket-health): ${opt.detail}`
+            : `socket-health probe HTTP ${status}`
+        );
       }
     } catch (e) {
       warn(`socket-health probe failed: ${e.message}`);
