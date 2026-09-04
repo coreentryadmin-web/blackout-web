@@ -202,7 +202,7 @@ background done` log lines didn't regress (the fix changes which ceiling it comp
 its own admission logic) and that `/nighthawk` board reads stay responsive during a `zerodte-warm`
 tick.
 
-### 0af. Open Banger positions vanish under 5 DTE — fix/banger-sub5dte-visibility (pending)
+### 0af. Open Banger positions vanish under 5 DTE — fix/banger-sub5dte-visibility (merged #3778)
 
 **What was broken:** `horizonPlayFromBangerPosition()` gated an OPEN/PARTIAL banger ledger row's
 Swing Command visibility with the discovery-side admission floor (`HORIZONS.SWING.dteMin=5`) instead
