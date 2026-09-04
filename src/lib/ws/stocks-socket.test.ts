@@ -78,11 +78,32 @@ test("isLuldHaltSourceStaleForState: connection open but localFreshestAt=0 (neve
   );
 });
 
-test("isLuldHaltSourceStaleForState: boundary age === maxAgeMs is fresh (inclusive <=, matches existing cluster-check semantics)", () => {
+test("isLuldHaltSourceStaleForState: boundary age === maxAgeMs is stale (isWsUpdatedAtFresh uses strict <, matches UW halt gate)", () => {
   const now = 1_000_000;
   const maxAgeMs = 120_000;
   assert.equal(
     isLuldHaltSourceStaleForState(true, now - maxAgeMs, null, now - maxAgeMs, maxAgeMs, now),
-    false
+    true
+  );
+});
+
+test("isLuldHaltSourceStaleForState: clock-skewed future clusterMessageAt is stale, not falsely fresh", () => {
+  const now = 1_000_000;
+  const maxAgeMs = 120_000;
+  const futureClusterAt = now + 60_000;
+  assert.equal(
+    isLuldHaltSourceStaleForState(false, 0, futureClusterAt, 0, maxAgeMs, now),
+    true,
+    "a future cluster heartbeat must not read as live via negative age"
+  );
+});
+
+test("isLuldHaltSourceStaleForState: clock-skewed future localFreshestAt on open connection is stale", () => {
+  const now = 1_000_000;
+  const maxAgeMs = 120_000;
+  assert.equal(
+    isLuldHaltSourceStaleForState(true, now + 60_000, null, 0, maxAgeMs, now),
+    true,
+    "a future local delivery stamp must not read as live on an OPEN socket"
   );
 });

@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0aa. LULD halt future-timestamp guard — fix/luld-halt-future-timestamp-guard (pending)
+
+**What was broken:** `isLuldHaltSourceStaleForState()` and `isLuldHaltFeedStale()` used raw `Date.now() - timestamp` age math without a future guard — clock-skewed future cluster/local `last_message_at` stamps read as live/trusted (same class as the UW halt bug fixed in #3745).
+
+**Fix:** Gate all LULD freshness probes through shared `isWsUpdatedAtFresh`.
+
+**Check at the open:** Admin System Vitals → Massive LULD tile shows live during RTH when feed is healthy; 0DTE halt gate still blocks when BOTH UW and LULD are genuinely down (not on a single future-skewed stamp).
+
 ### 0z. SPX pulse stream local freshness future guard — fix/spx-pulse-stream-future-guard (pending)
 
 **What was broken:** `refreshSnapshot()` in `/api/market/spx/pulse/stream` preferred local `indexStore` when `Date.now() - fresh < 10_000` with no future-timestamp guard — clock-skewed future `updatedAt` reads as infinitely fresh and skips cross-replica Redis fallback.
