@@ -216,6 +216,14 @@ class can't regress here again.
 `https://blackouttrades.com/vs/others` names the three products next to the "Alert accountability"
 row rather than an unscoped "every setup".
 
+**Addendum:** the fix above's own "no further surfaces found" claim was wrong — a same-day
+proximity-check hardening of `public-record-scope-claims.test.ts` caught two more unscoped
+instances the whole-file check missed: `RedesignHome.tsx`'s own "them vs us" list (a second copy of
+the identical sentence) and `about/page.tsx`'s `WHAT_WE_DO` intro paragraph. Both fixed the same
+way; the regression test now checks proximity per-claim instead of whole-file existence. Confirm
+`https://blackouttrades.com/` (homepage "them vs us" section) and `https://blackouttrades.com/about`
+also name the three products next to their own copies of this claim.
+
 ### 0n. "Every setup logged publicly" overclaimed against a 3-of-7-product methodology page — fix/public-record-scope-overclaim (pending)
 
 **What was broken:** About page, homepage, and `WhyBlackoutContent.tsx` all said "Every setup BlackOut

@@ -53,3 +53,23 @@ copy fix should decide unilaterally.
 
 `npx tsc --noEmit` clean. `public-record-scope-claims.test.ts` (2/2) plus four adjacent marketing
 test files that reference this page or the product manifest (28/28 total) all green.
+
+### Addendum — the "complete set" claim above was wrong; two more instances found
+
+The grep-for-phrases sweep above missed two more live instances of the identical overclaim,
+because the regression test's own check ("do the three product names appear anywhere in this
+file") is a whole-file check, not a per-claim proximity check:
+
+- `RedesignHome.tsx`'s own "them vs us" list (a second, separate copy of the exact sentence
+  `vs/others/page.tsx` mirrors — its own header comment says as much) still said "Every setup
+  graded A–F with a logged track record", unscoped — survived undetected because the file already
+  names all three products dozens of times elsewhere for unrelated reasons, so the whole-file check
+  passed even though this specific bullet wasn't scoped.
+- `about/page.tsx`'s `WHAT_WE_DO` intro paragraph ("Then we grade every setup, log every outcome
+  publicly...") is a separate paragraph from the `APPROACH` section #3643 already fixed, using
+  phrasing the regression regex didn't even match ("log" not "logged").
+
+Both fixed with the same product-naming pattern. `public-record-scope-claims.test.ts` rewritten to
+check each individual claim's local proximity (200-char window) to the three product names instead
+of whole-file existence — proven to catch the `RedesignHome.tsx` regression via `git stash` RED,
+restored GREEN. `tsc --noEmit` clean; 26/26 related tests pass.
