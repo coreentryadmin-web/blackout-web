@@ -10,6 +10,7 @@ import {
   displayTierFor,
   tierForSkip,
   tierFromEntryContext,
+  scoreFloorForOrigin,
   TIER_A_MIN_POINTS,
   TIER_B_MIN_POINTS,
   TIER_APLUS_UNLOCK,
@@ -376,4 +377,85 @@ test("tierFromEntryContext: missing origin defaults to FLOW floor (65)", () => {
   assert.ok(noOrigin);
   assert.equal(noOrigin.tier, "B");
   assert.ok(noOrigin.factors.some((f) => f.label === "Score below floor"));
+});
+
+// ── score_floor pinning (2026-09-04 audit finding) ────────────────────────────────
+// entry-context.ts's own comment claims the commit-time tier and a later call to
+// tierFromEntryContext on the SAME blob "can never disagree" — false as written,
+// because the floor used to be re-derived from TODAY's mutable ZERODTE_SCORE_FLOOR*
+// constants rather than pinned. Live incident: WS-20 lowered ZERODTE_SCORE_FLOOR_
+// BREAKOUT 65->50 then restored it the same day (2026-08-25); 10 BREAKOUT commits
+// (scores 50-61) tiered A at commit under the 50 floor, then silently recomputed as
+// B once the floor was restored — while the Play Terminal kept showing the frozen
+// "A". These tests reproduce the exact ASST shape (score 59) and prove the pinned
+// score_floor field closes the gap.
+test("tierFromEntryContext: a pinned score_floor overrides today's scoreFloorForOrigin — reproduces the live ASST incident (score 59, floor 50 at commit, floor 65 today)", () => {
+  const todaysFloor = scoreFloorForOrigin(["BREAKOUT"]);
+  assert.equal(todaysFloor, 65, "sanity: today's BREAKOUT floor is the restored 65, matching the live incident");
+
+  // WITHOUT a pinned floor (legacy row, or the pre-fix behavior): recomputes against
+  // TODAY's floor (65), and 59 < 65 hits "Score below floor" — the live B mismatch.
+  const legacy = tierFromEntryContext({
+    ...PINNED_FULL,
+    score: 59,
+    discovery_origin: ["BREAKOUT"],
+    vix_open: 16,
+  });
+  assert.ok(legacy);
+  assert.ok(legacy.factors.some((f) => f.label === "Score below floor"));
+
+  // WITH the floor pinned at commit (50, the floor actually in effect that day):
+  // 59 >= 50 clears it, landing in the mid-score band instead — the honest,
+  // commit-time-consistent answer, matching the frozen entry_context.tier="A".
+  const pinned = tierFromEntryContext({
+    ...PINNED_FULL,
+    score: 59,
+    discovery_origin: ["BREAKOUT"],
+    score_floor: 50,
+    vix_open: 16,
+  });
+  assert.ok(pinned);
+  assert.ok(pinned.factors.some((f) => f.label === "Mid score band"));
+  assert.equal(
+    pinned.factors.some((f) => f.label === "Score below floor"),
+    false,
+    "a pinned floor the score actually cleared must never still read as below-floor"
+  );
+  // The tier itself must differ between the two reads of the SAME score/origin —
+  // this is the exact disagreement the finding measured across two live UI surfaces.
+  assert.notEqual(legacy.tier, pinned.tier);
+  assert.equal(pinned.tier, "A");
+  assert.equal(legacy.tier, "B");
+});
+
+test("tierFromEntryContext: score_floor=0 (a genuinely zero floor) is honored, not treated as absent", () => {
+  // num()/pinnedFloor-null-check must distinguish "pinned 0" from "field absent" —
+  // 0 is falsy but a perfectly valid floor value.
+  const zeroFloor = tierFromEntryContext({
+    ...PINNED_FULL,
+    score: 5,
+    discovery_origin: ["BREAKOUT"],
+    score_floor: 0,
+    vix_open: 16,
+  });
+  assert.ok(zeroFloor);
+  assert.ok(zeroFloor.factors.some((f) => f.label === "Mid score band"), "score 5 clears a pinned floor of 0");
+});
+
+test("tierFromEntryContext: 'Mid score band' factor text uses the ACTUAL pinned floor, not a hardcoded '65-74'", () => {
+  // Live incident: MSTR's frozen factor read \"Score 52 in 65-74\" while 52 was never
+  // in 65-74 — it cleared the day's real 50 floor. The detail text must reflect the
+  // floor that was actually applied.
+  const assigned = tierFromEntryContext({
+    ...PINNED_FULL,
+    score: 52,
+    discovery_origin: ["BREAKOUT"],
+    score_floor: 50,
+    vix_open: 16,
+  });
+  assert.ok(assigned);
+  const mid = assigned.factors.find((f) => f.label === "Mid score band");
+  assert.ok(mid, "score 52 with floor 50 must land in the mid-score band");
+  assert.match(mid!.detail, /Score 52 in 50-74/, "the band text must read the pinned floor, not a hardcoded 65");
+  assert.doesNotMatch(mid!.detail, /65-74/, "must never claim a score is in 65-74 when the real floor was 50");
 });
