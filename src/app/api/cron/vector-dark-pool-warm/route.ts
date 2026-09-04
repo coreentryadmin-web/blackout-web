@@ -5,10 +5,25 @@ import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
 import { warmVectorDarkPool, type WarmVectorDarkPoolResult } from "@/features/vector/lib/vector-dark-pool-cache";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { runUwPool, runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
+import { sharedCacheSetNx } from "@/lib/shared-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
+
+/**
+ * Minimum re-run floor — independent of the cash-RTH gate below.
+ *
+ * Same structural gap fixed for desk-warm (#3540), heatmap-warm (#3542), and vector-walls-warm
+ * (#3747): `force=1` bypasses the off-hours skip, and this cron's fire-and-forget handshake
+ * returns 202 as soon as dispatch starts — nothing capped how OFTEN `?force=1` could replay a
+ * ~55-ticker UW REST fan-out against the shared 2 RPS budget.
+ *
+ * 60s mirrors zerodte-warm / meridian-warm (UW-heavy warmers) and sits well below EventBridge's
+ * ~10 min schedule while still blocking accidental force-spam during ops/debug.
+ */
+const RERUN_COOLDOWN_KEY = "vector-dark-pool-warm:cooldown";
+const RERUN_COOLDOWN_SEC = 60;
 
 /**
  * Unbounded-fan-out fix. Measured live 2026-09-02: `Promise.allSettled` fired all ~55 universe
@@ -65,6 +80,21 @@ export async function GET(req: NextRequest) {
   const force = req.nextUrl.searchParams.get("force") === "1";
   if (!force && !isEtCashRth()) {
     const payload = { ok: true, skipped: true, reason: "Outside cash RTH" };
+    await logCronRun("vector-dark-pool-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const withinCooldown = !(await sharedCacheSetNx(
+    RERUN_COOLDOWN_KEY,
+    { startedAt: started },
+    RERUN_COOLDOWN_SEC
+  ).catch(() => true));
+  if (withinCooldown) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: `rate-limited — vector-dark-pool-warm already ran within the last ${RERUN_COOLDOWN_SEC}s (force=1 does not bypass this floor)`,
+    };
     await logCronRun("vector-dark-pool-warm", started, payload);
     return NextResponse.json(payload);
   }

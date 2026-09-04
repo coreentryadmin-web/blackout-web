@@ -144,6 +144,14 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** `/admin` → Operations → cron health shows `vector-walls-warm` completing normally during RTH; no burst of concurrent wall-warm completions in CloudWatch within seconds of each other after a mid-session deploy.
 
+### 0za. vector-dark-pool-warm missing force=1 cooldown — fix/vector-dark-pool-warm-cooldown (pending)
+
+**What was broken:** `vector-dark-pool-warm` accepted `?force=1` with no minimum re-run floor. The route returns 202 immediately while a ~55-ticker UW REST fan-out runs in the background — repeated force replays could stack against the shared 2 RPS UW budget.
+
+**Fix:** Added `RERUN_COOLDOWN_KEY = "vector-dark-pool-warm:cooldown"` with 60s TTL (matches other UW-heavy warmers; below the ~10 min EventBridge schedule).
+
+**Check at the open:** Admin force-run `GET /api/cron/vector-dark-pool-warm?force=1` twice within 60s — second response should `skipped: true` with `rate-limited`; Vector dark-pool overlay levels still warm on schedule during RTH.
+
 Every item below was fixed off-hours today (weekday, pre-open) and has **not been seen under a
 moving tape or real member traffic**. Per the newly-recorded `FULL-LIFECYCLE SCOPE EXPANSION`
 standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained every sweep — not
