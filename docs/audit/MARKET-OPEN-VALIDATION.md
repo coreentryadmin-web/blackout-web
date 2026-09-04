@@ -199,6 +199,23 @@ side (`resistance` for call_wall, `support` for put_wall) and a `distance_pts` c
 `nearest_wall.strike - spot`. Pay particular attention right after a fast intraday gamma migration
 (a real WS wall move), since that's the moment pre-fix and post-fix values would have diverged most.
 
+### 0r. `/vs/others` comparison table missed the same "every setup graded" overclaim fix — fix/vs-others-track-record-scope (pending)
+
+**What was broken:** #3643 (item 0n below) scoped "every setup logged"-style claims on the About
+page, homepage, and `WhyBlackoutContent.tsx` to the three products `/methodology` actually covers.
+`src/app/(marketing)/vs/others/page.tsx`'s comparison table carried the identical overclaim in
+different wording — "Every setup graded A–F with a logged track record" — and wasn't part of that
+fix's surface search, so it survived unscoped.
+
+**Fix:** reworded the row to "SPX Slayer, Night Hawk, and 0DTE Command plays graded A–F with a
+logged track record", matching #3643's wording pattern. Extended
+`public-record-scope-claims.test.ts`'s `SURFACES` list to include this page so the same claim
+class can't regress here again.
+
+**Check at the open:** none — pure marketing-copy correction, no RTH-dependent behavior. Confirm
+`https://blackouttrades.com/vs/others` names the three products next to the "Alert accountability"
+row rather than an unscoped "every setup".
+
 ### 0n. "Every setup logged publicly" overclaimed against a 3-of-7-product methodology page — fix/public-record-scope-overclaim (pending)
 
 **What was broken:** About page, homepage, and `WhyBlackoutContent.tsx` all said "Every setup BlackOut
