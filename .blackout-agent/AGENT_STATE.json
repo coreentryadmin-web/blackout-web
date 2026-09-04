@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:52:08.396Z",
+  "updated_at": "2026-09-04T21:45:31.083Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,8 +67,8 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
+      "claimed_at": "2026-09-04T21:40:23.165Z",
+      "lease_until": "2026-09-04T23:10:23.165Z",
       "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
@@ -248,7 +248,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75",
+    "last_main_sha": "66fe7d9ba869dd1faa8735c918e481f808281bd5",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-04T19:42:28Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
@@ -1071,6 +1071,25 @@
       "agent": "cursor",
       "run_id": "01ba5e3e-d264-48b8-b6f9-953c859c62cd",
       "summary": "Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty."
+    },
+    {
+      "at": "2026-09-04T21:45:08.046Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T21:45:08.046Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "557b983f-3b16-4aa7-ac79-5e0e3903285d",
+      "summary": "Hourly sweep GREEN (deploy, platform-integrity 14/14, ops:collect 0). Pattern scan found 7 API routes missing roundFloats — fixed on fix/api-roundfloats-boundaries, PR opening. Previous vector/UW-halt work already merged (#3756 etc). GitHub PAT rate-limited; session REST used for push."
+    },
+    {
+      "at": "2026-09-04T21:45:31.083Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
