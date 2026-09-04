@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:52:08.396Z",
+  "updated_at": "2026-09-04T23:25:50.293Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,15 +67,14 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-04T23:18:25.676Z",
+      "lease_until": "2026-09-05T00:48:25.676Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -234,6 +233,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3774": {
+      "pr": 3774,
+      "head_sha": "43607fb10",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:25:50.292Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -243,18 +250,139 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T19:50:51.819Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T23:18:25.677Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75",
+    "last_main_sha": "4e4a0f34bbc2014f0afdd1cde2203ba0d2fec6f9",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:42:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
-    "last_deploy_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75"
+    "last_deploy_at": "2026-09-04T23:16:56Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33928899257",
+    "last_deploy_sha": "4e4a0f34bbc2014f0afdd1cde2203ba0d2fec6f9"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3794,
+      "title": "feat(learn): add Vector and Meridian Academy chapters",
+      "branch": "feat/academy-vector-meridian-chapters",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:17:55Z"
+    },
+    {
+      "number": 3793,
+      "title": "chore(autopilot): cursor handoff state sync — #3774 review pending",
+      "branch": "cursor/autopilot-state-1788563465",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:17:57Z"
+    },
+    {
+      "number": 3792,
+      "title": "docs(audit): mark banger sub5-DTE visibility fix merged (#3778)",
+      "branch": "fix/market-open-validation-3778-status",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:18:00Z"
+    },
+    {
+      "number": 3790,
+      "title": "fix(spot): return null change_pct when UW omits prev_close",
+      "branch": "fix/spot-fallback-change-pct-null",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T23:18:16Z"
+    },
+    {
+      "number": 3789,
+      "title": "fix(polygon): stop fabricating 0% on batch snapshot change_pct",
+      "branch": "fix/polygon-snapshot-change-pct-null",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:18:05Z"
+    },
+    {
+      "number": 3788,
+      "title": "fix(marketing): reposition Meridian from earnings-only to catalyst intelligence",
+      "branch": "fix/meridian-manifest-catalyst-coverage",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:18:08Z"
+    },
+    {
+      "number": 3787,
+      "title": "feat(swing-command): Phase P0 parity — live mgmt, thesis health, cockpit",
+      "branch": "cursor/swing-command-p0",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:18:11Z"
+    },
+    {
+      "number": 3786,
+      "title": "fix(learn): correct Vector guide's false Thermal-is-SPX-only claim",
+      "branch": "fix/vector-guide-thermal-multiticker-claim",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:18:13Z"
+    },
+    {
+      "number": 3784,
+      "title": "fix(learn): stop Learn nav describing Night Hawk as evening-only",
+      "branch": "fix/learn-nav-night-hawk-stale-descriptor",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:18:16Z"
+    },
+    {
+      "number": 3783,
+      "title": "fix(swing): discovery COMMIT without ledger is pre-entry for banger merge",
+      "branch": "cursor/swing-command-bugbot-fixes",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T23:17:37Z"
+    },
+    {
+      "number": 3774,
+      "title": "fix(ws): guard UW L1 cache + stocks/polygon stall against future timestamps",
+      "branch": "fix/ws-stall-uw-cache-future-timestamp",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T23:16:27Z"
+    },
+    {
+      "number": 3773,
+      "title": "fix(swing-command): Bugbot blockers — banger merge collision + open-book fetch",
+      "branch": "cursor/hourly-autonomous-wake",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T23:16:29Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1071,6 +1199,264 @@
       "agent": "cursor",
       "run_id": "01ba5e3e-d264-48b8-b6f9-953c859c62cd",
       "summary": "Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty."
+    },
+    {
+      "at": "2026-09-04T23:18:11.454Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 12
+    },
+    {
+      "at": "2026-09-04T23:18:17.358Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 12
+    },
+    {
+      "at": "2026-09-04T23:18:18.396Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 12
+    },
+    {
+      "at": "2026-09-04T23:18:19.376Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 12
+    },
+    {
+      "at": "2026-09-04T23:18:25.677Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T23:18:28.173Z",
+      "type": "pr_webhook",
+      "pr": 3794,
+      "event": "sweep",
+      "head": "c1da01f1c387ba736d077b3f8dcf53890b95bdd4",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:18:30.811Z",
+      "type": "pr_webhook",
+      "pr": 3793,
+      "event": "sweep",
+      "head": "dd64daee88755a5be0f3c40c98b745f7c57ded29",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:18:32.787Z",
+      "type": "pr_webhook",
+      "pr": 3792,
+      "event": "sweep",
+      "head": "0111cf3cb767ec6909d322143a1bbb0e8bae1f69",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:18:34.833Z",
+      "type": "pr_webhook",
+      "pr": 3790,
+      "event": "sweep",
+      "head": "3e7cc48f142432ffcfb4f1150637a788b6c0ec60",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:18:36.914Z",
+      "type": "pr_webhook",
+      "pr": 3789,
+      "event": "sweep",
+      "head": "ffee4841e84021cc561c2edd716dbca7600cadf6",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:18:38.916Z",
+      "type": "pr_webhook",
+      "pr": 3788,
+      "event": "sweep",
+      "head": "3a4c7cdfb76f6ee58edbcdffb26740faf200873c",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:18:40.928Z",
+      "type": "pr_webhook",
+      "pr": 3787,
+      "event": "sweep",
+      "head": "6f6ce0f5a879fef5c2e4fd8cd7b79498da4b074c",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:18:43.047Z",
+      "type": "pr_webhook",
+      "pr": 3786,
+      "event": "sweep",
+      "head": "7a8ae46402c6431ace96939daf3cb65710dbe9bd",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:18:45.940Z",
+      "type": "pr_webhook",
+      "pr": 3784,
+      "event": "sweep",
+      "head": "921aea82c293eb9b3ecf46c0f26da9dd64d7f5e9",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:18:48.947Z",
+      "type": "pr_webhook",
+      "pr": 3783,
+      "event": "sweep",
+      "head": "f1356606f1ce31766433cd1abf2298bb1f7182f7",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:18:52.254Z",
+      "type": "pr_webhook",
+      "pr": 3774,
+      "event": "sweep",
+      "head": "4999b07fda53afc4e9bd834e2988a16df0e5b73b",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T23:18:57.653Z",
+      "type": "pr_webhook",
+      "pr": 3773,
+      "event": "sweep",
+      "head": "44617266e03eee1dd4266952d5d0f3b9fa558499",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T23:25:50.293Z",
+      "type": "pr_review",
+      "pr": 3774,
+      "head_sha": "43607fb10",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:25:50.292Z",
+      "safe_to_merge": true
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3794": {
+      "last_event": "sweep",
+      "last_head": "c1da01f1c387ba736d077b3f8dcf53890b95bdd4",
+      "last_feedback_at": "2026-09-04T23:18:28.173Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3793": {
+      "last_event": "sweep",
+      "last_head": "dd64daee88755a5be0f3c40c98b745f7c57ded29",
+      "last_feedback_at": "2026-09-04T23:18:30.811Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3792": {
+      "last_event": "sweep",
+      "last_head": "0111cf3cb767ec6909d322143a1bbb0e8bae1f69",
+      "last_feedback_at": "2026-09-04T23:18:32.787Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3790": {
+      "last_event": "sweep",
+      "last_head": "3e7cc48f142432ffcfb4f1150637a788b6c0ec60",
+      "last_feedback_at": "2026-09-04T23:18:34.833Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3789": {
+      "last_event": "sweep",
+      "last_head": "ffee4841e84021cc561c2edd716dbca7600cadf6",
+      "last_feedback_at": "2026-09-04T23:18:36.914Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3788": {
+      "last_event": "sweep",
+      "last_head": "3a4c7cdfb76f6ee58edbcdffb26740faf200873c",
+      "last_feedback_at": "2026-09-04T23:18:38.916Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3787": {
+      "last_event": "sweep",
+      "last_head": "6f6ce0f5a879fef5c2e4fd8cd7b79498da4b074c",
+      "last_feedback_at": "2026-09-04T23:18:40.928Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3786": {
+      "last_event": "sweep",
+      "last_head": "7a8ae46402c6431ace96939daf3cb65710dbe9bd",
+      "last_feedback_at": "2026-09-04T23:18:43.047Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3784": {
+      "last_event": "sweep",
+      "last_head": "921aea82c293eb9b3ecf46c0f26da9dd64d7f5e9",
+      "last_feedback_at": "2026-09-04T23:18:45.940Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3783": {
+      "last_event": "sweep",
+      "last_head": "f1356606f1ce31766433cd1abf2298bb1f7182f7",
+      "last_feedback_at": "2026-09-04T23:18:48.947Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "updated"
+    },
+    "pr-3774": {
+      "last_event": "sweep",
+      "last_head": "4999b07fda53afc4e9bd834e2988a16df0e5b73b",
+      "last_feedback_at": "2026-09-04T23:18:52.254Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3773": {
+      "last_event": "sweep",
+      "last_head": "44617266e03eee1dd4266952d5d0f3b9fa558499",
+      "last_feedback_at": "2026-09-04T23:18:57.653Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }
