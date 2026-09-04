@@ -163,8 +163,12 @@ export async function loadMeridianEarningsTimeline(
   if (!skipEnrich) {
     // Hand the ranker what it needs to spend the chain budget on names anyone is watching:
     // importance and proximity, not Map insertion order. See meridian-em-priority.ts.
+    //
+    // Already-printed rows withhold the overlay anyway (`overlayTimelineExpectedMoves` skips
+    // `is_printed`) — do not spend a scarce chain pull on a number we will never show.
+    const emCandidates = rows.filter((r) => !r.is_printed);
     const em = await batchLoadEarningsExpectedMovePct(
-      rows.map((r) => ({
+      emCandidates.map((r) => ({
         ticker: r.ticker,
         report_date: r.report_date,
         importance: r.importance ?? null,
