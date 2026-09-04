@@ -1,7 +1,11 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
+<<<<<<< HEAD
   "updated_at": "2026-09-04T18:12:52.585Z",
+=======
+  "updated_at": "2026-09-04T18:23:32.773Z",
+>>>>>>> 7baaea272 (chore(autopilot): update handoff after peer-review cycle)
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -235,6 +239,7 @@
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
     },
+<<<<<<< HEAD
     "pr-3664": {
       "pr": 3664,
       "head_sha": "95b65131326731143415a9f0b40fcfaae81720a1",
@@ -249,6 +254,14 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T18:12:11.097Z",
+=======
+    "pr-3697": {
+      "pr": 3697,
+      "head_sha": "c43252e35bf69f736d1c084dc4a39c851829b7f0",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:23:03.427Z",
+>>>>>>> 7baaea272 (chore(autopilot): update handoff after peer-review cycle)
       "safe_to_merge": true
     }
   },
@@ -264,7 +277,11 @@
     }
   },
   "deploy": {
+<<<<<<< HEAD
     "last_main_sha": "1b65d627b71b7ef8928d20c2b87455bafe4f33e8",
+=======
+    "last_main_sha": "cddb5a72218950a660d18b85b579537844e65f49",
+>>>>>>> 7baaea272 (chore(autopilot): update handoff after peer-review cycle)
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-04T18:11:41Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33904569568",
@@ -272,14 +289,72 @@
   },
   "open_prs": [
     {
+<<<<<<< HEAD
+=======
+      "number": 3705,
+      "title": "fix(audit): side-constrain full-site heatmap wall checks",
+      "branch": "fix/rth-audit-wall-constraint",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T18:23:31Z"
+    },
+    {
+      "number": 3704,
+      "title": "chore(autopilot): cursor handoff — peer reviews #3664/#3667, deploy GREEN",
+      "branch": "cursor/autopilot-handoff-2026-09-04t1821",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:21:51Z"
+    },
+    {
+      "number": 3702,
+      "title": "chore(autopilot): cursor handoff — #3678/#3664/#3667 merged",
+      "branch": "cursor/autopilot-handoff-2026-09-04t1816",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:21:56Z"
+    },
+    {
+      "number": 3701,
+      "title": "chore(autopilot): cursor handoff — #3664/#3667 merged, #3686 ready for Claude",
+      "branch": "chore/autopilot-handoff-pr-event-2026-09-04",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:21:58Z"
+    },
+    {
+      "number": 3700,
+      "title": "docs(audit): RUN-LOG entries — vector-pick-sweep perf investigation + Meridian P1 re-verification",
+      "branch": "chore/run-log-vector-pick-sweep-perf-investigation",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:22:00Z"
+    },
+    {
+>>>>>>> 7baaea272 (chore(autopilot): update handoff after peer-review cycle)
       "number": 3699,
       "title": "fix(admin): guard SPX terminal feed incident open duration against clock skew",
       "branch": "fix/admin-spx-terminal-lib-clock-skew-replay",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
+<<<<<<< HEAD
       "verify": "QUEUED/",
       "updated_at": "2026-09-04T18:12:47Z"
+=======
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:22:03Z"
+>>>>>>> 7baaea272 (chore(autopilot): update handoff after peer-review cycle)
     },
     {
       "number": 3698,
@@ -288,8 +363,13 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
+<<<<<<< HEAD
       "verify": "unknown",
       "updated_at": "2026-09-04T18:12:50Z"
+=======
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:22:05Z"
+>>>>>>> 7baaea272 (chore(autopilot): update handoff after peer-review cycle)
     },
     {
       "number": 3697,
@@ -298,6 +378,7 @@
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
+<<<<<<< HEAD
       "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-04T18:12:22Z"
     },
@@ -310,6 +391,10 @@
       "draft": false,
       "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-04T18:12:24Z"
+=======
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-04T18:23:15Z"
+>>>>>>> 7baaea272 (chore(autopilot): update handoff after peer-review cycle)
     },
     {
       "number": 3695,
@@ -319,6 +404,7 @@
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/",
+<<<<<<< HEAD
       "updated_at": "2026-09-04T18:12:26Z"
     },
     {
@@ -340,6 +426,9 @@
       "draft": true,
       "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-04T18:12:31Z"
+=======
+      "updated_at": "2026-09-04T18:22:10Z"
+>>>>>>> 7baaea272 (chore(autopilot): update handoff after peer-review cycle)
     },
     {
       "number": 3692,
@@ -347,9 +436,15 @@
       "branch": "fix/quote-index-change-pct-rebase",
       "author": "coreentryadmin-web",
       "agent": "agent",
+<<<<<<< HEAD
       "draft": true,
       "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-04T18:12:34Z"
+=======
+      "draft": false,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-04T18:23:24Z"
+>>>>>>> 7baaea272 (chore(autopilot): update handoff after peer-review cycle)
     },
     {
       "number": 3691,
@@ -357,6 +452,7 @@
       "branch": "fix/iso-age-future-guard-combined",
       "author": "coreentryadmin-web",
       "agent": "agent",
+<<<<<<< HEAD
       "draft": true,
       "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-04T18:12:37Z"
@@ -410,6 +506,11 @@
       "draft": true,
       "verify": "unknown",
       "updated_at": "2026-09-04T18:12:37Z"
+=======
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:22:15Z"
+>>>>>>> 7baaea272 (chore(autopilot): update handoff after peer-review cycle)
     }
   ],
   "events": [
@@ -1211,6 +1312,7 @@
       "safe_to_merge": true
     },
     {
+<<<<<<< HEAD
       "at": "2026-09-04T18:12:10.756Z",
       "type": "pr_review",
       "pr": 3664,
@@ -1248,6 +1350,29 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 14
+=======
+      "at": "2026-09-04T18:23:03.428Z",
+      "type": "pr_review",
+      "pr": 3697,
+      "head_sha": "c43252e35bf69f736d1c084dc4a39c851829b7f0",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:23:03.427Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:23:32.771Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 11
+    },
+    {
+      "at": "2026-09-04T18:23:32.773Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "643916f3-aef4-4b6a-a212-5f601a285de3",
+      "summary": "Cycle: merged #3664, #3667 (peer review). Approved #3695 (closed dup), #3697 (audit wall constraint — merge blocked pending rebase). #3686 own PR verify GREEN awaiting Claude. validate:deploy GREEN, ops:collect 0. Handoff branch cursor/autopilot-handoff-1818 pushed."
+>>>>>>> 7baaea272 (chore(autopilot): update handoff after peer-review cycle)
     }
   ]
 }
