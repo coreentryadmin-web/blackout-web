@@ -4,6 +4,8 @@ import { loadCurrentChainContracts } from "@/features/vector/lib/vector-gex-reco
 import { loadSpxDesk, loadSpxDeskPulse } from "@/features/spx/lib/spx-desk-loader";
 import { etMinutes } from "@/features/spx/lib/spx-play-session-time";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { fetchIndexMinuteBars } from "@/lib/providers/polygon";
+import { logReturnsFromMinuteBars } from "@/features/spx/lib/spx-pin-recent-returns";
 import {
   forecastPin,
   type PinForecast,
@@ -87,7 +89,7 @@ export async function buildSpxPinForecast(): Promise<SpxPinForecast> {
   // Pulse returns price:0 outside RTH/premarket (by design — fast lane is session-scoped).
   // Fall back to the full desk snapshot so post-close pin can honestly report "Market closed"
   // with the real last print, instead of spot=0 + "Collecting" (live 2026-07-28 regression).
-  let deskFallback: { price: number; prior_close: number | null } | null = null;
+  let deskFallback: { price: number; prior_close: number | null; macro_events?: { impact?: string }[] } | null = null;
   if (!(pulse?.price && pulse.price > 0)) {
     deskFallback = await loadSpxDesk().catch(() => null);
   }
@@ -97,6 +99,21 @@ export async function buildSpxPinForecast(): Promise<SpxPinForecast> {
   const etMin = etMinutes(new Date());
   const closeMs = nowMs + (RTH_CLOSE_ET_MIN - etMin) * 60_000;
   const sessionYmd = todayEtYmd();
+
+  // Trend degrade + macro flags — the core supports these inputs but they were never wired on the
+  // SPX desk path, so trending sessions still ran full pin conviction toward distant max pain.
+  let recentReturns: number[] | undefined;
+  let macroEvent = false;
+  if (spot > 0) {
+    const [minuteBars, deskForMacro] = await Promise.all([
+      fetchIndexMinuteBars("SPX", sessionYmd, sessionYmd).catch(() => []),
+      deskFallback ? Promise.resolve(deskFallback) : loadSpxDesk().catch(() => null),
+    ]);
+    const rets = logReturnsFromMinuteBars(minuteBars);
+    if (rets.length >= 10) recentReturns = rets;
+    const macro = deskForMacro?.macro_events ?? [];
+    macroEvent = macro.some((e) => String(e?.impact ?? "").toLowerCase() === "high");
+  }
 
   // 0DTE chain: TODAY'S expiry only.
   //
@@ -126,7 +143,7 @@ export async function buildSpxPinForecast(): Promise<SpxPinForecast> {
     contracts = chain.filter((c) => c.expiry === sessionYmd);
   }
 
-  const common = { spot, priorClose, contracts, sessionYmd, nowMs, closeMs };
+  const common = { spot, priorClose, contracts, sessionYmd, nowMs, closeMs, recentReturns, macroEvent };
 
   const base = forecastPin({ ...common, method: "analytic" });
 

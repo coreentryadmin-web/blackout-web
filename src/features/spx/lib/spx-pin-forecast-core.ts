@@ -56,6 +56,10 @@ export type PinForecast = {
   pinPct: number | null;
   pinBand: [number, number] | null;
   pinPctOfClose: number | null;
+  /** Drift from live spot to the unsnapped projected close — the direction members care about. */
+  pinDriftPts: number | null;
+  /** `pinDriftPts / spot`, percent — paired with pinDriftPts for UI/Largo. */
+  pinDriftPctFromSpot: number | null;
   regime: "short_gamma" | "long_gamma" | "unknown";
   flip: number | null;
   magnet: { strike: number; kind: PinMagnetKind; direction: "up" | "down" | "flat"; strengthPct: number } | null;
@@ -416,8 +420,16 @@ function prepare(input: PinForecastInput): Prep {
       magnetKind = "max_pain";
       magnetStrengthPct = frac(king?.oi);
     }
-  } else if (regime === "long_gamma" && maxPain != null) {
-    magnetStrike = maxPain; magnetKind = "max_pain"; magnetStrengthPct = frac(king?.oi);
+  } else if (regime === "long_gamma") {
+    // Long-γ dampens toward the NEAREST high-OI equilibrium around spot — not always the global
+    // max-pain strike far below. On rally days max pain can sit 30–80pts under spot while the
+    // heaviest 0DTE OI (king) clusters at/above spot; always yanking to distant max pain made the
+    // forecaster read permanently bearish ("flat or downside only, never up") even when the book
+    // was pinning higher. Pick the nearer of {effective max pain, king strike} when both exist.
+    const longGamma = pickLongGammaMagnet(input.spot, maxPain, king, strikeSpacing, frac);
+    magnetStrike = longGamma.magnetStrike;
+    magnetKind = longGamma.magnetKind;
+    magnetStrengthPct = longGamma.magnetStrengthPct;
   }
   if (magnetStrike == null && maxPain != null) { magnetStrike = maxPain; magnetKind = "max_pain"; magnetStrengthPct = frac(king?.oi); }
   const direction = magnetStrike == null ? "flat" : magnetStrike > input.spot + 0.5 ? "up" : magnetStrike < input.spot - 0.5 ? "down" : "flat";
@@ -445,6 +457,36 @@ function prepare(input: PinForecastInput): Prep {
     if (atmIv > 0 && rv > atmIv * 1.8) { degraded = true; degradeReason = "realized_gt_implied"; }
   }
   return { ok: true, reason: null, tMin, tFrac, horizonMin, structYears, ladder, flip, regime, maxPain, magnetStrike, magnetKind, magnetStrengthPct, direction, atmIv, strikeSpacing, charmState, degraded, degradeReason, ivFallback };
+}
+
+/**
+ * Long-gamma pin target: nearest meaningful OI concentration to spot.
+ * Global max pain alone is often far OTM on trend days; the king strike is the actual 0DTE pin.
+ */
+export function pickLongGammaMagnet(
+  spot: number,
+  maxPain: number | null,
+  king: { strike: number; oi: number } | null,
+  strikeSpacing: number,
+  frac: (n: number | undefined) => number
+): { magnetStrike: number | null; magnetKind: PinMagnetKind; magnetStrengthPct: number } {
+  if (maxPain == null && king == null) {
+    return { magnetStrike: null, magnetKind: "max_pain", magnetStrengthPct: 0 };
+  }
+  if (maxPain != null && king == null) {
+    return { magnetStrike: maxPain, magnetKind: "max_pain", magnetStrengthPct: frac(0) };
+  }
+  if (maxPain == null && king != null) {
+    return { magnetStrike: king.strike, magnetKind: "max_pain", magnetStrengthPct: frac(king.oi) };
+  }
+  const mp = maxPain!;
+  const k = king!;
+  const kingCloser =
+    Math.abs(k.strike - spot) + strikeSpacing * 0.25 < Math.abs(mp - spot);
+  if (kingCloser) {
+    return { magnetStrike: k.strike, magnetKind: "max_pain", magnetStrengthPct: frac(k.oi) };
+  }
+  return { magnetStrike: mp, magnetKind: "max_pain", magnetStrengthPct: frac(k.oi) };
 }
 
 function inferSpacing(contracts: readonly PinContract[]): number {
@@ -776,12 +818,18 @@ function assemble(
   pin: number, conf: number, band: [number, number], cone: PinConeStep[], scenarios: PinScenario[], medianClose: number,
   magnetClamped = false
 ): PinForecast {
+  const projectedClose = Number(medianClose.toFixed(2));
+  const pinDriftPts = Number((projectedClose - input.spot).toFixed(2));
+  const pinDriftPctFromSpot =
+    input.spot > 0 ? Number(((pinDriftPts / input.spot) * 100).toFixed(3)) : null;
   return {
     available: true, method,
     spot: input.spot, priorClose: input.priorClose, timeToCloseMin: Number(p.tMin.toFixed(1)),
-    pin: Number(pin.toFixed(2)), projectedClose: Number(medianClose.toFixed(2)), pinPct: Number(conf.toFixed(3)),
+    pin: Number(pin.toFixed(2)), projectedClose, pinPct: Number(conf.toFixed(3)),
     pinBand: band,
     pinPctOfClose: input.priorClose && input.priorClose > 0 ? Number((((pin - input.priorClose) / input.priorClose) * 100).toFixed(2)) : null,
+    pinDriftPts,
+    pinDriftPctFromSpot,
     regime: p.regime, flip: p.flip,
     magnet: p.magnetStrike == null ? null : { strike: p.magnetStrike, kind: p.magnetKind, direction: p.direction, strengthPct: Number(p.magnetStrengthPct.toFixed(3)) },
     charmState: p.charmState,
@@ -796,7 +844,7 @@ function assemble(
 const EMPTY = (input: PinForecastInput, reason: string, ivFallback = false): PinForecast => ({
   available: false, method: input.method ?? "analytic", spot: input.spot, priorClose: input.priorClose,
   timeToCloseMin: Math.max(0, (input.closeMs - input.nowMs) / 60000), pin: null, projectedClose: null, pinPct: null, pinBand: null,
-  pinPctOfClose: null, regime: "unknown", flip: null, magnet: null, charmState: "early", cone: [], scenarios: [],
+  pinPctOfClose: null, pinDriftPts: null, pinDriftPctFromSpot: null, regime: "unknown", flip: null, magnet: null, charmState: "early", cone: [], scenarios: [],
   degraded: false, degradeReason: null, ivFallback, magnetClamped: false,
   drivers: [{ label: reason === "closed" ? "Market closed" : "Collecting", detail: reason === "closed" ? "The 0DTE pin forecast runs during RTH." : "Waiting for a live 0DTE chain and session bars.", weight: 1 }],
 });
