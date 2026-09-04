@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T00:30:41.044Z",
+  "updated_at": "2026-09-04T01:42:48.324Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -30,8 +30,8 @@
     "BO-P1-0005": {
       "task_id": "BO-P1-0005",
       "owner": "cursor",
-      "claimed_at": "2026-09-03T23:53:48.679Z",
-      "lease_until": "2026-09-04T01:23:48.679Z",
+      "claimed_at": "2026-09-04T01:23:10.117Z",
+      "lease_until": "2026-09-04T02:53:10.117Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -50,6 +50,18 @@
       "reviewer": null,
       "run_id": null,
       "title": "PR webhook triage + peer review dispatch"
+    },
+    "BO-P1-0004": {
+      "task_id": "BO-P1-0004",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T01:42:48.323Z",
+      "lease_until": "2026-09-04T03:12:48.323Z",
+      "phase": "VALIDATING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -77,16 +89,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T00:30:16.848Z",
-      "current_task": "BO-P1-0007"
+      "last_seen": "2026-09-04T01:42:48.324Z",
+      "current_task": "BO-P1-0004"
     }
   },
   "deploy": {
-    "last_main_sha": "84c5707ac6849b4c048dec6e8a414321f2a76e27",
+    "last_main_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T00:18:06Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33821229041",
-    "last_deploy_sha": "271a977cfdc9b5d2cc2d62535f8c7e010374d78d"
+    "last_deploy_at": "2026-09-04T01:41:09Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826698258",
+    "last_deploy_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b"
   },
   "open_prs": [],
   "events": [
@@ -293,6 +305,31 @@
       "agent": "cursor",
       "run_id": "49d14bda-5dd3-4b4b-8deb-b5336a96b8b1",
       "summary": "PR webhook branch ready: heartbeat-gate fix in claimLock, BO-P1-0007 claimed, peer-reviewed #3438 APPROVED. #3436 merged — autopilot v1 live on main. Next: merge this PR, close duplicate #3435."
+    },
+    {
+      "at": "2026-09-04T01:42:16.866Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:42:16.868Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a25fc12a-1a31-4d69-bcd6-f2fe660a727f",
+      "summary": "Peer-reviewed and merged #3448 #3450 #3451; #3452 (BO-P1-0004) also merged. All verify green. Next: close stale draft handoff PRs #3447/#3449, validate deploy, run counterfactual script during RTH."
+    },
+    {
+      "at": "2026-09-04T01:42:44.283Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:42:48.324Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0004",
+      "owner": "cursor"
     }
   ]
 }
