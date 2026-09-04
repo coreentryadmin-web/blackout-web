@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T06:51:56.380Z
-**Run:** 74071da3-3245-480e-8fa8-41cd469246b7
+**At:** 2026-09-04T07:45:08.928Z
+**Run:** c1d3caf3-f11e-4ac7-9173-a62f03e55b46
 
 ## Summary
 
-Post-merge cycle: main@c593449c1, deploy pending@84b92b6b (#3511). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours). Open PRs: 0. Peer review queue empty. RTH lifecycle Fri 09:00 ET.
+Post-#3523 merge cycle: main@14c5d815 deployed. validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, platform-integrity 3 pass/4 warn (off-hours), lifecycle GREEN (22 checks). Open PRs: 0. Peer review queue empty. RTH lifecycle Fri 09:00 ET. GitHub API rate-limited (user 284440397).
 
 ## Deploy
 
-- main: `c593449c1740c1494e2925df3e0d7b012f762d61`
+- main: `14c5d815d50c64666360b76c713f4466e038dd95`
 - status: 
 
 ## Open PRs
