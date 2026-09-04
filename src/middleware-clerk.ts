@@ -22,6 +22,7 @@ const isProtectedRoute = createRouteMatcher([
   "/heatmap(.*)",
   "/nighthawk(.*)",
   "/vector(.*)",
+  "/meridian(.*)",
   "/admin(.*)",
   "/account(.*)",
 ]);
