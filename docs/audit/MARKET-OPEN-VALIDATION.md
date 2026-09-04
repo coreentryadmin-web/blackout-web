@@ -543,6 +543,25 @@ pan states, since tick positions move with the visible time range and the origin
 width and time-range, not a single fixed state. Also spot-check mobile (430×932) to confirm the fix
 didn't regress the already-working sibling labels' layout there.
 
+### 15. Night Hawk mobile play-history table's P&L column was scrolled off-screen — PR pending (branch `fix/nighthawk-mobile-pnl-column-offscreen`)
+
+**What was broken:** the expanded Session Analytics panel's play-history table renders 6 columns
+(Date, Ticker, Dir, Tier, Outcome, P&L) inside `.nh-history-tablewrap` — `overflow-x-auto` around a
+`min-w-[440px]` table — which overflows a 430px phone's card width. The overflow clip always eats
+the rightmost column first, and P&L was last, so it required an extra horizontal swipe to see even
+though `globals.css`'s own comment calls it "the single most-scanned value in this table."
+
+**Fix:** reordered columns to Date, Ticker, **P&L**, Dir, Tier, Outcome (P&L moved from 6th to 3rd,
+right after Ticker) — pure JSX reorder, no CSS/data change. See
+`docs/audit/findings-staging/2026-09-04-nighthawk-history-pnl-column-mobile-offscreen.md`.
+
+**Check at the open:** on `/nighthawk` (`proxy-browser.cjs`, 430×932 mobile viewport), open Session
+Analytics, expand a session with graded plays, and confirm the P&L value for each row is visible
+in the table WITHOUT any horizontal swipe — it should render as the 3rd visible column right after
+the ticker, still tone-colored (green/red/amber) and bold. Also confirm Dir/Tier/Outcome are still
+reachable (now via swipe or the row's existing tap-to-expand drawer) and that desktop/tablet
+rendering (where the table already fit) is visually unchanged.
+
 ---
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
