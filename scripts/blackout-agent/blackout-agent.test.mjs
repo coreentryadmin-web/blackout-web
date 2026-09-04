@@ -62,6 +62,35 @@ test("dispatch-prompt includes coordination rules", () => {
   assert.equal(r.status, 0);
   assert.match(r.stdout, /BLACKOUT AUTOPILOT/);
   assert.match(r.stdout, /Never approve your own PR/);
+  assert.match(r.stdout, /CONTINUOUS WORK LOOP/);
+});
+
+test("discoverStandingWork finds open PRs needing peer review", async () => {
+  const { discoverStandingWork } = await import("./select-task.mjs");
+  const state = {
+    open_prs: [
+      { number: 99, title: "fix example", branch: "fix/example", agent: "agent", draft: false, verify: "COMPLETED/SUCCESS" },
+      { number: 100, title: "cursor own", branch: "cursor/foo", agent: "cursor", draft: false, verify: "COMPLETED/SUCCESS" },
+    ],
+    reviews: {},
+    deploy: { last_main_sha: "abc", last_deploy_sha: "abc" },
+  };
+  const found = discoverStandingWork("cursor", state);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].pr, 99);
+  assert.match(found[0].title, /Peer review #99/);
+});
+
+test("discoverStandingWork flags deploy drift", async () => {
+  const { discoverStandingWork } = await import("./select-task.mjs");
+  const state = {
+    open_prs: [],
+    reviews: {},
+    deploy: { last_main_sha: "abc123", last_deploy_sha: "def456" },
+  };
+  const found = discoverStandingWork("cursor", state);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].id, "BO-P1-0101");
 });
 
 test("select-task returns highest-priority P1 task for cursor", async () => {

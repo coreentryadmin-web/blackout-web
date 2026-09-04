@@ -2,14 +2,13 @@
 
 | ID | Owner | Phase | Branch/PR | Title |
 |----|-------|-------|-----------|-------|
-| _none_ | — | — | — | — |
+| BO-P1-0100 | cursor | REVIEWING | #3479 | Standing peer review — UW sweep concurrency fix |
 
 ## Recently completed
 
 | ID | PR | Title |
 |----|-----|-------|
-| BO-P1-0004 | #3452, #3463 | G-18/G-19 counterfactual + graceful calibration handling (merged) |
-| BO-P1-0005 | #3454 | select-task test fixture isolation (merged) |
-| BO-P2-0003 | #3451 | Vector-gated runners only (merged) |
-| BO-P1-0007 | #3439 | PR webhook triage (merged) |
-| BO-P1-0000 | #3425 | G-18/G-19 loss gates (merged) |
+| BO-P1-0011 | #3477 | PR webhook triage survives agent launch failure (merged) |
+| BO-P1-0010 | #3476 | Counterfactual replay JSON parse fix (merged) |
+| BO-P1-0008 | #3468, #3469 | Peer review Claude cron fixes (merged) |
+| BO-P1-0004 | #3452, #3463 | G-18/G-19 counterfactual (merged) |

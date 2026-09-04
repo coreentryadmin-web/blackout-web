@@ -26,5 +26,7 @@ npm run blackout:prompt -- --agent=cursor
 3. Never approve own PR
 4. 90min lease default; stale locks reclaimed on sync
 5. Handoff on every milestone
+6. **Never idle** — after any task, immediately `blackout:select` again; standing tasks + PR discovery always find work
+7. **Standing tasks** (`BO-P1-0100` etc.) are perpetual — never mark DONE in WORK_QUEUE.md
 
 Audit history: `docs/audit/FINDINGS.md`. Operational index: `.blackout-agent/FINDINGS.md`.
