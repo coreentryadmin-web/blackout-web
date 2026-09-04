@@ -126,6 +126,17 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0i. Platform-integrity probe tier-gate false-WARN — fix/platform-integrity-clerk-auth (pending)
+
+**What was broken:** `npm run validate:platform-integrity` hit tier-gated desk routes without Clerk auth,
+WARNing on empty SPX matrix / vector walls even when live member data was healthy.
+
+**Fix:** Mint temp admin+premium Clerk session in `validate-platform-integrity.mjs`; assert vector walls
+via `callWalls`/`putWalls` counts.
+
+**Check at the open:** `npm run validate:platform-integrity` → 0 warn on `thermal-spx-matrix`,
+`vector-spx-0dte-walls`, `gex-positioning-spx` during RTH with strikes > 0.
+
 ### 0g. RTH-open options-socket retry false-fail — fix/rth-open-socket-retry-false-fail (merged #3600)
 
 **What was broken:** `validate:rth-open` called `fail()` on the first options-socket probe attempt even
