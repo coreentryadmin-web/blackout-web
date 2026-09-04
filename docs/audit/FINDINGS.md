@@ -1217,6 +1217,18 @@ The same grep also turned up ~25 more `nowMs - X` / `Date.now() - X` comparisons
 | **Verification** | Added `src/app/(marketing)/about/about-taxonomy.test.ts` (2 new tests: About's Night Hawk description matches the current taxonomy; the iOS tile tagline does too) and a new test in the existing `RedesignHome.seo.test.ts` (the annual card's guarantee is qualified + links the refund policy). **Proved fail-before/pass-after via `git stash`**: with the fixes stashed, all 3 new assertions failed (9 pass / 3 fail across the touched test files); restored, 14/14 pass. Fixing item 1 initially broke a PRE-EXISTING regression test (`RedesignHome.pricing.test.ts`'s "exactly 3 plain-text trust lines" invariant) by nesting a `<Link>` inside the `<p className="trust">` — caught by running the full suite before considering this done, not just the new tests; corrected by moving the link to a sibling element instead of loosening that test. `npx tsc --noEmit` clean. Full `npm test` on Node 20: **11831 pass / 0 fail** (2 pre-existing skips, unrelated). |
 | **Status** | FIXED — merged via PR #3382. |
 
+## 2026-09-03 — [FINDING, P2 infra/harness, SPX Slayer] `validate:spx-e2e` falsely FAILed on mid-deploy Next.js chunk 404s during post-close orchestrator burst — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **What prompted this** | SPX Slayer post-close fix agent (`validate:spx-rth -- --phase=post-close`) reported `spx:dashboard-e2e` FAIL while standalone `npm run validate:spx-e2e` intermittently passed. Report JSON showed `ui:console-errors` FAIL with `ChunkLoadError: Loading chunk … failed` and `404` on `/_next/static/chunks/*.js` — classic ECS rolling-deploy HTML/chunk skew, not a SPX product defect. |
+| **Root cause** | `scripts/spx-dashboard-e2e-audit.mjs` treated only origin `5xx` console noise as transient; chunk `404` + MIME-type errors during `ecr-push-production.yml` rollouts were counted as hard FAILs. The parent orchestrator also held an audit-fetch Clerk session through the E2E spawn, increasing FAPI pressure (secondary; primary failure was chunk skew). |
+| **Fix** | Classify deploy chunk skew (`ChunkLoadError`, `404` on `_next/static/chunks`, MIME-type refusal) as transient console noise (same policy as `member-dashboard-live-check.mjs`). One automatic dashboard reload after a 5s wait when the first load only produced chunk noise. Release audit Clerk session before spawning `validate:spx-e2e` in `spx-rth-all-day-audit.mjs`. |
+| **Blast radius** | Harness only — no member-facing SPX logic changed. |
+| **Regression guard** | Post-fix `npm run validate:spx-rth -- --phase=post-close` and `npm run validate:spx-e2e` both GREEN on prod. |
+
 ## 2026-09-02 — [FINDING, P2 SPX Slayer] Two more UW-flow-age filters had no lower bound on print age — PB-09's surge precondition and the "HELIX sweeps" confluence factor could both fire on a future-dated flow alert — FIXED
 
 > **kind:** `FINDING`
