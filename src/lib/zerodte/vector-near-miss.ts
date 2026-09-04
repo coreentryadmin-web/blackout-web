@@ -2,7 +2,8 @@
  * Vector ↔ 0DTE near-miss read — names Vector is tracking as winner/runner
  * but 0DTE gate-blocked (SKIP). Calibration signal only; never commits.
  */
-import type { ZeroDteVectorPulse } from "./vector-crosslink";
+import type { ZeroDteVectorPulse, ZeroDteVectorPulseByTicker } from "./vector-crosslink";
+import { vectorPulseForDirection } from "./vector-crosslink";
 
 export type ZeroDteVectorNearMiss = {
   ticker: string;
@@ -17,6 +18,7 @@ export type ZeroDteVectorNearMiss = {
 
 type SetupSlice = {
   ticker?: string;
+  direction?: "long" | "short";
   gate?: {
     verdict?: string;
     blocks?: Array<{ code?: string; reason?: string }>;
@@ -43,14 +45,15 @@ function vectorBand(pulse: ZeroDteVectorPulse): ZeroDteVectorNearMiss["vector_ba
  */
 export function computeVectorNearMisses(
   setups: readonly SetupSlice[],
-  vectorByTicker: Record<string, ZeroDteVectorPulse>,
+  vectorByTicker: ZeroDteVectorPulseByTicker | Record<string, ZeroDteVectorPulse>,
   gateLabel: (code: string) => string
 ): ZeroDteVectorNearMiss[] {
   const out: ZeroDteVectorNearMiss[] = [];
   for (const s of setups) {
     const tk = String(s.ticker ?? "").trim().toUpperCase();
     if (!tk || s.gate?.verdict !== "BLOCKED") continue;
-    const pulse = vectorByTicker[tk];
+    const dir = s.direction === "short" ? "short" : "long";
+    const pulse = vectorPulseForDirection(vectorByTicker, tk, dir);
     if (!pulse) continue;
     const best = bestVectorPct(pulse);
     if (!pulse.is_winner && !pulse.is_runner && (best == null || best < 15)) continue;

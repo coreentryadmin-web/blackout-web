@@ -1697,6 +1697,29 @@ test("G-19: score 88+ Vector winner aligned commits", () => {
   assert.ok(!v.blocks.some((b) => b.code === "score_top_band"));
 });
 
+test("G-19: score 88+ Vector runner aligned at 68+ commits (not only winners)", () => {
+  const v = evaluateZeroDteGates(
+    input({
+      score: 88,
+      direction: "long",
+      vector_pulse: {
+        premium_pct: 28,
+        peak_premium_pct: 35,
+        action_status: "still_buy",
+        is_winner: false,
+        is_runner: true,
+        side: "call",
+        direction: "long",
+        strike: 100,
+        occ: "TEST",
+        rank: 1,
+        role: "flow-whale",
+      },
+    })
+  );
+  assert.ok(!v.blocks.some((b) => b.code === "score_top_band"));
+});
+
 test("runnerConfluenceCount: uses pinned confirmations when higher than gate leg count", async () => {
   const { runnerConfluenceCount } = await import("./gates.ts");
   const c: ZeroDteConfluence = {

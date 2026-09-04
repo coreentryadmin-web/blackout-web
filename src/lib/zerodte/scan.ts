@@ -140,7 +140,12 @@ import {
   refreshGovernorCycleBlocks,
   recentNighthawkTake,
 } from "./gates";
-import { fetchZeroDteVectorPulseByTicker, type ZeroDteVectorPulse } from "./vector-crosslink";
+import {
+  fetchZeroDteVectorPulseByTicker,
+  vectorPulseForDirection,
+  type ZeroDteVectorPulse,
+  type ZeroDteVectorPulseByTicker,
+} from "./vector-crosslink";
 import {
   fetchChainsForVectorRank,
   resolveZeroDteContractAttach,
@@ -560,7 +565,13 @@ export async function scanZeroDteBoard(flags?: {
 
   const boardTickers = [...new Set(setups.map((s) => s.ticker.toUpperCase()))];
   const vectorPulseByTicker = await fetchZeroDteVectorPulseByTicker(todayEt(), boardTickers).catch(
-    () => ({} as Record<string, ZeroDteVectorPulse>)
+    (err) => {
+      console.warn(
+        `[zerodte-scan] Vector pulse fetch failed — alignment/boost/runner rails disabled this cycle:`,
+        err
+      );
+      return {} as ZeroDteVectorPulseByTicker;
+    }
   );
 
   const thesisEnv = thesisFirstEnv();
@@ -637,7 +648,7 @@ export async function scanZeroDteBoard(flags?: {
           s.play_type === "CONDOR",
           {
             maxOtmPct: effectiveMaxOtmPct(
-              vectorRunnerOtmRelax(s.direction, s.score, vectorPulseByTicker[s.ticker.toUpperCase()] ?? null)
+              vectorRunnerOtmRelax(s.direction, s.score, vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction))
             ),
           }
         );
@@ -787,7 +798,7 @@ async function attachGateVerdicts(
   bias: MarketBias | null,
   biasAsOfMs: number | null,
   nowEtMinutes: number,
-  vectorPulseByTicker: Record<string, ZeroDteVectorPulse> = {}
+  vectorPulseByTicker: ZeroDteVectorPulseByTicker = {}
 ): Promise<{
   governorPremiumAtRisk: number;
   governorSnapshot: GovernorSnapshot | null;
@@ -997,7 +1008,7 @@ async function attachGateVerdicts(
   const committedThisCycle: Array<{ ticker: string; direction: "long" | "short" }> = [];
   for (const s of setups) {
     if (committed.has(s.ticker.toUpperCase())) continue;
-    const pulse = vectorPulseByTicker[s.ticker.toUpperCase()] ?? null;
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
     const boost = computeVectorGateBoost(s.direction, s.score, pulse);
     const boostedScore = boost.score_bump > 0 ? Math.min(100, Math.round(s.score + boost.score_bump)) : s.score;
     if (boost.score_bump > 0) s.score = boostedScore;
@@ -1141,7 +1152,7 @@ export function computeQuoteAgeMs(
  *  cards (plan stays null), never a stalled scan. */
 async function attachContractPlans(
   setups: EnrichedZeroDteSetup[],
-  vectorPulseByTicker: Record<string, ZeroDteVectorPulse> = {}
+  vectorPulseByTicker: ZeroDteVectorPulseByTicker = {}
 ): Promise<void> {
   const rankEnabled = vectorRankContractsEnabled();
   const chains =
@@ -1158,7 +1169,7 @@ async function attachContractPlans(
     // forcing it through buildOcc/buildContractPlan would fabricate a one-legged plan the gate stack
     // and grader must never see. Its liquidity is gated on condor_plan instead (gates.ts).
     if (s.play_type === "CONDOR") continue;
-    const pulse = vectorPulseByTicker[s.ticker.toUpperCase()] ?? null;
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
     const chain = chains?.get(s.ticker.toUpperCase()) ?? null;
     const attached = resolveZeroDteContractAttach(s, pulse, chain);
     if (attached) {
@@ -1285,7 +1296,10 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
   const vectorPulseByTicker = await fetchZeroDteVectorPulseByTicker(
     today,
     setups.map((s) => s.ticker.toUpperCase())
-  ).catch(() => ({} as Record<string, ZeroDteVectorPulse>));
+  ).catch((err) => {
+    console.warn("[zerodte-persist] Vector pulse fetch failed:", err);
+    return {} as ZeroDteVectorPulseByTicker;
+  });
   const { hour, minute } = etNowParts();
   const pastCutoff = hour * 60 + minute >= NEW_PLAY_CUTOFF_ET_MINUTES;
 
@@ -1392,9 +1406,19 @@ export async function persistZeroDteScan(setupsIn: EnrichedZeroDteSetup[]): Prom
       sessionCtx,
       committedAtMs
     );
-    const playTier = baseEntryCtx.tier?.tier ?? null;
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+    let playTier = baseEntryCtx.tier?.tier ?? null;
+    // F-5 caps raw 85+ at B-tier; Vector winner alignment unlocks A-tier runner_vector (400%).
+    if (
+      playTier === "B" &&
+      s.score >= 85 &&
+      pulse &&
+      computeVectorGateBoost(s.direction, s.score, pulse).g17_exempt &&
+      pulse.is_winner
+    ) {
+      playTier = "A";
+    }
     const exitPolicyAtCommit = resolveExitModeForTier(playTier);
-    const pulse = vectorPulseByTicker[s.ticker.toUpperCase()] ?? null;
     const vectorBoost = computeVectorGateBoost(s.direction, s.score, pulse);
     const confluenceCount = runnerConfluenceCount(
       s.confluence,

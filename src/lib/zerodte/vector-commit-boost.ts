@@ -74,5 +74,14 @@ export function vectorExemptsG17PrimeBand(
   return computeVectorGateBoost(direction, score, pulse).g17_exempt;
 }
 
+/** G-19 exemption — same predicate as G-17: aligned Vector winner OR runner at score ≥ 68. */
+export function vectorExemptsG19TopBand(
+  direction: "long" | "short",
+  score: number,
+  pulse: ZeroDteVectorPulse | null | undefined
+): boolean {
+  return vectorExemptsG17PrimeBand(direction, score, pulse);
+}
+
 /** Score floor for G-17 when not exempted (unchanged constant re-export for tests). */
 export { ZERODTE_SINGLE_RAIL_PRIME_MIN };

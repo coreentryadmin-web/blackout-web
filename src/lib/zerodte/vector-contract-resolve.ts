@@ -10,7 +10,8 @@ import { vectorPickOcc } from "@/features/vector/lib/vector-pick-occ";
 import { buildOcc } from "@/lib/ws/options-socket";
 import type { EnrichedZeroDteSetup } from "./board";
 import { vectorPulseAlignsDirection } from "./vector-commit-boost";
-import type { ZeroDteVectorPulse } from "./vector-crosslink";
+import type { ZeroDteVectorPulse, ZeroDteVectorPulseByTicker } from "./vector-crosslink";
+import { vectorPulseForDirection } from "./vector-crosslink";
 
 export type VectorContractAttachSource = "vector_pulse" | "vector_rank" | "discovery";
 
@@ -118,13 +119,13 @@ export function resolveZeroDteContractAttach(
 /** Batch-fetch chains for setups that need Vector rank (no pulse OCC). */
 export async function fetchChainsForVectorRank(
   setups: EnrichedZeroDteSetup[],
-  vectorPulseByTicker: Record<string, ZeroDteVectorPulse>
+  vectorPulseByTicker: ZeroDteVectorPulseByTicker
 ): Promise<Map<string, { spot: number; rows: ChainStrikeRow[] }>> {
   const out = new Map<string, { spot: number; rows: ChainStrikeRow[] }>();
   const tickers = new Set<string>();
   for (const s of setups) {
     if (s.play_type === "CONDOR") continue;
-    const pulse = vectorPulseByTicker[s.ticker.toUpperCase()] ?? null;
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
     if (resolveVectorPulseContract(s, pulse)) continue;
     if (!eligibleForVectorAttach(s, pulse)) continue;
     tickers.add(s.ticker.toUpperCase());

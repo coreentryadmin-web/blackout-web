@@ -90,10 +90,11 @@ async function runCycle(cycle) {
     ["npm run validate:api-auth", "api-auth", 90_000],
   ];
 
-  if (secretsReady()) {
+    if (secretsReady()) {
     jobs.push(
       ["node scripts/audit/data-validator.mjs", "data-validator", 360_000],
       ["node scripts/audit/rth-four-engine-play-audit.mjs", "four-engine-plays", 240_000],
+      ["node scripts/audit/play-engine-quality-audit.mjs", "play-engine-quality", 180_000],
       ["npm run validate:vector-rth-quick", "vector-rth", 150_000]
     );
     if (inCashRth(et)) {

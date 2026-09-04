@@ -44,7 +44,11 @@ import { EARLY_ENTRY_WINDOW_END_ET_MINUTES } from "./confluence";
 import { evaluateMacroHardBlock, hasHighImpactMacroEvent, type MacroEventLike } from "@/lib/macro-hard-block";
 import { condorLiquidityGateBlocks, condorRangeBreaking, type CondorPlan } from "./condor";
 import type { ZeroDteVectorPulse } from "./vector-crosslink";
-import { vectorExemptsG17PrimeBand, vectorPulseAlignsDirection } from "./vector-commit-boost";
+import {
+  vectorExemptsG17PrimeBand,
+  vectorExemptsG19TopBand,
+  vectorPulseAlignsDirection,
+} from "./vector-commit-boost";
 
 /** Read a positive-integer tuning knob from the environment, falling back to `def` when unset,
  *  non-numeric, or ≤0. Evaluated ONCE at module load so the gate FUNCTIONS stay pure (they only
@@ -665,7 +669,7 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
 
   // G-19 — F-5 top-band inversion hard block (85+ measured 33% WR vs 63.6% at 75–84).
   // FLOW-origin only — BREAKOUT/PIN score on independent scales where 85+ is normal.
-  // Vector WINNER alignment exempts — the desk already proved the name out.
+  // Vector winner OR runner (≥68 score) alignment exempts — same predicate as G-17/G-18.
   const g19Origins = input.discovery_origin ?? [];
   const g19FlowBacked = g19Origins.length === 0 || g19Origins.includes("FLOW");
   if (
@@ -673,16 +677,15 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     g19FlowBacked &&
     input.score >= 85 &&
     !(
-      input.vector_pulse &&
-      vectorPulseAlignsDirection(input.direction, input.vector_pulse) &&
-      input.vector_pulse.is_winner
+      input.vector_g17_exempt === true ||
+      vectorExemptsG19TopBand(input.direction, input.score, input.vector_pulse)
     )
   ) {
     blocks.push({
       code: "score_top_band",
       reason:
         `Score ${Math.round(input.score)} sits in the 85+ band where measured WR inverted ` +
-        "(33% vs 63.6% prime band, F-5) — only Vector-confirmed winners commit here.",
+        "(33% vs 63.6% prime band, F-5) — only Vector-confirmed winners/runners commit here.",
       threshold: 85,
       unlock_et: null,
     });

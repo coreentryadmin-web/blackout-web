@@ -103,6 +103,8 @@
     "validate:rth-four-engines": "node scripts/audit/rth-four-engine-play-audit.mjs",
     "validate:rth-wakeup-monitor": "node scripts/audit/rth-wakeup-monitor.mjs",
     "validate:rth-live-monitor": "node scripts/rth-live-monitor.mjs",
+    "validate:play-engine-quality": "node scripts/audit/play-engine-quality-audit.mjs",
+    "bootstrap:audit-secrets": "node scripts/bootstrap-audit-secrets.mjs",
     "validate:exhaustive": "node scripts/exhaustive-platform-audit.mjs",
     "validate:spot-check": "node scripts/continuous-spot-check.mjs --once",
     "validate:spot-check:loop": "node scripts/continuous-spot-check.mjs",

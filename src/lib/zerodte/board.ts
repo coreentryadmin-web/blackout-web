@@ -1293,13 +1293,14 @@ export function deriveZeroDteSetups(
     // Far-OTM lotto cap (Phase 0 firewall): mirror of the ITM gate on the OTM side. The
     // ITM gate catches stock-replacement; this catches the egregious-lotto tail (a huge
     // far-OTM 0DTE stack that clears the premium/dominance gates on size alone but whose
-    // strike is nowhere near a same-day move). Same rejection plumbing, its own code.
-    // Generous default (SETUP_MAX_OTM_PCT) so ordinary slightly-OTM momentum is untouched.
-    if (otmPct > SETUP_MAX_OTM_PCT) {
+    // strike is nowhere near a same-day move). Discovery uses RUNNER_SETUP_MAX_OTM_PCT
+    // (20%) so 12–20% OTM names can reach commit gates; moneynessGateBlocks applies the
+    // tighter SETUP_MAX_OTM_PCT (12%) unless Vector runner relax is active.
+    if (otmPct > RUNNER_SETUP_MAX_OTM_PCT) {
       opts?.rejections?.push({
         ticker,
         gate_failed: "max_otm_pct",
-        threshold: SETUP_MAX_OTM_PCT,
+        threshold: RUNNER_SETUP_MAX_OTM_PCT,
         gross_premium: agg.gross,
         aggression: Math.round(aggression * 100) / 100,
         side_dominance: Math.round(dominance * 100) / 100,
