@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:26:49.452Z",
+  "updated_at": "2026-09-04T17:31:50.525Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T17:06:26.586Z",
-      "lease_until": "2026-09-04T18:49:59.447Z",
+      "claimed_at": "2026-09-04T17:23:13.927Z",
+      "lease_until": "2026-09-04T18:57:10.243Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "21093ec2-7f6d-459f-aaa6-a377b615fc33",
+      "run_id": "459c0829-950a-4371-9cf9-d185b8ca836b",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -112,6 +112,17 @@
       "reviewer": null,
       "run_id": null,
       "title": null
+    },
+    "BO-P1-0102": {
+      "task_id": "BO-P1-0102",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T17:27:09.187Z",
+      "lease_until": "2026-09-04T18:57:10.243Z",
+      "phase": "VALIDATING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "459c0829-950a-4371-9cf9-d185b8ca836b"
     }
   },
   "reviews": {
@@ -232,11 +243,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "28fdcffc4394cfa9208e94a59e437d30123e742f",
+    "last_main_sha": "4793248e99a5be0b2a70eec188e5e4875c9cde1d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T17:24:44Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33900429145",
-    "last_deploy_sha": "28fdcffc4394cfa9208e94a59e437d30123e742f"
+    "last_deploy_at": "2026-09-04T17:30:40Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33900959005",
+    "last_deploy_sha": "8fce57a4f3b3741211723af3a156972a122921d2"
   },
   "open_prs": [],
   "events": [
@@ -1055,6 +1066,19 @@
       "agent": "cursor",
       "run_id": "fd9ddaab-2c04-4450-bbf1-94d38a6e0b2e",
       "summary": "Cycle: #3656 merged (LULD halt staleness). #3667 APPROVED+auto-merge (stock-candle-store day-rollover race). validate:deploy GREEN, ops:collect 0. Pending peer review: #3662 #3664 #3670 #3671 #3657 (CI in progress). Off-hours — RTH lifecycle skipped."
+    },
+    {
+      "at": "2026-09-04T17:31:50.523Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:31:50.525Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "75a28e9d-b4ce-4877-8614-36a2967cf8c1",
+      "summary": "Cycle complete: peer-reviewed #3662/#3664/#3657/#3670/#3671 APPROVED; #3666/#3668 merged. RTH lifecycle GREEN (options-socket warming transient). Platform-integrity 14/14, SEO 22/22, ops:collect 0."
     }
   ]
 }
