@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:52:08.396Z",
+  "updated_at": "2026-09-04T22:33:08.845Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-04T22:09:00.448Z",
+      "lease_until": "2026-09-04T23:53:22.748Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "3ce14297-b250-4ad2-878a-fcbbc847d8f4",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -234,6 +234,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3769": {
+      "pr": 3769,
+      "head_sha": "1f32c00b773de6b001d2f465e696d0514a85cb24",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T22:32:45.232Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,11 +256,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75",
+    "last_main_sha": "721c3418fd1e0613fa78e5d19f346fa677017a3c",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:42:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
-    "last_deploy_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75"
+    "last_deploy_at": "2026-09-04T22:32:46Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33925960882",
+    "last_deploy_sha": "e8bf8b147dc887f675858135986dbd181241c8fb"
   },
   "open_prs": [],
   "events": [
@@ -1071,6 +1079,29 @@
       "agent": "cursor",
       "run_id": "01ba5e3e-d264-48b8-b6f9-953c859c62cd",
       "summary": "Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty."
+    },
+    {
+      "at": "2026-09-04T22:32:45.233Z",
+      "type": "pr_review",
+      "pr": 3769,
+      "head_sha": "1f32c00b773de6b001d2f465e696d0514a85cb24",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T22:32:45.232Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T22:33:08.844Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T22:33:08.845Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "435e95d0-838a-4990-a2b0-28763634bb15",
+      "summary": "Extended loop: #3769 stock change_pct REST authority merged (33/33 local tests, undrafted+approved). main now includes #3764 GEX walls + #3769. Remaining open: #3773 cursor/swing-command Bugbot fixes (needs Claude peer review), #3774 draft WS L1 guard, #3772 docs run-log (approved, awaiting merge). validate:deploy GREEN; ops:collect 0."
     }
   ]
 }
