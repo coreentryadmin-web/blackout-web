@@ -41,7 +41,17 @@ test("options-socket: live mark freshness uses isWsUpdatedAtFresh (source scan)"
   const src = readFileSync(new URL("./options-socket.ts", import.meta.url), "utf8");
   assert.match(
     src,
-    /isWsUpdatedAtFresh\(local\.ts, maxAgeMs\)/,
+    /export async function getLiveOptionMark[\s\S]*?isWsUpdatedAtFresh\(local\.ts, maxAgeMs\)/,
+    "getLiveOptionMark async must reject clock-skewed future quote stamps (in-memory)"
+  );
+  assert.match(
+    src,
+    /export async function getLiveOptionMark[\s\S]*?isWsUpdatedAtFresh\(hit\.ts, maxAgeMs\)/,
+    "getLiveOptionMark async must reject clock-skewed future quote stamps (Redis)"
+  );
+  assert.match(
+    src,
+    /export function getLiveOptionMarkSync[\s\S]*?isWsUpdatedAtFresh\(local\.ts, maxAgeMs\)/,
     "getLiveOptionMarkSync must reject clock-skewed future quote stamps"
   );
   assert.match(
