@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:16:15.266Z",
+  "updated_at": "2026-09-04T17:02:57.870Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T16:31:34.483Z",
+      "lease_until": "2026-09-04T18:01:34.483Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -224,11 +224,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "8f6ac7df6b87784fe53bf3f1fac082496ccd34c7",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T17:01:12Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33898311494",
+    "last_deploy_sha": "8f6ac7df6b87784fe53bf3f1fac082496ccd34c7"
   },
   "open_prs": [],
   "events": [
@@ -988,6 +988,255 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:02:23.953Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:02:23.953Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3a3387e1-d443-4365-94f3-5a13196f10d3",
+      "summary": "Cycle: #3639+#3642 peer-reviewed+merged. #3634 verify GREEN (Claude review needed). #3648 fixes decompose regression in largo-stress-run. validate:deploy GREEN, ops:collect 0."
+    },
+    {
+      "at": "2026-09-04T17:02:31.922Z",
+      "type": "pr_webhook",
+      "pr": 3656,
+      "event": "sweep",
+      "head": "2798b175deea2d89ea15192b1ee6ae24f257c04f",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T17:02:34.111Z",
+      "type": "pr_webhook",
+      "pr": 3655,
+      "event": "sweep",
+      "head": "8e8e9a991a8eb72c12a487cbee55159724d5c353",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:02:36.347Z",
+      "type": "pr_webhook",
+      "pr": 3654,
+      "event": "sweep",
+      "head": "742bd5dba0f5296451f355ddc270ebfff7d6e824",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T17:02:38.384Z",
+      "type": "pr_webhook",
+      "pr": 3653,
+      "event": "sweep",
+      "head": "b21a28ae27f135e19bec3b9921d98d81daa3f34d",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T17:02:40.548Z",
+      "type": "pr_webhook",
+      "pr": 3652,
+      "event": "sweep",
+      "head": "2e31a8b73525eb70f4ab6019652e5443aa864ec5",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T17:02:42.933Z",
+      "type": "pr_webhook",
+      "pr": 3649,
+      "event": "sweep",
+      "head": "dea1fb1bd10019b5eb60cfa50d73d2b9cca6a59c",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:02:45.254Z",
+      "type": "pr_webhook",
+      "pr": 3646,
+      "event": "sweep",
+      "head": "d85279905278391851b54161d140c74f3eddf5d2",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:02:47.436Z",
+      "type": "pr_webhook",
+      "pr": 3645,
+      "event": "sweep",
+      "head": "1a27ee90f8a75b56d947f99e48e0abefdf61d48b",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:02:49.570Z",
+      "type": "pr_webhook",
+      "pr": 3644,
+      "event": "sweep",
+      "head": "53f533586acaeb71ed62247ccd996b67147be822",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:02:51.653Z",
+      "type": "pr_webhook",
+      "pr": 3638,
+      "event": "sweep",
+      "head": "e04905648ae13e202f48bc717aae9b543014d9b0",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:02:53.934Z",
+      "type": "pr_webhook",
+      "pr": 3637,
+      "event": "sweep",
+      "head": "3bbec8426a3d749be1c2bc835d7dea169dbc0542",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:02:55.927Z",
+      "type": "pr_webhook",
+      "pr": 3636,
+      "event": "sweep",
+      "head": "ae207c9028bb2ef3d49f954ddc80fbf73dd33f42",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T17:02:57.870Z",
+      "type": "pr_webhook",
+      "pr": 3635,
+      "event": "sweep",
+      "head": "92a656b0a9b1e7a685e3b403df8252b29b5a15a0",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3656": {
+      "last_event": "sweep",
+      "last_head": "2798b175deea2d89ea15192b1ee6ae24f257c04f",
+      "last_feedback_at": "2026-09-04T17:02:31.922Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3655": {
+      "last_event": "sweep",
+      "last_head": "8e8e9a991a8eb72c12a487cbee55159724d5c353",
+      "last_feedback_at": "2026-09-04T17:02:34.111Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3654": {
+      "last_event": "sweep",
+      "last_head": "742bd5dba0f5296451f355ddc270ebfff7d6e824",
+      "last_feedback_at": "2026-09-04T17:02:36.347Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3653": {
+      "last_event": "sweep",
+      "last_head": "b21a28ae27f135e19bec3b9921d98d81daa3f34d",
+      "last_feedback_at": "2026-09-04T17:02:38.384Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3652": {
+      "last_event": "sweep",
+      "last_head": "2e31a8b73525eb70f4ab6019652e5443aa864ec5",
+      "last_feedback_at": "2026-09-04T17:02:40.548Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3649": {
+      "last_event": "sweep",
+      "last_head": "dea1fb1bd10019b5eb60cfa50d73d2b9cca6a59c",
+      "last_feedback_at": "2026-09-04T17:02:42.933Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3646": {
+      "last_event": "sweep",
+      "last_head": "d85279905278391851b54161d140c74f3eddf5d2",
+      "last_feedback_at": "2026-09-04T17:02:45.254Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3645": {
+      "last_event": "sweep",
+      "last_head": "1a27ee90f8a75b56d947f99e48e0abefdf61d48b",
+      "last_feedback_at": "2026-09-04T17:02:47.436Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3644": {
+      "last_event": "sweep",
+      "last_head": "53f533586acaeb71ed62247ccd996b67147be822",
+      "last_feedback_at": "2026-09-04T17:02:49.570Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3638": {
+      "last_event": "sweep",
+      "last_head": "e04905648ae13e202f48bc717aae9b543014d9b0",
+      "last_feedback_at": "2026-09-04T17:02:51.653Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3637": {
+      "last_event": "sweep",
+      "last_head": "3bbec8426a3d749be1c2bc835d7dea169dbc0542",
+      "last_feedback_at": "2026-09-04T17:02:53.934Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3636": {
+      "last_event": "sweep",
+      "last_head": "ae207c9028bb2ef3d49f954ddc80fbf73dd33f42",
+      "last_feedback_at": "2026-09-04T17:02:55.927Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3635": {
+      "last_event": "sweep",
+      "last_head": "92a656b0a9b1e7a685e3b403df8252b29b5a15a0",
+      "last_feedback_at": "2026-09-04T17:02:57.870Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }
