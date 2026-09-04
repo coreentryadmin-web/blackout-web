@@ -636,7 +636,7 @@ export async function scanZeroDteBoard(flags?: {
     for (const t of tickers) {
       thesisExtras[t] = mergeLegacyBridgeExtras(thesisExtras[t] ?? {}, helixExtras[t] ?? {});
     }
-    attachThesisFirstShadow(setups, nowEtMinutes, thesisExtras);
+    attachThesisFirstShadow(setups, nowEtMinutes, thesisExtras, marketState);
   }
 
   // Hard-gate verdicts — Cortex runs inside on gate survivors.

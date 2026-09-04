@@ -1,4 +1,5 @@
 import type { EnrichedZeroDteSetup } from "../board";
+import type { MarketStateSnapshot } from "../market-state-engine";
 import { attachThesisFirstLive } from "./live-pipeline";
 import type { ThesisPipelineResult } from "./types";
 import { thesisFirstEnv } from "./types";
@@ -7,11 +8,12 @@ import { thesisFirstEnv } from "./types";
 export function attachThesisFirstShadow(
   setups: EnrichedZeroDteSetup[],
   nowEtMinutes?: number,
-  extrasByTicker: Record<string, import("./rails/legacy-bridge").LegacyBridgeExtras> = {}
+  extrasByTicker: Record<string, import("./rails/legacy-bridge").LegacyBridgeExtras> = {},
+  marketState?: MarketStateSnapshot
 ): void {
   const env = thesisFirstEnv();
   if (!env.enabled && !env.shadow) return;
-  attachThesisFirstLive(setups, nowEtMinutes, extrasByTicker);
+  attachThesisFirstLive(setups, nowEtMinutes, extrasByTicker, marketState);
 }
 
 /** Compact blob for entry_context persistence at commit. */

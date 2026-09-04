@@ -4,6 +4,7 @@ import {
   effectiveIlliquidSpreadPct,
   regimeBypassesThesisBlocks,
   regimeScoreBump,
+  regimeThesisArchetypeRelief,
   PLAN_ILLIQUID_SPREAD_PCT_AMPLIFY,
 } from "./regime-commit-relief";
 import { PLAN_ILLIQUID_SPREAD_PCT } from "./plan";
@@ -46,14 +47,26 @@ test("regimeScoreBump: near-miss 58-64 on aligned amplify FLOW", () => {
   if (prev !== undefined) process.env.ZERODTE_AMPLIFY_SCORE_BUMP = prev;
 });
 
-test("regimeBypassesThesisBlocks: FLOW 80+ aligned on amplify", () => {
+test("regimeBypassesThesisBlocks: FLOW/BREAKOUT 80+ aligned on amplify", () => {
   const prev = process.env.ZERODTE_AMPLIFY_THESIS_BYPASS;
   delete process.env.ZERODTE_AMPLIFY_THESIS_BYPASS;
   assert.equal(regimeBypassesThesisBlocks({ ...amplifyCtx, score: 84 }), true);
   assert.equal(regimeBypassesThesisBlocks({ ...amplifyCtx, score: 79 }), false);
   assert.equal(
     regimeBypassesThesisBlocks({ ...amplifyCtx, score: 90, discovery_origin: ["BREAKOUT"] }),
-    false
+    true
   );
   if (prev !== undefined) process.env.ZERODTE_AMPLIFY_THESIS_BYPASS = prev;
+});
+
+test("regimeThesisArchetypeRelief: aligned FLOW/BREAKOUT 75+ on amplify", () => {
+  const prev = process.env.ZERODTE_AMPLIFY_THESIS_ARCHETYPE_RELIEF;
+  delete process.env.ZERODTE_AMPLIFY_THESIS_ARCHETYPE_RELIEF;
+  assert.equal(regimeThesisArchetypeRelief({ ...amplifyCtx, score: 78 }), true);
+  assert.equal(
+    regimeThesisArchetypeRelief({ ...amplifyCtx, score: 88, discovery_origin: ["BREAKOUT"] }),
+    true
+  );
+  assert.equal(regimeThesisArchetypeRelief({ ...amplifyCtx, score: 70 }), false);
+  if (prev !== undefined) process.env.ZERODTE_AMPLIFY_THESIS_ARCHETYPE_RELIEF = prev;
 });

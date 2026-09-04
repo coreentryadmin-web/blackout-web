@@ -59,6 +59,17 @@ node scripts/rth-live-monitor.mjs --once
 - Discovery OTM cap raised to 20% — commit moneyness still 12% unless runner relax
 - Direction-specific Vector pulse — no PUT winner blocking LONG setup
 - B→A tier promotion for 85+ Vector winners → unlocks `runner_vector` (400%)
+- **Liquid strike fallback** — walks chain when primary strike is `plan_illiquid` (PR #3698)
+- **Amplify relief env knobs** (set on prod without redeploy):
+
+```bash
+ZERODTE_REGIME_SCORE_BUMP=8
+ZERODTE_PLAN_ILLIQUID_SPREAD_PCT_AMPLIFY=25
+ZERODTE_AMPLIFY_THESIS_BYPASS_MIN_SCORE=75
+ZERODTE_AMPLIFY_THESIS_ARCHETYPE_MIN_SCORE=75   # archetype floor relief threshold
+```
+
+Kill-switches: `ZERODTE_LIQUID_STRIKE_FALLBACK=0`, `ZERODTE_AMPLIFY_THESIS_ARCHETYPE_RELIEF=0`
 
 **Counterfactual audits:**
 ```bash
