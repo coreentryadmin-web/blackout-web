@@ -141,6 +141,14 @@ and `indices/route` already rebase via `withFreshPrice` / `overlayRestIndexWithW
 agree within rounding. Specifically watch VIX: ws-bar anchor previously showed +0.07% while REST
 reported -0.35% (measured 2026-09-04).
 
+### 0x. Admin cron health `evaluateJob` age_min unguarded against clock-skewed future `started_at` — fix/admin-cron-age-skew-guard (pending)
+
+**What was broken:** `evaluateJob` computed cron run age as raw `(now - started_at) / 60_000`. Cross-replica clock skew could stamp `started_at` in the future → negative `age_min` on `/admin` System Vitals cron board, or falsely mark the job healthy (negative age never exceeds stale threshold).
+
+**Fix:** Route through `ageMinFromIso`; when age cannot be trusted (clock-skewed future), treat as `staleThreshold + 1` so the job surfaces stale instead of infinitely fresh.
+
+**Check at the open:** `/admin` → Operations → cron health — no negative `age_min` values; jobs with skewed timestamps show stale, not OK.
+
 ### 0v. ISO age helpers treated clock-skewed future timestamps as fresh — fix/iso-age-future-guard-combined (pending)
 
 **What was broken:** `public-gex-snapshot` coerced negative `asof` age to **0 seconds** (reads as just refreshed on the marketing gamma snapshot). Night Hawk Legacy `legacyMarkAgeLabel` and admin Night Hawk playbook `ageMin` used raw `Date.now() - new Date(iso)` without the shared future guard — future-skewed `updated_at` bypassed stuck detection.
