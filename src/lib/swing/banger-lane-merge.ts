@@ -159,14 +159,17 @@ export function horizonPlayFromBangerWatch(
  * against pre-entry WATCH/SKIP rows — a live swing ledger OPEN/HOLD/TRIM position is canonical and must
  * not be evicted when Engine B also has capital on the same symbol.
  */
-export function isPreEntrySwingPlay(play: HorizonPlay): boolean {
+export function isLiveManagingSwingPlay(play: HorizonPlay): boolean {
   const ls = play.liveStatus;
-  if (ls === "OPEN" || ls === "HOLD" || ls === "TRIM") return false;
-  if (play.serving === "MANAGING" || play.serving === "SCALING_OUT" || play.serving === "EXITING") {
-    return false;
-  }
-  if (play.status === "WATCH" || play.serving === "WATCH") return true;
-  return false;
+  if (ls === "OPEN" || ls === "HOLD" || ls === "TRIM") return true;
+  return (
+    play.serving === "MANAGING" || play.serving === "SCALING_OUT" || play.serving === "EXITING"
+  );
+}
+
+/** Pre-entry discovery (WATCH or score-cleared COMMIT without ledger capital). */
+export function isPreEntrySwingPlay(play: HorizonPlay): boolean {
+  return !isLiveManagingSwingPlay(play);
 }
 
 export function mergeBangerPositionsIntoSwingPlays(

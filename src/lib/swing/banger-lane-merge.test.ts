@@ -83,9 +83,25 @@ test("mergeBangerPositionsIntoSwingPlays keeps canonical swing OPEN when banger 
   assert.notEqual(merged[0]!.signalKinds?.[0], "BANGER");
 });
 
+test("mergeBangerPositionsIntoSwingPlays replaces discovery COMMIT (no ledger) with open banger", () => {
+  const discoveryCommit: HorizonPlay = {
+    ticker: "ANET",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 72,
+    status: "COMMIT",
+    scoreFloor: 60,
+    reason: "discovery scored above floor",
+    serving: "COMMIT_NOW",
+    contract: { strike: 150, expiry: "2026-09-12", right: "C", dte: 8, mid: 4.0 },
+  };
+  const merged = mergeBangerPositionsIntoSwingPlays([discoveryCommit], [bangerRow()]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]!.signalKinds?.[0], "BANGER");
+  assert.equal(merged[0]!.serving, "MANAGING");
+});
+
 test("horizonPlayFromBangerPosition keeps an OPEN banger visible as it ages past HORIZONS.SWING.dteMin", () => {
-  // Entered with plenty of runway (contract_expiry 2026-09-12); "now" is 2 calendar days out —
-  // inside the 0DTE window (dte<5), which used to make this ledger row vanish from every view.
   const play = horizonPlayFromBangerPosition(bangerRow(), new Date("2026-09-10T16:00:00-04:00"));
   assert.ok(play, "an OPEN banger position must not disappear once it ages under dteMin");
   assert.equal(play!.contract.dte, 2);
