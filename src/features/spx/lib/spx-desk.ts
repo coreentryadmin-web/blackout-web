@@ -820,8 +820,8 @@ type PulseStructureCache = {
   ema200: number | null;
   sma50: number | null;
   sma200: number | null;
-  leader_stocks: Array<{ name: string; ticker: string; change_pct: number }>;
-  breadth_samples: Array<{ change_pct: number }>;
+  leader_stocks: Array<{ name: string; ticker: string; change_pct: number | null }>;
+  breadth_samples: Array<{ change_pct: number | null }>;
 };
 
 let cachedPulseStructure: PulseStructureCache = {
@@ -862,7 +862,7 @@ function buildDeskDataQuality(
 }
 
 function leaderStocksFromBreadth(
-  samples: Array<{ name: string; ticker: string; change_pct: number }>
+  samples: Array<{ name: string; ticker: string; change_pct: number | null }>
 ) {
   return samples.filter((s) => LEADER_TICKERS.has(s.ticker));
 }
@@ -996,8 +996,8 @@ export type SpxDeskPayload = {
     structure: string;
     detail: string;
   };
-  sector_heat: Array<{ name: string; ticker: string; change_pct: number }>;
-  leader_stocks: Array<{ name: string; ticker: string; change_pct: number }>;
+  sector_heat: Array<{ name: string; ticker: string; change_pct: number | null }>;
+  leader_stocks: Array<{ name: string; ticker: string; change_pct: number | null }>;
   oi_changes: OiChangeItem[];
   iv_term_structure: IvTermPoint[];
   macro_events: MacroEvent[];

@@ -80,6 +80,21 @@ type SnapshotTicker = {
   lastTrade?: { p?: number };
 };
 
+/** Session change % from a batch snapshot row — null when the provider omits change and we
+ *  cannot derive it from day close vs prior close (never fabricate flat 0%). */
+export function snapshotChangePctFromRow(row: SnapshotTicker | undefined): number | null {
+  if (!row) return null;
+  if (row.todaysChangePerc != null && Number.isFinite(row.todaysChangePerc)) {
+    return Number(row.todaysChangePerc.toFixed(2));
+  }
+  const price = row.day?.c ?? row.lastTrade?.p;
+  const prevClose = row.prevDay?.c;
+  if (price != null && prevClose != null && prevClose > 0 && Number.isFinite(price)) {
+    return Number((((price - prevClose) / prevClose) * 100).toFixed(2));
+  }
+  return null;
+}
+
 export type StockQuoteSnapshot = {
   ticker: string;
   price: number;
@@ -182,11 +197,10 @@ async function fetchStockSnapshotPerformance(
 
   return symbols.map((symbol) => {
     const snap = byTicker.get(symbol.ticker);
-    const change = snap?.todaysChangePerc ?? 0;
     return {
       name: symbol.name,
       ticker: symbol.ticker,
-      change_pct: Number(change.toFixed(2)),
+      change_pct: snapshotChangePctFromRow(snap),
       volume: snap?.day?.v,
     };
   });
@@ -337,7 +351,7 @@ export async function fetchMarketMovers(limit = 20) {
 
   const mapMover = (t: SnapshotTicker) => ({
     ticker: String(t.ticker ?? "").replace("X:", ""),
-    change_pct: Number((t.todaysChangePerc ?? 0).toFixed(2)),
+    change_pct: snapshotChangePctFromRow(t),
     price: t.day?.c ?? t.prevDay?.c ?? 0,
     volume: t.day?.v,
   });
@@ -345,6 +359,7 @@ export async function fetchMarketMovers(limit = 20) {
   // Filter out warrants (W suffix), reverse-split artifacts (<$1), and
   // micro-cap shells with negligible volume (<100K shares) that pollute the list.
   const isClean = (m: ReturnType<typeof mapMover>) =>
+    m.change_pct != null &&
     m.price >= 1.0 &&
     !m.ticker.endsWith("W") &&
     !m.ticker.endsWith("R") &&
@@ -355,7 +370,9 @@ export async function fetchMarketMovers(limit = 20) {
     ...(losers.tickers ?? []).slice(0, limit).map(mapMover).filter(isClean),
   ];
 
-  return combined.sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+  return combined.sort(
+    (a, b) => Math.abs(b.change_pct ?? 0) - Math.abs(a.change_pct ?? 0)
+  );
 }
 
 type IndexResult = {

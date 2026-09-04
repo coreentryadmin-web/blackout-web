@@ -120,7 +120,15 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
-### 0ag. UW spot-fallback fabricated flat 0% — fix/spot-fallback-change-pct-null (pending)
+### 0af. Polygon batch snapshot fabricated flat 0% — fix/polygon-snapshot-change-pct-null (pending)
+
+**What was broken:** `fetchStockSnapshotPerformance` (sector ETFs, leader stocks, breadth universe) and `fetchMarketMovers` used `todaysChangePerc ?? 0`, so a missing provider field read as a flat day on SPX desk `sector_heat` / breadth-derived internals.
+
+**Fix:** `snapshotChangePctFromRow()` returns `null` when change cannot be grounded (provider % or day-close derivation). Breadth internals skip null samples; movers filter null change out.
+
+**Check at the open:** SPX desk sector heat rows should show real +/- % or omit/null — never 0.00% for a ticker with no session change data pre-open. Cross-check XLK/XLF on desk vs `GET /api/market/heatmap` sector panel.
+
+### 0ag. UW spot-fallback fabricated flat 0% — fix/spot-fallback-change-pct-null (merged #3790)
 
 **What was broken:** `resolveSpotFromUwStockState()` returned `change_pct: 0` when UW `/stock-state` omitted `prev_close` — members saw "unchanged" with no prior-close anchor.
 
