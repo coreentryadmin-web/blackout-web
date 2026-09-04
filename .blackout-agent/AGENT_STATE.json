@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:52:08.396Z",
+  "updated_at": "2026-09-04T22:09:57.337Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,26 +67,26 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-04T21:41:07.773Z",
+      "lease_until": "2026-09-04T23:19:21.481Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "81de12f5-6e11-4fa9-b311-aa8fa6fdec37",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-04T21:38:46.099Z",
+      "lease_until": "2026-09-04T23:19:21.481Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "81de12f5-6e11-4fa9-b311-aa8fa6fdec37",
       "title": null
     },
     "BO-P1-0104": {
@@ -248,13 +248,64 @@
     }
   },
   "deploy": {
-    "last_main_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75",
+    "last_main_sha": "b5890ad821246586098ed542e3c2819ee379f326",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:42:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
-    "last_deploy_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75"
+    "last_deploy_at": "2026-09-04T21:59:19Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33923543573",
+    "last_deploy_sha": "24cba7807a9a55f8277f726c98200852bf77aa09"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3767,
+      "title": "fix(zerodte): roundFloats on board route sim + member API boundary",
+      "branch": "fix/zerodte-board-sim-roundfloats",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T22:09:50Z"
+    },
+    {
+      "number": 3766,
+      "title": "fix(ws): honest null changePct on stock spot stream",
+      "branch": "fix/stock-spot-changepct-honest-null",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T22:09:52Z"
+    },
+    {
+      "number": 3765,
+      "title": "fix(vector): roundFloats on spy-volume API boundary",
+      "branch": "cursor/vector-spy-volume-roundfloats",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T22:09:48Z"
+    },
+    {
+      "number": 3764,
+      "title": "fix(vector): fail closed on GEX walls when spot is unknown",
+      "branch": "fix/vector-gex-walls-spot-constraint",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T22:09:56Z"
+    },
+    {
+      "number": 3761,
+      "title": "feat(swing-command): unify Swings + Bangers + Vector into 3-tab Night Hawk desk",
+      "branch": "cursor/hourly-autonomous-wake",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T22:09:53Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1071,6 +1122,19 @@
       "agent": "cursor",
       "run_id": "01ba5e3e-d264-48b8-b6f9-953c859c62cd",
       "summary": "Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty."
+    },
+    {
+      "at": "2026-09-04T22:09:57.337Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-04T22:09:57.337Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "f3eed435-f7ae-4f49-a776-6d85c3a22b7c",
+      "summary": "PR-event cycle: #3760+#3757 merged (LULD halt freshness + vector spot constraint). Peer-reviewed both APPROVED. Main@b5890ad82. validate:deploy GREEN, platform-integrity 14/14, ops:collect 0, data-validator 36 PASS. Open: #3761 swing-command (cursor-built, CI pending — Claude peer review). #3762 also merged (UW/SPX future-timestamp guards)."
     }
   ]
 }
