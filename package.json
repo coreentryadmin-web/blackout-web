@@ -105,6 +105,7 @@
     "validate:rth-live-monitor": "node scripts/rth-live-monitor.mjs",
     "validate:play-engine-quality": "node scripts/audit/play-engine-quality-audit.mjs",
     "bootstrap:audit-secrets": "node scripts/bootstrap-audit-secrets.mjs",
+    "validate:rth-secrets-wait": "node scripts/rth-secrets-wait-audit.mjs",
     "validate:exhaustive": "node scripts/exhaustive-platform-audit.mjs",
     "validate:spot-check": "node scripts/continuous-spot-check.mjs --once",
     "validate:spot-check:loop": "node scripts/continuous-spot-check.mjs",
