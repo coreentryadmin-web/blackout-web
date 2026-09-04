@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:07:11.386Z",
+  "updated_at": "2026-09-04T17:43:24.365Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -231,204 +231,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "66b3793547b8364e04160e136f8b3dde211fb4a1",
+    "last_main_sha": "603d30557f08c8d73e9aaad053738afa93d55804",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T17:06:37Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33898798416",
-    "last_deploy_sha": "66b3793547b8364e04160e136f8b3dde211fb4a1"
+    "last_deploy_at": "2026-09-04T17:33:21Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33901200754",
+    "last_deploy_sha": "cdfca8a5b3311dff4d4ba5202eb989c63a99fd4e"
   },
-  "open_prs": [
-    {
-      "number": 3663,
-      "title": "fix(cron): guard NaN in spx-signal-weight-optimize's ?days param",
-      "branch": "fix/spx-signal-weight-optimize-nan-crash",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-04T17:07:10Z"
-    },
-    {
-      "number": 3662,
-      "title": "fix(gex-positioning): recompute nearest_wall after live-WS wall override",
-      "branch": "fix/gex-positioning-nearest-wall-stale",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T17:07:05Z"
-    },
-    {
-      "number": 3661,
-      "title": "chore(autopilot): cursor handoff — #3642 merged, admin fmtRel #3660, RTH GREEN",
-      "branch": "cursor/autopilot-handoff-2026-09-04-cycle3",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T17:06:56Z"
-    },
-    {
-      "number": 3660,
-      "title": "fix(admin): guard API feed + SPX terminal fmtRel against clock-skewed timestamps",
-      "branch": "fix/admin-fmtrel-future-guard-rebase",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T17:06:59Z"
-    },
-    {
-      "number": 3659,
-      "title": "fix(nighthawk): readiness chip DELAYED on future-skewed board as_of",
-      "branch": "fix/nighthawk-readiness-future-asof",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-04T17:07:01Z"
-    },
-    {
-      "number": 3658,
-      "title": "test(zerodte): fix real network/DB leak in zerodte-service.test.ts (5 flaky failures, 13x slower)",
-      "branch": "fix/zerodte-service-test-real-io-leak",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T17:07:03Z"
-    },
-    {
-      "number": 3657,
-      "title": "fix(admin): guard remaining fmtRel/staleMs paths against clock-skewed future ISO timestamps",
-      "branch": "fix/admin-time-ago-future-guard",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T17:07:05Z"
-    },
-    {
-      "number": 3655,
-      "title": "chore(autopilot): cursor handoff — #3647 APPROVED, validations GREEN",
-      "branch": "cursor/autopilot-work-loop-90df",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T17:07:07Z"
-    },
-    {
-      "number": 3654,
-      "title": "fix(admin): guard API Live Feed + SPX Terminal time-ago against clock skew",
-      "branch": "fix/admin-live-feed-time-ago-guard",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-04T17:07:10Z"
-    },
-    {
-      "number": 3653,
-      "title": "chore(autopilot): cursor handoff — #3648 largo-stress fix, peer reviews #3642/#3643",
-      "branch": "chore/autopilot-handoff-2026-09-04-cycle2",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T17:00:07Z"
-    },
-    {
-      "number": 3652,
-      "title": "fix(admin): guard API feed + SPX terminal fmtRel against clock-skewed timestamps",
-      "branch": "fix/admin-fmtrel-future-guard",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T16:57:48Z"
-    },
-    {
-      "number": 3649,
-      "title": "chore(autopilot): cursor handoff — #3627 merged, RTH lifecycle GREEN",
-      "branch": "cursor/autopilot-work-loop-ee29",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T16:45:16Z"
-    },
-    {
-      "number": 3646,
-      "title": "chore(autopilot): cursor handoff — #3627/#3633 merged, validations GREEN",
-      "branch": "cursor/autopilot-handoff-post-3627-3633",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-04T16:45:27Z"
-    },
-    {
-      "number": 3645,
-      "title": "chore(autopilot): cursor RTH validation handoff — lifecycle GREEN",
-      "branch": "cursor/autopilot-rth-handoff-2026-09-04",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-04T16:55:15Z"
-    },
-    {
-      "number": 3644,
-      "title": "chore(autopilot): cursor handoff — peer reviews #3639/#3642, deploy/CI status",
-      "branch": "cursor/autopilot-handoff-pr-event-2026-09-04",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T16:52:33Z"
-    },
-    {
-      "number": 3638,
-      "title": "chore(autopilot): cursor handoff — #3627 merged, deploy GREEN",
-      "branch": "cursor/autopilot-handoff-post-3627-1788539305",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T16:39:41Z"
-    },
-    {
-      "number": 3637,
-      "title": "chore(autopilot): cursor handoff — #3633 peer-reviewed, deploy GREEN",
-      "branch": "cursor/autopilot-handoff-2026-09-04-peer-review",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T16:30:04Z"
-    },
-    {
-      "number": 3636,
-      "title": "chore(autopilot): cursor handoff — RTH lifecycle GREEN, #3627 awaiting Claude review",
-      "branch": "cursor/autopilot-handoff-rth-green-2026-09-04",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-04T16:40:00Z"
-    },
-    {
-      "number": 3635,
-      "title": "chore(autopilot): cursor handoff — #3610/#3613 merged, #3614 CI green",
-      "branch": "cursor/autopilot-work-loop-8932",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-04T16:35:42Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1245,6 +1054,25 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 19
+    },
+    {
+      "at": "2026-09-04T17:43:23.457Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:43:24.364Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:43:24.365Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "801dc15f-f04f-4005-bad7-e49ff96503af",
+      "summary": "Cycle: #3656-#3671 merged/reviewed. validate:deploy GREEN, ops:collect 0. Pending: #3664 #3667 #3677 CI."
     }
   ]
 }

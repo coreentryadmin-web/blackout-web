@@ -1417,7 +1417,7 @@ function TickerSwitcher({
   onPick: (t: string) => void;
   /** Live spot beside the selector — the ONE kept clean header spot reference. */
   spot?: number;
-  changePct?: number;
+  changePct?: number | null;
   showSpot?: boolean;
   /** iOS native shell — bottom sheet picker instead of fixed dropdown (avoids focus zoom + layout break). */
   nativeShell?: boolean;
@@ -1576,7 +1576,7 @@ function TickerSwitcher({
     requestAnimationFrame(() => inputRef.current?.focus());
   }
 
-  const changeBull = (changePct ?? 0) >= 0;
+  const changeBull = changePct != null && changePct >= 0;
 
   function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
@@ -1769,8 +1769,10 @@ function TickerSwitcher({
           aria-atomic="true"
         >
           <span className="sr-only">
-            {ticker} {fmtSpot(spot)}, {changeBull ? "up" : "down"}{" "}
-            {fmtPct(changePct ?? 0)}
+            {ticker} {fmtSpot(spot)}
+            {changePct != null
+              ? `, ${changeBull ? "up" : "down"} ${fmtPct(changePct)}`
+              : ""}
           </span>
           <span aria-hidden className="text-[13px] font-bold tabular-nums text-white">
             {fmtSpot(spot)}
@@ -3425,8 +3427,8 @@ export function GexHeatmap({
     }));
   }, [strikes, filteredTotals, spotStrike, profilePosWall, profileNegWall, flowByStrike]);
 
-  const changePct = data?.change_pct ?? 0;
-  const changeBull = changePct >= 0;
+  const matrixChangePct =
+    data?.change_pct != null && Number.isFinite(data.change_pct) ? data.change_pct : null;
   const isGex = lens === "gex";
   const vocab = LENS_VOCAB[lens];
   const lensUpper = lens.toUpperCase();
@@ -3475,16 +3477,20 @@ export function GexHeatmap({
       : quoteLive
         ? (quote!.price as number)
         : spot;
-  const headerChangePct = pushedLive
-    ? (rebaseChangePct(pushedSpot as number, { price: spot, change_pct: changePct })
+  const headerChangePct: number | null = pushedLive
+    ? (rebaseChangePct(pushedSpot as number, { price: spot, change_pct: matrixChangePct })
       ?? rebaseChangePct(pushedSpot as number, { price: quote?.price, change_pct: quote?.change_pct })
-      ?? pushedChangePct
-      ?? (quoteLive ? (quote!.change_pct ?? 0) : changePct))
+      ?? (pushedChangePct != null && Number.isFinite(pushedChangePct) ? pushedChangePct : null)
+      ?? (quoteLive && quote!.change_pct != null && Number.isFinite(quote!.change_pct)
+        ? quote!.change_pct
+        : matrixChangePct))
     : stockPushLive
-      ? stockPush!.changePct
+      ? (stockPush!.changePct != null && Number.isFinite(stockPush!.changePct)
+        ? stockPush!.changePct
+        : null)
       : quoteLive
-        ? (quote!.change_pct ?? 0)
-        : changePct;
+        ? (quote!.change_pct != null && Number.isFinite(quote!.change_pct) ? quote!.change_pct : null)
+        : matrixChangePct;
   // NOTE: the old `headerChangeBull` + `quoteFresh` derivations powered the big central
   // spot tape (removed in the UI refactor — spot was shown 4+ times). The compact spot
   // beside the ticker selector derives its own up/down sign, and the panel's Live /

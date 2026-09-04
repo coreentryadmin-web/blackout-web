@@ -126,6 +126,79 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0q. cron-staleness-watchdog's self-heal outcome never reached the persisted `cron_job_runs` record — fix/cron-staleness-watchdog-healed-array (pending)
+
+**What was broken:** `runSelfHeal` computed a per-job re-warm result (`ok`/`status`/`error`/`detail`)
+for every stale cron it dispatched via `dispatchCronWarm`, but only `console[...]`-logged it — the
+`healed` array declared to carry it into the persisted run record was never pushed into, so it
+stayed `[]` forever. Compounding this, self-heal dispatches via `after()` specifically so it can't
+block the response (Cloudflare's ~100s origin timeout), which means the `result` object embedding
+`self_healed` is built and persisted via `logCronRun` *before* the background self-heal work has
+even started — so a naive `healed.push(...)` fix alone still couldn't reach that already-written
+row. Net effect: a self-heal re-warm that FAILED during a real incident was durably invisible —
+`cron_job_runs` always showed `self_healed: []` / `ok:true` for the watchdog's own run regardless
+of outcome, with the only trace a `console.error` line in raw CloudWatch.
+
+**Fix:** `runSelfHeal` now actually accumulates results, and once the background work settles it
+persists a SECOND, distinctly-keyed `cron_job_runs` row (`cron-staleness-watchdog-self-heal`)
+carrying the real per-job outcome — marked `"failed"` by `logCronRun` (firing the same Discord
+alert every other cron failure gets) if any re-warm did not succeed. The synchronous response no
+longer claims a settled `self_healed: []` when self-heal was actually dispatched; it reports
+`self_healed: null` (pending) plus a `self_heal_log_key` pointing at the follow-up row.
+
+**Check at the open:** this only matters when `CRON_WATCHDOG_SELF_HEAL=1` is set AND a market-hours
+cron actually goes stale during RTH (rare by design — self-heal exists for exactly that incident).
+If a real self-heal fires during tomorrow's open, confirm a second `cron_job_runs` row appears
+under job key `cron-staleness-watchdog-self-heal` (query `GET /api/admin/cron-health` or the
+`cron_job_runs` table directly) with a `healed` array naming the re-warmed job(s) and their real
+`ok`/`status` — not just the watchdog's own always-`ok:true` row. No self-heal firing at all during
+RTH (the common case) means nothing to check — the fix is dormant, not exercised, that day.
+### 0o. `spx-signal-weight-optimize` cron threw an uncaught RangeError on `?days=`/`?days=abc` — fix/spx-signal-weight-optimize-nan-crash (pending)
+
+**What was broken:** `GET /api/cron/spx-signal-weight-optimize?days=` (empty value, or a bare
+`?days`) or `?days=abc` (non-numeric) hit `parseInt("", 10)` = `NaN` (the `??` fallback only fires
+on `null`/`undefined`, and `URLSearchParams.get()` returns `""` not `null`), which flowed into
+`new Date(NaN).toISOString()` and **threw** `RangeError: Invalid time value` ABOVE the route's own
+try/catch — so the crash was never caught, `logCronRun` never fired, and the failure was invisible
+to `cron_job_runs`/`cron-staleness-watchdog`. Sibling crons (`largo-cleanup`, `nighthawk-outcomes`)
+already guarded the identical kind of `?days` override; this one had not.
+
+**Fix:** guard the parsed value with the same idiom `nighthawk-outcomes/route.ts` already uses —
+`Number.isFinite(rawLookbackDays) && rawLookbackDays > 0 ? rawLookbackDays :
+DEFAULT_LOOKBACK_DAYS` — before it reaches any date arithmetic. A valid numeric override still
+works unchanged; only the malformed/missing cases changed, from an uncaught crash to a clean
+fallback to the 30-day default.
+
+**Check at the open:** no RTH-dependent behavior — this cron reads `spx_signal_observations` and
+runs on its own nightly 10 PM UTC schedule with no query param, so the scheduled run was never
+affected by this bug and needs no re-check. The one thing worth confirming once, at any time (not
+specifically at the open): `curl` the route with a valid `CRON_SECRET` Bearer token and
+`?days=`/`?days=abc` and confirm a clean `200 {"ok":true,"skipped":...}` (or a real report once 10+
+days of data exist) instead of a `500` — proving the fix holds against the live route, not just the
+mocked unit test.
+
+### 0p. `GexPositioning.nearest_wall` went stale across the live-WS wall override — fix/gex-positioning-nearest-wall-stale (pending)
+
+**What was broken:** `getGexPositioning()` overwrites `call_wall`/`put_wall` in place with fresher
+UW WS strike-ladder walls during RTH (`hasLiveGexStrikeExpiry(root)` true), but `nearest_wall` was
+computed once, earlier, inside `gexPositioningFromHeatmap()` from the **pre-override** Polygon-only
+walls and never re-derived. So a live RTH response could serve `call_wall`/`put_wall` from the WS
+ladder while `nearest_wall` still named a stale strike/side/distance from before the override —
+read directly by `spx-desk-intel.ts` (Live Desk brief grounding numbers), Largo's positioning tools,
+`/api/market/gex-positioning`, the mobile ticker route, and the Meridian positioning panel.
+
+**Fix:** extracted the "closer of call_wall/put_wall to spot" logic into a shared
+`nearestWallFromLevels()` helper in `gex-positioning.ts`; the WS-override block now recomputes
+`nearest_wall` from the POST-override `call_wall`/`put_wall` whenever either one actually changed,
+using the same helper the base derivation uses (so the two can't drift apart again).
+
+**Check at the open:** on a WS-active ticker (SPX/SPY/QQQ) during RTH, confirm the served
+`nearest_wall.strike` always equals either `call_wall` or `put_wall` in the SAME
+`/api/market/gex-positioning?ticker=SPX` (or equivalent Largo tool call) response, with the correct
+side (`resistance` for call_wall, `support` for put_wall) and a `distance_pts` consistent with
+`nearest_wall.strike - spot`. Pay particular attention right after a fast intraday gamma migration
+(a real WS wall move), since that's the moment pre-fix and post-fix values would have diverged most.
+
 ### 0n. "Every setup logged publicly" overclaimed against a 3-of-7-product methodology page — fix/public-record-scope-overclaim (pending)
 
 **What was broken:** About page, homepage, and `WhyBlackoutContent.tsx` all said "Every setup BlackOut
@@ -157,6 +230,17 @@ real 4-lens entry is untouched.
 **Check at the open:** none — pure marketing-copy correction, no RTH-dependent behavior. Confirm
 `https://blackouttrades.com/` no longer shows "GEX / VEX / DEX / CHARM" attributed to SPX Slayer
 specifically (Thermal's own card should still show all four, correctly).
+
+### 0n2. Thermal GexHeatmap fabricated flat +0.00% when change_pct absent — fix/thermal-header-change-pct-null (pending)
+
+**What was broken:** When the matrix payload omitted `change_pct` and the live quote had not arrived,
+the Thermal ticker header rendered `+0.00%` via `data?.change_pct ?? 0` and `quote!.change_pct ?? 0`
+fallbacks. Sibling `ThermalCompareStrip` already hid the chip with `?? null`.
+
+**Fix:** Thread `matrixChangePct` as `number | null`; only render the header % chip when finite.
+
+**Check at the open:** On `/heatmap`, switch to a ticker whose matrix is loading — header spot may
+show but day-change chip should be absent (not `+0.00%`) until a real quote or matrix change arrives.
 
 ### 0l. Pricing comparison table omitted the $49 SPX Slayer plan entirely — fix/spx-slayer-pricing-comparison-column (pending)
 
@@ -203,6 +287,21 @@ never reachable from any request path before removal). `tsc --noEmit` clean and 
 suite passing (recorded in the PR) are the complete verification for a fix of this kind; listed
 here only because the standing instruction asks every fix to be logged, not because there is an
 RTH-specific check to run.
+
+### 0n. Night Hawk readiness chip falsely green on future `as_of` — fix/nighthawk-readiness-future-asof (pending)
+
+**What was broken:** On `/nighthawk`, the header readiness chip could show green **READY** when the
+board's `as_of` timestamp was materially in the future (client/server clock skew). Negative
+`asOfAgeMs` never exceeded the 60s stale threshold, so freshness could not be verified but the
+chip still read ready.
+
+**Fix:** `resolveZeroDteReadiness` in `pane.ts` now treats `asOfAgeMs <
+-ZERODTE_MARK_FUTURE_TOLERANCE_MS` the same as stale age — amber **DELAYED** — matching sibling
+`resolveZeroDteFreshness` in `ZeroDteBoard.tsx`.
+
+**Check at the open:** On `/nighthawk` during RTH with live board data, confirm the readiness chip
+is **READY** only when `as_of` is plausibly current; if a skew incident occurs, chip should read
+**DELAYED** not **READY**.
 
 ### 0k. Six orphaned modules removed (SPX/Thermal/marketing) — fix/orphaned-spx-thermal-modules (pending)
 
@@ -267,6 +366,18 @@ returns `{ label: "clock skew", ok: false }`; otherwise clamps with `Math.max(0,
 
 **Check at the open:** `/admin` → Operations → UW/Polygon store tiles show plausible ages during RTH
 (e.g. "12s ago"), not "just now" on a store that hasn't ticked.
+
+### 0j-c. Admin API feed + SPX terminal fmtRel future-skew — fix/admin-fmtrel-future-guard (pending)
+
+**What was broken:** `AdminApiLiveFeed.tsx` and `AdminSpxTerminal.tsx` had local `fmtRel()` helpers
+computing `Date.now() - new Date(iso)` without a future guard — same false **"just now"** / **"now"**
+class as #3627/#3641.
+
+**Fix:** Extended `admin-time-ago.ts` with shared `isoAgeSec()` + compact/open-duration formatters;
+removed duplicate local helpers.
+
+**Check at the open:** `/admin` API live feed + SPX terminal show plausible relative times (or
+"clock skew"), not "just now" on skewed event timestamps.
 
 ### 0i. Platform-integrity probe tier-gate false-WARN — fix/platform-integrity-clerk-auth (merged #3605)
 
@@ -1809,4 +1920,29 @@ than an end-of-session patch.
 - **What was broken:** `main` already removed `src/lib/bie/decompose.ts` but `scripts/largo-stress-run.mjs` still imported `isCompoundQuestion` from it — `ERR_MODULE_NOT_FOUND` on every Largo stress nightly run (same regression class as #3219).
 - **What changed:** Inlined compound-question detection in `largo-stress-run.mjs`; extended `repo-hygiene.test.ts` allowlist comment.
 - **Check:** `LARGO_STRESS_LIMIT=5 node --import tsx scripts/largo-stress-run.mjs` → `router_mismatch: 0`. No member-visible surface.
+
+### 22. HELIX `/flows` — earnings-badge TZ off-by-one + replay NaN sort — fix/flowfeed-date-handling-bugs — 2026-09-04
+
+- **What was broken (badge):** `FlowFeed.tsx`'s `earningsDays` computed the EARN/E{n}D badge's
+  day-count against browser-LOCAL midnight (`new Date().setHours(0,0,0,0)` /
+  `new Date(dateStr + "T00:00:00")`), not the ET trading-calendar date `earningsMap` actually
+  carries — a member off US/Eastern could see the badge off by exactly one day for the hours
+  around either midnight where the local and ET calendar dates disagree (verified: a West Coast
+  member at 2026-09-04 22:00 PT, when the ET day has already rolled to 2026-09-05, saw "E1D"
+  instead of "EARN"/E0D for a same-ET-day report).
+- **What changed:** Extracted `earningsDayDiffEt()`, ET-anchored via the same technique
+  `daysToExpiry` already uses (`Intl.DateTimeFormat` → `Date.parse` of literal UTC midnight for
+  both endpoints). Also fixed `startReplay()`'s tape sort, which used raw
+  `new Date(a.alerted_at).getTime() - new Date(...)` and returned `NaN` (an
+  `Array.prototype.sort` contract violation, unspecified ordering) for any row with
+  `alerted_at: ""` (a freshly-streamed SSE row with unknown print time, per `flow-persist.ts`) —
+  now uses the extracted null-safe `compareFlowAlertsByTimeAsc()`, matching `displayAlerts`'s
+  existing convention a few lines below.
+- **RTH check:** On `/flows`, with the ET session open, compare the EARN/E{n}D badge day-count
+  against the ticker's actual next report date for a few names spot-checked against Meridian's own
+  `report_date`; there should be no case where a badge reads one day off from what Meridian shows
+  for the SAME print. Separately, run a live Replay (▶ Replay button) during/soon-after RTH once
+  the tape has accumulated at least one freshly-streamed row (new SSE prints briefly carry no
+  `alerted_at` before the DB round-trip lands it) and confirm the replay plays in a clean
+  chronological order with no visibly out-of-order jump.
 

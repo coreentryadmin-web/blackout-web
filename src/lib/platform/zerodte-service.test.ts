@@ -148,6 +148,29 @@ mock.module("../zerodte/scan", {
   },
 });
 mock.module("../providers/polygon", { namedExports: { fetchBenzingaNews: async () => [] } });
+// FIXED 2026-09-04: this file's own header claims these payload tests are "hermetic... no IO",
+// but buildZeroDteBoardPayload() calls fetchZeroDteSessionContext() (entry-context.ts) directly —
+// unmocked here — which fetches real Polygon VIX/SPY bars via polygon-largo.ts. In this sandbox
+// POLYGON_API_BASE resolves to a disallowed host, so every call in this file silently made (and
+// waited out) a real, failing network round trip: ~10s per test that called buildZeroDteBoardPayload
+// directly, and for zeroDtePlaysForLargo's getZeroDteBoardPayload() path — which races the cold
+// build against a timeout — losing that race and falling back to the structurally-empty
+// buildMinimalBoardFallback() (upstream_ok:false, ledger:[], setups:[]), which is why
+// zeroDtePlaysForLargo()'s returned envelope had NO `plays`/`fresh_finds` keys at all in 5 tests.
+// The call site already treats a failed fetch as `.catch(() => null)`, so mocking straight to
+// `null` is the exact fail-soft shape production already handles — not a new code path.
+mock.module("../zerodte/entry-context", { namedExports: { fetchZeroDteSessionContext: async () => null } });
+// Same hermeticity gap, two more unmocked real-IO call sites reached unconditionally from
+// buildZeroDteBoardPayload (lines ~702, ~759 in zerodte-service.ts): fetchDiscoveryFunnelHint
+// dynamically imports @/lib/db, and fetchZeroDteVectorPulseByTicker reads
+// @/lib/vector/vector-pick-leaders-db — both add a real (sandbox-blocked) DB-connect timeout to
+// EVERY test in this file. Both call sites already `.catch()` to a fail-soft fallback (null / {}
+// respectively), so mocking straight to that fallback is the exact shape production already
+// handles on a real failure, not a new code path.
+mock.module("../zerodte/discovery-funnel-hint", { namedExports: { fetchDiscoveryFunnelHint: async () => null } });
+mock.module("../zerodte/vector-crosslink", {
+  namedExports: { fetchZeroDteVectorPulseByTicker: async () => ({}) },
+});
 mock.module("../zerodte/earnings", { namedExports: { readGridEarnings: async () => null } });
 mock.module("../server-cache", {
   namedExports: {
