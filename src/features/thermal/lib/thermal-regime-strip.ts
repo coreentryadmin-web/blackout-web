@@ -1,5 +1,6 @@
 import { fmtPremium } from "@/lib/fmt-money";
 import { fmtHeatmapStrike } from "@/lib/gex-heatmap-display";
+import { GEX_KING_NODE_LABEL } from "@/lib/gex-king-node-labels";
 
 export type RegimeStripLens = "gex" | "vex" | "dex" | "charm";
 
@@ -92,7 +93,9 @@ export function buildGexRegimeInterpretation(input: {
   }
 
   if (magnetStrike != null) {
-    parts.push(`${fmtStrike(magnetStrike)} is the dominant pin.`);
+    parts.push(
+      `${fmtStrike(magnetStrike)} is the ${GEX_KING_NODE_LABEL.toLowerCase()} (max |net γ|).`
+    );
   } else if (callWall != null && posture === "long") {
     parts.push(`${fmtStrike(callWall)} is the dominant upside magnet.`);
   }
@@ -180,7 +183,7 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
     ];
     if (magnetStrike != null) {
       segments.push(
-        segment("anchor", "Magnet", fmtStrike(magnetStrike), { icon: "🧲", tone: "wall" })
+        segment("anchor", GEX_KING_NODE_LABEL, fmtStrike(magnetStrike), { icon: "🧲", tone: "wall" })
       );
     }
     if (flip != null) {

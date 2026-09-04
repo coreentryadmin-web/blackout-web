@@ -61,6 +61,7 @@ import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
 import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
 import { todayEt } from "@/lib/et-date";
+import { rebaseChangePct } from "@/lib/providers/change-pct";
 import { forcedFlowBetween, wallMarkerRowIndex } from "@/lib/gex-depth";
 import {
   fmtHeatmapExpiry,
@@ -3475,7 +3476,10 @@ export function GexHeatmap({
         ? (quote!.price as number)
         : spot;
   const headerChangePct = pushedLive
-    ? (pushedChangePct ?? (quoteLive ? (quote!.change_pct ?? 0) : changePct))
+    ? (rebaseChangePct(pushedSpot as number, { price: spot, change_pct: changePct })
+      ?? rebaseChangePct(pushedSpot as number, { price: quote?.price, change_pct: quote?.change_pct })
+      ?? pushedChangePct
+      ?? (quoteLive ? (quote!.change_pct ?? 0) : changePct))
     : stockPushLive
       ? stockPush!.changePct
       : quoteLive

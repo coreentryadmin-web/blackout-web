@@ -2795,16 +2795,16 @@ export function VectorChart({
           expectedMoveBandsRef.current,
           enabled.has("expected-move")
         );
-        // EOD pin projection (SPX desk only) — always on for SPX (no toggle); the fetch effect
-        // only populates pinProjRef when ticker === "SPX", so it's inert elsewhere.
-        applyPinProjection(seriesRef.current, pinLinesRef, pinSigRef, pinProjRef.current, ticker === "SPX");
+        // EOD pin projection — solid gold axis tag + MC cone. SPX keeps the desk read; every other
+        // ticker uses the generic vector pin-forecast endpoint (populated by the fetch effect below).
+        applyPinProjection(seriesRef.current, pinLinesRef, pinSigRef, pinProjRef.current, pinProjRef.current != null);
         // EOD pin CONE — the MC p10/p50/p90 close distribution as a converging curve in the right
-        // margin (now → 16:00). Projected off the LAST shown bar's time, so the funnel starts at
-        // "now" and narrows onto the pin. SPX-only; a null cone or non-SPX draws nothing.
+        // margin (now → target close). Projected off the LAST shown bar's time, so the funnel starts at
+        // "now" and narrows onto the pin. A null cone draws nothing.
         pinConePrimitiveRef.current?.setData(
           pinConeRef.current,
           bars.length ? (bars[bars.length - 1]!.time as Time) : null,
-          ticker === "SPX"
+          pinConeRef.current != null && pinConeRef.current.length >= 2
         );
         // TIME-CONVERGING EXPECTED-MOVE CONE (default OFF) — the honest "remaining move" companion to
         // the flat band above. Built from the SAME expected-move band + the live spot, funnelling
@@ -3101,62 +3101,96 @@ export function VectorChart({
     };
   }, [indicators, ticker, dteHorizon, liveSession, paintOverlays]);
 
-  // EOD PIN projection (SPX desk only) — fetch the 0DTE projected close + band and draw it on the
-  // price chart (solid gold line + dashed band edges). Gated to ticker === "SPX", so /vector and any
-  // other ticker never fetch or draw it. Polls at the desk cadence (5s) during a live session; a
-  // single fetch off-hours. Best-effort: a failed fetch keeps the last-drawn line rather than
-  // blanking it. Draws via paintOverlays → applyPinProjection (idempotent sig ref).
+  // EOD pin projection — fetch the projected close + band and draw on the price chart (gold axis
+  // tag + MC cone in the right margin). SPX keeps the desk `/spx/pin` read (analytic + MC split);
+  // every other ticker uses `/api/market/vector/pin-forecast`. Polls at desk cadence (5s) live;
+  // single fetch off-hours. Best-effort: transient fetch blips on the SAME ticker keep the last
+  // overlay; ticker/horizon changes clear immediately so NVDA never inherits SPX's pin.
   useEffect(() => {
-    if (ticker !== "SPX") return;
     let cancelled = false;
+    pinProjRef.current = null;
+    pinConeRef.current = null;
+    pinSigRef.current = "";
+    paintOverlays(lastDisplayBarsRef.current);
+    const parseCone = (rawCone: unknown): PinConeStep[] | null => {
+      if (!Array.isArray(rawCone)) return null;
+      const cone = rawCone.filter(
+        (s): s is PinConeStep =>
+          !!s &&
+          typeof s === "object" &&
+          ["tMin", "p10", "p50", "p90"].every(
+            (k) => typeof (s as Record<string, unknown>)[k] === "number" && Number.isFinite((s as Record<string, unknown>)[k])
+          )
+      ) as PinConeStep[];
+      return cone.length >= 2 ? cone : null;
+    };
+    const applyPinPayload = (close: number | null, band: unknown, cone: PinConeStep[] | null) => {
+      const pinBand =
+        Array.isArray(band) &&
+        band.length === 2 &&
+        band.every((n) => typeof n === "number" && Number.isFinite(n))
+          ? ([band[0] as number, band[1] as number] as [number, number])
+          : null;
+      pinProjRef.current = close != null ? { close, band: pinBand } : null;
+      pinConeRef.current = cone;
+      paintOverlays(lastDisplayBarsRef.current);
+    };
     const load = async () => {
       try {
-        const res = await fetch("/api/market/spx/pin", { cache: "no-store" });
+        if (ticker === "SPX") {
+          const res = await fetch("/api/market/spx/pin", { cache: "no-store" });
+          if (cancelled || !res.ok) return;
+          const j = (await res.json()) as {
+            pin?: unknown;
+            projectedClose?: unknown;
+            pinBand?: unknown;
+            montecarlo?: { pin?: unknown; projectedClose?: unknown; pinBand?: unknown; cone?: unknown } | null;
+          };
+          if (cancelled) return;
+          const mc = j.montecarlo ?? null;
+          const rawPin =
+            typeof mc?.projectedClose === "number"
+              ? mc.projectedClose
+              : typeof mc?.pin === "number"
+                ? mc.pin
+                : typeof j.projectedClose === "number"
+                  ? j.projectedClose
+                  : j.pin;
+          const rawBand = Array.isArray(mc?.pinBand) ? mc!.pinBand : j.pinBand;
+          const close = typeof rawPin === "number" && Number.isFinite(rawPin) ? rawPin : null;
+          applyPinPayload(close, rawBand, parseCone(mc?.cone));
+          return;
+        }
+
+        const target = dteHorizon === "0dte" ? "eod" : "expiry";
+        const res = await fetch(
+          `/api/market/vector/pin-forecast?ticker=${encodeURIComponent(ticker)}&target=${target}`,
+          { cache: "no-store" }
+        );
         if (cancelled || !res.ok) return;
         const j = (await res.json()) as {
-          pin?: unknown;
-          projectedClose?: unknown;
-          pinBand?: unknown;
-          montecarlo?: { pin?: unknown; projectedClose?: unknown; pinBand?: unknown; cone?: unknown } | null;
+          forecast?: {
+            available?: boolean;
+            projectedClose?: unknown;
+            pin?: unknown;
+            pinBand?: unknown;
+            cone?: unknown;
+          } | null;
         };
         if (cancelled) return;
-        // Prefer the MONTE-CARLO projection on the chart (member-directed): its band is empirical, so
-        // the on-chart line/band reflect the true (possibly asymmetric) distribution. Fall back to the
-        // analytic base when the MC overlay is absent.
-        // Use the UNSNAPPED projectedClose (not the snap-to-strike `pin`) so the on-chart pin tag
-        // AGREES with the forecaster panel's headline and visibly drifts intraday instead of sitting
-        // frozen on a round strike (the "7520 all day" report). Fall back to `pin` if absent.
-        const mc = j.montecarlo ?? null;
+        const f = j.forecast;
+        if (!f?.available) {
+          applyPinPayload(null, null, null);
+          return;
+        }
         const rawPin =
-          typeof mc?.projectedClose === "number" ? mc.projectedClose
-          : typeof mc?.pin === "number" ? mc.pin
-          : typeof j.projectedClose === "number" ? j.projectedClose
-          : j.pin;
-        const rawBand = Array.isArray(mc?.pinBand) ? mc!.pinBand : j.pinBand;
+          typeof f.projectedClose === "number"
+            ? f.projectedClose
+            : typeof f.pin === "number"
+              ? f.pin
+              : null;
         const close = typeof rawPin === "number" && Number.isFinite(rawPin) ? rawPin : null;
-        const band =
-          Array.isArray(rawBand) &&
-          rawBand.length === 2 &&
-          rawBand.every((n) => typeof n === "number" && Number.isFinite(n))
-            ? ([rawBand[0] as number, rawBand[1] as number] as [number, number])
-            : null;
-        pinProjRef.current = close != null ? { close, band } : null;
-        // Parse the MC cone (p10/p50/p90 per time-step) for the on-chart converging curve. Only the
-        // MC forecast carries a cone; validate each step is finite + ordered so a malformed payload
-        // draws nothing rather than a broken funnel. Empty/absent → null (primitive draws nothing).
-        const rawCone = Array.isArray(mc?.cone) ? mc!.cone : null;
-        const cone: PinConeStep[] | null = rawCone
-          ? (rawCone.filter(
-              (s): s is PinConeStep =>
-                !!s &&
-                typeof s === "object" &&
-                ["tMin", "p10", "p50", "p90"].every(
-                  (k) => typeof (s as Record<string, unknown>)[k] === "number" && Number.isFinite((s as Record<string, unknown>)[k])
-                )
-            ) as PinConeStep[])
-          : null;
-        pinConeRef.current = cone && cone.length >= 2 ? cone : null;
-        paintOverlays(lastDisplayBarsRef.current);
+        applyPinPayload(close, f.pinBand, parseCone(f.cone));
       } catch {
         // keep the last-drawn line on a transient blip
       }
@@ -3167,7 +3201,7 @@ export function VectorChart({
       cancelled = true;
       if (id) clearInterval(id);
     };
-  }, [ticker, liveSession, paintOverlays]);
+  }, [ticker, dteHorizon, liveSession, paintOverlays]);
 
   const toggleIndicator = useCallback((id: VectorIndicatorId) => {
     setIndicators((prev) => {
