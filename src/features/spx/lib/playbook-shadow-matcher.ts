@@ -899,7 +899,7 @@ function matchPb12(
   }
 
   const prox = scaledPlaybookStructureProximityPts(desk);
-  const ext = Math.abs(desk.spx_change_pct) >= 0.5;
+  const ext = desk.spx_change_pct != null && Math.abs(desk.spx_change_pct) >= 0.5;
   const rsi = technicals.m5_rsi;
   const overbought = rsi != null && rsi >= 72;
   const oversold = rsi != null && rsi <= 28;

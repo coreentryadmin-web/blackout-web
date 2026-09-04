@@ -11,7 +11,7 @@ export type SpxState = {
   hod: number;
   vix: number | null;
   vix_change_pct: number | null;
-  spx_change_pct: number;
+  spx_change_pct: number | null;
   above_vwap: boolean;
   uw_iv_rank: number | null;
   gex_net: number | null;

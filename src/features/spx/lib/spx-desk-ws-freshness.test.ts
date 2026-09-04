@@ -8,10 +8,10 @@ import { readFileSync } from "node:fs";
 
 const src = readFileSync("src/features/spx/lib/spx-desk.ts", "utf8");
 
-test("spx-desk: UW WS freshness uses a future-tolerance guard, not raw Date.now() - updatedAt", () => {
+test("spx-desk: UW WS freshness uses shared isWsUpdatedAtFresh, not raw Date.now() - updatedAt", () => {
+  assert.match(src, /import \{ isWsUpdatedAtFresh \} from "@\/lib\/ws\/timestamp-freshness"/);
   assert.match(src, /function uwWsStoreFresh\(/);
-  assert.match(src, /UW_WS_FUTURE_TOLERANCE_MS/);
-  assert.match(src, /ageMs >= -UW_WS_FUTURE_TOLERANCE_MS && Math\.max\(0, ageMs\) < staleMs/);
+  assert.match(src, /return isWsUpdatedAtFresh\(updatedAt, staleMs, now\)/);
   assert.match(src, /uwWsStoreFresh\(tideStore\.updatedAt, TIDE_STALE_MS\)/);
   assert.match(src, /uwWsStoreFresh\(snap\.updatedAt, INTERVAL_FLOW_WS_STALE_MS\)/);
   assert.match(src, /uwWsStoreFresh\(darkPoolStore\.updatedAt, DARK_POOL_WS_STALE_MS\)/);
@@ -20,4 +20,10 @@ test("spx-desk: UW WS freshness uses a future-tolerance guard, not raw Date.now(
     /if \(Date\.now\(\) - tideStore\.updatedAt < TIDE_STALE_MS\)/,
     "must not use unguarded tide freshness"
   );
+});
+
+test("spx-desk: index WS freshness guards future updatedAt via indexWsFresh", () => {
+  assert.match(src, /function indexWsFresh\(/);
+  assert.match(src, /indexWsFresh\(ws\.updatedAt, now\)/);
+  assert.match(src, /indexWsFresh\(e\.updatedAt, now\)/);
 });

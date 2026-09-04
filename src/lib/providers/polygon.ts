@@ -374,7 +374,8 @@ type IndexResult = {
 export type IndexQuote = {
   symbol: string;
   price: number;
-  change_pct: number;
+  /** Null when the provider omits session change — never fabricate flat 0%. */
+  change_pct: number | null;
   /** Prior-session close, when the provider gives it. Carried so a consumer overlaying a fresher
    *  WS price can re-derive `change_pct` against the SAME reference instead of passing this
    *  snapshot's percentage through beside a newer price (see lib/providers/change-pct.ts).
@@ -410,10 +411,14 @@ export async function fetchIndexSnapshots(
       continue;
     }
 
+    const sessionChg = row.session?.change_percent;
     out[ticker] = {
       symbol: ticker,
       price,
-      change_pct: Number((row.session?.change_percent ?? 0).toFixed(2)),
+      change_pct:
+        sessionChg != null && Number.isFinite(Number(sessionChg))
+          ? Number(Number(sessionChg).toFixed(2))
+          : null,
       prev_close:
         row.session?.previous_close != null && Number(row.session.previous_close) > 0
           ? Number(row.session.previous_close)

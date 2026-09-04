@@ -38,7 +38,7 @@ type QuotePayload = {
   available: true;
   ticker: string;
   price: number;
-  change_pct: number;
+  change_pct: number | null;
   source: "ws" | "rest";
   asof: string;
 };

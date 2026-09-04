@@ -98,7 +98,8 @@ async function seedSessionOpenFromRest(): Promise<void> {
       if (prev.open_source === "rest" && prev.session_date === todayET && prev.session_open > 0) {
         continue;
       }
-      const changePct = Number.isFinite(snap.change_pct) ? snap.change_pct : 0;
+      const changePct = snap.change_pct;
+      if (changePct == null || !Number.isFinite(changePct)) continue;
       // true session open = price discounted by the day's % change (vs official prevClose / open).
       const sessionOpen = changePct !== 0 ? snap.price / (1 + changePct / 100) : snap.price;
       if (!(sessionOpen > 0)) continue;

@@ -60,7 +60,7 @@ export async function buildLargoTechnicals(ticker: string) {
   ]);
 
   let price = 0;
-  let changePct = 0;
+  let changePct: number | null = null;
   const wsTicker = isIndex ? sym.replace(/^I:/, "") : stockSymbol(ticker);
   const wsCandle = getStockLiveCandle(wsTicker);
   const ws = wsCandle.current && wsCandle.current.close > 0 ? wsCandle.current.close : null;
@@ -69,11 +69,11 @@ export async function buildLargoTechnicals(ticker: string) {
   } else if (isIndex) {
     const row = quoteRaw?.[sym];
     price = row?.price ?? 0;
-    changePct = row?.change_pct ?? 0;
+    changePct = row?.change_pct ?? null;
   } else {
     const snap = await fetchStockSnapshot(stockSymbol(ticker));
     price = snap?.price ?? 0;
-    changePct = snap?.change_pct ?? 0;
+    changePct = snap?.change_pct ?? null;
   }
 
   const last = dailyBars.at(-1)?.c ?? price;

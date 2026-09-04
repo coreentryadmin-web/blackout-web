@@ -27,13 +27,13 @@
 export function pulseChangePctFromPriorClose(
   price: number | null | undefined,
   priorClose: number | null | undefined,
-  transported: number
-): number {
+  transported: number | null | undefined
+): number | null {
   if (
     typeof price === "number" && Number.isFinite(price) && price > 0 &&
     typeof priorClose === "number" && Number.isFinite(priorClose) && priorClose > 0
   ) {
     return ((price - priorClose) / priorClose) * 100;
   }
-  return transported;
+  return transported != null && Number.isFinite(transported) ? transported : null;
 }
