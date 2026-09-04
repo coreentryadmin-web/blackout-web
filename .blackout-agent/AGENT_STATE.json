@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:34:19.105Z",
+  "updated_at": "2026-09-04T08:05:22.126Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -82,12 +82,13 @@
       "owner": "cursor",
       "claimed_at": "2026-09-04T07:20:03.111Z",
       "lease_until": "2026-09-04T09:03:49.121Z",
-      "phase": "VERIFYING",
+      "phase": "RELEASED",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": "30ffe42c-8d02-40e6-ba75-7cc71b71a5df",
-      "title": null
+      "title": null,
+      "released_at": "2026-09-04T07:34:23.114Z"
     }
   },
   "reviews": {
@@ -161,12 +162,163 @@
   },
   "deploy": {
     "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T07:20:16Z",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-09-04T08:01:59Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
     "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3532,
+      "title": "chore(autopilot): sync agent state after deploy verification cycle",
+      "branch": "chore/autopilot-sync-20260904-0734",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T08:05:08Z"
+    },
+    {
+      "number": 3531,
+      "title": "chore(autopilot): sync agent state after deploy verification cycle",
+      "branch": "chore/autopilot-state-sync-20260904T0743",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T08:05:10Z"
+    },
+    {
+      "number": 3530,
+      "title": "chore(autopilot): cursor handoff after #3523 peer review + deploy verify",
+      "branch": "cursor/autopilot-handoff-20260904-0739",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T08:05:13Z"
+    },
+    {
+      "number": 3527,
+      "title": "chore(autopilot): sync agent state after workflow_run verification cycle",
+      "branch": "cursor/autopilot-state-recovery-loop-f66b",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T08:05:16Z"
+    },
+    {
+      "number": 3526,
+      "title": "chore(autopilot): cursor handoff after #3523 peer review + lifecycle GREEN",
+      "branch": "chore/autopilot-handoff-2026-09-04T0725",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T08:05:18Z"
+    },
+    {
+      "number": 3525,
+      "title": "chore(autopilot): cursor handoff — merged #3523, lifecycle GREEN",
+      "branch": "cursor/autopilot-handoff-20260904-0718",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T07:36:04Z"
+    },
+    {
+      "number": 3524,
+      "title": "chore(autopilot): sync cursor agent state after deploy verify cycle",
+      "branch": "cursor/agent-state-sync-20260904-0702",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T07:07:53Z"
+    },
+    {
+      "number": 3522,
+      "title": "chore(autopilot): cursor handoff — deploy verify GREEN, peer sweep empty",
+      "branch": "cursor/autopilot-work-loop-a62b",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T07:20:50Z"
+    },
+    {
+      "number": 3521,
+      "title": "chore(autopilot): cursor handoff — off-hours lifecycle GREEN 2026-09-04",
+      "branch": "chore/autopilot-handoff-2026-09-04-v2",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T07:08:00Z"
+    },
+    {
+      "number": 3519,
+      "title": "chore(autopilot): sync peer review state for #3512/#3511/#3513",
+      "branch": "cursor/autopilot-work-loop-efb4",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T07:07:45Z"
+    },
+    {
+      "number": 3518,
+      "title": "chore(autopilot): cursor session state sync — peer reviews #3508-3512",
+      "branch": "cursor/autopilot-work-loop-39ce",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T07:07:48Z"
+    },
+    {
+      "number": 3517,
+      "title": "chore(autopilot): cursor handoff after peer reviews #3512/#3506 merged",
+      "branch": "cursor/autopilot-work-loop-d9ae",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T07:07:50Z"
+    },
+    {
+      "number": 3516,
+      "title": "chore(autopilot): cursor peer reviews + handoff state sync",
+      "branch": "cursor/autopilot-state-recovery-loop-2e9b",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T07:07:53Z"
+    },
+    {
+      "number": 3515,
+      "title": "chore(autopilot): cursor handoff after #3508/#3509 peer reviews",
+      "branch": "chore/autopilot-handoff-2026-09-04T0635",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T07:39:28Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T07:07:58Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -660,6 +812,37 @@
       "agent": "cursor",
       "run_id": "fc67a6fa-31e8-4a32-9dae-d98314ad80bf",
       "summary": "Deploy cycle: main@14c5d815d (#3523), ECR deploy run 33848248248 in_progress (workflow_dispatch). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours). pr-sweep empty, open PRs 0. RTH lifecycle GREEN (off-hours skip). Next: monitor deploy completion."
+    },
+    {
+      "at": "2026-09-04T07:34:23.114Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T07:34:26.241Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:04:34.141Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:04:34.142Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "89ba0a80-88e4-4bd0-9d66-91c4ad3932df",
+      "summary": "Deploy SUCCESS @ 14c5d815d (run 33848248248). validate:deploy GREEN post-roll. Agent state branch pushed (chore/autopilot-sync-20260904-0734) — PR blocked by GraphQL rate limit. All standing checks GREEN off-hours."
+    },
+    {
+      "at": "2026-09-04T08:05:22.126Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 15
     }
   ]
 }
