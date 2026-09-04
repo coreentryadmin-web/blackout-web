@@ -65,6 +65,15 @@ test("dispatch-prompt includes coordination rules", () => {
   assert.match(r.stdout, /CONTINUOUS WORK LOOP/);
 });
 
+test("hourly-checklist includes autonomous wake questions", () => {
+  const r = spawnSync("node", ["scripts/blackout-agent/hourly-checklist.mjs"], { encoding: "utf8", cwd: repoRoot });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /HOURLY AUTONOMOUS WAKE/);
+  assert.match(r.stdout, /ops:collect/);
+  assert.match(r.stdout, /Do not prompt the user/);
+  assert.match(r.stdout, /pattern scan/);
+});
+
 test("discoverStandingWork finds open PRs needing peer review", async () => {
   const { discoverStandingWork } = await import("./select-task.mjs");
   const state = {

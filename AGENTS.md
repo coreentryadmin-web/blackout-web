@@ -143,6 +143,7 @@ Full policy + exceptions: **`CLAUDE.md`** § Merge authorization.
 - **Every push to `main`** (merge landed) → wake Cursor immediately
 - **CI green on `main`** → wake Cursor to continue work loop
 - **Every 10 minutes** (schedule fallback)
+- **Every hour** (`blackout-hourly-checklist.yml`) — structured wake with fixed checklist (`npm run blackout:hourly`)
 - PR opened/sync/merged, deploy success, CI failure, peer review approved
 
 **Do NOT rely on the user to wake you.** After any merge, the next session should already be dispatched.
@@ -177,7 +178,8 @@ If peer owns highest task, pick next independent task. **Never idle — never en
 **Standing perpetual tasks** in WORK_QUEUE (`BO-P1-0100` peer review, `BO-P1-0101` deploy ops, `BO-P2-0100` 0DTE) — never mark DONE.
 
 Architecture: `.blackout-agent/README.md`. Constitution: **`CLAUDE.md`** (do not fork).
-Dispatch prompt: `npm run blackout:prompt -- --agent=cursor`
+Dispatch prompt: `npm run blackout:prompt -- --agent=cursor`  
+Hourly checklist: `npm run blackout:hourly`
 
 **Session entry:** `npm run blackout:session -- --agent=cursor` (sync + heartbeat + resume leases)  
 **Task selection:** `npm run blackout:select -- --agent=cursor`  
