@@ -126,6 +126,14 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0v. ISO age helpers treated clock-skewed future timestamps as fresh — fix/iso-age-future-guard-combined (pending)
+
+**What was broken:** `public-gex-snapshot` coerced negative `asof` age to **0 seconds** (reads as just refreshed on the marketing gamma snapshot). Night Hawk Legacy `legacyMarkAgeLabel` and admin Night Hawk playbook `ageMin` used raw `Date.now() - new Date(iso)` without the shared future guard — future-skewed `updated_at` bypassed stuck detection.
+
+**Fix:** `ageSecFromIso` / `ageMinFromIso` in `timestamp-freshness.ts`; `nighthawkJobAgeMin()` for admin cron health (clock-skew → `stuckThresholdMin + 1`).
+
+**Check at the open:** `/tools/gamma-snapshot` age honest during RTH; Legacy Night Hawk mark age does not read "0s ago" on skewed `markAsOf`; `/admin` cron health escalates skewed Night Hawk builds to stale.
+
 ### 0u. `/vs/others` comparison table missed the same "every setup graded" overclaim fix — fix/vs-others-track-record-scope (pending)
 
 **What was broken:** #3643 (item 0n below) scoped "every setup logged"-style claims on the About

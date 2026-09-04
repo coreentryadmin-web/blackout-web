@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { evaluateJob, expectedNighthawkEdition, nighthawkEditionCoversExpected } from "./admin-cron-health";
+import {
+  evaluateJob,
+  expectedNighthawkEdition,
+  nighthawkEditionCoversExpected,
+  nighthawkJobAgeMin,
+} from "./admin-cron-health";
 import type { CronJobDefinition } from "./cron-registry";
 
 function withDefaultNighthawkWindow(fn: () => void) {
@@ -118,6 +123,18 @@ test("a never-run market-hours job stays quiet overnight — it is not due yet",
   );
   assert.equal(health.status, "unknown");
   assert.equal(health.market_hours_stale, false);
+});
+
+test("nighthawkJobAgeMin: future updated_at exceeds stuck threshold (clock skew)", () => {
+  const now = Date.parse("2026-09-04T12:00:00Z");
+  const future = new Date(now + 60_000).toISOString();
+  assert.equal(nighthawkJobAgeMin(future, 60, now), 61);
+});
+
+test("nighthawkJobAgeMin: past updated_at returns clamped minutes", () => {
+  const now = Date.parse("2026-09-04T12:00:00Z");
+  const past = new Date(now - 90_000).toISOString();
+  assert.equal(nighthawkJobAgeMin(past, 60, now), 2);
 });
 
 test("REGRESSION: a job WITH a fresh run is untouched by the never-run branch", () => {
