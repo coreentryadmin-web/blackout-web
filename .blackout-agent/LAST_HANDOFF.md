@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T18:04:36.400Z
-**Run:** b275bfdc-1f58-42b3-880f-a1076bca767f
+**At:** 2026-09-04T18:07:30.588Z
+**Run:** 3841662d-52b6-457a-99b6-b7fe7d0cd56a
 
 ## Summary
 
-Hourly wake: peer-review sweep empty (0 open PRs). validate:deploy GREEN, validate:platform-integrity 14/14 PASS, validate:api-auth GREEN, ops:collect 0 items. Synced main to 1b65d627 (#3682 SPX neutral tone). ECR deploy run 33903259362 still pending. Off-hours — RTH lifecycle skipped.
+Cycle complete: 0 open PRs to review. validate:deploy GREEN, platform-integrity 14/14, ops:collect 0. Main 1b65d627 (#3682). Agent state PR #3693 opened for Claude peer review. ECR run 33903259362 still pending (queued).
 
 ## Deploy
 
@@ -14,4 +14,15 @@ Hourly wake: peer-review sweep empty (0 open PRs). validate:deploy GREEN, valida
 
 ## Open PRs
 
-_none_
+- #3693 [cursor] chore(autopilot): cursor handoff after hourly wake verification cycle
+- #3692 [agent] fix(quote): rebase index WS change_pct via REST overlay
+- #3691 [agent] fix(age): guard ISO snapshot ages against clock-skewed future timestamps
+- #3689 [agent] fix(bie): reject clock-skewed future asOf in full-state freshness
+- #3688 [agent] fix(market): round quote tape floats + neutral SPX tone when change unknown
+- #3686 [cursor] fix(vector): guard computeGexWalls spot in vector-snapshot GAMMA lens
+- #3685 [agent] fix(admin): guard nighthawk-playbook cron age against clock-skewed updated_at
+- #3681 [agent] fix(age): guard ISO snapshot ages against clock-skewed future timestamps
+- #3675 [agent] fix(admin): guard SPX dashboard stale banner against clock-skewed generated_at
+- #3667 [agent] fix(ws): close cross-session gap in stock-candle-store REST session-open seed
+- #3664 [agent] fix(marketing): scope /vs/others "every setup graded" claim to the 3 ledgered products
+- #3654 [agent] fix(admin): guard API Live Feed + SPX Terminal time-ago against clock skew
