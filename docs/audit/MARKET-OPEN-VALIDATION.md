@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0za. Playbook data-quality + LULD future-timestamp guards + API roundFloats — fix/future-timestamp-guards-roundfloats (pending)
+
+**What was broken:** `playbookDataQualityFlags()` clamped future `polled_at` to age 0 → `desk_stale: false` (inconsistent with `spx-play-gates.ts`). `isLuldHaltSourceStaleForState()` treated clock-skewed future delivery timestamps as fresh. `contract-picks/live` and dark-pool routes returned unrounded floats.
+
+**Fix:** Use `ageSecFromIso()` (null → stale) in playbook data-quality; `isWsUpdatedAtFresh()` in LULD halt staleness; `roundFloats()` on three member-facing routes.
+
+**Check at the open:** SPX playbook promotion sampling respects desk staleness under clock skew; LULD halt de-risk still works when stocks socket timestamps are skewed; Vector live picks and dark-pool prints show 2dp floats.
+
 ### 0z. SPX pulse stream local freshness future guard — fix/spx-pulse-stream-future-guard (pending)
 
 **What was broken:** `refreshSnapshot()` in `/api/market/spx/pulse/stream` preferred local `indexStore` when `Date.now() - fresh < 10_000` with no future-timestamp guard — clock-skewed future `updatedAt` reads as infinitely fresh and skips cross-replica Redis fallback.
