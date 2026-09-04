@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { computeVectorGateBoost, vectorExemptsG17PrimeBand } from "./vector-commit-boost";
-import type { ZeroDteVectorPulse } from "./vector-crosslink";
+import type { ZeroDteVectorPulse } from "./vector-crosslink-core";
 
 const pulse = (over: Partial<ZeroDteVectorPulse>): ZeroDteVectorPulse => ({
   premium_pct: 60,

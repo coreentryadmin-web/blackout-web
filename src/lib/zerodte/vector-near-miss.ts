@@ -2,8 +2,8 @@
  * Vector ↔ 0DTE near-miss read — names Vector is tracking as winner/runner
  * but 0DTE gate-blocked (SKIP). Calibration signal only; never commits.
  */
-import type { ZeroDteVectorPulse, ZeroDteVectorPulseByTicker } from "./vector-crosslink";
-import { vectorPulseForDirection } from "./vector-crosslink";
+import type { ZeroDteVectorPulse, ZeroDteVectorPulseByTicker } from "./vector-crosslink-core";
+import { vectorPulseForDirection } from "./vector-crosslink-core";
 
 export type ZeroDteVectorNearMiss = {
   ticker: string;

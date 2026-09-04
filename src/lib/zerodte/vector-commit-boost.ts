@@ -3,7 +3,7 @@
  * in the SAME direction, relax selective gates and nudge score so Night Hawk can commit the
  * name Vector is proving out (calibration near-misses → action).
  */
-import type { ZeroDteVectorPulse } from "./vector-crosslink";
+import type { ZeroDteVectorPulse } from "./vector-crosslink-core";
 import { ZERODTE_SINGLE_RAIL_PRIME_MIN } from "./gates";
 
 export const VECTOR_SCORE_BUMP_WINNER = 8;

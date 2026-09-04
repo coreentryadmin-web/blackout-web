@@ -43,7 +43,7 @@ import { commitAuthorizedBySourceHealth, type SourceHealthState } from "@/lib/ws
 import { EARLY_ENTRY_WINDOW_END_ET_MINUTES } from "./confluence";
 import { evaluateMacroHardBlock, hasHighImpactMacroEvent, type MacroEventLike } from "@/lib/macro-hard-block";
 import { condorLiquidityGateBlocks, condorRangeBreaking, type CondorPlan } from "./condor";
-import type { ZeroDteVectorPulse } from "./vector-crosslink";
+import type { ZeroDteVectorPulse } from "./vector-crosslink-core";
 import {
   vectorExemptsG17PrimeBand,
   vectorExemptsG19TopBand,

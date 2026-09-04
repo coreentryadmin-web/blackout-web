@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { moneynessGateBlocks } from "./gates";
 import { effectiveMaxOtmPct, vectorRunnerOtmRelax } from "./runner-profile";
 import { RUNNER_SETUP_MAX_OTM_PCT, SETUP_MAX_OTM_PCT } from "./board";
-import type { ZeroDteVectorPulse } from "./vector-crosslink";
+import type { ZeroDteVectorPulse } from "./vector-crosslink-core";
 
 test("vectorRunnerOtmRelax: aligned winner relaxes OTM", () => {
   const pulse: ZeroDteVectorPulse = {

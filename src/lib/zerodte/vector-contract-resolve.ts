@@ -10,8 +10,8 @@ import { vectorPickOcc } from "@/features/vector/lib/vector-pick-occ";
 import { buildOcc } from "@/lib/ws/options-socket";
 import type { EnrichedZeroDteSetup } from "./board";
 import { vectorPulseAlignsDirection } from "./vector-commit-boost";
-import type { ZeroDteVectorPulse, ZeroDteVectorPulseByTicker } from "./vector-crosslink";
-import { vectorPulseForDirection } from "./vector-crosslink";
+import type { ZeroDteVectorPulse, ZeroDteVectorPulseByTicker } from "./vector-crosslink-core";
+import { vectorPulseForDirection } from "./vector-crosslink-core";
 
 export type VectorContractAttachSource = "vector_pulse" | "vector_rank" | "discovery";
 
