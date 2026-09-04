@@ -21,6 +21,7 @@ import {
   vectorPickClosureExists,
 } from "@/lib/vector/vector-pick-closures-db";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { fetchVectorSeedBars } from "@/features/vector/lib/vector-seed-bars";
 import { invalidationBarsFromSeed } from "@/features/vector/lib/vector-pick-invalidation";
@@ -280,11 +281,11 @@ export async function POST(req: NextRequest) {
   })();
 
   return NextResponse.json(
-    {
+    roundFloats({
       live: live.map(({ pick: _pick, ...row }) => row),
       asOf: etStamp(nowMs),
       session_date: sessionDate,
-    },
+    }),
     { headers: NO_STORE_HEADERS }
   );
 }

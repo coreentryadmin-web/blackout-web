@@ -16,6 +16,7 @@ import { normalizeLuldWsMessages } from "@/lib/providers/polygon-luld";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { inOptionsMarketHours } from "@/lib/ws/options-socket";
 import { getClusterLuldLastMessageAt } from "@/lib/ws/halt-cluster-store";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { applyLuldHaltEvents, luldHaltsStore, touchLuldMessageAt } from "@/lib/ws/luld-halts-store";
 import {
   alertWsLeaderFailClosedOnce,
@@ -359,9 +360,9 @@ export function isLuldHaltSourceStaleForState(
   maxAgeMs: number,
   now = Date.now()
 ): boolean {
-  if (connectionOpen && localFreshestAt > 0 && now - localFreshestAt <= maxAgeMs) return false;
-  if (clusterMessageAt != null && now - clusterMessageAt <= maxAgeMs) return false;
-  return ownLastMessageAt <= 0 || now - ownLastMessageAt > maxAgeMs;
+  if (connectionOpen && localFreshestAt > 0 && isWsUpdatedAtFresh(localFreshestAt, maxAgeMs, now)) return false;
+  if (clusterMessageAt != null && isWsUpdatedAtFresh(clusterMessageAt, maxAgeMs, now)) return false;
+  return ownLastMessageAt <= 0 || !isWsUpdatedAtFresh(ownLastMessageAt, maxAgeMs, now);
 }
 
 /** False when the LULD feed is unavailable (local ingest socket OR cluster heartbeat). */

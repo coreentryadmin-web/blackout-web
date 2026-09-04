@@ -78,11 +78,22 @@ test("isLuldHaltSourceStaleForState: connection open but localFreshestAt=0 (neve
   );
 });
 
-test("isLuldHaltSourceStaleForState: boundary age === maxAgeMs is fresh (inclusive <=, matches existing cluster-check semantics)", () => {
+test("isLuldHaltSourceStaleForState: boundary age === maxAgeMs is stale (isWsUpdatedAtFresh uses strict <)", () => {
   const now = 1_000_000;
   const maxAgeMs = 120_000;
   assert.equal(
     isLuldHaltSourceStaleForState(true, now - maxAgeMs, null, now - maxAgeMs, maxAgeMs, now),
-    false
+    true
+  );
+});
+
+test("isLuldHaltSourceStaleForState: future timestamp beyond tolerance is STALE (not falsely fresh)", () => {
+  const now = 1_000_000;
+  const maxAgeMs = 120_000;
+  const futureAt = now + 60_000; // well beyond WS_TIMESTAMP_FUTURE_TOLERANCE_MS (5s)
+  assert.equal(
+    isLuldHaltSourceStaleForState(true, futureAt, null, futureAt, maxAgeMs, now),
+    true,
+    "a clock-skewed future delivery must not read as fresh"
   );
 });
