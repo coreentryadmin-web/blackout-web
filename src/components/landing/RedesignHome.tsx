@@ -421,7 +421,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
                 <div className="vs-label">BlackOut</div>
                 <ul className="vs-list">
                   <li>{MARKETING_DATA_FRESHNESS.comparison}</li>
-                  <li>Every setup graded A–F with a logged track record</li>
+                  <li>SPX Slayer, Night Hawk, and 0DTE Command plays graded A–F with a logged track record</li>
                   <li>{productCount} products, one unified Full Desk</li>
                   <li>AI verification engine gates every play</li>
                   <li>Institutional flow, GEX, dark pool — streamed live</li>

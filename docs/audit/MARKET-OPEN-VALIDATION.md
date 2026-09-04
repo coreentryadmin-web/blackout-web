@@ -126,7 +126,43 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
-### 0s. `cron-registry.test.ts` coverage check broke on `main` — PR #3668 shipped an unregistered `logCronRun` key — fix/cron-registry-self-heal-key (pending)
+### 0u. `/vs/others` comparison table missed the same "every setup graded" overclaim fix — fix/vs-others-track-record-scope (pending)
+
+**What was broken:** #3643 (item 0n below) scoped "every setup logged"-style claims on the About
+page, homepage, and `WhyBlackoutContent.tsx` to the three products `/methodology` actually covers.
+`src/app/(marketing)/vs/others/page.tsx`'s comparison table carried the identical overclaim in
+different wording — "Every setup graded A–F with a logged track record" — and wasn't part of that
+fix's surface search, so it survived unscoped.
+
+**Fix:** reworded the row to "SPX Slayer, Night Hawk, and 0DTE Command plays graded A–F with a
+logged track record", matching #3643's wording pattern. Extended
+`public-record-scope-claims.test.ts`'s `SURFACES` list to include this page so the same claim
+class can't regress here again.
+
+**Check at the open:** none — pure marketing-copy correction, no RTH-dependent behavior. Confirm
+`https://blackouttrades.com/vs/others` names the three products next to the "Alert accountability"
+row rather than an unscoped "every setup".
+
+### 0t. Two more "every setup logged" overclaim instances (About page + homepage) missed by both #3643 and #3664 — fix/vs-others-remaining-overclaim-instances (merged #3683)
+
+**What was broken:** `RedesignHome.tsx`'s own "them vs us" list bullet (a second, separate copy of
+the sentence `/vs/others/page.tsx` mirrors) and `about/page.tsx`'s `WHAT_WE_DO` intro paragraph both
+still said an unscoped "every setup ... logged"/"grade every setup" — surviving both #3643 (earlier
+today) and the same-day follow-up #3664, because `public-record-scope-claims.test.ts`'s check was
+whole-file ("do the three product names appear anywhere in this file"), not per-claim, so it passed
+even though these two specific claims weren't actually scoped.
+
+**Fix:** named the three products inline (same pattern as #3643/#3664). Rewrote the regression test
+to check per-claim proximity (200-char window) instead of whole-file existence, so a third instance
+like this can't recur undetected. Shipped as its OWN PR rather than a further push onto #3664's
+branch — that branch has been silently rebased-and-reset by another lane twice today, each time
+dropping this exact fix; a standalone PR survives independently of whatever keeps resetting it.
+
+**Check at the open:** none — pure marketing-copy correction. Confirm `https://blackouttrades.com/`
+(homepage "them vs us" section) and `https://blackouttrades.com/about` both name the three products
+next to their own copies of this claim.
+
+### 0s. `cron-registry.test.ts` coverage check broke on `main` — PR #3668 shipped an unregistered `logCronRun` key — fix/cron-registry-self-heal-key (merged #3678)
 
 **What was broken:** PR #3668 added a second, conditional `logCronRun("cron-staleness-watchdog-self-heal", ...)`
 call to the already-registered `cron-staleness-watchdog` route, but never added the new key to
@@ -216,23 +252,6 @@ using the same helper the base derivation uses (so the two can't drift apart aga
 side (`resistance` for call_wall, `support` for put_wall) and a `distance_pts` consistent with
 `nearest_wall.strike - spot`. Pay particular attention right after a fast intraday gamma migration
 (a real WS wall move), since that's the moment pre-fix and post-fix values would have diverged most.
-
-### 0s. `/vs/others` comparison table missed the same "every setup graded" overclaim fix — fix/vs-others-track-record-scope (pending)
-
-**What was broken:** #3643 (item 0n below) scoped "every setup logged"-style claims on the About
-page, homepage, and `WhyBlackoutContent.tsx` to the three products `/methodology` actually covers.
-`src/app/(marketing)/vs/others/page.tsx`'s comparison table carried the identical overclaim in
-different wording — "Every setup graded A–F with a logged track record" — and wasn't part of that
-fix's surface search, so it survived unscoped.
-
-**Fix:** reworded the row to "SPX Slayer, Night Hawk, and 0DTE Command plays graded A–F with a
-logged track record", matching #3643's wording pattern. Extended
-`public-record-scope-claims.test.ts`'s `SURFACES` list to include this page so the same claim
-class can't regress here again.
-
-**Check at the open:** none — pure marketing-copy correction, no RTH-dependent behavior. Confirm
-`https://blackouttrades.com/vs/others` names the three products next to the "Alert accountability"
-row rather than an unscoped "every setup".
 
 ### 0n. "Every setup logged publicly" overclaimed against a 3-of-7-product methodology page — fix/public-record-scope-overclaim (pending)
 
