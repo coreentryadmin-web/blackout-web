@@ -162,6 +162,14 @@ reported -0.35% (measured 2026-09-04).
 
 **Check at the open:** `/admin` → Operations → cron health — no negative `age_min` values; jobs with skewed timestamps show stale, not OK.
 
+### 0y. UW / options WS freshness gates treated future timestamps as live — fix/uw-channel-future-timestamp-freshness (pending)
+
+**What was broken:** `isUwChannelFresh`, `getLiveOptionMarkSync`, and admin `cluster_live` used raw `Date.now() - at <= maxAgeMs`. A clock-skewed future stamp yields negative age, which still passes the threshold — falsely reporting a channel as live. (Flow cluster heartbeat was fixed separately in #3718 via `flowHeartbeatAgeMs`.)
+
+**Fix:** Route UW/options freshness through `isWsUpdatedAtFresh` / `wsUpdatedAtAgeMs`. Admin `cluster_live` and `last_message_age_ms` reporting clamped the same way.
+
+**Check at the open:** `/admin` → Operations → UW socket health — `last_message_age_ms` never negative; during RTH with live flow, `cluster_live` true only when frames actually arrived within 120s (not on skew alone).
+
 ### 0v. ISO age helpers treated clock-skewed future timestamps as fresh — fix/iso-age-future-guard-combined (pending)
 
 **What was broken:** `public-gex-snapshot` coerced negative `asof` age to **0 seconds** (reads as just refreshed on the marketing gamma snapshot). Night Hawk Legacy `legacyMarkAgeLabel` and admin Night Hawk playbook `ageMin` used raw `Date.now() - new Date(iso)` without the shared future guard — future-skewed `updated_at` bypassed stuck detection.

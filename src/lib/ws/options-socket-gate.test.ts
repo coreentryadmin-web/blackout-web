@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { optionsSocketGateOpen, inOptionsMarketHours } from "./options-socket";
 
 // June 2026 → ET is EDT (UTC-4).
@@ -34,4 +35,18 @@ test("optionsSocketGateOpen: leader holds during RTH, rests off-hours (unless fo
 test("optionsSocketGateOpen: RTH leader open regardless of the off-hours flag", () => {
   assert.equal(optionsSocketGateOpen(true, false, MON_RTH), true);
   assert.equal(optionsSocketGateOpen(true, true, MON_RTH), true);
+});
+
+test("options-socket: live mark freshness uses isWsUpdatedAtFresh (source scan)", () => {
+  const src = readFileSync(new URL("./options-socket.ts", import.meta.url), "utf8");
+  assert.match(
+    src,
+    /isWsUpdatedAtFresh\(local\.ts, maxAgeMs\)/,
+    "getLiveOptionMarkSync must reject clock-skewed future quote stamps"
+  );
+  assert.match(
+    src,
+    /last_message_age_ms: this\.lastMessageAt \? wsUpdatedAtAgeMs\(this\.lastMessageAt\) : null/,
+    "admin status age_ms must clamp negative skew"
+  );
 });
