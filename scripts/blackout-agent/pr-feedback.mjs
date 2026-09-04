@@ -14,11 +14,13 @@ function parseArgs(argv) {
   const out = {
     agent: process.env.BLACKOUT_REVIEW_AGENT ?? "cursor",
     dry_run: false,
+    lenient: false,
     event: process.env.GITHUB_EVENT_NAME ?? "manual",
     pr: Number(process.env.GITHUB_PR_NUMBER ?? process.env.PR_NUMBER ?? 0),
   };
   for (const arg of argv.slice(2)) {
     if (arg === "--dry-run") out.dry_run = true;
+    else if (arg === "--lenient") out.lenient = true;
     else if (arg.startsWith("--")) {
       const [k, v] = arg.slice(2).split("=");
       out[k.replace(/-/g, "_")] = v ?? true;
@@ -491,6 +493,6 @@ if (process.argv[1]?.endsWith("pr-feedback.mjs")) {
     process.exit(0);
   } catch (e) {
     console.error(JSON.stringify({ ok: false, error: String(e?.message ?? e) }, null, 2));
-    process.exit(1);
+    process.exit(args.lenient ? 0 : 1);
   }
 }

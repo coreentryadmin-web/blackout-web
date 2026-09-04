@@ -33,8 +33,10 @@ on:
         required: false
 
 concurrency:
+  # Triage comments are idempotent (update-in-place). Do not cancel in-flight runs —
+  # cancelled jobs surface as red "triage" checks on main during merge waves.
   group: blackout-pr-${{ github.event.pull_request.number || github.event.inputs.pr_number || 'sweep' }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -106,8 +108,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          set -euo pipefail
-          node scripts/blackout-agent/pr-feedback.mjs --sweep
+          node scripts/blackout-agent/pr-feedback.mjs --sweep --lenient || {
+            echo "::warning::PR sweep failed — non-blocking"
+            exit 0
+          }
 
       - name: Post/update PR feedback (triage comment)
         if: steps.ctx.outputs.mode == 'single'
@@ -117,9 +121,11 @@ jobs:
           GITHUB_PR_NUMBER: ${{ steps.ctx.outputs.pr }}
           GITHUB_EVENT_NAME: ${{ steps.ctx.outputs.event }}
         run: |
-          set -euo pipefail
           [ -n "${GITHUB_PR_NUMBER:-}" ] || { echo "No PR — skip"; exit 0; }
-          node scripts/blackout-agent/pr-feedback.mjs
+          node scripts/blackout-agent/pr-feedback.mjs --lenient || {
+            echo "::warning::PR feedback failed — non-blocking"
+            exit 0
+          }
 
       - name: Check if deep peer review dispatch needed
         id: dispatch
@@ -129,15 +135,15 @@ jobs:
           GITHUB_PR_NUMBER: ${{ steps.ctx.outputs.pr }}
           GITHUB_EVENT_NAME: ${{ steps.ctx.outputs.event }}
         run: |
-          set -euo pipefail
           [ -n "${GITHUB_PR_NUMBER:-}" ] || { echo "want=false" >> "$GITHUB_OUTPUT"; exit 0; }
-          RESULT=$(node scripts/blackout-agent/pr-dispatch-check.mjs)
+          RESULT=$(node scripts/blackout-agent/pr-dispatch-check.mjs 2>/dev/null) || RESULT='{"dispatch":false}'
           echo "$RESULT"
           echo "$RESULT" | node -e "
-            const j=JSON.parse(require('fs').readFileSync(0,'utf8'));
+            let j = { dispatch: false, reviewer: '' };
+            try { j = JSON.parse(require('fs').readFileSync(0,'utf8')); } catch {}
             console.log('want=' + (j.dispatch ? 'true' : 'false'));
             console.log('reviewer=' + (j.reviewer || ''));
-          " >> "$GITHUB_OUTPUT"
+          " >> "$GITHUB_OUTPUT" || echo "want=false" >> "$GITHUB_OUTPUT"
 
       - name: Launch Cursor for deep peer review
         if: steps.ctx.outputs.mode == 'single' && steps.dispatch.outputs.want == 'true'
@@ -146,12 +152,15 @@ jobs:
           GITHUB_PR_NUMBER: ${{ steps.ctx.outputs.pr }}
           GITHUB_EVENT_NAME: ${{ steps.ctx.outputs.event }}
         run: |
-          set -euo pipefail
           if [ -z "${CURSOR_API_KEY:-}" ]; then
             echo "CURSOR_API_KEY not set — triage posted, deep review agent skipped"
             exit 0
           fi
-          PROMPT=$(node scripts/blackout-agent/pr-review-dispatch.mjs --pr="$GITHUB_PR_NUMBER" --event="$GITHUB_EVENT_NAME")
+          PROMPT=$(node scripts/blackout-agent/pr-review-dispatch.mjs --pr="$GITHUB_PR_NUMBER" --event="$GITHUB_EVENT_NAME" 2>/dev/null) || PROMPT=""
+          if [ -z "$PROMPT" ]; then
+            echo "::warning::Could not build review dispatch prompt — skipping agent launch"
+            exit 0
+          fi
           export PROMPT
           payload=$(node -e "
             console.log(JSON.stringify({
@@ -159,9 +168,11 @@ jobs:
               repos: [{ url: 'https://github.com/coreentryadmin-web/blackout-web', startingRef: 'main' }],
               autoCreatePR: false
             }));
-          ")
-          # Agent launch is best-effort — a failed dispatch must not fail the triage job
-          # (triage comment is already posted; merge/deploy are unaffected).
+          " 2>/dev/null) || payload=""
+          if [ -z "$payload" ]; then
+            echo "::warning::Could not build agent payload — skipping agent launch"
+            exit 0
+          fi
           if ! resp=$(curl -sf -X POST https://api.cursor.com/v1/agents \
             -u "${CURSOR_API_KEY}:" \
             -H 'Content-Type: application/json' \
@@ -170,7 +181,12 @@ jobs:
             exit 0
           fi
           echo "$resp" | node -e "
-            const r = JSON.parse(require('fs').readFileSync(0,'utf8'));
-            const url = r.agent?.url ?? r.url ?? JSON.stringify(r);
-            console.log('PR review agent launched:', url);
-          "
+            try {
+              const r = JSON.parse(require('fs').readFileSync(0,'utf8'));
+              const url = r.agent?.url ?? r.url ?? JSON.stringify(r);
+              console.log('PR review agent launched:', url);
+            } catch {
+              console.log('PR review agent launched (unparsed response)');
+            }
+          " || true
+          exit 0
