@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T00:30:41.044Z",
+  "updated_at": "2026-09-04T01:40:14.227Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -30,13 +30,13 @@
     "BO-P1-0005": {
       "task_id": "BO-P1-0005",
       "owner": "cursor",
-      "claimed_at": "2026-09-03T23:53:48.679Z",
-      "lease_until": "2026-09-04T01:23:48.679Z",
+      "claimed_at": "2026-09-04T01:24:31.422Z",
+      "lease_until": "2026-09-04T03:10:13.384Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "c25d316c-1009-4164-ba44-b84b26357544",
       "title": "Review Claude PR #3434"
     },
     "BO-P1-0007": {
@@ -68,6 +68,30 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T00:30:30.525Z",
       "safe_to_merge": true
+    },
+    "pr-3448": {
+      "pr": 3448,
+      "head_sha": "f94bb764",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:35:11.869Z",
+      "safe_to_merge": true
+    },
+    "pr-3451": {
+      "pr": 3451,
+      "head_sha": "3f27970c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:35:12.195Z",
+      "safe_to_merge": true
+    },
+    "pr-3450": {
+      "pr": 3450,
+      "head_sha": "d2a180bf",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:38:05.750Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -82,11 +106,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "84c5707ac6849b4c048dec6e8a414321f2a76e27",
+    "last_main_sha": "e19006110494e68a92d7c3433e30b1afb9b81ec4",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T00:18:06Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33821229041",
-    "last_deploy_sha": "271a977cfdc9b5d2cc2d62535f8c7e010374d78d"
+    "last_deploy_at": "2026-09-04T01:33:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826240425",
+    "last_deploy_sha": "9b7756c7201250e31c460077f1c6cc378f3affa0"
   },
   "open_prs": [],
   "events": [
@@ -293,6 +317,67 @@
       "agent": "cursor",
       "run_id": "49d14bda-5dd3-4b4b-8deb-b5336a96b8b1",
       "summary": "PR webhook branch ready: heartbeat-gate fix in claimLock, BO-P1-0007 claimed, peer-reviewed #3438 APPROVED. #3436 merged — autopilot v1 live on main. Next: merge this PR, close duplicate #3435."
+    },
+    {
+      "at": "2026-09-04T01:35:11.870Z",
+      "type": "pr_review",
+      "pr": 3448,
+      "head_sha": "f94bb764",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:35:11.869Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T01:35:12.196Z",
+      "type": "pr_review",
+      "pr": 3451,
+      "head_sha": "3f27970c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:35:12.195Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T01:38:05.751Z",
+      "type": "pr_review",
+      "pr": 3450,
+      "head_sha": "d2a180bf",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:38:05.750Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T01:40:08.351Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:40:08.352Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "76500c25-3447-43ef-808f-d068cdb79cbf",
+      "summary": "Recovered state after workflow_run. Peer-reviewed + merged #3448 (grid-rth YAML fix), #3450 (pr-feedback repo slug), #3451 (vector-gated runners). Closed obsolete handoff PRs #3447/#3449. #3452 (BO-P1-0004 G-18/G-19 counterfactual) verify GREEN — awaiting Claude peer review. validate:deploy GREEN on main e190061."
+    },
+    {
+      "at": "2026-09-04T01:40:12.569Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:40:13.383Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:40:14.227Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
