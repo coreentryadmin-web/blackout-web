@@ -5,11 +5,14 @@ import {
   LEGACY_SWING_SIGNAL_KIND,
   buildLegacySwingArtifacts,
   carryLegacyPromotedIntoSnapshot,
+  filterChainRowsForSwingPromotion,
   isCarriedContractLive,
   carriedContractExpiry,
   legacyPlayDirection,
   mergeLegacyPromotedSnapshot,
 } from "./legacy-confirm-promote.ts";
+import { HORIZONS } from "../horizons.ts";
+import { subLaneForDte } from "./taxonomy.ts";
 import { discoverSwingFromPersisted, persistSwingServingSnapshot } from "./serving-lane.ts";
 import type { ChainStrikeRow } from "@/features/nighthawk/lib/option-chain-prompt";
 import { swingThesisKey } from "./accumulation-store.ts";
@@ -72,6 +75,40 @@ test("buildLegacySwingArtifacts stamps NIGHT HAWK provenance and serve-only grad
   assert.deepEqual(artifact!.watch.signalKinds, [LEGACY_SWING_SIGNAL_KIND]);
   assert.equal(artifact!.watch.distinctSessionDays, 2);
   assert.equal(artifact!.dossier.feature_vector?.accumulation?.net_signed_premium ?? 0, 0);
+  assert.ok(
+    (artifact!.play.contract?.dte ?? 0) >= HORIZONS.SWING.dteMin,
+    "promoted contract must clear Swing dteMin",
+  );
+  assert.equal(
+    artifact!.dossier.subLane,
+    subLaneForDte(artifact!.play.contract!.dte),
+    "dossier subLane must match the picked contract DTE",
+  );
+});
+
+test("filterChainRowsForSwingPromotion drops sub-floor expiries", () => {
+  const rows = [
+    { ...chainRows[0]!, expiry: "2026-08-07" },
+    { ...chainRows[0]!, expiry: "2026-08-14" },
+  ];
+  const kept = filterChainRowsForSwingPromotion(rows, "2026-08-04");
+  assert.deepEqual(
+    kept.map((r) => r.expiry),
+    ["2026-08-14"],
+  );
+});
+
+test("buildLegacySwingArtifacts returns null when only sub-floor expiries exist", () => {
+  const shortOnly = [{ ...chainRows[0]!, expiry: "2026-08-07" }];
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 99.5,
+    chainRows: shortOnly,
+    chainSpot: 99.5,
+  });
+  assert.equal(artifact, null);
 });
 
 // ─── ATR-grounded plan levels (FINDINGS 2026-08-06 P2 follow-up, fix) ──────────────────────────────
