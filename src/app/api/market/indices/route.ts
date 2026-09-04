@@ -5,8 +5,10 @@ import { polygonConfigured } from "@/lib/providers/config";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
-import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
-import { withFreshPrice } from "@/lib/providers/change-pct";
+import {
+  overlayRestIndexWithWs,
+  resolveLiveIndexWsEntry,
+} from "@/lib/providers/index-snapshot-overlay";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -35,18 +37,15 @@ export async function GET(req: NextRequest) {
     let spx = cached.snaps[SPX];
     let vix = cached.snaps[VIX];
 
-    // Overlay fresher WS prices when available — getStockLiveCandle reads from Redis
-    // on follower replicas (wsSpotPrice was local-memory-only, always null on followers).
-    //
-    // `withFreshPrice` moves change_pct WITH the price. Overlaying the price alone used to serve a
-    // quote whose halves described different instants: a price from now beside a day-change from
-    // whenever the cached snapshot was taken — and serverCache is stale-while-revalidate for up to
-    // MAX_STALE_AGE_MS (10 min), so on a fast move the desk could show a rising SPX next to a
-    // falling percentage. Both are now measured against the same prior-session close.
-    const spxCandle = getStockLiveCandle("SPX");
-    if (spx) spx = withFreshPrice(spx, spxCandle.current?.close);
-    const vixCandle = getStockLiveCandle("VIX");
-    if (vix) vix = withFreshPrice(vix, vixCandle.current?.close);
+    // Overlay fresher indices-WS ticks (I:SPX / I:VIX) — NOT stock-candle-store A.* ticks.
+    // Stock candles anchor day-change to session open; indices WS + REST snapshots anchor to the
+    // official prior close (what Polygon's session.change_percent and data-validator ground on).
+    const [spxWs, vixWs] = await Promise.all([
+      resolveLiveIndexWsEntry(SPX),
+      resolveLiveIndexWsEntry(VIX),
+    ]);
+    if (spx) spx = overlayRestIndexWithWs(spx, spxWs);
+    if (vix) vix = overlayRestIndexWithWs(vix, vixWs);
 
     if (!spx && !vix) {
       return NextResponse.json(
