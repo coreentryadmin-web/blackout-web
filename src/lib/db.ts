@@ -284,6 +284,40 @@ async function getPool(): Promise<Pool> {
   return poolInit;
 }
 
+/**
+ * CRITICAL, same failure class as `livePool.on("error", ...)` above but a DIFFERENT gap it does
+ * NOT cover: that pool-level listener only fires for IDLE clients — pg-pool's `_acquireClient`
+ * explicitly REMOVES a client's error listener for the whole time it is checked out via
+ * `pool.connect()` (re-added only on `.release()`). node-postgres's own Client, on an unexpected
+ * connection drop, does two things UNCONDITIONALLY and independently: (1) rejects whatever query
+ * is currently in flight (`_errorAllQueries` — this is what a surrounding try/catch around
+ * `await client.query(...)` catches), and (2) ALSO emits a raw 'error' event on the client object
+ * itself (`_handleErrorEvent` -> `this.emit('error', err)`), regardless of whether (1) had
+ * anything to reject — e.g. if the drop happens between two statements in a held transaction, or
+ * during a long-held session-advisory-lock window, with no query in flight at all. With no
+ * listener for that event, Node's EventEmitter throws it as an uncaught exception — this is the
+ * exact live-CloudWatch `uncaughtException: [Error: Connection terminated unexpectedly]` (2026-09
+ * audit finding) that surfaced despite every checked-out-client query in this file already being
+ * wrapped in try/catch: the try/catch only ever sees effect (1); effect (2) fires unconditionally
+ * on a code path no try/catch can reach, because it isn't a rejected promise at all.
+ * Call this immediately after every `pool.connect()` in this file — mirrors the pool-level
+ * swallow+log pattern above, scoped to the one client that pattern doesn't reach.
+ *
+ * Exported for unit testing — real EventEmitter behavior (an 'error' event with zero listeners
+ * throws), no DB/env/module-load-order dependence, same rationale as computeSafePgPoolMaxDefault.
+ */
+export function guardCheckedOutClient<T extends PoolClient>(client: T): T {
+  client.on("error", (err) => {
+    console.warn(
+      "[db] checked-out client error (the in-flight query's own try/catch already handles the " +
+        "rejection this same drop causes; this listener exists only so the client's separate, " +
+        "unconditional 'error' event doesn't also escape as an uncaught exception):",
+      err instanceof Error ? err.message : err
+    );
+  });
+  return client;
+}
+
 let schemaReady: Promise<void> | null = null;
 
 const MIGRATION_LOCK_ID = 42;
@@ -294,7 +328,7 @@ async function runMigrations(): Promise<void> {
   // Session-level locks acquired via pool.query() land on a random pooled connection
   // and unlock on another — leaking the lock and failing to serialize concurrent
   // cold-start instances. A dedicated client keeps acquire + hold + release on one session.
-  const lockClient = await p.connect();
+  const lockClient = guardCheckedOutClient(await p.connect());
   try {
     // Statement timeout bounds the lock wait if a crashed instance still holds it.
     await lockClient.query(`SET statement_timeout = '30000'`);
@@ -377,7 +411,7 @@ async function runMigrations(): Promise<void> {
   // Dedup + unique index in one transaction with a table lock so concurrent
   // inserts from api-telemetry-persist cannot sneak in between the DELETE and
   // CREATE UNIQUE INDEX and re-introduce duplicates.
-  const client = await p.connect();
+  const client = guardCheckedOutClient(await p.connect());
   try {
     await client.query("BEGIN");
     await client.query("LOCK TABLE spx_signal_log IN SHARE ROW EXCLUSIVE MODE");
@@ -2562,7 +2596,7 @@ export async function deleteUserDataForClerkId(clerkUserId: string): Promise<{
     return { users: 0, largo_sessions: 0, user_journal: 0, push_subscriptions: 0 };
   }
   await ensureSchema();
-  const client = await (await getPool()).connect();
+  const client = guardCheckedOutClient(await (await getPool()).connect());
   try {
     await client.query("BEGIN");
     const largo = await client.query(
@@ -2605,7 +2639,7 @@ export async function deleteUserDataForClerkId(clerkUserId: string): Promise<{
 /** Acquire a pool client for manual transaction management (caller must release). */
 export async function dbClient() {
   await ensureSchema();
-  return (await getPool()).connect();
+  return guardCheckedOutClient(await (await getPool()).connect());
 }
 
 export async function pingDatabaseConnectivity(): Promise<{
@@ -2674,7 +2708,7 @@ const heldLockClients = new Map<string, PoolClient>();
 
 async function acquireHeldLock(mapKey: string, lockSql: string, arg: string | number): Promise<boolean> {
   if (heldLockClients.has(mapKey)) return false; // already held by this process
-  const client = await (await getPool()).connect();
+  const client = guardCheckedOutClient(await (await getPool()).connect());
   try {
     const res = await client.query<{ ok: boolean }>(lockSql, [arg]);
     if (res.rows[0]?.ok === true) {
@@ -5056,7 +5090,7 @@ export async function insertOpenSpxPlay(
 ): Promise<{ id: number; created: boolean }> {
   await ensureSchema();
   const pool = await getPool();
-  const client = await pool.connect();
+  const client = guardCheckedOutClient(await pool.connect());
   try {
     await client.query("BEGIN");
     // Close any prior open play and record a 'superseded' outcome row so it appears
@@ -7615,7 +7649,7 @@ export async function withSwingRollTx<T>(
   }) => Promise<T>
 ): Promise<T> {
   await ensureSchema();
-  const client = await (await getPool()).connect();
+  const client = guardCheckedOutClient(await (await getPool()).connect());
   try {
     await client.query("BEGIN");
     const tx = {

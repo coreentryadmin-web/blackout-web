@@ -26,6 +26,7 @@ import {
   loadHeatmapCacheReaderOnly,
   scheduleHeatmapBackgroundWarm,
 } from "@/lib/gex-heatmap-member-serve";
+import { isNighthawkContextEditionFresh } from "./nighthawk-context-freshness";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -192,9 +193,9 @@ async function getNightHawkContext(ticker: string): Promise<NightHawkContext> {
       nighthawkContextMem.set(ticker, { at: now, value: null });
       return null;
     }
-    // Only surface editions from the last 24 hours.
-    const age = Date.now() - new Date(edition.published_at).getTime();
-    if (age > 24 * 60 * 60 * 1000) {
+    // Only surface editions from the last 24 hours; reject future-dated published_at (cross-process
+    // clock skew from the Night Hawk cron writer) so an untrustworthy stamp cannot pass as fresh.
+    if (!isNighthawkContextEditionFresh(edition.published_at, now)) {
       nighthawkContextMem.set(ticker, { at: now, value: null });
       return null;
     }

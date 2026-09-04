@@ -21,6 +21,13 @@ type Props = {
   gammaFlip?: number | null;
   /** Session replay — last pick frame stays visible; live quotes do not refresh. */
   replayPaused?: boolean;
+  /**
+   * Whether RTH is live. The pick fetch itself still runs off-hours (a member can see the last
+   * session's ranked contracts before the open), but off-hours it also routinely takes longer
+   * than the live-session case — so the loading copy says so instead of reading like a stalled
+   * live scan. Defaults to true so an unmigrated caller keeps today's copy verbatim.
+   */
+  liveSession?: boolean;
   className?: string;
 };
 
@@ -140,6 +147,7 @@ export function VectorContractPicksCard({
   spot = null,
   gammaFlip = null,
   replayPaused = false,
+  liveSession = true,
   className,
 }: Props) {
   const [openPick, setOpenPick] = useState<VectorContractPick | null>(null);
@@ -221,6 +229,14 @@ export function VectorContractPicksCard({
     // contract missed the quality/liquidity bar) — distinct from "still fetching" and from "no
     // directional play exists at all" (neutral bias / no play yet), neither of which needs a card.
     if (loading) {
+      // Unlike VectorHelixRail's live tape (which has genuinely nothing to show off-hours and
+      // skips its fetch entirely — see useVectorHelixFlows), this card's pick fetch still runs
+      // when the session is closed and does resolve with real, last-session picks (verified live
+      // 2026-09-04: same page, same off-hours conditions, resolved in <6s on one load and took
+      // ~20s on another) — so we keep fetching rather than short-circuiting to a static empty
+      // state. The bug was the COPY: "Scanning the chain…" reads as an active live scan with no
+      // acknowledgment that the market is shut, so a member watching it sit through the slower
+      // off-hours case reasonably reads it as stuck/broken. Off-hours gets honest wording instead.
       return (
         <div className={clsx("vp-intel vector-contract-picks-card", className)}>
           <div className="vp-intel-card">
@@ -228,7 +244,11 @@ export function VectorContractPicksCard({
               <span className="vp-intel-card-code">PLYS</span>
               <span className="vp-intel-card-title">{ticker} PLAYS · loading</span>
             </div>
-            <p className="vector-contract-picks-empty">Scanning the chain for a contract worth showing…</p>
+            <p className="vector-contract-picks-empty">
+              {liveSession
+                ? "Scanning the chain for a contract worth showing…"
+                : "Session closed — resolving the last session's chain scan (can take longer off-hours)…"}
+            </p>
           </div>
         </div>
       );

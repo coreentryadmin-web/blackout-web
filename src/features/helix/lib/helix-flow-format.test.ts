@@ -259,10 +259,15 @@ test("ruleBadge and executionRouteKey agree on whether the field is present at a
 });
 
 // ── The NEW-positioning badge must be VISIBLE, not just present ────────────────────────────────
-// The desktop tape renders `signals.slice(0, 3)` and collapses the rest into "+N". A badge appended
-// at the end of flowSignals is therefore invisible on exactly the rows that have one, since almost
-// every Group A print already carries a `rule` badge. This is a display-budget bug that no test of
-// the badge's own logic would ever catch.
+// The desktop tape only has room for a HANDFUL of badges before the signals cell's fixed pixel
+// budget runs out (`fitSignalBadges` in helix-signal-fit.ts picks the longest PREFIX of this list
+// that actually fits — see that file for the pixel-fit logic, and helix-signal-fit.test.ts for the
+// cell-overflow regression it replaced: a raw `signals.slice(0, 3)` count cap with no notion of
+// width, which routinely clipped a badge mid-character instead of ever showing its "+N" chip). A
+// badge appended at the end of flowSignals is invisible on exactly the rows that have one, since
+// almost every Group A print already carries a `rule` badge — and the earlier in this list a badge
+// sits, the more likely it survives the fit. This is a display-budget bug that no test of the
+// badge's own logic would ever catch.
 
 test("the NEW badge lands inside the desktop tape's 3-badge budget", () => {
   const f = flow({

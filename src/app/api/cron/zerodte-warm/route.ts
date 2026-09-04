@@ -50,6 +50,22 @@ export const maxDuration = 120;
 const OVERLAP_LOCK_KEY = "zerodte-warm:running";
 const OVERLAP_LOCK_TTL_SEC = 900;
 
+/**
+ * Minimum re-run floor — independent of, and IN ADDITION TO, the hours gate below.
+ *
+ * Same structural gap fixed for desk-warm (#3540) and heatmap-warm (#3542): `force=1`
+ * completely bypasses `shouldRunCacheWarmer`'s hours check, and OVERLAP_LOCK above guards only
+ * against a SECOND run starting while the FIRST is still in flight — released the instant the
+ * background promise chain settles, which on an already-warm board can finish far faster than a
+ * cold scanner tick + snapshot rebuild. Nothing capped how OFTEN `?force=1` could be replayed.
+ *
+ * 60s sits safely BELOW every legitimate cadence: rth-warm-leader's heal threshold for this key
+ * is 4 min (RTH_WRITER_HEAL_AFTER_MIN["zerodte-warm"], rth-warm-leader-logic.ts) and EventBridge's
+ * own schedule is ~5 min — neither path re-requests this key sooner than 60s ever would allow.
+ */
+const RERUN_COOLDOWN_KEY = "zerodte-warm:cooldown";
+const RERUN_COOLDOWN_SEC = 60;
+
 export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
@@ -63,6 +79,21 @@ export async function GET(req: NextRequest) {
       skipped: true,
       reason:
         "Outside extended warm window (weekday 4:00 AM–8:00 PM ET) — use ?force=1",
+    };
+    await logCronRun("zerodte-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const withinCooldown = !(await sharedCacheSetNx(
+    RERUN_COOLDOWN_KEY,
+    { startedAt: started },
+    RERUN_COOLDOWN_SEC
+  ).catch(() => true));
+  if (withinCooldown) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: `rate-limited — zerodte-warm already ran within the last ${RERUN_COOLDOWN_SEC}s (force=1 does not bypass this floor)`,
     };
     await logCronRun("zerodte-warm", started, payload);
     return NextResponse.json(payload);

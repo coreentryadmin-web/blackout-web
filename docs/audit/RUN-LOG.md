@@ -11,6 +11,45 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-04 (14:11 UTC) — [SEO] Daily growth cycle: quiet day, 28d flat vs yesterday
+
+**Severity.** — (no defect; quiet-day entry)
+
+No new striking-distance query; both known ones unchanged. 28d totals (window 2026-08-05→09-01):
+clicks=8, impressions=1602, CTR=0.5%, avgpos=37.8 — flat vs yesterday's 7/1599/0.44%/38.1, no real
+movement. RTH live-verify already done today (13:35 UTC), skipped per the 3-day window. No action.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
+## 2026-09-04 (13:35 UTC / Fri 2026-09-04 09:35 ET) — [SEO] RTH window validation: CLS + gamma-snapshot live data check
+
+**Severity.** — (no defect found)
+
+Checked the clock myself (`TZ=America/New_York date` → Fri 09:34 ET) — inside 09:30–13:00 ET on a
+trading day. Purged CF edge HTML before measuring.
+
+**CLS**: homepage desktop 1440×900, post-purge — **0.0001 → GOOD** (70 assets routed ok). #2453
+holds.
+
+**`/api/public/gex-snapshot?ticker=SPX`**: polled 3× at 6s intervals — `session: OPEN`, spot
+ticking real values (7743.77 → 7743.69 → 7743.59), `flip` present and moving (7788 → 7787.5 →
+7785.75), `asof` advancing, `degraded: false`. 5s refresh confirmed live.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
+## 2026-09-04 (12:19 UTC) — [SEO] Lane heartbeat: #2453/#2448 hold, 2 open PRs both other lanes
+
+**Severity.** — (no defect found)
+
+`/api/og?title=Test` → `HTTP 200 image/png`. Homepage still carries the transform-based reveal
+marker. `agent-pr-sweep.mjs`: 2 open agent PRs fleet-wide (autopilot cursor-handoff PRs) — neither
+this lane's, no action owed here. No action.
+
+**Result — `OVERALL: GREEN`, `EXIT=0`.**
+
+---
 ## 2026-09-04 (06:19 UTC) — [SEO] Lane heartbeat: #2453/#2448 hold, 5 open PRs all other lanes
 
 **Severity.** — (no defect found)
@@ -2307,3 +2346,4 @@ every touched module green on Node 20 (`board`/`pin-source`/`breakout-source`/`g
 `condor`/`strategy-version`/`skip-grading`/`plan`/`terminal-ladder`/`scan`, 415+ tests). No
 `findings-staging` entry — not a functional bug, logged here per the RUN-LOG policy for low-severity
 cleanup passes. PR #3433.
+

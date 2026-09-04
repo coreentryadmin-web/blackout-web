@@ -586,30 +586,24 @@ export const CRON_JOBS: CronJobDefinition[] = [
     schedule_cron_utc: "30 23 * * *",
     description: "Pull X post/profile metrics into analytics",
   },
+  // ---------------------------------------------------------------------------
+  // THREE LIVE DISCORD-DIGEST CRONS (added 2026-09-04) — routes logged runs but
+  // were absent from CRON_JOBS, so cron-staleness-watchdog never watched them.
+  // Schedules from railway.*.toml / deployed EventBridge (verified live 2026-09-04).
+  // stale_after_min = ~5× interval (darkpool */2) or ~3× (*/15 digests).
+  // ---------------------------------------------------------------------------
   {
     key: "darkpool-discord",
     name: "Dark Pool Discord",
     kind: "http",
     path: "/api/cron/darkpool-discord",
-    schedule_label: "~Every 2 min (RTH, Discord #blackout-darkpool)",
-    stale_after_min: 15,
+    schedule_label: "~Every 2 min (market hours)",
+    stale_after_min: 10,
     schedule_cron_utc: "*/2 11-21 * * 1-5",
     weekdays_only: true,
     market_hours_only: true,
-    description: "Dark pool block alerts + digest to member Discord channel",
-    produces_member_alert: true,
-  },
-  {
-    key: "helix-discord-digest",
-    name: "Helix Discord Digest",
-    kind: "http",
-    path: "/api/cron/helix-discord-digest",
-    schedule_label: "~Every 15 min (RTH, Helix Discord digest)",
-    stale_after_min: 45,
-    schedule_cron_utc: "*/15 11-21 * * 1-5",
-    weekdays_only: true,
-    market_hours_only: true,
-    description: "Helix flow digest embeds to member Discord channel",
+    description:
+      "Dark-pool burst alerts + 15m top-blocks digest to Discord (inert unless DARKPOOL_DISCORD_ALERTS + webhook)",
     produces_member_alert: true,
   },
   {
@@ -617,12 +611,27 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "Thermal Discord",
     kind: "http",
     path: "/api/cron/thermal-discord",
-    schedule_label: "~Every 15 min (RTH afternoon, Thermal Discord)",
+    schedule_label: "~Every 15 min (market hours)",
     stale_after_min: 45,
     schedule_cron_utc: "*/15 13-21 * * 1-5",
     weekdays_only: true,
     market_hours_only: true,
-    description: "Thermal GEX regime / wall alerts to member Discord channel",
+    description:
+      "Thermal desk card (SPY|SPX|QQQ) to Discord; breach-only poller is a separate route/query",
+    produces_member_alert: true,
+  },
+  {
+    key: "helix-discord-digest",
+    name: "HELIX Discord Digest",
+    kind: "http",
+    path: "/api/cron/helix-discord-digest",
+    schedule_label: "~Every 15 min (market hours)",
+    stale_after_min: 45,
+    schedule_cron_utc: "*/15 11-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "HELIX top-hits 15m/30m digests to Discord (inert unless HELIX_DISCORD_ALERTS + webhook)",
     produces_member_alert: true,
   },
 ];

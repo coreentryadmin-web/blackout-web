@@ -126,6 +126,97 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0f. SPX dashboard E2E cross-tool stale matrix flip — fix/spx-dashboard-cross-tool-stale-matrix (pending)
+
+**What was broken:** `spx-dashboard-e2e-audit.mjs` compared gamma flip from a matrix snapshot fetched
+at audit start (after full cell validation) against a fresh `gex-positioning` read. SPX matrix cache
+turns every ~8s RTH — produced false 500pt+ FAILs when the book re-crossed between fetches (e.g.
+matrix 6990 vs positioning 7795 on 2026-09-04 ~10:04 ET).
+
+**Fix:** Re-fetch `/api/market/gex-heatmap?ticker=SPX` inside `crossToolIntegration` alongside
+positioning; annotate flip FAILs with `calculation_id` match/mismatch.
+
+**Check at the open:** `node scripts/spx-dashboard-e2e-audit.mjs` → `integration:spx-cross-tool` PASS
+during RTH; flip delta should be 0 when `calculation_id` matches on back-to-back probe.
+
+### 0c. HELIX FlowAnomalyBanner future-timestamp recency — fix/flow-anomaly-future-timestamp (pending)
+
+**What was broken:** `FlowAnomalyBanner` on `/flows` treated a future-dated `detectedAt` as "recent"
+because `Date.now() - future < RECENCY_MS` — could flash the anomaly banner for events that have not
+happened yet under clock skew.
+
+**Fix:** `isFlowAnomalyRecent()` clamps future skew to not-recent.
+
+**Check at the open:** On `/flows` during RTH, banner only shows anomalies within 15 minutes; no
+spurious banner from skewed rows after deploy.
+
+### 0d. GEX heatmap Night Hawk context future-timestamp gate — fix/gex-heatmap-nh-context-future-timestamp (pending)
+
+**What was broken:** `/api/market/gex-heatmap` could attach `nighthawk_context` from an edition whose
+`published_at` was in the future — negative age never tripped the 24h freshness gate.
+
+**Fix:** `isNighthawkContextEditionFresh()` via shared `isZeroDteMarkStale()` (24h max age + future skew reject).
+
+**Check at the open:** On `/heatmap` or SPX matrix during RTH, Night Hawk context only appears for editions
+published within 24h; no spurious context from skewed/future `published_at` after deploy.
+
+### 0e. Night Hawk verifier premium-vs-chain future-timestamp gate — fix/nighthawk-verifier-future-published-at (pending)
+
+**What was broken:** The correctness-audit verifier's L4 chain-confirm premium check
+(`nighthawk-verifier.ts`) treated a future-dated edition `published_at` as fresh — `Date.now() -
+publishedAtMs` goes negative under clock skew, which always satisfies the `<= 4h` freshness gate,
+letting the premium-vs-chain comparison run on data whose freshness was actually unproven and
+risking a false `flag` verdict from garbage clock-skewed input.
+
+**Fix:** `premiumFresh` now uses the shared `isZeroDteMarkStale()` (4h max age + 60s future-skew
+reject), same pattern as items 0c/0d above.
+
+**Check at the open:** This is correctness-audit tooling, not a member-facing surface — nothing to
+check on the live UI. Confirm instead that the Night Hawk correctness score (wherever the
+correctness-audit run is read from) does not show a spurious `premium` metric `flag` for the
+day's published edition; a real chain-band mismatch should still flag normally.
+
+### 0f. Vector volume-profile POC/VAH/VAL label axis collision — fix/vector-vp-label-collision (pending)
+
+**What was broken:** On SPX Slayer `/dashboard` (shared Vector chart), volume-profile level labels
+("POC", "VAH", "VAL") were drawn at `rightX - 6` flush against the price axis — native lightweight-charts
+price-line axis badges (Pin, Gamma flip, VWAP, etc.) painted on top whenever both levels landed near the
+same price, making the profile label unreadable.
+
+**Fix:** Anchor labels at `gutterLeft + 4px` with left text alignment — inside the profile bar band,
+away from axis badges (`volumeProfileLabelX()`).
+
+**Check at the open:** On `/dashboard` SPX Slayer with volume-profile enabled during RTH, when Pin (or
+any price-line badge) and POC are near the same price, both labels must be independently legible in a
+`proxy-browser.cjs` capture of the chart's right edge (no gray "POC" text hidden under an orange Pin badge).
+
+### 0. Discord digest crons on admin health board — PR #3543 (merged)
+EventBridge crons logging `cron_job_runs` rows, but absent from `CRON_JOBS` — invisible to
+`cron-staleness-watchdog` and the admin cron-health board.
+
+**Fix:** added three registry entries with deployed schedules (`*/2`, `*/15`, `*/15` UTC) and
+`stale_after_min` 10/45/45; `produces_member_alert: true`.
+
+**Check at the open:**
+- `GET /api/admin/cron/health` (admin) shows all three with recent `last_run_at` during RTH.
+- If any Discord channel goes quiet, confirm the watchdog would now alert (not first noticed by members).
+
+### 0b. Warm-cron `force=1` replay floors — desk-warm #3540, heatmap-warm #3542, zerodte-warm #3550 (merged), meridian-warm (pending)
+
+**What was broken:** `desk-warm`, `heatmap-warm`, `zerodte-warm`, and `meridian-warm` (and peers)
+had overlap locks but no minimum re-run floor — `?force=1` could replay the full warm pass (or, for
+`zerodte-warm`, the 0DTE scanner tick + board snapshot rebuild) in a tight loop faster than any
+legitimate trigger.
+
+**Fix:** atomic `sharedCacheSetNx` cooldown keys checked before overlap lock (desk-warm 60s,
+heatmap-warm 10s, zerodte-warm 60s, meridian-warm 60s); all fail open on a Redis error.
+
+**Check at the open:**
+- CloudWatch `/ecs/blackout-production`: no burst of `[cron/<name>] background done` lines closer
+  than each cron's own floor apart from an out-of-band `?force=1` caller, for any of the four crons.
+- ALB `TargetResponseTime` p99 stays bounded during warm windows (no overnight replay storms).
+- `zerodte-warm` specifically: legitimate 4 min rth-warm-leader heals unchanged.
+
 ### 1. `CACHE_WARM_ALWAYS` leftover staging bypass — PR #3512 (merged)
 
 **What was broken:** `shouldRunCacheWarmer()` bypassed its weekday 4am-8pm ET hours gate whenever
@@ -277,6 +368,477 @@ been enriched this load) it should never coexist with the printed label. A row t
 means the withhold did not take effect. Also spot-check an UNPRINTED same-day AMC print still shows
 a real chain-IV expected move when a chain exists (the withhold must not have gone too far and
 suppressed the legitimate case).
+
+### 8. desk-warm STILL firing off-hours after item #1's `CACHE_WARM_ALWAYS` fix — `force=1` was a separate, unthrottled bypass — PR pending (branch `fix/desk-warm-off-hours-trigger`)
+
+**What was broken:** item #1 above ("Check at the open" #1) worried a continued 24/7 firing pattern
+post-deploy would mean the deploy didn't carry the `CACHE_WARM_ALWAYS` fix. That did NOT happen —
+re-checked live 2026-09-04: 314 `desk-warm` background completions between 00:29-07:59 UTC, i.e.
+the pathological pattern continued for hours AFTER #3512 deployed (~07:32 UTC). But the deploy DID
+carry the fix — proved directly, not assumed: `rth-warm-leader`'s own `isEtExtendedWarmHours` gate
+(shared code with `shouldRunCacheWarmer`) stayed completely silent (zero log lines of any kind) the
+entire off-hours window and resumed at the exact 08:00:02 UTC ET-4am boundary, which is only
+possible if the underlying hours check is correct on the running image. EventBridge and
+cron-staleness-watchdog's self-heal were also positively ruled out with direct CloudWatch/Lambda log
+evidence (see the findings-staging entry). The real gap: `force=1` was ALWAYS a fully separate,
+unconditional bypass of the hours gate (intentional, for on-demand/debug warms) that nothing rate-
+limited — a caller replaying `?force=1` in a loop could re-trigger the route's full UW/Polygon fan-
+out as fast as it liked, since the only existing protection (`OVERLAP_LOCK`) is released the instant
+each run completes (often under a second). Whatever external caller was doing this (not traced to
+any code path this repo owns — all four scripts that construct that exact request are one-shot/
+manual, not scheduled) is now capped regardless of identity.
+
+**Fix:** a second guard, `RERUN_COOLDOWN_KEY`/`RERUN_COOLDOWN_SEC = 60`, checked before the overlap
+lock and before dispatch, claimed via the same atomic `sharedCacheSetNx` primitive but — unlike
+`OVERLAP_LOCK` — never released early, so it holds for its full 60s TTL regardless of how fast the
+run itself finishes. 60s sits below every legitimate cadence (rth-warm-leader's 90s heal threshold,
+EventBridge's 5-min schedule), so it never blocks real traffic.
+
+**Check at the open:** re-pull `desk-warm` `elapsed=` log frequency for an overnight window AFTER
+this deploys and confirm off-hours completions are now capped at roughly one per 60s at most (i.e.
+whatever is still calling `force=1` gets a `"rate-limited"` skip response, logged via
+`logCronRun("desk-warm", …)`, instead of a full re-run) — a continued sub-60s cadence means this fix
+is not yet deployed, not that it failed. During the 4am-8pm ET window itself, confirm `desk-warm`
+still runs on its normal ~90s (leader-heal) / 5-min (EventBridge) cadence — this fix must not have
+introduced any new throttling of legitimate in-window traffic, since 60s is strictly below both.
+
+### 9. PgBouncer follow-up config from #3499 still never set — zero-headroom condition still live — NOT FIXED, needs operator authorization
+
+**What was found:** #3499 (item #3 above) shipped the CODE to defend against web's connection pool
+oversubscribing the shared PgBouncer/RDS budget, but its own write-up said explicitly this stays a
+no-op until an operator sets two new env vars. Re-checked live 2026-09-04: neither
+`REPLICA_COUNT_MAX` nor `PGBOUNCER_RESERVED_FOR_OTHER_SERVICES` has been set on either service —
+the zero-headroom condition #3499 was built to defend against is still live, and still correlates
+with real ALB 5xx + `[db] transient query error` clusters during RTH. Exact remediation values are
+computed and documented in `docs/audit/findings-staging/2026-09-04-pgbouncer-followup-config-never-set.md`
+— this was NOT applied because a live Secrets Manager write was blocked by the coordinator's
+auto-mode classifier as a production-infra change requiring explicit authorization.
+
+**Check at the open:** if an operator has applied the documented remediation, confirm
+`REPLICA_COUNT_MAX`/`PGBOUNCER_RESERVED_FOR_OTHER_SERVICES` are set correctly on both services and
+watch for the new `[db]` warning logs (should stay silent if sized correctly) plus a drop in
+`[db] transient query error`/ALB 5xx clustering during RTH. If NOT yet applied, this item stays
+open — the underlying condition is unchanged from #3499's own original measurement.
+
+### 10. ElastiCache Redis chronically near its effective memory budget, evicting during RTH — NOT FIXED, needs an operator capacity decision
+
+**What was found:** `blackout-production-redis-rg-001` runs 94-99.9% of its effective (post-reservation)
+memory budget continuously, evicting up to 620 TTL'd keys/hour during RTH despite real physical
+headroom on the node (~26-30% free). Three remedies exist (upsize the node, reduce
+`reserved-memory-percent`, or audit cache-key TTL/footprint), each with real cost/risk tradeoffs —
+see `docs/audit/findings-staging/2026-09-04-elasticache-redis-memory-pressure.md` for the full
+evidence and tradeoff analysis. Deliberately left as a documented finding for an explicit operator
+decision rather than executed unilaterally.
+
+**Check at the open:** if a remedy has been applied, confirm `AWS/ElastiCache` `Evictions` trends
+back toward the near-zero off-RTH baseline. If not yet applied, this item stays open.
+
+### 11. market-worker ECS CPU-pinned near 100% during RTH, no autoscaling — NOT FIXED, needs a correctness check before any capacity change
+
+**What was found:** the single-task `blackout-production-market-worker` service (sole owner of live
+Polygon/UW WebSocket ingestion) runs CPU-pinned at 99.6-99.9% for extended stretches during RTH,
+with no registered autoscaling target. A vertical scale (raise task-level `cpu`, keep
+`desiredCount=1`) is the safe remediation; a horizontal scale (autoscaling to N>1 replicas) carries
+a real, unverified correctness risk (duplicate WS subscriptions if the ingestion code isn't built
+for multi-replica coordination) — see
+`docs/audit/findings-staging/2026-09-04-market-worker-cpu-pinned-no-scaling.md` for the full
+analysis. Not executed this pass.
+
+**Check at the open:** if a fix has been applied, confirm `AWS/ECS` `CPUUtilization` for
+market-worker shows real headroom during RTH, and confirm live-data freshness (WS ingestion lag)
+did not regress. If not yet applied, this item stays open.
+
+### 12. RTH ALB tail latency + real 5xx (`vector-pick-sweep` lock TTL + UW-sweep-concurrency) — PR #3411 + PR #3479 (both merged, NEITHER validated under a live RTH tape yet)
+
+**What was broken:** `AWS/ApplicationELB` `TargetResponseTime` on `blackout-production-app`'s
+target group showed p50 healthy (0.03-1.1s) but p99/Max climbing sharply and staying high across
+nearly every RTH minute — not isolated bursts — with Max repeatedly landing 95-119s, within
+seconds of the ALB's 120s `idle_timeout`. Two independent, previously-shipped fixes target this:
+`vector-pick-sweep`'s cross-replica overlap lock TTL (480s) was shorter than real observed sweep
+runtime (up to 693684ms), so the lock could expire mid-sweep and let a second sweep start while the
+first was still running (#3411, TTL raised to 900s); separately, even a single non-overlapping run
+of any of 4 crons (`vector-pick-sweep`, `vector-dark-pool-warm`, `vector-full-state-snapshot`,
+`bie-full-state-snapshot`) could occupy both of the shared cluster-wide UW rate limiter's ~2
+concurrency slots continuously for up to ~5 minutes, racing live member requests for the same slots
+the whole time (#3479, added `runWithBackgroundUwSweep()`/`reserveForLiveTraffic()` so a tagged
+background sweep can never claim the last slot). Full root-cause detail in both PRs' own
+findings-staging entries: `docs/audit/findings-staging/2026-09-03-vector-pick-sweep-lock-ttl-shorter-than-runtime.md`
+and `docs/audit/findings-staging/2026-09-04-uw-sweep-concurrency-starves-live-traffic.md`.
+
+**Why this item exists separately from those two entries:** neither fix's own "Check at the open"
+step ever made it into this WATCH LIST — a genuine gap in the pipeline the FULL-LIFECYCLE mandate
+above is meant to close. This entry closes it, and adds independent re-confirmation gathered
+2026-09-04 (pre-open) specifically re-measuring the ORIGINAL (pre-#3479) RTH session named in that
+finding, rather than taking its numbers on faith:
+- Re-pulled 1-minute-granularity `TargetResponseTime` (p50/p90/p99/Max) + `HTTPCode_*_5XX_Count` for
+  the FULL 2026-09-03 RTH session (13:00-20:29 UTC): Max ≥95s in **49/450 minutes (11%)** of the
+  session, p99 across the day p50=14.3s/p90=50.2s, while p50 stayed 0.03-1.1s throughout — confirms
+  the tail-latency shape (not a fleet-capacity problem) persisted across the WHOLE session, not a
+  handful of windows. Total 5xx in this RTH-only window: **105 ELB-5xx + 82 target-5xx over 101807
+  requests** — matching the original finding's 24h total of 105 ELB-5xx almost exactly, meaning
+  essentially every ELB-5xx that day happened DURING RTH, consistent with a market-hours-only-cron
+  driven mechanism rather than general traffic volume.
+- Ruled out an ECS rolling deploy as the driver of the worst 5xx cluster (17:04-17:11 UTC, 45
+  ELB-5xx in 8 minutes): `HealthyHostCount`/`UnHealthyHostCount` on the target group stayed pinned
+  at 8/0 for the ENTIRE RTH session — no target ever deregistered, so deploy churn is excluded.
+- Checked raw per-task `AWS/ECS` `CPUUtilization` Max at 1-minute resolution against 5xx
+  occurrence: weak, not the primary driver — `cpu_max` during the 93 minutes carrying any 5xx
+  averaged 77.2%, barely above the day-wide p50 of 78.0% (day-wide p90 89.7%, p99 94.1%); CPU was
+  hot most of the RTH day regardless of whether a 5xx fired that minute.
+- Independently reproduced the exact overlap `CloudWatch Logs /ecs/blackout-production` `elapsed=`
+  timestamps #3479's own commit message cites for the worst cluster: `vector-pick-sweep` "done"
+  lines at 17:06:52 (elapsed=693684ms, i.e. started ~16:55) and 17:09:31 (elapsed=252495ms, started
+  ~17:05:16) — a second sweep starting and finishing while the first was still in flight, landing
+  squarely inside the 17:04-17:11 UTC 5xx cluster — plus dense concurrent completions from
+  `zerodte-warm` (elapsed=212590ms), `vector-dark-pool-warm` (elapsed=173224ms, `failed=12`), and
+  `bie-full-state-snapshot` (elapsed=162304ms) in the same 8-minute window.
+
+**Why this is still unvalidated:** #3411 merged 2026-09-03 20:08 UTC — at the very TAIL of the RTH
+session the evidence above measures (RTH closes 20:00 UTC), so it had essentially no chance to
+affect that session's numbers. #3479 merged 2026-09-04 03:38 UTC — AFTER that RTH session closed
+and BEFORE today's (2026-09-04) open. **Today's open is the first live RTH tape either fix has
+run against.**
+
+**Check at the open:** re-pull the same three series (`TargetResponseTime` p99/Max 1-min, both
+`HTTPCode_*_5XX_Count`, `HealthyHostCount`) for TODAY's RTH session and compare directly against
+the 2026-09-03 baseline above — expect Max to no longer sit repeatedly at 95-119s and the ≥95s
+minute-share to drop well below 11%, and `HTTPCode_ELB_5XX_Count` to drop well below the ~105/day
+baseline. Also grep `elapsed=` for `vector-pick-sweep`/`vector-dark-pool-warm`/
+`vector-full-state-snapshot`/`bie-full-state-snapshot` and confirm no two "done" lines for the SAME
+cron key ever overlap in wall-clock time (start-of-run = done-timestamp minus `elapsed=`). **If the
+pattern is materially unchanged**, that does not necessarily mean the fix is broken — it may mean a
+DIFFERENT cron is now the dominant contributor: `zerodte-warm` (212590ms in the same worst window
+above) does NOT appear to route through `uw-rate-limiter.ts` anywhere in its reachable dependency
+tree (`src/lib/zerodte/scan.ts`, `src/lib/platform/zerodte-service.ts` — no `runWithBackgroundUwSweep`
+wiring, unlike the other four), so it was NOT covered by #3479 and is not yet confirmed either way;
+it already carries its own overlap guard (900s TTL, #3502-era fix) but not a UW/Polygon budget
+reservation. Flagged here as a candidate follow-up, not a confirmed cause — its long runtime is more
+likely dominated by Polygon calls or general compute than the UW ceiling #3479 fixed, and that would
+need its own measurement before a fix is warranted, per this file's own "never fix from a guess"
+standing method.
+
+### 18. Meridian earnings detail header — title overlapped the SUMMARY tab pill on tablet/mobile — PR #3563 (merged, branch `fix/meridian-earnings-header-tab-overlap`)
+
+**What was broken:** `.meridian-detail-head-v2` (the `<header>` row pairing the earnings event
+title with the SUMMARY/REPORT/ESTIMATES/POSITIONING/HISTORY tab strip in
+`MeridianEventDetailPanel.tsx`) had no `flex-wrap` of its own while its title child
+(`.meridian-detail-title-v2`) IS `flex-wrap: wrap` by design. At >=1440px the title fits on one
+line and nothing overlaps; at 1024px and 430px the title wraps to 2-3 lines, the row grows tall,
+and `align-items: center` centered the still-single-line tab strip vertically against that tall
+block — landing the tail of the title ("earnings", right after the "EARNINGS · HIGH IMPACT"
+kicker) directly on top of the SUMMARY pill's left half. Reproduced on every one of the desk's
+~131 live earnings events, on both tablet and mobile, regardless of which tab was active.
+
+**Fix:** added `flex-wrap: wrap` to `.meridian-detail-head-v2` so the tab strip drops to its own
+row once it no longer fits beside the title, instead of being squeezed onto the same nowrap line
+and centered into the middle of the wrapped text. `.meridian-earnings-tablist`'s own
+`flex-wrap: nowrap` (keeps the five tab pills on one row) is untouched. Full root-cause detail:
+`docs/audit/findings-staging/2026-09-04-meridian-earnings-detail-header-tab-overlap.md`.
+
+**Check at the open:** open any live earnings event's detail on `/meridian` at both 1024px and
+430px viewports (or via `proxy-browser.cjs` against production) and confirm the h2 title and the
+SUMMARY/REPORT/ESTIMATES/POSITIONING/HISTORY tab strip render on visually separate lines with no
+overlapping glyphs, across at least 2-3 different real earnings events (title length varies by
+ticker/company name, and this defect is title-length-and-viewport-width dependent) — this could
+only be confirmed pre-open against static/cached data; the specific value of re-checking at the
+open is seeing it against the FULL, currently-live set of ~131 earnings events (including any that
+rolled onto/off the calendar overnight) rather than the handful captured in the original finding's
+screenshots. Also spot-check that the >=1440px desktop rendering is visually unchanged (title and
+tab strip still share one row) — the fix should be a no-op at that width.
+
+### 17. Helix print tape signal badges hard-clipped mid-character in FULL columns — PR #3558 (merged, branch `fix/helix-signals-badge-clip`)
+
+**What was broken:** the `/flows` print tape's Signals cell (`.helix-tape-cell--signals`, FULL
+columns density, desktop with the analytics sidebar hidden) rendered `signals.slice(0, 3)` — a raw
+badge-count cap with no notion of pixel width — inside a `flex-nowrap overflow-hidden` box with no
+scroll or wrap anywhere in its ancestor chain. On a real row carrying 4 signals (STACK / NEW 4.2× /
+REPEAT / a 4th collapsed into `+1`), only STACK and NEW 4.2× rendered whole; REPEAT painted as a
+single clipped `R`, and the `+1` overflow chip was present in the DOM's text but never visually
+painted at all — full write-up in
+`docs/audit/findings-staging/2026-09-04-helix-tape-signal-badge-clip.md`.
+
+**Fix:** new `fitSignalBadges()` (`src/features/helix/lib/helix-signal-fit.ts`) estimates each
+badge's real width from its label and shows only the priority-ordered PREFIX that actually fits the
+column's floor width, with a correctly-sized `+N` chip reserved for whatever is dropped — so the row
+never emits more markup than the 116px cell can paint. Code-level fix only; nothing here depends on
+a live measurement, so this item is about confirming it under real tape volume/variety, not about
+proving the fix exists.
+
+**Check at the open:** on `/flows` in FULL columns density (desktop, hide the analytics sidebar),
+watch a real RTH tape for rows carrying 3+ signals (STACK/WHALE prints with a fresh NEW badge and a
+REPEAT rule are the most likely combo) and confirm every visible badge renders whole — no clipped
+glyphs — and that whenever badges are hidden, a legible `+N` chip is visible summarizing them (never
+a phantom count that never paints). Also worth a spot-check at a narrower desktop width (browser
+window resized down, still above the mobile breakpoint) since the fix budgets against the column's
+CSS floor specifically to stay safe there.
+
+### 16. Vector desk mobile chart collapse — PR #3556 (pending, branch `fix/vector-mobile-chart-collapse`)
+
+**What was broken:** the standalone `/vector` desk's price chart (candles + wall overlay + volume
+pane) never rendered below the 1280px desktop breakpoint — present in the DOM, laid out with a
+real 320px `min-height` floor on its own canvas element, but clipped to nothing by an ancestor
+chain (`.vector-chart-terminal-chart` → `.vector-chart-wrap` → `.vector-chart-stage`) that
+computed to a literal 0px box on every phone/tablet width, because the flex-fill technique those
+three carried unconditionally (`flex: 1 1 0; min-height: 0;`) only resolves correctly when some
+ancestor up the chain has a DEFINITE height to distribute — true only from 1280px up. Independently
+reproduced live 2026-09-04 (fresh temp Clerk session, `proxy-browser.cjs` at 430x932): full-page
+capture showed header → Live Helix → 0DTE Matrix → SCALP play card → SPX Plays, no chart anywhere;
+a DOM probe measured `.vector-chart-canvas` at h=320 while all three ancestors measured h=0,
+unchanged after a 30s settle (ruling out a data/timing race). Full evidence and root cause in
+`docs/audit/findings-staging/2026-09-04-vector-mobile-chart-collapse.md`.
+
+**Fix:** scoped the `flex: 1 1 0; min-height: 0;` triple to the existing `@media (min-width: 1280px)`
+block (byte-identical to what the base rule used to carry, so desktop's resolved CSS is unchanged);
+the base/mobile rule now lets the default `flex: 0 1 auto` + `min-height: auto` apply, so the chart
+column sizes to its own content (the canvas's 320px floor) instead of forcing itself to zero. No JS
+change — `VectorChart.tsx`'s existing `ResizeObserver` autosize nudge was already correctly wired to
+react once the container gets a real size.
+
+**Check at the open:** this fix was built and verified entirely OFF-HOURS (market closed, "Session
+closed" shown on Live Helix) — the chart's underlying data feed (live bars, wall overlay, SSE
+ticks) has not been seen rendering into the now-fixed layout under a moving RTH tape. Load
+`/vector` on a phone (or a <1280px-wide window) once the market is open and confirm: (1) the
+candle chart renders above the fold, between the ticker-chip row and the Live Helix card, with
+visible candles/wall beads and a volume sub-pane, matching the desktop layout's content
+(no longer just absent); (2) it stays correctly sized and does not clip/collapse again as live bars
+stream in and the chart's content height changes; (3) the desktop (>=1280px) layout is pixel-for-pixel
+unchanged from before this fix — this was verified via CSS-cascade inspection and existing
+regression tests (`vector-chart-viewport.test.ts`) but not via a fresh live desktop screenshot,
+since the fix's own scope was mobile-only.
+
+### 14b. Legacy→Swing promotion dte<5 dual-admission — PR pending (`fix/legacy-swing-dte-floor`)
+
+**What was broken:** Legacy morning-confirm promotions could land on the Swing board with a picked
+contract at dte 3–4 while `HORIZONS.SWING.dteMin` is 5 — the same dual-admission overlap the
+2026-08-06 horizons widening closed for organic discovery, but via a second code path
+(`legacy-confirm-promote.ts`).
+
+**Fix:** filter chain rows to `[SWING.dteMin, SWING.dteMax]` before fan-out; dossier `intendedDte`
+derives from the picked contract's actual DTE (not a hardcoded 14).
+
+**Check at the open:** after a Legacy morning-confirm cycle, inspect `/nighthawk` Swings lane (or
+`GET /api/market/nighthawk/horizons`) for any `signalKinds` containing `NIGHT HAWK` — every such
+row's `contract.dte` must be ≥ 5 and `subLane` must match `subLaneForDte(contract.dte)`.
+
+### 14. Night Hawk mobile 430x932 — view-tab row overlapped the theme-toggle pill — PR pending (branch `fix/nighthawk-legacy-tab-toggle-overlap`)
+
+**What was broken:** live `/nighthawk` at 430x932 (both default and analytics-expanded states):
+the 5-tab view switcher's "Legacy" tab visually overlapped the adjacent dark/light theme-toggle
+pill — the "L" of "LIGHT" and the moon icon rendered on top of the tail of "Legacy" ("...gacy")
+instead of the row wrapping, truncating, or scrolling. `.nh-v2-page .ios-native-segment` had no
+`overflow-x`/`flex-wrap`, so once VECTOR became the row's 5th tab, the five content-width
+(`flex: 0 0 auto`) tab buttons' combined width could exceed the box the flex algorithm assigned
+the segment (its `min-w-0 flex-1 shrink` classes remove the default min-content floor so it can be
+squeezed below its content width) — the excess used the CSS-default `overflow: visible` and
+painted past the segment's edge, landing on the theme toggle, which paints after it in DOM order.
+
+**Fix:** `.nh-v2-page .ios-native-segment` now scrolls horizontally
+(`overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain;
+-webkit-overflow-scrolling: touch; scrollbar-width: none;` + a hidden `::-webkit-scrollbar`) —
+the same pattern `.nh-history-tablewrap` already uses elsewhere in the desk — instead of leaving
+the overflow unclipped. `.ios-native-segment-btn` is unchanged (`flex: 0 0 auto` stays; tabs must
+not squash/truncate).
+
+**Check at the open:** on live `/nighthawk` at 430x932 (`proxy-browser.cjs`), confirm the view-tab
+row (0DTE/Swings/Bangers/Vector/Legacy) no longer paints "Legacy" (or any tab) through the theme
+toggle in either the default or analytics-expanded state, and that swiping/scrolling the tab row
+horizontally reveals the full "Legacy" label with the theme toggle staying put, fully legible, at
+its own fixed position to the row's right. Also spot-check desktop width (≥1440px) is visually
+unchanged — the fix is a CSS overflow behavior change with no effect once the row already fits.
+
+### 13. Vector chart volume-pane "SPY vol" watermark overlapped the first x-axis tick — PR pending (branch `fix/vector-volume-pane-label-overlap`)
+
+**What was broken:** the volume sub-pane's "SPY vol" watermark label (`VectorChart.tsx`,
+bottom-left corner of the chart stage, just above the x-axis) was a plain transparent `<p>` with no
+background, sitting in the same screen band as the chart's own canvas-drawn x-axis time-tick labels
+at the left edge. Live pixel-zoomed capture of `/vector` (desktop 1440×900) showed it painting
+directly over the first tick ("19:00"), producing garbled interleaved text. Two sibling labels a few
+lines below it in the same file (the "◇ dim = modeled" honesty label and the GEX-scope
+"spot-aligned" chip) already had this exact overlap class fixed on 2026-08-23 (opaque
+`bg-black/70 backdrop-blur-sm` pill) — this third label was simply missed at the time because it
+sits on the opposite corner and the earlier fix was validated on mobile, where this collision does
+not occur (it's a desktop-width-only overlap).
+
+**Fix:** gave the "SPY vol" label the same `rounded bg-black/70 px-1.5 py-0.5 backdrop-blur-sm`
+opaque-pill treatment as its two siblings, position unchanged (`bottom-2 left-2`). Deliberately did
+NOT add the siblings' `max-w-[42%] truncate` width guard — that guard protects variable-length,
+right-anchored text from overrunning the chart's right edge, which doesn't apply to this label's
+short, static text.
+
+**Check at the open, live tape, desktop viewport:** open `/vector` at 1440×900 (or wider) and look
+at the volume sub-pane's bottom-left corner. Confirm "SPY vol" reads cleanly on its own opaque pill
+with the first x-axis time tick (whatever time it now shows, live) visible and legible either beside
+or behind the pill — not interleaved into garbled combined text. Check across a few different zoom/
+pan states, since tick positions move with the visible time range and the original bug's window
+(the label colliding with whichever tick happens to land at the left edge) is a function of viewport
+width and time-range, not a single fixed state. Also spot-check mobile (430×932) to confirm the fix
+didn't regress the already-working sibling labels' layout there.
+
+### 20. Helix `/flows` mobile print card showed a bare negative DTE for an already-expired print — PR #3561 (merged, branch `fix/helix-mobile-card-expired-dte`)
+
+**What was broken:** the mobile print card (`HelixMobileFlowTape.tsx`) computed
+`dte = flow.dte ?? daysToExpiry(flow.expiry)` and only special-cased `dte === 0` (0DTE, ember
+badge + hidden bare-number segment). UW's own `dte` field goes negative for a print reported after
+its contract's expiry has already passed (an observed, not hypothetical, feed value — see
+`helix-flow-format.ts`'s `fmtIv` doc comment for a live `dte: -1` example) and that raw value is
+what usually reaches the card, since the clamped `daysToExpiry()` fallback only runs when
+`flow.dte` itself is null. So an already-expired print rendered a bare `"-1d"` in the exact same
+plain styling as an ordinary future DTE like `"32d"`, with none of the visual urgency same-day
+(0DTE) prints get from their highlighted treatment one row up. The desktop table
+(`HelixFlowTable.tsx`) has the identical root-cause pattern at its own `dte`/`is0dte` computation
+and DTE table cell — deliberately left unfixed in this PR (out of this finding's stated scope,
+flagged as a follow-up) but worth checking too.
+
+**Fix:** added `dtePrintLabel(dte)` (exported pure helper next to the mobile card component,
+following this repo's `ExpiryConcentration.tsx` pattern of testing a card's display logic directly)
+that returns `{ text: "EXPIRED", expired: true }` for `dte < 0` and `{ text: "${dte}d", expired:
+false }` otherwise; the card now renders `dteLabel.text` with an ember/bold treatment when
+`expired`, matching the sibling 0DTE badge's ember tone, instead of the raw negative number. The
+`!is0dte` gate that hides the whole DTE segment for 0DTE prints is unchanged.
+
+**Check at the open, live tape, mobile viewport (430×932):** open `/flows` on mobile and watch for
+any print whose expiry has just passed intraday (or catch a stale/late print against a prior day's
+expiry, which is the scenario the original evidence captured — `09/03/26 · -1d` observed the day
+after that expiry). Confirm the card shows `EXPIRED` in the highlighted ember/bold treatment, never
+a bare negative number like `-1d`/`-2d`. Also confirm ordinary future-dated prints on the same tape
+are unaffected (still plain `"<n>d"`) and that a genuine same-day 0DTE print still hides the DTE
+segment and shows its own "0DTE" badge unchanged — this fix must not have touched that branch.
+
+### 15. Night Hawk mobile play-history table's P&L column was scrolled off-screen — PR pending (branch `fix/nighthawk-mobile-pnl-column-offscreen`)
+
+**What was broken:** the expanded Session Analytics panel's play-history table renders 6 columns
+(Date, Ticker, Dir, Tier, Outcome, P&L) inside `.nh-history-tablewrap` — `overflow-x-auto` around a
+`min-w-[440px]` table — which overflows a 430px phone's card width. The overflow clip always eats
+the rightmost column first, and P&L was last, so it required an extra horizontal swipe to see even
+though `globals.css`'s own comment calls it "the single most-scanned value in this table."
+
+**Fix:** reordered columns to Date, Ticker, **P&L**, Dir, Tier, Outcome (P&L moved from 6th to 3rd,
+right after Ticker) — pure JSX reorder, no CSS/data change. See
+`docs/audit/findings-staging/2026-09-04-nighthawk-history-pnl-column-mobile-offscreen.md`.
+
+**Check at the open:** on `/nighthawk` (`proxy-browser.cjs`, 430×932 mobile viewport), open Session
+Analytics, expand a session with graded plays, and confirm the P&L value for each row is visible
+in the table WITHOUT any horizontal swipe — it should render as the 3rd visible column right after
+the ticker, still tone-colored (green/red/amber) and bold. Also confirm Dir/Tier/Outcome are still
+reachable (now via swipe or the row's existing tap-to-expand drawer) and that desktop/tablet
+rendering (where the table already fit) is visually unchanged.
+
+### 21. `thermal-discord` cron logging "Fontconfig error: No writable cache directories" every ~15-30min RTH — PR #3571 (merged, branch `fix/thermal-discord-fontconfig-cache-dir`)
+
+**What was broken:** CloudWatch showed 72 occurrences/24h of the bare stderr line `Fontconfig
+error: No writable cache directories`, clustered in groups of exactly 4, RTH-only, on the
+`thermal-discord` cron's own ~15-30min cadence. `renderThermalDiscordCardPng` rasterises its SVG
+through `sharp(svg).png()` (librsvg, a real fontconfig client), and the ECS runtime user (`nextjs`,
+created without `-m` in `deploy/Dockerfile`) has no home directory and no `$XDG_CACHE_HOME`, so
+fontconfig had nowhere writable to persist its cache and rebuilt it from scratch on every single
+cold render — silent (nothing threw, the same cron logged success right around these lines), but a
+real per-invocation latency tax.
+
+**Fix:** `ensureFontconfigCacheDir()` in `src/lib/thermal-discord-card.ts`, called before the
+`sharp()` call, points `XDG_CACHE_HOME` at a writable dir under `os.tmpdir()` (Fargate ephemeral
+`/tmp`) once per process and creates it if needed, so fontconfig can keep a warm cache across
+renders within one task's lifetime. Never overrides an operator-supplied `XDG_CACHE_HOME`. See
+`docs/audit/findings-staging/2026-09-04-thermal-discord-fontconfig-cache-dir.md` for the full root
+cause (including the exact Dockerfile lines) and the infra-level follow-up this code-level fix
+deliberately does not attempt.
+
+**Check at the open:** CloudWatch Logs Insights, `/ecs/blackout-production`, same 24h-window query
+(`fields @timestamp, @message | filter @message like /Fontconfig error/`) run AFTER this deploys —
+confirm the line's occurrence count drops to (ideally) zero, or at minimum to once per task
+lifetime instead of once per cron firing, since the fix only makes the cache warm-reusable within a
+task, not eliminate the very first cold render after a fresh deploy/task start. Also spot-check that
+`thermal-discord` embeds still post normally to Discord during RTH (unaffected functionally either
+way, but confirm the fix didn't introduce a regression) via the admin cron-health board or the
+Discord channel itself.
+
+### 19. Vector SPX PLAYS card's off-hours loading copy read as a stalled live scan — PR #3566 (merged, branch `fix/vector-contract-picks-closed-market-loading`)
+
+**What was broken:** a discovery-pass finding reported the mobile `/vector` contract-picks card
+("PLYS · SPX PLAYS · loading" / "Scanning the chain for a contract worth showing…") appearing
+identically across 3 captures ~10 minutes apart, all off-hours, never resolving — unlike the
+adjacent Live Helix panel, which shows an honest "Session closed — Live Helix resumes at the open"
+once it has nothing to show. Independently reproduced live 2026-09-04 (temp Clerk session,
+`proxy-browser.cjs`, 430×932, pre-open ~06:47-06:54 AM ET): the "never resolving" framing did NOT
+hold literally — 2 of 3 fresh page loads resolved to real, populated picks within the capture's own
+wait window (6-20s), and the 3rd (also 6s wait) reproduced the exact reported stuck-looking state.
+So the fetch genuinely runs off-hours and genuinely can resolve with real last-session picks, but
+resolution time off-hours is variable and can run past what a member reasonably waits, and the copy
+gave no signal the delay was expected — read stuck/broken exactly as the discovery pass described,
+even though it wasn't literally permanent. Full evidence, the "why not just copy Helix's exact
+pattern" reasoning (it would hide real off-hours content this card is designed to still show), and
+root cause in `docs/audit/findings-staging/2026-09-04-vector-contract-picks-closed-market-loading-copy.md`.
+
+**Fix:** added an optional `liveSession` prop to `VectorContractPicksCard` (default `true`) and
+branched ONLY the loading-state body copy on it — unchanged live-session wording, vs "Session
+closed — resolving the last session's chain scan (can take longer off-hours)…" when closed. The
+fetch itself, its timing, and every other state (populated picks, "no contract cleared the bar",
+pivot-wait) are untouched. Wired through both real call sites (`VectorPageShell.tsx`,
+`VectorComparePlayStrip.tsx`).
+
+**Check at the open:** this fix was built and verified entirely OFF-HOURS. Once the market is open,
+confirm on `/vector` (`proxy-browser.cjs`, 430×932 mobile, and desktop) that: (1) the loading state,
+if seen at all during RTH, still shows the ORIGINAL "Scanning the chain for a contract worth
+showing…" copy (not the closed-market variant) — `liveSession` should read `true` throughout RTH;
+(2) real contract picks still populate normally once a play exists, at the same cadence as before
+this PR (this fix must not have changed fetch timing, only closed-market copy); (3) re-check the
+card off-hours AFTER today's close and confirm the closed-market copy now appears instead of the
+bare "Scanning the chain…" sentence when the loading state is hit.
+
+### 22. `db.ts` checked-out pool clients had no `'error'` listener — raw `uncaughtException` on connection drop — PR #3570 (merged, branch `fix/db-transaction-raw-client-uncaught`)
+
+**What was broken:** one live CloudWatch `uncaughtException: [Error: Connection terminated
+unexpectedly]` in a 24h window, despite `db.ts` already routing essentially every query through
+`dbQuery`'s try/catch+retry and already carrying a `livePool.on("error", ...)` handler for idle
+pooled clients. Root cause was NOT a missing try/catch (every raw `pool.connect()` site already had
+one) — `pg-pool` removes a client's `'error'` listener for the entire time it's checked out
+(`pool.on('error')` only ever covers idle clients), and `pg.Client` emits `'error'` on the client
+object itself UNCONDITIONALLY on an unexpected connection drop, separately from rejecting whatever
+query happens to be in flight — a promise-based `try/catch` can never intercept that second,
+independent emission. See `docs/audit/findings-staging/2026-09-04-db-checked-out-client-error-listener.md`
+for the full node-postgres source trace.
+
+**Fix:** added `guardCheckedOutClient()`, attached at all 7 raw `pool.connect()` sites in `db.ts`
+(migration advisory lock, `spx_signal_log` dedup transaction, `deleteUserDataForClerkId`,
+`dbClient()`, `acquireHeldLock`/`releaseHeldLock`, `insertOpenSpxPlay`, `withSwingRollTx`) —
+mirrors the existing pool-level swallow+log convention, scoped to the checked-out-client gap that
+convention doesn't reach.
+
+**Check at the open:** this is a backend crash-prevention fix with no UI surface — nothing to
+visually confirm on a live desk/board. Instead, pull `/ecs/blackout-production` CloudWatch Logs for
+a full RTH session after this deploys and confirm **zero** further raw
+`uncaughtException: [Error: Connection terminated unexpectedly]` events, with particular attention
+to `spx-evaluate` (holds the SPX-eval advisory lock for its whole run via `acquireHeldLock` — the
+longest-held, highest-risk checkout of the 7) and any DB reconnect/blip windows already visible in
+RDS/PgBouncer metrics that day.
+
+### 23. `data-integrity-verifier.ts`'s own `ageMin()` read a future-dated timestamp as trustworthy — PR pending (branch `fix/data-integrity-verifier-future-timestamps`)
+
+**What was broken:** the shared `ageMin(thenMs, now)` helper every freshness check in
+`data-integrity-verifier.ts` goes through (Postgres `flow_alerts`/`cron_job_runs` latest-row age,
+the Redis GEX matrix `asof` age, and the writer target-freshness reconciliation that suppresses a
+stale `failed` cron handshake row) computed a plain `(now - thenMs) / 60_000` with no guard for
+`thenMs` being in the future. A future-dated row (cross-process clock skew, or a corrupted/
+miswritten timestamp) produced a NEGATIVE age, which trivially passes every `aMin <= threshold`
+freshness check in the file — this is the DATA-CORRECTNESS AUDITOR's own core age computation, so
+being blind to this exact corruption shape undermines the surface whose entire job is to catch it
+(see the file's own "HONESTY" comment: "Nothing here is a false green"). Same bug shape as 16+
+sites already fixed this session (SPX Slayer #3423, coaching alerts #3442, GEX heatmap cache
+#3481, GEX heatmap context editions #3573, Helix flow-anomaly banner #3559, …) — found by sweeping
+for un-guarded `Date.now() - <timestamp>` age comparisons per the standing mandate's named angle 2.
+
+**Fix:** `ageMin()` now returns `Infinity` (the SAME sentinel this file already uses for a NaN/
+unparseable timestamp) when `thenMs` is more than `ZERODTE_MARK_FUTURE_TOLERANCE_MS` (60s — the
+same constant SPX Slayer's #3423 fix uses for this identical shape) ahead of `now`, so a future-
+dated row now surfaces as a FLAG instead of a silent PASS. The one inline duplicate of this same
+calculation (the writer target-freshness check, `targetFreshDespiteFailedHandshake`) was rewired to
+call the now-guarded `ageMin()` instead of re-deriving its own unguarded copy, closing all 4 call
+sites in the file at once rather than one at a time.
+
+**Check at the open:** this is an audit-tooling correctness fix with no member-facing UI surface —
+nothing to visually confirm on a live desk/board. Instead, confirm the `data-correctness` cron
+(`GET /api/cron/data-correctness`) still reports its DATALAYER scorecard normally during RTH (no
+new unexpected FLAGs — a genuine future-dated row should now show as a FLAG where previously it
+would have silently PASSED, so a new FLAG here is the fix working as intended, not a regression).
 
 ---
 
@@ -1023,4 +1585,10 @@ The **governor stop-time recording gap** (#1810 follow-up). An untimed stop curr
 for the whole session where the design intent is a 20-minute lock. It was left alone on purpose: it
 LOOSENS a fail-closed guard on a live risk device, and that deserves a deliberate decision rather
 than an end-of-session patch.
+
+### 19. Vector universe GEX wall spot-zero guard — 2026-09-04
+
+- **What was broken:** `vector-universe.ts` passed `spot: 0` into `computeGexWalls` when chain spot was transiently zero, persisting wrong-side walls into narrowed-horizon history.
+- **What changed:** Both blended and narrowed-horizon `computeGexWalls` calls now use `spot != null && spot > 0 ? spot : undefined`.
+- **RTH check:** On `/vector` during RTH, pick a dynamic ticker (e.g. INVERT fixture row in admin) and confirm top call/put walls sit on the correct side of spot; no wall-history samples with inverted geometry after a spot=0 chain miss.
 
