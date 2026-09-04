@@ -45,9 +45,9 @@ export const PRODUCT_MANIFEST: Record<MarketingModuleId, ProductManifestEntry> =
     audience: "0DTE traders",
     positioning: "Live SPX 0DTE gamma matrix, dealer walls, and graded play alerts.",
     lifecycle:
-      "RTH command desk for SPX/SPXW — GEX/VEX/DEX/CHARM lenses, spot ladder, and BIE-graded play alerts refreshed every session cycle.",
+      "RTH command desk for SPX/SPXW — GEX/VEX lenses, spot ladder, and BIE-graded play alerts refreshed every session cycle.",
     capabilities: [
-      "GEX / VEX / DEX / CHARM lenses on the 0DTE ladder",
+      "GEX / VEX lenses on the 0DTE ladder",
       "Spot row, king strikes, and cross-validated positioning",
       "Trade alerts gated by the BIE verification stack",
     ],

@@ -126,6 +126,22 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0m. SPX Slayer marketing claimed GEX/VEX/DEX/CHARM lenses — real UI only has GEX/VEX — fix/spx-slayer-lens-overclaim (pending)
+
+**What was broken:** homepage/pricing copy said SPX Slayer provides "GEX / VEX / DEX / CHARM lenses
+on the 0DTE ladder" (`PRODUCT_MANIFEST.spx`). SPX Slayer's own live matrix component
+(`SpxGexMatrixHeatmap.tsx`) only ever renders a GEX/VEX toggle — confirmed by an exact-string grep
+across `src/features/spx/*.tsx` returning zero hits for `"dex"`/`"charm"` as a UI value. The
+dedicated Academy guide already correctly documented only 2 lenses; the marketing copy was the one
+that overclaimed, likely copied from Thermal's genuinely-accurate 4-lens entry in the same file.
+
+**Fix:** corrected `PRODUCT_MANIFEST.spx.lifecycle`/`.capabilities` to say GEX/VEX only; Thermal's
+real 4-lens entry is untouched.
+
+**Check at the open:** none — pure marketing-copy correction, no RTH-dependent behavior. Confirm
+`https://blackouttrades.com/` no longer shows "GEX / VEX / DEX / CHARM" attributed to SPX Slayer
+specifically (Thermal's own card should still show all four, correctly).
+
 ### 0k. Six orphaned modules removed (SPX/Thermal/marketing) — fix/orphaned-spx-thermal-modules (pending)
 
 **What was broken:** nothing member-visible — `src/features/spx/{hooks/useSpxDayPerformance.ts,

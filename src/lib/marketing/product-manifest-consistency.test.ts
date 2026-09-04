@@ -118,3 +118,36 @@ test("plan matrix Night Hawk line matches manifest planInclude", () => {
   const plan = readFileSync(join(REPO, "src/lib/plan-matrix.ts"), "utf8");
   assert.match(plan, /PRODUCT_MANIFEST\.hawk\.planInclude/);
 });
+
+// Regression for a P3 finding (2026-09-04): SPX Slayer's manifest entry claimed "GEX / VEX / DEX /
+// CHARM lenses on the 0DTE ladder" — but SPX Slayer's own matrix component
+// (src/features/spx/components/SpxGexMatrixHeatmap.tsx) only ever renders a GEX/VEX toggle
+// ((["gex", "vex"] as const).map(...) — no "dex"/"charm" string literal appears anywhere under
+// src/features/spx/*.tsx). DEX/CHARM ARE real, computed data for the SPX ticker (the same shared
+// GEX pipeline that powers Thermal), and Largo can answer DEX/CHARM questions about SPX from that
+// data — but SPX Slayer's own product UI has no lens toggle for them, so its capability copy
+// overclaimed a feature no SPX Slayer subscriber can actually reach. Thermal's own entry (which
+// DOES ship all four lenses — confirmed live in GexHeatmap.tsx) is deliberately left untouched.
+test("SPX Slayer's manifest capabilities match its real matrix UI (GEX/VEX only, not DEX/CHARM)", () => {
+  const spx = PRODUCT_MANIFEST.spx;
+  assert.doesNotMatch(
+    spx.lifecycle,
+    /DEX|CHARM/i,
+    "SPX Slayer's own matrix UI has no DEX/CHARM lens — lifecycle copy must not claim one"
+  );
+  assert.ok(
+    spx.capabilities.every((c) => !/DEX|CHARM/i.test(c)),
+    "SPX Slayer's own matrix UI has no DEX/CHARM lens — capabilities must not claim one"
+  );
+  assert.ok(
+    spx.capabilities.some((c) => /GEX.*VEX/i.test(c)),
+    "SPX Slayer's real GEX/VEX toggle should still be represented"
+  );
+
+  const thermal = PRODUCT_MANIFEST.thermal;
+  assert.match(
+    thermal.lifecycle,
+    /DEX.*CHARM|CHARM.*DEX/i,
+    "Thermal genuinely ships all four lenses — this assertion should not be narrowed to match SPX"
+  );
+});
