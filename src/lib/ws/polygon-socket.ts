@@ -319,10 +319,11 @@ function startIndicesWatchdog() {
     }
 
     // Detect stalled feed: if connected but no messages in >25s, reconnect.
+    const now = Date.now();
     if (
       indicesWs?.readyState === WebSocket.OPEN &&
       lastIndicesMessageAt > 0 &&
-      Date.now() - lastIndicesMessageAt > INDICES_STALL_MS
+      !isWsUpdatedAtFresh(lastIndicesMessageAt, INDICES_STALL_MS, now)
     ) {
       console.warn(
         `[polygon-socket] indices feed STALLED — no frame in ${Math.round(
