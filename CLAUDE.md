@@ -136,6 +136,19 @@ the PR is open and mergeable — the repo's `automerge.yml` does this automatica
 and `claude/*` branches; agent branches named `fix/*` must still be merged by the agent if CI
 passes before the workflow fires.
 
+**CARVE-OUT — PRs a Claude session OPENS ITSELF wait for Cursor's peer-review sign-off before
+merging (operator instruction, 2026-09-04).** Green CI alone is no longer sufficient for a
+self-authored PR: hold the merge until Cursor's peer-review comment on the PR posts an explicit
+approval (its `✅ GO AHEAD MERGE` verdict, or equivalent unambiguous sign-off) — not just its
+`⏳ WAIT` status. This is narrower than it sounds: it applies to PRs the Claude session itself
+opened (`fix/*`/`feat/*`/`docs/*` branches), not to reviewing/merging Cursor's own PRs
+(`cursor/*` branches) — those still go through the existing sweep/verify/merge pipeline once CI
+is green and the reviewing session's own scrutiny is satisfied, per the rest of this section.
+If Cursor's review flags a real, non-cosmetic issue, fix it and re-request rather than merging
+around the finding. If Cursor's peer-review pass hasn't posted anything yet after a reasonable
+wait, that is a stuck PR to chase (per the standing chase-the-lanes discipline), not a green light
+to merge without it.
+
 **THE DRAFT DEADLOCK — read this before concluding "the agents are stuck" (2026-08-21).**
 On 2026-08-21 the fleet had **36 open PRs, 28 with `verify` GREEN, and not one could ever merge.**
 Nothing had failed: no red check, no error, no agent complaint. It read like a broken connection to
