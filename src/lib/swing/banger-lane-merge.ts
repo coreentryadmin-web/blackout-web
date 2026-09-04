@@ -146,11 +146,13 @@ export function horizonPlayFromBangerWatch(
  * not be evicted when Engine B also has capital on the same symbol.
  */
 export function isPreEntrySwingPlay(play: HorizonPlay): boolean {
-  if (play.status === "WATCH" || play.status === "SKIP") return true;
-  if (play.serving === "WATCH") return true;
   const ls = play.liveStatus;
   if (ls === "OPEN" || ls === "HOLD" || ls === "TRIM") return false;
-  return play.status !== "COMMIT";
+  if (play.serving === "MANAGING" || play.serving === "SCALING_OUT" || play.serving === "EXITING") {
+    return false;
+  }
+  if (play.status === "WATCH" || play.serving === "WATCH") return true;
+  return false;
 }
 
 export function mergeBangerPositionsIntoSwingPlays(
