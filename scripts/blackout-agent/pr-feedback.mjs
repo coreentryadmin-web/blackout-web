@@ -44,7 +44,25 @@ function ghRun(args) {
 }
 
 const CLAUDE_BODY_MARKERS = [/generated with \[claude code\]/i, /claude\.ai\/code\/session/i];
-const CURSOR_BODY_MARKERS = [/cursor agent/i, /cursor\.com\/agents/i];
+const CURSOR_TEXT_MARKERS = [/cursor agent/i];
+// Exact hostnames a PR body's own links are checked against -- never a bare substring regex on
+// the raw body text. `cursor.com/agents` as an unanchored regex matches ANYWHERE, including
+// inside a different, unrelated host (e.g. `https://evil.example/cursor.com/agents` or
+// `https://cursor.com.attacker.net/agents`), so a crafted PR body could spoof which agent this
+// classifies as the builder. Same discipline api-tracked-fetch.ts uses for the identical class
+// of problem: parse candidate URLs out of the body and check the ACTUAL parsed hostname.
+const CURSOR_URL_HOSTS = new Set(["cursor.com"]);
+
+function bodyLinksToHost(body, hosts) {
+  const urls = body.match(/https?:\/\/[^\s)>"']+/g) ?? [];
+  return urls.some((u) => {
+    try {
+      return hosts.has(new URL(u).hostname);
+    } catch {
+      return false;
+    }
+  });
+}
 
 const SENSITIVE_PATH_RE = /(auth|payment|billing|stripe|whop|clerk|password|secret|token|0dte|gex|nighthawk)/i;
 const WORKFLOW_PATH_RE = /^\.github\/workflows\//;
@@ -52,7 +70,7 @@ const WORKFLOW_PATH_RE = /^\.github\/workflows\//;
 export function detectBuilderFromBody(body) {
   if (!body || typeof body !== "string") return null;
   if (CLAUDE_BODY_MARKERS.some((re) => re.test(body))) return "claude";
-  if (CURSOR_BODY_MARKERS.some((re) => re.test(body))) return "cursor";
+  if (CURSOR_TEXT_MARKERS.some((re) => re.test(body)) || bodyLinksToHost(body, CURSOR_URL_HOSTS)) return "cursor";
   return null;
 }
 
