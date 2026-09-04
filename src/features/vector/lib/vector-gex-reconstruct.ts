@@ -111,7 +111,7 @@ export function reconstructGexRail(
   for (const { time, spot } of spotSamples) {
     const ladder = gexLadderAtSpot(contracts, spot, sessionYmd);
     if (ladder.size === 0) continue;
-    const walls: GexWalls = computeGexWalls(ladder, { maxPerSide: VECTOR_WALL_NODES_PER_SIDE });
+    const walls: GexWalls = computeGexWalls(ladder, { maxPerSide: VECTOR_WALL_NODES_PER_SIDE, spot });
     const sample = buildWallHistorySample({
       time,
       gexWalls: walls,

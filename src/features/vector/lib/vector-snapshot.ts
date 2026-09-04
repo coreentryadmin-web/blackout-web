@@ -58,6 +58,14 @@ type TickerState = {
   fallbackStrikeTotals: Record<string, number> | null;
   /** When the heatmap data behind the fallbacks was actually fetched — drives honest gexAsOf/vexAsOf during outages. */
   fallbackFetchedAt: number;
+  /**
+   * Spot from the same heatmap fetch that populated fallbackStrikeTotals — used ONLY to
+   * side-constrain the GAMMA-lens computeGexWalls() calls below (call wall above spot, put wall
+   * below it), never the VEX lens (see gex-wall-levels.ts's NAMING doc). A few seconds/minutes
+   * stale on the same tolerance as fallbackStrikeTotals itself — directionally correct is what
+   * the constraint needs, not tick-fresh.
+   */
+  fallbackSpot: number | null;
   fallbackVexStrikeTotals: Record<string, number> | null;
   cachedVexFlip: number | null;
   cachedWalls: GexWalls | null;
@@ -90,6 +98,7 @@ function freshState(): TickerState {
     wallScopeInFlight: null,
     fallbackStrikeTotals: null,
     fallbackFetchedAt: 0,
+    fallbackSpot: null,
     fallbackVexStrikeTotals: null,
     cachedVexFlip: null,
     cachedWalls: null,
@@ -163,6 +172,9 @@ function runWallScopeFetch(ticker: string): Promise<void> {
   return fetchGexHeatmap(t)
     .then((hm) => {
       s.wallScope = nextWallScope(s.wallScope, Date.now(), hm);
+      if (typeof hm?.spot === "number" && Number.isFinite(hm.spot) && hm.spot > 0) {
+        s.fallbackSpot = hm.spot;
+      }
       if (hm?.gex?.strike_totals && Object.keys(hm.gex.strike_totals).length > 0) {
         s.fallbackStrikeTotals = hm.gex.strike_totals;
         s.fallbackFetchedAt = Date.now();
@@ -214,7 +226,10 @@ export function getVectorGexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   if (hasLiveGexStrikeExpiry(t)) {
     const ws = getGexStrikeExpiryLadder(t, s.wallScope.expiries);
     if (ws) {
-      s.cachedWalls = computeGexWalls(ws.ladder, { maxPerSide: VECTOR_WALL_NODES_PER_SIDE });
+      s.cachedWalls = computeGexWalls(ws.ladder, {
+        maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+        spot: s.fallbackSpot ?? undefined,
+      });
       s.cachedWallsAt = now;
       return s.cachedWalls;
     }
@@ -223,6 +238,7 @@ export function getVectorGexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   if (s.fallbackStrikeTotals) {
     s.cachedWalls = computeGexWalls(mapFromStrikeTotalsRecord(s.fallbackStrikeTotals), {
       maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+      spot: s.fallbackSpot ?? undefined,
     });
     // gexAsOf must report DATA age, not compute time: during a provider outage
     // the fallback never refreshes, and stamping "now" here made members see
@@ -352,7 +368,10 @@ export async function getVectorGexWallsForHorizon(
     if (scoped.length) {
       const ws = getGexStrikeExpiryLadder(t, scoped);
       if (ws && ws.ladder.size > 0) {
-        const wsWalls = computeGexWalls(ws.ladder, { maxPerSide: VECTOR_WALL_NODES_PER_SIDE });
+        const wsWalls = computeGexWalls(ws.ladder, {
+          maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+          spot: s.fallbackSpot ?? undefined,
+        });
         const blended = getVectorGexWalls(t);
         return mergeWallSides(wsWalls, wallsHaveNodes(blended) ? blended : null);
       }

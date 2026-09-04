@@ -120,9 +120,14 @@ async function buildVectorUniverseRow(
   if (!(spot != null && spot > 0)) {
     void removeDynamicUniverseTicker(ticker);
   }
+  // GEX (gamma) lens is side-constrained by spot — a call wall below spot or a put wall above it
+  // is not a real resistance/support read, the exact "wrong side of spot" bug PR #2417 fixed for
+  // the canonical gex-heatmap route but not here (2026-09-04 audit finding). VEX (vanna) has no
+  // inherent above/below-spot geometry (see gex-wall-levels.ts's NAMING doc) and stays unconstrained.
   const gexWalls = hm?.gex?.strike_totals
     ? computeGexWalls(mapFromStrikeTotalsRecord(hm.gex.strike_totals), {
         maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+        spot: spot ?? undefined,
       })
     : { callWalls: [], putWalls: [] };
   const vexWalls = hm?.vex?.strike_totals
