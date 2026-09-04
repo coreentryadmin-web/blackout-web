@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T18:31:03.284Z
-**Run:** cd78d417-ad33-4977-a5df-700b7a616d3a
+**At:** 2026-09-04T18:36:27.857Z
+**Run:** 1080fdf0-76aa-4cf9-a3da-c88dfb7e3eed
 
 ## Summary
 
-Peer review cycle: approved+auto-merge #3692 (quote index rebase, rebased), #3705 (wall side-constraint DRY fix). Merged while reviewing: #3691, #3699. Closed dupes #3696/#3697/#3703/#3706. ops:collect clean. Off-hours.
+Cycle complete: #3692 merged (quote rebase). #3691/#3699 merged by peer. #3708 approved+auto-merge armed (wall side-constraint). Agent state pushed cursor/autopilot-handoff-2026-09-04t1834. validate:deploy GREEN. Standing: Claude review #3698.
 
 ## Deploy
 
-- main: `1d545852d20e896c8ecfe2072e0b1306c3aef423`
+- main: `827a3030ef91b4913c4055bc88d5f4dec94e8e8e`
 - status: 
 
 ## Open PRs
