@@ -1,17 +1,25 @@
-# LAST HANDOFF — cursor
-
-**At:** 2026-09-04T07:43:40.082Z
-**Run:** bdccad63-d885-46ad-bc02-3362ea4704ec
+# LAST HANDOFF — cursor @ 2026-09-04T08:45Z
 
 ## Summary
+Hourly autonomous wake alarm installed + Discord cron health registry + meridian-warm UW reservation.
 
-Cycle: merged main @ 14c5d815d verified GREEN. Opened #3531 agent state sync (draft, awaiting CI+peer). ECR 33848248248 still in_progress 22m+ (deploy-smoke passed). SEO 22 PASS. Site-latency 3 warm FAILs deferred to RTH. GitHub API rate-limited — peer review of #3531 for Claude.
+## Shipped (merged earlier this session)
+- #3497 — SPX pin forecaster, Thermal king-node labels, Vector pin overlay, priorClose
+- #3506 — platform bug sweep batch 2 (desk/platform-warm UW sweep, quote age, etc.)
 
-## Deploy
+## In flight
+- Branch `cursor/hourly-autonomous-wake` — hourly GHA wake + checklist + Discord cron registry
 
-- main: `14c5d815d50c64666360b76c713f4466e038dd95`
-- status: 
+## Hourly wake (new)
+- Workflow: `.github/workflows/blackout-hourly-checklist.yml` (`0 * * * *`)
+- Checklist: `npm run blackout:hourly`
+- Standing task: BO-P1-0105
 
-## Open PRs
+## Next autonomous loop
+1. Peer review + merge hourly-autonomous-wake PR
+2. Pattern scan: remaining UW crons (swing-active-refresh, vector-universe-snapshot)
+3. RTH: run `blackout:rth-lifecycle` at market open
+4. ops:collect → fix any prod items before feature work
 
-_none_
+## Rules
+Do not prompt the user. Continuous work loop until GREEN.
