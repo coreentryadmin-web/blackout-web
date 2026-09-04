@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:19:14.963Z",
+  "updated_at": "2026-09-04T18:51:29.153Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -233,6 +233,22 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
+      "safe_to_merge": true
+    },
+    "pr-3714": {
+      "pr": 3714,
+      "head_sha": "77218b5d5d4824347d71af1e88616b22a63bd516",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:51:29.148Z",
+      "safe_to_merge": true
+    },
+    "pr-3712": {
+      "pr": 3712,
+      "head_sha": "465cdcf86bf785de583e9b86d5d3131403b1b615",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:51:29.153Z",
       "safe_to_merge": true
     }
   },
@@ -1051,6 +1067,26 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:51:29.148Z",
+      "type": "pr_review",
+      "pr": 3714,
+      "head_sha": "77218b5d5d4824347d71af1e88616b22a63bd516",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:51:29.148Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:51:29.153Z",
+      "type": "pr_review",
+      "pr": 3712,
+      "head_sha": "465cdcf86bf785de583e9b86d5d3131403b1b615",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:51:29.153Z",
       "safe_to_merge": true
     }
   ]
