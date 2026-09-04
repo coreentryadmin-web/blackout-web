@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T14:29:00.490Z",
+  "updated_at": "2026-09-04T14:46:24.044Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,26 +67,25 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T14:27:19.463Z",
+      "lease_until": "2026-09-04T15:57:19.463Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T14:24:58.196Z",
-      "lease_until": "2026-09-04T15:58:58.799Z",
+      "claimed_at": "2026-09-04T07:10:54.063Z",
+      "lease_until": "2026-09-04T08:40:54.063Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "a6afb213-5e1e-4bc8-b36a-a82241b90f46",
+      "run_id": null,
       "title": null
     },
     "BO-P1-0104": {
@@ -219,14 +218,14 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T14:27:19.464Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
     "last_main_sha": "c293cb8ac791424b19dfceb6837b0f972ab61312",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T14:09:49Z",
+    "last_deploy_at": "2026-09-04T14:30:25Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33882136477",
     "last_deploy_sha": "c946460d35053d600b70bb20ba2a64acc4c4acc2"
   },
@@ -900,41 +899,60 @@
       "summary": "Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs."
     },
     {
-      "at": "2026-09-04T14:28:44.131Z",
+      "at": "2026-09-04T14:27:06.452Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:28:44.132Z",
+      "at": "2026-09-04T14:27:10.524Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:27:11.232Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:27:16.342Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:27:19.464Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T14:41:06.679Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:41:06.679Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "c5b4e2b3-8ae0-4e55-bfbd-3b6691d4a536",
-      "summary": "RTH cycle GREEN: validate:rth-open, validate:deploy, ops:collect(0), rth-four-engines GREEN, validate:seo 22/22, counterfactual ran (insufficient graded data). 3 open cursor draft PRs (#3595/#3596/#3598) pending verify — await Claude peer review. main@c293cb8ac. Peer Claude stale since 11:20 UTC."
+      "run_id": "b94720f3-feb7-4b79-983c-80da645b60e1",
+      "summary": "Cycle: recovered state, validate:deploy+RTH GREEN, ops:collect 0. Closed redundant PRs blocked (token). #3595 docs-only superseded, #3596 superseded by #3598. ECS deploy #33882136477 in_progress for c946460. Peer Claude stale. Awaiting Claude review on #3598."
     },
     {
-      "at": "2026-09-04T14:28:50.169Z",
+      "at": "2026-09-04T14:46:24.043Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:28:58.798Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T14:28:59.574Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T14:29:00.490Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
+      "at": "2026-09-04T14:46:24.044Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "005b108b-3626-4b7e-bb5a-b6dc0d19f033",
+      "summary": "Session 2e9f9360: validate:deploy+RTH GREEN, ops:collect 0. #3595/#3596 should close (superseded). ECS roll in progress. Peer Claude stale."
     }
   ]
 }
