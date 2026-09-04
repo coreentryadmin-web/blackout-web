@@ -23,6 +23,7 @@ import {
 import { todayEt } from "@/lib/et-date";
 import { validatePlayGeometry } from "@/features/nighthawk/lib/play-constraints";
 import { MAX_OPTION_PREMIUM_PER_SHARE } from "@/features/nighthawk/lib/constants";
+import { isZeroDteMarkStale } from "@/lib/zerodte/marks-math";
 
 // ---------------------------------------------------------------------------
 // NIGHT HAWK (evening plays scanner / published editions) data-correctness verifier — priority #4.
@@ -439,8 +440,11 @@ export async function verifyNightHawk(_marketOpen: boolean): Promise<TickerScore
       const contraDetail: string[] = [];
       const premDetail: string[] = [];
       const publishedAtMs = Date.parse(edition.published_at ?? "");
-      const premiumFresh =
-        Number.isFinite(publishedAtMs) && Date.now() - publishedAtMs <= 4 * 60 * 60 * 1000;
+      // isZeroDteMarkStale rejects a future-dated published_at (cross-process clock skew) as well
+      // as a stale one — a raw `Date.now() - publishedAtMs <= 4h` subtraction goes NEGATIVE for a
+      // future stamp, which always satisfies "<= 4h" and reads the edition as fresher than it is.
+      // Same guard class as the GEX-heatmap context-edition and Helix flow-anomaly-banner fixes.
+      const premiumFresh = !isZeroDteMarkStale(publishedAtMs, Date.now(), 4 * 60 * 60 * 1000);
       for (const { play, parsed } of parseable) {
         const chain = chains[play.ticker.toUpperCase()];
         if (!chain || !chain.rows.length) {
