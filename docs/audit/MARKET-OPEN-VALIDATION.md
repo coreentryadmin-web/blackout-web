@@ -455,7 +455,7 @@ likely dominated by Polygon calls or general compute than the UW ceiling #3479 f
 need its own measurement before a fix is warranted, per this file's own "never fix from a guess"
 standing method.
 
-### 15. Vector desk mobile chart collapse — PR pending (branch `fix/vector-mobile-chart-collapse`)
+### 16. Vector desk mobile chart collapse — PR pending (branch `fix/vector-mobile-chart-collapse`)
 
 **What was broken:** the standalone `/vector` desk's price chart (candles + wall overlay + volume
 pane) never rendered below the 1280px desktop breakpoint — present in the DOM, laid out with a
@@ -488,6 +488,32 @@ stream in and the chart's content height changes; (3) the desktop (>=1280px) lay
 unchanged from before this fix — this was verified via CSS-cascade inspection and existing
 regression tests (`vector-chart-viewport.test.ts`) but not via a fresh live desktop screenshot,
 since the fix's own scope was mobile-only.
+
+### 14. Night Hawk mobile 430x932 — view-tab row overlapped the theme-toggle pill — PR pending (branch `fix/nighthawk-legacy-tab-toggle-overlap`)
+
+**What was broken:** live `/nighthawk` at 430x932 (both default and analytics-expanded states):
+the 5-tab view switcher's "Legacy" tab visually overlapped the adjacent dark/light theme-toggle
+pill — the "L" of "LIGHT" and the moon icon rendered on top of the tail of "Legacy" ("...gacy")
+instead of the row wrapping, truncating, or scrolling. `.nh-v2-page .ios-native-segment` had no
+`overflow-x`/`flex-wrap`, so once VECTOR became the row's 5th tab, the five content-width
+(`flex: 0 0 auto`) tab buttons' combined width could exceed the box the flex algorithm assigned
+the segment (its `min-w-0 flex-1 shrink` classes remove the default min-content floor so it can be
+squeezed below its content width) — the excess used the CSS-default `overflow: visible` and
+painted past the segment's edge, landing on the theme toggle, which paints after it in DOM order.
+
+**Fix:** `.nh-v2-page .ios-native-segment` now scrolls horizontally
+(`overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain;
+-webkit-overflow-scrolling: touch; scrollbar-width: none;` + a hidden `::-webkit-scrollbar`) —
+the same pattern `.nh-history-tablewrap` already uses elsewhere in the desk — instead of leaving
+the overflow unclipped. `.ios-native-segment-btn` is unchanged (`flex: 0 0 auto` stays; tabs must
+not squash/truncate).
+
+**Check at the open:** on live `/nighthawk` at 430x932 (`proxy-browser.cjs`), confirm the view-tab
+row (0DTE/Swings/Bangers/Vector/Legacy) no longer paints "Legacy" (or any tab) through the theme
+toggle in either the default or analytics-expanded state, and that swiping/scrolling the tab row
+horizontally reveals the full "Legacy" label with the theme toggle staying put, fully legible, at
+its own fixed position to the row's right. Also spot-check desktop width (≥1440px) is visually
+unchanged — the fix is a CSS overflow behavior change with no effect once the row already fits.
 
 ### 13. Vector chart volume-pane "SPY vol" watermark overlapped the first x-axis tick — PR pending (branch `fix/vector-volume-pane-label-overlap`)
 
