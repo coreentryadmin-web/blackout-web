@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T11:20:50.708Z",
+  "updated_at": "2026-09-04T12:09:01.834Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,8 +67,8 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:22:03.345Z",
-      "lease_until": "2026-09-04T11:52:03.345Z",
+      "claimed_at": "2026-09-04T11:47:15.786Z",
+      "lease_until": "2026-09-04T13:17:15.786Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -80,8 +80,8 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-04T12:03:28.502Z",
+      "lease_until": "2026-09-04T13:33:28.502Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -200,13 +200,44 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0d367bde47b227c73f6e56abb5cc5dc80cf5e44f",
+    "last_main_sha": "74d858bc54d9e36b87fce3b8043b3d3e4024c272",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T10:35:12Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33863935805",
-    "last_deploy_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01"
+    "last_deploy_at": "2026-09-04T12:06:34Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33871126902",
+    "last_deploy_sha": "f84aad3391ddaaeb7a2beb57f9a58e3b73643101"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3576,
+      "title": "chore(autopilot): cursor handoff post-#3571 merge + peer review #3573",
+      "branch": "chore/autopilot-handoff-post-3571",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T12:08:59Z"
+    },
+    {
+      "number": 3574,
+      "title": "chore(autopilot): cursor handoff after #3566 merge + peer review cycle",
+      "branch": "cursor/autopilot-handoff-20260904T1152",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T12:09:01Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T12:08:43Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -812,6 +843,75 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:08:40.054Z",
+      "type": "pr_webhook",
+      "pr": 3576,
+      "event": "sweep",
+      "head": "e082dcf9b873048dd0ed09f999a876ea8cfd6368",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T12:08:41.893Z",
+      "type": "pr_webhook",
+      "pr": 3574,
+      "event": "sweep",
+      "head": "896d04346f4857625b7016b48461c2ba4685693e",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T12:08:43.898Z",
+      "type": "pr_webhook",
+      "pr": 2810,
+      "event": "sweep",
+      "head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T12:09:01.833Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-04T12:09:01.834Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "85cc7faa-5a69-47ac-b2ef-2ea35f99ac36",
+      "summary": "Cycle complete. Merged #3570-#3575+#3572: db client error guard, thermal fontconfig cache, gex-heatmap future timestamp, helix desktop expired DTE, docs hygiene. validate:deploy GREEN. ops:collect 0. Open: draft handoff PRs #3574/#3576 for Claude."
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3576": {
+      "last_event": "sweep",
+      "last_head": "e082dcf9b873048dd0ed09f999a876ea8cfd6368",
+      "last_feedback_at": "2026-09-04T12:08:40.054Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3574": {
+      "last_event": "sweep",
+      "last_head": "896d04346f4857625b7016b48461c2ba4685693e",
+      "last_feedback_at": "2026-09-04T12:08:41.893Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-2810": {
+      "last_event": "sweep",
+      "last_head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "last_feedback_at": "2026-09-04T12:08:43.898Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "updated"
+    }
+  }
 }
