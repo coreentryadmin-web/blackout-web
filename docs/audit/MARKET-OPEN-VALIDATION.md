@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0z. SPX pulse stream local freshness future guard — fix/spx-pulse-stream-future-guard (pending)
+
+**What was broken:** `refreshSnapshot()` in `/api/market/spx/pulse/stream` preferred local `indexStore` when `Date.now() - fresh < 10_000` with no future-timestamp guard — clock-skewed future `updatedAt` reads as infinitely fresh and skips cross-replica Redis fallback.
+
+**Fix:** Route local freshness through `isWsUpdatedAtFresh(fresh, 10_000)`.
+
+**Check at the open:** SPX pulse rail shows live spot during RTH; no stale local indexStore stuck when Redis has fresher cross-replica snapshot.
+
 ### 0y. HELIX score probe lacked real-ledger mode — fix/helix-score-signal-ledger-mode (pending)
 
 **What was broken:** `helix-score-signal.mjs` could only grade flow prints via Polygon minute-bar replay; the signal-outcome ledger writer is live since 2026-09-03 but the probe had no path to use official continued/reversed outcomes.
