@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:15:06.632Z",
+  "updated_at": "2026-09-04T17:28:34.727Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -242,9 +242,9 @@
   "deploy": {
     "last_main_sha": "96b405a8de2f25993dd4164e3530cb60564a8e07",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T17:09:36Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33899061329",
-    "last_deploy_sha": "96b405a8de2f25993dd4164e3530cb60564a8e07"
+    "last_deploy_at": "2026-09-04T17:28:24Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33900754026",
+    "last_deploy_sha": "be9f5473dc056cd15b96098fc145d3a92f8a5312"
   },
   "open_prs": [],
   "events": [
@@ -1043,6 +1043,25 @@
       "agent": "cursor",
       "run_id": "9c91c551-2dee-4061-b6f4-a7d3648729a1",
       "summary": "Cycle post-#3652 merge: validate:deploy GREEN, ops:collect 0. Peer-reviewed APPROVED #3663 #3662 #3658 #3659 (local tests pass). Superseded: #3660/#3657/#3654 (admin fmtRel landed in #3652). Awaiting CI green + undraft on fix PRs. GitHub REST rate-limited — merge when CI completes."
+    },
+    {
+      "at": "2026-09-04T17:15:29.653Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:28:34.726Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:28:34.727Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3e21e9e1-c946-40c3-8edb-50fd3647d1c3",
+      "summary": "Post-#3652 cycle complete. Merged: #3663 #3658 #3659 (during cycle). #3662 APPROVED+verify GREEN+ready — merge blocked by GraphQL rate limit. Handoff PR #3669 verify GREEN (draft). validate:deploy/platform-integrity/seo GREEN, ops:collect 0. Superseded: #3660/#3657/#3654. Next: merge #3662, Claude review #3669, close stale handoff drafts."
     }
   ]
 }
