@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:43:40.083Z",
+  "updated_at": "2026-09-04T10:38:50.039Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T10:35:19.899Z",
+      "lease_until": "2026-09-04T12:06:18.309Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "af51d93c-d5ca-42c9-8d68-a3feb10c1ab4",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -100,6 +100,17 @@
       "reviewer": null,
       "run_id": null,
       "title": null
+    },
+    "BO-P2-0100": {
+      "task_id": "BO-P2-0100",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T10:36:48.761Z",
+      "lease_until": "2026-09-04T12:06:48.761Z",
+      "phase": "DISCOVERY",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null
     }
   },
   "reviews": {
@@ -172,11 +183,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
+    "last_main_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T07:20:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
-    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
+    "last_deploy_at": "2026-09-04T10:35:12Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33863935805",
+    "last_deploy_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01"
   },
   "open_prs": [],
   "events": [
@@ -672,6 +683,19 @@
       "agent": "cursor",
       "run_id": "bdccad63-d885-46ad-bc02-3362ea4704ec",
       "summary": "Cycle: merged main @ 14c5d815d verified GREEN. Opened #3531 agent state sync (draft, awaiting CI+peer). ECR 33848248248 still in_progress 22m+ (deploy-smoke passed). SEO 22 PASS. Site-latency 3 warm FAILs deferred to RTH. GitHub API rate-limited — peer review of #3531 for Claude."
+    },
+    {
+      "at": "2026-09-04T10:38:50.038Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T10:38:50.039Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e997f682-dc2c-43a5-a406-c323aad71529",
+      "summary": "Cycle complete: main@b1bfa6647 deploy GREEN, SEO 22 PASS, ops:collect clean, lifecycle GREEN (off-hours RTH skip). pr-sweep empty; GitHub API rate-limited (user 284440397). Full test suite 1373/1373 pass. No open PRs to peer-review. Next: Claude peer review when PRs open; RTH lifecycle Fri 2026-09-05 09:00 ET."
     }
   ]
 }
