@@ -11,15 +11,15 @@
 
 ## Symptom
 
-Several WS freshness gates used raw `Date.now() - timestamp <= maxAgeMs`. A clock-skewed **future** stamp yields a negative age, which still satisfies `<= maxAgeMs`, so the channel reads as live when it should not.
+UW WS channel freshness (`isUwChannelFresh`), options live-mark sync (`getLiveOptionMarkSync`), and admin `cluster_live` reporting used raw `Date.now() - timestamp <= maxAgeMs`. A clock-skewed **future** stamp yields a negative age, which still satisfies `<= maxAgeMs`.
 
-Affected paths: `isUwChannelFresh`, flow-liveness cluster skip gates, `getLiveOptionMarkSync`, admin `cluster_live` reporting.
+Note: flow-liveness cluster heartbeat was already fixed on main in #3718 (`flowHeartbeatAgeMs` / `signalWindowAgeMs`).
 
 ## Fix
 
-Route all freshness decisions through `isWsUpdatedAtFresh` / `wsUpdatedAtAgeMs` from `timestamp-freshness.ts` (same guard already used by admin cron health and quote route).
+Route UW/options freshness **decisions** through `isWsUpdatedAtFresh` and age **reporting** through `wsUpdatedAtAgeMs` from `timestamp-freshness.ts`.
 
 ## Evidence
 
-- Source-scan regression tests in `flow-liveness-freshness.test.ts`, `uw-socket-gate.test.ts`
+- Source-scan regression tests in `uw-socket-gate.test.ts`, `options-socket-gate.test.ts`
 - `npx tsx --test` on touched test files
