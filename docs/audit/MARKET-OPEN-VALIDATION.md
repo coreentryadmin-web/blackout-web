@@ -144,6 +144,18 @@ already fires the standard Discord alert on a failed re-warm.
 **Check at the open:** none — pure CI/test-coverage fix, no production behavior changed. Confirm
 `main`'s own `verify` check is green on its latest commit once this merges.
 
+### 0t. Admin cron health board treated clock-skewed future timestamps as fresh — fix/admin-cron-health-future-guard (pending)
+
+**What was broken:** `evaluateJob()` and Night Hawk playbook stuck detection used raw
+`Date.now() - new Date(iso)` without the future guard already on admin feed labels. Negative age
+never crossed stale/stuck thresholds → false OK on the Operations cron board.
+
+**Fix:** `adminAgeMinFromIso()` fail-closes clock-skew to `threshold + 1` minutes; wired into cron
+staleness + Night Hawk stuck-job branches.
+
+**Check at the open:** `/admin` → Operations → cron health during RTH — no job should read OK solely
+because `started_at`/`updated_at` is clock-skewed into the future (stale/stuck labels instead).
+
 ### 0q. cron-staleness-watchdog's self-heal outcome never reached the persisted `cron_job_runs` record — fix/cron-staleness-watchdog-healed-array (pending)
 
 **What was broken:** `runSelfHeal` computed a per-job re-warm result (`ok`/`status`/`error`/`detail`)
