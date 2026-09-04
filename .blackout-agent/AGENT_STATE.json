@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T00:30:41.044Z",
+  "updated_at": "2026-09-04T01:39:00.489Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -30,8 +30,8 @@
     "BO-P1-0005": {
       "task_id": "BO-P1-0005",
       "owner": "cursor",
-      "claimed_at": "2026-09-03T23:53:48.679Z",
-      "lease_until": "2026-09-04T01:23:48.679Z",
+      "claimed_at": "2026-09-04T01:26:37.856Z",
+      "lease_until": "2026-09-04T02:56:37.856Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -50,6 +50,18 @@
       "reviewer": null,
       "run_id": null,
       "title": "PR webhook triage + peer review dispatch"
+    },
+    "BO-P1-0004": {
+      "task_id": "BO-P1-0004",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T01:38:52.033Z",
+      "lease_until": "2026-09-04T03:08:52.033Z",
+      "phase": "REVIEWING",
+      "branch": null,
+      "pr": 3452,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -68,6 +80,22 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T00:30:30.525Z",
       "safe_to_merge": true
+    },
+    "pr-3448": {
+      "pr": 3448,
+      "head_sha": "f94bb764011f0936e0eccca34fce2555c4dde78a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:34:04.764Z",
+      "safe_to_merge": true
+    },
+    "pr-3451": {
+      "pr": 3451,
+      "head_sha": "3f27970cabed6220bd19698ee58f59ee56d34eab",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:34:05.069Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -77,16 +105,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T00:30:16.848Z",
-      "current_task": "BO-P1-0007"
+      "last_seen": "2026-09-04T01:38:52.034Z",
+      "current_task": "BO-P1-0004"
     }
   },
   "deploy": {
-    "last_main_sha": "84c5707ac6849b4c048dec6e8a414321f2a76e27",
+    "last_main_sha": "9b7756c7201250e31c460077f1c6cc378f3affa0",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T00:18:06Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33821229041",
-    "last_deploy_sha": "271a977cfdc9b5d2cc2d62535f8c7e010374d78d"
+    "last_deploy_at": "2026-09-04T01:33:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826240425",
+    "last_deploy_sha": "9b7756c7201250e31c460077f1c6cc378f3affa0"
   },
   "open_prs": [],
   "events": [
@@ -293,6 +321,45 @@
       "agent": "cursor",
       "run_id": "49d14bda-5dd3-4b4b-8deb-b5336a96b8b1",
       "summary": "PR webhook branch ready: heartbeat-gate fix in claimLock, BO-P1-0007 claimed, peer-reviewed #3438 APPROVED. #3436 merged — autopilot v1 live on main. Next: merge this PR, close duplicate #3435."
+    },
+    {
+      "at": "2026-09-04T01:34:04.765Z",
+      "type": "pr_review",
+      "pr": 3448,
+      "head_sha": "f94bb764011f0936e0eccca34fce2555c4dde78a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:34:04.764Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T01:34:05.070Z",
+      "type": "pr_review",
+      "pr": 3451,
+      "head_sha": "3f27970cabed6220bd19698ee58f59ee56d34eab",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:34:05.069Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T01:38:52.034Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0004",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T01:39:00.489Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:39:00.489Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d555a6a2-5965-4b71-990e-620481238ce2",
+      "summary": "Recovered autopilot state on pull_request event. Peer-reviewed #3448 (grid-rth YAML fix) and #3451 (vector-gated runners) — both APPROVED and merged to main during review. #3452 (BO-P1-0004 G-18/G-19 counterfactual) verify GREEN — 2/2 unit tests pass locally; awaiting Claude peer review (own PR). #3450 (pr-feedback repo slug fallback) verify GREEN — awaiting Claude review (own PR). BO-P1-0007 DONE (#3439). No ops action items."
     }
   ]
 }
