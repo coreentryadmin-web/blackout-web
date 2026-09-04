@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-03T23:53:48.869Z",
+  "updated_at": "2026-09-04T00:30:30.525Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -38,6 +38,18 @@
       "reviewer": null,
       "run_id": null,
       "title": "Review Claude PR #3434"
+    },
+    "BO-P1-0007": {
+      "task_id": "BO-P1-0007",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T00:30:16.848Z",
+      "lease_until": "2026-09-04T02:00:16.848Z",
+      "phase": "IMPLEMENTING",
+      "branch": "cursor/pr-webhook-feedback",
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": "PR webhook triage + peer review dispatch"
     }
   },
   "reviews": {
@@ -48,6 +60,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-03T23:53:48.868Z",
       "safe_to_merge": true
+    },
+    "pr-3438": {
+      "pr": 3438,
+      "head_sha": "01ca898df10d72f54d3812f7ad4c1ce850c63d75",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T00:30:30.525Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -57,119 +77,18 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-03T23:53:48.680Z",
-      "current_task": "BO-P1-0005"
+      "last_seen": "2026-09-04T00:30:16.848Z",
+      "current_task": "BO-P1-0007"
     }
   },
   "deploy": {
-    "last_main_sha": "aa08b98d9ffdab369aa27030f999502edfc862dd",
+    "last_main_sha": "84c5707ac6849b4c048dec6e8a414321f2a76e27",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-03T23:32:56Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33817874895",
-    "last_deploy_sha": "f86613f5b0cd72d6971655f79d4ea5e440b0defa"
+    "last_deploy_at": "2026-09-04T00:18:06Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33821229041",
+    "last_deploy_sha": "271a977cfdc9b5d2cc2d62535f8c7e010374d78d"
   },
-  "open_prs": [
-    {
-      "number": 3437,
-      "title": "fix(nighthawk): stop closed 0DTE plays from re-appearing as live in the marks lane",
-      "branch": "claude/serene-wozniak-dvg5uu",
-      "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-03T23:47:02Z"
-    },
-    {
-      "number": 3436,
-      "title": "feat(autopilot): shared Claude/Cursor state machine + hardened continuous ops",
-      "branch": "cursor/blackout-autopilot",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-03T23:46:51Z"
-    },
-    {
-      "number": 3435,
-      "title": "feat(agent-ops): bootstrap BLACKOUT AUTOPILOT durable-state + lease/heartbeat/recovery system",
-      "branch": "fix/blackout-agent-autopilot",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-03T23:48:11Z"
-    },
-    {
-      "number": 3434,
-      "title": "fix(nighthawk): prune can never hard-delete a graded ledger row",
-      "branch": "claude/relaxed-archimedes-p1oq61",
-      "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:38:53Z"
-    },
-    {
-      "number": 3433,
-      "title": "fix(0dte): correct stale 15:30 time-stop references in code comments",
-      "branch": "claude/loving-goldberg-1va6dc",
-      "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:37:17Z"
-    },
-    {
-      "number": 3432,
-      "title": "docs(audit): verify 7-day money-back guarantee copy vs Whop enforcement",
-      "branch": "claude/zealous-faraday-7sxb0r",
-      "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:29:54Z"
-    },
-    {
-      "number": 3431,
-      "title": "fix(gex): matrix-deltas SSE feed served raw unrounded GEX floats",
-      "branch": "fix/gex-matrix-deltas-unrounded-floats",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:29:04Z"
-    },
-    {
-      "number": 3430,
-      "title": "fix(spx): treat deploy chunk 404s as transient in E2E harness",
-      "branch": "fix/spx-e2e-chunk-deploy-flake",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:25:52Z"
-    },
-    {
-      "number": 3428,
-      "title": "docs: helix-signal-outcomes writer now live — corrects CLAUDE.md's 2026-08-23 gap note",
-      "branch": "docs/helix-signal-outcomes-writer-now-live",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:18:53Z"
-    },
-    {
-      "number": 2810,
-      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
-      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
-      "author": "app/dependabot",
-      "agent": "human",
-      "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-01T19:54:25Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -284,6 +203,82 @@
       "reviewer": "cursor",
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-03T23:53:48.868Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T00:27:37.439Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:29:37.634Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:29:38.494Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:29:39.513Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:30:03.449Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:30:04.316Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:30:05.356Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:30:10.923Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:30:11.800Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:30:12.637Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T00:30:16.848Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0007",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T00:30:30.525Z",
+      "type": "pr_review",
+      "pr": 3438,
+      "head_sha": "01ca898df10d72f54d3812f7ad4c1ce850c63d75",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T00:30:30.525Z",
       "safe_to_merge": true
     }
   ]
