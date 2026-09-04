@@ -5,6 +5,7 @@ import { todayEtYmd } from "@/lib/providers/spx-session";
 import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 import { etMinutes } from "@/features/spx/lib/spx-play-session-time";
 import { forecastPin, type PinContract, type PinForecast } from "@/features/spx/lib/spx-pin-forecast-core";
+import { pinForecastTrendInputs } from "@/features/spx/lib/spx-pin-trend-context";
 import { normalizeVectorTicker } from "./vector-ticker";
 import { loadCurrentChainContracts } from "./vector-gex-reconstruct-server";
 import { resolveForecastTarget, type ForecastTargetKind } from "./vector-forecast-target";
@@ -85,6 +86,8 @@ export async function getVectorPinForecast(
         ? spot / (1 + changePct / 100)
         : null;
 
+    const { recentReturns, macroEvent } = await pinForecastTrendInputs(t, sessionYmd);
+
     const forecast = forecastPin({
       spot,
       priorClose,
@@ -96,6 +99,8 @@ export async function getVectorPinForecast(
       closeMs: resolved.closeMs,
       horizonMin: resolved.horizonMin,
       structYears: resolved.structYears,
+      recentReturns,
+      macroEvent,
       method: "montecarlo",
       // Deterministic per ticker+target+session so two polls in the same session agree with each
       // other, while different names still explore different path draws.

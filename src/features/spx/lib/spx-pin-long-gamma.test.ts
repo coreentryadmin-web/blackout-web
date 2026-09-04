@@ -80,3 +80,30 @@ test("pinDriftPts tracks projectedClose minus spot", () => {
   assert.ok(f.pinDriftPts != null);
   assert.ok(Math.abs(f.pinDriftPts! - ((f.projectedClose ?? 0) - f.spot)) < 0.02);
 });
+
+test("long_gamma rally: MC agrees with analytic on upward projection", () => {
+  const contracts: PinContract[] = [];
+  const spot = 7555;
+  for (let k = 7480; k <= 7620; k += 5) {
+    const callOi = k >= 7560 && k <= 7590 ? 8000 : 400;
+    const putOi = k >= 7510 && k <= 7530 ? 3000 : 350;
+    contracts.push({ strike: k, expiry: "2026-09-05", type: "call", openInterest: callOi, iv: 0.11 });
+    contracts.push({ strike: k, expiry: "2026-09-05", type: "put", openInterest: putOi, iv: 0.11 });
+  }
+  const input: PinForecastInput = {
+    spot,
+    priorClose: 7520,
+    contracts,
+    sessionYmd: "2026-09-05",
+    nowMs: Date.parse("2026-09-05T18:30:00Z"),
+    closeMs: Date.parse("2026-09-05T20:00:00Z"),
+    atmIv: 0.11,
+    seed: 11,
+  };
+  const analytic = forecastPin({ ...input, method: "analytic" });
+  const mc = forecastPin({ ...input, method: "montecarlo", mcPaths: 200 });
+  assert.ok((analytic.pinDriftPts ?? 0) > 0, `analytic drift ${analytic.pinDriftPts}`);
+  assert.ok((mc.pinDriftPts ?? 0) > -5, `MC drift ${mc.pinDriftPts} must not invert analytic upward read`);
+  assert.ok((analytic.pinDriftPts ?? 0) > 0);
+  assert.ok((mc.pinDriftPts ?? 0) > 0, `MC drift ${mc.pinDriftPts}`);
+});

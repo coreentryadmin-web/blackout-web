@@ -4,8 +4,6 @@ import { loadCurrentChainContracts } from "@/features/vector/lib/vector-gex-reco
 import { loadSpxDesk, loadSpxDeskPulse } from "@/features/spx/lib/spx-desk-loader";
 import { etMinutes } from "@/features/spx/lib/spx-play-session-time";
 import { todayEtYmd } from "@/lib/providers/spx-session";
-import { fetchIndexMinuteBars } from "@/lib/providers/polygon";
-import { logReturnsFromMinuteBars } from "@/features/spx/lib/spx-pin-recent-returns";
 import {
   forecastPin,
   type PinForecast,
@@ -14,6 +12,7 @@ import {
   type PinScenario,
 } from "@/features/spx/lib/spx-pin-forecast-core";
 import { resolvePinSpotInputs } from "@/features/spx/lib/spx-pin-spot";
+import { pinForecastTrendInputs } from "@/features/spx/lib/spx-pin-trend-context";
 import {
   isPinStable,
   nextConfirmedPin,
@@ -100,19 +99,13 @@ export async function buildSpxPinForecast(): Promise<SpxPinForecast> {
   const closeMs = nowMs + (RTH_CLOSE_ET_MIN - etMin) * 60_000;
   const sessionYmd = todayEtYmd();
 
-  // Trend degrade + macro flags — the core supports these inputs but they were never wired on the
-  // SPX desk path, so trending sessions still ran full pin conviction toward distant max pain.
+  // Trend degrade + macro flags — shared helper also used by Vector pin forecast.
   let recentReturns: number[] | undefined;
   let macroEvent = false;
   if (spot > 0) {
-    const [minuteBars, deskForMacro] = await Promise.all([
-      fetchIndexMinuteBars("SPX", sessionYmd, sessionYmd).catch(() => []),
-      deskFallback ? Promise.resolve(deskFallback) : loadSpxDesk().catch(() => null),
-    ]);
-    const rets = logReturnsFromMinuteBars(minuteBars);
-    if (rets.length >= 10) recentReturns = rets;
-    const macro = deskForMacro?.macro_events ?? [];
-    macroEvent = macro.some((e) => String(e?.impact ?? "").toLowerCase() === "high");
+    const trend = await pinForecastTrendInputs("SPX", sessionYmd);
+    recentReturns = trend.recentReturns;
+    macroEvent = trend.macroEvent;
   }
 
   // 0DTE chain: TODAY'S expiry only.

@@ -749,20 +749,28 @@ function montecarlo(input: PinForecastInput, p: Prep): PinForecast {
       const sp = Math.max(p.strikeSpacing, 1);
       const cwScore = w.callWall ? w.callWall.oi / (1 + Math.abs(w.callWall.strike - price) / sp) : 0;
       const pwScore = w.putWall ? w.putWall.oi / (1 + Math.abs(w.putWall.strike - price) / sp) : 0;
-      let rawTarget = p.maxPain ?? price;
+      let rawTarget = p.magnetStrike ?? p.maxPain ?? price;
       // `wallOi = null` means "this step is NOT pulling toward an OI wall" — i.e. the target is max
-      // pain, whose strength the prep layer already measured as `p.magnetStrengthPct`. The previous
-      // `let wallOi = 0` conflated that with "the wall has zero open interest": `wallOi` was only ever
-      // ASSIGNED inside the short_gamma branch, so on any long-gamma name `strengthPct` came out
-      // `0 / totalOi = 0`, and the intended fallback to the real prep-computed strength was reachable
-      // only on a chain with zero total OI — i.e. never. Every long-gamma name therefore ran the whole
-      // simulation at magnetPullScale's 0.12 floor regardless of how strong its magnet actually was.
-      // Verified live 2026-08-07: NVDA's response carried magnet.strengthPct 0.23 while the MC that
-      // moved price used 0, reproducible offline to the cent (projectedClose 212.76).
+      // pain / king, whose strength the prep layer already measured as `p.magnetStrengthPct`.
       let wallOi: number | null = null;
       if (reg === "short_gamma") {
         if (cwScore >= pwScore && w.callWall) { rawTarget = w.callWall.strike; wallOi = w.callWall.oi; }
         else if (w.putWall) { rawTarget = w.putWall.strike; wallOi = w.putWall.oi; }
+      } else if (reg === "long_gamma") {
+        // Mirror `pickLongGammaMagnet` / analytic `p.magnetStrike` — the old default of raw
+        // `p.maxPain` alone reintroduced the SPX "always bearish MC" bug: analytic could project
+        // above spot while montecarlo pulled to distant max pain below.
+        const stepMaxPain = pinMaxPain(input.contracts);
+        const longGamma = pickLongGammaMagnet(
+          price,
+          stepMaxPain,
+          w.king,
+          p.strikeSpacing,
+          (n) => (w.totalOi > 0 && n ? n / w.totalOi : p.magnetStrengthPct)
+        );
+        if (longGamma.magnetStrike != null) {
+          rawTarget = longGamma.magnetStrike;
+        }
       }
       // Bound each step's pull target to the implied cone measured from the SESSION spot (not the
       // path's current price) — see boundMagnetTarget. Anchoring to the path price would let a path
@@ -827,7 +835,10 @@ function assemble(
     spot: input.spot, priorClose: input.priorClose, timeToCloseMin: Number(p.tMin.toFixed(1)),
     pin: Number(pin.toFixed(2)), projectedClose, pinPct: Number(conf.toFixed(3)),
     pinBand: band,
-    pinPctOfClose: input.priorClose && input.priorClose > 0 ? Number((((pin - input.priorClose) / input.priorClose) * 100).toFixed(2)) : null,
+    pinPctOfClose:
+      input.priorClose && input.priorClose > 0
+        ? Number((((projectedClose - input.priorClose) / input.priorClose) * 100).toFixed(2))
+        : null,
     pinDriftPts,
     pinDriftPctFromSpot,
     regime: p.regime, flip: p.flip,
