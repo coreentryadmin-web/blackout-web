@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T15:39:49.130Z",
+  "updated_at": "2026-09-04T16:40:04.975Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T16:27:52.069Z",
+      "lease_until": "2026-09-04T18:00:01.204Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "6efa3413-0778-4c55-a66f-c050a2c7a2ad",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -111,6 +111,18 @@
       "pr": null,
       "reviewer": null,
       "run_id": null,
+      "title": null
+    },
+    "BO-P1-0102": {
+      "task_id": "BO-P1-0102",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T16:28:52.449Z",
+      "lease_until": "2026-09-04T18:00:01.204Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "6efa3413-0778-4c55-a66f-c050a2c7a2ad",
       "title": null
     }
   },
@@ -219,16 +231,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T16:28:52.450Z",
+      "current_task": "BO-P1-0102"
     }
   },
   "deploy": {
-    "last_main_sha": "4a26268131c43955daf6c6afe6ef9249a80b54fd",
+    "last_main_sha": "edcd719fb525b62b169001917346a347a60a554c",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T16:30:58Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33895571118",
+    "last_deploy_sha": "de936bd22dcf6b23903394200f9d7168c6951392"
   },
   "open_prs": [],
   "events": [
@@ -970,6 +982,49 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:28:52.450Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0102",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T16:30:01.204Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:30:01.875Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:30:02.480Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:34:24.439Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:40:04.974Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:40:04.975Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "4c3ce7d9-e6a1-408b-9d92-ec8827dff5bd",
+      "summary": "RTH lifecycle GREEN (12:31 ET Fri). ops:collect 0. platform-integrity 14/14 pass. data-validator 40 PASS. four-engine GREEN (589 plays). vector-rth-quick ok. No open PRs (gh API rate-limited). Deploy synced edcd719. SPX SCANNING expected (no open play)."
     }
   ]
 }
