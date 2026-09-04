@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T18:27:40.815Z",
+  "updated_at": "2026-09-04T18:34:31.917Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -256,11 +256,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "cddb5a72218950a660d18b85b579537844e65f49",
+    "last_main_sha": "1d545852d20e896c8ecfe2072e0b1306c3aef423",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T18:26:42Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33905916082",
-    "last_deploy_sha": "bdd3a65fec607cfb7dc8098ed4f76a3a0ae9ed31"
+    "last_deploy_at": "2026-09-04T18:34:02Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33906581445",
+    "last_deploy_sha": "827a3030ef91b4913c4055bc88d5f4dec94e8e8e"
   },
   "open_prs": [],
   "events": [
@@ -1083,6 +1083,19 @@
       "agent": "cursor",
       "run_id": "875ca540-e851-49b0-bb35-00261ca9a6fa",
       "summary": "Peer-review cycle: #3691 rebased+APPROVED (verify GREEN, merge blocked by gh rate limit). #3692 rebased+APPROVED (CI re-running). Closed duplicate #3681. validate:deploy GREEN, ops:collect 0. Deploy current at cddb5a72."
+    },
+    {
+      "at": "2026-09-04T18:34:31.917Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T18:34:31.917Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3197b563-b047-4f91-b93d-1e86b2091655",
+      "summary": "Cycle complete: merged #3691 (ISO age guard), #3692 (quote change_pct rebase), #3699 already on main. Closed #3681 duplicate. Handoff PR #3709. validate:deploy GREEN, ops:collect 0. CI queue backed up — use REST gh api for merges when GraphQL PAT rate-limited."
     }
   ]
 }
