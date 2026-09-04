@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:51:58.054Z",
+  "updated_at": "2026-09-04T16:52:44.848Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -69,13 +69,13 @@
       "owner": "cursor",
       "claimed_at": "2026-09-04T16:42:41.710Z",
       "lease_until": "2026-09-04T18:14:26.575Z",
-      "phase": "REVIEWING",
+      "phase": "RELEASED",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": "92e34b5b-7d95-4e17-b838-c31507aea055",
       "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "released_at": "2026-09-04T16:52:41.984Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -107,6 +107,18 @@
       "claimed_at": "2026-09-04T10:33:57.540Z",
       "lease_until": "2026-09-04T12:03:57.540Z",
       "phase": "MONITORING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
+    },
+    "BO-P1-0105": {
+      "task_id": "BO-P1-0105",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T16:52:44.848Z",
+      "lease_until": "2026-09-04T18:22:44.848Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -219,8 +231,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T16:52:44.848Z",
+      "current_task": "BO-P1-0105"
     }
   },
   "deploy": {
@@ -1007,6 +1019,24 @@
       "agent": "cursor",
       "run_id": "592b5e7d-901f-4e61-9ab2-c00c406fa9ac",
       "summary": "pull_request wake: 0 open PRs. main@da4144fd7 deploy GREEN. RTH lifecycle 6/6 GREEN. platform-integrity 14/14, data-validator 37 PASS, SPX dashboard E2E 18/18. ops:collect 0. Playwright browsers installed (was blocking UI harnesses). GitHub API rate-limited for gh CLI. Standing queue clean — no peer reviews pending."
+    },
+    {
+      "at": "2026-09-04T16:52:38.126Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:52:41.984Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T16:52:44.848Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0105",
+      "owner": "cursor"
     }
   ]
 }
