@@ -1567,3 +1567,9 @@ than an end-of-session patch.
 - **What changed:** Both blended and narrowed-horizon `computeGexWalls` calls now use `spot != null && spot > 0 ? spot : undefined`.
 - **RTH check:** On `/vector` during RTH, pick a dynamic ticker (e.g. INVERT fixture row in admin) and confirm top call/put walls sit on the correct side of spot; no wall-history samples with inverted geometry after a spot=0 chain miss.
 
+### 20. `/meridian` missing from protected-route lists — 2026-09-04
+
+- **What was broken:** `/meridian` (a real tier-gated premium desk) was absent from `isProtectedRoute` (middleware-clerk.ts), `PROTECTED_PREFIXES` (middleware-shared.ts), and `DISALLOWED_ROOTS` (robots.ts). Live-confirmed: anonymous `curl` to `/meridian` returned HTTP 200 with a 1s `<meta http-equiv="refresh">` client-side redirect instead of the clean top-level 307 `/vector` gets from Clerk's `auth.protect()`; `/meridian` also fell through to a no-op edge-cache header in production (no `CDN-Cache-Control: no-store`) instead of the explicit no-store every other protected desk gets.
+- **What changed:** Added `/meridian` to all three lists. New `src/desk-protected-route-coverage.test.ts` scans every `(site)/*/layout.tsx` for the tier-gate pattern and asserts the matching prefix exists in all three lists, so the next gated desk cannot repeat this silently.
+- **RTH check:** Re-run the anonymous curl check against prod: `curl -sD- -o /dev/null https://blackouttrades.com/meridian` should now return a top-level `HTTP/2 307` with `location: /sign-in?redirect_url=%2Fmeridian` (matching `/vector`'s shape) instead of `HTTP/2 200` with a body. Also confirm the response carries `cdn-cache-control: no-store`. No RTH-specific behavior — this is a routing/auth-plumbing fix, safe to check anytime, but flagged here per the standing next-session-validation logging requirement.
+
