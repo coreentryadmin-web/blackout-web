@@ -218,6 +218,14 @@ is instrumentation only.
 
 **Check at the open:** Poll `/api/market/dark-pool?limit=5` — premiums are clean decimals; Vector contract-pick live badge flips stale when quotes stop updating.
 
+### 0ad. API roundFloats boundary gaps (batch 2) — fix/api-roundfloats-boundaries-batch2 (pending)
+
+**What was broken:** Five member-facing paths returned raw IEEE floats at the JSON boundary: `dark-pool/ticker`, `anomalies`, `nighthawk/play-bars`, `nighthawk/legacy-marks`, and stocks spot SSE `buildSpotFrame`.
+
+**Fix:** Wrap each response with `roundFloats` at the boundary (same pattern as #3785 dark-pool sweep).
+
+**Check at the open:** Poll `/api/market/dark-pool/ticker?symbol=SPY` and open a Legacy Night Hawk row — premiums/marks show clean 2dp, no `7499.360000000001` tails.
+
 ### 0ac. UW stall + L1 cache + SPX GEX stale future guards — fix/uw-future-timestamp-guards (pending)
 
 **What was broken:** Two paths missed the #3745/#3760 future-timestamp sweep: `isUwSocketStalled()` (OPEN socket with future `freshestMessageAt` never reconnects), `gexStaleFromAge()` (future GEX `asof` clamped to age 0 → `gex_stale: false`). (`readUwCache` on separate branch `fix/uw-cache-index-overlay-future-timestamp`.)
