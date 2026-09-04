@@ -1,7 +1,11 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
+<<<<<<< Updated upstream
   "updated_at": "2026-09-04T02:52:27.284Z",
+=======
+  "updated_at": "2026-09-04T03:00:30.920Z",
+>>>>>>> Stashed changes
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -64,6 +68,19 @@
       "run_id": "fa572336-bda3-4a7c-93e8-a09ffc724a3a",
       "title": null,
       "released_at": "2026-09-04T02:06:52.193Z"
+    },
+    "BO-P1-0008": {
+      "task_id": "BO-P1-0008",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T02:58:50.576Z",
+      "lease_until": "2026-09-04T04:28:50.576Z",
+      "phase": "RELEASED",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null,
+      "released_at": "2026-09-04T03:00:30.018Z"
     }
   },
   "reviews": {
@@ -123,6 +140,7 @@
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
     },
+<<<<<<< Updated upstream
     "pr-3469": {
       "pr": 3469,
       "head_sha": "6e153695f2a7576cba94ddfdfecf88d8a073606a",
@@ -137,6 +155,14 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T02:36:43.224Z",
+=======
+    "pr-3474": {
+      "pr": 3474,
+      "head_sha": "2b76a98ab3c8ee96db0613ecceb660ef13174808",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T02:59:11.445Z",
+>>>>>>> Stashed changes
       "safe_to_merge": true
     }
   },
@@ -147,16 +173,24 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T01:48:27.814Z",
-      "current_task": "BO-P1-0004"
+      "last_seen": "2026-09-04T02:58:50.577Z",
+      "current_task": "BO-P1-0008"
     }
   },
   "deploy": {
+<<<<<<< Updated upstream
     "last_main_sha": "b8c8c6f949777f1545634ef7825caa6a4e8f2005",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-04T02:52:10Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33831105279",
     "last_deploy_sha": "b8c8c6f949777f1545634ef7825caa6a4e8f2005"
+=======
+    "last_main_sha": "f6ab7fa117314eb2f561d321d0323c56029a601f",
+    "last_deploy_status": "",
+    "last_deploy_at": "2026-09-04T03:00:24Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33831600006",
+    "last_deploy_sha": "f6ab7fa117314eb2f561d321d0323c56029a601f"
+>>>>>>> Stashed changes
   },
   "open_prs": [],
   "events": [
@@ -489,6 +523,7 @@
       "owner": "cursor"
     },
     {
+<<<<<<< Updated upstream
       "at": "2026-09-04T02:36:43.156Z",
       "type": "pr_review",
       "pr": 3469,
@@ -510,11 +545,37 @@
     },
     {
       "at": "2026-09-04T02:52:17.649Z",
+=======
+      "at": "2026-09-04T02:58:50.577Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0008",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T02:59:11.446Z",
+      "type": "pr_review",
+      "pr": 3474,
+      "head_sha": "2b76a98ab3c8ee96db0613ecceb660ef13174808",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T02:59:11.445Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T03:00:30.018Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0008",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T03:00:30.919Z",
+>>>>>>> Stashed changes
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
+<<<<<<< Updated upstream
       "at": "2026-09-04T02:52:17.650Z",
       "type": "handoff",
       "agent": "cursor",
@@ -526,6 +587,13 @@
       "type": "task_released",
       "task_id": "BO-P1-0005",
       "owner": "cursor"
+=======
+      "at": "2026-09-04T03:00:30.920Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b0db9795-fd87-4380-849c-055ab1de1132",
+      "summary": "BO-P1-0008 complete: peer-reviewed and merged #3474 (meridian expected_move gate). #3473/#3469/#3468 merged earlier. main f6ab7fa1."
+>>>>>>> Stashed changes
     }
   ]
 }
