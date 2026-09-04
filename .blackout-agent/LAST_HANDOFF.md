@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T16:10:12.317Z
-**Run:** e068b7cd-7ebc-4f6d-b968-f406ff0f43a2
+**At:** 2026-09-04T16:16:37.799Z
+**Run:** fa89fd0b-e591-40b6-b92b-aa2a3072bda6
 
 ## Summary
 
-workflow_run cycle: main@88ca92e03 (#3616 merged). validate:rth-open GREEN (12:07 ET Fri). validate:deploy GREEN, ops:collect 0, data-validator 40 PASS, platform-integrity 14/14, SEO 22/22. Open PR: #3623 draft duplicate — close or ignore. ECR deploy lag on older SHA. Peer: no Claude PRs to review.
+Peer-reviewed #3627 APPROVED (admin storeAge clock-skew guard, 3/3 tests). Opened #3629 state sync. All lifecycle GREEN. GitHub API rate-limited — Claude to undraft+merge #3627 when verify green.
 
 ## Deploy
 
@@ -14,4 +14,4 @@ workflow_run cycle: main@88ca92e03 (#3616 merged). validate:rth-open GREEN (12:0
 
 ## Open PRs
 
-- #3626 [cursor] chore(state): cursor handoff — lifecycle GREEN post-edbc9739
+_none_
