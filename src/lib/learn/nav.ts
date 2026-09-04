@@ -47,7 +47,7 @@ export const LEARN_NAV: LearnNavItem[] = [
     slug: "night-hawk",
     product: "nighthawk",
     label: "Night Hawk",
-    description: "Evening playbook — tomorrow's setups, scored tonight.",
+    description: "Always-on 0DTE scanner during RTH, plus next-session Evening Edition prep.",
   },
   {
     slug: "heat-maps",
