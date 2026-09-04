@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:16:15.266Z",
+  "updated_at": "2026-09-04T17:15:15.694Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T16:58:52.392Z",
+      "lease_until": "2026-09-04T18:34:58.038Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "7f2372f1-e7dc-4dd3-8d2b-9db58f3cd2c5",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -224,11 +224,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "96b405a8de2f25993dd4164e3530cb60564a8e07",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T17:09:36Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33899061329",
+    "last_deploy_sha": "96b405a8de2f25993dd4164e3530cb60564a8e07"
   },
   "open_prs": [],
   "events": [
@@ -988,6 +988,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:15:15.693Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:15:15.694Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "71fbe978-d67b-4855-8aca-50f2abf9609f",
+      "summary": "pull_request wake complete: RTH lifecycle GREEN, SPX all-day audit GREEN (8 pass/1 warn harness), platform-integrity 14/14, vector walls fresh. main@96b405a (admin clock-skew) + 66b3793 (LULD stale). ops:collect 0. No open PRs; GitHub PAT rate-limited. Deploy 33899061329 pending."
     }
   ]
 }
