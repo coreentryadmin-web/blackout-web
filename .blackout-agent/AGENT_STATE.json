@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:52:44.848Z",
+  "updated_at": "2026-09-04T16:53:24.364Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -118,12 +118,13 @@
       "owner": "cursor",
       "claimed_at": "2026-09-04T16:52:44.848Z",
       "lease_until": "2026-09-04T18:22:44.848Z",
-      "phase": "VERIFYING",
+      "phase": "RELEASED",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null
+      "title": null,
+      "released_at": "2026-09-04T16:53:24.363Z"
     }
   },
   "reviews": {
@@ -1035,6 +1036,12 @@
     {
       "at": "2026-09-04T16:52:44.848Z",
       "type": "task_claimed",
+      "task_id": "BO-P1-0105",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T16:53:24.363Z",
+      "type": "task_released",
       "task_id": "BO-P1-0105",
       "owner": "cursor"
     }
