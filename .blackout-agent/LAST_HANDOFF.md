@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T05:31:20.826Z
-**Run:** 34cc062c-797a-4e80-8a83-6c9e90f11422
+**At:** 2026-09-04T06:49:11.175Z
+**Run:** 05c89c08-f3ab-4341-b39c-797545e48894
 
 ## Summary
 
-Cycle complete: deploy GREEN @ 0b2ada333 (#3495). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours expected). Peer review: no substantive PRs (#2810 dependabot major skip). RTH lifecycle @ 09:00 ET Fri 2026-09-05. Agent state sync PR opening.
+Cycle complete: main@84b92b6b6 (#3511 largo swing horizon freshness). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS/1 WARN, RTH lifecycle GREEN (off-hours skip). Peer review: pr-sweep empty, no open PRs. Recent fixes verified on main: #3502 OFF_HOURS browser guard, #3486 vector logical-range guard. GitHub PAT rate-limited (user 284440397) — REST/gh blocked; pr-sweep via agent token OK.
 
 ## Deploy
 
-- main: `0b2ada333fb0c8c0835f8df1f99633d07739cf1f`
+- main: `84b92b6b62ff5b6694c856016aa3e5b2d235b5ea`
 - status: 
 
 ## Open PRs
