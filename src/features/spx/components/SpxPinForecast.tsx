@@ -54,6 +54,8 @@ export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boole
   const chart = buildChart(pin, view.cone, view.pinPx);
   const magnet = pin.magnet;
   const conf = view.pinPct ?? 0;
+  const driftPts = pin.pinDriftPts ?? (view.projPx != null ? view.projPx - pin.spot : 0);
+  const driftPct = pin.pinDriftPctFromSpot ?? (pin.spot > 0 ? (driftPts / pin.spot) * 100 : null);
 
   return (
     <Shell>
@@ -121,7 +123,13 @@ export function SpxPinForecast({ sessionActive = true }: { sessionActive?: boole
                 {/* Live, unsnapped projection (1dp) so it moves intraday — not the frozen strike. */}
                 <div className="spx-pin-proj" style={{ fontFamily: C.mono, fontWeight: 600, color: C.pin, lineHeight: 1 }}>{fmt(view.projPx, 1)}</div>
                 <div style={{ fontFamily: C.mono, fontSize: 12, color: C.muted, marginTop: 6 }}>
-                  {pin.pinPctOfClose != null && <span style={{ color: pin.pinPctOfClose >= 0 ? C.call : C.put }}>{pin.pinPctOfClose >= 0 ? "▲ +" : "▼ "}{fmt(pin.pinPctOfClose, 2)}%</span>} · {fmt((view.projPx ?? pin.spot) - pin.spot, 1)} pts vs spot
+                  <span style={{ color: driftPts >= 0 ? C.call : C.put }}>
+                    {driftPts >= 0 ? "▲ +" : "▼ "}{fmt(Math.abs(driftPct ?? 0), 2)}% vs spot
+                  </span>
+                  {" · "}{fmt(driftPts, 1)} pts vs spot
+                  {pin.pinPctOfClose != null && (
+                    <span style={{ color: C.faint }}> · {pin.pinPctOfClose >= 0 ? "+" : ""}{fmt(pin.pinPctOfClose, 2)}% vs prior</span>
+                  )}
                 </div>
                 {/* The strike it pins to — the discrete target the live projection rounds onto.
                     Headlines the STABILITY-CONFIRMED pin (agreed across PIN_STABILITY_WINDOW

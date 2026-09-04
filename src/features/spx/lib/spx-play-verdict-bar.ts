@@ -233,7 +233,7 @@ export function buildPlayVerdictBarModel(
   const assessed = play.assessed !== false;
 
   const playDirection = play.direction ?? play.open_play?.direction ?? null;
-  const alignHint = pinPlayAlignmentHint(playDirection, opts.pin?.magnet?.direction);
+  const alignHint = pinPlayAlignmentHint(playDirection, opts.pin?.pinDriftPts);
 
   return {
     mode,
