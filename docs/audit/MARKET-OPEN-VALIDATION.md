@@ -466,7 +466,7 @@ likely dominated by Polygon calls or general compute than the UW ceiling #3479 f
 need its own measurement before a fix is warranted, per this file's own "never fix from a guess"
 standing method.
 
-### 18. Meridian earnings detail header — title overlapped the SUMMARY tab pill on tablet/mobile — PR pending (branch `fix/meridian-earnings-header-tab-overlap`)
+### 18. Meridian earnings detail header — title overlapped the SUMMARY tab pill on tablet/mobile — PR #3563 (merged, branch `fix/meridian-earnings-header-tab-overlap`)
 
 **What was broken:** `.meridian-detail-head-v2` (the `<header>` row pairing the earnings event
 title with the SUMMARY/REPORT/ESTIMATES/POSITIONING/HISTORY tab strip in
@@ -495,7 +495,7 @@ rolled onto/off the calendar overnight) rather than the handful captured in the 
 screenshots. Also spot-check that the >=1440px desktop rendering is visually unchanged (title and
 tab strip still share one row) — the fix should be a no-op at that width.
 
-### 17. Helix print tape signal badges hard-clipped mid-character in FULL columns — PR pending (branch `fix/helix-signals-badge-clip`)
+### 17. Helix print tape signal badges hard-clipped mid-character in FULL columns — PR #3558 (merged, branch `fix/helix-signals-badge-clip`)
 
 **What was broken:** the `/flows` print tape's Signals cell (`.helix-tape-cell--signals`, FULL
 columns density, desktop with the analytics sidebar hidden) rendered `signals.slice(0, 3)` — a raw
@@ -623,7 +623,7 @@ pan states, since tick positions move with the visible time range and the origin
 width and time-range, not a single fixed state. Also spot-check mobile (430×932) to confirm the fix
 didn't regress the already-working sibling labels' layout there.
 
-### 18. Helix `/flows` mobile print card showed a bare negative DTE for an already-expired print — PR pending (branch `fix/helix-mobile-card-expired-dte`)
+### 20. Helix `/flows` mobile print card showed a bare negative DTE for an already-expired print — PR #3561 (merged, branch `fix/helix-mobile-card-expired-dte`)
 
 **What was broken:** the mobile print card (`HelixMobileFlowTape.tsx`) computed
 `dte = flow.dte ?? daysToExpiry(flow.expiry)` and only special-cased `dte === 0` (0DTE, ember
@@ -672,7 +672,35 @@ the ticker, still tone-colored (green/red/amber) and bold. Also confirm Dir/Tier
 reachable (now via swipe or the row's existing tap-to-expand drawer) and that desktop/tablet
 rendering (where the table already fit) is visually unchanged.
 
-### 17. Vector SPX PLAYS card's off-hours loading copy read as a stalled live scan — PR pending (branch `fix/vector-contract-picks-closed-market-loading`)
+### 21. `thermal-discord` cron logging "Fontconfig error: No writable cache directories" every ~15-30min RTH — PR pending (branch `fix/thermal-discord-fontconfig-cache-dir`)
+
+**What was broken:** CloudWatch showed 72 occurrences/24h of the bare stderr line `Fontconfig
+error: No writable cache directories`, clustered in groups of exactly 4, RTH-only, on the
+`thermal-discord` cron's own ~15-30min cadence. `renderThermalDiscordCardPng` rasterises its SVG
+through `sharp(svg).png()` (librsvg, a real fontconfig client), and the ECS runtime user (`nextjs`,
+created without `-m` in `deploy/Dockerfile`) has no home directory and no `$XDG_CACHE_HOME`, so
+fontconfig had nowhere writable to persist its cache and rebuilt it from scratch on every single
+cold render — silent (nothing threw, the same cron logged success right around these lines), but a
+real per-invocation latency tax.
+
+**Fix:** `ensureFontconfigCacheDir()` in `src/lib/thermal-discord-card.ts`, called before the
+`sharp()` call, points `XDG_CACHE_HOME` at a writable dir under `os.tmpdir()` (Fargate ephemeral
+`/tmp`) once per process and creates it if needed, so fontconfig can keep a warm cache across
+renders within one task's lifetime. Never overrides an operator-supplied `XDG_CACHE_HOME`. See
+`docs/audit/findings-staging/2026-09-04-thermal-discord-fontconfig-cache-dir.md` for the full root
+cause (including the exact Dockerfile lines) and the infra-level follow-up this code-level fix
+deliberately does not attempt.
+
+**Check at the open:** CloudWatch Logs Insights, `/ecs/blackout-production`, same 24h-window query
+(`fields @timestamp, @message | filter @message like /Fontconfig error/`) run AFTER this deploys —
+confirm the line's occurrence count drops to (ideally) zero, or at minimum to once per task
+lifetime instead of once per cron firing, since the fix only makes the cache warm-reusable within a
+task, not eliminate the very first cold render after a fresh deploy/task start. Also spot-check that
+`thermal-discord` embeds still post normally to Discord during RTH (unaffected functionally either
+way, but confirm the fix didn't introduce a regression) via the admin cron-health board or the
+Discord channel itself.
+
+### 19. Vector SPX PLAYS card's off-hours loading copy read as a stalled live scan — PR #3566 (merged, branch `fix/vector-contract-picks-closed-market-loading`)
 
 **What was broken:** a discovery-pass finding reported the mobile `/vector` contract-picks card
 ("PLYS · SPX PLAYS · loading" / "Scanning the chain for a contract worth showing…") appearing
