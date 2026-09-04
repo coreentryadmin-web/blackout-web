@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T05:31:20.827Z",
+  "updated_at": "2026-09-04T06:40:23.812Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T06:29:21.257Z",
+      "lease_until": "2026-09-04T07:59:21.257Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -80,15 +80,14 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:31:04.605Z",
-      "lease_until": "2026-09-04T07:01:04.605Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T06:37:22.633Z",
+      "lease_until": "2026-09-04T08:07:22.633Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.756Z"
+      "title": null
     }
   },
   "reviews": {
@@ -147,6 +146,30 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3509": {
+      "pr": 3509,
+      "head_sha": "b9bc0a98f85f657d07e31573539786764f86f39d",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:34:39.362Z",
+      "safe_to_merge": true
+    },
+    "pr-3512": {
+      "pr": 3512,
+      "head_sha": "a3d03bc90823049c4d6c319270a63c24cfdd2e8c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:40:11.735Z",
+      "safe_to_merge": true
+    },
+    "pr-3511": {
+      "pr": 3511,
+      "head_sha": "888e81d449d8554bdce9e5bfb6abaf51d919afeb",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:40:23.811Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -156,16 +179,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T05:31:04.606Z",
+      "last_seen": "2026-09-04T06:37:22.634Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f",
+    "last_main_sha": "e5ab24c2148d01e15d8d8a9173ebaf43ac6c14f6",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T05:27:22Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33840544277",
-    "last_deploy_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f"
+    "last_deploy_at": "2026-09-04T06:39:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845249246",
+    "last_deploy_sha": "aafe12880d194c1c87ab0dfce3ae20aaa84c4106"
   },
   "open_prs": [],
   "events": [
@@ -569,6 +592,61 @@
       "agent": "cursor",
       "run_id": "34cc062c-797a-4e80-8a83-6c9e90f11422",
       "summary": "Cycle complete: deploy GREEN @ 0b2ada333 (#3495). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours expected). Peer review: no substantive PRs (#2810 dependabot major skip). RTH lifecycle @ 09:00 ET Fri 2026-09-05. Agent state sync PR opening."
+    },
+    {
+      "at": "2026-09-04T06:34:39.363Z",
+      "type": "pr_review",
+      "pr": 3509,
+      "head_sha": "b9bc0a98f85f657d07e31573539786764f86f39d",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:34:39.362Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T06:37:22.634Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T06:40:01.765Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:40:01.765Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "990e4632-8984-4a28-b15f-db1cf8d5f0f7",
+      "summary": "Session cycle: merged #3509 (already on main). Peer-reviewed locally #3512 cache-warm + #3511 largo freshness (verify pending). #3506 GREEN — awaits Claude review (cursor-owned). validate:deploy GREEN, ops:collect 0. Deploy ECR pending. GitHub PAT rate-limited on gh CLI."
+    },
+    {
+      "at": "2026-09-04T06:40:11.736Z",
+      "type": "pr_review",
+      "pr": 3512,
+      "head_sha": "a3d03bc90823049c4d6c319270a63c24cfdd2e8c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:40:11.735Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T06:40:19.830Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:40:23.812Z",
+      "type": "pr_review",
+      "pr": 3511,
+      "head_sha": "888e81d449d8554bdce9e5bfb6abaf51d919afeb",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:40:23.811Z",
+      "safe_to_merge": true
     }
   ]
 }
