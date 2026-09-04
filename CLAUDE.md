@@ -109,6 +109,128 @@ there is nothing — the same discipline `DEFINITION OF IDLE` (in the standing a
 instructions, not this file) already requires before concluding no worthwhile work exists. A blocked
 PR is a reason to route around it, never a reason to stop.
 
+## CLAUDE ↔ CURSOR COLLABORATION PROTOCOL (permanent, 100% mandate — confirmed 2026-09-04)
+**This section is a durable, standing mandate from the operator — it must survive session restarts
+and context compaction exactly like every other section in this file. Do not lose it, do not
+paraphrase it away, do not treat it as satisfied by having read it once.**
+
+The adversarial peer-review contract (existing merge-authorization and PR write-up policy above)
+remains mandatory. But Claude and Cursor are also engineering teammates, not just gatekeepers of
+each other's work. Competition applies to: finding mistakes, challenging assumptions, verifying
+correctness, independently reviewing implementations, finding stronger solutions. It does **not**
+mean refusing to collaborate.
+
+Claude may proactively communicate with Cursor whenever collaboration would improve speed,
+correctness, investigation quality, or parallelism — via PR comments (the durable channel both
+agents and future sessions can recover from) or the shared BLACKOUT Autopilot state.
+
+**1. Claude may ask Cursor for help.** Claude does not need to solve every problem alone. Treat
+Cursor like another senior engineer: ask it to reproduce a production bug, inspect UI behavior,
+capture screenshots, inspect browser console/network traffic, investigate an API, inspect frontend
+state, trace backend behavior, inspect Redis/cache/DB records, analyze logs/traces, profile
+performance, reproduce mobile behavior, investigate an architectural question, validate a financial
+calculation, build a regression test, research a dependency, run an independent hypothesis,
+independently verify something in production, or take an entirely separate finding.
+
+**2. Claude should offer help to Cursor**, not only request it. When Claude has capacity, inspect
+shared state for Cursor work that could benefit from assistance, and say so directly ("I have
+capacity — do you have an independent investigation or task I can take?") or identify a useful
+division directly. Example splits: Cursor investigates a chart-rendering regression → Claude takes
+API/data-integrity verification for the same incident; Cursor fixes a frontend entitlement display
+→ Claude verifies server-side authorization independently; Cursor investigates latency → Claude
+profiles the backend/DB path; Cursor works a large P1 → Claude takes a clearly separable subtask.
+Do not wait for the operator to coordinate this.
+
+**3. Parallelize large problems.** For a sufficiently large incident, split investigation along
+natural boundaries and combine evidence after. E.g. a snapshot/rendering failure: Claude takes
+provider → calculation → backend → cache → API; Cursor takes browser → frontend → hydration →
+rendering → screenshots → responsive behavior. A performance incident: Claude takes database →
+backend → cache → infrastructure → tracing; Cursor takes browser waterfall → React rendering →
+bundle → charts → interaction latency → Core Web Vitals.
+
+**4. Ask for second opinions.** Legitimate asks to Cursor: "Try to disprove this root-cause
+hypothesis." / "Can you independently reproduce this?" / "Check whether I'm missing another failure
+path." / "Verify this API behavior against production." / "Try to break this fix before I open the
+PR." / "Inspect this from the frontend while I inspect backend state." The goal is stronger
+engineering conclusions, not politeness.
+
+**5. Cursor may ask Claude for help.** Treat a Cursor request as a legitimate work signal: check
+priority, current Claude work, ownership, and dependencies. If helping Cursor creates more value
+than Claude's current lower-priority task, help — but do not blindly abandon a P0/P1 of your own for
+Cursor's P3 request. Prioritize globally.
+
+**6. Shared work board.** Represent collaboration requests durably (PR comments, staged findings, or
+BLACKOUT Autopilot shared state) with, conceptually: `request_id`, `from_agent`, `to_agent`,
+`finding_id`, `priority`, `request_type`, `description`, `evidence`, `requested_output`,
+`created_at`, `status` (OPEN → ACKNOWLEDGED → IN_PROGRESS → ANSWERED → CLOSED). A fresh Claude or
+Cursor session must be able to recover an outstanding request from durable state — never depend on
+chat/conversation memory alone surviving.
+
+**7. Work stealing / capacity sharing.** When Claude completes a task, do not immediately invent
+low-value work if Cursor has important unclaimed work. Check in order: P0/P1 findings → review
+requests → collaboration requests → the unclaimed queue → Cursor's blockers → only then new
+discovery. The same applies in reverse. Optimize BLACKOUT's overall throughput, not either agent's
+individual utilization.
+
+**8. Ownership still matters.** Collaboration never means uncontrolled simultaneous editing. One
+implementation owner is responsible per task unless explicitly decomposed into subtasks with their
+own explicit owners (e.g. `BO-P1-42-A` provider/cache, owner Claude; `BO-P1-42-B` frontend repro,
+owner Cursor) — both can work concurrently only because the boundary is explicit. Never let both
+agents unknowingly edit the same implementation surface; use leases/worktrees/separate branches.
+
+**9. CRITICAL — collaboration vs. independent review.** Independent peer review must remain
+genuinely independent. If Cursor materially co-authored Claude's implementation, Cursor cannot then
+approve that same work as an independent reviewer, and vice versa. Distinguish **assistance**
+(reproduction, screenshots, independent evidence, testing, a second opinion, a separate subsystem
+investigation) from **co-authorship** (writing substantial implementation code, designing the exact
+implementation together, directly modifying the same change). If meaningful co-authorship occurred,
+route final approval to another independent reviewer if one exists. Never manufacture "independent
+review" when both agents effectively wrote the change — this is the one place this protocol
+overrides the collaboration encouragement above.
+
+**10. Do not collaborate into groupthink.** Collaboration is not agreement. Tell Cursor "I disagree,
+production evidence contradicts this" exactly as readily as you would flag it in an adversarial
+review. Exchange evidence, not authority. After collaborating on an investigation, independently
+challenge the resulting conclusion before implementing it — do not skip the adversarial pass just
+because the conclusion was reached jointly.
+
+**11. Communication must be actionable.** Never send a vague request ("Can you look at Gamma?").
+Every request specifies: **context** (what's known so far), **question** (what exactly is being
+asked), **boundary** (what's explicitly out of scope for the responder), **expected output** (what
+form the answer should take). Example: *"BO-P1-42: Production Gamma remains SYNCING. I'm tracing
+provider→cache→API. Please independently reproduce the frontend failure on desktop/mobile, capture
+network responses and screenshots, determine whether the API returns a usable payload while the UI
+remains syncing, and persist evidence to the finding."*
+
+**12. Collaboration must survive session death.** If Claude asks Cursor for help and Claude's
+session terminates before the answer arrives, the request must still be recoverable: persist what
+was requested, why, who owns it, current status, evidence returned, and the next action — in a PR
+comment, a staged finding, or shared state, never in chat memory alone. A fresh Claude session must
+be able to recover Cursor's response to an old request; a fresh Cursor session must be able to
+recover an outstanding Claude request the same way.
+
+**13. Autonomous collaboration rule.** Claude does NOT need the operator's permission to: ask Cursor
+for help, offer Cursor help, request independent reproduction, delegate an independent
+investigation, take work Cursor offers, split a large task, request a second opinion, request
+adversarial testing, or request production verification. Use engineering judgment — do not involve
+the operator as project manager for routine coordination.
+
+### TEAM CAPACITY RULE (standing, permanent — part of the same mandate)
+Periodically inspect the other agent's state. If you have capacity and the other agent has
+significantly more high-priority work, proactively offer assistance or claim an eligible independent
+task. If you are blocked, ask the other agent for a targeted investigation rather than waiting. If
+you are uncertain, ask the other agent to independently challenge your hypothesis. If a production
+incident spans multiple layers, split the investigation and work in parallel. Do not wait for the
+human owner to coordinate routine engineering collaboration — while still preserving clear
+ownership, leases, separate worktrees, and independent final review.
+
+### The permanent operating model
+Claude and Cursor should behave like two strong senior engineers: collaborate on investigation,
+parallelize independent work, share evidence, help each other when blocked, offer capacity,
+challenge each other's assumptions, review each other adversarially, never rubber-stamp, never
+duplicate work, never wait for the operator to assign tasks. The objective is not "Claude wins" or
+"Cursor wins" — it is that BLACKOUT ships the correct solution faster.
+
 ## Issue-handling policy (standing instruction)
 As soon as an issue is spotted during any audit/validation:
 1. **Open a new branch off `main`**, named `fix/<slug>`. Do NOT push straight to `main`.
@@ -135,6 +257,19 @@ human review. Enable GitHub auto-merge (`gh pr merge --auto --squash --delete-br
 the PR is open and mergeable — the repo's `automerge.yml` does this automatically for `cursor/*`
 and `claude/*` branches; agent branches named `fix/*` must still be merged by the agent if CI
 passes before the workflow fires.
+
+**CARVE-OUT — PRs a Claude session OPENS ITSELF wait for Cursor's peer-review sign-off before
+merging (operator instruction, 2026-09-04).** Green CI alone is no longer sufficient for a
+self-authored PR: hold the merge until Cursor's peer-review comment on the PR posts an explicit
+approval (its `✅ GO AHEAD MERGE` verdict, or equivalent unambiguous sign-off) — not just its
+`⏳ WAIT` status. This is narrower than it sounds: it applies to PRs the Claude session itself
+opened (`fix/*`/`feat/*`/`docs/*` branches), not to reviewing/merging Cursor's own PRs
+(`cursor/*` branches) — those still go through the existing sweep/verify/merge pipeline once CI
+is green and the reviewing session's own scrutiny is satisfied, per the rest of this section.
+If Cursor's review flags a real, non-cosmetic issue, fix it and re-request rather than merging
+around the finding. If Cursor's peer-review pass hasn't posted anything yet after a reasonable
+wait, that is a stuck PR to chase (per the standing chase-the-lanes discipline), not a green light
+to merge without it.
 
 **THE DRAFT DEADLOCK — read this before concluding "the agents are stuck" (2026-08-21).**
 On 2026-08-21 the fleet had **36 open PRs, 28 with `verify` GREEN, and not one could ever merge.**

@@ -27,6 +27,8 @@ import {
 import { recordWallSample, type WallHistorySample } from "./vector-wall-history";
 import { roundFloats } from "@/lib/round-floats";
 import { getCachedVectorDarkPool, getCachedVectorDarkPoolWithAge, type VectorDarkPoolRead } from "./vector-dark-pool-cache";
+import { getCurrentSpxCandle } from "@/lib/ws/spx-candle-store";
+import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { getVectorLiveCandle } from "./vector-live-candle";
 import { spyVolumeForMinuteBar } from "./vector-spy-volume";
 import {
@@ -151,6 +153,26 @@ function state(ticker: string): TickerState {
   return s;
 }
 
+/**
+ * Spot for GAMMA-lens wall side-constraint (call above spot, put below). Prefer the heatmap
+ * spot that populated fallbackStrikeTotals; fall back to the live candle close the chart already
+ * shows. Fail closed when neither is available — unconstrained walls invert call/put geometry.
+ */
+function resolveVectorWallSpot(s: TickerState, ticker: string): number | undefined {
+  if (typeof s.fallbackSpot === "number" && Number.isFinite(s.fallbackSpot) && s.fallbackSpot > 0) {
+    return s.fallbackSpot;
+  }
+  const t = normalizeVectorTicker(ticker);
+  if (t === "SPX") {
+    const close = getCurrentSpxCandle().current?.close;
+    if (typeof close === "number" && Number.isFinite(close) && close > 0) return close;
+    return undefined;
+  }
+  const close = getStockLiveCandle(t).current?.close;
+  if (typeof close === "number" && Number.isFinite(close) && close > 0) return close;
+  return undefined;
+}
+
 function wallScopeRefreshMs(ticker: string): number {
   const t = normalizeVectorTicker(ticker);
   return VECTOR_ORACLE_TICKERS.has(t)
@@ -223,12 +245,19 @@ export function getVectorGexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   // Dynamic WS subscription: ANY ticker with a live gex_strike_expiry feed gets
   // the WS ladder path (5s real-time walls). The static oracle set is no longer
   // the gate — hasLiveGexStrikeExpiry checks actual in-memory data freshness.
+  const spot = resolveVectorWallSpot(s, t);
+  if (!spot) {
+    s.cachedWalls = null;
+    s.cachedWallsAt = now;
+    return null;
+  }
+
   if (hasLiveGexStrikeExpiry(t)) {
     const ws = getGexStrikeExpiryLadder(t, s.wallScope.expiries);
     if (ws) {
       s.cachedWalls = computeGexWalls(ws.ladder, {
         maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-        spot: s.fallbackSpot ?? undefined,
+        spot,
       });
       s.cachedWallsAt = now;
       return s.cachedWalls;
@@ -238,7 +267,7 @@ export function getVectorGexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   if (s.fallbackStrikeTotals) {
     s.cachedWalls = computeGexWalls(mapFromStrikeTotalsRecord(s.fallbackStrikeTotals), {
       maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-      spot: s.fallbackSpot ?? undefined,
+      spot,
     });
     // gexAsOf must report DATA age, not compute time: during a provider outage
     // the fallback never refreshes, and stamping "now" here made members see
@@ -368,9 +397,11 @@ export async function getVectorGexWallsForHorizon(
     if (scoped.length) {
       const ws = getGexStrikeExpiryLadder(t, scoped);
       if (ws && ws.ladder.size > 0) {
+        const spot = resolveVectorWallSpot(s, t);
+        if (!spot) return getVectorGexWalls(t);
         const wsWalls = computeGexWalls(ws.ladder, {
           maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-          spot: s.fallbackSpot ?? undefined,
+          spot,
         });
         const blended = getVectorGexWalls(t);
         return mergeWallSides(wsWalls, wallsHaveNodes(blended) ? blended : null);

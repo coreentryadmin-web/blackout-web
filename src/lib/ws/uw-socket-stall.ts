@@ -4,6 +4,8 @@
  * in the live WebSocket manager.
  */
 
+import { isWsUpdatedAtFresh } from "./timestamp-freshness";
+
 /** Stall window during RTH: OPEN socket with no delivery for this long is half-open. */
 export const UW_SOCKET_STALL_MS = 75_000;
 
@@ -54,7 +56,7 @@ export function isUwSocketStalled(
   openedAt?: number | null,
   firstMsgGraceMs?: number
 ): boolean {
-  if (freshest != null) return now - freshest > stallMs;
+  if (freshest != null) return !isWsUpdatedAtFresh(freshest, stallMs, now);
   if (openedAt != null && firstMsgGraceMs != null) {
     return now - openedAt > firstMsgGraceMs;
   }

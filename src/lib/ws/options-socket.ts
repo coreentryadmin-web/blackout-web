@@ -37,6 +37,7 @@ import {
   wsLeaderShouldFailOpenWithoutRedis,
 } from "./leader-lock-shared";
 import { newLockToken, releaseFencedLock, renewFencedLock, type FencedRedis } from "./leader-lock-fencing";
+import { isWsUpdatedAtFresh, wsUpdatedAtAgeMs } from "@/lib/ws/timestamp-freshness";
 
 /**
  * RTH gate for the OPTIONS feed (live finding #75). Off-hours, no option quotes flow, so the
@@ -283,7 +284,7 @@ export function getLiveOptionMarkSync(
   maxAgeMs: number = OPTION_MARK_FRESH_MS
 ): { mark: number; bid: number | null; ask: number | null; ts: number } | null {
   const local = optionMarks.get(occ);
-  if (local && local.mark != null && Date.now() - local.ts <= maxAgeMs) {
+  if (local && local.mark != null && isWsUpdatedAtFresh(local.ts, maxAgeMs)) {
     return { mark: local.mark, bid: local.bid, ask: local.ask, ts: local.ts };
   }
   return null;
@@ -702,7 +703,7 @@ class OptionsShard {
       authenticated: this.authenticated,
       auth_failed: this.authFailed,
       consecutive_failures: this.consecutiveFailures,
-      last_message_age_ms: this.lastMessageAt ? Date.now() - this.lastMessageAt : null,
+      last_message_age_ms: this.lastMessageAt ? wsUpdatedAtAgeMs(this.lastMessageAt) : null,
     };
   }
 }

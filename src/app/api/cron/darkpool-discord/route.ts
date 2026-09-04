@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { postDiscordWebhook, redactWebhook } from "@/lib/discord-post";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
@@ -86,74 +87,12 @@ export async function GET(req: NextRequest) {
   const wantDigest = force || minute % 15 === 0;
 
   try {
-    const postedLive = await scanDarkpoolDiscordFromCache(100);
-
-    const staleBursts = await flushStaleDiscordBursts<DarkPoolDiscordPrint>("darkpool", now);
-    let flushedBursts = 0;
-    for (const burst of staleBursts) {
-      if (await deliverDarkpoolBurstItems(burst.ticker, burst.items)) flushedBursts++;
-    }
-
-    let postedEod = false;
-    if (isDiscordEodRecapWindow(now)) {
-      const sessionDate = currentSessionDateEt(now);
-      const eodClaimed = await claimDiscordEodRecap("darkpool", sessionDate, bypassDedup);
-      if (eodClaimed) {
-        const { fetchUwDarkPoolRecent } = await import("@/lib/providers/unusual-whales");
-        const rawRows = await fetchUwDarkPoolRecent(200);
-        const sessionPrints: DarkPoolDiscordPrint[] = (Array.isArray(rawRows) ? rawRows : [])
-          .map(normalizeDarkPoolDiscordPrint)
-          .filter((p): p is DarkPoolDiscordPrint => p != null);
-        const eodEmbed = buildDarkpoolEodRecapEmbed({
-          prints: sessionPrints,
-          sessionDate,
-          now,
-        });
-        postedEod = await postDiscordWebhook(webhook, { embeds: [eodEmbed] }, "darkpool-eod-recap");
-      }
-    }
-
-    let postedDigest = false;
-    let digestSummary: { inWindowCount: number; rows: number } | null = null;
-
-    if (wantDigest) {
-      const claimed = bypassDedup
-        ? true
-        : await sharedCacheSetNx(DEDUP_DIGEST_KEY, { at: now.toISOString() }, DEDUP_DIGEST_TTL_SEC);
-      if (claimed) {
-        const { fetchUwDarkPoolRecent } = await import("@/lib/providers/unusual-whales");
-        const rawRows = await fetchUwDarkPoolRecent(100);
-        const prints: DarkPoolDiscordPrint[] = (Array.isArray(rawRows) ? rawRows : [])
-          .map(normalizeDarkPoolDiscordPrint)
-          .filter((p): p is DarkPoolDiscordPrint => p != null);
-
-        const digest = selectDarkpoolDigestPrints(prints, { windowMin: 15, now });
-        digestSummary = { inWindowCount: digest.inWindowCount, rows: digest.rows.length };
-
-        if (force || digest.rows.length > 0) {
-          const embed = buildDarkpoolTopBlocksDigestEmbed({
-            windowMin: 15,
-            rows: digest.rows,
-            inWindowCount: digest.inWindowCount,
-            now,
-          });
-          postedDigest = await postDiscordWebhook(webhook, { embeds: [embed] }, "darkpool-digest-15m");
-          if (!postedDigest && !bypassDedup) await sharedCacheDel(DEDUP_DIGEST_KEY);
-        } else if (!bypassDedup) {
-          await sharedCacheDel(DEDUP_DIGEST_KEY);
-        }
-      }
-    }
-
-    const payload = {
-      ok: true,
-      host: redactWebhook(webhook),
-      posted_live: postedLive,
-      posted_digest: postedDigest,
-      posted_eod: postedEod,
-      flushed_bursts: flushedBursts,
-      digest: digestSummary,
-    };
+    // Tagged as a background sweep: fetchUwDarkPoolRecent can fall through to UW REST on cache
+    // miss (live scan, digest, EOD recap) — same slot-reservation pattern as flow-ingest.
+    const tick = await runWithBackgroundUwSweep(() =>
+      runDarkpoolDiscordTick({ now, wantDigest, webhook, force, bypassDedup })
+    );
+    const payload = { ok: true, ...tick };
     await logCronRun("darkpool-discord", started, payload);
     return NextResponse.json(payload);
   } catch (error) {
@@ -164,4 +103,86 @@ export async function GET(req: NextRequest) {
     await logCronRun("darkpool-discord", started, payload);
     return NextResponse.json(payload, { status: 500 });
   }
+}
+
+async function runDarkpoolDiscordTick({
+  now,
+  wantDigest,
+  webhook,
+  force,
+  bypassDedup,
+}: {
+  now: Date;
+  wantDigest: boolean;
+  webhook: string;
+  force: boolean;
+  bypassDedup: boolean;
+}) {
+  const postedLive = await scanDarkpoolDiscordFromCache(100);
+
+  const staleBursts = await flushStaleDiscordBursts<DarkPoolDiscordPrint>("darkpool", now);
+  let flushedBursts = 0;
+  for (const burst of staleBursts) {
+    if (await deliverDarkpoolBurstItems(burst.ticker, burst.items)) flushedBursts++;
+  }
+
+  let postedEod = false;
+  if (isDiscordEodRecapWindow(now)) {
+    const sessionDate = currentSessionDateEt(now);
+    const eodClaimed = await claimDiscordEodRecap("darkpool", sessionDate, bypassDedup);
+    if (eodClaimed) {
+      const { fetchUwDarkPoolRecent } = await import("@/lib/providers/unusual-whales");
+      const rawRows = await fetchUwDarkPoolRecent(200);
+      const sessionPrints: DarkPoolDiscordPrint[] = (Array.isArray(rawRows) ? rawRows : [])
+        .map(normalizeDarkPoolDiscordPrint)
+        .filter((p): p is DarkPoolDiscordPrint => p != null);
+      const eodEmbed = buildDarkpoolEodRecapEmbed({
+        prints: sessionPrints,
+        sessionDate,
+        now,
+      });
+      postedEod = await postDiscordWebhook(webhook, { embeds: [eodEmbed] }, "darkpool-eod-recap");
+    }
+  }
+
+  let postedDigest = false;
+  let digestSummary: { inWindowCount: number; rows: number } | null = null;
+
+  if (wantDigest) {
+    const claimed = bypassDedup
+      ? true
+      : await sharedCacheSetNx(DEDUP_DIGEST_KEY, { at: now.toISOString() }, DEDUP_DIGEST_TTL_SEC);
+    if (claimed) {
+      const { fetchUwDarkPoolRecent } = await import("@/lib/providers/unusual-whales");
+      const rawRows = await fetchUwDarkPoolRecent(100);
+      const prints: DarkPoolDiscordPrint[] = (Array.isArray(rawRows) ? rawRows : [])
+        .map(normalizeDarkPoolDiscordPrint)
+        .filter((p): p is DarkPoolDiscordPrint => p != null);
+
+      const digest = selectDarkpoolDigestPrints(prints, { windowMin: 15, now });
+      digestSummary = { inWindowCount: digest.inWindowCount, rows: digest.rows.length };
+
+      if (force || digest.rows.length > 0) {
+        const embed = buildDarkpoolTopBlocksDigestEmbed({
+          windowMin: 15,
+          rows: digest.rows,
+          inWindowCount: digest.inWindowCount,
+          now,
+        });
+        postedDigest = await postDiscordWebhook(webhook, { embeds: [embed] }, "darkpool-digest-15m");
+        if (!postedDigest && !bypassDedup) await sharedCacheDel(DEDUP_DIGEST_KEY);
+      } else if (!bypassDedup) {
+        await sharedCacheDel(DEDUP_DIGEST_KEY);
+      }
+    }
+  }
+
+  return {
+    host: redactWebhook(webhook),
+    posted_live: postedLive,
+    posted_digest: postedDigest,
+    posted_eod: postedEod,
+    flushed_bursts: flushedBursts,
+    digest: digestSummary,
+  };
 }

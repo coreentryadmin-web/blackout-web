@@ -108,12 +108,12 @@ test("recordStockTick: tracks volume when provided", () => {
   assert.equal(snap.current!.volume, 50000);
 });
 
-test("getStockLiveCandle: returns null for unknown ticker", () => {
+test("getStockLiveCandle: returns null changePct for unknown ticker (no fabricated flat 0%)", () => {
   _resetStockCandleStoreForTest();
   const snap = getStockLiveCandle("ZZZZ");
   assert.equal(snap.current, null);
   assert.equal(snap.updatedAt, 0);
-  assert.equal(snap.changePct, 0);
+  assert.equal(snap.changePct, null);
 });
 
 test("computeChangePct: rounds to 2dp and matches the indexStore sibling's rounding", () => {
@@ -121,8 +121,8 @@ test("computeChangePct: rounds to 2dp and matches the indexStore sibling's round
   assert.equal(computeChangePct(595, 600), -0.83);
 });
 
-test("computeChangePct: returns 0 when there is no session-open anchor yet", () => {
-  assert.equal(computeChangePct(605.5, 0), 0);
+test("computeChangePct: returns null when there is no session-open anchor yet", () => {
+  assert.equal(computeChangePct(605.5, 0), null);
 });
 
 test("recordStockTick: first bar of the day seeds a provisional ws-bar session_open when REST hasn't resolved", () => {
@@ -322,5 +322,6 @@ test("getStockLiveCandle: clock-skewed future updatedAt must not read as infinit
 
   const snap = getStockLiveCandle("SPY");
   assert.equal(snap.current, null, "future-skewed candle must not be presented as live");
+  assert.equal(snap.changePct, null, "stale/missing change must not fabricate 0%");
   assert.ok(snap.updatedAt > Date.now(), "updatedAt preserved for diagnostics");
 });

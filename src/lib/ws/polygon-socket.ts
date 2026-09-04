@@ -17,6 +17,11 @@ import {
 } from "./leader-lock-shared";
 import { newLockToken, releaseFencedLock, renewFencedLock, type FencedRedis } from "./leader-lock-fencing";
 import { recordSpxTick } from "./spx-candle-store";
+import {
+  isWsUpdatedAtFresh,
+  WS_TIMESTAMP_FUTURE_TOLERANCE_MS,
+  wsUpdatedAtAgeMs,
+} from "./timestamp-freshness";
 export type PolygonAgg = {
   ev: "A" | "AM";
   sym: string;
@@ -619,7 +624,11 @@ export function getIndexFeedFreshness(
   const entry = indexStore[sym];
   const updatedAt = entry?.updatedAt ?? 0;
   if (!updatedAt) return { ageMs: null, stalled: null, updatedAt: 0 };
-  const ageMs = Math.max(0, now - updatedAt);
+  const rawAgeMs = now - updatedAt;
+  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) {
+    return { ageMs: null, stalled: true, updatedAt };
+  }
+  const ageMs = wsUpdatedAtAgeMs(updatedAt, now);
   return { ageMs, stalled: ageMs > INDEX_FEED_STALL_MS, updatedAt };
 }
 

@@ -6,6 +6,7 @@ import {
   loadVectorRailBootstrap,
   resolveRailBootstrapHorizon,
 } from "@/features/vector/lib/vector-rail-bootstrap";
+import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -55,5 +56,5 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
+  return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
 }

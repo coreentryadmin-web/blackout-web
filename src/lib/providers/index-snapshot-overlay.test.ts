@@ -56,3 +56,14 @@ test("overlayRestIndexWithWs leaves REST untouched when WS is stale", () => {
 test("overlayRestIndexWithWs leaves REST untouched when WS entry is missing", () => {
   assert.deepEqual(overlayRestIndexWithWs(REST, null, now), REST);
 });
+
+test("overlayRestIndexWithWs leaves REST untouched when WS timestamp is far in the future", () => {
+  const ws: WsIndexEntry = {
+    price: 14.29,
+    change_pct: -0.4,
+    open_source: "rest",
+    updatedAt: now + 60_000,
+  };
+  const out = overlayRestIndexWithWs(REST, ws, now);
+  assert.deepEqual(out, REST);
+});

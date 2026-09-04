@@ -120,11 +120,100 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0ad. UW in-process REST cache + Polygon index overlay future guards — fix/uw-index-future-timestamp-guards (pending)
+
+**What was broken:** Three paths still used raw `Date.now() - timestamp` without the shared future guard: `readUwCache` (negative age → infinitely fresh UW REST cache), `getIndexFeedFreshness` + `index-snapshot-overlay` (future `updatedAt` clamped to age 0 → live overlay), `resolvePulseFeedStalled` (Redis pulse snapshot), and `HomeGammaPromo.fmtAgeFromAsof` (future `asof` → "live").
+
+**Fix:** Apply `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` / `isWsUpdatedAtFresh` / `ageSecFromIso` — same pattern as #3760/#3762.
+
+**Check at the open:** SPX desk feed-stalled pill still fires on genuine index silence (not on normal ticks); VIX/SPX index overlays fall back to REST when WS stamp is skewed; homepage gamma promo chip does not show "live" beside a warming snapshot.
+
+### 0ac. Vector GEX walls spot constraint — fix/vector-gex-walls-spot-constraint (pending)
+
+**What was broken:** on a cold Vector task before heatmap primed `fallbackSpot`, `getVectorGexWalls()` called `computeGexWalls()` without a spot — unconstrained mode lets call walls sit below spot and put walls above it (inverted resistance/support).
+
+**Fix:** `resolveVectorWallSpot()` prefers heatmap spot, falls back to live candle close; returns `null` (honest empty) when neither is available instead of unconstrained walls.
+
+**Check at the open:** load `/terminal` or `/vector` for a non-oracle ticker immediately after a deploy/cold task — walls should be briefly absent rather than showing inverted call/put levels; once spot resolves, call walls must sit above spot and put walls below.
+
+### 0aa. UW rate limiter queue-wait observability — fix/uw-rate-limiter-queue-wait-observability (merged #3759)
+
+**What was broken:** a UW request that queued behind the rate limiter for 15+ seconds and then
+successfully acquired a slot left zero trace anywhere — `RateLimiterQueueTimeoutError` only fires
+once the budget is fully exhausted, so the whole admitted-but-slow middle of the distribution was
+invisible to CloudWatch Logs. Blocked the follow-up two earlier entries today (vector-pick-sweep
+tail latency, `contract-picks` live timeout) both named as the correct next step.
+
+**Fix:** `throttleUw` now logs `[uw] queue wait <ms>ms` (tagged `(background sweep)` when
+applicable) whenever an admission takes ≥500ms. Pure instrumentation — no change to admission
+timing, concurrency, or rate limiting itself.
+
+**Check at the open:** filter CloudWatch Logs on `[uw] queue wait` during RTH — the `(background
+sweep)` tag separates expected cron-sweep queueing from live member-request queueing, which is
+what the two prior entries' follow-up measurement needs. No product-facing behavior to check; this
+is instrumentation only.
+
+### 0ac. UW stall + L1 cache + SPX GEX stale future guards — fix/uw-future-timestamp-guards (pending)
+
+**What was broken:** Two paths missed the #3745/#3760 future-timestamp sweep: `isUwSocketStalled()` (OPEN socket with future `freshestMessageAt` never reconnects), `gexStaleFromAge()` (future GEX `asof` clamped to age 0 → `gex_stale: false`). (`readUwCache` on separate branch `fix/uw-cache-index-overlay-future-timestamp`.)
+
+**Fix:** Gate stall via `!isWsUpdatedAtFresh`; treat future GEX age as stale.
+
+**Check at the open:** Admin System Vitals UW socket tile still reconnects on genuine silence; SPX desk GEX stale pill fires on real 30s+ lag (not on normal 10–20s ages).
+
+### 0ab. LULD halt future-timestamp guard — fix/luld-halt-future-timestamp-guard (pending)
+
+**What was broken:** `isLuldHaltSourceStaleForState()` and `isLuldHaltFeedStale()` used raw `Date.now() - timestamp` age math without a future guard — clock-skewed future cluster/local `last_message_at` stamps read as live/trusted (same class as the UW halt bug fixed in #3745).
+
+**Fix:** Gate all LULD freshness probes through shared `isWsUpdatedAtFresh`.
+
+**Check at the open:** Admin System Vitals → Massive LULD tile shows live during RTH when feed is healthy; 0DTE halt gate still blocks when BOTH UW and LULD are genuinely down (not on a single future-skewed stamp).
+
+### 0z. SPX pulse stream local freshness future guard — fix/spx-pulse-stream-future-guard (pending)
+
+**What was broken:** `refreshSnapshot()` in `/api/market/spx/pulse/stream` preferred local `indexStore` when `Date.now() - fresh < 10_000` with no future-timestamp guard — clock-skewed future `updatedAt` reads as infinitely fresh and skips cross-replica Redis fallback.
+
+**Fix:** Route local freshness through `isWsUpdatedAtFresh(fresh, 10_000)`.
+
+**Check at the open:** SPX pulse rail shows live spot during RTH; no stale local indexStore stuck when Redis has fresher cross-replica snapshot.
+
+### 0y. HELIX score probe lacked real-ledger mode — fix/helix-score-signal-ledger-mode (pending)
+
+**What was broken:** `helix-score-signal.mjs` could only grade flow prints via Polygon minute-bar replay; the signal-outcome ledger writer is live since 2026-09-03 but the probe had no path to use official continued/reversed outcomes.
+
+**Fix:** `--source=ledger` mode — reads `GET /api/market/helix/signal-outcomes`, maps job outcomes, matches conviction score from flow tape (±30m).
+
+**Check at the open:** `node --import tsx scripts/audit/helix-score-signal.mjs --source=ledger` returns graded rows when ledger has directional outcomes; re-run weekly as ledger accumulates past the 50-row API cap.
+
+### 0z. vector-walls-warm missing force=1 cooldown — fix/vector-walls-warm-cooldown (pending)
+
+**What was broken:** `vector-walls-warm` had `OVERLAP_LOCK` but no `RERUN_COOLDOWN`. `?force=1` bypasses the cash-RTH gate; on a hot walls cache the background warm can finish in seconds, so replay loops could fan out Polygon chain fetches faster than any legitimate trigger (rth-warm-leader 20s heal threshold).
+
+**Fix:** Added `RERUN_COOLDOWN_KEY = "vector-walls-warm:cooldown"` with 10s TTL (below the 20s leader heal threshold, mirroring heatmap-warm).
+
+**Check at the open:** `/admin` → Operations → cron health shows `vector-walls-warm` completing normally during RTH; no burst of concurrent wall-warm completions in CloudWatch within seconds of each other after a mid-session deploy.
+
 Every item below was fixed off-hours today (weekday, pre-open) and has **not been seen under a
 moving tape or real member traffic**. Per the newly-recorded `FULL-LIFECYCLE SCOPE EXPANSION`
 standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained every sweep — not
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
+
+### 0z. Vector API unrounded floats + UW halt future-timestamp guard — fix/vector-roundfloats-uw-halt-freshness (pending)
+
+**What was broken:** Five Vector cache-reader routes (`universe`, `wall-history`, `daily-regime`, `rail-bootstrap`, `contract-picks`) returned raw IEEE float noise at the JSON boundary while sibling Vector routes already call `roundFloats`. Separately, `isUwHaltSourceStale()` used raw `Date.now() - freshest > maxAgeMs` — a clock-skewed future `effectiveFreshestUwMessageAt()` reads as live/trusted.
+
+**Fix:** Wrap all five route responses with `roundFloats(...)`; replace halt proxy check with `!isWsUpdatedAtFresh(freshest, maxAgeMs)`.
+
+**Check at the open:** Poll `/api/market/vector/universe` and `/api/market/vector/daily-regime?ticker=SPX` — strike/flip/spot fields should be 2dp with no long float tails. Confirm 0DTE halt gate still blocks entries when UW socket is genuinely down (admin System Vitals).
+
+### 0y. darkpool-discord missing runWithBackgroundUwSweep — fix/darkpool-discord-uw-sweep (pending)
+
+**What was broken:** `darkpool-discord` cron called `fetchUwDarkPoolRecent` (live scan, 15m digest, EOD recap) without the shared `runWithBackgroundUwSweep` tag, competing with member UW REST traffic on cache miss.
+
+**Fix:** Wrapped tick body in `runWithBackgroundUwSweep(() => runDarkpoolDiscordTick(...))`.
+
+**Check at the open:** Admin Operations → UW rate limiter / cron health shows `darkpool-discord` completing without member-facing UW 429s during RTH; Discord #blackout-darkpool live alerts still post during active tape.
 
 ### 0x. Flow WS cluster heartbeat future timestamp falsely fresh — fix/flow-liveness-future-guard (pending)
 
@@ -161,6 +250,14 @@ reported -0.35% (measured 2026-09-04).
 **Fix:** Route through `ageMinFromIso`; when age cannot be trusted (clock-skewed future), treat as `staleThreshold + 1` so the job surfaces stale instead of infinitely fresh.
 
 **Check at the open:** `/admin` → Operations → cron health — no negative `age_min` values; jobs with skewed timestamps show stale, not OK.
+
+### 0y. UW / options WS freshness gates treated future timestamps as live — fix/uw-channel-future-timestamp-freshness (pending)
+
+**What was broken:** `isUwChannelFresh`, `getLiveOptionMarkSync`, and admin `cluster_live` used raw `Date.now() - at <= maxAgeMs`. A clock-skewed future stamp yields negative age, which still passes the threshold — falsely reporting a channel as live. (Flow cluster heartbeat was fixed separately in #3718 via `flowHeartbeatAgeMs`.)
+
+**Fix:** Route UW/options freshness through `isWsUpdatedAtFresh` / `wsUpdatedAtAgeMs`. Admin `cluster_live` and `last_message_age_ms` reporting clamped the same way.
+
+**Check at the open:** `/admin` → Operations → UW socket health — `last_message_age_ms` never negative; during RTH with live flow, `cluster_live` true only when frames actually arrived within 120s (not on skew alone).
 
 ### 0v. ISO age helpers treated clock-skewed future timestamps as fresh — fix/iso-age-future-guard-combined (pending)
 
@@ -2079,4 +2176,34 @@ than an end-of-session patch.
 - **What was broken:** `SpxLiveSpotPrice`, `SpxSniperHeader` strip spot, and `SpxIosMarketStrip` used `(desk?.spx_change_pct ?? 0) >= 0` for bull/bear text and border classes. When day change was genuinely unknown (`null`), price and % chip showed green bull styling while `fmtPct` correctly rendered `—`.
 - **What changed:** `dayChangeTextClass()` / `dayChangeBorderClass()` in `src/lib/api.ts`; all three surfaces use neutral white tone when change is absent.
 - **RTH check:** On `/dashboard` during a brief window where SPX spot is live but `spx_change_pct` is still warming (or force a null in dev), confirm SPX price/% use neutral white styling — not green bull — while the % reads `—`.
+
+### 24. SPX pulse SSE stream — unrounded IEEE floats on wire — fix/spx-pulse-stream-round-floats — 2026-09-04
+
+- **What was broken:** `/api/market/spx/pulse/stream` SSE events serialized raw `indexStore` / UW tide numbers without `roundFloats`, so members on the live stream lane could still see tails like `7718.600000000001` while REST `/spx/pulse` was already rounded (PR #3751).
+- **What changed:** Wrap the SSE payload in `roundFloats()` before `JSON.stringify` in `pulse/stream/route.ts`.
+- **RTH check:** Open SPX desk with pulse stream connected (Network tab → EventStream on `/api/market/spx/pulse/stream`); confirm `spx.price` and tide `net`/`call_premium` values are 2dp-clean with no IEEE tails during RTH ticks.
+
+### 25. HELIX flows SSE stream — unrounded IEEE floats on wire — fix/flows-stream-round-floats — 2026-09-04
+
+- **What was broken:** `/api/market/flows/stream` SSE events serialized raw flow premiums/strikes without `roundFloats`, so members on the live HELIX tape could still see IEEE tails while REST `/flows` was already rounded.
+- **What changed:** Wrap the SSE payload in `roundFloats()` before `JSON.stringify` in `flows/stream/route.ts`.
+- **RTH check:** Open `/flows` with live stream connected (Network tab → EventStream on `/api/market/flows/stream`); confirm `premium`, `strike`, and GEX enrichment numbers are 2dp-clean with no IEEE tails on incoming flow events during RTH.
+
+### 26. Vector contract-picks/live + play-bie — unrounded floats at API boundary — fix/vector-live-picks-bie-roundfloats — 2026-09-04
+
+- **What was broken:** `POST /api/market/vector/contract-picks/live` (live bid/ask/mid/greeks on pick monitor) and `POST /api/market/vector/play-bie` (`favPct` historical rate) returned raw IEEE floats while sibling Vector reads already call `roundFloats`.
+- **What changed:** Wrap both success responses in `roundFloats(...)`; add `favPct: 4` to `VECTOR_FRACTION_DP`.
+- **RTH check:** On Vector with an active play, open pick live monitor — confirm option marks are 2dp-clean; BIE evidence line shows a non-zero historical rate when `favPct` is small (e.g. 0.4% not 0.00%).
+
+### 27. Vector snapshot GEX walls — WS ladder race without spot constraint — fix/vector-snapshot-spot-constraint — 2026-09-04
+
+- **What was broken:** `getVectorGexWalls()` in `vector-snapshot.ts` could compute unconstrained gamma walls from the live UW WS ladder when `fallbackSpot` was still null (heatmap fetch in flight), placing call walls below spot or put walls above spot.
+- **What changed:** WS ladder path returns cached walls until spot is known; horizon WS path skips unconstrained compute when spot missing. Builds on spot > 0 guard from prior commit on this branch.
+- **RTH check:** On `/vector` for SPX/SPY/QQQ at session open (first ~30s after 09:30 ET), confirm call walls sit above spot and put walls below spot — no inverted geometry flash.
+
+### 28. 0DTE admin sim board — unrounded floats at API boundary — fix/zerodte-board-sim-roundfloats — 2026-09-04
+
+- **What was broken:** `GET /api/market/zerodte/board?sim=1` (admin-only) served sim frames from Redis without `roundFloats` at the route boundary. Member path rounds inside `zerodte-service.ts`, but sim ingest bypasses that pipeline — synthetic/replay frames could expose IEEE float tails on the admin sim desk.
+- **What changed:** Wrap both sim and member board success responses in `roundFloats()` at `board/route.ts`.
+- **RTH check:** Seed admin sim (`/nighthawk?sim=1`), inspect board JSON or rendered premiums/PnL — confirm 2dp-clean values with no IEEE tails on sim frames.
 

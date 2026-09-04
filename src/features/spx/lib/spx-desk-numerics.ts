@@ -1,6 +1,7 @@
 // Pure numeric helpers for the SPX desk lanes, extracted from spx-desk.ts so they are unit-testable
 // WITHOUT importing that module's heavy, `server-only` dependency chain. No runtime imports here —
 // the SpxDeskPulse import is type-only (erased at compile), so this module pulls nothing server-side.
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import type { SpxDeskPulse } from "./spx-desk";
 
 /** Round price-like desk numerics at the data layer (deep sweep #21). */
@@ -25,7 +26,9 @@ export const GEX_STALE_MS = (() => {
  * as fresh and the pill never warned. Deriving both paths from the age closes that.
  */
 export function gexStaleFromAge(ageMs: number | null): boolean {
-  return ageMs == null || ageMs > GEX_STALE_MS;
+  if (ageMs == null) return true;
+  if (ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return true;
+  return ageMs > GEX_STALE_MS;
 }
 
 /**

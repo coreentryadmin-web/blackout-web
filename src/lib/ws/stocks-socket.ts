@@ -24,6 +24,7 @@ import {
 } from "@/lib/ws/leader-lock-shared";
 import { newLockToken, releaseFencedLock, renewFencedLock, type FencedRedis } from "@/lib/ws/leader-lock-fencing";
 import { recordStockTick, getStockCandleStoreStats } from "@/lib/ws/stock-candle-store";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const STOCKS_WS_URL = process.env.STOCKS_WS_URL ?? MASSIVE_WS_STOCKS;
 const POLYGON_API_KEY = process.env.POLYGON_API_KEY ?? process.env.MASSIVE_API_KEY ?? "";
@@ -359,9 +360,11 @@ export function isLuldHaltSourceStaleForState(
   maxAgeMs: number,
   now = Date.now()
 ): boolean {
-  if (connectionOpen && localFreshestAt > 0 && now - localFreshestAt <= maxAgeMs) return false;
-  if (clusterMessageAt != null && now - clusterMessageAt <= maxAgeMs) return false;
-  return ownLastMessageAt <= 0 || now - ownLastMessageAt > maxAgeMs;
+  if (connectionOpen && localFreshestAt > 0 && isWsUpdatedAtFresh(localFreshestAt, maxAgeMs, now)) {
+    return false;
+  }
+  if (clusterMessageAt != null && isWsUpdatedAtFresh(clusterMessageAt, maxAgeMs, now)) return false;
+  return ownLastMessageAt <= 0 || !isWsUpdatedAtFresh(ownLastMessageAt, maxAgeMs, now);
 }
 
 /** False when the LULD feed is unavailable (local ingest socket OR cluster heartbeat). */

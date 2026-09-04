@@ -41,7 +41,7 @@ export function parseTickerList(raw: string | null, max: number = MAX_TICKERS_PE
   return { tickers };
 }
 
-export type SpotQuote = { price: number; changePct: number; asof: string };
+export type SpotQuote = { price: number; changePct: number | null; asof: string };
 export type SpotFrame = { type: "quotes"; quotes: Record<string, SpotQuote>; ts: number };
 
 /**

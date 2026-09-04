@@ -1,5 +1,6 @@
 import type { IndexQuote } from "@/lib/providers/polygon";
 import { rebaseChangePct } from "@/lib/providers/change-pct";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 /** Mirrors spx-desk INDEX_STORE_STALE_MS / GEX_INDEX_WS_STALE_MS — one knob for all index WS overlays. */
 export const INDEX_WS_STALE_MS = (() => {
@@ -28,7 +29,12 @@ export function overlayRestIndexWithWs(
   now = Date.now(),
   maxAgeMs = INDEX_WS_STALE_MS
 ): IndexQuote {
-  if (!restSnap || !ws?.updatedAt || now - ws.updatedAt >= maxAgeMs || !(ws.price > 0)) {
+  if (
+    !restSnap ||
+    !ws?.updatedAt ||
+    !isWsUpdatedAtFresh(ws.updatedAt, maxAgeMs, now) ||
+    !(ws.price > 0)
+  ) {
     return restSnap;
   }
 
@@ -52,7 +58,7 @@ export function localWsIndexEntry(
 ): WsIndexEntry | null {
   const sym = root.toUpperCase();
   const ws = indexStore?.[sym];
-  if (!ws?.updatedAt || now - ws.updatedAt >= INDEX_WS_STALE_MS) return null;
+  if (!ws?.updatedAt || !isWsUpdatedAtFresh(ws.updatedAt, INDEX_WS_STALE_MS, now)) return null;
   if (!(ws.price > 0)) return null;
   return ws;
 }
@@ -71,7 +77,7 @@ export async function clusterWsIndexEntry(
     if (!raw) return null;
     const snap = JSON.parse(raw) as Record<string, WsIndexEntry>;
     const entry = snap[sym];
-    if (!entry?.updatedAt || now - entry.updatedAt >= maxAgeMs) return null;
+    if (!entry?.updatedAt || !isWsUpdatedAtFresh(entry.updatedAt, maxAgeMs, now)) return null;
     if (!(entry.price != null && entry.price > 0)) return null;
     return entry;
   } catch {

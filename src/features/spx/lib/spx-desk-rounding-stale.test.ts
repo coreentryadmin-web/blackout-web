@@ -20,6 +20,10 @@ test("gexStaleFromAge: unknown age → stale (never claim fresh on a missing age
   assert.equal(gexStaleFromAge(null), true);
 });
 
+test("gexStaleFromAge: clock-skewed future age → stale (must not read as fresh)", () => {
+  assert.equal(gexStaleFromAge(-60_000), true);
+});
+
 // ── P2: the fast pulse lane must round price-class numerics at the data layer ──
 const RAW = {
   price: 7508.481234,

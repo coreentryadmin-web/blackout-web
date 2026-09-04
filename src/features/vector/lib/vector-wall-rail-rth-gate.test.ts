@@ -104,3 +104,32 @@ test("the in-process leader and this module agree on the same gate", () => {
   assert.match(leader, /isEtCashRth\(\)/, "leader still gates on cash RTH");
   assert.match(read(SNAPSHOT), /isEtCashRth/, "snapshot writers gate on the same clock");
 });
+
+test("vector-snapshot: computeGexWalls spot args reject zero/negative (source scan)", () => {
+  const src = read(SNAPSHOT);
+  assert.match(
+    src,
+    /function resolveVectorWallSpot\(/,
+    "GAMMA-lens walls must resolve spot through a single guarded helper"
+  );
+  assert.match(
+    src,
+    /typeof s\.fallbackSpot === "number" && Number\.isFinite\(s\.fallbackSpot\) && s\.fallbackSpot > 0/,
+    "resolveVectorWallSpot must reject non-finite and non-positive heatmap spot"
+  );
+  const resolvedSpotCalls = [...src.matchAll(/const spot = resolveVectorWallSpot\(s, t\)/g)];
+  assert.ok(
+    resolvedSpotCalls.length >= 2,
+    "GAMMA-lens computeGexWalls paths must resolve spot via resolveVectorWallSpot"
+  );
+  assert.doesNotMatch(
+    src,
+    /spot:\s*s\.fallbackSpot\s*\?\?\s*undefined/,
+    "must not pass raw fallbackSpot ?? undefined to computeGexWalls"
+  );
+  assert.match(
+    src,
+    /if \(!spot\) \{\s*\n\s*s\.cachedWalls = null/,
+    "getVectorGexWalls must fail closed when spot is not yet known"
+  );
+});

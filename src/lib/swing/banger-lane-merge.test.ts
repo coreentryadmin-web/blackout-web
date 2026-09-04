@@ -82,3 +82,4 @@ test("mergeBangerPositionsIntoSwingPlays keeps canonical swing OPEN when banger 
   assert.equal(merged[0]!.reason, "swing ledger open");
   assert.notEqual(merged[0]!.signalKinds?.[0], "BANGER");
 });
+
