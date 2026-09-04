@@ -70,7 +70,7 @@ import {
   warmClusterHaltsFromRedis,
 } from "@/lib/ws/halt-cluster-store";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
-import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
+import { isWsUpdatedAtFresh, wsUpdatedAtAgeMs } from "@/lib/ws/timestamp-freshness";
 import { inOptionsMarketHours } from "./options-socket";
 import {
   alertWsLeaderFailClosedOnce,
@@ -1639,7 +1639,7 @@ export function shutdownUwSocket(): void {
  */
 export function isUwChannelFresh(channel: UwWsChannel, maxAgeMs = 120_000): boolean {
   const at = lastMessageAt[channel];
-  return at != null && Date.now() - at <= maxAgeMs;
+  return isWsUpdatedAtFresh(at, maxAgeMs);
 }
 
 export function getUwSocketHealth() {
@@ -1654,11 +1654,11 @@ export function getUwSocketHealth() {
   for (const ch of ALL_CHANNELS) {
     const at = lastMessageAt[ch] ?? null;
     last_message_at[ch] = at;
-    last_message_age_ms[ch] = at ? now - at : null;
+    last_message_age_ms[ch] = at != null ? wsUpdatedAtAgeMs(at, now) : null;
   }
 
   const clusterAt = effectiveFreshestUwMessageAt();
-  const clusterAge = clusterAt != null ? now - clusterAt : null;
+  const clusterAge = clusterAt != null ? wsUpdatedAtAgeMs(clusterAt, now) : null;
 
   return {
     configured: Boolean(UW_API_KEY),
@@ -1666,7 +1666,7 @@ export function getUwSocketHealth() {
     is_leader: uwIsLeader,
     cluster_last_message_at: clusterAt,
     cluster_last_message_age_ms: clusterAge,
-    cluster_live: clusterAge != null && clusterAge <= 120_000,
+    cluster_live: clusterAt != null && isWsUpdatedAtFresh(clusterAt, 120_000, now),
     auth_failed: authFailedChannels.length > 0,
     auth_failed_channels: authFailedChannels,
     // WS-21: live flow-source recovery state machine + the dead-letter queue stats.
