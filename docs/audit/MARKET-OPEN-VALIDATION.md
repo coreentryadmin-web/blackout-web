@@ -649,6 +649,22 @@ pan states, since tick positions move with the visible time range and the origin
 width and time-range, not a single fixed state. Also spot-check mobile (430×932) to confirm the fix
 didn't regress the already-working sibling labels' layout there.
 
+### 13b. Vector chart volume-profile POC/VAH/VAL labels collided with price-line axis badges — PR pending (branch `fix/vector-vp-label-gutter-left`)
+
+**What was broken:** `VolumeProfilePrimitive` drew POC/VAH/VAL text labels at `rightX - 6` (flush to
+the price axis) while lightweight-charts native price-line axis badges (Pin, Gamma flip, VWAP, spot,
+EMA…) occupy the same y-band. Live pixel capture of `/dashboard` (SPX Slayer, 430×932) showed the
+orange "Pin 7,746" badge painting over the gray "POC" label whenever the two price levels landed
+within one label-height of each other.
+
+**Fix:** anchor level labels at the left edge of the profile band (`gutterLeft + 4px`, left-aligned)
+instead of the price axis — sidesteps axis-badge collision without suppressing labels.
+
+**Check at the open, live tape:** on `/dashboard` (SPX Slayer) and `/vector` with volume profile
+enabled, confirm POC/VAH/VAL labels are legible at the start of the profile bars even when Pin,
+gamma-flip, or other price-line badges are active at nearby price levels. Re-capture at 430×932 and
+desktop 1440×900 when Pin and POC happen to be close in price-space.
+
 ### 20. Helix `/flows` mobile print card showed a bare negative DTE for an already-expired print — PR #3561 (merged, branch `fix/helix-mobile-card-expired-dte`)
 
 **What was broken:** the mobile print card (`HelixMobileFlowTape.tsx`) computed
