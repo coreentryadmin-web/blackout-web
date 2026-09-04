@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T23:25:50.293Z",
+  "updated_at": "2026-09-04T23:25:59.557Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -261,128 +261,7 @@
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33928899257",
     "last_deploy_sha": "4e4a0f34bbc2014f0afdd1cde2203ba0d2fec6f9"
   },
-  "open_prs": [
-    {
-      "number": 3794,
-      "title": "feat(learn): add Vector and Meridian Academy chapters",
-      "branch": "feat/academy-vector-meridian-chapters",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T23:17:55Z"
-    },
-    {
-      "number": 3793,
-      "title": "chore(autopilot): cursor handoff state sync — #3774 review pending",
-      "branch": "cursor/autopilot-state-1788563465",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T23:17:57Z"
-    },
-    {
-      "number": 3792,
-      "title": "docs(audit): mark banger sub5-DTE visibility fix merged (#3778)",
-      "branch": "fix/market-open-validation-3778-status",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T23:18:00Z"
-    },
-    {
-      "number": 3790,
-      "title": "fix(spot): return null change_pct when UW omits prev_close",
-      "branch": "fix/spot-fallback-change-pct-null",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-09-04T23:18:16Z"
-    },
-    {
-      "number": 3789,
-      "title": "fix(polygon): stop fabricating 0% on batch snapshot change_pct",
-      "branch": "fix/polygon-snapshot-change-pct-null",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T23:18:05Z"
-    },
-    {
-      "number": 3788,
-      "title": "fix(marketing): reposition Meridian from earnings-only to catalyst intelligence",
-      "branch": "fix/meridian-manifest-catalyst-coverage",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T23:18:08Z"
-    },
-    {
-      "number": 3787,
-      "title": "feat(swing-command): Phase P0 parity — live mgmt, thesis health, cockpit",
-      "branch": "cursor/swing-command-p0",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T23:18:11Z"
-    },
-    {
-      "number": 3786,
-      "title": "fix(learn): correct Vector guide's false Thermal-is-SPX-only claim",
-      "branch": "fix/vector-guide-thermal-multiticker-claim",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T23:18:13Z"
-    },
-    {
-      "number": 3784,
-      "title": "fix(learn): stop Learn nav describing Night Hawk as evening-only",
-      "branch": "fix/learn-nav-night-hawk-stale-descriptor",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T23:18:16Z"
-    },
-    {
-      "number": 3783,
-      "title": "fix(swing): discovery COMMIT without ledger is pre-entry for banger merge",
-      "branch": "cursor/swing-command-bugbot-fixes",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-04T23:17:37Z"
-    },
-    {
-      "number": 3774,
-      "title": "fix(ws): guard UW L1 cache + stocks/polygon stall against future timestamps",
-      "branch": "fix/ws-stall-uw-cache-future-timestamp",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T23:16:27Z"
-    },
-    {
-      "number": 3773,
-      "title": "fix(swing-command): Bugbot blockers — banger merge collision + open-book fetch",
-      "branch": "cursor/hourly-autonomous-wake",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-09-04T23:16:29Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1359,6 +1238,25 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T23:25:50.292Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T23:25:54.358Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T23:25:54.358Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "59cff4c5-f833-48af-a227-d7fe40c93a43",
+      "summary": "PR-event wake: fixed CI blockers on #3783 (banger-lane-merge.test.ts conflict markers) and #3774 (uw-cache-freshness.test.ts conflict markers). Peer-reviewed #3774 APPROVED (43607fb10). validate:deploy GREEN, ops:collect 0. verify CI still running on both PRs when GitHub API rate-limited."
+    },
+    {
+      "at": "2026-09-04T23:25:59.557Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
   "pr_activity": {
