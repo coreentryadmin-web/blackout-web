@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:34:01.957Z",
+  "updated_at": "2026-09-04T08:13:02.034Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,15 +67,15 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
+      "claimed_at": "2026-09-04T07:49:41.627Z",
+      "lease_until": "2026-09-04T09:19:41.627Z",
       "phase": "RELEASED",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
       "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "released_at": "2026-09-04T08:13:02.034Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -146,6 +146,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3528": {
+      "pr": 3528,
+      "head_sha": "f32d46746",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T08:10:43.811Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -160,13 +168,34 @@
     }
   },
   "deploy": {
-    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T06:44:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845611594",
-    "last_deploy_sha": "84b92b6b62ff5b6694c856016aa3e5b2d235b5ea"
+    "last_main_sha": "f4d1f5ebb43afe757e44157533c293635dd2ee18",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-09-04T08:01:59Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
+    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3533,
+      "title": "chore(autopilot): resolve state-sync conflict pile (10 stuck PRs → 1)",
+      "branch": "chore/autopilot-state-sync-resolve-conflicts-20260904",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T08:12:44Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T08:12:19Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -677,6 +706,28 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:10:43.811Z",
+      "type": "pr_review",
+      "pr": 3528,
+      "head_sha": "f32d46746",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T08:10:43.811Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T08:12:50.963Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T08:13:02.034Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
     }
   ]
 }
