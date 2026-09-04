@@ -169,6 +169,18 @@ logic touched.
 430x932`), filter to PASSED/WATCH, and confirm every row's return figure now carries a small
 "Since flag" caption under it, and every CLOSED row carries "Peak Return" — never a bare number.
 
+### 0j-b. Admin ops store-age "just now" on clock-skewed timestamps — fix/admin-store-age-future-guard (pending)
+
+**What was broken:** `storeAge()` in the admin Operations dashboard computed `Date.now() - updatedAt`
+without a future guard. A timestamp more than a few seconds ahead of wall clock produced negative age;
+`Math.floor(negative / 1000) < 10` evaluated true, so the tile read **"just now"** with ok=true.
+
+**Fix:** Extracted to `admin-store-age.ts` with `WS_TIMESTAMP_FUTURE_TOLERANCE_MS`; beyond tolerance
+returns `{ label: "clock skew", ok: false }`; otherwise clamps with `Math.max(0, ...)`.
+
+**Check at the open:** `/admin` → Operations → UW/Polygon store tiles show plausible ages during RTH
+(e.g. "12s ago"), not "just now" on a store that hasn't ticked.
+
 ### 0i. Platform-integrity probe tier-gate false-WARN — fix/platform-integrity-clerk-auth (merged #3605)
 
 **What was broken:** `npm run validate:platform-integrity` hit tier-gated desk routes without Clerk auth,

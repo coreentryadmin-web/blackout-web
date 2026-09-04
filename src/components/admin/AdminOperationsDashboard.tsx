@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
+import { storeAge } from "@/components/admin/admin-store-age";
 import {
   ActionButton,
   EmptyDeck,
@@ -314,18 +315,6 @@ type UwStores = {
   price_spx_updated_at?: number | null;
   active_halts: string[];
 };
-
-function storeAge(updatedAt: number | null): { label: string; ok: boolean | null } {
-  if (updatedAt == null || updatedAt === 0) return { label: "No data", ok: null };
-  const age = Date.now() - updatedAt;
-  const s = Math.floor(age / 1000);
-  if (s < 10) return { label: "just now", ok: true };
-  if (s < 60) return { label: `${s}s ago`, ok: true };
-  const m = Math.floor(s / 60);
-  if (m < 5) return { label: `${m}m ago`, ok: true };
-  if (m < 15) return { label: `${m}m ago`, ok: false };
-  return { label: `${m}m ago`, ok: false };
-}
 
 function PipelineRow({
   label,
