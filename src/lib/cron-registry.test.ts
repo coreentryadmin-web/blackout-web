@@ -44,6 +44,7 @@ const INTENTIONALLY_UNREGISTERED: Record<string, string> = {
   "x-autopost": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
   "x-growth": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
   "x-replies": "Operator confirmed 2026-08-28: X marketing crons are unused/redundant. EventBridge rule (already DISABLED in prod) deleted the same day; route.ts left in place.",
+  "cron-staleness-watchdog-self-heal": "PR #3668: a SECOND, conditional log key written by the already-registered cron-staleness-watchdog route (src/app/api/cron/cron-staleness-watchdog/route.ts) — only when self-heal actually dispatches a re-warm, which is not a fixed cadence and has no entry of its own in blackout-infra's cron-jobs.json. Its own stale_after_min would false-alarm on any quiet stretch with no incident. logCronRun's own failure path already fires the standard Discord alert if a re-warm does not succeed; the health board tracks the parent cron-staleness-watchdog key on its real 5-min schedule instead.",
 };
 
 /** Every `logCronRun(...)` key a route can emit, resolving `CRON_KEY`-style constants. */

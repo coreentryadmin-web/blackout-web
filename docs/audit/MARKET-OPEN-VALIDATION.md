@@ -126,6 +126,24 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0s. `cron-registry.test.ts` coverage check broke on `main` — PR #3668 shipped an unregistered `logCronRun` key — fix/cron-registry-self-heal-key (pending)
+
+**What was broken:** PR #3668 added a second, conditional `logCronRun("cron-staleness-watchdog-self-heal", ...)`
+call to the already-registered `cron-staleness-watchdog` route, but never added the new key to
+`cron-registry.test.ts`'s coverage check (`CRON_JOBS` or `INTENTIONALLY_UNREGISTERED`). That test runs
+in `npm test`/CI `verify`, so `main` itself started failing `verify` on every commit after #3668
+merged — including on two unrelated open PRs (#3664, #3667) that merged `main` in and inherited the
+red check despite neither touching cron code.
+
+**Fix:** added `cron-staleness-watchdog-self-heal` to `INTENTIONALLY_UNREGISTERED` with a reason —
+it's a conditional follow-up write (only fires when self-heal actually dispatches a re-warm), not a
+standalone scheduled job in blackout-infra's `cron-jobs.json`, so a `CRON_JOBS`/`stale_after_min`
+entry would false-alarm on any quiet stretch with no incident. `logCronRun`'s own failure path
+already fires the standard Discord alert on a failed re-warm.
+
+**Check at the open:** none — pure CI/test-coverage fix, no production behavior changed. Confirm
+`main`'s own `verify` check is green on its latest commit once this merges.
+
 ### 0q. cron-staleness-watchdog's self-heal outcome never reached the persisted `cron_job_runs` record — fix/cron-staleness-watchdog-healed-array (pending)
 
 **What was broken:** `runSelfHeal` computed a per-job re-warm result (`ok`/`status`/`error`/`detail`)
