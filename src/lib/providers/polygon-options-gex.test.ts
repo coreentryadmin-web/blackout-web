@@ -92,6 +92,34 @@ test("fetchSpotFromPrevBar uses ISR-safe prev-bar fetch so marketing homepage re
   );
 });
 
+test("resolveSpotSnapshot: never fabricates change_pct as flat 0% when unknown", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(src, /return \{ price: bar\.c, change_pct: null \}/);
+  assert.match(src, /restSnap\?\.change_pct \?\? null/);
+  assert.match(src, /snap\?\.change_pct \?\? null, source: "rest"/);
+  assert.match(src, /const changePct = snap\?\.change_pct \?\? null;/);
+  assert.match(src, /change_pct: ctx\?\.changePct \?\? null/);
+  assert.doesNotMatch(
+    src,
+    /restSnap\?\.change_pct \?\? 0/,
+    "resolveSpotSnapshot must not coalesce unknown change% to 0"
+  );
+});
+
+test("liveWsIndexSpot/liveWsStockSpot: future WS updatedAt must not read as fresh", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(src, /function gexWsTickFresh\(/);
+  assert.match(src, /GEX_WS_FUTURE_TOLERANCE_MS/);
+  assert.match(src, /if \(!gexWsTickFresh\(ws\.updatedAt, now\)\) return null;/);
+  assert.match(src, /if \(!snap\.updatedAt \|\| !gexWsTickFresh\(snap\.updatedAt, now\)\) return null;/);
+});
+
 test("fetchGexHeatmap keeps stale-while-revalidate during preset fast-move (no blocking guard)", () => {
   const src = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),

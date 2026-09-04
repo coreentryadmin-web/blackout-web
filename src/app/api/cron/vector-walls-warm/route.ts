@@ -84,6 +84,11 @@ export async function GET(req: NextRequest) {
   // Universe wall priming can exceed Cloudflare's ~100s origin timeout when caches are cold
   // (ops #2118: market_hours_stale with no fresh cron_job_runs row). Mirror vector-bead-record /
   // vector-full-state-snapshot: handshake in seconds, warming in after().
+  //
+  // UW sweep tag: intentionally NOT wrapped in the shared background UW sweep helper. This cron is
+  // Polygon/GEX-cache heavy (warmVectorWalls → getVectorGexWalls/VexWalls). joinGexStrikeExpiryTicker
+  // only registers a lightweight UW WS subscription — no UW REST fan-out — so it does not compete
+  // with live traffic the way desk-warm / meridian-warm / vector-universe-snapshot do.
   const dispatchWarming = () => {
     void runVectorWallsWarm(started).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);

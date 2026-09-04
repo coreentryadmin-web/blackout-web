@@ -463,6 +463,14 @@ const INDEX_STORE_STALE_MS = (() => {
   return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 120_000;
 })();
 
+/** Clock-skew guard — a future `updatedAt` must not read as infinitely fresh. */
+const UW_WS_FUTURE_TOLERANCE_MS = 5_000;
+
+function uwWsStoreFresh(updatedAt: number, staleMs: number, now = Date.now()): boolean {
+  const ageMs = now - updatedAt;
+  return ageMs >= -UW_WS_FUTURE_TOLERANCE_MS && Math.max(0, ageMs) < staleMs;
+}
+
 let cachedDarkPool: { data: DarkPoolSnapshot | null; fetchedAt: number; key: string } = {
   data: null,
   fetchedAt: 0,
@@ -473,7 +481,7 @@ async function resolveMarketTide(): Promise<Awaited<ReturnType<typeof fetchUwMar
   if (!uwConfigured()) return null;
   try {
     const { tideStore } = await import("@/lib/ws/uw-socket");
-    if (Date.now() - tideStore.updatedAt < TIDE_STALE_MS) {
+    if (uwWsStoreFresh(tideStore.updatedAt, TIDE_STALE_MS)) {
       return tideStore;
     }
   } catch {
@@ -497,7 +505,7 @@ async function resolveFlow0dte(ticker = "SPX"): Promise<{
   try {
     const { getIntervalFlowForTicker } = await import("@/lib/ws/uw-socket");
     const snap = getIntervalFlowForTicker(ticker);
-    if (Date.now() - snap.updatedAt < INTERVAL_FLOW_WS_STALE_MS && snap.rows.length) {
+    if (uwWsStoreFresh(snap.updatedAt, INTERVAL_FLOW_WS_STALE_MS) && snap.rows.length) {
       let calls = 0;
       let puts = 0;
       for (const row of snap.rows) {
@@ -521,7 +529,7 @@ async function resolveDarkPool(
   const now = Date.now();
   try {
     const { darkPoolStore } = await import("@/lib/ws/uw-socket");
-    if (Date.now() - darkPoolStore.updatedAt < DARK_POOL_WS_STALE_MS && darkPoolStore.data) {
+    if (uwWsStoreFresh(darkPoolStore.updatedAt, DARK_POOL_WS_STALE_MS) && darkPoolStore.data) {
       return darkPoolStore.data;
     }
   } catch {

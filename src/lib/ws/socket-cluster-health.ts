@@ -14,13 +14,15 @@ const OPTIONS_MARK_PREFIX = "nw:optmark:";
 /** RTH liveness window for cluster heartbeats (matches admin UW channel silence threshold). */
 const UW_CLUSTER_LIVE_MS = 120_000;
 const POLYGON_CLUSTER_LIVE_MS = 30_000;
+/** Ordinary clock skew — a future cluster `updatedAt` must not read as infinitely fresh. */
+const CLUSTER_SPOT_FUTURE_TOLERANCE_MS = 5_000;
+
+export type ClusterIndexSpot = { price: number; change_pct: number | null };
 
 type IndexSnapshot = Record<
   string,
   { price?: number; change_pct?: number; updatedAt?: number; open_source?: string }
 >;
-
-export type ClusterIndexSpot = { price: number; change_pct: number };
 
 export type UwClusterHealth = {
   is_leader: boolean;
@@ -67,11 +69,16 @@ export async function readClusterIndexSpot(
       const snap = JSON.parse(raw) as IndexSnapshot;
       const entry = snap[sym];
       const price = entry?.price;
-      if (entry && price != null && price > 0 && entry.updatedAt && now - entry.updatedAt < maxAgeMs) {
-        return {
-          price,
-          change_pct: Number.isFinite(entry.change_pct) ? Number(entry.change_pct) : 0,
-        };
+      const updatedAt = entry?.updatedAt;
+      if (entry && price != null && price > 0 && updatedAt) {
+        const ageMs = now - updatedAt;
+        if (ageMs >= -CLUSTER_SPOT_FUTURE_TOLERANCE_MS && ageMs < maxAgeMs) {
+          const changePct = Number(entry.change_pct);
+          return {
+            price,
+            change_pct: Number.isFinite(changePct) ? changePct : null,
+          };
+        }
       }
     }
   } catch {

@@ -49,6 +49,7 @@
 ```bash
 npm run blackout:rth-lifecycle          # full autonomous sweep
 npm run validate:rth-open               # cron + socket + deploy
+node scripts/audit/data-validator.mjs   # pin direction + quote header % (RTH)
 npm run counterfactual:0dte-g18-g19     # G-18/G-19 report (needs Clerk)
 npm run validate:rth-four-engines       # SPX/NH/Vector/0DTE play paths
 npm run validate:platform-integrity     # expect 0 warn on SPY/QQQ strikes

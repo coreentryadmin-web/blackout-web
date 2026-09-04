@@ -865,7 +865,7 @@ export function FlowFeed() {
     return () => clearInterval(id);
   }, []);
   const dataAgeMs = useMemo(
-    () => (newestAt ? Date.now() - newestAt : null),
+    () => (newestAt ? Math.max(0, Date.now() - newestAt) : null),
     // ageTick is intentional: it is the heartbeat that re-evaluates Date.now().
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [newestAt, ageTick],

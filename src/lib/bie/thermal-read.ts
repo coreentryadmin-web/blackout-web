@@ -19,8 +19,12 @@ const fmt = (n: unknown, d = 0): string =>
     : "—";
 
 function formatPositioningBlock(p: ThermalPositioningSummary): string[] {
+  const chg =
+    p.change_pct != null && Number.isFinite(p.change_pct)
+      ? ` (${p.change_pct >= 0 ? "+" : ""}${fmt(p.change_pct, 2)}%)`
+      : "";
   return [
-    `Spot **${fmt(p.spot, 0)}** (${p.change_pct >= 0 ? "+" : ""}${fmt(p.change_pct, 2)}%) · as of ${p.asof}`,
+    `Spot **${fmt(p.spot, 0)}**${chg} · as of ${p.asof}`,
     `- γ flip **${fmt(p.flip, 0)}** · call wall **${fmt(p.call_wall, 0)}** · put wall **${fmt(p.put_wall, 0)}** · king **${fmt(p.gex_king_strike, 0)}**`,
     `- Net GEX **${fmt(p.net_gex, 0)}** · VEX **${fmt(p.net_vex, 0)}** · DEX **${fmt(p.net_dex, 0)}** · CHARM **${fmt(p.net_charm, 0)}**`,
     `- ${p.gamma_regime_read}`,
