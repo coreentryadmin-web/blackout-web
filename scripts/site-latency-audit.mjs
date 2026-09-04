@@ -80,21 +80,20 @@ const WARM_PATHS = [
   "/api/market/nighthawk/edition",
 ];
 
+/** Playwright serializes `ready` into the page — bake Node-only flags as literals first. */
+function dashboardReadyPredicate(minRows) {
+  return () =>
+    document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= minRows ||
+    document.body.innerText.length > 800;
+}
+
 const PAGES = [
   {
     path: "/dashboard",
     label: "dashboard",
     ready: IS_STAGING
-      ? () =>
-          document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= 5 ||
-          document.body.innerText.length > 800
-      : () => {
-          const minRows = OFF_HOURS ? 5 : 20;
-          return (
-            document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= minRows ||
-            document.body.innerText.length > 800
-          );
-        },
+      ? dashboardReadyPredicate(5)
+      : dashboardReadyPredicate(OFF_HOURS ? 5 : 20),
   },
   {
     path: "/flows",
