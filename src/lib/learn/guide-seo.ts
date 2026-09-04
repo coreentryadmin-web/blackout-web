@@ -43,11 +43,11 @@ export const GUIDE_SEO: Record<LearnSlug, GuideSeo> = {
     breadcrumb: "Largo",
   },
   "night-hawk": {
-    metaTitle: "Night Hawk Guide — Swing Trading Setups Explained",
+    metaTitle: "Night Hawk Guide — 0DTE Command & Evening Edition",
     metaDescription:
-      "Learn how Night Hawk grades swing trading setups and runs its evening scanner to surface the next day's best opportunities after the market closes.",
+      "Learn how Night Hawk works: 0DTE Command scans the market intraday with graded plays, then Evening Edition preps the next session after the close.",
     datePublished: "2026-04-01",
-    dateModified: "2026-08-01",
+    dateModified: "2026-09-04",
     breadcrumb: "Night Hawk",
   },
   "heat-maps": {
