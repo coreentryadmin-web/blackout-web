@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T06:35:15.367Z",
+  "updated_at": "2026-09-04T06:40:27.571Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -163,6 +163,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T06:30:57.638Z",
       "safe_to_merge": true
+    },
+    "pr-3512": {
+      "pr": 3512,
+      "head_sha": "a3d03bc90",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:40:19.742Z",
+      "safe_to_merge": true
+    },
+    "pr-3511": {
+      "pr": 3511,
+      "head_sha": "888e81d44",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:40:20.003Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -179,52 +195,11 @@
   "deploy": {
     "last_main_sha": "e5ab24c2148d01e15d8d8a9173ebaf43ac6c14f6",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T06:28:01Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33844468796",
-    "last_deploy_sha": "2c41ea9d35ed291ddf836af28147c6bdd7bb1820"
+    "last_deploy_at": "2026-09-04T06:39:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845249246",
+    "last_deploy_sha": "aafe12880d194c1c87ab0dfce3ae20aaa84c4106"
   },
-  "open_prs": [
-    {
-      "number": 3512,
-      "title": "fix(perf): remove leftover CACHE_WARM_ALWAYS staging bypass causing 24/7 warm-cron runs",
-      "branch": "fix/cache-warm-always-staging-leftover",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T06:30:41Z"
-    },
-    {
-      "number": 3511,
-      "title": "fix(largo): get_swing_horizon carried no freshness/time field at all",
-      "branch": "fix/largo-swing-horizon-missing-freshness",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T06:30:43Z"
-    },
-    {
-      "number": 3506,
-      "title": "fix(platform): autonomous bug sweep batch 2 — UW reservation, stale-age clamps, change_pct",
-      "branch": "cursor/platform-bug-sweep",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T06:30:46Z"
-    },
-    {
-      "number": 2810,
-      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
-      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
-      "author": "app/dependabot",
-      "agent": "human",
-      "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-04T06:30:48Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -753,6 +728,39 @@
       "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "dispatch": false
+    },
+    {
+      "at": "2026-09-04T06:40:19.742Z",
+      "type": "pr_review",
+      "pr": 3512,
+      "head_sha": "a3d03bc90",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:40:19.742Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T06:40:20.004Z",
+      "type": "pr_review",
+      "pr": 3511,
+      "head_sha": "888e81d44",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:40:20.003Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T06:40:27.571Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:40:27.571Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "7bea02e5-d2b4-4afb-9990-40daacd4f15e",
+      "summary": "Approved #3512 (cache-warm 24/7 fix) and #3511 (swing horizon freshness) — verify GREEN, marked ready pending rate limit. #3508/#3509 merged. Deploy GREEN. ops:collect 0."
     }
   ],
   "pr_activity": {
