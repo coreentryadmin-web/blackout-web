@@ -26,8 +26,8 @@ export type SpxState = {
   trin: number | null;
   tick: number | null;
   sector_bias: string | null;
-  sector_leaders: Array<{ sector: string; change_pct: number }>;
-  sector_laggards: Array<{ sector: string; change_pct: number }>;
+  sector_leaders: Array<{ sector: string; change_pct: number | null }>;
+  sector_laggards: Array<{ sector: string; change_pct: number | null }>;
   tide_bias: string | null;
   tide_call: number | null;
   tide_put: number | null;
