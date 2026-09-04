@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:21:24.933Z",
+  "updated_at": "2026-09-04T19:22:37.423Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -248,9 +248,9 @@
     }
   },
   "deploy": {
-    "last_main_sha": "6776238a905a08affe9527887aae21f0c15e325a",
+    "last_main_sha": "8a923afe679c4a87e324650f2dba8a46bd314ceb",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:16:33Z",
+    "last_deploy_at": "2026-09-04T19:22:35Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33910315173",
     "last_deploy_sha": "8a923afe679c4a87e324650f2dba8a46bd314ceb"
   },
@@ -1089,6 +1089,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:22:37.422Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:22:37.423Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b2e05a01-54f7-4a98-ab03-4819eac91596",
+      "summary": "CI green on #3733 (5662fcd) — marked ready for Claude peer review. Discovered #3718 already fixed flow-liveness on main; rebased #3733 onto 8a923afe6, dropped duplicate flow changes, kept UW/options socket guards only. Force-pushed 130cd0de7, CI re-running. ops:collect 0. Standing: Claude peer-review #3733 then merge."
     }
   ]
 }
