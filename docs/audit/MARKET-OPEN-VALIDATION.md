@@ -126,6 +126,30 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0o. `spx-signal-weight-optimize` cron threw an uncaught RangeError on `?days=`/`?days=abc` — fix/spx-signal-weight-optimize-nan-crash (pending)
+
+**What was broken:** `GET /api/cron/spx-signal-weight-optimize?days=` (empty value, or a bare
+`?days`) or `?days=abc` (non-numeric) hit `parseInt("", 10)` = `NaN` (the `??` fallback only fires
+on `null`/`undefined`, and `URLSearchParams.get()` returns `""` not `null`), which flowed into
+`new Date(NaN).toISOString()` and **threw** `RangeError: Invalid time value` ABOVE the route's own
+try/catch — so the crash was never caught, `logCronRun` never fired, and the failure was invisible
+to `cron_job_runs`/`cron-staleness-watchdog`. Sibling crons (`largo-cleanup`, `nighthawk-outcomes`)
+already guarded the identical kind of `?days` override; this one had not.
+
+**Fix:** guard the parsed value with the same idiom `nighthawk-outcomes/route.ts` already uses —
+`Number.isFinite(rawLookbackDays) && rawLookbackDays > 0 ? rawLookbackDays :
+DEFAULT_LOOKBACK_DAYS` — before it reaches any date arithmetic. A valid numeric override still
+works unchanged; only the malformed/missing cases changed, from an uncaught crash to a clean
+fallback to the 30-day default.
+
+**Check at the open:** no RTH-dependent behavior — this cron reads `spx_signal_observations` and
+runs on its own nightly 10 PM UTC schedule with no query param, so the scheduled run was never
+affected by this bug and needs no re-check. The one thing worth confirming once, at any time (not
+specifically at the open): `curl` the route with a valid `CRON_SECRET` Bearer token and
+`?days=`/`?days=abc` and confirm a clean `200 {"ok":true,"skipped":...}` (or a real report once 10+
+days of data exist) instead of a `500` — proving the fix holds against the live route, not just the
+mocked unit test.
+
 ### 0n. "Every setup logged publicly" overclaimed against a 3-of-7-product methodology page — fix/public-record-scope-overclaim (pending)
 
 **What was broken:** About page, homepage, and `WhyBlackoutContent.tsx` all said "Every setup BlackOut
