@@ -12,6 +12,7 @@
 // construction; where a source is missing the event kind simply doesn't fire (never faked).
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { clsx } from "clsx";
 import { etClock } from "@/lib/et-clock";
 import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 
