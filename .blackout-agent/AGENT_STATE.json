@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T08:13:02.034Z",
+  "updated_at": "2026-09-04T08:13:36.152Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -175,6 +175,26 @@
     "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
   },
   "open_prs": [
+    {
+      "number": 3535,
+      "title": "chore(autopilot): cursor handoff — #3528 peer review APPROVED, audits GREEN off-hours",
+      "branch": "chore/autopilot-handoff-20260904-0813",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-04T08:13:29Z"
+    },
+    {
+      "number": 3534,
+      "title": "chore(autopilot): cursor handoff — closed stale PRs, lifecycle GREEN",
+      "branch": "cursor/autopilot-handoff-20260904-0813",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T08:13:11Z"
+    },
     {
       "number": 3533,
       "title": "chore(autopilot): resolve state-sync conflict pile (10 stuck PRs → 1)",
@@ -728,6 +748,25 @@
       "type": "task_released",
       "task_id": "BO-P1-0100",
       "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T08:13:25.675Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-04T08:13:25.676Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "cce4227a-c78e-4014-9b22-1a7896a855c4",
+      "summary": "pull_request cycle: main@f4d1f5ebb. #3528 peer-reviewed APPROVED. validate:deploy GREEN, ops:collect 0, data-validator 22 PASS. GitHub API rate-limited. Handoff PR opening. RTH Fri 09:00 ET."
+    },
+    {
+      "at": "2026-09-04T08:13:36.152Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ]
 }
