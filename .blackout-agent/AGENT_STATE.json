@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T00:30:41.044Z",
+  "updated_at": "2026-09-04T01:32:39.059Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -30,8 +30,8 @@
     "BO-P1-0005": {
       "task_id": "BO-P1-0005",
       "owner": "cursor",
-      "claimed_at": "2026-09-03T23:53:48.679Z",
-      "lease_until": "2026-09-04T01:23:48.679Z",
+      "claimed_at": "2026-09-04T01:32:18.090Z",
+      "lease_until": "2026-09-04T03:02:18.090Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -44,12 +44,26 @@
       "owner": "cursor",
       "claimed_at": "2026-09-04T00:30:16.848Z",
       "lease_until": "2026-09-04T02:00:16.848Z",
-      "phase": "IMPLEMENTING",
+      "phase": "RELEASED",
       "branch": "cursor/pr-webhook-feedback",
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": "PR webhook triage + peer review dispatch"
+      "title": "PR webhook triage + peer review dispatch",
+      "released_at": "2026-09-04T01:32:01.774Z"
+    },
+    "BO-P1-0004": {
+      "task_id": "BO-P1-0004",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T01:31:52.659Z",
+      "lease_until": "2026-09-04T03:01:52.659Z",
+      "phase": "RELEASED",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null,
+      "released_at": "2026-09-04T01:32:01.866Z"
     }
   },
   "reviews": {
@@ -77,16 +91,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T00:30:16.848Z",
-      "current_task": "BO-P1-0007"
+      "last_seen": "2026-09-04T01:32:18.091Z",
+      "current_task": "BO-P1-0005"
     }
   },
   "deploy": {
-    "last_main_sha": "84c5707ac6849b4c048dec6e8a414321f2a76e27",
+    "last_main_sha": "f42a3892ba8d01d58142d012344efcc32f9900a0",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T00:18:06Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33821229041",
-    "last_deploy_sha": "271a977cfdc9b5d2cc2d62535f8c7e010374d78d"
+    "last_deploy_at": "2026-09-04T01:32:16Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826142958",
+    "last_deploy_sha": "5c4ebd6580f3a6411780db78ec12dc161ff0a644"
   },
   "open_prs": [],
   "events": [
@@ -293,6 +307,49 @@
       "agent": "cursor",
       "run_id": "49d14bda-5dd3-4b4b-8deb-b5336a96b8b1",
       "summary": "PR webhook branch ready: heartbeat-gate fix in claimLock, BO-P1-0007 claimed, peer-reviewed #3438 APPROVED. #3436 merged — autopilot v1 live on main. Next: merge this PR, close duplicate #3435."
+    },
+    {
+      "at": "2026-09-04T01:31:14.604Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:31:52.659Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0004",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T01:32:01.774Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0007",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T01:32:01.866Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0004",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T01:32:18.091Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0005",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T01:32:39.058Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:32:39.059Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ee3d3000-0667-40fc-9f0c-fb0a98493250",
+      "summary": "Recovered autopilot state. BO-P1-0007 DONE (#3439 merged). BO-P1-0004 DONE — 0DTE session replay GREEN (6/6 plays, 66.7% WR, 0 bar failures). BO-P1-0005 swept — 0 open PRs. Deploy validate GREEN on f42a3892. Next: BO-P2-0003 Vector-gated runners or performance sweep."
     }
   ]
 }
