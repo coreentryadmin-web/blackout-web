@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:43:40.083Z",
+  "updated_at": "2026-09-04T08:29:36.393Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,26 +67,26 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T08:14:35.366Z",
+      "lease_until": "2026-09-04T09:58:33.506Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "e1618f4c-5f61-486e-bbcb-8d7b7ad56b4f",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-04T08:28:28.749Z",
+      "lease_until": "2026-09-04T09:58:33.506Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "e1618f4c-5f61-486e-bbcb-8d7b7ad56b4f",
       "title": null
     },
     "BO-P1-0104": {
@@ -167,14 +167,14 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T07:42:54.932Z",
-      "current_task": "BO-P1-0104"
+      "last_seen": "2026-09-04T08:28:28.749Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T07:20:16Z",
+    "last_main_sha": "281d98171f2cf7723fb4e992d5ef062bd834fc9c",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-09-04T08:01:59Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
     "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
   },
@@ -672,6 +672,62 @@
       "agent": "cursor",
       "run_id": "bdccad63-d885-46ad-bc02-3362ea4704ec",
       "summary": "Cycle: merged main @ 14c5d815d verified GREEN. Opened #3531 agent state sync (draft, awaiting CI+peer). ECR 33848248248 still in_progress 22m+ (deploy-smoke passed). SEO 22 PASS. Site-latency 3 warm FAILs deferred to RTH. GitHub API rate-limited — peer review of #3531 for Claude."
+    },
+    {
+      "at": "2026-09-04T08:28:25.460Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:28:25.461Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "8fa8a00f-1b5a-45a0-846d-5e483f65cf16",
+      "summary": "Peer-reviewed and merged #3533 (state-sync pile + latency script fixes). validate:deploy GREEN, ops:collect 0. Closed duplicate handoff PRs pending rate limit."
+    },
+    {
+      "at": "2026-09-04T08:28:28.749Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T08:28:33.505Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:28:34.256Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:28:35.077Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:29:09.491Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:29:36.392Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:29:36.393Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "22642735-5268-4314-8fae-b16daff4d1b5",
+      "summary": "Lifecycle GREEN off-hours: deploy@281d9817, ops:collect 0, open PRs 0, data-validator 22 PASS, 0DTE AMBER (expected), latency-compare fixed+GREEN, SEO 22 PASS. #3533 merged. Awaiting ECS deploy for 281d9817."
     }
   ]
 }
