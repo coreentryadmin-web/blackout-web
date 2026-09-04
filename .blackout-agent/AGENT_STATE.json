@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:19:14.963Z",
+  "updated_at": "2026-09-04T18:32:39.500Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,15 +67,14 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T18:16:47.624Z",
+      "lease_until": "2026-09-04T19:58:36.761Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "run_id": "190a2d17-a271-4db6-87d8-073f5a47f64b",
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -234,6 +233,30 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3697": {
+      "pr": 3697,
+      "head_sha": "c43252e35bf69f736d1c084dc4a39c851829b7f0",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:22:52.559Z",
+      "safe_to_merge": true
+    },
+    "pr-3691": {
+      "pr": 3691,
+      "head_sha": "fb0236e456bf864b767f2f9f0c998f7aa222ee21",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:32:39.148Z",
+      "safe_to_merge": true
+    },
+    "pr-3699": {
+      "pr": 3699,
+      "head_sha": "b4017cd556e145fe2aa646bb1927459d4d06a6b3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:32:39.499Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -243,16 +266,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T18:16:47.624Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "cddb5a72218950a660d18b85b579537844e65f49",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T18:26:42Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33905916082",
+    "last_deploy_sha": "bdd3a65fec607cfb7dc8098ed4f76a3a0ae9ed31"
   },
   "open_prs": [],
   "events": [
@@ -1052,6 +1075,321 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:16:32.431Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 11
+    },
+    {
+      "at": "2026-09-04T18:16:37.519Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 11
+    },
+    {
+      "at": "2026-09-04T18:16:38.657Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 11
+    },
+    {
+      "at": "2026-09-04T18:16:39.998Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 11
+    },
+    {
+      "at": "2026-09-04T18:16:47.624Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T18:16:51.074Z",
+      "type": "pr_webhook",
+      "pr": 3702,
+      "event": "sweep",
+      "head": "15faebf6365d94027b5f13a2703de8bead9ccfd8",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T18:16:53.756Z",
+      "type": "pr_webhook",
+      "pr": 3701,
+      "event": "sweep",
+      "head": "9feda25ad8826064828621ccb88c338d36f3a496",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T18:16:56.720Z",
+      "type": "pr_webhook",
+      "pr": 3700,
+      "event": "sweep",
+      "head": "4b145e2172fc453260167342c35b16e82dbffb4b",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T18:16:59.147Z",
+      "type": "pr_webhook",
+      "pr": 3699,
+      "event": "sweep",
+      "head": "b4017cd556e145fe2aa646bb1927459d4d06a6b3",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T18:17:01.678Z",
+      "type": "pr_webhook",
+      "pr": 3698,
+      "event": "sweep",
+      "head": "9190a26f14abcc86b9205e5ba9e1a03a7b7b3746",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T18:17:04.072Z",
+      "type": "pr_webhook",
+      "pr": 3697,
+      "event": "sweep",
+      "head": "c43252e35bf69f736d1c084dc4a39c851829b7f0",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T18:17:06.536Z",
+      "type": "pr_webhook",
+      "pr": 3693,
+      "event": "sweep",
+      "head": "27fcd29cf999a17fbecec7ee519a277e4e0baafc",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T18:17:09.436Z",
+      "type": "pr_webhook",
+      "pr": 3692,
+      "event": "sweep",
+      "head": "41284e7b83e9168bd70841d51be1ca21b78d4890",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T18:17:12.178Z",
+      "type": "pr_webhook",
+      "pr": 3691,
+      "event": "sweep",
+      "head": "fb0236e456bf864b767f2f9f0c998f7aa222ee21",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T18:17:14.755Z",
+      "type": "pr_webhook",
+      "pr": 3686,
+      "event": "sweep",
+      "head": "7c8a6ae616f3f0b8b90d96be405e53c76e1ea189",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T18:17:17.386Z",
+      "type": "pr_webhook",
+      "pr": 3675,
+      "event": "sweep",
+      "head": "b61432260089cb07e299df75892ff7b8406c1310",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T18:17:19.838Z",
+      "type": "pr_webhook",
+      "pr": 3654,
+      "event": "sweep",
+      "head": "742bd5dba0f5296451f355ddc270ebfff7d6e824",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T18:22:52.560Z",
+      "type": "pr_review",
+      "pr": 3697,
+      "head_sha": "c43252e35bf69f736d1c084dc4a39c851829b7f0",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:22:52.559Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:27:28.623Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T18:28:36.760Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T18:28:37.593Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T18:28:38.446Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T18:31:55.489Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T18:31:55.490Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ecb04346-3d56-4fde-8821-cf372722e6dc",
+      "summary": "PR-event wake: bootstrapped session. validate:deploy GREEN, ops:collect 0, platform-integrity 14/14 PASS. Peer-reviewed #3697 (full-site-audit wall constraint) — blackout:review APPROVED, PR comment posted; verify GREEN, tests 17/17 local. Pre-reviewed #3691/#3692/#3699 tests pass locally; CI subscriptions active. #3686 cursor PR verify GREEN — awaits Claude peer review. Off-hours RTH lifecycle skipped. gh PAT rate-limited (user 284440397) — using CI subscriptions for pending PRs."
+    },
+    {
+      "at": "2026-09-04T18:32:39.149Z",
+      "type": "pr_review",
+      "pr": 3691,
+      "head_sha": "fb0236e456bf864b767f2f9f0c998f7aa222ee21",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:32:39.148Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:32:39.500Z",
+      "type": "pr_review",
+      "pr": 3699,
+      "head_sha": "b4017cd556e145fe2aa646bb1927459d4d06a6b3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:32:39.499Z",
+      "safe_to_merge": true
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3702": {
+      "last_event": "sweep",
+      "last_head": "15faebf6365d94027b5f13a2703de8bead9ccfd8",
+      "last_feedback_at": "2026-09-04T18:16:51.074Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3701": {
+      "last_event": "sweep",
+      "last_head": "9feda25ad8826064828621ccb88c338d36f3a496",
+      "last_feedback_at": "2026-09-04T18:16:53.756Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3700": {
+      "last_event": "sweep",
+      "last_head": "4b145e2172fc453260167342c35b16e82dbffb4b",
+      "last_feedback_at": "2026-09-04T18:16:56.720Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3699": {
+      "last_event": "sweep",
+      "last_head": "b4017cd556e145fe2aa646bb1927459d4d06a6b3",
+      "last_feedback_at": "2026-09-04T18:16:59.147Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3698": {
+      "last_event": "sweep",
+      "last_head": "9190a26f14abcc86b9205e5ba9e1a03a7b7b3746",
+      "last_feedback_at": "2026-09-04T18:17:01.678Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3697": {
+      "last_event": "sweep",
+      "last_head": "c43252e35bf69f736d1c084dc4a39c851829b7f0",
+      "last_feedback_at": "2026-09-04T18:17:04.072Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3693": {
+      "last_event": "sweep",
+      "last_head": "27fcd29cf999a17fbecec7ee519a277e4e0baafc",
+      "last_feedback_at": "2026-09-04T18:17:06.536Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3692": {
+      "last_event": "sweep",
+      "last_head": "41284e7b83e9168bd70841d51be1ca21b78d4890",
+      "last_feedback_at": "2026-09-04T18:17:09.436Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3691": {
+      "last_event": "sweep",
+      "last_head": "fb0236e456bf864b767f2f9f0c998f7aa222ee21",
+      "last_feedback_at": "2026-09-04T18:17:12.178Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3686": {
+      "last_event": "sweep",
+      "last_head": "7c8a6ae616f3f0b8b90d96be405e53c76e1ea189",
+      "last_feedback_at": "2026-09-04T18:17:14.755Z",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "comment_action": "updated"
+    },
+    "pr-3675": {
+      "last_event": "sweep",
+      "last_head": "b61432260089cb07e299df75892ff7b8406c1310",
+      "last_feedback_at": "2026-09-04T18:17:17.386Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3654": {
+      "last_event": "sweep",
+      "last_head": "742bd5dba0f5296451f355ddc270ebfff7d6e824",
+      "last_feedback_at": "2026-09-04T18:17:19.838Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }
