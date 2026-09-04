@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T10:39:27.310Z
-**Run:** 3dffa5ee-6d81-427e-9872-7a9a2297889b
+**At:** 2026-09-04T11:48:57.623Z
+**Run:** daf1a07b-ccb8-4ca7-906a-e3d72eac37b6
 
 ## Summary
 
-Cycle complete. #3548 merged (main@c0097296e). #3549 verify GREEN + Cursor APPROVED — merge blocked by GitHub API rate limit (enable-automerge skipped). #3553 verify still running. #3552 verify GREEN after rebase; undrafted for Claude peer review. SEO 22/22 GREEN. ops:collect 0 items. validate:deploy GREEN. Opened #3557 autopilot state sync (draft).
+Post-#3568 cycle: main@01f7ab1d synced. No open PRs (pr-sweep empty). validate:deploy GREEN. ops:collect 0 items. RTH lifecycle GREEN (off-hours skip). SEO 22/22 GREEN. platform-integrity 0 fail (4 off-hours warns). Peer review standing task complete — nothing to review. Deploy may still be rolling for commits 90e5c75..01f7ab1.
 
 ## Deploy
 
-- main: `6553d68a0b354d1e92e7b9427381c2b42032dcc8`
+- main: `01f7ab1db055654b6f0b23a933996d55e87c73ab`
 - status: 
 
 ## Open PRs
