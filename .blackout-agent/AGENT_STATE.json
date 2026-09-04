@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T10:39:27.311Z",
+  "updated_at": "2026-09-04T11:22:16.215Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,8 +67,8 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:22:03.345Z",
-      "lease_until": "2026-09-04T11:52:03.345Z",
+      "claimed_at": "2026-09-04T10:56:15.198Z",
+      "lease_until": "2026-09-04T12:26:15.198Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -200,13 +200,74 @@
     }
   },
   "deploy": {
-    "last_main_sha": "6553d68a0b354d1e92e7b9427381c2b42032dcc8",
+    "last_main_sha": "bcbb33fd27f2b318d3bd806cdb5560b9d9c1535e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T10:35:12Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33863935805",
-    "last_deploy_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01"
+    "last_deploy_at": "2026-09-04T11:21:57Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33867594673",
+    "last_deploy_sha": "bcbb33fd27f2b318d3bd806cdb5560b9d9c1535e"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3566,
+      "title": "fix(vector): closed-market loading copy for the SPX PLAYS contract-picks card",
+      "branch": "fix/vector-contract-picks-closed-market-loading",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T11:22:14Z"
+    },
+    {
+      "number": 3565,
+      "title": "chore(autopilot): cursor session — peer reviews #3561-3563, deploy GREEN",
+      "branch": "cursor/autopilot-session-20260904T1119",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T11:22:13Z"
+    },
+    {
+      "number": 3564,
+      "title": "fix(audit): resolve Playwright chromium path on cloud agents without /opt/pw-browsers",
+      "branch": "fix/playwright-chromium-path-fallback",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T11:22:15Z"
+    },
+    {
+      "number": 3560,
+      "title": "chore(autopilot): sync agent state after peer-review cycle",
+      "branch": "chore/autopilot-state-sync-20260904T1028",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T11:21:13Z"
+    },
+    {
+      "number": 3554,
+      "title": "chore(autopilot): cursor handoff after merge wave (#3548, #3550, #3552)",
+      "branch": "cursor/blackout-autopilot-state-35be",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T11:21:15Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T11:21:17Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -758,6 +819,19 @@
       "agent": "cursor",
       "run_id": "3dffa5ee-6d81-427e-9872-7a9a2297889b",
       "summary": "Cycle complete. #3548 merged (main@c0097296e). #3549 verify GREEN + Cursor APPROVED — merge blocked by GitHub API rate limit (enable-automerge skipped). #3553 verify still running. #3552 verify GREEN after rebase; undrafted for Claude peer review. SEO 22/22 GREEN. ops:collect 0 items. validate:deploy GREEN. Opened #3557 autopilot state sync (draft)."
+    },
+    {
+      "at": "2026-09-04T11:22:16.215Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-04T11:22:16.215Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "51a58673-05f6-436b-a9a9-30f6ea515f34",
+      "summary": "Peer-reviewed #3561/#3562 (merged), merged #3563 (Meridian header flex-wrap), approved #3566 (Vector closed-market copy, CI pending). Deploy GREEN. ops:collect clean."
     }
   ]
 }
