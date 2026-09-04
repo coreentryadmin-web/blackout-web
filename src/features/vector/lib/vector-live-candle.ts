@@ -121,10 +121,16 @@ export async function getVectorLiveCandle(ticker: string = VECTOR_DEFAULT_TICKER
 
   if (t === "SPX") {
     const snap = getCurrentSpxCandle();
-    return {
-      current: snap.current as VectorLiveCandle | null,
-      updatedAt: snap.updatedAt,
-    };
+    if (snap.current) {
+      return {
+        current: snap.current as VectorLiveCandle,
+        updatedAt: snap.updatedAt,
+      };
+    }
+    // WS + Redis can both be empty at the open / on a cold replica — same REST
+    // fallback non-index tickers already use so the SSE stream never ships a
+    // null candle during RTH while Polygon has a live index snapshot.
+    return getRestFallbackCandle(t);
   }
 
   const snap = getStockLiveCandle(t);
