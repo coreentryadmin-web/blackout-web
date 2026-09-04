@@ -466,6 +466,32 @@ likely dominated by Polygon calls or general compute than the UW ceiling #3479 f
 need its own measurement before a fix is warranted, per this file's own "never fix from a guess"
 standing method.
 
+### 17. Helix print tape signal badges hard-clipped mid-character in FULL columns — PR pending (branch `fix/helix-signals-badge-clip`)
+
+**What was broken:** the `/flows` print tape's Signals cell (`.helix-tape-cell--signals`, FULL
+columns density, desktop with the analytics sidebar hidden) rendered `signals.slice(0, 3)` — a raw
+badge-count cap with no notion of pixel width — inside a `flex-nowrap overflow-hidden` box with no
+scroll or wrap anywhere in its ancestor chain. On a real row carrying 4 signals (STACK / NEW 4.2× /
+REPEAT / a 4th collapsed into `+1`), only STACK and NEW 4.2× rendered whole; REPEAT painted as a
+single clipped `R`, and the `+1` overflow chip was present in the DOM's text but never visually
+painted at all — full write-up in
+`docs/audit/findings-staging/2026-09-04-helix-tape-signal-badge-clip.md`.
+
+**Fix:** new `fitSignalBadges()` (`src/features/helix/lib/helix-signal-fit.ts`) estimates each
+badge's real width from its label and shows only the priority-ordered PREFIX that actually fits the
+column's floor width, with a correctly-sized `+N` chip reserved for whatever is dropped — so the row
+never emits more markup than the 116px cell can paint. Code-level fix only; nothing here depends on
+a live measurement, so this item is about confirming it under real tape volume/variety, not about
+proving the fix exists.
+
+**Check at the open:** on `/flows` in FULL columns density (desktop, hide the analytics sidebar),
+watch a real RTH tape for rows carrying 3+ signals (STACK/WHALE prints with a fresh NEW badge and a
+REPEAT rule are the most likely combo) and confirm every visible badge renders whole — no clipped
+glyphs — and that whenever badges are hidden, a legible `+N` chip is visible summarizing them (never
+a phantom count that never paints). Also worth a spot-check at a narrower desktop width (browser
+window resized down, still above the mobile breakpoint) since the fix budgets against the column's
+CSS floor specifically to stay safe there.
+
 ### 16. Vector desk mobile chart collapse — PR #3556 (pending, branch `fix/vector-mobile-chart-collapse`)
 
 **What was broken:** the standalone `/vector` desk's price chart (candles + wall overlay + volume
