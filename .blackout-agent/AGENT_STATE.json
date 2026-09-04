@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:52:08.396Z",
+  "updated_at": "2026-09-04T20:23:47.004Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,26 +67,26 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-04T20:08:55.753Z",
+      "lease_until": "2026-09-04T21:42:52.560Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "119ff700-df14-40a9-8c3c-d0e2e409495c",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-04T20:12:51.847Z",
+      "lease_until": "2026-09-04T21:42:52.560Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "119ff700-df14-40a9-8c3c-d0e2e409495c",
       "title": null
     },
     "BO-P1-0104": {
@@ -248,11 +248,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75",
+    "last_main_sha": "fb2e69cd5502312adb9aaed3d2ace09578eda9ee",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:42:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
-    "last_deploy_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75"
+    "last_deploy_at": "2026-09-04T20:23:31Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33915986820",
+    "last_deploy_sha": "fb2e69cd5502312adb9aaed3d2ace09578eda9ee"
   },
   "open_prs": [],
   "events": [
@@ -1071,6 +1071,19 @@
       "agent": "cursor",
       "run_id": "01ba5e3e-d264-48b8-b6f9-953c859c62cd",
       "summary": "Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty."
+    },
+    {
+      "at": "2026-09-04T20:23:47.004Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T20:23:47.004Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "66eeafc0-71aa-4b10-81bb-0e90ea64f1a5",
+      "summary": "workflow_run wake: synced main fb2e69c (#3751). No open PRs. ops:collect 0. validate:deploy/api-auth/platform-integrity/seo GREEN (14/14 integrity, 22/22 seo). CI success e69c4b51. ECR deploy churn (cancelled e69c4b51, new deploy pending fb2e69c). Off-hours RTH skipped. Stale OPEN finding VP label collision already fixed #3591."
     }
   ]
 }
