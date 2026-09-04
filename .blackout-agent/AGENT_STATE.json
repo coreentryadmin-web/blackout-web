@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T11:20:50.708Z",
+  "updated_at": "2026-09-04T13:13:05.917Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:22:03.345Z",
-      "lease_until": "2026-09-04T11:52:03.345Z",
+      "claimed_at": "2026-09-04T12:48:54.042Z",
+      "lease_until": "2026-09-04T14:20:16.345Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "29c85344-9353-4133-9238-82ca78fa8a86",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -200,11 +200,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0d367bde47b227c73f6e56abb5cc5dc80cf5e44f",
+    "last_main_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T10:35:12Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33863935805",
-    "last_deploy_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01"
+    "last_deploy_at": "2026-09-04T12:50:37Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33874835893",
+    "last_deploy_sha": "2f2920edebbfa46d7a1e07af0497a83dedbc0f14"
   },
   "open_prs": [],
   "events": [
@@ -812,6 +812,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T13:13:05.916Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T13:13:05.917Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "5ae1e278-c29c-416f-97e1-81c00544ad55",
+      "summary": "Lifecycle GREEN (deploy/SEO/ops/rth-open). PR sweep: #3578 ready (Claude peer review pending — cursor-built). #3584 APPROVED by cursor, verify pending. #3583 draft handoff. GitHub rate limit hit again during verify watch."
     }
   ]
 }
