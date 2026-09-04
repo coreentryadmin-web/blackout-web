@@ -4,6 +4,17 @@
 // entry/exit experience. Swing Command absorbs OPEN/PARTIAL banger_positions as MANAGING plays with a
 // BANGER origin badge. Pre-entry banger discovery continues via the banger-discovery cron but surfaces
 // here instead of a separate Night Hawk tab.
+//
+// DTE admission for an OPEN LEDGER ROW is deliberately NOT the same gate as pre-entry discovery
+// admission (HORIZONS.SWING.dteMin=5, kept strictly in sync with the 0DTE ceiling — see horizons.ts —
+// to avoid the dual-admission bug from 2026-08-06). That boundary answers "should a NEW candidate be
+// admitted into Swing's discovery/commit lane"; it says nothing about whether an ALREADY-OPEN banger
+// position, entered when it legitimately had 5+ DTE, should keep being displayed once it ages down
+// past that floor while still running. Nothing else reads banger_positions once a row leaves this
+// merge (the 0DTE board has no banger awareness), so applying the discovery floor here made a real
+// open position with real member capital simply vanish from every view for its final days before
+// expiry. horizonPlayFromBangerPosition therefore only floors at dte>=0 (contract not yet expired);
+// horizonPlayFromBangerWatch (a genuine NEW pre-entry admission) keeps the discovery-side floor.
 
 import type { BangerPositionRow } from "../banger/positions-db";
 import type { HorizonPlay } from "../horizon-plays";
@@ -29,7 +40,10 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
   if (!LIVE_BANGER.has(row.status)) return null;
   const sessionYmd = etYmd(now);
   const dte = calendarDte(sessionYmd, row.contract_expiry);
-  if (!Number.isFinite(dte) || dte < HORIZONS.SWING.dteMin || dte > HORIZONS.SWING.dteMax) return null;
+  // Floor at 0 (not-yet-expired), NOT HORIZONS.SWING.dteMin — see the header note: this is display
+  // continuity for an already-open position, not a new discovery admission.
+  if (!Number.isFinite(dte) || dte < 0 || dte > HORIZONS.SWING.dteMax) return null;
+  const closingSoon = dte < HORIZONS.SWING.dteMin;
 
   const entry = row.entry_premium;
   const mark = row.last_mark;
@@ -50,7 +64,7 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
     score: gainPct != null ? Math.min(99, Math.max(60, 60 + Math.round(gainPct / 2))) : HORIZONS.SWING.scoreFloor,
     status: "COMMIT",
     scoreFloor: HORIZONS.SWING.scoreFloor,
-    reason: `Banger breakout +${gainPct ?? "—"}% · ${row.contract_strike}C ${row.contract_expiry}`,
+    reason: `Banger breakout +${gainPct ?? "—"}% · ${row.contract_strike}C ${row.contract_expiry}${closingSoon ? " · closing soon" : ""}`,
     contract: {
       ticker: row.contract_occ,
       strike: row.contract_strike,

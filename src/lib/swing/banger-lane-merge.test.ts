@@ -82,3 +82,33 @@ test("mergeBangerPositionsIntoSwingPlays keeps canonical swing OPEN when banger 
   assert.equal(merged[0]!.reason, "swing ledger open");
   assert.notEqual(merged[0]!.signalKinds?.[0], "BANGER");
 });
+
+test("horizonPlayFromBangerPosition keeps an OPEN banger visible as it ages past HORIZONS.SWING.dteMin", () => {
+  // Entered with plenty of runway (contract_expiry 2026-09-12); "now" is 2 calendar days out —
+  // inside the 0DTE window (dte<5), which used to make this ledger row vanish from every view.
+  const play = horizonPlayFromBangerPosition(bangerRow(), new Date("2026-09-10T16:00:00-04:00"));
+  assert.ok(play, "an OPEN banger position must not disappear once it ages under dteMin");
+  assert.equal(play!.contract.dte, 2);
+  assert.equal(play!.serving, "MANAGING");
+  assert.match(play!.reason, /closing soon/);
+});
+
+test("horizonPlayFromBangerPosition still excludes an already-expired contract (dte < 0)", () => {
+  const play = horizonPlayFromBangerPosition(bangerRow(), new Date("2026-09-13T16:00:00-04:00"));
+  assert.equal(play, null);
+});
+
+test("horizonPlayFromBangerPosition still excludes a contract beyond HORIZONS.SWING.dteMax", () => {
+  const play = horizonPlayFromBangerPosition(
+    bangerRow({ contract_expiry: "2026-10-15" }),
+    new Date("2026-09-04T16:00:00-04:00"),
+  );
+  assert.equal(play, null);
+});
+
+test("horizonPlayFromBangerPosition does not mark 'closing soon' inside the normal Swing window", () => {
+  const play = horizonPlayFromBangerPosition(bangerRow(), new Date("2026-09-04T16:00:00-04:00"));
+  assert.ok(play);
+  assert.equal(play!.contract.dte, 8);
+  assert.doesNotMatch(play!.reason, /closing soon/);
+});
