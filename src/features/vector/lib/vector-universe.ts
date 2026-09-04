@@ -192,7 +192,7 @@ async function buildVectorUniverseRow(
         // after the live rail was fixed.
         const horizonWalls = computeGexWalls(totals, {
           maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-          spot: spot ?? undefined,
+          spot: spot != null && spot > 0 ? spot : undefined,
         });
         const horizonSample = buildWallHistorySample({
           time: sampleTime,
