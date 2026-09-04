@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T03:07:32.274Z",
+  "updated_at": "2026-09-04T03:20:57.199Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -141,6 +141,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T03:02:32.510Z",
       "safe_to_merge": true
+    },
+    "pr-3477": {
+      "pr": 3477,
+      "head_sha": "3b16a632ada7f55762beddfa6b8e7abc0dc4824f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T03:18:47.657Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -155,22 +163,22 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f6ab7fa117314eb2f561d321d0323c56029a601f",
+    "last_main_sha": "1866f4965b933f031659073a69835f775abb4b67",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T03:00:24Z",
+    "last_deploy_at": "2026-09-04T03:17:26Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33831600006",
     "last_deploy_sha": "f6ab7fa117314eb2f561d321d0323c56029a601f"
   },
   "open_prs": [
     {
-      "number": 3477,
-      "title": "fix(autopilot): PR webhook triage survives Cursor agent launch failure",
-      "branch": "fix/pr-webhook-triage-nonblocking-dispatch",
+      "number": 3479,
+      "title": "fix(perf): reserve one UW concurrency slot for live traffic during background sweeps",
+      "branch": "fix/uw-sweep-concurrency-starves-live-traffic",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": false,
+      "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T03:04:48Z"
+      "updated_at": "2026-09-04T03:19:15Z"
     },
     {
       "number": 2810,
@@ -546,6 +554,29 @@
       "agent": "cursor",
       "run_id": "f19c8783-1e7b-4bda-957e-40f8e8caed72",
       "summary": "Peer-reviewed and merged #3476 (g18-g19 replay JSON parse fix). Verified 5/5 unit tests + live replay 6/6 plays. P1 queue was empty; BO-P1-0008 review complete. Deploy validate GREEN."
+    },
+    {
+      "at": "2026-09-04T03:18:47.657Z",
+      "type": "pr_review",
+      "pr": 3477,
+      "head_sha": "3b16a632ada7f55762beddfa6b8e7abc0dc4824f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T03:18:47.657Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T03:20:57.198Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T03:20:57.199Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "68a1f1ef-ec6e-4b1e-83d7-937016ed2abf",
+      "summary": "Merged #3476 (g18-g19 replay parse) + #3477 (PR webhook non-blocking dispatch). Both peer-reviewed APPROVED. Deploy validate GREEN. Queue empty."
     }
   ]
 }
