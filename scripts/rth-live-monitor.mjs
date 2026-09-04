@@ -115,6 +115,9 @@ async function runCycle(cycle) {
     ["node --import tsx --test src/lib/zerodte/gates.test.ts", "zerodte-gates-unit", 120_000],
     ["node --import tsx --test src/lib/zerodte/vector-commit-boost.test.ts", "zerodte-vector-boost-unit", 60_000],
     ["node --import tsx --test src/lib/zerodte/chase-exempt.test.ts", "zerodte-chase-exempt-unit", 60_000],
+    ["node --import tsx --test src/lib/zerodte/regime-commit-relief.test.ts", "zerodte-regime-relief-unit", 60_000],
+    ["node --import tsx --test src/lib/zerodte/cortex-vector-relief.test.ts", "zerodte-cortex-relief-unit", 60_000],
+    ["node scripts/audit/zerodte-block-funnel.mjs", "zerodte-block-funnel", 30_000],
     // Public live regime probe (0DTE board context).
     [
       'curl -sfS "https://blackouttrades.com/api/market/regime" | node -e "let d=\'\';process.stdin.on(\'data\',c=>d+=c);process.stdin.on(\'end\',()=>{const j=JSON.parse(d);if(!j.marketOpen||!j.regime)process.exit(1);console.log(j.regime,j.flowRegime);})"',
@@ -125,6 +128,7 @@ async function runCycle(cycle) {
 
     if (secretsReady()) {
     jobs.push(
+      ["node scripts/audit/zerodte-open-ledger-watch.mjs", "zerodte-open-ledger", 30_000],
       ["node scripts/audit/data-validator.mjs", "data-validator", 360_000],
       ["node scripts/audit/rth-four-engine-play-audit.mjs", "four-engine-plays", 240_000],
       ["node scripts/audit/play-engine-quality-audit.mjs", "play-engine-quality", 180_000],

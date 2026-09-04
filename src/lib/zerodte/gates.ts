@@ -615,10 +615,19 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     });
   }
 
-  // G-15 REMOVED (2026-07-29). ONE_DTE is a same-day horizon (isSameDayHorizon returns true),
-  // the persist layer accepts it, and grading reports accurate same-day P&L. Blocking 1DTE
-  // starved the board on Mondays (most equities have no Monday 0DTE — only SPX/SPY/QQQ do).
-  // WEEKLY_FALLBACK (dte≥2) is still dropped by the persist layer's isSameDayHorizon guard.
+  // G-15 — WEEKLY_FALLBACK horizon (dte≥5 or no listed 0DTE/1DTE contract). ONE_DTE commits
+  // (same-day grading); only multi-day weeklies are blocked here so the board never shows a
+  // ghost COMMIT that persist drops anyway (BBWI-class misleading WATCH/COMMIT on 2026-09-04).
+  if (input.contractHorizon === "WEEKLY_FALLBACK") {
+    blocks.push({
+      code: "horizon_weekly_fallback",
+      reason:
+        "Selected contract is a weekly/multi-day fallback — excluded from the same-day 0DTE ledger " +
+        "(only ZERO_DTE and ONE_DTE horizons commit and grade with the 15:50 time-stop).",
+      threshold: null,
+      unlock_et: null,
+    });
+  }
 
   // G-3 — score floor, judged on the FINAL post-edge-layer score. Origin-aware: FLOW keeps 65;
   // BREAKOUT/PIN use the looser rail floors (see scoreFloorForOrigins).
@@ -1198,12 +1207,13 @@ export function planQualityGateBlocks(
     });
   }
   if (plan.illiquid) {
-    const spread = plan.spread_pct != null ? `${plan.spread_pct.toFixed(0)}%` : ">15%";
+    const cap = plan.illiquid_spread_cap ?? 15;
+    const spread = plan.spread_pct != null ? `${plan.spread_pct.toFixed(0)}%` : `>${cap}%`;
     blocks.push({
       code: "plan_illiquid",
       reason:
         `Bid/ask spread is ${spread} of the mark — market too thin for a 0DTE scalp (G-9).`,
-      threshold: 15,
+      threshold: cap,
       unlock_et: null,
     });
   }

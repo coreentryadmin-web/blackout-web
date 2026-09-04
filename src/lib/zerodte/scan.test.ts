@@ -278,6 +278,22 @@ mock.module("../providers/macro-events", {
 mock.module("../bie/vector-full-state", {
   namedExports: { fetchVectorFullState: async () => null },
 });
+function vectorPulseForDirection(
+  map: Record<string, unknown>,
+  ticker: string,
+  direction: "long" | "short"
+) {
+  const tk = ticker.trim().toUpperCase();
+  const entry = map[tk] as Record<string, unknown> | undefined;
+  if (!entry) return null;
+  if ("long" in entry || "short" in entry) {
+    return (entry as Record<"long" | "short", unknown>)[direction] ?? null;
+  }
+  const legacy = entry as { direction?: string | null };
+  if (legacy.direction && legacy.direction !== direction) return null;
+  return entry;
+}
+
 mock.module("./vector-crosslink", {
   namedExports: {
     fetchZeroDteVectorPulseByTicker: async () => state.vectorPulseByTicker,

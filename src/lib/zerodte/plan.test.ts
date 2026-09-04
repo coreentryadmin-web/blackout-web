@@ -7,10 +7,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildContractPlan,
   evaluateQuoteValidity,
   gradePlanExecutableFromBars,
   gradePlanFromBars,
   NEW_PLAY_CUTOFF_ET_MINUTES,
+  PLAN_ILLIQUID_SPREAD_PCT,
   PLAN_RULES,
   QUOTE_VALIDITY,
   reconstructTrimScaleExecutableFromBars,
@@ -197,6 +199,44 @@ test("reconstructTrimScale: no post-flag bars → ungradeable (never a fabricate
     reconstructTrimScaleExecutableFromBars(bars, 1.0, flag, 0.1, NEUTRAL_TRIM),
     { outcome: "ungradeable", pnl_pct: null }
   );
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// buildContractPlan — illiquid spread cap override (amplify relief).
+// ════════════════════════════════════════════════════════════════════════════════════
+
+test("buildContractPlan: illiquidSpreadPct override widens G-9 cap", () => {
+  const base = buildContractPlan({
+    occ: "O:TEST",
+    direction: "long",
+    price: 100,
+    flowAvgFill: 2,
+    bid: 1.82,
+    ask: 2.18,
+    mark: 2,
+    keySupports: [],
+    keyResistances: [],
+    vwap: null,
+  });
+  assert.equal(base.spread_pct, 18);
+  assert.equal(base.illiquid, true);
+  assert.equal(base.illiquid_spread_cap, PLAN_ILLIQUID_SPREAD_PCT);
+
+  const wide = buildContractPlan({
+    occ: "O:TEST",
+    direction: "long",
+    price: 100,
+    flowAvgFill: 2,
+    bid: 1.82,
+    ask: 2.18,
+    mark: 2,
+    keySupports: [],
+    keyResistances: [],
+    vwap: null,
+    illiquidSpreadPct: 22,
+  });
+  assert.equal(wide.illiquid, false);
+  assert.equal(wide.illiquid_spread_cap, 22);
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════
