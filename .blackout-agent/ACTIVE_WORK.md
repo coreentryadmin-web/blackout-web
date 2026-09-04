@@ -9,8 +9,8 @@
 | Branch | Status | Notes |
 |--------|--------|-------|
 | `fix/platform-integrity-vector-walls-401-test` | pushed, no PR (token) | Test-only regression for #3619 |
-| #3614 `cursor/hourly-autonomous-wake` | verify pending | Zerodte Vector commit boost — **needs Claude review** |
-| #3617 `fix/platform-integrity-tier-skip-v2` | verify pending | Mostly docs; superseded by test branch |
+| #3614 `cursor/hourly-autonomous-wake` | **verify GREEN** | Zerodte Vector commit boost — **awaiting Claude peer review** |
+| #3617 `fix/platform-integrity-tier-skip-v2` | verify GREEN | Docs dup — close in favor of `fix/platform-integrity-vector-walls-401-test` |
 
 ## Recently completed (this cycle — validate at RTH)
 

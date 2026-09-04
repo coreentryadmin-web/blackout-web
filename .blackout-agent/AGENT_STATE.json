@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T15:58:43.816Z",
+  "updated_at": "2026-09-04T16:01:42.837Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,12 +68,12 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-04T15:39:55.979Z",
-      "lease_until": "2026-09-04T17:09:55.979Z",
+      "lease_until": "2026-09-04T17:29:21.873Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "25cb56f8-8b49-47cb-8509-443cf31f5ed3",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -81,12 +81,12 @@
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-04T15:48:08.818Z",
-      "lease_until": "2026-09-04T17:18:08.818Z",
+      "lease_until": "2026-09-04T17:29:21.873Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "25cb56f8-8b49-47cb-8509-443cf31f5ed3",
       "title": null
     },
     "BO-P1-0104": {
@@ -972,6 +972,43 @@
       "agent": "cursor",
       "run_id": "9c1e4aef-1620-4238-b52f-a1546053d2bb",
       "summary": "#3614 verify GREEN (7m57s) — zerodte Vector/regime chase exempt; local gates.test 145 pass. Needs Claude peer review+merge (Cursor lane). #3617 still open (docs+test dup). Branch fix/platform-integrity-vector-walls-401-test pushed (PR create blocked by token). validate:deploy GREEN, ops:collect 0. ECR deploy run 33888707270 still in_progress on 4a262681 — main at 29d8a077 ahead."
+    },
+    {
+      "at": "2026-09-04T15:59:12.504Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:59:21.872Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:59:22.539Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:59:23.236Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:01:42.837Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:01:42.837Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "cecd3ed3-175a-4e6f-8132-5bac89b316fd",
+      "summary": "RTH lifecycle GREEN (all 6 probes). #3614/#3617 verify GREEN — Claude peer review needed for merge. Test branch fix/platform-integrity-vector-walls-401-test on origin. ECR rolling (33888707270). ops:collect 0."
     }
   ]
 }
