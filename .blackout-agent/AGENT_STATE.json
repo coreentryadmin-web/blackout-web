@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T04:16:07.085Z",
+  "updated_at": "2026-09-04T04:20:36.763Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,8 +67,8 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T04:13:00.057Z",
-      "lease_until": "2026-09-04T05:43:00.057Z",
+      "claimed_at": "2026-09-04T04:14:54.828Z",
+      "lease_until": "2026-09-04T05:44:54.828Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -79,8 +79,8 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T04:15:42.318Z",
-      "lease_until": "2026-09-04T05:45:42.318Z",
+      "claimed_at": "2026-09-04T04:20:28.764Z",
+      "lease_until": "2026-09-04T05:50:28.764Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -145,22 +145,6 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
-    },
-    "pr-3486": {
-      "pr": 3486,
-      "head_sha": "a9e63db38c268d4caebf73296e872158fa5b712d",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T04:12:16.154Z",
-      "safe_to_merge": true
-    },
-    "pr-3487": {
-      "pr": 3487,
-      "head_sha": "a2fcc6750",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T04:15:16.381Z",
-      "safe_to_merge": true
     }
   },
   "agents": {
@@ -170,18 +154,28 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T04:15:42.318Z",
+      "last_seen": "2026-09-04T04:20:28.764Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
     "last_main_sha": "a52e140b9c45572f979616c5a674642d98feb202",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T03:53:46Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33834642777",
-    "last_deploy_sha": "7b549f069de75a69e3bf75258234dcb893dcfaba"
+    "last_deploy_at": "2026-09-04T02:05:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826698258",
+    "last_deploy_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b"
   },
   "open_prs": [
+    {
+      "number": 3488,
+      "title": "chore(autopilot): cursor handoff after #3486 #3487 peer reviews",
+      "branch": "cursor/autopilot-handoff-2026-09-04",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T04:16:44Z"
+    },
     {
       "number": 2810,
       "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
@@ -523,115 +517,35 @@
       "owner": "cursor"
     },
     {
-      "at": "2026-09-04T04:02:17.985Z",
+      "at": "2026-09-04T04:14:51.779Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
     },
     {
-      "at": "2026-09-04T04:02:24.397Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-04T04:02:25.439Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-04T04:02:26.578Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-04T04:02:34.192Z",
-      "type": "pr_webhook",
-      "pr": 3486,
-      "event": "sweep",
-      "head": "a9e63db38c268d4caebf73296e872158fa5b712d",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "dispatch": true
-    },
-    {
-      "at": "2026-09-04T04:02:36.069Z",
-      "type": "pr_webhook",
-      "pr": 2810,
-      "event": "sweep",
-      "head": "f987884d6021fac525a99376ca40429a4f164f64",
-      "verdict": "⏳ **WAIT** — CI pending",
-      "directive": "WAIT",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-04T04:12:16.155Z",
-      "type": "pr_review",
-      "pr": 3486,
-      "head_sha": "a9e63db38c268d4caebf73296e872158fa5b712d",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T04:12:16.154Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-04T04:12:36.673Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-04T04:12:36.674Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "df221567-76af-4e56-aec3-5b672add76fc",
-      "summary": "Peer-reviewed and merged #3486 (vector logical-range guard). CI green, APPROVED. ops:collect clean (0 items). Deploy validation in progress."
-    },
-    {
-      "at": "2026-09-04T04:12:55.656Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-04T04:13:00.058Z",
+      "at": "2026-09-04T04:14:54.829Z",
       "type": "task_claimed",
       "task_id": "BO-P1-0100",
       "owner": "cursor"
     },
     {
-      "at": "2026-09-04T04:15:16.382Z",
-      "type": "pr_review",
-      "pr": 3487,
-      "head_sha": "a2fcc6750",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T04:15:16.381Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-04T04:15:36.717Z",
+      "at": "2026-09-04T04:20:05.101Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 1
+      "open_pr_count": 2
     },
     {
-      "at": "2026-09-04T04:15:36.718Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "83e75764-d4aa-4a1a-b3fd-4f1cefff6ba5",
-      "summary": "Merged #3487 (thermal chain_truncated UI+Largo). Standing peer-review BO-P1-0100 active. ops:collect clean. Deploy validate GREEN."
+      "at": "2026-09-04T04:20:24.143Z",
+      "type": "pr_webhook",
+      "pr": 3488,
+      "event": "sweep",
+      "head": "613a3db004e93534d02ffb2f79ad62c8ac9d87c7",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
     },
     {
-      "at": "2026-09-04T04:15:42.318Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0101",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-04T04:15:44.139Z",
+      "at": "2026-09-04T04:20:25.475Z",
       "type": "pr_webhook",
       "pr": 2810,
       "event": "sweep",
@@ -641,32 +555,44 @@
       "dispatch": false
     },
     {
-      "at": "2026-09-04T04:16:07.084Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 1
+      "at": "2026-09-04T04:20:28.765Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
     },
     {
-      "at": "2026-09-04T04:16:07.085Z",
+      "at": "2026-09-04T04:20:32.897Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T04:20:32.898Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "b42fdbb1-672e-4d25-a0dc-381455a98391",
-      "summary": "Session complete: peer-reviewed+merged #3486 (vector logical-range guard) and #3487 (thermal chain_truncated UI). Deploy GREEN, ops:collect 0 items. Only open PR #2810 (Dependabot TS7 major, red CI) — held per policy."
+      "run_id": "66a8630e-2ea0-46c7-a7d1-b6832ae6bae6",
+      "summary": "Peer-reviewed and merged #3486 (vector logical-range guard) + #3487 (thermal chain_truncated UI/Largo). validate:deploy GREEN, ops:collect 0 items. #2810 TS7 held per major-version policy. #3488 handoff PR awaits Claude review."
+    },
+    {
+      "at": "2026-09-04T04:20:36.763Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     }
   ],
   "pr_activity": {
-    "pr-3486": {
+    "pr-3488": {
       "last_event": "sweep",
-      "last_head": "a9e63db38c268d4caebf73296e872158fa5b712d",
-      "last_feedback_at": "2026-09-04T04:02:34.191Z",
-      "verdict": "⏸️ **WAIT** — still draft",
+      "last_head": "613a3db004e93534d02ffb2f79ad62c8ac9d87c7",
+      "last_feedback_at": "2026-09-04T04:20:24.143Z",
+      "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "comment_action": "updated"
     },
     "pr-2810": {
       "last_event": "sweep",
       "last_head": "f987884d6021fac525a99376ca40429a4f164f64",
-      "last_feedback_at": "2026-09-04T04:15:44.139Z",
+      "last_feedback_at": "2026-09-04T04:20:25.475Z",
       "verdict": "⏳ **WAIT** — CI pending",
       "directive": "WAIT",
       "comment_action": "updated"
