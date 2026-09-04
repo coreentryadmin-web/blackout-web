@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T12:31:12.463Z",
+  "updated_at": "2026-09-04T12:33:51.117Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:22:10.476Z",
-      "lease_until": "2026-09-04T13:56:13.553Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-04T12:31:48.782Z",
+      "lease_until": "2026-09-04T14:01:48.782Z",
+      "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "4b61cb09-14c1-463b-afb2-76417a983265",
+      "run_id": null,
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -185,6 +185,14 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T10:33:34.705Z",
+      "safe_to_merge": true
+    },
+    "pr-3580": {
+      "pr": 3580,
+      "head_sha": "1db040d17df6",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T12:33:22.454Z",
       "safe_to_merge": true
     }
   },
@@ -814,36 +822,33 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T12:14:04.522Z",
+      "at": "2026-09-04T12:33:22.454Z",
+      "type": "pr_review",
+      "pr": 3580,
+      "head_sha": "1db040d17df6",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T12:33:22.454Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T12:33:43.831Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T12:15:12.337Z",
+      "at": "2026-09-04T12:33:51.117Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T12:15:12.337Z",
+      "at": "2026-09-04T12:33:51.117Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "47541c23-d0bc-4a54-8b06-26eac03f70a0",
-      "summary": "Cycle: #3572 peer-reviewed APPROVED (already merged to main@74d858bc5). #3573/#3575/#3571/#3570 also on main. validate:deploy GREEN, ops:collect 0, SEO 22/22 GREEN. GitHub API rate-limited (user 284440397) — could not poll/merge draft handoff PRs #3574/#3576. Standing peer-review complete for actionable non-draft PRs."
-    },
-    {
-      "at": "2026-09-04T12:31:12.462Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T12:31:12.463Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "86e4baaf-1533-405e-9f3c-130c1599e3c1",
-      "summary": "Cycle complete. #3578 verify GREEN, marked ready for Claude. #3577 closed (duplicate). ECR #3575 deploy pending. Lifecycle/SEO/ops/deploy GREEN."
+      "run_id": "239f4f04-45c0-4fd5-aeed-1e20c4ff4908",
+      "summary": "Peer-reviewed #3580 APPROVED (6/6 tests, tsc clean); verify CI pending — subscribed. SEO 22/22 GREEN. validate:deploy GREEN. ops:collect 0. OFF_HOURS regression tests pass on main. Open PRs: #3580 (Claude, awaiting CI+merge), #3578 (cursor handoff, awaiting Claude review). GitHub API rate-limited for gh CLI."
     }
   ]
 }
