@@ -258,16 +258,15 @@ export async function getLiveOptionMark(
   occ: string,
   maxAgeMs: number = OPTION_MARK_FRESH_MS
 ): Promise<{ mark: number; bid: number | null; ask: number | null; ts: number } | null> {
-  const now = Date.now();
   const local = optionMarks.get(occ);
-  if (local && local.mark != null && now - local.ts <= maxAgeMs) {
+  if (local && local.mark != null && isWsUpdatedAtFresh(local.ts, maxAgeMs)) {
     return { mark: local.mark, bid: local.bid, ask: local.ask, ts: local.ts };
   }
   // Redis fallback (cross-instance): another server process may hold the mark.
   try {
     const { sharedCacheGet } = await import("../shared-cache");
     const hit = await sharedCacheGet<OptionMark>(`${MARK_REDIS_PREFIX}${occ}`);
-    if (hit && hit.mark != null && now - hit.ts <= maxAgeMs) {
+    if (hit && hit.mark != null && isWsUpdatedAtFresh(hit.ts, maxAgeMs)) {
       // Re-seed the in-memory layer so subsequent reads skip Redis.
       if (!local || hit.ts > local.ts) optionMarks.set(occ, hit);
       return { mark: hit.mark, bid: hit.bid, ask: hit.ask, ts: hit.ts };

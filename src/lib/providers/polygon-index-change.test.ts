@@ -12,3 +12,12 @@ test("fetchIndexSnapshots: omits fabricated 0% when session change_percent is ab
     "must not default missing index session change to 0"
   );
 });
+
+test("fetchStockSnapshotPerformance: omits fabricated 0% when session change is absent", () => {
+  assert.match(src, /function snapshotPerformanceChangePct/);
+  assert.doesNotMatch(
+    src,
+    /snap\?\.todaysChangePerc \?\? 0/,
+    "must not default missing stock snapshot change to 0"
+  );
+});

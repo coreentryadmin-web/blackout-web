@@ -169,6 +169,20 @@ export async function fetchStockSnapshots(
   return out;
 }
 
+/** Day change % from a grouped snapshot — never fabricate flat 0% when Polygon omits todaysChangePerc. */
+function snapshotPerformanceChangePct(snap: SnapshotTicker | undefined): number | null {
+  if (!snap) return null;
+  if (snap.todaysChangePerc != null && Number.isFinite(Number(snap.todaysChangePerc))) {
+    return Number(Number(snap.todaysChangePerc).toFixed(2));
+  }
+  const prevClose = Number(snap.prevDay?.c ?? 0);
+  const price = Number(snap.lastTrade?.p ?? snap.day?.c ?? 0);
+  if (prevClose > 0 && price > 0) {
+    return Number((((price - prevClose) / prevClose) * 100).toFixed(2));
+  }
+  return null;
+}
+
 async function fetchStockSnapshotPerformance(
   symbols: Array<{ name: string; ticker: string }>
 ) {
@@ -180,16 +194,21 @@ async function fetchStockSnapshotPerformance(
 
   const byTicker = new Map((data.tickers ?? []).map((t) => [t.ticker, t]));
 
-  return symbols.map((symbol) => {
-    const snap = byTicker.get(symbol.ticker);
-    const change = snap?.todaysChangePerc ?? 0;
-    return {
-      name: symbol.name,
-      ticker: symbol.ticker,
-      change_pct: Number(change.toFixed(2)),
-      volume: snap?.day?.v,
-    };
-  });
+  return symbols
+    .map((symbol) => {
+      const snap = byTicker.get(symbol.ticker);
+      const change_pct = snapshotPerformanceChangePct(snap);
+      return {
+        name: symbol.name,
+        ticker: symbol.ticker,
+        change_pct,
+        volume: snap?.day?.v,
+      };
+    })
+    .filter(
+      (row): row is { name: string; ticker: string; change_pct: number; volume: number | undefined } =>
+        row.change_pct != null
+    );
 }
 
 export function fetchLeaderStockSnapshots() {
@@ -337,7 +356,7 @@ export async function fetchMarketMovers(limit = 20) {
 
   const mapMover = (t: SnapshotTicker) => ({
     ticker: String(t.ticker ?? "").replace("X:", ""),
-    change_pct: Number((t.todaysChangePerc ?? 0).toFixed(2)),
+    change_pct: snapshotPerformanceChangePct(t),
     price: t.day?.c ?? t.prevDay?.c ?? 0,
     volume: t.day?.v,
   });
@@ -345,6 +364,7 @@ export async function fetchMarketMovers(limit = 20) {
   // Filter out warrants (W suffix), reverse-split artifacts (<$1), and
   // micro-cap shells with negligible volume (<100K shares) that pollute the list.
   const isClean = (m: ReturnType<typeof mapMover>) =>
+    m.change_pct != null &&
     m.price >= 1.0 &&
     !m.ticker.endsWith("W") &&
     !m.ticker.endsWith("R") &&
@@ -353,9 +373,11 @@ export async function fetchMarketMovers(limit = 20) {
   const combined = [
     ...(gainers.tickers ?? []).slice(0, limit).map(mapMover).filter(isClean),
     ...(losers.tickers ?? []).slice(0, limit).map(mapMover).filter(isClean),
-  ];
+  ] as Array<{ ticker: string; change_pct: number; price: number; volume?: number }>;
 
-  return combined.sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+  return combined.sort(
+    (a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct)
+  );
 }
 
 type IndexResult = {

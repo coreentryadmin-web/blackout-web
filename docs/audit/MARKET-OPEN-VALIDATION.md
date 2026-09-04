@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0af. Polygon breadth/movers fabricated 0% + async option-mark future guard — fix/polygon-change-pct-and-option-mark-freshness (pending)
+
+**What was broken:** `fetchStockSnapshotPerformance` defaulted missing `todaysChangePerc` to flat `0%` on SPX breadth/sector heat; `getLiveOptionMark` async path lacked the `isWsUpdatedAtFresh` guard already on sync.
+
+**Fix:** `snapshotPerformanceChangePct()` derives from `prev_close` or omits; async option marks gate through shared future guard.
+
+**Check at the open:** SPX desk leader_stocks / sector_heat show real day-change (not flat 0% on pre-open); Night Hawk live marks reject clock-skewed future WS stamps.
+
 ### 0ad. UW in-process REST cache + Polygon index overlay future guards — fix/uw-index-future-timestamp-guards (merged #3771)
 
 **What was broken:** Three paths still used raw `Date.now() - timestamp` without the shared future guard: `readUwCache` (negative age → infinitely fresh UW REST cache), `getIndexFeedFreshness` + `index-snapshot-overlay` (future `updatedAt` clamped to age 0 → live overlay), `resolvePulseFeedStalled` (Redis pulse snapshot), and `HomeGammaPromo.fmtAgeFromAsof` (future `asof` → "live").
