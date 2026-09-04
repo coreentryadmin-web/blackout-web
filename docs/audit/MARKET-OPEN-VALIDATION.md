@@ -2128,3 +2128,9 @@ than an end-of-session patch.
 - **What changed:** `dayChangeTextClass()` / `dayChangeBorderClass()` in `src/lib/api.ts`; all three surfaces use neutral white tone when change is absent.
 - **RTH check:** On `/dashboard` during a brief window where SPX spot is live but `spx_change_pct` is still warming (or force a null in dev), confirm SPX price/% use neutral white styling — not green bull — while the % reads `—`.
 
+### 24. HELIX flows SSE stream — unrounded IEEE floats on wire — fix/flows-stream-round-floats — 2026-09-04
+
+- **What was broken:** `/api/market/flows/stream` SSE events serialized raw flow/GEX enrichment numbers without `roundFloats`, so members on the live HELIX/Vector tape could see IEEE tails while REST `/flows` was already rounded.
+- **What changed:** Wrap the SSE payload in `roundFloats()` before `JSON.stringify` in `flows/stream/route.ts`.
+- **RTH check:** Open `/flows` or Vector with live stream connected (Network tab → EventStream on `/api/market/flows/stream`); confirm `premium`, `strike`, and GEX level fields are 2dp-clean with no IEEE tails during RTH flow prints.
+

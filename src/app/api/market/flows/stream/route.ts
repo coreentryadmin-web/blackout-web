@@ -7,6 +7,7 @@ import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
 import { enforceFlowsSseRateLimit } from "@/lib/market-user-rate-limit";
+import { roundFloats } from "@/lib/round-floats";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -71,7 +72,7 @@ export async function GET(req: NextRequest) {
           return;
         }
         try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(roundFloats(payload))}\n\n`));
         } catch {
           cleanup();
         }
