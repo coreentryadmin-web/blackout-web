@@ -20,6 +20,7 @@ import {
 } from "./TerminalPremiumPanels";
 import { CondorPanel, TimeStopClock } from "./play-terminal-shared";
 import { ThesisHealthPanel } from "./ThesisHealthPanel";
+import { SwingThesisHealthPanel } from "./SwingThesisHealthPanel";
 import { closedCapturePct, closedRealizedPct } from "./play-card-lifecycle";
 
 const usd = (n: number | null | undefined): string => (n != null ? `$${n.toFixed(2)}` : "—");
@@ -69,11 +70,11 @@ export function ZeroDteCommandPanel({
   const isWorking = play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM";
   const mgmt = managementFor(play.exitModel, play.status, play.pnlPct ?? null);
   const badge =
-    play.horizon === "ZERO_DTE" && play.recommendation
+    (play.horizon === "ZERO_DTE" || play.horizon === "SWING") && play.recommendation
       ? play.recommendation
       : mgmt.recommendation;
   const recNote =
-    play.horizon === "ZERO_DTE" && play.recNote ? play.recNote : mgmt.recNote;
+    (play.horizon === "ZERO_DTE" || play.horizon === "SWING") && play.recNote ? play.recNote : mgmt.recNote;
   const thesisLine = verdictThesisLine(play, sessionClosed);
   const whyAt = etClock(play.firstFlaggedAt);
   const topFactors = play.factors.slice(0, 2);
@@ -401,9 +402,13 @@ export function ZeroDteCommandPanel({
           {play.thesisHealth && (
             <section className="nh-deck-command-section" aria-labelledby="nh-cmd-thesis-health">
               <h3 id="nh-cmd-thesis-health" className="nh-deck-command-heading">
-                Thesis integrity
+                {play.horizon === "SWING" ? "Swing thesis health" : "Thesis integrity"}
               </h3>
-              <ThesisHealthPanel health={play.thesisHealth} liveRec={badge} />
+              {play.horizon === "SWING" ? (
+                <SwingThesisHealthPanel health={play.thesisHealth} liveRec={badge} />
+              ) : (
+                <ThesisHealthPanel health={play.thesisHealth} liveRec={badge} />
+              )}
             </section>
           )}
 

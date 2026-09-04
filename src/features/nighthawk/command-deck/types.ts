@@ -7,6 +7,7 @@
  */
 
 import type { SwingSetupState, SwingEntryState } from "@/lib/swing/taxonomy";
+import type { SwingManageAction } from "@/lib/swing/manage";
 import type { SwingServingSection } from "@/lib/swing/serving";
 import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import type { WhyNow } from "@/lib/zerodte/why-now";
@@ -240,6 +241,8 @@ export interface TerminalPlay {
   entryStatus?: SwingEntryState | null;
   /** The serving section (serving.ts) this play resolved to, for the section-grouped terminal. */
   servingSection?: SwingServingSection | null;
+  /** Live manage engine action (manage.ts) — drives EXITING / scale-out advisory on refresh. */
+  manageAction?: SwingManageAction | null;
 
   // ── legacy edition metadata (surfaced for X Ads inspector) ──
   playType?: "stock" | "index" | "etf" | null;

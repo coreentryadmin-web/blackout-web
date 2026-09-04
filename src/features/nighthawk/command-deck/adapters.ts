@@ -13,7 +13,11 @@ import type { SwingServingSection } from "@/lib/swing/serving";
 import { executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import { occFromChainContract } from "@/lib/swing/occ-from-row";
 import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-render";
-import { thesisManagementOverlay } from "@/lib/zerodte/thesis-health";
+import { thesisManagementOverlay, formatComputedEt } from "@/lib/zerodte/thesis-health";
+import { buildTerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
+import { SWING_SCALE_OUT_POLICY } from "@/lib/swing/exit-policy";
+import { computeSwingThesisHealth } from "@/lib/swing/thesis-health";
+import type { SwingManageAction } from "@/lib/swing/manage";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
 import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
 import { resolveLegacyPlayOcc } from "@/features/nighthawk/lib/legacy-play-contract";
@@ -157,6 +161,43 @@ export function managementFor(
   // RATCHET track position: map −50%→0, +100%→1 (the stop and target of the fast 0DTE ratchet).
   const progress = exitModel === "RATCHET" ? Math.max(0, Math.min(1, (p + 50) / 150)) : null;
   return { recommendation, recNote, progress };
+}
+
+function recommendationFromManageAction(action: SwingManageAction | null | undefined): Recommendation | null {
+  if (!action) return null;
+  switch (action) {
+    case "EXIT":
+    case "STOP_OUT":
+      return "SELL";
+    case "TAKE_PARTIAL":
+    case "EXIT_RUNNER":
+      return "TRIM";
+    case "ADD":
+      return "BUY";
+    default:
+      return "HOLD";
+  }
+}
+
+/** Recompute swing management advisory @ 1 Hz — scale-out ladder + thesis health overlay. */
+export function refreshSwingManagement(play: TerminalPlay): TerminalPlay {
+  if (play.horizon !== "SWING") return play;
+  const mgmtBase = managementFor(play.exitModel, play.status, play.pnlPct ?? null);
+  const working = play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM";
+  let rec = mgmtBase.recommendation;
+  let note = play.recNote ?? mgmtBase.recNote;
+  const fromAction = working ? recommendationFromManageAction(play.manageAction) : null;
+  if (fromAction) rec = fromAction;
+  const mgmt =
+    play.thesisHealth != null
+      ? thesisManagementOverlay(rec, note, play.thesisHealth, play.pnlPct ?? null)
+      : { recommendation: rec, recNote: note };
+  return {
+    ...play,
+    recommendation: mgmt.recommendation,
+    recNote: mgmt.recNote,
+    progress: mgmtBase.progress,
+  };
 }
 
 /** Recompute management advisory from live P&L + thesis health (called every ~1s on SSE mark tick). */
@@ -643,6 +684,8 @@ export interface HorizonDeckSource {
   occ?: string | null;
   /** ISO instant of the last manage-snapshot quote (live positions). */
   markAsOf?: string | null;
+  /** Management engine action for live rows (manage.ts). */
+  manageAction?: SwingManageAction | null;
 }
 
 /**
@@ -721,7 +764,41 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
       strike: src.contract.strike,
     });
   const occPrefixed = occ ? (occ.startsWith("O:") ? occ : `O:${occ}`) : null;
+  const working = status === "OPEN" || status === "HOLD" || status === "TRIM";
   const mgmt = managementFor("SCALE_OUT", status, status === "WATCH" || status === "SKIP" ? null : livePnl);
+  const exitPolicy = buildTerminalExitLadder(
+    SWING_SCALE_OUT_POLICY,
+    entry,
+    fin(src.peakPremium) ?? (entry != null && markMid != null ? Math.max(entry, markMid) : null),
+  );
+  const thesisBreakResolved = src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon);
+  const thesisHealth = working
+    ? computeSwingThesisHealth({
+        direction: src.direction,
+        status,
+        setupState: src.setupState,
+        entryStatus: src.entryStatus,
+        factors: src.factors,
+        regime: src.regime,
+        signalKinds: src.signalKinds,
+        thesisBreak: thesisBreakResolved,
+        servingSection: src.servingSection,
+        manageAction: src.manageAction,
+        pnlPct: livePnl,
+        dte: src.contract.dte,
+        subLane: src.subLane,
+        committedAtEt: src.committedAt ?? null,
+        computedAtEt: formatComputedEt(Date.now()),
+      })
+    : null;
+  const mgmtWithThesis =
+    thesisHealth != null
+      ? thesisManagementOverlay(mgmt.recommendation, src.reason || mgmt.recNote, thesisHealth, livePnl)
+      : { recommendation: mgmt.recommendation, recNote: src.reason || mgmt.recNote };
+  const fromAction = working ? recommendationFromManageAction(src.manageAction) : null;
+  if (fromAction) {
+    mgmtWithThesis.recommendation = fromAction;
+  }
   const flagPx = fin(src.flagUnderlyingPx);
   const watchTrack = status === "WATCH" || status === "SKIP";
   const trackPct = watchTrack
@@ -744,15 +821,18 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     status,
     horizon: src.horizon,
     exitModel: "SCALE_OUT",
+    exitPolicy,
+    thesisHealth,
+    manageAction: src.manageAction ?? null,
     // De-hardcoded (PR-12): the swing serving meta feeds the REAL factors/regime/thesis. Each falls back to
     // the exact pre-PR-12 literal ([] / null / {intact}) when the caller supplies nothing, so LEAPS and any
     // un-enriched caller render identically — the change is additive, never a regression to those lanes.
     factors: src.factors ?? [],
     gates: [],
     regime: src.regime ?? null,
-    thesisBreak: src.thesisBreak ?? thesisBreakFromSetupState(src.setupState, src.horizon),
-    ...mgmt,
-    recNote: src.reason || mgmt.recNote,
+    thesisBreak: thesisBreakResolved,
+    ...mgmtWithThesis,
+    progress: mgmt.progress,
     entry,
     mark: markMid,
     pnlPct: status === "WATCH" || status === "SKIP" ? null : livePnl ?? exec.pnl_pct,

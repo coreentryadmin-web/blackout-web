@@ -167,7 +167,16 @@ function attachThesisExplanation(
  * failure (no discover, null result, thrown error) degrades to an empty structured lane — never a throw.
  */
 export async function getSwingServingLane(deps: SwingServingLaneDeps = {}): Promise<SwingServingLane> {
-  if (!deps.discover && !deps.fetchOpenPositions && !deps.fetchBangerPositions) return emptySwingServingLane();
+  const snap = await readSwingServingSnapshot().catch(() => null);
+  const stampScan = (lane: SwingServingLane): SwingServingLane => ({
+    ...lane,
+    scanAsOf: snap?.asOf ?? null,
+    scanSessionDay: snap?.sessionDay ?? null,
+  });
+
+  if (!deps.discover && !deps.fetchOpenPositions && !deps.fetchBangerPositions) {
+    return stampScan(emptySwingServingLane());
+  }
   try {
     const result = deps.discover ? await deps.discover() : null;
     const discoveryPlays = result && Array.isArray(result.plays) ? result.plays : [];
@@ -210,8 +219,8 @@ export async function getSwingServingLane(deps: SwingServingLaneDeps = {}): Prom
       }
       merged = enrichSwingPlaysWithVectorLeaders(merged, deps.vectorLeaders ?? []);
       merged = mergeBangerWatchPlays(merged, deps.bangerWatchPlays ?? []);
-      if (merged.length === 0) return emptySwingServingLane();
-      return assembleSwingServingLane(merged);
+      if (merged.length === 0) return stampScan(emptySwingServingLane());
+      return stampScan(assembleSwingServingLane(merged));
     }
 
     let merged = enrichedDiscovery;
@@ -221,11 +230,11 @@ export async function getSwingServingLane(deps: SwingServingLaneDeps = {}): Prom
     }
     merged = enrichSwingPlaysWithVectorLeaders(merged, deps.vectorLeaders ?? []);
     merged = mergeBangerWatchPlays(merged, deps.bangerWatchPlays ?? []);
-    if (merged.length === 0) return emptySwingServingLane();
-    return assembleSwingServingLane(merged);
+    if (merged.length === 0) return stampScan(emptySwingServingLane());
+    return stampScan(assembleSwingServingLane(merged));
   } catch {
     // MEMBER-SAFE: a discovery/DB hiccup must not throw the route or fabricate plays — serve an empty lane.
-    return emptySwingServingLane();
+    return stampScan(emptySwingServingLane());
   }
 }
 

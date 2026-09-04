@@ -22,6 +22,20 @@ const NighthawkAnalyticsPanel = dynamic(
     ),
   }
 );
+const SwingAnalyticsPanel = dynamic(
+  () => import("@/features/nighthawk/components/SwingAnalyticsPanel").then((m) => m.SwingAnalyticsPanel),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="nh-analytics-panel nh-analytics-panel-loading" role="status" aria-label="Loading swing analytics">
+        <span className="nh-analytics-panel-title">Swing analytics</span>
+        <span className="nh-analytics-empty">Loading…</span>
+      </div>
+    ),
+  }
+);
+import { SwingCockpitStrip } from "./SwingCockpitStrip";
+import type { SwingServingLane } from "@/lib/swing/serving-board";
 import {
   terminalPlayFromZeroDte,
   terminalPlayFromHorizon,
@@ -192,6 +206,14 @@ export function HorizonDeck({
   // that arrived with board:null is an outage, not "scanning, nothing yet".
   const degraded = data != null && data.board == null;
   const lane = data?.board?.lanes?.[horizon];
+  const swingLane = horizon === "SWING" ? (lane as SwingServingLane | undefined) : undefined;
+  const scanAsOf = swingLane?.scanAsOf ?? null;
+  const { data: swingRecord } = useSWR<{ summary?: { win_rate_pct?: number | null } }>(
+    horizon === "SWING" ? "/api/market/swing/record?days=30" : null,
+    json,
+    { refreshInterval: 30_000 },
+  );
+  const swingWinRate = swingRecord?.summary?.win_rate_pct ?? null;
   const [sectionFilter, setSectionFilter] = useState<SwingSectionFilter>("ALL");
   // Prefer the seven serving sections when present (SWING) — flat committed/watch is back-compat only and
   // collapses COMMIT_NOW + WAITING_FOR_ENTRY into one misleading "committed" rail.
@@ -257,6 +279,7 @@ export function HorizonDeck({
           livePnlPct: p.livePnlPct ?? null,
           peakPremium: p.peakPremium ?? null,
           troughPremium: p.troughPremium ?? null,
+          manageAction: p.manageAction ?? null,
           thesisBreak:
             p.thesisLevel != null
               ? { level: p.thesisLevel, note: p.thesisNote ?? undefined }
@@ -285,6 +308,17 @@ export function HorizonDeck({
   const sessionHeat = data?.session?.heat?.state ?? null;
   return (
     <>
+      {horizon === "SWING" && (
+        <>
+          <SwingAnalyticsPanel />
+          <SwingCockpitStrip
+            plays={playsWithTrack}
+            sectionCounts={sectionCounts}
+            scanAsOf={scanAsOf}
+            winRatePct={swingWinRate}
+          />
+        </>
+      )}
       {hasSections && (
         <div className="nh-deck-filterbar nh-deck-filterbar--sections" role="group" aria-label="Filter swing plays by serving section">
           {(["ALL", ...SWING_SERVING_SECTIONS] as SwingSectionFilter[]).map((sec) => (

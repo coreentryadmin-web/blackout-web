@@ -2,16 +2,23 @@
 
 import { useMemo } from "react";
 import type { TerminalPlay } from "./types";
+import { refreshSwingManagement } from "./adapters";
 import { useZeroDteLiveMarks, overlayLiveMarks } from "./use-live-marks";
 import { overlayHorizonWatchTrack } from "./use-live-marks";
 import { useLegacyStockQuotes } from "./use-legacy-quotes";
-import { capQuoteTickers, ZERODTE_QUOTE_MAX_TICKERS, ZERODTE_QUOTE_POLL_MS } from "./use-zero-dte-live-deck";
+import { useSecondTick } from "./use-deck-live";
+import { formatComputedEt } from "@/lib/zerodte/thesis-health";
+import {
+  capQuoteTickers,
+  ZERODTE_QUOTE_MAX_TICKERS,
+  ZERODTE_QUOTE_POLL_MS,
+} from "./use-zero-dte-live-deck";
 
 const WORKING = new Set(["OPEN", "HOLD", "TRIM"]);
 
 /**
- * Live overlay for Swing Command — reuses the shared marks SSE lane (now includes swing OCCs)
- * plus underlying quotes for WATCH track + working rows.
+ * Live overlay for Swing Command — marks SSE (~1s) + underlying quotes + 1 Hz management/thesis refresh.
+ * Parity with useZeroDteLiveDeck for open capital rows.
  */
 export function useSwingLiveDeck(basePlays: TerminalPlay[]): TerminalPlay[] {
   const liveMarks = useZeroDteLiveMarks(true);
@@ -21,8 +28,18 @@ export function useSwingLiveDeck(basePlays: TerminalPlay[]): TerminalPlay[] {
     return capQuoteTickers([...working, ...watch], ZERODTE_QUOTE_MAX_TICKERS);
   }, [basePlays]);
   const stockQuotes = useLegacyStockQuotes(tickers, tickers.length > 0, ZERODTE_QUOTE_POLL_MS);
+  const nowMs = useSecondTick();
+
   return useMemo(() => {
     const withMarks = overlayLiveMarks(basePlays, liveMarks);
-    return overlayHorizonWatchTrack(withMarks, stockQuotes);
-  }, [basePlays, liveMarks, stockQuotes]);
+    const withTrack = overlayHorizonWatchTrack(withMarks, stockQuotes);
+    const computedAtEt = formatComputedEt(nowMs);
+    return withTrack.map((p) => {
+      const withClock =
+        p.thesisHealth != null
+          ? { ...p, thesisHealth: { ...p.thesisHealth, computedAtEt } }
+          : p;
+      return refreshSwingManagement(withClock);
+    });
+  }, [basePlays, liveMarks, stockQuotes, nowMs]);
 }

@@ -397,3 +397,16 @@ test("no dossier for the ticker → the row is left honest, never given an inven
   assert.ok(live, "the position still renders");
   assert.equal((live.factors ?? []).length, 0, "no dossier means no factors — the placeholder is correct here");
 });
+
+test("getSwingServingLane stamps scanAsOf from persisted snapshot", async () => {
+  await persistSwingServingSnapshot({
+    asOf: "2026-07-24T20:00:00.000Z",
+    sessionDay: "2026-07-24",
+    dossiers: [],
+    plays: [],
+    watch: [],
+  });
+  const lane = await getSwingServingLane({ discover: async () => ({ dossiers: [], plays: [] }) });
+  assert.equal(lane.scanAsOf, "2026-07-24T20:00:00.000Z");
+  assert.equal(lane.scanSessionDay, "2026-07-24");
+});
