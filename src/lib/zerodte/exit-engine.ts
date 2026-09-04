@@ -341,10 +341,23 @@ function decideTrimScale(
   //    the coarse floor dump everything — banking also flips `input.trimmed` for the
   //    next tick, which raises the shared floor to the +50% runner floor for the
   //    remainder (strictly better protection than riding the breakeven floor to the
-  //    finish). Only suppresses the floor EXIT action below; it does not change
-  //    `floorMark`/the plan-stop comparison, so a real stop breach still outranks a
-  //    pending trim exactly as before.
-  const trimAvailable = armed > taken;
+  //    finish). Only suppresses the floor EXIT action below.
+  //
+  //    STOP-BREACH CARVE-OUT (2026-09-04, live-again per resolveTrimBankLive defaulting
+  //    ON 2026-09-03 — see docs/audit/findings-staging/2026-09-04-trim-scale-stop-fallthrough.md):
+  //    the comment above used to claim this guard "does not change the plan-stop
+  //    comparison, so a real stop breach still outranks a pending trim exactly as
+  //    before" — that was false. In the normal configuration the shared floor sits well
+  //    ABOVE the plan stop, so `stopIsHigher` below is already false and the plan-stop
+  //    branch (block 1) never fires; the ONLY thing that protects a genuine stop breach
+  //    in that configuration is the floor-EXIT branch (block 2) — exactly the branch this
+  //    guard suppresses when a tranche is available. So once price has fallen to/through
+  //    the RAW plan stop, `trimAvailable` must be false: the position is no longer merely
+  //    "past the shared floor with a tranche pending", it has already blown through the
+  //    hard risk limit, and banking a tranche while leaving the rest open uncontrolled is
+  //    strictly worse than the pre-2026-08-27 dump-to-floor behavior it replaced.
+  const stopAlreadyBreached = input.planStop != null && currentMark <= input.planStop;
+  const trimAvailable = armed > taken && !stopAlreadyBreached;
   const sharedFloor = ratchetFloorPct(peakPnlPct, input.trimmed);
   const floorBreached = sharedFloor != null && pnlPct <= sharedFloor && !trimAvailable;
   if (input.planStop != null && currentMark <= input.planStop) {
