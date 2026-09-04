@@ -39,7 +39,7 @@ function line(ch = "─", n = 78) {
 }
 
 function fmtBlocked(l) {
-  if (!l) return "  (no graded counterfactuals in window)";
+  if (!l || typeof l.n !== "number") return "  (no graded counterfactuals in window)";
   return [
     `  gate: ${l.gate_failed}`,
     `  graded: ${l.n}  ungradeable: ${l.ungradeable}  would_have_won: ${l.would_have_won}`,
@@ -103,8 +103,13 @@ async function fetchCalibration(args, headers) {
   const q = args.days ? `?days=${args.days}` : "";
   const res = await fetch(`${args.base}/api/market/zerodte/calibration${q}`, { headers });
   const report = await res.json().catch(() => ({}));
-  if (!res.ok || report.available === false) {
+  if (!res.ok) {
     throw new Error(`calibration GET failed HTTP ${res.status}: ${JSON.stringify(report).slice(0, 300)}`);
+  }
+  // `available:false` means zero graded plays in the window — still a valid report shape
+  // (blocked_value may be empty). Only treat hard degradation (route catch) as fatal.
+  if (report.degraded === true && report.available === false) {
+    throw new Error(`calibration GET degraded: ${JSON.stringify(report).slice(0, 300)}`);
   }
   return { grade: gradeJson, report };
 }
