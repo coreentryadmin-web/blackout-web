@@ -2,6 +2,7 @@ import type { PlaybookId } from "@/features/spx/lib/playbook-registry";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import { playGexStaleMaxSec } from "@/features/spx/lib/spx-play-config";
 import { playbookDataQualityBlockReason } from "@/features/spx/lib/playbook-data-requirements";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 
 /**
  * @deprecated Capability-based policy supersedes this set — see `playbook-data-requirements.ts`.
@@ -38,13 +39,12 @@ export function shouldFailClosedLiveOnDataQuality(mode: LiveDataQualityMode): bo
 
 export function playbookDataQualityFlags(desk: SpxDeskPayload): PlaybookDataQualityFlags {
   const polledAt = desk.polled_at ?? desk.as_of;
-  const ageSec =
-    polledAt != null
-      ? Math.max(0, (Date.now() - new Date(polledAt).getTime()) / 1000)
-      : Infinity;
+  const ageSec = ageSecFromIso(polledAt);
+  const staleMax = playGexStaleMaxSec();
   return {
     halt_channel_stale: desk.halt_channel_stale === true,
-    desk_stale: ageSec > playGexStaleMaxSec(),
+    // null age = missing, invalid, or clock-skewed future — fail closed like spx-play-gates.ts.
+    desk_stale: ageSec == null ? true : ageSec > staleMax,
     gex_missing: !(desk.gex_walls?.length ?? 0),
   };
 }

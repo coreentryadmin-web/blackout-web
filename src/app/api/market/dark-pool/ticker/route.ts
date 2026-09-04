@@ -3,6 +3,7 @@ import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ snapshot: null, symbol }, { status: 200 });
     }
 
-    return NextResponse.json({ snapshot, symbol }, { headers: NO_STORE_HEADERS });
+    return NextResponse.json(roundFloats({ snapshot, symbol }), { headers: NO_STORE_HEADERS });
   } catch (err) {
     console.error("[dark-pool/ticker]", err);
     return NextResponse.json({ snapshot: null, symbol }, { status: 200 });

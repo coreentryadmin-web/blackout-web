@@ -7,6 +7,7 @@ import {
   shouldFailClosedLiveOnDataQuality,
 } from "./playbook-data-quality";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
 test("isDegradedForLivePlaybook: blocks event PB on halt stale via capabilities", () => {
   const desk = { halt_channel_stale: true, polled_at: new Date().toISOString(), gex_walls: [{}] } as SpxDeskPayload;
@@ -30,4 +31,14 @@ test("liveDataQualityMode: severe when 2+ feed issues", () => {
   );
   assert.equal(shouldFailClosedLiveOnDataQuality("severe"), true);
   assert.equal(shouldFailClosedLiveOnDataQuality("degraded"), false);
+});
+
+test("playbookDataQualityFlags: future polled_at beyond tolerance is desk_stale (fail closed)", () => {
+  const futureMs = Date.now() + WS_TIMESTAMP_FUTURE_TOLERANCE_MS + 60_000;
+  const desk = {
+    polled_at: new Date(futureMs).toISOString(),
+    gex_walls: [{}],
+  } as SpxDeskPayload;
+  const flags = playbookDataQualityFlags(desk);
+  assert.equal(flags.desk_stale, true);
 });
