@@ -120,23 +120,21 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
-<<<<<<< HEAD
-### 0ad. UW in-process REST cache + Polygon index overlay future guards — fix/uw-index-future-timestamp-guards (pending)
+### 0ad. UW in-process REST cache + Polygon index overlay future guards — fix/uw-index-future-timestamp-guards (merged #3771)
 
 **What was broken:** Three paths still used raw `Date.now() - timestamp` without the shared future guard: `readUwCache` (negative age → infinitely fresh UW REST cache), `getIndexFeedFreshness` + `index-snapshot-overlay` (future `updatedAt` clamped to age 0 → live overlay), `resolvePulseFeedStalled` (Redis pulse snapshot), and `HomeGammaPromo.fmtAgeFromAsof` (future `asof` → "live").
 
 **Fix:** Apply `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` / `isWsUpdatedAtFresh` / `ageSecFromIso` — same pattern as #3760/#3762.
 
 **Check at the open:** SPX desk feed-stalled pill still fires on genuine index silence (not on normal ticks); VIX/SPX index overlays fall back to REST when WS stamp is skewed; homepage gamma promo chip does not show "live" beside a warming snapshot.
-=======
-### 0ac. Stock SSE change_pct ws-bar authority gate — fix/stock-change-pct-prior-close-authority (pending)
+
+### 0ac. Stock SSE change_pct ws-bar authority gate — fix/stock-change-pct-prior-close-authority (merged #3769)
 
 **What was broken:** `/api/market/stocks/spot-stream` and Thermal's stock push path served `changePct` computed from the first WS bar's open (`openSource === "ws-bar"`) before the REST `prev_close` seed landed — session-open drift, not true day change vs prior close. `/api/market/quote` could show a different % when its REST cache was hot.
 
 **Fix:** `authoritativeStockChangePct()` — member-facing `changePct` is `null` until `openSource === "rest"`. Redis snapshots carry `openSource`; stale/empty paths return `null` not fabricated `0`.
 
 **Check at the open:** On Thermal `/heatmap` with NVDA (or any stock preset): header change % should appear within ~30s of first load and must match `GET /api/market/quote?ticker=NVDA` `change_pct` once both are live. Mid-session reconnect must NOT flash a ws-bar–anchored %.
->>>>>>> 7f2c1417c (fix(ws): gate stock change_pct until REST prior-close anchor lands)
 
 ### 0ac. Vector GEX walls spot constraint — fix/vector-gex-walls-spot-constraint (pending)
 
