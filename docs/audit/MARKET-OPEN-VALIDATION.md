@@ -311,6 +311,52 @@ is not yet deployed, not that it failed. During the 4am-8pm ET window itself, co
 still runs on its normal ~90s (leader-heal) / 5-min (EventBridge) cadence — this fix must not have
 introduced any new throttling of legitimate in-window traffic, since 60s is strictly below both.
 
+### 9. PgBouncer follow-up config from #3499 still never set — zero-headroom condition still live — NOT FIXED, needs operator authorization
+
+**What was found:** #3499 (item #3 above) shipped the CODE to defend against web's connection pool
+oversubscribing the shared PgBouncer/RDS budget, but its own write-up said explicitly this stays a
+no-op until an operator sets two new env vars. Re-checked live 2026-09-04: neither
+`REPLICA_COUNT_MAX` nor `PGBOUNCER_RESERVED_FOR_OTHER_SERVICES` has been set on either service —
+the zero-headroom condition #3499 was built to defend against is still live, and still correlates
+with real ALB 5xx + `[db] transient query error` clusters during RTH. Exact remediation values are
+computed and documented in `docs/audit/findings-staging/2026-09-04-pgbouncer-followup-config-never-set.md`
+— this was NOT applied because a live Secrets Manager write was blocked by the coordinator's
+auto-mode classifier as a production-infra change requiring explicit authorization.
+
+**Check at the open:** if an operator has applied the documented remediation, confirm
+`REPLICA_COUNT_MAX`/`PGBOUNCER_RESERVED_FOR_OTHER_SERVICES` are set correctly on both services and
+watch for the new `[db]` warning logs (should stay silent if sized correctly) plus a drop in
+`[db] transient query error`/ALB 5xx clustering during RTH. If NOT yet applied, this item stays
+open — the underlying condition is unchanged from #3499's own original measurement.
+
+### 10. ElastiCache Redis chronically near its effective memory budget, evicting during RTH — NOT FIXED, needs an operator capacity decision
+
+**What was found:** `blackout-production-redis-rg-001` runs 94-99.9% of its effective (post-reservation)
+memory budget continuously, evicting up to 620 TTL'd keys/hour during RTH despite real physical
+headroom on the node (~26-30% free). Three remedies exist (upsize the node, reduce
+`reserved-memory-percent`, or audit cache-key TTL/footprint), each with real cost/risk tradeoffs —
+see `docs/audit/findings-staging/2026-09-04-elasticache-redis-memory-pressure.md` for the full
+evidence and tradeoff analysis. Deliberately left as a documented finding for an explicit operator
+decision rather than executed unilaterally.
+
+**Check at the open:** if a remedy has been applied, confirm `AWS/ElastiCache` `Evictions` trends
+back toward the near-zero off-RTH baseline. If not yet applied, this item stays open.
+
+### 11. market-worker ECS CPU-pinned near 100% during RTH, no autoscaling — NOT FIXED, needs a correctness check before any capacity change
+
+**What was found:** the single-task `blackout-production-market-worker` service (sole owner of live
+Polygon/UW WebSocket ingestion) runs CPU-pinned at 99.6-99.9% for extended stretches during RTH,
+with no registered autoscaling target. A vertical scale (raise task-level `cpu`, keep
+`desiredCount=1`) is the safe remediation; a horizontal scale (autoscaling to N>1 replicas) carries
+a real, unverified correctness risk (duplicate WS subscriptions if the ingestion code isn't built
+for multi-replica coordination) — see
+`docs/audit/findings-staging/2026-09-04-market-worker-cpu-pinned-no-scaling.md` for the full
+analysis. Not executed this pass.
+
+**Check at the open:** if a fix has been applied, confirm `AWS/ECS` `CPUUtilization` for
+market-worker shows real headroom during RTH, and confirm live-data freshness (WS ingestion lag)
+did not regress. If not yet applied, this item stays open.
+
 ---
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
