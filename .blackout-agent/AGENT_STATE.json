@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T00:30:41.044Z",
+  "updated_at": "2026-09-04T01:39:13.881Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -30,14 +30,15 @@
     "BO-P1-0005": {
       "task_id": "BO-P1-0005",
       "owner": "cursor",
-      "claimed_at": "2026-09-03T23:53:48.679Z",
-      "lease_until": "2026-09-04T01:23:48.679Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-04T01:23:35.441Z",
+      "lease_until": "2026-09-04T02:53:35.441Z",
+      "phase": "RELEASED",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": "Review Claude PR #3434"
+      "title": "Review Claude PR #3434",
+      "released_at": "2026-09-04T01:39:13.881Z"
     },
     "BO-P1-0007": {
       "task_id": "BO-P1-0007",
@@ -68,6 +69,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T00:30:30.525Z",
       "safe_to_merge": true
+    },
+    "pr-3450": {
+      "pr": 3450,
+      "head_sha": "d2a180bf36cffb85277548d42ae9bef8fa345935",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:38:50.060Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -82,11 +91,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "84c5707ac6849b4c048dec6e8a414321f2a76e27",
+    "last_main_sha": "9b7756c7201250e31c460077f1c6cc378f3affa0",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T00:18:06Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33821229041",
-    "last_deploy_sha": "271a977cfdc9b5d2cc2d62535f8c7e010374d78d"
+    "last_deploy_at": "2026-09-04T01:33:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826240425",
+    "last_deploy_sha": "9b7756c7201250e31c460077f1c6cc378f3affa0"
   },
   "open_prs": [],
   "events": [
@@ -293,6 +302,35 @@
       "agent": "cursor",
       "run_id": "49d14bda-5dd3-4b4b-8deb-b5336a96b8b1",
       "summary": "PR webhook branch ready: heartbeat-gate fix in claimLock, BO-P1-0007 claimed, peer-reviewed #3438 APPROVED. #3436 merged — autopilot v1 live on main. Next: merge this PR, close duplicate #3435."
+    },
+    {
+      "at": "2026-09-04T01:38:50.061Z",
+      "type": "pr_review",
+      "pr": 3450,
+      "head_sha": "d2a180bf36cffb85277548d42ae9bef8fa345935",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:38:50.060Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T01:39:04.501Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:39:04.502Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "732056bc-8bb6-46d3-86ae-570dab351c9c",
+      "summary": "Recovered autopilot state. Peer-reviewed and merged #3448 (grid YAML), #3451 (vector runners). Recorded APPROVED reviews for #3450 (repo slug fix, verify green). #3452 (BO-P1-0004 counterfactual) verify green + enable-automerge armed — awaits Claude peer review. Released BO-P1-0007 (webhook shipped #3439)."
+    },
+    {
+      "at": "2026-09-04T01:39:13.881Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0005",
+      "owner": "cursor"
     }
   ]
 }
