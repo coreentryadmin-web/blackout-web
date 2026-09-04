@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T15:39:49.130Z",
+  "updated_at": "2026-09-04T16:27:46.924Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T16:20:41.447Z",
+      "lease_until": "2026-09-04T17:54:17.224Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "474e98d1-04e5-4c1b-bbed-912126a49a84",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -111,6 +111,18 @@
       "pr": null,
       "reviewer": null,
       "run_id": null,
+      "title": null
+    },
+    "BO-P1-0105": {
+      "task_id": "BO-P1-0105",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T16:23:35.934Z",
+      "lease_until": "2026-09-04T17:54:17.224Z",
+      "phase": "EXECUTING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "474e98d1-04e5-4c1b-bbed-912126a49a84",
       "title": null
     }
   },
@@ -219,16 +231,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T16:23:35.935Z",
+      "current_task": "BO-P1-0105"
     }
   },
   "deploy": {
-    "last_main_sha": "4a26268131c43955daf6c6afe6ef9249a80b54fd",
+    "last_main_sha": "edcd719fb525b62b169001917346a347a60a554c",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T16:26:34Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33895156929",
+    "last_deploy_sha": "edcd719fb525b62b169001917346a347a60a554c"
   },
   "open_prs": [],
   "events": [
@@ -970,6 +982,49 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:23:26.461Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:23:35.935Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0105",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T16:24:17.223Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:24:17.998Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:24:18.944Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:27:46.924Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:27:46.924Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3bd407db-3c8b-48c0-8959-f75bc0b1a3b4",
+      "summary": "Hourly wake (workflow_run): synced main→edcd719fb (#3627 storeAge guard merged by Claude). ops:collect 0. validate:deploy+rth-open+rth-lifecycle+api-auth+platform-integrity(14/14)+vector-rth-quick ALL GREEN. No open PRs; pr-sweep empty. ECR deploy #3627 pending; #3614 build still in_progress 31m+. Socket-health 503 during rollout — options-socket warming on web tier. Standing peer-review: nothing to review."
     }
   ]
 }
