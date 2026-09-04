@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T08:01:19.476Z",
+  "updated_at": "2026-09-04T08:01:23.720Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -82,12 +82,13 @@
       "owner": "cursor",
       "claimed_at": "2026-09-04T07:56:02.885Z",
       "lease_until": "2026-09-04T09:27:49.165Z",
-      "phase": "VERIFYING",
+      "phase": "RELEASED",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": "147f6d8f-3e9d-43ff-97e8-960cec4b3093",
-      "title": null
+      "title": null,
+      "released_at": "2026-09-04T08:01:23.720Z"
     }
   },
   "reviews": {
@@ -739,6 +740,12 @@
       "agent": "cursor",
       "run_id": "2928035e-528c-4636-b778-d4f9be51655c",
       "summary": "Continuous loop cycle complete. main@f4d1f5ebb merged. ECS rollout COMPLETED (8/8, taskDef:1248 @07:58 UTC). validate:deploy GREEN, ops:collect 0, lifecycle GREEN (off-hours), data-validator 22 PASS, platform-integrity 3/0 fail, latency-compare 0 fail, 0DTE replay 6 rows. No open PRs. CI verify pending f4d1f5ebb. RTH validation Fri 09:00 ET."
+    },
+    {
+      "at": "2026-09-04T08:01:23.720Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
     }
   ]
 }
