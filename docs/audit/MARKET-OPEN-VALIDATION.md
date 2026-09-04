@@ -139,6 +139,18 @@ EventBridge crons logging `cron_job_runs` rows, but absent from `CRON_JOBS` — 
 - `GET /api/admin/cron/health` (admin) shows all three with recent `last_run_at` during RTH.
 - If any Discord channel goes quiet, confirm the watchdog would now alert (not first noticed by members).
 
+### 0b. `zerodte-warm` force=1 replay floor — PR (pending)
+
+**What was broken:** `zerodte-warm` had `OVERLAP_LOCK` only — `force=1` could replay the 0DTE
+scanner tick + board snapshot rebuild as fast as requests could be sent once each background pass
+completed (same gap as desk-warm #3540 / heatmap-warm #3542).
+
+**Fix:** 60s `RERUN_COOLDOWN_KEY` via atomic `sharedCacheSetNx`, checked before overlap lock; fails
+open on Redis error.
+
+**Check at the open:** no burst of `[cron/zerodte-warm] background done` log lines closer than 60s
+apart from an external `?force=1` replay loop; legitimate 4 min rth-warm-leader heals unchanged.
+
 ### 1. `CACHE_WARM_ALWAYS` leftover staging bypass — PR #3512 (merged)
 
 **What was broken:** `shouldRunCacheWarmer()` bypassed its weekday 4am-8pm ET hours gate whenever
@@ -464,6 +476,34 @@ toggle in either the default or analytics-expanded state, and that swiping/scrol
 horizontally reveals the full "Legacy" label with the theme toggle staying put, fully legible, at
 its own fixed position to the row's right. Also spot-check desktop width (≥1440px) is visually
 unchanged — the fix is a CSS overflow behavior change with no effect once the row already fits.
+
+### 13. Vector chart volume-pane "SPY vol" watermark overlapped the first x-axis tick — PR pending (branch `fix/vector-volume-pane-label-overlap`)
+
+**What was broken:** the volume sub-pane's "SPY vol" watermark label (`VectorChart.tsx`,
+bottom-left corner of the chart stage, just above the x-axis) was a plain transparent `<p>` with no
+background, sitting in the same screen band as the chart's own canvas-drawn x-axis time-tick labels
+at the left edge. Live pixel-zoomed capture of `/vector` (desktop 1440×900) showed it painting
+directly over the first tick ("19:00"), producing garbled interleaved text. Two sibling labels a few
+lines below it in the same file (the "◇ dim = modeled" honesty label and the GEX-scope
+"spot-aligned" chip) already had this exact overlap class fixed on 2026-08-23 (opaque
+`bg-black/70 backdrop-blur-sm` pill) — this third label was simply missed at the time because it
+sits on the opposite corner and the earlier fix was validated on mobile, where this collision does
+not occur (it's a desktop-width-only overlap).
+
+**Fix:** gave the "SPY vol" label the same `rounded bg-black/70 px-1.5 py-0.5 backdrop-blur-sm`
+opaque-pill treatment as its two siblings, position unchanged (`bottom-2 left-2`). Deliberately did
+NOT add the siblings' `max-w-[42%] truncate` width guard — that guard protects variable-length,
+right-anchored text from overrunning the chart's right edge, which doesn't apply to this label's
+short, static text.
+
+**Check at the open, live tape, desktop viewport:** open `/vector` at 1440×900 (or wider) and look
+at the volume sub-pane's bottom-left corner. Confirm "SPY vol" reads cleanly on its own opaque pill
+with the first x-axis time tick (whatever time it now shows, live) visible and legible either beside
+or behind the pill — not interleaved into garbled combined text. Check across a few different zoom/
+pan states, since tick positions move with the visible time range and the original bug's window
+(the label colliding with whichever tick happens to land at the left edge) is a function of viewport
+width and time-range, not a single fixed state. Also spot-check mobile (430×932) to confirm the fix
+didn't regress the already-working sibling labels' layout there.
 
 ---
 
