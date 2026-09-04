@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:06:55.729Z",
+  "updated_at": "2026-09-04T19:09:18.349Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -256,14 +256,94 @@
   },
   "open_prs": [
     {
-      "number": 3724,
-      "title": "chore(autopilot): cursor handoff — merged #3700/#3717, #3698 awaiting Claude review",
-      "branch": "cursor/autopilot-handoff-1904",
+      "number": 3733,
+      "title": "fix(ws): guard UW/flow/options freshness against clock-skewed future stamps",
+      "branch": "fix/uw-channel-future-timestamp-freshness",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T19:09:14Z"
+    },
+    {
+      "number": 3732,
+      "title": "fix(seo): exit 0 on auth-only AMBER in deploy-smoke SEO audit",
+      "branch": "fix/seo-audit-auth-amber-exit",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T19:08:44Z"
+    },
+    {
+      "number": 3731,
+      "title": "fix(audit): retry Clerk FAPI curl on TLS reset in SEO deploy smoke",
+      "branch": "fix/seo-audit-clerk-curl-retry",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-04T19:08:41Z"
+    },
+    {
+      "number": 3730,
+      "title": "fix(seo-audit): retry Clerk mint + AMBER exit on auth-only flake",
+      "branch": "fix/seo-audit-clerk-mint-retry",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T19:08:41Z"
+    },
+    {
+      "number": 3729,
+      "title": "fix(ci): rotate Largo nightly stress banks to fit 45m budget",
+      "branch": "fix/largo-stress-nightly-bank-rotation",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T19:08:35Z"
+    },
+    {
+      "number": 3728,
+      "title": "chore(autopilot): cursor session handoff — RTH lifecycle GREEN",
+      "branch": "cursor/autopilot-work-loop-85e2",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T19:05:07Z"
+      "updated_at": "2026-09-04T19:08:20Z"
+    },
+    {
+      "number": 3727,
+      "title": "fix(seo): retry transient Clerk FAPI curls in deploy smoke audit",
+      "branch": "fix/seo-audit-clerk-fapi-retry",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T19:07:55Z"
+    },
+    {
+      "number": 3726,
+      "title": "fix(audit): retry Clerk FAPI in SEO audit; auth-only AMBER non-blocking",
+      "branch": "fix/seo-audit-fapi-retry",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T19:07:47Z"
+    },
+    {
+      "number": 3725,
+      "title": "chore(autopilot): cursor handoff — RTH lifecycle GREEN, data-validator 44/44",
+      "branch": "chore/autopilot-handoff-2026-09-04-1906",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T19:08:37Z"
     },
     {
       "number": 3698,
@@ -273,7 +353,7 @@
       "agent": "cursor",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T19:04:54Z"
+      "updated_at": "2026-09-04T19:07:51Z"
     }
   ],
   "events": [
@@ -1085,6 +1165,19 @@
       "type": "task_claimed",
       "task_id": "BO-P1-0101",
       "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T19:09:18.348Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
+    },
+    {
+      "at": "2026-09-04T19:09:18.349Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "93e9566e-2666-414e-9e0f-86d5d1830018",
+      "summary": "Hourly wake cycle: validate:deploy GREEN, platform-integrity 14/14, data-validator 44 PASS, ops:collect 0. Pattern scan found UW/flow/options WS freshness gates treating future timestamps as live — fix branch fix/uw-channel-future-timestamp-freshness, draft PR #3733 opened. No open peer-review PRs (gh rate-limited earlier; pr-sweep empty). Deploy @ main 7df56d9a9. RTH lifecycle deferred to Fri 09:00 ET."
     }
   ]
 }
