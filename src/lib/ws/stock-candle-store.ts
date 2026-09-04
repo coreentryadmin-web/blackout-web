@@ -129,12 +129,24 @@ function seedSessionOpenIfNeeded(ticker: string, s: TickerState): void {
   if (s.openSource === "rest" || s.seedInflight) return;
   if (s.lastSeedAttemptAt > 0 && Date.now() - s.lastSeedAttemptAt < SEED_RETRY_COOLDOWN_MS) return;
   s.lastSeedAttemptAt = Date.now();
+  // Capture which session this seed is being fired FOR. The `s.openSource === "rest"`
+  // check in the .then() below only catches a CONCURRENT seed that has already landed
+  // for the SAME session — it says nothing about whether the session itself has since
+  // rolled over. recordStockTick's day-rollover branch resets openSource back to ""
+  // (not "rest") on a new ET session day, so a REST fetch that was fired just before
+  // midnight ET and resolves just after would sail past that guard and stamp the NEW
+  // session with an anchor (prev_close) that was fetched for the OLD one — and because
+  // "rest" is never downgraded back to "ws-bar" (see the field comment above), that
+  // wrong anchor then becomes PERMANENTLY authoritative for the rest of the new
+  // session's change_pct. Comparing the CURRENT s.sessionDate at resolution time
+  // against the sessionDate captured HERE at fire time closes that gap.
+  const firedForSessionDate = s.sessionDate;
   s.seedInflight = snapshotFetcher(ticker)
     .then((snap) => {
       // A reconnect/new-day race could have already reset sessionDate; only apply
       // if this ticker is still on the session we seeded for and hasn't since
       // gotten a "rest" anchor from a concurrent caller.
-      if (!snap || s.openSource === "rest" || !(snap.prev_close > 0)) return;
+      if (!snap || s.openSource === "rest" || s.sessionDate !== firedForSessionDate || !(snap.prev_close > 0)) return;
       s.sessionOpen = snap.prev_close;
       s.openSource = "rest";
     })
