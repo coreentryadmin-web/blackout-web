@@ -1,22 +1,17 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T01:41:04.359Z
-**Run:** 535bacf4-16e5-4499-a5ce-0613f095494c
+**At:** 2026-09-04T05:31:20.826Z
+**Run:** 34cc062c-797a-4e80-8a83-6c9e90f11422
 
 ## Summary
 
-Merged #3448 grid YAML, #3450 repo slug, #3451 vector runners. #3452 G-18/G-19 counterfactual verify green merging. 0DTE lane active — deploy 9b7756c in flight.
+Cycle complete: deploy GREEN @ 0b2ada333 (#3495). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours expected). Peer review: no substantive PRs (#2810 dependabot major skip). RTH lifecycle @ 09:00 ET Fri 2026-09-05. Agent state sync PR opening.
 
 ## Deploy
 
-- main: `e19006110494e68a92d7c3433e30b1afb9b81ec4`
+- main: `0b2ada333fb0c8c0835f8df1f99633d07739cf1f`
 - status: 
 
 ## Open PRs
 
-- #3461 [cursor] chore(autopilot): handoff after peer reviews — merged #3448 #3450 #3451
-- #3460 [agent] chore(autopilot): cursor handoff — merged #3448 #3450 #3451
-- #3459 [cursor] chore(autopilot): cursor handoff — peer reviews merged, #3452 awaits Claude
-- #3458 [cursor] chore(autopilot): cursor handoff after peer review merge wave
-- #3452 [cursor] feat(0dte): G-18/G-19 counterfactual report (BO-P1-0004)
-- #2810 [human] build(deps-dev): Bump typescript from 5.9.3 to 7.0.2
+_none_
