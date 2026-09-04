@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:19:14.963Z",
+  "updated_at": "2026-09-04T19:06:20.820Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T19:01:51.737Z",
+      "lease_until": "2026-09-04T20:33:59.384Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "78714ebb-da32-4d39-b3f9-d7c308aaaa0e",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -248,13 +248,34 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "95039bd9f69573db87914cd4b20f18ecf242c2bf",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T19:02:29Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33909058935",
+    "last_deploy_sha": "6776238a905a08affe9527887aae21f0c15e325a"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3724,
+      "title": "chore(autopilot): cursor handoff — merged #3700/#3717, #3698 awaiting Claude review",
+      "branch": "cursor/autopilot-handoff-1904",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T19:05:07Z"
+    },
+    {
+      "number": 3698,
+      "title": "feat(zerodte): liquid strike fallback + BREAKOUT cortex/thesis relief",
+      "branch": "cursor/hourly-autonomous-wake",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T19:04:54Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1052,6 +1073,43 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T19:03:59.384Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:04:00.045Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:04:00.797Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:05:58.338Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:06:20.819Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T19:06:20.820Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "8c519cc3-40b0-4e07-9392-f988b264f4ea",
+      "summary": "workflow_run wake: bootstrap+session recovered. pr-sweep 0 open PRs (GH_TOKEN invalid/rate-limited). ops:collect 0 items. validate:deploy GREEN, validate:rth-open GREEN, validate:platform-integrity 14/14 PASS, validate:api-auth GREEN, validate:vector-rth-quick GREEN, validate:seo 22/22 GREEN, blackout:rth-lifecycle GREEN. Deploy drift: 1 docs-only commit (#3719) ahead of last ECS deploy — no code risk. RTH Fri 3PM ET — SPX 7714, walls fresh via cron. No peer PRs to review; standing queue clean."
     }
   ]
 }
