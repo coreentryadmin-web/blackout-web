@@ -1,6 +1,7 @@
 import "server-only";
 
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
+import { ageMin } from "@/lib/correctness/data-integrity-verifier";
 import { fetchStockSnapshot } from "@/lib/providers/polygon";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import type { SpxAdminIssue } from "@/lib/admin-spx-issues";
@@ -159,9 +160,16 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
       continue;
     }
     checked++;
-    const ageMin = (now - new Date(pos.asof).getTime()) / 60000;
-    if (Number.isFinite(ageMin) && ageMin > 15) {
-      add(`GEX ${label} stale during RTH`, `${label} matrix last computed ${ageMin.toFixed(0)}m ago (asof ${pos.asof})`);
+    const asofMs = new Date(pos.asof).getTime();
+    // Reuse data-integrity-verifier's ageMin() so a clock-skewed future asof cannot read as
+    // trivially fresh (negative age) — same bug class fixed there 2026-09-04 (#3691 family).
+    const ageMinVal = Number.isFinite(asofMs) ? ageMin(asofMs, now) : Infinity;
+    if (ageMinVal > 15) {
+      const detail =
+        ageMinVal === Infinity
+          ? `${label} matrix asof ${pos.asof} is future-dated or invalid — cannot trust freshness`
+          : `${label} matrix last computed ${ageMinVal.toFixed(0)}m ago (asof ${pos.asof})`;
+      add(`GEX ${label} stale during RTH`, detail);
     }
   }
 

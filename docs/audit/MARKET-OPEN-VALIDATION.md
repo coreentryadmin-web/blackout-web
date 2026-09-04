@@ -126,6 +126,17 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0y. `data-integrity-checks` C6 GEX freshness future `asof` silently fresh — fix/data-integrity-checks-future-asof-guard (pending)
+
+**What was broken:** `runDataIntegrityChecks()` C6 computed raw `(now - asof) / 60000` with no
+future guard — a clock-skewed future `asof` read as trivially fresh and never opened a
+`data-integrity` incident.
+
+**Fix:** reuse `ageMin()` from `data-integrity-verifier.ts` (Infinity when beyond tolerance).
+
+**Check at the open:** `/admin` → data-integrity incidents should still fire on genuinely stale
+GEX matrices (>15m) during RTH; no false greens if a writer stamps a future `asof`.
+
 ### 0x. Flow WS cluster heartbeat future timestamp falsely fresh — fix/flow-liveness-future-guard (pending)
 
 **What was broken:** `isFlowFrameFreshFromCluster`, `isFlowFrameFreshAnywhere`, and
