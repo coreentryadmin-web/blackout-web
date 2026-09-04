@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:30:04.300Z",
+  "updated_at": "2026-09-04T17:32:23.023Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -210,6 +210,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
+    },
+    "pr-3657": {
+      "pr": 3657,
+      "head_sha": "5d3bdee89ec007fd8d4ef9617f0c4e09cbdcf787",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:32:23.022Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -226,9 +234,9 @@
   "deploy": {
     "last_main_sha": "be9f5473dc056cd15b96098fc145d3a92f8a5312",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T17:28:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33900754026",
-    "last_deploy_sha": "be9f5473dc056cd15b96098fc145d3a92f8a5312"
+    "last_deploy_at": "2026-09-04T17:30:40Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33900959005",
+    "last_deploy_sha": "8fce57a4f3b3741211723af3a156972a122921d2"
   },
   "open_prs": [],
   "events": [
@@ -1001,6 +1009,22 @@
       "agent": "cursor",
       "run_id": "6ed43136-121d-472e-bfeb-4eb3f62cc862",
       "summary": "PR-event cycle: peer-reviewed+released #3660/#3662/#3663/#3658; #3662+#3660+#3659+#3663+#3658 merged to main. validate:deploy GREEN. ops:collect 0. #3657 admin staleMs guard CI pending — approve when green."
+    },
+    {
+      "at": "2026-09-04T17:32:15.779Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:32:23.023Z",
+      "type": "pr_review",
+      "pr": 3657,
+      "head_sha": "5d3bdee89ec007fd8d4ef9617f0c4e09cbdcf787",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:32:23.022Z",
+      "safe_to_merge": true
     }
   ]
 }
