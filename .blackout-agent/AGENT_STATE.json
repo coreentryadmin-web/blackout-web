@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T11:20:50.708Z",
+  "updated_at": "2026-09-04T12:33:33.275Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -186,6 +186,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T10:33:34.705Z",
       "safe_to_merge": true
+    },
+    "pr-3572": {
+      "pr": 3572,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T12:33:28.858Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -200,11 +208,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0d367bde47b227c73f6e56abb5cc5dc80cf5e44f",
+    "last_main_sha": "3887bd8ef85cb7d6ff9ca277aa5bdfa419de5369",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T10:35:12Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33863935805",
-    "last_deploy_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01"
+    "last_deploy_at": "2026-09-04T12:06:34Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33871126902",
+    "last_deploy_sha": "f84aad3391ddaaeb7a2beb57f9a58e3b73643101"
   },
   "open_prs": [],
   "events": [
@@ -809,6 +817,35 @@
     },
     {
       "at": "2026-09-04T11:20:50.708Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:33:28.859Z",
+      "type": "pr_review",
+      "pr": 3572,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T12:33:28.858Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T12:33:29.777Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:33:29.777Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9356b28d-b057-42e6-a373-0fecdae6eed7",
+      "summary": "Reviewed PR #3572: MERGE — already merged to main (74d858bc5), docs-only duplicate-heading fix, CI green, no blockers. Stacked production fixes (#3564-#3571) in branch history were independently merged."
+    },
+    {
+      "at": "2026-09-04T12:33:33.275Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
