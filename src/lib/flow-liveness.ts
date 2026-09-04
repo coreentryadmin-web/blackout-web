@@ -77,7 +77,11 @@ export async function isFlowFrameFreshFromCluster(maxAgeMs = 120_000): Promise<b
     if (!record || typeof record.at !== "number") return false;
     // A heartbeat written by THIS process must not let it skip its own REST work.
     if (record.instance === INSTANCE_ID) return false;
-    return Date.now() - record.at <= maxAgeMs;
+    const ageMs = Date.now() - record.at;
+    // Future-dated heartbeat (clock skew) must not read as fresh — negative ageMs
+    // would always satisfy `<= maxAgeMs` and mask a dead flow tape.
+    if (ageMs < 0) return false;
+    return ageMs <= maxAgeMs;
   } catch {
     return false;
   }
@@ -105,7 +109,9 @@ export async function isFlowFrameFreshAnywhere(maxAgeMs = 120_000): Promise<bool
   try {
     const record = await sharedCacheGet<HeartbeatRecord>(HEARTBEAT_KEY);
     if (!record || typeof record.at !== "number") return false;
-    return Date.now() - record.at <= maxAgeMs;
+    const ageMs = Date.now() - record.at;
+    if (ageMs < 0) return false;
+    return ageMs <= maxAgeMs;
   } catch {
     return false;
   }
@@ -146,11 +152,12 @@ export async function peekFlowLivenessHeartbeat(maxAgeMs = 120_000): Promise<Flo
       return { heartbeat_present: false, last_frame_at: null, age_sec: null, fresh: false };
     }
     const ageMs = Date.now() - record.at;
+    const clampedAgeMs = Math.max(0, ageMs);
     return {
       heartbeat_present: true,
       last_frame_at: new Date(record.at).toISOString(),
-      age_sec: Math.max(0, Math.round(ageMs / 1000)),
-      fresh: ageMs <= maxAgeMs,
+      age_sec: Math.round(clampedAgeMs / 1000),
+      fresh: ageMs >= 0 && ageMs <= maxAgeMs,
     };
   } catch {
     return { heartbeat_present: false, last_frame_at: null, age_sec: null, fresh: false };
