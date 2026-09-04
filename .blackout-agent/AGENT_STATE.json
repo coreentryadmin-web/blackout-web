@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T12:47:52.458Z",
+  "updated_at": "2026-09-04T12:49:13.949Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,12 +68,12 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-04T12:37:51.605Z",
-      "lease_until": "2026-09-04T14:14:34.561Z",
+      "lease_until": "2026-09-04T14:18:42.470Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "8ed8ed99-efba-4548-a24b-cf77434266da",
+      "run_id": "37fbfbaf-9738-4c65-be53-a0bf7474ef04",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -117,12 +117,12 @@
       "task_id": "BO-TEST-0004",
       "owner": "cursor",
       "claimed_at": "2026-09-04T12:42:07.884Z",
-      "lease_until": "2026-09-04T14:14:34.561Z",
+      "lease_until": "2026-09-04T14:18:42.470Z",
       "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "8ed8ed99-efba-4548-a24b-cf77434266da"
+      "run_id": "37fbfbaf-9738-4c65-be53-a0bf7474ef04"
     }
   },
   "reviews": {
@@ -890,6 +890,43 @@
       "agent": "cursor",
       "run_id": "c5aba5cc-e19b-4730-bd71-12c9d5970042",
       "summary": "PR-event cycle: peer-reviewed fix/vector-universe-spot-guard locally (APPROVED pending GH API). validate:deploy GREEN. ops:collect 0. GitHub REST rate-limited (user 284440397)."
+    },
+    {
+      "at": "2026-09-04T12:48:38.194Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:48:42.469Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:48:43.137Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:48:43.861Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:49:13.948Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:49:13.949Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "20090314-6e4e-487b-a4b8-f2061aab2fd8",
+      "summary": "Cycle: #3583 opened (autopilot handoff draft). fix/vector-universe-spot-guard peer-reviewed locally APPROVED. Lifecycle GREEN (deploy/SEO/ops). GH API rate-limited — formal review deferred."
     }
   ]
 }
