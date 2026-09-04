@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:16:15.266Z",
+  "updated_at": "2026-09-04T17:13:54.602Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,15 +67,14 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T17:13:49.536Z",
+      "lease_until": "2026-09-04T18:43:49.536Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -210,6 +209,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
+    },
+    "pr-3639": {
+      "pr": 3639,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "CHANGES REQUESTED — largo-stress-run.mjs still imports deleted decompose.ts; repeat of #3203 regression",
+      "reviewed_at": "2026-09-04T17:13:49.825Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -219,16 +226,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T17:13:49.537Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "a7a04bef2a38c4eebffa69004732da98a558e8a1",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T17:09:36Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33899061329",
+    "last_deploy_sha": "96b405a8de2f25993dd4164e3530cb60564a8e07"
   },
   "open_prs": [],
   "events": [
@@ -985,6 +992,53 @@
     },
     {
       "at": "2026-09-04T16:16:15.266Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:12:32.113Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:12:32.746Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:13:49.537Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T17:13:49.825Z",
+      "type": "pr_review",
+      "pr": 3639,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "CHANGES REQUESTED — largo-stress-run.mjs still imports deleted decompose.ts; repeat of #3203 regression",
+      "reviewed_at": "2026-09-04T17:13:49.825Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-04T17:13:50.586Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:13:50.590Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d256674a-2c6d-4098-9908-7ea718a47684",
+      "summary": "Reviewed PR #3639: FIX REQUIRED — scripts/largo-stress-run.mjs breaks on merge (isCompoundQuestion import); CI green but does not run stress harness"
+    },
+    {
+      "at": "2026-09-04T17:13:54.602Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
