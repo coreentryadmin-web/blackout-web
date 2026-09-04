@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:19:14.963Z",
+  "updated_at": "2026-09-04T18:42:37.520Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T18:08:14.506Z",
+      "lease_until": "2026-09-04T19:38:14.506Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -234,6 +234,30 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3667": {
+      "pr": 3667,
+      "head_sha": "a41ca3e11dc0f3300a9de1a4ba80def4027f4b43",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:11:37.923Z",
+      "safe_to_merge": true
+    },
+    "pr-3664": {
+      "pr": 3664,
+      "head_sha": "95b65131326731143415a9f0b40fcfaae81720a1",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:11:40.545Z",
+      "safe_to_merge": true
+    },
+    "pr-3695": {
+      "pr": 3695,
+      "head_sha": "e4e6922e9d2b9b3408cfadc9c01bd049064f8253",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:30:25.790Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,11 +272,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "73e065b561f62c3a980b394fc0988bff5e140a34",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T18:34:02Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33906581445",
+    "last_deploy_sha": "827a3030ef91b4913c4055bc88d5f4dec94e8e8e"
   },
   "open_prs": [],
   "events": [
@@ -1052,6 +1076,61 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:11:37.924Z",
+      "type": "pr_review",
+      "pr": 3667,
+      "head_sha": "a41ca3e11dc0f3300a9de1a4ba80def4027f4b43",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:11:37.923Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:11:40.545Z",
+      "type": "pr_review",
+      "pr": 3664,
+      "head_sha": "95b65131326731143415a9f0b40fcfaae81720a1",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:11:40.545Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:11:50.486Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 12
+    },
+    {
+      "at": "2026-09-04T18:30:25.791Z",
+      "type": "pr_review",
+      "pr": 3695,
+      "head_sha": "e4e6922e9d2b9b3408cfadc9c01bd049064f8253",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:30:25.790Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:42:11.280Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T18:42:11.281Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e1c1322e-6f43-4189-a1d2-ae52f65928e2",
+      "summary": "Peer-reviewed #3664+#3667 (merged). Shipped #3707 full-site audit wall side-constraint fix (verify GREEN, squash merged). validate:deploy GREEN, ops:collect 0. Off-hours."
+    },
+    {
+      "at": "2026-09-04T18:42:37.520Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
