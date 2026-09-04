@@ -4,6 +4,15 @@
   "note": "Unclaimed, actionable, NOT-yet-in-progress work. Everything currently being worked is in AGENT_STATE.json's active_work instead. This queue is intentionally short right now — do not pad it with fabricated tickets to look busy (CLAUDE.md's own P2/P3 discipline: weak evidence -> don't change it). An empty actionable queue means enter DISCOVERY MODE (see README.md), it does not mean stop.",
   "queue": [
     {
+      "task_id": "BO-CURSOR-CROSSREVIEW-GAP",
+      "priority": "P3",
+      "title": "No live Claude<->Cursor cross-review has ever been exercised; cannot be closed from this sandbox",
+      "owner": null,
+      "phase": "NEW",
+      "evidence": "ListAgents from this session shows only this session itself (user-6d) and its own subagents -- no addressable Cursor session exists in this tool surface. Confirmed 2026-09-03/04 during the Autopilot acceptance-test re-verification.",
+      "action": "Requires an actual Cursor session (outside this sandbox's reach) to open or review a PR here and write scripts/agent-ops/heartbeat.mjs cursor. Not fixable autonomously from this session -- flagged rather than faked."
+    },
+    {
       "task_id": "BO-HOUSEKEEPING-FOLD",
       "priority": "P3",
       "title": "Fold docs/audit/findings-staging/*.md into docs/audit/FINDINGS.md",

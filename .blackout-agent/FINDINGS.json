@@ -4,6 +4,14 @@
   "note": "This is NOT a duplicate of docs/audit/FINDINGS.md (hundreds of historical entries, remains the source of truth for closed/historical findings) or docs/audit/findings-staging/ (per-finding staged files awaiting fold). This tracks ONLY findings currently mid-lifecycle, so a fresh session can see phase without grepping prose. Lifecycle: NEW -> REPRODUCED -> INVESTIGATING -> ROOT_CAUSED -> IMPLEMENTING -> TESTING -> PR_OPEN -> REVIEW -> APPROVED -> MERGED -> DEPLOYED -> PROD_VERIFY -> MONITORING -> CLOSED. Before filing a NEW finding here or in findings-staging, search both this file and docs/audit/FINDINGS.md's own headings/dates for the same issue.",
   "in_flight": [
     {
+      "finding_id": "BO-P3-GEXSNAP-ROUND",
+      "title": "Public /api/public/gex-snapshot served raw unrounded IEEE-754 floats (spot/change_pct)",
+      "lifecycle": "TESTING",
+      "pr": null,
+      "staged_file": "docs/audit/findings-staging/2026-09-03-public-gex-snapshot-unrounded-floats.md",
+      "history": "Found via a live BLACKOUT AUTOPILOT discovery pass (test #5 of the operator's acceptance checklist) -- claimed via claim-task.mjs, fixed with roundFloats(), regression test proven RED pre-fix / GREEN post-fix via git stash. This is the concrete end-to-end proof of the claim->work loop, not a simulated demo."
+    },
+    {
       "finding_id": "BO-P2-3425",
       "title": "0DTE G-19 top-band block incorrectly scoped globally across non-comparable BREAKOUT/PIN score scales",
       "lifecycle": "MERGED",

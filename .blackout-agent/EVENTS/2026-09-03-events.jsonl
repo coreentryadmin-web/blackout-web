@@ -3,3 +3,8 @@
 {"ts":"2026-09-03T23:32:18Z","agent":"claude","task_id":"BO-TEST-STALE-DEAD","event":"ACCEPTANCE_TEST","detail":"Test D positive case: expired lease_until + stale heartbeat (213min) -> reclaim correctly succeeded"}
 {"ts":"2026-09-03T23:33:25Z","agent":"claude","task_id":"BO-AUTOPILOT-0001","event":"LEASE_CLAIMED","detail":"claimed via claim-task.mjs, 120min lease"}
 {"ts":"2026-09-03T23:45:00Z","agent":"claude","task_id":"BO-AUTOPILOT-0001","event":"PR_OPENED","detail":"PR #3435 opened as draft"}
+{"ts":"2026-09-03T23:46:26Z","agent":"claude","task_id":"BO-TEST-COLLISION-2","event":"ACCEPTANCE_TEST","detail":"Re-ran Test C independently: cursor won this time (not claude), confirming OS-arbitrated not name-ordered"}
+{"ts":"2026-09-03T23:47:00Z","agent":"claude","task_id":"BO-P3-GEXSNAP-ROUND","event":"FOUND","detail":"Autonomous discovery pass: public gex-snapshot serves unrounded floats, verified real via code trace (Thermal route rounds via same fetchGexHeatmap, public snapshot did not)"}
+{"ts":"2026-09-03T23:47:05Z","agent":"claude","task_id":"BO-P3-GEXSNAP-ROUND","event":"LEASE_CLAIMED","detail":"claimed via claim-task.mjs, 60min lease"}
+{"ts":"2026-09-03T23:52:00Z","agent":"claude","task_id":"BO-P3-GEXSNAP-ROUND","event":"ROOT_CAUSED","detail":"buildSnapshotFromHeatmap copies heatmap fields with no roundFloats wrap, unlike gex-heatmap/route.ts"}
+{"ts":"2026-09-03T23:55:00Z","agent":"claude","task_id":"BO-P3-GEXSNAP-ROUND","event":"TESTING","detail":"regression test written, proven RED pre-fix / GREEN post-fix via git stash, tsc clean, full npm test running"}
