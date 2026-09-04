@@ -1,1 +1,10 @@
-{"updated_at":"2026-09-03T23:45:00.000Z","recent_merges":["#3425 G-18/G-19"]}
+{
+  "updated_at": "2026-09-04T01:03:39.545Z",
+  "recent_merges": ["#3436 autopilot", "#3438 gamma-snapshot rounding", "#3425 G-18/G-19"],
+  "last_session_replay": {
+    "session_date": "2026-09-03",
+    "plays": 6,
+    "win_rate_exec_pct": 66.7,
+    "avg_replay_exec_pnl_pct": 10.7
+  }
+}

@@ -1,31 +1,33 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-03T23:53:48.869Z",
+  "updated_at": "2026-09-04T01:03:39.545Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
       "owner": "cursor",
       "claimed_at": "2026-09-03T23:46:15.831Z",
       "lease_until": "2026-09-04T01:18:41.515Z",
-      "phase": "IMPLEMENTING",
+      "phase": "RELEASED",
       "branch": "cursor/blackout-autopilot",
       "pr": null,
       "reviewer": null,
       "run_id": "98d30e03-05b5-47ec-aafe-2818dd549761",
-      "title": "BLACKOUT Autopilot"
+      "title": "BLACKOUT Autopilot",
+      "released_at": "2026-09-04T01:03:35.098Z"
     },
     "BO-P1-0006": {
       "task_id": "BO-P1-0006",
       "owner": "cursor",
       "claimed_at": "2026-09-03T23:46:15.940Z",
       "lease_until": "2026-09-04T01:18:41.515Z",
-      "phase": "IMPLEMENTING",
+      "phase": "RELEASED",
       "branch": "cursor/blackout-autopilot",
       "pr": null,
       "reviewer": null,
       "run_id": "98d30e03-05b5-47ec-aafe-2818dd549761",
-      "title": "Autopilot hardening"
+      "title": "Autopilot hardening",
+      "released_at": "2026-09-04T01:03:35.190Z"
     },
     "BO-P1-0005": {
       "task_id": "BO-P1-0005",
@@ -38,6 +40,18 @@
       "reviewer": null,
       "run_id": null,
       "title": "Review Claude PR #3434"
+    },
+    "BO-P1-0004": {
+      "task_id": "BO-P1-0004",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T01:00:51.233Z",
+      "lease_until": "2026-09-04T02:33:21.027Z",
+      "phase": "IMPLEMENTING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "efe9d612-e653-431d-997d-1a7f899da2f9",
+      "title": null
     }
   },
   "reviews": {
@@ -48,6 +62,22 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-03T23:53:48.868Z",
       "safe_to_merge": true
+    },
+    "pr-3442": {
+      "pr": 3442,
+      "head_sha": "7e6966c6",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T01:03:35.278Z",
+      "safe_to_merge": true
+    },
+    "pr-3440": {
+      "pr": 3440,
+      "head_sha": "39b14a8f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — docs housekeeping only",
+      "reviewed_at": "2026-09-04T01:03:35.523Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -57,119 +87,18 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-03T23:53:48.680Z",
-      "current_task": "BO-P1-0005"
+      "last_seen": "2026-09-04T01:00:51.233Z",
+      "current_task": "BO-P1-0004"
     }
   },
   "deploy": {
-    "last_main_sha": "aa08b98d9ffdab369aa27030f999502edfc862dd",
+    "last_main_sha": "6c527fcdfd0be73ff9ab464eae8b76627568a42b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-03T23:32:56Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33817874895",
-    "last_deploy_sha": "f86613f5b0cd72d6971655f79d4ea5e440b0defa"
+    "last_deploy_at": "2026-09-04T01:03:18Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33824245234",
+    "last_deploy_sha": "927510713441218a8b48778ec786591dc21fc7b1"
   },
-  "open_prs": [
-    {
-      "number": 3437,
-      "title": "fix(nighthawk): stop closed 0DTE plays from re-appearing as live in the marks lane",
-      "branch": "claude/serene-wozniak-dvg5uu",
-      "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-03T23:47:02Z"
-    },
-    {
-      "number": 3436,
-      "title": "feat(autopilot): shared Claude/Cursor state machine + hardened continuous ops",
-      "branch": "cursor/blackout-autopilot",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-03T23:46:51Z"
-    },
-    {
-      "number": 3435,
-      "title": "feat(agent-ops): bootstrap BLACKOUT AUTOPILOT durable-state + lease/heartbeat/recovery system",
-      "branch": "fix/blackout-agent-autopilot",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-03T23:48:11Z"
-    },
-    {
-      "number": 3434,
-      "title": "fix(nighthawk): prune can never hard-delete a graded ledger row",
-      "branch": "claude/relaxed-archimedes-p1oq61",
-      "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:38:53Z"
-    },
-    {
-      "number": 3433,
-      "title": "fix(0dte): correct stale 15:30 time-stop references in code comments",
-      "branch": "claude/loving-goldberg-1va6dc",
-      "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:37:17Z"
-    },
-    {
-      "number": 3432,
-      "title": "docs(audit): verify 7-day money-back guarantee copy vs Whop enforcement",
-      "branch": "claude/zealous-faraday-7sxb0r",
-      "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:29:54Z"
-    },
-    {
-      "number": 3431,
-      "title": "fix(gex): matrix-deltas SSE feed served raw unrounded GEX floats",
-      "branch": "fix/gex-matrix-deltas-unrounded-floats",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:29:04Z"
-    },
-    {
-      "number": 3430,
-      "title": "fix(spx): treat deploy chunk 404s as transient in E2E harness",
-      "branch": "fix/spx-e2e-chunk-deploy-flake",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:25:52Z"
-    },
-    {
-      "number": 3428,
-      "title": "docs: helix-signal-outcomes writer now live — corrects CLAUDE.md's 2026-08-23 gap note",
-      "branch": "docs/helix-signal-outcomes-writer-now-live",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-03T23:18:53Z"
-    },
-    {
-      "number": 2810,
-      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
-      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
-      "author": "app/dependabot",
-      "agent": "human",
-      "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-01T19:54:25Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -285,6 +214,87 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-03T23:53:48.868Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T01:00:31.104Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:00:36.498Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:00:51.234Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0004",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T01:03:20.382Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:03:21.027Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:03:21.698Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:03:35.098Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0001",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T01:03:35.190Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0006",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T01:03:35.279Z",
+      "type": "pr_review",
+      "pr": 3442,
+      "head_sha": "7e6966c6",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T01:03:35.278Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T01:03:35.523Z",
+      "type": "pr_review",
+      "pr": 3440,
+      "head_sha": "39b14a8f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — docs housekeeping only",
+      "reviewed_at": "2026-09-04T01:03:35.523Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-04T01:03:39.544Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:03:39.545Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "87b3adc7-ceba-416a-8ee5-d19a224bbdfb",
+      "summary": "Recovered on main (autopilot #3436 merged). BO-P1-0004: 2026-09-03 session replay GREEN — 6 plays, 66.7% WR, +10.7% avg exec pnl; G-18/G-19 regression tests pass. Reviewed #3442 coaching age clamp (APPROVED, merge). Reviewed #3440 docs (APPROVED). Next: merge #3442, monitor #3439 cursor webhook PR for Claude review."
     }
   ]
 }
