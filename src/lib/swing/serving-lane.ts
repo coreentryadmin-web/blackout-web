@@ -37,6 +37,22 @@ import type { BangerPositionRow } from "../banger/positions-db";
 import { mergeBangerPositionsIntoSwingPlays } from "./banger-lane-merge";
 import { enrichSwingPlaysWithVectorLeaders, type VectorLeaderHint } from "./vector-lane-enrich";
 
+/** Add pre-entry banger WATCH rows when the ticker is not already live capital. */
+export function mergeBangerWatchPlays(
+  plays: readonly HorizonPlay[],
+  watch: readonly HorizonPlay[],
+): HorizonPlay[] {
+  if (watch.length === 0) return [...plays];
+  const liveTickers = new Set(
+    plays.filter((p) => p.liveStatus || p.status === "COMMIT").map((p) => p.ticker.toUpperCase()),
+  );
+  const additions = watch.filter((p) => !liveTickers.has(p.ticker.toUpperCase()));
+  if (additions.length === 0) return [...plays];
+  const existing = new Set(plays.map((p) => p.ticker.toUpperCase()));
+  const novel = additions.filter((p) => !existing.has(p.ticker.toUpperCase()));
+  return [...plays, ...novel];
+}
+
 /** What an injected discovery run must hand back: the scored dossiers + the SWING plays produced from them.
  *  (Matches the relevant slice of PR-11's `SwingDiscoveryResult` — `dossiers` + `playSet.SWING`.)
  *  Optional `readsByTicker` lets the persisted discover source ground setup maturity without a second
@@ -64,6 +80,8 @@ export interface SwingServingLaneDeps {
   fetchBangerPositions?: () => Promise<BangerPositionRow[]>;
   /** Recent Vector pick leaders — corroboration only (signalKinds), not a second ledger. */
   vectorLeaders?: VectorLeaderHint[];
+  /** Pre-entry banger WATCH rows from the post-close screen cache. */
+  bangerWatchPlays?: HorizonPlay[];
 }
 
 /** Index the scored dossiers by ticker (uppercased) so each play can find the thesis it was produced from. */
@@ -191,6 +209,7 @@ export async function getSwingServingLane(deps: SwingServingLaneDeps = {}): Prom
         merged = mergeBangerPositionsIntoSwingPlays(merged, bangerRows);
       }
       merged = enrichSwingPlaysWithVectorLeaders(merged, deps.vectorLeaders ?? []);
+      merged = mergeBangerWatchPlays(merged, deps.bangerWatchPlays ?? []);
       if (merged.length === 0) return emptySwingServingLane();
       return assembleSwingServingLane(merged);
     }
@@ -201,6 +220,7 @@ export async function getSwingServingLane(deps: SwingServingLaneDeps = {}): Prom
       merged = mergeBangerPositionsIntoSwingPlays(merged, bangerRows);
     }
     merged = enrichSwingPlaysWithVectorLeaders(merged, deps.vectorLeaders ?? []);
+    merged = mergeBangerWatchPlays(merged, deps.bangerWatchPlays ?? []);
     if (merged.length === 0) return emptySwingServingLane();
     return assembleSwingServingLane(merged);
   } catch {

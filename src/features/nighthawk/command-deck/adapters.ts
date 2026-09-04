@@ -11,6 +11,7 @@ import { factorsFromFlowQuality } from "@/lib/explain/trade-explanation";
 import type { SwingSetupState, SwingEntryState } from "@/lib/swing/taxonomy";
 import type { SwingServingSection } from "@/lib/swing/serving";
 import { executableFill, type TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
+import { occFromChainContract } from "@/lib/swing/occ-from-row";
 import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-render";
 import { thesisManagementOverlay } from "@/lib/zerodte/thesis-health";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
@@ -596,6 +597,8 @@ export interface HorizonDeckSource {
     expiry: string;
     dte: number;
     mid?: number | null;
+    bid?: number | null;
+    ask?: number | null;
     delta?: number | null;
     gamma?: number | null;
     theta?: number | null;
@@ -636,6 +639,10 @@ export interface HorizonDeckSource {
   livePnlPct?: number | null;
   peakPremium?: number | null;
   troughPremium?: number | null;
+  /** OCC for live marks overlay — when absent the adapter derives from contract legs. */
+  occ?: string | null;
+  /** ISO instant of the last manage-snapshot quote (live positions). */
+  markAsOf?: string | null;
 }
 
 /**
@@ -700,8 +707,20 @@ export function greeksFromContract(contract: HorizonDeckSource["contract"]): Dec
 export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
   const status = horizonDeckStatus(src);
   const entry = fin(src.entryPremium);
+  const bid = fin(src.contract.bid);
+  const ask = fin(src.contract.ask);
   const markMid = fin(src.contract.mid);
   const livePnl = fin(src.livePnlPct);
+  const exec = executableFill(bid, ask, entry);
+  const occ =
+    src.occ?.trim() ||
+    occFromChainContract({
+      ticker: src.ticker,
+      expiry: src.contract.expiry,
+      right: src.contract.right,
+      strike: src.contract.strike,
+    });
+  const occPrefixed = occ ? (occ.startsWith("O:") ? occ : `O:${occ}`) : null;
   const mgmt = managementFor("SCALE_OUT", status, status === "WATCH" || status === "SKIP" ? null : livePnl);
   const flagPx = fin(src.flagUnderlyingPx);
   const watchTrack = status === "WATCH" || status === "SKIP";
@@ -736,7 +755,12 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     recNote: src.reason || mgmt.recNote,
     entry,
     mark: markMid,
-    pnlPct: status === "WATCH" || status === "SKIP" ? null : livePnl,
+    pnlPct: status === "WATCH" || status === "SKIP" ? null : livePnl ?? exec.pnl_pct,
+    execMark: status === "WATCH" || status === "SKIP" ? null : exec.fill,
+    execPnlPct: status === "WATCH" || status === "SKIP" ? null : exec.pnl_pct,
+    occ: occPrefixed,
+    markAsOf: src.markAsOf ?? null,
+    markIsSync: src.markAsOf == null,
     trackPct,
     flagUnderlyingPx: flagPx,
     peak: peakDisplay,

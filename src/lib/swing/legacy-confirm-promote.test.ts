@@ -10,6 +10,7 @@ import {
   carriedContractExpiry,
   legacyPlayDirection,
   mergeLegacyPromotedSnapshot,
+  refreshCarriedLegacyPlay,
 } from "./legacy-confirm-promote.ts";
 import { HORIZONS } from "../horizons.ts";
 import { subLaneForDte } from "./taxonomy.ts";
@@ -345,4 +346,39 @@ test("carryLegacyPromotedIntoSnapshot DROPS an expired carry and keeps the fresh
     "an expired carried contract must not be served",
   );
   assert.equal(carried.watch.some((w) => w.ticker === "SKHY"), false);
+});
+
+test("refreshCarriedLegacyPlay recomputes DTE and merges a fresher organic quote", () => {
+  const carried = {
+    ticker: "NVDA",
+    direction: "LONG" as const,
+    horizon: "SWING" as const,
+    score: 70,
+    status: "WATCH" as const,
+    scoreFloor: 60,
+    reason: "NIGHT HAWK · 10DTE",
+    contract: {
+      strike: 100,
+      expiry: "2026-08-14",
+      right: "C" as const,
+      dte: 10,
+      mid: 6.44,
+      bid: 6.2,
+      ask: 6.6,
+      openInterest: 0,
+    },
+  };
+  const fresh = {
+    ...carried,
+    contract: { ...carried.contract, dte: 7, mid: 0.22, bid: 0.2, ask: 0.24 },
+  };
+  const refreshed = refreshCarriedLegacyPlay(
+    carried,
+    "2026-08-07",
+    new Map([["NVDA", fresh]]),
+  );
+  assert.ok(refreshed);
+  assert.equal(refreshed!.contract.dte, 7);
+  assert.equal(refreshed!.contract.mid, 0.22);
+  assert.match(refreshed!.reason ?? "", /7DTE/);
 });

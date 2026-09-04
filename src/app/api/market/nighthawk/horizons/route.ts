@@ -18,7 +18,9 @@ import { horizonBoardFromZeroDtePayload } from "@/lib/zerodte/horizon-board-from
 import { getSwingServingLane, discoverSwingFromPersisted, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
 import { fetchBangerBoardRows } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
+import { readBangerWatchSnapshot } from "@/lib/banger/watch-cache";
 import { fetchVectorPickLeaderRows } from "@/lib/vector/vector-pick-leaders-db";
+import { todayEt } from "@/lib/et-date";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { roundFloats } from "@/lib/round-floats";
@@ -80,6 +82,9 @@ export async function GET(req: NextRequest) {
       leaderKey: r.leader_key,
       peakPremiumPct: r.peak_premium_pct,
     }));
+    const bangerWatchSnap = isBangerEngineEnabled()
+      ? await readBangerWatchSnapshot(todayEt()).catch(() => null)
+      : null;
     const swingLane = await getSwingServingLane({
       discover: discoverSwingFromPersisted,
       fetchOpenPositions: () => fetchOpenSwingPositions().catch(() => []),
@@ -88,6 +93,7 @@ export async function GET(req: NextRequest) {
         ? () => fetchBangerBoardRows(80).catch(() => [])
         : undefined,
       vectorLeaders,
+      bangerWatchPlays: bangerWatchSnap?.plays ?? [],
       spotsByTicker: snap?.spotsByTicker,
     });
     // withLane, not a raw spread: `board` was assembled from the 0DTE payload alone, so its

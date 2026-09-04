@@ -10,6 +10,7 @@ import type { HorizonPlay } from "../horizon-plays";
 import { calendarDte } from "../horizon-fanout";
 import { HORIZONS } from "../horizons";
 import { subLaneForDte } from "./taxonomy";
+import type { BangerMover } from "../banger/discovery";
 
 const BANGER_SIGNAL = "BANGER";
 const LIVE_BANGER = new Set(["OPEN", "PARTIAL"]);
@@ -83,6 +84,57 @@ export function horizonPlayFromBangerPosition(row: BangerPositionRow, now = new 
     thesisNote: row.scale_out_reason ?? "Engine B scale-out — whole-market breakout",
     regime: "BREAKOUT · BANGER",
     factors: gainPct != null ? [{ label: "Discovery gain", points: Math.round(gainPct) }] : [],
+  };
+}
+
+/** Pre-entry banger screen → WATCH row (no ledger commit). */
+export function horizonPlayFromBangerWatch(
+  mover: BangerMover,
+  pick: {
+    strike: number;
+    expiry: string;
+    occ: string;
+    entryPremium: number;
+    bid?: number | null;
+    ask?: number | null;
+  },
+  sessionDay: string,
+): HorizonPlay | null {
+  const dte = calendarDte(sessionDay, pick.expiry);
+  if (!Number.isFinite(dte) || dte < HORIZONS.SWING.dteMin || dte > HORIZONS.SWING.dteMax) return null;
+  const gainPct = Math.round(mover.gain * 1000) / 10;
+  return {
+    ticker: mover.ticker.toUpperCase(),
+    direction: "LONG",
+    horizon: "SWING",
+    score: Math.min(99, Math.max(58, 58 + Math.round(gainPct / 3))),
+    status: "WATCH",
+    scoreFloor: HORIZONS.SWING.scoreFloor,
+    reason: `Banger screen +${gainPct}% · ${pick.strike}C ${pick.expiry}`,
+    contract: {
+      strike: pick.strike,
+      expiry: pick.expiry,
+      right: "C",
+      dte,
+      mid: pick.entryPremium,
+      bid: pick.bid ?? null,
+      ask: pick.ask ?? null,
+      delta: null,
+      gamma: null,
+      theta: null,
+      vega: null,
+      iv: null,
+      openInterest: null,
+    },
+    archetype: "BREAKOUT",
+    subLane: subLaneForDte(dte),
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    serving: "WATCH",
+    signalKinds: [BANGER_SIGNAL],
+    bucketGraduated: false,
+    regime: "BREAKOUT · BANGER",
+    factors: [{ label: "Discovery gain", points: Math.round(gainPct) }],
   };
 }
 
