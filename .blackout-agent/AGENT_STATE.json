@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T05:31:20.827Z",
+  "updated_at": "2026-09-04T06:57:40.469Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -161,11 +161,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f",
+    "last_main_sha": "c593449c1740c1494e2925df3e0d7b012f762d61",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T05:27:22Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33840544277",
-    "last_deploy_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f"
+    "last_deploy_at": "2026-09-04T06:57:16Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845611594",
+    "last_deploy_sha": "84b92b6b62ff5b6694c856016aa3e5b2d235b5ea"
   },
   "open_prs": [],
   "events": [
@@ -569,6 +569,25 @@
       "agent": "cursor",
       "run_id": "34cc062c-797a-4e80-8a83-6c9e90f11422",
       "summary": "Cycle complete: deploy GREEN @ 0b2ada333 (#3495). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours expected). Peer review: no substantive PRs (#2810 dependabot major skip). RTH lifecycle @ 09:00 ET Fri 2026-09-05. Agent state sync PR opening."
+    },
+    {
+      "at": "2026-09-04T06:57:37.536Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:57:37.537Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "68c2dd76-f180-4354-b103-f08d7bde43f4",
+      "summary": "Post-merge cycle: main @ c593449c1 (#3514). Deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours), SEO 22 PASS, RTH lifecycle GREEN. Peer review: 0 open PRs. Next RTH @ 09:00 ET Fri 2026-09-05."
+    },
+    {
+      "at": "2026-09-04T06:57:40.468Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
