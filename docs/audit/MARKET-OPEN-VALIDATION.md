@@ -2134,3 +2134,9 @@ than an end-of-session patch.
 - **What changed:** Wrap the SSE payload in `roundFloats()` before `JSON.stringify` in `pulse/stream/route.ts`.
 - **RTH check:** Open SPX desk with pulse stream connected (Network tab → EventStream on `/api/market/spx/pulse/stream`); confirm `spx.price` and tide `net`/`call_premium` values are 2dp-clean with no IEEE tails during RTH ticks.
 
+### 25. HELIX flows SSE stream — unrounded IEEE floats on wire — fix/flows-stream-round-floats — 2026-09-04
+
+- **What was broken:** `/api/market/flows/stream` SSE events serialized raw flow/GEX enrichment numbers without `roundFloats`, so members on the live HELIX/Vector tape could see IEEE tails while REST `/flows` was already rounded.
+- **What changed:** Wrap the SSE payload in `roundFloats()` before `JSON.stringify` in `flows/stream/route.ts`.
+- **RTH check:** Open `/flows` or Vector with live stream connected (Network tab → EventStream on `/api/market/flows/stream`); confirm `premium`, `strike`, and GEX level fields are 2dp-clean with no IEEE tails during RTH flow prints.
+
