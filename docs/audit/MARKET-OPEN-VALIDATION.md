@@ -2157,3 +2157,9 @@ than an end-of-session patch.
 - **What changed:** Wrap the SSE payload in `roundFloats()` before `JSON.stringify` in `flows/stream/route.ts`.
 - **RTH check:** Open `/flows` with live stream connected (Network tab → EventStream on `/api/market/flows/stream`); confirm `premium`, `strike`, and GEX enrichment numbers are 2dp-clean with no IEEE tails on incoming flow events during RTH.
 
+### 26. Vector contract-picks/live + play-bie — unrounded floats at API boundary — fix/vector-live-picks-bie-roundfloats — 2026-09-04
+
+- **What was broken:** `POST /api/market/vector/contract-picks/live` (live bid/ask/mid/greeks on pick monitor) and `POST /api/market/vector/play-bie` (`favPct` historical rate) returned raw IEEE floats while sibling Vector reads already call `roundFloats`.
+- **What changed:** Wrap both success responses in `roundFloats(...)`; add `favPct: 4` to `VECTOR_FRACTION_DP`.
+- **RTH check:** On Vector with an active play, open pick live monitor — confirm option marks are 2dp-clean; BIE evidence line shows a non-zero historical rate when `favPct` is small (e.g. 0.4% not 0.00%).
+
