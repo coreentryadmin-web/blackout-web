@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T06:51:56.380Z",
+  "updated_at": "2026-09-04T08:21:58.828Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -146,6 +146,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3535": {
+      "pr": 3535,
+      "head_sha": "42ef1d07b33f3a44092e98f553e91c5fc5e21894",
+      "reviewer": "cursor",
+      "verdict": "CHANGES REQUESTED — WAIT: draft PR + verify CI pending at HEAD 42ef1d07b33f; content OK once gates clear",
+      "reviewed_at": "2026-09-04T08:21:54.237Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -160,13 +168,54 @@
     }
   },
   "deploy": {
-    "last_main_sha": "c593449c1740c1494e2925df3e0d7b012f762d61",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T06:44:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845611594",
-    "last_deploy_sha": "84b92b6b62ff5b6694c856016aa3e5b2d235b5ea"
+    "last_main_sha": "f4d1f5ebb43afe757e44157533c293635dd2ee18",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-09-04T08:01:59Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
+    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3535,
+      "title": "chore(autopilot): cursor handoff — #3528 peer review APPROVED, audits GREEN off-hours",
+      "branch": "chore/autopilot-handoff-20260904-0813",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T08:21:54Z"
+    },
+    {
+      "number": 3534,
+      "title": "chore(autopilot): cursor handoff — closed stale PRs, lifecycle GREEN",
+      "branch": "cursor/autopilot-handoff-20260904-0813",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T08:21:01Z"
+    },
+    {
+      "number": 3533,
+      "title": "chore(autopilot): resolve state-sync conflict pile (10 stuck PRs → 1)",
+      "branch": "chore/autopilot-state-sync-resolve-conflicts-20260904",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T08:21:20Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T08:21:07Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -623,6 +672,40 @@
       "agent": "cursor",
       "run_id": "74071da3-3245-480e-8fa8-41cd469246b7",
       "summary": "Post-merge cycle: main@c593449c1, deploy pending@84b92b6b (#3511). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours). Open PRs: 0. Peer review queue empty. RTH lifecycle Fri 09:00 ET."
+    },
+    {
+      "at": "2026-09-04T08:21:19.662Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-04T08:21:20.917Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-04T08:21:21.972Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-04T08:21:54.237Z",
+      "type": "pr_review",
+      "pr": 3535,
+      "head_sha": "42ef1d07b33f3a44092e98f553e91c5fc5e21894",
+      "reviewer": "cursor",
+      "verdict": "CHANGES REQUESTED — WAIT: draft PR + verify CI pending at HEAD 42ef1d07b33f; content OK once gates clear",
+      "reviewed_at": "2026-09-04T08:21:54.237Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-04T08:21:58.828Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ]
 }
