@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:43:40.083Z",
+  "updated_at": "2026-09-04T08:53:24.954Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T08:26:03.906Z",
+      "lease_until": "2026-09-04T10:07:10.289Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "4254d042-6974-4f15-892c-db7935caaa4e",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -172,11 +172,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
+    "last_main_sha": "009c82015acdfca9fbf30102dc702b5013bdcf30",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T07:20:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
-    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
+    "last_deploy_at": "2026-09-04T08:42:38Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33854737528",
+    "last_deploy_sha": "009c82015acdfca9fbf30102dc702b5013bdcf30"
   },
   "open_prs": [],
   "events": [
@@ -672,6 +672,50 @@
       "agent": "cursor",
       "run_id": "bdccad63-d885-46ad-bc02-3362ea4704ec",
       "summary": "Cycle: merged main @ 14c5d815d verified GREEN. Opened #3531 agent state sync (draft, awaiting CI+peer). ECR 33848248248 still in_progress 22m+ (deploy-smoke passed). SEO 22 PASS. Site-latency 3 warm FAILs deferred to RTH. GitHub API rate-limited — peer review of #3531 for Claude."
+    },
+    {
+      "at": "2026-09-04T08:52:46.358Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:52:46.358Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9c82985f-68b0-4561-8a2f-cae695e6b250",
+      "summary": "Peer-reviewed and merged #3536 (meridian timeline EM overlay fix) + #3533 (agent state sync). validate:deploy GREEN, ops:collect 0, platform-integrity 3 pass/4 warn off-hours. GitHub PAT rate-limited early cycle; REST merge succeeded after verify green."
+    },
+    {
+      "at": "2026-09-04T08:53:04.118Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:53:15.361Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:53:21.168Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:53:24.953Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:53:24.954Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "0a9cc0c0-22c1-423c-9584-362f20d92192",
+      "summary": "Cycle complete: merged #3536+#3533, closed stale drafts #3534/#3535. open_prs"
     }
   ]
 }
