@@ -56,15 +56,15 @@ test("buildSpotFrame: includes only tickers with a live candle, omits the rest",
   assert.equal(frame.ts, atMs + 500);
 });
 
-test("buildSpotFrame: carries changePct through from the store", () => {
+test("buildSpotFrame: omits changePct until REST anchor is authoritative", () => {
   _resetStockCandleStoreForTest();
   const atMs = Date.parse("2026-07-15T14:31:00.000Z");
   recordStockTick("NVDA", 140, undefined, atMs);
   recordStockTick("NVDA", 147, undefined, atMs + 5_000);
 
   const frame = buildSpotFrame(["NVDA"]);
-  // No REST anchor (stubbed null) — ws-bar fallback anchors off the first tick's open (140).
-  assert.equal(frame.quotes.NVDA.changePct, Number((((147 - 140) / 140) * 100).toFixed(2)));
+  assert.equal(frame.quotes.NVDA.price, 147);
+  assert.equal(frame.quotes.NVDA.changePct, null);
 });
 
 test("encodeSpotFrame: produces a well-formed SSE data line", () => {

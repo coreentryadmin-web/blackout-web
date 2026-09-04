@@ -50,7 +50,8 @@ export type SpotFrame = { type: "quotes"; quotes: Record<string, SpotQuote>; ts:
  * source of truth for WS-fed spot prices — see quote/route.ts). A ticker
  * with no live candle yet (freshly demanded, REST seed still in flight, or
  * genuinely untraded) is simply omitted from `quotes` for this frame; the
- * client keeps its last-known value until the ticker appears.
+ * client keeps its last-known value until the ticker appears. changePct is
+ * null until the store's openSource is "rest" (prior-close anchor landed).
  */
 export function buildSpotFrame(tickers: string[], now: number = Date.now()): SpotFrame {
   const quotes: Record<string, SpotQuote> = {};

@@ -25,10 +25,14 @@ export type StockCandle = {
   volume?: number;
 };
 
-type CandleSnapshot = {
+export type StockOpenSource = "rest" | "ws-bar" | "";
+
+export type CandleSnapshot = {
   current: StockCandle | null;
   updatedAt: number;
+  /** Null until openSource === "rest" (true prior-close anchor). ws-bar is provisional only. */
   changePct: number | null;
+  openSource?: StockOpenSource;
 };
 
 type TickerState = {
@@ -94,6 +98,20 @@ function getOrCreateState(ticker: string): TickerState {
 export function computeChangePct(close: number, sessionOpen: number): number | null {
   if (!(sessionOpen > 0)) return null;
   return Number((((close - sessionOpen) / sessionOpen) * 100).toFixed(2));
+}
+
+/**
+ * Day-change % is only member-facing when anchored to an authoritative prior close
+ * (openSource === "rest"). A ws-bar anchor measures from the first bar seen at boot —
+ * wrong on a mid-session reconnect — same guard as indexStore / spx-desk FIX-A.
+ */
+export function authoritativeStockChangePct(
+  close: number,
+  sessionOpen: number,
+  openSource: StockOpenSource
+): number | null {
+  if (openSource !== "rest" || !(sessionOpen > 0) || !(close > 0)) return null;
+  return computeChangePct(close, sessionOpen);
 }
 
 /**
@@ -197,7 +215,7 @@ export function recordStockTick(ticker: string, price: number, volume?: number, 
   }
   s.updatedAt = Date.now();
 
-  const changePct = computeChangePct(s.current.close, s.sessionOpen);
+  const changePct = authoritativeStockChangePct(s.current.close, s.sessionOpen, s.openSource);
 
   // On-demand Redis write: only push to Redis for tickers someone is actively
   // reading (getStockLiveCandle sets demanded=true). With A.* we get ~8K tickers;
@@ -207,7 +225,12 @@ export function recordStockTick(ticker: string, price: number, volume?: number, 
     s.lastRedisWriteAt = s.updatedAt;
     void sharedCacheSet(
       redisKey(sym),
-      { current: s.current, updatedAt: s.updatedAt, changePct } satisfies CandleSnapshot,
+      {
+        current: s.current,
+        updatedAt: s.updatedAt,
+        changePct,
+        openSource: s.openSource,
+      } satisfies CandleSnapshot,
       REDIS_TTL_SEC,
     ).catch(() => {});
   }
@@ -253,7 +276,12 @@ export function getStockLiveCandle(ticker: string): CandleSnapshot {
   //    follower's own (permanently-null) sessionOpen is never read by anything.
   if (s.current) seedSessionOpenIfNeeded(sym, s);
   const local: CandleSnapshot | null = s.current
-    ? { current: s.current, updatedAt: s.updatedAt, changePct: computeChangePct(s.current.close, s.sessionOpen) }
+    ? {
+        current: s.current,
+        updatedAt: s.updatedAt,
+        changePct: authoritativeStockChangePct(s.current.close, s.sessionOpen, s.openSource),
+        openSource: s.openSource,
+      }
     : null;
 
   const localFresh = local != null && isWsUpdatedAtFresh(local.updatedAt, LOCAL_STALE_MS);
@@ -269,7 +297,12 @@ export function getStockLiveCandle(ticker: string): CandleSnapshot {
   if (!isWsUpdatedAtFresh(best.updatedAt, MAX_CANDLE_AGE_MS)) {
     return { current: null, updatedAt: best.updatedAt, changePct: null };
   }
-  return best;
+  const src = best.openSource ?? "";
+  const changePct =
+    src === "rest" && best.changePct != null && Number.isFinite(best.changePct)
+      ? best.changePct
+      : null;
+  return { current: best.current, updatedAt: best.updatedAt, changePct, openSource: src };
 }
 
 /**
