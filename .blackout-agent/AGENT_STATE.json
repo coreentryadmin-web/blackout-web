@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:50:17.454Z",
+  "updated_at": "2026-09-04T16:54:01.179Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -224,11 +224,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "ea41ce5b60f6a71130e77bacbcba14e6e1e69c8e",
+    "last_main_sha": "a47775a1538e517fff2a06613bf86ddd7fc3ef6f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T16:48:09Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33897150630",
-    "last_deploy_sha": "da4144fd77b9ad4cf2989226318dc8909f5aa34b"
+    "last_deploy_at": "2026-09-04T16:53:46Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33897647301",
+    "last_deploy_sha": "a47775a1538e517fff2a06613bf86ddd7fc3ef6f"
   },
   "open_prs": [],
   "events": [
@@ -1001,6 +1001,19 @@
       "agent": "cursor",
       "run_id": "438e6cd2-d28f-4e92-9067-53d67e72fa8a",
       "summary": "Cycle: merged #3627/#3633/#3639. #3647 (trim_scale stop) + others pending CI review."
+    },
+    {
+      "at": "2026-09-04T16:54:01.179Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:54:01.179Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a76272d6-a8c6-4f35-af29-04895c75699f",
+      "summary": "Session: merged #3627/#3633/#3639/#3647. validate:deploy GREEN. #3634 needs Claude."
     }
   ]
 }
