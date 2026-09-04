@@ -112,6 +112,15 @@ jobs:
           # GITHUB_TOKEN merges are invisible to push-triggered workflows, see note above.
           GH_TOKEN: ${{ secrets.AGENT_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          gh pr merge --auto --squash \
+          set +e
+          out=$(gh pr merge --auto --squash \
             "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}"
+            --repo "${{ github.repository }}" 2>&1)
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            echo "$out"
+            echo "::warning::Auto-merge not enabled (token may lack enablePullRequestAutoMerge). Merge manually once verify is green."
+            exit 0
+          fi
+          echo "$out"
