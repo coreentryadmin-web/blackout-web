@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T06:43:53.851Z",
+  "updated_at": "2026-09-04T06:45:51.877Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -179,9 +179,9 @@
   "deploy": {
     "last_main_sha": "853bee81cd6ca98d0b4e81a9daf89a67defab8a8",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T06:40:43Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845362473",
-    "last_deploy_sha": "448f8a3188f84b9878e7ad9e13876e72e484da7f"
+    "last_deploy_at": "2026-09-04T06:44:16Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845611594",
+    "last_deploy_sha": "84b92b6b62ff5b6694c856016aa3e5b2d235b5ea"
   },
   "open_prs": [],
   "events": [
@@ -618,6 +618,19 @@
       "agent": "cursor",
       "run_id": "220a9045-287d-427b-8a62-fad3f35fe363",
       "summary": "Peer review cycle: APPROVED #3512 (merged cache-warm fix), #3511 (largo freshness, draft pending release), #3506 merged. validate:deploy GREEN, ops:collect 0. GitHub API rate-limited for undraft — posted approval comments."
+    },
+    {
+      "at": "2026-09-04T06:45:51.876Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:45:51.877Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "672b4772-c6fa-454c-b997-91a94c78df27",
+      "summary": "Cycle: merged #3512+#3506 via peer review. #3511 APPROVED but draft (rate limit until ~07:14 UTC). Handoff PR #3517. validate:deploy GREEN, ops:collect 0. Next: undraft #3511, review #3514 (docs)."
     }
   ]
 }
