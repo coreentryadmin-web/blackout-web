@@ -35,6 +35,10 @@ describe("validate-platform-integrity tier gates", () => {
 });
 
 describe("validate-platform-integrity vector walls", () => {
+  it("skips when tier-gated", () => {
+    assert.equal(vectorWallsStatus(401, 0, 0), "SKIP");
+  });
+
   it("passes when both wall arrays are populated", () => {
     assert.equal(vectorWallsStatus(200, 20, 20), "PASS");
   });
