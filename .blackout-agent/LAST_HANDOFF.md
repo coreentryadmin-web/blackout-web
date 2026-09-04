@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T14:26:15.048Z
-**Run:** 2372e2ff-be26-4f14-89a5-d18fdba6795a
+**At:** 2026-09-04T14:28:44.131Z
+**Run:** c5b4e2b3-8ae0-4e55-bfbd-3b6691d4a536
 
 ## Summary
 
-Cycle complete: #3594 merged (SPX cross-tool harness). RTH lifecycle GREEN (deploy/api-auth/platform-integrity/seo/rth-open). ops:collect 0. Open: #3595 cursor/platform-bug-sweep (draft, Claude peer-review), #3598 agent state (draft). ECR deploy queue: 76160edc rolling, c946460d pending. validate:deploy GREEN.
+RTH lifecycle GREEN (10:30 ET Fri): ops:collect(0), validate:deploy, api-auth(223 routes), platform-integrity(0 fail), seo(22/22), rth-open, rth-four-engines GREEN. Counterfactual ran — insufficient graded G-18/G-19 data. 3 open cursor draft PRs (#3595/#3596/#3598) pending verify — await Claude peer review. main@c293cb8ac. Deploy drift: last_deploy_sha c946460 behind main. Peer Claude stale since 11:20 UTC.
 
 ## Deploy
 
@@ -14,4 +14,6 @@ Cycle complete: #3594 merged (SPX cross-tool harness). RTH lifecycle GREEN (depl
 
 ## Open PRs
 
-_none_
+- #3595 fix(platform) bug sweep batch 2 (draft, verify pending)
+- #3596 chore(autopilot) handoff (draft, verify pending)
+- #3598 chore(autopilot) handoff after #3594 (draft, verify pending)
