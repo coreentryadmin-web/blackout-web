@@ -257,12 +257,15 @@ test("G-3: BREAKOUT at score 65 clears unified floor; G-17 blocks solo rail belo
 });
 
 
-test("G-15 removed: ONE_DTE commits (Monday equity starvation fix)", () => {
+test("G-15: ONE_DTE commits; WEEKLY_FALLBACK blocked at gate (not ghost COMMIT)", () => {
   const one = evaluateZeroDteGates(input({ contractHorizon: "ONE_DTE" }));
   assert.equal(one.verdict, "COMMIT", "ONE_DTE is a same-day horizon and must commit");
-  assert.ok(!one.blocks.some((b) => b.code === "not_zero_dte"));
+  assert.ok(!one.blocks.some((b) => b.code === "horizon_weekly_fallback"));
   assert.equal(evaluateZeroDteGates(input({ contractHorizon: "ZERO_DTE" })).verdict, "COMMIT");
   assert.equal(evaluateZeroDteGates(input({})).verdict, "COMMIT", "absent horizon = no-op (legacy)");
+  const weekly = evaluateZeroDteGates(input({ contractHorizon: "WEEKLY_FALLBACK" }));
+  assert.equal(weekly.verdict, "BLOCKED");
+  assert.ok(weekly.blocks.some((b) => b.code === "horizon_weekly_fallback"));
 });
 
 test("G-14: condor at 15:15 is NOT blocked (condors benefit from late-session theta)", () => {
