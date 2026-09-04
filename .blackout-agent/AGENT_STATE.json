@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:52:08.396Z",
+  "updated_at": "2026-09-04T21:25:32.808Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -248,13 +248,74 @@
     }
   },
   "deploy": {
-    "last_main_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75",
+    "last_main_sha": "c561d7a8251cdeab7909de0069784dc1e4534415",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:42:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
-    "last_deploy_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75"
+    "last_deploy_at": "2026-09-04T21:22:20Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33920780346",
+    "last_deploy_sha": "c561d7a8251cdeab7909de0069784dc1e4534415"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3761,
+      "title": "feat(swing-command): unify Swings + Bangers + Vector into 3-tab Night Hawk desk",
+      "branch": "cursor/hourly-autonomous-wake",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T21:25:11Z"
+    },
+    {
+      "number": 3760,
+      "title": "fix(ws): guard LULD halt freshness against future timestamps",
+      "branch": "fix/luld-halt-future-timestamp-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T21:24:26Z"
+    },
+    {
+      "number": 3759,
+      "title": "fix(observability): log UW rate limiter queue wait when it crosses 500ms",
+      "branch": "fix/uw-rate-limiter-queue-wait-observability",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T21:24:28Z"
+    },
+    {
+      "number": 3758,
+      "title": "fix(spx): reject future desk timestamps in playbook data quality",
+      "branch": "fix/playbook-data-quality-future-timestamp",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T21:24:30Z"
+    },
+    {
+      "number": 3757,
+      "title": "fix(vector): guard GEX walls spot constraint + defer WS until spot seeded",
+      "branch": "fix/vector-snapshot-spot-constraint",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T21:24:52Z"
+    },
+    {
+      "number": 3756,
+      "title": "fix(vector): roundFloats on contract-picks/live + play-bie routes",
+      "branch": "fix/vector-live-picks-bie-roundfloats",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T21:25:09Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1071,6 +1132,135 @@
       "agent": "cursor",
       "run_id": "01ba5e3e-d264-48b8-b6f9-953c859c62cd",
       "summary": "Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty."
+    },
+    {
+      "at": "2026-09-04T21:25:15.836Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-04T21:25:15.837Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "fff2ad2f-d15c-4845-9109-29f29b65da2e",
+      "summary": "Reviewed PR #3754: MERGE — already merged at c561d7a82, green CI, roundFloats SSE boundary fix approved"
+    },
+    {
+      "at": "2026-09-04T21:25:19.241Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-04T21:25:20.961Z",
+      "type": "pr_webhook",
+      "pr": 3761,
+      "event": "sweep",
+      "head": "a102db9df65b58797272b8636aa329ee2060987f",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T21:25:23.344Z",
+      "type": "pr_webhook",
+      "pr": 3760,
+      "event": "sweep",
+      "head": "4489f5e11d396634cacf0f179541cad5e3ededf1",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T21:25:25.603Z",
+      "type": "pr_webhook",
+      "pr": 3759,
+      "event": "sweep",
+      "head": "80c4d1b68f0dba461f3779e131481b08832a22d9",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T21:25:27.613Z",
+      "type": "pr_webhook",
+      "pr": 3758,
+      "event": "sweep",
+      "head": "38eed18462b0a9ceaee19808128acbab92b01243",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T21:25:30.138Z",
+      "type": "pr_webhook",
+      "pr": 3757,
+      "event": "sweep",
+      "head": "da241116400760819045d58012675a796cd3f0ca",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T21:25:32.808Z",
+      "type": "pr_webhook",
+      "pr": 3756,
+      "event": "sweep",
+      "head": "a24777de59f1cbd4fcf1212d30e3b66778fa8a23",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3761": {
+      "last_event": "sweep",
+      "last_head": "a102db9df65b58797272b8636aa329ee2060987f",
+      "last_feedback_at": "2026-09-04T21:25:20.961Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3760": {
+      "last_event": "sweep",
+      "last_head": "4489f5e11d396634cacf0f179541cad5e3ededf1",
+      "last_feedback_at": "2026-09-04T21:25:23.344Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3759": {
+      "last_event": "sweep",
+      "last_head": "80c4d1b68f0dba461f3779e131481b08832a22d9",
+      "last_feedback_at": "2026-09-04T21:25:25.603Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3758": {
+      "last_event": "sweep",
+      "last_head": "38eed18462b0a9ceaee19808128acbab92b01243",
+      "last_feedback_at": "2026-09-04T21:25:27.613Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3757": {
+      "last_event": "sweep",
+      "last_head": "da241116400760819045d58012675a796cd3f0ca",
+      "last_feedback_at": "2026-09-04T21:25:30.138Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3756": {
+      "last_event": "sweep",
+      "last_head": "a24777de59f1cbd4fcf1212d30e3b66778fa8a23",
+      "last_feedback_at": "2026-09-04T21:25:32.808Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }
