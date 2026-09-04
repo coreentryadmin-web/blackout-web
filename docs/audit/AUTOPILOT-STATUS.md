@@ -167,14 +167,24 @@ just used correctly on a real item. What's NOT done: the hundreds of historical 
 `docs/audit/FINDINGS.md` have not been retroactively tagged with a lifecycle state — out of scope
 for this pass, flagged rather than silently skipped.
 
-## 10. PR / review model
+## 10. PR / review model — UPDATED, real evidence arrived mid-report
 
-Schema supports it (`reviewer` field on every `AGENT_STATE.json` entry, `DECISIONS.md`/`README.md`
-state the "any commit after approval invalidates prior approval" rule matches `CLAUDE.md`'s
-existing "a merge is not a verification" / re-check-against-current-head discipline). **No actual
-Claude↔Cursor cross-review has been exercised** — this session cannot invoke a real Cursor session
-to test it. **Honest verdict: PARTIAL** (schema-ready, integration-tested only for the
-human/CI-review path that already existed, not for agent-to-agent review).
+Originally marked PARTIAL here ("no actual Claude↔Cursor cross-review has been exercised — this
+session cannot invoke a real Cursor session to test it"). That changed within the hour, for real,
+not staged: Cursor independently opened PR #3436 (`cursor/blackout-autopilot`) building a
+competing `.blackout-agent/` — a genuine collision, documented in `DECISIONS.md`. Its own
+`AGENT_STATE.json` shows `reviews.pr-3434: {reviewer: "cursor", verdict: "APPROVED — safe to
+merge", pr: 3434}` — Cursor reviewing a real Claude PR. This session then reviewed Cursor's #3436
+directly: https://github.com/coreentryadmin-web/blackout-web/pull/3436#issuecomment-5533797276 —
+a substantive review, not a rubber stamp, that found a real bug (`claimLock` in
+`scripts/blackout-agent/lib/locks.mjs` reclaims on `lease_until` expiry alone with no heartbeat
+check, violating the operator's own explicit "verify heartbeat before reclaiming" requirement) plus
+flagged an open CodeQL high-severity alert as a merge blocker.
+
+**Honest verdict: PASS, both directions, with real evidence** — Claude→Cursor (#3434) and
+Cursor→Claude (#3436) both actually happened. What's still open is not "does cross-review work" but
+whether the two competing `.blackout-agent/` implementations consolidate — tracked as
+`BO-CONSOLIDATE-AUTOPILOT` in `WORK_QUEUE.json`, not a review-mechanism gap.
 
 ## 11. Cursor readiness
 
@@ -221,8 +231,8 @@ This is not hypothetical — §2's fresh subagent read exactly this and correctl
 | Stale-session recovery | **PASS** | §5 — both refuse/reclaim branches proven live |
 | Autonomous work discovery | **PASS** | §8 — pre-existing trigger + demonstrated session behavior |
 | Finding lifecycle | **PARTIAL** | §9 — vocabulary + dedup real; historical corpus untagged |
-| Claude→Cursor review readiness | **PARTIAL** | §10 — schema-ready, never exercised live |
-| Cursor→Claude review readiness | **PARTIAL** | §10 — same |
+| Claude→Cursor review readiness | **PASS** | §10 — Cursor's own AGENT_STATE.json shows it reviewed real Claude PR #3434, verdict APPROVED |
+| Cursor→Claude review readiness | **PASS** | §10 — this session reviewed Cursor's PR #3436 live, found a real bug (heartbeat-gate gap) |
 | Scheduler configured | **PASS** | §6 — `list_triggers`, dozens of live Routines |
 | Scheduler can actually invoke Claude | **PASS** | §6 — empirically true across this session's history |
 | Successful scheduled invocation (of THIS new state) | **NOT YET VERIFIED** | §7 — no trigger has fired since these files were created |
@@ -239,18 +249,20 @@ This is not hypothetical — §2's fresh subagent read exactly this and correctl
 3. **No scheduled fire has exercised the new state yet.** Not fixable synchronously — it requires
    waiting for the next real trigger fire. Check `EVENTS/` and `HEARTBEAT/claude.json` after the
    next `:15` or top-of-hour fire to close this out.
-4. **Cross-agent review is unexercised.** Requires an actual second Cursor PR or Cursor reviewing
-   an actual Claude PR to prove — recommend the first real integration test be exactly that: open
-   this bootstrap's own PR, and have a real Cursor session review it.
+4. ~~Cross-agent review is unexercised.~~ **RESOLVED, for real, mid-report** — see updated §10.
+   Cursor independently opened PR #3436 (its own competing `.blackout-agent/`, a genuine collision
+   — see `DECISIONS.md`) whose own state shows it reviewed real Claude PR #3434; this session then
+   reviewed Cursor's #3436 live and found a real bug. Both directions proven with primary evidence,
+   not staged.
 
-## Verdict
+## Verdict — UPDATED after the real Cursor collision
 
-**NOT READY FOR CURSOR** — specifically because §11's three missing items (no real Cursor
-invocation has ever touched this, no event-driven review wiring, `HEARTBEAT/cursor.json` still a
-placeholder) are integration gaps only a real Cursor invocation can close, not something provable
-from this sandbox. Structurally ready (files, scripts, rules pointer all in place); operationally
-unverified for Cursor specifically. Recommendation: give Cursor the integration prompt now — the
-first real Cursor session against this repo IS test B/F, there's no further sandbox-side work that
-can substitute for it — but expect this document's Cursor-related rows to move from PARTIAL/FAIL to
-PASS only after that session actually runs `heartbeat.mjs cursor` and this file is updated with its
-real output, not before.
+**Cursor has already integrated — on its own, independently, before this document could even
+recommend it.** PR #3436 is real evidence Cursor is already running its own version of this
+system against this same repo. That flips several rows above from PARTIAL/FAIL to PASS with real
+evidence rather than a sandbox limitation. What remains is not "is Cursor ready" — it already
+showed up — but **`BO-CONSOLIDATE-AUTOPILOT`**: two independently-built, file-path-colliding
+control planes need to converge on one, and Cursor's has one real correctness bug (no
+heartbeat-check before reclaiming an expired lease) that needs fixing first. Recommendation:
+resolve that consolidation (tracked in `WORK_QUEUE.json`), not "give Cursor an integration prompt"
+— it doesn't need one, it already started.

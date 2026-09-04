@@ -4,13 +4,22 @@
   "note": "Unclaimed, actionable, NOT-yet-in-progress work. Everything currently being worked is in AGENT_STATE.json's active_work instead. This queue is intentionally short right now — do not pad it with fabricated tickets to look busy (CLAUDE.md's own P2/P3 discipline: weak evidence -> don't change it). An empty actionable queue means enter DISCOVERY MODE (see README.md), it does not mean stop.",
   "queue": [
     {
+      "task_id": "BO-CONSOLIDATE-AUTOPILOT",
+      "priority": "P2",
+      "title": "Reconcile this PR's .blackout-agent/ (#3435) with Cursor's independently-built competing one (#3436)",
+      "owner": null,
+      "phase": "REVIEW",
+      "evidence": "Real collision, not hypothetical -- see DECISIONS.md 2026-09-03/04 entry. Cursor's PR is broader (event-driven dispatch workflow) but has a real heartbeat-gate bug (claimLock reclaims on lease_until alone) + an open CodeQL high alert. Review posted: https://github.com/coreentryadmin-web/blackout-web/pull/3436#issuecomment-5533797276",
+      "action": "Once #3436 fixes the heartbeat-gate gap and CodeQL, consolidate on it (broader scope) and retire the duplicate .blackout-agent scaffold from #3435 -- do not maintain two parallel control planes."
+    },
+    {
       "task_id": "BO-CURSOR-CROSSREVIEW-GAP",
       "priority": "P3",
-      "title": "No live Claude<->Cursor cross-review has ever been exercised; cannot be closed from this sandbox",
+      "title": "SUPERSEDED -- real cross-review has now happened both directions",
       "owner": null,
-      "phase": "NEW",
-      "evidence": "ListAgents from this session shows only this session itself (user-6d) and its own subagents -- no addressable Cursor session exists in this tool surface. Confirmed 2026-09-03/04 during the Autopilot acceptance-test re-verification.",
-      "action": "Requires an actual Cursor session (outside this sandbox's reach) to open or review a PR here and write scripts/agent-ops/heartbeat.mjs cursor. Not fixable autonomously from this session -- flagged rather than faked."
+      "phase": "CLOSED",
+      "evidence": "Filed 2026-09-03/04 noting ListAgents showed no addressable Cursor session from this sandbox, so cross-review looked unprovable. Overtaken by real events within the hour: (a) Cursor's own AGENT_STATE.json (on PR #3436) shows it reviewed a real Claude PR, #3434, verdict 'APPROVED -- safe to merge'; (b) this session then reviewed Cursor's PR #3436 directly (https://github.com/coreentryadmin-web/blackout-web/pull/3436#issuecomment-5533797276), a substantive review that found a real bug (heartbeat-gate gap in claimLock) plus the open CodeQL alert. Both directions now have genuine evidence, not simulated.",
+      "action": "None -- closed. The remaining open question is whether these two PRs' *implementations* consolidate (see BO-CONSOLIDATE-AUTOPILOT above), not whether cross-review as a mechanism works."
     },
     {
       "task_id": "BO-HOUSEKEEPING-FOLD",
