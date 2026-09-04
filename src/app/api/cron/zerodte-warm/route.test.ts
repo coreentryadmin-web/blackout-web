@@ -64,3 +64,12 @@ test("the lock is released once the background dispatch settles, on both success
 test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 900s)", () => {
   assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 900/);
 });
+
+test("zerodte-warm intentionally omits runWithBackgroundUwSweep (HELIX DB tape, not UW REST fan-out)", () => {
+  assert.doesNotMatch(routeSrc, /\brunWithBackgroundUwSweep\b/);
+  assert.match(
+    routeSrc,
+    /intentionally NOT wrapped in the shared background UW sweep helper/,
+    "must document why this cron is exempt from the UW sweep tag"
+  );
+});

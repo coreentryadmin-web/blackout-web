@@ -14,13 +14,17 @@ const inflight = new Map<string, Promise<GexHeatmapPayload | null>>();
 const cache = new Map<string, { at: number; data: GexHeatmapPayload | null }>();
 const CACHE_MS = 4_000;
 
+function clientCacheAgeMs(cachedAt: number, now = Date.now()): number {
+  return Math.max(0, now - cachedAt);
+}
+
 export async function fetchVectorGexHeatmapDeduped(
   ticker: string,
   dteHorizon = "all"
 ): Promise<GexHeatmapPayload | null> {
   const key = `${ticker}:${dteHorizon}`;
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.data;
+  if (hit && clientCacheAgeMs(hit.at) < CACHE_MS) return hit.data;
 
   const existing = inflight.get(key);
   if (existing) return existing;

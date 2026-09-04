@@ -65,6 +65,7 @@ import {
   fetchUwIvRank,
   fetchUwIvRankSeries,
 } from "@/lib/providers/unusual-whales";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
 import {
   MULTI_DAY_FLOW_HOURS,
@@ -315,7 +316,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const deps = buildDiscoveryDeps(nowMs, sessionDay, decision.phase!);
-    const result = await runSwingDiscoveryScan(deps);
+    // Runs inline (not after()) so phase-claim release on failure is synchronous — an ALB abort
+    // that never reaches catch must not leave a DONE marker without a snapshot (prod 2026-07-29).
+    // UW REST (IV rank / earnings history) is tagged as a background sweep so live traffic keeps
+    // a reserved slot while the once-per-phase whole-market scan fans out.
+    const result = await runWithBackgroundUwSweep(() => runSwingDiscoveryScan(deps));
 
     // Persist the scored output so the member horizons route can serve it. If the write fails, RELEASE the
     // phase claim so the next EventBridge fire can retry — upgrading to DONE without a snapshot locks the

@@ -92,6 +92,11 @@ export async function GET(req: NextRequest) {
   // awaited (RTH finding 2026-07-30: HTTP 504 on every probe). Mirror nighthawk-edition: dispatch
   // the heavy work in after() and return 202 in seconds. The ECS worker is long-lived — the build
   // still completes and publishes the shared snapshot; only the HTTP handshake must be short.
+  //
+  // UW sweep tag: intentionally NOT wrapped in the shared background UW sweep helper.
+  // warmZeroDteBoard reads the HELIX flow tape from Postgres (fetchRecentFlows) — not a UW REST
+  // fan-out — and the board snapshot rebuild is platform-local. Tagging this as a background UW
+  // sweep would mis-account budget without protecting live UW traffic.
   const dispatchWarm = () => {
     void Promise.allSettled([warmZeroDteBoard(), refreshZeroDteBoardSnapshot()])
       .then((results) => {

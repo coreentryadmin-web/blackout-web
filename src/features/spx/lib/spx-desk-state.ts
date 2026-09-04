@@ -61,7 +61,7 @@ export function emptySpxState(): SpxState {
     hod: 0,
     vix: null,
     vix_change_pct: null,
-    spx_change_pct: 0,
+    spx_change_pct: null,
     above_vwap: false,
     uw_iv_rank: null,
     gex_net: null,
