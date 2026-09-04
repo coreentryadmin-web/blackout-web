@@ -60,6 +60,25 @@ test("reconstructGexRail: the top call wall's WEIGHT shifts as spot moves toward
   assert.ok(high > low, "7600 call GEX grows as spot approaches it");
 });
 
+test("reconstructGexRail: call/put walls never land on the wrong side of spot (2026-09-04 audit finding)", () => {
+  // A deep-ITM call strike with disproportionate OI outweighs a modest-OI strike above spot on
+  // raw |gamma| — computeGexWalls used to pick it as "the call wall" anyway (resistance below
+  // current price). reconstructGexRail must now pass spot through and exclude it.
+  const spot = 7580;
+  const contracts: ReconstructContract[] = [
+    { strike: 7500, expiry: "2026-07-13", openInterest: 100000, iv: 0.15, type: "call" }, // below spot, huge OI
+    { strike: 7620, expiry: "2026-07-13", openInterest: 5000, iv: 0.15, type: "call" }, // above spot, honest wall
+    { strike: 7450, expiry: "2026-07-13", openInterest: 9000, iv: 0.15, type: "put" },
+  ];
+  const [sample] = reconstructGexRail(contracts, [{ time: 1000, spot }], "2026-07-10");
+  assert.ok(sample, "sample must be produced");
+  assert.equal(sample!.walls.callWalls[0]?.strike, 7620, "call wall must be the honest above-spot strike, not the below-spot one");
+  assert.ok(
+    sample!.walls.callWalls.every((w) => w.strike > spot),
+    "no callWalls entry may sit at/below spot"
+  );
+});
+
 test("empty/invalid inputs → empty rail, never throws or fabricates", () => {
   assert.deepEqual(reconstructGexRail([], [{ time: 1, spot: 7500 }], "2026-07-10"), []);
   assert.deepEqual(reconstructGexRail(chain, [], "2026-07-10"), []);

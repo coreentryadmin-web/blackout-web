@@ -33,7 +33,7 @@ export function pinInputFromGexHistorySnapshot(snap: GexHistorySnapshot): PinReg
   if (!(snap.spot > 0) || !snap.strike_totals || Object.keys(snap.strike_totals).length === 0) {
     return null;
   }
-  const walls = computeGexWalls(mapFromStrikeTotalsRecord(snap.strike_totals));
+  const walls = computeGexWalls(mapFromStrikeTotalsRecord(snap.strike_totals), { spot: snap.spot });
   const callWall = walls.callWalls[0]?.strike ?? null;
   const putWall = walls.putWalls[0]?.strike ?? null;
   const callWallPct = callWall != null ? walls.callWalls.find((w) => w.strike === callWall)?.pct ?? null : null;

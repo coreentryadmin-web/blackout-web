@@ -54,6 +54,25 @@ mock.module("../../../lib/providers/polygon-options-gex", {
   namedExports: {
     fetchGexHeatmap: async (ticker: string) => {
       fetchCalls.push(ticker);
+      // Regression fixture for the 2026-09-04 audit finding: strike 90 (below spot) carries more
+      // |gamma| than strike 108 (above spot), so the unconstrained scan used to pick 90 as the
+      // "call wall" — a resistance level below current price — the exact live IBIT/SPX shape.
+      if (ticker === "INVERT") {
+        return {
+          spot: 100,
+          asof: new Date().toISOString(),
+          gex: {
+            flip: 101,
+            strike_totals: { "90": 5e9, "108": 1e9, "92": -1e9 },
+          },
+          vex: {
+            // VEX is deliberately left unconstrained (no above/below-spot geometry) — the fixture
+            // reuses the same shape so a regression here would be caught the same way.
+            flip: 99,
+            strike_totals: { "90": 5e9, "108": 1e9 },
+          },
+        };
+      }
       return {
         spot: 100,
         asof: new Date().toISOString(),
@@ -110,6 +129,25 @@ test("buildVectorUniverseSnapshot: plain build unions dynamic tickers", async ()
   );
   assert.ok(fetchCalls.includes("HOOD"));
   assert.ok(fetchCalls.includes("PLTR"));
+});
+
+// Regression for the 2026-09-04 audit finding: buildVectorUniverseRow's GEX (gamma) wall
+// computation didn't pass spot into computeGexWalls, so a call wall could serve BELOW spot (or a
+// put wall ABOVE it) — reproduced live on SPX (spot 7747.71, topPutWall 8000) and 17-18 other
+// tickers via GET /api/market/vector/universe.
+test("buildVectorUniverseSnapshot: GEX wall never lands on the wrong side of spot", async () => {
+  dynamicTickers = ["INVERT"];
+  fetchCalls = [];
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+  const row = snap.rows.find((r) => r.ticker === "INVERT");
+  assert.ok(row, "INVERT row must be present");
+  // Fixture: strike 90 (below spot 100) carries 5e9 |gamma|, strike 108 (above spot) carries 1e9 —
+  // unconstrained picks 90 as "the call wall" (resistance below spot); constrained must pick 108.
+  assert.equal(row!.topCallWall, 108, "GEX call wall must sit above spot, not the higher-|gamma| below-spot strike");
+  assert.equal(row!.topPutWall, 92, "GEX put wall must sit below spot");
+  assert.ok(row!.topCallPct != null && row!.topCallPct > 0, "pct must still be populated for the constrained pick");
 });
 
 test("ensureTickerInUniverseSnapshot: appends missing ticker to warmed snapshot", async () => {

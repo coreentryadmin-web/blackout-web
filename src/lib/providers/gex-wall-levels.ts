@@ -40,10 +40,27 @@ export const DEFAULT_WALL_NODES_PER_SIDE = 6;
  * are the exact same largest-positive/largest-negative strikes gex-positioning.ts's
  * call_wall/put_wall would pick — same reason as before, so the Vector chart's #1 wall per side
  * can never diverge from the Thermal/Grid GEX panels reading the same underlying ladder).
+ *
+ * `spot`, when supplied, SIDE-CONSTRAINS the GAMMA lens exactly like
+ * `wallsFromStrikeTotals(strikeTotals, spot)` (gex-cross-validation-core.ts) does: a callWalls
+ * entry must sit above spot, a putWalls entry below it. Omit it and every strike qualifies
+ * regardless of side — the historical behavior, preserved for the VEX/vanna lens, which has no
+ * inherent above/below-spot geometry (see the NAMING doc above) and must never be constrained.
+ *
+ * WHY THIS WAS MISSING. PR #2417 (2026-08-20) added the identical constraint to
+ * `wallsFromStrikeTotals` for five other wall producers but explicitly left this function
+ * untouched, reasoning its callers "read the SAME live WS ladder independently" — but those
+ * callers ARE the Vector desk's own primary GEX-lens wall surfaces (the DTE-toggle chart overlay,
+ * the Scanner/universe table, Largo's vector-analytics tool, Night Hawk's Cortex wall-trend/PIN
+ * sources), so the fix never propagated there. Measured live 2026-09-04: IBIT's call wall served
+ * BELOW its spot on all four DTE horizons; NDX served an inverted wall on BOTH sides
+ * simultaneously at `dte=all`; 17-18 of 83 Vector-universe tickers (incl. SPX) showed a wall on
+ * the wrong side of spot at the same instant the canonical (already-constrained) gex-heatmap
+ * matrix served the correct one for the identical book.
  */
 export function computeGexWalls(
   ladder: Map<number, number>,
-  { maxPerSide = DEFAULT_WALL_NODES_PER_SIDE }: { maxPerSide?: number } = {}
+  { maxPerSide = DEFAULT_WALL_NODES_PER_SIDE, spot }: { maxPerSide?: number; spot?: number } = {}
 ): GexWalls {
   if (ladder.size === 0) return { callWalls: [], putWalls: [] };
 
@@ -53,6 +70,7 @@ export function computeGexWalls(
   for (const g of Object.values(strikeTotals)) totalAbsGamma += Math.abs(g);
   if (totalAbsGamma <= 0) return { callWalls: [], putWalls: [] };
 
+  const constrained = typeof spot === "number" && Number.isFinite(spot) && spot > 0;
   const callWalls: GexWallLevel[] = [];
   const putWalls: GexWallLevel[] = [];
   for (const [strikeStr, g] of Object.entries(strikeTotals)) {
@@ -60,8 +78,11 @@ export function computeGexWalls(
     if (!Number.isFinite(strike) || !Number.isFinite(g) || g === 0) continue;
     const pct = (Math.abs(g) / totalAbsGamma) * 100;
     const notional = Math.abs(g);
-    if (g > 0) callWalls.push({ strike, pct, notional });
-    else putWalls.push({ strike, pct, notional });
+    if (g > 0) {
+      if (!constrained || strike > spot) callWalls.push({ strike, pct, notional });
+    } else {
+      if (!constrained || strike < spot) putWalls.push({ strike, pct, notional });
+    }
   }
   callWalls.sort((a, b) => b.pct - a.pct);
   putWalls.sort((a, b) => b.pct - a.pct);

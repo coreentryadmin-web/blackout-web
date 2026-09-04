@@ -129,6 +129,81 @@ test("nextWallScope keeps the previous scope on an explicitly empty expiries arr
   assert.deepEqual(next, { expiries: ["2026-07-07"], fetchedAt: 16000 });
 });
 
+// Regression for the 2026-09-04 audit finding: computeGexWalls picked the largest-|gamma| strike
+// on each side with no regard for spot, so a "call wall" (resistance) could sit BELOW spot and a
+// "put wall" (support) ABOVE it — the same bug class PR #2417 fixed for wallsFromStrikeTotals but
+// never propagated here. Reproduces the live IBIT/NDX shapes (call 46 vs spot 46.06; call 29275 +
+// put 29600 both wrong-side vs spot 29482.32) as regression fixtures.
+test("computeGexWalls: with spot supplied, side-constrains exactly like wallsFromStrikeTotals — no call wall below spot, no put wall above it", () => {
+  // Mirrors the live IBIT case: strike 46 (below spot) carries more |gamma| than any strike above
+  // spot, so the unconstrained scan picked it as the "call wall" (resistance) below current price.
+  const ladder = new Map<number, number>([
+    [46, 5e8], // largest positive-gamma strike, but BELOW spot — must be excluded
+    [47, 2e8], // smaller, but above spot — the honest call wall
+    [45, -3e8], // put side, correctly below spot
+  ]);
+  const spot = 46.06;
+  const unconstrained = computeGexWalls(ladder);
+  assert.equal(unconstrained.callWalls[0]?.strike, 46, "sanity: unconstrained reproduces the live bug");
+
+  const constrained = computeGexWalls(ladder, { spot });
+  assert.equal(constrained.callWalls[0]?.strike, 47, "call wall must sit above spot");
+  assert.equal(constrained.putWalls[0]?.strike, 45, "put wall correctly stays below spot");
+  assert.ok(
+    constrained.callWalls.every((w) => w.strike > spot),
+    "no callWalls entry may sit at/below spot"
+  );
+  assert.ok(
+    constrained.putWalls.every((w) => w.strike < spot),
+    "no putWalls entry may sit at/above spot"
+  );
+});
+
+test("computeGexWalls: both sides can be inverted simultaneously (live NDX dte=all shape) — spot fixes both", () => {
+  const ladder = new Map<number, number>([
+    [29275, 4e9], // call bucket, below spot — the live inverted "call wall"
+    [29600, -6e9], // put bucket, above spot — the live inverted "put wall"
+    [29500, 2e9], // honest call wall, above spot
+    [29400, -1e9], // honest put wall, below spot
+  ]);
+  const spot = 29482.32;
+  const { callWalls, putWalls } = computeGexWalls(ladder, { spot });
+  assert.equal(callWalls[0]?.strike, 29500);
+  assert.equal(putWalls[0]?.strike, 29400);
+});
+
+test("computeGexWalls: NO FALLBACK TO THE WRONG SIDE — a side with no qualifying strike returns empty, not the nearest wrong-side strike", () => {
+  // Every positive-gamma strike sits below spot: there is no honest call wall, and the function
+  // must say so (empty array) rather than serve 46 as "the call wall" anyway.
+  const ladder = new Map<number, number>([
+    [44, 3e8],
+    [45, 5e8],
+  ]);
+  const { callWalls } = computeGexWalls(ladder, { spot: 46 });
+  assert.deepEqual(callWalls, []);
+});
+
+test("computeGexWalls: omitting spot preserves the exact unconstrained behavior (VEX/vanna lens has no above/below-spot geometry)", () => {
+  const ladder = new Map<number, number>([
+    [46, 5e8],
+    [47, 2e8],
+    [45, -3e8],
+  ]);
+  assert.deepEqual(computeGexWalls(ladder), computeGexWalls(ladder, { spot: undefined }));
+  assert.equal(computeGexWalls(ladder).callWalls[0]?.strike, 46);
+});
+
+test("computeGexWalls: pct stays a share of TOTAL |gamma| across the ladder, not just the qualifying side — the constraint filters candidates, not the denominator", () => {
+  const ladder = new Map<number, number>([
+    [46, 5e8], // excluded by the spot constraint, but still counts toward the |gamma| total
+    [47, 2e8],
+    [45, -3e8],
+  ]);
+  const totalAbsGamma = 5e8 + 2e8 + 3e8;
+  const { callWalls } = computeGexWalls(ladder, { spot: 46.06 });
+  assert.ok(Math.abs(callWalls[0]!.pct - (2e8 / totalAbsGamma) * 100) < 1e-9);
+});
+
 test("wallsHaveNodes distinguishes a cold/empty ladder from real walls", () => {
   // The Vector DTE "all" horizon read relies on this to detect a cold-task synchronous
   // miss (empty walls but the flip still fetched) and fall back to the heatmap. A plain
