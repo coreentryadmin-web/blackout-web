@@ -3,6 +3,7 @@ import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { requireToolApiForDeskCaller } from "@/lib/tool-access-server";
 import { fetchSpyVolumeRows } from "@/features/vector";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
 
   const volumes = await fetchSpyVolumeRows(ymd);
   return NextResponse.json(
-    { ymd, volumes, available: volumes.length > 0 },
+    roundFloats({ ymd, volumes, available: volumes.length > 0 }),
     { headers: NO_STORE_HEADERS }
   );
 }

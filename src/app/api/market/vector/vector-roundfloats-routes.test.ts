@@ -11,6 +11,7 @@ const ROUTES = [
   "contract-picks/route.ts",
   "contract-picks/live/route.ts",
   "play-bie/route.ts",
+  "spy-volume/route.ts",
 ] as const;
 
 for (const rel of ROUTES) {
