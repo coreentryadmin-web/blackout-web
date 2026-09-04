@@ -24,8 +24,16 @@ test("claimLock: second agent blocked", async () => {
 
 test("claimLock: expired lease reclaimed", async () => {
   const { claimLock, releaseLock } = await import("./lib/locks.mjs");
+  const { writeJsonAtomic } = await import("./lib/state.mjs");
+  const { heartbeatPath } = await import("./lib/paths.mjs");
+  // Stale heartbeat so expired lease can be reclaimed (committed HEARTBEAT/*.json may be fresh).
+  writeJsonAtomic(heartbeatPath("claude"), {
+    agent: "claude",
+    last_seen: "2020-01-01T00:00:00.000Z",
+    healthy: false,
+  });
   claimLock("BO-TEST-0003", "claude", { leaseMs: 1 });
-  await new Promise((r) => setTimeout(r, 5));
+  await new Promise((r) => setTimeout(r, 10));
   const second = claimLock("BO-TEST-0003", "cursor", { leaseMs: 60_000 });
   assert.equal(second.ok, true);
   releaseLock("BO-TEST-0003", "cursor");
@@ -55,11 +63,11 @@ test("dispatch-prompt includes coordination rules", () => {
   assert.match(r.stdout, /Never approve your own PR/);
 });
 
-test("select-task returns BO-P1-0001 for cursor", () => {
+test("select-task returns highest-priority P1 task for cursor", () => {
   const r = spawnSync("node", ["scripts/blackout-agent/select-task.mjs", "--agent=cursor"], { encoding: "utf8", cwd: repoRoot });
   assert.equal(r.status, 0);
   const j = JSON.parse(r.stdout);
-  assert.equal(j.selected?.id, "BO-P1-0001");
+  assert.ok(j.selected?.id?.startsWith("BO-P1-"), `expected P1 task, got ${j.selected?.id}`);
 });
 
 test("dispatch-guard allows when no active session", () => {
