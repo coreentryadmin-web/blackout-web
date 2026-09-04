@@ -1,11 +1,11 @@
-// Regression guard: the "compare latency vs a second environment" audit scripts must never
-// reference infrastructure that no longer exists — the Railway CLI (all infra moved to AWS ECS,
-// see CLAUDE.md's "Environment realities" section) or the decommissioned staging stack
-// (staging.blackouttrades.com / the blackout-staging/app/env secret, deleted 2026-07-25).
+// Regression guard: audit/tooling scripts must never reference infrastructure that no longer
+// exists — the Railway CLI (all infra moved to AWS ECS, see CLAUDE.md's "Environment realities"
+// section) or the decommissioned staging stack (staging.blackouttrades.com / the
+// blackout-staging/app/env secret, deleted 2026-07-25).
 //
-// Before this fix, three npm-wired scripts (`validate:latency-compare`, `validate:latency-burst`,
-// `validate:largo-latency`) hard-coded BOTH dead dependencies as their default/only comparison
-// target:
+// Before the original fix, three npm-wired scripts (`validate:latency-compare`,
+// `validate:latency-burst`, `validate:largo-latency`) hard-coded BOTH dead dependencies as their
+// default/only comparison target:
 //   - `blackout-staging/app/env` no longer exists in Secrets Manager (confirmed live via
 //     `secretsmanager.describe_secret` -> ResourceNotFoundException) — `execSync("aws
 //     secretsmanager get-secret-value --secret-id blackout-staging/app/env ...")` throws before
@@ -17,6 +17,15 @@
 // Every invocation of these three scripts was therefore a guaranteed, immediate crash — dead
 // tooling masquerading as live audit commands anyone (human or agent, per the STANDING
 // PERFORMANCE/LATENCY AUDIT MANDATE's "pull real numbers first" instruction) could reach for.
+//
+// Two more npm-wired scripts carried the identical defect, found in a later sweep:
+// `validate:helix-ui` (scripts/helix-ui-audit.mjs) called `loadSecret()` unconditionally with no
+// try/catch in `main()` — the loaded value wasn't even used afterward, since `mintAppSession`
+// takes no secret param — and `capture:marketing-modules`
+// (scripts/capture-marketing-module-shots.mjs) defaulted `USE_STAGING_SECRET` to true (BASE
+// defaulted to the staging host), so it hit the same unconditional `loadSecret()` call on any
+// plain invocation. Both threw `ResourceNotFoundException` from AWS Secrets Manager before doing
+// any real work.
 //
 // This test greps the fixed scripts' own source for the exact dead-infra literals rather than
 // executing them (they make live network/AWS/Clerk calls, which don't belong in `npm test`) — the
@@ -35,6 +44,8 @@ const TARGETS = [
   "scripts/compare-latency-envs.mjs",
   "scripts/latency-burst-audit.mjs",
   "scripts/largo-latency-compare.mjs",
+  "scripts/helix-ui-audit.mjs",
+  "scripts/capture-marketing-module-shots.mjs",
 ];
 
 // Functional patterns only — a *string-literal* staging base URL/secret-id (something the code
