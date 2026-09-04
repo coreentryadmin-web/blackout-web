@@ -3,6 +3,7 @@ import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { isVectorTickerAllowed, normalizeVectorTicker } from "@/features/vector/lib/vector-ticker";
 import { loadDailyRegime } from "@/features/vector/lib/vector-daily-regime-server";
+import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
@@ -34,5 +35,5 @@ export async function GET(req: NextRequest) {
     normalizeVectorTicker(rawTicker),
     req.nextUrl.searchParams.get("days") ?? undefined
   );
-  return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
+  return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
 }

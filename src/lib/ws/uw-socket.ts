@@ -1068,7 +1068,7 @@ function isUwHaltSourceStale(maxAgeMs = TRADING_HALT_CHANNEL_MAX_AGE_MS): boolea
   if (isUwChannelFresh("trading_halts", maxAgeMs)) return false;
   if (uwSocket.getChannelHealth()?.trading_halts?.auth_failed) return true;
   const freshest = effectiveFreshestUwMessageAt();
-  return freshest == null || Date.now() - freshest > maxAgeMs;
+  return freshest == null || !isWsUpdatedAtFresh(freshest, maxAgeMs);
 }
 
 export function isTradingHaltChannelStale(maxAgeMs = TRADING_HALT_CHANNEL_MAX_AGE_MS): boolean {

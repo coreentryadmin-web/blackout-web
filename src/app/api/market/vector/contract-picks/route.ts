@@ -10,6 +10,7 @@ import type { ConfluenceZone } from "@/features/vector/lib/vector-confluence";
 import type { VectorDarkPoolLevel } from "@/features/vector/lib/vector-dark-pool-levels";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import { loadVectorPickEnrichment } from "@/features/vector/lib/vector-pick-enrichment";
+import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -191,7 +192,7 @@ async function handlePicks(
     excludeOccs,
   });
   const picks = pool.slice(0, 3);
-  return NextResponse.json({ picks, pool }, { headers: NO_STORE_HEADERS });
+  return NextResponse.json(roundFloats({ picks, pool }), { headers: NO_STORE_HEADERS });
 }
 
 export async function POST(req: NextRequest) {
@@ -271,5 +272,5 @@ export async function GET(req: NextRequest) {
   };
 
   const picks = buildRankedVectorPicks(ctx, chain, rawTicker!);
-  return NextResponse.json({ picks }, { headers: NO_STORE_HEADERS });
+  return NextResponse.json(roundFloats({ picks }), { headers: NO_STORE_HEADERS });
 }

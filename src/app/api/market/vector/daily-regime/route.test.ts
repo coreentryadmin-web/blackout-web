@@ -20,3 +20,8 @@ test("daily-regime is uncached and force-dynamic", () => {
   assert.match(routeSrc, /NO_STORE_HEADERS/);
   assert.match(routeSrc, /dynamic = "force-dynamic"/);
 });
+
+test("daily-regime rounds member-visible floats at the API boundary", () => {
+  assert.match(routeSrc, /import \{ roundFloats \} from "@\/lib\/round-floats"/);
+  assert.match(routeSrc, /NextResponse\.json\(roundFloats\(payload\)/);
+});
