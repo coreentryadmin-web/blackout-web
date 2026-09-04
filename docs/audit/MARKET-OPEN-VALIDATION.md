@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0ag. UW spot-fallback fabricated flat 0% — fix/spot-fallback-change-pct-null (pending)
+
+**What was broken:** `resolveSpotFromUwStockState()` returned `change_pct: 0` when UW `/stock-state` omitted `prev_close` — members saw "unchanged" with no prior-close anchor.
+
+**Fix:** `change_pct` is `null` when `prev_close` is absent; `SpotQuote` + pulse snapshot types allow null.
+
+**Check at the open:** `GET /api/market/quote?ticker=<equity>` on UW fallback path — missing prior close must show absent change %, not `0.00%`.
+
 ### 0ai. Night Hawk's Learn-chapter SEO metadata still said "Swing Trading Setups" — fix/guide-seo-night-hawk-stale-metadata (merged #3791)
 
 **What was broken:** `GUIDE_SEO["night-hawk"]` (`guide-seo.ts`) — a third, independent copy of the same stale "evening/swing-only" framing already fixed today in `PRODUCT_MANIFEST.hawk` and `LEARN_NAV` — read "Swing Trading Setups Explained" / "runs its evening scanner" as the literal `<title>` and SERP snippet.
@@ -128,7 +136,7 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** Google/search-console snippet for `/learn/night-hawk` and the Course JSON-LD chapter list should show the corrected title; confirm no SERP-truncation regression (title 49/60 chars, description 146/160 chars).
 
-### 0ak. Learn hub Night Hawk descriptor still said "Evening playbook" after the 0DTE Command redesign — fix/learn-nav-night-hawk-stale-descriptor (pending)
+### 0ak. Learn hub Night Hawk descriptor still said "Evening playbook" after the 0DTE Command redesign — fix/learn-nav-night-hawk-stale-descriptor (merged #3784)
 
 **What was broken:** `LEARN_NAV`'s `night-hawk` entry (`src/lib/learn/nav.ts`) described the
 chapter as "Evening playbook — tomorrow's setups, scored tonight." — contradicting the homepage's
