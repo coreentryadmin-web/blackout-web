@@ -126,6 +126,21 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0k. swing-active-refresh + vector-walls-warm missing re-run guards — fix/cron-warm-overlap-cooldown-guards (pending)
+
+**What was broken:** `swing-active-refresh` had no cross-replica overlap lock at all — duplicate
+EventBridge / rth-warm-leader dispatches could fan out concurrent Polygon+DB refreshes on every web
+replica. `vector-walls-warm` had overlap lock but `force=1` bypassed cash-RTH with no 60s re-run
+floor (same gap #3540 fixed on desk-warm).
+
+**Fix:** Added `OVERLAP_LOCK` + 60s `RERUN_COOLDOWN` to swing-active-refresh; added 60s
+`RERUN_COOLDOWN` to vector-walls-warm before its existing overlap lock.
+
+**Check at the open:** During RTH, CloudWatch filter on `/ecs/blackout-production` for
+`[cron/swing-active-refresh] background done` and `[cron/vector-walls-warm] background done` —
+no pairs of completions for the same cron within <15s unless the first run's elapsed exceeds that
+window (overlap skip should log `still in flight` or `rate-limited` instead).
+
 ### 0j. Night Hawk PASSED/WATCH list rendered trackPct with no qualifier — fix/nighthawk-passed-list-trackpct-label (pending)
 
 **What was broken:** the compact play-list row (`PlayLifecycleCardBody`, every board's actual live
