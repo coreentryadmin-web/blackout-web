@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import {
   INDEX_WS_STALE_MS,
   overlayRestIndexWithWs,
+  localWsIndexEntry,
   type WsIndexEntry,
 } from "./index-snapshot-overlay";
 import type { IndexQuote } from "./polygon";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
 const REST: IndexQuote = {
   symbol: "I:VIX",
@@ -55,4 +57,25 @@ test("overlayRestIndexWithWs leaves REST untouched when WS is stale", () => {
 
 test("overlayRestIndexWithWs leaves REST untouched when WS entry is missing", () => {
   assert.deepEqual(overlayRestIndexWithWs(REST, null, now), REST);
+});
+
+test("overlayRestIndexWithWs leaves REST untouched when WS updatedAt is clock-skewed future", () => {
+  const ws: WsIndexEntry = {
+    price: 14.29,
+    change_pct: -0.4,
+    open_source: "rest",
+    updatedAt: now + WS_TIMESTAMP_FUTURE_TOLERANCE_MS + 1,
+  };
+  const out = overlayRestIndexWithWs(REST, ws, now);
+  assert.deepEqual(out, REST);
+});
+
+test("localWsIndexEntry rejects clock-skewed future updatedAt", () => {
+  const store = {
+    VIX: {
+      price: 14.29,
+      updatedAt: now + WS_TIMESTAMP_FUTURE_TOLERANCE_MS + 1,
+    },
+  };
+  assert.equal(localWsIndexEntry(store, "VIX", now), null);
 });

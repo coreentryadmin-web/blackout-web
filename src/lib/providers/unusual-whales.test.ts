@@ -245,3 +245,10 @@ test("the Meridian shaper makes no claim when handed an unknown", () => {
   assert.equal(answered.available, false);
   assert.equal(answered.detail, "No large dark pool prints today");
 });
+
+test("readUwCache rejects clock-skewed future fetchedAt (source scan)", () => {
+  const src = readFileSync(join(import.meta.dirname, "unusual-whales.ts"), "utf8");
+  assert.match(src, /WS_TIMESTAMP_FUTURE_TOLERANCE_MS/);
+  assert.match(src, /if \(age < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS\) return undefined/);
+  assert.match(src, /const effectiveAge = Math\.max\(0, age\)/);
+});
