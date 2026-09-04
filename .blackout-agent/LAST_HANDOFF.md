@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T06:40:01.765Z
-**Run:** 990e4632-8984-4a28-b15f-db1cf8d5f0f7
+**At:** 2026-09-04T06:40:31.648Z
+**Run:** 5c2afa79-df37-46a2-931d-78668391d9a2
 
 ## Summary
 
-Session cycle: merged #3509 (already on main). Peer-reviewed locally #3512 cache-warm + #3511 largo freshness (verify pending). #3506 GREEN — awaits Claude review (cursor-owned). validate:deploy GREEN, ops:collect 0. Deploy ECR pending. GitHub PAT rate-limited on gh CLI.
+Approved #3511+#3512 (verify GREEN, reviews recorded). Undraft/merge blocked by GitHub PAT rate limit — retry undraft when quota resets. #3506 GREEN awaits Claude. #3509 merged. validate:deploy GREEN.
 
 ## Deploy
 
