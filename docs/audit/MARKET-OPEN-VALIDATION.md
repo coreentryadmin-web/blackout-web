@@ -139,6 +139,18 @@ EventBridge crons logging `cron_job_runs` rows, but absent from `CRON_JOBS` — 
 - `GET /api/admin/cron/health` (admin) shows all three with recent `last_run_at` during RTH.
 - If any Discord channel goes quiet, confirm the watchdog would now alert (not first noticed by members).
 
+### 0b. meridian-warm + zerodte-warm force=1 cooldown — PR (pending)
+
+**What was broken:** Same unthrottled `force=1` replay gap as desk-warm (#3540) and heatmap-warm
+(#3542) — `OVERLAP_LOCK` released on fast completion with no minimum re-run floor.
+
+**Fix:** `RERUN_COOLDOWN_KEY` via atomic `sharedCacheSetNx` — meridian-warm 120s (below 5min heal),
+zerodte-warm 90s (below 4min heal).
+
+**Check at the open:**
+- Rapid `?force=1` replays on either cron return `rate-limited` skip, not duplicate background warms.
+- Meridian timeline + 0DTE board still advance on normal EventBridge / rth-warm-leader cadence.
+
 ### 1. `CACHE_WARM_ALWAYS` leftover staging bypass — PR #3512 (merged)
 
 **What was broken:** `shouldRunCacheWarmer()` bypassed its weekday 4am-8pm ET hours gate whenever
