@@ -119,6 +119,20 @@ export const CRON_JOBS: CronJobDefinition[] = [
     description: "Pre-warm GEX heatmap matrix for shared sticky universe (static ∪ dynamic ≤100/14d; SPY/SPX/QQQ forced first). EventBridge 1/min floor; rth-warm-leader backs up at ~20s; Thermal clients force-refresh when asof is stale",
   },
   {
+    key: "thermal-discord",
+    name: "Thermal Discord",
+    kind: "http",
+    path: "/api/cron/thermal-discord",
+    schedule_label: "~Every 15 min (market hours)",
+    schedule_cron_utc: "*/15 13-21 * * 1-5",
+    stale_after_min: 45,
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Posts Thermal triple-desk snapshots (SPY|SPX|QQQ) + wall-breach alerts to Discord (requires DISCORD_THERMAL_WEBHOOK_URL)",
+    produces_member_alert: true,
+  },
+  {
     key: "platform-warm",
     name: "Platform Warm",
     kind: "http",
@@ -173,6 +187,20 @@ export const CRON_JOBS: CronJobDefinition[] = [
     weekdays_only: true,
     market_hours_only: true,
     description: "Pre-warm SPX desk/flow/pulse cache lanes + SPX GEX matrix so dashboard polls are pure cache hits (no multi-second buildSpxDesk blocks)",
+  },
+  {
+    key: "darkpool-discord",
+    name: "Dark Pool Discord",
+    kind: "http",
+    path: "/api/cron/darkpool-discord",
+    schedule_label: "~Every 2 min (market hours)",
+    schedule_cron_utc: "*/2 11-21 * * 1-5",
+    stale_after_min: 10,
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Posts new dark-pool block alerts + 15m top-blocks digest to #blackout-darkpool (opt-in: DARKPOOL_DISCORD_ALERTS=1)",
+    produces_member_alert: true,
   },
   {
     key: "zerodte-warm",
@@ -425,6 +453,20 @@ export const CRON_JOBS: CronJobDefinition[] = [
     stale_after_min: 13 * 60,
     description:
       "Grades historical alert_audit_log rows by copying each row's already-computed outcome from its origin table (zerodte_setup_log/nighthawk_play_outcomes/spx_play_outcomes) — feeds BIE precedent search (get_similar_precedents), which was a complete no-op before this cron existed",
+  },
+  {
+    key: "helix-discord-digest",
+    name: "Helix Discord Digest",
+    kind: "http",
+    path: "/api/cron/helix-discord-digest",
+    schedule_label: "~Every 15 min (market hours)",
+    schedule_cron_utc: "*/15 11-21 * * 1-5",
+    stale_after_min: 45,
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Posts HELIX top-hits + stacked-hits digests (15m/30m) to Discord (opt-in: HELIX_DISCORD_ALERTS=1)",
+    produces_member_alert: true,
   },
   {
     key: "helix-signal-outcomes",
