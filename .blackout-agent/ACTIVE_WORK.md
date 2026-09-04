@@ -9,7 +9,7 @@
 | ID | PR | Title |
 |----|-----|-------|
 | BO-P1-0004 | #3452, #3463 | G-18/G-19 counterfactual + graceful calibration handling (merged) |
-| BO-P1-0005 | #3454 | select-task test fixture isolation (merged) |
+| BO-P1-0005 | #3468, #3469, #3473 | Peer-reviewed cron overlap guards + largo DST gate (merged) |
 | BO-P2-0003 | #3451 | Vector-gated runners only (merged) |
 | BO-P1-0007 | #3439 | PR webhook triage (merged) |
 | BO-P1-0000 | #3425 | G-18/G-19 loss gates (merged) |
