@@ -137,6 +137,16 @@ happened yet under clock skew.
 **Check at the open:** On `/flows` during RTH, banner only shows anomalies within 15 minutes; no
 spurious banner from skewed rows after deploy.
 
+### 0d. GEX heatmap Night Hawk context future-timestamp gate — fix/gex-heatmap-nh-context-future-timestamp (pending)
+
+**What was broken:** `/api/market/gex-heatmap` could attach `nighthawk_context` from an edition whose
+`published_at` was in the future — negative age never tripped the 24h freshness gate.
+
+**Fix:** `isNighthawkContextEditionFresh()` via shared `isZeroDteMarkStale()` (24h max age + future skew reject).
+
+**Check at the open:** On `/heatmap` or SPX matrix during RTH, Night Hawk context only appears for editions
+published within 24h; no spurious context from skewed/future `published_at` after deploy.
+
 ### 0. Discord digest crons on admin health board — PR #3543 (merged)
 
 **What was broken:** `darkpool-discord`, `thermal-discord`, and `helix-discord-digest` were live
