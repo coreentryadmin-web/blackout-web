@@ -147,6 +147,22 @@ spurious banner from skewed rows after deploy.
 **Check at the open:** On `/heatmap` or SPX matrix during RTH, Night Hawk context only appears for editions
 published within 24h; no spurious context from skewed/future `published_at` after deploy.
 
+### 0e. Night Hawk verifier premium-vs-chain future-timestamp gate — fix/nighthawk-verifier-future-published-at (pending)
+
+**What was broken:** The correctness-audit verifier's L4 chain-confirm premium check
+(`nighthawk-verifier.ts`) treated a future-dated edition `published_at` as fresh — `Date.now() -
+publishedAtMs` goes negative under clock skew, which always satisfies the `<= 4h` freshness gate,
+letting the premium-vs-chain comparison run on data whose freshness was actually unproven and
+risking a false `flag` verdict from garbage clock-skewed input.
+
+**Fix:** `premiumFresh` now uses the shared `isZeroDteMarkStale()` (4h max age + 60s future-skew
+reject), same pattern as items 0c/0d above.
+
+**Check at the open:** This is correctness-audit tooling, not a member-facing surface — nothing to
+check on the live UI. Confirm instead that the Night Hawk correctness score (wherever the
+correctness-audit run is read from) does not show a spurious `premium` metric `flag` for the
+day's published edition; a real chain-band mismatch should still flag normally.
+
 ### 0. Discord digest crons on admin health board — PR #3543 (merged)
 
 **What was broken:** `darkpool-discord`, `thermal-discord`, and `helix-discord-digest` were live
