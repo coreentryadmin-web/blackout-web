@@ -85,4 +85,5 @@ test("VectorChart wires generic pin-forecast for non-SPX tickers", () => {
   assert.match(chartSrc, /dteHorizon === "0dte" \? "eod" : "expiry"/);
   assert.match(chartSrc, /ticker === "SPX"/);
   assert.doesNotMatch(chartSrc, /applyPinProjection\([^)]*ticker === "SPX"\)/);
+  assert.match(chartSrc, /pinProjRef\.current = null;\s*\n\s*pinConeRef\.current = null;/);
 });
