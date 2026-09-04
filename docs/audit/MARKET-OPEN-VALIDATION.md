@@ -126,7 +126,7 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
-### 0. Discord digest crons on admin health board — PR (pending)
+### 0. Discord digest crons on admin health board — PR #3543 (merged)
 
 **What was broken:** `darkpool-discord`, `thermal-discord`, and `helix-discord-digest` were live
 EventBridge crons logging `cron_job_runs` rows, but absent from `CRON_JOBS` — invisible to
@@ -138,6 +138,22 @@ EventBridge crons logging `cron_job_runs` rows, but absent from `CRON_JOBS` — 
 **Check at the open:**
 - `GET /api/admin/cron/health` (admin) shows all three with recent `last_run_at` during RTH.
 - If any Discord channel goes quiet, confirm the watchdog would now alert (not first noticed by members).
+
+### 0b. Warm-cron `force=1` replay floors — desk-warm #3540, heatmap-warm #3542, zerodte-warm #3550 (merged), meridian-warm (pending)
+
+**What was broken:** `desk-warm`, `heatmap-warm`, `zerodte-warm`, and `meridian-warm` (and peers)
+had overlap locks but no minimum re-run floor — `?force=1` could replay the full warm pass (or, for
+`zerodte-warm`, the 0DTE scanner tick + board snapshot rebuild) in a tight loop faster than any
+legitimate trigger.
+
+**Fix:** atomic `sharedCacheSetNx` cooldown keys checked before overlap lock (desk-warm 60s,
+heatmap-warm 10s, zerodte-warm 60s, meridian-warm 60s); all fail open on a Redis error.
+
+**Check at the open:**
+- CloudWatch `/ecs/blackout-production`: no burst of `[cron/<name>] background done` lines closer
+  than each cron's own floor apart from an out-of-band `?force=1` caller, for any of the four crons.
+- ALB `TargetResponseTime` p99 stays bounded during warm windows (no overnight replay storms).
+- `zerodte-warm` specifically: legitimate 4 min rth-warm-leader heals unchanged.
 
 ### 1. `CACHE_WARM_ALWAYS` leftover staging bypass — PR #3512 (merged)
 
@@ -439,7 +455,7 @@ likely dominated by Polygon calls or general compute than the UW ceiling #3479 f
 need its own measurement before a fix is warranted, per this file's own "never fix from a guess"
 standing method.
 
-### 13. Helix print tape signal badges hard-clipped mid-character in FULL columns — PR pending (branch `fix/helix-signals-badge-clip`)
+### 16. Helix print tape signal badges hard-clipped mid-character in FULL columns — PR pending (branch `fix/helix-signals-badge-clip`)
 
 **What was broken:** the `/flows` print tape's Signals cell (`.helix-tape-cell--signals`, FULL
 columns density, desktop with the analytics sidebar hidden) rendered `signals.slice(0, 3)` — a raw
@@ -464,6 +480,34 @@ glyphs — and that whenever badges are hidden, a legible `+N` chip is visible s
 a phantom count that never paints). Also worth a spot-check at a narrower desktop width (browser
 window resized down, still above the mobile breakpoint) since the fix budgets against the column's
 CSS floor specifically to stay safe there.
+
+### 13. Vector chart volume-pane "SPY vol" watermark overlapped the first x-axis tick — PR pending (branch `fix/vector-volume-pane-label-overlap`)
+
+**What was broken:** the volume sub-pane's "SPY vol" watermark label (`VectorChart.tsx`,
+bottom-left corner of the chart stage, just above the x-axis) was a plain transparent `<p>` with no
+background, sitting in the same screen band as the chart's own canvas-drawn x-axis time-tick labels
+at the left edge. Live pixel-zoomed capture of `/vector` (desktop 1440×900) showed it painting
+directly over the first tick ("19:00"), producing garbled interleaved text. Two sibling labels a few
+lines below it in the same file (the "◇ dim = modeled" honesty label and the GEX-scope
+"spot-aligned" chip) already had this exact overlap class fixed on 2026-08-23 (opaque
+`bg-black/70 backdrop-blur-sm` pill) — this third label was simply missed at the time because it
+sits on the opposite corner and the earlier fix was validated on mobile, where this collision does
+not occur (it's a desktop-width-only overlap).
+
+**Fix:** gave the "SPY vol" label the same `rounded bg-black/70 px-1.5 py-0.5 backdrop-blur-sm`
+opaque-pill treatment as its two siblings, position unchanged (`bottom-2 left-2`). Deliberately did
+NOT add the siblings' `max-w-[42%] truncate` width guard — that guard protects variable-length,
+right-anchored text from overrunning the chart's right edge, which doesn't apply to this label's
+short, static text.
+
+**Check at the open, live tape, desktop viewport:** open `/vector` at 1440×900 (or wider) and look
+at the volume sub-pane's bottom-left corner. Confirm "SPY vol" reads cleanly on its own opaque pill
+with the first x-axis time tick (whatever time it now shows, live) visible and legible either beside
+or behind the pill — not interleaved into garbled combined text. Check across a few different zoom/
+pan states, since tick positions move with the visible time range and the original bug's window
+(the label colliding with whichever tick happens to land at the left edge) is a function of viewport
+width and time-range, not a single fixed state. Also spot-check mobile (430×932) to confirm the fix
+didn't regress the already-working sibling labels' layout there.
 
 ---
 
