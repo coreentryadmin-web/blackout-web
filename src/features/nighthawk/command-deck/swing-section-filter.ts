@@ -21,9 +21,6 @@ export type SwingSectionCounts = Record<SwingSectionFilter, number>;
 /** The `sections` map as it arrives on a lane: any subset of the seven, each possibly absent. */
 export type SwingSectionsMap = Partial<Record<SwingServingSection, unknown[]>>;
 
-/** Per-section row counts returned by `swingSectionCounts`. */
-export type SwingSectionCounts = Record<SwingSectionFilter, number>;
-
 /**
  * Rows for the selected filter, in the canonical section order.
  *

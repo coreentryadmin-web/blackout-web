@@ -1,7 +1,7 @@
 "use client";
 
 import type { TerminalPlay } from "./types";
-import type { SwingSectionFilter } from "./swing-section-filter";
+import type { SwingSectionCounts } from "./swing-section-filter";
 import { formatScanFreshnessEt } from "./swing-cockpit-utils";
 
 const WORKING = new Set(["OPEN", "HOLD", "TRIM"]);
@@ -13,7 +13,7 @@ export function SwingCockpitStrip({
   winRatePct,
 }: {
   plays: readonly TerminalPlay[];
-  sectionCounts: Record<SwingSectionFilter, number>;
+  sectionCounts: SwingSectionCounts;
   scanAsOf: string | null;
   winRatePct: number | null;
 }) {
