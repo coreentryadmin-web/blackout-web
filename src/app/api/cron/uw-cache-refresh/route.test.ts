@@ -41,3 +41,41 @@ test("uw-cache-refresh's background dispatch is wrapped in runWithBackgroundUwSw
     "the old untagged call must be gone, not left alongside the new one"
   );
 });
+
+test("uw-cache-refresh acquires a cross-replica overlap lock before dispatching REST fan-out", () => {
+  assert.match(routeSrc, /sharedCacheSetNx/, "must use the shared NX lock, not a read-then-write race");
+  assert.match(
+    routeSrc,
+    /const acquired = await sharedCacheSetNx\(/,
+    "the acquire call must happen before dispatch, not after"
+  );
+  assert.match(routeSrc, /if \(!acquired\)/, "a lost race must be handled, not ignored");
+});
+
+test("a lost overlap-lock race returns a skip response instead of dispatching a second refresh", () => {
+  assert.match(
+    routeSrc,
+    /skipped: true,\s*\n\s*reason: "previous UW cache refresh still in flight/
+  );
+  const skipIdx = routeSrc.indexOf('reason: "previous UW cache refresh still in flight');
+  const dispatchIdx = routeSrc.indexOf("after(dispatchRefresh)");
+  assert.ok(skipIdx > 0 && dispatchIdx > 0 && skipIdx < dispatchIdx);
+});
+
+test("the overlap lock fails OPEN on a Redis error rather than wedging the cron shut", () => {
+  assert.match(
+    routeSrc,
+    /sharedCacheSetNx\([\s\S]{0,120}\)\.catch\(\(\) => true\)/,
+    "a Redis error must not permanently block every future refresh"
+  );
+});
+
+test("the lock is released in a finally block so a thrown refresh still frees the next run", () => {
+  const finallyBlock =
+    /\} finally \{\s*await sharedCacheDel\(OVERLAP_LOCK_KEY\)\.catch\(\(\) => undefined\);\s*\}/;
+  assert.match(routeSrc, finallyBlock, "release must run on both the success and error paths");
+});
+
+test("the lock TTL matches the cron's own stale_after_min safety net (10 min = 600s)", () => {
+  assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 600/);
+});

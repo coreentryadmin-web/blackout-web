@@ -24,6 +24,18 @@ import { fetchMarketMovers } from "@/lib/providers/polygon";
 import { seedUwCacheFromWsStores, shouldSkipUwCacheRefreshTask } from "@/lib/uw-ws-cache-bridge";
 import { seedPulseSnapshotFromUwPrices, seedUwClusterHeartbeat } from "@/lib/ws/socket-cluster-health";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
+import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
+
+/**
+ * Cross-replica overlap guard. This cron fires every 2 min while measured background runtime
+ * is 20–66s on an 8–15 replica web fleet — without a lock, overlapping 24-way UW REST fan-outs
+ * stack and starve live member traffic (939 rate-limiter failures in one 2.5h RTH window on
+ * 2026-09-04, clustering at the start of this cron's run windows). Same `sharedCacheSetNx`
+ * idempotent-skip pattern as desk-warm / vector-pick-sweep. TTL (600s) matches
+ * `stale_after_min: 10` as the safety-net ceiling if a release is ever missed.
+ */
+const OVERLAP_LOCK_KEY = "uw-cache-refresh:running";
+const OVERLAP_LOCK_TTL_SEC = 600;
 
 const INDEX_TICKERS = ["SPX", "SPY", "QQQ", "IWM"] as const;
 const FLOW_STRIKE_TICKERS = ["SPX", "SPY"] as const;
@@ -39,6 +51,7 @@ async function runUwCacheRefreshTasks(
   started: number,
   redis: Awaited<ReturnType<typeof getUwCacheRedis>>
 ): Promise<void> {
+  try {
   const tasks: Array<() => Promise<void>> = [
     async () => {
       if (shouldSkipUwCacheRefreshTask("market_tide")) return;
@@ -113,6 +126,9 @@ async function runUwCacheRefreshTasks(
   console.info(
     `[cron/uw-cache-refresh] background done — refreshed=${refreshed} failed=${failed} elapsed=${Date.now() - started}ms`
   );
+  } finally {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -141,6 +157,24 @@ export async function GET(req: NextRequest) {
   // CloudWatch showed 939 real member-facing "[uw] flow-alerts failed: rate-limiter queue budget
   // exceeded" events in one 2.5h RTH window, clustering inside/at-the-start of this cron's own
   // measured 20-66s run windows (vs. 27 such failures in an equivalent off-hours window).
+  const acquired = await sharedCacheSetNx(
+    OVERLAP_LOCK_KEY,
+    { startedAt: started },
+    OVERLAP_LOCK_TTL_SEC
+  ).catch(() => true); // fail OPEN on Redis error — missed guard safer than a stuck cron
+  if (!acquired) {
+    const skipped = {
+      ok: true,
+      skipped: true,
+      reason: "previous UW cache refresh still in flight (idempotent skip)",
+      ws_seeded,
+      ws_skipped,
+      pulse_seeded,
+    };
+    await logCronRun("uw-cache-refresh", started, skipped);
+    return NextResponse.json(skipped);
+  }
+
   const dispatchRefresh = () => {
     void runWithBackgroundUwSweep(() => runUwCacheRefreshTasks(started, redis)).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
