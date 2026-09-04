@@ -280,6 +280,16 @@ removed duplicate local helpers.
 **Check at the open:** `/admin` API live feed + SPX terminal show plausible relative times (or
 "clock skew"), not "just now" on skewed event timestamps.
 
+### 0j-d. Admin SPX dashboard stale banner future-skew — fix/admin-spx-dashboard-stale-future-guard (pending)
+
+**What was broken:** `AdminSpxDashboard.tsx` computed `staleMs = Date.now() - generated_at` without a
+future guard — clock-skewed future `generated_at` read as falsely **fresh** (no stale banner).
+
+**Fix:** `adminAgeMsFromIso()` in `admin-time-ago.ts`; dashboard treats clock-skew/null as stale.
+
+**Check at the open:** `/admin` SPX dashboard shows stale banner (or `?` age) when `generated_at` is
+future-skewed, not silently fresh during RTH.
+
 ### 0i. Platform-integrity probe tier-gate false-WARN — fix/platform-integrity-clerk-auth (merged #3605)
 
 **What was broken:** `npm run validate:platform-integrity` hit tier-gated desk routes without Clerk auth,
