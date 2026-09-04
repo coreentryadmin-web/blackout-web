@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:24:27.018Z",
+  "updated_at": "2026-09-04T17:33:14.109Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -225,6 +225,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:24:27.018Z",
       "safe_to_merge": true
+    },
+    "pr-3670": {
+      "pr": 3670,
+      "head_sha": "6f0ff7709d0755d13f0a0e202dbd4d66ffdcd494",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:33:14.108Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -241,9 +249,9 @@
   "deploy": {
     "last_main_sha": "a7a04bef2a38c4eebffa69004732da98a558e8a1",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T17:18:32Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33899869003",
-    "last_deploy_sha": "883121ea4e81a191d5758572d1618b069431a039"
+    "last_deploy_at": "2026-09-04T17:30:40Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33900959005",
+    "last_deploy_sha": "8fce57a4f3b3741211723af3a156972a122921d2"
   },
   "open_prs": [],
   "events": [
@@ -1052,6 +1060,35 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:24:27.018Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:31:34.415Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:31:34.415Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "51f57950-d112-4231-842c-69b196491d8e",
+      "summary": "Cycle: RTH-open GREEN. Peer-reviewed #3666 (merged), #3667 APPROVED (merge conflict after #3666). Pre-tested #3670 thermal +0.00% fix (3/3) and #3671 socket-retry (7/7) — awaiting verify. ops:collect 0. Standing: release #3670/#3671 when CI green; rebase #3667."
+    },
+    {
+      "at": "2026-09-04T17:31:39.774Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:33:14.109Z",
+      "type": "pr_review",
+      "pr": 3670,
+      "head_sha": "6f0ff7709d0755d13f0a0e202dbd4d66ffdcd494",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:33:14.108Z",
       "safe_to_merge": true
     }
   ]
