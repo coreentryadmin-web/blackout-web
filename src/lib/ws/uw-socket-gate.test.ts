@@ -28,4 +28,14 @@ test("uw-socket: channel freshness gates use isWsUpdatedAtFresh (source scan)", 
     /Date\.now\(\)\s*-\s*at\s*<=\s*maxAgeMs/,
     "raw Date.now()-at must not gate UW channel freshness"
   );
+  assert.match(
+    src,
+    /function isUwHaltSourceStale[\s\S]*?return freshest == null \|\| !isWsUpdatedAtFresh\(freshest, maxAgeMs\)/,
+    "isUwHaltSourceStale must reject clock-skewed future effectiveFreshestUwMessageAt stamps"
+  );
+  assert.doesNotMatch(
+    src,
+    /function isUwHaltSourceStale[\s\S]*?Date\.now\(\)\s*-\s*freshest\s*>\s*maxAgeMs/,
+    "isUwHaltSourceStale must not treat negative age as live"
+  );
 });

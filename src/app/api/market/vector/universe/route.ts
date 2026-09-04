@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizePremiumDeskApi, isCronAuthorized } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { loadVectorUniverseSnapshot, refreshVectorUniverseSnapshot } from "@/features/vector";
+import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -24,5 +25,5 @@ export async function GET(req: NextRequest) {
     snap = await refreshVectorUniverseSnapshot();
   }
 
-  return NextResponse.json(snap, { headers: NO_STORE_HEADERS });
+  return NextResponse.json(roundFloats(snap), { headers: NO_STORE_HEADERS });
 }
