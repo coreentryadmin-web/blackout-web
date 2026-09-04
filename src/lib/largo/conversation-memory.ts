@@ -162,6 +162,8 @@ export function isMemoryFresh(memory: ConversationMemoryState, maxAgeSeconds = 3
   if (memory.dataFreshness === "stale") return false;
 
   const ageSeconds = (Date.now() - memory.lastUpdated.getTime()) / 1000;
+  // Clock-skewed future lastUpdated yields negative age and would read as perpetually fresh.
+  if (ageSeconds < 0) return false;
   return ageSeconds < maxAgeSeconds;
 }
 

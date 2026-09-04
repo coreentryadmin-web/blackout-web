@@ -4,6 +4,7 @@ import { peekGexHeatmapCache } from "@/lib/providers/polygon-options-gex";
 import { requireAnyToolApi } from "@/lib/tool-access-server";
 import { THERMAL_COMPARE_PRESET_SIZE } from "@/features/thermal/lib/thermal-compare-presets";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 import { joinGexStrikeExpiryTicker } from "@/lib/ws/uw-socket";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import type { HeatmapMemberPayload } from "@/lib/gex-heatmap-member";
@@ -92,7 +93,7 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json(
-    { tickers: tickersOut },
+    roundFloats({ tickers: tickersOut }),
     { headers: NO_STORE_HEADERS }
   );
 }

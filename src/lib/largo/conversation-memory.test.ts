@@ -143,6 +143,12 @@ test("isMemoryFresh respects maxAgeSeconds parameter", () => {
   assert.strictEqual(isMemoryFresh(memory, 10), true);
 });
 
+test("isMemoryFresh returns false when lastUpdated is skewed into the future", () => {
+  let memory = updateMemoryWithConsensus(initializeMemory(), mockConsensus, "SPX");
+  memory.lastUpdated = new Date(Date.now() + 60_000);
+  assert.strictEqual(isMemoryFresh(memory), false);
+});
+
 test("suggestTickerFromQuestion extracts explicit ticker", () => {
   const question = "What's the setup on NVDA today?";
   const suggested = suggestTickerFromQuestion(question, initializeMemory());
