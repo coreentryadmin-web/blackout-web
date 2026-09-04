@@ -249,3 +249,15 @@ export async function fetchBangerBoardRows(limit = 60): Promise<BangerPositionRo
   );
   return res.rows.map(mapBangerPositionRow);
 }
+
+/** Open-book rows only — use for live marks and horizon merge (not page-limited all-status scans). */
+export async function fetchBangerOpenBookRows(limit = 80): Promise<BangerPositionRow[]> {
+  const res = await dbQuery<QueryResultRow>(
+    `SELECT * FROM banger_positions
+     WHERE status IN ('OPEN','PARTIAL')
+     ORDER BY session_date DESC, id DESC
+     LIMIT $1`,
+    [limit],
+  );
+  return res.rows.map(mapBangerPositionRow);
+}
