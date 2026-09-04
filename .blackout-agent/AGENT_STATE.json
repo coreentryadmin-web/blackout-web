@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T06:40:27.571Z",
+  "updated_at": "2026-09-04T06:46:28.593Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -80,15 +80,14 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:31:04.605Z",
-      "lease_until": "2026-09-04T07:01:04.605Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T06:41:11.192Z",
+      "lease_until": "2026-09-04T08:11:11.192Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.756Z"
+      "title": null
     }
   },
   "reviews": {
@@ -188,16 +187,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T05:31:04.606Z",
+      "last_seen": "2026-09-04T06:41:11.192Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
     "last_main_sha": "e5ab24c2148d01e15d8d8a9173ebaf43ac6c14f6",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T06:39:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845249246",
-    "last_deploy_sha": "aafe12880d194c1c87ab0dfce3ae20aaa84c4106"
+    "last_deploy_at": "2026-09-04T06:44:16Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845611594",
+    "last_deploy_sha": "84b92b6b62ff5b6694c856016aa3e5b2d235b5ea"
   },
   "open_prs": [],
   "events": [
@@ -761,6 +760,31 @@
       "agent": "cursor",
       "run_id": "7bea02e5-d2b4-4afb-9990-40daacd4f15e",
       "summary": "Approved #3512 (cache-warm 24/7 fix) and #3511 (swing horizon freshness) — verify GREEN, marked ready pending rate limit. #3508/#3509 merged. Deploy GREEN. ops:collect 0."
+    },
+    {
+      "at": "2026-09-04T06:41:06.154Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:41:11.192Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T06:46:28.592Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:46:28.593Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2abd8270-bed4-4328-984b-91d45c440fe0",
+      "summary": "Cycle: merged #3508/#3509 during review. Approved #3511/#3512 (verify GREEN, undraft blocked by GH rate limit). Deploy validate GREEN. ops:collect 0. Agent state PR #3518. Blocked: gh GraphQL rate limit for pr ready/merge. #3506 awaits Claude peer review."
     }
   ],
   "pr_activity": {
