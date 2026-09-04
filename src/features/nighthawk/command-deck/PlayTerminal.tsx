@@ -235,7 +235,8 @@ export function PlayTerminal({
   );
   const greeksOff = !live || !greeksLive || streamKind === "CLOSED";
   const premium = isZeroDtePremiumTerminal(play);
-  const zeroDteSinglePanel = play.horizon === "ZERO_DTE";
+  /** 0DTE + SWING share the unified command panel (scale-out for swings, ratchet-only widgets gated inside). */
+  const commandSinglePanel = play.horizon === "ZERO_DTE" || play.horizon === "SWING";
   const legacySinglePanel = play.horizon === "LEGACY";
 
   return (
@@ -360,7 +361,7 @@ export function PlayTerminal({
         </div>
       )}
 
-      {premium && !zeroDteSinglePanel && (greeksOff ? <MarketContextRow play={play} /> : (
+      {premium && !commandSinglePanel && (greeksOff ? <MarketContextRow play={play} /> : (
         <div className={clsx("nh-deck-greeks", greeksOff && "off")} title={greeksOff ? "Greeks update with live marks" : undefined}>
           <GreekCell k="delta" v={g?.delta ?? null} />
           <GreekCell k="gamma" v={g?.gamma ?? null} />
@@ -370,7 +371,7 @@ export function PlayTerminal({
         </div>
       ))}
 
-      {zeroDteSinglePanel ? (
+      {commandSinglePanel ? (
         <ZeroDteCommandPanel play={play} nowMs={nowMs} sessionClosed={sessionClosed} />
       ) : legacySinglePanel ? (
         <LegacyPlayDetailPanel play={play} />

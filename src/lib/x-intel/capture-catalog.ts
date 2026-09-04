@@ -83,7 +83,7 @@ const THERMAL_LENS = ["gex", "vex", "dex", "charm"] as const;
 const VECTOR_HORIZON = ["0dte", "weekly", "monthly"] as const;
 const VECTOR_TF = ["1", "3", "5", "15", "30", "60"] as const;
 const MERIDIAN_TABS = ["summary", "report", "estimates", "positioning", "history"] as const;
-const NIGHTHAWK_VIEWS = ["ZERO_DTE", "SWING", "BANGER", "LEGACY"] as const;
+const NIGHTHAWK_VIEWS = ["ZERO_DTE", "SWING", "LEGACY"] as const;
 const NIGHTHAWK_PANELS = ["thesis", "management", "pnl", "timeline"] as const;
 
 function fromView(

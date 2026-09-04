@@ -157,7 +157,20 @@ export function ZeroDteDeck({
   );
 }
 
-// ── Swings / LEAPS: the horizon lane ────────────────────────────────────────────────
+/** Swing Command board SWR cadence — faster than the old 30s lane poll; marks overlay still via stock quotes. */
+function swingBoardRefreshMs(): number {
+  try {
+    const { hour, minute, weekday } = etNowParts();
+    if (weekday === "Sat" || weekday === "Sun") return 15_000;
+    const mins = hour * 60 + minute;
+    if (mins >= 9 * 60 + 25 && mins <= 16 * 60 + 5) return 5_000;
+  } catch {
+    /* fall through */
+  }
+  return 15_000;
+}
+
+// ── Swing Command: unified Swings + Banger + Vector on the horizon lane ─────────────
 
 export function HorizonDeck({
   horizon,
@@ -169,7 +182,8 @@ export function HorizonDeck({
   focusTicker?: string | null;
 }) {
   const { data, isLoading } = useSWR(["deck-horizons", horizon], () => fetchNightHawkHorizons(horizon), {
-    refreshInterval: 30_000,
+    refreshInterval: horizon === "SWING" ? swingBoardRefreshMs() : 30_000,
+    revalidateOnFocus: true,
   });
   // fetchNightHawkHorizons (lib/api.ts) fail-softs a network/upstream error to `{board: null}` —
   // otherwise indistinguishable from a genuinely-empty lane (both render zero rows). Surface that
@@ -290,6 +304,9 @@ export function HorizonDeck({
     </>
   );
 }
+
+/** Alias — Swing Command is the member-facing name for the unified SWING horizon deck. */
+export const SwingCommandDeck = HorizonDeck;
 
 // ── Legacy: the evening edition ─────────────────────────────────────────────────────
 

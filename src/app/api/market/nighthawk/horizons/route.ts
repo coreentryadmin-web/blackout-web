@@ -16,6 +16,9 @@ import {
 } from "@/features/nighthawk/lib/nighthawk-view";
 import { horizonBoardFromZeroDtePayload } from "@/lib/zerodte/horizon-board-from-payload";
 import { getSwingServingLane, discoverSwingFromPersisted, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
+import { fetchBangerBoardRows } from "@/lib/banger/positions-db";
+import { isBangerEngineEnabled } from "@/lib/banger/flag";
+import { fetchVectorPickLeaderRows } from "@/lib/vector/vector-pick-leaders-db";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { roundFloats } from "@/lib/round-floats";
@@ -71,10 +74,20 @@ export async function GET(req: NextRequest) {
     // SWING branch: persisted discovery lane + OPEN ledger rows for live sections. Cache-reader on
     // providers (spots come from the serving snapshot); DB open-book read is the member board's job.
     const snap = await readSwingServingSnapshot().catch(() => null);
+    const vectorRows = await fetchVectorPickLeaderRows({ limit: 120 }).catch(() => []);
+    const vectorLeaders = vectorRows.map((r) => ({
+      ticker: r.ticker,
+      leaderKey: r.leader_key,
+      peakPremiumPct: r.peak_premium_pct,
+    }));
     const swingLane = await getSwingServingLane({
       discover: discoverSwingFromPersisted,
       fetchOpenPositions: () => fetchOpenSwingPositions().catch(() => []),
       fetchLatestManageEvents: (ids) => fetchLatestSwingSnapshotEvents(ids).catch(() => new Map()),
+      fetchBangerPositions: isBangerEngineEnabled()
+        ? () => fetchBangerBoardRows(80).catch(() => [])
+        : undefined,
+      vectorLeaders,
       spotsByTicker: snap?.spotsByTicker,
     });
     // withLane, not a raw spread: `board` was assembled from the 0DTE payload alone, so its

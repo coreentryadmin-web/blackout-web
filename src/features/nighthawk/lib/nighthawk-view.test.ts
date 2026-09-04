@@ -17,18 +17,18 @@ import {
   resolveNightHawkView,
 } from "./nighthawk-view.ts";
 
-test("the toggle has five views in fast→slow→banger→vector→legacy order", () => {
-  assert.deepEqual([...NIGHTHAWK_VIEWS], ["ZERO_DTE", "SWING", "BANGER", "VECTOR", "LEGACY"]);
+test("the toggle has three views in fast→swing→legacy order", () => {
+  assert.deepEqual([...NIGHTHAWK_VIEWS], ["ZERO_DTE", "SWING", "LEGACY"]);
 });
 
 test("parseNightHawkView resolves aliases case-insensitively, else the default", () => {
   assert.equal(parseNightHawkView("0dte"), "ZERO_DTE");
   assert.equal(parseNightHawkView("ZeroDte"), "ZERO_DTE");
   assert.equal(parseNightHawkView("swings"), "SWING");
-  assert.equal(parseNightHawkView("banger"), "BANGER");
-  assert.equal(parseNightHawkView("bangers"), "BANGER");
-  assert.equal(parseNightHawkView("weekly"), "BANGER");
-  assert.equal(parseNightHawkView("vector"), "VECTOR");
+  assert.equal(parseNightHawkView("banger"), "SWING");
+  assert.equal(parseNightHawkView("bangers"), "SWING");
+  assert.equal(parseNightHawkView("weekly"), "SWING");
+  assert.equal(parseNightHawkView("vector"), "SWING");
   assert.equal(parseNightHawkView("playbook"), "LEGACY");
   assert.equal(parseNightHawkView("tonight"), "LEGACY");
   assert.equal(parseNightHawkView("nonsense"), DEFAULT_NIGHTHAWK_VIEW);
@@ -39,11 +39,9 @@ test("parseNightHawkView resolves aliases case-insensitively, else the default",
   assert.equal(parseNightHawkView("leap"), DEFAULT_NIGHTHAWK_VIEW);
 });
 
-test("horizonForView maps the two horizon views, and null for legacy/banger/vector", () => {
+test("horizonForView maps the two horizon views, and null for legacy", () => {
   assert.equal(horizonForView("ZERO_DTE"), "ZERO_DTE");
   assert.equal(horizonForView("SWING"), "SWING");
-  assert.equal(horizonForView("BANGER"), null);
-  assert.equal(horizonForView("VECTOR"), null);
   assert.equal(horizonForView("LEGACY"), null);
 });
 
@@ -205,7 +203,7 @@ test("resolveNightHawkView: a ticker with no explicit view defaults to SWING", (
 });
 
 test("resolveNightHawkView: an explicit view always wins, even with a ticker present", () => {
-  assert.equal(resolveNightHawkView("banger", "TSLA"), "BANGER");
+  assert.equal(resolveNightHawkView("banger", "TSLA"), "SWING");
   assert.equal(resolveNightHawkView("zerodte", "TSLA"), "ZERO_DTE");
   assert.equal(resolveNightHawkView("legacy", "TSLA"), "LEGACY");
 });

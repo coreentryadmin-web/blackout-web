@@ -1,11 +1,12 @@
 /**
- * Night Hawk VIEW selection — the single-select toggle model (0DTE / Swings / Bangers / Legacy).
+ * Night Hawk VIEW selection — the single-select toggle model (0DTE / Swing Command / Legacy).
  *
- * The remodel turns Night Hawk into ONE surface with a four-way toggle; selecting a view scopes the ENTIRE
- * page to it. Two views map to a horizon lane (the whole-market 0DTE/Swing boards); "Bangers" renders
- * Engine B — the whole-market weekly-banger discovery + live scale-out board (BangerBoard) — which is NOT
- * part of the horizon-ledger system, so its meta entry carries `horizon: null` like Legacy; "Legacy" is the
- * original evening "Tonight's playbook" edition, kept as its own toggle rather than removed.
+ * 2026-09-04 Swing Command unification: Bangers (Engine B) and Vector pick corroboration fold INTO the
+ * Swings view — one multi-session desk with 0DTE-style Command Deck panels. BANGER and VECTOR remain as
+ * parse aliases that resolve to SWING so shared links keep working; they no longer have separate tabs.
+ *
+ * The remodel turns Night Hawk into ONE surface with a three-way toggle; selecting a view scopes the ENTIRE
+ * page to it. ZERO_DTE and SWING map to horizon lanes; "Legacy" is the original evening playbook.
  *
  * 2026-08-04: LEAPS removed from this visible toggle (operator instruction — the LEAPS horizon lane has no
  * live signal adapter feeding it yet, so it only ever rendered an empty placeholder lane; see
@@ -21,14 +22,12 @@
 
 import { dteRangeLabel, type Horizon } from "@/lib/horizons";
 
-export type NightHawkView = "ZERO_DTE" | "SWING" | "BANGER" | "VECTOR" | "LEGACY";
+export type NightHawkView = "ZERO_DTE" | "SWING" | "LEGACY";
 
-/** Toggle order, left → right: fastest horizon → Engine B → Vector analysis log → legacy playbook. */
+/** Toggle order, left → right: fastest horizon → multi-session Swing Command → legacy playbook. */
 export const NIGHTHAWK_VIEWS: readonly NightHawkView[] = [
   "ZERO_DTE",
   "SWING",
-  "BANGER",
-  "VECTOR",
   "LEGACY",
 ] as const;
 
@@ -57,20 +56,8 @@ export const NIGHTHAWK_VIEW_META: Record<NightHawkView, NightHawkViewMeta> = {
   SWING: {
     label: "Swings",
     tag: "SWING",
-    blurb: `${dteRangeLabel("SWING")} setups building across sessions \u2014 momentum + accumulation.`,
+    blurb: `Swing Command · ${dteRangeLabel("SWING")} multi-session plays — thesis, scale-out, Vector + Banger signals unified.`,
     horizon: "SWING",
-  },
-  BANGER: {
-    label: "Bangers",
-    tag: "BANGER",
-    blurb: "Engine B — whole-market weekly-banger discovery with live scale-out tracking.",
-    horizon: null,
-  },
-  VECTOR: {
-    label: "Vector",
-    tag: "VECTOR",
-    blurb: "Closed Vector contract picks — Don't buy events logged for setup-quality analysis.",
-    horizon: null,
   },
   LEGACY: {
     label: "Legacy",
@@ -103,10 +90,10 @@ export function parseNightHawkView(raw: unknown): NightHawkView {
     case "BANGER":
     case "BANGERS":
     case "WEEKLY":
-      return "BANGER";
+      return "SWING";
     case "VECTOR":
     case "VECTOR_PICKS":
-      return "VECTOR";
+      return "SWING";
     case "LEGACY":
     case "PLAYBOOK":
     case "TONIGHT":
@@ -201,7 +188,6 @@ export const NIGHTHAWK_COMPACT_LANE_LABEL = {
   SWING: `Swings \u00b7 ${dteRangeLabel("SWING")}`,
   LEAPS: "LEAPS · ≤90 DTE",
   LEGACY: "Legacy · Playbook",
-  VECTOR: "Vector · closed",
 } as const;
 
 /** Longest length confirmed to render without overlap in `.nh-deck-cmd--inline` at the narrowest
