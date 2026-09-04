@@ -455,6 +455,40 @@ likely dominated by Polygon calls or general compute than the UW ceiling #3479 f
 need its own measurement before a fix is warranted, per this file's own "never fix from a guess"
 standing method.
 
+### 16. Vector desk mobile chart collapse — PR #3556 (pending, branch `fix/vector-mobile-chart-collapse`)
+
+**What was broken:** the standalone `/vector` desk's price chart (candles + wall overlay + volume
+pane) never rendered below the 1280px desktop breakpoint — present in the DOM, laid out with a
+real 320px `min-height` floor on its own canvas element, but clipped to nothing by an ancestor
+chain (`.vector-chart-terminal-chart` → `.vector-chart-wrap` → `.vector-chart-stage`) that
+computed to a literal 0px box on every phone/tablet width, because the flex-fill technique those
+three carried unconditionally (`flex: 1 1 0; min-height: 0;`) only resolves correctly when some
+ancestor up the chain has a DEFINITE height to distribute — true only from 1280px up. Independently
+reproduced live 2026-09-04 (fresh temp Clerk session, `proxy-browser.cjs` at 430x932): full-page
+capture showed header → Live Helix → 0DTE Matrix → SCALP play card → SPX Plays, no chart anywhere;
+a DOM probe measured `.vector-chart-canvas` at h=320 while all three ancestors measured h=0,
+unchanged after a 30s settle (ruling out a data/timing race). Full evidence and root cause in
+`docs/audit/findings-staging/2026-09-04-vector-mobile-chart-collapse.md`.
+
+**Fix:** scoped the `flex: 1 1 0; min-height: 0;` triple to the existing `@media (min-width: 1280px)`
+block (byte-identical to what the base rule used to carry, so desktop's resolved CSS is unchanged);
+the base/mobile rule now lets the default `flex: 0 1 auto` + `min-height: auto` apply, so the chart
+column sizes to its own content (the canvas's 320px floor) instead of forcing itself to zero. No JS
+change — `VectorChart.tsx`'s existing `ResizeObserver` autosize nudge was already correctly wired to
+react once the container gets a real size.
+
+**Check at the open:** this fix was built and verified entirely OFF-HOURS (market closed, "Session
+closed" shown on Live Helix) — the chart's underlying data feed (live bars, wall overlay, SSE
+ticks) has not been seen rendering into the now-fixed layout under a moving RTH tape. Load
+`/vector` on a phone (or a <1280px-wide window) once the market is open and confirm: (1) the
+candle chart renders above the fold, between the ticker-chip row and the Live Helix card, with
+visible candles/wall beads and a volume sub-pane, matching the desktop layout's content
+(no longer just absent); (2) it stays correctly sized and does not clip/collapse again as live bars
+stream in and the chart's content height changes; (3) the desktop (>=1280px) layout is pixel-for-pixel
+unchanged from before this fix — this was verified via CSS-cascade inspection and existing
+regression tests (`vector-chart-viewport.test.ts`) but not via a fresh live desktop screenshot,
+since the fix's own scope was mobile-only.
+
 ### 14. Night Hawk mobile 430x932 — view-tab row overlapped the theme-toggle pill — PR pending (branch `fix/nighthawk-legacy-tab-toggle-overlap`)
 
 **What was broken:** live `/nighthawk` at 430x932 (both default and analytics-expanded states):

@@ -9691,24 +9691,47 @@ html.product-shell .nav-mega {
     align-items: stretch;
   }
 
+  /*
+   * `min-height: 0` + `flex: 1 1 0` here is a FLEX-FILL technique: it lets a column stretch to
+   * whatever space its ancestor hands it, shrinking below its own content size if needed. That
+   * only produces a correct result when some ancestor up the chain has a DEFINITE height for the
+   * flex-grow math to distribute — which is true from the >=1280px breakpoint up (its media block
+   * below caps `.vector-page-shell` to `height: 100dvh` and flex-fills every level down to
+   * this grid), and is NOT true below it, where the mobile/stacked layout is plain document flow
+   * with no definite height anywhere in the chain (only the grid's own `min-height` FLOOR above,
+   * which is not a definite size for descendant flex resolution).
+   *
+   * Fed a `flex-basis: 0` and an explicit `min-height: 0` (overriding the default `min-height:
+   * auto`, which is what normally lets a flex item's CONTENT establish a size floor) with no real
+   * space to grow into, every level in this chain collapsed to a literal 0px box — even though
+   * `.vector-chart-canvas--desk-fill` below still forces itself to `min-height: 320px !important`
+   * in isolation. `.vector-chart-stage`'s `overflow: hidden` then clipped that 320px canvas
+   * entirely out of view inside its own 0px parent: the candle/price chart with wall overlay was
+   * unconditionally IN the DOM (verified live — `.vector-chart-canvas` measured w=414 h=320,
+   * `min-height: 320px` computed) and never visible on screen at any width below 1280px (verified
+   * live at 430x932, RESULT unchanged after a 30s settle — this was never a data/timing race).
+   *
+   * FIX: keep the flex-fill (`flex: 1 1 0` + `min-height: 0`) ONLY at >=1280px, where it is both
+   * correct and necessary (see the media block below gated on that breakpoint, which re-adds
+   * exactly these three declarations). Below that, drop them here and let the default `flex: 0 1 auto` +
+   * `min-height: auto` apply — a flex COLUMN with no forced basis/floor sizes itself to its own
+   * content (identical to plain block stacking for a column with no other children needing
+   * alignment), so the canvas's own 320px floor propagates up through every ancestor exactly as
+   * the comment on `.vector-chart-canvas--desk-fill` below always intended it to.
+   */
   .vector-page-shell .vector-chart-terminal-chart {
     display: flex;
     flex-direction: column;
-    min-height: 0;
     min-width: 0;
   }
 
   .vector-page-shell .vector-chart-wrap {
     display: flex;
     flex-direction: column;
-    flex: 1 1 0;
-    min-height: 0;
     min-width: 0;
   }
 
   .vector-page-shell .vector-chart-stage {
-    flex: 1 1 0;
-    min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -9820,6 +9843,24 @@ html.product-shell .nav-mega {
     /* Drop the mobile/stacked min-height FLOOR here — it beats the bare `.vector-chart-terminal-grid`
        min-height:0 below on specificity and re-inflates the row past the flex cap. */
     .vector-page-shell .vector-chart-terminal-grid {
+      min-height: 0;
+    }
+
+    /* Re-establish the flex-fill chain the base (mobile) rules above deliberately DON'T set — see
+       the long comment on `.vector-page-shell .vector-chart-wrap`/`.vector-chart-stage`. From here
+       up, `.vector-page-shell` has a definite `height: 100dvh` flex-filled all the way down to this
+       grid, so `flex: 1 1 0` + `min-height: 0` correctly stretches the chart column to fill it
+       instead of collapsing (which is what happens below 1280px, where no ancestor height is
+       definite). This restores exactly the sizing this chain had before it was scoped down. */
+    .vector-page-shell .vector-chart-terminal-chart {
+      min-height: 0;
+    }
+    .vector-page-shell .vector-chart-wrap {
+      flex: 1 1 0;
+      min-height: 0;
+    }
+    .vector-page-shell .vector-chart-stage {
+      flex: 1 1 0;
       min-height: 0;
     }
 
