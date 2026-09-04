@@ -160,6 +160,14 @@ Edition prep." Added a regression test tying `LEARN_NAV`'s night-hawk descriptor
 structured-data testing tool) should show the corrected Night Hawk descriptor; confirm it still
 reads naturally alongside the dedicated Night Hawk guide's own overview content.
 
+### 0ag. Vector Academy guide falsely framed Thermal as SPX-only — fix/vector-guide-thermal-multiticker-claim (pending)
+
+**What was broken:** the Vector guide (`articles.ts`, `vector-scanner-guide`) said "[Thermal] focus[es] on SPX" and "[Thermal] gives you the deep heatmap for SPX" — contradicting the homepage's own accurate "Multi-ticker GEX/VEX/DEX/CHARM matrix" framing and Thermal's real route/UI (11 preset tickers spanning indices and single names, plus live ticker search — no SPX-only gate).
+
+**Fix:** Corrected both passages to reflect Thermal's real multi-ticker capability while keeping Vector's accurate differentiator (automated universe-wide scanning, no manual ticker selection) intact. Added `thermal-ticker-scope-consistency.test.ts` grounding the fix in `HEATMAP_PRESET_TICKERS` and guarding against the SPX-only framing recurring.
+
+**Check at the open:** `/learn/vector-scanner-guide` should read Thermal as multi-ticker; spot-check `/heatmap` with a non-SPX preset (e.g. NVDA, QQQ) still renders a full GEX/VEX/DEX/CHARM matrix, confirming the guide now matches live behavior.
+
 ### 0ae. `zerodte-warm` cron raced live member requests for the UW rate-limiter ceiling on a false premise — fix/zerodte-warm-uw-sweep-tag (merged #3775)
 
 **What was broken:** the `zerodte-warm` cron's dispatch (`warmZeroDteBoard()` +
