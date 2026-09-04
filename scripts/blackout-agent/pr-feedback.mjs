@@ -428,7 +428,8 @@ export function handlePrWebhook(opts) {
   ]);
   if (!prData) throw new Error(`Could not load PR #${pr}`);
 
-  const checks = ghJson(["pr", "checks", String(pr), "--json", "name,state,conclusion,bucket"]) ?? [];
+  // gh pr checks --json only exposes name/state/bucket — not conclusion (CheckRun API field).
+  const checks = ghJson(["pr", "checks", String(pr), "--json", "name,state,bucket"]) ?? [];
   const checkList = Array.isArray(checks) ? checks : checks.checks ?? [];
 
   const state = readAgentState();
