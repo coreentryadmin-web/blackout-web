@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T12:48:06.884Z",
+  "updated_at": "2026-09-04T13:56:00.473Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T13:45:09.090Z",
+      "lease_until": "2026-09-04T15:25:58.608Z",
+      "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "2b513599-d52f-4a40-a454-00231921f70b",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -210,6 +210,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
+    },
+    "pr-3589": {
+      "pr": 3589,
+      "head_sha": "307642d9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T13:54:10.081Z",
+      "safe_to_merge": true
+    },
+    "pr-3590": {
+      "pr": 3590,
+      "head_sha": "0079def7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T13:54:46.486Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -224,11 +240,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118",
+    "last_main_sha": "24bb9020c25aa63a98a69377598c5575bcc95ebb",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T13:55:45Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33879039948",
+    "last_deploy_sha": "76160edcd28a244bffa5e723112a006ab59a9cce"
   },
   "open_prs": [],
   "events": [
@@ -898,6 +914,63 @@
       "agent": "cursor",
       "run_id": "072758a3-0684-479a-b95a-27416aabb9c3",
       "summary": "Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs."
+    },
+    {
+      "at": "2026-09-04T13:54:10.082Z",
+      "type": "pr_review",
+      "pr": 3589,
+      "head_sha": "307642d9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T13:54:10.081Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T13:54:46.487Z",
+      "type": "pr_review",
+      "pr": 3590,
+      "head_sha": "0079def7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T13:54:46.486Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T13:55:14.625Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T13:55:14.626Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6e436550-a52e-498a-b65d-2ab249720757",
+      "summary": "PR-event cycle: merged Claude #3589 (VP collision finding) + #3590 (findings hygiene backticks). Implemented fix/vector-vp-label-axis-collision (pushed, PR creation blocked by integration token 403 — needs manual PR or peer). validate:deploy GREEN, ops:collect 0. Off-hours."
+    },
+    {
+      "at": "2026-09-04T13:55:47.404Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T13:55:58.608Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T13:55:59.513Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T13:56:00.473Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
