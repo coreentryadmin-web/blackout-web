@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pickGateLines, buildReport, parseCalibrationResponse } from "./g18-g19-counterfactual.mjs";
+import { pickGateLines, buildReport, parseCalibrationResponse, parseReplayStdout } from "./g18-g19-counterfactual.mjs";
 
 test("pickGateLines extracts G-18 and G-19", () => {
   const blocked = [
@@ -23,6 +23,28 @@ test("buildReport marks ok false when calibration error", () => {
   const report = buildReport({ calibration: null, replay: null, calibrationError: "empty window" });
   assert.equal(report.ok, false);
   assert.equal(report.calibration_error, "empty window");
+});
+
+test("parseReplayStdout extracts root JSON after npm banner and nested play objects", () => {
+  const stdout = [
+    "",
+    "> blackout-web@0.1.0 replay:0dte-session",
+    "> node --import tsx scripts/audit/zerodte-session-replay.mjs --days=5 --json",
+    "",
+    '{',
+    '  "ok": true,',
+    '  "replayed": 2,',
+    '  "plays": [',
+    '    { "ticker": "RIOT", "nested": { "a": 1 } },',
+    '    { "ticker": "MARA" }',
+    "  ]",
+    "}",
+    "",
+  ].join("\n");
+  const parsed = parseReplayStdout(stdout);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.replayed, 2);
+  assert.equal(parsed.plays.length, 2);
 });
 
 test("buildReport adds verdict strings", () => {
