@@ -45,6 +45,7 @@ import { generateDefaultAuditPhone } from './lib/audit-phone.mjs';
 import { createOrAdoptAuditUserViaCurl } from './lib/clerk-audit-user.mjs';
 import { orderLedgerRowsForMarkCheck, classifyMarkEvidence } from './lib/ledger-mark-evidence.mjs';
 import { checkWallInvariants } from './lib/gex-wall-invariants.mjs';
+import { sessionExtremesFromMinuteBars } from './lib/spx-polygon-session-extremes.mjs';
 
 import { subprocessErrorMessage } from "./lib/redact.mjs";
 const SECRET = req('CLERK_SECRET_KEY');
@@ -830,10 +831,31 @@ async function main() {
       // two different days and fail a healthy desk.
       if (rth) {
         const today = todayEtYmd();
-        const bars = poly(`/v2/aggs/ticker/I:SPX/range/1/day/${today}/${today}`)?.results?.[0];
-        const gtHod = num(bars?.h), gtLod = num(bars?.l);
-        if (dHod != null && gtHod != null) rec('spx-desk: hod vs Polygon day high', Math.abs(dHod - gtHod) / gtHod * 100 <= 0.1 ? 'PASS' : 'FAIL', `desk=${dHod} polygon=${gtHod}`);
-        if (dLod != null && gtLod != null) rec('spx-desk: lod vs Polygon day low', Math.abs(dLod - gtLod) / gtLod * 100 <= 0.1 ? 'PASS' : 'FAIL', `desk=${dLod} polygon=${gtLod}`);
+        // Minute aggregates are ground truth during RTH — the daily bar's h/l can lag by
+        // several points while the session is still printing (measured 2026-09-04: desk HOD
+        // 7750.19 matched minute max; Polygon daily h was still 7742.22).
+        const minuteBars = poly(
+          `/v2/aggs/ticker/I:SPX/range/1/minute/${today}/${today}?adjusted=true&sort=asc&limit=50000`
+        )?.results;
+        const fromMinutes = sessionExtremesFromMinuteBars(minuteBars);
+        const dailyBar = poly(`/v2/aggs/ticker/I:SPX/range/1/day/${today}/${today}`)?.results?.[0];
+        const gtHod = fromMinutes.hod ?? num(dailyBar?.h);
+        const gtLod = fromMinutes.lod ?? num(dailyBar?.l);
+        const gtSource = fromMinutes.hod != null || fromMinutes.lod != null ? 'minute' : 'daily';
+        if (dHod != null && gtHod != null) {
+          rec(
+            'spx-desk: hod vs Polygon session high',
+            Math.abs(dHod - gtHod) / gtHod * 100 <= 0.1 ? 'PASS' : 'FAIL',
+            `desk=${dHod} polygon(${gtSource})=${gtHod}`
+          );
+        }
+        if (dLod != null && gtLod != null) {
+          rec(
+            'spx-desk: lod vs Polygon session low',
+            Math.abs(dLod - gtLod) / gtLod * 100 <= 0.1 ? 'PASS' : 'FAIL',
+            `desk=${dLod} polygon(${gtSource})=${gtLod}`
+          );
+        }
       } else {
         rec('spx-desk: hod/lod vs Polygon', 'INFO', 'skipped — market closed; the desk carries the last session\'s extremes while the intraday aggregate is empty, so this comparison would span two different days');
       }
