@@ -73,12 +73,13 @@ export function pickGateLines(blockedValue, codes = TARGET_GATES) {
   return out;
 }
 
-export function buildReport({ calibration, replay }) {
+export function buildReport({ calibration, replay, calibrationError }) {
   const gates = pickGateLines(calibration?.blocked_value);
   return {
-    ok: true,
+    ok: !calibrationError,
     task: "BO-P1-0004",
     window: calibration?.window ?? null,
+    calibration_error: calibrationError ?? null,
     gates: {
       [G18_CODE]: { ...gates[G18_CODE], verdict: interpretGate(G18_CODE, gates[G18_CODE]) },
       [G19_CODE]: { ...gates[G19_CODE], verdict: interpretGate(G19_CODE, gates[G19_CODE]) },
@@ -87,6 +88,19 @@ export function buildReport({ calibration, replay }) {
     total_blocked_gates: calibration?.blocked_value?.length ?? 0,
     graded_plays: calibration?.graded_plays ?? null,
   };
+}
+
+export function parseCalibrationResponse(res, report) {
+  if (!res.ok) {
+    return { error: `calibration GET failed HTTP ${res.status}: ${JSON.stringify(report).slice(0, 300)}` };
+  }
+  if (report.available === false) {
+    return {
+      error: report.reason ?? "calibration unavailable (empty window or insufficient data)",
+      report,
+    };
+  }
+  return { report };
 }
 
 async function fetchCalibration(args, headers) {
@@ -103,10 +117,11 @@ async function fetchCalibration(args, headers) {
   const q = args.days ? `?days=${args.days}` : "";
   const res = await fetch(`${args.base}/api/market/zerodte/calibration${q}`, { headers });
   const report = await res.json().catch(() => ({}));
-  if (!res.ok || report.available === false) {
-    throw new Error(`calibration GET failed HTTP ${res.status}: ${JSON.stringify(report).slice(0, 300)}`);
+  const parsed = parseCalibrationResponse(res, report);
+  if (parsed.error) {
+    return { grade: gradeJson, report: parsed.report ?? null, error: parsed.error };
   }
-  return { grade: gradeJson, report };
+  return { grade: gradeJson, report: parsed.report };
 }
 
 function runReplay(args) {
@@ -138,12 +153,12 @@ async function main() {
     }
 
     const headers = { Cookie: session.cookieHeader, Accept: "application/json" };
-    const { grade, report } = await fetchCalibration(args, headers);
+    const { grade, report, error: calibrationError } = await fetchCalibration(args, headers);
 
     let replay = null;
     if (args.replay) replay = runReplay(args);
 
-    const result = buildReport({ calibration: report, replay });
+    const result = buildReport({ calibration: report, replay, calibrationError });
 
     if (args.json) {
       console.log(JSON.stringify({ ...result, grade_backfill: grade }, null, 2));
@@ -157,6 +172,9 @@ async function main() {
     console.log("  0DTE G-18/G-19 COUNTERFACTUAL — BO-P1-0004");
     console.log(line("═"));
     console.log(`\n  window: ${result.window?.since ?? "?"} .. ${result.window?.through ?? "?"} (${result.window?.days ?? "?"}d)`);
+    if (result.calibration_error) {
+      console.log(`  calibration: UNAVAILABLE — ${result.calibration_error}`);
+    }
     console.log(`  skip-grade backfill: scanned=${grade.scanned ?? 0} graded=${grade.graded ?? 0} ungradeable=${grade.ungradeable ?? 0}`);
 
     console.log(`\n${line()}`);
