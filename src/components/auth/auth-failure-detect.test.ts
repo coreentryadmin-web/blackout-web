@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isClerkErrorClassName, shouldReportAuthFailure, DEDUPE_WINDOW_MS } from "./auth-failure-detect";
+import { isClerkErrorClassName, isBenignClerkAuthMessage, shouldReportAuthFailure, DEDUPE_WINDOW_MS } from "./auth-failure-detect";
 
 test("isClerkErrorClassName: matches Clerk's formFieldErrorText marker", () => {
   assert.equal(isClerkErrorClassName("cl-formFieldErrorText cl-formFieldErrorText__password abc123"), true);
@@ -16,6 +16,27 @@ test("isClerkErrorClassName: does not match an unrelated element", () => {
 
 test("isClerkErrorClassName: empty className never matches", () => {
   assert.equal(isClerkErrorClassName(""), false);
+});
+
+test("isBenignClerkAuthMessage: already-signed-in navigation is not a failed attempt", () => {
+  assert.equal(isBenignClerkAuthMessage("You're already signed in"), true);
+  assert.equal(isBenignClerkAuthMessage("You are already signed in"), true);
+});
+
+test("isBenignClerkAuthMessage: one-time sign-in ticket reuse is audit harness noise", () => {
+  assert.equal(
+    isBenignClerkAuthMessage("This sign in token has already been used. Each token can only be used once."),
+    true
+  );
+});
+
+test("isBenignClerkAuthMessage: real credential failures are not benign", () => {
+  assert.equal(isBenignClerkAuthMessage("Password is incorrect"), false);
+  assert.equal(isBenignClerkAuthMessage("Too many requests"), false);
+});
+
+test("shouldReportAuthFailure: benign Clerk messages never report", () => {
+  assert.equal(shouldReportAuthFailure("You're already signed in", null, 1000), false);
 });
 
 test("shouldReportAuthFailure: first-ever message always reports", () => {
