@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:34:01.957Z",
+  "updated_at": "2026-09-04T08:12:53.927Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T08:06:42.345Z",
+      "lease_until": "2026-09-04T09:41:49.410Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "e37c6d37-b6a9-4b30-8246-329431a49178",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -160,13 +160,34 @@
     }
   },
   "deploy": {
-    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T06:44:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845611594",
-    "last_deploy_sha": "84b92b6b62ff5b6694c856016aa3e5b2d235b5ea"
+    "last_main_sha": "f4d1f5ebb43afe757e44157533c293635dd2ee18",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-09-04T08:01:59Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
+    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3533,
+      "title": "chore(autopilot): resolve state-sync conflict pile (10 stuck PRs → 1)",
+      "branch": "chore/autopilot-state-sync-resolve-conflicts-20260904",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T08:12:44Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T08:12:19Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -677,6 +698,49 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:11:14.916Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 13
+    },
+    {
+      "at": "2026-09-04T08:11:49.409Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T08:11:50.434Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T08:11:51.425Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T08:12:44.487Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T08:12:44.487Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "562f0763-d66c-407c-a56d-3cd7e40310f0",
+      "summary": "Closed 12 stale conflicting autopilot PRs superseded by #3529. Lifecycle GREEN: validate:deploy, ops:collect 0, api-auth, platform-integrity 3/4 warn off-hours, seo 22 GREEN. main@f4d1f5ebb, deploy pending (last 14c5d815d). Only open PR: #2810 dependabot TS7 red — skip per policy."
+    },
+    {
+      "at": "2026-09-04T08:12:53.927Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     }
   ]
 }
