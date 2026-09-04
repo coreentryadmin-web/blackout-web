@@ -325,7 +325,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
                 <div className="pipe-stage-text">
                   <h3>Results</h3>
                   <p className="pipe-hl">Receipts. Not promises.</p>
-                  <p className="pipe-desc">Every play logged, graded, and timestamped. Win or lose, the record is public. No cherry-picking, no deleted calls — the full ledger, always.</p>
+                  <p className="pipe-desc">Every SPX Slayer, Night Hawk, and 0DTE Command play logged, graded, and timestamped. Win or lose, the record is public. No cherry-picking, no deleted calls — the full ledger, always.</p>
                   <div className="pipe-chips">
                     <span className="pipe-chip live">LOGGED</span>
                     <span className="pipe-chip">GRADED A&ndash;F</span>

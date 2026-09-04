@@ -21,7 +21,7 @@ Our engine screens **the entire U.S. stock market — 12,400+ tickers — every 
 
 ## 3. We log every trade publicly
 
-This is the one most tools won't do. Every setup BlackOut flags is logged publicly, with full transparency — **including the ones that don't work.** No hindsight edits, no quietly deleted losers, no cherry-picked wins in a screenshot. If you want to know how the calls actually played out, the record is right there — see the [public grading methodology & live stats](/methodology). That accountability is rare in this space, and it's on purpose.
+This is the one most tools won't do. Every trade setup we publish — SPX Slayer, Night Hawk, and 0DTE Command — is logged publicly, with full transparency — **including the ones that don't work.** No hindsight edits, no quietly deleted losers, no cherry-picked wins in a screenshot. If you want to know how the calls actually played out, the record is right there — see the [public grading methodology & live stats](/methodology). That accountability is rare in this space, and it's on purpose.
 
 ## 4. No lock-in, no routing
 

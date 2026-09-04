@@ -126,6 +126,22 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0n. "Every setup logged publicly" overclaimed against a 3-of-7-product methodology page — fix/public-record-scope-overclaim (pending)
+
+**What was broken:** About page, homepage, and `WhyBlackoutContent.tsx` all said "Every setup BlackOut
+flags is logged publicly"/"the full ledger, always" and pointed to `/methodology` for "how each
+product is scored" — but `/methodology`'s own payload type (`TrackRecordPagePayload`) is hard-typed
+to exactly SPX Slayer, Night Hawk, and 0DTE Command. HELIX/Thermal/Vector/Meridian/Largo have no
+public ledger section there.
+
+**Fix:** scoped the "every setup"/"each product" claims on all three surfaces to name the three
+products `/methodology` actually covers — no change to whether HELIX/Vector's own internal
+tracking should eventually be exposed publicly (a separate, still-open product question).
+
+**Check at the open:** none — pure marketing-copy correction, no RTH-dependent behavior. Confirm
+the live About/homepage/Why-BlackOut pages name SPX Slayer/Night Hawk/0DTE Command next to the
+transparency claim rather than an unscoped "every setup"/"each product."
+
 ### 0m. SPX Slayer marketing claimed GEX/VEX/DEX/CHARM lenses — real UI only has GEX/VEX — fix/spx-slayer-lens-overclaim (pending)
 
 **What was broken:** homepage/pricing copy said SPX Slayer provides "GEX / VEX / DEX / CHARM lenses
@@ -141,6 +157,52 @@ real 4-lens entry is untouched.
 **Check at the open:** none — pure marketing-copy correction, no RTH-dependent behavior. Confirm
 `https://blackouttrades.com/` no longer shows "GEX / VEX / DEX / CHARM" attributed to SPX Slayer
 specifically (Thermal's own card should still show all four, correctly).
+
+### 0l. Pricing comparison table omitted the $49 SPX Slayer plan entirely — fix/spx-slayer-pricing-comparison-column (pending)
+
+**What was broken:** `/pricing` sells three commercial choices — SPX Slayer $49/mo, Premium Monthly
+$199/mo, Premium Yearly — but `FeatureComparison` (the "What you get" matrix) only had Free and
+Premium columns. Every SPX Slayer-only row (the SPX Slayer desk itself included) rendered as
+`— / ✓`, giving a $49 visitor zero representation of what they'd actually get in the page's primary
+feature matrix — reported as a P3 pricing/conversion defect (concrete purchase-decision gap: no way
+to compare $49 vs $199 in the matrix a visitor is looking at to decide).
+
+**Root cause:** `FeatureComparison`/`FEATURE_MATRIX` still modeled the original Free|Premium
+entitlement structure and was never migrated when SPX Slayer became an independently purchasable
+tier — each row's `community` (SPX Slayer) access was a marketing boolean nobody had ever checked
+against a real gate.
+
+**Fix:** new `src/lib/desk-tier-requirements.ts` — the minimum `Tier` each desk's own
+`layout.tsx` actually enforces (`requireDeskTool`/`requireTier`), verified against those layout
+files by `desk-tier-requirements.test.ts` (source-scan, same pattern
+`desk-protected-route-coverage.test.ts` already proved for the protected-route lists). Every desk
+row in `FEATURE_MATRIX` now derives its SPX Slayer/Premium columns from that manifest via
+`tierAtLeast` instead of a hand-typed boolean; the two rows with no code-level gate (0DTE graded
+plays, private Discord) are cross-checked against `PLAN_MATRIX.spx_slayer.includes`'s own canonical
+perk list instead. `FeatureComparison` now renders Free | SPX Slayer ($49/mo) | Premium ($199/mo).
+
+**Check at the open:** none — this is a static marketing page with no RTH-dependent data; `/pricing`
+should show three columns with the SPX Slayer desk row (and every other SPX-desk-scoped row) marked
+✓ under SPX Slayer, and every premium-only desk (HELIX, Largo, Night Hawk, Thermal, Vector,
+Meridian) marked — under SPX Slayer / ✓ under Premium.
+
+### 0m. `bie/decompose.ts` — dead compound-question splitter removed — fix/remove-dead-bie-decompose (pending)
+
+**What was broken:** nothing member-visible — `src/lib/bie/decompose.ts` (a pure "15 questions in
+one ask" splitter, task #57) was never wired into `composeCompound` or called by anything else;
+zero non-test importers anywhere in `src/`. Flagged 2026-08-30 in `FINDINGS.md` as the one of four
+related `bie/*` files that was safe to delete outright (its three siblings — `router.ts` still
+needed for a live type import, `composers.ts`/`dynamic-format.ts` referenced only by a test that
+can't run in this sandbox — were correctly left untouched then and remain untouched now).
+
+**Fix:** `git rm src/lib/bie/decompose.ts src/lib/bie/decompose.test.ts`; extended
+`repo-hygiene.test.ts`'s existing orphan allowlist so it can't silently be reintroduced dead.
+
+**Check at the open:** none — there is no live-RTH-dependent behavior to verify (the module was
+never reachable from any request path before removal). `tsc --noEmit` clean and the full test
+suite passing (recorded in the PR) are the complete verification for a fix of this kind; listed
+here only because the standing instruction asks every fix to be logged, not because there is an
+RTH-specific check to run.
 
 ### 0k. Six orphaned modules removed (SPX/Thermal/marketing) — fix/orphaned-spx-thermal-modules (pending)
 
@@ -185,7 +247,16 @@ logic touched.
 430x932`), filter to PASSED/WATCH, and confirm every row's return figure now carries a small
 "Since flag" caption under it, and every CLOSED row carries "Peak Return" — never a bare number.
 
-### 0j-b. Admin ops store-age "just now" on clock-skewed timestamps — fix/admin-store-age-future-guard (pending)
+### 0j-c. Admin panel timeAgo "just now" on clock-skewed ISO timestamps — fix/admin-time-ago-future-guard (pending)
+
+**What was broken:** `timeAgo(iso)` in Operations + X Marketing admin panels used raw `Date.now() - new Date(iso)`
+without a future guard — same failure class as #3627 `storeAge()`.
+
+**Fix:** Shared `timeAgoFromIso()` in `admin-time-ago.ts` with `WS_TIMESTAMP_FUTURE_TOLERANCE_MS`.
+
+**Check at the open:** `/admin` → Operations incidents/audit rows show plausible relative times, not "just now" on skewed timestamps.
+
+### 0j-b. Admin ops store-age "just now" on clock-skewed timestamps — fix/admin-store-age-future-guard (merged #3627)
 
 **What was broken:** `storeAge()` in the admin Operations dashboard computed `Date.now() - updatedAt`
 without a future guard. A timestamp more than a few seconds ahead of wall clock produced negative age;
