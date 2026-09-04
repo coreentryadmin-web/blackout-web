@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T14:47:16.564Z",
+  "updated_at": "2026-09-04T14:47:36.786Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,12 +68,12 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-04T14:43:43.755Z",
-      "lease_until": "2026-09-04T16:13:43.755Z",
+      "lease_until": "2026-09-04T16:17:35.561Z",
       "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "4534e350-4fe9-40cc-a697-b9c3b5ad01b4",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -111,6 +111,18 @@
       "pr": null,
       "reviewer": null,
       "run_id": null,
+      "title": null
+    },
+    "BO-P1-0102": {
+      "task_id": "BO-P1-0102",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T14:47:34.819Z",
+      "lease_until": "2026-09-04T16:17:35.561Z",
+      "phase": "EXECUTING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "4534e350-4fe9-40cc-a697-b9c3b5ad01b4",
       "title": null
     }
   },
@@ -227,8 +239,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T14:47:34.820Z",
+      "current_task": "BO-P1-0102"
     }
   },
   "deploy": {
@@ -929,6 +941,36 @@
       "agent": "cursor",
       "run_id": "735de92f-67fd-48e5-adad-7fef71d25765",
       "summary": "Cycle: #3603 (meridian protected-route lists) peer-reviewed APPROVED, verify GREEN — merge blocked by GitHub API rate limit (user 284440397). #3605 platform-integrity auth fix verified 14/14 PASS locally, undraft blocked same rate limit. validate:deploy GREEN, validate:rth-open GREEN (Fri 10:45 ET RTH). ops:collect 0. Standing: merge #3603 when rate limit clears; Claude peer-review #3605/#3601."
+    },
+    {
+      "at": "2026-09-04T14:47:31.819Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:47:34.820Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0102",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T14:47:35.561Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:47:36.198Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:47:36.786Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
