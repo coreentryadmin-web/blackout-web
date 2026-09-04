@@ -51,6 +51,39 @@ test("data-correctness cron's markdown scorecard is never tracked in git", () =>
   );
 });
 
+/**
+ * Guards against a redaction placeholder getting committed as a real config default.
+ *
+ * scripts/audit/zerodte-session-replay.mjs shipped, from its very first commit (#3419), with
+ * `process.env.POLYGON_API_BASE = "[REDACTED]"` — a literal 12-character placeholder string,
+ * not a URL. Confirmed byte-for-byte via `git show <sha>:<path> | sha256sum`, not a display
+ * artifact: whatever wrote the self-default guard had its own view of the real URL redacted
+ * (the same thing happens to anyone reading this file in a sandboxed session) and copied the
+ * placeholder text verbatim instead of substituting the real value. The guard looked correct
+ * (checks for a missing/malformed env var, assigns a fallback) but the fallback was itself
+ * invalid, so `api-tracked-fetch.ts`'s host allowlist rejected every request with "refusing to
+ * fetch disallowed host" — an error that reads like a security block, not a broken default, so
+ * this went unnoticed until `npm run replay:0dte-session` was actually run for the first time.
+ *
+ * This scans every script using the same self-default pattern (~35 as of this writing) and
+ * asserts the assigned literal always parses as an http(s) URL — catches this exact class of
+ * bug in any script, present or future, not just the one instance that shipped broken.
+ */
+test("no scripts/audit/*.mjs POLYGON_API_BASE self-default is a non-URL placeholder", () => {
+  const files = tracked().filter((p) => p.startsWith("scripts/audit/") && p.endsWith(".mjs"));
+  const bad: string[] = [];
+  for (const file of files) {
+    const content = readFileSync(file, "utf8");
+    const assignments = content.matchAll(/process\.env\.POLYGON_API_BASE\s*=\s*"([^"]*)"/g);
+    for (const m of assignments) {
+      if (!/^https?:\/\//.test(m[1] ?? "")) {
+        bad.push(`${file}: assigns "${m[1]}" (not an http(s) URL)`);
+      }
+    }
+  }
+  assert.deepEqual(bad, [], `these self-defaults are broken:\n  ${bad.join("\n  ")}`);
+});
+
 test("gitignore entries for node_modules have no trailing slash", () => {
   // A trailing slash restricts the pattern to directories, leaving a same-named symlink or file
   // un-ignored. Every node_modules rule must match regardless of file type.
