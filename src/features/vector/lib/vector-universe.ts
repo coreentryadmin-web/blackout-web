@@ -185,7 +185,10 @@ async function buildVectorUniverseRow(
         // No expiry column in range is a real answer for this horizon on this chain — record
         // nothing rather than a zeroed wall set, which would render as "no gamma anywhere".
         if (!totals) continue;
-        const horizonWalls = computeGexWalls(totals, { maxPerSide: VECTOR_WALL_NODES_PER_SIDE });
+        const horizonWalls = computeGexWalls(totals, {
+          maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+          spot: spot ?? undefined,
+        });
         const horizonSample = buildWallHistorySample({
           time: sampleTime,
           gexWalls: horizonWalls,
