@@ -2128,3 +2128,9 @@ than an end-of-session patch.
 - **What changed:** `dayChangeTextClass()` / `dayChangeBorderClass()` in `src/lib/api.ts`; all three surfaces use neutral white tone when change is absent.
 - **RTH check:** On `/dashboard` during a brief window where SPX spot is live but `spx_change_pct` is still warming (or force a null in dev), confirm SPX price/% use neutral white styling — not green bull — while the % reads `—`.
 
+### 24. SPX pulse SSE stream — unrounded IEEE floats on wire — fix/spx-pulse-stream-round-floats — 2026-09-04
+
+- **What was broken:** `/api/market/spx/pulse/stream` SSE events serialized raw `indexStore` / UW tide numbers without `roundFloats`, so members on the live stream lane could still see tails like `7718.600000000001` while REST `/spx/pulse` was already rounded (PR #3751).
+- **What changed:** Wrap the SSE payload in `roundFloats()` before `JSON.stringify` in `pulse/stream/route.ts`.
+- **RTH check:** Open SPX desk with pulse stream connected (Network tab → EventStream on `/api/market/spx/pulse/stream`); confirm `spx.price` and tide `net`/`call_premium` values are 2dp-clean with no IEEE tails during RTH ticks.
+
