@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:43:40.083Z",
+  "updated_at": "2026-09-04T09:38:30.095Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T09:34:05.618Z",
+      "lease_until": "2026-09-04T11:04:05.618Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -92,8 +92,8 @@
     "BO-P1-0104": {
       "task_id": "BO-P1-0104",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:42:54.932Z",
-      "lease_until": "2026-09-04T09:12:54.932Z",
+      "claimed_at": "2026-09-04T09:35:21.517Z",
+      "lease_until": "2026-09-04T11:05:21.517Z",
       "phase": "INVESTIGATING",
       "branch": null,
       "pr": null,
@@ -172,11 +172,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
+    "last_main_sha": "f325043aee90401ec4f08f174f29a1f56e7f8042",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T07:20:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
-    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
+    "last_deploy_at": "2026-09-04T09:26:34Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33857787678",
+    "last_deploy_sha": "f325043aee90401ec4f08f174f29a1f56e7f8042"
   },
   "open_prs": [],
   "events": [
@@ -672,6 +672,25 @@
       "agent": "cursor",
       "run_id": "bdccad63-d885-46ad-bc02-3362ea4704ec",
       "summary": "Cycle: merged main @ 14c5d815d verified GREEN. Opened #3531 agent state sync (draft, awaiting CI+peer). ECR 33848248248 still in_progress 22m+ (deploy-smoke passed). SEO 22 PASS. Site-latency 3 warm FAILs deferred to RTH. GitHub API rate-limited — peer review of #3531 for Claude."
+    },
+    {
+      "at": "2026-09-04T09:38:25.408Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T09:38:25.409Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "dc14d4c7-43af-4efe-a515-8f8151d13614",
+      "summary": "Cycle: deploy GREEN @ f325043, ops clean, SEO 22 PASS. Peer review blocked (GitHub API rate limit, pr-sweep empty). Rebased existing fix/discord-digest-cron-registry onto main → fix/discord-digest-cron-registry-rebase, PR opened. Site-latency api-only: 1 cold zerodte/board FAIL (1507ms), warm 130ms — deferred to RTH."
+    },
+    {
+      "at": "2026-09-04T09:38:30.095Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
