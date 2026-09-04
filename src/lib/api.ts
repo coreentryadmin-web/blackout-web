@@ -1273,7 +1273,7 @@ export function createVectorEventSource(
 
 // ── Stock/ETF live spot-price stream (PR 2/3 of the sub-second-spot project) ──
 
-export type SpotStreamQuote = { price: number; changePct: number; asof: string };
+export type SpotStreamQuote = { price: number; changePct: number | null; asof: string };
 export type SpotStreamFrame = { type: "quotes"; quotes: Record<string, SpotStreamQuote>; ts: number };
 
 /**
