@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T19:22:37.423Z
-**Run:** b2e05a01-54f7-4a98-ab03-4819eac91596
+**At:** 2026-09-04T12:48:06.884Z
+**Run:** 072758a3-0684-479a-b95a-27416aabb9c3
 
 ## Summary
 
-CI green on #3733 (5662fcd) — marked ready for Claude peer review. Discovered #3718 already fixed flow-liveness on main; rebased #3733 onto 8a923afe6, dropped duplicate flow changes, kept UW/options socket guards only. Force-pushed 130cd0de7, CI re-running. ops:collect 0. Standing: Claude peer-review #3733 then merge.
+Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs.
 
 ## Deploy
 
-- main: `8a923afe679c4a87e324650f2dba8a46bd314ceb`
+- main: `9cfdf5076156a14f2dcc2653a280705ab4e4e118`
 - status: 
 
 ## Open PRs

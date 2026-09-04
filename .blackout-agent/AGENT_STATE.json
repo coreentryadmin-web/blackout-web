@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:22:37.423Z",
+  "updated_at": "2026-09-04T17:19:14.963Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:00:38.873Z",
-      "lease_until": "2026-09-04T20:30:38.873Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-04T12:32:13.985Z",
+      "lease_until": "2026-09-04T14:02:13.985Z",
+      "phase": "IMPLEMENTING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -80,9 +80,9 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:06:55.729Z",
-      "lease_until": "2026-09-04T20:36:55.729Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T07:10:54.063Z",
+      "lease_until": "2026-09-04T08:40:54.063Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -243,16 +243,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T19:06:55.729Z",
-      "current_task": "BO-P1-0101"
+      "last_seen": "2026-09-04T10:33:57.541Z",
+      "current_task": "BO-P1-0103"
     }
   },
   "deploy": {
-    "last_main_sha": "8a923afe679c4a87e324650f2dba8a46bd314ceb",
+    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:22:35Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33910315173",
-    "last_deploy_sha": "8a923afe679c4a87e324650f2dba8a46bd314ceb"
+    "last_deploy_at": "2026-09-04T12:42:15Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
+    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
   },
   "open_prs": [],
   "events": [
@@ -1052,56 +1052,6 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-04T19:06:25.680Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-04T19:06:55.729Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0101",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-04T19:09:18.348Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 10
-    },
-    {
-      "at": "2026-09-04T19:09:18.349Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "93e9566e-2666-414e-9e0f-86d5d1830018",
-      "summary": "Hourly wake cycle: validate:deploy GREEN, platform-integrity 14/14, data-validator 44 PASS, ops:collect 0. Pattern scan found UW/flow/options WS freshness gates treating future timestamps as live — fix branch fix/uw-channel-future-timestamp-freshness, draft PR #3733 opened. No open peer-review PRs (gh rate-limited earlier; pr-sweep empty). Deploy @ main 7df56d9a9. RTH lifecycle deferred to Fri 09:00 ET."
-    },
-    {
-      "at": "2026-09-04T19:21:21.702Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T19:21:24.933Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T19:22:37.422Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T19:22:37.423Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "b2e05a01-54f7-4a98-ab03-4819eac91596",
-      "summary": "CI green on #3733 (5662fcd) — marked ready for Claude peer review. Discovered #3718 already fixed flow-liveness on main; rebased #3733 onto 8a923afe6, dropped duplicate flow changes, kept UW/options socket guards only. Force-pushed 130cd0de7, CI re-running. ops:collect 0. Standing: Claude peer-review #3733 then merge."
     }
   ]
 }
