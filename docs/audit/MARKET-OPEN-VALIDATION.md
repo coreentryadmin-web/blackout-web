@@ -126,6 +126,16 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0g. Sentry auth + stale Server Action noise — fix/auth-failure-benign-denylist-and-server-action-reload (pending)
+
+**What was broken:** `validate:deploy` Sentry sample showed `ClerkAuthFailure: You're already signed in`
+(normal navigation to `/sign-in` while authenticated) and `UnrecognizedActionError: Server Action … was not found`
+(deploy-race stale action IDs) as top unresolved issues.
+
+**Fix:** Benign Clerk message denylist in `auth-failure-detect.ts`; extend chunk-reload guard for stale Server Actions.
+
+**Check at the open:** After any deploy rollout, confirm Sentry top issues no longer include these two patterns; members mid-rollout should get a one-shot reload instead of a stuck page on stale Server Actions.
+
 ### 0f. SPX dashboard E2E cross-tool stale matrix flip — fix/spx-dashboard-cross-tool-stale-matrix (pending)
 
 **What was broken:** `spx-dashboard-e2e-audit.mjs` compared gamma flip from a matrix snapshot fetched
