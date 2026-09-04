@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T18:52:52.788Z",
+  "updated_at": "2026-09-04T19:03:07.724Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -80,9 +80,9 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
-      "phase": "VERIFYING",
+      "claimed_at": "2026-09-04T19:01:25.148Z",
+      "lease_until": "2026-09-04T20:31:25.148Z",
+      "phase": "VALIDATING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -245,6 +245,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3717": {
+      "pr": 3717,
+      "head_sha": "615c75036f0a93484a55438a3c5000c52002a6c4",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T19:02:30.840Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -254,16 +262,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T19:01:25.149Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "7df56d9a91eb8581722ae51d9d4915bcecf353e3",
+    "last_main_sha": "6776238a905a08affe9527887aae21f0c15e325a",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T18:50:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33908011589",
-    "last_deploy_sha": "7df56d9a91eb8581722ae51d9d4915bcecf353e3"
+    "last_deploy_at": "2026-09-04T19:02:29Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33909058935",
+    "last_deploy_sha": "6776238a905a08affe9527887aae21f0c15e325a"
   },
   "open_prs": [],
   "events": [
@@ -1076,6 +1084,41 @@
       "agent": "cursor",
       "run_id": "5757892e-7b79-4d24-9cac-822c30c456ae",
       "summary": "Cycle: #3712 merged (admin cron age skew guard). #3714 closed (stale duplicate). #3717 tests pass locally, CI pending. RTH lifecycle GREEN (platform-integrity 14/14, SEO 22/22). validate:deploy GREEN. ops:collect 0. ECR deploy in progress for #3692."
+    },
+    {
+      "at": "2026-09-04T18:56:17.919Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:01:25.149Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T19:02:30.840Z",
+      "type": "pr_review",
+      "pr": 3717,
+      "head_sha": "615c75036f0a93484a55438a3c5000c52002a6c4",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T19:02:30.840Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T19:03:07.723Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:03:07.724Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6f7195c9-1528-448c-ab98-75526d5e4a3a",
+      "summary": "Cycle complete: #3712+#3717 merged (cron age skew + flow-ingest UW sweep/candle freshness). #3714 closed stale. #3722 handoff PR open. RTH lifecycle + validate:deploy GREEN. ops:collect 0. Standing: Claude review #3698 (zerodte feat)."
     }
   ]
 }
