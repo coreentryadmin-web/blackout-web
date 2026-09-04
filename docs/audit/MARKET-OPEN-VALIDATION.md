@@ -126,6 +126,14 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0w. RTH deep audit false P0 on heatmap walls — fix/full-site-audit-wall-sideconstraint (pending)
+
+**What was broken:** `full-site-deep-audit.mjs` re-derived GEX walls with unconstrained global argmax/argmin while production uses side-constrained `wallsFromStrikeTotals(totals, spot)` since #2417 — false P0s like `SPX.put_wall: reported 7700 != 8000` on 2026-09-04 RTH run.
+
+**Fix:** import shared `wallsFromStrikeTotals` from `gex-wall-invariants.mjs` and pass `hm.spot`.
+
+**Check at the open:** next scheduled `RTH deep audit` heatmap section passes with zero P0 wall mismatches on SPX/SPY/NVDA when GEX is live.
+
 ### 0v. ISO age helpers treated clock-skewed future timestamps as fresh — fix/iso-age-future-guard-combined (pending)
 
 **What was broken:** `public-gex-snapshot` coerced negative `asof` age to **0 seconds** (reads as just refreshed on the marketing gamma snapshot). Night Hawk Legacy `legacyMarkAgeLabel` and admin Night Hawk playbook `ageMin` used raw `Date.now() - new Date(iso)` without the shared future guard — future-skewed `updated_at` bypassed stuck detection.
