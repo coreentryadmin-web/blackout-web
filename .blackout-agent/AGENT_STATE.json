@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:28:34.727Z",
+  "updated_at": "2026-09-04T17:32:15.272Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,12 +68,12 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-04T17:10:55.636Z",
-      "lease_until": "2026-09-04T18:40:55.636Z",
+      "lease_until": "2026-09-04T18:58:51.735Z",
       "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "4d705b6f-88f1-4d53-860e-5471868048b6",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -240,11 +240,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "96b405a8de2f25993dd4164e3530cb60564a8e07",
+    "last_main_sha": "be9f5473dc056cd15b96098fc145d3a92f8a5312",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T17:28:24Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33900754026",
-    "last_deploy_sha": "be9f5473dc056cd15b96098fc145d3a92f8a5312"
+    "last_deploy_at": "2026-09-04T17:30:40Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33900959005",
+    "last_deploy_sha": "8fce57a4f3b3741211723af3a156972a122921d2"
   },
   "open_prs": [],
   "events": [
@@ -1062,6 +1062,19 @@
       "agent": "cursor",
       "run_id": "3e21e9e1-c946-40c3-8edb-50fd3647d1c3",
       "summary": "Post-#3652 cycle complete. Merged: #3663 #3658 #3659 (during cycle). #3662 APPROVED+verify GREEN+ready — merge blocked by GraphQL rate limit. Handoff PR #3669 verify GREEN (draft). validate:deploy/platform-integrity/seo GREEN, ops:collect 0. Superseded: #3660/#3657/#3654. Next: merge #3662, Claude review #3669, close stale handoff drafts."
+    },
+    {
+      "at": "2026-09-04T17:32:15.271Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:32:15.272Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6828ce8f-b276-4c4c-9607-03093ed5af03",
+      "summary": "CI wake: #3662+#3663 merged (main@be9f5473). Also landed: #3666 helix, #3668 cron-staleness, #3660 admin. Fleet clear. validate:deploy + platform-integrity GREEN, ops:collect 0."
     }
   ]
 }
