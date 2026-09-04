@@ -2,7 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { mapAlertAuditTrailRow, computeSafePgPoolMaxDefault } from "./db";
+import { EventEmitter } from "node:events";
+import type { PoolClient } from "pg";
+import { mapAlertAuditTrailRow, computeSafePgPoolMaxDefault, guardCheckedOutClient } from "./db";
 
 test("mapAlertAuditTrailRow: converts NUMERIC confidence_score (a string from node-pg) to a real number", () => {
   const row = mapAlertAuditTrailRow({
@@ -584,4 +586,61 @@ test("db-optional swing/SPX writers: transaction client path preserved, no-db pa
       `${fn} must not still bypass dbQuery via a shared executor/raw pool call`
     );
   }
+});
+
+// Regression for the 2026-09-04 audit finding: a live CloudWatch
+// "uncaughtException: [Error: Connection terminated unexpectedly]" surfaced despite prior PRs
+// already sweeping db.ts so essentially every query goes through dbQuery's try/catch+retry. Root
+// cause is NOT a missing try/catch (every checked-out-client code path already has one) — it's
+// that pg-pool's `_acquireClient` REMOVES a client's 'error' listener for the entire time it is
+// checked out via `pool.connect()` (only re-added on `.release()`), so `livePool.on("error", ...)`
+// above — which covers only IDLE pooled clients — does nothing for a checked-out one. On an
+// unexpected connection drop, node-postgres's Client UNCONDITIONALLY does two independent things:
+// rejects whatever query is in flight (what a surrounding try/catch actually catches), AND
+// separately emits a raw 'error' event on the client object itself. The second half fires even
+// when nothing was in flight (e.g. between two statements in a held transaction, or during a
+// long-held session-advisory-lock window) and is not a promise at all, so no try/catch can reach
+// it — with zero listeners, Node's EventEmitter throws it as an uncaught exception.
+test("guardCheckedOutClient: swallows a checked-out client's own 'error' event instead of letting it become an uncaught exception", () => {
+  // Sanity check first: reproduce the exact failure mode with a bare EventEmitter (Node
+  // specialcases 'error' — emitting it with zero listeners re-throws synchronously), so this test
+  // is proven to exercise a real mechanism and not just call an API that happens to exist.
+  const bareEmitter = new EventEmitter();
+  assert.throws(
+    () => bareEmitter.emit("error", new Error("Connection terminated unexpectedly")),
+    /Connection terminated unexpectedly/,
+    "an EventEmitter with no 'error' listener must genuinely throw — otherwise this test would prove nothing"
+  );
+
+  const client = new EventEmitter() as unknown as PoolClient;
+  const returned = guardCheckedOutClient(client);
+  assert.equal(
+    returned,
+    client,
+    "must return the SAME client instance so call sites can inline it around pool.connect()"
+  );
+  assert.doesNotThrow(
+    () => (client as unknown as EventEmitter).emit("error", new Error("Connection terminated unexpectedly")),
+    "once guarded, the identical drop must not escape as an uncaught exception"
+  );
+});
+
+test("every raw pool.connect() checked-out client in db.ts is wrapped in guardCheckedOutClient", () => {
+  const src = readFileSync(fileURLToPath(new URL("./db.ts", import.meta.url)), "utf8");
+  const uncoveredConnects: string[] = [];
+  for (const rawLine of src.split("\n")) {
+    const line = rawLine.trim();
+    // Skip comment lines — the guard's own doc comment above references "pool.connect()" in prose.
+    if (line.startsWith("//") || line.startsWith("*") || line.startsWith("/**")) continue;
+    if (/\.connect\(\)/.test(line) && !/guardCheckedOutClient\(/.test(line)) {
+      uncoveredConnects.push(line);
+    }
+  }
+  assert.deepEqual(
+    uncoveredConnects,
+    [],
+    `every pool.connect() call site in db.ts must be wrapped in guardCheckedOutClient(...) so its ` +
+      `checked-out client can't emit an unguarded 'error' event — found unwrapped: ` +
+      JSON.stringify(uncoveredConnects)
+  );
 });
