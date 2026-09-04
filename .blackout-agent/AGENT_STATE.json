@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T18:12:44.656Z",
+  "updated_at": "2026-09-04T18:21:24.156Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -288,13 +288,114 @@
     }
   },
   "deploy": {
-    "last_main_sha": "1b65d627b71b7ef8928d20c2b87455bafe4f33e8",
+    "last_main_sha": "cddb5a72218950a660d18b85b579537844e65f49",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T17:56:57Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33903259362",
-    "last_deploy_sha": "1b65d627b71b7ef8928d20c2b87455bafe4f33e8"
+    "last_deploy_at": "2026-09-04T18:11:41Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33904569568",
+    "last_deploy_sha": "cddb5a72218950a660d18b85b579537844e65f49"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3700,
+      "title": "docs(audit): log vector-pick-sweep tail-latency investigation (not yet fixed)",
+      "branch": "chore/run-log-vector-pick-sweep-perf-investigation",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:14:47Z"
+    },
+    {
+      "number": 3699,
+      "title": "fix(admin): guard SPX terminal feed incident open duration against clock skew",
+      "branch": "fix/admin-spx-terminal-lib-clock-skew-replay",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:14:50Z"
+    },
+    {
+      "number": 3698,
+      "title": "feat(zerodte): liquid strike fallback + BREAKOUT cortex/thesis relief",
+      "branch": "cursor/hourly-autonomous-wake",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:15:02Z"
+    },
+    {
+      "number": 3697,
+      "title": "fix(audit): side-constrain full-site heatmap wall checks",
+      "branch": "fix/full-site-audit-wall-constraint",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:14:55Z"
+    },
+    {
+      "number": 3693,
+      "title": "chore(autopilot): cursor handoff after hourly wake verification cycle",
+      "branch": "cursor/autopilot-handoff-1807",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:15:23Z"
+    },
+    {
+      "number": 3692,
+      "title": "fix(quote): rebase index WS change_pct via REST overlay",
+      "branch": "fix/quote-index-change-pct-rebase",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:15:08Z"
+    },
+    {
+      "number": 3691,
+      "title": "fix(age): guard ISO snapshot ages against clock-skewed future timestamps",
+      "branch": "fix/iso-age-future-guard-combined",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T18:15:28Z"
+    },
+    {
+      "number": 3686,
+      "title": "fix(vector): guard computeGexWalls spot in vector-snapshot GAMMA lens",
+      "branch": "cursor/autopilot-work-loop-fb82",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T18:15:38Z"
+    },
+    {
+      "number": 3675,
+      "title": "fix(admin): guard SPX dashboard stale banner against clock-skewed generated_at",
+      "branch": "fix/admin-spx-dashboard-age-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T18:15:22Z"
+    },
+    {
+      "number": 3654,
+      "title": "fix(admin): guard API Live Feed + SPX Terminal time-ago against clock skew",
+      "branch": "fix/admin-live-feed-time-ago-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T18:15:25Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1155,6 +1256,225 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T18:12:44.655Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:13:29.913Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 14
+    },
+    {
+      "at": "2026-09-04T18:15:43.755Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
+    },
+    {
+      "at": "2026-09-04T18:15:43.756Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "65eb082e-14ba-4a69-9332-2180ced5d85d",
+      "summary": "Merge wave landed: #3664/#3667/#3688/#3689 + earlier #3682/#3683. Peer reviews APPROVED. validate:deploy GREEN. Agent state pushed cursor/autopilot-handoff-2026-09-04-cycle7. Watching #3699 audit PRs."
+    },
+    {
+      "at": "2026-09-04T18:21:03.508Z",
+      "type": "pr_webhook",
+      "pr": 3702,
+      "event": "sweep",
+      "head": "ebca1921f4ea7008415cdf25c485740fa8981c2b",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T18:21:05.477Z",
+      "type": "pr_webhook",
+      "pr": 3701,
+      "event": "sweep",
+      "head": "9feda25ad8826064828621ccb88c338d36f3a496",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T18:21:07.502Z",
+      "type": "pr_webhook",
+      "pr": 3700,
+      "event": "sweep",
+      "head": "79401766777c46d02063c31254b8d58b5b498a7f",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T18:21:09.478Z",
+      "type": "pr_webhook",
+      "pr": 3699,
+      "event": "sweep",
+      "head": "b4017cd556e145fe2aa646bb1927459d4d06a6b3",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T18:21:12.297Z",
+      "type": "pr_webhook",
+      "pr": 3698,
+      "event": "sweep",
+      "head": "9190a26f14abcc86b9205e5ba9e1a03a7b7b3746",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T18:21:14.315Z",
+      "type": "pr_webhook",
+      "pr": 3692,
+      "event": "sweep",
+      "head": "41284e7b83e9168bd70841d51be1ca21b78d4890",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T18:21:16.246Z",
+      "type": "pr_webhook",
+      "pr": 3691,
+      "event": "sweep",
+      "head": "fb0236e456bf864b767f2f9f0c998f7aa222ee21",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T18:21:18.277Z",
+      "type": "pr_webhook",
+      "pr": 3686,
+      "event": "sweep",
+      "head": "7c8a6ae616f3f0b8b90d96be405e53c76e1ea189",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T18:21:20.280Z",
+      "type": "pr_webhook",
+      "pr": 3681,
+      "event": "sweep",
+      "head": "206c208424fdc7a00406fa9006c31f325305d332",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T18:21:22.293Z",
+      "type": "pr_webhook",
+      "pr": 3675,
+      "event": "sweep",
+      "head": "b61432260089cb07e299df75892ff7b8406c1310",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T18:21:24.156Z",
+      "type": "pr_webhook",
+      "pr": 3654,
+      "event": "sweep",
+      "head": "742bd5dba0f5296451f355ddc270ebfff7d6e824",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3702": {
+      "last_event": "sweep",
+      "last_head": "ebca1921f4ea7008415cdf25c485740fa8981c2b",
+      "last_feedback_at": "2026-09-04T18:21:03.508Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3701": {
+      "last_event": "sweep",
+      "last_head": "9feda25ad8826064828621ccb88c338d36f3a496",
+      "last_feedback_at": "2026-09-04T18:21:05.477Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3700": {
+      "last_event": "sweep",
+      "last_head": "79401766777c46d02063c31254b8d58b5b498a7f",
+      "last_feedback_at": "2026-09-04T18:21:07.502Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3699": {
+      "last_event": "sweep",
+      "last_head": "b4017cd556e145fe2aa646bb1927459d4d06a6b3",
+      "last_feedback_at": "2026-09-04T18:21:09.478Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3698": {
+      "last_event": "sweep",
+      "last_head": "9190a26f14abcc86b9205e5ba9e1a03a7b7b3746",
+      "last_feedback_at": "2026-09-04T18:21:12.297Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3692": {
+      "last_event": "sweep",
+      "last_head": "41284e7b83e9168bd70841d51be1ca21b78d4890",
+      "last_feedback_at": "2026-09-04T18:21:14.315Z",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "comment_action": "updated"
+    },
+    "pr-3691": {
+      "last_event": "sweep",
+      "last_head": "fb0236e456bf864b767f2f9f0c998f7aa222ee21",
+      "last_feedback_at": "2026-09-04T18:21:16.246Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3686": {
+      "last_event": "sweep",
+      "last_head": "7c8a6ae616f3f0b8b90d96be405e53c76e1ea189",
+      "last_feedback_at": "2026-09-04T18:21:18.277Z",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "comment_action": "updated"
+    },
+    "pr-3681": {
+      "last_event": "sweep",
+      "last_head": "206c208424fdc7a00406fa9006c31f325305d332",
+      "last_feedback_at": "2026-09-04T18:21:20.280Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3675": {
+      "last_event": "sweep",
+      "last_head": "b61432260089cb07e299df75892ff7b8406c1310",
+      "last_feedback_at": "2026-09-04T18:21:22.293Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3654": {
+      "last_event": "sweep",
+      "last_head": "742bd5dba0f5296451f355ddc270ebfff7d6e824",
+      "last_feedback_at": "2026-09-04T18:21:24.156Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }
