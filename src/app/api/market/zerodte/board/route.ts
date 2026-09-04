@@ -14,6 +14,7 @@ import {
   shouldServeSimBoard,
 } from "@/lib/platform/zerodte-sim-board";
 import { requireToolApi } from "@/lib/tool-access-server";
+import { roundFloats } from "@/lib/round-floats";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
     const isAdmin = await isAdminUser(authResult.userId, sessionClaims);
     if (shouldServeSimBoard(isAdmin, true)) {
       ensureDataSockets();
-      const simPayload = await getSimBoardPayload();
+      const simPayload = roundFloats(await getSimBoardPayload());
       return NextResponse.json(simPayload, {
         headers: {
           ...NO_STORE_HEADERS,
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest) {
 
   ensureDataSockets();
   try {
-    const payload = await getZeroDteBoardPayload();
+    const payload = roundFloats(await getZeroDteBoardPayload());
     return NextResponse.json(payload, {
       headers: NO_STORE_HEADERS,
     });
