@@ -455,6 +455,66 @@ likely dominated by Polygon calls or general compute than the UW ceiling #3479 f
 need its own measurement before a fix is warranted, per this file's own "never fix from a guess"
 standing method.
 
+### 16. Vector desk mobile chart collapse — PR #3556 (pending, branch `fix/vector-mobile-chart-collapse`)
+
+**What was broken:** the standalone `/vector` desk's price chart (candles + wall overlay + volume
+pane) never rendered below the 1280px desktop breakpoint — present in the DOM, laid out with a
+real 320px `min-height` floor on its own canvas element, but clipped to nothing by an ancestor
+chain (`.vector-chart-terminal-chart` → `.vector-chart-wrap` → `.vector-chart-stage`) that
+computed to a literal 0px box on every phone/tablet width, because the flex-fill technique those
+three carried unconditionally (`flex: 1 1 0; min-height: 0;`) only resolves correctly when some
+ancestor up the chain has a DEFINITE height to distribute — true only from 1280px up. Independently
+reproduced live 2026-09-04 (fresh temp Clerk session, `proxy-browser.cjs` at 430x932): full-page
+capture showed header → Live Helix → 0DTE Matrix → SCALP play card → SPX Plays, no chart anywhere;
+a DOM probe measured `.vector-chart-canvas` at h=320 while all three ancestors measured h=0,
+unchanged after a 30s settle (ruling out a data/timing race). Full evidence and root cause in
+`docs/audit/findings-staging/2026-09-04-vector-mobile-chart-collapse.md`.
+
+**Fix:** scoped the `flex: 1 1 0; min-height: 0;` triple to the existing `@media (min-width: 1280px)`
+block (byte-identical to what the base rule used to carry, so desktop's resolved CSS is unchanged);
+the base/mobile rule now lets the default `flex: 0 1 auto` + `min-height: auto` apply, so the chart
+column sizes to its own content (the canvas's 320px floor) instead of forcing itself to zero. No JS
+change — `VectorChart.tsx`'s existing `ResizeObserver` autosize nudge was already correctly wired to
+react once the container gets a real size.
+
+**Check at the open:** this fix was built and verified entirely OFF-HOURS (market closed, "Session
+closed" shown on Live Helix) — the chart's underlying data feed (live bars, wall overlay, SSE
+ticks) has not been seen rendering into the now-fixed layout under a moving RTH tape. Load
+`/vector` on a phone (or a <1280px-wide window) once the market is open and confirm: (1) the
+candle chart renders above the fold, between the ticker-chip row and the Live Helix card, with
+visible candles/wall beads and a volume sub-pane, matching the desktop layout's content
+(no longer just absent); (2) it stays correctly sized and does not clip/collapse again as live bars
+stream in and the chart's content height changes; (3) the desktop (>=1280px) layout is pixel-for-pixel
+unchanged from before this fix — this was verified via CSS-cascade inspection and existing
+regression tests (`vector-chart-viewport.test.ts`) but not via a fresh live desktop screenshot,
+since the fix's own scope was mobile-only.
+
+### 14. Night Hawk mobile 430x932 — view-tab row overlapped the theme-toggle pill — PR pending (branch `fix/nighthawk-legacy-tab-toggle-overlap`)
+
+**What was broken:** live `/nighthawk` at 430x932 (both default and analytics-expanded states):
+the 5-tab view switcher's "Legacy" tab visually overlapped the adjacent dark/light theme-toggle
+pill — the "L" of "LIGHT" and the moon icon rendered on top of the tail of "Legacy" ("...gacy")
+instead of the row wrapping, truncating, or scrolling. `.nh-v2-page .ios-native-segment` had no
+`overflow-x`/`flex-wrap`, so once VECTOR became the row's 5th tab, the five content-width
+(`flex: 0 0 auto`) tab buttons' combined width could exceed the box the flex algorithm assigned
+the segment (its `min-w-0 flex-1 shrink` classes remove the default min-content floor so it can be
+squeezed below its content width) — the excess used the CSS-default `overflow: visible` and
+painted past the segment's edge, landing on the theme toggle, which paints after it in DOM order.
+
+**Fix:** `.nh-v2-page .ios-native-segment` now scrolls horizontally
+(`overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain;
+-webkit-overflow-scrolling: touch; scrollbar-width: none;` + a hidden `::-webkit-scrollbar`) —
+the same pattern `.nh-history-tablewrap` already uses elsewhere in the desk — instead of leaving
+the overflow unclipped. `.ios-native-segment-btn` is unchanged (`flex: 0 0 auto` stays; tabs must
+not squash/truncate).
+
+**Check at the open:** on live `/nighthawk` at 430x932 (`proxy-browser.cjs`), confirm the view-tab
+row (0DTE/Swings/Bangers/Vector/Legacy) no longer paints "Legacy" (or any tab) through the theme
+toggle in either the default or analytics-expanded state, and that swiping/scrolling the tab row
+horizontally reveals the full "Legacy" label with the theme toggle staying put, fully legible, at
+its own fixed position to the row's right. Also spot-check desktop width (≥1440px) is visually
+unchanged — the fix is a CSS overflow behavior change with no effect once the row already fits.
+
 ### 13. Vector chart volume-pane "SPY vol" watermark overlapped the first x-axis tick — PR pending (branch `fix/vector-volume-pane-label-overlap`)
 
 **What was broken:** the volume sub-pane's "SPY vol" watermark label (`VectorChart.tsx`,
@@ -483,7 +543,7 @@ pan states, since tick positions move with the visible time range and the origin
 width and time-range, not a single fixed state. Also spot-check mobile (430×932) to confirm the fix
 didn't regress the already-working sibling labels' layout there.
 
-### 14. Helix `/flows` mobile print card showed a bare negative DTE for an already-expired print — PR pending (branch `fix/helix-mobile-card-expired-dte`)
+### 18. Helix `/flows` mobile print card showed a bare negative DTE for an already-expired print — PR pending (branch `fix/helix-mobile-card-expired-dte`)
 
 **What was broken:** the mobile print card (`HelixMobileFlowTape.tsx`) computed
 `dte = flow.dte ?? daysToExpiry(flow.expiry)` and only special-cased `dte === 0` (0DTE, ember
@@ -512,6 +572,25 @@ after that expiry). Confirm the card shows `EXPIRED` in the highlighted ember/bo
 a bare negative number like `-1d`/`-2d`. Also confirm ordinary future-dated prints on the same tape
 are unaffected (still plain `"<n>d"`) and that a genuine same-day 0DTE print still hides the DTE
 segment and shows its own "0DTE" badge unchanged — this fix must not have touched that branch.
+
+### 15. Night Hawk mobile play-history table's P&L column was scrolled off-screen — PR pending (branch `fix/nighthawk-mobile-pnl-column-offscreen`)
+
+**What was broken:** the expanded Session Analytics panel's play-history table renders 6 columns
+(Date, Ticker, Dir, Tier, Outcome, P&L) inside `.nh-history-tablewrap` — `overflow-x-auto` around a
+`min-w-[440px]` table — which overflows a 430px phone's card width. The overflow clip always eats
+the rightmost column first, and P&L was last, so it required an extra horizontal swipe to see even
+though `globals.css`'s own comment calls it "the single most-scanned value in this table."
+
+**Fix:** reordered columns to Date, Ticker, **P&L**, Dir, Tier, Outcome (P&L moved from 6th to 3rd,
+right after Ticker) — pure JSX reorder, no CSS/data change. See
+`docs/audit/findings-staging/2026-09-04-nighthawk-history-pnl-column-mobile-offscreen.md`.
+
+**Check at the open:** on `/nighthawk` (`proxy-browser.cjs`, 430×932 mobile viewport), open Session
+Analytics, expand a session with graded plays, and confirm the P&L value for each row is visible
+in the table WITHOUT any horizontal swipe — it should render as the 3rd visible column right after
+the ticker, still tone-colored (green/red/amber) and bold. Also confirm Dir/Tier/Outcome are still
+reachable (now via swipe or the row's existing tap-to-expand drawer) and that desktop/tablet
+rendering (where the table already fit) is visually unchanged.
 
 ---
 
