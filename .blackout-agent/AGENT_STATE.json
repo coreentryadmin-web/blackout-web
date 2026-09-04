@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:10:46.681Z",
+  "updated_at": "2026-09-04T16:13:44.299Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -232,6 +232,26 @@
   },
   "open_prs": [
     {
+      "number": 3629,
+      "title": "chore(state): cursor handoff — RTH lifecycle GREEN post-#3616",
+      "branch": "cursor/autopilot-handoff-workflow-run-2026-09-04",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T16:12:32Z"
+    },
+    {
+      "number": 3628,
+      "title": "chore(autopilot): cursor handoff — #3625 merged, #3627 opened",
+      "branch": "chore/autopilot-handoff-post-3625-3627",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T16:12:15Z"
+    },
+    {
       "number": 3627,
       "title": "fix(admin): guard storeAge against clock-skewed future timestamps",
       "branch": "fix/admin-store-age-future-guard",
@@ -239,7 +259,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T16:10:39Z"
+      "updated_at": "2026-09-04T16:12:17Z"
     },
     {
       "number": 3626,
@@ -249,7 +269,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T16:10:07Z"
+      "updated_at": "2026-09-04T16:12:20Z"
     }
   ],
   "events": [
@@ -992,6 +1012,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T16:13:44.297Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-04T16:13:44.299Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a5e009c7-f7f5-4d93-a7c3-711738460bf6",
+      "summary": "Work loop cycle complete. #3617 verified (platform-integrity 14/0). #3624 peer-reviewed+merged. #3614 merged (zerodte Vector chase). RTH lifecycle GREEN (6/6). validate:deploy GREEN. ops:collect 0. ECR deploy pending a1a9d668. State pushed cursor/autopilot-handoff-3614-3624-1603."
     }
   ]
 }
