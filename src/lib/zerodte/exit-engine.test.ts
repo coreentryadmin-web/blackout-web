@@ -665,29 +665,36 @@ test("trim_scale DEAD ZONE — KNOWN GAP: via exit-sync.ts's REAL trimsTaken der
   assert.equal(d.reason, "ratchet_breakeven_floor");
 });
 
-// ── ADDENDUM (2026-08-29 audit, follow-up to the KNOWN GAP above) ──────────────────────────
+// ── FIXED 2026-09-04 (previously "ADDENDUM (2026-08-29 audit)" / KNOWN GAP, unreachable-at-the-
+// time) ──────────────────────────────────────────────────────────────────────────────────────
 // The 2026-08-27 dead-zone patch added `!trimAvailable` to trim_scale's floorBreached — a term
 // ratchet mode's own protective-exit gate does NOT have (ratchet's is a plain
 // `stopBreached || floorBreached` OR, so a real plan-stop breach ALWAYS forces an EXIT one way
-// or another). trim_scale's plan-stop branch additionally requires `!floorBreached`, so if
-// trimAvailable were ever true, a real plan-stop breach can fall through BOTH exit-returning
-// blocks and land on the trim-ladder step instead — banking a tranche while the position keeps
-// falling, with no exit at all. This is UNREACHABLE today (proven below) because exit-sync.ts's
-// real trimsTaken derivation makes armed===taken always, so trimAvailable is always false — but
-// it is a live requirement for whoever eventually builds the persisted trim-tranche counter that
-// the original dead-zone finding named as the real fix: that redesign must not let trimAvailable
-// become true across a plan-stop breach.
-test("KNOWN GAP (unreachable in production today): if trimsTaken were ever independently 0 while a tranche is armed, a real plan-stop breach falls through to TRIM instead of EXIT", () => {
+// or another). trim_scale's plan-stop branch additionally requires `!floorBreached`, so whenever
+// trimAvailable was true, a real plan-stop breach could fall through BOTH exit-returning blocks
+// and land on the trim-ladder step instead — banking a tranche while the position kept falling,
+// with no exit at all. This was believed unreachable in production because exit-sync.ts's
+// trimsTaken derivation used to make armed===taken always (trimAvailable always false) — but
+// `resolveTrimBankLive()` in exit-sync.ts defaulted ON 2026-09-03, which reads the row's real
+// persisted `trims_taken` instead, a value that CAN legitimately lag `armed` (a faster live-marks
+// writer latches `peak_premium` ahead of the slower trim-bank persistence path). That reopened
+// this exact gap in production — see
+// docs/audit/findings-staging/2026-09-04-trim-scale-stop-fallthrough.md. Fixed by carving the
+// raw plan-stop breach out of `trimAvailable` in exit-engine.ts: once `currentMark <= planStop`,
+// `trimAvailable` is forced false so the floor-EXIT branch is never suppressed for a position
+// that has already blown through its hard risk limit.
+test("FIXED: a real plan-stop breach always EXITs even when a trim tranche is available (was: falls through to TRIM)", () => {
   const d = evaluateExitState(
     input({
       exitMode: "trim_scale",
       regime: "neutral",
       peakPremium: 4.85, // peak +21.25%, arms trim tranche 1 under neutral [20,50]
-      trimsTaken: 0, // artificial — NOT what the real caller (exit-sync.ts) ever sends; see below
+      trimsTaken: 0, // independently lower than `armed` — the live shape resolveTrimBankLive can now produce
       currentMark: 1.5, // -62.5%, well past the -50% plan stop (2.0)
     })
   );
-  assert.equal(d.action, "TRIM", "the gap: a real stop breach silently becomes a TRIM, not an EXIT");
+  assert.equal(d.action, "EXIT", "a stop breach must exit even with a tranche pending — never fall through to TRIM");
+  assert.equal(d.reason, "ratchet_breakeven_floor");
 });
 
 test("production-safe today: the real trimsTaken derivation (armed===taken always) still forces an EXIT on the same stop breach, just via the floor reason rather than plan_stop", () => {
