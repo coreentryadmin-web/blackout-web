@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T11:20:50.708Z",
+  "updated_at": "2026-09-04T12:08:57.650Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:22:03.345Z",
-      "lease_until": "2026-09-04T11:52:03.345Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-04T11:41:12.569Z",
+      "lease_until": "2026-09-04T13:11:12.569Z",
+      "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -200,13 +200,44 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0d367bde47b227c73f6e56abb5cc5dc80cf5e44f",
+    "last_main_sha": "74d858bc54d9e36b87fce3b8043b3d3e4024c272",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T10:35:12Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33863935805",
-    "last_deploy_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01"
+    "last_deploy_at": "2026-09-04T12:06:34Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33871126902",
+    "last_deploy_sha": "f84aad3391ddaaeb7a2beb57f9a58e3b73643101"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3576,
+      "title": "chore(autopilot): cursor handoff post-#3571 merge + peer review #3573",
+      "branch": "chore/autopilot-handoff-post-3571",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T12:08:39Z"
+    },
+    {
+      "number": 3574,
+      "title": "chore(autopilot): cursor handoff after #3566 merge + peer review cycle",
+      "branch": "cursor/autopilot-handoff-20260904T1152",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T12:08:41Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T12:08:43Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -812,6 +843,25 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:08:49.922Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-04T12:08:49.923Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "bdbfdd0d-d348-4832-852f-25fe1116695c",
+      "summary": "Peer-review cycle: merged #3568 (agent state sync), #3570 (db guardCheckedOutClient), #3571 (thermal fontconfig cache), #3572 (MARKET-OPEN-VALIDATION heading dedupe + rebase). Local tests GREEN (db.test 28/28, thermal-discord-card 14/14). validate:deploy GREEN. ops:collect 0. ECR deploy pending for main@45a618e+. Open drafts: #3573-#3575 awaiting Claude review. RTH pre-open (~08:08 ET)."
+    },
+    {
+      "at": "2026-09-04T12:08:57.650Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
     }
   ]
 }
