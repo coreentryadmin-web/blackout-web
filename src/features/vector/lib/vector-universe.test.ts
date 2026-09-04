@@ -11,6 +11,8 @@ let dynamicTickers: string[] = [];
 let cacheStore: VectorUniverseSnapshot | null = null;
 let genericCache = new Map<string, unknown>();
 let fetchCalls: string[] = [];
+let fetchInFlight = 0;
+let maxFetchInFlight = 0;
 let wallSampleCalls: string[] = [];
 let wallSampleWrites: Array<{
   ticker: string;
@@ -60,6 +62,21 @@ mock.module("../../../lib/providers/polygon-options-gex", {
   namedExports: {
     fetchGexHeatmap: async (ticker: string) => {
       fetchCalls.push(ticker);
+      // Concurrency-bound regression fixture (2026-09-04 audit finding, unbounded fan-out): a
+      // "CONC*" ticker holds briefly so a concurrency-tracking test can observe how many calls
+      // are in flight together, without slowing down every other test in this file.
+      if (ticker.startsWith("CONC")) {
+        fetchInFlight += 1;
+        maxFetchInFlight = Math.max(maxFetchInFlight, fetchInFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        fetchInFlight -= 1;
+        return {
+          spot: 100,
+          asof: new Date().toISOString(),
+          gex: { flip: 101, strike_totals: { "100": 1, "105": 2 } },
+          vex: { flip: 99, strike_totals: { "95": 1, "100": 1 } },
+        };
+      }
       // Regression fixture for the 2026-09-04 audit finding: strike 90 (below spot) carries more
       // |gamma| than strike 108 (above spot), so the unconstrained scan used to pick 90 as the
       // "call wall" — a resistance level below current price — the exact live IBIT/SPX shape.
@@ -154,6 +171,29 @@ test("buildVectorUniverseSnapshot: plain build unions dynamic tickers", async ()
   );
   assert.ok(fetchCalls.includes("HOOD"));
   assert.ok(fetchCalls.includes("PLTR"));
+});
+
+// Regression for the 2026-09-04 audit finding: buildVectorUniverseSnapshot fired every universe
+// ticker's fetchGexHeatmap via a raw Promise.allSettled (no concurrency bound), which shares the
+// app-wide Polygon admission limiter with live desk/GEX/pulse traffic and a fixed 3s per-ticker
+// serve cap — reproduced live as several genuinely-available tickers (DIA/AAOI/DRAM/ZS/NOK) coming
+// back fully null from GET /api/market/vector/universe while a solo, uncontended
+// GET /api/market/gex-heatmap for each succeeded. Fixed by routing the fan-out through
+// runPolygonPool (polygon-rate-limiter.ts); this proves the SNAPSHOT BUILDER actually uses the
+// bounded pool (not just that the pool primitive itself is bounded — see runPolygonPool's own
+// coverage in polygon-rate-limiter.test.ts).
+test("buildVectorUniverseSnapshot: bounds concurrent fetchGexHeatmap calls via runPolygonPool", async () => {
+  dynamicTickers = Array.from({ length: 20 }, (_, i) => `CONC${i}`);
+  fetchCalls = [];
+  fetchInFlight = 0;
+  maxFetchInFlight = 0;
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+
+  assert.equal(snap.rows.length, 23, "all 20 CONC tickers plus the 3 static tickers must still produce rows");
+  assert.ok(maxFetchInFlight <= 8, `expected at most 8 concurrent fetchGexHeatmap calls (POOL_MAX_CONCURRENCY default), saw ${maxFetchInFlight}`);
+  assert.ok(maxFetchInFlight > 1, "sanity: the pool should actually overlap work, not degrade to fully sequential");
 });
 
 // Regression for the 2026-09-04 audit finding: buildVectorUniverseRow's GEX (gamma) wall
