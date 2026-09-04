@@ -3,6 +3,7 @@ import { runFlowIngest, ingestInFlight } from "@/lib/providers/flow-ingest";
 import { logCronRun } from "@/lib/cron-run";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { warmFlowsMemberCaches } from "@/lib/flows-member-cache";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -17,7 +18,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const result = await runFlowIngest();
+    // Tagged as a background sweep so REST flow_alerts polling always leaves at least one
+    // UW concurrency slot reachable for live member traffic (same pattern as uw-cache-refresh).
+    const result = await runWithBackgroundUwSweep(() => runFlowIngest());
     if (!result.skipped && (result.ingested ?? 0) > 0) {
       void warmFlowsMemberCaches().catch((err) =>
         console.warn("[cron/flow-ingest] flows cache warm failed:", err instanceof Error ? err.message : err)

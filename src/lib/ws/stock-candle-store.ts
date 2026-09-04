@@ -255,7 +255,7 @@ export function getStockLiveCandle(ticker: string): CandleSnapshot {
     ? { current: s.current, updatedAt: s.updatedAt, changePct: computeChangePct(s.current.close, s.sessionOpen) }
     : null;
 
-  const localFresh = local != null && Date.now() - local.updatedAt <= LOCAL_STALE_MS;
+  const localFresh = local != null && isWsUpdatedAtFresh(local.updatedAt, LOCAL_STALE_MS);
   if (localFresh) return local;
 
   refreshFallback(sym);
@@ -265,7 +265,7 @@ export function getStockLiveCandle(ticker: string): CandleSnapshot {
     local && fb.snap && fb.snap.updatedAt > local.updatedAt ? fb.snap : local ?? fb.snap;
 
   if (!best) return { current: null, updatedAt: 0, changePct: 0 };
-  if (Date.now() - best.updatedAt > MAX_CANDLE_AGE_MS) {
+  if (!isWsUpdatedAtFresh(best.updatedAt, MAX_CANDLE_AGE_MS)) {
     return { current: null, updatedAt: best.updatedAt, changePct: 0 };
   }
   return best;
@@ -298,4 +298,10 @@ export function getStockCandleStoreStats(): { total: number; demanded: number } 
 export function _resetStockCandleStoreForTest(): void {
   stores.clear();
   fallbacks.clear();
+}
+
+/** Test-only: skew local `updatedAt` to simulate clock skew or a stale replica. */
+export function _skewLocalUpdatedAtForTest(ticker: string, offsetMs: number): void {
+  const s = stores.get(ticker.toUpperCase());
+  if (s) s.updatedAt += offsetMs;
 }

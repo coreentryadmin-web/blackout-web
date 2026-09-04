@@ -8,6 +8,7 @@ import {
   computeChangePct,
   _resetStockCandleStoreForTest,
   _setSnapshotFetcherForTest,
+  _skewLocalUpdatedAtForTest,
 } from "./stock-candle-store";
 
 // Every test in this file must stay network-free: stub the REST session-open
@@ -308,4 +309,18 @@ test("wsSpotPrice: normalizes to uppercase", () => {
   const atMs = Date.parse("2026-07-15T14:44:00.000Z");
   recordStockTick("GOOG", 195, undefined, atMs);
   assert.equal(wsSpotPrice("goog"), 195);
+});
+
+test("getStockLiveCandle: clock-skewed future updatedAt must not read as infinitely fresh", () => {
+  _resetStockCandleStoreForTest();
+  const atMs = Date.parse("2026-07-15T14:50:00.000Z");
+  recordStockTick("SPY", 605, undefined, atMs);
+  assert.equal(getStockLiveCandle("SPY").current?.close, 605);
+
+  // Skew 10s into the future — beyond WS_TIMESTAMP_FUTURE_TOLERANCE_MS (5s).
+  _skewLocalUpdatedAtForTest("SPY", 10_000);
+
+  const snap = getStockLiveCandle("SPY");
+  assert.equal(snap.current, null, "future-skewed candle must not be presented as live");
+  assert.ok(snap.updatedAt > Date.now(), "updatedAt preserved for diagnostics");
 });
