@@ -187,7 +187,7 @@ async function buildVectorUniverseRow(
         if (!totals) continue;
         const horizonWalls = computeGexWalls(totals, {
           maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-          spot: spot > 0 ? spot : undefined,
+          spot: spot != null && spot > 0 ? spot : undefined,
         });
         const horizonSample = buildWallHistorySample({
           time: sampleTime,
