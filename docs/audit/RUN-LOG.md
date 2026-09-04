@@ -11,6 +11,52 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-04 (18:52 UTC / Fri 2026-09-04 14:52 ET) — [HELIX] `helix-signal-outcomes` writer confirmed durably healthy (20/20 clean over 6h) — the follow-up `helix-score-signal.mjs` re-run HELIX-MAP §9.7 calls for is now actionable, not yet done
+
+**Severity.** — investigation only, confirming operational state and identifying concrete next
+work; not a defect.
+
+**Context.** `docs/audit/HELIX-MAP.md` §9.7 / `scripts/audit/helix-score-signal.mjs`'s own header
+name the real signal-outcome ledger as "the only instrument that could test" whether HELIX's
+conviction `score` actually ranks anything — at the time that script ran (2026-08-23), the ledger
+had **no writer** deployed (`helix-signal-outcomes` was registered in `cron-registry.ts` but absent
+from blackout-infra's deployed `cron-jobs.json`), so the script instead graded each print's own
+underlying forward on Polygon minute bars as a proxy and found `SPREAD WITHOUT ORDER` (score
+doesn't rank direction at any of 3 horizons tested). CLAUDE.md's own note (updated 2026-09-03)
+already recorded the writer had since been deployed and firing (9/9 successful invocations that
+day, RTH-only), naming "a re-run against it (rather than the underlying-forward proxy) as the
+natural follow-up, not yet done."
+
+**What was re-confirmed today.** `describe_rule('blackout-production-helix-signal-outcomes')` →
+`State: ENABLED`, `cron(*/15 11-21 ? * MON-FRI *)`. CloudWatch Logs on the `hit-cron` Lambda
+(`/aws/lambda/blackout-production-hit-cron`, last 6h): **20/20** `[hit-cron] /api/cron/helix-
+signal-outcomes -> 200`, evenly spaced every ~15 min, zero failures — the writer has now been
+running continuously since at least 2026-09-03, not just a single confirmed day. A member-facing
+read path already exists too: `GET /api/market/helix/signal-outcomes` (premium-gated,
+`fetchRecentHelixSignalOutcomes`, capped at 50 most recent rows) — not queried this pass (would
+need an authenticated premium session; the existing `mintClerkPremiumSession` pattern from
+`data-validator.mjs` could supply one).
+
+**Why no full re-analysis shipped this pass.** Building the actual follow-up — pulling the real
+ledger across a meaningful multi-day window, computing rank correlation/bucket win-rates the same
+way `helix-score-signal.mjs`'s existing pure helpers (`lib/helix-score-eval.mjs`) already do, and
+comparing against the 2026-08-23 proxy-based verdict — is a real, multi-hour audit-script build
+(new fetch/auth plumbing against a capped 50-row read route, likely needs either a wider admin
+export route or repeated polling to accumulate a large enough sample, plus its own unit-tested pure
+helpers matching this toolkit's usual bar). That is exactly the kind of "bigger, well-scoped
+follow-up" the standing policy says to write up rather than half-build under time pressure in a
+single pass.
+
+**Concrete next step, not yet done:** build (or extend `helix-score-signal.mjs` with) a real-ledger
+mode that reads `GET /api/market/helix/signal-outcomes` through an authenticated premium session
+(reusing `mintClerkPremiumSession`), accumulates rows across repeated polls or a wider admin export
+if one exists, and re-runs the same rank-correlation/bucket methodology the proxy version already
+uses — to answer, with the real instrument this time, whether HELIX's conviction score actually
+separates outcomes.
+
+No code changed this pass — confirmation + follow-up identification only.
+
+---
 ## 2026-09-04 (18:22 UTC / Fri 2026-09-04 14:22 ET) — [re-verification, Meridian] 2026-08-18 P1 "ESTIMATES/HISTORY empty on every mega-cap" no longer reproduces — FINDINGS.md status stale, not updated here
 
 **Severity.** — this is a re-verification, not a new finding. Logged here (not `findings-staging/`)
