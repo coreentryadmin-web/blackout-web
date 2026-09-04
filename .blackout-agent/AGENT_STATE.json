@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T10:39:27.311Z",
+  "updated_at": "2026-09-04T11:37:16.075Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,8 +67,8 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:22:03.345Z",
-      "lease_until": "2026-09-04T11:52:03.345Z",
+      "claimed_at": "2026-09-04T11:24:51.386Z",
+      "lease_until": "2026-09-04T12:54:51.386Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -104,8 +104,8 @@
     "BO-P1-0103": {
       "task_id": "BO-P1-0103",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:33:57.540Z",
-      "lease_until": "2026-09-04T12:03:57.540Z",
+      "claimed_at": "2026-09-04T11:37:16.075Z",
+      "lease_until": "2026-09-04T13:07:16.075Z",
       "phase": "MONITORING",
       "branch": null,
       "pr": null,
@@ -195,16 +195,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
+      "last_seen": "2026-09-04T11:37:16.075Z",
       "current_task": "BO-P1-0103"
     }
   },
   "deploy": {
-    "last_main_sha": "6553d68a0b354d1e92e7b9427381c2b42032dcc8",
+    "last_main_sha": "b2a3b36c771f318a719a424577e767821a5b4522",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T10:35:12Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33863935805",
-    "last_deploy_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01"
+    "last_deploy_at": "2026-09-04T11:29:33Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33868193241",
+    "last_deploy_sha": "90e5c7597990b36968f0d63f793e29fbe72f36d4"
   },
   "open_prs": [],
   "events": [
@@ -758,6 +758,31 @@
       "agent": "cursor",
       "run_id": "3dffa5ee-6d81-427e-9872-7a9a2297889b",
       "summary": "Cycle complete. #3548 merged (main@c0097296e). #3549 verify GREEN + Cursor APPROVED — merge blocked by GitHub API rate limit (enable-automerge skipped). #3553 verify still running. #3552 verify GREEN after rebase; undrafted for Claude peer review. SEO 22/22 GREEN. ops:collect 0 items. validate:deploy GREEN. Opened #3557 autopilot state sync (draft)."
+    },
+    {
+      "at": "2026-09-04T11:37:01.347Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T11:37:01.347Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a3d57583-4069-4f42-b0ae-ce393ecb2d05",
+      "summary": "Peer-reviewed #3566 (vector loading copy APPROVED) and #3564 (playwright chromium path APPROVED, merged). #3560 merged. #3565 green draft awaiting peer. Deploy validate GREEN. ops:collect clean. GitHub PAT rate-limited (~28m) — merge #3566 when verify completes."
+    },
+    {
+      "at": "2026-09-04T11:37:05.909Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T11:37:16.075Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0103",
+      "owner": "cursor"
     }
   ]
 }
