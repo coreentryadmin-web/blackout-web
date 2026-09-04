@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T08:12:53.927Z",
+  "updated_at": "2026-09-04T08:16:25.674Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -167,6 +167,26 @@
     "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
   },
   "open_prs": [
+    {
+      "number": 3535,
+      "title": "chore(autopilot): cursor handoff — #3528 peer review APPROVED, audits GREEN off-hours",
+      "branch": "chore/autopilot-handoff-20260904-0813",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T08:14:16Z"
+    },
+    {
+      "number": 3534,
+      "title": "chore(autopilot): cursor handoff — closed stale PRs, lifecycle GREEN",
+      "branch": "cursor/autopilot-handoff-20260904-0813",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T08:13:37Z"
+    },
     {
       "number": 3533,
       "title": "chore(autopilot): resolve state-sync conflict pile (10 stuck PRs → 1)",
@@ -741,6 +761,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T08:16:25.673Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-04T08:16:25.674Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d3df623c-ea05-4404-949f-f9d8e20ab2be",
+      "summary": "Work loop cycle complete: closed 12 stale PRs (#3517-3532), lifecycle GREEN, data-validator 22 PASS, handoff PR #3534 open (CI pending). main@f4d1f5ebb deploy drift pending ECR. Only #2810 dependabot TS7 red."
     }
   ]
 }
