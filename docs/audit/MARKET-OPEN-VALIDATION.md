@@ -705,6 +705,33 @@ this PR (this fix must not have changed fetch timing, only closed-market copy); 
 card off-hours AFTER today's close and confirm the closed-market copy now appears instead of the
 bare "Scanning the chain…" sentence when the loading state is hit.
 
+### 18. `db.ts` checked-out pool clients had no `'error'` listener — raw `uncaughtException` on connection drop — PR pending (branch `fix/db-transaction-raw-client-uncaught`)
+
+**What was broken:** one live CloudWatch `uncaughtException: [Error: Connection terminated
+unexpectedly]` in a 24h window, despite `db.ts` already routing essentially every query through
+`dbQuery`'s try/catch+retry and already carrying a `livePool.on("error", ...)` handler for idle
+pooled clients. Root cause was NOT a missing try/catch (every raw `pool.connect()` site already had
+one) — `pg-pool` removes a client's `'error'` listener for the entire time it's checked out
+(`pool.on('error')` only ever covers idle clients), and `pg.Client` emits `'error'` on the client
+object itself UNCONDITIONALLY on an unexpected connection drop, separately from rejecting whatever
+query happens to be in flight — a promise-based `try/catch` can never intercept that second,
+independent emission. See `docs/audit/findings-staging/2026-09-04-db-checked-out-client-error-listener.md`
+for the full node-postgres source trace.
+
+**Fix:** added `guardCheckedOutClient()`, attached at all 7 raw `pool.connect()` sites in `db.ts`
+(migration advisory lock, `spx_signal_log` dedup transaction, `deleteUserDataForClerkId`,
+`dbClient()`, `acquireHeldLock`/`releaseHeldLock`, `insertOpenSpxPlay`, `withSwingRollTx`) —
+mirrors the existing pool-level swallow+log convention, scoped to the checked-out-client gap that
+convention doesn't reach.
+
+**Check at the open:** this is a backend crash-prevention fix with no UI surface — nothing to
+visually confirm on a live desk/board. Instead, pull `/ecs/blackout-production` CloudWatch Logs for
+a full RTH session after this deploys and confirm **zero** further raw
+`uncaughtException: [Error: Connection terminated unexpectedly]` events, with particular attention
+to `spx-evaluate` (holds the SPX-eval advisory lock for its whole run via `acquireHeldLock` — the
+longest-held, highest-risk checkout of the 7) and any DB reconnect/blip windows already visible in
+RDS/PgBouncer metrics that day.
+
 ---
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
