@@ -144,12 +144,26 @@ export function analyzeDiff(files) {
   return { paths, categories, risks: [...new Set(risks)], highlights: [...new Set(highlights)].slice(0, 8), docsOnly };
 }
 
+/** Normalize gh `pr checks --json` (state/bucket) and CheckRun API (conclusion) shapes. */
+export function checkConclusion(check) {
+  if (!check) return null;
+  const raw = check.conclusion ?? check.state ?? check.bucket ?? "";
+  const v = String(raw).toLowerCase();
+  if (v === "success" || v === "pass") return "success";
+  if (v === "failure" || v === "fail") return "failure";
+  if (v === "cancelled" || v === "canceled") return "cancelled";
+  if (v === "skipped" || v === "skipping" || v === "neutral") return "skipped";
+  if (v === "pending" || v === "in_progress" || v === "queued") return "pending";
+  return v || null;
+}
+
 export function summarizeChecks(checks) {
   const list = Array.isArray(checks) ? checks : checks?.checks ?? [];
-  const verify = list.find((c) => c.name === "verify");
-  const failed = list.filter((c) => c.conclusion === "failure" || c.conclusion === "cancelled");
-  const pending = list.filter((c) => !c.conclusion || c.conclusion === "pending" || c.state === "IN_PROGRESS");
-  return { verify, failed, pending, total: list.length };
+  const normalized = list.map((c) => ({ ...c, conclusion: checkConclusion(c) }));
+  const verify = normalized.find((c) => c.name === "verify");
+  const failed = normalized.filter((c) => c.conclusion === "failure" || c.conclusion === "cancelled");
+  const pending = normalized.filter((c) => c.conclusion === "pending");
+  return { verify, failed, pending, total: normalized.length };
 }
 
 export function deriveDirective({ agent, draft, verify, priorReview, head, issues, analysis }) {

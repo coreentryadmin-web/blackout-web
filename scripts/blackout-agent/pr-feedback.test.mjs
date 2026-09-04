@@ -10,6 +10,7 @@ import {
   analyzeDiff,
   deriveDirective,
   summarizeChecks,
+  checkConclusion,
   resolveGithubRepo,
 } from "./pr-feedback.mjs";
 
@@ -152,6 +153,24 @@ test("summarizeChecks finds failures", () => {
   ]);
   assert.equal(s.failed.length, 1);
   assert.equal(s.verify.conclusion, "failure");
+});
+
+test("summarizeChecks normalizes gh pr checks state field", () => {
+  const s = summarizeChecks([
+    { name: "verify", state: "SUCCESS", bucket: "pass" },
+    { name: "CodeQL", state: "SUCCESS" },
+    { name: "auto-merge", state: "SKIPPED", bucket: "skipping" },
+  ]);
+  assert.equal(s.verify.conclusion, "success");
+  assert.equal(s.failed.length, 0);
+  assert.equal(s.pending.length, 0);
+});
+
+test("checkConclusion maps gh and API shapes", () => {
+  assert.equal(checkConclusion({ state: "SUCCESS" }), "success");
+  assert.equal(checkConclusion({ conclusion: "failure" }), "failure");
+  assert.equal(checkConclusion({ state: "IN_PROGRESS" }), "pending");
+  assert.equal(checkConclusion({ bucket: "skipping" }), "skipped");
 });
 
 test("resolveGithubRepo prefers GITHUB_REPOSITORY when set", () => {
