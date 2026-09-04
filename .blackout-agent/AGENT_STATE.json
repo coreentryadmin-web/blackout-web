@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:43:40.083Z",
+  "updated_at": "2026-09-04T10:10:20.244Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T10:07:50.856Z",
+      "lease_until": "2026-09-04T11:37:50.856Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -158,6 +158,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3542": {
+      "pr": 3542,
+      "head_sha": "0d8792f96a11402f6dabcc962f099e629da7aa90",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge (merged 2553870b5, 7/7 tests pass on main)",
+      "reviewed_at": "2026-09-04T10:09:55.024Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -172,13 +180,64 @@
     }
   },
   "deploy": {
-    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
+    "last_main_sha": "d1139c4fb32fc7684e905d00b2cfbe1b317bf750",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T07:20:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
-    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
+    "last_deploy_at": "2026-09-04T10:03:51Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33859651322",
+    "last_deploy_sha": "07d58f6c2fef1add656ab2bfaa28ab12fff9f26e"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3552,
+      "title": "fix(cron): rate-limit meridian-warm's force=1 bypass, same gap as desk-warm",
+      "branch": "fix/meridian-warm-force-cooldown",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T10:09:33Z"
+    },
+    {
+      "number": 3550,
+      "title": "fix(cron): rate-limit zerodte-warm's force=1 bypass, same gap as desk-warm",
+      "branch": "fix/zerodte-warm-force-cooldown",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T10:09:39Z"
+    },
+    {
+      "number": 3549,
+      "title": "fix(nighthawk): stop mobile view-tab row overlapping the theme toggle at 430px",
+      "branch": "fix/nighthawk-legacy-tab-toggle-overlap",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T10:09:41Z"
+    },
+    {
+      "number": 3548,
+      "title": "fix(vector): opaque-pill the volume-pane SPY-vol watermark to stop it overlapping the first x-axis tick",
+      "branch": "fix/vector-volume-pane-label-overlap",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T10:10:00Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T10:09:50Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -672,6 +731,127 @@
       "agent": "cursor",
       "run_id": "bdccad63-d885-46ad-bc02-3362ea4704ec",
       "summary": "Cycle: merged main @ 14c5d815d verified GREEN. Opened #3531 agent state sync (draft, awaiting CI+peer). ECR 33848248248 still in_progress 22m+ (deploy-smoke passed). SEO 22 PASS. Site-latency 3 warm FAILs deferred to RTH. GitHub API rate-limited — peer review of #3531 for Claude."
+    },
+    {
+      "at": "2026-09-04T10:09:55.024Z",
+      "type": "pr_review",
+      "pr": 3542,
+      "head_sha": "0d8792f96a11402f6dabcc962f099e629da7aa90",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge (merged 2553870b5, 7/7 tests pass on main)",
+      "reviewed_at": "2026-09-04T10:09:55.024Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-04T10:09:56.389Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-09-04T10:09:56.389Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6d9f62c1-bb07-4eaa-9f9c-b7328cfc7344",
+      "summary": "Reviewed PR #3542: MERGE (already merged to main @ 2553870b5; retrospective APPROVED, 7/7 tests, CI green)"
+    },
+    {
+      "at": "2026-09-04T10:10:01.590Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-04T10:10:09.362Z",
+      "type": "pr_webhook",
+      "pr": 3552,
+      "event": "sweep",
+      "head": "ac9853c167c15efdc7c181b9cbc9b7acc8ac16bb",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T10:10:12.198Z",
+      "type": "pr_webhook",
+      "pr": 3550,
+      "event": "sweep",
+      "head": "dc429215fcd6341ab294abdfc09d7c56e5826e68",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T10:10:14.653Z",
+      "type": "pr_webhook",
+      "pr": 3549,
+      "event": "sweep",
+      "head": "207c061ea6976168bd979fe0791dfcc0079e86d6",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T10:10:17.498Z",
+      "type": "pr_webhook",
+      "pr": 3548,
+      "event": "sweep",
+      "head": "e598e5cd99e22ead01bcfcf0eec6e34333b8027b",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T10:10:20.244Z",
+      "type": "pr_webhook",
+      "pr": 2810,
+      "event": "sweep",
+      "head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3552": {
+      "last_event": "sweep",
+      "last_head": "ac9853c167c15efdc7c181b9cbc9b7acc8ac16bb",
+      "last_feedback_at": "2026-09-04T10:10:09.362Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3550": {
+      "last_event": "sweep",
+      "last_head": "dc429215fcd6341ab294abdfc09d7c56e5826e68",
+      "last_feedback_at": "2026-09-04T10:10:12.198Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3549": {
+      "last_event": "sweep",
+      "last_head": "207c061ea6976168bd979fe0791dfcc0079e86d6",
+      "last_feedback_at": "2026-09-04T10:10:14.653Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3548": {
+      "last_event": "sweep",
+      "last_head": "e598e5cd99e22ead01bcfcf0eec6e34333b8027b",
+      "last_feedback_at": "2026-09-04T10:10:17.498Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-2810": {
+      "last_event": "sweep",
+      "last_head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "last_feedback_at": "2026-09-04T10:10:20.244Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "updated"
+    }
+  }
 }
