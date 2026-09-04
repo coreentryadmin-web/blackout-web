@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T05:31:20.827Z",
+  "updated_at": "2026-09-04T06:43:53.851Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T06:34:58.383Z",
+      "lease_until": "2026-09-04T08:04:58.383Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -147,6 +147,22 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3511": {
+      "pr": 3511,
+      "head_sha": "888e81d449d8554bdce9e5bfb6abaf51d919afeb",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:43:31.162Z",
+      "safe_to_merge": true
+    },
+    "pr-3512": {
+      "pr": 3512,
+      "head_sha": "a3d03bc90823049c4d6c319270a63c24cfdd2e8c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:43:31.549Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -161,11 +177,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f",
+    "last_main_sha": "853bee81cd6ca98d0b4e81a9daf89a67defab8a8",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T05:27:22Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33840544277",
-    "last_deploy_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f"
+    "last_deploy_at": "2026-09-04T06:40:43Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845362473",
+    "last_deploy_sha": "448f8a3188f84b9878e7ad9e13876e72e484da7f"
   },
   "open_prs": [],
   "events": [
@@ -569,6 +585,39 @@
       "agent": "cursor",
       "run_id": "34cc062c-797a-4e80-8a83-6c9e90f11422",
       "summary": "Cycle complete: deploy GREEN @ 0b2ada333 (#3495). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours expected). Peer review: no substantive PRs (#2810 dependabot major skip). RTH lifecycle @ 09:00 ET Fri 2026-09-05. Agent state sync PR opening."
+    },
+    {
+      "at": "2026-09-04T06:43:31.162Z",
+      "type": "pr_review",
+      "pr": 3511,
+      "head_sha": "888e81d449d8554bdce9e5bfb6abaf51d919afeb",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:43:31.162Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T06:43:31.550Z",
+      "type": "pr_review",
+      "pr": 3512,
+      "head_sha": "a3d03bc90823049c4d6c319270a63c24cfdd2e8c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:43:31.549Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T06:43:53.850Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:43:53.851Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "220a9045-287d-427b-8a62-fad3f35fe363",
+      "summary": "Peer review cycle: APPROVED #3512 (merged cache-warm fix), #3511 (largo freshness, draft pending release), #3506 merged. validate:deploy GREEN, ops:collect 0. GitHub API rate-limited for undraft — posted approval comments."
     }
   ]
 }
