@@ -128,3 +128,5 @@ test("horizonPlayFromBangerPosition does not mark 'closing soon' inside the norm
   assert.equal(play!.contract.dte, 8);
   assert.doesNotMatch(play!.reason, /closing soon/);
 });
+=======
+>>>>>>> 08aaca12e (fix(swing): treat discovery COMMIT without ledger as pre-entry for banger merge)
