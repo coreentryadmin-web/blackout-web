@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T11:20:50.708Z",
+  "updated_at": "2026-09-04T12:06:06.771Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:22:03.345Z",
-      "lease_until": "2026-09-04T11:52:03.345Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-04T11:53:42.321Z",
+      "lease_until": "2026-09-04T13:31:37.534Z",
+      "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "44307b05-425e-4e64-93b9-9ba9a6043279",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -104,13 +104,13 @@
     "BO-P1-0103": {
       "task_id": "BO-P1-0103",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:33:57.540Z",
-      "lease_until": "2026-09-04T12:03:57.540Z",
-      "phase": "MONITORING",
+      "claimed_at": "2026-09-04T12:01:36.836Z",
+      "lease_until": "2026-09-04T13:31:37.534Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "44307b05-425e-4e64-93b9-9ba9a6043279",
       "title": null
     }
   },
@@ -200,13 +200,54 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0d367bde47b227c73f6e56abb5cc5dc80cf5e44f",
+    "last_main_sha": "45a618e2571bdca3bc90ea3701b5cff69e6aae8a",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T10:35:12Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33863935805",
-    "last_deploy_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01"
+    "last_deploy_at": "2026-09-04T12:04:55Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33870967977",
+    "last_deploy_sha": "0a1d688e0e11683457138350916130076fb29606"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3575,
+      "title": "fix(helix): highlight expired DTE in desktop print table",
+      "branch": "fix/helix-desktop-expired-dte",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T12:05:52Z"
+    },
+    {
+      "number": 3574,
+      "title": "chore(autopilot): cursor handoff after #3566 merge + peer review cycle",
+      "branch": "cursor/autopilot-handoff-20260904T1152",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T12:05:55Z"
+    },
+    {
+      "number": 3572,
+      "title": "docs(audit): fix duplicate ### 17/18 headings in MARKET-OPEN-VALIDATION.md",
+      "branch": "fix/market-open-validation-duplicate-headings",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T12:05:58Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T12:06:00Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -812,6 +853,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:06:06.770Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-04T12:06:06.771Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "558ce930-1d6a-4abd-b0d1-d949c4fb21dd",
+      "summary": "Post-#3571 merge cycle. main@45a618e25 (fontconfig #3571). validate:deploy GREEN, ops:collect 0, SEO 22/22, lifecycle GREEN (off-hours). Peer-reviewed #3573 APPROVED (4/4 tests, verify GREEN, draft). #3572 docs-only verify pending. #3575 helix desktop DTE verify pending (3/3 tests local). GitHub PAT rate-limited for gh CLI — used ManagePullRequest + web for PR discovery. Subscribed CI for #3572/#3575 branches."
     }
   ]
 }
