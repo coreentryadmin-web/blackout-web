@@ -32,8 +32,8 @@ import { DIRECTIONAL_LATE_CUTOFF_ET_MINUTES } from "./plan";
  *  (entries at 9:45 ran −12% EV; the edge shows up after the first ~30–90 min). Exported so a backtest
  *  can sweep it. */
 export const POST_OPEN_ET_MINUTES = 10 * 60; // 10:00 ET
-/** No NEW DIRECTIONAL 0DTE entries after the commit cutoff — MUST match G-14 / the directional
- *  gate (14:00 ET, DIRECTIONAL_LATE_CUTOFF_ET_MINUTES). Not the condor/backstop cutoff. */
+/** No NEW DIRECTIONAL entries after the commit cutoff — MUST match G-14 /
+ *  DIRECTIONAL_LATE_CUTOFF_ET_MINUTES (15:30 ET by default). */
 export const ENTRY_CUTOFF_ET_MINUTES = DIRECTIONAL_LATE_CUTOFF_ET_MINUTES;
 /** End of the measured-NEGATIVE early entry window [10:00, 10:45) ET. E2 (25 sessions,
  *  docs/audit/0DTE-RESEARCH.md) put a fixed entry at 10:00 at −7.8% EV and 10:30 at −9.1%; the

@@ -395,6 +395,15 @@ test("0DTE adapter: SHORT put uses P and the setup top_strike when src.strike is
   assert.equal(p.contract, "6300P · 0DTE"); // strike from setup.top_strike, right P
 });
 
+test("0DTE adapter: actual_dte_at_commit overrides setup.dte in contract label", () => {
+  const p = terminalPlayFromZeroDte({
+    ticker: "nvda",
+    status: "WATCH",
+    setup: { direction: "long", dte: 0, actual_dte_at_commit: 2, top_strike: 180 },
+  });
+  assert.equal(p.contract, "180C · 2DTE");
+});
+
 test("0DTE adapter: missing strike → '?', non-zero dte → 'NDTE', null dte → '?DTE'", () => {
   const noStrike = terminalPlayFromZeroDte({ ticker: "x", status: "OPEN", setup: { direction: "long", dte: 2 } });
   assert.equal(noStrike.contract, "?C · 2DTE"); // strike unknown, 2-day contract

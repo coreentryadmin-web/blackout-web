@@ -19,6 +19,8 @@ export type VectorContractAttach = {
   occ: string;
   strike: number;
   source: VectorContractAttachSource;
+  expiry?: string;
+  dte?: number;
 };
 
 /** When true, attachContractPlans may fetch chains and rank Vector candidates for FLOW/BREAKOUT. */
@@ -70,26 +72,44 @@ export function rankVectorContractOnChain(
   pulse: ZeroDteVectorPulse | null,
   chain: { spot: number; rows: ChainStrikeRow[] } | null
 ): VectorContractAttach | null {
-  if (!eligibleForVectorAttach(s, pulse) || !chain || !(chain.spot > 0)) return null;
+  const alts = rankVectorContractAlternatives(s, pulse, chain, 1);
+  return alts[0] ?? null;
+}
+
+/** Rank multiple Vector-aligned contracts on a chain (for liquid-strike / attach retries). */
+export function rankVectorContractAlternatives(
+  s: EnrichedZeroDteSetup,
+  pulse: ZeroDteVectorPulse | null,
+  chain: { spot: number; rows: ChainStrikeRow[] } | null,
+  limit = 4
+): VectorContractAttach[] {
+  if (!eligibleForVectorAttach(s, pulse) || !chain || !(chain.spot > 0)) return [];
   const picks = rankVectorPlayCandidates(
     { play: syntheticVectorPlay(s), spot: chain.spot },
     chain,
     s.ticker,
-    { limit: 3 }
+    { limit: Math.max(limit, 3) }
   );
   const side = s.direction === "long" ? "call" : "put";
-  const aligned =
-    picks.find((p) => p.side === side && p.dte <= 1) ??
-    picks.find((p) => p.side === side) ??
-    picks[0] ??
-    null;
-  if (!aligned) return null;
-  const occ =
-    aligned.occ ??
-    vectorPickOcc(s.ticker, aligned.expiry, aligned.side, aligned.strike) ??
-    null;
-  if (!occ || !(aligned.strike > 0)) return null;
-  return { occ, strike: aligned.strike, source: "vector_rank" };
+  const out: VectorContractAttach[] = [];
+  for (const aligned of picks) {
+    if (aligned.side !== side) continue;
+    if (aligned.dte > 4) continue;
+    const occ =
+      aligned.occ ??
+      vectorPickOcc(s.ticker, aligned.expiry, aligned.side, aligned.strike) ??
+      null;
+    if (!occ || !(aligned.strike > 0)) continue;
+    out.push({
+      occ,
+      strike: aligned.strike,
+      source: "vector_rank",
+      expiry: aligned.expiry?.slice(0, 10),
+      dte: aligned.dte,
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 /** Discovery fallback — build OCC from setup strike/expiry. */

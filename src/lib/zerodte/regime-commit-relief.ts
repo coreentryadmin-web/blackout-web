@@ -19,6 +19,22 @@ function flowBacked(origins: readonly string[] | null | undefined): boolean {
   return set.length === 0 || set.includes("FLOW");
 }
 
+function tapeBacked(origins: readonly string[] | null | undefined): boolean {
+  const set = Array.isArray(origins) ? origins : [];
+  return set.includes("FLOW") || set.includes("BREAKOUT");
+}
+
+/** Amplify-session aligned tape (FLOW or BREAKOUT) — relax archetype score floors. */
+export function regimeThesisArchetypeRelief(ctx: PlanChaseContext): boolean {
+  if (process.env.ZERODTE_AMPLIFY_THESIS_ARCHETYPE_RELIEF === "0") return false;
+  if (!isAmplifyMomentumRegime(ctx)) return false;
+  if (!tapeBacked(ctx.discovery_origin)) return false;
+  if (ctx.market_aligned !== true) return false;
+  const min = envInt("ZERODTE_AMPLIFY_THESIS_ARCHETYPE_MIN_SCORE", 75);
+  if (ctx.score < min) return false;
+  return true;
+}
+
 /** Default G-9 spread cap (% of mark). Amplify sessions may widen via effectiveIlliquidSpreadPct. */
 export const PLAN_ILLIQUID_SPREAD_PCT_AMPLIFY = envInt("ZERODTE_PLAN_ILLIQUID_SPREAD_PCT_AMPLIFY", 22);
 
@@ -38,19 +54,19 @@ const REGIME_SCORE_FLOOR = 65;
 export function regimeScoreBump(ctx: PlanChaseContext): number {
   if (process.env.ZERODTE_AMPLIFY_SCORE_BUMP === "0") return 0;
   if (!isAmplifyMomentumRegime(ctx)) return 0;
-  if (!flowBacked(ctx.discovery_origin)) return 0;
+  if (!tapeBacked(ctx.discovery_origin)) return 0;
   if (ctx.market_aligned !== true) return 0;
   if (ctx.score < REGIME_SCORE_BUMP_MIN || ctx.score >= REGIME_SCORE_FLOOR) return 0;
   return REGIME_SCORE_BUMP;
 }
 
-const THESIS_BYPASS_MIN_SCORE = 80;
+const THESIS_BYPASS_MIN_SCORE = envInt("ZERODTE_AMPLIFY_THESIS_BYPASS_MIN_SCORE", 80);
 
-/** High-conviction aligned FLOW on amplify days — skip thesis-first pre-gate blocks. */
+/** High-conviction aligned FLOW/BREAKOUT on amplify days — skip thesis-first pre-gate blocks. */
 export function regimeBypassesThesisBlocks(ctx: PlanChaseContext): boolean {
   if (process.env.ZERODTE_AMPLIFY_THESIS_BYPASS === "0") return false;
   if (!isAmplifyMomentumRegime(ctx)) return false;
-  if (!flowBacked(ctx.discovery_origin)) return false;
+  if (!tapeBacked(ctx.discovery_origin)) return false;
   if (ctx.market_aligned !== true) return false;
   if (ctx.score < THESIS_BYPASS_MIN_SCORE) return false;
   return true;

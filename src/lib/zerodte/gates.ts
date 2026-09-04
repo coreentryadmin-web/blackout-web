@@ -94,22 +94,12 @@ export const OPENING_WINDOW_UNLOCK_ET_MINUTES = 10 * 60;
 export const OPENING_WINDOW_UNLOCK_LABEL = "10:00 ET";
 
 // ── G-14 · Late-afternoon block ──────────────────────────────────────────────────
-// Evidence (90-day prod record, 101 graded plays): the "late 14:00-15:30" bucket ran
-// 14.3% WR / −19.02% avg P&L — the second-worst time window after the opening drive.
-// With only ~1.5 hours of 0DTE theta left, premium-buying entries face accelerating
-// decay and almost never reach the +100% target; 85.7% stopped out. Shipped at 14:00 ET
-// (FINDINGS 2026-07-28) — the prior 15:00 cutoff left the entire toxic bucket open.
-// CONDOR-EXEMPT: an iron condor WANTS late-session theta crush (credit seller); the late
-// window is only destructive for long-premium entries.
-//
-// On 2026-08-03 (#1591) this was widened to 15:30 ET (aliased to the general session-exit
-// cutoff) "to align session discipline with operator intent". Re-measured live 2026-09-01:
-// the reopened 14:00-15:30 directional window still ran 21.1% WR / −12.72% avg over the 90
-// days since the widening (n=19) — materially unchanged from the original evidence. Tightened
-// back to its own dedicated 14:00 ET constant (DIRECTIONAL_LATE_CUTOFF_ET_MINUTES, plan.ts) so
-// a future change to the unrelated condor/backstop cutoff can't silently drag this along again.
+// Directional commits close at 15:30 ET (DIRECTIONAL_LATE_CUTOFF_ET_MINUTES), aligned with
+// NEW_PLAY_CUTOFF and the board copy ("10:00–3:30 ET"). CONDOR-EXEMPT: credit sellers
+// benefit from late-session theta. Reverted 2026-09-04 from a 14:00 hard stop — late-bucket
+// outcomes stay on the graded ledger for calibration-driven tuning.
 export const LATE_AFTERNOON_BLOCK_ET_MINUTES = DIRECTIONAL_LATE_CUTOFF_ET_MINUTES;
-export const LATE_AFTERNOON_BLOCK_LABEL = "14:00 ET";
+export const LATE_AFTERNOON_BLOCK_LABEL = "15:30 ET";
 
 // ── G-12 · Confluence floor — HARD GATE (Phase 1, 2026-07-24) ─────────────────────
 // Evidence (E3, 25 sessions, docs/audit/0DTE-RESEARCH.md): expectancy ladders with the number of
@@ -599,17 +589,13 @@ export function evaluateZeroDteGates(input: ZeroDteGateInput): ZeroDteGateVerdic
     });
   }
 
-  // G-14 — late-afternoon block. DIRECTIONAL ONLY: a condor is a credit seller that
-  // BENEFITS from late-session theta crush; the late window is only destructive for
-  // long-premium entries. Evidence: 14:00-15:30 = 14.3% WR / −19.02% avg P&L (90d prod).
+  // G-14 — late-afternoon block (directional only). Condors stay eligible through persist cutoff.
   if (!isCondor && input.nowEtMinutes >= LATE_AFTERNOON_BLOCK_ET_MINUTES) {
     blocks.push({
       code: "late_afternoon",
       reason:
-        `No new directional 0DTE commits after ${LATE_AFTERNOON_BLOCK_LABEL} — the ` +
-        "late-afternoon bucket ran 14.3% WR / −19% avg premium (90-day prod record). " +
-        "With <1.5 hours of theta left, long-premium entries face accelerating decay " +
-        "and almost never reach target.",
+        `No new directional 0DTE commits after ${LATE_AFTERNOON_BLOCK_LABEL} — session ` +
+        "discipline (entries need room to work before the 15:50 flat exit).",
       threshold: LATE_AFTERNOON_BLOCK_ET_MINUTES,
       unlock_et: null,
     });

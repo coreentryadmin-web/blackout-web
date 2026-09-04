@@ -1,5 +1,7 @@
 import type { EnrichedZeroDteSetup } from "../board";
 import type { ZeroDteGateBlock } from "../gates";
+import { planChaseContextFromSetup, regimeThesisArchetypeRelief } from "../regime-commit-relief";
+import type { MarketStateSnapshot } from "../market-state-engine";
 import { evaluateArchetypeGates } from "./archetype-gates";
 import { deskEvidenceFromPipeline } from "./desk-evidence-lines";
 import { mergeLegacyBridgeExtras } from "./evidence-bundle-map";
@@ -56,7 +58,8 @@ export function thesisBlocksToGateBlocks(codes: string[]): ZeroDteGateBlock[] {
 export function attachThesisFirstLive(
   setups: EnrichedZeroDteSetup[],
   nowEtMinutes?: number,
-  extrasByTicker: Record<string, import("./rails/legacy-bridge").LegacyBridgeExtras> = {}
+  extrasByTicker: Record<string, import("./rails/legacy-bridge").LegacyBridgeExtras> = {},
+  marketState?: MarketStateSnapshot
 ): void {
   const env = thesisFirstEnv();
   if (!env.enabled && !env.shadow) return;
@@ -98,6 +101,17 @@ export function attachThesisFirstLive(
               : "EVENT"
             : null,
         et_minutes: nowEtMinutes,
+        amplify_floor_relief: regimeThesisArchetypeRelief(
+          planChaseContextFromSetup({
+            direction: s.direction,
+            score: s.score,
+            discovery_origin: s.discovery_origin,
+            gamma_regime: s.gamma_regime,
+            market_aligned: s.market_aligned,
+            regime_structure: marketState?.regime_structure ?? null,
+            market_state_confidence: marketState?.confidence,
+          })
+        ),
       }),
     };
     pipeline = { ...pipeline, rank_tier: resolveThesisRankTier(pipeline.thesis, pipeline.archetype_gates) };

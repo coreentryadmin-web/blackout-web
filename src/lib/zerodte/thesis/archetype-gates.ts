@@ -6,6 +6,8 @@ export type ArchetypeGateInput = {
   structural_state: StructuralState;
   flow_class?: "EVENT" | "CAMPAIGN" | null;
   et_minutes?: number;
+  /** Amplify-session relief — lowers archetype score floors on aligned momentum days. */
+  amplify_floor_relief?: boolean;
 };
 
 function flow(scores: RailScoreMap): number {
@@ -36,6 +38,8 @@ export function evaluateArchetypeGates(input: ArchetypeGateInput): ArchetypeGate
     if (verdict === "PASS") verdict = "WATCH";
   };
 
+  const relief = input.amplify_floor_relief === true;
+
   switch (input.archetype) {
     case "MOMENTUM_CONTINUATION": {
       // No RS floor here — scoreRsRail (rails/rs.ts) only ever returns a hit once its OWN
@@ -46,7 +50,7 @@ export function evaluateArchetypeGates(input: ArchetypeGateInput): ArchetypeGate
       // sector_session_pct/d10_alpha). The floor blocked 100% of MOMENTUM_CONTINUATION setups
       // since it shipped — confirmed live 2026-08-28 (INTC 92P, tier REJECT on this exact gate,
       // later ran +275%). MOMENTUM's own absolute floor below is the real quality gate here.
-      if ((input.rail_scores.MOMENTUM ?? 0) < 60) pushBlock("momentum_abs_floor");
+      if ((input.rail_scores.MOMENTUM ?? 0) < (relief ? 55 : 60)) pushBlock("momentum_abs_floor");
       break;
     }
     case "BREAKOUT": {
@@ -54,12 +58,12 @@ export function evaluateArchetypeGates(input: ArchetypeGateInput): ArchetypeGate
       if (input.structural_state !== "TRIGGERED" && breakout(input.rail_scores) >= 70) {
         pushWatch("breakout_unconfirmed");
       }
-      if (breakout(input.rail_scores) < 55) pushBlock("breakout_score_floor");
+      if (breakout(input.rail_scores) < (relief ? 48 : 55)) pushBlock("breakout_score_floor");
       break;
     }
     case "FLOW_FOLLOWING": {
       if (input.flow_class !== "CAMPAIGN") pushWatch("flow_event_not_campaign");
-      if (flow(input.rail_scores) < 65) pushBlock("flow_score_floor");
+      if (flow(input.rail_scores) < (relief ? 58 : 65)) pushBlock("flow_score_floor");
       // Same RS-absence tautology as MOMENTUM_CONTINUATION above (see comment there) — RS never
       // fires in production, so this always demoted an otherwise-A-tier FLOW_FOLLOWING setup to
       // WATCH via resolveThesisRankTier's `verdict === "PASS"` requirement. Removed rather than
@@ -84,7 +88,8 @@ export function evaluateArchetypeGates(input: ArchetypeGateInput): ArchetypeGate
         flow(input.rail_scores) >= 55,
         (input.rail_scores.MOMENTUM ?? 0) >= 55,
       ].filter(Boolean).length;
-      if (pillars < 2) pushBlock("catalyst_confluence");
+      const minPillars = relief ? 1 : 2;
+      if (pillars < minPillars) pushBlock("catalyst_confluence");
       break;
     }
     case "FAILED_BREAKOUT": {

@@ -24,7 +24,7 @@ import type { BreakoutMover } from "@/features/nighthawk/lib/candidates";
 //   (2) a FRESH but empty market            → normal empty (status "ok"), DISTINCT from stale.
 //   (3) FRESH data with movers              → normal candidates.
 
-const RTH_NOW_ET_MINUTES = 11 * 60; // 11:00 ET — inside the [9:30, 14:00) commit window.
+const RTH_NOW_ET_MINUTES = 11 * 60; // 11:00 ET — inside the [9:30, 15:30) commit window.
 
 /** A grouped-daily bar dated `t`, otherwise a plausible strong-close mover. */
 function bar(ticker: string, t: number, over: Partial<DailyMarketBar> = {}): DailyMarketBar {

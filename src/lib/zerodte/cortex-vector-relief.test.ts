@@ -103,3 +103,24 @@ test("applyCortexCommitRelief: flow-quality VETO is never stripped", () => {
   assert.equal(relieved.decision, "VETO");
   if (prev !== undefined) process.env.ZERODTE_VECTOR_CORTEX_RELIEF = prev;
 });
+
+test("applyCortexCommitRelief: BREAKOUT 85+ amplify strips gex-walls without Vector pulse", () => {
+  const prev = process.env.ZERODTE_AMPLIFY_CORTEX_RELIEF;
+  delete process.env.ZERODTE_AMPLIFY_CORTEX_RELIEF;
+  const breakoutCtx = {
+    ...amplifyCtx,
+    discovery_origin: ["BREAKOUT"] as const,
+    vector_pulse: null,
+  };
+  const blocked = {
+    decision: "VETO" as const,
+    abstained: false as const,
+    verdict: verdict({
+      vetoes: [{ source: "gex-walls", detail: "wall in path", weight: 1, stance: "vetoes", halfLifeSec: 900, asOf: AS_OF }],
+      score: 0.2,
+    }),
+  };
+  const relieved = applyCortexCommitRelief(blocked, "long", 88, null, breakoutCtx);
+  assert.equal(relieved.decision, "PASS");
+  if (prev !== undefined) process.env.ZERODTE_AMPLIFY_CORTEX_RELIEF = prev;
+});

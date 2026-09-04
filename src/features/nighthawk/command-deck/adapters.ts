@@ -192,6 +192,8 @@ export interface ZeroDteDeckSource {
   setup?: {
     direction?: "long" | "short";
     dte?: number | null;
+    actual_dte_at_commit?: number | null;
+    contract_horizon?: string | null;
     top_strike?: number | null;
     gamma_regime?: string | null;
     flow_quality?: { components?: Record<string, number> } | null;
@@ -328,7 +330,7 @@ export function terminalPlayFromZeroDte(src: ZeroDteDeckSource): TerminalPlay {
   const status = asStatus(src.status);
   const strike = fin(src.strike) ?? fin(setup?.top_strike);
   const right = direction === "LONG" ? "C" : "P";
-  const dte = fin(setup?.dte);
+  const dte = fin(setup?.actual_dte_at_commit) ?? fin(setup?.dte);
 
   const factors: DeckFactor[] = setup?.flow_quality?.components
     ? factorsFromFlowQuality(setup.flow_quality.components)
