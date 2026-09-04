@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:19:14.963Z",
+  "updated_at": "2026-09-04T17:58:03.999Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -233,6 +233,54 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
+      "safe_to_merge": true
+    },
+    "pr-3667": {
+      "pr": 3667,
+      "head_sha": "859cd23ff",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:57:47.667Z",
+      "safe_to_merge": true
+    },
+    "pr-3664": {
+      "pr": 3664,
+      "head_sha": "5c7de12ce",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:57:48.007Z",
+      "safe_to_merge": true
+    },
+    "pr-3686": {
+      "pr": 3686,
+      "head_sha": "09069fdd3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:57:48.350Z",
+      "safe_to_merge": true
+    },
+    "pr-3688": {
+      "pr": 3688,
+      "head_sha": "cfcf4e2f3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:57:48.696Z",
+      "safe_to_merge": true
+    },
+    "pr-3685": {
+      "pr": 3685,
+      "head_sha": "f72cb2eed",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:58:03.634Z",
+      "safe_to_merge": true
+    },
+    "pr-3681": {
+      "pr": 3681,
+      "head_sha": "f2949cf0e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:58:03.998Z",
       "safe_to_merge": true
     }
   },
@@ -1051,6 +1099,66 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:57:47.668Z",
+      "type": "pr_review",
+      "pr": 3667,
+      "head_sha": "859cd23ff",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:57:47.667Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:57:48.007Z",
+      "type": "pr_review",
+      "pr": 3664,
+      "head_sha": "5c7de12ce",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:57:48.007Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:57:48.351Z",
+      "type": "pr_review",
+      "pr": 3686,
+      "head_sha": "09069fdd3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:57:48.350Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:57:48.697Z",
+      "type": "pr_review",
+      "pr": 3688,
+      "head_sha": "cfcf4e2f3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:57:48.696Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:58:03.635Z",
+      "type": "pr_review",
+      "pr": 3685,
+      "head_sha": "f72cb2eed",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:58:03.634Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T17:58:03.999Z",
+      "type": "pr_review",
+      "pr": 3681,
+      "head_sha": "f2949cf0e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T17:58:03.998Z",
       "safe_to_merge": true
     }
   ]
