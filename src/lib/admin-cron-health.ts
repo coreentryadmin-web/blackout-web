@@ -22,6 +22,7 @@ import {
 import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
+import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
 
 /** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
@@ -239,8 +240,11 @@ export function evaluateJob(
     };
   }
 
-  const ageMin = (now.getTime() - new Date(last.started_at).getTime()) / 60_000;
   const { effective: staleThreshold, multiplier: staleMultiplier } = effectiveStaleMinutes(job);
+  // Cross-replica clock skew can stamp started_at slightly in the future — an unclamped
+  // `Date.now() - started_at` reads negative and falsely reports the job as fresh.
+  const trustedAgeMin = ageMinFromIso(last.started_at, now.getTime());
+  const ageMin = trustedAgeMin ?? staleThreshold + 1;
 
   // Market-hours-only crons (flow-ingest, spx-evaluate, heatmap-warm, gex-alerts, …)
   // intentionally skip off-window. Once the market is closed they CANNOT log a fresh run,

@@ -156,3 +156,24 @@ test("REGRESSION: a job WITH a fresh run is untouched by the never-run branch", 
   assert.equal(health.status, "healthy");
   assert.equal(health.market_hours_stale, false);
 });
+
+test("evaluateJob: clock-skewed future started_at does not read as fresh", () => {
+  const now = RTH_WEDNESDAY;
+  const futureStarted = new Date(now.getTime() + 120_000).toISOString();
+  const health = evaluateJob(
+    jobDef({ stale_after_min: 60 }),
+    {
+      id: 1,
+      job_key: "test-job",
+      status: "ok",
+      started_at: futureStarted,
+      duration_ms: 120,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "stale");
+  assert.ok(health.age_min != null && health.age_min > 0);
+});
