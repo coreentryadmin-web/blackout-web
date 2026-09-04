@@ -126,7 +126,7 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
-### 0o. cron-staleness-watchdog's self-heal outcome never reached the persisted `cron_job_runs` record — fix/cron-staleness-watchdog-healed-array (pending)
+### 0q. cron-staleness-watchdog's self-heal outcome never reached the persisted `cron_job_runs` record — fix/cron-staleness-watchdog-healed-array (pending)
 
 **What was broken:** `runSelfHeal` computed a per-job re-warm result (`ok`/`status`/`error`/`detail`)
 for every stale cron it dispatched via `dispatchCronWarm`, but only `console[...]`-logged it — the
@@ -153,6 +153,29 @@ under job key `cron-staleness-watchdog-self-heal` (query `GET /api/admin/cron-he
 `cron_job_runs` table directly) with a `healed` array naming the re-warmed job(s) and their real
 `ok`/`status` — not just the watchdog's own always-`ok:true` row. No self-heal firing at all during
 RTH (the common case) means nothing to check — the fix is dormant, not exercised, that day.
+### 0o. `spx-signal-weight-optimize` cron threw an uncaught RangeError on `?days=`/`?days=abc` — fix/spx-signal-weight-optimize-nan-crash (pending)
+
+**What was broken:** `GET /api/cron/spx-signal-weight-optimize?days=` (empty value, or a bare
+`?days`) or `?days=abc` (non-numeric) hit `parseInt("", 10)` = `NaN` (the `??` fallback only fires
+on `null`/`undefined`, and `URLSearchParams.get()` returns `""` not `null`), which flowed into
+`new Date(NaN).toISOString()` and **threw** `RangeError: Invalid time value` ABOVE the route's own
+try/catch — so the crash was never caught, `logCronRun` never fired, and the failure was invisible
+to `cron_job_runs`/`cron-staleness-watchdog`. Sibling crons (`largo-cleanup`, `nighthawk-outcomes`)
+already guarded the identical kind of `?days` override; this one had not.
+
+**Fix:** guard the parsed value with the same idiom `nighthawk-outcomes/route.ts` already uses —
+`Number.isFinite(rawLookbackDays) && rawLookbackDays > 0 ? rawLookbackDays :
+DEFAULT_LOOKBACK_DAYS` — before it reaches any date arithmetic. A valid numeric override still
+works unchanged; only the malformed/missing cases changed, from an uncaught crash to a clean
+fallback to the 30-day default.
+
+**Check at the open:** no RTH-dependent behavior — this cron reads `spx_signal_observations` and
+runs on its own nightly 10 PM UTC schedule with no query param, so the scheduled run was never
+affected by this bug and needs no re-check. The one thing worth confirming once, at any time (not
+specifically at the open): `curl` the route with a valid `CRON_SECRET` Bearer token and
+`?days=`/`?days=abc` and confirm a clean `200 {"ok":true,"skipped":...}` (or a real report once 10+
+days of data exist) instead of a `500` — proving the fix holds against the live route, not just the
+mocked unit test.
 
 ### 0n. "Every setup logged publicly" overclaimed against a 3-of-7-product methodology page — fix/public-record-scope-overclaim (pending)
 
@@ -231,6 +254,21 @@ never reachable from any request path before removal). `tsc --noEmit` clean and 
 suite passing (recorded in the PR) are the complete verification for a fix of this kind; listed
 here only because the standing instruction asks every fix to be logged, not because there is an
 RTH-specific check to run.
+
+### 0n. Night Hawk readiness chip falsely green on future `as_of` — fix/nighthawk-readiness-future-asof (pending)
+
+**What was broken:** On `/nighthawk`, the header readiness chip could show green **READY** when the
+board's `as_of` timestamp was materially in the future (client/server clock skew). Negative
+`asOfAgeMs` never exceeded the 60s stale threshold, so freshness could not be verified but the
+chip still read ready.
+
+**Fix:** `resolveZeroDteReadiness` in `pane.ts` now treats `asOfAgeMs <
+-ZERODTE_MARK_FUTURE_TOLERANCE_MS` the same as stale age — amber **DELAYED** — matching sibling
+`resolveZeroDteFreshness` in `ZeroDteBoard.tsx`.
+
+**Check at the open:** On `/nighthawk` during RTH with live board data, confirm the readiness chip
+is **READY** only when `as_of` is plausibly current; if a skew incident occurs, chip should read
+**DELAYED** not **READY**.
 
 ### 0k. Six orphaned modules removed (SPX/Thermal/marketing) — fix/orphaned-spx-thermal-modules (pending)
 
