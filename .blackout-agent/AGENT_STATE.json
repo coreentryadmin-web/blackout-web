@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T23:35:00.000Z",
+  "updated_at": "2026-09-04T23:46:00.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -234,6 +234,15 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3790": {
+      "pr": 3790,
+      "head_sha": "ce32afa36",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:45:00.000Z",
+      "safe_to_merge": true,
+      "notes": "UW spot-fallback returns null change_pct when prev_close absent; fixed MARKET-OPEN-VALIDATION conflict markers"
     }
   },
   "agents": {
@@ -243,7 +252,7 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T23:35:00.000Z",
+      "last_seen": "2026-09-04T23:46:00.000Z",
       "current_task": "BO-P1-0103"
     }
   },
@@ -1109,6 +1118,13 @@
       "agent": "cursor",
       "run_id": "swing-command-p0-cycle",
       "summary": "Swing Command wave: #3783 verify GREEN @ f1a74e782 (banger pre-entry fix). #3787 verify GREEN @ 6f6ce0f5a — marked ready (P0 live deck/thesis/cockpit). Production swing unification validated PASS. Standing: Claude adversarial review CURRENT HEAD on #3783 then #3787 — merge #3783 first, rebase #3787, then P0. CI green ≠ approval."
+    },
+    {
+      "at": "2026-09-04T23:46:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "peer-review-capacity-wave",
+      "summary": "Team capacity: fixed MARKET-OPEN-VALIDATION conflict markers on #3790 (pushed f242559→ce32afa, verify GREEN) + doc sync on #3789 (292d4c4). Cursor APPROVED #3790. Peer-reviewed #3786 (Vector/Thermal copy fix, tests pass) — verify pending. #3773 superseded by focused #3783 — recommend close. Standing: Claude review #3783/#3787; Claude merge #3790 when ready."
     }
   ]
 }
