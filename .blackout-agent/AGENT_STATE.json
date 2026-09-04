@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:49:09.465Z",
+  "updated_at": "2026-09-04T17:59:56.323Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -250,9 +250,9 @@
   "deploy": {
     "last_main_sha": "91c3749158b68bbceb9ed0ecfbc434b747960813",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T17:44:32Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33902177943",
-    "last_deploy_sha": "91c3749158b68bbceb9ed0ecfbc434b747960813"
+    "last_deploy_at": "2026-09-04T17:56:57Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33903259362",
+    "last_deploy_sha": "1b65d627b71b7ef8928d20c2b87455bafe4f33e8"
   },
   "open_prs": [],
   "events": [
@@ -1065,6 +1065,25 @@
       "agent": "cursor",
       "run_id": "e4ae2975-9737-4ae0-878f-21e4a8b705f2",
       "summary": "Merged #3678 (cron-registry self-heal orphan key — unblocked red main). Peer-reviewed APPROVED: #3664 marketing scope, #3667 stock-candle-store day-rollover. validate:deploy GREEN, ops:collect 0. Awaiting CI on #3664/#3667 for merge."
+    },
+    {
+      "at": "2026-09-04T17:59:47.745Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:59:56.322Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:59:56.323Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6daa8cff-c5ad-41ae-a5fe-20b9993ccf8e",
+      "summary": "Cycle complete: #3678 MERGED (unblocked red main). APPROVED #3664 (merge conflicts — needs rebase), #3667 (verify pending). Closed dupes #3677/#3680. validate:deploy GREEN, ops:collect 0. Handoff PR #3684 open."
     }
   ]
 }
