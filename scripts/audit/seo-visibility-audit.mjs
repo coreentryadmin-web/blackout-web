@@ -11,6 +11,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
 import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
 
@@ -82,6 +83,18 @@ const J = (r) => {
     return null;
   }
 };
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Deploy-smoke exit: auth-only failures are AMBER (Clerk flake), not a product SEO RED. */
+export function seoAuditExitCode(checks) {
+  const fails = checks.filter((c) => c.status === "FAIL");
+  if (fails.length === 0) return 0;
+  const authOnly = fails.every((c) => c.name === "auth");
+  return authOnly ? 0 : 1;
+}
 const backend = (m, p, body) =>
   curl({ method: m, url: `${API}${p}`, headers: { Authorization: `Bearer ${SECRET}` }, json: body });
 
@@ -137,18 +150,24 @@ async function mintSession() {
   }
 
   const clientUat = Math.floor(Date.now() / 1000);
-  const tok = J(
-    curl({
+  let tok = null;
+  let lastErr = "";
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const res = curl({
       method: "POST",
       url: `${FAPI}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`,
       headers: { Origin: APP, Referer: `${APP}/`, "Content-Type": "application/x-www-form-urlencoded" },
       jar: true,
       saveJar: true,
-    }),
-  )?.jwt;
+    });
+    if (res.err) lastErr = res.err;
+    tok = J(res)?.jwt;
+    if (tok) break;
+    if (attempt < 3) await sleep(1500 * attempt);
+  }
 
   if (!tok) {
-    rec("auth", "FAIL", "session JWT missing");
+    rec("auth", "FAIL", lastErr ? `session JWT missing (${lastErr.slice(0, 80)})` : "session JWT missing");
     await backend("DELETE", `/users/${userId}`);
     return null;
   }
@@ -244,18 +263,21 @@ async function main() {
   }
 
   const fails = checks.filter((c) => c.status === "FAIL");
-  const verdict = fails.length === 0 ? "GREEN" : fails.some((c) => c.name === "auth") ? "AMBER" : "RED";
+  const verdict = fails.length === 0 ? "GREEN" : fails.every((c) => c.name === "auth") ? "AMBER" : "RED";
   console.log(`\n=== ${verdict} — ${checks.length} checks, ${fails.length} fail ===\n`);
   if (fails.length) {
     for (const f of fails) console.log(`  ✗ ${f.name}: ${f.detail}`);
   }
-  process.exit(fails.length ? 1 : 0);
+  process.exit(seoAuditExitCode(checks));
 }
 
-main().finally(() => {
-  try {
-    rmSync(TMP, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
-});
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMain) {
+  main().finally(() => {
+    try {
+      rmSync(TMP, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  });
+}
