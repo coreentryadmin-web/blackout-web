@@ -67,6 +67,15 @@ test("buildSpotFrame: carries changePct through from the store", () => {
   assert.equal(frame.quotes.NVDA.changePct, Number((((147 - 140) / 140) * 100).toFixed(2)));
 });
 
+test("buildSpotFrame: rounds IEEE float tails on price and changePct", () => {
+  _resetStockCandleStoreForTest();
+  const atMs = Date.parse("2026-07-15T14:30:00.000Z");
+  recordStockTick("AAPL", 230.123456789, undefined, atMs);
+
+  const frame = buildSpotFrame(["AAPL"], atMs);
+  assert.equal(frame.quotes.AAPL.price, 230.12);
+});
+
 test("encodeSpotFrame: produces a well-formed SSE data line", () => {
   const encoded = encodeSpotFrame({ type: "quotes", quotes: { AAPL: { price: 230, changePct: 1.2, asof: "x" } }, ts: 1 });
   assert.ok(encoded.startsWith("data: "));

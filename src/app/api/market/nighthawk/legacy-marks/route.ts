@@ -7,6 +7,7 @@ import { getLiveOptionMarkSync } from "@/lib/ws/options-socket";
 import { ZERODTE_MARK_STALE_MS } from "@/lib/zerodte/marks-math";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 import {
   buildLegacyOptionMarkRow,
   type LegacyOptionMarkRow,
@@ -54,5 +55,5 @@ export async function GET(req: NextRequest) {
     return buildLegacyOptionMarkRow(occ, ws, snap, now);
   });
 
-  return NextResponse.json({ available: true, marks }, { headers: NO_STORE_HEADERS });
+  return NextResponse.json(roundFloats({ available: true, marks }), { headers: NO_STORE_HEADERS });
 }

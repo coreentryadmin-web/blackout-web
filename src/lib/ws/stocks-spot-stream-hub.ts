@@ -11,6 +11,7 @@
  * see docs/audit/FINDINGS.md for why a full-universe broadcast was rejected.
  */
 import { getStockLiveCandle } from "./stock-candle-store";
+import { roundFloats } from "@/lib/round-floats";
 
 const TICKER_RE = /^[A-Z0-9.\-]{1,8}$/;
 
@@ -64,7 +65,7 @@ export function buildSpotFrame(tickers: string[], now: number = Date.now()): Spo
       };
     }
   }
-  return { type: "quotes", quotes, ts: now };
+  return roundFloats({ type: "quotes", quotes, ts: now });
 }
 
 /** Encode a frame as an SSE `data: ...\n\n` message. */
