@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:19:14.963Z",
+  "updated_at": "2026-09-04T17:48:51.239Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T17:28:38.730Z",
+      "lease_until": "2026-09-04T19:01:44.134Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "8fddb646-54c6-432e-b01e-2f1ba2b53c35",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -210,30 +210,6 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
-    },
-    "pr-3658": {
-      "pr": 3658,
-      "head_sha": "16144b526",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:18:25.830Z",
-      "safe_to_merge": true
-    },
-    "pr-3659": {
-      "pr": 3659,
-      "head_sha": "e544aba52",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:18:26.785Z",
-      "safe_to_merge": true
-    },
-    "pr-3657": {
-      "pr": 3657,
-      "head_sha": "adcfbbf5a",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:19:14.963Z",
-      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,11 +224,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "be9f5473dc056cd15b96098fc145d3a92f8a5312",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T17:44:32Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33902177943",
+    "last_deploy_sha": "91c3749158b68bbceb9ed0ecfbc434b747960813"
   },
   "open_prs": [],
   "events": [
@@ -1014,44 +990,23 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T17:18:25.831Z",
-      "type": "pr_review",
-      "pr": 3658,
-      "head_sha": "16144b526",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:18:25.830Z",
-      "safe_to_merge": true
+      "at": "2026-09-04T17:48:30.760Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T17:18:26.785Z",
-      "type": "pr_review",
-      "pr": 3659,
-      "head_sha": "e544aba52",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:18:26.785Z",
-      "safe_to_merge": true
+      "at": "2026-09-04T17:48:30.761Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "88d1fc4b-6d97-484c-9050-a34d33647242",
+      "summary": "Peer review cycle: #3657/#3664/#3667 APPROVED (tests pass locally). Rebased #3664+#3667 onto main (MARKET-OPEN-VALIDATION conflicts resolved), force-pushed. validate:deploy GREEN, ops:collect 0. Off-hours. Open drafts: #3670-#3673 awaiting CI/author."
     },
     {
-      "at": "2026-09-04T17:18:30.782Z",
-      "type": "pr_review",
-      "pr": 3657,
-      "head_sha": "adcfbbf5a",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:18:30.781Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-04T17:19:14.963Z",
-      "type": "pr_review",
-      "pr": 3657,
-      "head_sha": "adcfbbf5a",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:19:14.963Z",
-      "safe_to_merge": true
+      "at": "2026-09-04T17:48:51.239Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
