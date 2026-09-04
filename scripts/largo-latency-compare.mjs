@@ -1,9 +1,29 @@
 #!/usr/bin/env node
 /**
- * Largo response-time compare — staging vs production (Clerk premium session).
+ * Largo response-time probe — production (Clerk premium session).
+ *
+ * Was "staging vs production". Every run of this npm-wired script (`validate:largo-latency`)
+ * was a guaranteed crash from TWO independent dead dependencies, both from before the current
+ * infra:
+ *   - `loadStagingSecret()` read Secrets Manager's `blackout-staging/app/env`, which no longer
+ *     exists — the whole `blackout-staging-*` stack was permanently decommissioned 2026-07-25
+ *     (CLAUDE.md: "Do NOT reference the deleted blackout-staging-* stack or
+ *     staging.blackouttrades.com"), confirmed live via `secretsmanager.describe_secret` ->
+ *     ResourceNotFoundException.
+ *   - `loadProdWebSecret()` shelled out to `railway variables ...` for the PROD Clerk keys — the
+ *     Railway CLI, a tool this project stopped using entirely when infra moved to AWS ECS
+ *     (CLAUDE.md: "All infrastructure runs on AWS ECS only — there is no Railway"). `spawnSync`
+ *     on a missing binary never throws, so this reached `if (res.status !== 0) throw ...`
+ *     unconditionally on any machine without a Railway install for this project.
+ * Production is the only environment now; this is a single-target latency probe against it. The
+ * prod Clerk keys are already ambient env vars in this environment (CLERK_SECRET_KEY,
+ * NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY — see CLAUDE.md's "Environment realities"), so
+ * `mintClerkPremiumSession` (already imported, and how every other current live-login audit
+ * script does this — data-validator.mjs, meridian-earnings-ui-audit.mjs, etc.) needs no loader at
+ * all.
+ *
  * Usage: node scripts/largo-latency-compare.mjs [--rounds=3]
  */
-import { execSync, spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
@@ -13,41 +33,11 @@ const ROUNDS = Number(process.argv.find((a) => a.startsWith("--rounds="))?.split
 const OUT = join(process.cwd(), "audit-output");
 mkdirSync(OUT, { recursive: true });
 
-const ENVS = [
-  { label: "staging", base: "https://staging.blackouttrades.com", secretSource: "staging" },
-  { label: "prod", base: "https://blackouttrades.com", secretSource: "prod" },
-];
+const PROD_ENV = { label: "prod", base: "https://blackouttrades.com" };
 
 const SESSION_ID = "latency-audit";
 const SIMPLE_Q = "What is SPX spot right now?";
 const TOOL_Q = "Summarize SPX gamma flip and key GEX levels in one short paragraph with dollar amounts.";
-
-function loadStagingSecret() {
-  const raw = execSync(
-    'aws secretsmanager get-secret-value --secret-id blackout-staging/app/env --query SecretString --output text',
-    { encoding: "utf8" }
-  );
-  return JSON.parse(raw);
-}
-
-function loadProdWebSecret() {
-  const res = spawnSync(
-    "railway",
-    [
-      "variables",
-      "--service",
-      "blackout-web",
-      "--environment",
-      "production",
-      "--project",
-      process.env.RAILWAY_PROJECT_ID ?? "9282f541-a288-4c8b-a174-ee22016f4b1a",
-      "--json",
-    ],
-    { encoding: "utf8", env: process.env }
-  );
-  if (res.status !== 0) throw new Error(res.stderr || "railway variables failed");
-  return JSON.parse(res.stdout);
-}
 
 function percentile(sorted, p) {
   if (!sorted.length) return null;
@@ -156,10 +146,7 @@ async function largoQueryStream(base, cookieHeader, question) {
   };
 }
 
-async function runEnv(env, secret) {
-  process.env.CLERK_SECRET_KEY = secret.CLERK_SECRET_KEY;
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = secret.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-
+async function runEnv(env) {
   const auth = await mintClerkPremiumSession({ appUrl: env.base });
   if (auth.skip) throw new Error(`${env.label} Clerk auth skipped: ${auth.reason}`);
 
@@ -211,43 +198,31 @@ async function runEnv(env, secret) {
 }
 
 async function main() {
-  console.log(`\n=== Largo latency compare (${ROUNDS} rounds) ===\n`);
-  const stagingSecret = loadStagingSecret();
-  const prodSecret = loadProdWebSecret();
-  const results = [];
-
-  for (const env of ENVS) {
-    const secret = env.secretSource === "staging" ? stagingSecret : prodSecret;
-    try {
-      results.push(await runEnv(env, secret));
-    } catch (e) {
-      console.error(`  ✗ ${env.label}: ${e.message}`);
-      results.push({ label: env.label, error: e.message });
-    }
+  console.log(`\n=== Largo latency (${ROUNDS} rounds) ===\n`);
+  let prod;
+  try {
+    prod = await runEnv(PROD_ENV);
+  } catch (e) {
+    console.error(`  ✗ ${PROD_ENV.label}: ${e.message}`);
+    prod = { label: PROD_ENV.label, error: e.message };
   }
 
   console.log("\n=== Summary (ms) ===\n");
-  console.log("| Endpoint | Staging p50 | Prod p50 | Staging p95 | Prod p95 |");
-  console.log("|----------|-------------|----------|-------------|----------|");
-
-  const staging = results.find((r) => r.label === "staging");
-  const prod = results.find((r) => r.label === "prod");
+  console.log("| Endpoint | Prod p50 | Prod p95 |");
+  console.log("|----------|----------|----------|");
 
   for (const key of ["session", "simpleQuery", "toolQuery", "streamQuery"]) {
-    const s = staging?.[key];
     const p = prod?.[key];
-    if (!s && !p) continue;
-    console.log(
-      `| ${key} | ${s?.p50 ?? "—"} | ${p?.p50 ?? "—"} | ${s?.p95 ?? "—"} | ${p?.p95 ?? "—"} |`
-    );
+    if (!p) continue;
+    console.log(`| ${key} | ${p?.p50 ?? "—"} | ${p?.p95 ?? "—"} |`);
   }
 
-  if (staging?.streamFirstToken != null || prod?.streamFirstToken != null) {
-    console.log(`| stream first token | ${staging?.streamFirstToken ?? "—"} | ${prod?.streamFirstToken ?? "—"} | — | — |`);
+  if (prod?.streamFirstToken != null) {
+    console.log(`| stream first token | ${prod.streamFirstToken} | — |`);
   }
 
   const path = join(OUT, `largo-latency-${Date.now()}.json`);
-  writeFileSync(path, JSON.stringify({ ts: new Date().toISOString(), rounds: ROUNDS, results }, null, 2));
+  writeFileSync(path, JSON.stringify({ ts: new Date().toISOString(), rounds: ROUNDS, prod }, null, 2));
   console.log(`\nReport: ${path}\n`);
 }
 
