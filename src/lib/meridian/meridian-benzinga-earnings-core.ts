@@ -146,12 +146,27 @@ export function benzingaRowsToTimelineInputs(
     .sort((a, b) => (a.report_date ?? "").localeCompare(b.report_date ?? ""));
 }
 
-/** Overlay Polygon chain-IV expected move onto timeline rows (keyed by ticker). */
+/**
+ * Overlay Polygon chain-IV expected move onto timeline rows (keyed by ticker).
+ *
+ * WITHHELD once the row's own print has already landed (`row.is_printed`, set upstream from
+ * Benzinga's `actual_eps`/`actual_revenue` presence on THIS row — see `benzingaToCalendarRow`).
+ * Same defect shape as #3482 (`meridian-earnings-intel.ts`'s live chain-IV re-derivation for an
+ * already-printed name), found independently here: `loadMeridianEarningsTimeline` only keeps rows
+ * with `report_date >= todayYmd`, so a same-day BMO print that has already reported by the time a
+ * member loads the page mid-session still passes that filter and reaches this overlay. The live
+ * Polygon chain fetched afterward prices the POST-print regime (the very move this is supposed to
+ * be a pre-print expectation OF), and `meridian-timeline.ts` concatenates the two into one string
+ * a member actually reads: `"NVDA earnings ~7.7% implied move · printed"` — asserting a
+ * forward-looking expected move for an event the same label says has already happened. Withholding
+ * (not just relabeling) matches this repo's established fix for this exact bug shape.
+ */
 export function overlayTimelineExpectedMoves(
   rows: EarningsTimelineInput[],
   emByTicker: Map<string, number | null>
 ): EarningsTimelineInput[] {
   return rows.map((row) => {
+    if (row.is_printed) return row;
     const em = emByTicker.get(row.ticker.trim().toUpperCase());
     if (em == null) return row;
     return { ...row, expected_move_pct: em, source: row.source ?? "earnings_calendar" };
