@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T06:51:56.380Z",
+  "updated_at": "2026-09-04T07:24:11.291Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T06:57:15.761Z",
+      "lease_until": "2026-09-04T08:48:13.524Z",
+      "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "edd97005-6e84-479d-83c8-9bfa409a7de9",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -160,11 +160,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "c593449c1740c1494e2925df3e0d7b012f762d61",
+    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T06:44:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845611594",
-    "last_deploy_sha": "84b92b6b62ff5b6694c856016aa3e5b2d235b5ea"
+    "last_deploy_at": "2026-09-04T07:20:16Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
+    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
   },
   "open_prs": [],
   "events": [
@@ -623,6 +623,12 @@
       "agent": "cursor",
       "run_id": "74071da3-3245-480e-8fa8-41cd469246b7",
       "summary": "Post-merge cycle: main@c593449c1, deploy pending@84b92b6b (#3511). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours). Open PRs: 0. Peer review queue empty. RTH lifecycle Fri 09:00 ET."
+    },
+    {
+      "at": "2026-09-04T07:24:11.291Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
