@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:52:08.396Z",
+  "updated_at": "2026-09-04T21:34:05.600Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -233,6 +233,30 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
+      "safe_to_merge": true
+    },
+    "pr-3760": {
+      "pr": 3760,
+      "head_sha": "4489f5e11d396634cacf0f179541cad5e3ededf1",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T21:32:41.369Z",
+      "safe_to_merge": true
+    },
+    "pr-3759": {
+      "pr": 3759,
+      "head_sha": "80c4d1b68f0dba461f3779e131481b08832a22d9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T21:32:41.407Z",
+      "safe_to_merge": true
+    },
+    "pr-3756": {
+      "pr": 3756,
+      "head_sha": "a24777de59f1cbd4fcf1212d30e3b66778fa8a23",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T21:34:05.599Z",
       "safe_to_merge": true
     }
   },
@@ -1071,6 +1095,36 @@
       "agent": "cursor",
       "run_id": "01ba5e3e-d264-48b8-b6f9-953c859c62cd",
       "summary": "Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty."
+    },
+    {
+      "at": "2026-09-04T21:32:41.370Z",
+      "type": "pr_review",
+      "pr": 3760,
+      "head_sha": "4489f5e11d396634cacf0f179541cad5e3ededf1",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T21:32:41.369Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T21:32:41.407Z",
+      "type": "pr_review",
+      "pr": 3759,
+      "head_sha": "80c4d1b68f0dba461f3779e131481b08832a22d9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T21:32:41.407Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T21:34:05.600Z",
+      "type": "pr_review",
+      "pr": 3756,
+      "head_sha": "a24777de59f1cbd4fcf1212d30e3b66778fa8a23",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T21:34:05.599Z",
+      "safe_to_merge": true
     }
   ]
 }
