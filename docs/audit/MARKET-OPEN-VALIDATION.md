@@ -120,6 +120,17 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0r. admin cron health age_min lacked future-timestamp clamp — fix/admin-cron-health-future-age-guard (pending)
+
+**What was broken:** `evaluateJob()` computed `ageMin` from `now - started_at` without clamping
+negative values. A clock-skewed future `started_at` produced negative `age_min`, which never
+exceeded the stale threshold — the job falsely read as healthy. Same failure class as `storeAge` /
+`timeAgoFromIso` guards (#3627, #3641).
+
+**Fix:** `Math.max(0, …)` on both `evaluateJob` and the nighthawk-playbook stuck-job path.
+
+**Check at the open:** `/admin` → Operations cron matrix — no row shows negative `age_min` during RTH.
+
 Every item below was fixed off-hours today (weekday, pre-open) and has **not been seen under a
 moving tape or real member traffic**. Per the newly-recorded `FULL-LIFECYCLE SCOPE EXPANSION`
 standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained every sweep — not
