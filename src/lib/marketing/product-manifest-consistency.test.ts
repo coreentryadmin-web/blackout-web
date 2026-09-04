@@ -24,6 +24,7 @@ const PUBLIC_SURFACES = [
   "src/components/landing/RedesignHome.tsx",
   "src/components/upgrade/UpgradePageShell.tsx",
   "src/app/(marketing)/vs/others/page.tsx",
+  "src/app/(marketing)/about/page.tsx",
   "src/components/seo/JsonLd.tsx",
 ] as const;
 
@@ -86,6 +87,34 @@ test("Learn nav's Night Hawk descriptor is not evening-only, matching the manife
   assert.ok(nightHawkNav, "night-hawk must still be a LEARN_NAV entry");
   assert.doesNotMatch(nightHawkNav!.description, /^Evening playbook/i);
   assert.match(nightHawkNav!.description, /0DTE|intraday/i);
+});
+
+// Regression for a P3 finding (2026-09-04): Meridian's manifest entry framed the product as
+// narrowly "Earnings intelligence" — a timeline of "upcoming and recent earnings" with estimate
+// revisions and reaction history. But MeridianEventKind (src/features/meridian/lib/
+// meridian-types.ts) is "macro" | "earnings" | "opex" | "fda", with dedicated filter chips
+// (MeridianDesk.tsx) and per-kind detail panels (MeridianEventDetailPanel.tsx) for each — Meridian
+// genuinely implements four catalyst classes, not just earnings. The manifest (which drives the
+// homepage card, pricing matrix, and SEO featureList via manifestSchemaFeatureList) undersold the
+// product relative to its own shipped code AND its own Academy guide, which already documented
+// all four classes correctly. Every downstream consumer checked (products.ts -> RedesignHome.tsx
+// homepage card, upsell-features.ts pricing matrix, JsonLd.tsx SEO schema, welcome-sequence.ts
+// email) reads from this one manifest entry rather than duplicating copy — so fixing it here fixes
+// every surface at once, except the one hand-duplicated exception (about/page.tsx, now in
+// PUBLIC_SURFACES above and covered by the banned-phrase test below).
+test("Meridian manifest describes all four catalyst classes, not earnings-only", () => {
+  const meridian = PRODUCT_MANIFEST.meridian;
+  assert.notEqual(meridian.tag, "Earnings intelligence");
+  for (const term of [/macro/i, /opex|OpEx/i, /FDA/i]) {
+    assert.match(meridian.lifecycle, term, `lifecycle must mention ${term}`);
+    assert.ok(
+      meridian.capabilities.some((c) => term.test(c)),
+      `capabilities must mention ${term}`
+    );
+  }
+  assert.match(meridian.faqAnswer, /macro/i);
+  assert.match(meridian.faqAnswer, /opex|OpEx/i);
+  assert.match(meridian.faqAnswer, /FDA/i);
 });
 
 test("Vector manifest describes live universe screener capabilities", () => {

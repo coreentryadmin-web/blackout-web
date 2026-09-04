@@ -33,7 +33,7 @@ Seven modules, one desk — use them individually or together:
 - **Night Hawk** — 0DTE Command scans the whole market intraday with graded plays and Cortex thesis health on every commit, then Evening Edition publishes post-close prep for the next session.
 - **Largo AI** — An AI desk analyst that synthesizes positioning, flow, and structure into actionable context.
 - **Vector** — Cross-ticker gamma scanner that finds names where dealer positioning is setting up the next move.
-- **Meridian** — Earnings intelligence: expected move, historical reaction, and positioning ahead of every print.
+- **Meridian** — Catalyst intelligence: earnings, macro, OpEx, and FDA timeline, with expected move, historical reaction, and positioning ahead of every earnings print.
 
 All seven ship with Premium ($199/month or $1,999/year). [See all plans](/pricing).`;
 
