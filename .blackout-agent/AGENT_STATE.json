@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T05:53:30.933Z",
+  "updated_at": "2026-09-04T06:13:22.620Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,39 +67,27 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:42:47.508Z",
-      "lease_until": "2026-09-04T07:12:47.508Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-04T05:42:23.517Z",
+      "lease_until": "2026-09-04T07:29:53.326Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "87398cea-459b-4c42-aef2-53967118c24b",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:31:04.605Z",
-      "lease_until": "2026-09-04T07:01:04.605Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T05:45:51.586Z",
+      "lease_until": "2026-09-04T07:29:53.326Z",
+      "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.756Z"
-    },
-    "BO-P1-0104": {
-      "task_id": "BO-P1-0104",
-      "owner": "cursor",
-      "claimed_at": "2026-09-04T05:44:29.804Z",
-      "lease_until": "2026-09-04T07:14:29.804Z",
-      "phase": "IMPLEMENTING",
-      "branch": null,
-      "pr": null,
-      "reviewer": null,
-      "run_id": null
+      "run_id": "87398cea-459b-4c42-aef2-53967118c24b",
+      "title": null
     }
   },
   "reviews": {
@@ -159,12 +147,12 @@
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
     },
-    "pr-3502": {
-      "pr": 3502,
-      "head_sha": "75fdfd152",
+    "pr-3505": {
+      "pr": 3505,
+      "head_sha": "14babcb3e7e162d4dfc55ebb73e618d371ee33bc",
       "reviewer": "cursor",
       "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T05:53:15.635Z",
+      "reviewed_at": "2026-09-04T06:02:04.541Z",
       "safe_to_merge": true
     }
   },
@@ -175,18 +163,69 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T05:31:04.606Z",
+      "last_seen": "2026-09-04T05:45:51.587Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "f2aae97868bd830f7a20bf3f44e64887d8624502",
+    "last_main_sha": "1f81a55fb855af874036b236c4d39ee7417c47e9",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T05:50:40Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33842004821",
-    "last_deploy_sha": "dcb4664f1c80d2e2879a7dd3b8b4a68fea68d805"
+    "last_deploy_at": "2026-09-04T06:02:23Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33842741396",
+    "last_deploy_sha": "1f81a55fb855af874036b236c4d39ee7417c47e9"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3507,
+      "title": "chore(autopilot): cursor handoff — deploy pending, off-hours audits GREEN",
+      "branch": "cursor/autopilot-handoff-2026-09-04T0611",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T06:13:10Z"
+    },
+    {
+      "number": 3506,
+      "title": "fix(platform): autonomous bug sweep batch 2 — UW reservation, stale-age clamps, change_pct",
+      "branch": "cursor/platform-bug-sweep",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T06:13:12Z"
+    },
+    {
+      "number": 3504,
+      "title": "chore(autopilot): cursor handoff after #3502 peer review",
+      "branch": "chore/autopilot-handoff-2026-09-04T0553",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T06:13:15Z"
+    },
+    {
+      "number": 3497,
+      "title": "fix(spx): EOD pin forecaster no longer locked bearish in long-gamma",
+      "branch": "cursor/spx-eod-pin-direction",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T06:13:17Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T06:13:19Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -590,39 +629,76 @@
       "summary": "Cycle complete: deploy GREEN @ 0b2ada333 (#3495). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours expected). Peer review: no substantive PRs (#2810 dependabot major skip). RTH lifecycle @ 09:00 ET Fri 2026-09-05. Agent state sync PR opening."
     },
     {
-      "at": "2026-09-04T05:50:31.376Z",
+      "at": "2026-09-04T05:45:51.587Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T05:59:46.114Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T05:53:15.636Z",
+      "at": "2026-09-04T05:59:53.325Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T05:59:54.154Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T05:59:54.916Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:02:04.542Z",
       "type": "pr_review",
-      "pr": 3502,
-      "head_sha": "75fdfd152",
+      "pr": 3505,
+      "head_sha": "14babcb3e7e162d4dfc55ebb73e618d371ee33bc",
       "reviewer": "cursor",
       "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T05:53:15.635Z",
+      "reviewed_at": "2026-09-04T06:02:04.541Z",
       "safe_to_merge": true
     },
     {
-      "at": "2026-09-04T05:53:27.065Z",
+      "at": "2026-09-04T06:02:26.701Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T05:53:27.066Z",
+      "at": "2026-09-04T06:02:26.702Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "c86590d9-6b38-4a89-b044-4b5f0e3e64a4",
-      "summary": "Merge landed @ f2aae9786. validate:deploy GREEN, ops:collect 0, data-validator 22 PASS. Found+reviewed #3502 (OFF_HOURS waitForFunction fix) — verify GREEN, APPROVED; undraft/merge blocked by GraphQL rate limit (user 284440397). ECR deploy run 33840544277 still pending ~25m (prod healthy via smoke). Claude peer stale. Next: agent-pr-release undrafts #3502, validate:deploy post-merge."
+      "run_id": "5ffc678a-7347-4f64-9d32-c6242e91a654",
+      "summary": "Peer-reviewed and merged #3505 (zerodte tier score_floor pin). RTH lifecycle GREEN off-hours. validate:deploy GREEN. ops:collect clean. Deploy backlog: ECR runs in progress for #3499/#3502 stack."
     },
     {
-      "at": "2026-09-04T05:53:30.933Z",
+      "at": "2026-09-04T06:02:32.049Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:13:22.619Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-04T06:13:22.620Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "cd56186e-9f67-44ed-baea-b8eefae20e50",
+      "summary": "Merged #3505 zerodte score_floor pin. RTH lifecycle GREEN. validate:deploy GREEN. Deploy queue: ECS roll in progress (run 33840544277). #3497 verify GREEN — awaits Claude peer review (cursor/* branch)."
     }
   ]
 }
