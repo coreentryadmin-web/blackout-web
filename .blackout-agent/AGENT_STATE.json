@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:19:14.963Z",
+  "updated_at": "2026-09-04T19:35:17.110Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T19:30:47.313Z",
+      "lease_until": "2026-09-04T21:02:06.019Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "9e2ce2b7-38b3-4163-ab6a-011bb6cbc77f",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -248,11 +248,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "92981622fa8f9163a3c01506bdb8f032b70d2b1c",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T19:23:17Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33910899332",
+    "last_deploy_sha": "8cc70b48b2d6263973b3ba822ba28a2181604859"
   },
   "open_prs": [],
   "events": [
@@ -1052,6 +1052,19 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T19:35:17.109Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:35:17.110Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "00280a0f-0f90-41f0-8252-96019a719191",
+      "summary": "RTH lifecycle GREEN (14/14 platform-integrity, 44/44 data-validator). Peer-reviewed #3733 APPROVED (WS future-timestamp guards, 13/13 tests local). #3740 darkpool-discord uw-sweep reviewed (2/2 tests, draft). #3738 duplicate of #3733 — close. GitHub API rate-limited for gh CLI; WebFetch+ManagePullRequest used. ops:collect 0. Awaiting #3733 verify green for merge."
     }
   ]
 }
