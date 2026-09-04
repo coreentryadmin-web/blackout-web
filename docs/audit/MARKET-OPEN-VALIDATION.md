@@ -120,7 +120,15 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
-### 0ag. UW spot-fallback fabricated flat 0% — fix/spot-fallback-change-pct-null (pending)
+### 0af. Polygon batch snapshot fabricated flat 0% — fix/polygon-snapshot-change-pct-null (pending)
+
+**What was broken:** `fetchStockSnapshotPerformance` (sector ETFs, leader stocks, breadth universe) and `fetchMarketMovers` used `todaysChangePerc ?? 0`, so a missing provider field read as a flat day on SPX desk `sector_heat` / breadth-derived internals.
+
+**Fix:** `snapshotChangePctFromRow()` returns `null` when change cannot be grounded (provider % or day-close derivation). Breadth internals skip null samples; movers filter null change out.
+
+**Check at the open:** SPX desk sector heat rows should show real +/- % or omit/null — never 0.00% for a ticker with no session change data pre-open. Cross-check XLK/XLF on desk vs `GET /api/market/heatmap` sector panel.
+
+### 0ag. UW spot-fallback fabricated flat 0% — fix/spot-fallback-change-pct-null (merged #3790)
 
 **What was broken:** `resolveSpotFromUwStockState()` returned `change_pct: 0` when UW `/stock-state` omitted `prev_close` — members saw "unchanged" with no prior-close anchor.
 
@@ -159,6 +167,14 @@ Edition prep." Added a regression test tying `LEARN_NAV`'s night-hawk descriptor
 **Check at the open:** `/learn` chapter nav and the Course JSON-LD schema (view-source or a
 structured-data testing tool) should show the corrected Night Hawk descriptor; confirm it still
 reads naturally alongside the dedicated Night Hawk guide's own overview content.
+
+### 0ag. Vector Academy guide falsely framed Thermal as SPX-only — fix/vector-guide-thermal-multiticker-claim (pending)
+
+**What was broken:** the Vector guide (`articles.ts`, `vector-scanner-guide`) said "[Thermal] focus[es] on SPX" and "[Thermal] gives you the deep heatmap for SPX" — contradicting the homepage's own accurate "Multi-ticker GEX/VEX/DEX/CHARM matrix" framing and Thermal's real route/UI (11 preset tickers spanning indices and single names, plus live ticker search — no SPX-only gate).
+
+**Fix:** Corrected both passages to reflect Thermal's real multi-ticker capability while keeping Vector's accurate differentiator (automated universe-wide scanning, no manual ticker selection) intact. Added `thermal-ticker-scope-consistency.test.ts` grounding the fix in `HEATMAP_PRESET_TICKERS` and guarding against the SPX-only framing recurring.
+
+**Check at the open:** `/learn/vector-scanner-guide` should read Thermal as multi-ticker; spot-check `/heatmap` with a non-SPX preset (e.g. NVDA, QQQ) still renders a full GEX/VEX/DEX/CHARM matrix, confirming the guide now matches live behavior.
 
 ### 0ae. `zerodte-warm` cron raced live member requests for the UW rate-limiter ceiling on a false premise — fix/zerodte-warm-uw-sweep-tag (merged #3775)
 
@@ -2311,4 +2327,10 @@ than an end-of-session patch.
 - **What was broken:** `GET /api/market/zerodte/board?sim=1` (admin-only) served sim frames from Redis without `roundFloats` at the route boundary. Member path rounds inside `zerodte-service.ts`, but sim ingest bypasses that pipeline — synthetic/replay frames could expose IEEE float tails on the admin sim desk.
 - **What changed:** Wrap both sim and member board success responses in `roundFloats()` at `board/route.ts`.
 - **RTH check:** Seed admin sim (`/nighthawk?sim=1`), inspect board JSON or rendered premiums/PnL — confirm 2dp-clean values with no IEEE tails on sim frames.
+
+### 29. Vector universe snapshot — unbounded ~85-100-ticker fan-out served genuinely-available tickers as null — fix/vector-universe-fanout-null-rows — 2026-09-04
+
+- **What was broken:** `buildVectorUniverseSnapshot` fired every universe ticker's `fetchGexHeatmap` at once via a raw `Promise.allSettled` (no concurrency bound). Live-confirmed: `GET /api/market/vector/universe` served fully-null rows (`spot`, `gammaFlip`, walls all null) for `DIA`, `AAOI`, `DRAM`, `ZS`, `NOK` while a solo `GET /api/market/gex-heatmap?ticker=<T>` for each of those same tickers, run ~20 minutes later with no contention, returned `available: true` with a real spot price — proving the batch fan-out (not real data absence) dropped them. Same root-cause shape as the already-fixed `vector-dark-pool-warm` unbounded fan-out (entry above this file's predecessor list, FINDINGS.md 2026-09-02).
+- **What changed:** Added `runPolygonPool` (`polygon-rate-limiter.ts`, mirrors `runUwPool`), bounded-concurrency default 8 (`POOL_MAX_CONCURRENCY`, env-overridable). `buildVectorUniverseSnapshot`'s ticker fan-out now routes through it instead of the raw `Promise.allSettled`.
+- **RTH check:** During/soon after RTH, hit `GET /api/market/vector/universe` and spot-check a handful of non-preset dynamic-universe tickers (names outside the ~11 warm presets — e.g. whichever mid-liquidity names are currently in the dynamic universe) for `spot: null`/`gammaFlip: null` rows; cross-check any null row directly against `GET /api/market/gex-heatmap?ticker=<T>` — if the direct check returns `available: true` with a real spot, the fan-out is still dropping rows and this fix needs a second look (e.g. `POOL_MAX_CONCURRENCY` too high, or a sibling unbounded fan-out — `heatmap-warm`/`vector-walls-warm`, both flagged as blast-radius follow-ups in the finding — needs the same fix).
 
