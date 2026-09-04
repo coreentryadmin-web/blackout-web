@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { clsx } from "clsx";
 import { Badge } from "@/components/ui";
+import { isFlowAnomalyRecent } from "@/components/flow-anomaly-recency";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,13 +27,8 @@ interface AnomaliesResponse {
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const POLL_MS = 20_000;
-const RECENCY_MS = 15 * 60 * 1000; // 15 min
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function isRecent(detectedAt: string): boolean {
-  return Date.now() - new Date(detectedAt).getTime() < RECENCY_MS;
-}
 
 function severityTone(s: Severity): "bear" | "bull" | "sky" | "neutral" {
   if (s === "CRITICAL" || s === "HIGH") return "bear";
@@ -59,7 +55,7 @@ export function FlowAnomalyBanner() {
           const res = await fetch("/api/market/anomalies", { cache: "no-store" });
           if (res.ok) {
             const data: AnomaliesResponse = await res.json() as AnomaliesResponse;
-            const recent = (data.anomalies ?? []).filter((a) => isRecent(a.detectedAt));
+            const recent = (data.anomalies ?? []).filter((a) => isFlowAnomalyRecent(a.detectedAt));
             setAnomalies(recent);
           }
         } catch {

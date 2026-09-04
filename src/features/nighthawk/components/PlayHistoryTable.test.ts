@@ -164,3 +164,52 @@ test("P&L cells use exactly the three tone classes — no magnitude ramp", () =>
   assert.match(html, /nh-history-col-num tabular-nums nh-history-pnl is-down/);
   assert.doesNotMatch(html, /is-mid|is-weak|is-strong/, "no magnitude-graded tone classes should exist");
 });
+
+// Regression for the mobile-viewport finding: .nh-history-tablewrap is overflow-x-auto around
+// a table with min-w-[440px] (globals.css), wider than a 430px phone's available card width.
+// The overflow always eats the RIGHTMOST column first, so wherever P&L rendered used to decide
+// whether it survived on a narrow viewport. It used to be the 6th (last) of 6 columns — i.e.
+// exactly the column the overflow trims first — even though it's the column this component's
+// own CSS comment calls "the single most-scanned value in this table". Moving it to 3rd (right
+// after Date/Ticker) puts it inside the columns a narrow viewport renders before any scroll is
+// needed. This is a DOM-order assertion rather than a real viewport/pixel measurement (no browser
+// harness in this test file), but it directly encodes the root cause: column POSITION, not width
+// or content, is what determines survival under horizontal overflow-clipping.
+test("mobile P&L visibility: P&L is the 3rd header column, ahead of Dir/Tier/Outcome", () => {
+  const html = renderTable();
+  const theadMatch = html.match(/<thead>[\s\S]*?<\/thead>/);
+  assert.ok(theadMatch, "thead should render");
+  const thead = theadMatch![0];
+
+  const tickerIdx = thead.indexOf(">Ticker<");
+  const pnlIdx = thead.indexOf("P&amp;L");
+  const dirIdx = thead.indexOf(">Dir<");
+  const tierIdx = thead.indexOf(">Tier<");
+  const outcomeIdx = thead.indexOf(">Outcome<");
+
+  assert.ok(
+    tickerIdx > -1 && pnlIdx > -1 && dirIdx > -1 && tierIdx > -1 && outcomeIdx > -1,
+    "all six header labels should be present"
+  );
+  assert.ok(
+    tickerIdx < pnlIdx && pnlIdx < dirIdx && dirIdx < tierIdx && tierIdx < outcomeIdx,
+    `P&L header must sit right after Ticker and before Dir/Tier/Outcome (got Ticker@${tickerIdx} P&L@${pnlIdx} Dir@${dirIdx} Tier@${tierIdx} Outcome@${outcomeIdx})`
+  );
+});
+
+test("mobile P&L visibility: each data row renders its P&L cell before Dir/Tier/Outcome cells", () => {
+  const html = renderTable();
+  const rowMatch = html.match(/<tr class="nh-history-row"[^>]*>[\s\S]*?<\/tr>/);
+  assert.ok(rowMatch, "a data row should render");
+  const row = rowMatch![0];
+
+  const tickerIdx = row.indexOf("NVDA");
+  const pnlIdx = row.indexOf("nh-history-pnl");
+  const dirIdx = row.indexOf("nh-history-dir");
+
+  assert.ok(tickerIdx > -1 && pnlIdx > -1 && dirIdx > -1, "ticker, P&L, and Dir cells should all render");
+  assert.ok(
+    tickerIdx < pnlIdx && pnlIdx < dirIdx,
+    `P&L cell must render before the Dir cell (got Ticker@${tickerIdx} P&L@${pnlIdx} Dir@${dirIdx})`
+  );
+});

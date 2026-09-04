@@ -126,6 +126,17 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0c. HELIX FlowAnomalyBanner future-timestamp recency — fix/flow-anomaly-future-timestamp (pending)
+
+**What was broken:** `FlowAnomalyBanner` on `/flows` treated a future-dated `detectedAt` as "recent"
+because `Date.now() - future < RECENCY_MS` — could flash the anomaly banner for events that have not
+happened yet under clock skew.
+
+**Fix:** `isFlowAnomalyRecent()` clamps future skew to not-recent.
+
+**Check at the open:** On `/flows` during RTH, banner only shows anomalies within 15 minutes; no
+spurious banner from skewed rows after deploy.
+
 ### 0. Discord digest crons on admin health board — PR #3543 (merged)
 
 **What was broken:** `darkpool-discord`, `thermal-discord`, and `helix-discord-digest` were live
@@ -455,7 +466,7 @@ likely dominated by Polygon calls or general compute than the UW ceiling #3479 f
 need its own measurement before a fix is warranted, per this file's own "never fix from a guess"
 standing method.
 
-### 13. Meridian earnings detail header — title overlapped the SUMMARY tab pill on tablet/mobile — PR pending (branch `fix/meridian-earnings-header-tab-overlap`)
+### 18. Meridian earnings detail header — title overlapped the SUMMARY tab pill on tablet/mobile — PR pending (branch `fix/meridian-earnings-header-tab-overlap`)
 
 **What was broken:** `.meridian-detail-head-v2` (the `<header>` row pairing the earnings event
 title with the SUMMARY/REPORT/ESTIMATES/POSITIONING/HISTORY tab strip in
@@ -483,6 +494,66 @@ open is seeing it against the FULL, currently-live set of ~131 earnings events (
 rolled onto/off the calendar overnight) rather than the handful captured in the original finding's
 screenshots. Also spot-check that the >=1440px desktop rendering is visually unchanged (title and
 tab strip still share one row) — the fix should be a no-op at that width.
+
+### 17. Helix print tape signal badges hard-clipped mid-character in FULL columns — PR pending (branch `fix/helix-signals-badge-clip`)
+
+**What was broken:** the `/flows` print tape's Signals cell (`.helix-tape-cell--signals`, FULL
+columns density, desktop with the analytics sidebar hidden) rendered `signals.slice(0, 3)` — a raw
+badge-count cap with no notion of pixel width — inside a `flex-nowrap overflow-hidden` box with no
+scroll or wrap anywhere in its ancestor chain. On a real row carrying 4 signals (STACK / NEW 4.2× /
+REPEAT / a 4th collapsed into `+1`), only STACK and NEW 4.2× rendered whole; REPEAT painted as a
+single clipped `R`, and the `+1` overflow chip was present in the DOM's text but never visually
+painted at all — full write-up in
+`docs/audit/findings-staging/2026-09-04-helix-tape-signal-badge-clip.md`.
+
+**Fix:** new `fitSignalBadges()` (`src/features/helix/lib/helix-signal-fit.ts`) estimates each
+badge's real width from its label and shows only the priority-ordered PREFIX that actually fits the
+column's floor width, with a correctly-sized `+N` chip reserved for whatever is dropped — so the row
+never emits more markup than the 116px cell can paint. Code-level fix only; nothing here depends on
+a live measurement, so this item is about confirming it under real tape volume/variety, not about
+proving the fix exists.
+
+**Check at the open:** on `/flows` in FULL columns density (desktop, hide the analytics sidebar),
+watch a real RTH tape for rows carrying 3+ signals (STACK/WHALE prints with a fresh NEW badge and a
+REPEAT rule are the most likely combo) and confirm every visible badge renders whole — no clipped
+glyphs — and that whenever badges are hidden, a legible `+N` chip is visible summarizing them (never
+a phantom count that never paints). Also worth a spot-check at a narrower desktop width (browser
+window resized down, still above the mobile breakpoint) since the fix budgets against the column's
+CSS floor specifically to stay safe there.
+
+### 16. Vector desk mobile chart collapse — PR #3556 (pending, branch `fix/vector-mobile-chart-collapse`)
+
+**What was broken:** the standalone `/vector` desk's price chart (candles + wall overlay + volume
+pane) never rendered below the 1280px desktop breakpoint — present in the DOM, laid out with a
+real 320px `min-height` floor on its own canvas element, but clipped to nothing by an ancestor
+chain (`.vector-chart-terminal-chart` → `.vector-chart-wrap` → `.vector-chart-stage`) that
+computed to a literal 0px box on every phone/tablet width, because the flex-fill technique those
+three carried unconditionally (`flex: 1 1 0; min-height: 0;`) only resolves correctly when some
+ancestor up the chain has a DEFINITE height to distribute — true only from 1280px up. Independently
+reproduced live 2026-09-04 (fresh temp Clerk session, `proxy-browser.cjs` at 430x932): full-page
+capture showed header → Live Helix → 0DTE Matrix → SCALP play card → SPX Plays, no chart anywhere;
+a DOM probe measured `.vector-chart-canvas` at h=320 while all three ancestors measured h=0,
+unchanged after a 30s settle (ruling out a data/timing race). Full evidence and root cause in
+`docs/audit/findings-staging/2026-09-04-vector-mobile-chart-collapse.md`.
+
+**Fix:** scoped the `flex: 1 1 0; min-height: 0;` triple to the existing `@media (min-width: 1280px)`
+block (byte-identical to what the base rule used to carry, so desktop's resolved CSS is unchanged);
+the base/mobile rule now lets the default `flex: 0 1 auto` + `min-height: auto` apply, so the chart
+column sizes to its own content (the canvas's 320px floor) instead of forcing itself to zero. No JS
+change — `VectorChart.tsx`'s existing `ResizeObserver` autosize nudge was already correctly wired to
+react once the container gets a real size.
+
+**Check at the open:** this fix was built and verified entirely OFF-HOURS (market closed, "Session
+closed" shown on Live Helix) — the chart's underlying data feed (live bars, wall overlay, SSE
+ticks) has not been seen rendering into the now-fixed layout under a moving RTH tape. Load
+`/vector` on a phone (or a <1280px-wide window) once the market is open and confirm: (1) the
+candle chart renders above the fold, between the ticker-chip row and the Live Helix card, with
+visible candles/wall beads and a volume sub-pane, matching the desktop layout's content
+(no longer just absent); (2) it stays correctly sized and does not clip/collapse again as live bars
+stream in and the chart's content height changes; (3) the desktop (>=1280px) layout is pixel-for-pixel
+unchanged from before this fix — this was verified via CSS-cascade inspection and existing
+regression tests (`vector-chart-viewport.test.ts`) but not via a fresh live desktop screenshot,
+since the fix's own scope was mobile-only.
 
 ### 14. Night Hawk mobile 430x932 — view-tab row overlapped the theme-toggle pill — PR pending (branch `fix/nighthawk-legacy-tab-toggle-overlap`)
 
@@ -537,6 +608,25 @@ pan states, since tick positions move with the visible time range and the origin
 (the label colliding with whichever tick happens to land at the left edge) is a function of viewport
 width and time-range, not a single fixed state. Also spot-check mobile (430×932) to confirm the fix
 didn't regress the already-working sibling labels' layout there.
+
+### 15. Night Hawk mobile play-history table's P&L column was scrolled off-screen — PR pending (branch `fix/nighthawk-mobile-pnl-column-offscreen`)
+
+**What was broken:** the expanded Session Analytics panel's play-history table renders 6 columns
+(Date, Ticker, Dir, Tier, Outcome, P&L) inside `.nh-history-tablewrap` — `overflow-x-auto` around a
+`min-w-[440px]` table — which overflows a 430px phone's card width. The overflow clip always eats
+the rightmost column first, and P&L was last, so it required an extra horizontal swipe to see even
+though `globals.css`'s own comment calls it "the single most-scanned value in this table."
+
+**Fix:** reordered columns to Date, Ticker, **P&L**, Dir, Tier, Outcome (P&L moved from 6th to 3rd,
+right after Ticker) — pure JSX reorder, no CSS/data change. See
+`docs/audit/findings-staging/2026-09-04-nighthawk-history-pnl-column-mobile-offscreen.md`.
+
+**Check at the open:** on `/nighthawk` (`proxy-browser.cjs`, 430×932 mobile viewport), open Session
+Analytics, expand a session with graded plays, and confirm the P&L value for each row is visible
+in the table WITHOUT any horizontal swipe — it should render as the 3rd visible column right after
+the ticker, still tone-colored (green/red/amber) and bold. Also confirm Dir/Tier/Outcome are still
+reachable (now via swipe or the row's existing tap-to-expand drawer) and that desktop/tablet
+rendering (where the table already fit) is visually unchanged.
 
 ---
 
