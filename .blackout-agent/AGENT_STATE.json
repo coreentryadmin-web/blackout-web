@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:19:14.963Z",
+  "updated_at": "2026-09-04T18:43:46.217Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T18:21:09.233Z",
+      "lease_until": "2026-09-04T19:56:58.232Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "d9213c67-3e49-46b4-addf-6cf9b309ad9e",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -107,6 +107,18 @@
       "claimed_at": "2026-09-04T10:33:57.540Z",
       "lease_until": "2026-09-04T12:03:57.540Z",
       "phase": "MONITORING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
+    },
+    "BO-P2-0100": {
+      "task_id": "BO-P2-0100",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T18:43:05.289Z",
+      "lease_until": "2026-09-04T20:13:05.289Z",
+      "phase": "IMPLEMENTING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -210,30 +222,6 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
-    },
-    "pr-3658": {
-      "pr": 3658,
-      "head_sha": "16144b526",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:18:25.830Z",
-      "safe_to_merge": true
-    },
-    "pr-3659": {
-      "pr": 3659,
-      "head_sha": "e544aba52",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:18:26.785Z",
-      "safe_to_merge": true
-    },
-    "pr-3657": {
-      "pr": 3657,
-      "head_sha": "adcfbbf5a",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:19:14.963Z",
-      "safe_to_merge": true
     }
   },
   "agents": {
@@ -243,16 +231,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T18:43:05.290Z",
+      "current_task": "BO-P2-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "73e065b561f62c3a980b394fc0988bff5e140a34",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T18:34:02Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33906581445",
+    "last_deploy_sha": "827a3030ef91b4913c4055bc88d5f4dec94e8e8e"
   },
   "open_prs": [],
   "events": [
@@ -924,134 +912,23 @@
       "summary": "Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs."
     },
     {
-      "at": "2026-09-04T14:26:50.779Z",
+      "at": "2026-09-04T18:43:05.290Z",
+      "type": "task_claimed",
+      "task_id": "BO-P2-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T18:43:46.216Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:26:51.111Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T14:26:51.206Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T14:32:08.040Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T14:32:08.363Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T14:32:08.480Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T15:34:26.496Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T15:34:26.827Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T15:34:26.965Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T15:39:48.691Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T15:39:49.009Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T15:39:49.130Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T16:16:14.844Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T16:16:15.166Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T16:16:15.266Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T17:18:25.831Z",
-      "type": "pr_review",
-      "pr": 3658,
-      "head_sha": "16144b526",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:18:25.830Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-04T17:18:26.785Z",
-      "type": "pr_review",
-      "pr": 3659,
-      "head_sha": "e544aba52",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:18:26.785Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-04T17:18:30.782Z",
-      "type": "pr_review",
-      "pr": 3657,
-      "head_sha": "adcfbbf5a",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:18:30.781Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-04T17:19:14.963Z",
-      "type": "pr_review",
-      "pr": 3657,
-      "head_sha": "adcfbbf5a",
-      "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-04T17:19:14.963Z",
-      "safe_to_merge": true
+      "at": "2026-09-04T18:43:46.217Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "60415f46-f89b-4c9d-8c42-f3499f626d5b",
+      "summary": "Cycle: peer-reviewed #3692 (quote index WS rebase, merged). #3695 closed favoring shared-helper fix (#3711 merged). Fixed #3698 CI — scan.ts inline import type broke Node test resolver; pushed f5bdd013b. validate:deploy GREEN, ops:collect 0. Standing: Claude peer-review #3698 after verify green."
     }
   ]
 }
