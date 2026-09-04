@@ -15,26 +15,42 @@ import { logCronRun } from "@/lib/cron-run";
 import { listSharedUniverseTickers } from "@/features/vector/lib/vector-dynamic-universe";
 import { warmVectorWalls, getTickersToWarmAsync } from "@/features/vector/lib/vector-walls-warm";
 import { isEtCashRth } from "@/lib/et-market-hours";
+import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-async function runVectorWallsWarm(started: number): Promise<void> {
-  const tickers = await getTickersToWarmAsync(await listSharedUniverseTickers());
-  const results = await Promise.allSettled(tickers.map((t) => warmVectorWalls(t)));
+/**
+ * Cross-replica overlap guard. vector-walls-warm has two independent trigger sources —
+ * EventBridge's ~5min schedule AND the in-app rth-warm-leader (20s heal threshold in
+ * rth-warm-leader-logic.ts) — with no lock between them. A leader-triggered heal-fire can
+ * land on top of an EventBridge fire while the prior universe warm is still sweeping Polygon
+ * chain fetches. Same `sharedCacheSetNx` idempotent-skip pattern as desk-warm/heatmap-warm.
+ * TTL (240s) covers maxDuration (120s) as the safety-net ceiling if a release is missed.
+ */
+const OVERLAP_LOCK_KEY = "vector-walls-warm:running";
+const OVERLAP_LOCK_TTL_SEC = 240;
 
-  let warmed = 0;
-  for (const r of results) {
-    if (r.status === "fulfilled") warmed += 1;
+async function runVectorWallsWarm(started: number): Promise<void> {
+  try {
+    const tickers = await getTickersToWarmAsync(await listSharedUniverseTickers());
+    const results = await Promise.allSettled(tickers.map((t) => warmVectorWalls(t)));
+
+    let warmed = 0;
+    for (const r of results) {
+      if (r.status === "fulfilled") warmed += 1;
+    }
+    const failed = results.length - warmed;
+    if (failed > 0) {
+      console.warn(`[cron/vector-walls-warm] ${failed} universe warm(s) failed`);
+    }
+    console.info(
+      `[cron/vector-walls-warm] background done — warmed=${warmed}/${tickers.length} failed=${failed} elapsed=${Date.now() - started}ms`
+    );
+  } finally {
+    await sharedCacheDel(OVERLAP_LOCK_KEY).catch(() => undefined);
   }
-  const failed = results.length - warmed;
-  if (failed > 0) {
-    console.warn(`[cron/vector-walls-warm] ${failed} universe warm(s) failed`);
-  }
-  console.info(
-    `[cron/vector-walls-warm] background done — warmed=${warmed}/${tickers.length} failed=${failed} elapsed=${Date.now() - started}ms`
-  );
 }
 
 export async function GET(req: NextRequest) {
@@ -46,6 +62,21 @@ export async function GET(req: NextRequest) {
   const force = req.nextUrl.searchParams.get("force") === "1";
   if (!force && !isEtCashRth()) {
     const payload = { ok: true, skipped: true, reason: "Outside cash RTH" };
+    await logCronRun("vector-walls-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  const acquired = await sharedCacheSetNx(
+    OVERLAP_LOCK_KEY,
+    { startedAt: started },
+    OVERLAP_LOCK_TTL_SEC
+  ).catch(() => true); // fail OPEN on Redis error — a missed overlap guard is safer than a stuck cron
+  if (!acquired) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: "previous Vector walls warm still in flight (idempotent skip)",
+    };
     await logCronRun("vector-walls-warm", started, payload);
     return NextResponse.json(payload);
   }
