@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:43:40.083Z",
+  "updated_at": "2026-09-04T08:29:51.207Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,26 +67,26 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T08:16:48.882Z",
+      "lease_until": "2026-09-04T09:59:49.947Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "0b8c2d31-7b70-4ac5-a7d5-d2307f83ddff",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-04T08:29:37.766Z",
+      "lease_until": "2026-09-04T09:59:49.947Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "0b8c2d31-7b70-4ac5-a7d5-d2307f83ddff",
       "title": null
     },
     "BO-P1-0104": {
@@ -167,14 +167,14 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T07:42:54.932Z",
-      "current_task": "BO-P1-0104"
+      "last_seen": "2026-09-04T08:29:37.767Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T07:20:16Z",
+    "last_main_sha": "281d98171f2cf7723fb4e992d5ef062bd834fc9c",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-09-04T08:01:59Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
     "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
   },
@@ -672,6 +672,49 @@
       "agent": "cursor",
       "run_id": "bdccad63-d885-46ad-bc02-3362ea4704ec",
       "summary": "Cycle: merged main @ 14c5d815d verified GREEN. Opened #3531 agent state sync (draft, awaiting CI+peer). ECR 33848248248 still in_progress 22m+ (deploy-smoke passed). SEO 22 PASS. Site-latency 3 warm FAILs deferred to RTH. GitHub API rate-limited — peer review of #3531 for Claude."
+    },
+    {
+      "at": "2026-09-04T08:29:21.493Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:29:21.494Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9e7c7e14-50b7-4b59-bfb6-574c30ee3f67",
+      "summary": "Merged #3533 (state-sync conflict pile → 1). Peer review APPROVED. validate:deploy GREEN, ops:collect 0. Closed superseded drafts #3534/#3535. Main@281d9817."
+    },
+    {
+      "at": "2026-09-04T08:29:33.337Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:29:37.767Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T08:29:49.946Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:29:50.561Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:29:51.207Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
