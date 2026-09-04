@@ -109,27 +109,66 @@ export async function GET(req: NextRequest) {
       healTargetKeys.add(j.key);
       return true;
     });
-    const healed: Array<{ key: string; ok: boolean; status: number; detail?: string }> = [];
+    // Distinctly-keyed follow-up `cron_job_runs` row for the self-heal OUTCOME (see below) — kept
+    // apart from "cron-staleness-watchdog" itself so a slow-to-settle self-heal can never be
+    // mistaken for (or overwrite) the watchdog's own last-run record in admin-cron-health.ts.
+    const SELF_HEAL_LOG_KEY = "cron-staleness-watchdog-self-heal";
 
     // Self-heal MUST NOT block the HTTP response. Each dispatchCronWarm can run a full warmer
     // (grid-warm, heatmap-warm, …) synchronously — several in sequence routinely exceeds
     // Cloudflare's ~100s origin timeout → HTTP 524 on this route and a false P0 in ops-collect.
     // Mirror nighthawk-edition: dispatch in after() so the snapshot returns in seconds.
-    const runSelfHeal = async () => {
+    //
+    // That timing choice has a consequence for how the OUTCOME of self-heal gets recorded: by the
+    // time this background work runs, `result` (below) has already been built and handed to
+    // `logCronRun` — the watchdog's own `cron_job_runs` row is written, and the HTTP response is
+    // already serialized. So a per-job result computed in here can NEVER reach that row no matter
+    // what — mutating a shared array wouldn't help, because the array is read (and the row
+    // written) before this function's first `await` even resumes. That is exactly what the
+    // previous version of this code did: it computed `res` per job and only `console[...]`-logged
+    // it, so the persisted watchdog row *always* reported `self_healed: []` / `ok:true` regardless
+    // of whether a re-warm actually succeeded — the only trace of a failed self-heal was a
+    // console.error line in raw CloudWatch, invisible to `cron_job_runs` and therefore to
+    // admin-cron-health.ts or any future audit reading it.
+    //
+    // Fix: keep the response fast (still dispatched via after(), still never awaited by the
+    // handler), but once the background work actually settles, persist a SECOND, durable
+    // `cron_job_runs` row (SELF_HEAL_LOG_KEY) carrying the real per-job outcome. `logCronRun`
+    // marks that row "failed" (firing the same Discord alert every other cron failure gets) if ANY
+    // dispatched re-warm did not succeed — so a self-heal failure during an incident is now
+    // visible in the durable log and alerted on, not just in ephemeral console output.
+    const runSelfHeal = async (startedAt: number) => {
+      const healed: Array<{ key: string; ok: boolean; status: number; detail?: string }> = [];
       for (const job of healTargets) {
         const res = await dispatchCronWarm(job.key);
+        const detail = res.error ?? res.detail;
+        healed.push({ key: job.key, ok: res.ok, status: res.status, detail });
         console[res.ok ? "warn" : "error"](
           `[cron/cron-staleness-watchdog] self-heal ${res.ok ? "re-warmed" : "FAILED"} stale cron '${job.key}' (status ${res.status})${
-            res.error || res.detail ? ` — ${res.error ?? res.detail}` : ""
+            detail ? ` — ${detail}` : ""
           }`
         );
       }
+      await logCronRun(SELF_HEAL_LOG_KEY, startedAt, {
+        ok: healed.every((h) => h.ok),
+        dispatched: healTargets.map((j) => j.key),
+        healed,
+      });
     };
     if (selfHealEnabled && healTargets.length > 0) {
+      const selfHealStarted = Date.now();
       const dispatchHeal = () => {
-        void runSelfHeal().catch((error) => {
+        void runSelfHeal(selfHealStarted).catch((error) => {
           const detail = error instanceof Error ? error.message : String(error);
           console.error(`[cron/cron-staleness-watchdog] background self-heal REJECTED: ${detail}`);
+          // Even a rejection (runSelfHeal threw before finishing its own logCronRun call — e.g.
+          // dispatchCronWarm itself threw despite its "never throws" contract) must not vanish
+          // into console-only output; best-effort persist so it's still queryable.
+          void logCronRun(SELF_HEAL_LOG_KEY, selfHealStarted, {
+            ok: false,
+            error: detail,
+            dispatched: healTargets.map((j) => j.key),
+          }).catch(() => undefined);
         });
       };
       try {
@@ -238,7 +277,15 @@ export async function GET(req: NextRequest) {
       alert_delivered: problems.length > 0 || errorSpike !== "none" ? alertDelivered : null,
       self_heal_enabled: selfHealEnabled,
       self_heal_dispatched: healTargets.map((j) => j.key),
-      self_healed: healed,
+      // The per-job self-heal OUTCOME is never known at this point — dispatch happens via after()
+      // specifically so re-warms can't block this response (see runSelfHeal's own comment above),
+      // and this `result` is built/persisted before that background work has even started running.
+      // Reporting `[]` here (as this route used to) reads as "self-heal ran and healed nothing",
+      // which is false when self-heal is still in flight — so report `null` (pending) whenever
+      // something was actually dispatched, `[]` only when nothing needed healing this tick, and
+      // point at the follow-up row (SELF_HEAL_LOG_KEY) that carries the real, settled result.
+      self_healed: selfHealEnabled && healTargets.length > 0 ? null : [],
+      self_heal_log_key: selfHealEnabled && healTargets.length > 0 ? SELF_HEAL_LOG_KEY : null,
     };
     await logCronRun("cron-staleness-watchdog", started, result);
     return NextResponse.json(result);

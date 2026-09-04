@@ -126,6 +126,33 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0q. cron-staleness-watchdog's self-heal outcome never reached the persisted `cron_job_runs` record — fix/cron-staleness-watchdog-healed-array (pending)
+
+**What was broken:** `runSelfHeal` computed a per-job re-warm result (`ok`/`status`/`error`/`detail`)
+for every stale cron it dispatched via `dispatchCronWarm`, but only `console[...]`-logged it — the
+`healed` array declared to carry it into the persisted run record was never pushed into, so it
+stayed `[]` forever. Compounding this, self-heal dispatches via `after()` specifically so it can't
+block the response (Cloudflare's ~100s origin timeout), which means the `result` object embedding
+`self_healed` is built and persisted via `logCronRun` *before* the background self-heal work has
+even started — so a naive `healed.push(...)` fix alone still couldn't reach that already-written
+row. Net effect: a self-heal re-warm that FAILED during a real incident was durably invisible —
+`cron_job_runs` always showed `self_healed: []` / `ok:true` for the watchdog's own run regardless
+of outcome, with the only trace a `console.error` line in raw CloudWatch.
+
+**Fix:** `runSelfHeal` now actually accumulates results, and once the background work settles it
+persists a SECOND, distinctly-keyed `cron_job_runs` row (`cron-staleness-watchdog-self-heal`)
+carrying the real per-job outcome — marked `"failed"` by `logCronRun` (firing the same Discord
+alert every other cron failure gets) if any re-warm did not succeed. The synchronous response no
+longer claims a settled `self_healed: []` when self-heal was actually dispatched; it reports
+`self_healed: null` (pending) plus a `self_heal_log_key` pointing at the follow-up row.
+
+**Check at the open:** this only matters when `CRON_WATCHDOG_SELF_HEAL=1` is set AND a market-hours
+cron actually goes stale during RTH (rare by design — self-heal exists for exactly that incident).
+If a real self-heal fires during tomorrow's open, confirm a second `cron_job_runs` row appears
+under job key `cron-staleness-watchdog-self-heal` (query `GET /api/admin/cron-health` or the
+`cron_job_runs` table directly) with a `healed` array naming the re-warmed job(s) and their real
+`ok`/`status` — not just the watchdog's own always-`ok:true` row. No self-heal firing at all during
+RTH (the common case) means nothing to check — the fix is dormant, not exercised, that day.
 ### 0o. `spx-signal-weight-optimize` cron threw an uncaught RangeError on `?days=`/`?days=abc` — fix/spx-signal-weight-optimize-nan-crash (pending)
 
 **What was broken:** `GET /api/cron/spx-signal-weight-optimize?days=` (empty value, or a bare
