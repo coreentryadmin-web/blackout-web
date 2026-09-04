@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:16:15.266Z",
+  "updated_at": "2026-09-04T17:21:45.489Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -210,6 +210,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
+    },
+    "pr-3662": {
+      "pr": 3662,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "WAIT — verify+CodeQL pending; code review PASS pending CI green",
+      "reviewed_at": "2026-09-04T17:21:40.825Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -224,11 +232,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "9188622b656c11a992a576e2d11060da1c9713c8",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T17:18:32Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33899869003",
+    "last_deploy_sha": "883121ea4e81a191d5758572d1618b069431a039"
   },
   "open_prs": [],
   "events": [
@@ -985,6 +993,35 @@
     },
     {
       "at": "2026-09-04T16:16:15.266Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:21:40.826Z",
+      "type": "pr_review",
+      "pr": 3662,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "WAIT — verify+CodeQL pending; code review PASS pending CI green",
+      "reviewed_at": "2026-09-04T17:21:40.825Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-04T17:21:41.985Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T17:21:41.986Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "772f4b3d-1e7e-4dda-a08c-650277b45ca5",
+      "summary": "Reviewed PR #3662: WAIT (CI pending). Code verdict GO on green verify — nearest_wall stale-after-WS-override fix looks correct, 11/11 tests pass locally."
+    },
+    {
+      "at": "2026-09-04T17:21:45.489Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
