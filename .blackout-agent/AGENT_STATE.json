@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T02:06:52.193Z",
+  "updated_at": "2026-09-04T05:15:08.103Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -135,32 +135,22 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f2285917e0ad04ea57dbe884e9e1004f20b6a04e",
+    "last_main_sha": "c47af0a4cfbb27aff037899d04d4512c299fb5a8",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T02:05:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826698258",
-    "last_deploy_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b"
+    "last_deploy_at": "2026-09-04T05:10:00Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33839441875",
+    "last_deploy_sha": "c47af0a4cfbb27aff037899d04d4512c299fb5a8"
   },
   "open_prs": [
     {
-      "number": 3465,
-      "title": "chore(autopilot): handoff — merged #3454, P1 queue cleared",
-      "branch": "fix/autopilot-handoff-2026-09-04-session2",
+      "number": 3494,
+      "title": "fix(autopilot): normalize gh pr checks state in triage",
+      "branch": "fix/pr-feedback-gh-check-state",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T02:04:58Z"
-    },
-    {
-      "number": 3464,
-      "title": "chore(autopilot): cursor handoff — peer review lane BO-P1-0005",
-      "branch": "cursor/autopilot-handoff-peer-reviews-2026-09-04-2",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T02:03:08Z"
+      "updated_at": "2026-09-04T05:14:50Z"
     },
     {
       "number": 2810,
@@ -170,7 +160,7 @@
       "agent": "human",
       "draft": false,
       "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-01T19:54:25Z"
+      "updated_at": "2026-09-04T05:14:53Z"
     }
   ],
   "events": [
@@ -501,6 +491,69 @@
       "type": "task_released",
       "task_id": "BO-P1-0004",
       "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T05:10:06.256Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T05:10:07.133Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T05:15:01.165Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T05:15:01.165Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "19bf95cc-a68a-42ff-8c7d-247d0374e432",
+      "summary": "Reviewed PR #3493: MERGE (retrospective approval — already merged c47af0a4, verify green, no blockers)"
+    },
+    {
+      "at": "2026-09-04T05:15:06.313Z",
+      "type": "pr_webhook",
+      "pr": 3494,
+      "event": "sweep",
+      "head": "bba06251c128ade7279b255266c36f0baa5cbca2",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T05:15:08.103Z",
+      "type": "pr_webhook",
+      "pr": 2810,
+      "event": "sweep",
+      "head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3494": {
+      "last_event": "sweep",
+      "last_head": "bba06251c128ade7279b255266c36f0baa5cbca2",
+      "last_feedback_at": "2026-09-04T05:15:06.313Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-2810": {
+      "last_event": "sweep",
+      "last_head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "last_feedback_at": "2026-09-04T05:15:08.103Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }

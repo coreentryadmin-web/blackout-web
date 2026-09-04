@@ -1,10 +1,10 @@
 {
   "agent": "cursor",
-  "run_id": "fa572336-bda3-4a7c-93e8-a09ffc724a3a",
-  "last_seen": "2026-09-04T01:48:15.767Z",
-  "last_productive_action": "session_start",
-  "current_task": "BO-P1-0004",
-  "current_phase": "RESUMED",
+  "run_id": "1d813813-e3f6-46d9-bcbd-71b81f627eec",
+  "last_seen": "2026-09-04T05:14:57.335Z",
+  "last_productive_action": "heartbeat",
+  "current_task": "Peer review PR #3493",
+  "current_phase": "REVIEWING",
   "branch": null,
   "pr": null,
   "healthy": true
