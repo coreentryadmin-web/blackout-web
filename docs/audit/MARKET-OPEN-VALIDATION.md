@@ -459,6 +459,16 @@ returns `{ label: "clock skew", ok: false }`; otherwise clamps with `Math.max(0,
 **Check at the open:** `/admin` → Operations → UW/Polygon store tiles show plausible ages during RTH
 (e.g. "12s ago"), not "just now" on a store that hasn't ticked.
 
+**Check at the open:** GitHub Actions `RTH deep audit` → heatmap section should not emit `reported X != Y` wall P0s when prod serves side-constrained walls.
+
+### 0j-d. RTH deep audit unconstrained wall derive — fix/full-site-audit-wall-side-constraint (pending)
+
+**What was broken:** `full-site-deep-audit.mjs` expected heatmap `call_wall`/`put_wall` via unconstrained global argmax/argmin, while production uses side-constrained `wallsFromStrikeTotals(..., spot)` since #2417/#2521. Six false P0s on live RTH (e.g. `SPX.put_wall: reported 7700 != 8000`).
+
+**Fix:** Audit now imports shared `wallsFromStrikeTotals` from `gex-wall-invariants.mjs`.
+
+**Check at the open:** `RTH deep audit` GitHub job — no heatmap wall P0 mismatches when prod walls are correct.
+
 ### 0j-c. Admin API feed + SPX terminal fmtRel future-skew — fix/admin-fmtrel-future-guard (pending)
 
 **What was broken:** `AdminApiLiveFeed.tsx` and `AdminSpxTerminal.tsx` had local `fmtRel()` helpers
