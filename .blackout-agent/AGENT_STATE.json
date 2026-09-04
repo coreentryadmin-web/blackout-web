@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T03:07:52.917Z",
+  "updated_at": "2026-09-04T03:21:07.266Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -148,6 +148,14 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T03:07:44.453Z",
+      "safe_to_merge": true
+    },
+    "pr-3477": {
+      "pr": 3477,
+      "head_sha": "3b16a632ada7f55762beddfa6b8e7abc0dc4824f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T03:21:07.265Z",
       "safe_to_merge": true
     }
   },
@@ -558,6 +566,16 @@
       "agent": "cursor",
       "run_id": "8647542d-90ad-45d7-92c4-381668c855af",
       "summary": "Recovered autopilot state. P1 queue cleared. Peer-reviewed and released #3474 (Meridian expected_move_pct withhold) — merged. Reviewed #3476 (G-18/G-19 replay JSON parse) — merged before undraft. Deploy validation GREEN. Next: review #3477 when verify green."
+    },
+    {
+      "at": "2026-09-04T03:21:07.266Z",
+      "type": "pr_review",
+      "pr": 3477,
+      "head_sha": "3b16a632ada7f55762beddfa6b8e7abc0dc4824f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T03:21:07.265Z",
+      "safe_to_merge": true
     }
   ]
 }
