@@ -120,6 +120,27 @@ test("reserveForLiveTraffic never floors below 1 even at a 1-slot ceiling (never
   assert.equal(observed, 1);
 });
 
+// Regression for the observability gap found investigating the live /vector contract-picks
+// timeout (RUN-LOG.md, 2026-09-04): a request that queued for the limiter and then SUCCEEDED
+// left no trace anywhere — RateLimiterQueueTimeoutError only throws once the budget is fully
+// EXHAUSTED, so the whole admitted-but-slow middle of the distribution was invisible. This is
+// the pure formatter throttleUw now calls; testing it directly avoids simulating real contention.
+test("formatQueueWaitLog: below threshold is silent (the common, uncontended path)", async () => {
+  const { formatQueueWaitLog } = await import("./uw-rate-limiter");
+  assert.equal(formatQueueWaitLog(0, false), null);
+  assert.equal(formatQueueWaitLog(499, false), null);
+});
+
+test("formatQueueWaitLog: at/above threshold logs the wait, tagged by caller type", async () => {
+  const { formatQueueWaitLog } = await import("./uw-rate-limiter");
+  assert.equal(formatQueueWaitLog(500, false), "[uw] queue wait 500ms");
+  assert.equal(
+    formatQueueWaitLog(15000, true),
+    "[uw] queue wait 15000ms (background sweep)",
+    "a background-sweep wait must be tagged so it is never conflated with a live-traffic wait when reading logs back"
+  );
+});
+
 test("runWithBackgroundUwSweep does not leak into a concurrent call outside its context (AsyncLocalStorage isolation)", async () => {
   const { reserveForLiveTraffic, runWithBackgroundUwSweep } = await import("./uw-rate-limiter");
   const [inSweep, outsideSweep] = await Promise.all([

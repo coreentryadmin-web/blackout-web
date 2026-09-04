@@ -120,6 +120,23 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0aa. UW rate limiter queue-wait observability — fix/uw-rate-limiter-queue-wait-observability (pending)
+
+**What was broken:** a UW request that queued behind the rate limiter for 15+ seconds and then
+successfully acquired a slot left zero trace anywhere — `RateLimiterQueueTimeoutError` only fires
+once the budget is fully exhausted, so the whole admitted-but-slow middle of the distribution was
+invisible to CloudWatch Logs. Blocked the follow-up two earlier entries today (vector-pick-sweep
+tail latency, `contract-picks` live timeout) both named as the correct next step.
+
+**Fix:** `throttleUw` now logs `[uw] queue wait <ms>ms` (tagged `(background sweep)` when
+applicable) whenever an admission takes ≥500ms. Pure instrumentation — no change to admission
+timing, concurrency, or rate limiting itself.
+
+**Check at the open:** filter CloudWatch Logs on `[uw] queue wait` during RTH — the `(background
+sweep)` tag separates expected cron-sweep queueing from live member-request queueing, which is
+what the two prior entries' follow-up measurement needs. No product-facing behavior to check; this
+is instrumentation only.
+
 ### 0z. SPX pulse stream local freshness future guard — fix/spx-pulse-stream-future-guard (pending)
 
 **What was broken:** `refreshSnapshot()` in `/api/market/spx/pulse/stream` preferred local `indexStore` when `Date.now() - fresh < 10_000` with no future-timestamp guard — clock-skewed future `updatedAt` reads as infinitely fresh and skips cross-replica Redis fallback.
