@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T06:58:04.254Z",
+  "updated_at": "2026-09-04T07:05:18.486Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,26 +68,25 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-04T06:44:42.913Z",
-      "lease_until": "2026-09-04T08:14:42.913Z",
+      "lease_until": "2026-09-04T08:34:34.789Z",
       "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "93b5c43c-9076-49c3-abe9-8f70e80739a3",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:31:04.605Z",
-      "lease_until": "2026-09-04T07:01:04.605Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T06:58:14.040Z",
+      "lease_until": "2026-09-04T08:34:34.789Z",
+      "phase": "VERIFY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.756Z"
+      "run_id": "93b5c43c-9076-49c3-abe9-8f70e80739a3",
+      "title": null
     }
   },
   "reviews": {
@@ -155,8 +154,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T06:44:42.913Z",
-      "current_task": "BO-P1-0100"
+      "last_seen": "2026-09-04T06:58:14.041Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
@@ -166,7 +165,108 @@
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845611594",
     "last_deploy_sha": "84b92b6b62ff5b6694c856016aa3e5b2d235b5ea"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3523,
+      "title": "fix(autopilot): parse workflow_run pull_requests via JSON.parse env",
+      "branch": "fix/pr-webhook-workflow-run-json",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T07:02:20Z"
+    },
+    {
+      "number": 3522,
+      "title": "chore(autopilot): cursor handoff — deploy verify GREEN, peer sweep empty",
+      "branch": "cursor/autopilot-work-loop-a62b",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T07:01:47Z"
+    },
+    {
+      "number": 3521,
+      "title": "chore(autopilot): cursor handoff — off-hours lifecycle GREEN 2026-09-04",
+      "branch": "chore/autopilot-handoff-2026-09-04-v2",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T06:56:53Z"
+    },
+    {
+      "number": 3520,
+      "title": "chore(autopilot): sync agent state after post-merge verification cycle",
+      "branch": "cursor/cursor-continuous-work-loop-dfb9",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T06:52:47Z"
+    },
+    {
+      "number": 3519,
+      "title": "chore(autopilot): sync peer review state for #3512/#3511/#3513",
+      "branch": "cursor/autopilot-work-loop-efb4",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T06:49:54Z"
+    },
+    {
+      "number": 3518,
+      "title": "chore(autopilot): cursor session state sync — peer reviews #3508-3512",
+      "branch": "cursor/autopilot-work-loop-39ce",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T06:46:50Z"
+    },
+    {
+      "number": 3517,
+      "title": "chore(autopilot): cursor handoff after peer reviews #3512/#3506 merged",
+      "branch": "cursor/autopilot-work-loop-d9ae",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T06:46:24Z"
+    },
+    {
+      "number": 3516,
+      "title": "chore(autopilot): cursor peer reviews + handoff state sync",
+      "branch": "cursor/autopilot-state-recovery-loop-2e9b",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T06:43:09Z"
+    },
+    {
+      "number": 3515,
+      "title": "chore(autopilot): cursor handoff after #3508/#3509 peer reviews",
+      "branch": "chore/autopilot-handoff-2026-09-04T0635",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T07:02:02Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T06:35:31Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -617,6 +717,49 @@
       "agent": "cursor",
       "run_id": "ad5ea49e-6a44-4858-b5fd-2082253af21c",
       "summary": "Cycle: peer-review sweep empty (pr-sweep 0, GitHub API rate-limited). Deploy verification GREEN — validate:deploy, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn off-hours. main@c593449c1; ECR deploy 84b92b6b in_progress. RTH lifecycle Fri 09:00 ET."
+    },
+    {
+      "at": "2026-09-04T06:58:14.041Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T07:04:34.788Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
+    },
+    {
+      "at": "2026-09-04T07:04:35.907Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
+    },
+    {
+      "at": "2026-09-04T07:04:37.172Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
+    },
+    {
+      "at": "2026-09-04T07:05:11.960Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
+    },
+    {
+      "at": "2026-09-04T07:05:18.485Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
+    },
+    {
+      "at": "2026-09-04T07:05:18.486Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "1f85a14f-730f-4e30-8fb0-54e3ab319ad1",
+      "summary": "Lifecycle GREEN (ops:collect 0, validate:deploy/api-auth/platform-integrity/seo, rth-open skipped off-hours). data-validator 22 PASS. Peer sweep empty. ECR deploy 84b92b6b still in_progress ~21m (updatedAt stale since 06:57 — monitor). Agent state PR #3522 opened. Next: RTH lifecycle Fri 09:00 ET."
     }
   ]
 }
