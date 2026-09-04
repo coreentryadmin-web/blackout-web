@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T02:06:52.193Z",
+  "updated_at": "2026-09-04T03:46:19.667Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -121,6 +121,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3479": {
+      "pr": 3479,
+      "head_sha": "6b4a87bcd226a20c0de1a643d4876d94a9bdc8e3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge (retrospective; merged be08defd)",
+      "reviewed_at": "2026-09-04T03:46:15.330Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -135,32 +143,42 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f2285917e0ad04ea57dbe884e9e1004f20b6a04e",
+    "last_main_sha": "be08defd982b16005b6e93ada505613d028ab6ae",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T02:05:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826698258",
-    "last_deploy_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b"
+    "last_deploy_at": "2026-09-04T03:38:07Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33833916757",
+    "last_deploy_sha": "be08defd982b16005b6e93ada505613d028ab6ae"
   },
   "open_prs": [
     {
-      "number": 3465,
-      "title": "chore(autopilot): handoff — merged #3454, P1 queue cleared",
-      "branch": "fix/autopilot-handoff-2026-09-04-session2",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T02:04:58Z"
-    },
-    {
-      "number": 3464,
-      "title": "chore(autopilot): cursor handoff — peer review lane BO-P1-0005",
-      "branch": "cursor/autopilot-handoff-peer-reviews-2026-09-04-2",
+      "number": 3483,
+      "title": "chore(autopilot): cursor handoff — peer-reviewed and merged #3479 UW sweep fix",
+      "branch": "cursor/blackout-handoff-3479-merge",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T02:03:08Z"
+      "updated_at": "2026-09-04T03:40:16Z"
+    },
+    {
+      "number": 3482,
+      "title": "fix(meridian): withhold expected_move_pct in the intel layer too, once already printed",
+      "branch": "fix/meridian-intel-expected-move-bypass",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T03:40:18Z"
+    },
+    {
+      "number": 3480,
+      "title": "fix(autopilot): standing work queue + never-idle continuous loop",
+      "branch": "cursor/autopilot-standing-work-never-idle",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T03:40:20Z"
     },
     {
       "number": 2810,
@@ -170,7 +188,7 @@
       "agent": "human",
       "draft": false,
       "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-01T19:54:25Z"
+      "updated_at": "2026-09-04T03:40:22Z"
     }
   ],
   "events": [
@@ -501,6 +519,41 @@
       "type": "task_released",
       "task_id": "BO-P1-0004",
       "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T03:43:20.991Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-04T03:43:22.085Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-04T03:46:15.331Z",
+      "type": "pr_review",
+      "pr": 3479,
+      "head_sha": "6b4a87bcd226a20c0de1a643d4876d94a9bdc8e3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge (retrospective; merged be08defd)",
+      "reviewed_at": "2026-09-04T03:46:15.330Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-04T03:46:19.666Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-04T03:46:19.667Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "49b43bcb-8292-4350-a849-decd37fd7ba9",
+      "summary": "Reviewed PR #3479: MERGE (retrospective approval — already merged be08defd; UW sweep concurrency reservation fix is correct, 10/10 tests pass)"
     }
   ]
 }
