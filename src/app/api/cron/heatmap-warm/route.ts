@@ -49,6 +49,31 @@ export const maxDuration = 120;
 const OVERLAP_LOCK_KEY = "heatmap-warm:running";
 const OVERLAP_LOCK_TTL_SEC = 240;
 
+/**
+ * Minimum re-run floor — independent of, and IN ADDITION TO, the hours gate above.
+ *
+ * Same structural gap fixed for desk-warm (#3540): `force=1` completely bypasses
+ * `shouldRunCacheWarmer`'s hours check, and OVERLAP_LOCK above guards only against a SECOND run
+ * starting while the FIRST is still in flight — it is released the instant the run completes,
+ * which on an already-warm universe (this route's own header comment: "warm names are
+ * Redis-cache-first (near-free)") can be well under the p50=46.5s measured for a cold sweep. A
+ * caller replaying `?force=1` in a tight loop while the shared universe is already warm could
+ * therefore re-trigger the full Polygon fan-out across the shared ≤100-ticker universe far faster
+ * than any legitimate trigger ever would, with nothing capping the rate — the exact pattern #3540
+ * measured live on desk-warm (314 replays overnight, median 40s apart, some under 15s, with
+ * EventBridge, rth-warm-leader and the staleness watchdog all positively ruled out as the source).
+ *
+ * 10s sits safely BELOW every legitimate cadence for this specific cron so it never blocks real
+ * traffic: rth-warm-leader's own heal threshold here is 20s (RTH_WRITER_HEAL_AFTER_MIN
+ * ["heatmap-warm"], the TIGHTEST of any watched key — see rth-warm-leader-logic.ts) and its own
+ * tick loop runs every 15s (TICK_MS, rth-warm-leader.ts); EventBridge's own schedule is ~30-45s
+ * (this file's header comment). None of those legitimate paths re-requests this key sooner than
+ * 10s ever would allow, so only an out-of-band replay loop tighter than the leader's own tick can
+ * ever observe this floor.
+ */
+const RERUN_COOLDOWN_KEY = "heatmap-warm:cooldown";
+const RERUN_COOLDOWN_SEC = 10;
+
 export async function GET(req: NextRequest) {
   const started = Date.now();
   if (!isCronAuthorized(req)) {
@@ -62,6 +87,25 @@ export async function GET(req: NextRequest) {
       skipped: true,
       reason:
         "Outside extended warm window (weekday 4:00 AM–8:00 PM ET) — use ?force=1",
+    };
+    await logCronRun("heatmap-warm", started, payload);
+    return NextResponse.json(payload);
+  }
+
+  // Rate floor — checked even when force=1 legitimately cleared the hours gate above (see
+  // RERUN_COOLDOWN_KEY doc comment). Not deleted on completion like OVERLAP_LOCK below — it is
+  // meant to persist for its full TTL so the cadence floor holds regardless of how fast an
+  // individual run finishes.
+  const withinCooldown = !(await sharedCacheSetNx(
+    RERUN_COOLDOWN_KEY,
+    { startedAt: started },
+    RERUN_COOLDOWN_SEC
+  ).catch(() => true)); // fail OPEN on a Redis error — same posture as OVERLAP_LOCK below
+  if (withinCooldown) {
+    const payload = {
+      ok: true,
+      skipped: true,
+      reason: `rate-limited — heatmap-warm already ran within the last ${RERUN_COOLDOWN_SEC}s (force=1 does not bypass this floor)`,
     };
     await logCronRun("heatmap-warm", started, payload);
     return NextResponse.json(payload);
