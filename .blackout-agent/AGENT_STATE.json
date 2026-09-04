@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:52:08.396Z",
+  "updated_at": "2026-09-04T23:26:28.682Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-04T23:01:49.211Z",
+      "lease_until": "2026-09-05T00:35:41.949Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "be9596a8-3fa2-4d9e-8a7a-c2ff8ac7b7f4",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -248,11 +248,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75",
+    "last_main_sha": "6716166239f64a30d67c7c5adc4bd66c889c3d22",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:42:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
-    "last_deploy_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75"
+    "last_deploy_at": "2026-09-04T23:26:21Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33928899257",
+    "last_deploy_sha": "4e4a0f34bbc2014f0afdd1cde2203ba0d2fec6f9"
   },
   "open_prs": [],
   "events": [
@@ -1071,6 +1071,19 @@
       "agent": "cursor",
       "run_id": "01ba5e3e-d264-48b8-b6f9-953c859c62cd",
       "summary": "Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty."
+    },
+    {
+      "at": "2026-09-04T23:26:28.680Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T23:26:28.682Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "92ab3f9c-b977-43df-8f7a-b4f0975fe4ed",
+      "summary": "Autopilot pull_request wake: bootstrap+session GREEN. validate:deploy + platform-integrity 14/14 + ops:collect 0. Peer review #3778 APPROVED (merged). #3774 WAIT→pushed test fix a79fd880 (isWsUpdatedAtFresh scan). #3784/#3786 learn copy fixes — local tests pass, verify pending. Main at 671616623 (#3785 merged)."
     }
   ]
 }
