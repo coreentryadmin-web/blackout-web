@@ -78,3 +78,57 @@ test("vector-walls-warm intentionally omits runWithBackgroundUwSweep (Polygon-pr
     "must document why this cron is exempt from the UW sweep tag"
   );
 });
+
+test("force=1 is rate-limited by a minimum re-run cooldown, independent of the cash-RTH gate", () => {
+  assert.match(
+    routeSrc,
+    /RERUN_COOLDOWN_SEC = 10/,
+    "the floor must exist and be tuned below rth-warm-leader's 20s heal threshold for this key"
+  );
+  assert.match(
+    routeSrc,
+    /RERUN_COOLDOWN_KEY = "vector-walls-warm:cooldown"/,
+    "must be a key distinct from OVERLAP_LOCK_KEY"
+  );
+
+  assert.match(
+    routeSrc,
+    /const withinCooldown = !\(await sharedCacheSetNx\(\s*RERUN_COOLDOWN_KEY,/,
+    "the cooldown claim must be atomic, not a separate read-then-write"
+  );
+
+  const cooldownIdx = routeSrc.indexOf("RERUN_COOLDOWN_KEY,");
+  const overlapClaimIdx = routeSrc.indexOf("const acquired = await sharedCacheSetNx(");
+  const dispatchIdx = routeSrc.indexOf("after(dispatchWarming)");
+  assert.ok(cooldownIdx > 0 && overlapClaimIdx > 0 && dispatchIdx > 0);
+  assert.ok(cooldownIdx < overlapClaimIdx, "cooldown must be checked before the overlap lock");
+  assert.ok(overlapClaimIdx < dispatchIdx, "overlap lock must still be checked before dispatch");
+
+  const skipIdx = routeSrc.indexOf("reason: `rate-limited");
+  assert.ok(skipIdx > cooldownIdx && skipIdx < dispatchIdx);
+
+  assert.match(
+    routeSrc,
+    /sharedCacheSetNx\(\s*RERUN_COOLDOWN_KEY[\s\S]{0,80}\)\.catch\(\(\) => true\)/,
+    "a Redis error on the cooldown claim must not permanently block every future warm"
+  );
+
+  assert.doesNotMatch(
+    routeSrc,
+    /sharedCacheDel\(RERUN_COOLDOWN_KEY\)/,
+    "the cooldown must expire on its own TTL, not be released early like the overlap lock"
+  );
+});
+
+test("the cooldown primitive genuinely refuses a second claim of the same key inside its TTL", async () => {
+  const { sharedCacheSetNx, sharedCacheDel } = await import("@/lib/shared-cache");
+  const key = `vector-walls-warm:cooldown:test:${Date.now()}:${Math.random()}`;
+  try {
+    const first = await sharedCacheSetNx(key, { startedAt: Date.now() }, 10);
+    assert.equal(first, true, "first claim must succeed");
+    const second = await sharedCacheSetNx(key, { startedAt: Date.now() }, 10);
+    assert.equal(second, false, "second claim inside TTL must be refused");
+  } finally {
+    await sharedCacheDel(key).catch(() => undefined);
+  }
+});
