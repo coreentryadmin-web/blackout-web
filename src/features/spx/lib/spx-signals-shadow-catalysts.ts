@@ -159,7 +159,9 @@ export function computeCatalystShadowFactors(
   catalystFetchOk: boolean,
   now: number = Date.now()
 ): ShadowFactorObservation[] {
-  const leaders = desk.leader_stocks ?? [];
+  const leaders = (desk.leader_stocks ?? []).filter(
+    (l): l is typeof l & { change_pct: number } => l.change_pct != null
+  );
 
   if (leaders.length === 0) {
     return [
