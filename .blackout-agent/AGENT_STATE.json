@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T00:30:41.044Z",
+  "updated_at": "2026-09-04T02:26:43.808Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -30,13 +30,13 @@
     "BO-P1-0005": {
       "task_id": "BO-P1-0005",
       "owner": "cursor",
-      "claimed_at": "2026-09-03T23:53:48.679Z",
-      "lease_until": "2026-09-04T01:23:48.679Z",
+      "claimed_at": "2026-09-04T01:47:30.693Z",
+      "lease_until": "2026-09-04T03:19:43.462Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "cff217eb-bea4-4218-81fc-12f716ad8219",
       "title": "Review Claude PR #3434"
     },
     "BO-P1-0007": {
@@ -68,6 +68,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T00:30:30.525Z",
       "safe_to_merge": true
+    },
+    "pr-3454": {
+      "pr": 3454,
+      "head_sha": "297718fac",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:49:51.862Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -82,13 +90,54 @@
     }
   },
   "deploy": {
-    "last_main_sha": "84c5707ac6849b4c048dec6e8a414321f2a76e27",
+    "last_main_sha": "da36b826ea046361af8f1eaef22ce1ebf04e3807",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T00:18:06Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33821229041",
-    "last_deploy_sha": "271a977cfdc9b5d2cc2d62535f8c7e010374d78d"
+    "last_deploy_at": "2026-09-04T02:05:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826698258",
+    "last_deploy_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3470,
+      "title": "docs(findings): ECS web maximumPercent 120→200 change had no measured effect",
+      "branch": "docs/ecs-web-maxpercent-finding",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T02:25:39Z"
+    },
+    {
+      "number": 3469,
+      "title": "fix(largo): gate morning-brief cron on the 9:25 ET window",
+      "branch": "fix/largo-morning-brief-dst-double-fire",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T02:22:50Z"
+    },
+    {
+      "number": 3468,
+      "title": "fix(cron): add meridian-warm cross-replica overlap guard",
+      "branch": "fix/meridian-warm-overlap-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T02:23:19Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-01T19:54:25Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -293,6 +342,47 @@
       "agent": "cursor",
       "run_id": "49d14bda-5dd3-4b4b-8deb-b5336a96b8b1",
       "summary": "PR webhook branch ready: heartbeat-gate fix in claimLock, BO-P1-0007 claimed, peer-reviewed #3438 APPROVED. #3436 merged — autopilot v1 live on main. Next: merge this PR, close duplicate #3435."
+    },
+    {
+      "at": "2026-09-04T01:49:42.671Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:49:43.462Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:49:44.192Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:49:51.862Z",
+      "type": "pr_review",
+      "pr": 3454,
+      "head_sha": "297718fac",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:49:51.862Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T02:26:43.807Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-04T02:26:43.808Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9c356f50-0c62-4297-9ce7-20f96517199f",
+      "summary": "Recovered state after workflow_run. Peer-reviewed and merged #3454 (select-task test fixture isolation, rebased onto main). Closed duplicate #3461. BO-P1-0004/#3452 deploy in progress (ECS web roll); validate:deploy GREEN on live prod. Marked BO-P1-0004/0005/0007 and BO-P2-0003 DONE in queue."
     }
   ]
 }
