@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T18:51:29.153Z",
+  "updated_at": "2026-09-04T19:02:48.800Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T18:44:40.900Z",
+      "lease_until": "2026-09-04T20:14:40.900Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -250,6 +250,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T18:51:29.153Z",
       "safe_to_merge": true
+    },
+    "pr-3717": {
+      "pr": 3717,
+      "head_sha": "615c75036f0a93484a55438a3c5000c52002a6c4",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T19:02:38.144Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -264,11 +272,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "6776238a905a08affe9527887aae21f0c15e325a",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T19:02:29Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33909058935",
+    "last_deploy_sha": "6776238a905a08affe9527887aae21f0c15e325a"
   },
   "open_prs": [],
   "events": [
@@ -1088,6 +1096,35 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T18:51:29.153Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T19:02:38.145Z",
+      "type": "pr_review",
+      "pr": 3717,
+      "head_sha": "615c75036f0a93484a55438a3c5000c52002a6c4",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T19:02:38.144Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T19:02:43.890Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:02:43.890Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "689962a8-95b2-48ca-bee1-88225f593b07",
+      "summary": "Cycle: peer-reviewed #3712/#3714/#3717 (all merged to main). Platform GREEN (deploy 14/14 integrity, ops:collect 0). #3698 cursor-owned awaiting Claude review. Handoff branch cursor/autopilot-handoff-1857 pushed. Off-hours — RTH Fri 09:00 ET."
+    },
+    {
+      "at": "2026-09-04T19:02:48.800Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
