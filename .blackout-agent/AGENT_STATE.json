@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:52:08.396Z",
+  "updated_at": "2026-09-04T23:44:58.835Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-04T23:20:22.846Z",
+      "lease_until": "2026-09-05T00:50:22.846Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -234,6 +234,30 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3774": {
+      "pr": 3774,
+      "head_sha": "a79fd88000093e3eb148dc254ba30cfd0c8172a2",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:30:00.979Z",
+      "safe_to_merge": true
+    },
+    "pr-3786": {
+      "pr": 3786,
+      "head_sha": "3de0a3b40eed37a79de8fb32b0f9b661ea37300c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:32:14.212Z",
+      "safe_to_merge": true
+    },
+    "pr-3790": {
+      "pr": 3790,
+      "head_sha": "ce32afa36c17eccbf0923ffbb8a839dbe21d09e9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:35:43.616Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,11 +272,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75",
+    "last_main_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:42:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
-    "last_deploy_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75"
+    "last_deploy_at": "2026-09-04T23:44:10Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33930592915",
+    "last_deploy_sha": "0c5f0a254fba49bc3bcb22e46bad429b922f5f8a"
   },
   "open_prs": [],
   "events": [
@@ -1071,6 +1095,55 @@
       "agent": "cursor",
       "run_id": "01ba5e3e-d264-48b8-b6f9-953c859c62cd",
       "summary": "Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty."
+    },
+    {
+      "at": "2026-09-04T23:30:00.980Z",
+      "type": "pr_review",
+      "pr": 3774,
+      "head_sha": "a79fd88000093e3eb148dc254ba30cfd0c8172a2",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:30:00.979Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T23:32:14.213Z",
+      "type": "pr_review",
+      "pr": 3786,
+      "head_sha": "3de0a3b40eed37a79de8fb32b0f9b661ea37300c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:32:14.212Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T23:35:43.616Z",
+      "type": "pr_review",
+      "pr": 3790,
+      "head_sha": "ce32afa36c17eccbf0923ffbb8a839dbe21d09e9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T23:35:43.616Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T23:39:55.153Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T23:39:55.154Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "1066f6ec-742d-4e2e-a1f1-d0c04faf9513",
+      "summary": "Peer review sweep: approved #3774 (merged), #3786, #3790; #3789 local tests 4/4 GREEN, CI pending. validate:deploy GREEN, ops:collect 0 items. Deploy main"
+    },
+    {
+      "at": "2026-09-04T23:44:58.835Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
