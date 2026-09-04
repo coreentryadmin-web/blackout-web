@@ -37,6 +37,9 @@ const GLOBAL_MAX_RPS = envNumber("UW_GLOBAL_MAX_RPS", 2);
 /** Live replica count of this service — divides the global budget across replicas on Redis loss. */
 const REPLICA_COUNT = Math.max(1, Math.floor(envNumber("REPLICA_COUNT", 1)));
 
+/** Below this, admission was effectively uncontended — not worth a log line. */
+const QUEUE_WAIT_LOG_THRESHOLD_MS = 500;
+
 /**
  * Per-replica RPS the local bucket may sustain when the Redis global ceiling is UNAVAILABLE.
  * With Redis up, the atomic Lua ceiling is the real cluster cap and the local bucket is just a
@@ -410,9 +413,21 @@ async function acquireLocalSlot(budget: QueueBudget): Promise<void> {
  *
  * On the uncontended path this adds one Date.now() and changes nothing.
  *
+ * Returns the total ms spent waiting to be admitted (0 on the uncontended path) --
+ * `throttleUw` logs this when it crosses `QUEUE_WAIT_LOG_THRESHOLD_MS`, tagged with
+ * whether the caller was a background sweep. Before this, a request that queued for
+ * 15s and then SUCCEEDED left no trace anywhere: `RateLimiterQueueTimeoutError` is
+ * only thrown once the budget is fully EXHAUSTED, so the entire admitted-but-slow
+ * middle of the distribution was invisible to CloudWatch Logs -- the only observable
+ * signal was `maybeFlushRateLimitSummary`'s 429 count, which says nothing about how
+ * long a caller waited for a slot. Found investigating a live `/vector` contract-picks
+ * timeout (RUN-LOG.md, 2026-09-04 19:19 UTC entry) traced to this same limiter with no
+ * way to confirm from logs alone whether queueing (this) or the upstream fetch itself
+ * was the slow part.
+ *
  * @throws {RateLimiterQueueTimeoutError} when the queue budget is exhausted.
  */
-async function acquireSlot(): Promise<void> {
+async function acquireSlot(): Promise<number> {
   ensureBreakerSubscription();
   const budget = new QueueBudget("unusual_whales", queueBudgetMs());
   await waitForCircuit(budget);
@@ -441,10 +456,11 @@ async function acquireSlot(): Promise<void> {
         releaseGlobalConcurrencyOnly();
         throw err;
       }
-      return;
+      return budget.waitedMs();
     }
   }
   await acquireLocalSlot(budget);
+  return budget.waitedMs();
 }
 
 /**
@@ -529,6 +545,21 @@ export function resetUwCircuitForTest(): void {
   breakerSubState.subscribed = false;
 }
 
+/**
+ * Pure formatter for the queue-wait log line — separated from `throttleUw` so the threshold
+ * and tagging logic are unit-testable without simulating real rate-limiter contention. Returns
+ * `null` when the wait was under threshold (the common, uncontended case — not worth a log line).
+ */
+export function formatQueueWaitLog(waitedMs: number, isBackgroundSweep: boolean): string | null {
+  if (waitedMs < QUEUE_WAIT_LOG_THRESHOLD_MS) return null;
+  // Background-tagged sweeps (vector-pick-sweep, vector-dark-pool-warm, etc.) are EXPECTED to
+  // queue behind live traffic by design (runWithBackgroundUwSweep reserves them the smaller
+  // ceiling) — tagging which side of that split a slow admission fell on is the whole point of
+  // this log line, so a live-traffic wait and a background-sweep wait are never conflated when
+  // reading it back.
+  return `[uw] queue wait ${waitedMs}ms${isBackgroundSweep ? " (background sweep)" : ""}`;
+}
+
 /** Pace a single UW HTTP call through local + optional Redis-global buckets. */
 export async function throttleUw<T>(fn: () => Promise<T>): Promise<T> {
   // Hunt-budget gate (cache-reader rule): when a Night Hawk hunt is running, a GENUINE
@@ -540,7 +571,9 @@ export async function throttleUw<T>(fn: () => Promise<T>): Promise<T> {
   if (!tryClaimHuntUwCall()) {
     throw new UwHuntBudgetExhaustedError();
   }
-  await acquireSlot();
+  const waitedMs = await acquireSlot();
+  const logLine = formatQueueWaitLog(waitedMs, isBackgroundUwSweep());
+  if (logLine) console.warn(logLine);
   try {
     return await fn();
   } finally {

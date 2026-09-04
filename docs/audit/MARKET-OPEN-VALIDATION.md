@@ -120,7 +120,24 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
-### 0aa. LULD halt future-timestamp guard — fix/luld-halt-future-timestamp-guard (pending)
+### 0aa. UW rate limiter queue-wait observability — fix/uw-rate-limiter-queue-wait-observability (merged #3759)
+
+**What was broken:** a UW request that queued behind the rate limiter for 15+ seconds and then
+successfully acquired a slot left zero trace anywhere — `RateLimiterQueueTimeoutError` only fires
+once the budget is fully exhausted, so the whole admitted-but-slow middle of the distribution was
+invisible to CloudWatch Logs. Blocked the follow-up two earlier entries today (vector-pick-sweep
+tail latency, `contract-picks` live timeout) both named as the correct next step.
+
+**Fix:** `throttleUw` now logs `[uw] queue wait <ms>ms` (tagged `(background sweep)` when
+applicable) whenever an admission takes ≥500ms. Pure instrumentation — no change to admission
+timing, concurrency, or rate limiting itself.
+
+**Check at the open:** filter CloudWatch Logs on `[uw] queue wait` during RTH — the `(background
+sweep)` tag separates expected cron-sweep queueing from live member-request queueing, which is
+what the two prior entries' follow-up measurement needs. No product-facing behavior to check; this
+is instrumentation only.
+
+### 0ab. LULD halt future-timestamp guard — fix/luld-halt-future-timestamp-guard (pending)
 
 **What was broken:** `isLuldHaltSourceStaleForState()` and `isLuldHaltFeedStale()` used raw `Date.now() - timestamp` age math without a future guard — clock-skewed future cluster/local `last_message_at` stamps read as live/trusted (same class as the UW halt bug fixed in #3745).
 
@@ -2141,4 +2158,10 @@ than an end-of-session patch.
 - **What was broken:** `/api/market/spx/pulse/stream` SSE events serialized raw `indexStore` / UW tide numbers without `roundFloats`, so members on the live stream lane could still see tails like `7718.600000000001` while REST `/spx/pulse` was already rounded (PR #3751).
 - **What changed:** Wrap the SSE payload in `roundFloats()` before `JSON.stringify` in `pulse/stream/route.ts`.
 - **RTH check:** Open SPX desk with pulse stream connected (Network tab → EventStream on `/api/market/spx/pulse/stream`); confirm `spx.price` and tide `net`/`call_premium` values are 2dp-clean with no IEEE tails during RTH ticks.
+
+### 25. HELIX flows SSE stream — unrounded IEEE floats on wire — fix/flows-stream-round-floats — 2026-09-04
+
+- **What was broken:** `/api/market/flows/stream` SSE events serialized raw flow premiums/strikes without `roundFloats`, so members on the live HELIX tape could still see IEEE tails while REST `/flows` was already rounded.
+- **What changed:** Wrap the SSE payload in `roundFloats()` before `JSON.stringify` in `flows/stream/route.ts`.
+- **RTH check:** Open `/flows` with live stream connected (Network tab → EventStream on `/api/market/flows/stream`); confirm `premium`, `strike`, and GEX enrichment numbers are 2dp-clean with no IEEE tails on incoming flow events during RTH.
 

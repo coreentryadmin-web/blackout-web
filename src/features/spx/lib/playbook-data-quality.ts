@@ -2,6 +2,7 @@ import type { PlaybookId } from "@/features/spx/lib/playbook-registry";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import { playGexStaleMaxSec } from "@/features/spx/lib/spx-play-config";
 import { playbookDataQualityBlockReason } from "@/features/spx/lib/playbook-data-requirements";
+import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 
 /**
  * @deprecated Capability-based policy supersedes this set — see `playbook-data-requirements.ts`.
@@ -38,10 +39,15 @@ export function shouldFailClosedLiveOnDataQuality(mode: LiveDataQualityMode): bo
 
 export function playbookDataQualityFlags(desk: SpxDeskPayload): PlaybookDataQualityFlags {
   const polledAt = desk.polled_at ?? desk.as_of;
-  const ageSec =
-    polledAt != null
-      ? Math.max(0, (Date.now() - new Date(polledAt).getTime()) / 1000)
-      : Infinity;
+  let ageSec = Infinity;
+  if (polledAt != null) {
+    const polledAgeMs = Date.now() - new Date(polledAt).getTime();
+    // Reject future desk timestamps (cross-process clock skew) — same guard as spx-play-gates.ts.
+    ageSec =
+      polledAgeMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS
+        ? playGexStaleMaxSec() + 1
+        : Math.max(0, polledAgeMs / 1000);
+  }
   return {
     halt_channel_stale: desk.halt_channel_stale === true,
     desk_stale: ageSec > playGexStaleMaxSec(),
