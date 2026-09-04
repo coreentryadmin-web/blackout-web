@@ -20,7 +20,7 @@ type Row = { feature: string; blackout: string; others: string };
 // not claims about any specific named competitor.
 const ROWS: Row[] = [
   { feature: "Data freshness", blackout: MARKETING_DATA_FRESHNESS.comparison, others: "Delayed snapshots, manual refresh" },
-  { feature: "Alert accountability", blackout: "Every setup graded A–F with a logged track record", others: "Cherry-picked alerts, no receipts" },
+  { feature: "Alert accountability", blackout: "SPX Slayer, Night Hawk, and 0DTE Command plays graded A–F with a logged track record", others: "Cherry-picked alerts, no receipts" },
   { feature: "Where the tools live", blackout: `${manifestProductCount()} products, one screen, one membership`, others: "Scattered across 5 tabs and 3 Discords" },
   { feature: "Entry verification", blackout: "AI verification engine gates every play", others: "Gut-feel callouts, no grading" },
   { feature: "Underlying data", blackout: "Institutional flow, GEX, dark pool — streamed live", others: "Stale data repackaged as “signals”" },

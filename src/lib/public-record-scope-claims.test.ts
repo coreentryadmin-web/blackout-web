@@ -23,6 +23,7 @@ const SURFACES = [
   "src/app/(marketing)/about/page.tsx",
   "src/components/landing/RedesignHome.tsx",
   "src/components/landing/WhyBlackoutContent.tsx",
+  "src/app/(marketing)/vs/others/page.tsx",
 ] as const;
 
 const REPO = join(import.meta.dirname, "..", "..");
