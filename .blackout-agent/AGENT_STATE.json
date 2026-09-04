@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T14:32:08.481Z",
+  "updated_at": "2026-09-04T15:55:07.765Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,15 +67,14 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T15:36:24.149Z",
+      "lease_until": "2026-09-04T17:17:14.079Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "run_id": "c68fbadb-5d0f-4d27-b6d7-d6e0cae088cd",
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -210,6 +209,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
+    },
+    "pr-3624": {
+      "pr": 3624,
+      "head_sha": "2953a6cf5c03c3f0514ca358993320b0c42e4435",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T15:54:43.909Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -219,16 +226,16 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T15:36:24.149Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "56bcbcc1b8ccdcb77216b75dcf0b2599eb1ea5c3",
+    "last_main_sha": "09bb330c09f91496d3123f0b82da68e31eb273e6",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T15:54:36Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33892161113",
+    "last_deploy_sha": "09bb330c09f91496d3123f0b82da68e31eb273e6"
   },
   "open_prs": [],
   "events": [
@@ -900,40 +907,88 @@
       "summary": "Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs."
     },
     {
-      "at": "2026-09-04T14:26:50.779Z",
+      "at": "2026-09-04T15:36:14.676Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:26:51.111Z",
+      "at": "2026-09-04T15:36:18.529Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:26:51.206Z",
+      "at": "2026-09-04T15:36:19.273Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:32:08.040Z",
+      "at": "2026-09-04T15:36:20.127Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:32:08.363Z",
+      "at": "2026-09-04T15:36:24.149Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T15:47:14.078Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T14:32:08.480Z",
+      "at": "2026-09-04T15:47:14.726Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:47:15.379Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:49:39.349Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:49:39.350Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "badb3f02-70f1-4030-9129-0b627b81b4ac",
+      "summary": "RTH lifecycle GREEN (11:38 ET): validate:rth-open, rth-sweep 0 P0/P1, platform-integrity 14/14, ops:collect 0. Site-latency: SPX gex-heatmap cold ~8s (warm ~900ms). GitHub API rate-limited — peer review deferred. socket-health 503 expected (web tier, ingest-owned WS)."
+    },
+    {
+      "at": "2026-09-04T15:54:43.909Z",
+      "type": "pr_review",
+      "pr": 3624,
+      "head_sha": "2953a6cf5c03c3f0514ca358993320b0c42e4435",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T15:54:43.909Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T15:55:07.765Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T15:55:07.765Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a6bbcbff-5ea6-480c-9e42-2ea4cc9f4752",
+      "summary": "Merged #3624 (orphaned module cleanup) — peer-reviewed APPROVED. RTH lifecycle GREEN. #3614 (cursor zerodte) awaiting Claude review — not self-approved. Pushing agent state sync."
     }
   ]
 }
