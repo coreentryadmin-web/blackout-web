@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T00:30:41.044Z",
+  "updated_at": "2026-09-04T02:04:19.909Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -30,13 +30,13 @@
     "BO-P1-0005": {
       "task_id": "BO-P1-0005",
       "owner": "cursor",
-      "claimed_at": "2026-09-03T23:53:48.679Z",
-      "lease_until": "2026-09-04T01:23:48.679Z",
+      "claimed_at": "2026-09-04T01:52:35.056Z",
+      "lease_until": "2026-09-04T03:23:46.507Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "599bfe62-4a98-4892-bd7d-01786876d593",
       "title": "Review Claude PR #3434"
     },
     "BO-P1-0007": {
@@ -68,6 +68,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T00:30:30.525Z",
       "safe_to_merge": true
+    },
+    "pr-3454": {
+      "pr": 3454,
+      "head_sha": "7f62502a42cc408331bcd1cf8d724f781f1391c5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:53:53.845Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -77,18 +85,49 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T00:30:16.848Z",
-      "current_task": "BO-P1-0007"
+      "last_seen": "2026-09-04T01:52:35.057Z",
+      "current_task": "BO-P1-0005"
     }
   },
   "deploy": {
-    "last_main_sha": "84c5707ac6849b4c048dec6e8a414321f2a76e27",
+    "last_main_sha": "da36b826ea046361af8f1eaef22ce1ebf04e3807",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T00:18:06Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33821229041",
-    "last_deploy_sha": "271a977cfdc9b5d2cc2d62535f8c7e010374d78d"
+    "last_deploy_at": "2026-09-04T01:41:09Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826698258",
+    "last_deploy_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3464,
+      "title": "chore(autopilot): cursor handoff — peer review lane BO-P1-0005",
+      "branch": "cursor/autopilot-handoff-peer-reviews-2026-09-04-2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T02:03:08Z"
+    },
+    {
+      "number": 3463,
+      "title": "fix(0dte): g18-g19 counterfactual tolerates calibration available:false",
+      "branch": "cursor/g18-g19-calibration-graceful",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T02:03:03Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-01T19:54:25Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -293,6 +332,71 @@
       "agent": "cursor",
       "run_id": "49d14bda-5dd3-4b4b-8deb-b5336a96b8b1",
       "summary": "PR webhook branch ready: heartbeat-gate fix in claimLock, BO-P1-0007 claimed, peer-reviewed #3438 APPROVED. #3436 merged — autopilot v1 live on main. Next: merge this PR, close duplicate #3435."
+    },
+    {
+      "at": "2026-09-04T01:49:20.275Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:49:20.888Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:49:21.512Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:52:35.057Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0005",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T01:53:45.902Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:53:46.506Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:53:47.155Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T01:53:53.846Z",
+      "type": "pr_review",
+      "pr": 3454,
+      "head_sha": "7f62502a42cc408331bcd1cf8d724f781f1391c5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T01:53:53.845Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T02:04:19.908Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-04T02:04:19.909Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "97ef0031-7c35-4c6d-946a-0c1610a3440d",
+      "summary": "Recovered autopilot state. Peer-reviewed and merged #3454 (select-task test fixture isolation). Closed duplicate #3462 (dup of #3450) and stale handoff #3461. BO-P1-0004/0005/0007 marked DONE. Next: BO-P2-0003 Vector-gated runners."
     }
   ]
 }
