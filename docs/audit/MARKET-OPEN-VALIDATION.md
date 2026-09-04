@@ -2207,3 +2207,21 @@ than an end-of-session patch.
 - **What changed:** Wrap both sim and member board success responses in `roundFloats()` at `board/route.ts`.
 - **RTH check:** Seed admin sim (`/nighthawk?sim=1`), inspect board JSON or rendered premiums/PnL — confirm 2dp-clean values with no IEEE tails on sim frames.
 
+### 29. GEX heatmap batch compare — unrounded floats at API boundary — fix/batch-roundfloats-positioning-walls-memory-fresh — 2026-09-04
+
+- **What was broken:** `GET /api/market/gex-heatmap/batch` returned raw IEEE floats on the Thermal compare grid while the single-ticker heatmap route already applied `roundFloats`.
+- **What changed:** Wrap batch response in `roundFloats({ tickers: tickersOut })`.
+- **RTH check:** On `/heatmap`, open Thermal compare preset (multi-ticker grid); Network tab on batch request — confirm strike/gex/spot values are 2dp-clean with no IEEE tails.
+
+### 30. GEX positioning polygon-fallback — unconstrained call/put walls — fix/batch-roundfloats-positioning-walls-memory-fresh — 2026-09-04
+
+- **What was broken:** On primary `getGexPositioning()` cache miss, the degraded bundle path picked global max-positive/max-negative GEX strikes without side constraint — call wall could land below spot (same class as #2417).
+- **What changed:** Build `strikeTotals` from fallback `ranked_levels` and delegate to `wallsFromStrikeTotals(totals, spot)`.
+- **RTH check:** During cache miss (`degraded:true`, `source:polygon-fallback`), confirm `call_wall` above spot and `put_wall` below spot when both exist — e.g. MSFT/AAPL off a forced cold read.
+
+### 31. Largo conversation memory — future-skewed lastUpdated reads fresh — fix/batch-roundfloats-positioning-walls-memory-fresh — 2026-09-04
+
+- **What was broken:** `isMemoryFresh()` used `Date.now() - lastUpdated` with no future guard; clock-skewed future timestamps yielded negative age and always passed the freshness gate.
+- **What changed:** Return `false` when `ageSeconds < 0`.
+- **RTH check:** Largo multi-turn follow-up — memory with skewed-future `lastUpdated` must not reuse stale consensus; fresh-data questions should re-fetch.
+
