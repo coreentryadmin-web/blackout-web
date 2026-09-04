@@ -15,4 +15,9 @@ test("readUwCache rejects far-future fetchedAt (source scan)", () => {
     /function readUwCache[\s\S]*?isWsUpdatedAtFresh\(slot\.fetchedAt, ttl\)/,
     "in-process UW REST cache must not treat clock-skewed future fetchedAt as fresh"
   );
+  assert.doesNotMatch(
+    src,
+    /function readUwCache[\s\S]*?Date\.now\(\)\s*-\s*slot\.fetchedAt/,
+    "raw Date.now()-fetchedAt must not gate UW in-process cache"
+  );
 });
