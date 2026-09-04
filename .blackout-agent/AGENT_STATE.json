@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T02:06:52.193Z",
+  "updated_at": "2026-09-04T02:59:25.393Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -135,44 +135,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "f2285917e0ad04ea57dbe884e9e1004f20b6a04e",
+    "last_main_sha": "b8c8c6f949777f1545634ef7825caa6a4e8f2005",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T02:05:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826698258",
-    "last_deploy_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b"
+    "last_deploy_at": "2026-09-04T02:52:10Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33831105279",
+    "last_deploy_sha": "b8c8c6f949777f1545634ef7825caa6a4e8f2005"
   },
-  "open_prs": [
-    {
-      "number": 3465,
-      "title": "chore(autopilot): handoff — merged #3454, P1 queue cleared",
-      "branch": "fix/autopilot-handoff-2026-09-04-session2",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T02:04:58Z"
-    },
-    {
-      "number": 3464,
-      "title": "chore(autopilot): cursor handoff — peer review lane BO-P1-0005",
-      "branch": "cursor/autopilot-handoff-peer-reviews-2026-09-04-2",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T02:03:08Z"
-    },
-    {
-      "number": 2810,
-      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
-      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
-      "author": "app/dependabot",
-      "agent": "human",
-      "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-01T19:54:25Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -501,6 +470,25 @@
       "type": "task_released",
       "task_id": "BO-P1-0004",
       "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T02:59:21.121Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T02:59:21.121Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "bac0e400-b487-4626-b8c8-9d9c0e1cd738",
+      "summary": "Peer-reviewed and merged #3469 (largo morning-brief 9:25 ET gate). #3468 already merged. validate:deploy GREEN on main b8c8c6f. BO-P1-0008 complete; P1 queue clear."
+    },
+    {
+      "at": "2026-09-04T02:59:25.393Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
