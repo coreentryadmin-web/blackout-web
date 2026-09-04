@@ -36,10 +36,22 @@ export async function GET(req: NextRequest) {
 
   await initSpxSignalTables();
 
-  const lookbackDays = parseInt(
+  // Guard against a missing/empty/non-numeric ?days override. URLSearchParams.get()
+  // returns "" (not null) for `?days=` or a bare `?days`, so `?? String(DEFAULT_LOOKBACK_DAYS)`
+  // never falls back (`??` only fires on null/undefined) and `parseInt("", 10)` is NaN — the
+  // same NaN results from any non-numeric value, e.g. `?days=abc`. That NaN used to flow
+  // straight into `Date.now() - NaN * 24*60*60*1000` -> `new Date(NaN)` -> `.toISOString()`,
+  // which THROWS RangeError("Invalid time value") — and this computation sits ABOVE the
+  // try/catch below, so the throw escaped uncaught, logCronRun never ran, and the failure
+  // was invisible to cron_job_runs/cron-staleness-watchdog. Same guard idiom as the identical
+  // kind of override in nighthawk-outcomes/route.ts (Number.isFinite(...) && ... > 0, else default).
+  const rawLookbackDays = parseInt(
     req.nextUrl.searchParams.get("days") ?? String(DEFAULT_LOOKBACK_DAYS),
     10
   );
+  const lookbackDays = Number.isFinite(rawLookbackDays) && rawLookbackDays > 0
+    ? rawLookbackDays
+    : DEFAULT_LOOKBACK_DAYS;
   const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString();
 
   try {
