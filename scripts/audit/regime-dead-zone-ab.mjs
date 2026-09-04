@@ -57,7 +57,7 @@ import { fetchAuditJson, releaseAuditClerkSession } from "./lib/audit-auth-fetch
 
 const SRC = new URL("../../src/", import.meta.url).pathname;
 const exitEngine = await import(`${SRC}lib/zerodte/exit-engine.ts`);
-const { evaluateExitState, TRIM_SCALE_RULES, EXIT_RULES, ratchetFloorPct, trimTranchesArmed } = exitEngine;
+const { evaluateExitState, TRIM_SCALE_RULES, EXIT_RULES, trimTranchesArmed } = exitEngine;
 const { PLAN_RULES } = await import(`${SRC}lib/zerodte/plan.ts`);
 const { fetchAggBars } = await import(`${SRC}lib/providers/polygon-largo.ts`);
 
@@ -203,7 +203,10 @@ function gradeTrimScaleExitFixB(seq, entry, planStop, planTarget, flaggedMs, reg
     const floor = fixBFloorPct(pnlAt(peak), taken > 0, regime);
     const floorMark = floor != null ? entry * (1 + floor / 100) : null;
     const floorBreached = floor != null && pnlLow <= floor && !trimAvailable;
-    if (planStop != null && low <= planStop) {
+    // planStop/planTarget are always real numbers here (computed at the two call
+    // sites below from PLAN_RULES, never null) — this harness has no code path that
+    // omits them, unlike the shipped decideTrimScale it mirrors.
+    if (low <= planStop) {
       const stopIsHigher = floorMark == null || planStop >= floorMark;
       if (stopIsHigher && !floorBreached) {
         realized += remaining * pnlAt(planStop); exited = true; outcome = "stopped"; break;
@@ -220,7 +223,7 @@ function gradeTrimScaleExitFixB(seq, entry, planStop, planTarget, flaggedMs, reg
       realized += frac * pnlAt(entry * (1 + thresholds[taken] / 100));
       remaining -= frac; taken += 1;
     }
-    if (taken >= thresholds.length && planTarget != null && high >= planTarget) {
+    if (taken >= thresholds.length && high >= planTarget) {
       realized += remaining * pnlAt(planTarget); remaining = 0; exited = true; outcome = "doubled"; break;
     }
     const age = (b.t - flaggedMs) / 60000;
