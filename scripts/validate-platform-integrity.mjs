@@ -37,6 +37,12 @@ function spotOk(n) {
   return typeof n === "number" && Number.isFinite(n) && n > 0;
 }
 
+/** Tier-gated market routes return 401 without a session — SKIP, not WARN. */
+function tierGatedStatus(httpStatus, passStatus, passDetail, gatedDetail = "tier-gated") {
+  if (httpStatus === 401) return { status: "SKIP", detail: gatedDetail };
+  return { status: passStatus, detail: passDetail };
+}
+
 async function main() {
   console.log(`\n=== Platform data integrity @ ${BASE} ===\n`);
 
@@ -100,31 +106,38 @@ async function main() {
   }
 
   const pos = await fetchJson("/api/market/gex-positioning?ticker=SPX", authHeaders);
-  rec(
-    "gex-positioning-spx",
-    pos.status === 200 && pos.body?.available !== false ? "PASS" : "WARN",
-    `flip=${pos.body?.flip ?? pos.body?.gamma_flip ?? "—"} king=${pos.body?.gex_king_strike ?? "—"}`
-  );
+  {
+    const gated = tierGatedStatus(
+      pos.status,
+      pos.status === 200 && pos.body?.available !== false ? "PASS" : "WARN",
+      `flip=${pos.body?.flip ?? pos.body?.gamma_flip ?? "—"} king=${pos.body?.gex_king_strike ?? "—"}`
+    );
+    rec("gex-positioning-spx", gated.status, gated.detail);
+  }
 
   for (const t of ["SPY", "QQQ"]) {
     const hm = await fetchJson(`/api/market/gex-heatmap?ticker=${t}`, authHeaders);
     const n = Object.keys(hm.body?.gex?.strike_totals ?? {}).length;
-    rec(
-      `thermal-matrix-${t}`,
+    const gated = tierGatedStatus(
+      hm.status,
       hm.status === 200 && n > 0 ? "PASS" : "WARN",
       `strikes=${n} spot=${hm.body?.spot ?? "—"}`
     );
+    rec(`thermal-matrix-${t}`, gated.status, gated.detail);
   }
 
   const vec = await fetchJson("/api/market/vector/walls?ticker=SPX&dte=0dte", authHeaders);
   const vecWalls = vec.body?.walls;
   const vecCallCount = vecWalls?.callWalls?.length ?? 0;
   const vecPutCount = vecWalls?.putWalls?.length ?? 0;
-  rec(
-    "vector-spx-0dte-walls",
-    vec.status === 200 && vecCallCount > 0 && vecPutCount > 0 ? "PASS" : "WARN",
-    `flip=${vec.body?.flip ?? "—"} callWalls=${vecCallCount} putWalls=${vecPutCount}`
-  );
+  {
+    const gated = tierGatedStatus(
+      vec.status,
+      vec.status === 200 && vecCallCount > 0 && vecPutCount > 0 ? "PASS" : "WARN",
+      `flip=${vec.body?.flip ?? "—"} callWalls=${vecCallCount} putWalls=${vecPutCount}`
+    );
+    rec("vector-spx-0dte-walls", gated.status, gated.detail);
+  }
 
   const regime = await fetchJson("/api/market/regime");
   rec("helix-regime", regime.status === 200 ? "PASS" : "WARN", regime.body?.regime_label ?? regime.body?.label ?? "—");
