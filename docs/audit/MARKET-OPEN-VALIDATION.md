@@ -120,7 +120,7 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
-### 0ae. `zerodte-warm` cron raced live member requests for the UW rate-limiter ceiling on a false premise — fix/zerodte-warm-uw-sweep-tag (pending)
+### 0ae. `zerodte-warm` cron raced live member requests for the UW rate-limiter ceiling on a false premise — fix/zerodte-warm-uw-sweep-tag (merged #3775)
 
 **What was broken:** the `zerodte-warm` cron's dispatch (`warmZeroDteBoard()` +
 `refreshZeroDteBoardSnapshot()`, firing ~every 1-5 min during market hours) was explicitly NOT
@@ -145,6 +145,21 @@ for the full ceiling. Also confirm `zerodte-warm`'s own `elapsed=` in `[cron/zer
 background done` log lines didn't regress (the fix changes which ceiling it competes against, not
 its own admission logic) and that `/nighthawk` board reads stay responsive during a `zerodte-warm`
 tick.
+
+### 0af. Open Banger positions vanish under 5 DTE — fix/banger-sub5dte-visibility (pending)
+
+**What was broken:** `horizonPlayFromBangerPosition()` gated an OPEN/PARTIAL banger ledger row's
+Swing Command visibility with the discovery-side admission floor (`HORIZONS.SWING.dteMin=5`) instead
+of a not-yet-expired check — a live position with real capital simply disappeared from every view
+(nothing else reads `banger_positions`) for its final days before expiry or close.
+
+**Fix:** Floor at `dte >= 0` instead of `dteMin`; a row that would fall inside the 0DTE window
+(`dte < 5`) is tagged "closing soon" in its `reason` string. Pre-entry discovery admission
+(`horizonPlayFromBangerWatch`) is unchanged.
+
+**Check at the open:** Find a live OPEN banger position (Swing Command → MANAGING) whose contract is
+inside its final week before expiry — confirm it is still rendered (with a "closing soon" cue)
+rather than missing from the desk.
 
 ### 0ad. UW in-process REST cache + Polygon index overlay future guards — fix/uw-index-future-timestamp-guards (merged #3771)
 
