@@ -1,43 +1,28 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T17:55:10.965Z
-**Run:** 871d8553-a096-4f82-bff9-be4b69f19802
+**At:** 2026-09-04T18:11:43.109Z
+**Run:** 4cce2bee-8947-4dd1-b094-c2c2620eab17
 
 ## Summary
 
-PR #3678 merged (cron-registry self-heal exemption — unblocks main verify). #3677 closed as duplicate. #3664/#3667 peer-reviewed locally (tests GREEN); CI verify pending. validate:deploy GREEN. ops:collect 0.
+Merged #3678 (cron-registry), #3664 (vs/others scope), #3667 (stock-candle rollover). validate:deploy GREEN. Agent state pushed cursor/autopilot-handoff-3678-merged-2.
 
 ## Deploy
 
-- main: `91c3749158b68bbceb9ed0ecfbc434b747960813`
+- main: `1b65d627b71b7ef8928d20c2b87455bafe4f33e8`
 - status: 
 
 ## Open PRs
 
+- #3697 [agent] fix(audit): side-constrain full-site heatmap wall checks
+- #3696 [agent] fix(audit): side-constrain heatmap wall checks in full-site-deep-audit
+- #3695 [agent] fix(audit): side-constrain RTH deep audit heatmap wall oracle by spot
+- #3694 [agent] fix(audit): align full-site heatmap wall check with side-constrained production rule
+- #3693 [cursor] chore(autopilot): cursor handoff after hourly wake verification cycle
+- #3692 [agent] fix(quote): rebase index WS change_pct via REST overlay
+- #3691 [agent] fix(age): guard ISO snapshot ages against clock-skewed future timestamps
 - #3686 [cursor] fix(vector): guard computeGexWalls spot in vector-snapshot GAMMA lens
 - #3685 [agent] fix(admin): guard nighthawk-playbook cron age against clock-skewed updated_at
-- #3684 [cursor] chore(autopilot): cursor handoff — #3678 merged, main GREEN, #3664/#3667 approved
-- #3683 [agent] fix(marketing): scope two more "every setup" overclaim instances #3643/#3664 missed
-- #3682 [agent] fix(spx): neutral tone when spx_change_pct is unknown
 - #3681 [agent] fix(age): guard ISO snapshot ages against clock-skewed future timestamps
-- #3679 [cursor] chore(autopilot): cursor handoff — peer reviews #3666/#3670/#3671 merged
-- #3676 [agent] fix(gex-positioning): recompute nearest_wall after live-WS wall override
 - #3675 [agent] fix(admin): guard SPX dashboard stale banner against clock-skewed generated_at
-- #3674 [cursor] chore(autopilot): peer-review #3670/#3671/#3673 APPROVED
-- #3672 [cursor] chore(autopilot): cursor handoff — #3668 approved, #3670/#3671 opened
-- #3669 [cursor] chore(autopilot): cursor handoff — #3652 merged, peer reviews released
-- #3667 [agent] fix(ws): close cross-session gap in stock-candle-store REST session-open seed
-- #3665 [cursor] chore(autopilot): cursor handoff — #3642 merged, #3651 ready for Claude review
-- #3664 [agent] fix(marketing): scope /vs/others "every setup graded" claim to the 3 ledgered products
-- #3661 [cursor] chore(autopilot): cursor handoff — #3642 merged, admin fmtRel #3660, RTH GREEN
-- #3655 [cursor] chore(autopilot): cursor handoff — #3647 APPROVED, validations GREEN
 - #3654 [agent] fix(admin): guard API Live Feed + SPX Terminal time-ago against clock skew
-- #3653 [human] chore(autopilot): cursor handoff — #3648 largo-stress fix, peer reviews #3642/#3643
-- #3649 [cursor] chore(autopilot): cursor handoff — #3627 merged, RTH lifecycle GREEN
-- #3646 [cursor] chore(autopilot): cursor handoff — #3627/#3633 merged, validations GREEN
-- #3645 [cursor] chore(autopilot): cursor RTH validation handoff — lifecycle GREEN
-- #3644 [cursor] chore(autopilot): cursor handoff — peer reviews #3639/#3642, deploy/CI status
-- #3638 [cursor] chore(autopilot): cursor handoff — #3627 merged, deploy GREEN
-- #3637 [cursor] chore(autopilot): cursor handoff — #3633 peer-reviewed, deploy GREEN
-- #3636 [cursor] chore(autopilot): cursor handoff — RTH lifecycle GREEN, #3627 awaiting Claude review
-- #3635 [cursor] chore(autopilot): cursor handoff — #3610/#3613 merged, #3614 CI green
