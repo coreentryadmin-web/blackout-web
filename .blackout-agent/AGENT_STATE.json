@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T05:31:20.827Z",
+  "updated_at": "2026-09-04T06:43:42.641Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T06:35:31.184Z",
+      "lease_until": "2026-09-04T08:05:31.184Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -161,11 +161,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f",
+    "last_main_sha": "853bee81cd6ca98d0b4e81a9daf89a67defab8a8",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T05:27:22Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33840544277",
-    "last_deploy_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f"
+    "last_deploy_at": "2026-09-04T06:40:43Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845362473",
+    "last_deploy_sha": "448f8a3188f84b9878e7ad9e13876e72e484da7f"
   },
   "open_prs": [],
   "events": [
@@ -569,6 +569,25 @@
       "agent": "cursor",
       "run_id": "34cc062c-797a-4e80-8a83-6c9e90f11422",
       "summary": "Cycle complete: deploy GREEN @ 0b2ada333 (#3495). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours expected). Peer review: no substantive PRs (#2810 dependabot major skip). RTH lifecycle @ 09:00 ET Fri 2026-09-05. Agent state sync PR opening."
+    },
+    {
+      "at": "2026-09-04T06:43:29.894Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:43:42.640Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:43:42.641Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "4426e07f-542f-4aea-8405-3b002d7b5183",
+      "summary": "Cycle: peer-reviewed #3512/#3511 (APPROVED). Main advanced: #3506/#3512/#3513 merged. #3511 (largo swing freshness) verify GREEN but still DRAFT — undraft blocked by GitHub GraphQL rate limit (PAT 284440397). validate:deploy GREEN, ops:collect 0. Deploy @448f8a3 (one commit behind main 853bee81). #3514 verify pending. Opened #3516 agent state sync."
     }
   ]
 }
