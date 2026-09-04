@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T07:34:01.957Z",
+  "updated_at": "2026-09-04T07:55:24.346Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T07:33:33.330Z",
+      "lease_until": "2026-09-04T09:25:23.097Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "bd67e512-74b3-480e-8a64-a93fecccf58b",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -160,11 +160,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "14c5d815d50c64666360b76c713f4466e038dd95",
+    "last_main_sha": "f4d1f5ebb43afe757e44157533c293635dd2ee18",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T06:44:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33845611594",
-    "last_deploy_sha": "84b92b6b62ff5b6694c856016aa3e5b2d235b5ea"
+    "last_deploy_at": "2026-09-04T07:20:16Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33848248248",
+    "last_deploy_sha": "14c5d815d50c64666360b76c713f4466e038dd95"
   },
   "open_prs": [],
   "events": [
@@ -625,55 +625,32 @@
       "summary": "Post-merge cycle: main@c593449c1, deploy pending@84b92b6b (#3511). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours). Open PRs: 0. Peer review queue empty. RTH lifecycle Fri 09:00 ET."
     },
     {
-      "at": "2026-09-04T07:28:25.691Z",
+      "at": "2026-09-04T07:55:15.701Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T07:28:26.074Z",
+      "at": "2026-09-04T07:55:23.097Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T07:28:26.215Z",
+      "at": "2026-09-04T07:55:23.098Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "8ef9a0a6-5fee-4630-b35a-99811b9c28c1",
+      "summary": "Cycle complete: merged Claude #3528 (latency audit dead-infra fix) + #3529 (agent state/x-intel sync). validate:deploy GREEN, ops:collect 0. 12 stale cursor state-sync drafts remain (token cannot close). Dependabot #2810 RED — major TS bump, left open. main@f4d1f5eb."
+    },
+    {
+      "at": "2026-09-04T07:55:23.751Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T07:33:00.833Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T07:33:01.233Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T07:33:01.375Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T07:34:01.025Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T07:34:01.813Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T07:34:01.957Z",
+      "at": "2026-09-04T07:55:24.346Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
