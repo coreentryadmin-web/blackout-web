@@ -88,13 +88,11 @@ const PAGES = [
       ? () =>
           document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= 5 ||
           document.body.innerText.length > 800
-      : () => {
-          const minRows = OFF_HOURS ? 5 : 20;
-          return (
-            document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= minRows ||
-            document.body.innerText.length > 800
-          );
-        },
+      : (minRows) =>
+          document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= minRows ||
+          document.body.innerText.length > 800,
+    // waitForFunction serializes into the browser — pass Node-derived thresholds as args, not closures.
+    readyArg: IS_STAGING ? undefined : OFF_HOURS ? 5 : 20,
   },
   {
     path: "/flows",
@@ -291,7 +289,9 @@ async function main() {
         await p.waitForLoadState("domcontentloaded", { timeout: 30_000 }).catch(() => null);
         const domMs = Date.now() - t0;
         await p.waitForFunction(() => window.Clerk?.user?.id, { timeout: 20_000 }).catch(() => null);
-        await p.waitForFunction(page.ready, { timeout: 30_000 }).catch(() => null);
+        await p
+          .waitForFunction(page.ready, page.readyArg, { timeout: 30_000 })
+          .catch(() => null);
         const readyMs = Date.now() - t0;
         rec(`page:${page.label}:nav`, grade(navMs, { slowDesk: page.slowDesk }), "commit", navMs);
         rec(`page:${page.label}:dom`, domMs <= P2_MS ? "PASS" : grade(domMs, { slowDesk: page.slowDesk }), "domcontentloaded", domMs);
