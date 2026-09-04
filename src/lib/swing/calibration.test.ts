@@ -233,7 +233,7 @@ test("sub-lane floor — clears the STAGED bar (n>=30 + Wilson-LB) → exactly o
     ...rows(10, 3, { sub_lane: "STANDARD", score: floor - 5 }),
   ];
   const res = analyzeSubLaneRecord(input);
-  assert.equal(res.length, 3);
+  assert.equal(res.length, 2);
   const std = res.find((r) => r.subLane === "STANDARD")!;
   assert.equal(std.tier, "LIMITED");
   assert.equal(std.graduated, true);

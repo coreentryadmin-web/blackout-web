@@ -72,7 +72,7 @@ test("OCC copy: control renders (accessible button, aria-label) when an OCC is o
   assert.match(html, /<button/); // a real, keyboard-focusable control
 });
 
-test("Swing OPEN play: tabbed terminal defaults to Thesis at first paint (SSR)", async () => {
+test("Swing OPEN play: unified command panel at first paint (SSR)", async () => {
   const html = await render(
     play({
       horizon: "SWING",
@@ -81,12 +81,10 @@ test("Swing OPEN play: tabbed terminal defaults to Thesis at first paint (SSR)",
       factors: [{ label: "Flow", points: 10 }],
     }),
   );
-  assert.match(html, /nh-deck-tabs/);
-  assert.match(html, />\[1\]<\/span>Thesis/);
-  assert.match(html, /Why this play was picked/);
-  assert.doesNotMatch(html, /nh-deck-command-panel/);
-  // Management-only trim ladder headline must not be the default tab body.
-  assert.doesNotMatch(html, /Trim-scale ladder — the engine banks partials/);
+  assert.match(html, /nh-deck-command-panel/);
+  assert.match(html, /Why we picked it/);
+  assert.doesNotMatch(html, /nh-deck-tabs/);
+  assert.match(html, /Live · management/);
 });
 
 test("0DTE single panel v2: verdict band, evidence stack, collapsed technicals", async () => {

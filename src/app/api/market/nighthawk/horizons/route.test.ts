@@ -111,6 +111,21 @@ mock.module("../../../../../lib/swing/serving-lane", {
     readSwingServingSnapshot: async () => null,
   },
 });
+mock.module("../../../../../lib/banger/flag", {
+  namedExports: { isBangerEngineEnabled: () => false },
+});
+mock.module("../../../../../lib/banger/positions-db", {
+  namedExports: { fetchBangerBoardRows: async () => [] },
+});
+mock.module("../../../../../lib/banger/watch-cache", {
+  namedExports: { readBangerWatchSnapshot: async () => null },
+});
+mock.module("../../../../../lib/vector/vector-pick-leaders-db", {
+  namedExports: { fetchVectorPickLeaderRows: async () => [] },
+});
+mock.module("../../../../../lib/et-date", {
+  namedExports: { todayEt: () => "2026-09-04" },
+});
 
 describe("/api/market/nighthawk/horizons roundFloats at the boundary", () => {
   let GET: (req: NextRequest) => Promise<Response>;

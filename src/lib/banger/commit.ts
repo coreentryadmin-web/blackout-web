@@ -16,6 +16,7 @@ import { pickBangerContract, type FetchBarsFn } from "@/lib/banger/contract";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { horizonPlayFromBangerWatch } from "@/lib/swing/banger-lane-merge";
 import { persistBangerWatchSnapshot } from "@/lib/banger/watch-cache";
+import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 import type { HorizonPlay } from "@/lib/horizon-plays";
 
 export type BangerCommitDeps = {
@@ -131,7 +132,7 @@ export async function runBangerCommit(deps: BangerCommitDeps): Promise<BangerCom
   }
 
   await persistBangerWatchSnapshot({
-    asOf: new Date().toISOString(),
+    asOf: etStamp(Date.now()),
     sessionDate: deps.sessionDate,
     plays: watchPlays,
   });
