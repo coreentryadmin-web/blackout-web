@@ -1,0 +1,132 @@
+# BLACKOUT PR Webhook — aggressive peer feedback on every PR activity
+#
+# Posts structured triage feedback on EVERY PR event.
+# Dispatches Cursor for deep peer review on Claude/fix PRs when verify is green.
+# Requires: CURSOR_API_KEY
+
+name: BLACKOUT PR webhook
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+      - ready_for_review
+      - converted_to_draft
+      - closed
+  pull_request_review:
+    types: [submitted, dismissed]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to triage"
+        required: true
+
+concurrency:
+  group: blackout-pr-${{ github.event.pull_request.number || github.event.inputs.pr_number || 'manual' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  triage:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'pull_request_review' ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Resolve PR number and event
+        id: ctx
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "pr=${{ github.event.inputs.pr_number }}" >> "$GITHUB_OUTPUT"
+            echo "event=workflow_dispatch" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "issue_comment" ]; then
+            PR=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.issue.number }}" --jq '.pull_request.url // empty' | awk -F/ '{print $NF}')
+            echo "pr=$PR" >> "$GITHUB_OUTPUT"
+            echo "event=issue_comment" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "pull_request_review" ]; then
+            echo "pr=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "event=${{ github.event.action }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "pr=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "event=${{ github.event.action }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post/update PR feedback (triage comment)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_PR_NUMBER: ${{ steps.ctx.outputs.pr }}
+          GITHUB_EVENT_NAME: ${{ steps.ctx.outputs.event }}
+        run: |
+          set -euo pipefail
+          [ -n "${GITHUB_PR_NUMBER:-}" ] || { echo "No PR — skip"; exit 0; }
+          node scripts/blackout-agent/pr-feedback.mjs
+
+      - name: Check if deep peer review dispatch needed
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_PR_NUMBER: ${{ steps.ctx.outputs.pr }}
+          GITHUB_EVENT_NAME: ${{ steps.ctx.outputs.event }}
+        run: |
+          set -euo pipefail
+          [ -n "${GITHUB_PR_NUMBER:-}" ] || { echo "want=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          RESULT=$(node scripts/blackout-agent/pr-dispatch-check.mjs)
+          echo "$RESULT"
+          echo "$RESULT" | node -e "
+            const j=JSON.parse(require('fs').readFileSync(0,'utf8'));
+            console.log('want=' + (j.dispatch ? 'true' : 'false'));
+            console.log('reviewer=' + (j.reviewer || ''));
+          " >> "$GITHUB_OUTPUT"
+
+      - name: Launch Cursor for deep peer review
+        if: steps.dispatch.outputs.want == 'true'
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          GITHUB_PR_NUMBER: ${{ steps.ctx.outputs.pr }}
+          GITHUB_EVENT_NAME: ${{ steps.ctx.outputs.event }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CURSOR_API_KEY:-}" ]; then
+            echo "CURSOR_API_KEY not set — triage posted, deep review agent skipped"
+            exit 0
+          fi
+          PROMPT=$(node scripts/blackout-agent/pr-review-dispatch.mjs --pr="$GITHUB_PR_NUMBER" --event="$GITHUB_EVENT_NAME" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).prompt")
+          export PROMPT
+          payload=$(node -e "
+            console.log(JSON.stringify({
+              prompt: { text: process.env.PROMPT },
+              repos: [{ url: 'https://github.com/coreentryadmin-web/blackout-web', startingRef: 'main' }],
+              autoCreatePR: false
+            }));
+          ")
+          resp=$(curl -sf -X POST https://api.cursor.com/v1/agents \
+            -u "${CURSOR_API_KEY}:" \
+            -H 'Content-Type: application/json' \
+            -d "$payload")
+          echo "$resp" | node -e "
+            const r = JSON.parse(require('fs').readFileSync(0,'utf8'));
+            const url = r.agent?.url ?? r.url ?? JSON.stringify(r);
+            console.log('PR review agent launched:', url);
+          "

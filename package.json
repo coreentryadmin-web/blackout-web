@@ -162,6 +162,7 @@
     "blackout:select": "node scripts/blackout-agent/select-task.mjs",
     "blackout:review": "node scripts/blackout-agent/record-review.mjs",
     "blackout:watchdog": "node scripts/blackout-agent/watchdog.mjs",
+    "blackout:pr-feedback": "node scripts/blackout-agent/pr-feedback.mjs",
     "docs:playbook": "node scripts/generate-spx-playbook-docx.mjs",
     "probe:docs": "node scripts/analyze-api-usage.mjs && node scripts/probe-docs-endpoints.mjs",
     "probe:helix-apis": "node scripts/helix-live-api-survey.mjs",
