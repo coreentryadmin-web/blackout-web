@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:50:44.196Z",
+  "updated_at": "2026-09-04T17:52:59.295Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -1054,41 +1054,17 @@
       "safe_to_merge": true
     },
     {
-      "at": "2026-09-04T17:48:12.770Z",
+      "at": "2026-09-04T17:52:59.294Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T17:48:13.447Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T17:48:14.184Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T17:50:40.455Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T17:50:40.455Z",
+      "at": "2026-09-04T17:52:59.295Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "af095663-0546-4ef5-bf3b-6f344becf5bd",
-      "summary": "workflow_run wake: synced main@91c374915 (#3678 cron-registry exemption). ops:collect 0. validate:deploy/api-auth/platform-integrity/rth-lifecycle all GREEN. pr-sweep empty (no open PRs). gh API rate-limited (user 284440397) — peer review deferred. Off-hours RTH checks passed (1:47 PM ET Friday). Standing: continue peer review when rate limit clears."
-    },
-    {
-      "at": "2026-09-04T17:50:44.196Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
+      "run_id": "c6d70cf7-3c9e-48f3-a903-db1d53055e11",
+      "summary": "workflow_run cycle: lifecycle sweep all GREEN (deploy/platform-integrity/rth/ops). Shipped fix/admin-cron-health-future-guard — fail-closed adminAgeMinFromIso for cron board + Night Hawk stuck detection. Agent state pushed to cursor/autopilot-handoff-2026-09-04-1750. gh API rate-limited — PR creation may need retry."
     }
   ]
 }
