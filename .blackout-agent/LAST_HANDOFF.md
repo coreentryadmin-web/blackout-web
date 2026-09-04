@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T14:55:27.837Z
-**Run:** 39526214-9ceb-4a5b-9062-651319197232
+**At:** 2026-09-04T15:03:15.857Z
+**Run:** 936fc2a4-637e-4f98-9453-90402565de11
 
 ## Summary
 
-Peer review cycle: validated fix/platform-integrity-clerk-auth live (14/14 PASS). Added regression tests + staging finding. Branch rebased on main and pushed (f25b6c933). GH API rate-limited — PR create/merge deferred. validate:deploy GREEN, ops:collect 0. Supersedes cursor/cursor-continuous-work-loop-9db5 skip-only approach.
+Cycle complete: (1) fix/platform-integrity-clerk-auth rebased+tests pushed f25b6c933 — live 14/14 PASS; (2) fix/meridian-em-budget-skip-printed pushed 3f3ee40d5 — 30 tests pass. validate:deploy GREEN, ops:collect 0. GH PAT rate-limited — PR create/merge deferred to Claude peer or next cycle. Agent state on chore/autopilot-handoff-2026-09-04-1503.
 
 ## Deploy
 
