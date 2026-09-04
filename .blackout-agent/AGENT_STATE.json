@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T02:06:52.193Z",
+  "updated_at": "2026-09-04T04:16:07.085Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -63,6 +63,30 @@
       "run_id": "fa572336-bda3-4a7c-93e8-a09ffc724a3a",
       "title": null,
       "released_at": "2026-09-04T02:06:52.193Z"
+    },
+    "BO-P1-0100": {
+      "task_id": "BO-P1-0100",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T04:13:00.057Z",
+      "lease_until": "2026-09-04T05:43:00.057Z",
+      "phase": "REVIEWING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T04:15:42.318Z",
+      "lease_until": "2026-09-04T05:45:42.318Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -121,6 +145,22 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3486": {
+      "pr": 3486,
+      "head_sha": "a9e63db38c268d4caebf73296e872158fa5b712d",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T04:12:16.154Z",
+      "safe_to_merge": true
+    },
+    "pr-3487": {
+      "pr": 3487,
+      "head_sha": "a2fcc6750",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T04:15:16.381Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -130,38 +170,18 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T01:48:27.814Z",
-      "current_task": "BO-P1-0004"
+      "last_seen": "2026-09-04T04:15:42.318Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "f2285917e0ad04ea57dbe884e9e1004f20b6a04e",
+    "last_main_sha": "a52e140b9c45572f979616c5a674642d98feb202",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T02:05:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826698258",
-    "last_deploy_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b"
+    "last_deploy_at": "2026-09-04T03:53:46Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33834642777",
+    "last_deploy_sha": "7b549f069de75a69e3bf75258234dcb893dcfaba"
   },
   "open_prs": [
-    {
-      "number": 3465,
-      "title": "chore(autopilot): handoff — merged #3454, P1 queue cleared",
-      "branch": "fix/autopilot-handoff-2026-09-04-session2",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T02:04:58Z"
-    },
-    {
-      "number": 3464,
-      "title": "chore(autopilot): cursor handoff — peer review lane BO-P1-0005",
-      "branch": "cursor/autopilot-handoff-peer-reviews-2026-09-04-2",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T02:03:08Z"
-    },
     {
       "number": 2810,
       "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
@@ -170,7 +190,7 @@
       "agent": "human",
       "draft": false,
       "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-01T19:54:25Z"
+      "updated_at": "2026-09-04T04:04:47Z"
     }
   ],
   "events": [
@@ -501,6 +521,155 @@
       "type": "task_released",
       "task_id": "BO-P1-0004",
       "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T04:02:17.985Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T04:02:24.397Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T04:02:25.439Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T04:02:26.578Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T04:02:34.192Z",
+      "type": "pr_webhook",
+      "pr": 3486,
+      "event": "sweep",
+      "head": "a9e63db38c268d4caebf73296e872158fa5b712d",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T04:02:36.069Z",
+      "type": "pr_webhook",
+      "pr": 2810,
+      "event": "sweep",
+      "head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T04:12:16.155Z",
+      "type": "pr_review",
+      "pr": 3486,
+      "head_sha": "a9e63db38c268d4caebf73296e872158fa5b712d",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T04:12:16.154Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T04:12:36.673Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T04:12:36.674Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "df221567-76af-4e56-aec3-5b672add76fc",
+      "summary": "Peer-reviewed and merged #3486 (vector logical-range guard). CI green, APPROVED. ops:collect clean (0 items). Deploy validation in progress."
+    },
+    {
+      "at": "2026-09-04T04:12:55.656Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-04T04:13:00.058Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T04:15:16.382Z",
+      "type": "pr_review",
+      "pr": 3487,
+      "head_sha": "a2fcc6750",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T04:15:16.381Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T04:15:36.717Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T04:15:36.718Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "83e75764-d4aa-4a1a-b3fd-4f1cefff6ba5",
+      "summary": "Merged #3487 (thermal chain_truncated UI+Largo). Standing peer-review BO-P1-0100 active. ops:collect clean. Deploy validate GREEN."
+    },
+    {
+      "at": "2026-09-04T04:15:42.318Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T04:15:44.139Z",
+      "type": "pr_webhook",
+      "pr": 2810,
+      "event": "sweep",
+      "head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T04:16:07.084Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T04:16:07.085Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b42fdbb1-672e-4d25-a0dc-381455a98391",
+      "summary": "Session complete: peer-reviewed+merged #3486 (vector logical-range guard) and #3487 (thermal chain_truncated UI). Deploy GREEN, ops:collect 0 items. Only open PR #2810 (Dependabot TS7 major, red CI) — held per policy."
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3486": {
+      "last_event": "sweep",
+      "last_head": "a9e63db38c268d4caebf73296e872158fa5b712d",
+      "last_feedback_at": "2026-09-04T04:02:34.191Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-2810": {
+      "last_event": "sweep",
+      "last_head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "last_feedback_at": "2026-09-04T04:15:44.139Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }
