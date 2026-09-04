@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T05:31:20.827Z",
+  "updated_at": "2026-09-04T06:16:57.407Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,28 +67,27 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:28:22.189Z",
-      "lease_until": "2026-09-04T06:58:22.189Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T05:54:10.820Z",
+      "lease_until": "2026-09-04T07:37:46.389Z",
+      "phase": "IMPLEMENTING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "315a89b4-fb41-428e-b526-cc81f285bed0",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T05:31:04.605Z",
-      "lease_until": "2026-09-04T07:01:04.605Z",
-      "phase": "RELEASED",
+      "claimed_at": "2026-09-04T06:02:42.358Z",
+      "lease_until": "2026-09-04T07:37:46.389Z",
+      "phase": "IMPLEMENTING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.756Z"
+      "run_id": "315a89b4-fb41-428e-b526-cc81f285bed0",
+      "title": null
     }
   },
   "reviews": {
@@ -147,6 +146,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T02:05:50.517Z",
       "safe_to_merge": true
+    },
+    "pr-3505": {
+      "pr": 3505,
+      "head_sha": "14babcb3e7e162d4dfc55ebb73e618d371ee33bc",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:02:30.610Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -156,18 +163,79 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T05:31:04.606Z",
+      "last_seen": "2026-09-04T06:02:42.358Z",
       "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f",
+    "last_main_sha": "1f81a55fb855af874036b236c4d39ee7417c47e9",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T05:27:22Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33840544277",
-    "last_deploy_sha": "0b2ada333fb0c8c0835f8df1f99633d07739cf1f"
+    "last_deploy_at": "2026-09-04T06:02:23Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33842741396",
+    "last_deploy_sha": "1f81a55fb855af874036b236c4d39ee7417c47e9"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3508,
+      "title": "fix(largo): read the real HELIX/VECTOR payload shapes in the consensus extractor",
+      "branch": "fix/largo-consensus-helix-vector-field-mismatch",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T06:15:58Z"
+    },
+    {
+      "number": 3507,
+      "title": "chore(autopilot): cursor handoff — deploy pending, off-hours audits GREEN",
+      "branch": "cursor/autopilot-handoff-2026-09-04T0611",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T06:16:00Z"
+    },
+    {
+      "number": 3506,
+      "title": "fix(platform): autonomous bug sweep batch 2 — UW reservation, stale-age clamps, change_pct",
+      "branch": "cursor/platform-bug-sweep",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T06:16:02Z"
+    },
+    {
+      "number": 3504,
+      "title": "chore(autopilot): cursor handoff after #3502 peer review",
+      "branch": "chore/autopilot-handoff-2026-09-04T0553",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T06:16:04Z"
+    },
+    {
+      "number": 3497,
+      "title": "fix(spx): EOD pin forecaster no longer locked bearish in long-gamma",
+      "branch": "cursor/spx-eod-pin-direction",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T06:16:05Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T06:16:07Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -569,6 +637,78 @@
       "agent": "cursor",
       "run_id": "34cc062c-797a-4e80-8a83-6c9e90f11422",
       "summary": "Cycle complete: deploy GREEN @ 0b2ada333 (#3495). validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours expected). Peer review: no substantive PRs (#2810 dependabot major skip). RTH lifecycle @ 09:00 ET Fri 2026-09-05. Agent state sync PR opening."
+    },
+    {
+      "at": "2026-09-04T05:58:18.959Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:02:30.611Z",
+      "type": "pr_review",
+      "pr": 3505,
+      "head_sha": "14babcb3e7e162d4dfc55ebb73e618d371ee33bc",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T06:02:30.610Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T06:02:37.779Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:02:37.779Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "c9656ab5-db86-484f-9c67-a0227f2ad535",
+      "summary": "Peer-reviewed #3505 (zerodte score_floor pin) — verify GREEN, APPROVED, merged during review. validate:deploy GREEN, ops:collect 0. Deploy pending for e6a248e→59d5d89. Off-hours ET — RTH lifecycle deferred to 09:00."
+    },
+    {
+      "at": "2026-09-04T06:02:42.358Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T06:02:42.987Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T06:07:46.388Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-04T06:07:47.254Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-04T06:07:48.128Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-04T06:16:57.406Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-04T06:16:57.407Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6ab31d87-a147-490e-9cee-c2e253dedf56",
+      "summary": "Cycle: #3505 peer-reviewed+merged (zerodte score_floor pin). Deploy 1f81a55 GREEN, validate:deploy/api-auth/seo/platform-integrity all GREEN, ops:collect 0. #3497 verify GREEN awaiting Claude review. #3506 platform sweep CI pending. Off-hours — RTH @ 09:00 ET."
     }
   ]
 }
