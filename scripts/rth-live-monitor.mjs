@@ -116,6 +116,7 @@ async function runCycle(cycle) {
     ["node --import tsx --test src/lib/zerodte/vector-commit-boost.test.ts", "zerodte-vector-boost-unit", 60_000],
     ["node --import tsx --test src/lib/zerodte/chase-exempt.test.ts", "zerodte-chase-exempt-unit", 60_000],
     ["node --import tsx --test src/lib/zerodte/regime-commit-relief.test.ts", "zerodte-regime-relief-unit", 60_000],
+    ["node --import tsx --test src/lib/zerodte/cortex-vector-relief.test.ts", "zerodte-cortex-relief-unit", 60_000],
     ["node scripts/audit/zerodte-block-funnel.mjs", "zerodte-block-funnel", 30_000],
     // Public live regime probe (0DTE board context).
     [

@@ -117,6 +117,7 @@ import {
 } from "./strategy-version";
 import { evaluateLedgerRowExit, resolveExitModeForTier, readFrozenExitPolicy, playRailsFromRow } from "./exit-sync";
 import { cortexEntryContextFor, cortexGateBlocks, evaluateCortexForCommit } from "./cortex-gate";
+import { applyCortexCommitRelief } from "./cortex-vector-relief";
 import { applyCortexVetoDwell } from "./cortex-veto-dwell";
 import { persistZeroDteRejections } from "./rejections";
 import { attachThesisFirstShadow, thesisFirstEntryContext } from "./thesis/scan-shadow";
@@ -1157,6 +1158,14 @@ async function attachGateVerdicts(
       failClosedOnVetoBlind: true,
     });
     s.cortex = await applyCortexVetoDwell(today, s.ticker, s.cortex);
+    s.cortex = applyCortexCommitRelief(
+      s.cortex,
+      s.direction,
+      gateScore,
+      pulse,
+      reliefCtx,
+      { failClosedOnVetoBlind: true }
+    );
     const cortexBlocks = cortexGateBlocks(s.cortex);
     if (cortexBlocks.length > 0) {
       // A Cortex veto / net-negative blocks EXACTLY like a hard-gate block:
