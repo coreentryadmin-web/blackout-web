@@ -126,6 +126,17 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0c. HELIX FlowAnomalyBanner future-timestamp recency — fix/flow-anomaly-future-timestamp (pending)
+
+**What was broken:** `FlowAnomalyBanner` on `/flows` treated a future-dated `detectedAt` as "recent"
+because `Date.now() - future < RECENCY_MS` — could flash the anomaly banner for events that have not
+happened yet under clock skew.
+
+**Fix:** `isFlowAnomalyRecent()` clamps future skew to not-recent.
+
+**Check at the open:** On `/flows` during RTH, banner only shows anomalies within 15 minutes; no
+spurious banner from skewed rows after deploy.
+
 ### 0. Discord digest crons on admin health board — PR #3543 (merged)
 
 **What was broken:** `darkpool-discord`, `thermal-discord`, and `helix-discord-digest` were live
