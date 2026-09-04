@@ -254,7 +254,8 @@ function sumTotals(st) {
   }
   return t;
 }
-function deriveWalls(st) {
+function deriveWalls(st, spot) {
+  const constrained = typeof spot === "number" && Number.isFinite(spot) && spot > 0;
   let callWall = null,
     putWall = null;
   let maxPos = 0,
@@ -263,11 +264,11 @@ function deriveWalls(st) {
     const strike = Number(s),
       g = Number(gRaw);
     if (!finite(strike) || !finite(g)) continue;
-    if (g > maxPos) {
+    if (g > maxPos && (!constrained || strike > spot)) {
       maxPos = g;
       callWall = strike;
     }
-    if (g < maxNeg) {
+    if (g < maxNeg && (!constrained || strike < spot)) {
       maxNeg = g;
       putWall = strike;
     }
@@ -305,7 +306,7 @@ async function auditHeatmapMatrix() {
         flags++;
       }
       if (name === "gex") {
-        const { callWall, putWall } = deriveWalls(block.strike_totals);
+        const { callWall, putWall } = deriveWalls(block.strike_totals, hm.spot);
         if (callWall != null && block.call_wall != null && Math.abs(callWall - block.call_wall) > 0.01) {
           fail("heatmap", `${ticker}.call_wall`, `reported ${block.call_wall} != ${callWall}`, "P0");
           flags++;

@@ -501,6 +501,14 @@ test("INV-3 call/put wall checks use side-constrained deriveWalls (spot passed â
   assert.match(src, /cross-provider[\s\S]*odte_overlay\?\.applied !== true/);
 });
 
+test("full-site-deep-audit heatmap oracle uses side-constrained deriveWalls (spot passed)", () => {
+  const src = readFileSync(join(process.cwd(), "scripts/full-site-deep-audit.mjs"), "utf8");
+  assert.match(src, /function deriveWalls\(st, spot\)/);
+  assert.match(src, /strike > spot/);
+  assert.match(src, /strike < spot/);
+  assert.match(src, /deriveWalls\(block\.strike_totals, hm\.spot\)/);
+});
+
 test("deriveCumulativeGammaFlip matches production lowest-plausible selection (not nearest spot)", async () => {
   const { cumulativeGammaFlip } = await import("../providers/gex-cross-validation-core");
   const twoCrossingBook: Record<string, number> = {
