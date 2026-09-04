@@ -182,6 +182,17 @@ real 4-lens entry is untouched.
 `https://blackouttrades.com/` no longer shows "GEX / VEX / DEX / CHARM" attributed to SPX Slayer
 specifically (Thermal's own card should still show all four, correctly).
 
+### 0n2. Thermal GexHeatmap fabricated flat +0.00% when change_pct absent — fix/thermal-header-change-pct-null (pending)
+
+**What was broken:** When the matrix payload omitted `change_pct` and the live quote had not arrived,
+the Thermal ticker header rendered `+0.00%` via `data?.change_pct ?? 0` and `quote!.change_pct ?? 0`
+fallbacks. Sibling `ThermalCompareStrip` already hid the chip with `?? null`.
+
+**Fix:** Thread `matrixChangePct` as `number | null`; only render the header % chip when finite.
+
+**Check at the open:** On `/heatmap`, switch to a ticker whose matrix is loading — header spot may
+show but day-change chip should be absent (not `+0.00%`) until a real quote or matrix change arrives.
+
 ### 0l. Pricing comparison table omitted the $49 SPX Slayer plan entirely — fix/spx-slayer-pricing-comparison-column (pending)
 
 **What was broken:** `/pricing` sells three commercial choices — SPX Slayer $49/mo, Premium Monthly
