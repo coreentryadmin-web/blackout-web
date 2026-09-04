@@ -1989,3 +1989,9 @@ than an end-of-session patch.
 - **What changed:** `dayChangeTextClass()` / `dayChangeBorderClass()` in `src/lib/api.ts`; all three surfaces use neutral white tone when change is absent.
 - **RTH check:** On `/dashboard` during a brief window where SPX spot is live but `spx_change_pct` is still warming (or force a null in dev), confirm SPX price/% use neutral white styling — not green bull — while the % reads `—`.
 
+### 24. RTH deep audit — full-site heatmap wall false-FAIL — fix/full-site-audit-wall-constraint — 2026-09-04
+
+- **What was broken:** Scheduled `RTH deep audit` failed with P0 `[heatmap] SPX.put_wall: reported 7700 != 8000` (and five sibling tickers) even though production walls matched their served `strike_totals`.
+- **What changed:** `full-site-deep-audit.mjs` now imports side-constrained `wallsFromStrikeTotals(totals, spot)` from `gex-wall-invariants.mjs` instead of unconstrained argmax/argmin.
+- **RTH check:** Next scheduled `RTH deep audit` workflow run should pass the heatmap matrix section with zero P0 wall mismatches when GEX data is live.
+
