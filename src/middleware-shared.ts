@@ -8,6 +8,7 @@ export const PROTECTED_PREFIXES = [
   "/heatmap",
   "/nighthawk",
   "/vector",
+  "/meridian",
   "/admin",
   "/account",
 ];
