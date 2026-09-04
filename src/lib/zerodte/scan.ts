@@ -79,6 +79,8 @@ import {
   matchEarnings,
   polygonSpotTicker,
   refreshUnderlyingFromLiveSpot,
+  deriveContractHorizon,
+  gradingPolicyForHorizon,
   buildOriginMaps,
   MERGE_POLICY_VERSION,
   summarizeDiscoveryRailMix,
@@ -152,6 +154,13 @@ import {
   resolveZeroDteContractAttach,
   vectorRankContractsEnabled,
 } from "./vector-contract-resolve";
+import {
+  liquidStrikeFallbackEnabled,
+  planNeedsLiquidityFallback,
+  pickLiquidStrikePlan,
+  rankLiquidStrikeAlternatives,
+  type LiquidStrikeCandidate,
+} from "./liquid-strike-fallback";
 import { computeVectorGateBoost } from "./vector-commit-boost";
 import {
   effectiveChasePct,
@@ -1317,6 +1326,118 @@ async function attachContractPlans(
       chasePct,
       illiquidSpreadPct,
     });
+    s.plan_chase_exempt = planChaseExempt(chaseCtx);
+  }
+
+  await applyLiquidStrikeFallback(setups, chains, vectorPulseByTicker, marketState, nowMs);
+}
+
+/** When the primary strike fails G-9 liquidity, walk the chain to the next-nearest liquid strike. */
+async function applyLiquidStrikeFallback(
+  setups: EnrichedZeroDteSetup[],
+  chains: Map<string, { spot: number; rows: import("@/features/nighthawk/lib/option-chain-prompt").ChainStrikeRow[] }>,
+  vectorPulseByTicker: ZeroDteVectorPulseByTicker,
+  marketState: MarketStateSnapshot | undefined,
+  nowMs: number
+): Promise<void> {
+  if (!liquidStrikeFallbackEnabled()) return;
+
+  const needing = setups.filter(
+    (s) => s.play_type !== "CONDOR" && planNeedsLiquidityFallback(s.plan) && s.top_strike != null && s.expiry
+  );
+  if (needing.length === 0) return;
+
+  const today = todayEt();
+  const { resolveTickerChainRows } = await import("@/features/nighthawk/lib/option-chain-prompt");
+
+  await Promise.all(
+    needing.map(async (s) => {
+      const tk = s.ticker.toUpperCase();
+      if (chains.has(tk)) return;
+      const chain = await within(resolveTickerChainRows(tk).catch(() => null), 3_000).catch(() => null);
+      if (chain) chains.set(tk, chain);
+    })
+  );
+
+  const altByTicker = new Map<string, LiquidStrikeCandidate[]>();
+  const altOccs = new Set<string>();
+
+  for (const s of needing) {
+    const chain = chains.get(s.ticker.toUpperCase());
+    if (!chain) continue;
+    const spot = s.underlying_price ?? chain.spot;
+    if (!(spot > 0) || s.top_strike == null || !s.expiry) continue;
+    const alts = rankLiquidStrikeAlternatives({
+      rows: chain.rows,
+      spot,
+      todayYmd: today,
+      ticker: s.ticker,
+      expiry: s.expiry,
+      primaryStrike: s.top_strike,
+      direction: s.direction,
+    });
+    if (alts.length === 0) continue;
+    altByTicker.set(s.ticker, alts);
+    for (const a of alts) altOccs.add(a.occ);
+  }
+
+  if (altOccs.size === 0) return;
+
+  const altSnaps = await within(
+    fetchOptionsUnifiedSnapshot([...altOccs]).catch(
+      () => new Map<string, import("@/lib/providers/options-snapshot").OptionSnapshot>()
+    ),
+    5_000
+  );
+  if (!altSnaps) return;
+
+  for (const s of needing) {
+    const alts = altByTicker.get(s.ticker);
+    if (!alts?.length) continue;
+
+    const pulse = vectorPulseForDirection(vectorPulseByTicker, s.ticker, s.direction);
+    const chaseCtx: PlanChaseContext = {
+      direction: s.direction,
+      score: s.score,
+      vector_pulse: pulse,
+      discovery_origin: s.discovery_origin,
+      gamma_regime: s.gamma_regime ?? null,
+      market_aligned: s.market_aligned ?? null,
+      regime_structure: marketState?.regime_structure ?? null,
+      market_state_confidence: marketState?.confidence,
+    };
+    const chasePct = effectiveChasePct(chaseCtx);
+    const illiquidSpreadPct = effectiveIlliquidSpreadPct(chaseCtx);
+
+    const picked = pickLiquidStrikePlan(alts, altSnaps, {
+      direction: s.direction,
+      price: s.underlying_price ?? null,
+      flowAvgFill: s.top_strike_avg_fill,
+      keySupports: s.key_supports,
+      keyResistances: s.key_resistances,
+      vwap: s.vwap,
+      chasePct,
+      illiquidSpreadPct,
+      quoteAgeMsFor: (snap) => computeQuoteAgeMs(snap?.observedAtMs ?? snap?.quoteUpdatedMs, nowMs),
+    });
+    if (!picked) continue;
+
+    s.top_strike = picked.candidate.strike;
+    s.expiry = picked.candidate.expiry;
+    s.contract_horizon = deriveContractHorizon(picked.candidate.dte);
+    s.actual_dte_at_commit = picked.candidate.dte;
+    s.grading_policy = gradingPolicyForHorizon(s.contract_horizon);
+    s.plan = picked.plan;
+
+    const snap = altSnaps.get(picked.candidate.occ) ?? null;
+    const refreshed = refreshUnderlyingFromLiveSpot({
+      livePrice: snap?.underlyingPrice ?? s.underlying_price,
+      liveObservedAtMs: snap?.observedAtMs ?? nowMs,
+      direction: s.direction,
+      topStrike: picked.candidate.strike,
+      hasSingleStrikeMoneyness: s.play_type !== "CONDOR",
+    });
+    if (refreshed) Object.assign(s, refreshed);
     s.plan_chase_exempt = planChaseExempt(chaseCtx);
   }
 }

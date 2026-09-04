@@ -44,7 +44,7 @@ export function regimeScoreBump(ctx: PlanChaseContext): number {
   return REGIME_SCORE_BUMP;
 }
 
-const THESIS_BYPASS_MIN_SCORE = 80;
+const THESIS_BYPASS_MIN_SCORE = envInt("ZERODTE_AMPLIFY_THESIS_BYPASS_MIN_SCORE", 80);
 
 /** High-conviction aligned FLOW on amplify days — skip thesis-first pre-gate blocks. */
 export function regimeBypassesThesisBlocks(ctx: PlanChaseContext): boolean {

@@ -17,6 +17,21 @@ function flowBacked(origins: readonly string[] | null | undefined): boolean {
   return set.length === 0 || set.includes("FLOW");
 }
 
+function breakoutBacked(origins: readonly string[] | null | undefined): boolean {
+  const set = Array.isArray(origins) ? origins : [];
+  return set.includes("BREAKOUT");
+}
+
+/** Amplify-session BREAKOUT 85+ tape-aligned — full Cortex relief (gex veto strip + net-negative pass). */
+export function regimeExemptsCortexBreakoutRelief(ctx: PlanChaseContext): boolean {
+  if (process.env.ZERODTE_AMPLIFY_CORTEX_RELIEF === "0") return false;
+  if (!isAmplifyMomentumRegime(ctx)) return false;
+  if (!breakoutBacked(ctx.discovery_origin)) return false;
+  if (ctx.market_aligned !== true) return false;
+  if (ctx.score < 85) return false;
+  return true;
+}
+
 /** Vector-aligned winner/runner — full Cortex block relief (gex veto strip + net-negative pass). */
 export function vectorExemptsCortexBlocks(
   direction: "long" | "short",
@@ -31,7 +46,7 @@ export function vectorExemptsCortexBlocks(
 export function regimeExemptsCortexNetNegative(ctx: PlanChaseContext): boolean {
   if (process.env.ZERODTE_AMPLIFY_CORTEX_RELIEF === "0") return false;
   if (!isAmplifyMomentumRegime(ctx)) return false;
-  if (!flowBacked(ctx.discovery_origin)) return false;
+  if (!flowBacked(ctx.discovery_origin) && !breakoutBacked(ctx.discovery_origin)) return false;
   if (ctx.market_aligned !== true) return false;
   if (ctx.score < 85) return false;
   return true;
@@ -53,10 +68,13 @@ export function applyCortexCommitRelief(
 
   const vectorRelief = vectorExemptsCortexBlocks(direction, score, pulse);
   const regimeNetRelief = regimeExemptsCortexNetNegative(ctx);
+  const regimeBreakoutRelief = regimeExemptsCortexBreakoutRelief(ctx);
 
-  if (!vectorRelief && !regimeNetRelief) return assessment;
+  if (!vectorRelief && !regimeNetRelief && !regimeBreakoutRelief) return assessment;
 
-  if (assessment.decision === "VETO" && vectorRelief) {
+  const fullRegimeRelief = regimeBreakoutRelief;
+
+  if (assessment.decision === "VETO" && (vectorRelief || fullRegimeRelief)) {
     const kept = assessment.verdict.vetoes.filter((v) => v.source !== GEX_WALLS_SOURCE);
     if (kept.length === assessment.verdict.vetoes.length) return assessment;
     const nextVerdict = { ...assessment.verdict, vetoes: kept };
@@ -69,7 +87,7 @@ export function applyCortexCommitRelief(
   }
 
   if (
-    vectorRelief &&
+    (vectorRelief || fullRegimeRelief) &&
     (assessment.decision === "NET_NEGATIVE" ||
       assessment.decision === "OPPOSE_UNRESOLVED" ||
       assessment.decision === "CONTESTED")
