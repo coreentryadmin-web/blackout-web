@@ -152,6 +152,14 @@ Edition prep." Added a regression test tying `LEARN_NAV`'s night-hawk descriptor
 structured-data testing tool) should show the corrected Night Hawk descriptor; confirm it still
 reads naturally alongside the dedicated Night Hawk guide's own overview content.
 
+### 0aj. Academy's structured curriculum had no Vector or Meridian chapter — feat/academy-vector-meridian-chapters (pending)
+
+**What was broken:** `LEARN_NAV` (Academy's structured chapter list) had 7 entries — Getting Started, SPX Slayer, HELIX, Largo, Night Hawk, Thermal, Glossary — with no chapter for Vector or Meridian, even though `PRODUCT_MANIFEST` already lists all 7 as live products. Their guides existed only in the unstructured Guides catalog, never as numbered curriculum chapters.
+
+**Fix:** Added real, code-grounded Vector and Meridian chapters (8 and 9), wired through the existing `defineToolGuide` pattern with matching SEO metadata. Added an invariant test asserting every live manifest product has exactly one first-class Academy chapter.
+
+**Check at the open:** `/learn` hub should show "9 chapters" and Vector/Meridian in the sidebar chapter list (not just the flat Guides catalog below it); `/learn/vector` and `/learn/meridian` should render with real content and correct prev/next chapter navigation.
+
 ### 0ae. `zerodte-warm` cron raced live member requests for the UW rate-limiter ceiling on a false premise — fix/zerodte-warm-uw-sweep-tag (merged #3775)
 
 **What was broken:** the `zerodte-warm` cron's dispatch (`warmZeroDteBoard()` +
