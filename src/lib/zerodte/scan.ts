@@ -65,6 +65,10 @@ import {
   type ChainStrikeRow,
 } from "@/features/nighthawk/lib/option-chain-prompt";
 import { createDossierBuildCache, fetchTickerDossier } from "@/features/nighthawk/lib/dossier";
+import {
+  resolveTickerChainRows,
+  type ChainStrikeRow,
+} from "@/features/nighthawk/lib/option-chain-prompt";
 import { etNowParts, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { fetchAggBars } from "@/lib/providers/polygon-largo";
 import { macroEventsOnDateLive } from "@/lib/providers/macro-events";
@@ -1345,7 +1349,7 @@ async function attachContractPlans(
 /** When the primary strike fails G-9 liquidity, walk the chain to the next-nearest liquid strike. */
 async function applyLiquidStrikeFallback(
   setups: EnrichedZeroDteSetup[],
-  chains: Map<string, { spot: number; rows: import("@/features/nighthawk/lib/option-chain-prompt").ChainStrikeRow[] }>,
+  chains: Map<string, { spot: number; rows: ChainStrikeRow[] }>,
   vectorPulseByTicker: ZeroDteVectorPulseByTicker,
   marketState: MarketStateSnapshot | undefined,
   nowMs: number
