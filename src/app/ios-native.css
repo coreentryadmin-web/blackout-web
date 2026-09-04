@@ -128,6 +128,14 @@ html.ios-app.ios-native-shell .nav-bar {
   pointer-events: auto;
 }
 
+/* IosAppChrome clears `nav-locked` the instant `menuOpen` flips false, but AnimatePresence
+   keeps this full-screen overlay mounted through the ~200ms exit spring. Without this guard
+   the overlay (z-index 110, above the tab bar at 95) still has pointer-events: auto and
+   eats bottom-tab taps until unmount — the ios-ui-e2e harness hit this as a TimeoutError. */
+html:not(.nav-locked) .ios-native-menu-overlay {
+  pointer-events: none;
+}
+
 .ios-native-menu-scrim {
   position: absolute;
   inset: 0;

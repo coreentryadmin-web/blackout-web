@@ -59,6 +59,7 @@ async function shot(page, name) {
 }
 
 async function clickSegment(page, label) {
+  await closeCommandDeck(page);
   const btn = page.locator(".ios-native-segment-btn", { hasText: label }).first();
   if (await btn.isVisible().catch(() => false)) {
     await btn.scrollIntoViewIfNeeded().catch(() => null);
@@ -75,9 +76,42 @@ async function clickSegment(page, label) {
 async function closeCommandDeck(page) {
   const overlay = page.locator(".ios-native-menu-overlay");
   if (!(await overlay.isVisible({ timeout: 800 }).catch(() => false))) return;
-  await page.getByRole("button", { name: /close command deck/i }).click({ force: true, timeout: 3000 }).catch(() => null);
-  await page.keyboard.press("Escape").catch(() => null);
-  await overlay.waitFor({ state: "hidden", timeout: 8000 }).catch(() => null);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (!(await overlay.isVisible({ timeout: 300 }).catch(() => false))) return;
+    const scrim = page.locator(".ios-native-menu-scrim");
+    if (await scrim.isVisible().catch(() => false)) {
+      await scrim.click({ position: { x: 12, y: 12 }, force: true, timeout: 5000 }).catch(() => null);
+    }
+    await page.getByRole("button", { name: /close command deck/i }).click({ force: true, timeout: 3000 }).catch(() => null);
+    await page.keyboard.press("Escape").catch(() => null);
+    await page
+      .waitForFunction(
+        () => !document.documentElement.classList.contains("nav-locked"),
+        { timeout: 5000 }
+      )
+      .catch(() => null);
+    await overlay.waitFor({ state: "hidden", timeout: 8000 }).catch(() => null);
+  }
+}
+
+async function clickTabBar(page, tab) {
+  await closeCommandDeck(page);
+  const tabBar = page.locator(".ios-app-tab-bar");
+  const codeLink = tabBar.locator(".ios-app-tab-link", { hasText: tab.code }).first();
+  if (await codeLink.isVisible().catch(() => false)) {
+    await codeLink.click({ timeout: 15_000 }).catch(async () => {
+      await codeLink.click({ force: true, timeout: 10_000 });
+    });
+    return true;
+  }
+  const labelLink = tabBar.getByRole("link", { name: tab.label }).first();
+  if (await labelLink.isVisible().catch(() => false)) {
+    await labelLink.click({ timeout: 15_000 }).catch(async () => {
+      await labelLink.click({ force: true, timeout: 10_000 });
+    });
+    return true;
+  }
+  return false;
 }
 async function waitForVectorCanvas(page, timeoutMs = 45_000) {
   try {
@@ -122,9 +156,12 @@ async function clickRoleTab(page, pattern) {
 }
 
 async function clickDeckFilter(page, label) {
+  await closeCommandDeck(page);
   const btn = page.locator(".nh-deck-filtbtn", { hasText: label }).first();
   if (await btn.isVisible().catch(() => false)) {
-    await btn.click();
+    await btn.click({ timeout: 15_000 }).catch(async () => {
+      await btn.click({ force: true, timeout: 10_000 });
+    });
     await page.waitForTimeout(400);
     return true;
   }
@@ -174,6 +211,7 @@ async function assertThermalTickerSheet(page, prefix = "") {
 }
 
 async function assertNighthawkInteractions(page, prefix = "") {
+  await closeCommandDeck(page);
   if (await clickDeckFilter(page, "OPEN")) ok(`${prefix}hawk:filter-open`);
   if (await clickDeckFilter(page, "ALL")) ok(`${prefix}hawk:filter-all`);
   const row = page.locator(".nh-deck-row").first();
@@ -422,13 +460,7 @@ async function assertToolContent(page, route, prefix = "", opts = {}) {
 }
 
 async function testToolPage(page, tab, prefix = "") {
-  const tabLink = page.getByRole("link", { name: tab.label }).first();
-  const codeLink = page.locator(".ios-app-tab-link", { hasText: tab.code }).first();
-  if (await tabLink.isVisible().catch(() => false)) {
-    await tabLink.click();
-  } else if (await codeLink.isVisible().catch(() => false)) {
-    await codeLink.click();
-  } else {
+  if (!(await clickTabBar(page, tab))) {
     warn(`tab:${tab.code}`, "rail link hidden — direct nav");
     await page.goto(`${BASE}${tab.href}`, { waitUntil: "domcontentloaded", timeout: 45_000 });
     await page.waitForFunction(() => window.Clerk?.user?.id, { timeout: 30_000 }).catch(() => null);
@@ -701,8 +733,12 @@ async function runDevicePass(deviceFactory, session, prefix = "") {
       ok(`${prefix}chrome:menu-open`);
       await shot(page, `${prefix}menu-open`);
       await closeCommandDeck(page);
-      await page.waitForSelector(".ios-native-menu-sheet", { state: "hidden", timeout: 10_000 }).catch(() => null);
-      ok(`${prefix}chrome:menu-close`);
+      const sheetHidden = await page
+        .waitForSelector(".ios-native-menu-sheet", { state: "hidden", timeout: 10_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (sheetHidden) ok(`${prefix}chrome:menu-close`);
+      else warn(`${prefix}chrome:menu-close`, "sheet still visible after dismiss");
     } else {
       warn(`${prefix}chrome:menu`, "command deck button not visible");
     }
