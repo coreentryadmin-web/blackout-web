@@ -2,7 +2,7 @@
 // Release a task claim. Only the recorded owner can release it — this stops
 // agent B from releasing (and then re-claiming) agent A's active lease.
 // Usage: node release-task.mjs <task_id> <owner>
-import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,11 +15,19 @@ if (!taskId || !owner) {
   process.exit(2);
 }
 const lockPath = join(LOCKS_DIR, `${taskId}.lock`);
-if (!existsSync(lockPath)) {
-  console.log(`NOOP: ${taskId} was not locked`);
-  process.exit(0);
+// Read directly rather than existsSync-then-readFileSync: that check-then-use pattern is a
+// file-system race (the lock can vanish between the two calls, e.g. a concurrent release or
+// reclaim) — CodeQL flags it, and it's real, so read once and handle ENOENT as the NOOP case.
+let existing;
+try {
+  existing = JSON.parse(readFileSync(lockPath, 'utf8'));
+} catch (err) {
+  if (err.code === 'ENOENT') {
+    console.log(`NOOP: ${taskId} was not locked`);
+    process.exit(0);
+  }
+  throw err;
 }
-const existing = JSON.parse(readFileSync(lockPath, 'utf8'));
 if (existing.owner !== owner) {
   console.error(`REFUSED: ${taskId} is held by ${existing.owner}, not ${owner} — will not release someone else's lease`);
   process.exit(1);

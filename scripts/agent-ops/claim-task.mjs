@@ -40,7 +40,23 @@ try {
   process.exit(0);
 } catch (err) {
   if (err.code === 'EEXIST') {
-    const existing = JSON.parse(readFileSync(lockPath, 'utf8'));
+    // CodeQL flags reading lockPath here as a file-system race (the file could be deleted —
+    // by release-task.mjs or recover-stale-lease.mjs running concurrently — between the EEXIST
+    // above and this read). That race is real but benign: it can only mean someone else's
+    // claim/release/reclaim happened in between, which is exactly the kind of concurrent
+    // activity this whole locking scheme exists to arbitrate safely. Handled explicitly rather
+    // than left to crash the process on an unhandled ENOENT, and the diagnostic degrades to
+    // "already gone" instead of asserting stale ownership details we can no longer read.
+    let existing;
+    try {
+      existing = JSON.parse(readFileSync(lockPath, 'utf8'));
+    } catch {
+      console.error(
+        `NOT CLAIMED: ${taskId} was held by another owner but its lock vanished before it could be read ` +
+          `(released or reclaimed concurrently) — retry the claim.`
+      );
+      process.exit(1);
+    }
     console.error(
       `NOT CLAIMED: ${taskId} already held by ${existing.owner} (claimed_at=${existing.claimed_at}, lease_until=${existing.lease_until}). ` +
         `If you believe this is stale, run recover-stale-lease.mjs — it verifies the owner's heartbeat before reclaiming, it does not just check lease_until.`

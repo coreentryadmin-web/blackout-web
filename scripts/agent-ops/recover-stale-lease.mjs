@@ -6,7 +6,7 @@
 // agent still renewing its heartbeat must not be stolen from. This is the
 // concrete "verify heartbeat/process state before lease recovery" rule.
 // Usage: node recover-stale-lease.mjs <task_id> [--max-age-min=30]
-import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,12 +25,19 @@ if (!taskId) {
 }
 
 const lockPath = join(LOCKS_DIR, `${taskId}.lock`);
-if (!existsSync(lockPath)) {
-  console.log(`NOOP: ${taskId} is not locked, nothing to recover`);
-  process.exit(0);
+// Read directly rather than existsSync-then-readFileSync — that check-then-use pattern is a
+// file-system race CodeQL flags (the lock can vanish between the two calls, e.g. a concurrent
+// release), so read once and handle ENOENT as the NOOP case.
+let lock;
+try {
+  lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+} catch (err) {
+  if (err.code === 'ENOENT') {
+    console.log(`NOOP: ${taskId} is not locked, nothing to recover`);
+    process.exit(0);
+  }
+  throw err;
 }
-
-const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
 const now = Date.now();
 const leaseExpired = new Date(lock.lease_until).getTime() < now;
 
@@ -44,11 +51,14 @@ if (!leaseExpired) {
 const hbPath = join(HB_DIR, `${lock.owner}.json`);
 let heartbeatStale = true;
 let hbEvidence = 'no heartbeat file found for this owner';
-if (existsSync(hbPath)) {
+try {
   const hb = JSON.parse(readFileSync(hbPath, 'utf8'));
   const ageMin = (now - new Date(hb.last_seen).getTime()) / 60_000;
   heartbeatStale = ageMin > maxAgeMin;
   hbEvidence = `heartbeat last_seen=${hb.last_seen} (${ageMin.toFixed(1)}min ago), threshold=${maxAgeMin}min`;
+} catch (err) {
+  if (err.code !== 'ENOENT') throw err;
+  // no heartbeat file for this owner -- heartbeatStale/hbEvidence keep their defaults above
 }
 
 if (!heartbeatStale) {
