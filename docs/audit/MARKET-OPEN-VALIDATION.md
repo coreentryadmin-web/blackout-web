@@ -126,6 +126,16 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0h. platform-integrity tier-gate false WARN — fix/platform-integrity-tier-gate-skip (pending)
+
+**What was broken:** `npm run validate:platform-integrity` (unauthenticated) reported 4 WARNs on
+every RTH lifecycle sweep for `gex-positioning-spx`, `thermal-matrix-SPY/QQQ`, and
+`vector-spx-0dte-walls` because HTTP 401 was read as empty data (strikes=0, spot=—).
+
+**Fix:** Classify HTTP 401 as `SKIP` / `tier-gated` — same as desk, flows, nighthawk checks.
+
+**Check at the open:** `npm run validate:platform-integrity` → 0 warn, tier-gated rows SKIP (not WARN).
+
 ### 0g. RTH-open options-socket retry false-fail — fix/rth-open-socket-retry-false-fail (pending)
 
 **What was broken:** `validate:rth-open` called `fail()` on the first options-socket probe attempt even
