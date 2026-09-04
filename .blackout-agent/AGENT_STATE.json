@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T20:00:59.281Z",
+  "updated_at": "2026-09-04T20:06:36.273Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:55:16.295Z",
-      "lease_until": "2026-09-04T21:28:54.739Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-04T19:53:37.943Z",
+      "lease_until": "2026-09-04T21:23:37.943Z",
+      "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "3fc4098a-9955-490e-942e-2aa8c4b7b8e4",
+      "run_id": null,
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -284,11 +284,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "4d50fad9c46b7cbcb0ed44578af5a68d3a63e788",
+    "last_main_sha": "e69c4b51b978b9052f1f60ba96351408f0ef188e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:56:18Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33912534346",
-    "last_deploy_sha": "db208131ed3f66843d8743e6847ccc05a1dfab75"
+    "last_deploy_at": "2026-09-04T20:04:59Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33914428794",
+    "last_deploy_sha": "e69c4b51b978b9052f1f60ba96351408f0ef188e"
   },
   "open_prs": [],
   "events": [
@@ -1180,6 +1180,25 @@
       "agent": "cursor",
       "run_id": "721973bf-17ca-4a0c-95ca-500727a9497e",
       "summary": "RTH lifecycle GREEN @ 15:59 ET Fri. Peer-reviewed #3745/#3746/#3747 APPROVED. Opened #3748 agent state sync. validate:deploy/platform-integrity/api-auth/seo/rth-open all GREEN. ops:collect 0. ECS rollout COMPLETED. Standing: Claude undraft+merge #3745-3747 when verify green; Claude peer-review #3748."
+    },
+    {
+      "at": "2026-09-04T20:06:31.016Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T20:06:31.017Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "336434c9-ea4b-4c80-ab46-53ce0e206408",
+      "summary": "Post-merge cycle: #3745/#3746/#3747 merged to main (e69c4b51b). Fixes: Vector roundFloats+UW halt freshness, SPX pulse isWsUpdatedAtFresh guard, vector-walls-warm RERUN_COOLDOWN. validate:deploy GREEN post-merge. ops:collect 0. platform-integrity 14/14. Only open PR: #3748 agent-state sync (needs Claude review). Off-hours — RTH lifecycle skipped until Fri 09:00 ET."
+    },
+    {
+      "at": "2026-09-04T20:06:36.273Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
