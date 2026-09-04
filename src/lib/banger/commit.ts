@@ -132,7 +132,7 @@ export async function runBangerCommit(deps: BangerCommitDeps): Promise<BangerCom
   }
 
   await persistBangerWatchSnapshot({
-    asOf: etStamp(Date.now()),
+    asOf: etStamp(Date.now()) ?? new Date().toISOString(),
     sessionDate: deps.sessionDate,
     plays: watchPlays,
   });
