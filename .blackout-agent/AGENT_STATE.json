@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T18:28:18.107Z",
+  "updated_at": "2026-09-04T18:45:49.475Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -257,6 +257,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T18:19:48.656Z",
       "safe_to_merge": true
+    },
+    "pr-3711": {
+      "pr": 3711,
+      "head_sha": "8ee4ee21be0b8eae0e0c51ff43583301c6a7536e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:40:30.032Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -271,11 +279,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "bdd3a65fec607cfb7dc8098ed4f76a3a0ae9ed31",
+    "last_main_sha": "73e065b561f62c3a980b394fc0988bff5e140a34",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T18:26:42Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33905916082",
-    "last_deploy_sha": "bdd3a65fec607cfb7dc8098ed4f76a3a0ae9ed31"
+    "last_deploy_at": "2026-09-04T18:45:31Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33906581445",
+    "last_deploy_sha": "827a3030ef91b4913c4055bc88d5f4dec94e8e8e"
   },
   "open_prs": [],
   "events": [
@@ -1284,6 +1292,29 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T18:40:30.033Z",
+      "type": "pr_review",
+      "pr": 3711,
+      "head_sha": "8ee4ee21be0b8eae0e0c51ff43583301c6a7536e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:40:30.032Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:45:49.473Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T18:45:49.475Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "afcdc2e6-141d-4b64-a934-12bef63e7d95",
+      "summary": "#3711 merged (wall audit fix on main). #3691/#3692 already merged. validate:deploy GREEN. ops:collect 0."
     }
   ],
   "pr_activity": {
