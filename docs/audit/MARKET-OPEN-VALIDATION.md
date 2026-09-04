@@ -311,6 +311,22 @@ is not yet deployed, not that it failed. During the 4am-8pm ET window itself, co
 still runs on its normal ~90s (leader-heal) / 5-min (EventBridge) cadence — this fix must not have
 introduced any new throttling of legitimate in-window traffic, since 60s is strictly below both.
 
+### 9. Discord digest crons invisible to staleness watchdog — PR pending (`fix/discord-digest-cron-watchdog`)
+
+**What was broken:** `darkpool-discord`, `thermal-discord`, and `helix-discord-digest` each have
+live EventBridge rules, call `logCronRun(<key>)` on every hit, and post to member-visible Discord
+channels — but were listed in `INTENTIONALLY_UNREGISTERED` on the mistaken belief that
+`cron-jobs.json` had no schedule. `buildCronHealthSnapshot()` maps over `CRON_JOBS` only, so a stall
+on any of these three would surface first as a quiet public Discord channel, not an internal alert.
+
+**Fix:** added three `CRON_JOBS` entries with `schedule_cron_utc` copied from `railway.*.toml`,
+`stale_after_min` at ~5× interval (10 / 45 / 45 min), and `produces_member_alert: true` so BIE's
+missed-alert detector also watches them.
+
+**Check at the open:** on `/admin` → Operations → cron health (or `GET /api/admin/health`), confirm
+all three jobs show a recent `last_run_at` during RTH with status not stale/failed; intentionally
+stall one webhook URL in a test env is NOT required — just confirm the board row exists and ticks.
+
 ---
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)

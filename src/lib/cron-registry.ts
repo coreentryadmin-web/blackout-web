@@ -586,6 +586,59 @@ export const CRON_JOBS: CronJobDefinition[] = [
     schedule_cron_utc: "30 23 * * *",
     description: "Pull X post/profile metrics into analytics",
   },
+  // ---------------------------------------------------------------------------
+  // THREE LIVE DISCORD-DIGEST JOBS THAT LOGGED BUT HAD NO HEALTH ENTRY (added 2026-09-04).
+  //
+  // Each has a real EventBridge rule in blackout-infra (verified via describe_rule) and calls
+  // `logCronRun(<key>)` on every hit, but was listed in INTENTIONALLY_UNREGISTERED on the mistaken
+  // belief that cron-jobs.json had no schedule. The staleness watchdog and admin cron-health board
+  // map over CRON_JOBS only — absent entries meant a silent Discord channel was the first alert.
+  //
+  // `stale_after_min` = ~5× the schedule interval (same tuning as neighbouring entries). Schedules
+  // copied from railway.*.toml (the manifest generator's source of truth).
+  // ---------------------------------------------------------------------------
+  {
+    key: "darkpool-discord",
+    name: "Dark Pool Discord",
+    kind: "http",
+    path: "/api/cron/darkpool-discord",
+    schedule_label: "~Every 2 min (market hours)",
+    stale_after_min: 10,
+    schedule_cron_utc: "*/2 11-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Burst dark-pool prints + 15m top-blocks digest to the member Discord channel (inert unless DARKPOOL_DISCORD_ALERTS + webhook are set)",
+    produces_member_alert: true,
+  },
+  {
+    key: "thermal-discord",
+    name: "Thermal Discord",
+    kind: "http",
+    path: "/api/cron/thermal-discord",
+    schedule_label: "~Every 15 min (market hours)",
+    stale_after_min: 45,
+    schedule_cron_utc: "*/15 13-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Post Thermal desk card (SPY|SPX|QQQ) + breach/EOD recap embeds to the member Discord channel (inert without DISCORD_THERMAL_WEBHOOK_URL)",
+    produces_member_alert: true,
+  },
+  {
+    key: "helix-discord-digest",
+    name: "HELIX Discord Digest",
+    kind: "http",
+    path: "/api/cron/helix-discord-digest",
+    schedule_label: "~Every 15 min (market hours)",
+    stale_after_min: 45,
+    schedule_cron_utc: "*/15 11-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "15m/30m HELIX top-hits digest embeds to the member Discord channel (inert unless HELIX_DISCORD_ALERTS + webhook are set)",
+    produces_member_alert: true,
+  },
 ];
 
 export const CRON_JOB_BY_KEY = Object.fromEntries(CRON_JOBS.map((j) => [j.key, j])) as Record<
