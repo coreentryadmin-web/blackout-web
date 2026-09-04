@@ -126,6 +126,19 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0f. SPX dashboard E2E cross-tool stale matrix flip — fix/spx-dashboard-cross-tool-stale-matrix (pending)
+
+**What was broken:** `spx-dashboard-e2e-audit.mjs` compared gamma flip from a matrix snapshot fetched
+at audit start (after full cell validation) against a fresh `gex-positioning` read. SPX matrix cache
+turns every ~8s RTH — produced false 500pt+ FAILs when the book re-crossed between fetches (e.g.
+matrix 6990 vs positioning 7795 on 2026-09-04 ~10:04 ET).
+
+**Fix:** Re-fetch `/api/market/gex-heatmap?ticker=SPX` inside `crossToolIntegration` alongside
+positioning; annotate flip FAILs with `calculation_id` match/mismatch.
+
+**Check at the open:** `node scripts/spx-dashboard-e2e-audit.mjs` → `integration:spx-cross-tool` PASS
+during RTH; flip delta should be 0 when `calculation_id` matches on back-to-back probe.
+
 ### 0c. HELIX FlowAnomalyBanner future-timestamp recency — fix/flow-anomaly-future-timestamp (pending)
 
 **What was broken:** `FlowAnomalyBanner` on `/flows` treated a future-dated `detectedAt` as "recent"
