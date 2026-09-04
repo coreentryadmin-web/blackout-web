@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T11:20:50.708Z",
+  "updated_at": "2026-09-04T12:09:14.893Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:22:03.345Z",
-      "lease_until": "2026-09-04T11:52:03.345Z",
+      "claimed_at": "2026-09-04T12:00:21.683Z",
+      "lease_until": "2026-09-04T13:30:32.057Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "9f8a01c1-4b9e-4aac-abcf-711e2ec8a163",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -186,6 +186,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T10:33:34.705Z",
       "safe_to_merge": true
+    },
+    "pr-3575": {
+      "pr": 3575,
+      "head_sha": "e45e162ffd6b44287390e19df2d0f93b190c21d8",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T12:08:54.733Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -200,13 +208,24 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0d367bde47b227c73f6e56abb5cc5dc80cf5e44f",
+    "last_main_sha": "74d858bc54d9e36b87fce3b8043b3d3e4024c272",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T10:35:12Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33863935805",
-    "last_deploy_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01"
+    "last_deploy_at": "2026-09-04T12:06:34Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33871126902",
+    "last_deploy_sha": "f84aad3391ddaaeb7a2beb57f9a58e3b73643101"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-04T12:09:12Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -812,6 +831,85 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T12:08:54.734Z",
+      "type": "pr_review",
+      "pr": 3575,
+      "head_sha": "e45e162ffd6b44287390e19df2d0f93b190c21d8",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T12:08:54.733Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T12:09:00.275Z",
+      "type": "pr_webhook",
+      "pr": 3576,
+      "event": "sweep",
+      "head": "e082dcf9b873048dd0ed09f999a876ea8cfd6368",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-04T12:09:02.999Z",
+      "type": "pr_webhook",
+      "pr": 3574,
+      "event": "sweep",
+      "head": "896d04346f4857625b7016b48461c2ba4685693e",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T12:09:05.440Z",
+      "type": "pr_webhook",
+      "pr": 2810,
+      "event": "sweep",
+      "head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-04T12:09:14.892Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-04T12:09:14.893Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "0f3e6de1-c135-45ad-8b14-a0c3ff060c53",
+      "summary": "Peer-reviewed #3572 (docs MARKET-OPEN-VALIDATION renumber) and #3575 (Helix desktop expired DTE) — both already merged. Lifecycle GREEN off-hours (deploy, SEO 22/22, ops 0). Open: #3574/#3576 draft handoffs, #2810 dependabot TS7 red CI (skip). GitHub API rate-limited early cycle."
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3576": {
+      "last_event": "sweep",
+      "last_head": "e082dcf9b873048dd0ed09f999a876ea8cfd6368",
+      "last_feedback_at": "2026-09-04T12:09:00.275Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3574": {
+      "last_event": "sweep",
+      "last_head": "896d04346f4857625b7016b48461c2ba4685693e",
+      "last_feedback_at": "2026-09-04T12:09:02.999Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-2810": {
+      "last_event": "sweep",
+      "last_head": "f987884d6021fac525a99376ca40429a4f164f64",
+      "last_feedback_at": "2026-09-04T12:09:05.440Z",
+      "verdict": "❌ **BLOCKED** — fix CI first",
+      "directive": "FIX",
+      "comment_action": "updated"
+    }
+  }
 }
