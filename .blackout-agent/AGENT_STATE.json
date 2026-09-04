@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T11:22:16.215Z",
+  "updated_at": "2026-09-04T11:39:56.226Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,8 +67,8 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:56:15.198Z",
-      "lease_until": "2026-09-04T12:26:15.198Z",
+      "claimed_at": "2026-09-04T11:24:37.364Z",
+      "lease_until": "2026-09-04T12:54:37.364Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -200,74 +200,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "bcbb33fd27f2b318d3bd806cdb5560b9d9c1535e",
+    "last_main_sha": "b2a3b36c771f318a719a424577e767821a5b4522",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T11:21:57Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33867594673",
-    "last_deploy_sha": "bcbb33fd27f2b318d3bd806cdb5560b9d9c1535e"
+    "last_deploy_at": "2026-09-04T11:29:33Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33868193241",
+    "last_deploy_sha": "90e5c7597990b36968f0d63f793e29fbe72f36d4"
   },
-  "open_prs": [
-    {
-      "number": 3566,
-      "title": "fix(vector): closed-market loading copy for the SPX PLAYS contract-picks card",
-      "branch": "fix/vector-contract-picks-closed-market-loading",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T11:22:14Z"
-    },
-    {
-      "number": 3565,
-      "title": "chore(autopilot): cursor session — peer reviews #3561-3563, deploy GREEN",
-      "branch": "cursor/autopilot-session-20260904T1119",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T11:22:13Z"
-    },
-    {
-      "number": 3564,
-      "title": "fix(audit): resolve Playwright chromium path on cloud agents without /opt/pw-browsers",
-      "branch": "fix/playwright-chromium-path-fallback",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T11:22:15Z"
-    },
-    {
-      "number": 3560,
-      "title": "chore(autopilot): sync agent state after peer-review cycle",
-      "branch": "chore/autopilot-state-sync-20260904T1028",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T11:21:13Z"
-    },
-    {
-      "number": 3554,
-      "title": "chore(autopilot): cursor handoff after merge wave (#3548, #3550, #3552)",
-      "branch": "cursor/blackout-autopilot-state-35be",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T11:21:15Z"
-    },
-    {
-      "number": 2810,
-      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
-      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
-      "author": "app/dependabot",
-      "agent": "human",
-      "draft": false,
-      "verify": "COMPLETED/FAILURE",
-      "updated_at": "2026-09-04T11:21:17Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -832,6 +771,19 @@
       "agent": "cursor",
       "run_id": "51a58673-05f6-436b-a9a9-30f6ea515f34",
       "summary": "Peer-reviewed #3561/#3562 (merged), merged #3563 (Meridian header flex-wrap), approved #3566 (Vector closed-market copy, CI pending). Deploy GREEN. ops:collect clean."
+    },
+    {
+      "at": "2026-09-04T11:39:56.225Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T11:39:56.226Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b7c78cd1-5f38-4a2e-af67-2cca8324a8f9",
+      "summary": "Peer-reviewed and merged #3566 (vector closed-market loading copy) + #3564 (Playwright chromium path fallback). main @ b2a3b36c7. validate:deploy GREEN. ops:collect clean. ECR deploy in progress. #3567 state sync GREEN awaiting Claude peer review. Closed stale duplicate state-sync PRs."
     }
   ]
 }
