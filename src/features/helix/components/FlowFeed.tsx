@@ -163,6 +163,75 @@ function flowAlertId(a: { alert_id?: string }): string | null {
   return a.alert_id ? `id:${a.alert_id}` : null;
 }
 
+/**
+ * Trading-day diff between `now` and a `"YYYY-MM-DD"` ET report date from `earningsMap`
+ * (`fetchEarningsCalendar()`), anchored to US/Eastern rather than the runtime's own zone.
+ * Exported for testing.
+ *
+ * BUG FIX (2026-09-04): the caller used to build both endpoints via `new Date()`/
+ * `new Date(dateStr + "T00:00:00")` + `.setHours(0,0,0,0)` — per ECMA-262, a date-time string
+ * with no offset (and the Date object `setHours` mutates) resolves in the BROWSER'S LOCAL
+ * timezone, not America/New_York. `earningsMap`'s report dates are ET trading-calendar dates
+ * (same convention as Meridian's `report_date`), so for a member off ET the local-midnight
+ * boundary and the ET-midnight boundary don't coincide, and the integer day-diff feeding the
+ * EARN/E{n}D badge (`flowSignals` → `ctx.earnIn`, helix-flow-format.ts) can be off by exactly
+ * one for several hours around either midnight, in either direction (ahead of ET, e.g. Europe,
+ * or behind it, e.g. US West Coast).
+ *
+ * VERIFIED (2026-09-04, `TZ=America/Los_Angeles`): at 2026-09-04T22:00:00-07:00 (already
+ * 2026-09-05 01:00 ET — the ET trading day has rolled) the old code diffed against
+ * "2026-09-05" as 1 day away when it is actually today in ET terms; this helper returns 0.
+ *
+ * Fixed by anchoring both endpoints to literal UTC midnight of their ET/report calendar date —
+ * the same DST-safe technique `daysToExpiry` (helix-flow-format.ts) already uses for the DTE
+ * column — rather than constructing local-zone Date objects. Because both timestamps are
+ * `Date.parse` of an explicit `...T00:00:00Z` calendar string, their difference is always an
+ * exact multiple of 86_400_000 (no real-world DST offset is ever applied), so this needs no
+ * DST special-casing despite being pure arithmetic — unlike a hand-appended `-04:00`/`-05:00`
+ * offset, which the task deliberately warns against for exactly that reason.
+ *
+ * Deliberately does NOT clamp to `Math.max(0, …)` the way `daysToExpiry` does — a report date
+ * that has already passed (relative to `now`) must return a negative diff so the caller's
+ * `diff >= 0` filter can still exclude it, rather than a clamped 0 misreading a past print as
+ * "today".
+ */
+export function earningsDayDiffEt(dateStr: string, now: Date = new Date()): number {
+  const todayEt  = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
+  const todayMs  = Date.parse(`${todayEt}T00:00:00Z`);
+  const targetMs = Date.parse(`${dateStr.slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(todayMs) || !Number.isFinite(targetMs)) return NaN;
+  return Math.round((targetMs - todayMs) / 86_400_000);
+}
+
+/**
+ * Null-safe ASCENDING (oldest-first) time comparator for `FlowAlert` rows, keyed on
+ * `flowTimeMs` (the same `alerted_at`-derived helper `displayAlerts` below already sorts with).
+ * Exported for `startReplay()` and for testing.
+ *
+ * BUG FIX (2026-09-04): `startReplay()` used to sort with raw
+ * `new Date(a.alerted_at).getTime() - new Date(b.alerted_at).getTime()`. `flow-persist.ts`
+ * documents that a freshly-streamed SSE row can carry `alerted_at: ""` when the real UW print
+ * time is unknown (`event.alerted_at = realCreatedAt ?? ""`), and the merge path
+ * (`helix-flow-tape-merge.ts`) deliberately keeps such rows in `alerts` rather than dropping
+ * them. `new Date("").getTime()` is `NaN`, so any comparison involving that row returned NaN —
+ * an `Array.prototype.sort` comparator contract violation (the spec leaves the resulting order
+ * unspecified/engine-dependent), unlike every other place in this file that reads this same
+ * field (`displayAlerts`'s sort a few lines below, `flowFreshnessAtMs`'s callers) which already
+ * treat a missing time as "sorts last", never as "compares as zero".
+ *
+ * Undated rows sort AFTER every dated row here, regardless of which side of the pairwise
+ * comparison they land on — matching the convention `displayAlerts` already established for
+ * this exact field, just for the opposite (ascending vs its descending) direction.
+ */
+export function compareFlowAlertsByTimeAsc(a: FlowAlert, b: FlowAlert): number {
+  const am = flowTimeMs(a);
+  const bm = flowTimeMs(b);
+  if (am == null && bm == null) return 0;
+  if (am == null) return 1;
+  if (bm == null) return -1;
+  return am - bm;
+}
+
 // Bug 14: synthetic beep for whale prints (>$1M) using Web Audio API
 function playWhaleBeep() {
   if (typeof AudioContext === "undefined") return;
@@ -447,13 +516,10 @@ export function FlowFeed() {
 
   // Feature 7: earnings days until event (ticker → days, only ≤ 30d shown)
   const earningsDays = useMemo<Record<string, number>>(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const out: Record<string, number> = {};
     for (const [ticker, dateStr] of Object.entries(earningsMap)) {
-      const d    = new Date(dateStr + "T00:00:00");
-      const diff = Math.floor((d.getTime() - today.getTime()) / 86_400_000);
-      if (diff >= 0 && diff <= 30) out[ticker] = diff;
+      const diff = earningsDayDiffEt(dateStr);
+      if (Number.isFinite(diff) && diff >= 0 && diff <= 30) out[ticker] = diff;
     }
     return out;
   }, [earningsMap]);
@@ -784,7 +850,7 @@ export function FlowFeed() {
   // ── Replay ────────────────────────────────────────────────────────────────
   const startReplay = useCallback(() => {
     if (!alerts.length) return;
-    const sorted = [...alerts].sort((a, b) => new Date(a.alerted_at).getTime() - new Date(b.alerted_at).getTime());
+    const sorted = [...alerts].sort(compareFlowAlertsByTimeAsc);
     replaySourceRef.current = sorted;
     replayIdxRef.current    = 0;
     setReplayAlerts([]);
