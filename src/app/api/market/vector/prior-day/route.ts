@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
-import {
-  normalizeVectorTicker,
-  isVectorTickerAllowed,
-  isVectorIndexTicker,
-  vectorPolygonMinuteSymbol,
-} from "@/features/vector/lib/vector-ticker";
-import { fetchIndexDailyBars, fetchStockDailyBars } from "@/lib/providers/polygon";
-import { priorDayFromDailyBars, priorEtYmd } from "@/lib/providers/spx-session";
-import { formatEtDate } from "@/features/nighthawk/lib/session";
+import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector/lib/vector-ticker";
+import { getVectorPriorDayOhlc } from "@/features/vector/lib/vector-prior-day-server";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
@@ -50,17 +43,7 @@ export async function GET(req: NextRequest) {
   const anchor =
     rawAnchor && /^\d{4}-\d{2}-\d{2}$/.test(rawAnchor) ? rawAnchor : undefined;
 
-  // ~2 weeks of daily bars covers weekends/holidays so the prior completed session is always in range.
-  const to = formatEtDate(new Date());
-  const from = priorEtYmd(16);
-  const sym = vectorPolygonMinuteSymbol(ticker); // I:SPX etc. for indices
-
-  const bars = await (isVectorIndexTicker(ticker)
-    ? fetchIndexDailyBars(sym, from, to)
-    : fetchStockDailyBars(ticker, from, to)
-  ).catch(() => []);
-
-  // Passing undefined engages priorDayFromDailyBars' todayEtYmd() default — the legacy behavior.
-  const { pdh, pdl, pdc } = priorDayFromDailyBars(bars, anchor);
+  const prior = await getVectorPriorDayOhlc(ticker, anchor);
+  const { pdh, pdl, pdc } = prior ?? { pdh: null, pdl: null, pdc: null };
   return NextResponse.json(roundFloats({ ticker, pdh, pdl, pdc }), { headers: NO_STORE_HEADERS });
 }
