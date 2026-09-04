@@ -107,6 +107,20 @@ export function vectorTimeScaleSpacingOptions() {
 
 export type LogicalRangeLike = { from: number; to: number } | null | undefined;
 
+/**
+ * lightweight-charts rejects inverted ranges with "Assertion failed: right should be >= left".
+ * Background chart updates can briefly capture a degenerate range from getVisibleLogicalRange().
+ */
+export function normalizeLogicalRange(
+  range: LogicalRangeLike
+): { from: number; to: number } | null {
+  if (!range) return null;
+  const from = Number(range.from);
+  const to = Number(range.to);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from > to) return null;
+  return { from, to };
+}
+
 /** Visible bar count from a lightweight-charts logical range (inclusive-ish). */
 export function visibleBarCountFromRange(range: LogicalRangeLike): number | null {
   if (!range) return null;

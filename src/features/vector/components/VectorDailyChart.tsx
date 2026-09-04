@@ -14,6 +14,7 @@ import {
   type Time,
 } from "lightweight-charts";
 import { VECTOR_CHART_LOCALE } from "@/features/vector/lib/vector-chart-config";
+import { applyVisibleLogicalRange } from "@/features/vector/lib/vector-chart-viewport";
 import {
   adaptiveBarSpacingForZoom,
   vectorCandlestickOptions,
@@ -111,7 +112,7 @@ function applyZoom(
   if (!chart || barCount <= 0) return;
   const want = zoomPresetBars(zoom, unit);
   if (want != null && want < barCount) {
-    chart.timeScale().setVisibleLogicalRange({ from: barCount - want, to: barCount + 1 });
+    applyVisibleLogicalRange(chart, { from: barCount - want, to: barCount + 1 });
     return;
   }
   if (zoom === "ALL") {
@@ -119,7 +120,7 @@ function applyZoom(
     return;
   }
   const range = initialLogicalRange(barCount, unit);
-  if (range) chart.timeScale().setVisibleLogicalRange(range);
+  if (range) applyVisibleLogicalRange(chart, range);
   else chart.timeScale().fitContent();
 }
 

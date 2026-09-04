@@ -212,6 +212,7 @@ import { readPersisted, writePersisted, VECTOR_DARK_POOL_WALLS_STORAGE_KEY } fro
 import {
   applyCenteredLiveViewport,
   applySessionOverviewViewport,
+  applyVisibleLogicalRange,
   wantsSessionOverviewViewport,
   zoomedLogicalRange,
 } from "@/features/vector/lib/vector-chart-viewport";
@@ -567,8 +568,8 @@ function applyDisplayBarsPreservingView(
   applyDisplayBars(candleSeries, volumeSeries, volumeAvgSeries, bars, volumeMode);
   if (following && liveFollowEnabled) {
     maybeFollowLiveViewport(chart, true, bars.length, false, 0);
-  } else if (prevRange && timeScale) {
-    timeScale.setVisibleLogicalRange(prevRange);
+  } else if (prevRange && chart) {
+    applyVisibleLogicalRange(chart, prevRange);
   }
 }
 
@@ -2011,7 +2012,7 @@ export function VectorChart({
       } else if (preset === "structure") {
         chartUserPannedRef.current = true;
         const range = structureVisibleLogicalRange(barCount);
-        if (range) chart.timeScale().setVisibleLogicalRange(range);
+        if (range) applyVisibleLogicalRange(chart, range);
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
         liveFollowEnabledRef.current = false;
       } else {
@@ -2053,7 +2054,7 @@ export function VectorChart({
       chartUserPannedRef.current = true;
       wheelZoomCooldownRef.current = Date.now();
       queueDeferredRepaintRef.current();
-      ts.setVisibleLogicalRange(next);
+      applyVisibleLogicalRange(chart, next);
       syncCandleViewportFromRange(chart);
       applyAdaptiveBarSpacingToChart(chart);
     },
@@ -5371,9 +5372,9 @@ export function VectorChart({
         // effect re-runs (SSE/wall polls) must not reset a zoom/pan the member set.
         applySessionOverviewViewport(chart!, display);
         chart?.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
-      } else if (prevRange && timeScale) {
+      } else if (prevRange && chart) {
         // Background re-run: pin the exact viewport the member had so zoom/pan survives.
-        timeScale.setVisibleLogicalRange(prevRange);
+        applyVisibleLogicalRange(chart, prevRange);
       }
       refreshTrails(lensRef.current);
       // Repaint the wall GUIDES too: the shown-count (wallCountForTimeframe) changes with the
