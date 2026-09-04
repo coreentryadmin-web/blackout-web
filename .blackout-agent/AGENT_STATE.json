@@ -209,6 +209,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
+    },
+    "pr-3587": {
+      "pr": 3587,
+      "head_sha": null,
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-04T13:54:23.787Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
