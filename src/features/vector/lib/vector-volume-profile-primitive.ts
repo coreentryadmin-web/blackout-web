@@ -55,6 +55,8 @@ type ProjectedLevel = { y: number; label: string; color: string; dash: number[] 
 type ProjectedBucket = { yTop: number; yBottom: number; xLeft: number; isPoc: boolean; inValueArea: boolean };
 type Projected = {
   rightX: number;
+  /** Left edge of the profile bar band — POC/VAH/VAL labels anchor here (away from price-axis badges). */
+  gutterLeft: number;
   bars: ProjectedBucket[];
   levels: ProjectedLevel[];
 };
@@ -70,7 +72,7 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
       const ctx = scope.context;
       ctx.save();
       ctx.globalAlpha = this._overlayDim;
-      const { rightX, bars, levels } = this._p;
+      const { rightX, gutterLeft, bars, levels } = this._p;
       const paneW = scope.mediaSize.width;
 
       for (const b of bars) {
@@ -92,9 +94,11 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
 
         ctx.font = LABEL_FONT;
         ctx.fillStyle = VP_LABEL_COLOR;
-        ctx.textAlign = "right";
+        // Left-align at the profile bar band's start — axis price-line badges sit at rightX and
+        // would paint over right-anchored labels whenever POC/VAH/VAL land near a wall/pin/flip.
+        ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.fillText(lvl.label, rightX - 6, lvl.y);
+        ctx.fillText(lvl.label, gutterLeft + 4, lvl.y);
       }
 
       ctx.restore();
@@ -202,6 +206,6 @@ export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
     addLevel(profile.valueAreaHigh, "VAH", VP_VA_LINE, [6, 4]);
     addLevel(profile.valueAreaLow, "VAL", VP_VA_LINE, [6, 4]);
 
-    return { rightX: gutter.rightX, bars, levels };
+    return { rightX: gutter.rightX, gutterLeft: gutter.gutterLeft, bars, levels };
   }
 }

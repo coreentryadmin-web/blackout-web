@@ -1567,3 +1567,10 @@ than an end-of-session patch.
 - **What changed:** Both blended and narrowed-horizon `computeGexWalls` calls now use `spot != null && spot > 0 ? spot : undefined`.
 - **RTH check:** On `/vector` during RTH, pick a dynamic ticker (e.g. INVERT fixture row in admin) and confirm top call/put walls sit on the correct side of spot; no wall-history samples with inverted geometry after a spot=0 chain miss.
 
+### 21. Vector volume-profile POC/VAH/VAL labels collided with price-axis badges — PR pending (`fix/vector-volume-profile-label-gutter-left`)
+
+**What was broken:** `VolumeProfilePrimitive` drew POC/VAH/VAL labels right-aligned at the price-axis edge (`rightX - 6`), the same band lightweight-charts uses for opaque Pin/Gamma-flip/VWAP axis badges. When a profile level and an axis badge landed within one label-height in price-space, the badge painted over the profile label (live `/dashboard` capture: orange "Pin 7,746" over gray "POC").
+
+**Fix:** Anchor labels left-aligned at `gutterLeft + 4` — the start of the profile bar band, away from the price axis.
+
+**Check at the open:** On `/dashboard` (SPX Slayer embed) or `/vector` with volume profile enabled, find a session where Pin (or Gamma flip / spot badge) and POC are close in price. Confirm both labels are independently legible — POC/VAH/VAL on the left edge of the profile bars, axis badges on the right. Pixel-zoom the chart's right region if needed (`proxy-browser.cjs`).
