@@ -363,6 +363,34 @@ test("buildExitContext: a thesis exit uses the observed mark verbatim — mark_h
   assert.equal(ctx.mark_honored, false, "an observed fill is NOT flagged as inferred");
 });
 
+// Live-monitor finding, 2026-09-04: a real CRCL thesis-break stamped
+// `exit_detail: "Thesis broken (veto) at -0.22%"` right beside `exit_pnl_pct: 0` for the SAME
+// exit event — because `resolveExitMark` cent-rounds the observed mid (round2) BEFORE
+// `buildExitContext` divided it into a percentage, while `evaluateExitState`'s own `pnlPct`
+// (baked into `decision.detail`) divides the RAW mid first. A half-cent mid (bid/ask both whole
+// cents, e.g. 3.99/4.00 → mid 3.995) is ordinary live-quote precision (zeroDteMidOf keeps 4dp),
+// and rounding it to the cent before the percentage division can erase real P&L on a low-priced
+// 0DTE premium — reproduced here with ENTRY=4.0 and a mark that cent-rounds back to exactly ENTRY.
+test("buildExitContext: a thesis exit's pnl_pct must not be erased by cent-rounding the observed mid", () => {
+  const rawMark = 3.996; // round2(3.996) === 4.00 === ENTRY: rounds away all signal if used for pnl_pct
+  const decision = evaluateExitState(
+    input({
+      currentMark: rawMark,
+      peakPremium: 4.1,
+      cortexEvidence: evidence([{ stance: "veto", source: "wall-trend" }]),
+    })
+  );
+  assert.match(decision.detail, /-0\.1%/, "the engine's own detail states the real, unrounded move");
+  const ctx = buildExitContext(decision, ENTRY, rawMark, 4.1, Date.UTC(2026, 6, 14, 15, 0, 0));
+  assert.equal(ctx.mark, 4.0, "the persisted/displayed price still rounds to the cent");
+  assert.equal(ctx.mark_honored, false, "not a floor/stop honor — the observed mark is used");
+  assert.equal(
+    ctx.pnl_pct,
+    -0.1,
+    "pnl_pct must agree with decision.detail — not read 0 just because the CENT-rounded mark equals entry"
+  );
+});
+
 test("resolveExitMark: ratchet floor caps at floor premium; thesis uses observed", () => {
   const floorDecision = evaluateExitState(input({ exitMode: "ratchet", peakPremium: 4.8, currentMark: 3.5 }));
   assert.equal(resolveExitMark(floorDecision, ENTRY, 3.5), 4.0);
