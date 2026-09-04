@@ -14,4 +14,4 @@
 
 Map 401 → SKIP + `tier-gated` detail for `gex-positioning`, `thermal-matrix-*`, and `vector-spx-0dte-walls`.
 
-| **Status** | FIXED (PR pending) |
+| **Status** | FIXED (PR #3617) |
