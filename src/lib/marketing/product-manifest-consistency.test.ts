@@ -10,6 +10,7 @@ import {
   manifestPremiumIncludes,
 } from "./product-manifest.ts";
 import { MARKETING_PRODUCTS } from "./products.ts";
+import { LEARN_NAV } from "../learn/nav.ts";
 
 const REPO = join(import.meta.dirname, "..", "..", "..");
 
@@ -72,6 +73,19 @@ test("Night Hawk manifest positions 0DTE Command first, not swing-only", () => {
   assert.match(hawk.lifecycle, /0DTE Command/i);
   assert.doesNotMatch(hawk.positioning, /swing playbook/i);
   assert.doesNotMatch(hawk.faqAnswer, /swing and leap/i);
+});
+
+// Regression for a P3 finding (2026-09-04): the manifest test above already guards
+// PRODUCT_MANIFEST.hawk against "swing-only"/"evening" framing, but the Learn hub's own
+// product-navigation metadata (LEARN_NAV, a separate hand-authored array — not derived from
+// the manifest) still said "Evening playbook — tomorrow's setups, scored tonight.", directly
+// contradicting the homepage's "Intraday scanner with evening prep... not a swing-only
+// product" positioning. The manifest fix alone didn't reach this second copy of the claim.
+test("Learn nav's Night Hawk descriptor is not evening-only, matching the manifest's positioning", () => {
+  const nightHawkNav = LEARN_NAV.find((item) => item.slug === "night-hawk");
+  assert.ok(nightHawkNav, "night-hawk must still be a LEARN_NAV entry");
+  assert.doesNotMatch(nightHawkNav!.description, /^Evening playbook/i);
+  assert.match(nightHawkNav!.description, /0DTE|intraday/i);
 });
 
 test("Vector manifest describes live universe screener capabilities", () => {
