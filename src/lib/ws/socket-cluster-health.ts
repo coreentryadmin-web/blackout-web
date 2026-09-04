@@ -21,7 +21,7 @@ export type ClusterIndexSpot = { price: number; change_pct: number | null };
 
 type IndexSnapshot = Record<
   string,
-  { price?: number; change_pct?: number; updatedAt?: number; open_source?: string }
+  { price?: number; change_pct?: number | null; updatedAt?: number; open_source?: string }
 >;
 
 export type UwClusterHealth = {

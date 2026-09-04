@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   uwTickerFromOptionsRoot,
   isUwStockStateUnsupportedIndex,
@@ -35,4 +37,19 @@ test("does not flag a real equity/ETF root", () => {
 test("resolveSpotFromUwStockState short-circuits to null for an index root without a network call", async () => {
   const result = await resolveSpotFromUwStockState("I:SPX", Date.now());
   assert.equal(result, null);
+});
+
+test("resolveSpotFromUwStockState source: missing prev_close must not fabricate change_pct 0", () => {
+  const src = readFileSync(join(process.cwd(), "src/lib/providers/spot-fallback.ts"), "utf8");
+  assert.match(
+    src,
+    /const change_pct[\s\S]*?:\s*null/,
+    "missing prev_close must yield null change_pct, not fabricated zero"
+  );
+  assert.doesNotMatch(
+    src,
+    /prev > 0 \?[\s\S]*?:\s*0;/,
+    "must not fall back to fabricated 0% when prev_close is absent"
+  );
+  assert.match(src, /change_pct: number \| null/, "SpotQuote change_pct must allow null");
 });
