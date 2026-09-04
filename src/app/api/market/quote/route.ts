@@ -10,6 +10,7 @@ import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { resolveSpotFromUwStockState } from "@/lib/providers/spot-fallback";
 import { withFreshPrice } from "@/lib/providers/change-pct";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -201,7 +202,7 @@ export async function GET(req: NextRequest) {
           source: "ws",
           asof: new Date(entry.updatedAt).toISOString(),
         };
-        return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
+        return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
       }
       // else: store cold/stale → fall through to the shared-cached index REST snapshot.
     }
@@ -240,14 +241,14 @@ export async function GET(req: NextRequest) {
           source: "ws",
           asof: new Date(candle.updatedAt).toISOString(),
         };
-        return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
+        return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
       }
     }
 
     // ── REST path: stocks/ETFs without a live WS tick, plus index roots without
     //    a live WS feed (NDX/RUT) or a cold index store. ──
     const payload = await getRestQuote(ticker, optionsRoot, isIndex);
-    if (payload) return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
+    if (payload) return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
 
     const uw = await resolveSpotFromUwStockState(optionsRoot);
     if (uw && uw.price > 0) {
@@ -259,7 +260,7 @@ export async function GET(req: NextRequest) {
         source: "rest",
         asof: new Date().toISOString(),
       };
-      return NextResponse.json(uwPayload, { headers: NO_STORE_HEADERS });
+      return NextResponse.json(roundFloats(uwPayload), { headers: NO_STORE_HEADERS });
     }
 
     return NextResponse.json({ available: false, ticker }, { status: 200, headers: NO_STORE_HEADERS });
