@@ -3989,6 +3989,23 @@ export type GexHeatmapCachePeek = {
 };
 
 /**
+ * Clamps a shared-cache entry's age to a minimum of 0 seconds. `entry.at` is a `Date.now()`
+ * stamp written by WHICHEVER ECS replica built the cache entry (in-memory write, or the shared
+ * Redis fallback another replica populated) — so a moment of ordinary cross-replica clock skew
+ * can make THIS replica's `Date.now()` read fractionally behind the writer's, producing a
+ * negative age for an entry that is in fact brand new. `Math.round` does not fix this (it
+ * rounds a small negative toward 0, not away from it), so an unclamped caller can still surface
+ * e.g. `age_sec: -1` on the admin GEX health panel (`AdminBieDashboard.tsx`'s `t.age_sec`) for a
+ * cache entry built moments ago. Same "future stamp is clock skew, not a negative age" fix shape
+ * already applied to `et-session-facts.ts`'s `ageSecondsFromIso` and
+ * `helix-thermal-compare.ts`'s local `ageSecondsFromIso` — this is the one age-computation call
+ * site in this file that had not yet been clamped.
+ */
+export function clampedCacheAgeSec(entryAtMs: number, nowMs: number): number {
+  return Math.max(0, Math.round((nowMs - entryAtMs) / 1000));
+}
+
+/**
  * Admin-health PEEK at the shared `gex-heatmap:{ticker}` cache entry — READ-ONLY, and
  * DELIBERATELY does not call fetchGexHeatmap: a cache miss here reports `cached:false`
  * rather than building a fresh matrix, which would cost a live Polygon chain fetch on
@@ -4028,13 +4045,18 @@ export async function peekGexHeatmapCache(ticker: string): Promise<GexHeatmapCac
     };
   }
 
-  const ageMs = Date.now() - entry.at;
+  const now = Date.now();
+  const ageMs = now - entry.at;
   return {
     ticker: root,
     cached: true,
     last_compute_at: new Date(entry.at).toISOString(),
-    age_sec: Math.round(ageMs / 1000),
+    age_sec: clampedCacheAgeSec(entry.at, now),
     ttl_sec: Math.round(ttlMs / 1000),
+    // Uses the raw (unclamped) ageMs, not clampedCacheAgeSec's output — a skew-negative ageMs is
+    // always < gexHeatmapMaxStaleMs() either way, so the two are equivalent here; kept unclamped
+    // to match the pre-existing staleness semantics exactly (this fix touches only the displayed
+    // age_sec, never the stale verdict).
     stale: ageMs > gexHeatmapMaxStaleMs(),
     spot: entry.data.spot > 0 ? entry.data.spot : null,
     events_count: entry.data.events ? entry.data.events.length : null,
