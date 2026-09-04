@@ -120,23 +120,47 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
-<<<<<<< HEAD
-### 0ad. UW in-process REST cache + Polygon index overlay future guards — fix/uw-index-future-timestamp-guards (pending)
+### 0ae. `zerodte-warm` cron raced live member requests for the UW rate-limiter ceiling on a false premise — fix/zerodte-warm-uw-sweep-tag (pending)
+
+**What was broken:** the `zerodte-warm` cron's dispatch (`warmZeroDteBoard()` +
+`refreshZeroDteBoardSnapshot()`, firing ~every 1-5 min during market hours) was explicitly NOT
+wrapped in `runWithBackgroundUwSweep` — the helper that reserves one UW rate-limiter concurrency
+slot for live member traffic, already used by four sibling Vector-family crons — on the claim that
+its work was "platform-local, not a UW REST fan-out." That premise was false: both functions call
+`scanZeroDteBoard()` internally, whose top-rank enrichment loop calls `fetchTickerDossier`
+(`runUwPooled` from `uw-rate-limiter.ts`) in bounded parallel batches. So every cron tick was
+competing for the FULL UW ceiling instead of leaving one slot for live traffic. Live evidence
+(0aa's own instrumentation, same day): a 30s window of near-continuous UNTAGGED 10-19s UW
+admissions correlating with `[zerodte-scan]` log lines on the same ECS task.
+
+**Fix:** wrap the cron's own dispatch in `runWithBackgroundUwSweep`, matching the exact pattern the
+four existing Vector-family crons use. The live read path (`/api/market/zerodte/board`,
+`/api/market/nighthawk/horizons` — same `scanZeroDteBoard`/`buildZeroDteBoardPayload` functions,
+called from genuinely live requests) stays untagged, same as before.
+
+**Check at the open:** filter CloudWatch Logs on `[uw] queue wait` during RTH (0aa's
+instrumentation) — the untagged (non-background-sweep) share of queue waits during zerodte-warm's
+firing windows should measurably drop now that its dispatch reserves a slot instead of competing
+for the full ceiling. Also confirm `zerodte-warm`'s own `elapsed=` in `[cron/zerodte-warm]
+background done` log lines didn't regress (the fix changes which ceiling it competes against, not
+its own admission logic) and that `/nighthawk` board reads stay responsive during a `zerodte-warm`
+tick.
+
+### 0ad. UW in-process REST cache + Polygon index overlay future guards — fix/uw-index-future-timestamp-guards (merged #3771)
 
 **What was broken:** Three paths still used raw `Date.now() - timestamp` without the shared future guard: `readUwCache` (negative age → infinitely fresh UW REST cache), `getIndexFeedFreshness` + `index-snapshot-overlay` (future `updatedAt` clamped to age 0 → live overlay), `resolvePulseFeedStalled` (Redis pulse snapshot), and `HomeGammaPromo.fmtAgeFromAsof` (future `asof` → "live").
 
 **Fix:** Apply `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` / `isWsUpdatedAtFresh` / `ageSecFromIso` — same pattern as #3760/#3762.
 
 **Check at the open:** SPX desk feed-stalled pill still fires on genuine index silence (not on normal ticks); VIX/SPX index overlays fall back to REST when WS stamp is skewed; homepage gamma promo chip does not show "live" beside a warming snapshot.
-=======
-### 0ac. Stock SSE change_pct ws-bar authority gate — fix/stock-change-pct-prior-close-authority (pending)
+
+### 0ac. Stock SSE change_pct ws-bar authority gate — fix/stock-change-pct-prior-close-authority (merged #3769)
 
 **What was broken:** `/api/market/stocks/spot-stream` and Thermal's stock push path served `changePct` computed from the first WS bar's open (`openSource === "ws-bar"`) before the REST `prev_close` seed landed — session-open drift, not true day change vs prior close. `/api/market/quote` could show a different % when its REST cache was hot.
 
 **Fix:** `authoritativeStockChangePct()` — member-facing `changePct` is `null` until `openSource === "rest"`. Redis snapshots carry `openSource`; stale/empty paths return `null` not fabricated `0`.
 
 **Check at the open:** On Thermal `/heatmap` with NVDA (or any stock preset): header change % should appear within ~30s of first load and must match `GET /api/market/quote?ticker=NVDA` `change_pct` once both are live. Mid-session reconnect must NOT flash a ws-bar–anchored %.
->>>>>>> 7f2c1417c (fix(ws): gate stock change_pct until REST prior-close anchor lands)
 
 ### 0ac. Vector GEX walls spot constraint — fix/vector-gex-walls-spot-constraint (pending)
 

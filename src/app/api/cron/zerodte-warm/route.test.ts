@@ -65,12 +65,33 @@ test("the lock TTL matches the cron's own stale_after_min safety net (15 min = 9
   assert.match(routeSrc, /OVERLAP_LOCK_TTL_SEC = 900/);
 });
 
-test("zerodte-warm intentionally omits runWithBackgroundUwSweep (HELIX DB tape, not UW REST fan-out)", () => {
-  assert.doesNotMatch(routeSrc, /\brunWithBackgroundUwSweep\b/);
+// Regression for the 2026-09-04 finding: this test used to assert the OPPOSITE — that
+// zerodte-warm intentionally omitted the UW sweep tag because its work was "platform-local,
+// not a UW REST fan-out". That premise was wrong: warmZeroDteBoard -> scanZeroDteBoard and
+// refreshZeroDteBoardSnapshot -> buildZeroDteBoardPayload -> scanZeroDteBoard both hit
+// fetchTickerDossier (runUwPooled from uw-rate-limiter) for the top-ranked setups' dossier
+// enrichment, so this cron's tick was racing live member requests for the same UW ceiling
+// with none of the "reserve one slot for live traffic" protection the four Vector-family
+// crons already carry (vector-full-state-snapshot, vector-dark-pool-warm,
+// bie-full-state-snapshot, vector-pick-sweep). Live evidence: PR #3759's queue-wait
+// instrumentation showed a 30s window of near-continuous UNTAGGED 10-19s admissions
+// correlating with [zerodte-scan] log lines on the same ECS task.
+test("zerodte-warm wraps its board-scan dispatch in the shared background UW sweep helper", () => {
   assert.match(
     routeSrc,
-    /intentionally NOT wrapped in the shared background UW sweep helper/,
-    "must document why this cron is exempt from the UW sweep tag"
+    /runWithBackgroundUwSweep\(\(\) =>\s*\n\s*Promise\.allSettled\(\[warmZeroDteBoard\(\), refreshZeroDteBoardSnapshot\(\)\]\)/,
+    "the cron's OWN dispatch must be tagged so it reserves a slot for live traffic, matching the four existing Vector-family crons"
+  );
+  // The wrap must be around the CRON's dispatch only — the shared read path
+  // (getZeroDteBoardPayload, used by /api/market/zerodte/board and
+  // /api/market/nighthawk/horizons) must stay untagged, since those callers ARE live traffic.
+  assert.doesNotMatch(
+    readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "..", "..", "market", "zerodte", "board", "route.ts"),
+      "utf8"
+    ),
+    /runWithBackgroundUwSweep/,
+    "the live board-read route must never be tagged as a background sweep"
   );
 });
 
