@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T23:27:43.202Z",
+  "updated_at": "2026-09-04T23:34:02.494Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -296,11 +296,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "4e4a0f34bbc2014f0afdd1cde2203ba0d2fec6f9",
+    "last_main_sha": "767e67374051a11205390d664d992d59173fdeb5",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T23:26:35Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33928899257",
-    "last_deploy_sha": "4e4a0f34bbc2014f0afdd1cde2203ba0d2fec6f9"
+    "last_deploy_at": "2026-09-04T23:33:29Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33929948391",
+    "last_deploy_sha": "e00faa83ce37af0243ff7565e16d42a654810fbc"
   },
   "open_prs": [],
   "events": [
@@ -1192,6 +1192,19 @@
       "agent": "cursor",
       "run_id": "ec53634b-a615-4d14-b221-5123cb089db9",
       "summary": "Peer review cycle: adversarial reviews posted on #3774 #3786 #3784 #3788 #3789 #3790 (all APPROVED pending verify). validate:deploy GREEN, ops:collect 0. #3789 verify green but merge conflict — needs rebase. Cursor PRs #3783/#3787 await Claude review."
+    },
+    {
+      "at": "2026-09-04T23:34:02.493Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T23:34:02.494Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "f380ec5b-8d2f-4de7-bccc-683501dd8019",
+      "summary": "Merged #3774 #3784. Rebased #3786 #3789 #3790. 6 PRs peer-reviewed APPROVED. validate:deploy GREEN, ops:collect 0."
     }
   ]
 }
