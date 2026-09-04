@@ -163,9 +163,21 @@ check on the live UI. Confirm instead that the Night Hawk correctness score (whe
 correctness-audit run is read from) does not show a spurious `premium` metric `flag` for the
 day's published edition; a real chain-band mismatch should still flag normally.
 
-### 0. Discord digest crons on admin health board — PR #3543 (merged)
+### 0f. Vector volume-profile POC/VAH/VAL label axis collision — fix/vector-vp-label-collision (pending)
 
-**What was broken:** `darkpool-discord`, `thermal-discord`, and `helix-discord-digest` were live
+**What was broken:** On SPX Slayer `/dashboard` (shared Vector chart), volume-profile level labels
+("POC", "VAH", "VAL") were drawn at `rightX - 6` flush against the price axis — native lightweight-charts
+price-line axis badges (Pin, Gamma flip, VWAP, etc.) painted on top whenever both levels landed near the
+same price, making the profile label unreadable.
+
+**Fix:** Anchor labels at `gutterLeft + 4px` with left text alignment — inside the profile bar band,
+away from axis badges (`volumeProfileLabelX()`).
+
+**Check at the open:** On `/dashboard` SPX Slayer with volume-profile enabled during RTH, when Pin (or
+any price-line badge) and POC are near the same price, both labels must be independently legible in a
+`proxy-browser.cjs` capture of the chart's right edge (no gray "POC" text hidden under an orange Pin badge).
+
+### 0. Discord digest crons on admin health board — PR #3543 (merged)
 EventBridge crons logging `cron_job_runs` rows, but absent from `CRON_JOBS` — invisible to
 `cron-staleness-watchdog` and the admin cron-health board.
 
