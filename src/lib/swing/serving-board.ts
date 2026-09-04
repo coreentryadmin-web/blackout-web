@@ -33,6 +33,10 @@ export interface SwingServingLane extends HorizonLaneBoard {
   calibratedProbability: number | null;
   /** LITERAL null in PR-12 — no graded EV surface until the ladder graduates the bucket. */
   expectedValue: number | null;
+  /** ISO instant of the latest whole-market discovery scan (member-visible freshness). */
+  scanAsOf?: string | null;
+  /** ET session day the discovery scan is anchored to. */
+  scanSessionDay?: string | null;
 }
 
 /**

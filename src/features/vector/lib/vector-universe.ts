@@ -1,4 +1,5 @@
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
+import { runPolygonPool } from "@/lib/providers/polygon-rate-limiter";
 import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
@@ -289,16 +290,32 @@ export async function buildVectorUniverseSnapshot(
   const rows: VectorUniverseRow[] = [];
   const nowSec = Math.floor(Date.now() / 1000);
 
-  const results = await Promise.allSettled(
-    tickers.map((raw) =>
-      buildVectorUniverseRow(raw, {
-        recordWallHistory,
-        sessionYmd,
-        nowSec,
-        recordNarrowedHorizons: true,
-        wallWriteSource,
-      })
-    )
+  // Bounded fan-out (2026-09-04 audit finding): the raw Promise.allSettled this replaced fired
+  // every universe ticker's fetchGexHeatmap at once (~85-100 tickers). Each cold ticker's chain
+  // build shares the SAME app-wide Polygon admission limiter as live desk/GEX/pulse traffic, and
+  // fetchGexHeatmap caps how long ONE caller blocks on a cold/inflight build at 3s
+  // (gexHeatmapMaxBlockMs) before falling back to stale-or-null — so a ticker with no recent
+  // cache entry that gets stuck queuing behind dozens of concurrent siblings silently serves
+  // null instead of its real (available) data. Reproduced live: the snapshot served
+  // spot:null/gammaFlip:null for DIA/AAOI/DRAM/ZS/NOK while a solo GET
+  // /api/market/gex-heatmap?ticker=<T> for each (no contention) returned available:true with a
+  // real spot price seconds later. Same root-cause shape, same fix, as the already-fixed
+  // vector-dark-pool-warm incident (FINDINGS.md 2026-09-02) on the UW side.
+  const results = await runPolygonPool(
+    tickers.map((raw) => async () => {
+      try {
+        const value = await buildVectorUniverseRow(raw, {
+          recordWallHistory,
+          sessionYmd,
+          nowSec,
+          recordNarrowedHorizons: true,
+          wallWriteSource,
+        });
+        return { status: "fulfilled" as const, value };
+      } catch (reason) {
+        return { status: "rejected" as const, reason };
+      }
+    })
   );
 
   for (const r of results) {

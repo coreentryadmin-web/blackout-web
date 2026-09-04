@@ -1919,7 +1919,7 @@ For the full tool surface and interface layout, see the [Largo AI Terminal guide
     type: "article",
     title: "Vector Scanner: Cross-Ticker Gamma & Flow Radar",
     description: "How to read the Vector scanner: cross-ticker GEX ladders, wall integrity scoring, gamma magnet, confluence zones, regime banner, and the universe screener.",
-    body: `[SPX Slayer](/learn/spx-slayer) and [Thermal](/learn/heat-maps) focus on SPX. **Vector** extends the same [dealer gamma exposure](/learn/what-is-dealer-gamma-exposure) framework across the **entire universe** — ranked setups from the BIE verification engine across multiple tickers, each with its own GEX ladder, regime posture, wall integrity scores, and confluence zones. If Thermal is the microscope on SPX's gamma structure, Vector is the radar dish scanning the broader market.
+    body: `[SPX Slayer](/learn/spx-slayer) is built around SPX specifically. [Thermal](/learn/heat-maps) goes deep on whichever ticker you select — SPY, SPX, QQQ, and dozens more, one at a time. **Vector** extends the same [dealer gamma exposure](/learn/what-is-dealer-gamma-exposure) framework across the **entire universe at once** — ranked setups from the BIE verification engine across multiple tickers, each with its own GEX ladder, regime posture, wall integrity scores, and confluence zones, with no ticker to pick first. If Thermal is the microscope you point at one name, Vector is the radar dish scanning the whole board automatically.
 
 ![Vector Scanner — cross-ticker gamma radar with GEX ladder, signal feed, and regime detection](/images/learn/vector-scanner.webp)
 
@@ -1990,7 +1990,7 @@ The Vector alerts panel flags when a watched ticker crosses a material threshold
 
 ## How Vector fits the desk
 
-Vector answers "where in the broader market is the gamma structure most interesting right now?" [Thermal](/learn/thermal-four-lenses-explained) gives you the deep heatmap for SPX. [SPX Slayer](/learn/spx-slayer-dashboard-guide) executes on SPX. [HELIX](/learn/helix-flow-scanner-guide) scans the flow tape. The [0DTE Command](/learn/night-hawk-0dte-command-guide) scanner uses multi-ticker flow and structure for intraday entries. And [Largo AI](/learn/largo-ai-terminal-guide) can pull any Vector ticker's GEX, regime, and walls into a conversational answer.
+Vector answers "where in the broader market is the gamma structure most interesting right now?" [Thermal](/learn/thermal-four-lenses-explained) gives you the deep heatmap for whichever ticker you pick. [SPX Slayer](/learn/spx-slayer-dashboard-guide) executes on SPX. [HELIX](/learn/helix-flow-scanner-guide) scans the flow tape. The [0DTE Command](/learn/night-hawk-0dte-command-guide) scanner uses multi-ticker flow and structure for intraday entries. And [Largo AI](/learn/largo-ai-terminal-guide) can pull any Vector ticker's GEX, regime, and walls into a conversational answer.
 
 For the underlying concepts — [what gamma exposure means](/learn/what-is-dealer-gamma-exposure), [how the gamma flip works](/learn/gamma-flip-explained), [why the Greeks matter](/learn/options-greeks-explained), and [how delta hedging creates these levels](/learn/delta-hedging-explained) — see the deep-dive library. [Get access →](/pricing)
 
