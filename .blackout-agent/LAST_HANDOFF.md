@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T16:28:03.917Z
-**Run:** 7f2a7f72-cb82-442b-907d-bd8bb39108ae
+**At:** 2026-09-04T16:29:36.630Z
+**Run:** 79bcca4d-2402-4e75-a442-408750ca89a9
 
 ## Summary
 
-Peer review cycle: #3633 APPROVED locally (SPX Slayer pricing column, 17/17 tests). #3634/#3627 verified locally — Cursor PRs await Claude review. validate:deploy GREEN, ops:collect 0. ECR deploy #3614 still in_progress.
+Hourly wake complete: #3633 APPROVED (await verify→ready). #3627 merged. validate:deploy + platform-integrity 14/14 GREEN. ops:collect 0. api-auth GREEN. Handoff PR #3637. #3634 awaits Claude review. ECR #3614 deploy polling.
 
 ## Deploy
 
