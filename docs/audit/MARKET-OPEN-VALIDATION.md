@@ -126,7 +126,24 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
-### 0i. Platform-integrity probe tier-gate false-WARN — fix/platform-integrity-clerk-auth (pending)
+### 0j. Night Hawk PASSED/WATCH list rendered trackPct with no qualifier — fix/nighthawk-passed-list-trackpct-label (pending)
+
+**What was broken:** the compact play-list row (`PlayLifecycleCardBody`, every board's actual live
+row renderer) showed a never-entered WATCH/SKIP play's hypothetical `trackPct` as a bare colored
+`+N%` with no label — indistinguishable from real P&L. A member screenshotted the mobile PASSED
+tab full of "+PNL%"-style green numbers and asked why none of the "winners" ever opened; they were
+never entered at all. `primaryReturnLabel` ("Since flag" for WATCH/SKIP, "Peak Return" for CLOSED)
+already existed and was already unit-tested — it just wasn't called from this component.
+
+**Fix:** `PlayLifecycleCardBody` now renders `primaryReturnLabel(play)` beside the return figure,
+reusing the existing `.nh-deck-premlab` class. Label-only change — no gate, number, or trading
+logic touched.
+
+**Check at the open:** open `/nighthawk` on a phone-width viewport (or `proxy-browser.cjs --viewport
+430x932`), filter to PASSED/WATCH, and confirm every row's return figure now carries a small
+"Since flag" caption under it, and every CLOSED row carries "Peak Return" — never a bare number.
+
+### 0i. Platform-integrity probe tier-gate false-WARN — fix/platform-integrity-clerk-auth (merged #3605)
 
 **What was broken:** `npm run validate:platform-integrity` hit tier-gated desk routes without Clerk auth,
 WARNing on empty SPX matrix / vector walls even when live member data was healthy.
@@ -147,6 +164,16 @@ the harness exit code.
 
 **Check at the open:** Run `npm run validate:rth-open` during RTH; transient "no ingest leader" on
 attempt 1 must not fail the run when attempt 2 shows warming/fresh marks.
+
+### 0i. Indices VIX change_pct wrong sign — fix/indices-vix-change-pct-ws-overlay (pending)
+
+**What was broken:** `/api/market/indices` served VIX `change_pct` with the wrong sign (+0.07% vs Polygon
+-0.35% on 2026-09-04 RTH) because the route overlaid index REST snapshots with stock-candle-store ticks
+(session-open anchor) instead of indices-WS (`I:VIX` / `spx:pulse:snapshot` prior-close anchor).
+
+**Fix:** `index-snapshot-overlay.ts` — same open_source/rest rebase guard as spx-desk `mergeWsIndexSnapshots`.
+
+**Check at the open:** `NODE_USE_ENV_PROXY=1 node scripts/audit/data-validator.mjs` → `VIX change_pct sign matches Polygon` PASS during RTH.
 
 ### 0h. Sentry auth + stale Server Action noise — fix/auth-failure-benign-denylist-and-server-action-reload (pending)
 
