@@ -46,6 +46,7 @@ const TARGETS = [
   "scripts/largo-latency-compare.mjs",
   "scripts/helix-ui-audit.mjs",
   "scripts/capture-marketing-module-shots.mjs",
+  "scripts/helix-live-api-survey.mjs",
 ];
 
 // Functional patterns only — a *string-literal* staging base URL/secret-id (something the code

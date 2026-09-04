@@ -1,27 +1,22 @@
 #!/usr/bin/env node
 /**
- * HELIX live API survey — staging market routes + UW contract endpoints.
+ * HELIX live API survey — production market routes + UW contract endpoints.
  * Writes audit-output/helix-live-api-survey.json
+ *
+ * Was staging-first — the whole `blackout-staging-*` stack (ECS, Secrets Manager's
+ * `blackout-staging/app/env`, `staging.blackouttrades.com` DNS) was decommissioned 2026-07-25
+ * (see CLAUDE.md). Defaults to production; override with `CRON_TARGET_BASE_URL` for an ephemeral
+ * target if one is stood up later.
  */
-import { execSync } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { mintAppSession } from "./audit/lib/app-session.mjs";
 
-const BASE = (process.env.STAGING_BASE_URL ?? "https://staging.blackouttrades.com").replace(/\/$/, "");
+const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const UW_BASE = (process.env.UW_API_BASE ?? "https://api.unusualwhales.com").replace(/\/$/, "");
 const UW_KEY = (process.env.UW_API_KEY ?? "").trim();
 const OUT_DIR = join(process.cwd(), "audit-output");
 mkdirSync(OUT_DIR, { recursive: true });
-
-function loadStagingSecret() {
-  const name = process.env.STAGING_SECRET_NAME ?? "blackout-staging/app/env";
-  const raw = execSync(
-    `aws secretsmanager get-secret-value --secret-id "${name}" --query SecretString --output text`,
-    { encoding: "utf8" }
-  );
-  return JSON.parse(raw);
-}
 
 function sampleKeys(obj, depth = 0) {
   if (obj == null || depth > 2) return typeof obj;
@@ -79,20 +74,12 @@ function buildOcc(ticker, expiry, type, strike) {
 async function main() {
   const report = { at: new Date().toISOString(), base: BASE, endpoints: {} };
 
-  let secret = {};
-  try {
-    secret = loadStagingSecret();
-    if (secret.UW_API_KEY && !process.env.UW_API_KEY) process.env.UW_API_KEY = secret.UW_API_KEY;
-  } catch (e) {
-    report.secretError = e.message;
-  }
-
-  const cron = secret.CRON_SECRET?.trim() ?? process.env.CRON_SECRET?.trim();
+  const cron = process.env.CRON_SECRET?.trim();
   const cronH = cron ? { Authorization: `Bearer ${cron}` } : {};
 
   let memberH = {};
   try {
-    const session = await mintAppSession({ appUrl: BASE, secret });
+    const session = await mintAppSession({ appUrl: BASE });
     if (session.skip) report.auth = { skip: true, reason: session.reason };
     else {
       memberH = { Cookie: session.cookieHeader };
@@ -103,7 +90,7 @@ async function main() {
     report.auth = { error: e.message };
   }
 
-  const stagingRoutes = [
+  const marketRoutes = [
     ["/api/market/flows?limit=8&min_premium=200000", "flows_tape", memberH],
     ["/api/market/dark-pool?limit=5", "dark_pool", memberH],
     ["/api/market/anomalies", "anomalies", memberH],
@@ -112,7 +99,7 @@ async function main() {
     ["/api/market/nighthawk/edition", "nighthawk_edition", memberH],
   ];
 
-  for (const [path, key, headers] of stagingRoutes) {
+  for (const [path, key, headers] of marketRoutes) {
     const r = await fetchJson(`${BASE}${path}`, headers);
     const flows = r.body?.flows ?? r.body?.prints ?? r.body?.anomalies;
     const sample = Array.isArray(flows) ? flows[0] : r.body;
@@ -140,7 +127,7 @@ async function main() {
         option_type: f.option_type.toUpperCase(),
       });
       const drill = await fetchJson(`${BASE}/api/market/option-contract?${qs}`, memberH);
-      report.endpoints.contract_drilldown_staging = {
+      report.endpoints.contract_drilldown = {
         contract_id: contractId,
         from_flow: { ticker: f.ticker, strike: f.strike, expiry: f.expiry, option_type: f.option_type, premium: f.premium },
         status: drill.status,
