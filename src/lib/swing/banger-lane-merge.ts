@@ -150,7 +150,8 @@ export function isPreEntrySwingPlay(play: HorizonPlay): boolean {
   if (play.serving === "WATCH") return true;
   const ls = play.liveStatus;
   if (ls === "OPEN" || ls === "HOLD" || ls === "TRIM") return false;
-  return play.status !== "COMMIT";
+  // COMMIT without a live book — treat as canonical; do not let banger evict on collision.
+  return false;
 }
 
 export function mergeBangerPositionsIntoSwingPlays(
