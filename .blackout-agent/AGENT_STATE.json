@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:19:14.963Z",
+  "updated_at": "2026-09-04T18:17:20.514Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T17:45:43.582Z",
+      "lease_until": "2026-09-04T19:16:54.504Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "5b8259e8-4980-41c5-aa6f-7347de66bf39",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -234,6 +234,30 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3664": {
+      "pr": 3664,
+      "head_sha": "95b65131326731143415a9f0b40fcfaae81720a1",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:11:36.601Z",
+      "safe_to_merge": true
+    },
+    "pr-3667": {
+      "pr": 3667,
+      "head_sha": "a41ca3e11dc0f3300a9de1a4ba80def4027f4b43",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:11:37.689Z",
+      "safe_to_merge": true
+    },
+    "pr-3681": {
+      "pr": 3681,
+      "head_sha": "5520a35be014848d5bd621c2b5b370bdf6169781",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:17:20.513Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,13 +272,134 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "cddb5a72218950a660d18b85b579537844e65f49",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T18:11:41Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33904569568",
+    "last_deploy_sha": "cddb5a72218950a660d18b85b579537844e65f49"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3697,
+      "title": "fix(audit): side-constrain full-site heatmap wall checks",
+      "branch": "fix/full-site-audit-wall-constraint",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-04T18:11:51Z"
+    },
+    {
+      "number": 3696,
+      "title": "fix(audit): side-constrain heatmap wall checks in full-site-deep-audit",
+      "branch": "fix/full-site-audit-side-constrained-walls",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:11:49Z"
+    },
+    {
+      "number": 3695,
+      "title": "fix(audit): side-constrain RTH deep audit heatmap wall oracle by spot",
+      "branch": "fix/full-site-deep-audit-wall-sideconstraint",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:11:51Z"
+    },
+    {
+      "number": 3694,
+      "title": "fix(audit): align full-site heatmap wall check with side-constrained production rule",
+      "branch": "fix/full-site-audit-wall-side-constraint",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:11:22Z"
+    },
+    {
+      "number": 3693,
+      "title": "chore(autopilot): cursor handoff after hourly wake verification cycle",
+      "branch": "cursor/autopilot-handoff-1807",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:11:24Z"
+    },
+    {
+      "number": 3692,
+      "title": "fix(quote): rebase index WS change_pct via REST overlay",
+      "branch": "fix/quote-index-change-pct-rebase",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:11:26Z"
+    },
+    {
+      "number": 3691,
+      "title": "fix(age): guard ISO snapshot ages against clock-skewed future timestamps",
+      "branch": "fix/iso-age-future-guard-combined",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:11:28Z"
+    },
+    {
+      "number": 3686,
+      "title": "fix(vector): guard computeGexWalls spot in vector-snapshot GAMMA lens",
+      "branch": "cursor/autopilot-work-loop-fb82",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:11:30Z"
+    },
+    {
+      "number": 3685,
+      "title": "fix(admin): guard nighthawk-playbook cron age against clock-skewed updated_at",
+      "branch": "fix/nighthawk-cron-health-clock-skew",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T18:11:32Z"
+    },
+    {
+      "number": 3681,
+      "title": "fix(age): guard ISO snapshot ages against clock-skewed future timestamps",
+      "branch": "fix/iso-age-future-guard-sweep",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T18:11:34Z"
+    },
+    {
+      "number": 3675,
+      "title": "fix(admin): guard SPX dashboard stale banner against clock-skewed generated_at",
+      "branch": "fix/admin-spx-dashboard-age-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T18:11:36Z"
+    },
+    {
+      "number": 3654,
+      "title": "fix(admin): guard API Live Feed + SPX Terminal time-ago against clock skew",
+      "branch": "fix/admin-live-feed-time-ago-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T18:11:40Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1051,6 +1196,55 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:11:36.602Z",
+      "type": "pr_review",
+      "pr": 3664,
+      "head_sha": "95b65131326731143415a9f0b40fcfaae81720a1",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:11:36.601Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:11:37.690Z",
+      "type": "pr_review",
+      "pr": 3667,
+      "head_sha": "a41ca3e11dc0f3300a9de1a4ba80def4027f4b43",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:11:37.689Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:11:50.169Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 12
+    },
+    {
+      "at": "2026-09-04T18:11:50.169Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "807d3851-3ff2-4c33-b2c1-685cd288e7ca",
+      "summary": "Recovered autopilot state. Main CI GREEN (#3678 cron-registry fix). validate:deploy GREEN, ops:collect 0. Peer-reviewed #3664 (marketing scope) + #3667 (stock-candle-store rollover) — both verify GREEN, recorded APPROVED, already merged. Rebased #3681 (ISO age guard) onto main, pushed — CI pending. Subscribed to CI for 3664/3667 branches."
+    },
+    {
+      "at": "2026-09-04T18:11:55.427Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 12
+    },
+    {
+      "at": "2026-09-04T18:17:20.514Z",
+      "type": "pr_review",
+      "pr": 3681,
+      "head_sha": "5520a35be014848d5bd621c2b5b370bdf6169781",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:17:20.513Z",
       "safe_to_merge": true
     }
   ]
