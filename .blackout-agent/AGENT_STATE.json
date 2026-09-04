@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:23:18.624Z",
+  "updated_at": "2026-09-04T19:28:17.681Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -250,9 +250,9 @@
   "deploy": {
     "last_main_sha": "6776238a905a08affe9527887aae21f0c15e325a",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T19:22:38Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33910315173",
-    "last_deploy_sha": "8a923afe679c4a87e324650f2dba8a46bd314ceb"
+    "last_deploy_at": "2026-09-04T19:23:17Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33910899332",
+    "last_deploy_sha": "8cc70b48b2d6263973b3ba822ba28a2181604859"
   },
   "open_prs": [],
   "events": [
@@ -1071,6 +1071,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:28:17.681Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:28:17.681Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "bb53fb02-f23b-4bfc-b191-a90b8a56ff43",
+      "summary": "Opened #TBD fix(uw-ws) future-ts guard. #3698 verify GREEN awaiting Claude. RTH lifecycle GREEN. ops:collect 0."
     }
   ]
 }
