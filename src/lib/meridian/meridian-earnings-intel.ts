@@ -9,6 +9,7 @@ import {
 } from "@/lib/meridian/meridian-event-expiry-core";
 import { getVectorExpectedMove } from "@/features/vector/lib/vector-expected-move-server";
 import { loadEarningsExpectedMovePct } from "@/lib/meridian/meridian-earnings-expected-move";
+import { earningsAlreadyPrinted } from "@/lib/largo/pre-earnings-history-rows";
 import { expiryCoversPrint } from "@/lib/meridian/meridian-em-scope";
 import { marketPlatform } from "@/lib/platform";
 import { roundFloats } from "@/lib/round-floats";
@@ -21,6 +22,7 @@ import {
   buildErPlayRead,
   coerceMeridianWallLevels,
   flowWindowHours,
+  resolveIntelExpectedMove,
   shapeMeridianDarkPool,
 } from "@/lib/meridian/meridian-earnings-intel-core";
 import { shapeMeridianVectorDeskRead } from "@/lib/meridian/meridian-vector-for-earnings-core";
@@ -72,6 +74,17 @@ export async function loadMeridianEarningsIntel(input: {
     input.prefetch?.windowHours ?? flowWindowHours(input.pack.days_until);
   const pf = input.prefetch;
 
+  // Once this specific print has already happened, `expected_move_pct` must be WITHHELD, not
+  // refreshed from a live source — see pre-earnings-pack.ts's own fix (PR #3474, 2026-09-04) for
+  // the identical defect at the pack layer (LULU live case: post-crash chain IV served as
+  // "Options-implied move ~50.3%" hours after the print). `preEarningsPackForLargo` already nulls
+  // `pack.expected_move_pct` for this case, but this loader independently re-derives the SAME
+  // field from a live chain fetch whenever the pack value is null — which is exactly the
+  // already-printed case — silently reintroducing the bug on every consumer of `intel.
+  // expected_move_pct` (MeridianEarningsSummaryPanel, MeridianEarningsIntelPanel,
+  // `expected_move_band`'s derived price range) even though the pack-only card is fixed.
+  const alreadyPrinted = earningsAlreadyPrinted(input.pack.earnings_date, input.print_history);
+
   const rawHeatmapPromise =
     pf != null
       ? Promise.resolve(pf.rawHeatmap)
@@ -83,7 +96,7 @@ export async function loadMeridianEarningsIntel(input: {
         ? Promise.resolve(pf.fundamentals)
         : fetchTickerFundamentalsBundle(sym).catch(() => null),
       rawHeatmapPromise,
-      input.pack.expected_move_pct != null
+      alreadyPrinted || input.pack.expected_move_pct != null
         ? Promise.resolve(input.pack.expected_move_pct)
         : loadEarningsExpectedMovePct(sym, input.pack.earnings_date).catch(() => null),
       pf != null
@@ -155,17 +168,13 @@ export async function loadMeridianEarningsIntel(input: {
   const vectorCoversPrint =
     vectorEm?.movePct != null && expiryCoversPrint(vectorEm.expiry, input.pack.earnings_date);
 
-  const expected_move_pct =
-    earningsEm ??
-    (vectorCoversPrint ? Number((vectorEm!.movePct * 100).toFixed(1)) : null) ??
-    input.pack.expected_move_pct;
-
-  const expected_move_source =
-    earningsEm != null || vectorCoversPrint
-      ? "chain_iv"
-      : input.pack.expected_move_pct != null
-        ? "calendar"
-        : null;
+  const { expected_move_pct, expected_move_source } = resolveIntelExpectedMove({
+    alreadyPrinted,
+    earningsEm,
+    vectorCoversPrint,
+    vectorMovePct: vectorCoversPrint ? Number((vectorEm!.movePct * 100).toFixed(1)) : null,
+    packExpectedMovePct: input.pack.expected_move_pct,
+  });
 
   const top_flows = (flowSummary?.recent ?? [])
     .slice(0, 8)
