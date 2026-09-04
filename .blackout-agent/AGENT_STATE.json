@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T17:19:14.963Z",
+  "updated_at": "2026-09-04T18:44:01.661Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T18:29:19.570Z",
+      "lease_until": "2026-09-04T20:08:55.801Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "dad084a5-31a3-4c32-9c3f-1ca367ce4f43",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -234,6 +234,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3711": {
+      "pr": 3711,
+      "head_sha": "73e065b561f62c3a980b394fc0988bff5e140a34",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:42:55.594Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,11 +256,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "73e065b561f62c3a980b394fc0988bff5e140a34",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T18:34:02Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33906581445",
+    "last_deploy_sha": "827a3030ef91b4913c4055bc88d5f4dec94e8e8e"
   },
   "open_prs": [],
   "events": [
@@ -1052,6 +1060,47 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:38:55.800Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T18:38:56.609Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T18:42:55.595Z",
+      "type": "pr_review",
+      "pr": 3711,
+      "head_sha": "73e065b561f62c3a980b394fc0988bff5e140a34",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T18:42:55.594Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T18:42:56.922Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
+    },
+    {
+      "at": "2026-09-04T18:42:56.923Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ea20d719-2ed9-4aa0-a8b4-4f1af1849df4",
+      "summary": "#3711 merged — full-site audit wall side-constraint fix on main (73e065b). #3705 closed without merge; re-land succeeded. Continuing peer-review queue."
+    },
+    {
+      "at": "2026-09-04T18:44:01.661Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
