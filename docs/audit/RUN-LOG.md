@@ -11,6 +11,71 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-04 (18:11 UTC / Fri 2026-09-04 14:11 ET) — [performance] `vector-pick-sweep` still running 4-12min against its own 2-min schedule, even after the 2026-09-03 TTL raise — measured, NOT yet fixed
+
+**Severity.** Investigation only — real evidence of an unresolved tail-latency problem, but root
+cause not yet isolated to a specific fix, so per the standing "write up ambiguous/architecturally-
+significant things rather than unilaterally build them" policy this is logged here, not shipped as
+a code change.
+
+**What was measured.** `AWS/ApplicationELB` `TargetResponseTime` on `blackout-production-app`'s
+target group over the last 6h (30-min buckets): avg stays low (~0.5-1.8s) but Max repeatedly hits
+100-120s and p99 trends from ~7s (12:40 UTC) up to ~21s (17:10 UTC) — the classic low-average/
+high-tail signature this file's own methodology section (CLAUDE.md) calls out as a saturating
+background job, not a fleet-capacity problem. `AWS/ECS` CPU on `blackout-production-web` confirms
+it: Average sits at 30-40% while Max repeatedly hits 90-94% — one task, not the fleet, is
+saturating. Memory is fine (30-48%, no pressure).
+
+CloudWatch Logs (`/ecs/blackout-production`, `elapsed=` filter) traced it to `cron/vector-pick-
+sweep`: 69 completed runs in the last 24h (schedule is every 2 min during RTH — `schedule_cron_utc:
+"1-59/2 11-21 * * 1-5"`, so ~300 fires expected; 69 actual means the overlap guard is skipping most
+ticks) with **min=61.7s, median=127.1s, max=743.7s (12.4 minutes)**. `cron/vector-dark-pool-warm`
+(10-min schedule) is also running 220-370s per pass with a striking failure rate on individual
+ticker warms (`failed=50` out of ~55, `failed=48`, `failed=46` — worth its own follow-up, not
+investigated further this pass).
+
+**Why this isn't a fresh finding, and why it's still open.** `vector-pick-sweep/route.ts`'s own
+header comment documents this exact problem being worked twice already: an overlap guard added
+2026-09-01 (sweep measured at 301s vs the 120s schedule), then its lock TTL raised 480s→900s on
+2026-09-03 after CloudWatch showed real sweeps at 693684ms and 644588ms — *longer than the 480s
+lock itself*, which let the lock expire mid-run and a second sweep start while the first was still
+in flight, the exact overlap the guard exists to prevent. That fix (TTL raise) addressed the
+overlap/lock-expiry symptom. **It did not address why individual sweeps take 2-12 minutes in the
+first place** — and today's fresh measurement (max 743.7s) is actually WORSE than the 694s that
+triggered the TTL raise, meaning the underlying per-run slowness has not improved and may be
+getting worse.
+
+**Why no fix shipped this pass.** Read `sweepVectorPickForTicker`/`runVectorPickUniverseSweep`
+(`vector-pick-sweep.ts`): the sweep already batches 4-at-a-time (`SWEEP_CONCURRENCY = 4`) rather
+than running the full ~64-84 ticker universe fully sequential or fully parallel, and is
+*deliberately* wrapped in `runWithBackgroundUwSweep` specifically so it "always leaves at least one
+UW concurrency slot reachable for live member traffic even while mid-run" (the route's own
+comment, citing measured ALB tail-latency evidence from the same rate limiter). That means the
+slow per-ticker pipeline (`fetchVectorFullState` → `resolveTickerChainRows` →
+`loadVectorPickEnrichment` → `fetchOptionsUnifiedSnapshot` → `fetchVectorSeedBars`, several of
+these hitting the same cluster-wide rate-limited Polygon/UW clients real member requests share) is
+very likely throttled **on purpose** to protect live traffic, not merely slow by accident — so
+raising `SWEEP_CONCURRENCY` or loosening the UW throttle without first measuring the actual
+rate-limiter queue depth/utilization during a sweep risks trading this problem for the exact
+member-facing tail-latency problem the throttle was built to prevent. That measurement (instrument
+`uw-rate-limiter.ts`'s queue wait time specifically during a sweep window, or pull
+`GLOBAL_MAX_RPS`/`GLOBAL_MAX_CONCURRENCY` utilization) is the correct next step before any change to
+this cron's concurrency or throttling.
+
+**Next step, not yet done:** measure UW/Polygon rate-limiter queue wait time attributable
+specifically to `vector-pick-sweep` requests during a slow (400s+) run, to determine whether the
+throttle itself is the bottleneck (expected/intentional trade-off, already priced in) or whether a
+downstream dependency (UW/Polygon latency itself, DB round-trips in `upsertVectorPickLeader`/
+`fetchVectorPickLeaderEntryMid`, or the `resolveTickerChainRows`/`loadVectorPickEnrichment` calls)
+has independently regressed. Until that measurement exists, changing `SWEEP_CONCURRENCY` or the
+lock TTL again would be exactly the "fix from a guess" CLAUDE.md's performance-audit methodology
+warns against.
+
+No code changed this pass — investigation only, logged here per RUN-LOG policy (a real problem, but
+not yet isolated to a specific fix, so not a `findings-staging` entry per the issue-handling
+policy's "only when fixing a real bug" rule).
+
+---
 ## 2026-09-04 (16:33 UTC / Fri 2026-09-04 12:34 ET) — [SEO] RTH window validation, 3rd cycle: quick check, still GOOD
 
 **Severity.** — (no defect found)
