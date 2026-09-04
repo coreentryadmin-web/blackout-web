@@ -11,6 +11,7 @@ import {
   runUwSequential,
   throttleUwCoalesced,
 } from "@/lib/providers/uw-rate-limiter";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import {
   getUwCacheRedis,
   uwCacheGet,
@@ -124,6 +125,8 @@ function readUwCache<T>(key: string, allowStale: boolean): T | undefined {
   const slot = uwResponseCache.get(key);
   if (!slot) return undefined;
   const age = Date.now() - slot.fetchedAt;
+  // Far-future fetchedAt (clock skew) would read as infinitely fresh via negative age.
+  if (age < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return undefined;
   const ttl = uwEffectiveTtlMs(slot.ttlMs);
   if (age <= ttl) return slot.data as T;
   if (allowStale && age <= UW_SLOW_CACHE_MAX_STALE_MS) return slot.data as T;
