@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0ad. UW in-process REST cache + Polygon index overlay future guards — fix/uw-index-future-timestamp-guards (pending)
+
+**What was broken:** Three paths still used raw `Date.now() - timestamp` without the shared future guard: `readUwCache` (negative age → infinitely fresh UW REST cache), `getIndexFeedFreshness` + `index-snapshot-overlay` (future `updatedAt` clamped to age 0 → live overlay), `resolvePulseFeedStalled` (Redis pulse snapshot), and `HomeGammaPromo.fmtAgeFromAsof` (future `asof` → "live").
+
+**Fix:** Apply `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` / `isWsUpdatedAtFresh` / `ageSecFromIso` — same pattern as #3760/#3762.
+
+**Check at the open:** SPX desk feed-stalled pill still fires on genuine index silence (not on normal ticks); VIX/SPX index overlays fall back to REST when WS stamp is skewed; homepage gamma promo chip does not show "live" beside a warming snapshot.
+
 ### 0aa. UW rate limiter queue-wait observability — fix/uw-rate-limiter-queue-wait-observability (merged #3759)
 
 **What was broken:** a UW request that queued behind the rate limiter for 15+ seconds and then
