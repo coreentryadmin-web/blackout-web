@@ -190,6 +190,7 @@ test("buildPlayVerdictBarModel: pin/play divergence surfaces align hint", () => 
       loading: false,
       pin: {
         available: true,
+        pinDriftPts: -15,
         magnet: { strike: 7580, kind: "put_wall", direction: "down", strengthPct: 0.4 },
       } as never,
     }

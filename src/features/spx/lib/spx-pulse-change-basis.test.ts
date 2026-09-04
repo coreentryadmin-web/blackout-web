@@ -51,3 +51,14 @@ test("the header day-change is DERIVED from prior close, not transported", () =>
   // header self-consistent by construction. See spx-change-anchor.test.ts for the arithmetic.
   assert.match(src, /pulseChangePctFromPriorClose\(price, prior\.pdc, spxSnap\.change_pct\)/);
 });
+
+test("cold-replica pulse minimal fallback derives change from prior close, not raw transport", () => {
+  // buildSpxDeskPulseMinimal is the deskPulseCacheOpts fallback on cold replicas — it used to
+  // publish spxSnap.change_pct verbatim with prior_close:null, reintroducing the open-anchored
+  // oscillation the full pulse path fixed.
+  assert.match(src, /export async function buildSpxDeskPulseMinimal/);
+  assert.match(
+    src,
+    /buildSpxDeskPulseMinimal[\s\S]*priorDayForPulseLane[\s\S]*pulseChangePctFromPriorClose\(price, prior\.pdc, spxSnap\.change_pct\)/
+  );
+});

@@ -2136,17 +2136,21 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
   void warmUwClusterFreshnessFromRedis().catch(() => undefined);
   kickPulseStructureRefresh(todayEtYmd());
 
+  const prior = await priorDayForPulseLane();
+
   const raced = await Promise.race([
     (async () => {
       const snapsRaw = await fetchPulseLaneSnapshots();
       const spxSnap = snapsRaw[SPX];
       if (!spxSnap?.price) return empty;
       const structure = cachedPulseStructure;
+      const price = spxSnap.price;
       return {
         ...empty,
         available: true,
-        price: spxSnap.price,
-        spx_change_pct: spxSnap.change_pct,
+        price,
+        prior_close: prior.pdc,
+        spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap.change_pct),
         vix: snapsRaw[VIX]?.price ?? null,
         vix_change_pct: snapsRaw[VIX]?.change_pct ?? null,
         vwap: structure.vwap,
