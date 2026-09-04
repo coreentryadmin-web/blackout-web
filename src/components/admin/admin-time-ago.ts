@@ -26,6 +26,23 @@ export function adminAgeMsFromIso(
   return age.sec * 1000;
 }
 
+/**
+ * Age in whole minutes for cron/job staleness — null when missing/invalid; fail-closed above
+ * `failClosedMin` when the ISO timestamp is clock-skewed into the future (same guard as
+ * `adminAgeMsFromIso`, but surfaces skew as "definitely stale" instead of "unknown age").
+ */
+export function adminAgeMinFromIso(
+  iso: string | null | undefined,
+  failClosedMin: number,
+  now = Date.now()
+): number | null {
+  if (!iso) return null;
+  const age = isoAgeSec(iso, now);
+  if (age.kind === "clock-skew") return failClosedMin + 1;
+  if (age.kind === "invalid") return null;
+  return age.sec / 60;
+}
+
 /** Human-readable relative time for admin panels — guards clock-skewed future ISO timestamps. */
 export function timeAgoFromIso(iso: string | null, now = Date.now()): string {
   const age = isoAgeSec(iso, now);

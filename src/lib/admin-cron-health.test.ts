@@ -139,3 +139,22 @@ test("REGRESSION: a job WITH a fresh run is untouched by the never-run branch", 
   assert.equal(health.status, "healthy");
   assert.equal(health.market_hours_stale, false);
 });
+
+test("REGRESSION: future started_at fails closed as stale during RTH", () => {
+  const health = evaluateJob(
+    jobDef(),
+    {
+      id: 1,
+      job_key: "test-job",
+      status: "ok",
+      started_at: new Date(RTH_WEDNESDAY.getTime() + 120_000).toISOString(),
+      duration_ms: 120,
+      message: null,
+      meta_json: null,
+    },
+    [],
+    RTH_WEDNESDAY
+  );
+  assert.equal(health.status, "stale");
+  assert.match(health.status_label, /No run in/i);
+});

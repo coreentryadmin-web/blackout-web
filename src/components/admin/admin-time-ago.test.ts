@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  adminAgeMinFromIso,
   adminAgeMsFromIso,
   isoAgeSec,
   openDurationLabelFromIso,
@@ -48,4 +49,14 @@ test("adminAgeMsFromIso: future timestamp returns null (treat as stale/untrusted
 test("adminAgeMsFromIso: past timestamp returns clamped age", () => {
   const iso = new Date(NOW - 45_000).toISOString();
   assert.equal(adminAgeMsFromIso(iso, NOW), 45_000);
+});
+
+test("adminAgeMinFromIso: clock-skew fails closed above threshold", () => {
+  const iso = new Date(NOW + 60_000).toISOString();
+  assert.equal(adminAgeMinFromIso(iso, 60, NOW), 61);
+});
+
+test("adminAgeMinFromIso: valid past age returns minutes", () => {
+  const iso = new Date(NOW - 90_000).toISOString();
+  assert.equal(adminAgeMinFromIso(iso, 60, NOW), 1.5);
 });

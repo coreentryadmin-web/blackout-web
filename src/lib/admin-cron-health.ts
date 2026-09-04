@@ -21,6 +21,7 @@ import {
 } from "@/lib/cron-writer-target-fresh";
 import { isInOffScheduleIdleGap } from "@/lib/cron-schedule-window";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
+import { adminAgeMinFromIso } from "@/components/admin/admin-time-ago";
 
 /** RTH gate for market_hours_only cron health — canonical ET helper (early-close aware). */
 function inMarketHoursEt(now = new Date()): boolean {
@@ -225,8 +226,10 @@ export function evaluateJob(
     };
   }
 
-  const ageMin = (now.getTime() - new Date(last.started_at).getTime()) / 60_000;
   const { effective: staleThreshold, multiplier: staleMultiplier } = effectiveStaleMinutes(job);
+  const ageMin =
+    adminAgeMinFromIso(last.started_at, staleThreshold, now.getTime()) ??
+    staleThreshold + 1;
 
   // Market-hours-only crons (flow-ingest, spx-evaluate, heatmap-warm, gex-alerts, …)
   // intentionally skip off-window. Once the market is closed they CANNOT log a fresh run,
@@ -361,20 +364,22 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     }
 
     if (job.key === "nighthawk-playbook" && latestNhJob) {
-      const updatedAt = latestNhJob.updated_at;
-      const ageMin =
-        updatedAt != null
-          ? Math.round((Date.now() - new Date(updatedAt).getTime()) / 60_000)
-          : null;
-      let status = health.status;
-      let statusLabel = health.status_label;
-
       // A non-terminal job (anything not published/failed) whose updated_at is older than this is
       // STUCK — with the fire-and-forget builder a healthy build checkpoints every stage within
       // minutes, so >60m without progress and without publishing means the background build died
       // silently (host kill, OOM, hung Claude call). Escalate to `stale` so the watchdog alerts the
       // same night instead of waiting out the 4h registry ceiling. (#77 hardening D, item 10)
       const STUCK_JOB_MIN = isInEditionWindow() ? 15 : 60;
+      const updatedAt = latestNhJob.updated_at;
+      const ageMinRaw = adminAgeMinFromIso(updatedAt, STUCK_JOB_MIN, Date.now());
+      const ageMin =
+        ageMinRaw != null
+          ? Math.round(ageMinRaw)
+          : updatedAt != null
+            ? STUCK_JOB_MIN + 1
+            : null;
+      let status = health.status;
+      let statusLabel = health.status_label;
       const nonTerminal = latestNhJob.status !== "published" && latestNhJob.status !== "failed";
       const stuck = nonTerminal && ageMin != null && ageMin > STUCK_JOB_MIN;
 
