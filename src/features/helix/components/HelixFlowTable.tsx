@@ -37,6 +37,7 @@ import {
   WHALE_PRINT_PREMIUM,
 } from "@/features/helix/lib/helix-flow-limits";
 import { tapeTimeDisplay } from "@/features/helix/lib/helix-tape-time";
+import { fitSignalBadges } from "@/features/helix/lib/helix-signal-fit";
 import {
   helixScoreContextForPrint,
   helixScoreContextHint,
@@ -121,8 +122,11 @@ function renderCell(
   }
 ) {
   const { isCall, isWhale, dte, is0dte, signals, isStarred, onToggleStar, onTickerClick, scoreDistribution } = ctx;
-  const visibleSignals = signals.slice(0, 3);
-  const extraSignals = signals.length - visibleSignals.length;
+  // Was `signals.slice(0, 3)` — a raw COUNT cap with no notion of the cell's actual pixel budget.
+  // `.helix-tape-signals` is `flex-nowrap overflow-hidden` with no scroll/wrap anywhere in its
+  // ancestor chain, so 3 badges + a "+N" chip routinely overflowed the ~116px signals cell and got
+  // hard-clipped mid-glyph instead of ever showing the overflow count. See helix-signal-fit.ts.
+  const { visible: visibleSignals, overflowCount: extraSignals } = fitSignalBadges(signals);
 
   switch (col.id) {
     case "time":
