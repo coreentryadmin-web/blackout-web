@@ -164,6 +164,8 @@ Dispatch prompt: `npm run blackout:prompt -- --agent=cursor`
 **Session entry:** `npm run blackout:session -- --agent=cursor` (sync + heartbeat + resume leases)  
 **Task selection:** `npm run blackout:select -- --agent=cursor`  
 **PR review record:** `npm run blackout:review -- --pr=N --head=<sha> --verdict=APPROVED`  
+**0DTE counterfactual:** `npm run counterfactual:0dte-g18-g19` (G-18/G-19 skip-grading report)  
+**0DTE session replay:** `npm run replay:0dte-session -- --days=5 --json`  
 **Watchdog:** `npm run blackout:watchdog` (stale heartbeats + lease expiry)
 
 ### PR webhooks (aggressive peer feedback)
