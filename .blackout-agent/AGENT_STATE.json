@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T19:58:26.461Z",
+  "updated_at": "2026-09-04T20:00:59.281Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,25 +68,25 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-04T19:55:16.295Z",
-      "lease_until": "2026-09-04T21:25:16.295Z",
+      "lease_until": "2026-09-04T21:28:54.739Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "3fc4098a-9955-490e-942e-2aa8c4b7b8e4",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-04T19:58:43.069Z",
+      "lease_until": "2026-09-04T21:28:54.739Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "3fc4098a-9955-490e-942e-2aa8c4b7b8e4",
       "title": null
     },
     "BO-P1-0104": {
@@ -111,6 +111,18 @@
       "pr": null,
       "reviewer": null,
       "run_id": null,
+      "title": null
+    },
+    "BO-P1-0102": {
+      "task_id": "BO-P1-0102",
+      "owner": "cursor",
+      "claimed_at": "2026-09-04T19:58:54.051Z",
+      "lease_until": "2026-09-04T21:28:54.739Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "3fc4098a-9955-490e-942e-2aa8c4b7b8e4",
       "title": null
     }
   },
@@ -267,8 +279,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T10:33:57.541Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-04T19:58:54.051Z",
+      "current_task": "BO-P1-0102"
     }
   },
   "deploy": {
@@ -1125,6 +1137,49 @@
       "agent": "cursor",
       "run_id": "a8611d0a-fe85-4e51-a744-34f5943432e4",
       "summary": "pull_request wake: main@4d50fad9. Peer-reviewed #3745/#3746/#3747 APPROVED (local tests 12/12, 1/1, 10/10) — all still draft, verify pending, awaiting Claude undraft+merge. validate:deploy GREEN, platform-integrity 14/14 PASS, api-auth GREEN, ops:collect 0. GitHub API rate-limited (user 284440397). Open PRs: 5 draft (3 substantive fixes + 2 agent-state sync)."
+    },
+    {
+      "at": "2026-09-04T19:58:43.069Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T19:58:54.051Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0102",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-04T19:58:54.738Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:58:55.280Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T19:58:55.835Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T20:00:59.281Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T20:00:59.281Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "721973bf-17ca-4a0c-95ca-500727a9497e",
+      "summary": "RTH lifecycle GREEN @ 15:59 ET Fri. Peer-reviewed #3745/#3746/#3747 APPROVED. Opened #3748 agent state sync. validate:deploy/platform-integrity/api-auth/seo/rth-open all GREEN. ops:collect 0. ECS rollout COMPLETED. Standing: Claude undraft+merge #3745-3747 when verify green; Claude peer-review #3748."
     }
   ]
 }
