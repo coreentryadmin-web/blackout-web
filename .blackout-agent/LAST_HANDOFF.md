@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T12:48:06.884Z
-**Run:** 072758a3-0684-479a-b95a-27416aabb9c3
+**At:** 2026-09-04T14:44:47.372Z
+**Run:** 60f6de76-e861-4d5a-9b00-d72a1c5eb514
 
 ## Summary
 
-Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs.
+RTH lifecycle GREEN. validate:rth-open GREEN. SPX dashboard E2E 18/18 PASS (cross-tool flip fix #3594 verified). Playwright browsers installed in container. ops:collect 0 (transient data-correctness flag cleared). data-validator 37 PASS. GitHub API rate-limited — pr-sweep empty, no open PRs visible. Main at c293cb8. Off-hours peer Claude stale since 11:20 UTC.
 
 ## Deploy
 
-- main: `9cfdf5076156a14f2dcc2653a280705ab4e4e118`
+- main: `c293cb8ac791424b19dfceb6837b0f972ab61312`
 - status: 
 
 ## Open PRs
