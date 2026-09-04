@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
 import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
+import { isRetryableCurlResult, seoAuditExitCode } from "./lib/curl-retry-result.mjs";
 
 const APP = (process.env.AUDIT_APP_URL || process.env.VALIDATE_BASE || "https://blackouttrades.com").replace(/\/$/, "");
 const SECRET = process.env.CLERK_SECRET_KEY?.trim();
@@ -75,6 +76,23 @@ function curl(opts = {}) {
     return { s: 0, b: "", err: String(e.message || e) };
   }
 }
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function curlRetry(opts, retries = 4) {
+  let last = { s: 0, b: "", err: "exhausted" };
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    last = curl(opts);
+    if (attempt < retries && isRetryableCurlResult(last)) {
+      await sleep(1500 * (attempt + 1));
+      continue;
+    }
+    return last;
+  }
+  return last;
+}
 const J = (r) => {
   try {
     return JSON.parse(r.b);
@@ -120,7 +138,7 @@ async function mintSession() {
     return null;
   }
 
-  const si = curl({
+  const si = await curlRetry({
     method: "POST",
     url: `${FAPI}/v1/client/sign_ins?_clerk_js_version=${CJS}`,
     headers: { Origin: APP, Referer: `${APP}/`, "Content-Type": "application/x-www-form-urlencoded" },
@@ -131,14 +149,14 @@ async function mintSession() {
   });
   const sid = J(si)?.response?.created_session_id;
   if (!sid) {
-    rec("auth", "FAIL", "Clerk ticket exchange failed");
+    rec("auth", "FAIL", si.err ? `Clerk ticket exchange failed (${si.err.slice(0, 80)})` : "Clerk ticket exchange failed");
     await backend("DELETE", `/users/${userId}`);
     return null;
   }
 
   const clientUat = Math.floor(Date.now() / 1000);
   const tok = J(
-    curl({
+    await curlRetry({
       method: "POST",
       url: `${FAPI}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`,
       headers: { Origin: APP, Referer: `${APP}/`, "Content-Type": "application/x-www-form-urlencoded" },
@@ -244,12 +262,14 @@ async function main() {
   }
 
   const fails = checks.filter((c) => c.status === "FAIL");
-  const verdict = fails.length === 0 ? "GREEN" : fails.some((c) => c.name === "auth") ? "AMBER" : "RED";
+  const authOnlyFail = fails.length > 0 && fails.every((c) => c.name === "auth");
+  const verdict = fails.length === 0 ? "GREEN" : authOnlyFail ? "AMBER" : "RED";
   console.log(`\n=== ${verdict} — ${checks.length} checks, ${fails.length} fail ===\n`);
   if (fails.length) {
     for (const f of fails) console.log(`  ✗ ${f.name}: ${f.detail}`);
   }
-  process.exit(fails.length ? 1 : 0);
+  // Auth is a desk probe — a transient Clerk FAPI blip must not fail deploy smoke when public SEO passed.
+  process.exit(seoAuditExitCode(fails));
 }
 
 main().finally(() => {
