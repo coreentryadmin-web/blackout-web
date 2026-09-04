@@ -236,6 +236,18 @@ returns `{ label: "clock skew", ok: false }`; otherwise clamps with `Math.max(0,
 **Check at the open:** `/admin` → Operations → UW/Polygon store tiles show plausible ages during RTH
 (e.g. "12s ago"), not "just now" on a store that hasn't ticked.
 
+### 0j-c. Admin API feed + SPX terminal fmtRel future-skew — fix/admin-fmtrel-future-guard (pending)
+
+**What was broken:** `AdminApiLiveFeed.tsx` and `AdminSpxTerminal.tsx` had local `fmtRel()` helpers
+computing `Date.now() - new Date(iso)` without a future guard — same false **"just now"** / **"now"**
+class as #3627/#3641.
+
+**Fix:** Extended `admin-time-ago.ts` with shared `isoAgeSec()` + compact/open-duration formatters;
+removed duplicate local helpers.
+
+**Check at the open:** `/admin` API live feed + SPX terminal show plausible relative times (or
+"clock skew"), not "just now" on skewed event timestamps.
+
 ### 0i. Platform-integrity probe tier-gate false-WARN — fix/platform-integrity-clerk-auth (merged #3605)
 
 **What was broken:** `npm run validate:platform-integrity` hit tier-gated desk routes without Clerk auth,
