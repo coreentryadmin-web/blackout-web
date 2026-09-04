@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T15:39:49.130Z",
+  "updated_at": "2026-09-04T16:04:39.116Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T15:55:34.776Z",
+      "lease_until": "2026-09-04T17:28:31.039Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "ca10ac2c-069b-42f1-82bb-a9928ef7b474",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -224,11 +224,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "4a26268131c43955daf6c6afe6ef9249a80b54fd",
+    "last_main_sha": "3b5c5d98f69e55751e92a305ed9221d43c892825",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T15:55:50Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33892277862",
+    "last_deploy_sha": "a1a9d668c0e2eff63332f193ee3dcafd7e862a09"
   },
   "open_prs": [],
   "events": [
@@ -970,6 +970,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:04:39.115Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:04:39.116Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9e903305-b239-46cd-8b4a-45ac75acd235",
+      "summary": "Post-#3624+#3625: RTH lifecycle GREEN. Merged Claude #3625. platform-integrity 14/14, ops:collect 0."
     }
   ]
 }
