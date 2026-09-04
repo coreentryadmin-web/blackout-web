@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T12:48:06.884Z",
+  "updated_at": "2026-09-04T14:14:14.229Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T13:43:05.343Z",
+      "lease_until": "2026-09-04T15:23:56.050Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "74873524-b5bc-42e8-aca1-5f017c4abdfe",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -210,6 +210,38 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
+    },
+    "pr-3589": {
+      "pr": 3589,
+      "head_sha": "307642d9ae27b07d29cda985169c147d90932db6",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T13:56:58.205Z",
+      "safe_to_merge": true
+    },
+    "pr-3588": {
+      "pr": 3588,
+      "head_sha": "323e3b77c813dbdb9cb362fa535b8d9a75b7d41f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T14:02:16.772Z",
+      "safe_to_merge": true
+    },
+    "pr-3591": {
+      "pr": 3591,
+      "head_sha": "d9f4ce39de71e0f7c4316e11301d4c751a4f7432",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T14:09:38.527Z",
+      "safe_to_merge": true
+    },
+    "pr-3592": {
+      "pr": 3592,
+      "head_sha": "58b0af204b97e7020e455645ea03b8db7e408318",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T14:14:14.228Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -224,11 +256,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118",
+    "last_main_sha": "1b3928ac3e3d9beeb74f9ea42f7c41453dfa13a7",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T14:02:50Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33881462420",
+    "last_deploy_sha": "7e680be9d5107b932e12263f7addd59146e6a91a"
   },
   "open_prs": [],
   "events": [
@@ -898,6 +930,87 @@
       "agent": "cursor",
       "run_id": "072758a3-0684-479a-b95a-27416aabb9c3",
       "summary": "Cycle: #3580 merged (data-integrity ageMin guard). #3582 APPROVED+ready (vector spot-zero guard). #3556 already merged. Agent state pushed to #3581. validate:deploy GREEN, ops:collect 0. Off-hours — RTH lifecycle skipped. Standing: Claude peer-review #3578/#3581 cursor state PRs."
+    },
+    {
+      "at": "2026-09-04T13:53:55.250Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T13:53:56.049Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T13:53:56.707Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T13:56:58.205Z",
+      "type": "pr_review",
+      "pr": 3589,
+      "head_sha": "307642d9ae27b07d29cda985169c147d90932db6",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T13:56:58.205Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T14:02:12.299Z",
+      "type": "pr_review",
+      "pr": 3588,
+      "head_sha": "",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T14:02:12.298Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T14:02:16.773Z",
+      "type": "pr_review",
+      "pr": 3588,
+      "head_sha": "323e3b77c813dbdb9cb362fa535b8d9a75b7d41f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T14:02:16.772Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T14:04:30.916Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T14:04:30.917Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "89dfd4df-a354-4d5d-9eda-73157682c88e",
+      "summary": "PR event cycle: #3589 APPROVED (docs finding, superseded by fix). #3588 APPROVED+ready+auto-merge armed (regime-dead-zone audit script). Shipped fix/vector-vp-label-gutter-left (VP label collision fix) — branch pushed, PR create blocked by token scope. validate:deploy GREEN, ops:collect 0. Off-hours."
+    },
+    {
+      "at": "2026-09-04T14:09:38.528Z",
+      "type": "pr_review",
+      "pr": 3591,
+      "head_sha": "d9f4ce39de71e0f7c4316e11301d4c751a4f7432",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T14:09:38.527Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T14:14:14.229Z",
+      "type": "pr_review",
+      "pr": 3592,
+      "head_sha": "58b0af204b97e7020e455645ea03b8db7e408318",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T14:14:14.228Z",
+      "safe_to_merge": true
     }
   ]
 }
