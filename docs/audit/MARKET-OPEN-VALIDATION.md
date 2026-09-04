@@ -136,7 +136,7 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** Google/search-console snippet for `/learn/night-hawk` and the Course JSON-LD chapter list should show the corrected title; confirm no SERP-truncation regression (title 49/60 chars, description 146/160 chars).
 
-### 0ak. Learn hub Night Hawk descriptor still said "Evening playbook" after the 0DTE Command redesign — fix/learn-nav-night-hawk-stale-descriptor (pending)
+### 0ak. Learn hub Night Hawk descriptor still said "Evening playbook" after the 0DTE Command redesign — fix/learn-nav-night-hawk-stale-descriptor (merged #3784)
 
 **What was broken:** `LEARN_NAV`'s `night-hawk` entry (`src/lib/learn/nav.ts`) described the
 chapter as "Evening playbook — tomorrow's setups, scored tonight." — contradicting the homepage's
