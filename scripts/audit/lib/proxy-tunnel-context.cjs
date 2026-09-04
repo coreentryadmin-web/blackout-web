@@ -18,6 +18,7 @@ const http = require("http");
 const tls = require("tls");
 const fs = require("fs");
 const { URL } = require("url");
+const { resolveChromiumPath } = require("./playwright-chromium-path.cjs");
 
 const PROXY_URL = process.env.HTTPS_PROXY || "http://127.0.0.1:42795";
 const CA_PATH = "/root/.ccr/ca-bundle.crt";
@@ -247,7 +248,7 @@ async function createTunneledContext({
   const [vw, vh] = String(viewport).split("x").map(Number);
 
   const browser = await chromium.launch({
-    executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    executablePath: resolveChromiumPath(),
     headless: true,
     args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--disable-background-networking"],
   });

@@ -466,7 +466,36 @@ likely dominated by Polygon calls or general compute than the UW ceiling #3479 f
 need its own measurement before a fix is warranted, per this file's own "never fix from a guess"
 standing method.
 
-### 17. Helix print tape signal badges hard-clipped mid-character in FULL columns — PR pending (branch `fix/helix-signals-badge-clip`)
+### 18. Meridian earnings detail header — title overlapped the SUMMARY tab pill on tablet/mobile — PR #3563 (merged, branch `fix/meridian-earnings-header-tab-overlap`)
+
+**What was broken:** `.meridian-detail-head-v2` (the `<header>` row pairing the earnings event
+title with the SUMMARY/REPORT/ESTIMATES/POSITIONING/HISTORY tab strip in
+`MeridianEventDetailPanel.tsx`) had no `flex-wrap` of its own while its title child
+(`.meridian-detail-title-v2`) IS `flex-wrap: wrap` by design. At >=1440px the title fits on one
+line and nothing overlaps; at 1024px and 430px the title wraps to 2-3 lines, the row grows tall,
+and `align-items: center` centered the still-single-line tab strip vertically against that tall
+block — landing the tail of the title ("earnings", right after the "EARNINGS · HIGH IMPACT"
+kicker) directly on top of the SUMMARY pill's left half. Reproduced on every one of the desk's
+~131 live earnings events, on both tablet and mobile, regardless of which tab was active.
+
+**Fix:** added `flex-wrap: wrap` to `.meridian-detail-head-v2` so the tab strip drops to its own
+row once it no longer fits beside the title, instead of being squeezed onto the same nowrap line
+and centered into the middle of the wrapped text. `.meridian-earnings-tablist`'s own
+`flex-wrap: nowrap` (keeps the five tab pills on one row) is untouched. Full root-cause detail:
+`docs/audit/findings-staging/2026-09-04-meridian-earnings-detail-header-tab-overlap.md`.
+
+**Check at the open:** open any live earnings event's detail on `/meridian` at both 1024px and
+430px viewports (or via `proxy-browser.cjs` against production) and confirm the h2 title and the
+SUMMARY/REPORT/ESTIMATES/POSITIONING/HISTORY tab strip render on visually separate lines with no
+overlapping glyphs, across at least 2-3 different real earnings events (title length varies by
+ticker/company name, and this defect is title-length-and-viewport-width dependent) — this could
+only be confirmed pre-open against static/cached data; the specific value of re-checking at the
+open is seeing it against the FULL, currently-live set of ~131 earnings events (including any that
+rolled onto/off the calendar overnight) rather than the handful captured in the original finding's
+screenshots. Also spot-check that the >=1440px desktop rendering is visually unchanged (title and
+tab strip still share one row) — the fix should be a no-op at that width.
+
+### 17. Helix print tape signal badges hard-clipped mid-character in FULL columns — PR #3558 (merged, branch `fix/helix-signals-badge-clip`)
 
 **What was broken:** the `/flows` print tape's Signals cell (`.helix-tape-cell--signals`, FULL
 columns density, desktop with the analytics sidebar hidden) rendered `signals.slice(0, 3)` — a raw
@@ -594,7 +623,7 @@ pan states, since tick positions move with the visible time range and the origin
 width and time-range, not a single fixed state. Also spot-check mobile (430×932) to confirm the fix
 didn't regress the already-working sibling labels' layout there.
 
-### 18. Helix `/flows` mobile print card showed a bare negative DTE for an already-expired print — PR pending (branch `fix/helix-mobile-card-expired-dte`)
+### 20. Helix `/flows` mobile print card showed a bare negative DTE for an already-expired print — PR #3561 (merged, branch `fix/helix-mobile-card-expired-dte`)
 
 **What was broken:** the mobile print card (`HelixMobileFlowTape.tsx`) computed
 `dte = flow.dte ?? daysToExpiry(flow.expiry)` and only special-cased `dte === 0` (0DTE, ember
@@ -643,7 +672,7 @@ the ticker, still tone-colored (green/red/amber) and bold. Also confirm Dir/Tier
 reachable (now via swipe or the row's existing tap-to-expand drawer) and that desktop/tablet
 rendering (where the table already fit) is visually unchanged.
 
-### 19. `thermal-discord` cron logging "Fontconfig error: No writable cache directories" every ~15-30min RTH — PR pending (branch `fix/thermal-discord-fontconfig-cache-dir`)
+### 21. `thermal-discord` cron logging "Fontconfig error: No writable cache directories" every ~15-30min RTH — PR pending (branch `fix/thermal-discord-fontconfig-cache-dir`)
 
 **What was broken:** CloudWatch showed 72 occurrences/24h of the bare stderr line `Fontconfig
 error: No writable cache directories`, clustered in groups of exactly 4, RTH-only, on the
@@ -670,6 +699,39 @@ task, not eliminate the very first cold render after a fresh deploy/task start. 
 `thermal-discord` embeds still post normally to Discord during RTH (unaffected functionally either
 way, but confirm the fix didn't introduce a regression) via the admin cron-health board or the
 Discord channel itself.
+
+### 19. Vector SPX PLAYS card's off-hours loading copy read as a stalled live scan — PR #3566 (merged, branch `fix/vector-contract-picks-closed-market-loading`)
+
+**What was broken:** a discovery-pass finding reported the mobile `/vector` contract-picks card
+("PLYS · SPX PLAYS · loading" / "Scanning the chain for a contract worth showing…") appearing
+identically across 3 captures ~10 minutes apart, all off-hours, never resolving — unlike the
+adjacent Live Helix panel, which shows an honest "Session closed — Live Helix resumes at the open"
+once it has nothing to show. Independently reproduced live 2026-09-04 (temp Clerk session,
+`proxy-browser.cjs`, 430×932, pre-open ~06:47-06:54 AM ET): the "never resolving" framing did NOT
+hold literally — 2 of 3 fresh page loads resolved to real, populated picks within the capture's own
+wait window (6-20s), and the 3rd (also 6s wait) reproduced the exact reported stuck-looking state.
+So the fetch genuinely runs off-hours and genuinely can resolve with real last-session picks, but
+resolution time off-hours is variable and can run past what a member reasonably waits, and the copy
+gave no signal the delay was expected — read stuck/broken exactly as the discovery pass described,
+even though it wasn't literally permanent. Full evidence, the "why not just copy Helix's exact
+pattern" reasoning (it would hide real off-hours content this card is designed to still show), and
+root cause in `docs/audit/findings-staging/2026-09-04-vector-contract-picks-closed-market-loading-copy.md`.
+
+**Fix:** added an optional `liveSession` prop to `VectorContractPicksCard` (default `true`) and
+branched ONLY the loading-state body copy on it — unchanged live-session wording, vs "Session
+closed — resolving the last session's chain scan (can take longer off-hours)…" when closed. The
+fetch itself, its timing, and every other state (populated picks, "no contract cleared the bar",
+pivot-wait) are untouched. Wired through both real call sites (`VectorPageShell.tsx`,
+`VectorComparePlayStrip.tsx`).
+
+**Check at the open:** this fix was built and verified entirely OFF-HOURS. Once the market is open,
+confirm on `/vector` (`proxy-browser.cjs`, 430×932 mobile, and desktop) that: (1) the loading state,
+if seen at all during RTH, still shows the ORIGINAL "Scanning the chain for a contract worth
+showing…" copy (not the closed-market variant) — `liveSession` should read `true` throughout RTH;
+(2) real contract picks still populate normally once a play exists, at the same cadence as before
+this PR (this fix must not have changed fetch timing, only closed-market copy); (3) re-check the
+card off-hours AFTER today's close and confirm the closed-market copy now appears instead of the
+bare "Scanning the chain…" sentence when the loading state is hit.
 
 ---
 

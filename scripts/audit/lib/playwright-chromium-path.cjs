@@ -1,8 +1,8 @@
-import { existsSync } from "node:fs";
-import { execSync } from "node:child_process";
+const { existsSync } = require("node:fs");
+const { execSync } = require("node:child_process");
 
 /** Resolve a usable Chromium binary — cloud agents often lack /opt/pw-browsers pin. */
-export function resolveChromiumPath() {
+function resolveChromiumPath() {
   if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
     return process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
   }
@@ -30,3 +30,5 @@ export function resolveChromiumPath() {
   }
   return undefined;
 }
+
+module.exports = { resolveChromiumPath };
