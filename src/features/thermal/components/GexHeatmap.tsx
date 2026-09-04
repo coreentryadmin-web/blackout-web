@@ -334,6 +334,8 @@ type GexHeatmapResponse = {
     divergence: number | null;
     uw_asof: string | null;
   } | null;
+  /** True when the option chain hit the pagination guard — walls/OI may understate. */
+  chain_truncated?: boolean;
   error?: string;
 };
 
@@ -3766,6 +3768,12 @@ export function GexHeatmap({
         <p className="mb-2 font-mono text-[9px] leading-snug text-amber-300/90">
           Our two data sources disagree by {uwCross?.divergence?.toFixed(0)}pt on where the walls
           sit — treat these levels as provisional until they agree.
+        </p>
+      )}
+      {data?.chain_truncated && (
+        <p className="mb-2 font-mono text-[9px] leading-snug text-amber-300/90">
+          Option chain capped before full pagination — walls and open interest may understate true
+          positioning.
         </p>
       )}
       <ExpiryScopeBar

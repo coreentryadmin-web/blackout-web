@@ -23,6 +23,8 @@ export type GexHeatmapForLargo = {
   flip: number | null;
   /** Why flip is null: 'insufficient_data' | 'net_short_everywhere' | 'net_long_everywhere' | 'crossings_far' (omitted when flip is available). */
   flip_reason?: string | null;
+  /** True when the option chain hit the pagination guard — walls/OI may understate. */
+  chain_truncated?: boolean;
   /**
    * MULTI-EXPIRY AGGREGATE — summed over `near_term_expiries`, which on SPX is currently FIFTEEN
    * expiries running three weeks out. Real, but NOT the near-dated wall, and the model had no way
@@ -161,6 +163,7 @@ export async function gexHeatmapForLargo(
       top_strikes: [],
       flip: null,
       flip_reason: undefined,
+      chain_truncated: undefined,
       call_wall: null,
       walls_by_horizon: null,
       put_wall: null,
@@ -222,6 +225,7 @@ export async function gexHeatmapForLargo(
     top_strikes: topStrikesFromTotals(totals, topN),
     flip: pos?.flip ?? hm.gex?.flip ?? null,
     flip_reason: hm.gex?.flip === null ? hm.gex?.flip_reason : undefined,
+    chain_truncated: hm.chain_truncated ? true : undefined,
     call_wall: pos?.call_wall ?? hm.gex?.call_wall ?? null,
     put_wall: pos?.put_wall ?? hm.gex?.put_wall ?? null,
     walls_by_horizon:
