@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T08:38:12.657Z",
+  "updated_at": "2026-09-04T08:39:00.520Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -82,12 +82,13 @@
       "owner": "cursor",
       "claimed_at": "2026-09-04T08:28:31.080Z",
       "lease_until": "2026-09-04T10:06:56.930Z",
-      "phase": "VERIFYING",
+      "phase": "RELEASED",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": "c01ea362-9b47-4e3c-a4d7-3c1f91ae6c5c",
-      "title": null
+      "title": null,
+      "released_at": "2026-09-04T08:39:00.520Z"
     },
     "BO-P1-0104": {
       "task_id": "BO-P1-0104",
@@ -709,6 +710,18 @@
       "agent": "cursor",
       "run_id": "c054a6db-25ef-416d-8e35-c9850a27084c",
       "summary": "Post-#3533 merge cycle: main@281d98171. validate:deploy GREEN, ops:collect 0, data-validator 22 PASS, api-auth GREEN, platform-integrity 3 pass/4 warn (off-hours), rth-lifecycle GREEN. PR sweep empty, no open PRs. cursor/platform-bug-sweep branch stale (superseded by #3506). Next RTH Fri 09:00 ET."
+    },
+    {
+      "at": "2026-09-04T08:38:51.836Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T08:39:00.520Z",
+      "type": "task_released",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
     }
   ]
 }
