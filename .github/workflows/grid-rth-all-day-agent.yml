@@ -80,9 +80,7 @@ jobs:
           fi
           export PROMPT
           export AUTO_PR
-          PROMPT="${BOOTSTRAP}
-
-${EXTRA}"
+          PROMPT="${BOOTSTRAP}"$'\n\n'"${EXTRA}"
           payload=$(node -e "
             console.log(JSON.stringify({
               prompt: { text: process.env.PROMPT },
