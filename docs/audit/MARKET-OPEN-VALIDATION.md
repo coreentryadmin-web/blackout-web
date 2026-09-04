@@ -126,7 +126,7 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
-### 0g. RTH-open options-socket retry false-fail — fix/rth-open-socket-retry-false-fail (pending)
+### 0g. RTH-open options-socket retry false-fail — fix/rth-open-socket-retry-false-fail (merged #3600)
 
 **What was broken:** `validate:rth-open` called `fail()` on the first options-socket probe attempt even
 when attempt 2/3 returned green (`ingest leader lock held — marks warming`), leaving a stale failure in
@@ -136,6 +136,16 @@ the harness exit code.
 
 **Check at the open:** Run `npm run validate:rth-open` during RTH; transient "no ingest leader" on
 attempt 1 must not fail the run when attempt 2 shows warming/fresh marks.
+
+### 0h. Sentry auth + stale Server Action noise — fix/auth-failure-benign-denylist-and-server-action-reload (pending)
+
+**What was broken:** `validate:deploy` Sentry sample showed `ClerkAuthFailure: You're already signed in`
+(normal navigation to `/sign-in` while authenticated) and `UnrecognizedActionError: Server Action … was not found`
+(deploy-race stale action IDs) as top unresolved issues.
+
+**Fix:** Benign Clerk message denylist in `auth-failure-detect.ts`; extend chunk-reload guard for stale Server Actions.
+
+**Check at the open:** After any deploy rollout, confirm Sentry top issues no longer include these two patterns; members mid-rollout should get a one-shot reload instead of a stuck page on stale Server Actions.
 
 ### 0f. SPX dashboard E2E cross-tool stale matrix flip — fix/spx-dashboard-cross-tool-stale-matrix (pending)
 
