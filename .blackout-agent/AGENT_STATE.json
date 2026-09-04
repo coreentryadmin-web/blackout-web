@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T11:20:50.708Z",
+  "updated_at": "2026-09-04T11:48:28.525Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T10:22:03.345Z",
-      "lease_until": "2026-09-04T11:52:03.345Z",
+      "claimed_at": "2026-09-04T11:26:27.662Z",
+      "lease_until": "2026-09-04T13:07:25.796Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "26f08245-5660-4887-b8bd-e3fae5310a74",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -186,6 +186,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T10:33:34.705Z",
       "safe_to_merge": true
+    },
+    "pr-3564": {
+      "pr": 3564,
+      "head_sha": "21af8ba3d86e26fab1231a4b21b69130bd427b4e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T11:48:04.244Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -200,11 +208,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0d367bde47b227c73f6e56abb5cc5dc80cf5e44f",
+    "last_main_sha": "01f7ab1db055654b6f0b23a933996d55e87c73ab",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T10:35:12Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33863935805",
-    "last_deploy_sha": "b1bfa6647902811a55f9628c5b1e3dec3d23ea01"
+    "last_deploy_at": "2026-09-04T11:29:33Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33868193241",
+    "last_deploy_sha": "90e5c7597990b36968f0d63f793e29fbe72f36d4"
   },
   "open_prs": [],
   "events": [
@@ -812,6 +820,41 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T11:48:04.244Z",
+      "type": "pr_review",
+      "pr": 3564,
+      "head_sha": "21af8ba3d86e26fab1231a4b21b69130bd427b4e",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T11:48:04.244Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T11:48:11.731Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T11:48:15.618Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T11:48:28.524Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T11:48:28.525Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2ad81c86-6ead-43be-a99f-48ef4daced10",
+      "summary": "Cycle complete. Merged #3566 (vector contract-picks closed-market loading copy) via REST after peer approval + verify GREEN. #3564 already merged. #3568 state sync on main. Open PRs: 0. Deploy GREEN (90e5c759 deployed; main 01f7ab1db may need ECR for state-sync commit). SEO 22/22. ops:collect 0. validate:deploy GREEN. GitHub GraphQL rate-limited — used REST/GH_TOKEN for merge."
     }
   ]
 }
