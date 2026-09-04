@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T16:16:15.266Z",
+  "updated_at": "2026-09-04T16:37:34.952Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T12:32:13.985Z",
-      "lease_until": "2026-09-04T14:02:13.985Z",
-      "phase": "IMPLEMENTING",
+      "claimed_at": "2026-09-04T16:20:10.616Z",
+      "lease_until": "2026-09-04T17:51:53.460Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "3050cf0f-6963-4dbc-9271-b85499bd64cd",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -210,6 +210,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T12:48:01.109Z",
       "safe_to_merge": true
+    },
+    "pr-3633": {
+      "pr": 3633,
+      "head_sha": "126419b1ae6018a11db598002290620d50296952",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T16:31:18.678Z",
+      "safe_to_merge": true
+    },
+    "pr-3639": {
+      "pr": 3639,
+      "head_sha": "c17af1873c87a8cac2afaf8465d5d54bfcc221df",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T16:37:19.657Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -224,11 +240,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "88ca92e03306750f2e088cbb039e197926fa899b",
+    "last_main_sha": "3b2cdc0f75a5033b25fc28fabafcaa962afefe26",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T12:42:15Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33873993641",
-    "last_deploy_sha": "9cfdf5076156a14f2dcc2653a280705ab4e4e118"
+    "last_deploy_at": "2026-09-04T16:30:58Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33895571118",
+    "last_deploy_sha": "de936bd22dcf6b23903394200f9d7168c6951392"
   },
   "open_prs": [],
   "events": [
@@ -972,22 +988,61 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T16:16:14.844Z",
+      "at": "2026-09-04T16:21:53.460Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T16:16:15.166Z",
+      "at": "2026-09-04T16:21:54.167Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-04T16:16:15.266Z",
+      "at": "2026-09-04T16:21:54.811Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:31:18.679Z",
+      "type": "pr_review",
+      "pr": 3633,
+      "head_sha": "126419b1ae6018a11db598002290620d50296952",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T16:31:18.678Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T16:31:23.500Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:37:19.658Z",
+      "type": "pr_review",
+      "pr": 3639,
+      "head_sha": "c17af1873c87a8cac2afaf8465d5d54bfcc221df",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-04T16:37:19.657Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-04T16:37:34.951Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-04T16:37:34.952Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a444784a-5c9b-45b6-bd61-91d49e0d1737",
+      "summary": "Cycle: RTH lifecycle GREEN. Peer-reviewed #3633 (merged) + #3639 (APPROVED+ready). #3634 verify green awaiting Claude review. validate:deploy GREEN, ops:collect 0."
     }
   ]
 }
