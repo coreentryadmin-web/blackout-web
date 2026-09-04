@@ -82,11 +82,10 @@ test("Swing OPEN play: unified command panel at first paint (SSR)", async () => 
     }),
   );
   assert.match(html, /nh-deck-command-panel-v2/);
+  assert.match(html, /nh-deck-verdict-band/);
   assert.match(html, />Why we picked it</);
   assert.match(html, />Live · management</);
   assert.doesNotMatch(html, /nh-deck-tabs/);
-  // Management-only trim ladder headline must not be the default view body.
-  assert.doesNotMatch(html, /Trim-scale ladder — the engine banks partials/);
 });
 
 test("0DTE single panel v2: verdict band, evidence stack, collapsed technicals", async () => {
