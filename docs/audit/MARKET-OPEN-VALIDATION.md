@@ -141,6 +141,12 @@ and `indices/route` already rebase via `withFreshPrice` / `overlayRestIndexWithW
 agree within rounding. Specifically watch VIX: ws-bar anchor previously showed +0.07% while REST
 reported -0.35% (measured 2026-09-04).
 
+### 0x. RTH deep audit — full-site heatmap wall false-FAIL — fix/full-site-audit-wall-constraint (pending)
+
+- **What was broken:** Scheduled `RTH deep audit` failed with P0 `[heatmap] SPX.put_wall: reported 7700 != 8000` (and five sibling tickers) even though production walls matched their served `strike_totals`.
+- **What changed:** `full-site-deep-audit.mjs` now imports side-constrained `wallsFromStrikeTotals(totals, spot)` from `gex-wall-invariants.mjs` instead of unconstrained argmax/argmin.
+- **RTH check:** Next scheduled `RTH deep audit` workflow run should pass the heatmap matrix section with zero P0 wall mismatches when GEX data is live.
+
 ### 0v. ISO age helpers treated clock-skewed future timestamps as fresh — fix/iso-age-future-guard-combined (pending)
 
 **What was broken:** `public-gex-snapshot` coerced negative `asof` age to **0 seconds** (reads as just refreshed on the marketing gamma snapshot). Night Hawk Legacy `legacyMarkAgeLabel` and admin Night Hawk playbook `ageMin` used raw `Date.now() - new Date(iso)` without the shared future guard — future-skewed `updated_at` bypassed stuck detection.
