@@ -5,6 +5,7 @@ import {
   terminalPlayFromHorizon,
   terminalPlayFromEdition,
   managementFor,
+  refreshSwingManagement,
   parseLevelNum,
   firstSeenIso,
 } from "./adapters.ts";
@@ -79,7 +80,7 @@ test("0DTE adapter: lost tape alignment surfaces a thesis-break warning", () => 
 
 test("horizon adapter: SCALE_OUT model, reason as note, mid as mark", () => {
   const play = terminalPlayFromHorizon({
-    ticker: "pltr", direction: "LONG", horizon: "SWING", score: 77, reason: "momentum 90%, accumulation 88%",
+    ticker: "pltr", direction: "LONG", horizon: "SWING", score: 77, status: "WATCH", reason: "momentum 90%, accumulation 88%",
     contract: { strike: 52, right: "C", expiry: "2026-08-07", dte: 14, mid: 2.32 },
   });
   assert.equal(play.horizon, "SWING");
@@ -1045,6 +1046,47 @@ test("horizon adapter: live OPEN row wires entry/mark/pnl from live book fields"
   assert.equal(open.mark, 5.5);
   assert.equal(open.pnlPct, 10);
   assert.equal(open.peak, 10);
+  assert.equal(open.exitModel, "SCALE_OUT");
+  assert.equal(open.exitPolicy?.policy, "trim_scale");
+  assert.ok(open.thesisHealth);
+  assert.equal(open.thesisHealth!.health > 0, true);
+});
+
+test("refreshSwingManagement maps EXIT manage action to SELL", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    liveStatus: "OPEN",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 14, mid: 8.0 },
+    entryPremium: 5.0,
+    livePnlPct: 60,
+    peakPremium: 8.0,
+    setupState: "INVALIDATED",
+    manageAction: "EXIT",
+  });
+  const refreshed = refreshSwingManagement(play);
+  assert.equal(refreshed.recommendation, "SELL");
+});
+
+test("refreshSwingManagement: manage engine wins over thesis overlay (1 Hz parity with board adapter)", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 82,
+    liveStatus: "OPEN",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 14, mid: 8.0 },
+    entryPremium: 5.0,
+    livePnlPct: 60,
+    peakPremium: 8.0,
+    manageAction: "TAKE_PARTIAL",
+  });
+  const boardRec = play.recommendation;
+  const refreshed = refreshSwingManagement(play);
+  assert.equal(refreshed.recommendation, boardRec);
+  assert.equal(refreshed.recommendation, "TRIM");
 });
 
 test("legacy adapter: UNVERIFIED morning status → WATCH + unknown thesis", () => {

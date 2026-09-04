@@ -300,4 +300,9 @@ export function allSwingSubLanes(): SwingSubLaneSpec[] {
 export type SwingSetupState = "FORMING" | "TRIGGERED" | "EXTENDED" | "INVALIDATED";
 
 /** Where price sits relative to the entry trigger — drives the entry-execution model + the board rail. */
-export type SwingEntryState = "PRE_TRIGGER" | "AT_TRIGGER" | "PULLBACK_TO_ENTRY" | "EXTENDED_CHASE";
+export type SwingEntryState =
+  | "PRE_TRIGGER"
+  | "AT_TRIGGER"
+  | "PULLBACK_TO_ENTRY"
+  | "EXTENDED_CHASE"
+  | "EXPIRED";
