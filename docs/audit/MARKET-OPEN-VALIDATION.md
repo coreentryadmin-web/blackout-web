@@ -2304,3 +2304,8 @@ than an end-of-session patch.
 - **What changed:** Wrap both sim and member board success responses in `roundFloats()` at `board/route.ts`.
 - **RTH check:** Seed admin sim (`/nighthawk?sim=1`), inspect board JSON or rendered premiums/PnL — confirm 2dp-clean values with no IEEE tails on sim frames.
 
+### 29. Stock spot SSE stream — unrounded IEEE floats on wire — fix/spot-stream-roundfloats — 2026-09-04
+
+- **What was broken:** `/api/market/stocks/spot-stream` SSE frames serialized raw `price` and `changePct` from `stock-candle-store` without `roundFloats`, so members on the push spot lane could see IEEE tails while REST `/api/market/quote` was already rounded.
+- **What changed:** Apply `roundFloats(frame)` inside `encodeSpotFrame()` in `stocks-spot-stream-hub.ts` before `JSON.stringify`.
+- **RTH check:** Open any desk surface using the spot SSE stream (Network tab → EventStream on `/api/market/stocks/spot-stream?tickers=NVDA,AAPL`); confirm `quotes.*.price` and `changePct` are 2dp-clean with no IEEE tails during RTH ticks.
