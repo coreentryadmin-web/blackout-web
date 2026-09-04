@@ -1331,3 +1331,14 @@ export function pctClass(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return "num-neutral";
   return n >= 0 ? "num-bull" : "num-bear";
 }
+
+/** Day-change tone for SPX spot headers — neutral when % is unknown, never default to bull via `?? 0`. */
+export function dayChangeTextClass(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "text-white";
+  return n >= 0 ? "text-bull" : "text-bear-text";
+}
+
+export function dayChangeBorderClass(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "border-white/25";
+  return n >= 0 ? "border-emerald-500/40" : "border-rose-500/40";
+}

@@ -2,7 +2,7 @@
 
 import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
-import { fmtPct, fmtPremium, fmtPrice } from "@/lib/api";
+import { dayChangeBorderClass, dayChangeTextClass, fmtPct, fmtPremium, fmtPrice } from "@/lib/api";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { SpxLiveSpotPrice, priceVsLevel, PriceLevelIndicator } from "./SpxLiveSpotPrice";
 import { SpxIosMarketStrip } from "./ios/SpxIosMarketStrip";
@@ -326,19 +326,19 @@ type InlineMetric = {
  *  Deliberately caption-free ("last session snapshot" line removed, user-directed 2026-07-14);
  *  the strip-level stale dimming already communicates a frozen tape. */
 function StripSpot({ desk, showValues }: { desk?: SpxDeskPayload; showValues: boolean }) {
-  const bull = (desk?.spx_change_pct ?? 0) >= 0;
+  const changeTone = dayChangeTextClass(desk?.spx_change_pct ?? null);
   return (
     <div
-      className={clsx("spx-hero-stat-pill spx-strip-spot", bull ? "border-emerald-500/40" : "border-rose-500/40")}
+      className={clsx("spx-hero-stat-pill spx-strip-spot", dayChangeBorderClass(desk?.spx_change_pct ?? null))}
       title="Live SPX spot — index level and day change"
       aria-label="SPX spot price"
     >
       <p className="spx-hero-stat-label">SPX</p>
       <div className="spx-hero-stat-value-row">
-        <p className={clsx("spx-strip-spot-price t-num", bull ? "text-bull" : "text-bear-text")}>
+        <p className={clsx("spx-strip-spot-price t-num", changeTone)}>
           {showValues ? fmtPrice(desk?.price ?? null, 2) : "—"}
         </p>
-        <p className={clsx("spx-strip-spot-pct t-num", bull ? "text-bull" : "text-bear-text")}>
+        <p className={clsx("spx-strip-spot-pct t-num", changeTone)}>
           {showValues ? fmtPct(desk?.spx_change_pct ?? null) : ""}
         </p>
       </div>
