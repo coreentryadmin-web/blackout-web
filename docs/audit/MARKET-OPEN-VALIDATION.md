@@ -255,6 +255,26 @@ day where OI clusters above spot. No pre-fix baseline exists from this session t
 (cursor-authored, evidence lives in the PR's own commit history) — treat today's open as the first
 live observation.
 
+### 7. Discord digest crons invisible to staleness watchdog — fix/discord-cron-registry-visibility
+
+**What was broken:** `darkpool-discord`, `helix-discord-digest`, and `thermal-discord` were live,
+ENABLED EventBridge crons posting to member-visible Discord channels, but absent from `CRON_JOBS` —
+so `buildCronHealthSnapshot` never evaluated their `cron_job_runs` rows and the admin cron-health
+board could not alert if any stalled.
+
+**Fix:** added three `CRON_JOBS` entries with `schedule_cron_utc` copied from `railway.*.toml`,
+`produces_member_alert: true`, and `stale_after_min` tuned to ~3× schedule interval (15m for the
+2-min darkpool job, 45m for the 15-min thermal/HELIX jobs). Removed stale `INTENTIONALLY_UNREGISTERED`
+exemptions that incorrectly claimed these jobs were unscheduled.
+
+**Check at the open:**
+- `GET /api/admin/cron/health` (admin auth) — confirm **Dark Pool Discord**, **HELIX Discord
+  Digest**, and **Thermal Discord** appear with a recent last-run timestamp during RTH (not absent,
+  not permanently "No runs logged").
+- Confirm the three Discord channels (#blackout-darkpool, HELIX digest, Thermal desk) are still
+  posting on cadence — a healthy board row + quiet channel would mean the monitor is fixed but the
+  cron itself may still be inert (webhook env unset); distinguish "unwatched" (pre-fix) from "inert".
+
 ---
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
