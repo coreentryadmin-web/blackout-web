@@ -6,6 +6,7 @@ import {
   getStockCandleStoreStats,
   wsSpotPrice,
   computeChangePct,
+  authoritativeStockChangePct,
   _resetStockCandleStoreForTest,
   _setSnapshotFetcherForTest,
   _skewLocalUpdatedAtForTest,
@@ -125,17 +126,23 @@ test("computeChangePct: returns null when there is no session-open anchor yet", 
   assert.equal(computeChangePct(605.5, 0), null);
 });
 
-test("recordStockTick: first bar of the day seeds a provisional ws-bar session_open when REST hasn't resolved", () => {
+test("authoritativeStockChangePct: null unless openSource is rest", () => {
+  assert.equal(authoritativeStockChangePct(105, 100, "rest"), 5);
+  assert.equal(authoritativeStockChangePct(105, 100, "ws-bar"), null);
+  assert.equal(authoritativeStockChangePct(105, 100, ""), null);
+});
+
+test("recordStockTick: first bar of the day does NOT serve ws-bar change% until REST anchor lands", () => {
   _resetStockCandleStoreForTest();
   const atMs = Date.parse("2026-07-15T14:45:00.000Z");
   recordStockTick("PLTR", 40, undefined, atMs);
   recordStockTick("PLTR", 41, undefined, atMs + 5_000);
 
-  // No REST anchor (stubbed to null) — change% is computed off the first bar's
-  // open (40), same fallback tier indexStore uses on a mid-session reconnect.
+  // No REST anchor (stubbed to null) — ws-bar is provisional; member-facing % stays absent.
   const snap = getStockLiveCandle("PLTR");
   assert.equal(snap.current?.close, 41);
-  assert.equal(snap.changePct, computeChangePct(41, 40));
+  assert.equal(snap.changePct, null);
+  assert.equal(snap.openSource, "ws-bar");
 });
 
 test("getStockLiveCandle: a REST-seeded session_open anchor overrides the ws-bar open", async () => {
@@ -154,6 +161,7 @@ test("getStockLiveCandle: a REST-seeded session_open anchor overrides the ws-bar
 
   const snap = getStockLiveCandle("ORCL");
   assert.equal(snap.changePct, computeChangePct(105, 100));
+  assert.equal(snap.openSource, "rest");
   _setSnapshotFetcherForTest(async () => null);
 });
 
@@ -236,9 +244,9 @@ test("seedSessionOpenIfNeeded: a REST seed that resolves AFTER a day rollover mu
   await new Promise((resolve) => setImmediate(resolve));
 
   const snap = getStockLiveCandle("RGLD");
-  // Day 2's own ws-bar anchor (70) must still be authoritative; the stale day-1
-  // REST value (999) must never have been applied to the new session.
-  assert.equal(snap.changePct, computeChangePct(70, 70));
+  // Day 2's own ws-bar anchor (70) is still internal; member-facing % stays absent.
+  assert.equal(snap.changePct, null);
+  assert.equal(snap.openSource, "ws-bar");
   assert.notEqual(snap.changePct, computeChangePct(70, 999));
 
   _setSnapshotFetcherForTest(async () => null);
