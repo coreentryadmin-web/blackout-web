@@ -1,17 +1,21 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T10:39:27.310Z
-**Run:** 3dffa5ee-6d81-427e-9872-7a9a2297889b
+**At:** 2026-09-04T11:19:40.259Z
+**Run:** 7b5f9485-84fa-4200-9f01-e4884eba8c7c
 
 ## Summary
 
-Cycle complete. #3548 merged (main@c0097296e). #3549 verify GREEN + Cursor APPROVED — merge blocked by GitHub API rate limit (enable-automerge skipped). #3553 verify still running. #3552 verify GREEN after rebase; undrafted for Claude peer review. SEO 22/22 GREEN. ops:collect 0 items. validate:deploy GREEN. Opened #3557 autopilot state sync (draft).
+Cycle: peer-reviewed #3561+#3562 (merged), #3563 approved locally (CI in_progress, subscribed). validate:deploy GREEN, SEO 22/22, ops:collect clean, RTH lifecycle GREEN (off-hours skip). ECR 33866479204 pending. Rate-limited on gh API — merge #3563 when CI subscription fires.
 
 ## Deploy
 
-- main: `6553d68a0b354d1e92e7b9427381c2b42032dcc8`
+- main: `0d367bde47b227c73f6e56abb5cc5dc80cf5e44f`
 - status: 
 
 ## Open PRs
 
-_none_
+- #3564 [agent] fix(audit): resolve Playwright chromium path on cloud agents without /opt/pw-browsers
+- #3563 [agent] fix(meridian): stop the earnings tablist overlapping the wrapped title <1440px
+- #3560 [human] chore(autopilot): sync agent state after peer-review cycle
+- #3554 [cursor] chore(autopilot): cursor handoff after merge wave (#3548, #3550, #3552)
+- #2810 [human] build(deps-dev): Bump typescript from 5.9.3 to 7.0.2
