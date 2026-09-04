@@ -1,17 +1,19 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T00:30:41.044Z
-**Run:** 49d14bda-5dd3-4b4b-8deb-b5336a96b8b1
+**At:** 2026-09-04T02:23:58.224Z
+**Run:** 462fc2e4-9a0e-4f8f-be82-baaf158f9a99
 
 ## Summary
 
-PR webhook branch ready: heartbeat-gate fix in claimLock, BO-P1-0007 claimed, peer-reviewed #3438 APPROVED. #3436 merged — autopilot v1 live on main. Next: merge this PR, close duplicate #3435.
+Reviewed PR #3465: FIX — closed without merge, superseded by #3466. CI green at HEAD. Next: peer-review #3468/#3469 when verify green + undrafted.
 
 ## Deploy
 
-- main: `84c5707ac6849b4c048dec6e8a414321f2a76e27`
+- main: `f2285917e0ad04ea57dbe884e9e1004f20b6a04e`
 - status: 
 
 ## Open PRs
 
-_none_
+- #3469 [agent] fix(largo): gate morning-brief cron on the 9:25 ET window
+- #3468 [agent] fix(cron): add meridian-warm cross-replica overlap guard
+- #2810 [human] build(deps-dev): Bump typescript from 5.9.3 to 7.0.2

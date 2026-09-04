@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T00:30:41.044Z",
+  "updated_at": "2026-09-04T02:23:58.225Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,6 +68,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-04T00:30:30.525Z",
       "safe_to_merge": true
+    },
+    "pr-3465": {
+      "pr": 3465,
+      "head_sha": "e2299b10cf9730afba6850ddc9f11c15b673a99a",
+      "reviewer": "cursor",
+      "verdict": "CHANGES REQUESTED — closed without merge; superseded by #3466",
+      "reviewed_at": "2026-09-04T02:23:52.984Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -82,13 +90,44 @@
     }
   },
   "deploy": {
-    "last_main_sha": "84c5707ac6849b4c048dec6e8a414321f2a76e27",
+    "last_main_sha": "f2285917e0ad04ea57dbe884e9e1004f20b6a04e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T00:18:06Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33821229041",
-    "last_deploy_sha": "271a977cfdc9b5d2cc2d62535f8c7e010374d78d"
+    "last_deploy_at": "2026-09-04T02:05:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33826698258",
+    "last_deploy_sha": "8fc254203e2b3e1eeb05b1b835f3055a0510534b"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3469,
+      "title": "fix(largo): gate morning-brief cron on the 9:25 ET window",
+      "branch": "fix/largo-morning-brief-dst-double-fire",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T02:22:50Z"
+    },
+    {
+      "number": 3468,
+      "title": "fix(cron): add meridian-warm cross-replica overlap guard",
+      "branch": "fix/meridian-warm-overlap-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T02:23:19Z"
+    },
+    {
+      "number": 2810,
+      "title": "build(deps-dev): Bump typescript from 5.9.3 to 7.0.2",
+      "branch": "dependabot/npm_and_yarn/typescript-7.0.2",
+      "author": "app/dependabot",
+      "agent": "human",
+      "draft": false,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-01T19:54:25Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -293,6 +332,41 @@
       "agent": "cursor",
       "run_id": "49d14bda-5dd3-4b4b-8deb-b5336a96b8b1",
       "summary": "PR webhook branch ready: heartbeat-gate fix in claimLock, BO-P1-0007 claimed, peer-reviewed #3438 APPROVED. #3436 merged — autopilot v1 live on main. Next: merge this PR, close duplicate #3435."
+    },
+    {
+      "at": "2026-09-04T02:23:16.933Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-04T02:23:17.799Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-04T02:23:52.985Z",
+      "type": "pr_review",
+      "pr": 3465,
+      "head_sha": "e2299b10cf9730afba6850ddc9f11c15b673a99a",
+      "reviewer": "cursor",
+      "verdict": "CHANGES REQUESTED — closed without merge; superseded by #3466",
+      "reviewed_at": "2026-09-04T02:23:52.984Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-04T02:23:58.224Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-04T02:23:58.225Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "462fc2e4-9a0e-4f8f-be82-baaf158f9a99",
+      "summary": "Reviewed PR #3465: FIX — closed without merge, superseded by #3466. CI green at HEAD. Next: peer-review #3468/#3469 when verify green + undrafted."
     }
   ]
 }
