@@ -126,32 +126,7 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
-### 0v. ISO age helpers treated clock-skewed future timestamps as fresh — fix/iso-age-future-guard-combined (pending)
-
-**What was broken:** `public-gex-snapshot` coerced negative `asof` age to **0 seconds** (reads as just refreshed on the marketing gamma snapshot). Night Hawk Legacy `legacyMarkAgeLabel` and admin Night Hawk playbook `ageMin` used raw `Date.now() - new Date(iso)` without the shared future guard — future-skewed `updated_at` bypassed stuck detection.
-
-**Fix:** `ageSecFromIso` / `ageMinFromIso` in `timestamp-freshness.ts`; `nighthawkJobAgeMin()` for admin cron health (clock-skew → `stuckThresholdMin + 1`).
-
-**Check at the open:** `/tools/gamma-snapshot` age honest during RTH; Legacy Night Hawk mark age does not read "0s ago" on skewed `markAsOf`; `/admin` cron health escalates skewed Night Hawk builds to stale.
-
-### 0u. `/vs/others` comparison table missed the same "every setup graded" overclaim fix — fix/vs-others-track-record-scope (pending)
-
-**What was broken:** #3643 (item 0n below) scoped "every setup logged"-style claims on the About
-page, homepage, and `WhyBlackoutContent.tsx` to the three products `/methodology` actually covers.
-`src/app/(marketing)/vs/others/page.tsx`'s comparison table carried the identical overclaim in
-different wording — "Every setup graded A–F with a logged track record" — and wasn't part of that
-fix's surface search, so it survived unscoped.
-
-**Fix:** reworded the row to "SPX Slayer, Night Hawk, and 0DTE Command plays graded A–F with a
-logged track record", matching #3643's wording pattern. Extended
-`public-record-scope-claims.test.ts`'s `SURFACES` list to include this page so the same claim
-class can't regress here again.
-
-**Check at the open:** none — pure marketing-copy correction, no RTH-dependent behavior. Confirm
-`https://blackouttrades.com/vs/others` names the three products next to the "Alert accountability"
-row rather than an unscoped "every setup".
-
-### 0t. Two more "every setup logged" overclaim instances (About page + homepage) missed by both #3643 and #3664 — fix/vs-others-remaining-overclaim-instances (merged #3683)
+### 0t. Two more "every setup logged" overclaim instances (About page + homepage) missed by both #3643 and #3664 — fix/vs-others-remaining-overclaim-instances (pending)
 
 **What was broken:** `RedesignHome.tsx`'s own "them vs us" list bullet (a second, separate copy of
 the sentence `/vs/others/page.tsx` mirrors) and `about/page.tsx`'s `WHAT_WE_DO` intro paragraph both
@@ -260,36 +235,6 @@ using the same helper the base derivation uses (so the two can't drift apart aga
 side (`resistance` for call_wall, `support` for put_wall) and a `distance_pts` consistent with
 `nearest_wall.strike - spot`. Pay particular attention right after a fast intraday gamma migration
 (a real WS wall move), since that's the moment pre-fix and post-fix values would have diverged most.
-
-### 0r. `stock-candle-store` REST session-open seed could stamp a new ET session with yesterday's `prev_close` — fix/stock-candle-store-seed-day-rollover-race (pending)
-
-**What was broken:** `seedSessionOpenIfNeeded()`'s `.then()` callback only guarded against a
-*concurrent* REST seed landing twice for the SAME session (`s.openSource === "rest"`) — its own
-comment claimed it also checked "this ticker is still on the session we seeded for", but nothing
-in the code compared the ticker's CURRENT session date against the date active when the fetch
-FIRED. `recordStockTick`'s day-rollover branch resets `openSource` back to `""` (not `"rest"`) on
-a new ET session day, so a REST fetch fired just before an ET session boundary and resolving just
-after would sail past the only guard that existed and permanently stamp the NEW session with an
-anchor fetched for the OLD one — "rest" is never downgraded back to "ws-bar", so the wrong anchor
-then stays authoritative for every `change_pct` computed for that ticker for the rest of the new
-session.
-
-**Fix:** capture the session date at the moment the seed fires (`firedForSessionDate`) and require
-it to still match `s.sessionDate` at resolution time, in addition to the pre-existing
-`openSource === "rest"` concurrent-seed guard (left unchanged, still needed for the in-session
-case). RED→GREEN proof: `git stash` on just the source fix reproduced `changePct` computed off the
-stale anchor (`-92.99` instead of `0`) via a new `t.mock.timers.enable({apis:["Date"]})`-driven test
-that crosses a real ET midnight mid-flight; restoring the fix makes it pass (20/20 in the file,
-139/139 across `src/lib/ws/*.test.ts`).
-
-**Check at the open:** this only manifests right at an ET session boundary for a ticker with an
-in-flight demanded REST seed at that exact moment — genuinely hard to trigger deliberately live.
-The useful live check is a NEGATIVE one: watch any actively-viewed 24-hour-eligible/overnight
-symbol's `change_pct` across today's session open (13:32 UTC / 09:30 ET) for a value that looks
-anchored against a stale multi-day-old close rather than today's real open — that would be this
-exact bug recurring on a boundary this fix did not touch (e.g. a rollover mid-fetch during RTH
-itself, which the fix now also covers, so it should NOT recur at all). No dedicated live probe
-exists for this narrow a race window; the regression test is the durable guard.
 
 ### 0n. "Every setup logged publicly" overclaimed against a 3-of-7-product methodology page — fix/public-record-scope-overclaim (pending)
 
@@ -2043,4 +1988,10 @@ than an end-of-session patch.
 - **What was broken:** `SpxLiveSpotPrice`, `SpxSniperHeader` strip spot, and `SpxIosMarketStrip` used `(desk?.spx_change_pct ?? 0) >= 0` for bull/bear text and border classes. When day change was genuinely unknown (`null`), price and % chip showed green bull styling while `fmtPct` correctly rendered `—`.
 - **What changed:** `dayChangeTextClass()` / `dayChangeBorderClass()` in `src/lib/api.ts`; all three surfaces use neutral white tone when change is absent.
 - **RTH check:** On `/dashboard` during a brief window where SPX spot is live but `spx_change_pct` is still warming (or force a null in dev), confirm SPX price/% use neutral white styling — not green bull — while the % reads `—`.
+
+### 24. RTH deep audit — full-site heatmap wall false-FAIL — fix/full-site-audit-wall-constraint — 2026-09-04
+
+- **What was broken:** Scheduled `RTH deep audit` failed with P0 `[heatmap] SPX.put_wall: reported 7700 != 8000` (and five sibling tickers) even though production walls matched their served `strike_totals`.
+- **What changed:** `full-site-deep-audit.mjs` now imports side-constrained `wallsFromStrikeTotals(totals, spot)` from `gex-wall-invariants.mjs` instead of unconstrained argmax/argmin.
+- **RTH check:** Next scheduled `RTH deep audit` workflow run should pass the heatmap matrix section with zero P0 wall mismatches when GEX data is live.
 
