@@ -1545,3 +1545,9 @@ for the whole session where the design intent is a 20-minute lock. It was left a
 LOOSENS a fail-closed guard on a live risk device, and that deserves a deliberate decision rather
 than an end-of-session patch.
 
+### 19. Vector universe GEX wall spot-zero guard — 2026-09-04
+
+- **What was broken:** `vector-universe.ts` passed `spot: 0` into `computeGexWalls` when chain spot was transiently zero, persisting wrong-side walls into narrowed-horizon history.
+- **What changed:** Both blended and narrowed-horizon `computeGexWalls` calls now use `spot != null && spot > 0 ? spot : undefined`.
+- **RTH check:** On `/vector` during RTH, pick a dynamic ticker (e.g. INVERT fixture row in admin) and confirm top call/put walls sit on the correct side of spot; no wall-history samples with inverted geometry after a spot=0 chain miss.
+
