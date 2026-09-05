@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T19:52:08.396Z
-**Run:** 01ba5e3e-d264-48b8-b6f9-953c859c62cd
+**At:** 2026-09-05T02:51:58.519Z
+**Run:** 03451db6-060f-4229-8b6c-4c13dcab70cc
 
 ## Summary
 
-Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty.
+workflow_run wake: synced main to 59cac866a (9 commits ahead). validate:deploy GREEN, ops:collect 0, platform-integrity 14/14, api-auth GREEN. pr-sweep 0 open PRs. Prior cycle fixes merged (#3829 x-autopost DST, #3825 largo roundFloats, #3820-#3824 timestamp guards). GitHub API rate-limited (user 284440397) — gh/curl 401. Weekend off-hours — RTH lifecycle skipped. Only open staging finding: P3 vector VP label collision (deferred). CLS harness proxy unavailable (ECONNREFUSED) — HTTP validation sufficient.
 
 ## Deploy
 
-- main: `db208131ed3f66843d8743e6847ccc05a1dfab75`
+- main: `59cac866a80f166bc8fbac6ed54e1ab8813d2af7`
 - status: 
 
 ## Open PRs
