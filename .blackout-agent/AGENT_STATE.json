@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:40:00.000Z",
+  "updated_at": "2026-09-05T14:40:35.980Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,15 +67,14 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T11:35:23.963Z",
-      "lease_until": "2026-09-05T13:15:05.877Z",
+      "claimed_at": "2026-09-05T14:17:51.646Z",
+      "lease_until": "2026-09-05T16:10:34.343Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "50c8fd38-7415-4f2d-bc6c-88153b9459e9",
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "run_id": "27b5ead2-46dc-4279-bd8e-e84a9768cf8e",
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -259,6 +258,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T12:35:00.000Z",
       "safe_to_merge": true
+    },
+    "pr-3979": {
+      "pr": 3979,
+      "head_sha": "67190b9cb87e04ea74d4850ba4542f1e2a52a84b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T14:30:27.015Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -268,8 +275,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T12:20:00.000Z",
-      "current_task": "BO-P1-0101"
+      "last_seen": "2026-09-05T14:17:51.647Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "cross_examination": {
@@ -319,52 +326,14 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d96372440c9a8ff101c95d52826a38adebdc513a",
+    "last_main_sha": "85627d9c6cbeeafb2610b60fbd7fafbacf1f872b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T10:36:36Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
-    "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
+    "last_deploy_at": "2026-09-05T14:33:49Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33972172332",
+    "last_deploy_sha": "85627d9c6cbeeafb2610b60fbd7fafbacf1f872b"
   },
-  "open_prs": [
-    { "pr": 3952, "branch": "cursor/clq-answers-batch1-2026-09-05", "title": "CURSOR_ANSWERS_FOR_CLAUDE (54/54)", "author": "cursor", "awaiting": "claude_review" },
-    { "pr": 3955, "branch": "docs/finding-ecs-web-deploy-maxpercent", "title": "ECS maxPercent finding", "author": "claude", "awaiting": "claude_merge" },
-    { "pr": 3949, "branch": "cursor/autopilot-handoff-2026-09-05", "title": "stale state sync", "author": "cursor", "awaiting": "close" }
-  ],
+  "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
-    {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:02.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.919Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:14.071Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:14.852Z",
       "type": "context_sync",
@@ -1533,6 +1502,168 @@
       "agent": "cursor",
       "run_id": "post-merge-sync",
       "summary": "main@d96372440: #3945+#3950+#3951+#3953 merged. #3952 CLQ answers awaiting Claude review. Claude must answer CQ-001–218 on main. #3945 merged without recorded Claude GitHub review — gate gap noted."
+    },
+    {
+      "at": "2026-09-05T14:17:43.035Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T14:17:46.886Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T14:17:48.041Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T14:17:51.647Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T14:17:55.087Z",
+      "type": "pr_webhook",
+      "pr": 3980,
+      "event": "sweep",
+      "head": "4efa3ba6acf5fb6d22de6abb18e1da885d78511c",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T14:17:57.630Z",
+      "type": "pr_webhook",
+      "pr": 3979,
+      "event": "sweep",
+      "head": "67190b9cb87e04ea74d4850ba4542f1e2a52a84b",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-05T14:18:00.529Z",
+      "type": "pr_webhook",
+      "pr": 3978,
+      "event": "sweep",
+      "head": "21e371d31ed9de5ea59d1e27928bc9c1901c33fd",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-05T14:18:03.373Z",
+      "type": "pr_webhook",
+      "pr": 3972,
+      "event": "sweep",
+      "head": "32e31da60e569349e16b3726e0ef689601051d2e",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T14:18:06.037Z",
+      "type": "pr_webhook",
+      "pr": 3971,
+      "event": "sweep",
+      "head": "79e687ac502b8ed29a374ebaed4ffa91acb71547",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T14:18:35.181Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T14:18:36.265Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T14:18:37.368Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T14:24:12.181Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T14:24:13.450Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T14:24:14.533Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T14:30:27.016Z",
+      "type": "pr_review",
+      "pr": 3979,
+      "head_sha": "67190b9cb87e04ea74d4850ba4542f1e2a52a84b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T14:30:27.015Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T14:31:17.464Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-05T14:31:18.649Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-05T14:31:19.694Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-05T14:40:27.614Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T14:40:34.341Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T14:40:35.139Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T14:40:35.980Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
   "pr_activity": {
@@ -1567,6 +1698,46 @@
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "updated"
+    },
+    "pr-3980": {
+      "last_event": "sweep",
+      "last_head": "4efa3ba6acf5fb6d22de6abb18e1da885d78511c",
+      "last_feedback_at": "2026-09-05T14:17:55.086Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3979": {
+      "last_event": "sweep",
+      "last_head": "67190b9cb87e04ea74d4850ba4542f1e2a52a84b",
+      "last_feedback_at": "2026-09-05T14:17:57.630Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3978": {
+      "last_event": "sweep",
+      "last_head": "21e371d31ed9de5ea59d1e27928bc9c1901c33fd",
+      "last_feedback_at": "2026-09-05T14:18:00.529Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3972": {
+      "last_event": "sweep",
+      "last_head": "32e31da60e569349e16b3726e0ef689601051d2e",
+      "last_feedback_at": "2026-09-05T14:18:03.373Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-3971": {
+      "last_event": "sweep",
+      "last_head": "79e687ac502b8ed29a374ebaed4ffa91acb71547",
+      "last_feedback_at": "2026-09-05T14:18:06.037Z",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "comment_action": "created"
     }
   }
 }
