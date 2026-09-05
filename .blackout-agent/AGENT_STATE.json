@@ -237,7 +237,7 @@
     },
     "pr-3808": {
       "pr": 3808,
-      "head_sha": "45273a3dd",
+      "head_sha": "80230c90b",
       "reviewer": "claude",
       "verdict": "AWAITING — adversarial review requested",
       "reviewed_at": null,
@@ -245,7 +245,9 @@
       "questions": [
         "Is ceil(pool*0.35) clamped [80,200] right recall/precision for swings?",
         "POSITIONING from Vector leaders + GEX — wall alignment alone or require flow corroboration?",
-        "Confluence shadow ≥3 kinds (≥2 event) — correct before P3 enforcement?"
+        "Confluence shadow ≥3 kinds (≥2 event) — correct before P3 enforcement?",
+        "Cortex preflight uses 0DTE readers interim — OK until swing horizon in fetch.ts?",
+        "G-S6/G-S14 enforce flags separate from master V2 — right rollout?"
       ]
     }
   },
@@ -276,7 +278,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "head_sha": "45273a3dd",
+      "head_sha": "80230c90b",
       "updated_at": "2026-09-05T00:20:00Z"
     },
     {
