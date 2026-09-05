@@ -31,7 +31,7 @@ function setResolved(userId: string, user: ClerkUser): void {
   if (resolved.size >= MAX_RESOLVED) {
     const now = Date.now();
     for (const [k, v] of Array.from(resolved)) {
-      if (now - v.at >= DEDUPE_TTL_MS) resolved.delete(k);
+      if (!isWsUpdatedAtFresh(v.at, DEDUPE_TTL_MS, now)) resolved.delete(k);
     }
     while (resolved.size >= MAX_RESOLVED) {
       const oldest = resolved.keys().next().value as string | undefined;
