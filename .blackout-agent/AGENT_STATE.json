@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:58:59.385Z",
+  "updated_at": "2026-09-05T16:59:28.947Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -328,18 +328,12 @@
   "deploy": {
     "last_main_sha": "a9f1dd99415455f01c849d186c5e9d304507aa6c",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:53:27Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33979249852",
-    "last_deploy_sha": "a9f1dd99415455f01c849d186c5e9d304507aa6c"
+    "last_deploy_at": "2026-09-05T16:59:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33979523407",
+    "last_deploy_sha": "3ae28b7721d5d696f4354949ea9e0b9cbfbac727"
   },
   "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:46:14.071Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:14.852Z",
       "type": "context_sync",
@@ -1643,6 +1637,12 @@
       "agent": "cursor",
       "run_id": "0f334c5f-062b-4dba-8331-63128d41f5ef",
       "summary": "Post-merge wake @ a9f1dd99 (#4002 SPX Redis fail-closed lock). Lifecycle GREEN: deploy/api-auth/platform-integrity 14/14/SEO 22/ops:collect 0. 0DTE healthcheck AMBER (off-hours expected). pr-sweep empty; GitHub API rate-limited (user 284440397). ECR 33979249852 pending for a9f1dd99; older 33978427509 in_progress 22m+. Weekend — RTH skipped. Next: agent state sync PR; monitor ECR; Claude peer-review any new claude/* PRs when rate limit clears."
+    },
+    {
+      "at": "2026-09-05T16:59:28.947Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
   "pr_activity": {
