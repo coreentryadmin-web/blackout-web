@@ -256,11 +256,12 @@
     }
   },
   "deploy": {
-    "last_main_sha": "72a81ec4aedb25570eb85a522b2fe89a0b35d7cf",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T10:36:36Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
-    "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
+    "last_main_sha": "3000a90c45f9abe0e31141b20da734d49f521358",
+    "last_deploy_status": "pending_backlog",
+    "last_deploy_at": "2026-09-05T12:33:14Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33966365895",
+    "last_deploy_sha": "5e67e18cd75e8198ac50c75a7145b8f1990ff603",
+    "deploy_note": "ECR queue: run 33966365895 pending (#3945); main advanced +4 commits ahead; validate:deploy GREEN on live prod"
   },
   "cross_examination": {
     "phase": "QUESTIONS_PUBLISHED",
@@ -285,7 +286,9 @@
       "answers_file": null
     },
     "answer_exchange": {
-      "cursor_answers_clq": "pending",
+      "cursor_answers_clq": "batch1_published",
+      "cursor_answers_file": ".blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md",
+      "cursor_answers_batch1_ids": "CLQ-001,CLQ-013,CLQ-018,CLQ-037,CLQ-038,CLQ-048,CLQ-049,CLQ-050,CLQ-054",
       "claude_answers_cq": "pending",
       "challenge_round": 0
     }
