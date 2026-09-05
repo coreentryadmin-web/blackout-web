@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:54:11.122Z",
+  "updated_at": "2026-09-05T15:55:27.526Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -273,9 +273,9 @@
     }
   },
   "cross_examination": {
-    "phase": "CURSOR_COMPLETE_CLAUDE_PENDING",
+    "phase": "BOTH_ANSWERS_MERGED_CHALLENGE_PENDING",
     "started_at": "2026-09-05T12:00:00.000Z",
-    "updated_at": "2026-09-05T12:40:00.000Z",
+    "updated_at": "2026-09-05T15:55:00.000Z",
     "claude_questions_for_cursor": {
       "file": ".blackout-agent/CLAUDE_QUESTIONS_FOR_CURSOR.md",
       "pr": 3948,
@@ -284,7 +284,7 @@
       "status": "published_merged",
       "answers_file": ".blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md",
       "answers_pr": 3952,
-      "answers_status": "complete_pending_merge"
+      "answers_status": "merged"
     },
     "cursor_questions_for_claude": {
       "file": ".blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md",
@@ -293,28 +293,30 @@
       "id_range": "CQ-001–CQ-218",
       "status": "published_merged",
       "answers_file": ".blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
-      "answers_status": "not_started"
+      "answers_pr": 3991,
+      "answers_status": "merged"
     },
     "answer_exchange": {
       "cursor_answers_clq": "complete",
       "cursor_answers_clq_pr": 3952,
       "cursor_answers_clq_count": 54,
-      "claude_answers_cq": "pending",
+      "claude_answers_cq": "complete",
+      "claude_answers_cq_pr": 3991,
+      "claude_answers_cq_count": 218,
       "challenge_round": 0
     },
     "merge_gate_notes": {
-      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged"
+      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged",
+      "pr-3955": "MERGED @ 3000a90c4 — docs only; AWS maxPercent mutation NOT applied (FINDINGS §3040)"
     },
     "pending_peer_actions": {
       "claude": [
-        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md (questions now on main)",
-        "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5)",
-        "Peer-review + merge #3952 (Cursor CLQ answers)",
-        "Merge #3955 if CI green (Cursor APPROVED docs only)"
+        "Phase 5: adversarial challenge of CURSOR_ANSWERS_FOR_CLAUDE.md (54 CLQs)",
+        "Phase 5: respond to Cursor challenge of CLAUDE_ANSWERS_TO_CQ.md when posted"
       ],
       "cursor": [
-        "Peer-reviewed #3955 — docs APPROVED; AWS mutation held (FINDINGS.md §3040)",
-        "Standing: cannot answer own CQ questions; offered parallel CQ investigation if Claude delegates"
+        "Phase 5: adversarial challenge of CLAUDE_ANSWERS_TO_CQ.md (218 CQs)",
+        "Standing: ECS maxPercent AWS mutation held — operator applies after live maxPercent re-read"
       ]
     }
   },
@@ -1550,6 +1552,25 @@
     },
     {
       "at": "2026-09-05T15:54:11.122Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:55:23.445Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:55:23.447Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "fb22e933-5cec-4a13-a2e2-da474e7946fb",
+      "summary": "workflow_run wake: main@66664fe39. Cross-exam BOTH sides merged (#3952 CLQ answers, #3991 CQ answers, #3955 docs). 0 open PRs. validate:deploy GREEN, platform-integrity 14/14, ops:collect 0, lifecycle GREEN (Sat off-hours). Deploy code current @ 7d47d7e1 (docs-only since). Agent state sync pushed cursor/autopilot-state-sync-2026-09-05-post-3991. Next: Phase 5 challenge round + Monday RTH ledger."
+    },
+    {
+      "at": "2026-09-05T15:55:27.526Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
