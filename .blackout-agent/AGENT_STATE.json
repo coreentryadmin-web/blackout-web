@@ -262,6 +262,34 @@
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
     "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
   },
+  "cross_examination": {
+    "phase": "QUESTIONS_PUBLISHED",
+    "started_at": "2026-09-05T12:00:00.000Z",
+    "updated_at": "2026-09-05T12:00:00.000Z",
+    "claude_questions_for_cursor": {
+      "file": ".blackout-agent/CLAUDE_QUESTIONS_FOR_CURSOR.md",
+      "pr": 3948,
+      "branch": "docs/claude-questions-for-cursor-360-cross-exam",
+      "count": 54,
+      "id_range": "CLQ-001–CLQ-054",
+      "status": "published",
+      "answers_file": null
+    },
+    "cursor_questions_for_claude": {
+      "file": ".blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md",
+      "pr": null,
+      "branch": "cursor/cross-exam-questions-batch1",
+      "count": 218,
+      "id_range": "CQ-001–CQ-218",
+      "status": "published",
+      "answers_file": null
+    },
+    "answer_exchange": {
+      "cursor_answers_clq": "pending",
+      "claude_answers_cq": "pending",
+      "challenge_round": 0
+    }
+  },
   "open_prs": [],
   "events": [
     {
