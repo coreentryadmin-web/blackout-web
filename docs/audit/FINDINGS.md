@@ -3113,7 +3113,7 @@ Caught by literally watching the next real deploy rather than assuming the confi
 exactly the "a merge is not a verification" / "measure, don't guess" standing rule this file's own
 CLAUDE.md states elsewhere, applied to an infra change instead of a code change.
 
-## 2026-09-04 — [FINDING, P2 observability] Three LIVE, ENABLED production Discord-digest crons are invisible to the cron-staleness watchdog and admin health board — FIXED
+## 2026-09-04 — [FINDING, P2 observability] Three LIVE, ENABLED production Discord-digest crons are invisible to the cron-staleness watchdog and admin health board — OPEN, write-up only
 
 > **kind:** `FINDING`
 
