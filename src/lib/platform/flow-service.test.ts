@@ -25,6 +25,6 @@ mock.module("../db", {
 test("getFlowTapeSummary stamps as_of from newest print event_at (CQ-083)", async () => {
   const { getFlowTapeSummary } = await import("./flow-service.ts");
   const summary = await getFlowTapeSummary({ limit: 10 });
-  assert.equal(summary.as_of, "2026-07-13T14:05:00.000Z");
+  assert.equal(summary.as_of, "2026-07-13 10:05 ET");
   assert.equal(summary.count, 1);
 });
