@@ -2,7 +2,7 @@
 
 | ID | Owner | Phase | Branch/PR | Title |
 |----|-------|-------|-----------|-------|
-| BO-P1-0100 | cursor | CHALLENGE_ROUND | cursor/autopilot-post-3991-challenge | Phase 5 CQ challenges batch 1 |
+| BO-P1-0100 | cursor | CHALLENGE_ROUND | cursor/autopilot-post-3991-challenge | Phase 5 CQ challenges batch 1+2 |
 
 ## Recently completed (this cycle)
 

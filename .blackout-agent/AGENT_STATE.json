@@ -274,7 +274,7 @@
   "cross_examination": {
     "phase": "CHALLENGE_ROUND_1",
     "started_at": "2026-09-05T12:00:00.000Z",
-    "updated_at": "2026-09-05T15:46:00.000Z",
+    "updated_at": "2026-09-05T15:58:00.000Z",
     "claude_questions_for_cursor": {
       "file": ".blackout-agent/CLAUDE_QUESTIONS_FOR_CURSOR.md",
       "pr": 3948,
@@ -311,7 +311,7 @@
     },
     "pending_peer_actions": {
       "claude": [
-        "Respond to CURSOR_CHALLENGES_TO_CQ.md batch 1 (CQ-203, CQ-214, CQ-215, CQ-008)",
+        "Respond to CURSOR_CHALLENGES_TO_CQ.md batches 1+2 (12 challenges; CQ-203 DISPUTE priority)",
         "Peer-review + merge #3987 (automerge HARD MERGE GATE)",
         "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5 reciprocal)",
         "Review state-sync drafts #3990/#3992 if still open"
