@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1g. VectorChart client dataAgeMs future timestamp — fix/vector-chart-future-timestamp-age (pending)
+
+**What was broken:** `VectorChart` computed `dataAgeMs` as `Math.max(0, Date.now() - dataReceivedAtMsRef)`. A clock-skewed future receive time clamped to age 0, so `stalenessConvictionDiscount` applied no penalty — play conviction read as fresh when the timestamp was untrusted. Same defect class as #3983 (server `vector-full-state` + Night Hawk `eventAgeMs`), unfixed on the client BIE path.
+
+**Fix:** Shared `dataAgeMsFromEpoch()` in `timestamp-freshness.ts` → `POSITIVE_INFINITY` beyond `WS_TIMESTAMP_FUTURE_TOLERANCE_MS`; VectorChart uses it for `buildVectorPlay` input.
+
+**Check at the open:** Vector play card conviction should degrade on genuinely stale stream data (>5m); future-skewed receive stamps must not show max conviction / hide STALE badge.
+
 ### 0a-1e. Vector Largo freshness: future `asOf` clamped to "live" — #3979 MERGED
 
 **What was broken:** `describeVectorFreshness()` clamped negative age to 0 and classified `freshnessFromAgeMs(0)` as **live**. A Vector snapshot stamped >5s ahead of the reader (cron writer vs API reader clock skew) read as falsely fresh — Largo/Cortex consumers could present stale tape as live.
