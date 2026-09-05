@@ -2,6 +2,7 @@
  * Resolve ex-dividend context for a ticker/session — cached per (session, ticker).
  */
 import { fetchPolygonDividends } from "@/lib/providers/polygon-largo";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { exDividendCashForSession } from "./ex-dividend-adjustment";
 
 const CACHE = new Map<string, { session: boolean; cash: number | null; at: number }>();
@@ -19,7 +20,7 @@ export async function resolveSwingExDividendContext(
   const key = cacheKey(sessionDay, ticker);
   const hit = CACHE.get(key);
   const now = Date.now();
-  if (hit && now - hit.at < CACHE_TTL_MS) {
+  if (hit && isWsUpdatedAtFresh(hit.at, CACHE_TTL_MS)) {
     return { exDividendSession: hit.session, exDividendCash: hit.cash };
   }
   try {
