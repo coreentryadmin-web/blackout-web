@@ -127,4 +127,31 @@ describe("composeSpxDeskBrief", () => {
     assert.ok(result.body.includes("LEVELS"));
     assert.match(result.body, /HOD|PDH/);
   });
+
+  test("GEX king is not mislabeled as pin or max pain when king wins", () => {
+    const desk = fakeDesk();
+    desk.gex_king = 5900;
+    desk.max_pain = 5850;
+    const confluence = computeSpxConfluence(desk);
+    assert.ok(confluence);
+
+    const result = composeSpxDeskBrief(desk, confluence!, [], "mid-morning");
+    assert.match(result.body, /king \{\{5,900\}\} \(anchor node\)/);
+    assert.match(result.body, /GEX king node \{\{5,900\}\}/);
+    assert.doesNotMatch(result.body, /pin \{\{5,900\}\}/);
+    assert.doesNotMatch(result.body, /pin \{\{5,900\}\} \(price magnet\)/);
+  });
+
+  test("max pain only desk labels effective max pain, not pin", () => {
+    const desk = fakeDesk();
+    desk.gex_king = null;
+    desk.max_pain = 5850;
+    const confluence = computeSpxConfluence(desk);
+    assert.ok(confluence);
+
+    const result = composeSpxDeskBrief(desk, confluence!, [], "mid-morning");
+    assert.match(result.body, /effective max pain \{\{5,850\}\}/);
+    assert.match(result.body, /drift toward \{\{5,850\}\} \(effective max pain\)/);
+    assert.doesNotMatch(result.body, /pin \{\{5,850\}\}/);
+  });
 });
