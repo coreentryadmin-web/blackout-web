@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeVolumeProfile } from "./vector-volume-profile";
+import { computeVolumeProfile, sessionRthVolumeProfileBars } from "./vector-volume-profile";
 
 test("computeVolumeProfile: empty input returns an empty profile, never fabricates", () => {
   const p = computeVolumeProfile([]);
@@ -94,4 +94,20 @@ test("computeVolumeProfile: total bucketed volume conserves the sum of contribut
   const p = computeVolumeProfile(bars, 10);
   const summed = p.buckets.reduce((s, b) => s + b.volume, 0);
   assert.ok(Math.abs(summed - 1500) < 1e-6, `expected conserved volume 1500, got ${summed}`);
+});
+
+test("sessionRthVolumeProfileBars: premarket volume does not become POC (2026-09-05 audit fix)", () => {
+  const RTH_T0 = Math.floor(Date.parse("2026-07-09T09:30:00-04:00") / 1000);
+  const premarket = RTH_T0 - 5.5 * 3600;
+  const bars = [
+    { time: premarket, high: 500, low: 500, volume: 1_000_000 },
+    { time: RTH_T0, high: 101, low: 99, volume: 100 },
+    { time: RTH_T0 + 60, high: 104, low: 100, volume: 200 },
+    { time: RTH_T0 + 120, high: 103, low: 97, volume: 150 },
+  ];
+  const scoped = sessionRthVolumeProfileBars(bars);
+  const p = computeVolumeProfile(scoped, 20);
+  assert.ok(p.poc != null);
+  assert.ok(p.poc! >= 97 && p.poc! <= 104, `POC ${p.poc} should reflect RTH bars, not premarket spike at 500`);
+  assert.equal(p.totalVolume, 450);
 });
