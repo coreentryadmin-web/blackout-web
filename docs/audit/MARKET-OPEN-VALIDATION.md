@@ -2538,6 +2538,7 @@ than an end-of-session patch.
 - **What changed:** Route VEX walls, flip, dark-pool, and recordability gates through `isWsUpdatedAtFresh`; cache-only reader uses `gexHeatmapCacheEntryStale`; handoff uses `gexHeatmapCacheEntryWithinTtl` and skips far-future entries from the `any` fallback.
 - **RTH check:** Vector stream (`/vector` or SPX desk embed) — VEX lens + gamma-flip line should refresh on cadence; no indefinitely-stale wall chips after deploy. Admin GEX health panel `age_sec` should not read negative.
 
+### 31. Swing Q40/Q41 — mark freshness dropped + SSE tier never rechecked — fix/swing-mark-asof-sse-tier-recheck — 2026-09-05
 
 - **What was broken (Q40):** `swing_positions.last_mark_at` and manage-snapshot `quote.asOf` were persisted but never reached `HorizonDeck`/`terminalPlayFromHorizon`, so swing OPEN rows showed SYNC (not STALE) when the incidental 0DTE SSE lane wasn't carrying their OCC.
 - **What was broken (Q41):** `/api/market/zerodte/marks/stream` and `/api/market/vector/stream` checked tier/tool only at connection open — a lapsed Whop member kept receiving live swing + 0DTE P&L until tab close.
