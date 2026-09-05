@@ -9,3 +9,8 @@ test("spx-play-options: 0DTE quote cache rejects future at stamps", () => {
   assert.match(src, /isWsUpdatedAtFresh\(cached\.at, QUOTE_TTL_MS, now\)/);
   assert.doesNotMatch(src, /now - cached\.at < QUOTE_TTL_MS/);
 });
+
+test("spx-play-options: option ticket cache rejects future at stamps", () => {
+  assert.match(src, /isWsUpdatedAtFresh\(ticketCache\.at, 45_000, now\)/);
+  assert.doesNotMatch(src, /now - ticketCache\.at < 45_000/);
+});
