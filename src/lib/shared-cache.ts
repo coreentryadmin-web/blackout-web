@@ -168,21 +168,22 @@ export async function sharedCacheSet(key: string, value: unknown, ttlSec: number
  * Fallback: with Redis unavailable the in-memory map gives per-PROCESS NX only (no cross-replica
  * guarantee) — the same best-effort posture as the rest of this module. A multi-replica deploy always
  * has Redis wired, so the atomic path is the one that actually runs in prod.
+ *
+ * On a Redis command error while the client is connected, this **throws** (no in-memory fallback).
+ * Callers that want fail-open (e.g. cron overlap locks) attach `.catch(() => true)`; callers that
+ * want fail-closed attach `.catch(() => false)` or handle the throw. Previously the catch here fell
+ * through to in-memory NX and returned `true`, falsely acquiring a cluster-wide lock in-process.
  */
 export async function sharedCacheSetNx(key: string, value: unknown, ttlSec: number): Promise<boolean> {
   const payload = JSON.stringify(value);
   const redis = await getRedis();
   if (redis) {
-    try {
-      // ioredis: `set(key, val, "EX", ttl, "NX")` → "OK" when the key was created, null when refused.
-      const res = await redis.set(`blackout:${key}`, payload, "EX", ttlSec, "NX");
-      const acquired = res === "OK";
-      // Mirror only on a win so the memory copy reflects the value the claim winner stored.
-      if (acquired) setMemoryEntry(key, { value: payload, expiresAt: Date.now() + ttlSec * 1000 });
-      return acquired;
-    } catch {
-      // fall through to the in-memory claim
-    }
+    // ioredis: `set(key, val, "EX", ttl, "NX")` → "OK" when the key was created, null when refused.
+    const res = await redis.set(`blackout:${key}`, payload, "EX", ttlSec, "NX");
+    const acquired = res === "OK";
+    // Mirror only on a win so the memory copy reflects the value the claim winner stored.
+    if (acquired) setMemoryEntry(key, { value: payload, expiresAt: Date.now() + ttlSec * 1000 });
+    return acquired;
   }
 
   // In-memory NX: a live (unexpired) entry means the claim is already held in this process.
