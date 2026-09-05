@@ -46,6 +46,7 @@ import {
   restFallbackAllowed,
   type GexCrossValidationCoreResult,
 } from "@/lib/providers/gex-cross-validation-core";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { getGexStrikeExpiryLadder, isUwChannelFresh } from "@/lib/ws/uw-socket";
 
 // ---------------------------------------------------------------------------
@@ -82,7 +83,7 @@ async function getUwStrikeLadder(
   const key = ticker.toUpperCase();
   const cacheKey = ladderCacheKey(ticker, nearTermExpiries);
   const entry = cache.get(cacheKey);
-  if (entry && Date.now() - entry.cachedAt < CACHE_TTL_MS) {
+  if (entry && isWsUpdatedAtFresh(entry.cachedAt, CACHE_TTL_MS)) {
     return entry.strikeLadder;
   }
 
