@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T13:52:41.053Z",
+  "updated_at": "2026-09-05T13:56:10.039Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -80,13 +80,13 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T11:42:09.507Z",
-      "lease_until": "2026-09-05T13:15:05.877Z",
+      "claimed_at": "2026-09-05T13:55:44.991Z",
+      "lease_until": "2026-09-05T15:25:44.991Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "50c8fd38-7415-4f2d-bc6c-88153b9459e9",
+      "run_id": null,
       "title": null
     },
     "BO-P1-0104": {
@@ -284,7 +284,7 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T12:20:00.000Z",
+      "last_seen": "2026-09-05T13:55:44.992Z",
       "current_task": "BO-P1-0101"
     }
   },
@@ -1578,6 +1578,31 @@
       "agent": "cursor",
       "run_id": "8e369e89-02ef-40fb-a18c-e2ff51d1c1ac",
       "summary": "PR event wake: main@3637f6db3. Peer-reviewed #3969+#3970 APPROVED (merged). #3971 CLQ-041 fixes pushed @4d9e613 — await verify+Claude re-review. validate:deploy GREEN, ops:collect 0. ECR deploy pending."
+    },
+    {
+      "at": "2026-09-05T13:55:40.773Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T13:55:44.992Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T13:56:10.038Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T13:56:10.039Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "32c76eca-d0a4-4f3b-ad27-b94094e2e870",
+      "summary": "Deploy verify GREEN. ECR #33969578363 queued behind #33968614003 (concurrency). #3971 verify GREEN+ready — Claude re-review. State sync pushed cursor/autopilot-state-sync-1352 (PR create blocked by token)."
     }
   ],
   "pr_activity": {
