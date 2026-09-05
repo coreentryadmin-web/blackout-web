@@ -40,8 +40,12 @@ export function swingCortexBlockedByFromAssessment(
       blocked: false,
       blockedBy: [],
       reason: "",
+<<<<<<< HEAD
       assessment:
         assessment ?? { decision: "ABSTAIN", abstained: true, reason: "no cortex assessment" },
+=======
+      assessment: assessment ?? { decision: "ABSTAIN", abstained: true, reason: "no assessment" },
+>>>>>>> d52fab3bc (fix(swing-v2): align cortex-swing assessment types with ZeroDteCortexAssessment)
     };
   }
   const blockedBy = blocks.map((b) => `gate:G-S14:${b.code}`);
