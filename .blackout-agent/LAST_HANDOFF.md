@@ -1,46 +1,50 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T12:40:00.000Z
-**Run:** post-merge-sync
+**At:** 2026-09-05T13:10:00.000Z
+**Run:** post-clq-p2-fixes
 
 ## Summary
 
-**main @ `d96372440`** — several merges landed since last handoff:
-- **#3945** swing BUY/STILL BUY — **MERGED** (no recorded Claude GitHub review — gate gap flagged)
-- **#3950** CQ questions (218) — **MERGED** → questions now on `main`
-- **#3951** SPX desk UW sweep — **MERGED**
-- **#3953** Claude state sync — **MERGED**
+**main @ `a027176c6`**
+- **#3960** `sharedCacheSetNx` P1 — **MERGED**
+- **#3961** shadow expiry intrinsic P2 — **MERGED**
+- **#3952** CLQ answers — **MERGED**
 
-**Still open:** **#3952** Cursor CLQ answers (54/54) — **awaiting Claude peer review + merge**.
+**Open / in flight (Cursor-authored, awaiting Claude HARD MERGE GATE):**
+| PR / branch | What | CI |
+|-------------|------|-----|
+| **#3957** | Cross-exam findings staging (6 OPEN) | verify **SUCCESS**, ready |
+| **#3962** | ThermalCompareStrip `rebaseChangePct` (CLQ-018) | draft, CI pending |
+| `cursor/fix-daily-bar-complete-per-ticker` | Per-ticker `dailyBarComplete` (CLQ-003) | pushed, PR create blocked |
 
-Claude has **not** started `CLAUDE_ANSWERS_TO_CQ.md` (CQ answers).
+Claude has **not** started `CLAUDE_ANSWERS_TO_CQ.md`.
 
-## Claude bootstrap — paste or run
+## Claude bootstrap
 
 ```bash
 npm run blackout:bootstrap -- --agent=claude
 npm run blackout:prompt -- --agent=claude
 ```
 
-**Priority queue for Claude:**
-1. **Answer CQ-001–CQ-218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md` (questions on `main` at `.blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md`)
-2. **Peer-review + merge #3952** (Cursor's 54 CLQ answers in `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md`)
-3. **Challenge** Cursor answers (Phase 5 adversarial review)
-4. **Merge #3955** if CI green (Cursor APPROVED docs only; do NOT apply AWS mutation)
+**Priority queue:**
+1. Answer **CQ-001–CQ-218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md`
+2. **Challenge** `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md` (Phase 5)
+3. **Peer-review + merge #3957** at CURRENT HEAD
+4. **Peer-review #3962** (CLQ-018 thermal) at CURRENT HEAD
+5. **Open + peer-review** `cursor/fix-daily-bar-complete-per-ticker` (CLQ-003)
+6. **Close #3959** duplicate
 
-## Deploy
+## Cross-exam P2 progress
 
-- main: `d96372440c9a8ff101c95d52826a38adebdc513a`
-- status: deploy pending for #3945/#3950 merges
-
-## Cross-exam scorecard
-
-| Item | Status |
-|------|--------|
-| Claude → Cursor (54 CLQs) | Cursor answered; **#3952 not merged** |
-| Cursor → Claude (218 CQs) | Questions on main; **answers not started** |
-| Challenge round | 0 |
+| CLQ | Finding | Status |
+|-----|---------|--------|
+| CLQ-037/044 | sharedCacheSetNx fail-open | **FIXED** #3960 |
+| CLQ-005 | shadow expiry intrinsic | **FIXED** #3961 |
+| CLQ-018 | ThermalCompareStrip rebase | **#3962** draft |
+| CLQ-003 | dailyBarComplete per-ticker | **branch pushed** |
+| CLQ-017 | CHARM validator | OPEN |
+| CLQ-041 | post-pay tier lag UX | OPEN |
 
 ## Cursor capacity offer
 
-Cursor can help with **parallel investigation** if Claude delegates specific CQ clusters. Cursor **must not** answer its own CQ questions.
+Parallel CQ investigation available if Claude delegates clusters. Cursor **must not** answer own CQ questions.

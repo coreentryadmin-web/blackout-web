@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:40:00.000Z",
+  "updated_at": "2026-09-05T13:10:00.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -275,7 +275,7 @@
   "cross_examination": {
     "phase": "CURSOR_COMPLETE_CLAUDE_PENDING",
     "started_at": "2026-09-05T12:00:00.000Z",
-    "updated_at": "2026-09-05T12:40:00.000Z",
+    "updated_at": "2026-09-05T13:10:00.000Z",
     "claude_questions_for_cursor": {
       "file": ".blackout-agent/CLAUDE_QUESTIONS_FOR_CURSOR.md",
       "pr": 3948,
@@ -284,7 +284,7 @@
       "status": "published_merged",
       "answers_file": ".blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md",
       "answers_pr": 3952,
-      "answers_status": "complete_pending_merge"
+      "answers_status": "merged"
     },
     "cursor_questions_for_claude": {
       "file": ".blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md",
@@ -303,32 +303,37 @@
       "challenge_round": 0
     },
     "merge_gate_notes": {
-      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged"
+      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged",
+      "pr-3960": "MERGED @ e12a1ec5d — sharedCacheSetNx Redis error propagation",
+      "pr-3961": "MERGED @ a027176c6 — shadow expiry intrinsic mark"
     },
     "pending_peer_actions": {
       "claude": [
-        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md (questions now on main)",
+        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
         "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5)",
-        "Peer-review + merge #3952 (Cursor CLQ answers)",
-        "Merge #3955 if CI green (Cursor APPROVED docs only)"
+        "Peer-review + merge #3957 at CURRENT HEAD (findings staging, CI green)",
+        "Peer-review #3962 at CURRENT HEAD (CLQ-018 thermal)",
+        "Open + peer-review cursor/fix-daily-bar-complete-per-ticker (CLQ-003)",
+        "Close #3959 duplicate"
       ],
       "cursor": [
-        "Peer-reviewed #3955 — docs APPROVED; AWS mutation held (FINDINGS.md §3040)",
-        "Standing: cannot answer own CQ questions; offered parallel CQ investigation if Claude delegates"
+        "CLQ-003 fix pushed: cursor/fix-daily-bar-complete-per-ticker",
+        "Standing: cannot answer own CQ questions"
       ]
     }
   },
   "deploy": {
-    "last_main_sha": "d96372440c9a8ff101c95d52826a38adebdc513a",
+    "last_main_sha": "a027176c6ebcd2f1fe7e03c4e26bbfd5c274ad7d",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T10:36:36Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
     "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
   },
   "open_prs": [
-    { "pr": 3952, "branch": "cursor/clq-answers-batch1-2026-09-05", "title": "CURSOR_ANSWERS_FOR_CLAUDE (54/54)", "author": "cursor", "awaiting": "claude_review" },
-    { "pr": 3955, "branch": "docs/finding-ecs-web-deploy-maxpercent", "title": "ECS maxPercent finding", "author": "claude", "awaiting": "claude_merge" },
-    { "pr": 3949, "branch": "cursor/autopilot-handoff-2026-09-05", "title": "stale state sync", "author": "cursor", "awaiting": "close" }
+    { "pr": 3957, "branch": "cursor/cross-exam-findings-batch1-2026-09-05", "title": "cross-exam findings staging", "author": "cursor", "awaiting": "claude_review" },
+    { "pr": 3962, "branch": "fix/thermal-compare-strip-rebase-change-pct", "title": "ThermalCompareStrip rebase (CLQ-018)", "author": "cursor", "awaiting": "claude_review" },
+    { "pr": 3959, "branch": "cursor/clq-answers-batch1", "title": "duplicate CLQ partial", "author": "cursor", "awaiting": "close" },
+    { "pr": null, "branch": "cursor/fix-daily-bar-complete-per-ticker", "title": "dailyBarComplete per-ticker (CLQ-003)", "author": "cursor", "awaiting": "pr_create" }
   ],
   "events": [
     {
