@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T22:41:02.221Z",
+  "updated_at": "2026-09-05T22:41:33.258Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -36,7 +36,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "297faf10db7a9d1340dfe580ea108ed507ce41b2",
+    "last_main_sha": "f6ddee840a1fbb0e8120fc5ea2bd0079b898a876",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T22:35:14Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33996334947",
@@ -199,9 +199,72 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T22:41:18.162Z",
+      "type": "pr_webhook",
+      "pr": 4058,
+      "event": "sweep",
+      "head": "c6d103ca82d16b62f922451faa17c46799dc5e09",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T22:41:20.496Z",
+      "type": "pr_webhook",
+      "pr": 4057,
+      "event": "sweep",
+      "head": "883938cdc1b3958fa044bf1f13c0071a6b8215a9",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T22:41:22.805Z",
+      "type": "pr_webhook",
+      "pr": 4056,
+      "event": "sweep",
+      "head": "1fd738da97ae33f45ef133515d24890f3cf689df",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T22:41:33.257Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-05T22:41:33.258Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "8c500a50-7900-4821-b1c0-52491827c413",
+      "summary": "Cycle complete. main@f6ddee840 (#4055+#4054 merged). Lifecycle GREEN. ops:collect 0. pr-sweep: #4056 swing draft (WAIT Claude), #4057+#4058 handoff drafts. No fix/claude PRs for Cursor review. validate:deploy GREEN. ECR #4054 deploy rolled; prod healthy. Handoff PR #4057 pushed."
     }
   ],
   "open_prs": [
+    {
+      "number": 4058,
+      "title": "chore(blackout-agent): cursor PR-event recovery — lifecycle GREEN, #4056 WAIT",
+      "branch": "cursor/autopilot-pr-event-4056",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T22:41:12Z"
+    },
+    {
+      "number": 4057,
+      "title": "chore(blackout-agent): cursor PR-event recovery — lifecycle GREEN, #4054 deploy rolling",
+      "branch": "cursor/autopilot-workflow-run-recovery",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T22:41:12Z"
+    },
     {
       "number": 4056,
       "title": "feat(swing): Rich Ask Largo intelligence — factors, levels, flow, catalysts, hold plan",
@@ -212,5 +275,31 @@
       "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-05T22:38:38Z"
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-4058": {
+      "last_event": "sweep",
+      "last_head": "c6d103ca82d16b62f922451faa17c46799dc5e09",
+      "last_feedback_at": "2026-09-05T22:41:18.162Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4057": {
+      "last_event": "sweep",
+      "last_head": "883938cdc1b3958fa044bf1f13c0071a6b8215a9",
+      "last_feedback_at": "2026-09-05T22:41:20.496Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4056": {
+      "last_event": "sweep",
+      "last_head": "1fd738da97ae33f45ef133515d24890f3cf689df",
+      "last_feedback_at": "2026-09-05T22:41:22.805Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
