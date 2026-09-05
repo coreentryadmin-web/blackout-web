@@ -3,6 +3,7 @@ import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { loadMeridianTickerLookup } from "@/lib/meridian/meridian-ticker-lookup";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const payload = await loadMeridianTickerLookup(ticker, timelineIds);
-    return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
+    return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[market/meridian/lookup]", error);
     return NextResponse.json({ error: "Lookup failed" }, { status: 502, headers: NO_STORE_HEADERS });

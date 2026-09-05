@@ -12,6 +12,7 @@ import {
   memberPayloadFromHeatmap,
   scheduleHeatmapBackgroundWarm,
 } from "@/lib/gex-heatmap-member-serve";
+import { roundFloats } from "@/lib/round-floats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,7 +93,7 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json(
-    { tickers: tickersOut },
+    roundFloats({ tickers: tickersOut }),
     { headers: NO_STORE_HEADERS }
   );
 }
