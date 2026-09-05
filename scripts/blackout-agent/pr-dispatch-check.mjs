@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
 import {
   shouldDispatchDeepReview,
   classifyBranch,
   reviewerForBranch,
   GH_PR_CHECKS_JSON_FIELDS,
 } from "./pr-feedback.mjs";
+import { ghJson } from "./lib/gh.mjs";
 
 function parseArgs(argv) {
   const out = {
@@ -20,12 +20,6 @@ function parseArgs(argv) {
     }
   }
   return out;
-}
-
-function ghJson(args) {
-  const r = spawnSync("gh", args, { encoding: "utf8" });
-  if (r.status !== 0) return null;
-  return JSON.parse(r.stdout);
 }
 
 const args = parseArgs(process.argv);
