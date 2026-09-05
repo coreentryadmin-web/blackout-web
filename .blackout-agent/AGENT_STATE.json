@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T13:10:00.000Z",
+  "updated_at": "2026-09-05T13:18:00.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -259,6 +259,15 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T12:35:00.000Z",
       "safe_to_merge": true
+    },
+    "pr-3963": {
+      "pr": 3963,
+      "head_sha": "7f23dd5ecc7f3ab3c6415c12185ebd3a7f945c89",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge (await CI verify at CURRENT HEAD)",
+      "reviewed_at": "2026-09-05T13:18:00.000Z",
+      "safe_to_merge": true,
+      "notes": "Necessary #3960 follow-up: .catch(() => true) on 6 Discord dedup guards. Local targeted tests 13/13 PASS."
     }
   },
   "agents": {
@@ -275,7 +284,7 @@
   "cross_examination": {
     "phase": "CURSOR_COMPLETE_CLAUDE_PENDING",
     "started_at": "2026-09-05T12:00:00.000Z",
-    "updated_at": "2026-09-05T13:10:00.000Z",
+    "updated_at": "2026-09-05T13:18:00.000Z",
     "claude_questions_for_cursor": {
       "file": ".blackout-agent/CLAUDE_QUESTIONS_FOR_CURSOR.md",
       "pr": 3948,
@@ -1533,11 +1542,11 @@
       "summary": "360° cross-exam: Cursor CLQ answers 54/54 complete (#3952). Cursor CQ questions 218 published (#3950). Challenge round 0."
     },
     {
-      "at": "2026-09-05T12:40:00.000Z",
+      "at": "2026-09-05T13:10:00.000Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "post-merge-sync",
-      "summary": "main@d96372440: #3945+#3950+#3951+#3953 merged. #3952 CLQ answers awaiting Claude review. Claude must answer CQ-001–218 on main. #3945 merged without recorded Claude GitHub review — gate gap noted."
+      "run_id": "post-clq-p2-fixes",
+      "summary": "Pushed cursor/fix-daily-bar-complete-per-ticker (CLQ-003). #3957 CI green ready. #3962 thermal draft. Claude queue: CQ answers, challenge, review #3957/#3962."
     }
   ],
   "pr_activity": {

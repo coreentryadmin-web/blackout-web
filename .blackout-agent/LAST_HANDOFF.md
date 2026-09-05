@@ -1,21 +1,23 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T13:10:00.000Z
-**Run:** post-clq-p2-fixes
+**At:** 2026-09-05T13:18:00.000Z
+**Run:** clq-p2-batch-2
 
 ## Summary
 
-**main @ `a027176c6`**
-- **#3960** `sharedCacheSetNx` P1 — **MERGED**
-- **#3961** shadow expiry intrinsic P2 — **MERGED**
-- **#3952** CLQ answers — **MERGED**
+**main @ `a027176c6`** — P1/P2 fixes landing; Claude queue is heavy.
 
-**Open / in flight (Cursor-authored, awaiting Claude HARD MERGE GATE):**
-| PR / branch | What | CI |
-|-------------|------|-----|
-| **#3957** | Cross-exam findings staging (6 OPEN) | verify **SUCCESS**, ready |
-| **#3962** | ThermalCompareStrip `rebaseChangePct` (CLQ-018) | draft, CI pending |
-| `cursor/fix-daily-bar-complete-per-ticker` | Per-ticker `dailyBarComplete` (CLQ-003) | pushed, PR create blocked |
+### Merged
+- **#3960** sharedCacheSetNx P1 | **#3961** shadow expiry P2 | **#3952** CLQ answers
+
+### Awaiting Claude (HARD MERGE GATE on Cursor PRs)
+| PR / branch | What | CI | Cursor review |
+|-------------|------|-----|---------------|
+| **#3957** | Findings staging (6 OPEN) | **SUCCESS** | N/A (docs) |
+| **#3962** | ThermalCompareStrip rebase (CLQ-018) | **SUCCESS**, ready | needs Claude |
+| **#3963** | sharedCacheSetNx `.catch()` gaps (#3960 follow-up) | in progress | **Cursor APPROVED** @ `7f23dd5e` |
+| `cursor/fix-daily-bar-complete-per-ticker` | dailyBarComplete per-ticker (CLQ-003) | not opened | branch pushed |
+| `cursor/charm-depth-validate-script` | CHARM offline validator (CLQ-017) | not opened | branch pushed |
 
 Claude has **not** started `CLAUDE_ANSWERS_TO_CQ.md`.
 
@@ -29,22 +31,18 @@ npm run blackout:prompt -- --agent=claude
 **Priority queue:**
 1. Answer **CQ-001–CQ-218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md`
 2. **Challenge** `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md` (Phase 5)
-3. **Peer-review + merge #3957** at CURRENT HEAD
-4. **Peer-review #3962** (CLQ-018 thermal) at CURRENT HEAD
-5. **Open + peer-review** `cursor/fix-daily-bar-complete-per-ticker` (CLQ-003)
+3. **Merge #3963** at CURRENT HEAD (Cursor APPROVED — #3960 caller coverage)
+4. **Peer-review + merge #3957, #3962** at CURRENT HEAD
+5. **Open + peer-review** `cursor/fix-daily-bar-complete-per-ticker`, `cursor/charm-depth-validate-script`
 6. **Close #3959** duplicate
 
-## Cross-exam P2 progress
+## Cross-exam P2 scorecard
 
-| CLQ | Finding | Status |
-|-----|---------|--------|
-| CLQ-037/044 | sharedCacheSetNx fail-open | **FIXED** #3960 |
-| CLQ-005 | shadow expiry intrinsic | **FIXED** #3961 |
-| CLQ-018 | ThermalCompareStrip rebase | **#3962** draft |
-| CLQ-003 | dailyBarComplete per-ticker | **branch pushed** |
-| CLQ-017 | CHARM validator | OPEN |
-| CLQ-041 | post-pay tier lag UX | OPEN |
-
-## Cursor capacity offer
-
-Parallel CQ investigation available if Claude delegates clusters. Cursor **must not** answer own CQ questions.
+| CLQ | Status |
+|-----|--------|
+| 037/044 | **FIXED** #3960 + **#3963** catch guards |
+| 005 | **FIXED** #3961 |
+| 018 | **#3962** ready |
+| 003 | branch `cursor/fix-daily-bar-complete-per-ticker` |
+| 017 | branch `cursor/charm-depth-validate-script` (offline) |
+| 041 | OPEN (post-pay tier lag UX) |
