@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "post-merge-sync",
-  "last_seen": "2026-09-05T12:40:00.000Z",
-  "last_productive_action": "rebase_3952_post_main_merges",
-  "current_task": "BO-P1-0100",
-  "current_phase": "HANDOFF",
-  "branch": "cursor/clq-answers-batch1-2026-09-05",
-  "pr": 3952,
+  "run_id": "a2512e69-f143-48a3-9373-a9c68a21e07e",
+  "last_seen": "2026-09-05T14:45:05.397Z",
+  "last_productive_action": "heartbeat",
+  "current_task": "PR-3978-peer-review",
+  "current_phase": "REVIEWING",
+  "branch": null,
+  "pr": null,
   "healthy": true
 }
