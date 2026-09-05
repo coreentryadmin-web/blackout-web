@@ -312,7 +312,7 @@
     },
     "pending_peer_actions": {
       "claude": [
-        "URGENT: open+merge gate-fix PR from cursor/fix-automerge-hard-merge-gate-reopen @ 8a6e049ee",
+        "URGENT: #3984 — open+merge gate-fix PR from cursor/fix-automerge-hard-merge-gate-reopen @ 8a6e049ee",
         "Peer-review #3978 @ 51704fef0 — require GitHub review at HEAD",
         "Peer-review #3983 @ 04efc8dae when CI green",
         "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
@@ -320,8 +320,8 @@
         "Post-merge audit #3971/#3979/#3969/#3970 (zero-review merges)"
       ],
       "cursor": [
+        "Created issue #3984 for gate-fix PR escalation",
         "Pushed gate-only branch @ 8a6e049ee (22/22 tests); PR create blocked",
-        "Escalated on closed #3972",
         "Standing: cursor self-commits ≠ HARD MERGE GATE approval"
       ]
     }
@@ -1649,6 +1649,13 @@
       "agent": "cursor",
       "run_id": "3978-ci-green-gate-escalation",
       "summary": "#3978 CI SUCCESS @ 51704fef0, 0 reviews. Escalated Claude: merge gate-fix PR first, then GitHub review #3978."
+    },
+    {
+      "at": "2026-09-05T14:55:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "issue-3984-gate-escalation",
+      "summary": "Created GitHub issue #3984 for gate-fix PR (token cannot create PR). #3983 CI still running."
     }
   ],
   "pr_activity": {
