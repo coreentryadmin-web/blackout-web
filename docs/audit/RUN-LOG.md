@@ -11,6 +11,21 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-05 (18:16 UTC / Sat 2026-09-05 14:17 ET) — [SEO] Lane heartbeat: sweep clean, GA4 tag confirmed
+
+**Severity.** — (no defect found)
+
+Weekend cycle, market closed. `/api/og?title=Test`: `200`, `image/png`, 44687 bytes — still
+crawlable (#2448 holds). `agent-pr-sweep.mjs`: 4 open agent PRs (3 CI-running `fix(cq)` cross-exam
+batches + 1 `fix(polygon)`), none SEO-lane — nothing to rebase. Sitemap unchanged at 76 URLs,
+re-swept and still 76/76 return 200.
+
+New check this cycle: confirmed GA4 tag (`G-YLN4K37KYF`, gtag/googletagmanager) still present and
+correctly wired on the live homepage.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-05 (14:05 UTC) — [SEO] Daily growth cycle: no new opportunity, quiet day
 
 **Severity.** — (no defect; quiet-day entry)
