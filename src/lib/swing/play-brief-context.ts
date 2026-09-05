@@ -26,10 +26,9 @@ import { closedDeckSourcesFromChains } from "@/lib/swing/closed-plays";
 import { rowsForSwingSection } from "@/features/nighthawk/command-deck/swing-section-filter";
 import { fetchEcosystemContext } from "@/lib/bie/ecosystem-context";
 import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
-import { etStamp } from "@/lib/largo/temporal/bar-session-date";
+import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { SwingPlayBriefContext } from "./play-brief-types";
-import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 
 function horizonRowToDeckSource(p: HorizonPlay): HorizonDeckSource {
   return {
