@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T00:20:08.581Z",
+  "updated_at": "2026-09-05T00:41:30.728Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,8 +67,8 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T00:11:10.288Z",
-      "lease_until": "2026-09-05T01:41:10.288Z",
+      "claimed_at": "2026-09-05T00:08:54.625Z",
+      "lease_until": "2026-09-05T01:38:54.625Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -248,64 +248,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "4b18a4b6519d8fc041a782076abe5aa86f30cf74",
+    "last_main_sha": "1f38016f7f8c7c7f6f5a21db091b6907ce65a845",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T00:19:20Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33932582837",
-    "last_deploy_sha": "4b18a4b6519d8fc041a782076abe5aa86f30cf74"
+    "last_deploy_at": "2026-09-04T22:52:50Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
+    "last_deploy_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450"
   },
-  "open_prs": [
-    {
-      "number": 3811,
-      "title": "chore(autopilot): cursor handoff — peer reviews #3804/#3797 merged",
-      "branch": "cursor/autopilot-work-loop-post-merge",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T00:19:59Z"
-    },
-    {
-      "number": 3810,
-      "title": "docs(audit): fold 53 staged findings into FINDINGS.md",
-      "branch": "chore/fold-staged-findings-2026-09-04",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T00:19:58Z"
-    },
-    {
-      "number": 3809,
-      "title": "fix(api): roundFloats on dark-pool ticker + UW sweep on nighthawk-edition cron",
-      "branch": "fix/dark-pool-ticker-roundfloats-nighthawk-uw-sweep",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "QUEUED/",
-      "updated_at": "2026-09-05T00:20:02Z"
-    },
-    {
-      "number": 3808,
-      "title": "feat(swing-v2): P1 dynamic recall + P2 POSITIONING origin",
-      "branch": "cursor/swing-engine-v2-p1",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T00:20:01Z"
-    },
-    {
-      "number": 3807,
-      "title": "docs(swing): SWING-ENGINE-V2 architectural redesign",
-      "branch": "cursor/swing-engine-v2-design",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T00:20:04Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1136,23 +1085,30 @@
       "open_pr_count": 10
     },
     {
-      "at": "2026-09-05T00:20:05.265Z",
+      "at": "2026-09-05T00:41:21.100Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T00:20:05.266Z",
+      "at": "2026-09-05T00:41:21.101Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "c17f6681-34e5-4108-bb42-331f29e62f30",
-      "summary": "PR-event sweep: merged #3797 (pricing SEO peer review APPROVED). Rebased #3809 onto main (MARKET-OPEN-VALIDATION conflict resolved), tests 2/2 GREEN, undrafted for Claude review. validate:deploy GREEN, ops:collect 0."
+      "run_id": "1d3d2e40-0e1f-4171-9114-21ccdc4e7824",
+      "summary": "Work loop cycle: #3804+#3797+#3809 merged. Peer-reviewed #3797 (APPROVED). validate:deploy GREEN, ops:collect 0. Open: #3808 swing-v2 P1 CI pending, #3812/#3814 roundFloats drafts. Next: peer-review #3812 when undrafted+green."
     },
     {
-      "at": "2026-09-05T00:20:08.581Z",
+      "at": "2026-09-05T00:41:30.727Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T00:41:30.728Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "45443d3b-9252-4041-8d97-1657cb975f49",
+      "summary": "Work loop: #3804+#3797+#3809 merged. Peer-reviewed #3797. validate:deploy GREEN, ops:collect 0."
     }
   ]
 }
