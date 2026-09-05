@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:21:58.167Z",
+  "updated_at": "2026-09-05T21:47:55.022Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-05T21:46:23.151Z",
+      "lease_until": "2026-09-05T23:17:05.154Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "66edd54f-2d20-4a0f-8e52-2ea380904724",
+      "title": null
     }
   },
   "reviews": {
@@ -31,16 +32,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-05T21:46:23.152Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "8f1b953ba05ef5cdb818c04fa32f18e7151f9605",
+    "last_main_sha": "73e58b8937d8a20704b2527c4be090315d9de015",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-05T21:45:07Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993937878",
+    "last_deploy_sha": "73e58b8937d8a20704b2527c4be090315d9de015"
   },
   "events": [
     {
@@ -138,7 +140,127 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T21:46:13.529Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:46:18.198Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:46:19.043Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:46:19.983Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:46:23.152Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T21:46:25.790Z",
+      "type": "pr_webhook",
+      "pr": 4051,
+      "event": "sweep",
+      "head": "78cce74c5081e313e9d006253af746cfa86d48ae",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T21:46:27.626Z",
+      "type": "pr_webhook",
+      "pr": 4050,
+      "event": "sweep",
+      "head": "5798dd4a832405e90a4e4aace7a5e59d610a2744",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T21:47:05.153Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:47:06.090Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:47:06.867Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:47:55.022Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:47:55.022Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "69945702-3311-4a57-8463-9ba2d4a8e3d4",
+      "summary": "PR-event recovery cycle. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo, rth-open). ops:collect 0. main@73e58b89 (#4047 swing play-brief merged). No Claude/fix PRs for peer review. Consolidating duplicate handoff PRs #4050/#4051."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4051,
+      "title": "chore(blackout-agent): cursor PR-event recovery — #4047 merged, lifecycle GREEN",
+      "branch": "cursor/autopilot-work-loop-275b",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T21:46:08Z"
+    },
+    {
+      "number": 4050,
+      "title": "chore(blackout-agent): cursor PR-event recovery handoff — lifecycle GREEN",
+      "branch": "cursor/autopilot-handoff-recovery",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T21:47:06Z"
+    }
+  ],
+  "pr_activity": {
+    "pr-4051": {
+      "last_event": "sweep",
+      "last_head": "78cce74c5081e313e9d006253af746cfa86d48ae",
+      "last_feedback_at": "2026-09-05T21:46:25.790Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4050": {
+      "last_event": "sweep",
+      "last_head": "5798dd4a832405e90a4e4aace7a5e59d610a2744",
+      "last_feedback_at": "2026-09-05T21:46:27.626Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
