@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T05:06:21.295Z",
+  "updated_at": "2026-09-05T05:19:06.994Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -250,11 +250,152 @@
   "deploy": {
     "last_main_sha": "737184a9d9a2a8f1d475f5b7e52d554cf4c74309",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T05:04:37Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33946244476",
-    "last_deploy_sha": "7991adecb241e41ea5ed909d4f8776fd1594076f"
+    "last_deploy_at": "2026-09-05T05:16:29Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33946711251",
+    "last_deploy_sha": "1fe3fc3ea0ed60bb7ecd25c0d925eeaa3ad7ae5d"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3868,
+      "title": "fix(swing): G-S4 degraded-regime blocks COMMIT (deep-dive Q8)",
+      "branch": "cursor/swing-gs4-regime-gate-q8",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T05:19:00Z"
+    },
+    {
+      "number": 3867,
+      "title": "chore(autopilot): sync agent state after peer-review cycle",
+      "branch": "cursor/autopilot-state-sync-1788585297",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T05:19:02Z"
+    },
+    {
+      "number": 3866,
+      "title": "fix(nighthawk): guard 0DTE live marks SSE quiet gate against future at",
+      "branch": "fix/zerodte-live-marks-sse-future-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T05:17:30Z"
+    },
+    {
+      "number": 3865,
+      "title": "chore(autopilot): cursor handoff — #3850/#3856 merged, PR review queue updated",
+      "branch": "cursor/autopilot-handoff-0509",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T05:17:32Z"
+    },
+    {
+      "number": 3864,
+      "title": "chore(autopilot): cursor handoff — deploy GREEN, Claude review queue",
+      "branch": "cursor/autopilot-handoff-0507",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T05:18:24Z"
+    },
+    {
+      "number": 3863,
+      "title": "fix(spx): guard remaining play-path caches against future at stamps",
+      "branch": "fix/spx-play-cache-freshness-tail",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T05:17:37Z"
+    },
+    {
+      "number": 3861,
+      "title": "fix(swing): observable Tier-0 origin fetch failures in recall (Q27)",
+      "branch": "cursor/swing-tier0-origin-observability-q27",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T05:17:39Z"
+    },
+    {
+      "number": 3859,
+      "title": "fix(swing): shadow-track G-S6/G-S14-only commit blocks (Q30)",
+      "branch": "cursor/swing-shadow-gs6-gs14-q30",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T05:17:41Z"
+    },
+    {
+      "number": 3858,
+      "title": "fix(swing): G-S6 requires CATALYST kind for event archetypes (Q28)",
+      "branch": "cursor/swing-gs6-catalyst-required-q28",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T05:18:09Z"
+    },
+    {
+      "number": 3857,
+      "title": "fix(swing): G-S14 Cortex fail-closed on preflight error + pin assessment (Q29)",
+      "branch": "cursor/swing-cortex-fail-closed-q29",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T05:18:59Z"
+    },
+    {
+      "number": 3855,
+      "title": "fix(providers): guard Polygon market-status cache against future fetchedAt",
+      "branch": "fix/polygon-market-status-cache-future-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T05:17:47Z"
+    },
+    {
+      "number": 3853,
+      "title": "fix(freshness): guard lit/dark ratio + Vector universe age against future timestamps",
+      "branch": "fix/future-timestamp-lit-dark-vector-universe",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T05:17:49Z"
+    },
+    {
+      "number": 3852,
+      "title": "fix(swing): G-S12 halt/LULD gate at commit (deep-dive Q9)",
+      "branch": "cursor/swing-v2-halt-luld-gate",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T05:17:52Z"
+    },
+    {
+      "number": 3851,
+      "title": "fix(spx): guard play ticket/technicals/gates/lotto caches against future at",
+      "branch": "cursor/autopilot-work-loop-c18f",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T05:17:54Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1156,6 +1297,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T05:19:06.992Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 14
+    },
+    {
+      "at": "2026-09-05T05:19:06.994Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "f320a098-a70c-4e67-b9b8-e21bebffe245",
+      "summary": "Autopilot wake complete: peer-reviewed #3850 (merged), #3851 (rebased+approved, verify green @ dbfc9a95), #3856 WAIT duplicate. validate:deploy GREEN, platform-integrity 14/14, ops:collect 0. Rebased #3851 onto main after #3850 merge."
     }
   ]
 }
