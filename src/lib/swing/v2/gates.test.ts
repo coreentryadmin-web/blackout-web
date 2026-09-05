@@ -138,6 +138,16 @@ test("evaluateQuoteStaleGate: blocks stale; passes unknown age", () => {
   assert.equal(unknown.pass, true);
 });
 
+test("evaluateQuoteStaleGate: fail-closes on clock-skewed future quote age", () => {
+  const future = evaluateQuoteStaleGate({
+    discoveryPaths: [],
+    archetype: "BREAKOUT",
+    quoteAgeMs: -60_000,
+  });
+  assert.equal(future.pass, false);
+  assert.deepEqual(blockedByFromSwingGates([future]), ["gate:quote_stale"]);
+});
+
 test("evaluateDailyBarGate: blocks when dailyBarComplete is false", () => {
   const blocked = evaluateDailyBarGate({ discoveryPaths: [], archetype: "BREAKOUT", dailyBarComplete: false });
   assert.equal(blocked.pass, false);

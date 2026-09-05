@@ -7,6 +7,7 @@
 
 import type { SwingDiscoveryPath } from "../discovery";
 import type { SwingArchetype } from "../taxonomy";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import { evaluateSwingConfluence } from "./confluence";
 import { isRegimeDegradedForCommit, regimeBandFor01 } from "./regime";
 
@@ -132,6 +133,15 @@ export function evaluateQuoteStaleGate(input: SwingCommitGateInput): SwingGateVe
   const age = input.quoteAgeMs;
   if (age == null || !Number.isFinite(age)) {
     return { gate: "QUOTE_STALE", pass: true, reason: "quote freshness: age unknown — pass" };
+  }
+  // Fail-closed on clock-skewed future quote stamps (same tolerance as GEX / WS freshness).
+  if (age < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) {
+    return {
+      gate: "QUOTE_STALE",
+      pass: false,
+      reason: "quote freshness: quote timestamp skewed into the future — WATCH until fresh",
+      token: "gate:quote_stale",
+    };
   }
   const pass = age <= maxAge;
   return {

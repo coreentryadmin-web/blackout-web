@@ -1027,8 +1027,8 @@ export async function runSwingDiscoveryScan(
           const c = contractByKey.get(key) ?? null;
           const at = c?.quoteUpdatedMs;
           if (at == null || !Number.isFinite(at)) return null;
-          const age = deps.nowMs - at;
-          return age > 0 ? age : 0;
+          // Raw age (may be negative on clock-skewed quoteUpdatedMs) — evaluateQuoteStaleGate fail-closes.
+          return deps.nowMs - at;
         })(),
       };
     });
