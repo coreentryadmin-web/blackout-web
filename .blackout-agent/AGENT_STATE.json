@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T06:01:03.563Z",
+  "updated_at": "2026-09-05T06:01:23.174Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -255,6 +255,16 @@
   },
   "open_prs": [
     {
+      "number": 3876,
+      "title": "chore(autopilot): cursor PR-event wake — #3868 verify GREEN, deploy synced",
+      "branch": "cursor/autopilot-work-loop-2724",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T06:01:15Z"
+    },
+    {
       "number": 3875,
       "title": "fix(swing): key gateBlockedBy by thesisKey (deep-dive Q21)",
       "branch": "cursor/swing-gate-blocked-thesis-key-q21",
@@ -322,7 +332,7 @@
       "agent": "cursor",
       "draft": false,
       "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T06:00:38Z"
+      "updated_at": "2026-09-05T06:01:22Z"
     }
   ],
   "events": [
@@ -1256,6 +1266,12 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
+    },
+    {
+      "at": "2026-09-05T06:01:23.174Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
     }
   ]
 }
