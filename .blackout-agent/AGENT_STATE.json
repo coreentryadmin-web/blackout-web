@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T17:29:04.787Z",
+  "updated_at": "2026-09-05T17:37:48.756Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -334,7 +334,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "7c4b7e8e9cde7a8c3f231c4550d3d1c04fe2e77e",
+    "last_main_sha": "ea552b9f69c0c553d879486bbe317688148c988e",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T17:22:13Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33980746889",
@@ -342,18 +342,6 @@
   },
   "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:46:02.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:03.919Z",
       "type": "context_sync",
@@ -1655,6 +1643,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:37:48.754Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:37:48.756Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "8ca97a1b-364d-4f16-9d92-c6fbde5e6208",
+      "summary": "#4017 peer-reviewed APPROVED, CI green, marked ready — merge blocked on PAT rate limit. ops:collect 0. validate:deploy GREEN. ECR deploy 33980746889 still pending. State pushed cursor/autopilot-work-loop-dbf2."
     }
   ],
   "pr_activity": {
