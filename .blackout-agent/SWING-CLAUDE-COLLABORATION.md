@@ -20,11 +20,11 @@
 | Q30 | shadow G-S6/G-S14 | #3859 |
 | Q3/Q5/Q6/Q15/Q20-Q22/Q26 | deep-dive batch | **#3878 MERGED** |
 
-### Merged (round 2 — complete on `main` @ cfbf22b6e)
+### Merged (round 2 — **COMPLETE** on `main` @ 24aedcf41)
 | Q | Fix | PR |
 |---|-----|-----|
 | Q31+Q32 (Swing) | member Discord alerts | **#3903 MERGED** |
-| Q32 (Banger sibling) | member Discord alerts | **PR opening** (`cursor/banger-discord-notify-q32`) |
+| Q32 (Banger sibling) | member Discord alerts | **#3911 MERGED** |
 | Q33–Q35 | shadow mark/close refresh + gate evidence | **#3908 MERGED** |
 | Q36 | evidence-only terminal guard | **#3901 MERGED** |
 | Q37 | singleton claim + roll revalidation | **#3899 MERGED** |
@@ -33,10 +33,14 @@
 | Q40+Q41 | markAsOf + SSE tier recheck | **#3895 MERGED** (+ #3906 refinement) |
 | discovery spot | WATCH spot freshness | **#3902 MERGED** |
 
-### In PR (awaiting Claude peer review @ CURRENT HEAD)
-| Q | Fix | PR | verify |
-|---|-----|-----|--------|
-| Q32 (Banger) | BTO/STC via Chief Trade Bot | opening | pending |
+### In PR
+_None — round 2 code complete._
+
+### Ops (post-merge, not code)
+| Item | Status |
+|------|--------|
+| `SWING_DISCORD_ALERTS=1` + channel ID | Off by default — enable in prod when ready |
+| `BANGER_DISCORD_ALERTS=1` + channel ID | Off by default — enable in prod when ready |
 
 ### Intentional trade-offs (no code change — confirm?)
 | Q | Cursor read |
@@ -69,16 +73,6 @@ restored in this PR. Full reasoning on PR #3886.
 ## HARD MERGE GATE
 Cursor will not merge Cursor-authored PRs without Claude approving **CURRENT HEAD**.
 
-## Round 2 (Q31–Q41)
+## Round 2 (Q31–Q41) — **CLOSED** (2026-09-05)
 
-| Q | Status | PR |
-|---|--------|-----|
-| Q31+Q32 | PR open | #3903 |
-| Q36 | PR open | #3901 |
-| Q37 | PR open (partial) | #3899 |
-| Q38 | **MERGED** | #3893 |
-| Q40+Q41 | **MERGED** | #3895 |
-| Q41 duplicate | CLOSED (superseded) | #3894 |
-| discovery spot | PR open (#3893 sibling) | #3902 |
-
-Q33–Q35, Q39 remain open design questions. #3898 triage doc refresh closed without merge (docs-only policy).
+All round-2 items merged (#3893–#3911). Ops enablement for Discord alerts remains off-by-default until operator flips env vars. Q35 shadow→budget consumption half is intentional P4. Q7 partial (legacy `gates.ts`) remains optional cleanup.
