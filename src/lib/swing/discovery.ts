@@ -50,6 +50,7 @@ import {
 import {
   produceHorizonPlays,
   type HorizonCandidate,
+  type HorizonPlay,
   type HorizonPlaySet,
 } from "../horizon-plays";
 import type { PlayDirection, ChainContract } from "../horizon-fanout";
@@ -70,6 +71,7 @@ import {
   executeSwingCommits,
   isCommitGraduated,
   type SwingCommitCandidate,
+  type SwingCommitDecision,
   type CommitBookPosition,
   type SwingCommitDeps,
   type SwingCommitResult,
@@ -287,6 +289,27 @@ export function discoveryPathsForConfluence(
   return signalKindsForObservation([...paths], dossier).filter((k): k is SwingDiscoveryPath =>
     CONFLUENCE_PATHS.has(k as SwingDiscoveryPath),
   );
+}
+
+/**
+ * Stamp G-S6/G-S14 commit blocks from plan decisions onto SWING plays so desk BUY/WAIT matches commit
+ * reality. Keyed by full thesisKey (ticker|direction|archetype) — deep-dive Q21: ticker|direction alone
+ * let a second archetype overwrite the first in the Map.
+ */
+export function stampCommitGateBlocksOnPlays(
+  plays: readonly HorizonPlay[],
+  decisions: readonly SwingCommitDecision[],
+): HorizonPlay[] {
+  const gateBlockedByKey = new Map<string, string[]>();
+  for (const d of decisions) {
+    const gateBlocks = d.blockedBy.filter((b) => b.startsWith("gate:G-S"));
+    if (gateBlocks.length === 0 || !d.direction) continue;
+    gateBlockedByKey.set(swingThesisKey(d.ticker, d.direction, d.archetype), gateBlocks);
+  }
+  return plays.map((p) => {
+    const blocks = gateBlockedByKey.get(swingThesisKey(p.ticker, p.direction, p.archetype ?? null));
+    return blocks?.length ? { ...p, commitGateBlockedBy: blocks } : p;
+  });
 }
 
 // ─── PURE recall instrumentation (evidence-only — see the WHY-RECALL header) ────────
@@ -939,18 +962,9 @@ export async function runSwingDiscoveryScan(
 
     // Stamp G-S6/G-S14 blocks onto produced plays so the desk BUY/WAIT verdict matches commit reality.
     if (engineV2 && playSet.SWING.length > 0) {
-      const gateBlockedByKey = new Map<string, string[]>();
-      for (const d of plan.decisions) {
-        const gateBlocks = d.blockedBy.filter((b) => b.startsWith("gate:G-S"));
-        if (gateBlocks.length === 0) continue;
-        gateBlockedByKey.set(`${d.ticker.toUpperCase()}|${d.direction}`, gateBlocks);
-      }
       playSet = {
         ...playSet,
-        SWING: playSet.SWING.map((p) => {
-          const blocks = gateBlockedByKey.get(`${p.ticker.toUpperCase()}|${p.direction}`);
-          return blocks?.length ? { ...p, commitGateBlockedBy: blocks } : p;
-        }),
+        SWING: stampCommitGateBlocksOnPlays(playSet.SWING, plan.decisions),
       };
     }
 

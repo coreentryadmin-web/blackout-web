@@ -10,6 +10,7 @@ import {
   regimeBandFor01,
   signalKindsForObservation,
   discoveryPathsForConfluence,
+  stampCommitGateBlocksOnPlays,
   type SwingCandidateSeed,
   type SwingDiscoveryDeps,
   type TierZeroSeed,
@@ -23,6 +24,9 @@ import type { SwingArchetype, SwingSubLane } from "./taxonomy.ts";
 import type { FlowAccumulationSignal } from "../../features/nighthawk/lib/flow-accumulation.ts";
 import type { BreakoutMover } from "../../features/nighthawk/lib/candidates.ts";
 import type { MinimalFlowRow } from "../zerodte/flow-accumulation-context.ts";
+import type { HorizonPlay } from "../horizon-plays.ts";
+import type { SwingCommitDecision } from "./commit.ts";
+import { swingThesisKey } from "./accumulation-store.ts";
 
 const ASC = Array.from({ length: 60 }, (_, i) => 100 + i);
 const FLAT_SPY = Array.from({ length: 60 }, () => 400);
@@ -437,6 +441,84 @@ test("discoveryPathsForConfluence: includes grounded CATALYST pillar for G-S6 (Q
   );
   const noCatalyst = deriveSwingCandidates([mkSeed("AMD", bullSignal("AMD"), null)])[0];
   assert.deepEqual(discoveryPathsForConfluence(["FLOW", "STRUCTURE"], noCatalyst).sort(), ["FLOW", "STRUCTURE"]);
+});
+
+test("stampCommitGateBlocksOnPlays: keys by thesisKey so same ticker+direction different archetypes do not overwrite (Q21)", () => {
+  const contract = {
+    expiry: "2026-08-08",
+    strike: 250,
+    call_bid: 5,
+    call_ask: 5.2,
+    call_delta: 0.6,
+    call_oi: 1000,
+    put_bid: 4.6,
+    put_ask: 4.9,
+    put_delta: -0.4,
+    put_oi: 900,
+  };
+  const base: Omit<HorizonPlay, "archetype"> = {
+    ticker: "TSLA",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 90,
+    status: "WATCH",
+    contract,
+    scoreFloor: 70,
+    reason: "test",
+  };
+  const playEvent: HorizonPlay = { ...base, archetype: "EVENT_DRIVEN" };
+  const playDrift: HorizonPlay = { ...base, archetype: "POST_EARNINGS_DRIFT" };
+
+  const mkDecision = (
+    archetype: SwingArchetype,
+    blockedBy: string[],
+  ): SwingCommitDecision => ({
+    ticker: "TSLA",
+    direction: "LONG",
+    archetype,
+    subLane: "STANDARD",
+    commitKey: "k",
+    graduated: true,
+    committable: blockedBy.length === 0,
+    riskUsd: 500,
+    blockedBy,
+    reason: blockedBy.length ? "blocked" : "ok",
+  });
+
+  const decisions: SwingCommitDecision[] = [
+    mkDecision("POST_EARNINGS_DRIFT", ["gate:G-S6:confluence"]),
+    mkDecision("EVENT_DRIVEN", ["gate:G-S3:earnings"]),
+  ];
+
+  const stamped = stampCommitGateBlocksOnPlays([playEvent, playDrift], decisions);
+
+  assert.deepEqual(
+    stamped.find((p) => p.archetype === "EVENT_DRIVEN")?.commitGateBlockedBy,
+    ["gate:G-S3:earnings"],
+    "EVENT_DRIVEN play gets its own archetype's gate blocks",
+  );
+  assert.deepEqual(
+    stamped.find((p) => p.archetype === "POST_EARNINGS_DRIFT")?.commitGateBlockedBy,
+    ["gate:G-S6:confluence"],
+    "POST_EARNINGS_DRIFT play keeps G-S6 blocks even when EVENT_DRIVEN is processed second",
+  );
+
+  // Regression: old ticker|direction key would stamp BOTH plays with the last decision's blocks.
+  const legacyKey = "TSLA|LONG";
+  const legacyMap = new Map<string, string[]>();
+  for (const d of decisions) {
+    const gateBlocks = d.blockedBy.filter((b) => b.startsWith("gate:G-S"));
+    if (gateBlocks.length) legacyMap.set(legacyKey, gateBlocks);
+  }
+  assert.deepEqual(legacyMap.get(legacyKey), ["gate:G-S3:earnings"], "legacy key overwrites → wrong for drift play");
+  assert.notEqual(
+    stamped.find((p) => p.archetype === "POST_EARNINGS_DRIFT")?.commitGateBlockedBy,
+    legacyMap.get(legacyKey),
+  );
+  assert.equal(
+    swingThesisKey("TSLA", "LONG", "EVENT_DRIVEN"),
+    "TSLA|LONG|EVENT_DRIVEN",
+  );
 });
 
 test("runSwingDiscoveryScan: an EVENT_DRIVEN name gets the 1-session fast-track (resolver + FLOW+CATALYST corroboration)", async () => {
