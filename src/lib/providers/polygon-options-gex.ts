@@ -2887,7 +2887,7 @@ export async function fetchGexHeatmap(
     // Serve within TTL even when the matrix was built before the ET date rollover — finalize
     // prunes past expiry columns instead of forcing a cold rebuild (which can hand off unpruned
     // stale data via awaitHeatmapBuildWithBlockCap and trip data-correctness at midnight).
-    if (mem && now - mem.at < ttlMs) {
+    if (mem && gexHeatmapCacheEntryWithinTtl(mem.at, now, ttlMs)) {
       return finalizeHeatmapForServe(cacheKey, mem.data);
     }
 
@@ -2895,7 +2895,7 @@ export async function fetchGexHeatmap(
     try {
       const { sharedCacheGet } = await import("../shared-cache");
       redisHit = await sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey);
-      if (redisHit && now - redisHit.at < ttlMs) {
+      if (redisHit && gexHeatmapCacheEntryWithinTtl(redisHit.at, now, ttlMs)) {
         setCachedHeatmap(cacheKey, redisHit);
         return finalizeHeatmapForServe(cacheKey, redisHit.data);
       }
@@ -3906,7 +3906,7 @@ export async function readGexHeatmapSnapshot(underlying = "SPX"): Promise<GexHea
   const ttlMs = fastMove ? Math.min(baseTtlMs, GEX_HEATMAP_FAST_MOVE_TTL_MS) : baseTtlMs;
 
   const mem = cachedHeatmaps.get(cacheKey);
-  if (mem && now - mem.at < ttlMs) return finalizeHeatmapForServe(cacheKey, mem.data);
+  if (mem && gexHeatmapCacheEntryWithinTtl(mem.at, now, ttlMs)) return finalizeHeatmapForServe(cacheKey, mem.data);
 
   let redisHit: { at: number; data: GexHeatmap } | null = null;
   try {
@@ -3915,7 +3915,7 @@ export async function readGexHeatmapSnapshot(underlying = "SPX"): Promise<GexHea
       sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
     ]);
-    if (redisHit && now - redisHit.at < ttlMs) {
+    if (redisHit && gexHeatmapCacheEntryWithinTtl(redisHit.at, now, ttlMs)) {
       setCachedHeatmap(cacheKey, redisHit);
       return finalizeHeatmapForServe(cacheKey, redisHit.data);
     }
@@ -4019,6 +4019,13 @@ export function gexHeatmapCacheEntryStale(entryAtMs: number, nowMs: number): boo
   const ageMs = nowMs - entryAtMs;
   if (ageMs < -GEX_WS_FUTURE_TOLERANCE_MS) return true;
   return Math.max(0, ageMs) > gexHeatmapMaxStaleMs();
+}
+
+/** True when a heatmap cache entry.at is within TTL and not clock-skewed future. */
+export function gexHeatmapCacheEntryWithinTtl(entryAtMs: number, nowMs: number, ttlMs: number): boolean {
+  const ageMs = nowMs - entryAtMs;
+  if (ageMs < -GEX_WS_FUTURE_TOLERANCE_MS) return false;
+  return Math.max(0, ageMs) < ttlMs;
 }
 
 /**
