@@ -6,7 +6,10 @@ import {
   evaluateConfluenceGate,
   evaluateRegimeGate,
   evaluateHaltGate,
+  evaluateQuoteStaleGate,
+  evaluateDailyBarGate,
   failingSwingCommitGates,
+  SWING_QUOTE_MAX_AGE_MS,
 } from "./gates";
 
 test("evaluateConfluenceGate: pass at 3 kinds for BREAKOUT", () => {
@@ -121,4 +124,32 @@ test("failingSwingCommitGates: empty when enforceConfluence off", () => {
 test("blockedByFromSwingGates: maps G-S6 to gate token", () => {
   const v = evaluateConfluenceGate({ discoveryPaths: ["FLOW"], archetype: "BREAKOUT" });
   assert.deepEqual(blockedByFromSwingGates([v]), ["gate:G-S6:confluence"]);
+});
+
+test("evaluateQuoteStaleGate: blocks stale; passes unknown age", () => {
+  const stale = evaluateQuoteStaleGate({
+    discoveryPaths: [],
+    archetype: "BREAKOUT",
+    quoteAgeMs: SWING_QUOTE_MAX_AGE_MS + 1,
+  });
+  assert.equal(stale.pass, false);
+  assert.deepEqual(blockedByFromSwingGates([stale]), ["gate:quote_stale"]);
+  const unknown = evaluateQuoteStaleGate({ discoveryPaths: [], archetype: "BREAKOUT", quoteAgeMs: null });
+  assert.equal(unknown.pass, true);
+});
+
+test("evaluateDailyBarGate: blocks when dailyBarComplete is false", () => {
+  const blocked = evaluateDailyBarGate({ discoveryPaths: [], archetype: "BREAKOUT", dailyBarComplete: false });
+  assert.equal(blocked.pass, false);
+  assert.deepEqual(blockedByFromSwingGates([blocked]), ["gate:daily_bar_incomplete"]);
+  const clear = evaluateDailyBarGate({ discoveryPaths: [], archetype: "BREAKOUT", dailyBarComplete: true });
+  assert.equal(clear.pass, true);
+});
+
+test("failingSwingCommitGates: quote + daily bar when enforce flags on", () => {
+  const fails = failingSwingCommitGates(
+    { discoveryPaths: [], archetype: "BREAKOUT", quoteAgeMs: 600_000, dailyBarComplete: false },
+    { enforceQuoteStale: true, enforceDailyBar: true },
+  );
+  assert.equal(fails.length, 2);
 });

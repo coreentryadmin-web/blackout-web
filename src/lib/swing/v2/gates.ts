@@ -15,7 +15,9 @@ export type SwingGateId =
   | "G-S4"
   | "G-S6"
   | "G-S12"
-  | "G-S14";
+  | "G-S14"
+  | "QUOTE_STALE"
+  | "DAILY_BAR";
 
 export interface SwingGateVerdict {
   gate: SwingGateId;
@@ -38,7 +40,15 @@ export interface SwingCommitGateInput {
   haltFeedStale?: boolean | null;
   /** REGIME pillar (0–1, direction-aligned) — G-S4 when enforced. */
   regime01?: number | null;
+  /** Contract quote age in ms — when known and > max, blocks COMMIT (legacy quote_stale). */
+  quoteAgeMs?: number | null;
+  quoteMaxAgeMs?: number;
+  /** False ⇒ reference daily bar has not closed — blocks COMMIT (legacy daily_bar_incomplete). */
+  dailyBarComplete?: boolean | null;
 }
+
+/** Default quote staleness ceiling — matches legacy `gates.ts`. */
+export const SWING_QUOTE_MAX_AGE_MS = 5 * 60 * 1000;
 
 /** Phase-0 firewall kill-switch: G-S12 fails a fresh commit closed when the halt FEED is cold.
  *  ON by default; set SWING_GS12_HALT_FAIL_CLOSED=0 to disable (mirrors ZERODTE_G11_HALT_FAIL_CLOSED). */
@@ -116,10 +126,48 @@ export function evaluateHaltGate(input: SwingCommitGateInput): SwingGateVerdict 
   };
 }
 
+/** Quote freshness — transient stale quote blocks COMMIT (WATCH rail). Unknown age passes (fail-open). */
+export function evaluateQuoteStaleGate(input: SwingCommitGateInput): SwingGateVerdict {
+  const maxAge = input.quoteMaxAgeMs ?? SWING_QUOTE_MAX_AGE_MS;
+  const age = input.quoteAgeMs;
+  if (age == null || !Number.isFinite(age)) {
+    return { gate: "QUOTE_STALE", pass: true, reason: "quote freshness: age unknown — pass" };
+  }
+  const pass = age <= maxAge;
+  return {
+    gate: "QUOTE_STALE",
+    pass,
+    reason: pass
+      ? "quote freshness: clear"
+      : `quote freshness: quote ${Math.round(age / 1000)}s old > max ${Math.round(maxAge / 1000)}s — WATCH until fresh`,
+    token: pass ? undefined : "gate:quote_stale",
+  };
+}
+
+/** Daily bar completeness — open session reference bar blocks COMMIT until close. */
+export function evaluateDailyBarGate(input: SwingCommitGateInput): SwingGateVerdict {
+  const pass = input.dailyBarComplete !== false;
+  return {
+    gate: "DAILY_BAR",
+    pass,
+    reason: pass
+      ? "daily bar: clear"
+      : "daily bar: reference daily bar has not closed — WATCH until session settles",
+    token: pass ? undefined : "gate:daily_bar_incomplete",
+  };
+}
+
 /** Evaluate enforced V2 commit gates. Returns failing gates only (empty ⇒ pass). */
 export function failingSwingCommitGates(
   input: SwingCommitGateInput,
-  opts: { enforceConfluence?: boolean; enforceEarnings?: boolean; enforceHalt?: boolean; enforceRegime?: boolean } = {},
+  opts: {
+    enforceConfluence?: boolean;
+    enforceEarnings?: boolean;
+    enforceHalt?: boolean;
+    enforceRegime?: boolean;
+    enforceQuoteStale?: boolean;
+    enforceDailyBar?: boolean;
+  } = {},
 ): SwingGateVerdict[] {
   const out: SwingGateVerdict[] = [];
   if (opts.enforceEarnings) {
@@ -138,6 +186,14 @@ export function failingSwingCommitGates(
     const g6 = evaluateConfluenceGate(input);
     if (!g6.pass) out.push(g6);
   }
+  if (opts.enforceQuoteStale) {
+    const gq = evaluateQuoteStaleGate(input);
+    if (!gq.pass) out.push(gq);
+  }
+  if (opts.enforceDailyBar) {
+    const gd = evaluateDailyBarGate(input);
+    if (!gd.pass) out.push(gd);
+  }
   return out;
 }
 
@@ -153,6 +209,8 @@ export function blockedByFromSwingGates(failures: readonly SwingGateVerdict[]): 
         : "gate:G-S12:halted";
     }
     if (f.gate === "G-S4") return "gate:G-S4:regime_degraded";
+    if (f.gate === "QUOTE_STALE") return "gate:quote_stale";
+    if (f.gate === "DAILY_BAR") return "gate:daily_bar_incomplete";
     return "gate:G-S14:cortex";
   });
 }

@@ -1,9 +1,8 @@
 // src/lib/swing/gates.ts — the SWING 3-way decision gate: COMMIT / WATCH / SKIP (PR-5).
 //
-// @deprecated PRODUCTION V2 uses `src/lib/swing/v2/gates.ts` (G-S3 earnings, G-S6 confluence, G-S14 Cortex).
-// This module is retained for unit tests and calibration evidence only. Checks here that are NOT in v2/gates
-// (quote_stale, daily_bar_incomplete, liquidity/spread) are intentionally unwired in the live commit path —
-// see swing deep-dive Q7. Port or delete in a future P4 cleanup PR; do not wire here without v2 parity review.
+// @deprecated PRODUCTION V2 uses `src/lib/swing/v2/gates.ts` (G-S3 earnings, G-S6 confluence, G-S14 Cortex,
+// quote_stale, daily_bar_incomplete). This module is retained for unit tests and calibration evidence only.
+// Liquidity/spread checks here are intentionally unwired in the live commit path — see swing deep-dive Q7.
 //
 // This is the decision layer that turns a scored dossier + a chosen contract into a verdict. Its ONE hard rule,
 // and the reason this PR exists, is the ENFORCE-vs-EVIDENCE split (SEV-5):

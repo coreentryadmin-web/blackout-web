@@ -507,6 +507,30 @@ test("computeSwingCommitPlan: V2 G-S4 regime blocks when enforceRegime on", () =
   assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S4:regime_degraded"));
 });
 
+test("computeSwingCommitPlan: V2 quote_stale blocks when enforceQuoteStale on", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ quoteAgeMs: 10 * 60 * 1000 })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+    v2: { enforceQuoteStale: true },
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:quote_stale"));
+});
+
+test("computeSwingCommitPlan: V2 daily_bar_incomplete blocks when enforceDailyBar on", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ dailyBarComplete: false })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+    v2: { enforceDailyBar: true },
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:daily_bar_incomplete"));
+});
+
 test("computeSwingCommitPlan: V2 confluence off by default (legacy path)", () => {
   const plan = computeSwingCommitPlan({
     candidates: [candidate({ discoveryPaths: ["FLOW"], archetype: "BREAKOUT" })],
@@ -520,6 +544,8 @@ test("computeSwingCommitPlan: V2 confluence off by default (legacy path)", () =>
 test("isShadowEligibleBlockedBy: budget/cap and gate:G-S* qualify; open-ability blocks do not", () => {
   assert.equal(isShadowEligibleBlockReason("budget:per_position_loss"), true);
   assert.equal(isShadowEligibleBlockReason("gate:G-S6:confluence"), true);
+  assert.equal(isShadowEligibleBlockReason("gate:quote_stale"), true);
+  assert.equal(isShadowEligibleBlockReason("gate:daily_bar_incomplete"), true);
   assert.equal(isShadowEligibleBlockReason("already_open"), false);
   assert.equal(isShadowEligibleBlockedBy(["gate:G-S6:confluence"]), true);
   assert.equal(isShadowEligibleBlockedBy(["gate:G-S6:confluence", "already_open"]), false);
