@@ -9,7 +9,8 @@
 // window on the same day is a no-op — it must not re-increment the accumulation memory. CRITICAL: on scan
 // FAILURE the claim is RELEASED — otherwise an ALB/Lambda 60s abort burns the phase for 22h and Swing stays
 // dark (prod 2026-07-29: 38/38 EventBridge FailedInvocations, zero successful swing-discovery hits).
-// `?force=1` clears any prior claim and re-runs. FAIL-SOFT throughout: provider/DB errors are caught,
+// `?force=1` clears a prior claim and re-runs ONLY when safe (done/absent/stale-running) — never
+// deletes a LIVE in-flight `running` claim (deep-dive Q1). FAIL-SOFT throughout: provider/DB errors are caught,
 // logged via logCronRun, and returned — never thrown out of the cron.
 //
 // THIN HANDLER: the phase decision (scan-cadence) and the scan core (discovery.ts) are pure/injected and unit-
@@ -18,7 +19,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
-import { sharedCacheDel, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
+import { sharedCacheDel, sharedCacheGetWithTtl, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
 import { todayEt } from "@/lib/et-date";
 import { decideSwingScan, phaseRunKey } from "@/lib/swing/scan-cadence";
 import {
@@ -73,6 +74,10 @@ import {
 } from "@/lib/providers/unusual-whales";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
+import {
+  shouldRefuseForceClearRunningClaim,
+  type SwingDiscoveryPhaseClaim,
+} from "@/lib/swing/discovery-claim";
 import {
   MULTI_DAY_FLOW_HOURS,
   MULTI_DAY_MIN_PREMIUM,
@@ -321,8 +326,26 @@ export async function GET(req: NextRequest) {
   // full-day "done" TTL. On throw, delete. If the HTTP client aborts (ALB 60s / Lambda AbortError) and
   // the handler never reaches catch, the running key still expires in ~3m so the next :00/:30 fire retries
   // instead of burning the phase for 22h.
-  // force=1: delete any prior claim first so a timed-out prior attempt cannot block recovery.
+  // force=1: delete a prior claim ONLY when recovery is safe — never yank a LIVE `running` claim
+  // from under a healthy in-flight scan (deep-dive Q1 double-open). Done/absent/stale-running OK.
   if (force && decision.key) {
+    const prior = await sharedCacheGetWithTtl<SwingDiscoveryPhaseClaim>(decision.key).catch(() => null);
+    if (
+      prior &&
+      shouldRefuseForceClearRunningClaim(prior.value, nowMs, prior.remainingTtlSec)
+    ) {
+      const payload = {
+        ok: true,
+        skipped: true,
+        phase: decision.phase,
+        reason:
+          `force=1 refused — ${decision.phase} scan still in flight for ${sessionDay} ` +
+          `(running claim ${prior.remainingTtlSec}s TTL remaining; wait for completion or TTL expiry)`,
+        force_refused: true,
+      };
+      await logCronRun("swing-discovery", started, payload);
+      return NextResponse.json(payload);
+    }
     await sharedCacheDel(decision.key).catch(() => undefined);
   }
   const acquired = decision.key

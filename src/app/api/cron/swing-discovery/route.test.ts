@@ -21,3 +21,9 @@ test("swing-discovery runs inline so phase-claim release stays synchronous on fa
   assert.match(routeSrc, /Runs inline \(not after\(\)\) so phase-claim release on failure is synchronous/);
   assert.doesNotMatch(routeSrc, /after\(dispatch/);
 });
+
+test("force=1 refuses to delete a LIVE running claim (deep-dive Q1)", () => {
+  assert.match(routeSrc, /shouldRefuseForceClearRunningClaim/);
+  assert.match(routeSrc, /force_refused: true/);
+  assert.match(routeSrc, /force=1 refused —/);
+});
