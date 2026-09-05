@@ -210,6 +210,19 @@ test("fetchOpenPrs: a genuinely empty GraphQL result (real 0 open PRs) short-cir
     },
   });
   const { fetchOpenPrs } = await import(`./sync-context.mjs?t=${Date.now()}`);
-  assert.deepEqual(fetchOpenPrs(), []);
+  const { ok, prs } = fetchOpenPrs();
+  assert.deepEqual(prs, []);
+  assert.equal(ok, true, "empty GraphQL success must mark ok=true");
   assert.equal(calls, 1, "must not fall through to the REST path when GraphQL genuinely returned zero PRs");
+});
+
+test("fetchOpenPrsAsync: falls back to public API when authenticated gh paths fail", async () => {
+  const { fetchOpenPrsViaPublicApi } = await import("./sync-context.mjs");
+  const prs = await fetchOpenPrsViaPublicApi("coreentryadmin-web/blackout-web");
+  assert.ok(Array.isArray(prs));
+  if (prs.length > 0) {
+    assert.ok(prs[0].number);
+    assert.ok(prs[0].title);
+    assert.ok(["claude", "cursor", "agent", "human"].includes(prs[0].agent));
+  }
 });

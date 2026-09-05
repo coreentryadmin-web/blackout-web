@@ -49,9 +49,45 @@ function verifyFromRestCheckRuns(checkRuns) {
   return verify ? formatVerifyStatus(verify) : "unknown";
 }
 
+function mapRestPull(pr, verify = "unknown") {
+  const authorLogin = pr.user?.login ?? "unknown";
+  const branch = pr.head?.ref ?? "unknown";
+  return {
+    number: pr.number,
+    title: pr.title,
+    branch,
+    author: authorLogin,
+    agent: agentFromBranch(branch),
+    draft: Boolean(pr.draft),
+    verify,
+    updated_at: pr.updated_at,
+  };
+}
+
+/**
+ * Last-resort open-PR sync when authenticated `gh` calls are rate-limited. Public repo metadata
+ * is readable without a token on a separate (lower) unauthenticated budget — enough for agent
+ * routing when the shared PAT/GraphQL pool is exhausted.
+ */
+export async function fetchOpenPrsViaPublicApi(repo) {
+  if (!repo) return [];
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repo}/pulls?state=open&per_page=30`, {
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "blackout-autopilot-sync" },
+    });
+    if (!res.ok) return [];
+    const pulls = await res.json();
+    if (!Array.isArray(pulls)) return [];
+    return pulls.map((pr) => mapRestPull(pr));
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Fetch open PRs for agent state. GraphQL (`gh pr list`) is preferred but exhausts
  * its budget quickly when the fleet is busy; REST (`/pulls`) uses a separate pool.
+ * Returns `{ ok, prs }` where `ok` means an authenticated gh path answered (even if zero PRs).
  */
 export function fetchOpenPrs() {
   const graphql = ghJson([
@@ -65,50 +101,56 @@ export function fetchOpenPrs() {
     "number,title,headRefName,author,isDraft,statusCheckRollup,updatedAt",
   ]);
   if (Array.isArray(graphql)) {
-    return graphql.map((pr) => {
-      const verify = (pr.statusCheckRollup ?? []).find((c) => c.name === "verify");
-      const authorLogin = pr.author?.login ?? "unknown";
-      return {
-        number: pr.number,
-        title: pr.title,
-        branch: pr.headRefName,
-        author: authorLogin,
-        agent: agentFromBranch(pr.headRefName),
-        draft: pr.isDraft,
-        verify: formatVerifyStatus(verify),
-        updated_at: pr.updatedAt,
-      };
-    });
+    return {
+      ok: true,
+      prs: graphql.map((pr) => {
+        const verify = (pr.statusCheckRollup ?? []).find((c) => c.name === "verify");
+        const authorLogin = pr.author?.login ?? "unknown";
+        return {
+          number: pr.number,
+          title: pr.title,
+          branch: pr.headRefName,
+          author: authorLogin,
+          agent: agentFromBranch(pr.headRefName),
+          draft: pr.isDraft,
+          verify: formatVerifyStatus(verify),
+          updated_at: pr.updatedAt,
+        };
+      }),
+    };
   }
 
   const repo = resolveGithubRepo();
-  if (!repo) return [];
+  if (!repo) return { ok: false, prs: [] };
 
   const rest = ghJson(["api", `repos/${repo}/pulls?state=open&per_page=30`]);
-  if (!Array.isArray(rest) || rest.length === 0) return [];
-
-  return rest.map((pr) => {
-    const headSha = pr.head?.sha;
-    let verify = "unknown";
-    if (headSha) {
-      const checks = ghJson(["api", `repos/${repo}/commits/${headSha}/check-runs?per_page=30`]);
-      verify = verifyFromRestCheckRuns(checks?.check_runs);
-    }
-    const authorLogin = pr.user?.login ?? "unknown";
+  if (Array.isArray(rest)) {
     return {
-      number: pr.number,
-      title: pr.title,
-      branch: pr.head?.ref ?? "unknown",
-      author: authorLogin,
-      agent: agentFromBranch(pr.head?.ref),
-      draft: Boolean(pr.draft),
-      verify,
-      updated_at: pr.updated_at,
+      ok: true,
+      prs: rest.map((pr) => {
+        const headSha = pr.head?.sha;
+        let verify = "unknown";
+        if (headSha) {
+          const checks = ghJson(["api", `repos/${repo}/commits/${headSha}/check-runs?per_page=30`]);
+          verify = verifyFromRestCheckRuns(checks?.check_runs);
+        }
+        return mapRestPull(pr, verify);
+      }),
     };
-  });
+  }
+
+  return { ok: false, prs: [] };
 }
 
-export function syncContext() {
+/** Async variant — includes unauthenticated public API fallback after gh paths fail. */
+export async function fetchOpenPrsAsync() {
+  const { ok, prs } = fetchOpenPrs();
+  if (ok) return prs;
+  const repo = resolveGithubRepo();
+  return fetchOpenPrsViaPublicApi(repo);
+}
+
+export async function syncContext() {
   const expired = expireStaleLocksSync();
   const state = readAgentState();
 
@@ -123,7 +165,7 @@ export function syncContext() {
     state.deploy.last_deploy_sha = deployRuns[0].headSha;
   }
 
-  state.open_prs = fetchOpenPrs();
+  state.open_prs = await fetchOpenPrsAsync();
 
   const activeLocks = {};
   if (existsSync(LOCKS_DIR)) {
@@ -144,6 +186,7 @@ export function syncContext() {
 }
 
 if (process.argv[1]?.endsWith("sync-context.mjs")) {
-  const { state, expired, activeLocks } = syncContext();
-  console.log(JSON.stringify({ ok: true, main_sha: state.deploy.last_main_sha, deploy: state.deploy.last_deploy_status, open_prs: state.open_prs?.length ?? 0, expired_locks: expired, active_locks: Object.keys(activeLocks) }, null, 2));
+  syncContext().then(({ state, expired, activeLocks }) => {
+    console.log(JSON.stringify({ ok: true, main_sha: state.deploy.last_main_sha, deploy: state.deploy.last_deploy_status, open_prs: state.open_prs?.length ?? 0, expired_locks: expired, active_locks: Object.keys(activeLocks) }, null, 2));
+  });
 }

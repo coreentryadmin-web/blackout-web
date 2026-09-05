@@ -80,7 +80,7 @@ export function discoverStandingWork(agent, state) {
 }
 
 function runSelect(args) {
-  const { state, activeLocks } = syncContext();
+  return syncContext().then(({ state, activeLocks }) => {
 
   if (!existsSync(MARKDOWN_FILES.workQueue)) {
     console.log(JSON.stringify({ ok: false, reason: "no_work_queue" }));
@@ -121,6 +121,7 @@ function runSelect(args) {
     )
   );
   process.exit(selected ? 0 : 3);
+  });
 }
 
 if (process.argv[1]?.endsWith("select-task.mjs")) {
