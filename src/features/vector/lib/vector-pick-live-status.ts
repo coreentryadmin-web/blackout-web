@@ -170,6 +170,19 @@ export function isSetupInvalidated(
 export function evaluateVectorPickLiveStatus(input: VectorPickLiveEvalInput): VectorPickLiveEval {
   const { quote, spot, entryMid } = input;
   const intent = input.intent ?? "fresh_entry";
+
+  // Defense-in-depth (CQ-054): upstream routes reject spot<=0, but this pure evaluator must
+  // fail closed if a future caller bypasses those gates — short-bias would not invalidate at 0.
+  if (!Number.isFinite(spot) || spot <= 0) {
+    return {
+      status: "dont_buy",
+      reason: "Invalid spot — live status unavailable",
+      premiumPctFromEntry: null,
+      invalidationLevel: null,
+      setupInvalidated: false,
+    };
+  }
+
   const mid =
     quote.mid ??
     zeroDteMidOf(quote.bid, quote.ask);
