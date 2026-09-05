@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:35:35.991Z",
+  "updated_at": "2026-09-05T17:03:40.967Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:26:09.737Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-05T16:49:35.153Z",
+      "lease_until": "2026-09-05T18:21:53.882Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": "6b064d20-21b2-4a69-9902-19d8c2d90840",
       "title": null
     },
     "BO-P1-0101": {
@@ -326,11 +326,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "86227e70b57d7dc962673f750a952173dea85088",
+    "last_main_sha": "3ae28b7721d5d696f4354949ea9e0b9cbfbac727",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:34:11Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978273189",
-    "last_deploy_sha": "86227e70b57d7dc962673f750a952173dea85088"
+    "last_deploy_at": "2026-09-05T16:59:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33979523407",
+    "last_deploy_sha": "3ae28b7721d5d696f4354949ea9e0b9cbfbac727"
   },
   "open_prs": [],
   "events": [
@@ -1622,6 +1622,19 @@
       "agent": "cursor",
       "run_id": "7241539d-60c7-4e6b-ac5b-c9b3aa85b828",
       "summary": "Continuous loop cycle complete. Peer review: pr-sweep 0 open PRs. Platform integrity 14/14 GREEN, lifecycle sweep GREEN (weekend RTH skip). Deploy drift: prod rolling feaba670 (in_progress 25m+), main now 86227e70 (#3995+#3998) with pending ECR run 33978273189. Opened draft #4001 (agent state sync — awaits Claude review). GitHub GraphQL rate-limited until ~17:06 UTC; REST still works. Next: monitor ECR → validate:deploy post-rollout; Claude peer-review #4001 + any new claude/* PRs."
+    },
+    {
+      "at": "2026-09-05T17:03:40.966Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:03:40.967Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e2282697-889f-45bf-9096-d2ce946e9687",
+      "summary": "PR wake cycle: #4002+#4003 merged (SPX lock fail-closed + Largo triple-hop test). Peer-reviewed APPROVED post-merge. Salvaged Phase5 docs branch cursor/cross-exam-phase5-docs-salvage pushed (awaiting PR — gh rate-limited). Platform integrity 14/14 GREEN, validate:deploy GREEN, ops:collect 0. ECR deploy pending #4003 @ 3ae28b772. Stale #3993/#3996/#3996 should close — revert risk."
     }
   ],
   "pr_activity": {
