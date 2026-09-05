@@ -6,30 +6,30 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 |---|---------|-------------------|
 | 1 | **(c)** | **MERGED** #3854 — force=1 claim guard |
 | 2 | **(c)** | **MERGED** #3850 — per-candidate dossier isolation |
-| 3 | **(c)** | **PR open** — post-commit WATCH/COMMITTED reconcile |
+| 3 | **(c)** | **MERGED** #3878 — post-commit WATCH/COMMITTED reconcile |
 | 4 | **(c)** | **MERGED** #3845 |
-| 5 | **(c)** | **PR open** — POSITIONING direction agreement for G-S6 |
-| 6 | **(c)** | **PR open** — deleted dead `v2/data-fusion.ts`; `swing-ingest.ts` canonical |
-| 7 | **(c)** | **MERGED** #3850 — G-S3 in v2/gates (legacy gates.ts still dead) |
+| 5 | **(c)** | **MERGED** #3878 — POSITIONING direction agreement for G-S6 |
+| 6 | **(c)** | **MERGED** #3878 — deleted dead `v2/data-fusion.ts`; `swing-ingest.ts` canonical |
+| 7 | **(c)** | **MERGED** #3850 — G-S3 in v2/gates (**partial:** legacy `gates.ts` still unwired) |
 | 8 | **(c)** | **MERGED** #3868 — G-S4 regime degraded→WATCH |
 | 9 | **(c)** | **MERGED** #3852 — halt/LULD |
 | 10 | **(c)** | **MERGED** #3850 — G-S3 earnings binary |
-| 11 | **(c)** | **Documented** — G-S3 is swing print protection; Cortex does not read earnings calendar |
+| 11 | **(c)** | **MERGED** #3886 — documented G-S3 vs Cortex earnings split |
 | 12 | **(c)** | **MERGED** #3878 — `finalizeSwingDossierForArchetype` post-classify catalyst realign |
 | 13 | **(a)** | Document; optional proximity-scaled hazard later |
 | 14 | **(a)** | Accept race; optional cross-horizon coalesce later |
-| 15 | **(c)** | **FIXED** — e2e test omitted horizon → `0dte` in `fetch.test.ts` |
+| 15 | **(c)** | **MERGED** #3878 — e2e test omitted horizon → `0dte` |
 | 16 | **(c)** | **MERGED** #3878 — `manage-edge-reads.ts` wired in active-refresh |
 | 17 | **(a)** | Roll = continuation; optional re-confluence flag later |
 | 18 | **(c)** | **MERGED** #3842 |
 | 19 | **(a)** | Structural stop pinned to thesis level by design |
-| 20 | **(c)** | **PR open** — archetype in `commit_key` |
-| 21 | **(c)** | **PR open** — key `gateBlockedByKey` by thesisKey (supersedes #3875) |
-| 22 | **(c)** | **PR open** — legacy `legacy:exempt` gate stamp |
+| 20 | **(c)** | **MERGED** #3878 — archetype in `commit_key` |
+| 21 | **(c)** | **MERGED** #3878 — `gateBlockedByKey` by thesisKey (supersedes #3875) |
+| 22 | **(c)** | **MERGED** #3878 — legacy `legacy:exempt` gate stamp |
 | 23 | **(a)** | Per-desk budget by design; cross-desk view not built |
 | 24 | **(a)** | Banger uncapped per operator directive |
-| 25 | **(c)** | **Answered** #3887 — keep per-desk partitions; no canonical cross-desk map |
-| 26 | **(c)** | **PR open** — CLOSED tab chain-composite P&L |
+| 25 | **(c)** | **MERGED** #3886 — `portfolio/cross-desk-theme.ts` (`sectorFor`) canonical for future cross-desk exposure |
+| 26 | **(c)** | **MERGED** #3878 — CLOSED tab chain-composite P&L |
 | 27 | **(c)** | **MERGED** #3861 — Tier-0 origin failure observability |
 | 28 | **(c)** | **MERGED** #3858 — CATALYST kind for event archetypes |
 | 29 | **(c)** | **MERGED** #3857 — Cortex fail-closed + pin |
@@ -131,11 +131,35 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 
 ---
 
-## Recommended fix queue (P1 first)
+## Round 2 (Q31–Q41) — triage (2026-09-05)
 
-1. **G-S3 earnings binary** (Q7+Q10) — **FIXED this PR**
-2. **Swing halt/LULD** (Q9) — real-money mark/commit on halted names
-3. **Per-candidate isolation** (Q2) — **FIXED this PR**
-4. **force=1 claim guard** (Q1) — double-open under recovery
-5. **Cortex fail-closed + pin** (Q29)
-6. **Event archetype CATALYST kind required** (Q28)
+| Q | Verdict | Fix status / PR |
+|---|---------|-------------------|
+| 31 | **(c)** | **OPEN** — no member notification on swing exit/roll (design) |
+| 32 | **(c)** | **OPEN** — swing/banger have zero Discord/push path vs 0DTE (design) |
+| 33 | **(c)** | **OPEN** — shadow rows never graded/refreshed (calibration evidence gap) |
+| 34 | **(c)** | **OPEN** — FINDINGS follow-up scoped but not built (shadow refresh loop) |
+| 35 | **(c)** | **OPEN** — no graduation criteria for shadow→budget loosening |
+| 36 | **(c)** | **OPEN** — evidence-only path races on concurrent refresh (non-terminal) |
+| 37 | **(c)** | **OPEN** — roll vs CLOSE race across overlapping cron invocations |
+| 38 | **(c)** | **PR open** #3893 — stale-but-200-OK underlying spot guard |
+| 39 | **(c)** | **OPEN** — ex-dividend not adjusted before structural_stop (design) |
+| 40 | **(c)** | **PR open** #3895 — wire `last_mark_at` → `HorizonPlay.markAsOf` |
+| 41 | **(c)** | **PR open** #3895 — SSE tier recheck on marks/vector/flows streams |
+
+**Actionable bugs in flight:** Q38 (#3893), Q40+Q41 (#3895). Remaining Q31–Q37, Q39 need design scoping.
+
+---
+
+## Recommended fix queue (updated 2026-09-05)
+
+### Done (Q1–Q30 batch)
+All P1 items from the original queue are merged except legacy `gates.ts` cleanup (Q7 partial).
+
+### Round 2 — next
+1. **Q38 stale underlying spot** — #3893 (peer ✅ GO AHEAD MERGE)
+2. **Q40+Q41 mark freshness + SSE entitlement** — #3895 (peer ✅ GO AHEAD MERGE)
+3. **Q31–Q32 member notifications** — design: swing/banger alert parity with 0DTE Discord path
+4. **Q33–Q35 shadow calibration lifecycle** — design: refresh loop + graduation criteria
+5. **Q36–Q37 cron concurrency** — design: evidence-only idempotency + roll/CLOSE arbitration
+6. **Q39 ex-dividend structural stop** — design: corporate-action adjustment or hazard flag
