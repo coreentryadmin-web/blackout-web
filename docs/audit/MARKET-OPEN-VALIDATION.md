@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0ap. Cluster snapshot change_pct without open_source guard — fix/cluster-spot-change-open-source-guard (pending)
+
+**What was broken:** `readClusterIndexSpot()` served `change_pct` from `spx:pulse:snapshot` whenever finite, without checking `open_source`. Web-tier GEX/Thermal cache readers on the Redis cluster fallback could pair a live price with session-open–anchored change% (`ws-bar`), while the SPX desk and `liveWsIndexSpot` already null non-REST anchors.
+
+**Fix:** `clusterIndexSpotChangePct()` — only returns change% when `open_source === "rest"`.
+
+**Check at the open:** Thermal SPX matrix header day-change% vs SPX desk pulse — must agree or both show honest absence; never diverge on anchor basis when reading via cluster snapshot on a cold web replica.
+
 ### 0ao. Vector volume profile extended-hours pollution — fix/vector-volume-profile-rth-scope (pending)
 
 **What was broken:** Default-on Vector volume profile fed the full multi-session minute buffer (including premarket/after-hours) into `computeVolumeProfile`, so POC and value-area bands on equities could anchor to extended-hours spikes instead of the current RTH session. HOD/LOD, opening range, and VWAP got the RTH gate in the 2026-08-05 audit; volume profile was missed.
