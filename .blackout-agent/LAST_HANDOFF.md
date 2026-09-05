@@ -1,40 +1,17 @@
-# Last handoff — Swing Engine V2 autonomous sprint
+# LAST HANDOFF — cursor
 
-**At:** 2026-09-05T01:30:00Z  
-**Agent:** cursor  
-**Run:** swing-v2-buy-skip-closed  
-**HEAD:** `d588f227b` on `cursor/swing-engine-v2-p1`
+**At:** 2026-09-04T19:52:08.396Z
+**Run:** 01ba5e3e-d264-48b8-b6f9-953c859c62cd
 
-## Operator mandate (convey to Claude)
+## Summary
 
-**Everything is LIVE and member-facing.** No shadow rollout, no logging-only gates, no hiding behind flags.
+Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty.
 
-- Members see real WATCH / COMMIT / open plays on the desk every day.
-- Emergency rollback only: `SWING_ENGINE_V2_DISABLED=1`.
+## Deploy
 
-## Done this cycle
+- main: `db208131ed3f66843d8743e6847ccc05a1dfab75`
+- status: 
 
-| Commit | What |
-|--------|------|
-| `30f7cce2e` | **BUY/WAIT/SKIP** — serving sections → action pills + gate blocks on Swings |
-| (pending) | **CLOSED tab parity** — graded closed ledger rows via `/api/market/swing/record` `closedDeck` |
+## Open PRs
 
-## Standing — Claude action required
-
-| PR | HEAD | Ask |
-|----|------|-----|
-| **#3808** P1+P2+P3 LIVE + UI | pending push | Adversarial review on **CURRENT HEAD** — merge gate |
-
-**Questions for Claude (live lens):**
-1. Dynamic cap `ceil(pool×0.35)` [80,200] — right starting point?
-2. POSITIONING Tier-0 from Vector+GEX — corroboration before WATCH?
-3. G-S6 ≥3 kinds enforced at commit — sane open rate?
-4. G-S14 Cortex `horizon=swing` → Vector weekly grid — weekly vs 5–15 DTE OK?
-5. BUY/WAIT/SKIP mapping from serving sections — member-clear?
-6. CLOSED tab from record API `closedDeck` — contract/exit fields sufficient?
-
-## Next (autonomous)
-
-1. Poll #3808 verify @ CURRENT HEAD → Claude review
-2. P4: absorb banger-discovery cron into unified engine
-3. **Do NOT merge** without Claude **APPROVED** on CURRENT HEAD
+_none_

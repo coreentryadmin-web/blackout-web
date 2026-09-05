@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T01:35:00.000Z",
+  "updated_at": "2026-09-04T22:56:27.878Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -234,25 +234,6 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
-    },
-    "pr-3808": {
-      "pr": 3808,
-      "head_sha": "d588f227b",
-      "reviewer": "claude",
-      "verdict": "AWAITING — adversarial review @ d588f227b (BUY/SKIP + CLOSED + Buyable strip)",
-      "reviewed_at": null,
-      "safe_to_merge": false,
-      "operator_mandate": "LIVE member-facing only. No shadow rollout, no flag-gated hiding. We monitor open plays daily and tune gates/floors/caps in prod when needed — but members always see real WATCH/COMMIT behavior. Emergency rollback = SWING_ENGINE_V2_DISABLED=1 only.",
-      "questions": [
-        "Is ceil(pool*0.35) clamped [80,200] right recall/precision for swings? (tunable live — not a reason to shadow)",
-        "POSITIONING from Vector leaders + GEX — wall alignment alone OK at Tier-0 or require flow corroboration before WATCH?",
-        "G-S6 confluence ≥3 kinds (≥2 event) enforced LIVE at commit — threshold sane for member-visible open rate?",
-        "G-S14 Cortex preflight now uses horizon=swing → Vector weekly grid (not 0DTE interim) — weekly vs full 5–15 DTE window OK?",
-        "VECTOR + BANGER origins overlapping STRUCTURE — intentional corroboration or dedupe needed?",
-        "BUY/WAIT/SKIP from serving sections — member-clear entry guidance?",
-        "CLOSED tab from record API closedDeck — sufficient contract/exit fidelity?",
-        "NOT IN SCOPE: shadow deploy / separate enforce flags / logging-only paths — operator rejected those"
-      ]
     }
   },
   "agents": {
@@ -262,158 +243,117 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T01:30:00.000Z",
-      "current_task": "BO-SWING-V2-P1P2"
+      "last_seen": "2026-09-04T19:50:51.819Z",
+      "current_task": "BO-P1-0103"
     }
   },
   "deploy": {
-    "last_main_sha": "656a10726849a7891c4f58d72975f48ca7e23f62",
+    "last_main_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T00:00:26Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33931512479",
-    "last_deploy_sha": "656a10726849a7891c4f58d72975f48ca7e23f62"
+    "last_deploy_at": "2026-09-04T22:52:50Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
+    "last_deploy_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450"
   },
   "open_prs": [
     {
-      "number": 3808,
-      "title": "feat(swing-v2): P1 dynamic recall + P2 POSITIONING origin",
-      "branch": "cursor/swing-engine-v2-p1",
+      "number": 3785,
+      "title": "fix(api): roundFloats on dark-pool + future guard on Vector live-quote staleness",
+      "branch": "fix/dark-pool-roundfloats-vector-live-future-guard",
       "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "PENDING",
-      "head_sha": "d588f227b",
-      "updated_at": "2026-09-05T01:35:00Z"
-    },
-    {
-      "number": 3807,
-      "title": "docs(swing): SWING-ENGINE-V2 architectural redesign",
-      "branch": "cursor/swing-engine-v2-design",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
+      "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T00:00:39Z"
+      "updated_at": "2026-09-04T22:56:15Z"
     },
     {
-      "number": 3806,
-      "title": "chore(autopilot): cursor PR-event sweep — peer reviews #3804/#3794",
-      "branch": "cursor/autopilot-work-loop-ad0a",
+      "number": 3784,
+      "title": "fix(learn): stop Learn nav describing Night Hawk as evening-only",
+      "branch": "fix/learn-nav-night-hawk-stale-descriptor",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-04T22:56:02Z"
+    },
+    {
+      "number": 3783,
+      "title": "fix(swing): discovery COMMIT without ledger is pre-entry for banger merge",
+      "branch": "cursor/swing-command-bugbot-fixes",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": true,
+      "draft": false,
       "verify": "unknown",
-      "updated_at": "2026-09-05T00:00:02Z"
+      "updated_at": "2026-09-04T22:49:40Z"
     },
     {
-      "number": 3805,
-      "title": "fix(spx,spot-stream): peer-reviewed batch — desk peek zero guard + SSE roundFloats",
-      "branch": "fix/peer-review-rebase-batch",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T23:55:35Z"
-    },
-    {
-      "number": 3804,
-      "title": "fix(spot-stream): roundFloats on stock spot SSE wire boundary",
-      "branch": "fix/spot-stream-roundfloats",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T23:58:59Z"
-    },
-    {
-      "number": 3802,
-      "title": "chore(autopilot): cursor peer-review wave handoff — platform GREEN",
-      "branch": "cursor/autopilot-work-loop-0158",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T23:42:58Z"
-    },
-    {
-      "number": 3801,
-      "title": "chore(autopilot): cursor PR-event sweep handoff state",
-      "branch": "cursor/autopilot-pr-event-sweep",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T23:40:24Z"
-    },
-    {
-      "number": 3800,
-      "title": "chore(state): sync autopilot heartbeat + x-intel rotation state",
-      "branch": "chore/autopilot-state-sync-20260904-2335",
-      "author": "coreentryadmin-web",
-      "agent": "human",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T00:02:59Z"
-    },
-    {
-      "number": 3798,
-      "title": "chore(autopilot): cursor handoff — peer review wave, #3774 test assist",
-      "branch": "cursor/autopilot-work-loop-6f55",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T23:48:57Z"
-    },
-    {
-      "number": 3797,
-      "title": "fix(seo): stop Pricing describing a six-module platform that sells seven",
-      "branch": "fix/pricing-seo-stale-six-modules",
+      "number": 3782,
+      "title": "fix(test): isolate quote route negative-cache test from the real UW fallback",
+      "branch": "fix/quote-uw-fallback-test-isolation",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T00:02:44Z"
+      "updated_at": "2026-09-04T22:56:26Z"
     },
     {
-      "number": 3796,
-      "title": "chore(autopilot): cursor PR-event sweep — CI fixes + #3774 review",
-      "branch": "cursor/autopilot-work-loop-2a4d",
+      "number": 3781,
+      "title": "docs(audit): resolve committed git conflict markers on main in MARKET-OPEN-VALIDATION.md",
+      "branch": "docs/main-market-open-validation-conflict-markers",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-04T22:50:33Z"
+    },
+    {
+      "number": 3780,
+      "title": "fix(docs): resolve MARKET-OPEN-VALIDATION merge conflict markers on main",
+      "branch": "cursor/autopilot-work-loop-3021",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T23:27:01Z"
+      "updated_at": "2026-09-04T22:54:05Z"
     },
     {
-      "number": 3795,
-      "title": "chore(autopilot): cursor work-loop handoff — peer reviews #3774/#3786 pending CI",
-      "branch": "cursor/autopilot-work-loop-fe5a",
+      "number": 3779,
+      "title": "chore(autopilot): cursor session handoff — peer-review wave merged, platform GREEN",
+      "branch": "cursor/autopilot-work-loop-eb39",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T23:34:46Z"
+      "updated_at": "2026-09-04T22:49:47Z"
     },
     {
-      "number": 3793,
-      "title": "chore(autopilot): cursor handoff state sync — #3774 review pending",
-      "branch": "cursor/autopilot-state-1788563465",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T23:25:30Z"
-    },
-    {
-      "number": 3788,
-      "title": "fix(marketing): reposition Meridian from earnings-only to catalyst intelligence",
-      "branch": "fix/meridian-manifest-catalyst-coverage",
+      "number": 3778,
+      "title": "fix(swing): keep open Banger positions visible once they age under 5 DTE",
+      "branch": "fix/banger-sub5dte-visibility",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T00:00:14Z"
+      "updated_at": "2026-09-04T22:55:30Z"
+    },
+    {
+      "number": 3774,
+      "title": "fix(ws): guard UW L1 cache + stocks/polygon stall against future timestamps",
+      "branch": "fix/ws-stall-uw-cache-future-timestamp",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T22:45:26Z"
+    },
+    {
+      "number": 3773,
+      "title": "fix(swing-command): Bugbot blockers — banger merge collision + open-book fetch",
+      "branch": "cursor/hourly-autonomous-wake",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-04T22:52:11Z"
     }
   ],
   "events": [
@@ -1244,24 +1184,6 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 10
-    },
-    {
-      "at": "2026-09-05T00:03:04.869Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 14
-    },
-    {
-      "at": "2026-09-05T00:03:06.027Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 14
-    },
-    {
-      "at": "2026-09-05T00:03:07.258Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 14
     }
   ]
 }
