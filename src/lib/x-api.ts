@@ -1,4 +1,5 @@
 import * as crypto from "node:crypto";
+import { minutesSinceIso } from "@/lib/ws/timestamp-freshness";
 
 const X_TWEET_URL = "https://api.x.com/2/tweets";
 const X_MEDIA_UPLOAD_URL =
@@ -494,7 +495,7 @@ export async function minutesSinceLastOwnPost(): Promise<number | null> {
   const tweets = await fetchUserTweets(X_ACCOUNT_USER_ID, 5);
   const latest = tweets.find((t) => t.created_at)?.created_at;
   if (!latest) return null;
-  return (Date.now() - new Date(latest).getTime()) / 60_000;
+  return minutesSinceIso(latest);
 }
 
 export interface XAccountMetrics {
