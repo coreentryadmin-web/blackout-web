@@ -128,6 +128,14 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** On `/heatmap` triple-desk view during RTH, each column's spot vs day-change % should stay coherent when the live quote stream moves away from the matrix snapshot spot.
 
+### 0a-1d. Thermal compare strip change_pct not rebased on live push — fix/thermal-compare-strip-change-pct-rebase (pending)
+
+**What was broken:** `ThermalCompareStrip` (SPY/SPX/QQQ compare cards above the matrix) read raw `data.change_pct` from the heatmap poll while live push spot could diverge from the matrix snapshot — same bug class as 0a-1c but on the compare strip callsite (CLQ-018).
+
+**Fix:** One `useLiveQuoteStream` for all compare tickers; each card rebases via `rebaseChangePct(pushSpot, { price: matrixSpot, change_pct: matrixChangePct })` matching `ThermalTripleDesk`.
+
+**Check at the open:** On `/heatmap`, compare-strip % for SPY/SPX/QQQ should match the triple-desk column header for the same ticker during RTH when push is connected.
+
 ### 0a-1b. Swing discovery WATCH spot refresh trusted stale last trades — fix/swing-discovery-underlying-spot-freshness (pending, #3893 sibling)
 
 **What was broken:** `swing-discovery` refreshed WATCH-name underlying spots via `fetchStockLastTrade` trusting any finite positive `.p` with no SIP timestamp check. A degraded-but-200-OK feed could overwrite plan-entry fallback with a stale price, skewing FORMING/TRIGGERED/EXTENDED setup-maturity flags on the member board.
