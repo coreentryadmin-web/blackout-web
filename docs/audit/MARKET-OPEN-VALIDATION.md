@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0ap. SPX desk brief GEX king mislabeled as pin — fix/spx-desk-brief-gex-king-label (pending)
+
+**What was broken:** `composeSpxDeskBrief` collapsed `gex_king ?? max_pain` into one strike but always labeled it `pin … (price magnet)` in LEVELS/WHY/NEXT 5M — even when the GEX king node drove the magnet (long-gamma). Pin forecast panel and metric labels were already honest (#3816); the BIE commentary rail was not.
+
+**Fix:** `resolveDeskMagnet()` tracks `gex_king` vs `max_pain` kind; LEVELS/WHY/NEXT 5M use `SPX_PIN_GEX_KING_LABEL_PROSE` or effective-max-pain pin prose.
+
+**Check at the open:** On SPX Slayer during long-gamma RTH when GEX king is within 25 pts of spot, commentary rail LEVELS must read `GEX king node <strike>` — not `pin (price magnet)`.
+
 ### 0ao. Vector volume profile extended-hours pollution — fix/vector-volume-profile-rth-scope (pending)
 
 **What was broken:** Default-on Vector volume profile fed the full multi-session minute buffer (including premarket/after-hours) into `computeVolumeProfile`, so POC and value-area bands on equities could anchor to extended-hours spikes instead of the current RTH session. HOD/LOD, opening range, and VWAP got the RTH gate in the 2026-08-05 audit; volume profile was missed.
