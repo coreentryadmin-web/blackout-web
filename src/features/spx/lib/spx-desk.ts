@@ -279,22 +279,25 @@ async function fetchUwDeskRestSupplemental(opts: {
   if (!uwConfigured()) {
     return { nope: null, maxPain: null, iv: null };
   }
-  const tasks: Array<() => Promise<unknown>> = [
-    () =>
-      fetchUwNope("SPX")
-        .catch(() => null)
-        .then((r) => r ?? fetchUwNope("SPY").catch(() => null)),
-  ];
-  const maxPainSlot = opts.needMaxPain ? tasks.length : -1;
-  if (opts.needMaxPain) tasks.push(() => fetchUwMaxPain("SPX").catch(() => null));
-  const ivSlot = opts.needIv ? tasks.length : -1;
-  if (opts.needIv) tasks.push(() => fetchUwIvRank("SPX").catch(() => null));
-  const results = await runUwPooled(tasks);
-  return {
-    nope: results[0] as Awaited<ReturnType<typeof fetchUwNope>> | null,
-    maxPain: maxPainSlot >= 0 ? (results[maxPainSlot] as number | null) : null,
-    iv: ivSlot >= 0 ? (results[ivSlot] as number | null) : null,
-  };
+  // Tagged so spx-evaluate / spx-signal-observe cold rebuilds cannot consume live UW slots.
+  return runWithBackgroundUwSweep(async () => {
+    const tasks: Array<() => Promise<unknown>> = [
+      () =>
+        fetchUwNope("SPX")
+          .catch(() => null)
+          .then((r) => r ?? fetchUwNope("SPY").catch(() => null)),
+    ];
+    const maxPainSlot = opts.needMaxPain ? tasks.length : -1;
+    if (opts.needMaxPain) tasks.push(() => fetchUwMaxPain("SPX").catch(() => null));
+    const ivSlot = opts.needIv ? tasks.length : -1;
+    if (opts.needIv) tasks.push(() => fetchUwIvRank("SPX").catch(() => null));
+    const results = await runUwPooled(tasks);
+    return {
+      nope: results[0] as Awaited<ReturnType<typeof fetchUwNope>> | null,
+      maxPain: maxPainSlot >= 0 ? (results[maxPainSlot] as number | null) : null,
+      iv: ivSlot >= 0 ? (results[ivSlot] as number | null) : null,
+    };
+  });
 }
 
 /**
@@ -2271,14 +2274,16 @@ export async function buildSpxDeskFlow(): Promise<SpxDeskFlow> {
   }
 
   const [darkPool, uwFlow, greekExpRows, flowByExpiry, netFlowByExpiry, netPremTicks] = uwConfigured()
-    ? await runUwPooled([
-        () => resolveDarkPool("SPX", { limit: 20, min_premium: 500_000 }),
-        () => resolveFlow0dte("SPX"),
-        () => fetchUwGreekExposureExpiry("SPX").catch(() => []),
-        () => fetchUwFlowPerExpiry("SPX", 12).catch(() => []),
-        () => fetchUwNetFlowExpiry(20).catch(() => []),
-        () => fetchUwNetPremTicks("SPY").catch(() => []),
-      ])
+    ? await runWithBackgroundUwSweep(() =>
+        runUwPooled([
+          () => resolveDarkPool("SPX", { limit: 20, min_premium: 500_000 }),
+          () => resolveFlow0dte("SPX"),
+          () => fetchUwGreekExposureExpiry("SPX").catch(() => []),
+          () => fetchUwFlowPerExpiry("SPX", 12).catch(() => []),
+          () => fetchUwNetFlowExpiry(20).catch(() => []),
+          () => fetchUwNetPremTicks("SPY").catch(() => []),
+        ]),
+      )
     : [null, null, [], [], [], []];
 
   const canonicalGex = await resolveCanonicalDeskGex(price);
