@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T22:00:21.179Z",
+  "updated_at": "2026-09-05T22:07:30.524Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -91,9 +91,9 @@
   "deploy": {
     "last_main_sha": "d584df68f22290d965a531c80b04dc8cab0bf1de",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T21:51:22Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993937878",
-    "last_deploy_sha": "73e58b8937d8a20704b2527c4be090315d9de015"
+    "last_deploy_at": "2026-09-05T22:00:59Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33994682659",
+    "last_deploy_sha": "2a0433e67b2872a332a0ac7862e9fd4776071aab"
   },
   "events": [
     {
@@ -450,6 +450,19 @@
       "agent": "cursor",
       "run_id": "f5f69ce9-3147-4bd1-a592-7717bf9535bd",
       "summary": "Lifecycle 6/6 GREEN (ops/deploy/api-auth/platform-integrity/seo/rth-open skip off-hours). Independent APPROVED #4053+#4054 recorded. Branch cursor/autopilot-work-loop-d4e7 pushed d4867e70. GitHub REST exhausted — PR comments deferred."
+    },
+    {
+      "at": "2026-09-05T22:07:30.523Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T22:07:30.524Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e2bc53ea-93bc-4b97-a719-6a1fbea91587",
+      "summary": "Cycle complete: #4053 merged. #4054 verify GREEN + APPROVED + marked ready. Lifecycle 6/6 GREEN. ops:collect 0. validate:deploy GREEN. Posted peer-review on both. Branch 9bb6d9a pushed."
     }
   ],
   "open_prs": [
@@ -459,19 +472,9 @@
       "branch": "fix/cluster-health-vix-sse-change",
       "author": "coreentryadmin-web",
       "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T22:00:11Z"
-    },
-    {
-      "number": 4053,
-      "title": "fix(vector): undated universe rows never age out of the scanner snapshot",
-      "branch": "fix/vector-universe-undated-row-never-expires",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:59:57Z"
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T22:07:29Z"
     }
   ],
   "pr_activity": {
