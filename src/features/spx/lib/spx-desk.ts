@@ -106,7 +106,7 @@ import {
   type OiChangeItem,
   type UwMacroIndicatorSnapshot,
 } from "@/lib/providers/unusual-whales";
-import { runUwPooled } from "@/lib/providers/uw-rate-limiter";
+import { runUwPooled, runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { fetchEngine } from "@/lib/engine";
 import { parseEngineIntelOverlay, type EngineIntelOverlay } from "@/lib/engine-intel-overlay";
 import { indexStore, getIndexFeedFreshness, INDEX_FEED_STALL_MS } from "@/lib/ws/polygon-socket";
@@ -321,30 +321,35 @@ let lastGoodDeskEnrichment: DeskEnrichmentSticky | null = null;
 let deskEnrichmentInFlight: Promise<void> | null = null;
 
 async function fetchDeskEnrichmentFields(today: string): Promise<DeskEnrichmentSticky> {
-  const netPremTicks = await resolveNetPremTicksForDesk("SPY");
-  const [greekExpRows, flowByExpiry, netFlowByExpiry, mag7Rows, macroIndicators] =
-    uwConfigured()
-      ? await runUwPooled([
-          () => fetchUwGreekExposureExpiry("SPX").catch(() => []),
-          () => fetchUwFlowPerExpiry("SPX", 12).catch(() => []),
-          () => fetchUwNetFlowExpiry(20).catch(() => []),
-          () => fetchUwGroupGreekFlow("mag7").catch(() => []),
-          () => fetchUwMacroIndicators().catch(() => []),
-        ])
-      : [[], [], [], [], []];
+  // Tagged as a background sweep so desk-touching crons (spx-evaluate, spx-signal-observe,
+  // market-regime-detector, data-correctness) that trigger enrichment refresh on a stale sticky
+  // cannot consume the last UW concurrency slot reserved for live member traffic.
+  return runWithBackgroundUwSweep(async () => {
+    const netPremTicks = await resolveNetPremTicksForDesk("SPY");
+    const [greekExpRows, flowByExpiry, netFlowByExpiry, mag7Rows, macroIndicators] =
+      uwConfigured()
+        ? await runUwPooled([
+            () => fetchUwGreekExposureExpiry("SPX").catch(() => []),
+            () => fetchUwFlowPerExpiry("SPX", 12).catch(() => []),
+            () => fetchUwNetFlowExpiry(20).catch(() => []),
+            () => fetchUwGroupGreekFlow("mag7").catch(() => []),
+            () => fetchUwMacroIndicators().catch(() => []),
+          ])
+        : [[], [], [], [], []];
 
-  return {
-    fetchedAt: Date.now(),
-    greek_exposure: summarizeGreekExposureByExpiry(
-      greekExpRows as Record<string, unknown>[],
-      today
-    ),
-    flow_by_expiry: flowByExpiry as Record<string, unknown>[],
-    net_flow_by_expiry: netFlowByExpiry as Record<string, unknown>[],
-    net_prem_ticks: netPremTicks,
-    mag7_greek_flow: summarizeGroupGreekFlow("mag7", mag7Rows as Record<string, unknown>[]),
-    macro_indicators: macroIndicators as UwMacroIndicatorSnapshot[],
-  };
+    return {
+      fetchedAt: Date.now(),
+      greek_exposure: summarizeGreekExposureByExpiry(
+        greekExpRows as Record<string, unknown>[],
+        today
+      ),
+      flow_by_expiry: flowByExpiry as Record<string, unknown>[],
+      net_flow_by_expiry: netFlowByExpiry as Record<string, unknown>[],
+      net_prem_ticks: netPremTicks,
+      mag7_greek_flow: summarizeGroupGreekFlow("mag7", mag7Rows as Record<string, unknown>[]),
+      macro_indicators: macroIndicators as UwMacroIndicatorSnapshot[],
+    };
+  });
 }
 
 /** WS → Redis → REST for net prem ticks (net_flow channel). */
