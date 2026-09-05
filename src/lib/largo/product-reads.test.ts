@@ -526,6 +526,11 @@ describe("etSessionNow / ageSecondsFrom", () => {
     assert.equal(ageSecondsFrom("not-a-date"), null);
     assert.equal(ageSecondsFrom("2026-08-21T00:24:56.192Z", Date.parse("2026-08-21T00:25:56.192Z")), 60);
   });
+
+  it("returns null for a future stamp rather than false-fresh 0s", () => {
+    const now = Date.parse("2026-08-21T00:25:56.192Z");
+    assert.equal(ageSecondsFrom("2026-08-21T00:30:00.000Z", now), null);
+  });
 });
 
 describe("thermalCompareRow — a multi-expiry aggregate names its scope", () => {

@@ -198,7 +198,9 @@ function ageSecondsFromIso(iso: string | null | undefined, now: number): number 
   if (!iso) return null;
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return null;
-  return Math.max(0, Math.round((now - t) / 1000));
+  const age = Math.round((now - t) / 1000);
+  // A future stamp is clock skew, not a negative age — report it as unusable rather than as "0s old".
+  return age < 0 ? null : age;
 }
 
 /**

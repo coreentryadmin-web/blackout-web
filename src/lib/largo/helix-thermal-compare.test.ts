@@ -360,6 +360,16 @@ describe("compare card — the stamp anchoring (continued)", () => {
     assert.equal(gamma.freshness, "cached");
   });
 
+  it("returns null age_seconds for a future matrix asof rather than false-fresh 0", () => {
+    const now = Date.parse("2026-08-21T00:25:56.192Z");
+    const { gamma } = compareSidesFrom(
+      { ...LIVE_SPY_POS, asof: "2026-08-21T00:30:00.000Z" },
+      NO_FLOW,
+      now
+    );
+    assert.equal(gamma.age_seconds, null);
+  });
+
   it("reports nulls rather than a borrowed stamp when there is no matrix", () => {
     const { gamma } = compareSidesFrom(null, NO_FLOW);
     assert.equal(gamma.matrix_asof, null);

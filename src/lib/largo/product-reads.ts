@@ -1342,7 +1342,9 @@ export function ageSecondsFrom(iso: string | null | undefined, now = Date.now())
   if (!iso) return null;
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return null;
-  return Math.max(0, Math.round((now - t) / 1000));
+  const age = Math.round((now - t) / 1000);
+  // A future stamp is clock skew, not a negative age — report it as unusable rather than as "0s old".
+  return age < 0 ? null : age;
 }
 
 /** The subset of `GexPositioning` the compare strip serves. Structural so this stays pure. */
