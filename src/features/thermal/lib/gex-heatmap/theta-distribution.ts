@@ -123,9 +123,15 @@ export function analyzeThetaDistribution(
     .map((bucket, idx) => ({ ...bucket, rank: idx + 1 }));
 
   // Mark strikes as clustered if they're within 2 strikes of a concentration strike.
+  // "2 strikes" means 2 positions in STRIKE-PRICE order — `buckets` itself is sorted by
+  // |charm| magnitude at this point (see the .sort((a,b) => b.absCharm - a.absCharm) above),
+  // so indexing into it would measure "2 ranks apart by exposure", not "2 strikes apart in
+  // price" — two separated pin walls could land next to each other in the magnitude-rank
+  // order and read as one cluster.
+  const bucketsByStrike = [...buckets].sort((a, b) => a.strike - b.strike);
   const concentrationStrikes = buckets.filter((b) => b.isConcentration).map((b) => b.strike);
-  const strikeArray = buckets.map((b) => b.strike);
-  buckets.forEach((bucket) => {
+  const strikeArray = bucketsByStrike.map((b) => b.strike);
+  bucketsByStrike.forEach((bucket) => {
     if (bucket.isConcentration) bucket.isClustered = true;
     else {
       const idx = strikeArray.indexOf(bucket.strike);
@@ -155,10 +161,12 @@ export function analyzeThetaDistribution(
 
   const maxGap = gapStrikes.length > 0 ? Math.max(...gapStrikes.map((g) => g.gap)) : 0;
 
-  // Count clusters (groups of consecutive strikes with >5% absolute charm each).
+  // Count clusters (groups of CONSECUTIVE-IN-PRICE strikes with >5% absolute charm each) —
+  // walk the strike-ordered array, not the magnitude-rank `buckets`, for the same reason
+  // as above.
   let clusterCount = 0;
   let inCluster = false;
-  for (const bucket of buckets) {
+  for (const bucket of bucketsByStrike) {
     if (bucket.pctOfTotal > 5) {
       if (!inCluster) clusterCount++;
       inCluster = true;

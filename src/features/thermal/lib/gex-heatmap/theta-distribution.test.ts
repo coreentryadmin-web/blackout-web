@@ -86,6 +86,42 @@ describe("theta-distribution", () => {
     assert.equal(analyzeThetaDistribution(cellsNeutral, 500, 0.03).pinBias, "neutral");
   });
 
+  it("counts two separated pin walls as TWO clusters, not one", () => {
+    // Two dominant strikes (~49% each) with three quiet strikes between them. `buckets` is
+    // sorted by |charm| MAGNITUDE internally — the two big strikes are equal, so a stable
+    // sort keeps them adjacent to each other in that order (both rank ahead of the three
+    // quiet strikes), which would make a magnitude-order walk see them as ONE consecutive
+    // run. Walking in STRIKE-PRICE order (the fix) correctly sees two runs separated by
+    // three strikes below the 5% threshold.
+    const cells: GexCells = {
+      "485": { expiry1: 5000 },
+      "490": { expiry1: 50 },
+      "495": { expiry1: 50 },
+      "500": { expiry1: 50 },
+      "505": { expiry1: 5000 },
+    };
+    const result = analyzeThetaDistribution(cells, 495, 0.03);
+    assert.equal(result.clusterCount, 2, "Two strikes separated by three quiet strikes are two clusters, not one");
+  });
+
+  it("a strike adjacent (in price) to a pin wall is clustered, even if it ranks far from that wall by |charm|", () => {
+    // Same fixture as above. 500 sits one strike below the 505 wall — it must read as
+    // clustered. The bug computed "within 2 strikes" using |charm|-MAGNITUDE-rank position
+    // instead of strike-PRICE position, under which 500 ranked far from both walls and was
+    // wrongly marked NOT clustered.
+    const cells: GexCells = {
+      "485": { expiry1: 5000 },
+      "490": { expiry1: 50 },
+      "495": { expiry1: 50 },
+      "500": { expiry1: 50 },
+      "505": { expiry1: 5000 },
+    };
+    const result = analyzeThetaDistribution(cells, 495, 0.03);
+    const strike500 = result.buckets.find((b) => b.strike === 500);
+    assert.ok(strike500);
+    assert.equal(strike500.isClustered, true, "500 is one strike from the 505 wall — must be clustered");
+  });
+
   it("identifies gaps >5 points", () => {
     const cells: GexCells = {
       "490": { expiry1: 100 },

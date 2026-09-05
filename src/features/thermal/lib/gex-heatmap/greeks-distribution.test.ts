@@ -107,6 +107,42 @@ describe("greeks-distribution", () => {
     assert.ok(result.clusterCount >= 1, "Should detect at least one cluster");
   });
 
+  it("analyzeGreeksDistribution counts two separated walls as TWO clusters, not one", () => {
+    // Two dominant strikes (~49% each) with three quiet strikes between them. `buckets` is
+    // sorted by gamma MAGNITUDE internally — the two big strikes are equal, so a stable sort
+    // keeps them adjacent to each other in that order (both rank ahead of the three quiet
+    // strikes), which would make a magnitude-order walk see them as ONE consecutive run.
+    // Walking in STRIKE-PRICE order (the fix) correctly sees two runs separated by three
+    // strikes below the 5% threshold.
+    const cells: GexCells = {
+      "5630": { "2026-09-19": 5000 },
+      "5640": { "2026-09-19": 50 },
+      "5650": { "2026-09-19": 50 },
+      "5660": { "2026-09-19": 50 },
+      "5670": { "2026-09-19": 5000 },
+    };
+    const result = analyzeGreeksDistribution(cells, 5650, 0.03);
+    assert.equal(result.clusterCount, 2, "Two strikes separated by three quiet strikes are two clusters, not one");
+  });
+
+  it("analyzeGreeksDistribution: a strike adjacent (in price) to a wall is clustered, even if it ranks far from that wall by exposure", () => {
+    // Same fixture as above. 5660 sits one strike below the 5670 wall — it must read as
+    // clustered. The bug computed "within 2 strikes" using gamma-MAGNITUDE-rank position
+    // instead of strike-PRICE position, under which 5660 ranked far from both walls and was
+    // wrongly marked NOT clustered.
+    const cells: GexCells = {
+      "5630": { "2026-09-19": 5000 },
+      "5640": { "2026-09-19": 50 },
+      "5650": { "2026-09-19": 50 },
+      "5660": { "2026-09-19": 50 },
+      "5670": { "2026-09-19": 5000 },
+    };
+    const result = analyzeGreeksDistribution(cells, 5650, 0.03);
+    const strike5660 = result.buckets.find((b) => b.strike === 5660);
+    assert.ok(strike5660);
+    assert.equal(strike5660.isClustered, true, "5660 is one strike from the 5670 wall — must be clustered");
+  });
+
   it("analyzeGreeksDistribution calculates exposure spread", () => {
     const cells: GexCells = {
       "5540": { "2026-09-19": 5000 },
