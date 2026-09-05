@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:44:27.667Z",
+  "updated_at": "2026-09-05T21:45:30.284Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T21:38:28.064Z",
-      "lease_until": "2026-09-05T23:14:25.334Z",
+      "claimed_at": "2026-09-05T21:40:04.984Z",
+      "lease_until": "2026-09-05T23:10:52.095Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "4a1c945a-f46b-43f7-be59-0e15d8cb764e"
+      "run_id": "9e177c0b-d117-41b1-897b-5ef873773a4a"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -47,11 +47,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b2c84500eb5e91487a0002d8cc33ec21864fe5c0",
+    "last_main_sha": "7345b9a6352928ffb53134c263f9e81dd7b1845c",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T21:38:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993614498",
-    "last_deploy_sha": "7345b9a6352928ffb53134c263f9e81dd7b1845c"
+    "last_deploy_at": "2026-09-05T21:45:07Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993937878",
+    "last_deploy_sha": "73e58b8937d8a20704b2527c4be090315d9de015"
   },
   "events": [
     {
@@ -225,6 +225,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-05T21:45:30.284Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:45:30.284Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "97d47686-9c07-4de5-aa3d-b1c5773e2e9c",
+      "summary": "Autopilot cycle: deploy GREEN (7345b9a), lifecycle GREEN off-hours, ops:collect 0 items. No claude/fix PRs for peer review. #4047 swing play-brief verify GREEN (5/5 local tests) — awaiting Claude adversarial review before merge."
     }
   ],
   "open_prs": [
@@ -236,7 +249,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:42:17Z"
+      "updated_at": "2026-09-05T21:45:00Z"
     },
     {
       "number": 4048,
@@ -245,18 +258,8 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:41:20Z"
-    },
-    {
-      "number": 4047,
-      "title": "feat(swing): Ask Largo — deterministic play intelligence engine",
-      "branch": "cursor/swing-play-intelligence-engine",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T21:44:10Z"
+      "verify": "unknown",
+      "updated_at": "2026-09-05T21:45:15Z"
     }
   ],
   "pr_activity": {
