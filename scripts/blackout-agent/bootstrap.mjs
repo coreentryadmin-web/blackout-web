@@ -17,7 +17,7 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv);
-const { state, activeLocks } = syncContext();
+const { state, activeLocks } = await syncContext();
 const peer = args.agent === "claude" ? "cursor" : "claude";
 
 const report = {

@@ -1,4 +1,3 @@
-import { tierFromSessionClaims } from "@/lib/clerk-session-claims";
 import { parseTier, type Tier } from "@/lib/tiers";
 import { getUserProfile } from "@/lib/user-directory";
 import { getClerkUserCached } from "@/lib/clerk-user-cache";
@@ -116,7 +115,8 @@ export class TierUnavailableError extends Error {
 /**
  * Resolve a user's tier, cache-first.
  * - Fresh cache (< TTL)         → return it (no Clerk call).
- * - Else fetch from Clerk       → cache + return.
+ * - Else fetch from Clerk       → cache + return (never grant premium/community from JWT
+ *                                 claims alone — session claims lag Whop downgrades).
  * - Fetch fails, stale present  → return last-known tier (never kick out a paying user).
  * - Fetch fails, NO cache       → throw TierUnavailableError so the CALLER degrades safely
  *                                 (API → retryable 503; page → deny / treat as free).
@@ -133,14 +133,9 @@ export async function resolveUserTier(
     return cached.tier;
   }
   try {
-    const fromClaims = tierFromSessionClaims(sessionClaims);
-    // Trust premium/community from JWT (fast path). When JWT says free, verify with
-    // Backend — misconfigured session claims or pre-refresh sessions must not lock out
-    // paying users.
-    if (fromClaims === "premium" || fromClaims === "community") {
-      setTierCache(userId, fromClaims);
-      return fromClaims;
-    }
+    // Always resolve paid tier from Clerk on cache miss — JWT session claims can lag Whop
+    // downgrade webhooks by minutes (CQ-003 / CCQ-007). publishTierChanged evicts cache;
+    // the next request must not re-grant premium from stale JWT alone.
     const user = await getClerkUserCached(userId);
     const tier = parseTier(user.publicMetadata?.tier);
     setTierCache(userId, tier);

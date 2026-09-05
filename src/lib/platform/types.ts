@@ -59,6 +59,8 @@ export type SpxDeskSummary = {
 };
 
 export type FlowTapeSummary = {
+  /** When this summary was computed — distinct from PlatformSnapshot.as_of wrapper stamp (CQ-083). */
+  as_of: string;
   count: number;
   total_premium: number;
   top_tickers: Array<{ ticker: string; premium: number; count: number }>;

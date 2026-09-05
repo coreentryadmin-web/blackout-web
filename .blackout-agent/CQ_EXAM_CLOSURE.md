@@ -1,26 +1,29 @@
 # CQ Cross-Examination — Closure Ledger
 
-**At:** 2026-09-05T16:25Z · All 218 CQ questions have documented answers + disposition.
+**At:** 2026-09-05T18:45Z · Fix pass batches 1–2 in flight.
 
-## CCQ-001–019 — CLOSED (see `CLAUDE_RESPONSE_TO_CCQ.md` on main)
+## CCQ-actionable gaps — status
 
-| Status | Count |
-|--------|-------|
-| Agreed / closed | 17 |
-| Fix queued | 2 (CQ-170 test in #3993; CQ-183 in #3995) |
-| CI wiring queued | 1 (CQ-171) |
+| CQ | Gap | Status | PR |
+|----|-----|--------|-----|
+| CQ-007 | email enumeration (`isNew`) | **batch 1** #4023 | |
+| CQ-095 | `internals_estimated` UI | **batch 1** #4023 | |
+| CQ-173 | premium gate functional test | **batch 1** #4023 | |
+| CQ-003 | JWT fast-path downgrade | **batch 2** pending | |
+| CQ-054 | Vector spot≤0 guard | **batch 2** pending | |
+| CQ-083 | FlowTapeSummary `as_of` | **batch 2** pending | |
+| CQ-051 | vector offline audits unwired | **batch 2** pending | |
+| CQ-170 | Whop webhook test | ✅ #3998 | |
+| CQ-171 | tool-agent CI | ✅ #4007 | |
+| CQ-183 | sitemap lastmod CI | ✅ #3995 | |
 
-## Phase 5 UNKNOWN upgrades (#3994)
+## Answer classes
 
-CQ-136, CQ-138, CQ-115 → **PROVEN** · CQ-203 → **DISPROVEN**
+| Class | Count | Disposition |
+|-------|-------|-------------|
+| PROVEN | 87 | **CLOSED** |
+| DISPROVEN | 35 | **CLOSED** |
+| PARTIALLY PROVEN | 76 | **CONFIRMED-PARTIAL** (+ 10 code gaps tracked/fixed) |
+| UNKNOWN | 20 | **CONFIRMED-UNKNOWN** |
 
-## Remaining answer classes
-
-| Class | Count | Cross-exam status |
-|-------|-------|-------------------|
-| PROVEN | 91 | **CLOSED** |
-| DISPROVEN | 35 | **CLOSED** (premise invalid) |
-| PARTIALLY PROVEN | 76 | **CONFIRMED-PARTIAL** (live checks named in answer) |
-| UNKNOWN | 12 | **CONFIRMED-UNKNOWN** (sandbox-limited) |
-
-**Documentation phase complete.** Remaining work = fix PRs (#3993, #3995), not unanswered questions.
+Full ledger: **`CQ_FIX_QUEUE.md`** · Regenerate: `node scripts/blackout/parse-cq-fix-queue.mjs`

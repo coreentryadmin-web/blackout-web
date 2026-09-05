@@ -100,6 +100,7 @@ mock.module("../../features/spx/lib/spx-service", {
 // /flows member route applies — src/lib/flow-gex-enrichment.ts). Neither
 // mock ever touches a real DB row or a real GEX/upstream call.
 let mockFlowTapeSummary: FlowTapeSummary = {
+  as_of: "2026-01-01T12:00:00.000Z",
   count: 0,
   total_premium: 0,
   top_tickers: [],
@@ -522,6 +523,7 @@ test('fetchEcosystemContext("NVDA"): flow_full_state reuses getFlowTapeSummary()
   const rowA = makeFlowRow({ strike: 130 });
   const rowB = makeFlowRow({ strike: 140, premium: 90000 });
   mockFlowTapeSummary = {
+    as_of: "2026-01-01T12:00:00.000Z",
     count: 2,
     total_premium: 340000,
     top_tickers: [{ ticker: "NVDA", premium: 340000, count: 2 }],
@@ -549,7 +551,7 @@ test('fetchEcosystemContext("NVDA"): flow_full_state reuses getFlowTapeSummary()
 test("fetchEcosystemContext: flow_full_state is null (not an all-zero object) when getFlowTapeSummary finds no prints, mirroring recent_flow's null-when-quiet convention", async () => {
   flowTapeCalls = [];
   enrichCalls = [];
-  mockFlowTapeSummary = { count: 0, total_premium: 0, top_tickers: [], recent: [], strike_stacks: [] };
+  mockFlowTapeSummary = { as_of: "2026-01-01T12:00:00.000Z", count: 0, total_premium: 0, top_tickers: [], recent: [], strike_stacks: [] };
   mockEnrichedRecent = null;
 
   const ctx = await fetchEcosystemContext("XYZ");
@@ -565,6 +567,7 @@ test('fetchEcosystemContext("SPX"): flow_full_state is NOT gated by isSpxSlayerT
   mockFullState = SPX_FULL_STATE_FIXTURE;
   const row = makeFlowRow({ ticker: "SPX" });
   mockFlowTapeSummary = {
+    as_of: "2026-01-01T12:00:00.000Z",
     count: 1,
     total_premium: 250000,
     top_tickers: [{ ticker: "SPX", premium: 250000, count: 1 }],

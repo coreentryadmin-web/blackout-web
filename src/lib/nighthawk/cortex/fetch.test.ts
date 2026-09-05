@@ -113,6 +113,7 @@ function deps(over: Partial<CortexFetchDeps> = {}): CortexFetchDeps {
     fetchVectorFullState: async () => vectorState(),
     getGexPositioning: async () => positioning(),
     getFlowTapeSummary: async () => ({
+      as_of: "2026-07-13T14:50:00.000Z",
       count: 2,
       total_premium: 900_000,
       top_tickers: [],

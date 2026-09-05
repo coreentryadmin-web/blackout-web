@@ -19,7 +19,7 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv);
 const runId = args.run_id ?? process.env.BLACKOUT_RUN_ID ?? randomUUID();
 const summary = args.summary ?? "session handoff";
-const { state } = syncContext();
+const { state } = await syncContext();
 
 const handoff = `# LAST HANDOFF — ${args.agent}\n\n**At:** ${new Date().toISOString()}\n**Run:** ${runId}\n\n## Summary\n\n${summary}\n\n## Deploy\n\n- main: \`${state.deploy.last_main_sha ?? "unknown"}\`\n- status: ${state.deploy.last_deploy_status ?? "unknown"}\n\n## Open PRs\n\n${(state.open_prs ?? []).map((p) => `- #${p.number} [${p.agent}] ${p.title}`).join("\n") || "_none_"}\n`;
 

@@ -26,7 +26,7 @@ const args = parseArgs(process.argv);
 const runId = process.env.BLACKOUT_RUN_ID ?? randomUUID();
 process.env.BLACKOUT_RUN_ID = runId;
 
-const { state, activeLocks } = syncContext();
+const { state, activeLocks } = await syncContext();
 const myLocks = Object.entries(activeLocks).filter(([, l]) => l.owner === args.agent);
 
 for (const [taskId] of myLocks) {

@@ -80,7 +80,7 @@ export function discoverStandingWork(agent, state) {
 }
 
 function runSelect(args) {
-  const { state, activeLocks } = syncContext();
+  return syncContext().then(({ state, activeLocks }) => {
 
   if (!existsSync(MARKDOWN_FILES.workQueue)) {
     console.log(JSON.stringify({ ok: false, reason: "no_work_queue" }));
@@ -121,8 +121,12 @@ function runSelect(args) {
     )
   );
   process.exit(selected ? 0 : 3);
+  });
 }
 
 if (process.argv[1]?.endsWith("select-task.mjs")) {
-  runSelect(parseArgs(process.argv));
+  runSelect(parseArgs(process.argv)).catch((err) => {
+    console.error(`[select-task] syncContext failed: ${err.message}`);
+    process.exit(2);
+  });
 }
