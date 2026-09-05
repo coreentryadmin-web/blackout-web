@@ -19,3 +19,10 @@ test("WS index path overlays REST baseline via overlayRestIndexWithWs (open_sour
   assert.match(routeSrc, /overlayRestIndexWithWs\(/);
   assert.match(routeSrc, /entry\.open_source === "rest"/);
 });
+
+test("REST quote cache freshness rejects future at stamps (cross-replica clock skew)", () => {
+  assert.match(routeSrc, /function isQuoteCacheAtFresh/);
+  assert.match(routeSrc, /ageMs >= -WS_TIMESTAMP_FUTURE_TOLERANCE_MS/);
+  assert.match(routeSrc, /isQuoteCacheAtFresh\(mem\.at/);
+  assert.match(routeSrc, /isQuoteCacheAtFresh\(hit\.at/);
+});
