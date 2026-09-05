@@ -494,7 +494,15 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
-### 0z. Vector API unrounded floats + UW halt future-timestamp guard — fix/vector-roundfloats-uw-halt-freshness (pending)
+### 0aa. GEX cross-validation UW ladder cache future-timestamp guard — fix/gex-cross-validation-cache-freshness
+
+**What was broken:** `getUwStrikeLadder()` admitted in-process cache hits via `Date.now() - entry.cachedAt < 60_000`. When `cachedAt` comes from `ws.updatedAt` and is clock-skewed into the future, negative age always satisfies the check → stale UW ladder served as fresh for cross-validation on Thermal/SPX matrix.
+
+**Fix:** Route cache admission through `gexHeatmapCacheEntryWithinTtl(entry.cachedAt, now, CACHE_TTL_MS)`.
+
+**Check at the open:** If UW `gex_strike_expiry` channel goes stale mid-session, `cross_validation` on `/api/market/gex-heatmap?ticker=SPX` should not show spurious divergence from a skewed cached ladder.
+
+### 0z. Vector API unrounded floats + UW halt future-timestamp guard — MERGED on main
 
 **What was broken:** Five Vector cache-reader routes (`universe`, `wall-history`, `daily-regime`, `rail-bootstrap`, `contract-picks`) returned raw IEEE float noise at the JSON boundary while sibling Vector routes already call `roundFloats`. Separately, `isUwHaltSourceStale()` used raw `Date.now() - freshest > maxAgeMs` — a clock-skewed future `effectiveFreshestUwMessageAt()` reads as live/trusted.
 
