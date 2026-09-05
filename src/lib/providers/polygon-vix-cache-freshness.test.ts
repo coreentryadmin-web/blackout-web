@@ -9,3 +9,8 @@ test("fetchVixIvRankPercentile in-process cache rejects future at stamps", () =>
   assert.match(src, /isWsUpdatedAtFresh\(cachedVixIvRank\.at, 300_000, now\)/);
   assert.doesNotMatch(src, /now - cachedVixIvRank\.at < 300_000/);
 });
+
+test("fetchMarketStatusNow in-process cache rejects future at stamps", () => {
+  assert.match(src, /isWsUpdatedAtFresh\(marketStatusCache\.fetchedAt, MARKET_STATUS_CACHE_MS, now\)/);
+  assert.doesNotMatch(src, /Date\.now\(\) - marketStatusCache\.fetchedAt < MARKET_STATUS_CACHE_MS/);
+});
