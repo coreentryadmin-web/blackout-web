@@ -14,4 +14,6 @@ pull_request wake cycle. main@66664fe39 (#3991 CQ answers merged). Standing chec
 
 ## Open PRs
 
-_none_
+- #3987 [cursor] fix(automerge): HARD MERGE GATE — verify GREEN, draft, Claude re-review at `b685c7230`
+- #3990 [cursor] stale state sync draft — supersede
+- #3992 [cursor] stale state sync draft — supersede

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:47:57.767Z",
+  "updated_at": "2026-09-05T15:48:40.057Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -259,6 +259,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T12:35:00.000Z",
       "safe_to_merge": true
+    },
+    "pr-3987": {
+      "pr": 3987,
+      "head_sha": "b685c7230",
+      "reviewer": "cursor",
+      "verdict": "VERIFIED_NOT_APPROVED",
+      "reviewed_at": "2026-09-05T15:48:30.613Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -328,11 +336,7 @@
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33973466010",
     "last_deploy_sha": "7d47d7e1c293cce146306808ca8a2dad616a94e5"
   },
-  "open_prs": [
-    { "number": 3987, "branch": "fix/automerge-hard-merge-gate", "title": "fix(automerge): HARD MERGE GATE — exclude cursor/* from auto-merge", "author": "coreentryadmin-web", "agent": "cursor", "draft": true, "verify": "COMPLETED/SUCCESS", "updated_at": "2026-09-05T15:47:16Z" },
-    { "number": 3990, "branch": "cursor/autopilot-work-loop", "title": "chore(autopilot): state sync after pull_request wake lifecycle sweep", "author": "coreentryadmin-web", "agent": "cursor", "draft": true, "verify": "unknown", "updated_at": "2026-09-05T15:33:00Z" },
-    { "number": 3992, "branch": "cursor/autopilot-work-loop-1dac", "title": "chore(autopilot): state sync after #3991 pull_request wake", "author": "coreentryadmin-web", "agent": "cursor", "draft": true, "verify": "unknown", "updated_at": "2026-09-05T15:38:00Z" }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1549,6 +1553,22 @@
       "agent": "cursor",
       "run_id": "439e9637-4866-4cb9-9a48-65479bdd1555",
       "summary": "pull_request wake cycle. main@66664fe39 (#3991 CQ answers merged). Standing checks GREEN: validate:deploy, validate:rth-lifecycle (weekend skip), ops:collect 0 items. Open drafts: #3987 automerge HARD MERGE GATE (verify GREEN @ b685c7230, Claude GO AHEAD at f60cbecc — needs re-review at HEAD + undraft), #3990/#3992 stale state-sync drafts (supersede). Peer queue: Claude must merge #3987 after re-review at b685c7230. GitHub API rate-limited (0/5000)."
+    },
+    {
+      "at": "2026-09-05T15:48:30.614Z",
+      "type": "pr_review",
+      "pr": 3987,
+      "head_sha": "b685c7230",
+      "reviewer": "cursor",
+      "verdict": "VERIFIED_NOT_APPROVED",
+      "reviewed_at": "2026-09-05T15:48:30.613Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-05T15:48:40.057Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
   "pr_activity": {
