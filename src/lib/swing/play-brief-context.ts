@@ -26,6 +26,7 @@ import { closedDeckSourcesFromChains } from "@/lib/swing/closed-plays";
 import { rowsForSwingSection } from "@/features/nighthawk/command-deck/swing-section-filter";
 import { fetchEcosystemContext } from "@/lib/bie/ecosystem-context";
 import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
+import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { SwingPlayBriefContext } from "./play-brief-types";
 
@@ -160,7 +161,8 @@ export async function loadSwingPlayBriefContext(input: {
 
   if (!terminal) return null;
 
-  const asOf = new Date().toISOString();
+  const nowMs = Date.now();
+  const asOf = etStamp(nowMs) ?? new Date(nowMs).toISOString();
   return {
     play: terminal,
     asOf,

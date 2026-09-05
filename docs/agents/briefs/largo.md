@@ -28,7 +28,7 @@ yours.
 
 | Area | Where |
 |---|---|
-| Member surface | `/terminal` (`src/features/largo/components/LargoTerminal.tsx`) plus **one** embedded mini-panel: Night Hawk Swing Command deck center rail (`SwingLargoInsightsPanel.tsx` → `LargoDeskMiniPanel`, desk=`nighthawk`). #2358 added mini-panels; #2387 removed the old side-panel mounts; #4035 re-mounted on the Swing deck only. Verified by grep across `src/**/*.tsx` (`mini-panel-orphaned.test.ts`). |
+| Member surface | `/terminal` (`src/features/largo/components/LargoTerminal.tsx`). That is the whole member surface. Night Hawk Swing deck ships a separate deterministic Ask Largo brief (`SwingLargoInsightsPanel.tsx` → `/api/market/swing/play-brief`) — not `LargoDeskMiniPanel`. #2358 added mini-panels; #2387 removed the mounts; verified by grep across `src/**/*.tsx` (`mini-panel-orphaned.test.ts`). |
 | Admin preview | `/admin/largo-answer-preview` |
 | Core engine | `src/lib/largo/` — 138 files, 18,947 lines. Largest: `run-tool.ts` (1942 — the tool-call loop itself), `product-reads.ts` (1395 — the read functions every tool calls into), `tool-defs.ts` (1178 — the 127 tool schemas), `largo-live-feed.ts`, `slash-submodules.ts`, `slash-prompts.ts`, `question-intent.ts`, `largo-store.ts`, `answer-contract.ts`, `system-prompt.ts` (460 — what the model is told about itself and every product) |
 | Tool registry | `src/lib/largo/registry/capability-registry.ts` — 137 tools, one capability entry each |
@@ -37,7 +37,7 @@ yours.
 | Empty/degraded answers | `src/lib/largo/empty-answer-fallback.ts` — `classifyEmptyAnswer`, decides what a member sees when the model returns nothing usable |
 | Transport | `src/lib/providers/anthropic.ts` — `anthropicToolLoop`, `MAX_TOOL_RESULT_CHARS = 16_000` (an over-cap `tool_result` is cut to its FIRST 16,000 chars and the rest discarded, so key order decides what survives; the call still "succeeds" and the model answers from the fragment) |
 | Spend ceiling | `src/lib/ai-spend-headroom.ts`, folded into `src/lib/admin-health.ts`'s `ai_spend` / `health_ok` |
-| Member APIs | `/api/market/largo/{query,session,status,context,mini-panel,slash-prompts,draft-x-post,share-discord}` — `mini-panel` is called by `LargoDeskMiniPanel` on the Night Hawk Swing deck. |
+| Member APIs | `/api/market/largo/{query,session,status,context,mini-panel,slash-prompts,draft-x-post,share-discord}` — `mini-panel` route is live but has no UI caller (unmounted since #2387). Swing desk uses `/api/market/swing/play-brief`. |
 | Crons | `largo-cleanup`, `largo-morning-brief` |
 | Tool count by product (roughly) | 137 tools total across Helix, Thermal, Vector, Meridian, Night Hawk, SPX, plus cross-cutting (`get_cross_product_read`, `get_market_context`, `get_news`, `get_web_search`, etc.) |
 
@@ -163,7 +163,7 @@ every tone rule. Read it critically: is it internally consistent with what the p
 serve today? Does it correctly instruct omission over fabrication? Does it explain the disagreement
 rule clearly enough that the model represents rather than reconciles?
 
-In the UI itself (`/terminal` plus the Night Hawk Swing mini-panel — see the table above): can a member tell, at a glance, when an answer is
+In the UI itself (`/terminal` — see the table above): can a member tell, at a glance, when an answer is
 fully grounded versus caveated versus degraded? A verification caveat buried in prose is not the same
 as one rendered distinctly.
 
