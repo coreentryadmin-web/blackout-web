@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0ap. API boundary roundFloats — gex-heatmap batch + anomalies — fix/api-boundary-roundfloats-batch-anomalies (pending)
+
+**What was broken:** `GET /api/market/gex-heatmap/batch` (Thermal compare grid) and `GET /api/market/anomalies` (HELIX anomaly tape) returned raw IEEE floats at the JSON boundary while sibling routes already wrap with `roundFloats`.
+
+**Fix:** Wrap both `NextResponse.json` payloads with `roundFloats(...)`.
+
+**Check at the open:** As admin+premium, hit both routes — numeric fields must have no `7499.360000000001`-class tails. Thermal compare grid spot/flip must match single-ticker matrix after rounding.
+
 ### 0ao. Vector volume profile extended-hours pollution — fix/vector-volume-profile-rth-scope (pending)
 
 **What was broken:** Default-on Vector volume profile fed the full multi-session minute buffer (including premarket/after-hours) into `computeVolumeProfile`, so POC and value-area bands on equities could anchor to extended-hours spikes instead of the current RTH session. HOD/LOD, opening range, and VWAP got the RTH gate in the 2026-08-05 audit; volume profile was missed.
