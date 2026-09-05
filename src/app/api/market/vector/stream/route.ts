@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
   ensureDataSockets();
   const encoder = new TextEncoder();
   const isUserStream = auth.via === "user";
+  const streamUserId = isUserStream ? auth.userId : null;
   let interval: ReturnType<typeof setInterval> | null = null;
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   let closed = false;
@@ -72,17 +73,23 @@ export async function GET(req: NextRequest) {
       let lastSentFrame: string | null = null;
       const send = async () => {
         if (closed) return;
-        if (isUserStream) {
-          const denied = await recheckSseUserEntitlement("premium", "vector");
-          if (denied) {
+        if (streamUserId) {
+          const verdict = await recheckSseUserEntitlement(streamUserId, "premium", "vector");
+          if (verdict === "forbidden") {
             cleanup();
             try {
+              controller.enqueue(
+                encoder.encode(
+                  `event: error\ndata: ${JSON.stringify({ error: "Forbidden — upgrade required" })}\n\n`,
+                ),
+              );
               controller.close();
             } catch {
               /* already closed */
             }
             return;
           }
+          if (verdict === "unavailable") return;
         }
         if (sseBackpressureExceeded(controller.desiredSize)) {
           cleanup();

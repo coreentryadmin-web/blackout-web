@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
   ensureZeroDteMarkPoller();
 
   const isUserStream = auth.via === "user";
+  const streamUserId = isUserStream ? auth.userId : null;
 
   const encoder = new TextEncoder();
   let interval: ReturnType<typeof setInterval> | null = null;
@@ -75,17 +76,23 @@ export async function GET(req: NextRequest) {
       let lastSentKey: string | null = null;
       const send = async () => {
         if (closed) return;
-        if (isUserStream) {
-          const denied = await recheckSseUserEntitlement("premium", "nighthawk");
-          if (denied) {
+        if (streamUserId) {
+          const verdict = await recheckSseUserEntitlement(streamUserId, "premium", "nighthawk");
+          if (verdict === "forbidden") {
             cleanup();
             try {
+              controller.enqueue(
+                encoder.encode(
+                  `event: error\ndata: ${JSON.stringify({ error: "Forbidden — upgrade required" })}\n\n`,
+                ),
+              );
               controller.close();
             } catch {
               /* already closed */
             }
             return;
           }
+          if (verdict === "unavailable") return;
         }
         if (sseBackpressureExceeded(controller.desiredSize)) {
           cleanup();
