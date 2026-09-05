@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0au. VIX IV rank + SPX UW ladder cache future-at guard — fix/cache-future-guard-polygon-uw-ladder (pending #3848)
+
+**What was broken:** `fetchVixIvRankPercentile()` and `getSpxOdteScopedUwLadderMap()` used raw `now - entry.at < ttlMs`, so a clock-skewed future `at` read as infinitely fresh (same class as #3844 GEX overlay gates).
+
+**Fix:** Route both in-process cache-hit gates through `isWsUpdatedAtFresh(at, ttlMs, now)` (5s future tolerance).
+
+**Check at the open:** SPX bootstrap / Thermal matrix overlay should refresh VIX IV rank and 0DTE UW ladder overlay normally during RTH — no stuck stale IV rank after deploy clock skew.
+
 ### 0at. Legacy swing promotion fabricated REL_STRENGTH via `?? 0` — fix/swing-legacy-rel-strength-null-honesty (pending #3845)
 
 **What was broken:** `buildLegacySwingArtifacts()` passed `relStrength: { nameReturnPct: reads.returnPct10d ?? 0, spyReturnPct: reads.spyReturnPct10d ?? 0 }` even though `swingReadsForLegacy()` intentionally leaves both 10d returns `null`. `relStrengthSignal()` treats `0` as present, scoring `relativeStrengthScore(0,0)=0` — worst case — on every morning-confirm promoted name instead of omitting REL_STRENGTH from the pillar denominator.

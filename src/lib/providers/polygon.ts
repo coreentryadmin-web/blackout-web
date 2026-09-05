@@ -6,6 +6,7 @@ import { sessionStatsFromMinuteBars, todayEtYmd, priorEtYmd } from "./spx-sessio
 import { smaFromCloses, emaFromCloses } from "./ma-math";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { logToken } from "@/lib/log-token";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
 const KEY = process.env.POLYGON_API_KEY ?? "";
@@ -1741,7 +1742,7 @@ let cachedVixIvRank: { at: number; rank: number | null } | null = null;
 export async function fetchVixIvRankPercentile(): Promise<number | null> {
   if (!polygonConfigured()) return null;
   const now = Date.now();
-  if (cachedVixIvRank && now - cachedVixIvRank.at < 300_000) {
+  if (cachedVixIvRank && isWsUpdatedAtFresh(cachedVixIvRank.at, 300_000, now)) {
     return cachedVixIvRank.rank;
   }
 
