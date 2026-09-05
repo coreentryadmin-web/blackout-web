@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 
 let recordApiCalls: Array<Record<string, unknown>> = [];
 
-mock.module("@/lib/api-telemetry", {
+mock.module("../../../../lib/api-telemetry", {
   namedExports: {
     recordApiCall: (entry: Record<string, unknown>) => {
       recordApiCalls.push(entry);
@@ -14,7 +14,7 @@ mock.module("@/lib/api-telemetry", {
   },
 });
 
-mock.module("@/features/spx/lib/spx-play-notify", {
+mock.module("../../../../features/spx/lib/spx-play-notify", {
   namedExports: {
     notifyOpsDiscord: async () => true,
   },
