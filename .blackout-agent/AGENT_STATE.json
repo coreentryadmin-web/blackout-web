@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T20:41:09.263Z",
+  "updated_at": "2026-09-05T20:52:24.513Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-05T20:45:03.791Z",
+      "lease_until": "2026-09-05T22:15:03.791Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-05T20:52:09.306Z",
+      "lease_until": "2026-09-05T22:22:09.306Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -31,12 +43,13 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-05T20:52:09.306Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "35dfd63d53133c0da47c6130015a6c67d6f4c17d",
+    "last_main_sha": "bff15540c86f31b5f8c7a887b8ff6530b19c5edd",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T19:34:47Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
@@ -120,7 +133,37 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T20:52:09.306Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T20:52:24.513Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T20:52:24.513Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "10a3664e-7def-4290-939e-607d774561df",
+      "summary": "Recovery cycle post-#4040/#4043: #4040 merged (GH_TOKEN strip). #4043 dead-code cleanup merged to main (bff15540c) — peer review APPROVED locally (2/2 ai-env tests). ECR deploy 33991301011 in_progress. validate:deploy/api-auth/platform-integrity GREEN. ops:collect clean. GitHub API rate-limited (user 284440397) — PR comment blocked; review recorded in .blackout-agent/REVIEWS/. Saturday off-hours — RTH skipped."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4044,
+      "title": "fix(seo): add missing /methodology page to llms.txt",
+      "branch": "fix/llms-txt-missing-methodology",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T20:45:57Z"
+    }
+  ]
 }
