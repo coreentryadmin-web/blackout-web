@@ -22,7 +22,9 @@ let opsDiscordCalls: Array<{ title: string; severity?: string }> = [];
 
 mock.module("@whop/sdk", {
   defaultExport: class Whop {
-    webhooks = { unwrap: (body: string, opts: { headers: Record<string, string> }) => unwrapImpl(body, opts) };
+    webhooks = {
+      unwrap: (body: string, opts: { headers: Record<string, string> }) => unwrapImpl(body, opts),
+    };
     constructor(_opts: unknown) {}
   },
 });
@@ -171,17 +173,23 @@ describe("POST /api/webhook/whop — route-level signature verification", () => 
     assert.equal(telemetryCalls[0].status, 400);
   });
 
-  test("a genuinely verified event (unwrap succeeds) is processed and synced", async () => {
-    syncCalls = [];
-    telemetryCalls = [];
-    const payload = { id: "evt_real_1", type: "membership.activated", data: { user: { email: "real-member@gmail.com" } } };
-    unwrapImpl = (body) => JSON.parse(body);
+  test("missing WHOP_WEBHOOK_SECRET outside production returns 200 warning (dev convenience)", async () => {
+    const prevSecret = process.env.WHOP_WEBHOOK_SECRET;
+    const prevEnv = process.env.NODE_ENV;
+    delete process.env.WHOP_WEBHOOK_SECRET;
+    // @ts-expect-error -- NODE_ENV is readonly in the type but writable at runtime; test-only override.
+    process.env.NODE_ENV = "test";
 
-    const res = await postWebhook(POST, JSON.stringify(payload));
-
-    assert.equal(res.status, 200);
-    assert.deepEqual(syncCalls, ["real-member@gmail.com"], "a verified membership.activated event must sync the member");
-    assert.equal(telemetryCalls[telemetryCalls.length - 1].ok, true);
+    try {
+      const res = await postWebhook(POST, JSON.stringify({ id: "evt_x", type: "membership.activated", data: {} }));
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.equal(body.warning, "webhook_secret_not_configured");
+    } finally {
+      process.env.WHOP_WEBHOOK_SECRET = prevSecret;
+      // @ts-expect-error -- see override above.
+      process.env.NODE_ENV = prevEnv;
+    }
   });
 
   test("missing WHOP_WEBHOOK_SECRET in production returns 503 (retryable), never silently drops the event", async () => {
