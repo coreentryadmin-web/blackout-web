@@ -136,6 +136,14 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** SPX desk market-phase chip (open/closed/extended) should still flip correctly at session boundaries; no stuck "closed" or "open" state after deploy if a process clock was ahead.
 
+### 0az. VWAP proxy / macro predictions / live-marks active set / stock candle fallback — fix/spx-vwap-signal-log-live-marks-future-guard (pending)
+
+**What was broken:** Four tail caches still used raw `now - fetchedAt < ttl`: SPY volume map for SPX VWAP proxy, UW macro predictions in signal log, 0DTE live-marks active-play set (10s), stock-candle Redis fallback refresh. Future stamps pin each indefinitely.
+
+**Fix:** Route all four through `isWsUpdatedAtFresh`.
+
+**Check at the open:** SPX VWAP weighting refreshes on TTL; Night Hawk open-play marks pick up new commits within ~10s; stock spot candles still cross-replica fallback on demand.
+
 ### 0aw. Lit/dark ratio + Vector universe age chips future-at guard — fix/future-timestamp-lit-dark-vector-universe (PR #3853)
 
 **What was broken:** `computeLitDarkRatio()` and Vector universe staleness chips (`VectorScanner`, `VectorTickerComparisonStrip`) used raw `now - updatedAt` without the shared future-timestamp guard. Clock-skewed future store timestamps read as fresh (SPX desk lit/dark ratio served from untrusted data); far-future universe `updatedAt` never flipped the stale warning chip while `formatVectorAge` clamped display to `"0s"`.
