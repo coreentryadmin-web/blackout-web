@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T11:38:50.506Z",
+  "updated_at": "2026-09-05T11:44:56.365Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,8 +67,8 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T11:31:47.579Z",
-      "lease_until": "2026-09-05T13:01:47.579Z",
+      "claimed_at": "2026-09-05T11:35:23.963Z",
+      "lease_until": "2026-09-05T13:05:23.963Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
@@ -80,8 +80,8 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-05T11:42:09.507Z",
+      "lease_until": "2026-09-05T13:12:09.507Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -234,6 +234,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3944": {
+      "pr": 3944,
+      "head_sha": "c766a02343d61e339759d42b67d98995bfc5e8d5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T11:41:58.397Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -243,49 +251,18 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-04T19:50:51.819Z",
-      "current_task": "BO-P1-0103"
+      "last_seen": "2026-09-05T11:42:09.508Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "467bcdcf478a698430173d076d9d51ab462ed7aa",
+    "last_main_sha": "4433d215c6e558531790b0f3c3f5edae6dd87d89",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T10:36:36Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
     "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
   },
-  "open_prs": [
-    {
-      "number": 3945,
-      "title": "feat(swing): BUY / STILL BUY labels tied to entryability",
-      "branch": "cursor/swing-still-buy-labels",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T11:38:17Z"
-    },
-    {
-      "number": 3944,
-      "title": "fix(thermal): rebase triple-desk header change_pct on live push spot",
-      "branch": "fix/thermal-triple-desk-header-rebase",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T11:35:27Z"
-    },
-    {
-      "number": 3943,
-      "title": "refactor(swing): relocate legacy PR-5 gates to legacy-calibration/",
-      "branch": "cursor/swing-legacy-gates-calibration-move",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T11:38:45Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1358,30 +1335,27 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T11:38:28.730Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 3
-    },
-    {
-      "at": "2026-09-05T11:38:28.731Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "bfaf84a0-4061-4565-a61d-5a6b99dd279b",
-      "summary": "#3943 CI GREEN @ 3da52b7e, undrafted for Claude peer review. Local gates-pr5 tests 16/16. ops:collect clean. main deploy current @ 7c84207f."
-    },
-    {
-      "at": "2026-09-05T11:38:30.348Z",
+      "at": "2026-09-05T11:36:47.556Z",
       "type": "pr_webhook",
-      "pr": 3945,
+      "pr": 3946,
       "event": "sweep",
-      "head": "56cd87370c22860e29443b60247fba881019ebbf",
+      "head": "58ab73648ca9ce8a5d051d6120065670435ca1df",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "dispatch": false
     },
     {
-      "at": "2026-09-05T11:38:32.354Z",
+      "at": "2026-09-05T11:36:49.582Z",
+      "type": "pr_webhook",
+      "pr": 3945,
+      "event": "sweep",
+      "head": "469e9dac45add90bf272e6506a095fa42a5253cb",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T11:36:51.621Z",
       "type": "pr_webhook",
       "pr": 3944,
       "event": "sweep",
@@ -1391,27 +1365,77 @@
       "dispatch": true
     },
     {
-      "at": "2026-09-05T11:38:34.589Z",
+      "at": "2026-09-05T11:36:53.668Z",
       "type": "pr_webhook",
       "pr": 3943,
       "event": "sweep",
       "head": "3da52b7eca082093073df411ddb6dbd8384003e1",
-      "verdict": "👀 **REVIEW** — peer sign-off required",
-      "directive": "REVIEW",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
       "dispatch": false
     },
     {
-      "at": "2026-09-05T11:38:50.506Z",
+      "at": "2026-09-05T11:41:58.398Z",
+      "type": "pr_review",
+      "pr": 3944,
+      "head_sha": "c766a02343d61e339759d42b67d98995bfc5e8d5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T11:41:58.397Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T11:42:02.347Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 3
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T11:42:02.349Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b102d160-c27e-4124-a066-f947eac0f445",
+      "summary": "Peer-reviewed #3944 thermal triple-desk rebaseChangePct fix — CI GREEN, APPROVED, merged during undraft. #3943 (cursor swing legacy gates) awaiting Claude review. Deploy validate GREEN. ops:collect clean."
+    },
+    {
+      "at": "2026-09-05T11:42:05.664Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T11:42:09.508Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T11:44:56.359Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T11:44:56.360Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "dff3ad7f-36f8-40e4-a4cf-8fefc09bd325",
+      "summary": "Workflow_run wake: peer-reviewed #3944 (APPROVED+merged). #3943+#3944 on main@4433d215c. Deploy/platform-integrity GREEN. ops:collect clean. Open: #3945 swing BUY labels + #3947 state sync — awaiting Claude review on cursor PRs."
     }
   ],
   "pr_activity": {
+    "pr-3946": {
+      "last_event": "sweep",
+      "last_head": "58ab73648ca9ce8a5d051d6120065670435ca1df",
+      "last_feedback_at": "2026-09-05T11:36:47.556Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
     "pr-3945": {
       "last_event": "sweep",
-      "last_head": "56cd87370c22860e29443b60247fba881019ebbf",
-      "last_feedback_at": "2026-09-05T11:38:30.348Z",
+      "last_head": "469e9dac45add90bf272e6506a095fa42a5253cb",
+      "last_feedback_at": "2026-09-05T11:36:49.582Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "updated"
@@ -1419,7 +1443,7 @@
     "pr-3944": {
       "last_event": "sweep",
       "last_head": "c766a02343d61e339759d42b67d98995bfc5e8d5",
-      "last_feedback_at": "2026-09-05T11:38:32.353Z",
+      "last_feedback_at": "2026-09-05T11:36:51.621Z",
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "comment_action": "updated"
@@ -1427,9 +1451,9 @@
     "pr-3943": {
       "last_event": "sweep",
       "last_head": "3da52b7eca082093073df411ddb6dbd8384003e1",
-      "last_feedback_at": "2026-09-05T11:38:34.589Z",
-      "verdict": "👀 **REVIEW** — peer sign-off required",
-      "directive": "REVIEW",
+      "last_feedback_at": "2026-09-05T11:36:53.668Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
       "comment_action": "updated"
     }
   }
