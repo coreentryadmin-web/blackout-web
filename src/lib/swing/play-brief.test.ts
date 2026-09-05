@@ -37,6 +37,7 @@ test("composeSwingPlayBrief: WATCH play emits entry + pillars sections", () => {
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay(),
     asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
     scanAsOf: "2026-09-05T19:30:00.000Z",
     scanSessionDay: "2026-09-05",
     ecosystem: null,
@@ -104,6 +105,7 @@ test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => 
       },
     }),
     asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
     scanAsOf: null,
     scanSessionDay: null,
     ecosystem: null,
@@ -126,6 +128,7 @@ test("composeSwingPlayBrief: CLOSED play emits outcome section", () => {
       mfeCapturePct: 68,
     }),
     asOf: "2026-09-05T20:00:00.000Z",
+    sessionDate: "2026-09-05",
     scanAsOf: null,
     scanSessionDay: null,
     ecosystem: null,
