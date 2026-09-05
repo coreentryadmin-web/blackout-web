@@ -10,6 +10,7 @@ import {
   type SignalAccuracyBySource,
 } from "@/lib/signal-accuracy";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -135,7 +136,7 @@ export async function GET(req: NextRequest) {
         ? blended.winRate > 50
         : null;
 
-    return NextResponse.json({
+    return NextResponse.json(roundFloats({
       // Current state
       regime: regimeRow ? {
         composite: regimeRow.composite,
@@ -218,11 +219,11 @@ export async function GET(req: NextRequest) {
       },
 
       timestamp: new Date().toISOString(),
-    }, { status: 200, headers: NO_STORE_HEADERS });
+    }), { status: 200, headers: NO_STORE_HEADERS });
 
   } catch (err) {
     // Graceful degradation — return empty state rather than error
-    return NextResponse.json({
+    return NextResponse.json(roundFloats({
       regime: null,
       anomalies: [],
       coachingAlerts: [],
@@ -237,6 +238,6 @@ export async function GET(req: NextRequest) {
         signalRecommendation: "Platform intel unavailable — proceed with standard sizing.",
       },
       timestamp: new Date().toISOString(),
-    }, { status: 200, headers: NO_STORE_HEADERS });
+    }), { status: 200, headers: NO_STORE_HEADERS });
   }
 }

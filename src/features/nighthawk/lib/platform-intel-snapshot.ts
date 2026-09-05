@@ -2,6 +2,7 @@ import { dbConfigured, dbQuery } from "@/lib/db";
 import { isPremarketBriefFresh, todayEtYmd } from "@/lib/providers/spx-session";
 import { formatEtDate, mostRecentTradingDayEt } from "@/features/nighthawk/lib/session";
 import { fetchSignalAccuracyBySource, blendedAccuracy, MIN_SAMPLE_FOR_RECOMMENDATION } from "@/lib/signal-accuracy";
+import { roundFloats } from "@/lib/round-floats";
 
 /** Cross-service intel pulled from the same Postgres tables as /api/platform/intel. */
 export type PlatformIntelSnapshot = {
@@ -125,7 +126,7 @@ export async function fetchPlatformIntelSnapshot(): Promise<PlatformIntelSnapsho
       signalRecommendation = `NORMAL SIZE — blended signal win rate ${blended.winRate}% across ${blended.total} closed plays (SPX Slayer + Night Hawk)${composite ? `, current regime ${composite}` : ""}.`;
     }
 
-    return {
+    return roundFloats({
       composite_regime: composite,
       gex_regime: regimeRow?.gex_regime != null ? String(regimeRow.gex_regime) : null,
       flow_regime: regimeRow?.flow_regime != null ? String(regimeRow.flow_regime) : null,
@@ -148,7 +149,7 @@ export async function fetchPlatformIntelSnapshot(): Promise<PlatformIntelSnapsho
             net_gex: briefRow.net_gex != null ? Number(briefRow.net_gex) : null,
           }
         : null,
-    };
+    });
   } catch (err) {
     console.warn("[nighthawk/platform-intel] snapshot failed:", err);
     return emptySnapshot();
