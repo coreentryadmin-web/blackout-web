@@ -1,6 +1,6 @@
 # CQ Fix Queue — Cursor → Claude cross-exam closure
 
-**Generated:** 2026-09-05T18:12:43.839Z  
+**Generated:** 2026-09-05T19:10:35.944Z  
 **Source:** `CLAUDE_ANSWERS_TO_CQ.md` (218 answers) + `CURSOR_CHALLENGES_TO_CQ.md` (CCQ-001–023)
 
 ## Summary
@@ -9,16 +9,20 @@
 |--------------|-------|-----------------|
 | PROVEN | 87 | CLOSED (no code change) |
 | DISPROVEN | 35 | CLOSED (premise invalid) |
-| PARTIALLY PROVEN | 76 | 76 CONFIRMED-PARTIAL; 6 with queued/fixed code gaps |
+| PARTIALLY PROVEN | 76 | 76 CONFIRMED-PARTIAL; 11 with queued/fixed code gaps |
 | UNKNOWN | 20 | CONFIRMED-UNKNOWN (sandbox-limited) |
 
 ## CCQ-actionable gaps
 
 | CQ | Gap | Status | PR |
 |----|-----|--------|-----|
-| CQ-003 | JWT fast-path tier downgrade window | DEFERRED | security — needs design |
 | CQ-007 | email enumeration via isNew response | FIXED_BATCH1 | cursor/cq-fix-pass-batch1 |
+| CQ-051 | vector offline audit scripts not in package.json | FIXED_BATCH2 | cursor/cq-fix-pass-batch2 |
+| CQ-054 | evaluateVectorPickLiveStatus spot<=0 guard + test | FIXED_BATCH2 | cursor/cq-fix-pass-batch2 |
+| CQ-083 | FlowTapeSummary missing per-desk as_of freshness | FIXED_BATCH2 | cursor/cq-fix-pass-batch2 |
 | CQ-095 | internals_estimated UI badge (0 tsx consumers) | FIXED_BATCH1 | cursor/cq-fix-pass-batch1 |
+| CQ-113 | JWT fast-path bypasses pub/sub tier invalidation | FIXED_BATCH2 | cursor/cq-fix-pass-batch2 |
+| CQ-114 | Whop webhook Redis fail-open has no ops alert | FIXED_BATCH3 | cursor/cq-fix-pass-batch3 |
 | CQ-170 | Whop webhook route signature test | FIXED | #3998 |
 | CQ-171 | validate:tool-agent:* CI wiring | FIXED | #4007 |
 | CQ-173 | premium gate functional 403 test | FIXED_BATCH1 | cursor/cq-fix-pass-batch1 |
@@ -30,7 +34,7 @@
 |----|--------|------------|-------|
 | CQ-001 | PROVEN | CLOSED |  |
 | CQ-002 | PROVEN | CLOSED |  |
-| CQ-003 | PARTIAL | DEFERRED | JWT fast-path tier downgrade window |
+| CQ-003 | PARTIAL | CONFIRMED-PARTIAL |  |
 | CQ-004 | PROVEN | CLOSED |  |
 | CQ-005 | PROVEN | CLOSED |  |
 | CQ-006 | PROVEN | CLOSED |  |
@@ -78,10 +82,10 @@
 | CQ-048 | PROVEN | CLOSED |  |
 | CQ-049 | PROVEN | CLOSED |  |
 | CQ-050 | PROVEN | CLOSED |  |
-| CQ-051 | PROVEN | CLOSED |  |
+| CQ-051 | PROVEN | FIXED_BATCH2 | vector offline audit scripts not in package.json |
 | CQ-052 | PARTIAL | CONFIRMED-PARTIAL |  |
 | CQ-053 | PARTIAL | CONFIRMED-PARTIAL |  |
-| CQ-054 | PARTIAL | CONFIRMED-PARTIAL |  |
+| CQ-054 | PARTIAL | FIXED_BATCH2 | evaluateVectorPickLiveStatus spot<=0 guard + test |
 | CQ-055 | PARTIAL | CONFIRMED-PARTIAL |  |
 | CQ-056 | PROVEN | CLOSED |  |
 | CQ-057 | PROVEN | CLOSED |  |
@@ -110,7 +114,7 @@
 | CQ-080 | PROVEN | CLOSED |  |
 | CQ-081 | DISPROVEN | CLOSED |  |
 | CQ-082 | PROVEN | CLOSED |  |
-| CQ-083 | PARTIAL | CONFIRMED-PARTIAL |  |
+| CQ-083 | PARTIAL | FIXED_BATCH2 | FlowTapeSummary missing per-desk as_of freshness |
 | CQ-084 | UNKNOWN | CONFIRMED-UNKNOWN |  |
 | CQ-085 | PARTIAL | CONFIRMED-PARTIAL |  |
 | CQ-086 | PROVEN | CLOSED |  |
@@ -140,8 +144,8 @@
 | CQ-110 | PARTIAL | CONFIRMED-PARTIAL |  |
 | CQ-111 | DISPROVEN | CLOSED |  |
 | CQ-112 | PARTIAL | CONFIRMED-PARTIAL |  |
-| CQ-113 | PARTIAL | CONFIRMED-PARTIAL |  |
-| CQ-114 | PROVEN | CLOSED |  |
+| CQ-113 | PARTIAL | FIXED_BATCH2 | JWT fast-path bypasses pub/sub tier invalidation |
+| CQ-114 | PROVEN | FIXED_BATCH3 | Whop webhook Redis fail-open has no ops alert |
 | CQ-115 | UNKNOWN | CONFIRMED-UNKNOWN |  |
 | CQ-116 | PARTIAL | CONFIRMED-PARTIAL |  |
 | CQ-117 | PROVEN | CLOSED |  |

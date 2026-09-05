@@ -58,6 +58,19 @@ test("isSetupInvalidated: a sub-$10 ticker's invalidation level still fires (was
   assert.equal(r.level, 8.5);
 });
 
+test("evaluateVectorPickLiveStatus: spot<=0 fails closed (CQ-054 latent gap)", () => {
+  const r = evaluateVectorPickLiveStatus({
+    spot: 0,
+    side: "put",
+    entryMid: 2.5,
+    quote: { bid: 2.4, ask: 2.6, mid: 2.5, delta: -0.35 },
+    bias: "short",
+    intent: "fresh_entry",
+  });
+  assert.equal(r.status, "dont_buy");
+  assert.match(r.reason, /Invalid spot/i);
+});
+
 test("evaluateVectorPickLiveStatus: still_buy on fresh quote near entry", () => {
   const r = evaluateVectorPickLiveStatus({
     spot: 576,

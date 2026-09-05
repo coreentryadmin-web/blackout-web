@@ -4,6 +4,7 @@ import {
   computeFlowStrikeStacks,
 } from "@/lib/largo/flow-strike-stacks";
 import { sessionFlowSkew } from "@/lib/largo/helix-tape-analytics";
+import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 import type { FlowTapeSummary } from "./types";
 
 export { subscribeFlowEvents, publishFlowEvent };
@@ -52,7 +53,19 @@ export async function getFlowTapeSummary(opts?: {
     .slice(0, 10);
 
   const skew = sessionFlowSkew(rows);
+  const latestPrintMs = rows.reduce((max, row) => {
+    const raw = row.event_at ?? row.alerted_at;
+    if (!raw) return max;
+    const ms = Date.parse(raw);
+    return Number.isFinite(ms) ? Math.max(max, ms) : max;
+  }, 0);
+  const anchorMs = latestPrintMs > 0 ? latestPrintMs : Date.now();
+  const as_of = etStamp(anchorMs);
+  if (!as_of) {
+    throw new Error("flow tape as_of: could not anchor print timestamp to ET session");
+  }
   return {
+    as_of,
     count: rows.length,
     total_premium: rows.reduce((s, r) => s + r.premium, 0),
     top_tickers,

@@ -1,5 +1,6 @@
 import { before, describe, test, mock, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 // Route-level coverage for Whop billing webhook signature verification and the
 // missing-secret fail-closed path. Lib-level Whop helpers have their own tests;
@@ -173,6 +174,13 @@ describe("POST /api/webhook/whop — route-level signature + secret handling", (
     assert.equal(json.error, "webhook_secret_not_configured");
     assert.equal(json.retryable, true);
     assert.equal(syncCalls.length, 0);
+  });
+
+  test("fail-open Redis idempotency path alerts ops (CQ-114 source contract)", () => {
+    const src = readFileSync("src/app/api/webhook/whop/route.ts", "utf8");
+    const failOpen = src.slice(src.indexOf("idempotency claim failed"), src.indexOf("return true; // fail-open"));
+    assert.match(failOpen, /notifyOpsDiscord\(/, "Redis fail-open must alert ops — dedup is offline");
+    assert.match(failOpen, /idempotency fail-open/i);
   });
 
   test("returns 200 with warning in non-production when WHOP_WEBHOOK_SECRET is unset", async () => {

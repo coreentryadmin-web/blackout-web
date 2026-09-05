@@ -125,6 +125,8 @@
     "validate:spx-rth": "node scripts/spx-rth-all-day-audit.mjs",
     "validate:spx-e2e": "node scripts/spx-dashboard-e2e-audit.mjs",
     "validate:vector-e2e": "node scripts/vector-e2e-audit.mjs",
+    "validate:vector-invalidation-edge": "node scripts/audit/vector-invalidation-edge-cases.mjs",
+    "validate:vector-pivot-scenario": "node scripts/audit/vector-pivot-scenario-drill.mjs",
     "validate:vector-play-invariants": "node --import tsx scripts/audit/vector-play-invariants.mjs",
     "validate:vector-pick-pnl": "node --import tsx scripts/audit/vector-pick-pnl-audit.mjs",
     "validate:vector-pick-sweep": "node --import tsx scripts/audit/vector-pick-sweep-audit.mjs",
