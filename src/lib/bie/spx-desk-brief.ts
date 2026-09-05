@@ -4,6 +4,10 @@
 // color is additive only.
 
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
+import {
+  SPX_PIN_GEX_KING_LABEL_PROSE,
+  SPX_PIN_MAX_PAIN_LABEL_PROSE,
+} from "@/features/spx/lib/spx-metric-labels";
 import type { SpxConfluence, SpxConfluenceGrade } from "@/features/spx/lib/spx-signals";
 import { formatFlowStrikeStackLine } from "@/lib/largo/flow-strike-stacks";
 import { fmtPremium } from "@/lib/fmt-money";
@@ -348,6 +352,38 @@ function phaseSetupNote(sessionPhase: string, grade: SpxConfluenceGrade): string
   return null;
 }
 
+type DeskMagnetKind = "gex_king" | "max_pain";
+
+type DeskMagnet = { strike: number; kind: DeskMagnetKind };
+
+function resolveDeskMagnet(desk: SpxDeskPayload): DeskMagnet | null {
+  if (desk.gex_king != null) return { strike: desk.gex_king, kind: "gex_king" };
+  if (desk.max_pain != null) return { strike: desk.max_pain, kind: "max_pain" };
+  return null;
+}
+
+function magnetLevelsClause(magnet: DeskMagnet): string {
+  if (magnet.kind === "gex_king") {
+    return `${SPX_PIN_GEX_KING_LABEL_PROSE} ${n(magnet.strike, 0)}`;
+  }
+  return `pin ${n(magnet.strike, 0)} (${SPX_PIN_MAX_PAIN_LABEL_PROSE})`;
+}
+
+function magnetPullbackClause(magnet: DeskMagnet): string {
+  if (magnet.kind === "gex_king") {
+    return `pullbacks bought back toward ${SPX_PIN_GEX_KING_LABEL_PROSE} ${n(magnet.strike, 0)}`;
+  }
+  return `pullbacks bought back toward pin ${n(magnet.strike, 0)}`;
+}
+
+function magnetNextClause(magnet: DeskMagnet | null, fallbackStrike: number): string {
+  const strike = magnet?.strike ?? fallbackStrike;
+  if (magnet?.kind === "gex_king") {
+    return `pos-γ toward ${SPX_PIN_GEX_KING_LABEL_PROSE} ${n(strike, 0)} — fade extensions`;
+  }
+  return `pos-γ pin toward ${n(strike, 0)} — fade extensions`;
+}
+
 function phaseRiskNote(
   sessionPhase: string,
   grade: SpxConfluenceGrade,
@@ -368,7 +404,7 @@ function buildWhy(
   desk: SpxDeskPayload,
   support: ReturnType<typeof nearestWall>,
   resistance: ReturnType<typeof nearestWall>,
-  pin: number | null | undefined
+  magnet: DeskMagnet | null
 ): string {
   const factors = topFactors(confluence, 2);
   const factorDetails = topFactorDetails(confluence, 3);
@@ -386,8 +422,8 @@ function buildWhy(
   }
   if (!desk.above_gamma_flip && support && desk.price! > support.strike) {
     parts.push(`drops feed toward ${n(support.strike, 0)} air if ${n(support.strike, 0)} cracks`);
-  } else if (desk.above_gamma_flip && pin != null) {
-    parts.push(`pullbacks bought back toward pin ${n(pin, 0)}`);
+  } else if (desk.above_gamma_flip && magnet != null) {
+    parts.push(magnetPullbackClause(magnet));
   } else if (resistance && desk.price! < resistance.strike) {
     parts.push(`caps near ${n(resistance.strike, 0)} call wall`);
   }
@@ -438,9 +474,9 @@ export function composeSpxDeskBrief(
   const support = nearestWall(desk.gex_walls, "support", price);
   const resistance = nearestWall(desk.gex_walls, "resistance", price);
   const factors = topFactors(confluence, 2);
-  const pin = desk.gex_king ?? desk.max_pain;
+  const magnet = resolveDeskMagnet(desk);
 
-  const why = buildWhy(confluence, desk, support, resistance, pin);
+  const why = buildWhy(confluence, desk, support, resistance, magnet);
   const synthesis = synthesizeSpxDeskIntel(desk, confluence, sessionPhase, cross);
   const signals = signalsBriefLine(confluence);
 
@@ -474,8 +510,8 @@ export function composeSpxDeskBrief(
       `S ${n(support.strike, 0)} (${signedPts(support.strike - price)}, γwall${support.net_gex != null ? ` ${fmtPremium(support.net_gex)}` : ""})`
     );
   }
-  if (pin != null && Math.abs(pin - price) <= 25) {
-    levelParts.push(`pin ${n(pin, 0)} (price magnet)`);
+  if (magnet != null && Math.abs(magnet.strike - price) <= 25) {
+    levelParts.push(magnetLevelsClause(magnet));
   }
   for (const extra of sessionExtremeLevels(desk, price).slice(0, 2)) {
     levelParts.push(extra);
@@ -541,7 +577,7 @@ export function composeSpxDeskBrief(
     sessionPhase === "power-hour" && !desk.above_gamma_flip && resistance
       ? `NEXT 5M  power-hour neg-γ squeeze risk into ${n(resistance.strike, 0)} if ${n(support?.strike ?? desk.lod, 0)} fails`
       : desk.above_gamma_flip && support
-        ? `NEXT 5M  pos-γ pin toward ${n(pin ?? support.strike, 0)} — fade extensions`
+        ? `NEXT 5M  ${magnetNextClause(magnet, support.strike)}`
         : !desk.above_gamma_flip && resistance
           ? `NEXT 5M  neg-γ expansion into ${n(resistance.strike, 0)} air if ${n(support?.strike ?? desk.lod, 0)} fails`
           : `NEXT 5M  ${gammaTag(desk)} — watch ${n(desk.gamma_flip ?? price, 0)} and TICK`;

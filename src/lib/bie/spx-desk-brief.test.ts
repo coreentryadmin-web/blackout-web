@@ -127,4 +127,29 @@ describe("composeSpxDeskBrief", () => {
     assert.ok(result.body.includes("LEVELS"));
     assert.match(result.body, /HOD|PDH/);
   });
+
+  test("LEVELS label GEX king honestly when gex_king drives the magnet", () => {
+    const desk = fakeDesk();
+    desk.gex_king = 5905;
+    desk.max_pain = 5850;
+    const confluence = computeSpxConfluence(desk);
+    assert.ok(confluence);
+
+    const result = composeSpxDeskBrief(desk, confluence!, [], "mid-morning");
+    assert.match(result.body, /GEX king node \{\{5,?905\}\}/);
+    assert.doesNotMatch(result.body, /pin \{\{5,?905\}\} \(price magnet\)/);
+    assert.doesNotMatch(result.body, /pullbacks bought back toward pin \{\{5,?905\}\}/);
+  });
+
+  test("LEVELS keep pin prose when only max_pain is present", () => {
+    const desk = fakeDesk();
+    desk.gex_king = undefined;
+    desk.max_pain = 5905;
+    const confluence = computeSpxConfluence(desk);
+    assert.ok(confluence);
+
+    const result = composeSpxDeskBrief(desk, confluence!, [], "mid-morning");
+    assert.match(result.body, /pin \{\{5,?905\}\} \(effective max pain\)/);
+    assert.doesNotMatch(result.body, /GEX king node \{\{5,?905\}\}/);
+  });
 });
