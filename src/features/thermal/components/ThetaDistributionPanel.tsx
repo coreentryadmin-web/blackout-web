@@ -10,13 +10,11 @@ import { clsx } from "clsx";
 interface ThetaDistributionPanelProps {
   cells: GexCells | null;
   spot: number | null;
-  ticker: string;
 }
 
 export function ThetaDistributionPanel({
   cells,
   spot,
-  ticker,
 }: ThetaDistributionPanelProps) {
   const analysis = useMemo(() => {
     if (!cells || !spot) return null;
@@ -32,7 +30,7 @@ export function ThetaDistributionPanel({
     );
   }
 
-  const top5 = analysis.buckets.sort((a, b) => b.absCharm - a.absCharm).slice(0, 5);
+  const top5 = [...analysis.buckets].sort((a, b) => b.absCharm - a.absCharm).slice(0, 5);
   const maxCharm = Math.max(...top5.map((b) => b.absCharm));
 
   return (
