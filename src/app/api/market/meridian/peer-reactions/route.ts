@@ -4,6 +4,7 @@ import { requireToolApi } from "@/lib/tool-access-server";
 import { loadMeridianPeerReactions } from "@/lib/meridian/meridian-peer-reactions";
 import { MAX_PEER_REACTION_TICKERS } from "@/lib/meridian/meridian-sector-core";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const reactions = await loadMeridianPeerReactions(tickers);
-    return NextResponse.json({ reactions }, { headers: NO_STORE_HEADERS });
+    return NextResponse.json(roundFloats({ reactions }), { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[market/meridian/peer-reactions]", error);
     return NextResponse.json({ error: "Peer reaction lookup failed" }, { status: 502, headers: NO_STORE_HEADERS });

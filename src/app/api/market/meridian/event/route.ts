@@ -7,6 +7,7 @@ import {
   MERIDIAN_EVENT_TTL_MS,
 } from "@/lib/meridian/meridian-snapshot";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
     if (!detail) {
       return NextResponse.json({ error: "Event not found" }, { status: 404, headers: NO_STORE_HEADERS });
     }
-    return NextResponse.json(detail, { headers: NO_STORE_HEADERS });
+    return NextResponse.json(roundFloats(detail), { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[market/meridian/event]", error);
     return NextResponse.json({ error: "Event detail failed" }, { status: 502, headers: NO_STORE_HEADERS });
