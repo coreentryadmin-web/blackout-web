@@ -2769,4 +2769,3 @@ every touched module green on Node 20 (`board`/`pin-source`/`breakout-source`/`g
 `condor`/`strategy-version`/`skip-grading`/`plan`/`terminal-ladder`/`scan`, 415+ tests). No
 `findings-staging` entry — not a functional bug, logged here per the RUN-LOG policy for low-severity
 cleanup passes. PR #3433.
-
