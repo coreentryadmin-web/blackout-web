@@ -33,6 +33,7 @@ import {
   type SwingPositionRow,
 } from "@/lib/db";
 import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
+import { spotFromLastTradeResult } from "@/lib/swing/underlying-spot-freshness";
 import { fetchOptionsUnifiedSnapshot } from "@/lib/providers/options-snapshot";
 import { fetchUwIvRank } from "@/lib/providers/unusual-whales";
 import { todayEt } from "@/lib/et-date";
@@ -73,11 +74,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 180;
 
-/** Best-effort live underlying price from Polygon's last-trade (results.p). null when unavailable. */
+/**
+ * Best-effort live underlying price from Polygon's last-trade (results.p) — null when unavailable
+ * OR when the trade's own SIP timestamp is too old to trust for the structural-stop GATE this spot
+ * feeds (deep-dive Q38: a feed that stays up but goes stale must not silently read as live).
+ */
 async function loadUnderlyingSpot(ticker: string): Promise<number | null> {
   const trade = await fetchStockLastTrade(ticker);
-  const p = trade && typeof trade === "object" ? Number((trade as Record<string, unknown>).p) : NaN;
-  return Number.isFinite(p) && p > 0 ? p : null;
+  return spotFromLastTradeResult(trade);
 }
 
 /**
