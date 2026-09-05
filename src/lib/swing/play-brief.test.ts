@@ -33,14 +33,62 @@ function fixturePlay(overrides: Partial<TerminalPlay> = {}): TerminalPlay {
   };
 }
 
-test("composeSwingPlayBrief: WATCH play emits entry + pillars sections", () => {
+test("composeSwingPlayBrief: WATCH play emits entry + intel sections", () => {
   const ctx: SwingPlayBriefContext = {
-    play: fixturePlay(),
+    play: fixturePlay({ discoveryOrigin: ["FLOW", "BREAKOUT"] }),
     asOf: "2026-09-05T20:00:00.000Z",
     sessionDate: "2026-09-05",
     scanAsOf: "2026-09-05T19:30:00.000Z",
     scanSessionDay: "2026-09-05",
-    ecosystem: null,
+    ecosystem: {
+      ticker: "INTC",
+      zerodte_today: null,
+      nighthawk_recent: null,
+      recent_audit_entries: [],
+      recent_flow: {
+        window_hours: 24,
+        print_count: 12,
+        call_premium: 1_200_000,
+        put_premium: 400_000,
+        unknown_premium: 0,
+      },
+      recent_anomalies: [],
+      flow_full_state: null,
+      spx_play: null,
+      spx_full_state: null,
+      spx_desk_convergence: null,
+      flow_feed_fresh: true,
+      gex_positioning: {
+        ticker: "INTC",
+        spot: 24.5,
+        change_pct: 1.2,
+        asof: "2026-09-05T20:00:00Z",
+        as_of_et: "2026-09-05 16:00 ET",
+        session_date_et: "2026-09-05",
+        market_phase: "closed",
+        call_wall: 26,
+        put_wall: 22,
+        flip: 24,
+        gex_king_strike: 25,
+        net_gex: null,
+        nearest_wall: 26,
+        gamma_posture: "long",
+        vanna_posture: null,
+        delta_posture: null,
+        charm_posture: null,
+      },
+      vector_full_state: null,
+      arsenal: {
+        scope: "single_name",
+        earnings: { earnings_date: "2026-09-12", days_until: 7, report_time: "AMC", is_confirmed: true },
+        fundamentals: { days_to_cover: 2.1, short_volume_ratio: 0.35, price_target: null, as_of: "2026-09-05" },
+        related: ["AMD", "NVDA"],
+        news: { count: 2, newest: "2026-09-05", headlines: ["INTC restructures fab unit"] },
+        macro: null,
+        breadth: null,
+        unavailable_sources: [],
+      },
+    },
     vector: null,
   };
   const brief = composeSwingPlayBrief(ctx);
@@ -50,8 +98,12 @@ test("composeSwingPlayBrief: WATCH play emits entry + pillars sections", () => {
   const titles = brief.envelope.sections.map((s) => s.title);
   assert.ok(titles.includes("Verdict"));
   assert.ok(titles.includes("Entry"));
-  assert.ok(titles.includes("Score pillars"));
-  assert.ok(brief.envelope.sections.some((s) => s.body.includes("G-S6")));
+  assert.ok(titles.includes("Why this setup"));
+  assert.ok(titles.includes("Flow & positioning"));
+  assert.ok(titles.includes("Catalysts & news"));
+  assert.ok(titles.includes("Watch levels"));
+  assert.ok(brief.envelope.sections.some((s) => s.body.includes("FLOW")));
+  assert.ok(brief.envelope.sections.some((s) => s.body.includes("Earnings")));
   assert.equal(brief.envelope.intent, "swing_play_brief");
 });
 
@@ -116,6 +168,8 @@ test("composeSwingPlayBrief: OPEN play emits management + thesis health", () => 
   assert.ok(titles.includes("Management"));
   assert.ok(titles.includes("Thesis health"));
   assert.ok(titles.includes("Position"));
+  assert.ok(titles.includes("Hold plan"));
+  assert.ok(titles.includes("Why this setup"));
   assert.ok(brief.envelope.sections.some((s) => s.body.includes("54%")));
 });
 

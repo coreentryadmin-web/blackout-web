@@ -10,6 +10,7 @@ import { playGradeLabel, playQualityPct } from "@/features/nighthawk/command-dec
 import { swingActionDisplay } from "@/features/nighthawk/command-deck/play-card-lifecycle";
 import { thesisStrengthPct } from "@/features/nighthawk/command-deck/terminal-display";
 import type { SwingPlayBriefContext, SwingPlayBriefResult } from "./play-brief-types";
+import { buildIntelSections } from "./play-brief-intel";
 
 function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -31,14 +32,6 @@ function statusBucket(play: TerminalPlay): "watch" | "open" | "closed" {
   if (play.status === "CLOSED") return "closed";
   if (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM") return "open";
   return "watch";
-}
-
-function pillarLines(play: TerminalPlay): string {
-  if (!play.factors.length) return "No pillar breakdown on this row.";
-  return play.factors
-    .slice(0, 7)
-    .map((f) => `• **${f.label}** — ${f.points >= 0 ? "+" : ""}${f.points}`)
-    .join("\n");
 }
 
 function thesisHealthSection(play: TerminalPlay): RichSection | null {
@@ -111,32 +104,6 @@ function watchEntrySection(play: TerminalPlay): RichSection {
   return { title: "Entry", body: lines.join("\n\n") };
 }
 
-function crossMarketSection(ctx: SwingPlayBriefContext): RichSection | null {
-  const { ecosystem: eco, vector, play } = ctx;
-  const lines: string[] = [];
-  const vec = vector ?? eco?.vector_full_state ?? null;
-  if (vec?.regime?.posture) lines.push(`Vector regime: **${vec.regime.posture}**`);
-  if (vec?.spot != null) lines.push(`Spot: **${vec.spot.toFixed(2)}**`);
-  if (eco?.recent_flow) {
-    const f = eco.recent_flow;
-    lines.push(
-      `HELIX flow (${f.window_hours}h): calls **${fmtUsd(f.call_premium)}** · puts **${fmtUsd(f.put_premium)}** · ${f.print_count} prints`,
-    );
-  }
-  const gex = eco?.gex_positioning;
-  if (gex?.flip != null) {
-    lines.push(`GEX gamma flip: **${gex.flip.toFixed(2)}**`);
-  }
-  if (vec?.play?.grade) {
-    lines.push(`Vector play grade: **${vec.play.grade}**`);
-  }
-  if (eco?.zerodte_today) {
-    lines.push(`0DTE desk: **${eco.zerodte_today.direction}** · ${eco.zerodte_today.conviction ?? "—"} conviction`);
-  }
-  if (!lines.length) return null;
-  return { title: "Cross-market", body: lines.join("\n"), bias: biasFromDirection(play.direction) };
-}
-
 function closedSection(play: TerminalPlay): RichSection {
   const lines = [
     `Exit P&L: **${fmtPct(play.exitPnlPct)}**`,
@@ -149,21 +116,32 @@ function closedSection(play: TerminalPlay): RichSection {
 
 function levelsFromContext(ctx: SwingPlayBriefContext): BieLevel[] {
   const levels: BieLevel[] = [];
+  const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
   const gex = ctx.ecosystem?.gex_positioning;
-  if (gex?.call_wall != null) {
-    levels.push({ label: "call wall", price: gex.call_wall, provenance: { source: "GEX", freshness: "recent" } });
+  const callWall = vec?.gexWalls?.call_wall ?? gex?.call_wall;
+  const putWall = vec?.gexWalls?.put_wall ?? gex?.put_wall;
+  const flip = vec?.gammaFlip ?? gex?.flip;
+  if (callWall != null) {
+    levels.push({ label: "call wall", price: callWall, provenance: { source: "GEX", freshness: "recent" } });
   }
-  if (gex?.put_wall != null) {
-    levels.push({ label: "put wall", price: gex.put_wall, provenance: { source: "GEX", freshness: "recent" } });
+  if (putWall != null) {
+    levels.push({ label: "put wall", price: putWall, provenance: { source: "GEX", freshness: "recent" } });
   }
-  if (gex?.flip != null) {
-    levels.push({ label: "gamma flip", price: gex.flip, provenance: { source: "GEX", freshness: "recent" } });
+  if (flip != null) {
+    levels.push({ label: "gamma flip", price: flip, provenance: { source: "GEX", freshness: "recent" } });
   }
-  const spot = ctx.vector?.spot ?? ctx.ecosystem?.vector_full_state?.spot;
+  const spot = vec?.spot ?? gex?.spot;
   if (spot != null) {
     levels.push({ label: "spot", price: spot, provenance: { source: "Vector", freshness: "live" } });
   }
-  return levels;
+  for (const z of vec?.confluenceZones ?? []) {
+    levels.push({
+      label: `confluence (${z.kinds.join("+")})`,
+      price: z.center,
+      provenance: { source: "Vector", freshness: "recent" },
+    });
+  }
+  return levels.slice(0, 8);
 }
 
 function evidenceFromContext(ctx: SwingPlayBriefContext): BieEvidence[] {
@@ -182,17 +160,37 @@ function evidenceFromContext(ctx: SwingPlayBriefContext): BieEvidence[] {
       provenance: { source: "Swing ledger", asOf: ctx.play.markAsOf, freshness: "recent" },
     });
   }
+  const eco = ctx.ecosystem;
+  if (eco?.recent_flow) {
+    out.push({
+      kind: "fact",
+      text: `HELIX flow ${eco.recent_flow.print_count} prints in ${eco.recent_flow.window_hours}h.`,
+      provenance: { source: "HELIX", freshness: eco.flow_feed_fresh ? "live" : "recent" },
+    });
+  }
+  if (eco?.arsenal?.earnings?.earnings_date) {
+    out.push({
+      kind: "fact",
+      text: `Next earnings ${eco.arsenal.earnings.earnings_date}.`,
+      provenance: { source: "Earnings calendar", freshness: "recent" },
+    });
+  }
   return out;
 }
 
 function followupsFor(play: TerminalPlay): string[] {
   const t = play.ticker;
-  return [
-    `What changed on ${t} since entry?`,
-    `Show ${t} GEX walls`,
-    `HELIX flow on ${t}`,
-    `Open full Largo for ${t}`,
+  const bucket = statusBucket(play);
+  const base = [
+    `Show ${t} GEX walls on chart`,
+    `HELIX flow on ${t} last 24h`,
+    `Vector technicals for ${t}`,
   ];
+  if (bucket === "open") base.unshift(`What changed on ${t} since entry?`);
+  if (bucket === "watch") base.unshift(`When does ${t} entry trigger?`);
+  if (bucket === "closed") base.unshift(`What did we learn from ${t}?`);
+  base.push(`Open full Largo for ${t}`);
+  return base;
 }
 
 /** Compose a full BieAnswerEnvelope for the selected swing play. */
@@ -211,41 +209,36 @@ export function composeSwingPlayBrief(ctx: SwingPlayBriefContext): SwingPlayBrie
   if (strength != null) verdictLines.push(`Thesis strength **${strength}%**`);
   if (play.regime) verdictLines.push(play.regime);
   if (play.archetype) verdictLines.push(`Archetype: ${play.archetype}`);
-  if (play.recNote && bucket !== "open") verdictLines.push(play.recNote);
+  if (play.recNote && bucket === "watch") verdictLines.push(play.recNote);
 
   const sections: RichSection[] = [{ title: "Verdict", body: verdictLines.join("\n\n") }];
 
   if (bucket === "watch") {
     sections.push(watchEntrySection(play));
-    sections.push({ title: "Score pillars", body: pillarLines(play) });
-    const cross = crossMarketSection(ctx);
-    if (cross) sections.push(cross);
-    if (play.thesisBreak?.note || play.thesisBreak?.level) {
-      sections.push({
-        title: "Invalidation",
-        body: `Thesis **${play.thesisBreak.level ?? "unknown"}**${play.thesisBreak.note ? ` — ${play.thesisBreak.note}` : ""}`,
-        bias: play.thesisBreak.level === "break" ? "bearish" : "neutral",
-      });
-    }
   } else if (bucket === "open") {
     sections.push(managementSection(play));
     const th = thesisHealthSection(play);
     if (th) sections.push(th);
     sections.push(pnlSection(play));
-    const cross = crossMarketSection(ctx);
-    if (cross) sections.push(cross);
-    sections.push({ title: "Score pillars", body: pillarLines(play) });
   } else {
     sections.push(closedSection(play));
-    sections.push({ title: "Score pillars", body: pillarLines(play) });
-    const cross = crossMarketSection(ctx);
-    if (cross) sections.push(cross);
   }
+
+  sections.push(...buildIntelSections(ctx, bucket));
 
   const invalidation =
     play.thesisBreak?.level === "break"
       ? play.thesisBreak.note ?? "Thesis break — structural invalidation fired."
-      : play.gateBlocks?.[0]?.reason ?? null;
+      : play.gateBlocks?.[0]?.reason ??
+        (bucket === "open" && play.exitPolicy?.stop_premium != null
+          ? `Premium stop at ${fmtUsd(play.exitPolicy.stop_premium)}`
+          : null);
+
+  const hasRichData =
+    ctx.play.factors.length > 0 ||
+    ctx.vector != null ||
+    ctx.ecosystem?.recent_flow != null ||
+    ctx.ecosystem?.arsenal?.earnings != null;
 
   const envelope: BieAnswerEnvelope = buildRichEnvelope({
     headline: `${action?.label ?? play.recommendation ?? play.status} — ${headline}`,
@@ -257,8 +250,8 @@ export function composeSwingPlayBrief(ctx: SwingPlayBriefContext): SwingPlayBrie
     invalidation,
     followups: followupsFor(play),
     confidence: {
-      level: ctx.play.thesisHealth?.health != null || ctx.play.factors.length > 0 ? "high" : "moderate",
-      why: "Deterministic synthesis from swing lane, ledger, Vector, HELIX, and GEX cache readers — no LLM.",
+      level: hasRichData ? "high" : "moderate",
+      why: "Deterministic synthesis from swing lane, ledger, Vector chart, HELIX flow, GEX nodes, earnings & news — no LLM.",
     },
   });
 
