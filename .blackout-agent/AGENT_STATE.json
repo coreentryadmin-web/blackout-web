@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:35:35.991Z",
+  "updated_at": "2026-09-05T19:31:59.607Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:26:09.737Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-05T19:30:13.922Z",
+      "lease_until": "2026-09-05T21:00:13.922Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": null,
       "title": null
     },
     "BO-P1-0101": {
@@ -267,8 +267,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T16:30:48.265Z",
-      "current_task": "BO-P1-0101"
+      "last_seen": "2026-09-05T19:30:13.923Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "cross_examination": {
@@ -326,36 +326,14 @@
     }
   },
   "deploy": {
-    "last_main_sha": "86227e70b57d7dc962673f750a952173dea85088",
+    "last_main_sha": "1d64dc9ae143d6c03b976714341e7706eefe0182",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:34:11Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978273189",
-    "last_deploy_sha": "86227e70b57d7dc962673f750a952173dea85088"
+    "last_deploy_at": "2026-09-05T19:19:05Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33986744578",
+    "last_deploy_sha": "1d64dc9ae143d6c03b976714341e7706eefe0182"
   },
   "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
-    {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:02.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:03.919Z",
       "type": "context_sync",
@@ -1622,6 +1600,49 @@
       "agent": "cursor",
       "run_id": "7241539d-60c7-4e6b-ac5b-c9b3aa85b828",
       "summary": "Continuous loop cycle complete. Peer review: pr-sweep 0 open PRs. Platform integrity 14/14 GREEN, lifecycle sweep GREEN (weekend RTH skip). Deploy drift: prod rolling feaba670 (in_progress 25m+), main now 86227e70 (#3995+#3998) with pending ECR run 33978273189. Opened draft #4001 (agent state sync — awaits Claude review). GitHub GraphQL rate-limited until ~17:06 UTC; REST still works. Next: monitor ECR → validate:deploy post-rollout; Claude peer-review #4001 + any new claude/* PRs."
+    },
+    {
+      "at": "2026-09-05T19:30:05.978Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T19:30:09.398Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T19:30:10.197Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T19:30:11.013Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T19:30:13.923Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T19:31:59.606Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T19:31:59.607Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "66566e79-9ebf-4167-88b6-c93afac1cfa5",
+      "summary": "Autopilot recovery cycle: deploy GREEN (validate:deploy + platform-integrity 14/14), ops:collect clean. No Claude PRs to peer-review. Fixed #4035 CI — pushed charter+mini-panel tripwire update for SwingLargoInsightsPanel re-mount (d7390c51c). #4024 verify still pending. #4027 red (tier JWT + Largo anchor tests). Open cursor PRs: #4032/#4036 verify in progress."
     }
   ],
   "pr_activity": {
