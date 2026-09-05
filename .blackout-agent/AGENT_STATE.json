@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:21:58.167Z",
+  "updated_at": "2026-09-05T21:33:02.027Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-05T21:22:45.818Z",
+      "lease_until": "2026-09-05T22:59:17.291Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "b929d1a3-ddea-40eb-a8b8-cb9a6135f83b"
     }
   },
   "reviews": {
@@ -36,11 +36,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "8f1b953ba05ef5cdb818c04fa32f18e7151f9605",
+    "last_main_sha": "0c0b445712dd988e818f59638a0866ce7e640c6f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-05T21:25:14Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33991596241",
+    "last_deploy_sha": "8f1b953ba05ef5cdb818c04fa32f18e7151f9605"
   },
   "events": [
     {
@@ -138,7 +138,57 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T21:33:00.953Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-05T21:33:02.027Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-05T21:33:02.027Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6de68eb5-845d-4076-aeec-592fc6228573",
+      "summary": "PR-event recovery: lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo, rth-off-hours). ops:collect 0. #4047 swing play-brief locally verified (3/3 tests, tsc, lint:brand) — awaiting Claude peer review. #4048 dirty merge closed; fresh handoff. No Claude/fix PRs open. GraphQL rate-limited."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4049,
+      "title": "chore(cleanup): remove 8 more @deprecated exports with zero real callers",
+      "branch": "fix/dead-code-sweep-batch-2",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T21:26:49Z"
+    },
+    {
+      "number": 4048,
+      "title": "chore(blackout-agent): cursor recovery cycle — post-bcb5ce5 merge wave",
+      "branch": "cursor/cursor-agent-work-loop-03da",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T21:27:32Z"
+    },
+    {
+      "number": 4047,
+      "title": "feat(swing): Ask Largo — deterministic play intelligence engine",
+      "branch": "cursor/swing-play-intelligence-engine",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T21:32:57Z"
+    }
+  ]
 }
