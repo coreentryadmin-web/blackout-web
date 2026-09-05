@@ -304,6 +304,16 @@ test("runSwingDiscoveryScan: LIVE seam OPENS a graduated WATCH candidate (real-t
   assert.equal(opened[0].sub_lane, "STANDARD");
   assert.equal(opened[0].status, "OPEN");
   assert.equal((opened[0].gate_calibration_json as Record<string, unknown>).graduated, true);
+  assert.equal(
+    res.watchCandidates.some((c) => c.ticker === "NVDA"),
+    false,
+    "committed thesis must not remain on the WATCH rail in the persisted snapshot",
+  );
+  assert.equal(
+    res.playSet.SWING.some((p) => p.ticker === "NVDA"),
+    false,
+    "pre-entry play row must drop once capital is committed — live book serves it",
+  );
 });
 
 test("runSwingDiscoveryScan: a budget-blocked-only candidate opens a SHADOW row (2026-08-06) — zero real capital, tracked", async () => {

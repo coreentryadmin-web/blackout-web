@@ -50,6 +50,7 @@ import {
 import {
   produceHorizonPlays,
   type HorizonCandidate,
+  type HorizonPlay,
   type HorizonPlaySet,
 } from "../horizon-plays";
 import type { PlayDirection, ChainContract } from "../horizon-fanout";
@@ -565,6 +566,44 @@ export interface SwingDiscoveryResult {
 }
 
 /**
+ * After a successful open, drop the thesis from the persisted WATCH rail + pre-entry playSet row.
+ * Live capital is served from the open-book reader on the member route — leaving the same thesis on
+ * the WATCH rail after this scan is a desk desync (deep-dive Q3).
+ */
+export function reconcileServingAfterCommit(args: {
+  commit: SwingCommitResult;
+  dossierByKey: Map<string, SwingDossier>;
+  watchCandidates: SwingWatchCandidate[];
+  playSet: HorizonPlaySet;
+}): { watchCandidates: SwingWatchCandidate[]; playSet: HorizonPlaySet } {
+  const openedThesisKeys = new Set<string>();
+  for (const entry of args.commit.committed) {
+    if (entry.positionId == null) continue;
+    const dossier = args.dossierByKey.get(`${entry.ticker.toUpperCase()}|${entry.direction}`);
+    openedThesisKeys.add(
+      swingThesisKey(entry.ticker, entry.direction, dossier?.archetype?.archetype ?? null),
+    );
+  }
+  if (openedThesisKeys.size === 0) {
+    return { watchCandidates: args.watchCandidates, playSet: args.playSet };
+  }
+  const thesisKeyForPlay = (p: HorizonPlay): string => {
+    const dossier = args.dossierByKey.get(`${p.ticker.toUpperCase()}|${p.direction}`);
+    const archetype = p.archetype ?? dossier?.archetype?.archetype ?? null;
+    return swingThesisKey(p.ticker, p.direction, archetype);
+  };
+  return {
+    watchCandidates: args.watchCandidates.filter(
+      (c) => !openedThesisKeys.has(swingThesisKey(c.ticker, c.direction, c.archetype)),
+    ),
+    playSet: {
+      ...args.playSet,
+      SWING: args.playSet.SWING.filter((p) => !openedThesisKeys.has(thesisKeyForPlay(p))),
+    },
+  };
+}
+
+/**
  * Run one whole-market swing discovery scan (two-tier, persistence-gated, WATCH-only). See the file header
  * for the full pipeline. Every side-effecting step is injected via `deps`, so this is deterministic given
  * its deps and unit-testable with fakes.
@@ -746,7 +785,7 @@ export async function runSwingDiscoveryScan(
     cfg.minPersistenceSessions,
     WATCH_ELIGIBLE_FETCH_LIMIT,
   );
-  const watchCandidates = eligible.filter((c) =>
+  let watchCandidates = eligible.filter((c) =>
     seenThisScan.has(swingThesisKey(c.ticker, c.direction, c.archetype)),
   );
   const watchKeys = new Set(
@@ -990,6 +1029,14 @@ export async function runSwingDiscoveryScan(
         insertShadowPosition: deps.insertShadowPosition,
       };
       commit = await executeSwingCommits(commitDeps, plan);
+      const reconciled = reconcileServingAfterCommit({
+        commit,
+        dossierByKey,
+        watchCandidates,
+        playSet,
+      });
+      watchCandidates = reconciled.watchCandidates;
+      playSet = reconciled.playSet;
       console.info(
         `[swing-discovery] commit gate: ${commitEligibleCount} graduated-eligible / ${plan.committableCount} opened / ` +
           `${plan.shadowEligibleCount} shadow-eligible / ${commit.shadowed.length} shadowed` +
