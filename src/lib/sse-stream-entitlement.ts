@@ -1,19 +1,30 @@
-import type { Tier } from "@/lib/tiers";
+import { tierAtLeast, type Tier } from "@/lib/tiers";
 import type { ToolKey } from "@/lib/tool-access";
-import { requireTierApi } from "@/lib/market-api-auth";
-import { requireToolApi } from "@/lib/tool-access-server";
+import { resolveUserTier, TierUnavailableError } from "@/lib/tier-cache";
+import { userCanAccessTool } from "@/lib/tool-access-server";
+
+export type SseEntitlementVerdict = "ok" | "forbidden" | "unavailable";
 
 /**
- * Re-run tier + tool gates on each SSE tick so a lapsed membership stops receiving
- * premium live data without waiting for the browser to reconnect. Cron bearer auth is
- * checked only at connection open — callers skip this when `via === "cron"`.
+ * Re-check tier (+ optional tool launch gate) for a long-lived SSE connection.
+ * Intentionally omits session JWT claims so Whop cancellation / publishTierChanged
+ * invalidation is honored on the next tick — connect-time auth() is not enough.
  */
 export async function recheckSseUserEntitlement(
+  userId: string,
   minTier: Tier,
   tool?: ToolKey,
-): Promise<Response | null> {
-  const tier = await requireTierApi(minTier);
-  if (tier instanceof Response) return tier;
-  if (!tool) return null;
-  return requireToolApi(tool);
+): Promise<SseEntitlementVerdict> {
+  try {
+    const tier = await resolveUserTier(userId);
+    if (!tierAtLeast(tier, minTier)) return "forbidden";
+    if (tool) {
+      const allowed = await userCanAccessTool(userId, tool);
+      if (!allowed) return "forbidden";
+    }
+    return "ok";
+  } catch (err) {
+    if (err instanceof TierUnavailableError) return "unavailable";
+    throw err;
+  }
 }
