@@ -192,3 +192,24 @@ test("formatVerifyStatus normalizes GraphQL and REST check shapes", async () => 
   assert.equal(formatVerifyStatus({ status: "IN_PROGRESS", conclusion: null }), "IN_PROGRESS/pending");
   assert.equal(formatVerifyStatus(null), "unknown");
 });
+
+test("fetchOpenPrs: a genuinely empty GraphQL result (real 0 open PRs) short-circuits without burning REST budget", async (t) => {
+  // Regression for a Cursor review nit on the REST-fallback PR: `graphql.length > 0` treated an
+  // empty-but-successful `gh pr list` the same as a GraphQL FAILURE, falling through to REST and
+  // spending its separate, scarcer budget on a call that was never needed.
+  let calls = 0;
+  t.mock.module("node:child_process", {
+    namedExports: {
+      spawnSync: (cmd, args) => {
+        calls += 1;
+        if (cmd === "gh" && args[0] === "pr" && args[1] === "list") {
+          return { status: 0, stdout: "[]" };
+        }
+        throw new Error(`unexpected spawnSync call: ${cmd} ${args.join(" ")}`);
+      },
+    },
+  });
+  const { fetchOpenPrs } = await import(`./sync-context.mjs?t=${Date.now()}`);
+  assert.deepEqual(fetchOpenPrs(), []);
+  assert.equal(calls, 1, "must not fall through to the REST path when GraphQL genuinely returned zero PRs");
+});

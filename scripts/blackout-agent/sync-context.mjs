@@ -64,7 +64,7 @@ export function fetchOpenPrs() {
     "--json",
     "number,title,headRefName,author,isDraft,statusCheckRollup,updatedAt",
   ]);
-  if (Array.isArray(graphql) && graphql.length > 0) {
+  if (Array.isArray(graphql)) {
     return graphql.map((pr) => {
       const verify = (pr.statusCheckRollup ?? []).find((c) => c.name === "verify");
       const authorLogin = pr.author?.login ?? "unknown";
