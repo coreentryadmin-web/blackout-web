@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T04:00:02.455Z",
+  "updated_at": "2026-09-05T04:17:43.927Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -79,8 +79,8 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-05T04:00:10.539Z",
+      "lease_until": "2026-09-05T05:30:10.539Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -250,18 +250,39 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T03:47:27.554Z",
-      "current_task": "BO-P1-0100"
+      "last_seen": "2026-09-05T04:00:10.540Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
     "last_main_sha": "fc35c2fcc142cd8fc8e3b4a19d465419a6a610f3",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T03:59:30Z",
+    "last_deploy_at": "2026-09-05T04:06:46Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33943337966",
     "last_deploy_sha": "966cb7d8467e821262ca6d318c40745c16506ce6"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3845,
+      "title": "fix(swing): omit fabricated REL_STRENGTH on legacy promotion path",
+      "branch": "fix/swing-legacy-rel-strength-null-honesty",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T04:17:27Z"
+    },
+    {
+      "number": 3844,
+      "title": "fix(gex): guard heatmap overlay/NH/explain + spot-fallback caches against future at",
+      "branch": "cursor/gex-heatmap-overlay-cache-future-guard",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T04:17:34Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1185,6 +1206,37 @@
       "agent": "cursor",
       "run_id": "6bace0ec-45d5-4569-9f04-ddabe8bd76fb",
       "summary": "PR #3842 peer-reviewed APPROVED (swing TRIM latch enforced guard). verify+CodeQL GREEN. validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. GitHub GraphQL rate-limited for gh CLI; used unauthenticated API + ManagePullRequest for PR/CI."
+    },
+    {
+      "at": "2026-09-05T04:00:06.984Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T04:00:07.885Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T04:00:10.540Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T04:17:43.926Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T04:17:43.927Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9b6d0220-5540-4852-a697-4b24e3f604a3",
+      "summary": "Cycle: #3842 Claude swing TRIM latch fix peer-reviewed APPROVED+merged (966cb7d). ECR deploy run 33943337966 in_progress. validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Open PR #3843 agent state sync (draft). No other open PRs. Off-hours Saturday — RTH skipped."
     }
   ]
 }
