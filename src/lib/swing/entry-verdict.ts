@@ -1,19 +1,23 @@
-// src/lib/swing/entry-verdict.ts — member-facing BUY / WAIT / SKIP for pre-entry swing rows.
+// src/lib/swing/entry-verdict.ts — member-facing BUY / STILL BUY / WAIT / SKIP for swing rows.
 //
-// Maps the serving router's observable section (serving.ts) onto deck lifecycle + action vocabulary:
-//   COMMIT_NOW          → WATCH + BUY   ("you can still enter")
-//   WAITING_FOR_ENTRY   → WATCH + WAIT  ("thesis live, no clean fill yet")
-//   WATCH               → WATCH + WAIT  ("forming / below floor — track, don't chase")
-//   RESEARCH            → SKIP + PASSED ("desk is passing — see gate blocks for why")
+// Entry labels are driven by `entry-enterability.ts` ("can a member still enter?"), NOT only the narrow
+// COMMIT_NOW serving slice. Desk model-book OPEN and member entry label are intentionally decoupled.
 //
-// PURE — no IO. Live positions (MANAGING/SCALING_OUT/EXITING) are out of scope; the adapter keys
-// off liveStatus and leaves those on OPEN/HOLD/TRIM management vocabulary.
+// PURE — no IO.
 
 import { sectionForSwingPlay, type SwingServingSection } from "./serving";
-import type { SwingSetupState, SwingEntryState, SwingArchetype } from "./taxonomy";
+import type { SwingSetupState, SwingEntryState, SwingArchetype, SwingSubLane } from "./taxonomy";
 import type { SwingDiscoveryPath } from "./discovery";
 import { isSwingConfluenceEnforced } from "./v2/config";
 import { blockedByFromSwingGates, failingSwingCommitGates } from "./v2/gates";
+import {
+  evaluateSwingEntryEnterability,
+  swingEntryActionLabel,
+  type SwingEntryAction,
+} from "./entry-enterability";
+import { LEGACY_COMMIT_GATE_EXEMPT } from "./entry-gate-constants";
+
+export { LEGACY_COMMIT_GATE_EXEMPT };
 
 export type SwingEntryGateBlock = { code: string; reason: string };
 
@@ -22,7 +26,8 @@ export type SwingEntryVerdict = {
   recommendation: "BUY" | "HOLD";
   recNote: string;
   gateBlocks: SwingEntryGateBlock[] | null;
-  actionLabel: "BUY" | "WAIT" | null;
+  actionLabel: "BUY" | "STILL BUY" | "WAIT" | null;
+  entryAction: SwingEntryAction | null;
 };
 
 export type SwingEntryVerdictInput = {
@@ -33,11 +38,14 @@ export type SwingEntryVerdictInput = {
   aboveFloor?: boolean | null;
   persistenceObserved?: boolean | null;
   persistenceGapReason?: string | null;
-  /** Stamped at discovery from computeSwingCommitPlan — authoritative G-S6/G-S14 blocks. */
   commitGateBlockedBy?: string[] | null;
-  /** Discovery provenance kinds — used to evaluate G-S6 when commitGateBlockedBy is absent. */
   signalKinds?: string[] | null;
   archetype?: SwingArchetype | string | null;
+  entryDeadline?: string | null;
+  subLane?: SwingSubLane | string | null;
+  anchoredAt?: string | null;
+  deskCommitted?: boolean;
+  nowMs?: number;
 };
 
 /** Resolve the serving section when the play was not stamped (tests / partial payloads). */
@@ -54,36 +62,6 @@ export function resolveSwingServingSection(input: SwingEntryVerdictInput): Swing
   });
 }
 
-function waitingRecNote(input: SwingEntryVerdictInput): string {
-  if (input.setupState === "EXTENDED") {
-    return "Extended past the trigger — wait for a pullback into the entry zone before sizing.";
-  }
-  switch (input.entryStatus) {
-    case "PRE_TRIGGER":
-      return "Waiting for price to reach the trigger — setup has not fired yet.";
-    case "PULLBACK_TO_ENTRY":
-      return "Pullback into the entry zone — wait for a clean retest fill.";
-    case "EXTENDED_CHASE":
-      return "Past the valid entry window (>0.5·ATR past trigger) — do not chase; wait for a reset.";
-    case "AT_TRIGGER":
-      return "At trigger but not yet in the commit window — wait for the desk commit signal.";
-    case "EXPIRED":
-      return "Contract expired — no entry available on this strike/expiry.";
-    default:
-      return "Thesis is live but entry geometry is not clean yet — wait for a better fill.";
-  }
-}
-
-function watchRecNote(input: SwingEntryVerdictInput): string {
-  if (input.setupState === "FORMING") {
-    return "Thesis is still building — track persistence before entry.";
-  }
-  if (input.aboveFloor === false) {
-    return "Below the lane commit floor — watch until conviction clears the bar.";
-  }
-  return "Not actionable yet — track the setup on the WATCH rail.";
-}
-
 const DISCOVERY_PATH_KINDS = new Set<SwingDiscoveryPath>([
   "FLOW",
   "STRUCTURE",
@@ -92,8 +70,6 @@ const DISCOVERY_PATH_KINDS = new Set<SwingDiscoveryPath>([
   "BANGER",
   "VECTOR",
 ]);
-
-export const LEGACY_COMMIT_GATE_EXEMPT = "legacy:exempt";
 
 /** Map commit `blockedBy` tokens to member-facing gate blocks. */
 export function commitGateBlocksForVerdict(blockedBy: readonly string[]): SwingEntryGateBlock[] {
@@ -203,58 +179,83 @@ function researchGateBlocks(input: SwingEntryVerdictInput): SwingEntryGateBlock[
   ];
 }
 
+function enterabilityInputFromVerdict(input: SwingEntryVerdictInput) {
+  return {
+    setupState: input.setupState,
+    entryStatus: input.entryStatus,
+    aboveFloor: input.aboveFloor,
+    persistenceObserved: input.persistenceObserved,
+    commitGateBlockedBy: resolveSwingCommitGateBlockedBy(input),
+    signalKinds: input.signalKinds,
+    archetype: input.archetype,
+    entryDeadline: input.entryDeadline,
+    subLane: (input.subLane as SwingSubLane) ?? null,
+    anchoredAt: input.anchoredAt,
+    deskCommitted: input.deskCommitted,
+    nowMs: input.nowMs,
+  };
+}
+
 /**
- * Pre-entry swing BUY/WAIT/SKIP verdict. Returns null when the section cannot be resolved
- * (legacy payloads with no observables) — the adapter keeps its prior COMMIT→WATCH mapping.
+ * Pre-entry swing BUY/STILL BUY/WAIT/SKIP verdict. Returns null when observables are too sparse.
+ * Live rows use `evaluateSwingEntryEnterability` directly in the adapter for the STILL BUY pill.
  */
 export function swingEntryVerdict(input: SwingEntryVerdictInput): SwingEntryVerdict | null {
   const section = resolveSwingServingSection(input);
   if (!section) return null;
 
-  const commitGateBlockedBy = resolveSwingCommitGateBlockedBy(input);
+  if (section === "RESEARCH") {
+    return {
+      deckStatus: "SKIP",
+      recommendation: "HOLD",
+      recNote: "Desk is passing this setup — no entry recommended.",
+      gateBlocks: researchGateBlocks(input),
+      actionLabel: null,
+      entryAction: "dont_buy",
+    };
+  }
 
-  switch (section) {
-    case "COMMIT_NOW":
-      if (commitGateBlockedBy.length > 0) {
+  const commitGateBlockedBy = resolveSwingCommitGateBlockedBy(input);
+  const enter = evaluateSwingEntryEnterability(enterabilityInputFromVerdict(input));
+
+  switch (enter.action) {
+    case "buy":
+    case "still_buy":
+      return {
+        deckStatus: "WATCH",
+        recommendation: "BUY",
+        recNote: enter.reason,
+        gateBlocks: null,
+        actionLabel: swingEntryActionLabel(enter.action),
+        entryAction: enter.action,
+      };
+    case "wait":
+      return {
+        deckStatus: "WATCH",
+        recommendation: "HOLD",
+        recNote: enter.reason,
+        gateBlocks: commitGateBlockedBy.length ? commitGateBlocksForVerdict(commitGateBlockedBy) : null,
+        actionLabel: "WAIT",
+        entryAction: "wait",
+      };
+    case "dont_buy":
+      if (input.setupState === "INVALIDATED" || input.persistenceObserved === true) {
         return {
-          deckStatus: "WATCH",
+          deckStatus: "SKIP",
           recommendation: "HOLD",
-          recNote:
-            "At trigger, but commit gates have not cleared — wait for confluence/Cortex before sizing.",
-          gateBlocks: commitGateBlocksForVerdict(commitGateBlockedBy),
-          actionLabel: "WAIT",
+          recNote: enter.reason,
+          gateBlocks: researchGateBlocks(input),
+          actionLabel: null,
+          entryAction: "dont_buy",
         };
       }
       return {
         deckStatus: "WATCH",
-        recommendation: "BUY",
-        recNote: "At trigger with clean entry geometry — this is the actionable buy window.",
-        gateBlocks: null,
-        actionLabel: "BUY",
-      };
-    case "WAITING_FOR_ENTRY":
-      return {
-        deckStatus: "WATCH",
         recommendation: "HOLD",
-        recNote: waitingRecNote(input),
+        recNote: enter.reason,
         gateBlocks: null,
         actionLabel: "WAIT",
-      };
-    case "WATCH":
-      return {
-        deckStatus: "WATCH",
-        recommendation: "HOLD",
-        recNote: watchRecNote(input),
-        gateBlocks: null,
-        actionLabel: "WAIT",
-      };
-    case "RESEARCH":
-      return {
-        deckStatus: "SKIP",
-        recommendation: "HOLD",
-        recNote: "Desk is passing this setup — no entry recommended.",
-        gateBlocks: researchGateBlocks(input),
-        actionLabel: null,
+        entryAction: "dont_buy",
       };
     default:
       return null;
