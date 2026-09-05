@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0an. Night Hawk hunt roundFloats — fix/nighthawk-hunt-roundfloats (pending)
+
+**What was broken:** `POST /api/market/nighthawk/hunt` returned raw IEEE floats in `platform_context.spx_price` and play `score` fields while sibling Night Hawk routes (`edition`, `horizons`, `play-bars`, `legacy-marks`) already wrap with `roundFloats`.
+
+**Fix:** Wrap assembled `HuntResponse` in `roundFloats` before `NextResponse.json`.
+
+**Check at the open:** Run a day or swing hunt from Night Hawk — response JSON must show 2dp numerics, no `7499.360000000001`-class tails on scores or SPX context.
+
 ### 0am. Dark-pool ticker roundFloats + nighthawk-edition UW sweep — fix/dark-pool-ticker-roundfloats-nighthawk-uw-sweep (pending)
 
 **What was broken:** `GET /api/market/dark-pool/ticker` returned raw IEEE floats at the JSON boundary while sibling `/dark-pool` already calls `roundFloats`. Separately, `GET /api/cron/nighthawk-edition` dispatched `buildEveningEdition` without `runWithBackgroundUwSweep`, so nightly dossier UW fan-out raced live member reads for the same 2-RPS cluster ceiling.
