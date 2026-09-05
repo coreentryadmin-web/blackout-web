@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T19:32:13.509Z",
+  "updated_at": "2026-09-05T19:34:31.381Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -58,9 +58,38 @@
       "agent": "cursor",
       "run_id": "ad63d275-6611-4ff9-8292-69d0e7be1a71",
       "summary": "Autopilot recovery cycle: deploy GREEN (validate:deploy + platform-integrity 14/14), ops:collect clean. No Claude PRs to peer-review. Fixed #4035 CI — pushed charter+mini-panel tripwire update for SwingLargoInsightsPanel re-mount (d7390c51c). #4024 verify pending. #4027 red (tier JWT + Largo anchor). Open: #4032/#4036."
+    },
+    {
+      "at": "2026-09-05T19:32:32.217Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-09-05T19:34:31.381Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 9
+    },
+    {
+      "at": "2026-09-05T19:34:31.381Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "f61530af-46e6-4811-8098-fa5c32818697",
+      "summary": "Cycle complete: deploy+platform-integrity GREEN, ops clean. Fixed #4035 CI (largo charter+mini-panel tripwire d7390c51c). Fixed #4027 CI (CQ-113 test + flow session_date anchor 9ba1f4063). #4038 agent handoff PR open. #4024 verify pending. No Claude PRs to review."
     }
   ],
   "open_prs": [
+    {
+      "number": 4038,
+      "title": "chore(blackout-agent): cursor recovery cycle handoff — #4035 CI fix",
+      "branch": "cursor/autopilot-state-recovery-loop-9792",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T19:32:46Z"
+    },
     {
       "number": 4037,
       "title": "fix(spx-desk): anchor off-hours pulse to prior close on cold replica",
@@ -89,7 +118,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "unknown",
-      "updated_at": "2026-09-05T19:31:52Z"
+      "updated_at": "2026-09-05T19:32:16Z"
     },
     {
       "number": 4034,
@@ -117,9 +146,9 @@
       "branch": "cursor/bead-rail-sep3-data-restore",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": true,
+      "draft": false,
       "verify": "unknown",
-      "updated_at": "2026-09-05T19:24:24Z"
+      "updated_at": "2026-09-05T19:34:24Z"
     },
     {
       "number": 4027,
@@ -129,7 +158,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "unknown",
-      "updated_at": "2026-09-05T19:28:49Z"
+      "updated_at": "2026-09-05T19:34:28Z"
     },
     {
       "number": 4024,
