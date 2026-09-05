@@ -247,7 +247,7 @@
         "Is ceil(pool*0.35) clamped [80,200] right recall/precision for swings? (tunable live — not a reason to shadow)",
         "POSITIONING from Vector leaders + GEX — wall alignment alone OK at Tier-0 or require flow corroboration before WATCH?",
         "G-S6 confluence ≥3 kinds (≥2 event) enforced LIVE at commit — threshold sane for member-visible open rate?",
-        "G-S14 Cortex preflight uses 0DTE readers interim — acceptable until swing horizon in fetch.ts?",
+        "G-S14 Cortex preflight now uses horizon=swing → Vector weekly grid (not 0DTE interim) — weekly vs full 5–15 DTE window OK?",
         "VECTOR + BANGER origins overlapping STRUCTURE — intentional corroboration or dedupe needed?",
         "NOT IN SCOPE: shadow deploy / separate enforce flags / logging-only paths — operator rejected those"
       ]
