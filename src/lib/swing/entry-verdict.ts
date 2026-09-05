@@ -119,6 +119,12 @@ export function commitGateBlocksForVerdict(blockedBy: readonly string[]): SwingE
         };
       }
       if (b.startsWith("gate:G-S14:")) {
+        if (b.includes("cortex_unavailable")) {
+          return {
+            code: "g_s14_cortex_unavailable",
+            reason: "Cortex preflight could not complete — desk will not open until evidence recovers.",
+          };
+        }
         return {
           code: "g_s14_cortex",
           reason: "Cortex preflight vetoed this setup — desk will not open.",

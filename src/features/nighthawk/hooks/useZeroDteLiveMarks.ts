@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ZeroDteLiveMarkRow, ZeroDteLiveMarksPayload } from "@/lib/zerodte/live-marks";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const STREAM_URL = "/api/market/zerodte/marks/stream";
 const POLL_URL = "/api/market/zerodte/marks";
@@ -90,7 +91,7 @@ export function useZeroDteLiveMarks(enabled: boolean): ZeroDteLiveMarksState {
     // that break SSE and the reconnect backoff window, then goes dormant again.
     const pollTimer = setInterval(() => {
       if (closed || pollInflight) return;
-      if (Date.now() - lastSseAtRef.current < SSE_QUIET_MS) return;
+      if (isWsUpdatedAtFresh(lastSseAtRef.current, SSE_QUIET_MS)) return;
       pollInflight = true;
       fetch(POLL_URL, { cache: "no-store", credentials: "same-origin" })
         .then((r) => (r.ok ? (r.json() as Promise<ZeroDteLiveMarksPayload>) : null))

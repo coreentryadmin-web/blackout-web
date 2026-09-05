@@ -5,6 +5,8 @@ import { composeCortexEvidence } from "@/lib/nighthawk/cortex";
 import {
   evaluateSwingCortexForCommit,
   swingCortexBlockedByFromAssessment,
+  swingCortexUnavailableResult,
+  SWING_CORTEX_UNAVAILABLE_TOKEN,
 } from "./cortex-swing";
 
 test("swingCortexBlockedByFromAssessment: PASS yields no blocks", () => {
@@ -45,4 +47,21 @@ test("evaluateSwingCortexForCommit: injected evaluate path", async () => {
   });
   assert.equal(r.blocked, true);
   assert.ok(r.blockedBy[0]?.startsWith("gate:G-S14:"));
+});
+
+test("evaluateSwingCortexForCommit: thrown error fails closed with cortex_unavailable", async () => {
+  const r = await evaluateSwingCortexForCommit("NVDA", "LONG", Date.parse("2026-09-05T12:00:00Z"), {
+    evaluate: async () => {
+      throw new Error("vector timeout");
+    },
+  });
+  assert.equal(r.blocked, true);
+  assert.deepEqual(r.blockedBy, [SWING_CORTEX_UNAVAILABLE_TOKEN]);
+  assert.match(r.reason, /vector timeout/);
+});
+
+test("swingCortexUnavailableResult: maps to G-S14 unavailable token", () => {
+  const r = swingCortexUnavailableResult("provider down");
+  assert.equal(r.blocked, true);
+  assert.deepEqual(r.blockedBy, [SWING_CORTEX_UNAVAILABLE_TOKEN]);
 });
