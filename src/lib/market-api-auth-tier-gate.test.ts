@@ -13,19 +13,15 @@ const adminUsers = new Set<string>();
 let signedInUserId: string | null = null;
 let sessionClaims: Record<string, unknown> | undefined;
 
-<<<<<<< HEAD
-mock.module("@/lib/auth-server", {
-=======
 // mock.module() resolves specifiers relative to this file, not through the "@/" tsconfig
 // alias — same pattern as src/app/api/public/email-capture/route.test.ts.
 mock.module("./auth-server", {
->>>>>>> cursor/cq-fix-pass-batch2
   namedExports: {
     auth: async () => ({ userId: signedInUserId, sessionClaims }),
   },
 });
 
-mock.module("@/lib/tier-cache", {
+mock.module("./tier-cache", {
   namedExports: {
     resolveUserTier: async (userId: string) => {
       if (!tierForUser.has(userId)) return "free";
@@ -35,7 +31,7 @@ mock.module("@/lib/tier-cache", {
   },
 });
 
-mock.module("@/lib/admin-access", {
+mock.module("./admin-access", {
   namedExports: {
     isAdminUser: async (userId: string) => adminUsers.has(userId),
   },
