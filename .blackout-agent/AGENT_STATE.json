@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T17:29:02.120Z",
+  "updated_at": "2026-09-05T17:31:13.470Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -334,30 +334,6 @@
   },
   "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:46:14.852Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:15.659Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:15.832Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0001",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-03T23:46:15.941Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0006",
-      "owner": "cursor"
-    },
     {
       "at": "2026-09-03T23:46:43.648Z",
       "type": "context_sync",
@@ -1643,6 +1619,31 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:31:02.390Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:31:05.932Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:31:13.468Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:31:13.470Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3551ff04-fafc-4a2e-a326-04239d031077",
+      "summary": "Autopilot loop cycle: #4011 peer-reviewed APPROVED+merged (SPX gex_age_ms fail-closed). #4006 Claude CHARM fix code-reviewed — WAIT on verify (CI subscribed). validate:deploy+rth-lifecycle+ops:collect GREEN. State sync pushed cursor/autopilot-state-sync-1730. GitHub GraphQL rate-limited — PR create may need retry. Next: merge #4006 when verify green; Claude review Cursor PRs."
     }
   ],
   "pr_activity": {
