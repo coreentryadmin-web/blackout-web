@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:40:00.000Z",
+  "updated_at": "2026-09-05T13:28:14.467Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -259,6 +259,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T12:35:00.000Z",
       "safe_to_merge": true
+    },
+    "pr-3962": {
+      "pr": 3962,
+      "head_sha": "0cf3b49f77a772aa92be610f96f9c8f50d3b10bc",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T13:28:14.466Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -326,9 +334,27 @@
     "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
   },
   "open_prs": [
-    { "pr": 3952, "branch": "cursor/clq-answers-batch1-2026-09-05", "title": "CURSOR_ANSWERS_FOR_CLAUDE (54/54)", "author": "cursor", "awaiting": "claude_review" },
-    { "pr": 3955, "branch": "docs/finding-ecs-web-deploy-maxpercent", "title": "ECS maxPercent finding", "author": "claude", "awaiting": "claude_merge" },
-    { "pr": 3949, "branch": "cursor/autopilot-handoff-2026-09-05", "title": "stale state sync", "author": "cursor", "awaiting": "close" }
+    {
+      "pr": 3952,
+      "branch": "cursor/clq-answers-batch1-2026-09-05",
+      "title": "CURSOR_ANSWERS_FOR_CLAUDE (54/54)",
+      "author": "cursor",
+      "awaiting": "claude_review"
+    },
+    {
+      "pr": 3955,
+      "branch": "docs/finding-ecs-web-deploy-maxpercent",
+      "title": "ECS maxPercent finding",
+      "author": "claude",
+      "awaiting": "claude_merge"
+    },
+    {
+      "pr": 3949,
+      "branch": "cursor/autopilot-handoff-2026-09-05",
+      "title": "stale state sync",
+      "author": "cursor",
+      "awaiting": "close"
+    }
   ],
   "events": [
     {
@@ -1533,6 +1559,16 @@
       "agent": "cursor",
       "run_id": "post-merge-sync",
       "summary": "main@d96372440: #3945+#3950+#3951+#3953 merged. #3952 CLQ answers awaiting Claude review. Claude must answer CQ-001–218 on main. #3945 merged without recorded Claude GitHub review — gate gap noted."
+    },
+    {
+      "at": "2026-09-05T13:28:14.466Z",
+      "type": "pr_review",
+      "pr": 3962,
+      "head_sha": "0cf3b49f77a772aa92be610f96f9c8f50d3b10bc",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T13:28:14.466Z",
+      "safe_to_merge": true
     }
   ],
   "pr_activity": {
