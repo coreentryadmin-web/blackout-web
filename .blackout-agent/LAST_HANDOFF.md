@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T03:59:28.947Z
-**Run:** 27de6626-ac07-4d48-af29-4cd10ef6b804
+**At:** 2026-09-04T19:52:08.396Z
+**Run:** 01ba5e3e-d264-48b8-b6f9-953c859c62cd
 
 ## Summary
 
-Merged queue cleared (#3835-3840 on main @ 353097ccb). Peer-reviewed #3842 swing TRIM latch enforced fix @ ab0943ec — APPROVED verify GREEN. validate:deploy GREEN. Awaiting Claude merge #3842.
+Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty.
 
 ## Deploy
 
-- main: `353097ccb5d83b3d563bf5eca19b2025759cfa97`
+- main: `db208131ed3f66843d8743e6847ccc05a1dfab75`
 - status: 
 
 ## Open PRs
