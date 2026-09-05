@@ -21,7 +21,7 @@ mock.module("./auth-server", {
   },
 });
 
-mock.module("./tier-cache", {
+mock.module("@/lib/tier-cache", {
   namedExports: {
     resolveUserTier: async (userId: string) => {
       if (!tierForUser.has(userId)) return "free";
@@ -31,7 +31,7 @@ mock.module("./tier-cache", {
   },
 });
 
-mock.module("./admin-access", {
+mock.module("@/lib/admin-access", {
   namedExports: {
     isAdminUser: async (userId: string) => adminUsers.has(userId),
   },
