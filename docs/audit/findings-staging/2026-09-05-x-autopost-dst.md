@@ -1,6 +1,6 @@
 # X-AutoPost DST Silent-Window Failure
 
-> **kind:** FINDING
+> **kind:** `FINDING`
 
 ## Summary
 The x-autopost X/Twitter automation cron has a critical DST (Daylight Saving Time) bug: it fires zero times per week during EST (Eastern Standard Time, November–March) despite firing 39 times per week during EDT (Eastern Daylight Time, March–November). Posts are completely silent for 6 months per year.
@@ -45,5 +45,6 @@ Option chosen (adjust gate, not infrastructure) is lowest-risk and self-containe
 | **Status** | FIXED |
 |-----------|-------|
 | **Branch** | `fix/x-autopost-dst-silent-est` |
-| **PR** | (pending) |
+| **PR** | #3829 |
+| **Merged** | 2026-09-05 |
 | **Regression Test** | `src/lib/x-content-schedule.test.ts` (all 5 tests pass) |
