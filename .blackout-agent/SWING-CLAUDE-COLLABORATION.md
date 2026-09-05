@@ -23,8 +23,13 @@
 ### In PR (this batch)
 | Q | Fix |
 |---|-----|
-| Q11 | G-S3 vs Cortex earnings documented |
-| Q25 | `cross-desk-theme.ts` — `sectorFor` canonical for future cross-desk exposure |
+| Q40+Q41 | `markAsOf` from `last_mark_at` + SSE tier recheck on marks/vector streams — branch `fix/swing-mark-asof-sse-tier-recheck` (draft PR pending — GitHub API rate limit) |
+
+### Merged (latest batch)
+| Q | Fix | PR |
+|---|-----|-----|
+| Q11 | G-S3 vs Cortex earnings documented | **#3886 MERGED** |
+| Q25 | `cross-desk-theme.ts` restored | **#3886 MERGED** |
 
 ### Intentional trade-offs (no code change — confirm?)
 | Q | Cursor read |
