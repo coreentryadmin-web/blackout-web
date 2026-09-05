@@ -93,3 +93,16 @@ test("the atomic branch issues a real SET ... NX (not a get-then-set)", async ()
     "the claim must use NX so the set-if-absent is atomic in Redis, not a racy read-then-write",
   );
 });
+
+test("Redis SET NX errors propagate (no in-memory false acquire) — regression guard", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const src = await readFile(new URL("./shared-cache.ts", import.meta.url), "utf8");
+  const fn = src.slice(src.indexOf("export async function sharedCacheSetNx"));
+  const body = fn.slice(0, fn.indexOf("export async function sharedCacheDel"));
+  assert.doesNotMatch(
+    body,
+    /catch\s*\{[\s\S]*fall through to the in-memory claim/,
+    "must not fall through to in-memory NX on Redis error — callers use .catch for fail-open",
+  );
+  assert.doesNotMatch(body, /if \(redis\)[\s\S]*try\s*\{[\s\S]*set\([\s\S]*catch/);
+});
