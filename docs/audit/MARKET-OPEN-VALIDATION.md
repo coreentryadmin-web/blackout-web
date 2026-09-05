@@ -120,7 +120,23 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
-### 0ao. Vector volume profile extended-hours pollution — fix/vector-volume-profile-rth-scope (pending)
+### 0ap. Swing Engine V2 — dynamic recall + POSITIONING origin + verdict/gate alignment — feat/swing-v2 (#3808, merged)
+
+**What was broken:** (1) Cortex swing horizon used weekly Vector grid (≤7 DTE) while swing plays target 5–15 DTE — under-covered monthly positioning. (2) `swingEntryVerdict()` mapped `COMMIT_NOW` → BUY even when G-S6/G-S14 commit gates blocked, contradicting the engine's fail-closed commit path.
+
+**Fix:** `vectorHorizonForCortexCommit("swing")` → monthly (≤35 DTE). Discovery stamps `commitGateBlockedBy` from plan decisions; `swingEntryVerdict()` shows WAIT + gate blocks (not BUY/PASSED) when gates block.
+
+**Check at the open:** On Night Hawk swing desk during `swing-discovery` window: (a) OPEN plays with `COMMIT_NOW` + G-S6/G-S14 blocks show WAIT pill + gate reason, never BUY; (b) buyable cockpit count counts BUY recommendations only; (c) POSITIONING-origin plays appear in serving sections; (d) `swing-discovery` cron `elapsed=` stays under schedule interval; (e) rejection ledger rows written for gated skips.
+
+### 0aq. SPX desk future-timestamp staleness gap — fix/spx-desk-future-timestamp (#3820, merged)
+
+**What was broken:** `deskAgeSec()` without future-timestamp guard — cross-process clock skew could make `polled_at` read as "not stale", allowing price-driven exits on unverified desk quotes. Entry gate already had the guard; open-play management did not.
+
+**Fix:** `deskAgeSec(..., staleMaxSec?)` fails closed when stamp >60s in future; wired through `spx-play-engine.ts` and `admin-spx-health.ts`.
+
+**Check at the open:** Admin → SPX health: `desk.stale` matches play-engine when cache warm. Open SPX play during RTH: price exits must not fire on future-skewed desk timestamps.
+
+### 0ao. Vector volume profile extended-hours pollution — fix/vector-volume-profile-rth-scope (merged #3818)
 
 **What was broken:** Default-on Vector volume profile fed the full multi-session minute buffer (including premarket/after-hours) into `computeVolumeProfile`, so POC and value-area bands on equities could anchor to extended-hours spikes instead of the current RTH session. HOD/LOD, opening range, and VWAP got the RTH gate in the 2026-08-05 audit; volume profile was missed.
 
