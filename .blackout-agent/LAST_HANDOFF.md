@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T00:32:24.764Z
-**Run:** a1342c7e-ff36-44ba-ac08-bd32db4f233c
+**At:** 2026-09-05T00:42:25.365Z
+**Run:** ad856915-f972-446f-a98f-d52afb0c3f60
 
 ## Summary
 
-Cycle complete: #3809 merged to main (1f38016f7 — dark-pool roundFloats + nighthawk UW sweep). Lifecycle sweep all GREEN (deploy, ops:collect 0, platform-integrity 14/14, seo 22/22, api-auth, rth-open). Remaining open PRs (#3807/#3808/#3810/#3811) are cursor/human drafts — Claude peer review when ready. GitHub API rate-limited (user 284440397).
+Hourly wake complete: merged #3809 (roundFloats + nighthawk UW sweep) after peer review; validate:deploy + platform-integrity 14/14 GREEN; ops:collect 0; ECR deploy in_progress for 1f38016f; updated #3811 autopilot state; #3808 verify pending (cursor PR — Claude review); PAT 284440397 rate-limited — use App token for merges.
 
 ## Deploy
 
