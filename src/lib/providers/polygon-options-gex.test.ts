@@ -27,6 +27,7 @@ import {
   warnChainTruncated,
   clampedCacheAgeSec,
   gexHeatmapCacheEntryStale,
+  gexHeatmapCacheEntryWithinTtl,
 } from "./polygon-options-gex";
 
 function contract(
@@ -919,4 +920,13 @@ test("gexHeatmapCacheEntryStale: future entry.at beyond tolerance is stale, not 
   assert.equal(gexHeatmapCacheEntryStale(now - 5_000, now), false);
   assert.equal(gexHeatmapCacheEntryStale(now + 2_000, now), false, "modest future skew inside 5s tolerance stays fresh");
   assert.equal(gexHeatmapCacheEntryStale(now + 6_000, now), true, "6s ahead must not read as freshest-possible");
+});
+
+test("gexHeatmapCacheEntryWithinTtl: future entry.at beyond tolerance fails TTL check", () => {
+  const now = 1_000_000_000;
+  const ttlMs = 20_000;
+  assert.equal(gexHeatmapCacheEntryWithinTtl(now - 5_000, now, ttlMs), true);
+  assert.equal(gexHeatmapCacheEntryWithinTtl(now + 2_000, now, ttlMs), true, "modest skew inside tolerance still within TTL");
+  assert.equal(gexHeatmapCacheEntryWithinTtl(now + 6_000, now, ttlMs), false);
+  assert.equal(gexHeatmapCacheEntryWithinTtl(now - 30_000, now, ttlMs), false, "past TTL is not fresh");
 });
