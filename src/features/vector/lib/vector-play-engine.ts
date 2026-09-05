@@ -410,7 +410,9 @@ const STALE_SEVERE_MS = 600_000;
 /** Conviction discount for stale underlying data. Pure + exported for direct unit testing —
  *  see the call site in computeConviction for why this exists. */
 export function stalenessConvictionDiscount(dataAgeMs: number | null | undefined): number {
-  if (dataAgeMs == null || !Number.isFinite(dataAgeMs) || dataAgeMs <= STALE_MILD_MS) return 0;
+  if (dataAgeMs == null || dataAgeMs === undefined) return 0;
+  if (dataAgeMs === Number.POSITIVE_INFINITY) return -30;
+  if (!Number.isFinite(dataAgeMs) || dataAgeMs <= STALE_MILD_MS) return 0;
   if (dataAgeMs <= STALE_MODERATE_MS) return -5;
   if (dataAgeMs <= STALE_SEVERE_MS) return -15;
   return -30;

@@ -407,6 +407,11 @@ test("stalenessConvictionDiscount: no discount inside normal SSE cadence, gradua
   assert.equal(stalenessConvictionDiscount(60_000), -5, "1 minute — mild discount");
   assert.equal(stalenessConvictionDiscount(300_000), -15, "5 minutes — moderate discount");
   assert.equal(stalenessConvictionDiscount(900_000), -30, "15 minutes — feed reads as disconnected");
+  assert.equal(
+    stalenessConvictionDiscount(Number.POSITIVE_INFINITY),
+    -30,
+    "clock-skewed future asOf must not read as fresh",
+  );
 });
 
 test("conviction: a stale data feed lowers conviction vs an identical fresh one", () => {

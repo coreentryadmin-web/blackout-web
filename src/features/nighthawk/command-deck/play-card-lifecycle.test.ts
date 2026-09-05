@@ -6,6 +6,7 @@ import {
   formatRelativeAge,
   formatCompactAge,
   ageDecayToneFromAge,
+  eventAgeMs,
   freshnessBadgeLabel,
   freshnessTierFromAge,
   playFreshnessDisplay,
@@ -25,6 +26,7 @@ import {
   closedCapturePct,
 } from "./play-card-lifecycle.ts";
 import type { TerminalPlay } from "./types.ts";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
 const NOW = Date.parse("2026-08-03T12:00:00-04:00");
 
@@ -68,6 +70,17 @@ describe("play-card-lifecycle", () => {
     assert.equal(freshnessTierFromAge(22 * 60_000, "open"), "aging");
     assert.equal(freshnessTierFromAge(47 * 60_000, "open"), "late");
     assert.equal(freshnessTierFromAge(null, "closed"), "closed");
+  });
+
+  it("eventAgeMs rejects clock-skewed future timestamps (fail-closed)", () => {
+    const now = Date.parse("2026-08-03T12:00:00-04:00");
+    const withinTolerance = new Date(now + WS_TIMESTAMP_FUTURE_TOLERANCE_MS - 1_000).toISOString();
+    const farFuture = new Date(now + 30_000).toISOString();
+    assert.equal(eventAgeMs(withinTolerance, now), 0);
+    assert.equal(eventAgeMs(farFuture, now), Number.POSITIVE_INFINITY);
+    const display = playFreshnessDisplay(base(), now, farFuture);
+    assert.equal(display.tier, "late");
+    assert.equal(display.pulse, false);
   });
 
   it("freshnessBadgeLabel matches urgency tiers", () => {

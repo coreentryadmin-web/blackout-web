@@ -237,6 +237,16 @@ test("freshness is attached at the SHARED entry point, so every consumer gets it
   assert.match(src, /void writeVectorFullStateCache\(ticker, horizon, live\)/);
 });
 
+test("withReadContext dataAgeMs rejects clock-skewed future asOf (source scan)", () => {
+  const src = readFileSync("src/lib/bie/vector-full-state.ts", "utf8");
+  assert.match(src, /WS_TIMESTAMP_FUTURE_TOLERANCE_MS/);
+  assert.match(
+    src,
+    /rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS[\s\S]*?Number\.POSITIVE_INFINITY/,
+    "future asOf must not clamp dataAgeMs to 0",
+  );
+});
+
 test("scenario-read MEASURES provenance freshness instead of asserting it", () => {
   const src = readFileSync("src/lib/bie/scenario-read.ts", "utf8");
   assert.doesNotMatch(src, /freshness: "recent"/, "a hardcoded freshness is a claim nothing checked");
