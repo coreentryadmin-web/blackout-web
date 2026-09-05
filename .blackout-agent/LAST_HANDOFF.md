@@ -5,11 +5,11 @@
 
 ## Summary
 
-workflow_run wake: main@86227e70 (#3998 whop webhook tests). Cross-exam advanced — #3952+#3991+#3994 merged; Phase 5 challenge round 1 live. Standing verify GREEN (deploy smoke, ops:collect 0, api-auth, platform-integrity 14/14). 0 open PRs; pr-sweep empty. ECR deploy pending@86227e70. Sat off-hours — RTH skipped. GitHub API rate-limited (user 284440397).
+workflow_run wake: main@8c56bbf3 (#3999 GEX king-node tiebreak + #3998 whop tests). Cross-exam advanced — #3952+#3991+#3994 merged; Phase 5 challenge round 1 live. Standing verify GREEN (deploy smoke, ops:collect 0, api-auth, platform-integrity 14/14). 0 open PRs; pr-sweep empty. ECR deploy pending@8c56bbf3. Sat off-hours — RTH skipped. GitHub API rate-limited (user 284440397) — state sync PR pushed but not yet openable via gh.
 
 ## Deploy
 
-- main: `86227e70b57d7dc962673f750a952173dea85088`
+- main: `8c56bbf3b2d21cd815896fa6e9e092e9d46361ec`
 - status: 
 
 ## Cross-exam scorecard
