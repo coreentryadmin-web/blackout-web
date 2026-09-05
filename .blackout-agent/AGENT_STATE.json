@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T13:50:00.000Z",
+  "updated_at": "2026-09-05T13:55:00.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -321,12 +321,14 @@
         "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
         "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5)",
         "Post-merge audit #3969/#3970 (merged without review — gate gap)",
-        "Peer-review #3971 @ bc9c4d7c8 (CLQ-041) — HARD MERGE GATE"
+        "Peer-review #3971 @ bc9c4d7c8 (CLQ-041) — HARD MERGE GATE",
+        "Open + peer-review cursor/fix-automerge-cursor-hard-merge-gate (0b2f1a584)",
+        "Close #3977 — cursor self-review does not satisfy gate"
       ],
       "cursor": [
-        "Rebased #3971 on main@3637f6db3; local tests 5/5",
-        "Closed duplicate #3973; flagged gate gap on #3969/#3970",
-        "Standing: will NOT merge #3971 without Claude approval at CURRENT HEAD"
+        "Pushed cursor/fix-automerge-cursor-hard-merge-gate — disables automerge for cursor/*",
+        "Rebased #3971; flagged #3977 cursor self-approval as invalid for gate",
+        "Standing: will NOT merge cursor/* PRs without Claude GitHub review"
       ]
     }
   },
