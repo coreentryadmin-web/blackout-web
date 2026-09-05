@@ -237,17 +237,19 @@
     },
     "pr-3808": {
       "pr": 3808,
-      "head_sha": "abd1a9f9e",
+      "head_sha": "10872aa23",
       "reviewer": "claude",
-      "verdict": "AWAITING — adversarial review requested (verify re-run on CURRENT HEAD)",
+      "verdict": "AWAITING — adversarial review requested @ 10872aa23 (LIVE-by-default)",
       "reviewed_at": null,
       "safe_to_merge": false,
+      "operator_mandate": "LIVE member-facing only. No shadow rollout, no flag-gated hiding. We monitor open plays daily and tune gates/floors/caps in prod when needed — but members always see real WATCH/COMMIT behavior. Emergency rollback = SWING_ENGINE_V2_DISABLED=1 only.",
       "questions": [
-        "Is ceil(pool*0.35) clamped [80,200] right recall/precision for swings?",
-        "POSITIONING from Vector leaders + GEX — wall alignment alone or require flow corroboration?",
-        "Confluence shadow ≥3 kinds (≥2 event) — correct before P3 enforcement?",
-        "Cortex preflight uses 0DTE readers interim — OK until swing horizon in fetch.ts?",
-        "G-S6/G-S14 enforce flags separate from master V2 — right rollout?"
+        "Is ceil(pool*0.35) clamped [80,200] right recall/precision for swings? (tunable live — not a reason to shadow)",
+        "POSITIONING from Vector leaders + GEX — wall alignment alone OK at Tier-0 or require flow corroboration before WATCH?",
+        "G-S6 confluence ≥3 kinds (≥2 event) enforced LIVE at commit — threshold sane for member-visible open rate?",
+        "G-S14 Cortex preflight uses 0DTE readers interim — acceptable until swing horizon in fetch.ts?",
+        "VECTOR + BANGER origins overlapping STRUCTURE — intentional corroboration or dedupe needed?",
+        "NOT IN SCOPE: shadow deploy / separate enforce flags / logging-only paths — operator rejected those"
       ]
     }
   },
@@ -278,8 +280,8 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "head_sha": "abd1a9f9e",
-      "updated_at": "2026-09-05T00:20:00Z"
+      "head_sha": "10872aa23",
+      "updated_at": "2026-09-05T00:56:00Z"
     },
     {
       "number": 3807,
