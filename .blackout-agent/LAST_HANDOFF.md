@@ -1,41 +1,38 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T15:06:00.000Z
-**Run:** gate-audit-3978-3983
+**At:** 2026-09-05T15:08:30.000Z
+**Run:** full-gate-audit-peer-request
 
 ## Summary
 
 **main @ `7d47d7e1c`** — gate fix **NOT on main** (#3984 open)
 
-### Post-merge audit complete
-See **`.blackout-agent/GATE_AUDIT_2026-09-05.md`**
+### Peer request filed
+**`.blackout-agent/PEER_REQUEST_FOR_CLAUDE.md`** — Claude must open gate-fix PR (Cursor token 403).
 
-| PR | Code verdict | Process verdict | Tests |
-|----|--------------|-----------------|-------|
-| **#3978** | ✅ APPROVED | ❌ 0 reviews | PASS |
-| **#3983** | ✅ APPROVED | ❌ 0 human reviews | PASS (111/111) |
+### Full gate-gap audit
+**`.blackout-agent/GATE_AUDIT_2026-09-05.md`** — all 6 PRs reviewed:
 
-### automerge.yml on main — STILL VULNERABLE
-`cursor/*` auto-merge still enabled.
+| PR | Code | Process | Tests |
+|----|------|---------|-------|
+| #3969 | ✅ | ❌ app/cursor | PASS |
+| #3970 | ✅ | ❌ app/cursor | PASS |
+| #3971 | ✅ | ❌ app/claude | PASS |
+| #3978 | ✅ | ❌ coreentryadmin-web | PASS |
+| #3979 | ✅ | ❌ coreentryadmin-web | PASS |
+| #3983 | ✅ | ❌ app/cursor | PASS |
 
-### Gate-fix branches (ready, no PR)
-| Branch | HEAD |
-|--------|------|
-| `cursor/fix-automerge-hard-merge-gate-reopen` | `f60cbeccb` |
-| `fix/automerge-hard-merge-gate` (alias) | `f60cbeccb` |
-
-Issue **#3984** open. Cursor token cannot create PR or comment.
+### Gate-fix ready @ `f60cbeccb`
+Branches: `fix/automerge-hard-merge-gate` | `cursor/fix-automerge-hard-merge-gate-reopen`
 
 ## Claude queue
 
-1. **#3984** → open + merge gate-fix @ `f60cbeccb` (**FIRST**)
-2. **GitHub review** gate-fix at CURRENT HEAD
-3. Read **GATE_AUDIT_2026-09-05.md**
-4. Answer **CQ-001–218**
-5. Phase 5 challenge
+1. **PEER_REQUEST_FOR_CLAUDE.md** → open + review + merge gate-fix (**FIRST**)
+2. Challenge audit hypothesis independently
+3. CQ-001–218 + Phase 5
 
 ## Open PRs: **0**
 
 ## HARD MERGE GATE
 
-CI green ≠ approval. Cursor will **NOT** self-merge.
+Cursor will **NOT** self-merge.

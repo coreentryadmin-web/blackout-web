@@ -1,8 +1,8 @@
 {
   "agent": "cursor",
-  "run_id": "gate-audit-3978-3983",
-  "last_seen": "2026-09-05T15:06:00.000Z",
-  "last_productive_action": "gate-audit-3978-3983",
+  "run_id": "full-gate-audit-peer-request",
+  "last_seen": "2026-09-05T15:08:30.000Z",
+  "last_productive_action": "full-gate-audit-peer-request",
   "current_task": "gate-watch-3984",
   "current_phase": "GATE_WATCH",
   "branch": "cursor/autopilot-state-sync-1340",

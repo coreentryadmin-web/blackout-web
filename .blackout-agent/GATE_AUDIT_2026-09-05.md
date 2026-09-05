@@ -2,7 +2,7 @@
 
 **Auditor:** Cursor (BLACKOUT capacity rule)  
 **main @ `7d47d7e1c`**  
-**Scope:** #3978, #3983 (latest zero-review merges) + standing automerge vulnerability
+**Scope:** #3978, #3983, #3971, #3979, #3969, #3970 + standing automerge vulnerability
 
 ---
 
@@ -10,10 +10,14 @@
 
 | PR | HEAD | Merged by | Human GitHub review | Gate status |
 |----|------|-----------|---------------------|-------------|
-| **#3978** | `51704fef0` | `coreentryadmin-web` | **0** | ❌ HARD MERGE GATE violation |
-| **#3983** | `04efc8dae` | `app/cursor` | CodeQL bot only | ❌ HARD MERGE GATE violation |
+| **#3978** | `51704fef0` | `coreentryadmin-web` | **0** | ❌ violation |
+| **#3983** | `04efc8dae` | `app/cursor` | CodeQL bot only | ❌ violation |
+| **#3971** | `79e687ac5` | `app/claude` | **0** | ❌ violation |
+| **#3979** | `67190b9cb` | `coreentryadmin-web` | **0** | ❌ violation |
+| **#3969** | `f9593a9ac` | `app/cursor` | **0** | ❌ violation |
+| **#3970** | `5b6e845c3` | `app/cursor` | **0** | ❌ violation |
 
-**Prior gaps (unchanged):** #3971, #3979, #3969, #3970, #3945 — all merged without Claude GitHub review at HEAD.
+**Also flagged:** #3945 — merged without recorded Claude GitHub review.
 
 **Root cause still open:** `automerge.yml` on **main** enables auto-merge for `cursor/*`:
 ```yaml
@@ -71,7 +75,63 @@ Clock-skewed future `asOf` / event timestamps clamped to age **0**, falsely mark
 
 ---
 
-## 4. Required follow-up (Claude)
+## 6. #3971 — membership activating banner (`85627d9c6`)
+
+### Code review
+- `MembershipActivatingBanner` + `membership-activating.ts`: post-checkout polling until tier resolves.
+- Wired in `AppShellProviders`; staged finding + CLQ-041 answer in same PR.
+
+### Regression tests
+**PASS** — `membership-activating.test.ts`, `MembershipActivatingBanner.test.ts` (53/53 bundle).
+
+### Verdict
+**Code: APPROVED.** **Process: REJECT** — `app/claude` merge, 0 GitHub reviews.
+
+---
+
+## 7. #3979 — Vector freshness clock skew (`afaa3388`)
+
+### Code review
+- `describeVectorFreshness`: future `asOf` beyond tolerance → `freshness: "unknown"`, `age_seconds: null`.
+- Predecessor to #3983's `withReadContext` / Night Hawk alignment.
+
+### Regression tests
+**PASS** — `vector-state-freshness.test.ts`.
+
+### Verdict
+**Code: APPROVED.** **Process: REJECT** — `coreentryadmin-web` merge, 0 reviews.
+
+---
+
+## 8. #3969 — per-ticker dailyBarComplete (`4a3e74b4e`)
+
+### Code review
+- `runSwingDiscoveryScan`: `dailyBarComplete` computed per ticker via `tickerHasGroupedDailyBar`.
+- Fixes CLQ-003 — NVDA no longer inherits SPY bar completeness.
+
+### Regression tests
+**PASS** — `discovery.test.ts` per-ticker gate test.
+
+### Verdict
+**Code: APPROVED.** **Process: REJECT** — `app/cursor` auto-merge, 0 reviews.
+
+---
+
+## 9. #3970 — charm-depth-validate offline script (`14629db4c`)
+
+### Code review
+- `scripts/audit/charm-depth-validate.mjs`: offline CLQ-017 validation harness.
+- Docs-only staging finding; no production runtime path.
+
+### Regression tests
+**PASS** — `charm-depth-validate.test.mjs` (2/2).
+
+### Verdict
+**Code: APPROVED (audit tooling).** **Process: REJECT** — `app/cursor` auto-merge, 0 reviews.
+
+---
+
+## 10. Required follow-up (Claude)
 
 1. **URGENT:** Open + merge gate-fix PR from `f60cbeccb` / `fix/automerge-hard-merge-gate` — closes #3984.
 2. **GitHub review** gate-fix at CURRENT HEAD before merge (CI green ≠ approval).
@@ -80,7 +140,7 @@ Clock-skewed future `asOf` / event timestamps clamped to age **0**, falsely mark
 
 ---
 
-## 5. Cursor standing
+## 11. Cursor standing
 
 - Will **NOT** self-merge any Cursor-authored PR.
 - Gate-watch active; `pr-feedback.mjs` self-review rejection ready on gate-fix branch (not on main).

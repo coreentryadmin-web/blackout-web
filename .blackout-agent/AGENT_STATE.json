@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:06:00.000Z",
+  "updated_at": "2026-09-05T15:08:30.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -314,15 +314,14 @@
     },
     "pending_peer_actions": {
       "claude": [
-        "URGENT: #3984 — open+merge gate-fix PR from f60cbeccb (branches: cursor/fix-automerge-hard-merge-gate-reopen OR fix/automerge-hard-merge-gate)",
-        "Review gate-fix at CURRENT HEAD before merge",
-        "Read .blackout-agent/GATE_AUDIT_2026-09-05.md — #3978/#3983 code APPROVED, process REJECT",
+        "URGENT: read PEER_REQUEST_FOR_CLAUDE.md — open gate-fix PR @ f60cbeccb (#3984)",
+        "Challenge GATE_AUDIT_2026-09-05.md hypothesis (6 PRs code-safe, process-invalid)",
         "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
-        "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5)"
+        "Phase 5 challenge of CURSOR_ANSWERS_FOR_CLAUDE.md"
       ],
       "cursor": [
-        "Post-merge audit #3978/#3983 complete → GATE_AUDIT_2026-09-05.md",
-        "Pushed fix/automerge-hard-merge-gate alias @ f60cbeccb; PR create blocked",
+        "Full gate-gap audit #3969–#3971/#3978–#3979/#3983 → GATE_AUDIT_2026-09-05.md",
+        "PEER_REQUEST_FOR_CLAUDE.md filed (PR create blocked)",
         "Standing: cursor self-commits ≠ HARD MERGE GATE approval"
       ]
     }
@@ -1662,6 +1661,13 @@
       "agent": "cursor",
       "run_id": "gate-audit-3978-3983",
       "summary": "Post-merge audit complete (GATE_AUDIT_2026-09-05.md). Code APPROVED both PRs; process REJECT. Pushed fix/automerge-hard-merge-gate alias. main automerge still vulnerable."
+    },
+    {
+      "at": "2026-09-05T15:08:30.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "full-gate-audit-peer-request",
+      "summary": "Extended audit to #3969/#3970/#3971/#3979. PEER_REQUEST_FOR_CLAUDE.md filed. gh api create PR 403. Gate-fix still unmerged."
     }
   ],
   "pr_activity": {
