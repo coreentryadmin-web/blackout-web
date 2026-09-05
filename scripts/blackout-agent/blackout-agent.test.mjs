@@ -177,3 +177,18 @@ test("watchdog runs without error", () => {
   const r = spawnSync("node", ["scripts/blackout-agent/watchdog.mjs"], { encoding: "utf8", cwd: repoRoot });
   assert.equal(r.status, 0);
 });
+
+test("agentFromBranch maps lane prefixes for peer review", async () => {
+  const { agentFromBranch } = await import("./sync-context.mjs");
+  assert.equal(agentFromBranch("claude/fix-foo"), "claude");
+  assert.equal(agentFromBranch("cursor/cq-fix-pass-batch1"), "cursor");
+  assert.equal(agentFromBranch("fix/polygon-snapshot"), "agent");
+  assert.equal(agentFromBranch("feature/human-pr"), "human");
+});
+
+test("formatVerifyStatus normalizes GraphQL and REST check shapes", async () => {
+  const { formatVerifyStatus } = await import("./sync-context.mjs");
+  assert.equal(formatVerifyStatus({ status: "COMPLETED", conclusion: "SUCCESS" }), "COMPLETED/SUCCESS");
+  assert.equal(formatVerifyStatus({ status: "IN_PROGRESS", conclusion: null }), "IN_PROGRESS/pending");
+  assert.equal(formatVerifyStatus(null), "unknown");
+});
