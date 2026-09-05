@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:33:55.196Z",
+  "updated_at": "2026-09-05T16:34:12.200Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,24 +68,24 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-05T16:26:09.737Z",
-      "lease_until": "2026-09-05T17:56:09.737Z",
+      "lease_until": "2026-09-05T18:04:10.983Z",
       "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-05T16:30:48.264Z",
-      "lease_until": "2026-09-05T18:00:48.264Z",
+      "lease_until": "2026-09-05T18:04:10.983Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
       "title": null
     },
     "BO-P1-0104": {
@@ -327,8 +327,8 @@
   },
   "deploy": {
     "last_main_sha": "c76923ec9b59958f84d7f3c351661d385f177e20",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:29:17Z",
+    "last_deploy_status": "cancelled",
+    "last_deploy_at": "2026-09-05T16:34:10Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978015633",
     "last_deploy_sha": "7c4b7e8e9cde7a8c3f231c4550d3d1c04fe2e77e"
   },
@@ -1585,6 +1585,30 @@
       "agent": "cursor",
       "run_id": "39309385-31b3-4212-8cf0-37af1c0388cb",
       "summary": "Session recovered: pr-sweep empty (0 open PRs). Cross-exam state synced — #3952+#3991+#3994 merged on main; challenge round 1 complete. Platform integrity 14/14 GREEN, ops:collect 0 items, validate:deploy GREEN. ECR deploy in_progress for feaba670 (main now c76923ec9 — drift pending). GitHub API rate-limited (user 284440397)."
+    },
+    {
+      "at": "2026-09-05T16:34:06.818Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:34:10.981Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:34:11.532Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:34:12.200Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
   "pr_activity": {
