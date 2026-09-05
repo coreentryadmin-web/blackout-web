@@ -1,8 +1,8 @@
 /**
- * Swing Cortex commit preflight (P3) — swing horizon via fetch.ts (weekly Vector grid).
+ * Swing Cortex commit preflight (P3) — swing horizon via fetch.ts (monthly Vector grid).
  *
  * Design §9: evaluateCortexForCommit({ horizon: "swing", dteWindow: [5, 15] }).
- * Vector scope maps to "weekly" (nearest grid for tactical multi-session holds).
+ * Vector scope maps to "monthly" (≤35 DTE) so the 5–15 DTE window is fully covered.
  */
 
 import type { PlayDirection } from "@/lib/horizon-fanout";

@@ -280,6 +280,7 @@ export function HorizonDeck({
           firstSeenAt: p.firstSeenAt ?? null,
           committedAt: p.committedAt ?? null,
           signalKinds: p.signalKinds ?? null,
+          commitGateBlockedBy: p.commitGateBlockedBy ?? null,
           liveStatus: p.liveStatus ?? null,
           flagUnderlyingPx: p.flagUnderlyingPx ?? null,
           entryPremium: p.entryPremium ?? null,

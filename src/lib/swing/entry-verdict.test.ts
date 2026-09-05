@@ -82,4 +82,29 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
   it("returns null when observables are too sparse to route", () => {
     assert.equal(swingEntryVerdict({}), null);
   });
+
+  it("COMMIT_NOW + G-S6 block → SKIP/WAIT, not BUY", () => {
+    const v = swingEntryVerdict({
+      servingSection: "COMMIT_NOW",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      commitGateBlockedBy: ["gate:G-S6:confluence"],
+    });
+    assert.equal(v?.deckStatus, "SKIP");
+    assert.equal(v?.actionLabel, "WAIT");
+    assert.equal(v?.recommendation, "HOLD");
+    assert.equal(v?.gateBlocks?.[0]?.code, "g_s6_confluence");
+  });
+
+  it("COMMIT_NOW + G-S14 block → SKIP/WAIT, not BUY", () => {
+    const v = swingEntryVerdict({
+      servingSection: "COMMIT_NOW",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      commitGateBlockedBy: ["gate:G-S14:cortex"],
+    });
+    assert.equal(v?.deckStatus, "SKIP");
+    assert.equal(v?.actionLabel, "WAIT");
+    assert.notEqual(v?.recommendation, "BUY");
+  });
 });

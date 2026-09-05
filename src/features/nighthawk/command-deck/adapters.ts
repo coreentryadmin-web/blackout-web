@@ -681,6 +681,8 @@ export interface HorizonDeckSource {
   committedAt?: string | null;
   /** Discovery provenance kinds. */
   signalKinds?: string[] | null;
+  /** V2 commit gate blocks stamped at discovery — gates BUY when G-S6/G-S14 would refuse open. */
+  commitGateBlockedBy?: string[] | null;
   /** Live-position status when this play is an OPEN swing (OPEN/HOLD/TRIM). */
   liveStatus?: "OPEN" | "HOLD" | "TRIM" | null;
   /** Underlying price when the thesis was first flagged — WATCH track anchor. */
@@ -778,6 +780,9 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
         aboveFloor: String(src.status ?? "").toUpperCase() === "COMMIT",
         persistenceObserved: src.persistenceObserved,
         persistenceGapReason: src.persistenceGapReason,
+        commitGateBlockedBy: src.commitGateBlockedBy,
+        signalKinds: src.signalKinds,
+        archetype: src.archetype,
       })
     : null;
   const status = entryVerdict?.deckStatus ?? baseStatus;

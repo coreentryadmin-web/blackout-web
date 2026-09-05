@@ -858,6 +858,23 @@ export async function runSwingDiscoveryScan(
     });
     commitEligibleCount = plan.commitEligibleCount;
 
+    // Stamp G-S6/G-S14 blocks onto produced plays so the desk BUY/WAIT verdict matches commit reality.
+    if (engineV2 && playSet.SWING.length > 0) {
+      const gateBlockedByKey = new Map<string, string[]>();
+      for (const d of plan.decisions) {
+        const gateBlocks = d.blockedBy.filter((b) => b.startsWith("gate:G-S"));
+        if (gateBlocks.length === 0) continue;
+        gateBlockedByKey.set(`${d.ticker.toUpperCase()}|${d.direction}`, gateBlocks);
+      }
+      playSet = {
+        ...playSet,
+        SWING: playSet.SWING.map((p) => {
+          const blocks = gateBlockedByKey.get(`${p.ticker.toUpperCase()}|${p.direction}`);
+          return blocks?.length ? { ...p, commitGateBlockedBy: blocks } : p;
+        }),
+      };
+    }
+
     if (engineV2) {
       const gateRows = plan.decisions.flatMap((d) => {
         const origins = pathsByTicker.get(d.ticker.toUpperCase()) ?? null;

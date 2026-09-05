@@ -377,12 +377,12 @@ describe("fetch: assembler (injected deps)", () => {
     await assert.rejects(withSourceTimeout(new Promise(() => {}), 10), /CortexSourceTimeout|exceeded/);
   });
 
-  test("vectorHorizonForCortexCommit: swing maps to weekly Vector grid", () => {
+  test("vectorHorizonForCortexCommit: swing maps to monthly Vector grid (covers 5–15 DTE window)", () => {
     assert.equal(vectorHorizonForCortexCommit("0dte"), "0dte");
-    assert.equal(vectorHorizonForCortexCommit("swing"), "weekly");
+    assert.equal(vectorHorizonForCortexCommit("swing"), "monthly");
   });
 
-  test("horizon=swing requests weekly Vector full state", async () => {
+  test("horizon=swing requests monthly Vector full state", async () => {
     let seenHorizon: string | null = null;
     await fetchCortexInputs("NVDA", "long", {
       now: NOW,
@@ -394,6 +394,6 @@ describe("fetch: assembler (injected deps)", () => {
         },
       }),
     });
-    assert.equal(seenHorizon, "weekly");
+    assert.equal(seenHorizon, "monthly");
   });
 });

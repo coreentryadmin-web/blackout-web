@@ -10,7 +10,10 @@
 // off liveStatus and leaves those on OPEN/HOLD/TRIM management vocabulary.
 
 import { sectionForSwingPlay, type SwingServingSection } from "./serving";
-import type { SwingSetupState, SwingEntryState } from "./taxonomy";
+import type { SwingSetupState, SwingEntryState, SwingArchetype } from "./taxonomy";
+import type { SwingDiscoveryPath } from "./discovery";
+import { isSwingConfluenceEnforced } from "./v2/config";
+import { blockedByFromSwingGates, failingSwingCommitGates } from "./v2/gates";
 
 export type SwingEntryGateBlock = { code: string; reason: string };
 
@@ -30,6 +33,11 @@ export type SwingEntryVerdictInput = {
   aboveFloor?: boolean | null;
   persistenceObserved?: boolean | null;
   persistenceGapReason?: string | null;
+  /** Stamped at discovery from computeSwingCommitPlan — authoritative G-S6/G-S14 blocks. */
+  commitGateBlockedBy?: string[] | null;
+  /** Discovery provenance kinds — used to evaluate G-S6 when commitGateBlockedBy is absent. */
+  signalKinds?: string[] | null;
+  archetype?: SwingArchetype | string | null;
 };
 
 /** Resolve the serving section when the play was not stamped (tests / partial payloads). */
@@ -76,6 +84,51 @@ function watchRecNote(input: SwingEntryVerdictInput): string {
   return "Not actionable yet — track the setup on the WATCH rail.";
 }
 
+const DISCOVERY_PATH_KINDS = new Set<SwingDiscoveryPath>([
+  "FLOW",
+  "STRUCTURE",
+  "POSITIONING",
+  "CATALYST",
+  "BANGER",
+  "VECTOR",
+]);
+
+/** Map commit `blockedBy` tokens to member-facing gate blocks. */
+export function commitGateBlocksForVerdict(blockedBy: readonly string[]): SwingEntryGateBlock[] {
+  return blockedBy
+    .filter((b) => b.startsWith("gate:G-S"))
+    .map((b) => {
+      if (b.startsWith("gate:G-S6:")) {
+        return {
+          code: "g_s6_confluence",
+          reason: "Independent signal confluence below commit threshold — desk will not open.",
+        };
+      }
+      if (b.startsWith("gate:G-S14:")) {
+        return {
+          code: "g_s14_cortex",
+          reason: "Cortex preflight vetoed this setup — desk will not open.",
+        };
+      }
+      return { code: b.replace(/[^a-z0-9_]+/gi, "_").toLowerCase(), reason: `Commit gate blocked (${b}).` };
+    });
+}
+
+/** Resolve V2 commit gate blocks — stamped discovery output wins; else evaluate G-S6 from signal kinds. */
+export function resolveSwingCommitGateBlockedBy(input: SwingEntryVerdictInput): string[] {
+  if (input.commitGateBlockedBy?.length) return [...input.commitGateBlockedBy];
+  if (!isSwingConfluenceEnforced()) return [];
+  const paths = (input.signalKinds ?? []).filter((k): k is SwingDiscoveryPath =>
+    DISCOVERY_PATH_KINDS.has(k as SwingDiscoveryPath),
+  );
+  if (paths.length === 0) return [];
+  const fails = failingSwingCommitGates(
+    { discoveryPaths: paths, archetype: (input.archetype as SwingArchetype) ?? null },
+    { enforceConfluence: true },
+  );
+  return blockedByFromSwingGates(fails);
+}
+
 function researchGateBlocks(input: SwingEntryVerdictInput): SwingEntryGateBlock[] {
   if (input.setupState === "INVALIDATED") {
     return [
@@ -119,8 +172,20 @@ export function swingEntryVerdict(input: SwingEntryVerdictInput): SwingEntryVerd
   const section = resolveSwingServingSection(input);
   if (!section) return null;
 
+  const commitGateBlockedBy = resolveSwingCommitGateBlockedBy(input);
+
   switch (section) {
     case "COMMIT_NOW":
+      if (commitGateBlockedBy.length > 0) {
+        return {
+          deckStatus: "SKIP",
+          recommendation: "HOLD",
+          recNote:
+            "At trigger, but commit gates have not cleared — desk will not open until confluence/Cortex pass.",
+          gateBlocks: commitGateBlocksForVerdict(commitGateBlockedBy),
+          actionLabel: "WAIT",
+        };
+      }
       return {
         deckStatus: "WATCH",
         recommendation: "BUY",

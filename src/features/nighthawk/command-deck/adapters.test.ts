@@ -1044,6 +1044,24 @@ test("horizon adapter: COMMIT_NOW pre-entry → WATCH + BUY recommendation + BUY
   assert.equal(buy.gateBlocks, null);
 });
 
+test("horizon adapter: COMMIT_NOW + commit gate block → SKIP/WAIT, not BUY", () => {
+  const gated = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 88,
+    status: "COMMIT",
+    servingSection: "COMMIT_NOW",
+    setupState: "TRIGGERED",
+    entryStatus: "AT_TRIGGER",
+    commitGateBlockedBy: ["gate:G-S6:confluence"],
+    contract: { strike: 180, right: "C", expiry: "2026-09-19", dte: 14, mid: 5.2 },
+  });
+  assert.equal(gated.status, "SKIP");
+  assert.equal(gated.recommendation, "HOLD");
+  assert.equal(gated.gateBlocks?.[0]?.code, "g_s6_confluence");
+});
+
 test("horizon adapter: WAITING_FOR_ENTRY → WATCH + HOLD (WAIT action)", () => {
   const wait = terminalPlayFromHorizon({
     ticker: "amd",

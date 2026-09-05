@@ -70,9 +70,11 @@ import type {
 /** Commit-time Cortex scope — 0DTE Command vs multi-day Swing holds (design §9). */
 export type CortexCommitHorizon = "0dte" | "swing";
 
-/** Map commit horizon → Vector DTE scope for dealer-wall reads. Swing 5–15 DTE uses weekly grid. */
+/** Map commit horizon → Vector DTE scope for dealer-wall reads.
+ *  Swing holds target dteWindow [5,15]: weekly (≤7) under-covers the window; monthly (≤35) over-covers
+ *  but includes the full 5–15 DTE band — safer than weekly until a dedicated swing ceiling ships. */
 export function vectorHorizonForCortexCommit(horizon: CortexCommitHorizon = "0dte"): VectorDteHorizon {
-  return horizon === "swing" ? "weekly" : "0dte";
+  return horizon === "swing" ? "monthly" : "0dte";
 }
 
 /** Per-read timeout. 8s: fetchVectorFullState feeds 3 sources (gex-walls,

@@ -129,6 +129,8 @@ export interface HorizonPlay {
   persistenceObserved?: boolean;
   /** Honest reason the persistence gate has not promoted this name to WATCH yet. */
   persistenceGapReason?: string | null;
+  /** V2 commit gates (G-S6/G-S14) that would block an open — stamped at discovery for honest BUY/WAIT UI. */
+  commitGateBlockedBy?: string[];
 }
 
 /** The three lanes a candidate pool fans out into. */
