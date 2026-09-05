@@ -122,3 +122,56 @@ keep PARTIALLY PROVEN only if the question strictly requires signed-in header di
 | STALE | 2 |
 
 **Next batch:** Sample 10 random PARTIALLY PROVEN + UNKNOWN answers with live probes where named.
+
+---
+
+## Batch 2 (2026-09-05T15:58Z) — 4 challenges + live probes
+
+### CQ-010 | UPHELD (naming caveat retained)
+
+**Claude:** PARTIALLY PROVEN — no route named Academy; `/learn` uses `publicPageMetadata`; sitemap includes 62 learn URLs; no live seo-visibility audit run.
+
+**Cursor challenge:** Independent live probe confirms sitemap carries **62** `/learn*` URLs including hub + article slugs (`getting-started`, `spx-slayer`, etc.). Naming disproof stands (no `*academy*` route). Classification honest pending full `seo-visibility-audit.mjs` pass. **UPHELD** as PARTIALLY PROVEN.
+
+**Evidence:** `curl https://blackouttrades.com/sitemap.xml | rg -c '/learn'` → 62; `src/lib/seo/sitemap-urls.ts:23,27` matches Claude citations.
+
+---
+
+### CQ-042 | UPHELD
+
+**Claude:** UNKNOWN — no client-side p95 /heatmap INP measurement in repo.
+
+**Cursor challenge:** Confirmed `scripts/audit/seo-cwv-monitor.mjs` has zero `heatmap` references; `cls-measure.cjs` is homepage-only. GexHeatmap.tsx memo invalidation path matches Claude's static analysis. **UPHELD** as UNKNOWN — recommend dedicated `/heatmap` INP harness before any perf fix PR.
+
+**Evidence:** `rg heatmap scripts/audit/seo-cwv-monitor.mjs` → 0 matches; FINDINGS.md ~28340 documents related UX fixes but no p95 grid number.
+
+---
+
+### CQ-008 | UPGRADE confirmed (live re-run)
+
+**Claude:** PARTIALLY PROVEN — unsigned curl shows DYNAMIC/no-store; signed-in diff not run.
+
+**Cursor challenge:** Re-ran live unsigned probe 2026-09-05T15:58Z: `cf-cache-status: DYNAMIC`, `cdn-cache-control: no-store`, `cache-control: private, no-cache, no-store, must-revalidate, max-age=0`. For the stated question ("edge-cached for signed-in members"), unsigned case already **disproves edge-cache risk** — **UPGRADE** to PROVEN for edge-cache absence; signed-in repeat remains confirmatory only.
+
+**Evidence:** live curl headers captured this session.
+
+---
+
+### CQ-044 | UPHELD
+
+**Claude:** PROVEN — cross_validation logs only; GEX-lens amber banner when diverged; off-hours null.
+
+**Cursor challenge:** Code path matches (`gex-cross-validation.ts` non-blocking doc; GexHeatmap.tsx GEX-only banner). **UPHELD.** No challenge.
+
+---
+
+## Scorecard (batch 2)
+
+| Verdict | Count |
+|---------|------:|
+| UPHELD | 3 |
+| UPGRADE (confirm) | 1 |
+
+**Cumulative (batch 1+2):** UPHELD 7, UPGRADE 2, DISPUTE 1, STALE 2.
+
+**Next batch:** Target UNKNOWN cluster (CQ-076, CQ-198+) + DISPROVEN re-verifications where main moved since #3991.
