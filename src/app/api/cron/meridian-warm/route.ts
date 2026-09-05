@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!shouldRunCacheWarmer(force)) {
+  if (!shouldRunCacheWarmer(force, undefined, "meridian-warm")) {
     const skipped = { ok: true, status: "skipped", reason: "off-hours gate" };
     await logCronRun("meridian-warm", started, skipped);
     return NextResponse.json(skipped);

@@ -32,3 +32,36 @@ test("shouldRunCacheWarmer: a leftover CACHE_WARM_ALWAYS env var no longer bypas
   );
   delete process.env.CACHE_WARM_ALWAYS;
 });
+
+test("shouldRunCacheWarmer: logs the cron key when force overrides an active off-hours block", async () => {
+  // A force=1 bypass is legitimate (on-demand/debug warms), so the gate can't just refuse it —
+  // but an UNMONITORED caller hammering force=1 off-hours reproduces the exact CACHE_WARM_ALWAYS
+  // symptom (a warm cron running 24/7) through a mechanism this gate has no way to close outright.
+  // The fix is visibility: every such bypass must log which key it was, so a future off-hours
+  // saturation incident is one CloudWatch grep away instead of a Secrets Manager hand-audit.
+  const { shouldRunCacheWarmer } = await import("./cache-warmer-gate");
+  const offHours = new Date("2026-07-08T07:00:00Z"); // 03:00 ET — outside the 4am-8pm window
+  const inHours = new Date("2026-07-08T10:00:00Z"); // 06:00 ET — inside the window
+
+  const originalInfo = console.info;
+  const calls: unknown[][] = [];
+  console.info = (...args: unknown[]) => {
+    calls.push(args);
+  };
+  try {
+    calls.length = 0;
+    shouldRunCacheWarmer(true, offHours, "desk-warm");
+    assert.equal(calls.length, 1, "force overriding an active off-hours block must log once");
+    assert.match(String(calls[0][0]), /force=1 bypassed the hours gate for 'desk-warm'/);
+
+    calls.length = 0;
+    shouldRunCacheWarmer(true, inHours, "desk-warm");
+    assert.equal(calls.length, 0, "force during legitimate hours is a no-op override — nothing to log");
+
+    calls.length = 0;
+    shouldRunCacheWarmer(false, offHours, "desk-warm");
+    assert.equal(calls.length, 0, "a plain off-hours skip (no force) is expected behavior — not a bypass");
+  } finally {
+    console.info = originalInfo;
+  }
+});

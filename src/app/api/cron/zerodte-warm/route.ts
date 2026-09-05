@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!shouldRunCacheWarmer(force)) {
+  if (!shouldRunCacheWarmer(force, undefined, "zerodte-warm")) {
     const payload = {
       ok: true,
       skipped: true,
