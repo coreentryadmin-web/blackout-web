@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T19:52:08.396Z
-**Run:** 01ba5e3e-d264-48b8-b6f9-953c859c62cd
+**At:** 2026-09-05T05:32:33.096Z
+**Run:** b07fb9f2-7e2f-415f-80c5-148f50f88eb5
 
 ## Summary
 
-Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty.
+PR-event wake: pr-sweep 0 open PRs; validate:deploy GREEN; platform-integrity 14/14; ops:collect 0; api-auth GREEN. ECR deploy run 33947310569 still pending (head 1118e549 vs main 7991adec). Prior handoff fixes (vector roundFloats, UW halt freshness, darkpool-discord uw-sweep, flow-liveness) confirmed merged on main. Off-hours Saturday — RTH lifecycle deferred to Mon 09:00 ET. GitHub API rate-limited for PAT user 284440397.
 
 ## Deploy
 
-- main: `db208131ed3f66843d8743e6847ccc05a1dfab75`
+- main: `7991adecb241e41ea5ed909d4f8776fd1594076f`
 - status: 
 
 ## Open PRs
