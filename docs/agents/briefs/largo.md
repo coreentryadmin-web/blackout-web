@@ -28,7 +28,11 @@ yours.
 
 | Area | Where |
 |---|---|
+<<<<<<< HEAD
 | Member surface | `/terminal` (`src/features/largo/components/LargoTerminal.tsx`). That is the whole member surface. Night Hawk Swing deck ships a separate deterministic Ask Largo brief (`SwingLargoInsightsPanel.tsx` → `/api/market/swing/play-brief`) — not `LargoDeskMiniPanel`. #2358 added mini-panels; #2387 removed the mounts; verified by grep across `src/**/*.tsx` (`mini-panel-orphaned.test.ts`). |
+=======
+| Member surface | `/terminal` (`src/features/largo/components/LargoTerminal.tsx`). That is the whole member surface. Night Hawk Swing Command uses a separate deterministic play-brief panel (`SwingLargoInsightsPanel.tsx` → `/api/market/swing/play-brief`) — not `LargoDeskMiniPanel`. #2358 added mini-panels; #2387 removed the old side-panel mounts; #4035 re-mounted on the Swing deck; #4047 replaced the mini-panel with the play-brief engine. Verified by grep across `src/**/*.tsx` (`mini-panel-orphaned.test.ts`). |
+>>>>>>> 755ba28a7 (fix(swing): ET clock + session anchor for play-brief CI guards)
 | Admin preview | `/admin/largo-answer-preview` |
 | Core engine | `src/lib/largo/` — 138 files, 18,947 lines. Largest: `run-tool.ts` (1942 — the tool-call loop itself), `product-reads.ts` (1395 — the read functions every tool calls into), `tool-defs.ts` (1178 — the 127 tool schemas), `largo-live-feed.ts`, `slash-submodules.ts`, `slash-prompts.ts`, `question-intent.ts`, `largo-store.ts`, `answer-contract.ts`, `system-prompt.ts` (460 — what the model is told about itself and every product) |
 | Tool registry | `src/lib/largo/registry/capability-registry.ts` — 137 tools, one capability entry each |
