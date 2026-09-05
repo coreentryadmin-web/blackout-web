@@ -118,6 +118,16 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
+
+### 0am. Single-ticker snapshot fabricated flat 0% + 3 market routes unrounded — fix/snapshot-change-pct-null-and-api-roundfloats (pending)
+
+**What was broken:** `_rowToSnapshot` (`fetchStockSnapshot`) fell through to `change_pct: 0` when `todaysChangePerc` and `prevDay.c` were both absent — batch paths were already null-safe via `snapshotChangePctFromRow`. Separately, `GET /api/market/anomalies`, `nighthawk/legacy-marks`, and `nighthawk/play-bars` served raw IEEE floats at the JSON boundary.
+
+**Fix:** `StockQuoteSnapshot.change_pct` is `number | null`; `_rowToSnapshot` returns `null` when change cannot be derived. Wrap all three route success payloads with `roundFloats(...)`.
+
+**Check at the open:** Poll `GET /api/market/quote?ticker=NVDA` — `change_pct` must be a real % or absent/null, never `0` when prior close is unknown. Night Hawk Legacy play detail — marks and play-bars must show clean decimals (no `7499.360000000001` tails on premium/marks).
+
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
 ### 0am. Dark-pool ticker roundFloats + nighthawk-edition UW sweep — fix/dark-pool-ticker-roundfloats-nighthawk-uw-sweep (pending)
