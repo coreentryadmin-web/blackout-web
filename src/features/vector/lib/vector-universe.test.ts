@@ -230,12 +230,9 @@ test("buildVectorUniverseSnapshot: GEX wall never lands on the wrong side of spo
   assert.ok(row!.topCallPct != null && row!.topCallPct > 0, "pct must still be populated for the constrained pick");
 });
 
-// Regression for the 2026-09-04 audit follow-up to #3495: buildVectorUniverseRow's narrowed-
-// horizon writer (`horizonWalls`, feeding the durable 0dte/weekly/monthly wall-history rails via
-// writeWallHistorySample) called computeGexWalls WITHOUT spot even though the main gexWalls
-// computation a few lines above it already had the fix. Same fixture shape as INVERT above,
-// carried through `gex.cells`/`expiries` instead of the blended `strike_totals`.
-test("recordVectorUniverseWallSample: narrowed-horizon (0dte) wall write never lands on the wrong side of spot", async () => {
+// Bead rail (wall-history) uses unconstrained ranking — Sep 3 desk density. Scanner row
+// (topCallWall) stays spot-constrained; only durable bead samples use the below-spot strike.
+test("recordVectorUniverseWallSample: narrowed-horizon bead rail keeps unconstrained Sep-3 ranking", async () => {
   wallSampleWrites = [];
   wallSampleCalls = [];
 
@@ -246,14 +243,14 @@ test("recordVectorUniverseWallSample: narrowed-horizon (0dte) wall write never l
   const callWalls = zeroDte!.sample.walls?.callWalls ?? [];
   const putWalls = zeroDte!.sample.walls?.putWalls ?? [];
   assert.deepEqual(
-    callWalls.map((w) => w.strike),
-    [108],
-    "narrowed-horizon call wall must sit above spot (100), not the higher-|gamma| strike 90 below it"
+    callWalls.map((w) => w.strike).slice(0, 2),
+    [90, 108],
+    "bead rail ranks by |gamma| — strike 90 below spot leads, 108 above spot still included"
   );
   assert.deepEqual(
     putWalls.map((w) => w.strike),
     [92],
-    "narrowed-horizon put wall must sit below spot"
+    "put side unchanged — strike 92 is the strongest negative below spot"
   );
 });
 
@@ -349,32 +346,33 @@ test("buildVectorUniverseSnapshot: null spot fail-closes GEX walls (no unconstra
   assert.equal(row!.topPutWall, null, "must not pick strike 92 as put wall when spot is unknown");
 });
 
-test("recordVectorUniverseWallSample: null spot skips narrowed-horizon wall writes", async () => {
+test("recordVectorUniverseWallSample: null spot still records bead rail (unconstrained)", async () => {
   wallSampleWrites = [];
   wallSampleCalls = [];
 
   await recordVectorUniverseWallSample("NOSPOT", { sessionYmd: "2026-09-04" });
 
-  const zeroDte = wallSampleWrites.find((w) => w.ticker === "NOSPOT" && w.horizon === "0dte");
-  assert.equal(zeroDte, undefined, "must not persist wrong-side walls when spot is unknown");
+  const blended = wallSampleWrites.find((w) => w.ticker === "NOSPOT" && !w.horizon);
+  assert.ok(blended, "blended bead sample must be written even when spot is unknown");
+  assert.equal(blended!.sample.walls?.callWalls[0]?.strike, 90);
 });
 
-test("vector-universe: GEX computeGexWalls is gated on spot > 0 (source scan)", async () => {
+test("vector-universe: scanner row stays spot-constrained; bead rail uses computeBeadRailGexWalls", async () => {
   const { readFileSync } = await import("node:fs");
   const src = readFileSync(new URL("./vector-universe.ts", import.meta.url), "utf8");
   assert.match(
     src,
     /hm\?\.gex\?\.strike_totals && spot != null && spot > 0/,
-    "blended gexWalls must fail-closed when spot is unknown"
+    "scanner gexWalls must fail-closed when spot is unknown"
   );
   assert.match(
     src,
-    /spot != null && spot > 0\s*\?\s*computeGexWalls\(totals/,
-    "narrowed-horizon walls must fail-closed when spot is unknown"
+    /computeBeadRailGexWalls\(mapFromStrikeTotalsRecord\(hm\.gex\.strike_totals\)/,
+    "bead rail blended sample must use unconstrained computeBeadRailGexWalls"
   );
-  assert.doesNotMatch(
+  assert.match(
     src,
-    /spot:\s*spot\s*!=\s*null\s*&&\s*spot\s*>\s*0\s*\?\s*spot\s*:\s*undefined/,
-    "must not pass undefined spot into computeGexWalls (unconstrained fallback)"
+    /computeBeadRailGexWalls\(totals/,
+    "narrowed-horizon bead samples must use computeBeadRailGexWalls"
   );
 });

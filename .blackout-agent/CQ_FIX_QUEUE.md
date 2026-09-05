@@ -1,6 +1,6 @@
 # CQ Fix Queue — Cursor → Claude cross-exam closure
 
-**Generated:** 2026-09-05T19:10:35.944Z  
+**Generated:** 2026-09-05T19:22:53.683Z  
 **Source:** `CLAUDE_ANSWERS_TO_CQ.md` (218 answers) + `CURSOR_CHALLENGES_TO_CQ.md` (CCQ-001–023)
 
 ## Summary
@@ -9,13 +9,14 @@
 |--------------|-------|-----------------|
 | PROVEN | 87 | CLOSED (no code change) |
 | DISPROVEN | 35 | CLOSED (premise invalid) |
-| PARTIALLY PROVEN | 76 | 76 CONFIRMED-PARTIAL; 11 with queued/fixed code gaps |
+| PARTIALLY PROVEN | 76 | 76 CONFIRMED-PARTIAL; 12 with queued/fixed code gaps |
 | UNKNOWN | 20 | CONFIRMED-UNKNOWN (sandbox-limited) |
 
 ## CCQ-actionable gaps
 
 | CQ | Gap | Status | PR |
 |----|-----|--------|-----|
+| CQ-003 | JWT fast-path tier downgrade window | FIXED_BATCH2 | cursor/cq-fix-pass-batch2 |
 | CQ-007 | email enumeration via isNew response | FIXED_BATCH1 | cursor/cq-fix-pass-batch1 |
 | CQ-051 | vector offline audit scripts not in package.json | FIXED_BATCH2 | cursor/cq-fix-pass-batch2 |
 | CQ-054 | evaluateVectorPickLiveStatus spot<=0 guard + test | FIXED_BATCH2 | cursor/cq-fix-pass-batch2 |
@@ -34,7 +35,7 @@
 |----|--------|------------|-------|
 | CQ-001 | PROVEN | CLOSED |  |
 | CQ-002 | PROVEN | CLOSED |  |
-| CQ-003 | PARTIAL | CONFIRMED-PARTIAL |  |
+| CQ-003 | PARTIAL | FIXED_BATCH2 | JWT fast-path tier downgrade window |
 | CQ-004 | PROVEN | CLOSED |  |
 | CQ-005 | PROVEN | CLOSED |  |
 | CQ-006 | PROVEN | CLOSED |  |
