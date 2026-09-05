@@ -360,6 +360,14 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0za. Largo WS quote change_pct drift + market health float tails — fix/largo-quote-rebase-health-roundfloats (pending)
+
+**What was broken:** Largo `get_quote` stock WS path returned session-open–anchored `candle.changePct` while `/api/market/quote` rebases off REST via `withFreshPrice` — live price could disagree with day-change %. `/api/market/health` omitted `roundFloats`, so admin System Vitals could show IEEE tails.
+
+**Fix:** `toolQuote` stock WS path: `fetchStockSnapshot` + `withFreshPrice`; health route wraps snapshot with `roundFloats`.
+
+**Check at the open:** Largo `get_quote` for a fast mover (e.g. NVDA) vs `/api/market/quote?ticker=NVDA` — `change_pct` should agree directionally. Admin System Vitals: no long float tails on index prices.
+
 ### 0z. Vector API unrounded floats + UW halt future-timestamp guard — fix/vector-roundfloats-uw-halt-freshness (pending)
 
 **What was broken:** Five Vector cache-reader routes (`universe`, `wall-history`, `daily-regime`, `rail-bootstrap`, `contract-picks`) returned raw IEEE float noise at the JSON boundary while sibling Vector routes already call `roundFloats`. Separately, `isUwHaltSourceStale()` used raw `Date.now() - freshest > maxAgeMs` — a clock-skewed future `effectiveFreshestUwMessageAt()` reads as live/trusted.
