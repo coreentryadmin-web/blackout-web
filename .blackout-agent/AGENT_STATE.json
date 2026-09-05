@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:48:17.413Z",
+  "updated_at": "2026-09-05T21:56:56.991Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -13,6 +13,18 @@
       "pr": null,
       "reviewer": null,
       "run_id": "4b6baf41-4335-408a-bea4-f5d14ec988d0",
+      "title": null
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-05T21:48:28.689Z",
+      "lease_until": "2026-09-05T23:18:28.689Z",
+      "phase": "VERIFYING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
       "title": null
     }
   },
@@ -33,14 +45,14 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T21:46:37.054Z",
-      "current_task": "BO-P1-0100"
+      "last_seen": "2026-09-05T21:48:28.690Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
     "last_main_sha": "73e58b8937d8a20704b2527c4be090315d9de015",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T21:45:07Z",
+    "last_deploy_at": "2026-09-05T21:51:22Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993937878",
     "last_deploy_sha": "73e58b8937d8a20704b2527c4be090315d9de015"
   },
@@ -221,28 +233,53 @@
       "agent": "cursor",
       "run_id": "f074a701-d6e7-47f7-b33a-f13f9fbda105",
       "summary": "PR-event recovery cycle. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo, rth-open). ops:collect 0. Closed duplicate #4050. #4047 merged to main@73e58b89. No Claude/fix PRs for peer review. #4051 handoff pending verify."
+    },
+    {
+      "at": "2026-09-05T21:48:25.510Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:48:28.690Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T21:56:56.990Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:56:56.991Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d2f71b0c-7577-4fba-b9a2-5101ca7232ea",
+      "summary": "Autopilot PR-event cycle complete. Lifecycle GREEN (6/6). ops:collect 0. Closed duplicates #4050/#4052. #4047 merged — ECR deploy in_progress@33993937878. #4051 handoff draft awaiting Claude review. No claude/* or fix/* PRs for peer review."
     }
   ],
   "open_prs": [
     {
-      "number": 4052,
-      "title": "chore(blackout-agent): cursor PR-event recovery — lifecycle GREEN, #4047 merged",
-      "branch": "cursor/autopilot-work-loop-d4e7",
+      "number": 4054,
+      "title": "fix(ws): cluster health future-skew guard + VIX SSE change% gate",
+      "branch": "fix/cluster-health-vix-sse-change",
       "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "QUEUED/",
-      "updated_at": "2026-09-05T21:48:11Z"
-    },
-    {
-      "number": 4051,
-      "title": "chore(blackout-agent): cursor PR-event recovery — #4047 merged, lifecycle GREEN",
-      "branch": "cursor/autopilot-work-loop-275b",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
+      "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:46:08Z"
+      "updated_at": "2026-09-05T21:56:12Z"
+    },
+    {
+      "number": 4053,
+      "title": "fix(vector): undated universe rows never age out of the scanner snapshot",
+      "branch": "fix/vector-universe-undated-row-never-expires",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T21:55:51Z"
     }
   ],
   "pr_activity": {
