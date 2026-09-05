@@ -2,6 +2,7 @@ import {
   mergeVolumeIntoBars,
   sessionStatsFromMinuteBars,
 } from "@/lib/providers/spx-session";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 /**
  * SPX session VWAP with the SPY-minute-volume proxy.
@@ -74,7 +75,7 @@ async function spyVolumeForSession(
   const now = (deps.now ?? Date.now)();
   if (cache && cache.ymd === ymd) {
     const ttl = cache.map.size ? SPY_VOLUME_CACHE_MS : SPY_VOLUME_EMPTY_CACHE_MS;
-    if (now - cache.fetchedAt < ttl) return cache.map;
+    if (isWsUpdatedAtFresh(cache.fetchedAt, ttl, now)) return cache.map;
   }
   let map: Map<number, number>;
   try {
