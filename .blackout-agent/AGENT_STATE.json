@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:13:57.397Z",
+  "updated_at": "2026-09-05T15:22:24.624Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T15:09:46.663Z",
-      "lease_until": "2026-09-05T16:43:08.537Z",
+      "claimed_at": "2026-09-05T15:14:19.562Z",
+      "lease_until": "2026-09-05T16:46:13.089Z",
       "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "ba6f30b6-46e4-4baf-a583-57b9891f61e1",
+      "run_id": "216e79ed-d92a-42e6-bb28-85af34c677d2",
       "title": null,
       "released_at": "2026-09-05T15:08:06.156Z"
     },
@@ -343,28 +343,7 @@
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33973466010",
     "last_deploy_sha": "7d47d7e1c293cce146306808ca8a2dad616a94e5"
   },
-  "open_prs": [
-    {
-      "number": 3987,
-      "title": "fix(automerge): HARD MERGE GATE — exclude cursor/* from auto-merge",
-      "branch": "fix/automerge-hard-merge-gate",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T15:13:53Z"
-    },
-    {
-      "number": 3986,
-      "title": "chore(autopilot): state sync after #3978/#3983 merges",
-      "branch": "cursor/autopilot-work-loop-740a",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "QUEUED/",
-      "updated_at": "2026-09-05T15:13:49Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1673,6 +1652,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T15:22:24.623Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:22:24.624Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "7eada364-d8c3-4eee-83e6-f6e5f058ac69",
+      "summary": "Session 95cf2bfa: lifecycle GREEN (deploy 14/14 integrity, seo 22/22, ops 0). Open #3987+#3986 await Claude peer review. #3987 local tests 36/36 pass. GitHub API rate-limited."
     }
   ],
   "pr_activity": {
