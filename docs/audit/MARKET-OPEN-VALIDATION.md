@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-. SSE premium streams tier recheck — fix/sse-tier-recheck-marks-stream (pending)
+
+**What was broken:** `zerodte/marks/stream` and `vector/stream` checked premium tier + tool launch gate only at SSE connect. A member whose subscription lapsed mid-session kept receiving live swing/0DTE marks until closing the tab.
+
+**Fix:** `recheckUserSseDeskAccess()` re-runs `requireTierApi` + tool gate on every tick; cron callers unchanged.
+
+**Check at the open:** Night Hawk live marks SSE still ticks for premium admin; after simulating tier downgrade, stream should stop within ~1s.
+
 ### 0a0. SPX playbook breakout HOD/LOD used extended-hours bars — fix/spx-playbook-breakout-rth-filter (pending)
 
 **What was broken:** `sessionBreakoutExtremesFromBars` computed session HOD/LOD from all Polygon minute bars including premarket/after-hours. Premarket spikes could inflate HOD and suppress `hod_break` during RTH (desk session stats already RTH-gated via `filterRthBars`).
