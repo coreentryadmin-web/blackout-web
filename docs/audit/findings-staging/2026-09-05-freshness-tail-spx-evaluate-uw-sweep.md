@@ -10,7 +10,7 @@
 
 ## Symptom
 
-1. `spx-evaluate` called `loadMergedSpxDesk()` without `runWithBackgroundUwSweep`, racing live member UW traffic on cold cache.
+1. `spx-evaluate`, `spx-signal-observe`, and `market-regime-detector` called `loadMergedSpxDesk()` without `runWithBackgroundUwSweep`, racing live member UW traffic on cold cache.
 2. Four in-process caches used raw `Date.now() - fetchedAt`: SPY volume map (VWAP proxy), macro predictions (signal log), active-play set (live marks), Redis fallback refresh (stock candles). Future stamps pinned each indefinitely.
 3. `computeSessionChangePct` returned `0` when `sessionOpen` was missing, fabricating a flat day instead of honest absence.
 
@@ -20,7 +20,7 @@ Hourly pattern scan §3 (2026-09-05 autonomous wake). Sibling freshness bugs wer
 
 ## Fix
 
-- Wrap `loadMergedSpxDesk()` in `runWithBackgroundUwSweep`.
+- Wrap all three `loadMergedSpxDesk()` call sites in `runWithBackgroundUwSweep`.
 - Route all four caches through `isWsUpdatedAtFresh`.
 - `computeSessionChangePct` returns `null` without anchor; WS handlers preserve prior `change_pct`.
 
