@@ -66,6 +66,30 @@ export function shadowPremiumStopHit(
   return { hit: false, reason: "premium above backstop" };
 }
 
+type ShadowContractFields = Pick<
+  SwingShadowPositionRow,
+  "contract_type" | "contract_strike"
+>;
+
+/**
+ * Intrinsic option value at expiry (per-share premium units). Returns 0 for OTM expiry.
+ * Used so shadow grading does not close expired OTM legs at a stale last mark.
+ */
+export function shadowIntrinsicMarkAtExpiry(
+  row: ShadowContractFields,
+  underlyingPrice: number | null,
+): number | null {
+  if (underlyingPrice == null || !Number.isFinite(underlyingPrice)) return null;
+  const strike = row.contract_strike;
+  if (strike == null || !Number.isFinite(strike)) return null;
+  const type = String(row.contract_type ?? "").toLowerCase();
+  let intrinsic = 0;
+  if (type === "call") intrinsic = Math.max(0, underlyingPrice - strike);
+  else if (type === "put") intrinsic = Math.max(0, strike - underlyingPrice);
+  else return null;
+  return Number(intrinsic.toFixed(4));
+}
+
 /** Decide whether an OPEN shadow should close this tick. Priority: expiry → structural → premium. */
 export function decideShadowClose(
   row: SwingShadowPositionRow,
@@ -148,7 +172,13 @@ export async function runSwingShadowRefresh(deps: ShadowRefreshDeps): Promise<Sh
       if (!decision.close || decision.reason == null) continue;
 
       const entry = row.entry_premium;
-      const exitMark = mark ?? row.last_mark ?? entry;
+      const exitMark =
+        decision.reason === "expiry"
+          ? (shadowIntrinsicMarkAtExpiry(row, reads.underlyingPrice) ??
+            mark ??
+            row.last_mark ??
+            entry)
+          : (mark ?? row.last_mark ?? entry);
       if (entry == null || exitMark == null || !Number.isFinite(exitMark)) {
         skipped += 1;
         continue;
