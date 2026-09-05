@@ -59,7 +59,7 @@ test("the recipient cooldown is deliberately not gated on isNew", () => {
     .filter((l) => !l.trim().startsWith("//"))
     .join("\n");
   assert.ok(!/isNew/.test(guard), "the cooldown must not be derived from recordEmailCapture's isNew");
-  assert.match(src, /\{ ok: true, isNew, emailSent \}/, "capture is still recorded when the send is suppressed");
+  assert.match(src, /\{ ok: true, emailSent \}/, "response must not leak isNew (CQ-007 enumeration)");
 });
 
 test("the suppressed path preserves the unsubscribe wiring on the send it does make", () => {

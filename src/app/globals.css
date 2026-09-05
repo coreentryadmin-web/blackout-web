@@ -8359,6 +8359,14 @@ html.product-shell .nav-mega {
     letter-spacing: 0.08em;
   }
 
+  /* "est" affordance when TICK/TRIN/ADD are breadth-derived proxies (CQ-095). */
+  .spx-hero-est-badge {
+    @apply ml-1 inline-flex items-center rounded-sm border border-amber-400/40 bg-amber-400/10 px-0.5 font-mono text-[8px] font-bold tracking-wider text-amber-200;
+    line-height: 1.2;
+    vertical-align: middle;
+    letter-spacing: 0.08em;
+  }
+
   .spx-sniper-command .spx-sniper-title {
     @apply font-anton text-4xl md:text-6xl leading-none tracking-wide uppercase;
   }

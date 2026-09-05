@@ -119,6 +119,15 @@ test("a second submission for the same recipient within the cooldown window does
   assert.equal(body.emailSent, false, "the caller must be told honestly that no email went out this time");
 });
 
+test("response does not expose isNew (CQ-007 email enumeration)", async () => {
+  resetMocks();
+  const { POST } = await import("./route");
+  const res = await POST(req("new@example.com"));
+  const body = (await res.json()) as Record<string, unknown>;
+  assert.equal(body.ok, true);
+  assert.ok(!("isNew" in body), "isNew must not be returned to unauthenticated callers");
+});
+
 test("recipient key is case-insensitive (same address, different casing, still one send per window)", async () => {
   resetMocks();
   blockedRecipientKeys.add("victim@example.com:public:email-capture:recipient");

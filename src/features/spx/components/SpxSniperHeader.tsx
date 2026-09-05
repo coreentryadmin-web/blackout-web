@@ -9,6 +9,11 @@ import { SpxIosMarketStrip } from "./ios/SpxIosMarketStrip";
 import { SpxIosMetricGroups } from "./ios/SpxIosMetricGroups";
 import { SpxDeskLaneFreshness } from "./SpxDeskLaneFreshness";
 import { SPX_DESK_MAX_PAIN_LABEL } from "@/features/spx/lib/spx-metric-labels";
+import {
+  deskInternalsEstimated,
+  formatInternalReading,
+  internalEstimatedTip,
+} from "@/features/spx/lib/spx-internals-display";
 
 type Props = {
   desk?: SpxDeskPayload;
@@ -137,6 +142,9 @@ const METRIC_TIPS = {
   pdl: "Prior-day low",
   gexStale: "Dealer positioning feed is stale — walls/flip are last-good, not live.",
   stalled: "Index feed stalled — values shown are the last live prints, dimmed until the feed recovers.",
+  tick: "NYSE TICK — uptick/downtick volume imbalance across NYSE issues.",
+  trin: "TRIN — ratio of advancing to declining volume; below 1 often reads bullish breadth.",
+  add: "NYSE advance/decline line — net advancing minus declining issues.",
 } as const;
 
 function DeskTopStatsRow({
@@ -153,6 +161,7 @@ function DeskTopStatsRow({
   // Stale-honesty: a frozen tape (feed_stalled) dims every value tone — CSS-only, no
   // layout shift — so last-good numbers are never presented with live-confidence color.
   const stalled = Boolean(live && desk?.feed_stalled);
+  const internalsEst = deskInternalsEstimated(desk);
   return (
     <div
       className={clsx("spx-desk-top-stats-stack", stalled && "spx-hero-stats-stale")}
@@ -198,6 +207,39 @@ function DeskTopStatsRow({
             { label: "PDH", value: showValues ? fmtPrice(desk?.pdh ?? null) : "—", tone: "resistance", level: desk?.pdh ?? null, tip: METRIC_TIPS.pdh },
             { label: "PDL", value: showValues ? fmtPrice(desk?.pdl ?? null) : "—", tone: "support", level: desk?.pdl ?? null, tip: METRIC_TIPS.pdl },
           ]}
+        />
+        <StatPill
+          label="TICK"
+          value={showValues ? formatInternalReading(desk?.tick, internalsEst.tick, 0) : "—"}
+          tone={(desk?.tick ?? 0) >= 0 ? "bull" : "bear"}
+          title={
+            internalsEst.tick
+              ? `${METRIC_TIPS.tick} ${internalEstimatedTip("tick")}`
+              : METRIC_TIPS.tick
+          }
+          estimated={internalsEst.tick}
+        />
+        <StatPill
+          label="TRIN"
+          value={showValues ? formatInternalReading(desk?.trin, internalsEst.trin, 2) : "—"}
+          tone="orange"
+          title={
+            internalsEst.trin
+              ? `${METRIC_TIPS.trin} ${internalEstimatedTip("trin")}`
+              : METRIC_TIPS.trin
+          }
+          estimated={internalsEst.trin}
+        />
+        <StatPill
+          label="ADD"
+          value={showValues ? formatInternalReading(desk?.add, internalsEst.add, 0) : "—"}
+          tone={(desk?.add ?? 0) >= 0 ? "bull" : "bear"}
+          title={
+            internalsEst.add
+              ? `${METRIC_TIPS.add} ${internalEstimatedTip("add")}`
+              : METRIC_TIPS.add
+          }
+          estimated={internalsEst.add}
         />
         <StatPill
           label="VIX"
@@ -398,6 +440,7 @@ function StatPill({
   level,
   title,
   vw,
+  estimated,
 }: {
   label: string;
   value: string;
@@ -409,6 +452,8 @@ function StatPill({
   title?: string;
   /** True volume-weighted VWAP affordance (staging SPY-volume proxy). */
   vw?: boolean;
+  /** Breadth-derived proxy — not a live Polygon I:TICK/I:TRIN/I:ADD print (CQ-095 / CLQ-012). */
+  estimated?: boolean;
 }) {
   const direction = priceVsLevel(spot, level);
   return (
@@ -418,6 +463,11 @@ function StatPill({
         {vw && (
           <span className="spx-hero-vw-badge" title="true volume-weighted via SPY minute volume">
             VW
+          </span>
+        )}
+        {estimated && (
+          <span className="spx-hero-est-badge" title="Breadth-derived estimate — not a live index print">
+            est
           </span>
         )}
       </p>
