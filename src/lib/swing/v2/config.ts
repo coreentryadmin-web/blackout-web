@@ -64,6 +64,12 @@ export function isSwingCortexEnforced(env: Record<string, string | undefined> = 
   return envTriState(env, "SWING_ENGINE_V2_ENFORCE_CORTEX", true);
 }
 
+/** P3 — G-S3 earnings binary at COMMIT. LIVE when V2 is on; opt out with SWING_ENGINE_V2_ENFORCE_EARNINGS=0. */
+export function isSwingEarningsGateEnforced(env: Record<string, string | undefined> = process.env): boolean {
+  if (!isSwingEngineV2Enabled(env)) return false;
+  return envTriState(env, "SWING_ENGINE_V2_ENFORCE_EARNINGS", true);
+}
+
 /** Max watch candidates to Cortex-preflight per scan (provider budget). */
 export function swingCortexPreflightCap(env: Record<string, string | undefined> = process.env): number {
   const n = Number(env.SWING_CORTEX_PREFLIGHT_CAP ?? 12);

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   isSwingConfluenceEnforced,
   isSwingCortexEnforced,
+  isSwingEarningsGateEnforced,
   isSwingEngineV2Enabled,
 } from "./config";
 
@@ -25,4 +26,10 @@ test("isSwingCortexEnforced: LIVE when V2 on; opt-out only", () => {
   assert.equal(isSwingCortexEnforced({}), true);
   assert.equal(isSwingCortexEnforced({ SWING_ENGINE_V2_ENFORCE_CORTEX: "0" }), false);
   assert.equal(isSwingCortexEnforced({ SWING_ENGINE_V2_DISABLED: "1" }), false);
+});
+
+test("isSwingEarningsGateEnforced: LIVE when V2 on; opt-out only", () => {
+  assert.equal(isSwingEarningsGateEnforced({}), true);
+  assert.equal(isSwingEarningsGateEnforced({ SWING_ENGINE_V2_ENFORCE_EARNINGS: "0" }), false);
+  assert.equal(isSwingEarningsGateEnforced({ SWING_ENGINE_V2_DISABLED: "1" }), false);
 });
