@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "f0e85b0a-97da-48a7-87ed-3448e84d2379",
-  "last_seen": "2026-09-05T14:03:07.739Z",
-  "last_productive_action": "session_start",
-  "current_task": null,
-  "current_phase": "DISCOVERY",
-  "branch": null,
-  "pr": null,
+  "run_id": "0a14edd1-d45f-40b3-bedd-da3e04e7cd86",
+  "last_seen": "2026-09-05T14:35:00.000Z",
+  "last_productive_action": "close-3980-escalate-3972",
+  "current_task": "gate-watch-3971-poll-ci",
+  "current_phase": "GATE_WATCH",
+  "branch": "cursor/autopilot-state-sync-1340",
+  "pr": 3972,
   "healthy": true
 }

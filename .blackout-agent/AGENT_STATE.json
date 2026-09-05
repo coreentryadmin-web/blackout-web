@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T14:03:08.557Z",
+  "updated_at": "2026-09-05T14:27:29.622Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -335,7 +335,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "3637f6db3440e826434a9c3565fb09a9bd459900",
+    "last_main_sha": "31d4301e89310ab12ac7ea78716f4f54dd2ff996",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T13:57:08Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33969578363",
@@ -343,15 +343,36 @@
   },
   "open_prs": [
     {
+      "number": 3979,
+      "title": "fix(vector): fail-closed freshness on clock-skewed future asOf",
+      "branch": "fix/vector-freshness-clock-skew",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T14:26:48Z"
+    },
+    {
+      "number": 3978,
+      "title": "fix(spx-desk): serve last RTH spot off-hours instead of price:0",
+      "branch": "fix/spx-desk-offhours-last-spot",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T14:26:51Z"
+    },
+    {
       "number": 3972,
       "title": "chore(state): sync after #3963 merge — CLQ fix PRs #3969-3971",
       "branch": "cursor/autopilot-state-sync-1340",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "head": "6eeedb655",
-      "updated_at": "2026-09-05T14:19:34Z"
+      "verify": "COMPLETED/SUCCESS",
+      "head": "d88fc1cf2",
+      "updated_at": "2026-09-05T14:35:15Z",
+      "awaiting": "claude_merge_first"
     },
     {
       "number": 3971,
@@ -361,44 +382,7 @@
       "agent": "cursor",
       "draft": false,
       "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T14:20:00Z",
-      "head": "79e687ac5",
-      "awaiting": "claude_review",
-      "gate": "HARD_MERGE_GATE"
-    },
-    {
-      "number": 3978,
-      "title": "fix(spx-desk): serve last RTH spot off-hours instead of price:0",
-      "branch": "fix/spx-desk-offhours-last-spot",
-      "author": "cursoragent",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "head": "1689b5baf",
-      "updated_at": "2026-09-05T14:28:00Z",
-      "awaiting": "claude_review"
-    },
-    {
-      "number": 3979,
-      "title": "fix(vector): fail-closed freshness on clock-skewed future asOf",
-      "branch": "fix/vector-freshness-clock-skew",
-      "author": "cursoragent",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "head": "67190b9c",
-      "updated_at": "2026-09-05T14:20:04Z",
-      "awaiting": "claude_review"
-    },
-    {
-      "number": 3980,
-      "title": "chore(autopilot): state sync after pull_request wake",
-      "branch": "cursor/bc-6a471d56-e9ae-4cf2-8d9f-2072890bdbba-51a2",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T14:19:27Z"
+      "updated_at": "2026-09-05T14:26:56Z"
     }
   ],
   "events": [
@@ -1673,6 +1657,13 @@
       "summary": "Fixed #3978 CI — spx-pulse-change-basis guards accept spxSnap?.change_pct @ 1689b5baf. #3979 CI SUCCESS. #3972 verify still IN_PROGRESS. #3971 gate watch continues."
     },
     {
+      "at": "2026-09-05T14:32:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "close-3980-claude-escalation-3972",
+      "summary": "Closed duplicate #3980. Posted Claude escalation on #3972 + tech review #3979. Gate tests 36/36 local. #3972/#3978 CI still running."
+    },
+    {
       "at": "2026-09-05T14:03:06.819Z",
       "type": "context_sync",
       "expired_locks": [],
@@ -1689,6 +1680,24 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T14:27:27.356Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T14:27:28.434Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T14:27:29.622Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "pr_activity": {
