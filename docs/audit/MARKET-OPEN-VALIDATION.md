@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
+### 0am. Dark-pool ticker roundFloats + nighthawk-edition UW sweep — fix/dark-pool-ticker-roundfloats-nighthawk-uw-sweep (pending)
+
+**What was broken:** `GET /api/market/dark-pool/ticker` returned raw IEEE floats at the JSON boundary while sibling `/dark-pool` already calls `roundFloats`. Separately, `GET /api/cron/nighthawk-edition` dispatched `buildEveningEdition` without `runWithBackgroundUwSweep`, so nightly dossier UW fan-out raced live member reads for the same 2-RPS cluster ceiling.
+
+**Fix:** Wrap ticker success payload in `roundFloats({ snapshot, symbol })`; wrap edition build dispatch in `runWithBackgroundUwSweep(() => buildEveningEdition(...))`.
+
+**Check at the open:** Thermal heatmap overlay drilldown on a liquid name (SPY/NVDA) — premiums/sizes must not show IEEE tails. During edition window (~16:00 ET), confirm no spike in live UW queue-wait on member Vector/HELIX reads coinciding with `[cron/nighthawk-edition] background build done` log lines.
+
 ### 0al. SPX desk peek served price:0 bootstrap shell — fix/spx-desk-peek-zero-price (merged #3803)
 
 **What was broken:** `GET /api/market/spx/desk` returned any `peekSpxDesk()` cache hit immediately, including bootstrap fast-lane shells with `price: 0` before `buildSpxDesk()` finished — members could flash SPX 0 while Thermal matrix already showed a grounded spot (~7718).
@@ -144,7 +152,7 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** `GET /api/market/quote?ticker=<equity>` on UW fallback path — missing prior close must show absent change %, not `0.00%`.
 
-### 0al. Pricing's SEO description still said "six trading modules" after the catalog grew to seven — fix/pricing-seo-stale-six-modules (pending)
+### 0an. Pricing's SEO description still said "six trading modules" after the catalog grew to seven — fix/pricing-seo-stale-six-modules (merged #3797)
 
 **What was broken:** `pricing/page.tsx`'s `publicPageMetadata()` description and `WebPageJsonLd` description both hardcoded "all six trading modules plus Discord" — driving `<meta name="description">`, canonical-adjacent title, OG/Twitter copy, and JSON-LD structured data — even though the visible page and `SoftwareApplicationJsonLd`'s `featureList` already correctly describe all 7 products.
 
