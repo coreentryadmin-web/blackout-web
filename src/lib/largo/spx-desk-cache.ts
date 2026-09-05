@@ -1,5 +1,6 @@
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 /** ISSUE-23: Cache entry with timestamp for TTL enforcement. */
 type BundleEntry = {
@@ -23,7 +24,7 @@ export async function getLargoSpxLiveDesk(userId: string): Promise<SpxDeskPayloa
   const existing = bundleByUser.get(userId) ?? null;
 
   // ISSUE-23: Enforce 60s TTL — a hit older than that is stale and must be reloaded.
-  if (existing && now - existing.cachedAt <= CACHE_TTL_MS) {
+  if (existing && isWsUpdatedAtFresh(existing.cachedAt, CACHE_TTL_MS, now)) {
     return existing.bundle.merged;
   }
 
