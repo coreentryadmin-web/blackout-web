@@ -9,6 +9,8 @@ import { isEtCashRth } from "@/lib/et-market-hours";
 
 /** ONE source for the compare poll cadence, so the label and the actual interval cannot drift. */
 const COMPARE_POLL_MS = 5_000;
+import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
+import { rebaseChangePct } from "@/lib/providers/change-pct";
 import {
   THERMAL_COMPARE_TICKERS,
   type ThermalCompareTicker,
@@ -47,10 +49,14 @@ function CompareCard({
   ticker,
   active,
   onPick,
+  pushSpot,
+  pushChangePct,
 }: {
   ticker: ThermalCompareTicker;
   active: boolean;
   onPick: (t: ThermalCompareTicker) => void;
+  pushSpot: number | null;
+  pushChangePct: number | null;
 }) {
   const pollMs = usePollIntervalMs(COMPARE_POLL_MS, COMPARE_POLL_MS);
   const { data, isLoading } = useSWR<ComparePayload>(
@@ -59,8 +65,16 @@ function CompareCard({
     { refreshInterval: pollMs, revalidateOnFocus: false, keepPreviousData: true }
   );
 
-  const spot = data?.spot ?? null;
-  const chg = data?.change_pct ?? null;
+  const matrixSpot = data?.spot != null && data.spot > 0 ? data.spot : null;
+  const spot = pushSpot ?? matrixSpot;
+  const matrixChangePct =
+    data?.change_pct != null && Number.isFinite(data.change_pct) ? data.change_pct : null;
+  const chg =
+    pushSpot != null && matrixSpot != null
+      ? (rebaseChangePct(pushSpot, { price: matrixSpot, change_pct: matrixChangePct })
+        ?? pushChangePct
+        ?? matrixChangePct)
+      : pushChangePct ?? matrixChangePct;
   const call = data?.gex?.call_wall ?? null;
   const put = data?.gex?.put_wall ?? null;
   const flip = data?.gex?.flip ?? null;
@@ -167,6 +181,7 @@ export function ThermalCompareStrip({
   className?: string;
 }) {
   const active = activeTicker.toUpperCase();
+  const { quotes: livePushQuotes } = useLiveQuoteStream([...THERMAL_COMPARE_TICKERS]);
 
   // Resolved on the CLIENT, null until then — deriving it during render would put the server's ET
   // and the browser's ET in one HTML payload. Deliberately NOT `useEtMarketOpen()`, which seeds
@@ -199,14 +214,25 @@ export function ThermalCompareStrip({
         </span>
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">
-        {THERMAL_COMPARE_TICKERS.map((t) => (
-          <CompareCard
-            key={t}
-            ticker={t}
-            active={active === t}
-            onPick={(picked) => onPick(picked)}
-          />
-        ))}
+        {THERMAL_COMPARE_TICKERS.map((t) => {
+          const pushQuote = livePushQuotes[t];
+          const pushSpot =
+            pushQuote != null && pushQuote.price > 0 ? pushQuote.price : null;
+          const pushChangePct =
+            pushQuote?.changePct != null && Number.isFinite(pushQuote.changePct)
+              ? pushQuote.changePct
+              : null;
+          return (
+            <CompareCard
+              key={t}
+              ticker={t}
+              active={active === t}
+              onPick={(picked) => onPick(picked)}
+              pushSpot={pushSpot}
+              pushChangePct={pushChangePct}
+            />
+          );
+        })}
       </div>
     </div>
   );
