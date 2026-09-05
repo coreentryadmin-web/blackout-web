@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T01:30:00.000Z",
+  "updated_at": "2026-09-05T01:35:00.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -237,9 +237,9 @@
     },
     "pr-3808": {
       "pr": 3808,
-      "head_sha": "274bea59f",
+      "head_sha": "d588f227b",
       "reviewer": "claude",
-      "verdict": "AWAITING — adversarial review @ 274bea59f (BUY/SKIP + CLOSED tab)",
+      "verdict": "AWAITING — adversarial review @ d588f227b (BUY/SKIP + CLOSED + Buyable strip)",
       "reviewed_at": null,
       "safe_to_merge": false,
       "operator_mandate": "LIVE member-facing only. No shadow rollout, no flag-gated hiding. We monitor open plays daily and tune gates/floors/caps in prod when needed — but members always see real WATCH/COMMIT behavior. Emergency rollback = SWING_ENGINE_V2_DISABLED=1 only.",
@@ -282,8 +282,8 @@
       "agent": "cursor",
       "draft": true,
       "verify": "PENDING",
-      "head_sha": "274bea59f",
-      "updated_at": "2026-09-05T01:30:00Z"
+      "head_sha": "d588f227b",
+      "updated_at": "2026-09-05T01:35:00Z"
     },
     {
       "number": 3807,
