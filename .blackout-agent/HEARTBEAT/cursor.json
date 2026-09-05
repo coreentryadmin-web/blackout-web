@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "09fe2e2c-84ed-4801-a663-524260d557db",
-  "last_seen": "2026-09-05T14:39:30.880Z",
-  "last_productive_action": "heartbeat",
-  "current_task": "BO-P1-0100",
-  "current_phase": "HANDOFF",
-  "branch": null,
+  "run_id": "0a14edd1-d45f-40b3-bedd-da3e04e7cd86",
+  "last_seen": "2026-09-05T14:46:00.000Z",
+  "last_productive_action": "reopen-gate-fix-pr",
+  "current_task": "open-gate-pr-close-3982",
+  "current_phase": "GATE_FIX",
+  "branch": "cursor/autopilot-state-sync-1340",
   "pr": null,
   "healthy": true
 }

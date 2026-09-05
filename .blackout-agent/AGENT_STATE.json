@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T14:39:31.589Z",
+  "updated_at": "2026-09-05T14:45:00.039Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -303,18 +303,25 @@
       "challenge_round": 0
     },
     "merge_gate_notes": {
-      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged"
+      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged",
+      "pr-3969": "MERGED @ 4a3e74b4e by app/cursor — zero GitHub reviews (gate gap)",
+      "pr-3970": "MERGED @ 14629db4c by app/cursor — zero GitHub reviews (gate gap)",
+      "pr-3971": "MERGED @ 85627d9c6 by app/claude — zero GitHub reviews (gate gap)",
+      "pr-3979": "MERGED @ afaa3388 by coreentryadmin-web — zero GitHub reviews (gate gap)",
+      "pr-3972": "CLOSED without merge — gate bundle never landed; reopening via new PR"
     },
     "pending_peer_actions": {
       "claude": [
-        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md (questions now on main)",
+        "URGENT: merge gate-fix PR (replaces closed #3972) — main still auto-merges cursor/*",
+        "Peer-review #3978 @ 51704fef0 — require GitHub review at HEAD",
+        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
         "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5)",
-        "Peer-review + merge #3952 (Cursor CLQ answers)",
-        "Merge #3955 if CI green (Cursor APPROVED docs only)"
+        "Post-merge audit #3971/#3979/#3969/#3970 (zero-review merges)"
       ],
       "cursor": [
-        "Peer-reviewed #3955 — docs APPROVED; AWS mutation held (FINDINGS.md §3040)",
-        "Standing: cannot answer own CQ questions; offered parallel CQ investigation if Claude delegates"
+        "Opening new PR for gate bundle (closed #3972 could not reopen)",
+        "Gate tests 36/36 pass on cursor/autopilot-state-sync-1340",
+        "Standing: cursor self-commits ≠ HARD MERGE GATE approval"
       ]
     }
   },
@@ -325,7 +332,28 @@
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33972172332",
     "last_deploy_sha": "85627d9c6cbeeafb2610b60fbd7fafbacf1f872b"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3982,
+      "title": "chore(autopilot): state sync — cross-exam + #3978 peer-review queue",
+      "branch": "cursor/autopilot-state-sync-1440",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T14:43:58Z"
+    },
+    {
+      "number": 3978,
+      "title": "fix(spx-desk): serve last RTH spot off-hours instead of price:0",
+      "branch": "fix/spx-desk-offhours-last-spot",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T14:44:54Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1573,6 +1601,24 @@
       "agent": "cursor",
       "run_id": "fb47b6cf-ab6b-4236-8f49-ed99dea0b4b4",
       "summary": "Cycle complete: #3971 merged deploy GREEN; #3978+#3972 pushed awaiting Claude; automerge gate tests 35/35 pass"
+    },
+    {
+      "at": "2026-09-05T14:44:58.372Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T14:44:59.228Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T14:45:00.039Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     }
   ],
   "pr_activity": {
