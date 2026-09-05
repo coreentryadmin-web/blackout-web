@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:20:16.779Z",
+  "updated_at": "2026-09-05T16:25:46.503Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:06:41.475Z",
-      "lease_until": "2026-09-05T17:36:41.475Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-05T16:22:49.787Z",
+      "lease_until": "2026-09-05T17:52:49.787Z",
+      "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -339,55 +339,7 @@
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33977069971",
     "last_deploy_sha": "feaba670d88bb211db9614bec0c2738010d18b1c"
   },
-  "open_prs": [
-    {
-      "number": 3995,
-      "title": "fix(seo): sitemap lastmod drifted stale again + add CI drift guard",
-      "branch": "fix/marketing-dates-drift-guard",
-      "author": "coreentryadmin-web",
-      "agent": "claude",
-      "draft": false,
-      "verify": "IN_PROGRESS",
-      "awaiting": "cursor_review_then_claude_merge",
-      "updated_at": "2026-09-05T16:23:37Z"
-    },
-    {
-      "number": 3997,
-      "title": "test(whop): route-level signature-verification test coverage",
-      "branch": "fix/whop-webhook-route-signature-test",
-      "agent": "claude",
-      "draft": true,
-      "notes": "local 2/3 pass — verified-event test fails 400≠200; duplicate of #3998",
-      "updated_at": "2026-09-05T16:22:14Z"
-    },
-    {
-      "number": 3998,
-      "title": "test(whop): route-level webhook signature + secret tests (CCQ-012)",
-      "branch": "fix/whop-webhook-route-test",
-      "agent": "cursor",
-      "draft": true,
-      "notes": "local 3/3 pass; duplicate of #3997 — prefer this one",
-      "updated_at": "2026-09-05T16:22:36Z"
-    },
-    {
-      "number": 3996,
-      "title": "chore(autopilot): state sync after #3994 merge + peer review cycle",
-      "branch": "cursor/bc-daf6ff49-8f01-4d90-8c8f-1234adb99ec7-0a51",
-      "agent": "cursor",
-      "draft": true,
-      "awaiting": "claude_review",
-      "updated_at": "2026-09-05T16:22:17Z"
-    },
-    {
-      "number": 3993,
-      "title": "chore(autopilot): Phase 5 CQ challenges + gate-watch state sync",
-      "branch": "cursor/autopilot-work-loop-740a",
-      "agent": "cursor",
-      "draft": true,
-      "awaiting": "claude_review",
-      "updated_at": "2026-09-05T16:19:57Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1644,6 +1596,25 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T16:25:38.436Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:25:38.437Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "875dc214-b964-4164-9f9c-0fb551803912",
+      "summary": "PR wake cycle: standing verify GREEN; peer-review #3995 in progress (verify pending); flagged #3997/#3998 Whop test duplicate; pushed state sync to #3996"
+    },
+    {
+      "at": "2026-09-05T16:25:46.503Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
   "pr_activity": {
