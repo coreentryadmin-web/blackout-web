@@ -26,5 +26,6 @@ test("getFlowTapeSummary stamps as_of from newest print event_at (CQ-083)", asyn
   const { getFlowTapeSummary } = await import("./flow-service.ts");
   const summary = await getFlowTapeSummary({ limit: 10 });
   assert.equal(summary.as_of, "2026-07-13 10:05 ET");
+  assert.equal(summary.session_date, "2026-07-13");
   assert.equal(summary.count, 1);
 });
