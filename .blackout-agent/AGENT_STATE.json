@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:40:00.000Z",
+  "updated_at": "2026-09-05T13:40:00.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -259,23 +259,32 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T12:35:00.000Z",
       "safe_to_merge": true
+    },
+    "pr-3963": {
+      "pr": 3963,
+      "head_sha": "7f23dd5ecc7f3ab3c6415c12185ebd3a7f945c89",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-05T13:22:00.000Z",
+      "safe_to_merge": true,
+      "notes": "MERGED @ 9ae84a169. #3960 follow-up: .catch(() => true) on 6 Discord dedup guards."
     }
   },
   "agents": {
     "claude": {
       "status": "active",
-      "last_seen": "2026-09-05T12:20:00.000Z"
+      "last_seen": "2026-09-05T12:07:42.023Z"
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T12:20:00.000Z",
+      "last_seen": "2026-09-05T13:40:00.000Z",
       "current_task": "BO-P1-0101"
     }
   },
   "cross_examination": {
     "phase": "CURSOR_COMPLETE_CLAUDE_PENDING",
     "started_at": "2026-09-05T12:00:00.000Z",
-    "updated_at": "2026-09-05T12:40:00.000Z",
+    "updated_at": "2026-09-05T13:40:00.000Z",
     "claude_questions_for_cursor": {
       "file": ".blackout-agent/CLAUDE_QUESTIONS_FOR_CURSOR.md",
       "pr": 3948,
@@ -284,7 +293,7 @@
       "status": "published_merged",
       "answers_file": ".blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md",
       "answers_pr": 3952,
-      "answers_status": "complete_pending_merge"
+      "answers_status": "merged"
     },
     "cursor_questions_for_claude": {
       "file": ".blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md",
@@ -307,28 +316,30 @@
     },
     "pending_peer_actions": {
       "claude": [
-        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md (questions now on main)",
+        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
         "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5)",
-        "Peer-review + merge #3952 (Cursor CLQ answers)",
-        "Merge #3955 if CI green (Cursor APPROVED docs only)"
+        "Peer-review at CURRENT HEAD: #3969 (CLQ-003), #3970 (CLQ-017), #3971 (CLQ-041)",
+        "Close #3959 duplicate"
       ],
       "cursor": [
-        "Peer-reviewed #3955 — docs APPROVED; AWS mutation held (FINDINGS.md §3040)",
-        "Standing: cannot answer own CQ questions; offered parallel CQ investigation if Claude delegates"
+        "Opened #3969/#3970/#3971 — rebased on main@9ae84a169, local tests green",
+        "Standing: cannot answer own CQ questions"
       ]
     }
   },
   "deploy": {
-    "last_main_sha": "d96372440c9a8ff101c95d52826a38adebdc513a",
+    "last_main_sha": "9ae84a1694a77ed7b78136ba6625c4ca14fb1bce",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T10:36:36Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
-    "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
+    "last_deploy_at": "2026-09-05T13:22:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33968614003",
+    "last_deploy_sha": "9ae84a1694a77ed7b78136ba6625c4ca14fb1bce"
   },
   "open_prs": [
-    { "pr": 3952, "branch": "cursor/clq-answers-batch1-2026-09-05", "title": "CURSOR_ANSWERS_FOR_CLAUDE (54/54)", "author": "cursor", "awaiting": "claude_review" },
-    { "pr": 3955, "branch": "docs/finding-ecs-web-deploy-maxpercent", "title": "ECS maxPercent finding", "author": "claude", "awaiting": "claude_merge" },
-    { "pr": 3949, "branch": "cursor/autopilot-handoff-2026-09-05", "title": "stale state sync", "author": "cursor", "awaiting": "close" }
+    { "pr": 3969, "branch": "cursor/fix-daily-bar-complete-per-ticker", "head": "f9593a9ac", "title": "per-ticker dailyBarComplete (CLQ-003)", "author": "cursor", "awaiting": "claude_review" },
+    { "pr": 3970, "branch": "cursor/charm-depth-validate-script", "head": "5b6e845c3", "title": "CHARM validator (CLQ-017)", "author": "cursor", "awaiting": "claude_review" },
+    { "pr": 3971, "branch": "cursor/membership-activating-banner-clq-041", "head": "7c4de7981", "title": "activating banner (CLQ-041)", "author": "cursor", "awaiting": "claude_review" },
+    { "pr": 3965, "branch": "cursor/autopilot-handoff-2026-09-05-cycle3", "title": "stale handoff draft", "author": "cursor", "awaiting": "close" },
+    { "pr": 3959, "branch": "cursor/clq-answers-batch1", "title": "duplicate CLQ partial", "author": "cursor", "awaiting": "close" }
   ],
   "events": [
     {
@@ -1533,6 +1544,31 @@
       "agent": "cursor",
       "run_id": "post-merge-sync",
       "summary": "main@d96372440: #3945+#3950+#3951+#3953 merged. #3952 CLQ answers awaiting Claude review. Claude must answer CQ-001–218 on main. #3945 merged without recorded Claude GitHub review — gate gap noted."
+    },
+    {
+      "at": "2026-09-05T13:22:44.408Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T13:22:45.379Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T13:22:46.317Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T13:40:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "clq-fix-prs-opened",
+      "summary": "main@9ae84a169 (#3963 merged). Rebased CLQ-003/017/041 branches; opened #3969/#3970/#3971 (draft). Local tests: discovery 27/27, charm 2/2, membership 5/5. Claude: CQ answers + peer-review three PRs."
     }
   ],
   "pr_activity": {
