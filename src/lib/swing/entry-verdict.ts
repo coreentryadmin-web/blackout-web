@@ -178,10 +178,10 @@ export function swingEntryVerdict(input: SwingEntryVerdictInput): SwingEntryVerd
     case "COMMIT_NOW":
       if (commitGateBlockedBy.length > 0) {
         return {
-          deckStatus: "SKIP",
+          deckStatus: "WATCH",
           recommendation: "HOLD",
           recNote:
-            "At trigger, but commit gates have not cleared — desk will not open until confluence/Cortex pass.",
+            "At trigger, but commit gates have not cleared — wait for confluence/Cortex before sizing.",
           gateBlocks: commitGateBlocksForVerdict(commitGateBlockedBy),
           actionLabel: "WAIT",
         };

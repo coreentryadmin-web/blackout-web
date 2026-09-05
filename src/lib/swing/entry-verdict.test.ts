@@ -83,27 +83,27 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.equal(swingEntryVerdict({}), null);
   });
 
-  it("COMMIT_NOW + G-S6 block → SKIP/WAIT, not BUY", () => {
+  it("COMMIT_NOW + G-S6 block → WATCH/WAIT with gate blocks, not BUY", () => {
     const v = swingEntryVerdict({
       servingSection: "COMMIT_NOW",
       setupState: "TRIGGERED",
       entryStatus: "AT_TRIGGER",
       commitGateBlockedBy: ["gate:G-S6:confluence"],
     });
-    assert.equal(v?.deckStatus, "SKIP");
+    assert.equal(v?.deckStatus, "WATCH");
     assert.equal(v?.actionLabel, "WAIT");
     assert.equal(v?.recommendation, "HOLD");
     assert.equal(v?.gateBlocks?.[0]?.code, "g_s6_confluence");
   });
 
-  it("COMMIT_NOW + G-S14 block → SKIP/WAIT, not BUY", () => {
+  it("COMMIT_NOW + G-S14 block → WATCH/WAIT with gate blocks, not BUY", () => {
     const v = swingEntryVerdict({
       servingSection: "COMMIT_NOW",
       setupState: "TRIGGERED",
       entryStatus: "AT_TRIGGER",
       commitGateBlockedBy: ["gate:G-S14:cortex"],
     });
-    assert.equal(v?.deckStatus, "SKIP");
+    assert.equal(v?.deckStatus, "WATCH");
     assert.equal(v?.actionLabel, "WAIT");
     assert.notEqual(v?.recommendation, "BUY");
   });
