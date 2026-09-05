@@ -24,7 +24,7 @@ import { logCronRun } from "@/lib/cron-run";
 import { warmGridEarnings } from "@/lib/zerodte/earnings";
 import { warmZeroDteBoard } from "@/lib/zerodte/scan";
 import { refreshZeroDteBoardSnapshot } from "@/lib/platform/zerodte-service";
-import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
+import { callerInfoFromRequest, shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!shouldRunCacheWarmer(force, undefined, "zerodte-warm")) {
+  if (!shouldRunCacheWarmer(force, undefined, "zerodte-warm", callerInfoFromRequest(req))) {
     const payload = {
       ok: true,
       skipped: true,

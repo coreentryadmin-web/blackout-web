@@ -1,4 +1,14 @@
+import type { NextRequest } from "next/server";
 import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
+import { getClientIp } from "@/lib/ip-rate-limit";
+
+/** Client IP + user-agent, for the `callerInfo` param below — built once here so all four
+ *  warm-cron routes stay consistent instead of four copies of the same header reads. */
+export function callerInfoFromRequest(req: NextRequest): string {
+  const ip = getClientIp(req);
+  const ua = req.headers.get("user-agent")?.trim() || "no-ua";
+  return `ip=${ip} ua=${ua}`;
+}
 
 /**
  * Whether a cache-warmer cron should run upstream fetches (desk/gex/zerodte/heatmap).
@@ -30,12 +40,28 @@ import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
  * whose own gate has a bug) would recreate the same tail-latency/CPU-burst pattern with zero trace
  * of who triggered it — undiagnosable the same way CACHE_WARM_ALWAYS was until Secrets Manager was
  * checked by hand. Every bypass now logs its key so the next investigation is one log grep away.
+ *
+ * CALLER IDENTITY (2026-09-05): logging the key alone answered "which cron" but not "who" — this
+ * bug's own prediction above ("a NEW unmonitored caller hammering ?force=1 overnight") reproduced
+ * live: `desk-warm` measured 81 force-driven off-hours completions in 3 hours overnight (median
+ * well under the 5-min legitimate EventBridge cadence), while EventBridge (11-21 UTC weekdays
+ * only), `rth-warm-leader`, and `cron-staleness-watchdog` self-heal were all independently
+ * confirmed silent for the same window (see `desk-warm/route.ts`'s `RERUN_COOLDOWN_KEY` doc
+ * comment) — i.e. the caller is provably NOT any known in-app dispatcher, yet nothing captured
+ * enough to identify it. `callerInfo` (client IP + user-agent, built by each route from the
+ * request it already has) closes that gap so the NEXT investigation doesn't hit the same dead end.
  */
-export function shouldRunCacheWarmer(force: boolean, now = new Date(), key?: string): boolean {
+export function shouldRunCacheWarmer(
+  force: boolean,
+  now = new Date(),
+  key?: string,
+  callerInfo?: string
+): boolean {
   if (force) {
     if (!isEtExtendedWarmHours(now)) {
       console.info(
-        `[cache-warmer-gate] force=1 bypassed the hours gate${key ? ` for '${key}'` : ""} at ${now.toISOString()}`
+        `[cache-warmer-gate] force=1 bypassed the hours gate${key ? ` for '${key}'` : ""}` +
+          `${callerInfo ? ` (caller: ${callerInfo})` : ""} at ${now.toISOString()}`
       );
     }
     return true;

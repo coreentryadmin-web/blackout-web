@@ -3,7 +3,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { warmMeridianCaches } from "@/lib/meridian/meridian-snapshot";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
-import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
+import { callerInfoFromRequest, shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
 
 export const runtime = "nodejs";
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!shouldRunCacheWarmer(force, undefined, "meridian-warm")) {
+  if (!shouldRunCacheWarmer(force, undefined, "meridian-warm", callerInfoFromRequest(req))) {
     const skipped = { ok: true, status: "skipped", reason: "off-hours gate" };
     await logCronRun("meridian-warm", started, skipped);
     return NextResponse.json(skipped);

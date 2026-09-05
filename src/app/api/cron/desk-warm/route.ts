@@ -17,7 +17,7 @@ import { prefetchSpxDeskEnrichment } from "@/features/spx/lib/spx-desk";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { seedUwCacheFromWsStores } from "@/lib/uw-ws-cache-bridge";
-import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
+import { callerInfoFromRequest, shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
 import { warmFlowsMemberCaches } from "@/lib/flows-member-cache";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { sharedCacheDel, sharedCacheSetNx } from "@/lib/shared-cache";
@@ -143,7 +143,7 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!shouldRunCacheWarmer(force, undefined, "desk-warm")) {
+  if (!shouldRunCacheWarmer(force, undefined, "desk-warm", callerInfoFromRequest(req))) {
     const payload = {
       ok: true,
       skipped: true,
