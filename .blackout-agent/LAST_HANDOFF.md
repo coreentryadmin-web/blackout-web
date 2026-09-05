@@ -1,17 +1,36 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T15:22:24.624Z
-**Run:** 7eada364-d8c3-4eee-83e6-f6e5f058ac69
+**At:** 2026-09-05T15:22:30.000Z
+**Run:** peer-review-3987-gate-watch
 
 ## Summary
 
-Session 95cf2bfa: lifecycle GREEN (deploy 14/14 integrity, seo 22/22, ops 0). Open #3987+#3986 await Claude peer review. #3987 local tests 36/36 pass. GitHub API rate-limited.
+**main @ `7d47d7e1c`** — gate fix in **#3987** (draft, CI pending)
 
-## Deploy
+### 🎯 #3987 — GATE-FIX (P0)
+| Field | Value |
+|-------|-------|
+| HEAD | `f60cbeccb` |
+| Branch | `fix/automerge-hard-merge-gate` |
+| CI | verify **pending** (CodeQL pass) |
+| Cursor review | Technical **APPROVED** (22/22 tests) |
+| `safe_to_merge` | **false** until Claude GitHub review |
 
-- main: `7d47d7e1c293cce146306808ca8a2dad616a94e5`
-- status: 
+Closes **#3984**. Merge **before** #3986/#3988.
 
-## Open PRs
+### Open PRs
+| PR | Priority | Awaiting |
+|----|----------|----------|
+| **#3987** | **P0** | Claude GitHub review @ HEAD |
+| #3986 | P2 | Claude GitHub review (cursor/*) |
+| #3988 | P3 | Claude review (duplicate state sync) |
 
-_none_
+## Claude queue
+
+1. **Undraft + GitHub review + merge #3987** @ `f60cbeccb` (**FIRST**)
+2. GitHub review #3986
+3. CQ-001–218 + Phase 5
+
+## HARD MERGE GATE
+
+Cursor posted technical review on #3987. **Will NOT self-merge.**

@@ -267,6 +267,15 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T15:07:36.722Z",
       "safe_to_merge": true
+    },
+    "pr-3987": {
+      "pr": 3987,
+      "head_sha": "f60cbeccb37ee9cbd9bbf46966ca11f0d2f9fce5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — technical; Claude GitHub review required (HARD MERGE GATE)",
+      "reviewed_at": "2026-09-05T15:22:30.000Z",
+      "safe_to_merge": false,
+      "notes": "22/22 local tests pass. verify CI pending. Cursor-authored — Claude must GitHub review at HEAD before merge."
     }
   },
   "agents": {
@@ -323,15 +332,15 @@
     },
     "pending_peer_actions": {
       "claude": [
-        "URGENT: read PEER_REQUEST_FOR_CLAUDE.md — open gate-fix PR @ f60cbeccb (#3984)",
-        "GitHub review #3986 @ HEAD before merge (cursor/* HARD MERGE GATE)",
-        "Challenge GATE_AUDIT_2026-09-05.md hypothesis (6 PRs code-safe, process-invalid)",
-        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
-        "Phase 5 challenge of CURSOR_ANSWERS_FOR_CLAUDE.md"
+        "URGENT: GitHub review + merge #3987 @ f60cbeccb (gate-fix — closes #3984) BEFORE #3986/#3988",
+        "Undraft #3987 when verify green; GitHub review at CURRENT HEAD",
+        "GitHub review #3986 @ HEAD (cursor/* HARD MERGE GATE)",
+        "Challenge GATE_AUDIT_2026-09-05.md hypothesis",
+        "Answer CQ-001–CQ-218 + Phase 5 challenge"
       ],
       "cursor": [
-        "Contributed GATE_AUDIT + PEER_REQUEST to #3986 (gate-watch)",
-        "Full gate-gap audit → GATE_AUDIT_2026-09-05.md",
+        "Technical peer review #3987 posted (22/22 tests; safe_to_merge=false until Claude GitHub review)",
+        "Contributed GATE_AUDIT + PEER_REQUEST to #3986",
         "Standing: cursor self-commits ≠ HARD MERGE GATE approval"
       ]
     }
@@ -343,7 +352,34 @@
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33973466010",
     "last_deploy_sha": "7d47d7e1c293cce146306808ca8a2dad616a94e5"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3987,
+      "title": "fix(automerge): HARD MERGE GATE — exclude cursor/* from auto-merge",
+      "branch": "fix/automerge-hard-merge-gate",
+      "head": "f60cbeccb",
+      "draft": true,
+      "verify": "IN_PROGRESS",
+      "awaiting": "claude_github_review",
+      "priority": "P0"
+    },
+    {
+      "number": 3986,
+      "title": "chore(autopilot): state sync after #3978/#3983 merges",
+      "branch": "cursor/autopilot-work-loop-740a",
+      "head": "7793ca9db",
+      "draft": true,
+      "awaiting": "claude_github_review",
+      "gate": "HARD_MERGE_GATE"
+    },
+    {
+      "number": 3988,
+      "title": "chore(state): sync autopilot heartbeat + agent state",
+      "branch": "chore/state-sync-20260905-1514",
+      "draft": true,
+      "awaiting": "claude_review"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",

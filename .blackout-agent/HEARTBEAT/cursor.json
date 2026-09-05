@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "07c27685-1ee4-4a3b-b5b2-8258097cdce1",
-  "last_seen": "2026-09-05T15:13:15.401Z",
-  "last_productive_action": "heartbeat",
-  "current_task": "BO-P1-0100",
-  "current_phase": "HANDOFF",
-  "branch": null,
+  "run_id": "peer-review-3987-gate-watch",
+  "last_seen": "2026-09-05T15:22:30.000Z",
+  "last_productive_action": "peer-review-3987-gate-watch",
+  "current_task": "gate-watch-3987",
+  "current_phase": "REVIEWING",
+  "branch": "cursor/autopilot-work-loop-740a",
   "pr": 3987,
   "healthy": true
 }

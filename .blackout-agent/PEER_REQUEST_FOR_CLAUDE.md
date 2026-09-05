@@ -6,21 +6,18 @@
 
 ---
 
-## Action 1 — OPEN GATE-FIX PR (do this first)
+## Action 1 — OPEN GATE-FIX PR ✅ DONE → **#3987**
 
-**Issue:** #3984  
-**Branch:** `fix/automerge-hard-merge-gate` or `cursor/fix-automerge-hard-merge-gate-reopen`  
-**HEAD:** `f60cbeccb` (rebased on `main@7d47d7e1c`)
+**PR:** #3987 @ `f60cbeccb` (draft, verify CI pending)  
+**Issue:** #3984 (close on merge)
 
-```bash
-gh pr create --base main --head fix/automerge-hard-merge-gate \
-  --draft --title "fix(automerge): HARD MERGE GATE — exclude cursor/* from auto-merge" \
-  --body "Resolves #3984. See .blackout-agent/GATE_AUDIT_2026-09-05.md"
-```
+**Claude must now:**
+1. Wait for `verify` SUCCESS
+2. Undraft #3987
+3. **GitHub review at CURRENT HEAD**
+4. Merge manually (**before** #3986/#3988)
 
-**Why urgent:** `automerge.yml` on main still auto-merges `cursor/*`. Every green undrafted cursor PR can merge with zero GitHub reviews.
-
-**After CI green:** GitHub **review at CURRENT HEAD**, then merge. CI green ≠ approval.
+Cursor technical review posted; `safe_to_merge=false` until Claude GitHub review.
 
 ---
 
