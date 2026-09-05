@@ -118,8 +118,8 @@ function levelsFromContext(ctx: SwingPlayBriefContext): BieLevel[] {
   const levels: BieLevel[] = [];
   const vec = ctx.vector ?? ctx.ecosystem?.vector_full_state ?? null;
   const gex = ctx.ecosystem?.gex_positioning;
-  const callWall = vec?.gexWalls?.call_wall ?? gex?.call_wall;
-  const putWall = vec?.gexWalls?.put_wall ?? gex?.put_wall;
+  const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? gex?.call_wall;
+  const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? gex?.put_wall;
   const flip = vec?.gammaFlip ?? gex?.flip;
   if (callWall != null) {
     levels.push({ label: "call wall", price: callWall, provenance: { source: "GEX", freshness: "recent" } });

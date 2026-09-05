@@ -109,8 +109,8 @@ export function chartLevelsSection(ctx: SwingPlayBriefContext): RichSection | nu
   const spot = vec?.spot ?? gex?.spot ?? null;
   const lines: string[] = [];
 
-  const callWall = vec?.gexWalls?.call_wall ?? gex?.call_wall ?? null;
-  const putWall = vec?.gexWalls?.put_wall ?? gex?.put_wall ?? null;
+  const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? gex?.call_wall ?? null;
+  const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? gex?.put_wall ?? null;
   const flip = vec?.gammaFlip ?? gex?.flip ?? null;
 
   if (callWall != null) {
@@ -295,8 +295,8 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
     lines.push(watch);
   }
 
-  const putWall = vec?.gexWalls?.put_wall ?? ctx.ecosystem?.gex_positioning?.put_wall;
-  const callWall = vec?.gexWalls?.call_wall ?? ctx.ecosystem?.gex_positioning?.call_wall;
+  const putWall = vec?.gexWalls?.putWalls?.[0]?.strike ?? ctx.ecosystem?.gex_positioning?.put_wall;
+  const callWall = vec?.gexWalls?.callWalls?.[0]?.strike ?? ctx.ecosystem?.gex_positioning?.call_wall;
   if (play.direction === "LONG" && putWall != null) {
     lines.push(`Structural support node: put wall **${putWall.toFixed(2)}**`);
   }
