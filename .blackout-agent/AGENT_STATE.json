@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T06:20:11.962Z",
+  "updated_at": "2026-09-05T06:21:06.681Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T06:12:44.837Z",
-      "lease_until": "2026-09-05T07:42:44.837Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-05T06:07:29.382Z",
+      "lease_until": "2026-09-05T07:37:29.382Z",
+      "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -256,34 +256,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d426930cce564f02d2c0c6c4e44a8cd9395a6879",
+    "last_main_sha": "53788ae689dd8a5a5cb280ca2ada816f1ac4d940",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T06:13:46Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33949241096",
-    "last_deploy_sha": "d426930cce564f02d2c0c6c4e44a8cd9395a6879"
+    "last_deploy_at": "2026-09-05T06:20:19Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33949536049",
+    "last_deploy_sha": "53788ae689dd8a5a5cb280ca2ada816f1ac4d940"
   },
-  "open_prs": [
-    {
-      "number": 3881,
-      "title": "fix(api): roundFloats on platform intel, coaching alerts, premarket brief",
-      "branch": "fix/roundfloats-platform-intel-coaching-brief",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T06:20:03Z"
-    },
-    {
-      "number": 3878,
-      "title": "fix(swing): deep-dive Q3/Q5/Q6/Q15/Q20-Q22/Q26 batch",
-      "branch": "cursor/swing-deepdive-q20-commit-key-archetype",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T06:19:01Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1195,6 +1174,19 @@
       "type": "task_claimed",
       "task_id": "BO-P1-0101",
       "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T06:21:06.680Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T06:21:06.681Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "05a7b626-efc8-42e7-a510-db6e66970018",
+      "summary": "PR-event cycle: #3877/#3879 peer-reviewed+merged; #3878/#3881 fleet-merged. validate:deploy GREEN, ops:collect 0. main"
     }
   ]
 }
