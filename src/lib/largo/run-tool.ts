@@ -99,6 +99,7 @@ import {
   computeVixTermStructure,
 } from "@/lib/providers/polygon";
 import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
+import { withFreshPrice } from "@/lib/providers/change-pct";
 import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { priorEtYmd, todayEtYmd } from "@/lib/providers/spx-session";
 import {
@@ -269,10 +270,23 @@ async function toolQuote(ticker: string) {
   if (!sym.startsWith("I:")) {
     const candle = getStockLiveCandle(wsTicker);
     if (candle.current && candle.current.close > 0) {
+      // WS price is live; rebase change_pct off REST snapshot when available so Largo does not
+      // quote session-open–anchored drift (same contract as /api/market/quote).
+      let changePct = candle.changePct;
+      const rest = await fetchStockSnapshot(sym);
+      if (rest) {
+        const rebased = withFreshPrice(
+          { price: rest.price, change_pct: rest.change_pct },
+          candle.current.close
+        );
+        if (typeof rebased.change_pct === "number" && Number.isFinite(rebased.change_pct)) {
+          changePct = rebased.change_pct;
+        }
+      }
       return {
         ticker: sym,
         price: candle.current.close,
-        change_pct: candle.changePct,
+        change_pct: changePct,
         source: "polygon_ws",
       };
     }

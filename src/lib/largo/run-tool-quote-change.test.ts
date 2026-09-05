@@ -12,3 +12,9 @@ test("toolQuote: index WS path must not fabricate change_pct as flat 0%", () => 
     "WS price without authoritative change must be null, not 0"
   );
 });
+
+test("toolQuote: stock WS path rebases change_pct from REST snapshot when available", () => {
+  assert.match(src, /import \{ withFreshPrice \} from "@\/lib\/providers\/change-pct"/);
+  assert.match(src, /const rest = await fetchStockSnapshot\(sym\)/);
+  assert.match(src, /withFreshPrice\(\s*\{ price: rest\.price, change_pct: rest\.change_pct \}/);
+});

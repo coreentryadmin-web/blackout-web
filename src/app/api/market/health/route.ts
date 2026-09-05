@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/admin-access";
 import { buildMarketHealthSnapshot } from "@/lib/market-health";
+import { roundFloats } from "@/lib/round-floats";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
@@ -29,7 +30,7 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: "Health check failed" }, { status: 502 });
   }
   ensureDataSockets();
-  return NextResponse.json(snapshot, {
+  return NextResponse.json(roundFloats(snapshot), {
     status: snapshot.ok ? 200 : 503,
   });
 }
