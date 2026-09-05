@@ -3,6 +3,7 @@ import { isoToEtClock, parseCommittedAtEt } from "@/lib/zerodte/play-timeline";
 import { trimScaleBlendedPnlAtStop } from "@/lib/zerodte/marks-math";
 import { PLAN_RULES } from "@/lib/zerodte/plan";
 import { legacyPrimaryPeakPct, legacyPrimaryPnlPct } from "@/features/nighthawk/lib/legacy-primary-pnl";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS, ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 
 /** Which lifecycle bucket drives the left-rail card layout. */
 export type PlayLifecyclePhase = "open" | "watch" | "closed";
@@ -81,6 +82,7 @@ export function formatRelativeAge(iso: string | null | undefined, nowMs: number)
   const at = Date.parse(iso);
   if (!Number.isFinite(at)) return null;
   const delta = nowMs - at;
+  if (delta < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return null;
   if (delta < 0) return "just now";
   const sec = Math.floor(delta / 1000);
   if (sec < 60) return sec <= 8 ? "just now" : `${sec}s ago`;
@@ -96,6 +98,7 @@ export function formatCompactAge(iso: string | null | undefined, nowMs: number):
   const at = Date.parse(iso);
   if (!Number.isFinite(at)) return null;
   const delta = nowMs - at;
+  if (delta < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return null;
   if (delta < 0) return "now";
   const sec = Math.floor(delta / 1000);
   if (sec < 60) return sec <= 8 ? "now" : `${sec}s`;
@@ -126,11 +129,9 @@ export function ageDecayToneFromAge(
 }
 
 export function eventAgeMs(iso: string | null | undefined, nowMs: number): number | null {
-  if (!iso || !(nowMs > 0)) return null;
-  const at = Date.parse(iso);
-  if (!Number.isFinite(at)) return null;
-  const delta = nowMs - at;
-  return delta >= 0 ? delta : 0;
+  const sec = ageSecFromIso(iso, nowMs);
+  if (sec == null) return null;
+  return sec * 1000;
 }
 
 export function freshnessTierFromAge(

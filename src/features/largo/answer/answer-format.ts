@@ -3,6 +3,7 @@
 // the label/tone/count logic that drives the answer components is unit-testable.
 
 import { truncateText } from "@/lib/truncate-text";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 import type {
   BieAnswerEnvelope,
   BieBias,
@@ -69,13 +70,10 @@ export function freshnessToneClass(freshness: BieFreshness): string {
  * than render a fake time.
  */
 export function relativeTime(asOf: string | null | undefined, now: number = Date.now()): string | null {
-  if (!asOf) return null;
-  const t = Date.parse(asOf);
-  if (Number.isNaN(t)) return null;
-  const diff = now - t;
-  if (diff < 0) return "just now";
-  if (diff < 60_000) return "just now";
-  const mins = Math.floor(diff / 60_000);
+  const sec = ageSecFromIso(asOf, now);
+  if (sec == null) return null;
+  if (sec < 60) return "just now";
+  const mins = Math.floor(sec / 60);
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;

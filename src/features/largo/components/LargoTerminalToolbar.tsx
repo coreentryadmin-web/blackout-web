@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { History, Plus, RefreshCw, Maximize2, Minimize2, X, CalendarClock } from "lucide-react";
 import type { LargoConversation } from "@/features/largo/conversation-history";
 import { groupConversationsByDay } from "@/features/largo/lib/session-grouping";
+import { relativeTime } from "@/features/largo/answer/answer-format";
 import { LargoAnswerModeToggle } from "./LargoAnswerModeToggle";
 import type { LargoDepth } from "@/lib/largo/largo-depth-mode";
 
@@ -215,12 +216,6 @@ export function LargoTerminalToolbar({
 
 /** Compact "5m / 2h / 3d ago" label for the history list. */
 function formatRelative(ts: number): string {
-  const diff = Date.now() - ts;
-  if (diff < 60_000) return "just now";
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  const label = relativeTime(new Date(ts).toISOString());
+  return label ?? "—";
 }

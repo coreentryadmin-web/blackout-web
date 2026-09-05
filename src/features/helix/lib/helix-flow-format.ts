@@ -5,6 +5,7 @@ import {
   positionIntent,
   positionIntentTitle,
 } from "@/features/helix/lib/helix-position-intent";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 
 export type HelixFlowSortKey =
   | "time"
@@ -25,13 +26,10 @@ export function flowTimeMs(flow: FlowAlert): number | null {
 
 export function timeAgo(iso: string): string {
   if (!iso) return "—";
-  const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return "—";
-  const diff = Date.now() - t;
-  if (diff < 0) return "0s";
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
+  const sec = ageSecFromIso(iso);
+  if (sec == null) return "—";
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
   if (h < 48) return `${h}h`;

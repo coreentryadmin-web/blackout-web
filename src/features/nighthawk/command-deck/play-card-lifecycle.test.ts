@@ -23,6 +23,7 @@ import {
   swingActionDisplay,
   legacyActionDisplay,
   closedCapturePct,
+  eventAgeMs,
 } from "./play-card-lifecycle.ts";
 import type { TerminalPlay } from "./types.ts";
 
@@ -60,6 +61,15 @@ describe("play-card-lifecycle", () => {
   it("formatRelativeAge returns human relative strings", () => {
     assert.equal(formatRelativeAge("2026-08-03T11:46:00-04:00", NOW), "14m ago");
     assert.equal(formatRelativeAge("2026-08-03T11:59:30-04:00", NOW), "30s ago");
+  });
+
+  it("formatRelativeAge returns null for clock-skewed future timestamps", () => {
+    assert.equal(formatRelativeAge("2026-08-03T12:05:00-04:00", NOW), null);
+    assert.equal(formatCompactAge("2026-08-03T12:05:00-04:00", NOW), null);
+  });
+
+  it("eventAgeMs returns null for far-future timestamps so freshness cannot read just_fired", () => {
+    assert.equal(eventAgeMs("2026-08-03T12:05:00-04:00", NOW), null);
   });
 
   it("freshness tier escalates with age on open trades", () => {

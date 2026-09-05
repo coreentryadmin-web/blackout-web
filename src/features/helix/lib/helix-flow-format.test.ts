@@ -13,6 +13,7 @@ import {
   fmtIv,
   ALERT_RULE_WORD_KEYS,
   sortFlows,
+  timeAgo,
 } from "./helix-flow-format";
 
 function flow(partial: Partial<FlowAlert> & Pick<FlowAlert, "ticker">): FlowAlert {
@@ -29,6 +30,18 @@ function flow(partial: Partial<FlowAlert> & Pick<FlowAlert, "ticker">): FlowAler
 
 test("flowTimeMs returns null for missing alerted_at", () => {
   assert.equal(flowTimeMs(flow({ ticker: "SPY", alerted_at: "" })), null);
+});
+
+test("timeAgo returns em dash for far-future clock-skewed timestamps", () => {
+  const now = Date.parse("2026-07-11T14:30:00.000Z");
+  const realNow = Date.now;
+  Date.now = () => now;
+  try {
+    assert.equal(timeAgo("2026-07-11T14:40:00.000Z"), "—");
+    assert.equal(timeAgo("2026-07-11T14:30:00.000Z"), "0s");
+  } finally {
+    Date.now = realNow;
+  }
 });
 
 test("fmtExpiryShort formats YYYY-MM-DD", () => {

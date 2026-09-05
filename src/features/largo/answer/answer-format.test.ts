@@ -31,8 +31,10 @@ test("relativeTime formats and rejects bad input", () => {
   assert.equal(relativeTime("2026-07-13T11:45:00Z", now), "15m ago");
   assert.equal(relativeTime("2026-07-13T09:00:00Z", now), "3h ago");
   assert.equal(relativeTime("2026-07-11T12:00:00Z", now), "2d ago");
-  // A future timestamp is clamped to "just now", never negative.
-  assert.equal(relativeTime("2026-07-13T12:05:00Z", now), "just now");
+  // A far-future timestamp must not clamp to "just now" — omit instead.
+  assert.equal(relativeTime("2026-07-13T12:05:00Z", now), null);
+  // Modest clock skew inside tolerance still reads as just now.
+  assert.equal(relativeTime("2026-07-13T12:00:03Z", now), "just now");
 });
 
 test("answeredParts counts unavailable sections as unanswered", () => {
