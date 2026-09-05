@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T07:12:06.739Z",
+  "updated_at": "2026-09-05T08:55:54.230Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -248,11 +248,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "92f8ada51d33b59cd03b7616b375425645845e1f",
+    "last_main_sha": "cfbf22b6e10edd5641797a995c518537e004927e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T22:52:50Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
-    "last_deploy_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450"
+    "last_deploy_at": "2026-09-05T08:47:58Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33956247820",
+    "last_deploy_sha": "701cf10ffc0f675260b95f244d1e691cda22ad73"
   },
   "open_prs": [],
   "events": [
@@ -1188,6 +1188,43 @@
     },
     {
       "at": "2026-09-05T07:12:06.739Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:53:59.920Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:54:00.393Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:54:00.721Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:55:50.012Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:55:50.013Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ebf627e8-4c5b-4325-a23d-ea38d7bbb7ce",
+      "summary": "Reviewed PR #3920: APPROVED — green CI, Banger Q32 Discord + freshness guards sound, no blockers at fbab3c278"
+    },
+    {
+      "at": "2026-09-05T08:55:54.230Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
