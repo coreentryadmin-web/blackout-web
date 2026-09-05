@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0ap. GEX heatmap overlay/explain cache future-timestamp guard — fix/gex-heatmap-overlay-cache-future-guard (pending)
+
+**What was broken:** `getOverlays()` and explain route caches used `now - at < TTL` without a future-timestamp guard. Cross-replica clock skew could stamp Redis `at` ahead of the reader clock → negative age always passes TTL → stale UW overlay/narrative served as live on Thermal/Vector.
+
+**Fix:** Wire `isWsUpdatedAtFresh(at, ttlMs, now)` on overlay + explain L1/L2 cache paths (same class as #3823 quote fix).
+
+**Check at the open:** On `/heatmap` SPY during RTH with overlay-enriched tickers, confirm flow/dark-pool overlay chips track live — no stuck stale overlay when `overlay_at` age in network panel disagrees with wall clock.
+
 ### 0ao. Vector volume profile extended-hours pollution — fix/vector-volume-profile-rth-scope (pending)
 
 **What was broken:** Default-on Vector volume profile fed the full multi-session minute buffer (including premarket/after-hours) into `computeVolumeProfile`, so POC and value-area bands on equities could anchor to extended-hours spikes instead of the current RTH session. HOD/LOD, opening range, and VWAP got the RTH gate in the 2026-08-05 audit; volume profile was missed.
