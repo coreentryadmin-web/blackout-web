@@ -237,9 +237,9 @@
     },
     "pr-3808": {
       "pr": 3808,
-      "head_sha": "b684109d6",
+      "head_sha": "abd1a9f9e",
       "reviewer": "claude",
-      "verdict": "AWAITING — adversarial review requested",
+      "verdict": "AWAITING — adversarial review requested (verify re-run on CURRENT HEAD)",
       "reviewed_at": null,
       "safe_to_merge": false,
       "questions": [
@@ -277,8 +277,8 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "head_sha": "b684109d6",
+      "verify": "IN_PROGRESS/",
+      "head_sha": "abd1a9f9e",
       "updated_at": "2026-09-05T00:20:00Z"
     },
     {
