@@ -310,6 +310,23 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
     // Tally the LIVE roll outcomes for observability (a roll writes a terminal parent status + opens a child).
     const rolls = result.outcomes.filter((o) => o.roll);
 
+    // Q31–Q32: member-visible Discord alerts on capital-preservation exit/roll (fire-and-forget).
+    for (const o of rolls) {
+      if (!o.roll?.parentGraded) continue;
+      const parentRow = openRows.find((r) => r.id === o.positionId);
+      if (!parentRow) continue;
+      void import("@/lib/swing/discord-trade-notify")
+        .then(({ notifySwingTerminalFromOutcome }) =>
+          notifySwingTerminalFromOutcome(parentRow, o.roll!, parentRow.last_mark)
+        )
+        .catch((err) => {
+          console.warn(
+            `[swing-discord] terminal notify failed for position ${o.positionId} (${parentRow.ticker}):`,
+            err
+          );
+        });
+    }
+
     // Refresh serving-snapshot spots for open tickers so pre-entry setup maturity stays live between
     // discovery phases (cache-writer on the cron; member path stays cache-reader).
     let spotsRefreshed = 0;
