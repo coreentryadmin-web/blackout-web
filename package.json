@@ -32,6 +32,7 @@
     "validate:seo-cwv": "node scripts/audit/seo-cwv-monitor.mjs",
     "validate:seo-search-console": "node --import tsx scripts/audit/seo-search-console-monitor.mjs",
     "seo:indexnow": "node --import tsx scripts/seo/indexnow-ping.mjs",
+    "seo:generate-marketing-dates": "node scripts/seo/generate-marketing-dates.mjs",
     "seo:compress-og": "node scripts/seo/compress-og-image.mjs",
     "validate:prod-ui-full": "node scripts/validate-prod-ui-full.mjs",
     "validate:prod-admin-ui": "node scripts/validate-prod-admin-ui.mjs",
