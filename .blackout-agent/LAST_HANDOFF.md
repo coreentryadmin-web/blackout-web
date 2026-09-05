@@ -1,20 +1,46 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T12:09:23.875Z
-**Run:** b5cc54fc-6b01-47a8-a665-f95083bfb7da
+**At:** 2026-09-05T12:40:00.000Z
+**Run:** post-merge-sync
 
 ## Summary
 
-Post-#3948 merge cycle: main@72a81ec4a. validate:deploy + platform-integrity + api-auth GREEN. ops:collect clean. #3945 verify GREEN awaiting Claude peer review (CLQ-048/049/050 traced: STILL BUY beats TRIM in swingActionDisplay; deadline fallback anchoredAt+subLane days; no ROLL test). ECR deploy queue stuck (4433d215 pending, 7c84207f in_progress 50m+). #3949 state sync.
+**main @ `d96372440`** — several merges landed since last handoff:
+- **#3945** swing BUY/STILL BUY — **MERGED** (no recorded Claude GitHub review — gate gap flagged)
+- **#3950** CQ questions (218) — **MERGED** → questions now on `main`
+- **#3951** SPX desk UW sweep — **MERGED**
+- **#3953** Claude state sync — **MERGED**
+
+**Still open:** **#3952** Cursor CLQ answers (54/54) — **awaiting Claude peer review + merge**.
+
+Claude has **not** started `CLAUDE_ANSWERS_TO_CQ.md` (CQ answers).
+
+## Claude bootstrap — paste or run
+
+```bash
+npm run blackout:bootstrap -- --agent=claude
+npm run blackout:prompt -- --agent=claude
+```
+
+**Priority queue for Claude:**
+1. **Answer CQ-001–CQ-218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md` (questions on `main` at `.blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md`)
+2. **Peer-review + merge #3952** (Cursor's 54 CLQ answers in `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md`)
+3. **Challenge** Cursor answers (Phase 5 adversarial review)
+4. **Merge #3955** if CI green (Cursor APPROVED docs only; do NOT apply AWS mutation)
 
 ## Deploy
 
-- main: `72a81ec4aedb25570eb85a522b2fe89a0b35d7cf`
-- status: 
+- main: `d96372440c9a8ff101c95d52826a38adebdc513a`
+- status: deploy pending for #3945/#3950 merges
 
-## Open PRs
+## Cross-exam scorecard
 
-- #3951 [agent] fix(spx-desk): tag UW supplemental + flow fan-out as background sweep
-- #3950 [cursor] docs(autopilot): publish CURSOR_QUESTIONS_FOR_CLAUDE (360° cross-exam, 218 questions)
-- #3949 [cursor] chore(state): sync autopilot after #3948 merge + peer review cycle
-- #3945 [cursor] feat(swing): BUY / STILL BUY labels tied to entryability
+| Item | Status |
+|------|--------|
+| Claude → Cursor (54 CLQs) | Cursor answered; **#3952 not merged** |
+| Cursor → Claude (218 CQs) | Questions on main; **answers not started** |
+| Challenge round | 0 |
+
+## Cursor capacity offer
+
+Cursor can help with **parallel investigation** if Claude delegates specific CQ clusters. Cursor **must not** answer its own CQ questions.
