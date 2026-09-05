@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   classifyBranch,
   reviewerForBranch,
+  acceptPriorReview,
   isOwnPr,
   buildFeedback,
   shouldDispatchDeepReview,
@@ -72,13 +73,35 @@ test("deriveDirective says MERGE when approved at HEAD", () => {
     agent: "claude",
     draft: false,
     verify: { conclusion: "success" },
-    priorReview: { head_sha: "abc123", safe_to_merge: true },
+    priorReview: { head_sha: "abc123", safe_to_merge: true, reviewer: "cursor" },
     head: "abc123",
     issues: [],
     analysis: { docsOnly: false },
+    peer: "cursor",
   });
   assert.equal(d.action, "MERGE");
   assert.match(d.instruction, /go ahead/i);
+});
+
+test("deriveDirective ignores cursor self-review on cursor/* (HARD MERGE GATE)", () => {
+  const d = deriveDirective({
+    agent: "cursor",
+    draft: false,
+    verify: { conclusion: "success" },
+    priorReview: { head_sha: "abc123", safe_to_merge: true, reviewer: "cursor" },
+    head: "abc123",
+    issues: [],
+    analysis: { docsOnly: true },
+    peer: "claude",
+  });
+  assert.equal(d.action, "REVIEW");
+  assert.match(d.headline, /REVIEW/i);
+});
+
+test("acceptPriorReview rejects self-review", () => {
+  assert.equal(acceptPriorReview({ reviewer: "cursor", safe_to_merge: true }, "cursor", "claude"), null);
+  assert.equal(acceptPriorReview({ reviewer: "claude", safe_to_merge: true }, "claude", "cursor"), null);
+  assert.ok(acceptPriorReview({ reviewer: "claude", safe_to_merge: true }, "cursor", "claude"));
 });
 
 test("buildFeedback includes directive and analysis", () => {

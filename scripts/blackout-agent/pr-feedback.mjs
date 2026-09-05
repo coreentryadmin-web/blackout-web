@@ -100,6 +100,19 @@ export function reviewerForBranch(headRef, prData = null) {
   return "cursor";
 }
 
+/**
+ * HARD MERGE GATE — only the assigned peer reviewer's AGENT_STATE record counts.
+ * Cursor self-approvals on cursor/* PRs (and Claude on claude/*) must not yield MERGE.
+ */
+export function acceptPriorReview(priorReview, agent, peer) {
+  if (!priorReview) return null;
+  const reviewer = priorReview.reviewer;
+  if (reviewer && reviewer !== peer) return null;
+  if (agent === "cursor" && reviewer === "cursor") return null;
+  if (agent === "claude" && reviewer === "claude") return null;
+  return priorReview;
+}
+
 export function builderLabel(agent) {
   if (agent === "claude" || agent === "agent") return "claude";
   if (agent === "cursor") return "cursor";
@@ -169,9 +182,10 @@ export function summarizeChecks(checks) {
   return { verify, failed, pending, total: normalized.length };
 }
 
-export function deriveDirective({ agent, draft, verify, priorReview, head, issues, analysis }) {
+export function deriveDirective({ agent, draft, verify, priorReview, head, issues, analysis, peer }) {
   const builder = builderLabel(agent);
   const mention = builder === "claude" ? "@claude" : builder === "cursor" ? "@cursor" : "@author";
+  const effectiveReview = acceptPriorReview(priorReview, agent, peer ?? reviewerForBranch(agent === "cursor" ? "cursor/x" : "claude/x"));
 
   if (draft) {
     return {
@@ -197,7 +211,7 @@ export function deriveDirective({ agent, draft, verify, priorReview, head, issue
     };
   }
 
-  if (priorReview?.head_sha === head && priorReview?.safe_to_merge) {
+  if (effectiveReview?.head_sha === head && effectiveReview?.safe_to_merge) {
     return {
       action: "MERGE",
       headline: "✅ **MERGE** — approved at current HEAD",
@@ -205,7 +219,7 @@ export function deriveDirective({ agent, draft, verify, priorReview, head, issue
     };
   }
 
-  if (priorReview && priorReview.head_sha !== head) {
+  if (effectiveReview && effectiveReview.head_sha !== head) {
     return {
       action: "REVIEW",
       headline: "🔄 **REVIEW** — HEAD changed since last approval",
@@ -213,7 +227,7 @@ export function deriveDirective({ agent, draft, verify, priorReview, head, issue
     };
   }
 
-  if (analysis.docsOnly && issues.length === 0) {
+  if (analysis.docsOnly && issues.length === 0 && agent !== "cursor") {
     return {
       action: "MERGE",
       headline: "✅ **MERGE** — docs-only, green CI",
@@ -272,9 +286,13 @@ export function buildFeedback({ pr, event, prData, checks, priorReview }) {
   if (agent === "dependabot") issues.push("Dependabot PR — manual major-version policy applies.");
   ok.push(`Peer reviewer: **${peer}** (builder: ${agent}).`);
 
-  if (priorReview?.head_sha === head && priorReview?.safe_to_merge) {
-    ok.push(`Peer review at this HEAD: **${priorReview.verdict}**.`);
-  } else if (priorReview && priorReview.head_sha !== head) {
+  const effectiveReview = acceptPriorReview(priorReview, agent, peer);
+
+  if (effectiveReview?.head_sha === head && effectiveReview?.safe_to_merge) {
+    ok.push(`Peer review at this HEAD: **${effectiveReview.verdict}**.`);
+  } else if (priorReview?.head_sha === head && priorReview?.safe_to_merge && priorReview?.reviewer === agent) {
+    issues.push(`**Self-review ignored** — ${peer} GitHub/AGENT_STATE approval required (HARD MERGE GATE).`);
+  } else if (effectiveReview && effectiveReview.head_sha !== head) {
     issues.push(
       `HEAD changed since last review (\`${priorReview.head_sha?.slice(0, 7)}\` → \`${head?.slice(0, 7)}\`) — **re-review required**.`
     );
@@ -288,7 +306,7 @@ export function buildFeedback({ pr, event, prData, checks, priorReview }) {
     for (const r of analysis.risks) issues.push(`Risk: ${r}`);
   }
 
-  const directive = deriveDirective({ agent, draft, verify, priorReview, head, issues, analysis });
+  const directive = deriveDirective({ agent, draft, verify, priorReview, head, issues, analysis, peer });
 
   let verdict = directive.headline;
   if (directive.action === "FIX") verdict = "❌ **BLOCKED** — fix CI first";
