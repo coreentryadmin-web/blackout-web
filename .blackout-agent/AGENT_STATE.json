@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:47:55.022Z",
+  "updated_at": "2026-09-05T21:48:17.641Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -13,6 +13,18 @@
       "pr": null,
       "reviewer": null,
       "run_id": "66edd54f-2d20-4a0f-8e52-2ea380904724",
+      "title": null
+    },
+    "BO-P1-0105": {
+      "task_id": "BO-P1-0105",
+      "owner": "cursor",
+      "claimed_at": "2026-09-05T21:48:17.640Z",
+      "lease_until": "2026-09-05T23:18:17.640Z",
+      "phase": "CHECKLIST",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
       "title": null
     }
   },
@@ -33,8 +45,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T21:46:23.152Z",
-      "current_task": "BO-P1-0100"
+      "last_seen": "2026-09-05T21:48:17.641Z",
+      "current_task": "BO-P1-0105"
     }
   },
   "deploy": {
@@ -221,9 +233,31 @@
       "agent": "cursor",
       "run_id": "69945702-3311-4a57-8463-9ba2d4a8e3d4",
       "summary": "PR-event recovery cycle. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo, rth-open). ops:collect 0. main@73e58b89 (#4047 swing play-brief merged). No Claude/fix PRs for peer review. Consolidating duplicate handoff PRs #4050/#4051."
+    },
+    {
+      "at": "2026-09-05T21:48:14.904Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:48:17.641Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0105",
+      "owner": "cursor"
     }
   ],
   "open_prs": [
+    {
+      "number": 4052,
+      "title": "chore(blackout-agent): cursor PR-event recovery — lifecycle GREEN, #4047 merged",
+      "branch": "cursor/autopilot-work-loop-d4e7",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-05T21:48:11Z"
+    },
     {
       "number": 4051,
       "title": "chore(blackout-agent): cursor PR-event recovery — #4047 merged, lifecycle GREEN",
@@ -233,16 +267,6 @@
       "draft": true,
       "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-05T21:46:08Z"
-    },
-    {
-      "number": 4050,
-      "title": "chore(blackout-agent): cursor PR-event recovery handoff — lifecycle GREEN",
-      "branch": "cursor/autopilot-handoff-recovery",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:47:06Z"
     }
   ],
   "pr_activity": {
