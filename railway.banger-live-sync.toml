@@ -1,0 +1,27 @@
+# Railway / EventBridge schedule catalog for Banger live-sync — mark-and-manage every
+# OPEN/PARTIAL banger position (scale-out, hard stop, runner exit). Synced to EventBridge via
+# blackout-infra scripts/sync-cron-schedules.mjs.
+#
+# WHY THIS FILE EXISTS (2026-09-05). `banger-live-sync` was hand-added to cron-jobs.json with no
+# railway.*.toml behind it. The manifest is GENERATED from these TOMLs with no merge — a sync run
+# would delete the schedule silently while the route still exists and reports healthy. Worse:
+# produces_member_alert=true, so a dead job stops live banger board updates with no staleness alarm.
+#
+# Wire it up: service Settings -> Config-as-code -> railway.banger-live-sync.toml (deprecated
+# Railway path) OR provision via blackout-infra EventBridge sync from this file.
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.banger-live-sync.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+startCommand = "node scripts/hit-cron.mjs /api/cron/banger-live-sync"
+# Every 5 min during the UTC band that covers RTH in BOTH EDT and EST. Route applies
+# BANGER_* kill-switches + market-hours guards internally.
+cronSchedule = "*/5 11-21 * * 1-5"
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1
