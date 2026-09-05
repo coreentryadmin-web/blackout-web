@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:50:34.948Z",
+  "updated_at": "2026-09-05T21:52:09.464Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T21:47:55.481Z",
-      "lease_until": "2026-09-05T23:19:05.789Z",
+      "claimed_at": "2026-09-05T21:50:28.223Z",
+      "lease_until": "2026-09-05T23:21:06.704Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "dedc8753-5365-40e6-8a71-87b993bef640",
+      "run_id": "63df6a11-e518-41ee-9ec8-8058806e4a7d",
       "title": null
     },
     "BO-P1-0105": {
@@ -52,7 +52,7 @@
   "deploy": {
     "last_main_sha": "73e58b8937d8a20704b2527c4be090315d9de015",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T21:45:07Z",
+    "last_deploy_at": "2026-09-05T21:51:22Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993937878",
     "last_deploy_sha": "73e58b8937d8a20704b2527c4be090315d9de015"
   },
@@ -297,18 +297,31 @@
       "agent": "cursor",
       "run_id": "eca882c5-6bbc-45ca-85fc-869496936a43",
       "summary": "Autopilot cycle complete. Lifecycle 6/6 GREEN. ops:collect 0. api-auth + platform-integrity 14/14. Closed #4051 duplicate. #4047 merged. No Claude/fix PRs. Awaiting Claude review on #4052."
+    },
+    {
+      "at": "2026-09-05T21:52:09.463Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T21:52:09.464Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "5c1f0e77-137b-4489-82be-fac3de120d0f",
+      "summary": "Continuous loop: lifecycle 6/6 GREEN (deploy, api-auth, platform-integrity 14/14, seo 22/22, rth-open off-hours). ops:collect 0. #4052 verify in_progress — cursor-authored, awaits Claude review. No peer PRs. GraphQL rate-limited."
     }
   ],
   "open_prs": [
     {
-      "number": 4052,
-      "title": "chore(blackout-agent): cursor PR-event recovery — lifecycle GREEN, #4047 merged",
-      "branch": "cursor/autopilot-work-loop-d4e7",
+      "number": 4053,
+      "title": "fix(vector): undated universe rows never age out of the scanner snapshot",
+      "branch": "fix/vector-universe-undated-row-never-expires",
       "author": "coreentryadmin-web",
-      "agent": "cursor",
+      "agent": "agent",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:50:29Z"
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-05T21:52:04Z"
     }
   ],
   "pr_activity": {
