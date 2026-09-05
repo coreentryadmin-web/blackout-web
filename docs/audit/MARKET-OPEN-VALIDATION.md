@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1e. Meridian + gex batch + SPX commentary missing roundFloats — fix/roundfloats-meridian-gex-batch-spx-commentary (pending)
+
+**What was broken:** Six market routes (`gex-heatmap/batch`, `spx/commentary`, `meridian/event`, `timeline`, `lookup`, `peer-reactions`) returned live numeric payloads without `roundFloats` at the API boundary while sibling routes already wrap. Members could see raw IEEE tails on Thermal compare grid, Meridian panels, and SPX commentary.
+
+**Fix:** Wrap success `NextResponse.json` payloads with `roundFloats(...)`. Source-scan regression: `market-roundfloats-routes.test.ts`.
+
+**Check at the open:** Thermal compare multi-ticker grid, Meridian earnings detail reaction %, and SPX commentary card — all numeric fields should show ≤2 decimal places with no float tails.
+
 ### 0a-1d. BIE SPX desk brief mislabeled GEX king as generic "pin" — fix/bie-spx-brief-magnet-labels (pending)
 
 **What was broken:** `composeSpxDeskBrief` WHY / LEVELS / NEXT 5M lines used hardcoded `"pin"` even when the magnet was `desk.gex_king` (GEX king node) — same pin-vs-king confusion the SPX pin panel already disambiguated via `spx-metric-labels.ts`.
