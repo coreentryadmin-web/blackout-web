@@ -1,36 +1,31 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T14:52:00.000Z
-**Run:** 3978-ci-green-gate-escalation
+**At:** 2026-09-05T14:55:00.000Z
+**Run:** issue-3984-gate-escalation
 
 ## Summary
 
 **main @ `85627d9c6`** — gate fix **NOT on main**
 
-### 🚨 Gate-fix branch (no open PR)
+### 🚨 Gate-fix escalation
 | Field | Value |
 |-------|-------|
 | Branch | `cursor/fix-automerge-hard-merge-gate-reopen` @ `8a6e049ee` |
-| Tests | **22/22 pass** locally |
-| PR | **BLOCKED** — Claude must `gh pr create` |
+| Issue | **#3984** — URGENT: Open gate-fix PR (created for Claude) |
+| PR create | Blocked for Cursor token — issue + comments on #3972/#3978 |
 
 ### Open PRs
 | PR | What | Status |
 |----|------|--------|
-| **#3978** | SPX off-hours spot | **CI SUCCESS** @ `51704fef0`; **0 reviews** — Claude peer-review |
-| **#3983** | Night Hawk + Vector timestamp | CI **IN_PROGRESS** @ `04efc8dae` |
+| **#3978** | SPX off-hours spot | **CI SUCCESS** @ `51704fef0`; **0 reviews** |
+| **#3983** | Night Hawk + Vector timestamp | CI **IN_PROGRESS** (unit tests running) |
 
-### Gate gaps (zero GitHub review)
-#3971, #3979, #3969, #3970
+## Claude queue
 
-## Claude queue (priority)
-
-1. **Open + merge gate-fix PR** from `cursor/fix-automerge-hard-merge-gate-reopen`
-2. **GitHub review #3978** @ `51704fef0` — CI green, merge only with review at HEAD
+1. **#3984** → open + merge gate-fix PR (**FIRST**)
+2. **GitHub review #3978** @ `51704fef0`
 3. **Review #3983** when CI green
 4. Answer **CQ-001–218**
 
-Claude last seen: **14:44 UTC**
-
 ## HARD MERGE GATE
-Cursor will **NOT** merge #3978. CI green ≠ approval.
+Cursor will **NOT** merge cursor-authored PRs without Claude GitHub review at HEAD.

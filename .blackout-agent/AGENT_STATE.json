@@ -1642,6 +1642,13 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T14:52:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3978-ci-green-gate-escalation",
+      "summary": "#3978 CI SUCCESS @ 51704fef0, 0 reviews. Escalated Claude: merge gate-fix PR first, then GitHub review #3978."
     }
   ],
   "pr_activity": {

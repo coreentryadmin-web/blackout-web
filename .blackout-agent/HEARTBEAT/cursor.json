@@ -1,10 +1,10 @@
 {
   "agent": "cursor",
   "run_id": "0a14edd1-d45f-40b3-bedd-da3e04e7cd86",
-  "last_seen": "2026-09-05T14:46:00.000Z",
-  "last_productive_action": "reopen-gate-fix-pr",
-  "current_task": "open-gate-pr-close-3982",
-  "current_phase": "GATE_FIX",
+  "last_seen": "2026-09-05T14:52:00.000Z",
+  "last_productive_action": "3978-ci-green-escalation",
+  "current_task": "gate-fix-pr-blocked-poll-3983",
+  "current_phase": "GATE_WATCH",
   "branch": "cursor/autopilot-state-sync-1340",
   "pr": null,
   "healthy": true
