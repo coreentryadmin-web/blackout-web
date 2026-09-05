@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:35:35.991Z",
+  "updated_at": "2026-09-05T17:45:36.535Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,25 +67,25 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:26:09.737Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
+      "claimed_at": "2026-09-05T17:28:24.243Z",
+      "lease_until": "2026-09-05T19:12:45.795Z",
       "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": "c888a9c8-94c6-47a3-a3b3-46d1db6ea38d",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:30:48.264Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
+      "claimed_at": "2026-09-05T17:45:26.193Z",
+      "lease_until": "2026-09-05T19:15:26.193Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": null,
       "title": null
     },
     "BO-P1-0104": {
@@ -267,7 +267,7 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T16:30:48.265Z",
+      "last_seen": "2026-09-05T17:45:26.194Z",
       "current_task": "BO-P1-0101"
     }
   },
@@ -326,78 +326,14 @@
     }
   },
   "deploy": {
-    "last_main_sha": "86227e70b57d7dc962673f750a952173dea85088",
+    "last_main_sha": "ea552b9f69c0c553d879486bbe317688148c988e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:34:11Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978273189",
-    "last_deploy_sha": "86227e70b57d7dc962673f750a952173dea85088"
+    "last_deploy_at": "2026-09-05T17:22:13Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33980746889",
+    "last_deploy_sha": "ea552b9f69c0c553d879486bbe317688148c988e"
   },
   "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
-    {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:02.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.919Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:14.071Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:14.852Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:15.659Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:15.832Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0001",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-03T23:46:15.941Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0006",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-03T23:46:43.648Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:43.649Z",
       "type": "handoff",
@@ -1622,6 +1558,91 @@
       "agent": "cursor",
       "run_id": "7241539d-60c7-4e6b-ac5b-c9b3aa85b828",
       "summary": "Continuous loop cycle complete. Peer review: pr-sweep 0 open PRs. Platform integrity 14/14 GREEN, lifecycle sweep GREEN (weekend RTH skip). Deploy drift: prod rolling feaba670 (in_progress 25m+), main now 86227e70 (#3995+#3998) with pending ECR run 33978273189. Opened draft #4001 (agent state sync — awaits Claude review). GitHub GraphQL rate-limited until ~17:06 UTC; REST still works. Next: monitor ECR → validate:deploy post-rollout; Claude peer-review #4001 + any new claude/* PRs."
+    },
+    {
+      "at": "2026-09-05T17:29:44.083Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:29:45.042Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:29:45.810Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:31:21.719Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:31:22.721Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:31:23.514Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:42:44.885Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:42:45.794Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:42:46.650Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:44:44.981Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:45:26.194Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T17:45:31.733Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:45:31.735Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "5d6cc118-10db-4007-aaa4-086a60c1f2ae",
+      "summary": "pull_request wake: synced main@ea552b9 (#3994-#4011 merged incl thermal CHARM #4006, SPX gex-age #4011, RTH workflow #4007). Peer review: pr-sweep 0 open PRs (GitHub API rate-limited user 284440397). Platform integrity 14/14 GREEN, lifecycle GREEN (weekend skip), validate:deploy GREEN, ops:collect 0. Targeted tests Node 20: 12790 pass 0 fail. ECR run 33980746889 still pending for ea552b9 — prod healthy via live probes. Next: Claude peer-review any new claude/* PRs when API recovers; monitor ECR completion."
+    },
+    {
+      "at": "2026-09-05T17:45:36.535Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
   "pr_activity": {
