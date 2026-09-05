@@ -165,9 +165,16 @@ test("an unreadable timestamp is 'unknown', never 'live'", () => {
   }
 });
 
-test("clock skew cannot produce a negative age", () => {
-  // A snapshot stamped in the future would otherwise report "fresher than live".
+test("clock skew beyond tolerance is unknown, not live", () => {
+  // 30s ahead exceeds WS_TIMESTAMP_FUTURE_TOLERANCE_MS (5s) — must not clamp to age 0 / live.
   const f = describeVectorFreshness(new Date(T0 + 30_000).toISOString(), T0);
+  assert.equal(f.age_seconds, null);
+  assert.equal(f.freshness, "unknown");
+  assert.match(f.note!, /clock skew/);
+});
+
+test("minor clock skew within tolerance still clamps to live", () => {
+  const f = describeVectorFreshness(new Date(T0 + 2_000).toISOString(), T0);
   assert.equal(f.age_seconds, 0);
   assert.equal(f.freshness, "live");
 });
