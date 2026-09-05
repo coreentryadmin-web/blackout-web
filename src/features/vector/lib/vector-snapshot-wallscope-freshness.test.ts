@@ -27,8 +27,8 @@ test("vector-snapshot: VEX walls, gamma flip, and dark-pool caches reject future
 });
 
 test("vector-snapshot: wall-history recordability rejects future cache stamps", () => {
-  assert.match(src, /isWsUpdatedAtFresh\(s\.cachedWallsAt, STALE_RECORD_MAX_MS \+ 1, nowMs\)/);
+  assert.match(src, /isWsUpdatedAtFresh\(s\.cachedBeadRailWallsAt, STALE_RECORD_MAX_MS \+ 1, nowMs\)/);
   assert.match(src, /isWsUpdatedAtFresh\(s\.cachedVexWallsAt, STALE_RECORD_MAX_MS \+ 1, nowMs\)/);
-  assert.doesNotMatch(src, /nowMs - s\.cachedWallsAt <= STALE_RECORD_MAX_MS/);
+  assert.doesNotMatch(src, /nowMs - s\.cachedBeadRailWallsAt <= STALE_RECORD_MAX_MS/);
   assert.doesNotMatch(src, /nowMs - s\.cachedVexWallsAt <= STALE_RECORD_MAX_MS/);
 });
