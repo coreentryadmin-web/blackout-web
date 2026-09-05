@@ -1,6 +1,8 @@
 // Pure helpers for AuthFailureObserver.tsx — split out so the matching/dedup
 // logic is unit-testable without a real DOM (no jsdom in this repo's test setup).
 
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
+
 // Clerk's "elements" theming API (see clerk-theme.ts, already live in production —
 // formFieldErrorText/alert are actively themed there) maps each key to a stable
 // `cl-<key>` class on the rendered element. Clerk appends additional
@@ -42,6 +44,6 @@ export function shouldReportAuthFailure(message: string, lastReported: LastRepor
   if (!trimmed) return false;
   if (isBenignClerkAuthMessage(trimmed)) return false;
   if (!lastReported) return true;
-  if (lastReported.message === trimmed && now - lastReported.at < DEDUPE_WINDOW_MS) return false;
+  if (lastReported.message === trimmed && isWsUpdatedAtFresh(lastReported.at, DEDUPE_WINDOW_MS, now)) return false;
   return true;
 }
