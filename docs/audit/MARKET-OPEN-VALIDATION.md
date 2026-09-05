@@ -120,11 +120,19 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
-### 0a-1. Swing structural-stop fed by a stale-but-200-OK underlying spot — fix/swing-underlying-spot-staleness-guard (pending, deep-dive Q38)
+### 0a-1b. Swing discovery WATCH spot refresh trusted stale last trades — fix/swing-discovery-underlying-spot-freshness (pending, #3893 sibling)
+
+**What was broken:** `swing-discovery` refreshed WATCH-name underlying spots via `fetchStockLastTrade` trusting any finite positive `.p` with no SIP timestamp check. A degraded-but-200-OK feed could overwrite plan-entry fallback with a stale price, skewing FORMING/TRIGGERED/EXTENDED setup-maturity flags on the member board.
+
+**Fix:** Route through shared `spotFromLastTradeResult()` — stale trades return `null` and the existing fail-soft path keeps the plan-entry fallback.
+
+**Check at the open:** On `/swings`, WATCH setup-maturity chips should track live tape during RTH; on single-name feed degradation, names should keep plan-entry spots rather than showing hours-old "live" refreshes.
+
+### 0a-1. Swing structural-stop fed by a stale-but-200-OK underlying spot — fix/swing-underlying-spot-staleness-guard (merged #3893, deep-dive Q38)
 
 **What was broken:** `loadUnderlyingSpot` (`swing-active-refresh/route.ts`) trusted any finite positive `.p` from Polygon's `/v2/last/trade` with no check on the trade's own timestamp. That spot feeds `structuralStopBroken` (`manage.ts`), the highest-precedence GATE rung that fires an unconditional real-money `EXIT`. A hard outage already fails closed (throws/invalid shape → skip); a feed that stays UP but goes STALE (still 200 OK, still a finite positive price) did not — it looked perfectly healthy while silently feeding an old price into the one rung designed to override every other consideration.
 
-**Fix:** New pure `spotFromLastTradeResult` (`src/lib/swing/underlying-spot-freshness.ts`) also validates the trade's SIP timestamp (`t`, nanoseconds) via the shared `isWsUpdatedAtFresh` helper — a trade older than 15 minutes (one full active-refresh cron interval) now reads as `null`, routing through the same existing fail-soft skip path as a hard outage.
+**Fix (merged #3893):** New pure `spotFromLastTradeResult` (`src/lib/swing/underlying-spot-freshness.ts`) also validates the trade's SIP timestamp (`t`, nanoseconds) via the shared `isWsUpdatedAtFresh` helper — a trade older than 15 minutes (one full active-refresh cron interval) now reads as `null`, routing through the same existing fail-soft skip path as a hard outage.
 
 **Check at the open:** Watch `swing-active-refresh` CloudWatch logs during RTH for this guard actually firing (should be rare — only on genuine feed degradation, not on ordinary thin trading). Cross-check any real position that DOES get a `structural_stop` EXIT against its ticker's actual live tape on a public chart at the same timestamp, to confirm the exit was driven by a genuinely fresh read.
 
