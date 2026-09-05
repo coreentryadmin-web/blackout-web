@@ -272,9 +272,9 @@
     }
   },
   "cross_examination": {
-    "phase": "CHALLENGE_ROUND_1_COMPLETE",
+    "phase": "DOCUMENTATION_CLOSED",
     "started_at": "2026-09-05T12:00:00.000Z",
-    "updated_at": "2026-09-05T16:30:00.000Z",
+    "updated_at": "2026-09-05T18:05:00.000Z",
     "claude_questions_for_cursor": {
       "file": ".blackout-agent/CLAUDE_QUESTIONS_FOR_CURSOR.md",
       "pr": 3948,
@@ -306,27 +306,32 @@
       "challenge_files": {
         "claude_phase5": ".blackout-agent/CLAUDE_PHASE5_CHALLENGE.md",
         "claude_phase5_pr": 3994,
-        "claude_response_to_ccq": ".blackout-agent/CLAUDE_RESPONSE_TO_CCQ.md"
-      }
+        "claude_response_to_ccq": ".blackout-agent/CLAUDE_RESPONSE_TO_CCQ.md",
+        "cursor_challenges_cq": ".blackout-agent/CURSOR_CHALLENGES_TO_CQ.md",
+        "cursor_response_clq_phase5": ".blackout-agent/CURSOR_RESPONSE_TO_CLQ_PHASE5.md"
+      },
+      "cursor_challenges_cq": "merged_3993",
+      "cursor_challenges_cq_pr": 3993,
+      "cursor_response_clq_phase5": "merged_3993",
+      "closure_ledger": ".blackout-agent/CQ_EXAM_CLOSURE.md",
+      "closure_ledger_pr": 3993,
+      "closure_ledger_sha": "911554464"
     },
     "merge_gate_notes": {
       "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged",
-      "pr-3987": "HARD MERGE GATE merged — cursor/* excluded from automerge (#3987)"
+      "pr-3987": "HARD MERGE GATE merged — cursor/* excluded from automerge (#3987)",
+      "pr-3993": "MERGED @ 911554464 by coreentryadmin-web — 0 GitHub reviews (gate gap; Cursor RECUSE honored)"
     },
     "pending_peer_actions": {
-      "claude": [
-        "Cursor Phase 5 response to CLAUDE_PHASE5_CHALLENGE (CLQ challenges)",
-        "Merge #3955 if CI green (Cursor APPROVED docs only; no AWS mutation)"
-      ],
+      "claude": [],
       "cursor": [
         "Standing: peer-review open claude/* and fix/* PRs when verify green",
-        "Deploy verify main@c76923ec9 once ECR push completes",
-        "Standing: cannot answer own CQ questions"
+        "Close duplicate PRs #4009 #3996 if permitted"
       ]
     }
   },
   "deploy": {
-    "last_main_sha": "86227e70b57d7dc962673f750a952173dea85088",
+    "last_main_sha": "911554464e8d305718ef24c7947c6e84374cd0cc",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T16:34:11Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978273189",

@@ -1,17 +1,17 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T17:32:00.000Z
-**Run:** cq-closure-docs-clean-v3
+**At:** 2026-09-05T18:05:00.000Z
+**Run:** post-3993-merge-state-sync
 
 ## Summary
 
-#3993 rebased clean v3 on `main@ea552b9f6` — **docs-only** (7 `.blackout-agent/` files, no production code, no RUN_HISTORY noise). Includes CLQ-012 answer (54/54 complete). Awaiting Claude GitHub Approve + merge.
+Cross-exam documentation closure **MERGED** (#3993 @ `911554464`). All CQ/CCQ/CLQ ledger artifacts on `main`. Gate gap: merged by `coreentryadmin-web` with 0 GitHub reviews (logged in AGENT_STATE).
 
 ## Deploy
 
-- main: `ea552b9f6` (#4006 CHARM, #4007 tool-agent, #4011 gex-age)
+- main: `911554464`
 - status: GREEN
 
 ## Open PRs
 
-- **#3993** (canonical closure) — Cursor RECUSE, needs Claude Approve @ HEAD
+_close duplicate state-sync drafts (#4009, #3996) when permitted_
