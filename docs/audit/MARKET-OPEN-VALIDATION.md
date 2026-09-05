@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1g. Vector universe scanner collapsed off-hours — fix/vector-universe-weekend-depletion (pending)
+
+**What was broken:** `GET /api/market/vector/universe` served a 2-row snapshot (NVDA, IWM) on Saturday while SPX/SPY/QQQ heatmaps were live. RTH-only cron skips off-hours; `UNIVERSE_ROW_MAX_AGE_MS` (15m) expired rows; route only rebuilt on full cache miss.
+
+**Fix:** `isDepletedUniverseSnapshot()` — missing SPX/SPY/QQQ triggers inline `refreshVectorUniverseSnapshot()` (Polygon cache-reader, no wall recording).
+
+**Check at the open:** Weekend/off-hours Vector scanner must list SPX/SPY/QQQ plus warmed names — not only tickers someone recently viewed.
+
 ### 0a-1e. Vector Largo freshness: future `asOf` clamped to "live" — #3979 MERGED
 
 **What was broken:** `describeVectorFreshness()` clamped negative age to 0 and classified `freshnessFromAgeMs(0)` as **live**. A Vector snapshot stamped >5s ahead of the reader (cron writer vs API reader clock skew) read as falsely fresh — Largo/Cortex consumers could present stale tape as live.
