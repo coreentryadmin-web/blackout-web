@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:33:02.027Z",
+  "updated_at": "2026-09-05T21:42:05.757Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-05T21:22:45.818Z",
-      "lease_until": "2026-09-05T22:59:17.291Z",
+      "lease_until": "2026-09-05T23:03:26.928Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "b929d1a3-ddea-40eb-a8b8-cb9a6135f83b"
+      "run_id": "d5c9dc62-7ce1-4266-a677-e5117e9e3efb"
     }
   },
   "reviews": {
@@ -38,9 +38,9 @@
   "deploy": {
     "last_main_sha": "0c0b445712dd988e818f59638a0866ce7e640c6f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T21:25:14Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33991596241",
-    "last_deploy_sha": "8f1b953ba05ef5cdb818c04fa32f18e7151f9605"
+    "last_deploy_at": "2026-09-05T21:38:08Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993614498",
+    "last_deploy_sha": "7345b9a6352928ffb53134c263f9e81dd7b1845c"
   },
   "events": [
     {
@@ -157,19 +157,22 @@
       "agent": "cursor",
       "run_id": "6de68eb5-845d-4076-aeec-592fc6228573",
       "summary": "PR-event recovery: lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo, rth-off-hours). ops:collect 0. #4047 swing play-brief locally verified (3/3 tests, tsc, lint:brand) — awaiting Claude peer review. #4048 dirty merge closed; fresh handoff. No Claude/fix PRs open. GraphQL rate-limited."
+    },
+    {
+      "at": "2026-09-05T21:42:05.756Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:42:05.757Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "1018cddd-9267-495e-874a-05ceab194766",
+      "summary": "Peer review APPROVED+merged #4049 dead-code sweep. #4047 swing play-brief CI pending, locally verified. Handoff PR opened. Lifecycle all GREEN."
     }
   ],
   "open_prs": [
-    {
-      "number": 4049,
-      "title": "chore(cleanup): remove 8 more @deprecated exports with zero real callers",
-      "branch": "fix/dead-code-sweep-batch-2",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:26:49Z"
-    },
     {
       "number": 4048,
       "title": "chore(blackout-agent): cursor recovery cycle — post-bcb5ce5 merge wave",
@@ -177,8 +180,8 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-05T21:27:32Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T21:41:20Z"
     },
     {
       "number": 4047,
@@ -187,7 +190,7 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "unknown",
+      "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-05T21:32:57Z"
     }
   ]
