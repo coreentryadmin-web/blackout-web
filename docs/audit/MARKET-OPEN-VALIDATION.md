@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1d. BIE SPX desk brief mislabeled GEX king as generic "pin" — fix/bie-spx-brief-magnet-labels (pending)
+
+**What was broken:** `composeSpxDeskBrief` WHY / LEVELS / NEXT 5M lines used hardcoded `"pin"` even when the magnet was `desk.gex_king` (GEX king node) — same pin-vs-king confusion the SPX pin panel already disambiguated via `spx-metric-labels.ts`.
+
+**Fix:** `resolveDeskMagnet()` tracks source; prose uses `SPX_PIN_GEX_KING_LABEL_PROSE` or lower-case `SPX_DESK_MAX_PAIN_LABEL`. Regression tests in `spx-desk-brief.test.ts`.
+
+**Check at the open:** SPX Slayer live commentary / Largo SPX brief during RTH — WHY and LEVELS should say "GEX king node" when king is the magnet, never bare "pin".
+
 ### 0a-1c. Thermal triple-desk header change_pct not rebased on live push — fix/thermal-triple-desk-header-rebase (pending)
 
 **What was broken:** `ThermalTripleDesk` column headers used `pushChangePct ?? matrixChangePct` with no `rebaseChangePct` when a live push spot overlayed a matrix snapshot. Spot could update while day-change % stayed frozen at the matrix-era value — same class as the GexHeatmap header fix (2026-09-04).
