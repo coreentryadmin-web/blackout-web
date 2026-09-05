@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildUwClusterHealth,
+  clusterHeartbeatAgeMs,
   clusterIndexSpotChangePct,
   evaluateOptionsClusterOk,
   evaluatePolygonClusterOk,
@@ -21,6 +22,28 @@ test("clusterIndexSpotChangePct: only REST-anchored snapshots carry change_pct",
   );
   assert.equal(clusterIndexSpotChangePct({ change_pct: 0.42 }), null);
   assert.equal(clusterIndexSpotChangePct({ change_pct: NaN, open_source: "rest" }), null);
+});
+
+test("clusterHeartbeatAgeMs: far-future timestamp returns null (not age 0)", () => {
+  const now = 1_700_000_000_000;
+  assert.equal(clusterHeartbeatAgeMs(now + 60_000, now), null);
+});
+
+test("clusterHeartbeatAgeMs: modest clock skew within tolerance reads as age 0", () => {
+  const now = 1_700_000_000_000;
+  assert.equal(clusterHeartbeatAgeMs(now + 2_000, now), 0);
+});
+
+test("buildUwClusterHealth: far-future cluster heartbeat is not live", () => {
+  const now = 1_700_000_000_000;
+  const uw = buildUwClusterHealth({
+    is_leader: false,
+    cluster_last_message_at: now + 60_000,
+    now,
+  });
+  assert.equal(uw.cluster_last_message_age_ms, null);
+  assert.equal(uw.cluster_live, false);
+  assert.equal(evaluateUwClusterOk(uw, true).ok, false);
 });
 
 test("evaluateUwClusterOk: follower is healthy when cluster heartbeat is fresh", () => {

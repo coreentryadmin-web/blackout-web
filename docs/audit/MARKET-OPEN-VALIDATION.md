@@ -140,7 +140,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
-### 0an. Night Hawk hunt roundFloats — fix/nighthawk-hunt-roundfloats (pending)
+### 0ao. Cluster health future-timestamp false-green — fix/cluster-health-future-timestamp-guard (pending)
+
+**What was broken:** `buildUwClusterHealth`, `readPolygonClusterHealth`, and `readOptionsClusterHealth` used `Math.max(0, now - timestamp)` — a clock-skewed future Redis heartbeat or option mark `ts` read as age `0` / `cluster_live: true`, false-greening `/api/cron/socket-health` during RTH validation.
+
+**Fix:** `clusterHeartbeatAgeMs()` returns `null` for far-future stamps; liveness uses `isWsUpdatedAtFresh` (same 5s tolerance as `readClusterIndexSpot`).
+
+**RTH check:** At open, confirm socket-health does not report UW/Polygon cluster live when heartbeat timestamp is >5s in the future (cross-replica skew probe).
+
 
 **What was broken:** `POST /api/market/nighthawk/hunt` returned raw IEEE floats in `platform_context.spx_price` and play `score` fields while sibling Night Hawk routes (`edition`, `horizons`, `play-bars`, `legacy-marks`) already wrap with `roundFloats`.
 

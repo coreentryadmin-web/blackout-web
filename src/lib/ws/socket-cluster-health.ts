@@ -4,6 +4,7 @@ import { INDEX_FEED_STALL_MS } from "@/lib/ws/polygon-socket";
 import { UW_SOCKET_STALL_MS } from "@/lib/ws/uw-socket-stall";
 import { OPTION_MARK_FRESH_MS } from "@/lib/ws/options-socket";
 import type { OptionMark } from "@/lib/ws/options-socket";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const POLYGON_SNAPSHOT_KEY = "spx:pulse:snapshot";
 const UW_CLUSTER_LAST_MSG_KEY = "uw:ws:last_msg_at";
@@ -16,6 +17,18 @@ const UW_CLUSTER_LIVE_MS = 120_000;
 const POLYGON_CLUSTER_LIVE_MS = 30_000;
 /** Ordinary clock skew — a future cluster `updatedAt` must not read as infinitely fresh. */
 const CLUSTER_SPOT_FUTURE_TOLERANCE_MS = 5_000;
+
+/** Age in ms for cluster heartbeats — null when missing or clock-skewed far future. */
+export function clusterHeartbeatAgeMs(
+  at: number | null | undefined,
+  now = Date.now(),
+  futureToleranceMs = CLUSTER_SPOT_FUTURE_TOLERANCE_MS
+): number | null {
+  if (at == null || !Number.isFinite(at) || at <= 0) return null;
+  const rawAgeMs = now - at;
+  if (rawAgeMs < -futureToleranceMs) return null;
+  return Math.max(0, rawAgeMs);
+}
 
 export type ClusterIndexSpot = { price: number; change_pct: number | null };
 
@@ -61,12 +74,12 @@ export function buildUwClusterHealth(input: {
 }): UwClusterHealth {
   const now = input.now ?? Date.now();
   const at = input.cluster_last_message_at;
-  const age = at != null ? Math.max(0, now - at) : null;
+  const age = clusterHeartbeatAgeMs(at, now);
   return {
     is_leader: input.is_leader,
     cluster_last_message_at: at,
     cluster_last_message_age_ms: age,
-    cluster_live: age != null && age <= UW_CLUSTER_LIVE_MS,
+    cluster_live: isWsUpdatedAtFresh(at, UW_CLUSTER_LIVE_MS, now, CLUSTER_SPOT_FUTURE_TOLERANCE_MS),
   };
 }
 
@@ -166,8 +179,13 @@ export async function readPolygonClusterHealth(
     }
   }
 
-  const age = updatedAt != null ? Math.max(0, now - updatedAt) : null;
-  const cluster_live = age != null && age <= POLYGON_CLUSTER_LIVE_MS;
+  const age = clusterHeartbeatAgeMs(updatedAt, now);
+  const cluster_live = isWsUpdatedAtFresh(
+    updatedAt,
+    POLYGON_CLUSTER_LIVE_MS,
+    now,
+    CLUSTER_SPOT_FUTURE_TOLERANCE_MS
+  );
 
   return {
     is_leader,
@@ -293,7 +311,8 @@ export async function readOptionsClusterHealth(now = Date.now()): Promise<Option
           try {
             const mark = JSON.parse(raw) as OptionMark;
             if (typeof mark.ts === "number" && mark.ts > 0) {
-              const age = Math.max(0, now - mark.ts);
+              const age = clusterHeartbeatAgeMs(mark.ts, now);
+              if (age == null) continue;
               if (newest_mark_age_ms == null || age < newest_mark_age_ms) {
                 newest_mark_age_ms = age;
               }
