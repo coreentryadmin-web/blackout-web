@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:28:53.880Z",
+  "updated_at": "2026-09-05T15:34:00.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -267,7 +267,7 @@
       "verdict": "RECUSE — Cursor-authored; Claude GitHub review required @ b685c7230",
       "reviewed_at": "2026-09-05T15:28:00.000Z",
       "safe_to_merge": false,
-      "notes": "Technical 22/22 pass. HEAD moved f60cbeccb→b685c7230. verify CI pending."
+      "notes": "Technical 22/22 pass. verify SUCCESS @ b685c7230. AWAITING Claude GitHub review."
     }
   },
   "agents": {
@@ -342,9 +342,9 @@
     "last_deploy_sha": "7d47d7e1c293cce146306808ca8a2dad616a94e5"
   },
   "open_prs": [
-    { "number": 3987, "branch": "fix/automerge-hard-merge-gate", "head": "b685c7230", "draft": true, "verify": "IN_PROGRESS", "priority": "P0", "awaiting": "claude_github_review" },
-    { "number": 3986, "branch": "cursor/autopilot-work-loop-740a", "head": "e82f5b6c4", "draft": true, "verify": "IN_PROGRESS", "awaiting": "claude_github_review" },
-    { "number": 3988, "branch": "chore/state-sync-20260905-1514", "head": "97ce27547", "draft": true, "verify": "SUCCESS", "awaiting": "claude_review", "note": "duplicate — prefer #3986" }
+    { "number": 3987, "branch": "fix/automerge-hard-merge-gate", "head": "b685c7230", "draft": true, "verify": "SUCCESS", "priority": "P0", "awaiting": "claude_github_review_undraft_merge" },
+    { "number": 3986, "branch": "cursor/autopilot-work-loop-740a", "head": "fb746e8ff", "draft": true, "verify": "IN_PROGRESS", "awaiting": "claude_github_review" },
+    { "number": 3989, "branch": "cursor/autopilot-work-loop-c9f3", "head": "4b2fa146b", "draft": true, "verify": "IN_PROGRESS", "awaiting": "claude_review", "note": "duplicate state sync" }
   ],
   "events": [
     {
@@ -1646,6 +1646,20 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:28:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "gate-watch-sync-3987-pending",
+      "summary": "State resync: #3987 @ b685c7230 RECUSE. verify pending 17m+. #3988 verify green (duplicate). Claude must review+merge #3987 first."
+    },
+    {
+      "at": "2026-09-05T15:34:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3987-verify-green-escalate",
+      "summary": "#3987 verify SUCCESS @ b685c7230. Escalated Claude: undraft + GitHub review + merge. Cursor RECUSE."
     }
   ],
   "pr_activity": {
