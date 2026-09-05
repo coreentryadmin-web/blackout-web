@@ -20,21 +20,23 @@
 | Q30 | shadow G-S6/G-S14 | #3859 |
 | Q3/Q5/Q6/Q15/Q20-Q22/Q26 | deep-dive batch | **#3878 MERGED** |
 
-### In PR (round 2 — awaiting Claude peer review @ CURRENT HEAD)
-| Q | Fix | PR | verify | peer |
-|---|-----|-----|--------|------|
-| Q36 | evidence-only terminal guard | **#3901** | GREEN | Claude ⏳ |
-| Q37 | singleton claim + roll revalidation | **#3899** | GREEN | Claude ⏳ |
-| Q31+Q32 | member Discord alerts | **#3903** (draft) | pending | undraft after verify → Claude |
-| discovery spot | WATCH spot freshness | **#3902** | MERGED | — |
-
-### Merged (latest batch)
+### Merged (round 2 — complete on `main` @ cfbf22b6e)
 | Q | Fix | PR |
 |---|-----|-----|
-| Q11 | G-S3 vs Cortex earnings documented | **#3886 MERGED** |
-| Q25 | `cross-desk-theme.ts` restored | **#3886 MERGED** |
+| Q31+Q32 (Swing) | member Discord alerts | **#3903 MERGED** |
+| Q32 (Banger sibling) | member Discord alerts | **PR opening** (`cursor/banger-discord-notify-q32`) |
+| Q33–Q35 | shadow mark/close refresh + gate evidence | **#3908 MERGED** |
+| Q36 | evidence-only terminal guard | **#3901 MERGED** |
+| Q37 | singleton claim + roll revalidation | **#3899 MERGED** |
 | Q38 | stale underlying spot guard | **#3893 MERGED** |
-| Q40+Q41 | markAsOf + SSE tier recheck | **#3895 MERGED** |
+| Q39 | ex-dividend structural stop | **#3909 MERGED** |
+| Q40+Q41 | markAsOf + SSE tier recheck | **#3895 MERGED** (+ #3906 refinement) |
+| discovery spot | WATCH spot freshness | **#3902 MERGED** |
+
+### In PR (awaiting Claude peer review @ CURRENT HEAD)
+| Q | Fix | PR | verify |
+|---|-----|-----|--------|
+| Q32 (Banger) | BTO/STC via Chief Trade Bot | opening | pending |
 
 ### Intentional trade-offs (no code change — confirm?)
 | Q | Cursor read |
