@@ -534,6 +534,14 @@ just for performance findings — and is separate from, and in addition to, each
 
 **Check at the open:** SPX desk GEX stale pill fires when matrix `pos.asof` lags or skews; `/api/market/spx/bootstrap` `gex_age_ms` / `gex_stale` coherent under RTH.
 
+### 0ac. Vector freshness future-skew false-live — fix/vector-freshness-future-skew (pending)
+
+**What was broken:** `describeVectorFreshness` clamped `Math.max(0, now - observedAt)` so a snapshot stamped 30s in the future reported `freshness: "live"`. `withReadContext` applied the same clamp to `dataAgeMs`, zeroing conviction staleness discount on clock-skewed cache entries.
+
+**Fix:** Fail-closed to `freshness: "unknown"` when age is beyond `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` (5s); within tolerance keep display clamp only.
+
+**Check at the open:** Largo `get_vector_pulse` / desk brief — `freshness` must not read `"live"` when `observed_at` is materially ahead of reader clock.
+
 ### 0z. Vector API unrounded floats + UW halt future-timestamp guard — fix/vector-roundfloats-uw-halt-freshness (pending)
 
 **What was broken:** Five Vector cache-reader routes (`universe`, `wall-history`, `daily-regime`, `rail-bootstrap`, `contract-picks`) returned raw IEEE float noise at the JSON boundary while sibling Vector routes already call `roundFloats`. Separately, `isUwHaltSourceStale()` used raw `Date.now() - freshest > maxAgeMs` — a clock-skewed future `effectiveFreshestUwMessageAt()` reads as live/trusted.

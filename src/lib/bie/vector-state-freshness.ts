@@ -32,6 +32,7 @@
 
 import { freshnessFromAgeMs, type BieFreshness } from "@/lib/bie/answer-envelope";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
 /**
  * How fresh a served Vector snapshot is. This is `BieFreshness` — the taxonomy that already
@@ -114,11 +115,26 @@ export function describeVectorFreshness(
     };
   }
 
-  // A snapshot from the future means clock skew between the writer and this reader; clamp at 0
-  // rather than reporting a negative age, which would read as "fresher than live".
-  const ageSec = Math.max(0, Math.round((nowMs - observedMs) / 1000));
+  const ageMs = nowMs - observedMs;
+  // Future beyond clock-skew tolerance must fail-closed to unknown — same guard as SPX desk GEX
+  // (#3937), UW channel freshness, and ageSecFromIso. Clamping at 0 converted +30s skew into
+  // age_seconds=0 → freshnessFromAgeMs(0) → "live".
+  if (ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) {
+    return {
+      observed_at: new Date(observedMs).toISOString(),
+      observed_session_date: etSessionDate(observedMs),
+      as_of: asOfEt,
+      session_date: sessionDate,
+      age_seconds: null,
+      freshness: "unknown",
+      note:
+        "This Vector state's measurement time is ahead of the reader clock (clock skew) — do not present it as live.",
+    };
+  }
+  const effectiveAgeMs = Math.max(0, ageMs);
+  const ageSec = Math.round(effectiveAgeMs / 1000);
   // ONE classifier for the whole product — see the VectorFreshness doc above.
-  const freshness: VectorFreshness = freshnessFromAgeMs(ageSec * 1000);
+  const freshness: VectorFreshness = freshnessFromAgeMs(effectiveAgeMs);
 
   return {
     observed_at: new Date(observedMs).toISOString(),

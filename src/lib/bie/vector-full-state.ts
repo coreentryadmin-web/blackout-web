@@ -65,6 +65,7 @@ import { reportVectorAbsences, type VectorAbsenceReport } from "@/lib/bie/vector
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { describeVectorFreshness, type VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
 /** The default chart timeframe (minutes) a cached snapshot is computed at — the cron warms this TF;
  *  a reader asking for a different TF must recompute live (its technicals differ). */
@@ -410,7 +411,14 @@ function withReadContext(
   state: VectorFullState
 ): VectorFullState & VectorAbsenceReport & VectorFreshnessBlock {
   const observedAt = Date.parse(state.asOf);
-  const dataAgeMs = Number.isFinite(observedAt) ? Math.max(0, Date.now() - observedAt) : null;
+  const rawAgeMs = Number.isFinite(observedAt) ? Date.now() - observedAt : null;
+  // Do not clamp future skew to 0 — within tolerance treat as fresh; beyond tolerance unknown.
+  const dataAgeMs =
+    rawAgeMs != null && rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS
+      ? null
+      : rawAgeMs != null
+        ? Math.max(0, rawAgeMs)
+        : null;
   // Rebuild play with read-time dataAgeMs so conviction staleness discount matches cache age.
   const { play: _cachedPlay, ...snapshotFields } = state;
   const play = buildVectorPlay({ ...snapshotFields, dataAgeMs, play: undefined });
