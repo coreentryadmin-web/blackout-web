@@ -2,11 +2,26 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildUwClusterHealth,
+  clusterIndexSpotChangePct,
   evaluateOptionsClusterOk,
   evaluatePolygonClusterOk,
   evaluateUwClusterOk,
   readUwClusterHealth,
 } from "./socket-cluster-health";
+
+test("clusterIndexSpotChangePct: only REST-anchored snapshots carry change_pct", () => {
+  assert.equal(
+    clusterIndexSpotChangePct({ change_pct: 0.42, open_source: "rest" }),
+    0.42
+  );
+  assert.equal(
+    clusterIndexSpotChangePct({ change_pct: 0.42, open_source: "ws-bar" }),
+    null,
+    "ws-bar anchor must not leak session-open change% to GEX cluster readers"
+  );
+  assert.equal(clusterIndexSpotChangePct({ change_pct: 0.42 }), null);
+  assert.equal(clusterIndexSpotChangePct({ change_pct: NaN, open_source: "rest" }), null);
+});
 
 test("evaluateUwClusterOk: follower is healthy when cluster heartbeat is fresh", () => {
   const uw = buildUwClusterHealth({

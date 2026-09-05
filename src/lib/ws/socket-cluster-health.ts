@@ -19,10 +19,25 @@ const CLUSTER_SPOT_FUTURE_TOLERANCE_MS = 5_000;
 
 export type ClusterIndexSpot = { price: number; change_pct: number | null };
 
-type IndexSnapshot = Record<
-  string,
-  { price?: number; change_pct?: number | null; updatedAt?: number; open_source?: string }
->;
+type IndexSnapshotEntry = {
+  price?: number;
+  change_pct?: number | null;
+  updatedAt?: number;
+  open_source?: string;
+};
+
+type IndexSnapshot = Record<string, IndexSnapshotEntry>;
+
+/**
+ * Cluster snapshot change% is only trustworthy when the ingest leader seeded a REST anchor
+ * (`open_source === "rest"`). ws-bar anchors measure against a mid-session bar open — same guard
+ * as liveWsIndexSpot / mergeWsIndexSnapshots on the SPX desk.
+ */
+export function clusterIndexSpotChangePct(entry: IndexSnapshotEntry): number | null {
+  if (entry.open_source !== "rest") return null;
+  const changePct = Number(entry.change_pct);
+  return Number.isFinite(changePct) ? changePct : null;
+}
 
 export type UwClusterHealth = {
   is_leader: boolean;
@@ -73,10 +88,9 @@ export async function readClusterIndexSpot(
       if (entry && price != null && price > 0 && updatedAt) {
         const ageMs = now - updatedAt;
         if (ageMs >= -CLUSTER_SPOT_FUTURE_TOLERANCE_MS && ageMs < maxAgeMs) {
-          const changePct = Number(entry.change_pct);
           return {
             price,
-            change_pct: Number.isFinite(changePct) ? changePct : null,
+            change_pct: clusterIndexSpotChangePct(entry),
           };
         }
       }
