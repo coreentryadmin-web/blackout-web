@@ -26,3 +26,9 @@ test("vector stream rechecks entitlement on every user tick", () => {
   assert.match(src, /recheckSseUserEntitlement\("premium", "vector"\)/);
   assert.match(src, /isUserStream/);
 });
+
+test("flows stream rechecks entitlement on every user send", () => {
+  const src = readFileSync(join(root, "src/app/api/market/flows/stream/route.ts"), "utf8");
+  assert.match(src, /recheckSseUserEntitlement\("premium"\)/);
+  assert.match(src, /isUserStream/);
+});

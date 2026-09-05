@@ -23,7 +23,7 @@
 ### In PR (this batch)
 | Q | Fix |
 |---|-----|
-| Q40+Q41 | `markAsOf` from `last_mark_at` + SSE tier recheck on marks/vector streams — branch `fix/swing-mark-asof-sse-tier-recheck` (draft PR pending — GitHub API rate limit) |
+| Q40+Q41 | `markAsOf` from `last_mark_at` + SSE tier recheck on marks/vector/flows streams — **#3895** (draft) |
 
 ### Merged (latest batch)
 | Q | Fix | PR |
