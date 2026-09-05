@@ -219,6 +219,18 @@ export function isZeroDteMarkStale(
 }
 
 /**
+ * Age of a board/snapshot `as_of` in ms for serve/SWR decisions. A timestamp more than
+ * ZERODTE_MARK_FUTURE_TOLERANCE_MS ahead of `now` returns +Infinity so callers fail closed
+ * (never treat clock-skewed future `as_of` as age 0 / freshest-possible).
+ */
+export function zeroDteSnapshotAgeMs(asOfMs: number, nowMs: number): number {
+  if (!(asOfMs > 0) || !Number.isFinite(asOfMs)) return Number.POSITIVE_INFINITY;
+  const ageMs = nowMs - asOfMs;
+  if (ageMs < -ZERODTE_MARK_FUTURE_TOLERANCE_MS) return Number.POSITIVE_INFINITY;
+  return Math.max(0, ageMs);
+}
+
+/**
  * D-1 fix (wrong frozen P&L on stopped plays): a CLOSED row whose latched trough
  * crossed the −50% stop is a STOPPED play — its result is the stop P&L by the
  * plan's own methodology (gradePlanFromBars exits AT the stop), not whatever
