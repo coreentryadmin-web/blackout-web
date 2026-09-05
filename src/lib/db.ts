@@ -7931,6 +7931,65 @@ export async function fetchOpenSwingShadowPositions(): Promise<SwingShadowPositi
   return res.rows.map(mapSwingShadowPositionRow);
 }
 
+/** Latch mark + peak/trough on an OPEN shadow row. Returns affected rowcount (0 when already closed). */
+export async function updateSwingShadowMarks(
+  id: number,
+  update: { mark: number; peakPremium: number; troughPremium: number },
+): Promise<number> {
+  await ensureSchema();
+  const res = await dbQuery(
+    `UPDATE swing_shadow_positions SET
+       last_mark = $2,
+       peak_premium = GREATEST(COALESCE(peak_premium, $2), $3),
+       trough_premium = LEAST(COALESCE(trough_premium, $2), $4),
+       updated_at = NOW()
+     WHERE id = $1 AND status = 'OPEN'`,
+    [id, update.mark, update.peakPremium, update.troughPremium],
+  );
+  return res.rowCount ?? 0;
+}
+
+/** Terminal close + grade for a shadow row (one-shot, no roll chain). */
+export async function closeSwingShadowPosition(
+  id: number,
+  grade: {
+    realized_pnl_pct: number;
+    close_reason: string;
+    close_detail: string;
+  },
+): Promise<number> {
+  await ensureSchema();
+  const res = await dbQuery(
+    `UPDATE swing_shadow_positions SET
+       status = 'CLOSED',
+       realized_pnl_pct = $2,
+       gate_calibration_json = COALESCE(gate_calibration_json, '{}'::jsonb) || jsonb_build_object(
+         'shadow_close_reason', $3::text,
+         'shadow_close_detail', $4::text,
+         'shadow_graded_methodology', 'swing.shadow-refresh.v1'
+       ),
+       closed_at = NOW(),
+       graded_at = NOW(),
+       updated_at = NOW()
+     WHERE id = $1 AND status = 'OPEN' AND graded_at IS NULL`,
+    [id, grade.realized_pnl_pct, grade.close_reason, grade.close_detail],
+  );
+  return res.rowCount ?? 0;
+}
+
+/** Graded shadow rows — calibration harness input for gate-evidence review (Q35). */
+export async function fetchGradedSwingShadowRows(limit = 5000): Promise<SwingShadowPositionRow[]> {
+  await ensureSchema();
+  const res = await dbQuery<QueryResultRow>(
+    `SELECT * FROM swing_shadow_positions
+       WHERE graded_at IS NOT NULL AND realized_pnl_pct IS NOT NULL
+       ORDER BY graded_at DESC, id DESC
+       LIMIT $1`,
+    [limit],
+  );
+  return res.rows.map(mapSwingShadowPositionRow);
+}
+
 /** Positions committed on/after a session date — the calibration harness's input. */
 export async function fetchSwingPositionsRange(sinceDate: string, limit = 1000): Promise<SwingPositionRow[]> {
   await ensureSchema();

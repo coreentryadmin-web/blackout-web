@@ -30,7 +30,11 @@ import {
   gradeSwingPosition,
   withSwingRollTx,
   fetchGradedSwingFeatureRows,
+  fetchOpenSwingShadowPositions,
+  updateSwingShadowMarks,
+  closeSwingShadowPosition,
   type SwingPositionRow,
+  type SwingShadowPositionRow,
 } from "@/lib/db";
 import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
 import { spotFromLastTradeResult } from "@/lib/swing/underlying-spot-freshness";
@@ -52,6 +56,7 @@ import type { SwingArchetype } from "@/lib/swing/taxonomy";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import { occSymbolFromSwingRow } from "@/lib/swing/occ-from-row";
 import { resolveSwingExDividendContext } from "@/lib/swing/ex-dividend-reads";
+import { runSwingShadowRefresh, type ShadowRefreshReads } from "@/lib/swing/shadow-refresh";
 import { thesisProgress01, volCollapsedFromIvRanks, addEligibleFromProgress } from "@/lib/swing/thesis-progress";
 import { SWING_RETURN_LOOKBACK_SESSIONS } from "@/lib/swing/swing-ingest";
 import {
@@ -87,6 +92,27 @@ export const maxDuration = 180;
 async function loadUnderlyingSpot(ticker: string): Promise<number | null> {
   const trade = await fetchStockLastTrade(ticker);
   return spotFromLastTradeResult(trade);
+}
+
+/** Shadow row reads — underlying spot + option mark + DTE (Q33–Q34 lightweight refresh path). */
+async function loadShadowReads(row: SwingShadowPositionRow, nowMs: number): Promise<ShadowRefreshReads | null> {
+  const spot = await loadUnderlyingSpot(row.ticker).catch(() => null);
+  if (spot == null) return null;
+  let mark: number | null = row.last_mark;
+  const occ = occSymbolFromSwingRow(row);
+  if (occ) {
+    try {
+      const snaps = await fetchOptionsUnifiedSnapshot([occ]);
+      const snap = snaps.get(occ);
+      const live =
+        typeof snap?.mark === "number" && Number.isFinite(snap.mark) && snap.mark > 0 ? snap.mark : null;
+      if (live != null) mark = live;
+    } catch {
+      // fail-soft — underlying path still records
+    }
+  }
+  const dte = row.contract_expiry ? dteOf(row.contract_expiry, nowMs) : null;
+  return { underlyingPrice: spot, mark, dte, nowMs };
 }
 
 /**
@@ -351,6 +377,20 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
         });
     }
 
+    // Q33–Q34: bounded shadow mark/close loop — grades gate-blocked candidates for calibration evidence.
+    let shadowRefresh = { shadows: 0, marked: 0, closed: 0, skipped: 0, errored: 0 };
+    try {
+      shadowRefresh = await runSwingShadowRefresh({
+        fetchOpen: fetchOpenSwingShadowPositions,
+        loadReads: (row) => loadShadowReads(row, nowMs),
+        updateMarks: (id, update) => updateSwingShadowMarks(id, update),
+        closeAndGrade: (id, grade) => closeSwingShadowPosition(id, grade),
+        limit: 25,
+      });
+    } catch (err) {
+      console.error("[cron/swing-active-refresh] shadow refresh failed (non-fatal)", err);
+    }
+
     // Refresh serving-snapshot spots for open tickers so pre-entry setup maturity stays live between
     // discovery phases (cache-writer on the cron; member path stays cache-reader).
     let spotsRefreshed = 0;
@@ -422,7 +462,7 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
     }
 
     console.info(
-      `[cron/swing-active-refresh] background done — positions=${result.positions} refreshed=${result.refreshed} snapshots=${result.snapshotsAppended} skipped=${result.skipped} errored=${result.errored} rolled=${rolls.filter((o) => o.roll?.action === "ROLL" && o.roll?.childId != null).length} closed=${rolls.filter((o) => o.roll?.action === "CLOSE" && o.roll?.parentGraded).length} spotsRefreshed=${spotsRefreshed} betasResolved=${betasResolved} elapsed=${Date.now() - started}ms`
+      `[cron/swing-active-refresh] background done — positions=${result.positions} refreshed=${result.refreshed} snapshots=${result.snapshotsAppended} skipped=${result.skipped} errored=${result.errored} rolled=${rolls.filter((o) => o.roll?.action === "ROLL" && o.roll?.childId != null).length} closed=${rolls.filter((o) => o.roll?.action === "CLOSE" && o.roll?.parentGraded).length} shadows=${shadowRefresh.shadows} shadowMarked=${shadowRefresh.marked} shadowClosed=${shadowRefresh.closed} spotsRefreshed=${spotsRefreshed} betasResolved=${betasResolved} elapsed=${Date.now() - started}ms`
     );
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
