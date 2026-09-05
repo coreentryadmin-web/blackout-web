@@ -20,6 +20,7 @@ import {
   trimLadderVisual,
   unifiedChecklist,
 } from "./terminal-display";
+import { playContractHeadline } from "./play-card-lifecycle";
 import {
   playFreshnessDisplay,
   playLifecycleTimestamps,
@@ -118,24 +119,42 @@ export function TradeSummaryHero({
   const freshness = playFreshnessDisplay(play, nowMs, primary.iso);
   const status = playStatusDisplay(play.status);
   const ageLabel = freshness.compactAge ?? "—";
+  const swingHeadline = play.horizon === "SWING" || play.horizon === "LEAPS" ? playContractHeadline(play) : null;
 
   return (
     <header className="nh-deck-trade-hero nh-deck-trade-hero-dense" aria-label="Selected trade summary">
       <div className="nh-deck-trade-hero__headrow">
         <div className="nh-deck-trade-hero__identity">
-          <span className="nh-deck-trade-hero__tk">{summary.ticker}</span>
-          <span className={clsx("nh-deck-trade-hero__dir", play.direction === "LONG" ? "long" : "short")}>
-            {summary.direction}
-            {summary.origin ? ` • ${summary.origin}` : ""}
-          </span>
+          {swingHeadline ? (
+            <>
+              <span className="nh-deck-trade-hero__tk nh-deck-trade-hero__tk-contract">{swingHeadline}</span>
+              <span className={clsx("nh-deck-trade-hero__dir", play.direction === "LONG" ? "long" : "short")}>
+                {summary.direction}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="nh-deck-trade-hero__tk">{summary.ticker}</span>
+              <span className={clsx("nh-deck-trade-hero__dir", play.direction === "LONG" ? "long" : "short")}>
+                {summary.direction}
+                {summary.origin ? ` • ${summary.origin}` : ""}
+              </span>
+            </>
+          )}
           <StatusPill label={status.label} tone={status.tone} />
         </div>
         <ConfidenceBadge play={play} hero className="nh-deck-trade-hero__conf-badge" />
       </div>
 
       <div className="nh-deck-trade-hero__chips">
-        <span className="nh-deck-trade-hero__chip">{summary.horizonLabel}</span>
-        <span className="nh-deck-trade-hero__chip contract">{summary.contract}</span>
+        {!swingHeadline && <span className="nh-deck-trade-hero__chip">{summary.horizonLabel}</span>}
+        {!swingHeadline && <span className="nh-deck-trade-hero__chip contract">{summary.contract}</span>}
+        {swingHeadline && summary.grade && (
+          <span className="nh-deck-trade-hero__chip">Grade {summary.grade}</span>
+        )}
+        {swingHeadline && play.entry != null && (
+          <span className="nh-deck-trade-hero__chip">Entry ${play.entry.toFixed(2)}</span>
+        )}
         {rankContext?.isHighestToday && (
           <span className="nh-deck-trade-hero__chip orig">Highest today</span>
         )}

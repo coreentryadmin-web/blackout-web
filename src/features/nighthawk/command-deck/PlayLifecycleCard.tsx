@@ -15,7 +15,8 @@ import {
 } from "./play-card-lifecycle";
 import {
   formatReturnPct,
-  playEntryDisplay,
+  playEntryDisplay as formatPlayEntry,
+  playEntryInGradeColumn,
   playGradeLabel,
   primaryReturnLabel,
 } from "./play-card-display";
@@ -76,7 +77,7 @@ export function PlayLifecycleCardBody({
   const ret = playListReturnPct(play);
   const times = playTimeRangeCompact(play);
   const grade = playGradeLabel(play);
-  const entryDisplay = playEntryDisplay(play);
+  const entryDisplay = playEntryInGradeColumn(play) ? formatPlayEntry(play) : null;
 
   const signClass = (n: number | null | undefined) =>
     n != null && n > 0 ? "nh-deck-pos" : n != null && n < 0 ? "nh-deck-neg" : undefined;

@@ -61,10 +61,13 @@ test("the documented member surface matches the mounted one", () => {
   );
 });
 
-test("LargoDeskMiniPanel is currently mounted by nothing — measured, not remembered", () => {
+/** Canonical mounters — update when adding/removing a `LargoDeskMiniPanel` mount (charter row too). */
+const DOCUMENTED_MOUNTERS = ["src/features/nighthawk/command-deck/SwingLargoInsightsPanel.tsx"];
+
+test("LargoDeskMiniPanel mounters match the documented list — measured, not remembered", () => {
   assert.deepEqual(
-    MOUNTERS.map((f) => f.replace(SRC, "src")),
-    [],
-    "if this fails the panel was re-mounted; update the charter and the map's L-11 in the same change"
+    MOUNTERS.map((f) => f.replace(SRC, "src")).sort(),
+    [...DOCUMENTED_MOUNTERS].sort(),
+    "mounter set changed — update DOCUMENTED_MOUNTERS, the charter member-surface row, and mini-panel API row in the same change"
   );
 });

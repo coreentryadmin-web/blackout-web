@@ -1,6 +1,7 @@
 import type { TerminalPlay } from "./types";
 import { tierRank } from "./deck-sort";
 import { isWatchTrackStatus } from "./play-card-lifecycle";
+import { convictionFromScore } from "@/features/nighthawk/lib/conviction";
 
 /** Quality / confidence % for the row — score is 0–100 on 0DTE; confidence is 0–1 when wired. */
 export function playQualityPct(play: TerminalPlay): number | null {
@@ -14,10 +15,24 @@ export function playQualityPct(play: TerminalPlay): number | null {
   return null;
 }
 
-/** Letter grade for display — tier label first, never fabricated. */
+/** Letter grade for display — tier label first; horizon lanes fall back to score→letter. */
 export function playGradeLabel(play: TerminalPlay): string | null {
   const t = play.tierLabel?.trim();
-  return t || null;
+  if (t) return t;
+  if (
+    (play.horizon === "SWING" || play.horizon === "LEAPS") &&
+    play.score != null &&
+    Number.isFinite(play.score) &&
+    play.score > 0
+  ) {
+    return convictionFromScore(play.score);
+  }
+  return null;
+}
+
+/** Entry premium in the GRADE column — 0DTE/Legacy only; swings show letter grade, entry lives in the rail. */
+export function playEntryInGradeColumn(play: TerminalPlay): boolean {
+  return play.horizon === "ZERO_DTE" || play.horizon === "LEGACY";
 }
 
 /** Entry premium (0DTE per-contract, or condor net credit) for the list row — compact $ form.
