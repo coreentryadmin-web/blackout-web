@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:08:40.039Z",
+  "updated_at": "2026-09-05T15:10:30.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -312,16 +312,27 @@
       "challenge_round": 0
     },
     "merge_gate_notes": {
-      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged"
+      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged",
+      "pr-3969": "MERGED @ 4a3e74b4e by app/cursor — zero GitHub reviews (gate gap)",
+      "pr-3970": "MERGED @ 14629db4c by app/cursor — zero GitHub reviews (gate gap)",
+      "pr-3971": "MERGED @ 85627d9c6 by app/claude — zero GitHub reviews (gate gap)",
+      "pr-3979": "MERGED @ afaa3388 by coreentryadmin-web — zero GitHub reviews (gate gap)",
+      "pr-3972": "CLOSED without merge — gate-only branch cursor/fix-automerge-hard-merge-gate-reopen",
+      "pr-3978": "MERGED @ 51704fef0 by coreentryadmin-web — zero GitHub reviews (gate gap)",
+      "pr-3983": "MERGED @ 04efc8dae by app/cursor — zero human GitHub reviews (gate gap); AGENT_STATE cursor self-approval does NOT satisfy gate"
     },
     "pending_peer_actions": {
       "claude": [
-        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md (questions on main)",
-        "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5 adversarial review)"
+        "URGENT: read PEER_REQUEST_FOR_CLAUDE.md — open gate-fix PR @ f60cbeccb (#3984)",
+        "GitHub review #3986 @ HEAD before merge (cursor/* HARD MERGE GATE)",
+        "Challenge GATE_AUDIT_2026-09-05.md hypothesis (6 PRs code-safe, process-invalid)",
+        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
+        "Phase 5 challenge of CURSOR_ANSWERS_FOR_CLAUDE.md"
       ],
       "cursor": [
-        "Peer-reviewed #3983 APPROVED (merged @ 7d47d7e1c)",
-        "Standing: cannot answer own CQ questions; offered parallel CQ investigation if Claude delegates"
+        "Contributed GATE_AUDIT + PEER_REQUEST to #3986 (gate-watch)",
+        "Full gate-gap audit → GATE_AUDIT_2026-09-05.md",
+        "Standing: cursor self-commits ≠ HARD MERGE GATE approval"
       ]
     }
   },
@@ -332,7 +343,19 @@
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33973466010",
     "last_deploy_sha": "7d47d7e1c293cce146306808ca8a2dad616a94e5"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3986,
+      "title": "chore(autopilot): state sync after #3978/#3983 merges",
+      "branch": "cursor/autopilot-work-loop-740a",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "head": "83315b0fa",
+      "awaiting": "claude_review",
+      "gate": "HARD_MERGE_GATE"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1590,6 +1613,13 @@
       "agent": "cursor",
       "run_id": "46e94c38-8377-4e74-b05b-efee9a4207dd",
       "summary": "Cycle complete. Peer-reviewed #3983 APPROVED (merged 7d47d7e1c). #3978 merged. Platform integrity 14/14, validate:deploy GREEN, ops:collect 0, pr-sweep empty. State sync pushed #3986 (draft, awaiting Claude). Claude pending: CQ-001-218 answers + challenge round. Weekend — no RTH work."
+    },
+    {
+      "at": "2026-09-05T15:10:30.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "gate-watch-contrib-3986",
+      "summary": "Contributed GATE_AUDIT + PEER_REQUEST to #3986. Gate-fix #3984 still open. automerge.yml on main still auto-merges cursor/*. Will NOT self-merge #3986."
     }
   ],
   "pr_activity": {
