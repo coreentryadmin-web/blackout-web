@@ -930,3 +930,38 @@ test("gexHeatmapCacheEntryWithinTtl: future entry.at beyond tolerance fails TTL 
   assert.equal(gexHeatmapCacheEntryWithinTtl(now + 6_000, now, ttlMs), false);
   assert.equal(gexHeatmapCacheEntryWithinTtl(now - 30_000, now, ttlMs), false, "past TTL is not fresh");
 });
+
+// ── #3834 fixed the shared heatmap fetch cache but the SAME raw `now - entry.at < ttlMs`
+// shape lived on in 4 sibling caches in this file (0DTE desk bundle mem+Redis, positioning
+// bundle, IV term structure, realized vol) — none reachable via fetchGexHeatmap's own tests.
+// A future-skewed entry.at reads as negative age there too, satisfying every one of these
+// checks trivially and serving stale-but-"fresh" GEX/positioning/IV/vol data indefinitely.
+// These functions do live network fetches + module-scoped cache Maps, impractical to unit-test
+// behaviorally without heavy mocking (same tradeoff as the HEATMAP_PAGE_GUARD test above) — so,
+// same convention, this asserts the actual source: fails against the pre-fix raw comparison and
+// passes once each site routes through the shared, already-tested gexHeatmapCacheEntryWithinTtl.
+test("fetchPolygonOdteDeskBundle + positioning/IV-term/realized-vol caches all route through gexHeatmapCacheEntryWithinTtl, not a raw comparison", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+
+  const sites: Array<{ name: string; marker: string }> = [
+    { name: "fetchPolygonOdteDeskBundle", marker: "export async function fetchPolygonOdteDeskBundle" },
+    { name: "fetchPolygonPositioningBundle", marker: "export async function fetchPolygonPositioningBundle" },
+    { name: "fetchPolygonIvTermStructure", marker: "export async function fetchPolygonIvTermStructure" },
+    { name: "fetchPolygonRealizedVol", marker: "export async function fetchPolygonRealizedVol" },
+  ];
+
+  for (const { name, marker } of sites) {
+    const fnStart = src.indexOf(marker);
+    assert.ok(fnStart >= 0, `${name} not found`);
+    const fnBody = src.slice(fnStart, fnStart + 2000);
+    assert.match(fnBody, /gexHeatmapCacheEntryWithinTtl\(/, `${name} must gate its cache hit through the shared TTL+skew helper`);
+    assert.doesNotMatch(
+      fnBody,
+      /now - \w[\w.]*\.at < \w/,
+      `${name} must not regress to a raw "now - entry.at < ttlMs" comparison`
+    );
+  }
+});
