@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0ax. SPX desk in-process caches future-at guard — fix/spx-desk-inprocess-cache-future-guard (merged #3862)
+
+**What was broken:** SPX desk dark pool REST cache, prior-day OHLC, and pulse structure caches used raw `now - fetchedAt < ttlMs`, so clock-skewed future `fetchedAt` stamps read as infinitely fresh (same class as #3844 / #3849).
+
+**Fix:** Route all three in-process cache-hit gates through `isWsUpdatedAtFresh(fetchedAt, ttlMs, now)` (5s future tolerance).
+
+**Check at the open:** SPX desk pulse lane (prior-day levels, structure refresh cadence) and dark pool panel should refresh on TTL during RTH — no stuck stale marks after deploy clock skew.
+
 ### 0at. Off-hours `?force=1` desk-warm storm still unexplained — now logs caller IP/UA — fix/cache-warmer-caller-identity (merged #3847)
 
 **What was broken:** Live measurement (this sweep) found `AWS/ApplicationELB` `TargetResponseTime` holding a healthy p50/p90 but p99 3.1-8.2s / Max 10.4-34.0s across 3+ straight off-hours hours (Sat 01:12-04:05 UTC) — tail latency, not fleet load. Root cause: `[cron/desk-warm]` fired 81 times in 3 hours (avg 28s, max 108.5s) via the documented `?force=1` off-hours bypass, entirely outside its deployed EventBridge schedule (weekday 11-21 UTC only). This is the SAME shape a 2026-09-04 investigation found and rate-limited (60s cooldown) after ruling out every known in-app dispatcher (EventBridge, `rth-warm-leader`, `cron-staleness-watchdog`) — the caller holds a valid `CRON_SECRET` but was never identified, because nothing captured about the request itself.
