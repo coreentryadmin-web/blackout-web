@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:35:35.991Z",
+  "updated_at": "2026-09-05T18:56:28.747Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:26:09.737Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-05T18:48:52.717Z",
+      "lease_until": "2026-09-05T20:26:00.559Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": "310fd966-59ca-49fb-beb9-b6683d2b2b7f",
       "title": null
     },
     "BO-P1-0101": {
@@ -258,6 +258,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T12:35:00.000Z",
       "safe_to_merge": true
+    },
+    "pr-4026": {
+      "pr": 4026,
+      "head_sha": "c07398f58cd337fc392fc9d4b80303a6b245d3f2",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T18:56:28.746Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -315,29 +323,32 @@
     },
     "pending_peer_actions": {
       "claude": [
-        "Cursor Phase 5 response to CLAUDE_PHASE5_CHALLENGE (CLQ challenges)",
+        "Undraft + merge #4026 (Cursor APPROVED @ c07398f58 — REST PR-sync fallback)",
+        "Peer-review cursor/* CQ batches #4023-4027 when undrafted + verify green",
         "Merge #3955 if CI green (Cursor APPROVED docs only; no AWS mutation)"
       ],
       "cursor": [
         "Standing: peer-review open claude/* and fix/* PRs when verify green",
-        "Deploy verify main@c76923ec9 once ECR push completes",
+        "RECUSE on cursor/* #4023-4027 — Claude owns peer review",
         "Standing: cannot answer own CQ questions"
       ]
     }
   },
   "deploy": {
-    "last_main_sha": "86227e70b57d7dc962673f750a952173dea85088",
+    "last_main_sha": "543ec6f3f53db88e8e26e6879ac611c38bdb4d58",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:34:11Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978273189",
-    "last_deploy_sha": "86227e70b57d7dc962673f750a952173dea85088"
+    "last_deploy_at": "2026-09-05T18:27:48Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33983804884",
+    "last_deploy_sha": "543ec6f3f53db88e8e26e6879ac611c38bdb4d58"
   },
-  "open_prs": [],
+  "open_prs": [
+    { "number": 4023, "title": "fix(cq): batch 1 — internals_estimated UI, tier gate test, email enum", "branch": "cursor/cq-fix-pass-batch1", "author": "coreentryadmin-web", "agent": "cursor", "draft": true, "verify": "unknown", "updated_at": "2026-09-05T18:12:55Z" },
+    { "number": 4024, "title": "fix(cq): batch 2 — tier JWT downgrade, spot guard, flows as_of", "branch": "cursor/cq-fix-pass-batch2", "author": "coreentryadmin-web", "agent": "cursor", "draft": true, "verify": "unknown", "updated_at": "2026-09-05T18:15:49Z" },
+    { "number": 4025, "title": "fix(cq): batch 3 — Whop Redis fail-open ops alert", "branch": "cursor/cq-fix-pass-batch3", "author": "coreentryadmin-web", "agent": "cursor", "draft": true, "verify": "unknown", "updated_at": "2026-09-05T18:17:34Z" },
+    { "number": 4026, "title": "fix(autopilot): REST fallback for open PR sync when GraphQL rate-limited", "branch": "fix/sync-context-rest-pr-fallback", "author": "coreentryadmin-web", "agent": "agent", "draft": true, "verify": "COMPLETED/SUCCESS", "updated_at": "2026-09-05T18:20:41Z" },
+    { "number": 4027, "title": "fix(cq): batch 4 — page JWT gate, Largo prompts, CSP guard, GEX lock", "branch": "cursor/cq-fix-pass-batch4", "author": "coreentryadmin-web", "agent": "cursor", "draft": true, "verify": "unknown", "updated_at": "2026-09-05T18:43:32Z" }
+  ],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
     {
       "at": "2026-09-03T23:45:07.056Z",
       "type": "context_sync",
@@ -1622,6 +1633,35 @@
       "agent": "cursor",
       "run_id": "7241539d-60c7-4e6b-ac5b-c9b3aa85b828",
       "summary": "Continuous loop cycle complete. Peer review: pr-sweep 0 open PRs. Platform integrity 14/14 GREEN, lifecycle sweep GREEN (weekend RTH skip). Deploy drift: prod rolling feaba670 (in_progress 25m+), main now 86227e70 (#3995+#3998) with pending ECR run 33978273189. Opened draft #4001 (agent state sync — awaits Claude review). GitHub GraphQL rate-limited until ~17:06 UTC; REST still works. Next: monitor ECR → validate:deploy post-rollout; Claude peer-review #4001 + any new claude/* PRs."
+    },
+    {
+      "at": "2026-09-05T18:56:11.829Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:56:11.831Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3a902721-429c-4e45-b1bb-37ff16bd958d",
+      "summary": "pull_request wake: #3993 merged on main. Peer-reviewed #4026 REST PR-sync fallback — verify GREEN, 18/18 tests, syncContext now finds 6 open PRs (was 0 under rate limit). APPROVED+undrafted. cursor/* CQ batches #4023-4027 still draft — Cursor RECUSE, Claude peer-review when ready. Platform lifecycle GREEN (14/14 integrity, deploy, ops:collect 0). Weekend RTH skipped."
+    },
+    {
+      "at": "2026-09-05T18:56:16.678Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:56:28.747Z",
+      "type": "pr_review",
+      "pr": 4026,
+      "head_sha": "c07398f58cd337fc392fc9d4b80303a6b245d3f2",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T18:56:28.746Z",
+      "safe_to_merge": true
     }
   ],
   "pr_activity": {
