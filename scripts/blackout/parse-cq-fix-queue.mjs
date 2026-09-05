@@ -16,6 +16,7 @@ const ACTIONABLE = {
   "095": { gap: "internals_estimated UI badge (0 tsx consumers)", status: "FIXED_BATCH1", pr: "cursor/cq-fix-pass-batch1" },
   "173": { gap: "premium gate functional 403 test", status: "FIXED_BATCH1", pr: "cursor/cq-fix-pass-batch1" },
   "007": { gap: "email enumeration via isNew response", status: "FIXED_BATCH1", pr: "cursor/cq-fix-pass-batch1" },
+  "003": { gap: "JWT fast-path tier downgrade window", status: "FIXED_BATCH2", pr: "cursor/cq-fix-pass-batch2" },
   "113": { gap: "JWT fast-path bypasses pub/sub tier invalidation", status: "FIXED_BATCH2", pr: "cursor/cq-fix-pass-batch2" },
   "114": { gap: "Whop webhook Redis fail-open has no ops alert", status: "FIXED_BATCH3", pr: "cursor/cq-fix-pass-batch3" },
   "054": { gap: "evaluateVectorPickLiveStatus spot<=0 guard + test", status: "FIXED_BATCH2", pr: "cursor/cq-fix-pass-batch2" },
