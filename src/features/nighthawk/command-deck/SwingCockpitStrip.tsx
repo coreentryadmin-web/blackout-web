@@ -1,25 +1,23 @@
 "use client";
 
 import type { TerminalPlay } from "./types";
-import type { SwingSectionCounts } from "./swing-section-filter";
 import { formatScanFreshnessEt } from "./swing-cockpit-utils";
 
 const WORKING = new Set(["OPEN", "HOLD", "TRIM"]);
+const WATCHING = new Set(["WATCH", "SKIP"]);
 
 export function SwingCockpitStrip({
   plays,
-  sectionCounts,
   scanAsOf,
   winRatePct,
 }: {
   plays: readonly TerminalPlay[];
-  sectionCounts: SwingSectionCounts;
   scanAsOf: string | null;
   winRatePct: number | null;
 }) {
   const working = plays.filter((p) => WORKING.has(p.status));
   const openCount = working.length;
-  const watchCount = sectionCounts.WATCH + sectionCounts.RESEARCH + sectionCounts.COMMIT_NOW + sectionCounts.WAITING_FOR_ENTRY;
+  const watchCount = plays.filter((p) => WATCHING.has(p.status)).length;
   const pnls = working.map((p) => p.pnlPct).filter((n): n is number => n != null && Number.isFinite(n));
   const sessionPnl =
     pnls.length > 0 ? Math.round((pnls.reduce((a, b) => a + b, 0) / pnls.length) * 10) / 10 : null;

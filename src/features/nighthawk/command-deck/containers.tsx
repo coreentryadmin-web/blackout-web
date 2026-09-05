@@ -56,14 +56,7 @@ import { useZeroDteLiveDeck } from "./use-zero-dte-live-deck";
 import { zeroDteSources, isBoardDegraded, type BoardResp } from "./zerodte-sources";
 import { EDITION_TARGET_PLAYS } from "@/features/nighthawk/lib/constants";
 import { isMorningConfirmStale, formatCheckedAtEt } from "@/features/nighthawk/lib/morning-confirm-verdict";
-import { SWING_SERVING_SECTIONS } from "@/lib/swing/serving";
-import {
-  rowsForSwingSection,
-  swingSectionCounts,
-  emptySwingSectionHint,
-  SWING_SECTION_LABEL,
-  type SwingSectionFilter,
-} from "./swing-section-filter";
+import { rowsForSwingSection } from "./swing-section-filter";
 import { NIGHTHAWK_COMPACT_LANE_LABEL } from "@/features/nighthawk/lib/nighthawk-view";
 import { zeroDteEmptyHint } from "../lib/deck-empty-hint";
 import { etNowParts } from "@/features/nighthawk/lib/session";
@@ -214,30 +207,15 @@ export function HorizonDeck({
     { refreshInterval: 30_000 },
   );
   const swingWinRate = swingRecord?.summary?.win_rate_pct ?? null;
-  const [sectionFilter, setSectionFilter] = useState<SwingSectionFilter>("ALL");
-  // Prefer the seven serving sections when present (SWING) — flat committed/watch is back-compat only and
-  // collapses COMMIT_NOW + WAITING_FOR_ENTRY into one misleading "committed" rail.
-  // Seven sections, selectable (FINDINGS 2026-08-06 swing audit P2): these used to be concatenated
-  // into one flat list, so `serving.ts`'s whole reason to exist — telling a member what is
-  // ACTIONABLE vs merely forming — survived only as a small per-card badge. ALL keeps the previous
-  // behaviour as the default view, so nobody's board changes until they choose a section.
+  // Flatten all serving sections — member filter is OPEN/WATCH/CLOSED (same as 0DTE), not seven rails.
   const hasSections = horizon === "SWING" && lane?.sections != null;
-  const sectionCounts = useMemo(() => swingSectionCounts(lane?.sections), [lane?.sections]);
-  const sectionRows = hasSections ? rowsForSwingSection(lane!.sections, sectionFilter) : null;
-  const rows = sectionRows ?? [...(lane?.committed ?? []), ...(lane?.watch ?? [])];
-  const researchCount = horizon === "SWING" ? (lane?.sections?.RESEARCH?.length ?? 0) : 0;
-  const watchCount = horizon === "SWING" ? (lane?.sections?.WATCH?.length ?? 0) : 0;
-  // A filtered-empty section is NOT an empty lane — saying "scanning the whole market" while 40
-  // names sit one tab over would be actively misleading.
-  const sectionEmptyHint = hasSections ? emptySwingSectionHint(sectionFilter, sectionCounts) : null;
+  const rows = hasSections
+    ? rowsForSwingSection(lane!.sections, "ALL")
+    : [...(lane?.committed ?? []), ...(lane?.watch ?? [])];
   const emptyHint = degraded
     ? "Lane data unavailable right now — retrying. This is a data outage, not an empty board."
-    : sectionEmptyHint
-      ? sectionEmptyHint
-      : horizon === "SWING" && rows.length === 0
-      ? researchCount > 0 || watchCount > 0
-        ? "Swing scan active — names building persistence appear in Research once enriched."
-        : "Whole-market swing discovery runs on a phase cadence — first sightings need ≥2 sessions (or corroboration for event setups) before WATCH."
+    : horizon === "SWING" && rows.length === 0
+      ? "Whole-market swing discovery runs on a phase cadence — first sightings need ≥2 sessions (or corroboration for event setups) before WATCH."
       : `Scanning the whole market for ${horizon === "SWING" ? "Swing" : "LEAPS"} setups — this lane is coming online.`;
   const basePlays = useMemo<TerminalPlay[]>(
     () =>
@@ -311,28 +289,8 @@ export function HorizonDeck({
       {horizon === "SWING" && (
         <>
           <SwingAnalyticsPanel />
-          <SwingCockpitStrip
-            plays={playsWithTrack}
-            sectionCounts={sectionCounts}
-            scanAsOf={scanAsOf}
-            winRatePct={swingWinRate}
-          />
+          <SwingCockpitStrip plays={playsWithTrack} scanAsOf={scanAsOf} winRatePct={swingWinRate} />
         </>
-      )}
-      {hasSections && (
-        <div className="nh-deck-filterbar nh-deck-filterbar--sections" role="group" aria-label="Filter swing plays by serving section">
-          {(["ALL", ...SWING_SERVING_SECTIONS] as SwingSectionFilter[]).map((sec) => (
-            <button
-              key={sec}
-              type="button"
-              className={clsx("nh-deck-filtbtn", sectionFilter === sec && "on")}
-              aria-pressed={sectionFilter === sec}
-              onClick={() => setSectionFilter(sec)}
-            >
-              {SWING_SECTION_LABEL[sec]} <span className="cnt">{sectionCounts[sec]}</span>
-            </button>
-          ))}
-        </div>
       )}
       <CommandDeck
       plays={playsWithTrack}
