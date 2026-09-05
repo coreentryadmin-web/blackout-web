@@ -128,6 +128,14 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** If GEX snapshot age shows stale on SPX desk during RTH, confirm play rail does not surface new BUY entries for that desk state.
 
+### 0a-1h. VIX SSE pulse change% used session-open anchor — fix/vix-pulse-change-pct-rebase (pending)
+
+**What was broken:** `usePulseStream` derived SPX `change_pct` from `prior_close` but transported VIX `change_pct` raw from the WS index store. Mid-session cold starts could show a ws-bar-anchored VIX day-change that disagreed with the true prior-close move — same defect class as the 2026-08-07 SPX P0.
+
+**Fix:** Add `vix_prior_close` to the pulse payload (from Polygon index snapshot `prev_close`), derive `vix_change_pct` via `pulseChangePctFromPriorClose` on REST pulse + SSE overlay.
+
+**Check at the open:** SPX desk header with SSE connected — VIX day-change % should match Polygon `I:VIX` session `change_percent` (data-validator cross-check), not oscillate when only the stream reconnects mid-session.
+
 ### 0a-1e. Vector Largo freshness: future `asOf` clamped to "live" — #3979 MERGED
 
 **What was broken:** `describeVectorFreshness()` clamped negative age to 0 and classified `freshnessFromAgeMs(0)` as **live**. A Vector snapshot stamped >5s ahead of the reader (cron writer vs API reader clock skew) read as falsely fresh — Largo/Cortex consumers could present stale tape as live.
