@@ -20,15 +20,13 @@
 | Q30 | shadow G-S6/G-S14 | #3859 |
 | Q3/Q5/Q6/Q15/Q20-Q22/Q26 | deep-dive batch | **#3878 MERGED** |
 
-### In PR (round 2)
-| Q | Fix | PR |
-|---|-----|-----|
-| Q36 | evidence-only terminal guard | **#3901** (draft) |
-| Q37 | singleton claim + roll revalidation | **#3899** (draft) |
-| Q38 | stale underlying spot guard | **MERGED #3893** |
-| Q40+Q41 | markAsOf + SSE tier recheck | **MERGED #3895** |
-| Q31+Q32 | member Discord alerts | **#3903** (draft) |
-| discovery spot | WATCH spot freshness (#3893 sibling) | **#3902** (draft) |
+### In PR (round 2 — awaiting Claude peer review @ CURRENT HEAD)
+| Q | Fix | PR | verify | peer |
+|---|-----|-----|--------|------|
+| Q36 | evidence-only terminal guard | **#3901** | GREEN | Claude ⏳ |
+| Q37 | singleton claim + roll revalidation | **#3899** | GREEN | Claude ⏳ |
+| Q31+Q32 | member Discord alerts | **#3903** (draft) | pending | undraft after verify → Claude |
+| discovery spot | WATCH spot freshness | **#3902** | MERGED | — |
 
 ### Merged (latest batch)
 | Q | Fix | PR |
