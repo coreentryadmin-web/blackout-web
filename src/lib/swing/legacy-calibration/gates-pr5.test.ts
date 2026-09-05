@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateSwingGates, type SwingGateContext } from "./gates.ts";
-import type { SwingDossier } from "./dossier.ts";
-import { SWING_SUB_LANES, SWING_ARCHETYPES, type SwingArchetype, type SwingSubLane } from "./taxonomy.ts";
-import type { ChainContract, PlayDirection } from "../horizon-fanout.ts";
+import { evaluateSwingGates, type SwingGateContext } from "./gates-pr5.ts";
+import type { SwingDossier } from "../dossier.ts";
+import { SWING_SUB_LANES, SWING_ARCHETYPES, type SwingArchetype, type SwingSubLane } from "../taxonomy.ts";
+import type { ChainContract, PlayDirection } from "../../horizon-fanout.ts";
 
 function fits(win: SwingArchetype): Record<SwingArchetype, number | null> {
   const f = {} as Record<SwingArchetype, number | null>;

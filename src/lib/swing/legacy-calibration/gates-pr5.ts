@@ -1,7 +1,7 @@
-// src/lib/swing/gates.ts — the SWING 3-way decision gate: COMMIT / WATCH / SKIP (PR-5).
+// src/lib/swing/legacy-calibration/gates-pr5.ts — PR-5 COMMIT/WATCH/SKIP calibration reference (NOT production).
 //
-// @deprecated PRODUCTION V2 uses `src/lib/swing/v2/gates.ts` (G-S3 earnings, G-S6 confluence, G-S14 Cortex,
-// quote_stale, daily_bar_incomplete). This module is retained for unit tests and calibration evidence only.
+// Production V2 uses `src/lib/swing/v2/gates.ts`. This module is retained for unit tests and calibration
+// evidence only (EDGE vs STRUCTURAL split, provisional score-floor routing).
 // Liquidity/spread checks here are intentionally unwired in the live commit path — see swing deep-dive Q7.
 //
 // This is the decision layer that turns a scored dossier + a chosen contract into a verdict. Its ONE hard rule,
@@ -26,12 +26,12 @@
 // PURE & deterministic — no IO. Reuses the canonical setup-state / entry-model / theme resolvers so the gate
 // and the (future) allocator agree on the same partitions.
 
-import type { ChainContract, LiquidityGate } from "../horizon-fanout";
-import { ARCHETYPE_META, SWING_SUB_LANES, type SwingSetupState } from "./taxonomy";
-import type { SwingDossier } from "./dossier";
-import { deriveSetupState, type SetupStateReads } from "./setup-state";
-import { deriveEntryPlan, type EntryReads, type SwingEntryPlan } from "./entry-model";
-import { checkPortfolioOverlap, type PortfolioPosition } from "./portfolio";
+import type { ChainContract, LiquidityGate } from "../../horizon-fanout";
+import { ARCHETYPE_META, SWING_SUB_LANES, type SwingSetupState } from "../taxonomy";
+import type { SwingDossier } from "../dossier";
+import { deriveSetupState, type SetupStateReads } from "../setup-state";
+import { deriveEntryPlan, type EntryReads, type SwingEntryPlan } from "../entry-model";
+import { checkPortfolioOverlap, type PortfolioPosition } from "../portfolio";
 
 export type SwingVerdict = "COMMIT" | "WATCH" | "SKIP";
 

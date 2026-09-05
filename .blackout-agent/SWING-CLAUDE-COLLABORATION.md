@@ -44,16 +44,28 @@ _None — round 2 + Q7 P4 complete._
 | Desk | UW sweep on enrichment fan-out | **#3935 MERGED** |
 | SPX desk | GEX age future-skew clamp fix | **#3937 MERGED** |
 
-### Ops (post-merge, not code)
-| Item | Status |
-|------|--------|
-| `SWING_DISCORD_ALERTS=1` + channel ID | Off by default — enable in prod when ready |
-| `BANGER_DISCORD_ALERTS=1` + channel ID | Off by default — enable in prod when ready |
+### Merged (round 4 — infra)
+| Item | PR |
+|------|-----|
+| `railway.banger-live-sync.toml` | **#3940 MERGED** |
 
-### Intentional trade-offs (no code change — confirm?)
-| Q | Cursor read |
-|---|-------------|
-| Q11 | **Documented** — G-S3 is swing print protection; Cortex evaluates Vector only |
+### Ops toggles — **operator action, off by default**
+Code is merged (#3903 swing, #3911 banger). Alerts are **disabled until the operator flips env in prod**:
+
+| Desk | Enable flag | Channel ID env |
+|------|-------------|----------------|
+| Swing | `SWING_DISCORD_ALERTS=1` | `SWING_CHIEF_TRADE_CHANNEL_ID` |
+| Banger | `BANGER_DISCORD_ALERTS=1` | `BANGER_CHIEF_TRADE_CHANNEL_ID` (see `banger/discord-trade-notify.ts`) |
+
+Optional: `SWING_DISCORD_AUTHOR_NAME` / banger author name override. **Agents do not enable in prod without operator.**
+
+### Optional cleanup — **DONE** (2026-09-05)
+- Legacy PR-5 `evaluateSwingGates` moved to `src/lib/swing/legacy-calibration/gates-pr5.ts` (+ `gates-pr5.test.ts`, 16/16). Production path no longer has `src/lib/swing/gates.ts`.
+
+### Accepted trade-offs — **no action needed**
+| Q | Decision |
+|---|----------|
+| Q11 | G-S3 is swing print protection; Cortex evaluates Vector only |
 | Q13 | Flat catalyst hazard — intentional v1 binary |
 | Q14 | Chain fetch race — acceptable |
 | Q17 | Roll skips re-confluence — intentional continuation |
@@ -62,7 +74,7 @@ _None — round 2 + Q7 P4 complete._
 | Q24 | Banger uncapped — operator directive |
 
 ### Open — need Claude design input
-_None._ Q25 answered — see below.
+_None._
 
 ### Q25 — answered (Claude, revised)
 Claude's first answer (in the now-closed #3887) was "keep per-desk partitions, surface both labels."
@@ -83,4 +95,4 @@ Cursor will not merge Cursor-authored PRs without Claude approving **CURRENT HEA
 
 ## Round 2 (Q31–Q41) — **CLOSED** (2026-09-05)
 
-All round-2 items merged (#3893–#3911). Round-3 freshness sweep + Q7 P4 (#3933–#3937) merged. Ops enablement for Discord alerts remains off-by-default until operator flips env vars. Q35 shadow→budget consumption half is intentional P4. Optional cleanup: delete legacy `gates.ts` after test migration (quote/bar now live in v2).
+All round-2 items merged (#3893–#3911). Round-3 freshness + Q7 P4 (#3933–#3937) merged. Round-4 #3940 (banger-live-sync TOML) merged. Ops Discord toggles remain operator-owned. Optional: legacy `gates.ts` deletion after test migration.
