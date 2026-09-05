@@ -363,6 +363,21 @@ export async function fetchMiniPanelPayload(input: {
         break;
       }
       case "nighthawk": {
+        if (subId === "swing" || subId === "swings") {
+          const { swingHorizonForLargo } = await import("@/lib/largo/product-reads");
+          const lane = await swingHorizonForLargo().catch(() => null);
+          const sample = (lane as { sample_plays?: Array<{ ticker?: string; status?: string; score?: number | null }> } | null)?.sample_plays ?? [];
+          const hit = sample.find((p) => (p.ticker ?? "").toUpperCase() === ticker);
+          const counts = (lane as { section_counts?: Record<string, number> } | null)?.section_counts ?? {};
+          const openManaged = (counts.MANAGING ?? 0) + (counts.SCALING_OUT ?? 0) + (counts.EXITING ?? 0);
+          base.rows = [
+            { label: "On lane", value: hit ? hit.status ?? "—" : "—" },
+            { label: "Score", value: hit?.score != null ? String(hit.score) : "—" },
+            { label: "Open book", value: String(openManaged) },
+            { label: "Watch", value: String((lane as { watch_count?: number } | null)?.watch_count ?? 0) },
+          ];
+          break;
+        }
         const zerodte = await import("@/lib/platform/zerodte-service")
           .then((m) => m.zeroDtePlaysForLargo())
           .catch(() => null);
