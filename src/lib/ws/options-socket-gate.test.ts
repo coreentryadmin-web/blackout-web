@@ -46,6 +46,11 @@ test("options-socket: live mark freshness uses isWsUpdatedAtFresh (source scan)"
   );
   assert.match(
     src,
+    /isWsUpdatedAtFresh\(hit\.ts, maxAgeMs\)/,
+    "getLiveOptionMark async Redis fallback must reject clock-skewed future quote stamps"
+  );
+  assert.match(
+    src,
     /last_message_age_ms: this\.lastMessageAt \? wsUpdatedAtAgeMs\(this\.lastMessageAt\) : null/,
     "admin status age_ms must clamp negative skew"
   );
