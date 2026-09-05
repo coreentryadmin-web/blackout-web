@@ -27,6 +27,9 @@
 | Q6 | deleted dead `v2/data-fusion.ts`; `swing-ingest.ts` canonical |
 | Q15 | omitted-horizon → `0dte` cortex fetch test |
 | Q22 | legacy `NIGHT HAWK` → `legacy:exempt` gate chip |
+| Q26 | CLOSED tab chain-composite P&L |
+| **Q12** | `finalizeSwingDossierForArchetype` — post-classify catalyst realign |
+| **Q16** | `manage-edge-reads.ts` + active-refresh wiring |
 
 ### Intentional trade-offs (no code change — confirm?)
 | Q | Cursor read |
@@ -42,8 +45,6 @@
 ### Open — need Claude design input
 | Q | Ask |
 |---|-----|
-| **Q12** | After archetype reclassify we realign `subLane` but not `earningsInWindow`. Should we re-run `deriveCatalystReads` with `intendedDteForArchetype` on every dossier post-classify, or only for event archetypes? |
-| **Q16** | `thesisBroken` / `catalystShift` / `regimeShift` / `flowDecayed` / `relStrengthLost` unwired in active-refresh. Proposed P2: pure `manage-edge-reads.ts` per archetype rules. Which archetype-specific invalidation rules are P1 vs P4? |
 | **Q25** | 0DTE `CORRELATION_GROUPS` vs swing `sectorFor` disagree on AAPL cluster. Canonical source: shared map in `portfolio/`, or documented per-desk with cross-desk heat view later? |
 
 ## Review asks for Claude

@@ -29,6 +29,7 @@
 // orchestration is testable without a live DB or provider (Postgres/WS are blocked in the sandbox anyway).
 
 import { buildSwingDossier, type SwingDossier, type SwingDossierInput } from "./dossier";
+import { deriveCatalystReads } from "./swing-catalyst";
 import {
   observeSwingCandidate,
   fetchWatchEligible,
@@ -159,6 +160,50 @@ export function intendedDteForArchetype(
   return fallback;
 }
 
+/**
+ * After archetype classification, realign sub-lane + catalyst reads to the archetype's natural horizon so
+ * `earningsInWindow` and the CATALYST pillar hazard describe the window the member actually trades (Q12).
+ */
+export function finalizeSwingDossierForArchetype(
+  input: SwingDossierInput,
+  scanDefaultDte: number,
+): SwingDossier {
+  const preliminary = buildSwingDossier(input);
+  const finalDte = intendedDteForArchetype(preliminary.archetype.archetype, scanDefaultDte);
+  const lane = subLaneForDte(finalDte);
+
+  const derive = input.catalystDerive;
+  const hasCatalystContext =
+    derive != null &&
+    ((derive.freshCatalystAgeDays != null && Number.isFinite(derive.freshCatalystAgeDays)) ||
+      derive.earnings.nextEarnings != null ||
+      derive.earnings.lastEarnings != null);
+
+  if (!hasCatalystContext) {
+    return lane != null && lane !== preliminary.subLane ? { ...preliminary, subLane: lane } : preliminary;
+  }
+
+  const catReads = deriveCatalystReads({
+    ...derive!,
+    intendedDte: finalDte,
+  });
+  const alignedInput: SwingDossierInput = {
+    ...input,
+    intendedDte: finalDte,
+    archetypeExtras: {
+      ...input.archetypeExtras,
+      catalystInWindow01: catReads.catalystInWindow01,
+      earningsGapRecent01: catReads.earningsGapRecent01,
+      postEarningsDrift01: catReads.postEarningsDrift01,
+    },
+    catalyst:
+      catReads.catalystStrength01 != null
+        ? { catalystStrength01: catReads.catalystStrength01, earningsInWindow: catReads.earningsInWindow }
+        : undefined,
+  };
+  return buildSwingDossier(alignedInput);
+}
+
 /** Bounded-concurrency map — preserve input order in the output array. */
 async function mapPool<T, R>(items: readonly T[], concurrency: number, fn: (item: T, idx: number) => Promise<R>): Promise<R[]> {
   if (items.length === 0) return [];
@@ -247,11 +292,14 @@ export function rankTierZeroSeeds(
  * accumulation read is null, so it simply scores without the FLOW pillar (FM#1). Nothing is filtered out on
  * score: the gate/persistence layer decides what surfaces, not this producer.
  */
-export function deriveSwingCandidates(seeds: SwingCandidateSeed[]): SwingDossier[] {
+export function deriveSwingCandidates(
+  seeds: SwingCandidateSeed[],
+  scanDefaultDte = DEFAULT_SWING_DISCOVERY_CONFIG.intendedDte,
+): SwingDossier[] {
   const out: SwingDossier[] = [];
   for (const s of seeds) {
     try {
-      out.push(buildSwingDossier(s.input));
+      out.push(finalizeSwingDossierForArchetype(s.input, scanDefaultDte));
     } catch {
       // Per-candidate isolation: one poisoned seed must not abort the whole scan batch.
     }
@@ -738,14 +786,7 @@ export async function runSwingDiscoveryScan(
   });
   const candidateSeeds: SwingCandidateSeed[] = enrichedOrNull.filter((s): s is SwingCandidateSeed => s != null);
 
-  // ── SCORE (pure). ──
-  // After classify, realign sub-lane to the archetype's natural horizon (event theses → TACTICAL) so the
-  // contract ranker + graduation bucket match the thesis duration — not a flat 14d STANDARD for every name.
-  const dossiers = deriveSwingCandidates(candidateSeeds).map((d) => {
-    const want = intendedDteForArchetype(d.archetype.archetype, cfg.intendedDte);
-    const lane = subLaneForDte(want);
-    return lane != null && lane !== d.subLane ? { ...d, subLane: lane } : d;
-  });
+  const dossiers = deriveSwingCandidates(candidateSeeds, cfg.intendedDte);
 
   let confluenceNearMissCount = 0;
   if (engineV2) {

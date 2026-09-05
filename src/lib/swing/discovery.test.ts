@@ -4,6 +4,8 @@ import {
   mergeTierZeroScreens,
   rankTierZeroSeeds,
   deriveSwingCandidates,
+  finalizeSwingDossierForArchetype,
+  intendedDteForArchetype,
   runSwingDiscoveryScan,
   computeSwingDiscoveryRecall,
   liquidityTierForDollar,
@@ -17,6 +19,7 @@ import {
   type TierZeroSeed,
 } from "./discovery.ts";
 import { assembleSwingDossierInput } from "./swing-ingest.ts";
+import { parseEarningsWindows } from "./swing-catalyst.ts";
 import type { SwingAccumAccessors } from "./accumulation-store.ts";
 import type { SwingAccumRow, SwingPositionInsert } from "../db.ts";
 import type { SwingCalibrationRow } from "./calibration.ts";
@@ -140,6 +143,35 @@ test("FM#1: a flow-less structure-only candidate STILL produces a dossier", () =
   assert.equal(dossiers[0].ticker, "ASTS");
   assert.equal(dossiers[0].direction, null, "no flow → no signed direction");
   assert.ok(dossiers[0].score.presentCount > 0, "still scores on the pillars it CAN ground (structure/rel-strength)");
+});
+
+test("finalizeSwingDossierForArchetype: earningsInWindow realigns to archetype DTE (Q12)", () => {
+  const asOfMs = Date.parse("2026-07-24T21:00:00.000Z");
+  const earnings = parseEarningsWindows(
+    [{ earnings_date: "2026-08-01", is_confirmed: true }],
+    asOfMs,
+  );
+  const input = assembleSwingDossierInput({
+    ticker: "MRNA",
+    asOf: "2026-07-24T21:00:00.000Z",
+    intendedDte: 14,
+    accumulation: bullSignal("MRNA"),
+    flowWindowDays: 5,
+    nameCloses: ASC,
+    spyCloses: FLAT_SPY,
+    catalyst: {
+      freshCatalystAgeDays: 0,
+      earnings,
+    },
+  });
+  // Pre-classify at 14d: earnings 8 sessions out is in-window.
+  assert.equal(input.catalyst?.earningsInWindow, true, "pre-classify 14d window includes 8d-out print");
+
+  const dossier = finalizeSwingDossierForArchetype(input, 14);
+  assert.equal(dossier.archetype.archetype, "EVENT_DRIVEN");
+  assert.equal(intendedDteForArchetype("EVENT_DRIVEN", 14), 5);
+  assert.equal(dossier.subLane, "TACTICAL");
+  assert.equal(dossier.earningsInWindow, false, "post-classify 5d window excludes 8d-out print");
 });
 
 // ── IO shell (fully injected deps) ────────────────────────────────────────────────

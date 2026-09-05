@@ -37,6 +37,7 @@ import {
   type ArchetypeReadExtras,
 } from "./archetype";
 import type { SwingPlanLevels } from "./structure-levels";
+import type { SwingEarningsWindows } from "./swing-catalyst";
 
 /** Bump when the carrier's shape changes so old graded/persisted dossiers stay interpretable. */
 export const SWING_DOSSIER_VERSION = 1;
@@ -119,6 +120,12 @@ export interface SwingDossierInput {
   topFlowStrike?: number | null;
   /** UW EOD IV rank (0–100 or 0–1) when resolved at ingest — optional, pinned onto the dossier. */
   ivRank?: number | null;
+  /** Raw catalyst derive inputs — re-run post-classify so earningsInWindow matches the archetype DTE (Q12). */
+  catalystDerive?: {
+    signedReturnPct10d: number | null;
+    freshCatalystAgeDays: number | null;
+    earnings: SwingEarningsWindows;
+  };
 }
 
 function toIso(asOf: SwingDossierInput["asOf"]): string {

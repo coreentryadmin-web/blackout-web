@@ -51,11 +51,17 @@ import type { SwingArchetype } from "@/lib/swing/taxonomy";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import { occSymbolFromSwingRow } from "@/lib/swing/occ-from-row";
 import { thesisProgress01, volCollapsedFromIvRanks, addEligibleFromProgress } from "@/lib/swing/thesis-progress";
+import { SWING_RETURN_LOOKBACK_SESSIONS } from "@/lib/swing/swing-ingest";
 import {
   createDailyClosesBetaSource,
   fetchNameBeta,
   type CloseBar,
 } from "@/lib/swing/beta";
+import {
+  commitPillarsFromFeatureVector,
+  deriveManageEdgeReads,
+  liveManageEdgePillars,
+} from "@/lib/swing/manage-edge-reads";
 import { fetchStockDailyBars } from "@/lib/providers/polygon";
 import {
   readSwingServingSnapshot,
@@ -152,6 +158,22 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
     });
     const budget = resolveProductionPortfolioBudget();
     const sessionDay = todayEt(new Date(nowMs));
+    const barLookbackFrom = new Date(nowMs - 200 * 86_400_000).toISOString().slice(0, 10);
+    const closesCache = new Map<string, Promise<CloseBar[]>>();
+    const closesFor = (ticker: string): Promise<CloseBar[]> => {
+      const key = ticker.toUpperCase();
+      let cached = closesCache.get(key);
+      if (!cached) {
+        cached = fetchStockDailyBars(key, barLookbackFrom, sessionDay).then((bars) =>
+          bars
+            .map((b) => ({ t: typeof b.t === "number" ? b.t : undefined, c: Number(b.c) }))
+            .filter((b) => Number.isFinite(b.c)),
+        );
+        closesCache.set(key, cached);
+      }
+      return cached;
+    };
+    const spyClosesPromise = closesFor("SPY").then((bars) => bars.map((b) => b.c));
     // The roll child needs a fresh chain — the SAME resolver discovery uses; fail-soft (→ []) per name.
     const fetchChainRows = async (ticker: string) => {
       try {
@@ -183,11 +205,13 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
       // via null-honesty, but the underlying path + snapshot still record). The live mark ALSO lets the roll
       // executor freeze the parent grade at roll time (roll-plan.ts gradeParentFromMark).
       loadReads: async (row): Promise<ManageSyncReads | null> => {
-        const [spot, optionQuote, ivRank] = await Promise.all([
+        const [spot, optionQuote, ivRank, nameBars, spyCloses] = await Promise.all([
           loadUnderlyingSpot(row.ticker),
           loadOptionQuote(row),
           // EOD-cadence, Redis-cached — never a per-tick UW blast. Honest null on miss.
           fetchUwIvRank(row.ticker).catch(() => null),
+          closesFor(row.ticker).catch(() => [] as CloseBar[]),
+          spyClosesPromise.catch(() => [] as number[]),
         ]);
         if (spot == null) return null; // no usable underlying read → skip (fail-soft, no snapshot)
         const mark = optionQuote.mark;
@@ -202,6 +226,24 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
           entryPx: row.entry_underlying_px,
           targetPx: row.target_underlying_px,
           spot,
+        });
+        const sessionsHeld = sessionsHeldFromRow(row, nowMs);
+        const nameCloses = nameBars.map((b) => b.c);
+        const livePillars =
+          nameCloses.length > SWING_RETURN_LOOKBACK_SESSIONS && spyCloses.length > SWING_RETURN_LOOKBACK_SESSIONS
+            ? liveManageEdgePillars({
+                nameCloses,
+                spyCloses,
+                direction: row.direction === "short" ? "short" : "long",
+              })
+            : null;
+        const edge = deriveManageEdgeReads({
+          archetype: row.archetype,
+          direction: row.direction === "short" ? "short" : "long",
+          sessionsHeld,
+          thesisProgress01: progress,
+          commit: commitPillarsFromFeatureVector(row.feature_vector),
+          live: livePillars,
         });
         return {
           underlyingPrice: spot,
@@ -220,7 +262,7 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
           // Structural stop = pinned thesis invalidation (underlying terms) — without this, gate 2 never fires.
           structuralStopLevel: row.thesis_invalidation_px,
           // Sessions held → time_stop advisory rung (STANDARD 8 / EXTENDED 14) — only with thesisProgress01.
-          sessionsHeld: sessionsHeldFromRow(row, nowMs),
+          sessionsHeld,
           // Progress toward pinned target — without this, time_stop is permanently inert.
           thesisProgress01: progress,
           // Fresh IV rank → feature-vector iv_rank (wins over commit-pinned value when present).
@@ -233,6 +275,13 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
             entryPremium: row.entry_premium,
             mark,
           }),
+          // Management edge reads (deep-dive Q16) — wire rungs #2/#5/#6/#8/#9 in production.
+          thesisBroken: edge.thesisBroken,
+          thesisBreakReason: edge.thesisBreakReason,
+          catalystShift: edge.catalystShift,
+          regimeShift: edge.regimeShift,
+          flowDecayed: edge.flowDecayed,
+          relStrengthLost: edge.relStrengthLost,
           // Ladder-graduated edge rungs → manage.ts flips advisory→enforced for those rungs only.
           graduatedRungs,
         };
@@ -295,22 +344,6 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
     const BETA_CACHE_TTL_SEC = 6 * 60 * 60;
     let betasResolved = 0;
     try {
-      const from = new Date(nowMs - 200 * 86_400_000).toISOString().slice(0, 10);
-      const to = sessionDay;
-      const closesCache = new Map<string, Promise<CloseBar[]>>();
-      const closesFor = (ticker: string): Promise<CloseBar[]> => {
-        const key = ticker.toUpperCase();
-        let cached = closesCache.get(key);
-        if (!cached) {
-          cached = fetchStockDailyBars(key, from, to).then((bars) =>
-            bars
-              .map((b) => ({ t: typeof b.t === "number" ? b.t : undefined, c: Number(b.c) }))
-              .filter((b) => Number.isFinite(b.c)),
-          );
-          closesCache.set(key, cached);
-        }
-        return cached;
-      };
       const source = createDailyClosesBetaSource({ fetchCloses: closesFor });
       for (const row of openRows.slice(0, 25)) {
         const cacheKey = `swing:beta:${row.ticker.toUpperCase()}:v1`;

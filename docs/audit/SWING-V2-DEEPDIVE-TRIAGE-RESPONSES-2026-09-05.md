@@ -15,11 +15,11 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 | 9 | **(c)** | **MERGED** #3852 — halt/LULD |
 | 10 | **(c)** | **MERGED** #3850 — G-S3 earnings binary |
 | 11 | **(c)** | **Partial** — G-S3 blocks commit; Cortex earnings reader still open (see collaboration doc) |
-| 12 | **(c)** | Open — recompute `earningsInWindow` post-classify (needs design) |
+| 12 | **(c)** | **PR open** — `finalizeSwingDossierForArchetype` re-runs `deriveCatalystReads` post-classify |
 | 13 | **(a)** | Document; optional proximity-scaled hazard later |
 | 14 | **(a)** | Accept race; optional cross-horizon coalesce later |
 | 15 | **(c)** | **FIXED** — e2e test omitted horizon → `0dte` in `fetch.test.ts` |
-| 16 | **(c)** | Open — wire `thesisBroken`/edge reads in active-refresh (needs design) |
+| 16 | **(c)** | **PR open** — `manage-edge-reads.ts` wired in active-refresh `loadReads` |
 | 17 | **(a)** | Roll = continuation; optional re-confluence flag later |
 | 18 | **(c)** | **MERGED** #3842 |
 | 19 | **(a)** | Structural stop pinned to thesis level by design |
@@ -73,7 +73,7 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 **(c) real gap.** Swing Cortex reuses 0DTE readers; none read earnings calendar. 0DTE has hard `earnings` gate. **Fix:** add earnings-date reader or wire G-S3 before Cortex.
 
 ### Q12 — three intendedDte values
-**(c) real gap.** Pre-classify 14d in enrich, `catalystShortHorizon` in ingest, `intendedDteForArchetype` post-classify for subLane only — catalyst pillar not recomputed. **Fix:** recompute catalyst reads after archetype/subLane finalization.
+**(c) fixed in PR.** `assembleSwingDossierInput` pins `catalystDerive`; `finalizeSwingDossierForArchetype` re-runs `deriveCatalystReads` with `intendedDteForArchetype` after classification so `earningsInWindow`/CATALYST hazard match the traded horizon.
 
 ### Q13 — flat catalyst hazard discount
 **(a) intentional simplification** for v1: binary in-window hazard. Proximity is partially captured by `preEarnings01` on the same pillar. **Optional (c):** scale hazard term by `daysUntil` if calibration shows T-1 still committing too often.
@@ -85,7 +85,7 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 **(c) real gap (test coverage).** `fetch.test.ts` covers explicit `horizon: "swing"`; no e2e asserting omitted horizon → `"0dte"` through `evaluateCortexForCommit`. **Fix:** one integration test on default path.
 
 ### Q16 — management edge reads unwired
-**(c) real gap.** `loadReads` in active-refresh never sets `thesisBroken`, `catalystShift`, `regimeShift`, `flowDecayed`, `relStrengthLost`. Rungs #2/#5/#6/#8/#9 cannot fire in production.
+**(c) fixed in PR.** New pure `manage-edge-reads.ts` derives `thesisBroken`/`catalystShift`/`regimeShift`/`flowDecayed`/`relStrengthLost` from commit-pinned pillars + live daily-bar recompute; `swing-active-refresh` `loadReads` wires them into manage-sync.
 
 ### Q17 — roll skips G-S6/G-S14
 **(a) intentional:** roll continues authorized thesis; re-checks budget/caps/idempotency/DTE buffer only. **Optional (c):** advisory re-confluence flag on roll when RS/archetype inputs invert (P4).

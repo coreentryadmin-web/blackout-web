@@ -313,6 +313,12 @@ export function assembleSwingDossierInput(args: SwingReadsAssemblyArgs): SwingDo
     regime01,
     // DATA_QUALITY (pillar G) stays absent: it is an honesty meta-pillar the dossier already tracks via
     // `dataQuality.degraded`/`missing`; grounding it as a real 0–1 feed-agreement read is a follow-up (TODO).
+    // Pin catalyst derive inputs so discovery can re-align earningsInWindow after archetype classification (Q12).
+    catalystDerive: {
+      signedReturnPct10d: signed.returnPct10d,
+      freshCatalystAgeDays: args.catalyst?.freshCatalystAgeDays ?? null,
+      earnings: args.catalyst?.earnings ?? { nextEarnings: null, lastEarnings: null },
+    },
   };
 }
 
