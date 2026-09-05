@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0aw. GEX cross-validation + Polygon market-status cache future-at guard — fix/gex-cross-validation-market-status-future-guard (pending)
+
+**What was broken:** `getUwStrikeLadder()` (`gex-cross-validation.ts`) and `fetchMarketStatusNow()` (`polygon.ts`) still used raw `now - cachedAt < ttlMs`, so a clock-skewed future stamp read as infinitely fresh — same class as #3844–#3849.
+
+**Fix:** Route both in-process cache-hit gates through `isWsUpdatedAtFresh(cachedAt, ttlMs, now)`.
+
+**Check at the open:** Thermal matrix `cross_validation` should still populate when UW ladder is live; regime/market-phase surfaces using `fetchMarketStatusNow` should flip RTH/closed correctly after deploy (no stuck "closed" from a skewed cache).
+
 ### 0at. Off-hours `?force=1` desk-warm storm still unexplained — now logs caller IP/UA — fix/cache-warmer-caller-identity (pending)
 
 **What was broken:** Live measurement (this sweep) found `AWS/ApplicationELB` `TargetResponseTime` holding a healthy p50/p90 but p99 3.1-8.2s / Max 10.4-34.0s across 3+ straight off-hours hours (Sat 01:12-04:05 UTC) — tail latency, not fleet load. Root cause: `[cron/desk-warm]` fired 81 times in 3 hours (avg 28s, max 108.5s) via the documented `?force=1` off-hours bypass, entirely outside its deployed EventBridge schedule (weekday 11-21 UTC only). This is the SAME shape a 2026-09-04 investigation found and rate-limited (60s cooldown) after ruling out every known in-app dispatcher (EventBridge, `rth-warm-leader`, `cron-staleness-watchdog`) — the caller holds a valid `CRON_SECRET` but was never identified, because nothing captured about the request itself.
