@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T05:22:25.806Z",
+  "updated_at": "2026-09-05T05:26:48.166Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -238,9 +238,25 @@
       "pr": 3855,
       "head_sha": "f4c17b72e2c7349d2150625f1b7ad0304dffca3c",
       "reviewer": "cursor",
-      "verdict": "WAIT",
-      "reviewed_at": "2026-09-05T05:22:22.578Z",
-      "safe_to_merge": false
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:26:34.997Z",
+      "safe_to_merge": true
+    },
+    "pr-3863": {
+      "pr": 3863,
+      "head_sha": "e9039b92ae7c95ecf850aa30cd5507e062dd6cc2",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:26:34.763Z",
+      "safe_to_merge": true
+    },
+    "pr-3853": {
+      "pr": 3853,
+      "head_sha": "425682afadab04404fe998c1b0bb1cb1b9594574",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:26:42.696Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -255,11 +271,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "1fe3fc3ea0ed60bb7ecd25c0d925eeaa3ad7ae5d",
+    "last_main_sha": "b396edd301cb654c09afb4fc5d7f004b526c07a0",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T05:20:39Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33946953374",
-    "last_deploy_sha": "b396edd301cb654c09afb4fc5d7f004b526c07a0"
+    "last_deploy_at": "2026-09-05T05:26:43Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33947218979",
+    "last_deploy_sha": "c25a1d2f7c975dbbd7d145239de0da263dbf9c2b"
   },
   "open_prs": [],
   "events": [
@@ -1333,6 +1349,49 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T05:26:34.764Z",
+      "type": "pr_review",
+      "pr": 3863,
+      "head_sha": "e9039b92ae7c95ecf850aa30cd5507e062dd6cc2",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:26:34.763Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T05:26:34.998Z",
+      "type": "pr_review",
+      "pr": 3855,
+      "head_sha": "f4c17b72e2c7349d2150625f1b7ad0304dffca3c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:26:34.997Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T05:26:42.697Z",
+      "type": "pr_review",
+      "pr": 3853,
+      "head_sha": "425682afadab04404fe998c1b0bb1cb1b9594574",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:26:42.696Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T05:26:48.165Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T05:26:48.166Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "270a16aa-5625-41f0-bed1-033a4c725246",
+      "summary": "#3863/#3853/#3855 merged after Cursor APPROVED peer reviews. Future-timestamp guard sweep complete for SPX play-path, Vector universe, Polygon market-status. validate:deploy GREEN, ops:collect 0."
     }
   ],
   "pr_activity": {
