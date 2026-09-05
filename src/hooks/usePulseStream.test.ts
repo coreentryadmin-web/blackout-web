@@ -87,11 +87,29 @@ test("overlayFromStream returns nothing when the stream has no usable price", ()
   assert.deepEqual(overlay, {});
 });
 
-test("overlayFromStream leaves vix_change_pct transported (no VIX prior close to derive from)", () => {
-  // Documented limitation, not an oversight — SpxDeskPulse carries no vix prior close.
+test("overlayFromStream derives vix_change_pct from vix_prior_close, not the transported anchor", () => {
+  const VIX_PRIOR = 14.0;
+  const VIX_LIVE = 14.7;
+  const DERIVED_VIX_PCT = ((VIX_LIVE - VIX_PRIOR) / VIX_PRIOR) * 100;
+  const SESSION_ANCHORED_VIX_PCT = 4.9;
+  const overlay = overlayFromStream(
+    {
+      spx: { price: LIVE_PRICE, change_pct: SESSION_OPEN_ANCHORED_PCT },
+      vix: { price: VIX_LIVE, change_pct: SESSION_ANCHORED_VIX_PCT },
+    } as never,
+    basePulse({ vix_prior_close: VIX_PRIOR })
+  );
+  assert.ok(
+    Math.abs((overlay.vix_change_pct as number) - DERIVED_VIX_PCT) < 1e-9,
+    `expected derived VIX ${DERIVED_VIX_PCT.toFixed(4)}%, got ${overlay.vix_change_pct}`
+  );
+  assert.notEqual(overlay.vix_change_pct, SESSION_ANCHORED_VIX_PCT);
+});
+
+test("overlayFromStream falls back vix_change_pct when no vix_prior_close", () => {
   const overlay = overlayFromStream(
     { spx: { price: LIVE_PRICE, change_pct: 0.1 }, vix: { price: 14.9, change_pct: 4.9 } } as never,
-    basePulse()
+    basePulse({ vix_prior_close: null })
   );
   assert.equal(overlay.vix_change_pct, 4.9);
 });

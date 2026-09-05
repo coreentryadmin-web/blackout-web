@@ -360,6 +360,10 @@ export function mergePulseIntoDesk(
     price,
     spx_change_pct: pulse.spx_change_pct,
     vix,
+    vix_prior_close:
+      pulse.vix_prior_close != null && pulse.vix_prior_close > 0
+        ? pulse.vix_prior_close
+        : base.vix_prior_close,
     vix_change_pct: pulse.vix_change_pct,
     above_vwap: pulse.above_vwap,
     lod,
@@ -445,6 +449,7 @@ const signalDeskStub = (): SpxDeskPayload => ({
   price: 0,
   spx_change_pct: null,
   vix: null,
+  vix_prior_close: null,
   vix_change_pct: null,
   above_vwap: false,
   lod: null,

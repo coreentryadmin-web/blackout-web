@@ -939,6 +939,8 @@ export type SpxDeskPayload = {
   price: number;
   spx_change_pct: number | null;
   vix: number | null;
+  /** Prior-session VIX close — carried so SSE/WS overlays can re-derive day change% like SPX. */
+  vix_prior_close: number | null;
   vix_change_pct: number | null;
   above_vwap: boolean;
   lod: number | null;
@@ -1082,6 +1084,7 @@ export type SpxDeskPulse = Pick<
   | "price"
   | "spx_change_pct"
   | "vix"
+  | "vix_prior_close"
   | "vix_change_pct"
   | "above_vwap"
   | "lod"
@@ -1413,6 +1416,7 @@ function emptyPayload(asOf: string): SpxDeskPayload {
     price: 0,
     spx_change_pct: null,
     vix: null,
+    vix_prior_close: null,
     vix_change_pct: null,
     above_vwap: false,
     lod: null,
@@ -1731,7 +1735,12 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     // Derived from prior_close (served two lines below as `pdc`) — see pulseChangePctFromPriorClose.
     spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap?.change_pct),
     vix: roundDeskNum(vixSnap?.price ?? intel?.vix ?? null),
-    vix_change_pct: vixSnap?.change_pct ?? intel?.vix_change_pct ?? null,
+    vix_prior_close: roundDeskNum(vixSnap?.prev_close ?? null),
+    vix_change_pct: pulseChangePctFromPriorClose(
+      vixSnap?.price ?? intel?.vix ?? null,
+      vixSnap?.prev_close ?? null,
+      vixSnap?.change_pct ?? intel?.vix_change_pct ?? null
+    ),
     above_vwap: vwap != null ? price >= vwap : false,
     lod: roundDeskNum(lod),
     hod: roundDeskNum(hod),
@@ -1943,6 +1952,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     price: 0,
     spx_change_pct: null,
     vix: null,
+    vix_prior_close: null,
     vix_change_pct: null,
     above_vwap: false,
     lod: null,
@@ -2086,7 +2096,12 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     // the 2026-08-07 P0 was measured on.
     spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap?.change_pct),
     vix: vixSnap?.price ?? null,
-    vix_change_pct: vixSnap?.change_pct ?? null,
+    vix_prior_close: vixSnap?.prev_close ?? null,
+    vix_change_pct: pulseChangePctFromPriorClose(
+      vixSnap?.price,
+      vixSnap?.prev_close,
+      vixSnap?.change_pct
+    ),
     above_vwap: vwap != null ? price >= vwap : false,
     lod: sessionExtremes.lod,
     hod: sessionExtremes.hod,
@@ -2149,6 +2164,7 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
     price: 0,
     spx_change_pct: null,
     vix: null,
+    vix_prior_close: null,
     vix_change_pct: null,
     above_vwap: false,
     lod: null,
@@ -2196,7 +2212,12 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
         prior_close: prior.pdc,
         spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap?.change_pct),
         vix: snapsRaw[VIX]?.price ?? null,
-        vix_change_pct: snapsRaw[VIX]?.change_pct ?? null,
+        vix_prior_close: snapsRaw[VIX]?.prev_close ?? null,
+        vix_change_pct: pulseChangePctFromPriorClose(
+          snapsRaw[VIX]?.price,
+          snapsRaw[VIX]?.prev_close,
+          snapsRaw[VIX]?.change_pct
+        ),
         vwap: structure.vwap,
         ema20: structure.ema20,
         ema50: structure.ema50,

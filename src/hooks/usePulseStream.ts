@@ -60,9 +60,11 @@ export function overlayFromStream(
       snap.spx?.change_pct ?? base?.spx_change_pct ?? null
     ),
     vix: vix ?? base?.vix ?? null,
-    // VIX is left transported: SpxDeskPulse carries no VIX prior close, so there is nothing to
-    // derive from here. Same latent ambiguity, no local fix — recorded in SLAYER-MAP §8b.
-    vix_change_pct: snap.vix?.change_pct ?? base?.vix_change_pct ?? null,
+    vix_change_pct: pulseChangePctFromPriorClose(
+      vix,
+      base?.vix_prior_close,
+      snap.vix?.change_pct ?? base?.vix_change_pct ?? null
+    ),
     tick: tick ?? base?.tick ?? null,
     trin: trin ?? base?.trin ?? null,
     add: add ?? base?.add ?? null,

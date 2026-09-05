@@ -45,6 +45,7 @@ export function roundPulseNumerics(p: SpxDeskPulse): SpxDeskPulse {
     price: roundDeskNum(p.price) ?? p.price,
     spx_change_pct: roundDeskNum(p.spx_change_pct) ?? p.spx_change_pct,
     vix: roundDeskNum(p.vix),
+    vix_prior_close: roundDeskNum(p.vix_prior_close),
     vix_change_pct: roundDeskNum(p.vix_change_pct),
     lod: roundDeskNum(p.lod),
     hod: roundDeskNum(p.hod),
