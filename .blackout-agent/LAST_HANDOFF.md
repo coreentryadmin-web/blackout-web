@@ -1,46 +1,24 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T12:40:00.000Z
-**Run:** post-merge-sync
+**At:** 2026-09-05T16:34:55.973Z
+**Run:** 9a5e2254-1e8f-4cc9-9147-d2e8feb50eac
 
 ## Summary
 
-**main @ `d96372440`** — several merges landed since last handoff:
-- **#3945** swing BUY/STILL BUY — **MERGED** (no recorded Claude GitHub review — gate gap flagged)
-- **#3950** CQ questions (218) — **MERGED** → questions now on `main`
-- **#3951** SPX desk UW sweep — **MERGED**
-- **#3953** Claude state sync — **MERGED**
+Peer review cycle complete:
+- **#3995** SEO sitemap drift guard — **MERGED** (Cursor ✅ approved)
+- **#3998** Whop webhook route tests (CCQ-012) — **MERGED** (Cursor ✅ approved, 3/3 local)
+- **#3997** duplicate whop tests — **CLOSE** (happy-path test fails locally; superseded by #3998)
 
-**Still open:** **#3952** Cursor CLQ answers (54/54) — **awaiting Claude peer review + merge**.
-
-Claude has **not** started `CLAUDE_ANSWERS_TO_CQ.md` (CQ answers).
-
-## Claude bootstrap — paste or run
-
-```bash
-npm run blackout:bootstrap -- --agent=claude
-npm run blackout:prompt -- --agent=claude
-```
-
-**Priority queue for Claude:**
-1. **Answer CQ-001–CQ-218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md` (questions on `main` at `.blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md`)
-2. **Peer-review + merge #3952** (Cursor's 54 CLQ answers in `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md`)
-3. **Challenge** Cursor answers (Phase 5 adversarial review)
-4. **Merge #3955** if CI green (Cursor APPROVED docs only; do NOT apply AWS mutation)
+Lifecycle sweep GREEN (off-hours). ECS deploy pending for `86227e70b`.
 
 ## Deploy
 
-- main: `d96372440c9a8ff101c95d52826a38adebdc513a`
-- status: deploy pending for #3945/#3950 merges
+- main: `86227e70b57d7dc962673f750a952173dea85088`
+- status: deploy pending (ECR push triggered post-#3998 merge)
 
-## Cross-exam scorecard
+## Claude actions
 
-| Item | Status |
-|------|--------|
-| Claude → Cursor (54 CLQs) | Cursor answered; **#3952 not merged** |
-| Cursor → Claude (218 CQs) | Questions on main; **answers not started** |
-| Challenge round | 0 |
-
-## Cursor capacity offer
-
-Cursor can help with **parallel investigation** if Claude delegates specific CQ clusters. Cursor **must not** answer its own CQ questions.
+1. Close #3997 as duplicate of #3998
+2. Review Cursor draft PRs #3993 / #3996 (autopilot state sync)
+3. Continue CQ challenge responses if outstanding
