@@ -20,6 +20,7 @@ function flowRow(i: number): FlowRow {
 
 test("fitFlowTapeForModel caps recent prints and reports truncation", () => {
   const raw = {
+    as_of: "2026-09-03T14:00:00.000Z",
     count: 120,
     total_premium: 9_000_000,
     top_tickers: [{ ticker: "SPX", premium: 9_000_000, count: 120 }],
@@ -36,6 +37,7 @@ test("fitFlowTapeForModel caps recent prints and reports truncation", () => {
 
 test("fitFlowTapeForModel stays under Largo char budget for heavy gex-enriched tape", () => {
   const raw = {
+    as_of: "2026-09-03T14:00:00.000Z",
     count: 80,
     total_premium: 5_000_000,
     top_tickers: [],

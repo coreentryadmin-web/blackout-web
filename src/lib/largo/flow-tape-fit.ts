@@ -13,6 +13,7 @@ export function fitFlowTapeForModel(raw: FlowTapeSummary): { fitted: FlowTapeFit
   if (!raw.recent?.length) return { fitted: raw };
 
   const base: Omit<FlowTapeSummary, "recent"> = {
+    as_of: raw.as_of,
     count: raw.count,
     total_premium: raw.total_premium,
     top_tickers: raw.top_tickers,
