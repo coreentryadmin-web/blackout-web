@@ -15,7 +15,7 @@ Follow-on scan after #3912 found three more in-process/DB cache layers using raw
 
 ## Fix
 
-Route all three through `isWsUpdatedAtFresh(at, maxAgeMs)`.
+Route all three through `isWsUpdatedAtFresh(at, maxAgeMs)`, including the `MAX_RESOLVED` eviction sweep in `clerk-user-cache` (same gap as #3917).
 
 ## Evidence
 
