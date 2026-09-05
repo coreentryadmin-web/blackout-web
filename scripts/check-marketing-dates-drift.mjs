@@ -15,9 +15,10 @@
 // committed file rather than trust a human to remember.
 
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 const generated = execSync("node scripts/seo/generate-marketing-dates.mjs", { encoding: "utf8" });
-const committed = execSync("cat src/lib/seo/marketing-dates.ts", { encoding: "utf8" });
+const committed = readFileSync("src/lib/seo/marketing-dates.ts", { encoding: "utf8" });
 
 if (generated !== committed) {
   console.error(
