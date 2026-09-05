@@ -73,11 +73,17 @@ test("all FIVE producers pass spot — including the base matrix scan #2417 miss
   const overlay = readFileSync(join(root, "src/lib/providers/spx-odte-gex-uw-overlay.ts"), "utf8");
   const route = readFileSync(join(root, "src/app/api/market/gex-heatmap/route.ts"), "utf8");
   const pos = readFileSync(join(root, "src/lib/providers/gex-positioning.ts"), "utf8");
+  const posRoute = readFileSync(join(root, "src/app/api/market/gex-positioning/route.ts"), "utf8");
   const matrix = readFileSync(join(root, "src/lib/providers/polygon-options-gex.ts"), "utf8");
   assert.match(core, /wallsFromStrikeTotals\(strikeTotals, spot\)/, "uwLevelsFromLadder");
   assert.match(overlay, /wallsFromStrikeTotals\(totals, hm\.spot\)/, "SPX 0DTE overlay");
   assert.match(route, /wallsFromStrikeTotals\([^)]*\), heatmap\.spot\)/, "heatmap WS override");
   assert.match(pos, /wallsFromStrikeTotals\([^)]*\), base\.spot\)/, "positioning WS override");
+  assert.match(
+    posRoute,
+    /wallsFromStrikeTotals\(\s*strikeTotals,\s*bundle\.spot > 0 \? bundle\.spot : undefined\s*\)/,
+    "positioning polygon-fallback must side-constrain walls"
+  );
   // #2417 wired the four OVERRIDE paths but left computeGexRegime — the BASE matrix scan that
   // produces gex.call_wall/put_wall served off-hours and for every non-WS single name — on the
   // unconstrained scan. That is why MSFT/AMZN served inverted walls on 2026-08-21. This is the

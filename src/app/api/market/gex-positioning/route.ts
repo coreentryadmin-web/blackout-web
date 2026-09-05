@@ -4,6 +4,7 @@ import { requireAnyToolApi } from "@/lib/tool-access-server";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import { fetchPolygonPositioningBundle } from "@/lib/providers/polygon-options-gex";
 import { analyzeStrikeGexRows, computeGammaFlip, gammaRegime, topGexWalls } from "@/lib/providers/gamma-desk";
+import { wallsFromStrikeTotals } from "@/lib/providers/gex-cross-validation-core";
 import { roundFloats } from "@/lib/round-floats";
 import { joinGexStrikeExpiryTicker } from "@/lib/ws/uw-socket";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
@@ -77,22 +78,16 @@ export async function GET(req: NextRequest) {
           const flip = bundle.spot > 0 ? computeGammaFlip(gexAnalysis.ranked_levels, bundle.spot) : null;
           const regime = gammaRegime(bundle.spot, flip);
           const walls = topGexWalls(gexAnalysis.ranked_levels, bundle.spot, 6);
-          let call_wall: number | null = null;
-          let put_wall: number | null = null;
-          let posMax = -Infinity;
-          let negMin = Infinity;
+          const strikeTotals: Record<string, number> = {};
           for (const lv of gexAnalysis.ranked_levels) {
-            if (lv.net_gex > posMax) {
-              posMax = lv.net_gex;
-              call_wall = lv.strike;
-            }
-            if (lv.net_gex < negMin) {
-              negMin = lv.net_gex;
-              put_wall = lv.strike;
-            }
+            strikeTotals[String(lv.strike)] = lv.net_gex;
           }
-          if (posMax <= 0) call_wall = null;
-          if (negMin >= 0) put_wall = null;
+          const { callWall, putWall } = wallsFromStrikeTotals(
+            strikeTotals,
+            bundle.spot > 0 ? bundle.spot : undefined
+          );
+          const call_wall = callWall;
+          const put_wall = putWall;
           const nearest =
             walls.length > 0
               ? walls.reduce((best, w) =>
