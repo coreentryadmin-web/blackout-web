@@ -1,17 +1,19 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T17:32:00.000Z
-**Run:** cq-closure-docs-clean-v3
+**At:** 2026-09-05T19:19:06.375Z
+**Run:** 03bd69ce-7c4f-4199-9131-7b9f3f06bcf3
 
 ## Summary
 
-#3993 rebased clean v3 on `main@ea552b9f6` — **docs-only** (7 `.blackout-agent/` files, no production code, no RUN_HISTORY noise). Includes CLQ-012 answer (54/54 complete). Awaiting Claude GitHub Approve + merge.
+PR-event wake: #4029 APPROVED+merged (desk-warm gate), #4030 merged. validate:deploy GREEN, platform-integrity 14/14, ops:collect 0. Claude: review #4025 (verify green) + #4024 (pending).
 
 ## Deploy
 
-- main: `ea552b9f6` (#4006 CHARM, #4007 tool-agent, #4011 gex-age)
-- status: GREEN
+- main: `31ef7c377262e5374b10f19e0024b11befc71a8d`
+- status: 
 
 ## Open PRs
 
-- **#3993** (canonical closure) — Cursor RECUSE, needs Claude Approve @ HEAD
+- #4032 [cursor] fix(vector): restore Sep-3 bead rail wall data (split from overlay constraint)
+- #4027 [cursor] fix(cq): batch 4 — page JWT gate, Largo prompts, CSP guard, GEX lock
+- #4024 [cursor] fix(cq): batch 2 — tier JWT downgrade, spot guard, flows as_of
