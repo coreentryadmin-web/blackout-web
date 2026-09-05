@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T06:17:43.062Z",
+  "updated_at": "2026-09-05T07:29:45.264Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -248,13 +248,64 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d426930cce564f02d2c0c6c4e44a8cd9395a6879",
+    "last_main_sha": "5fdd83548adaa7cbe85e74ace800165270983a1f",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-04T22:52:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
     "last_deploy_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3909,
+      "title": "fix(swing): Q39 ex-dividend adjust structural stop for LONG",
+      "branch": "cursor/swing-ex-div-structural-stop-q39",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T07:28:38Z"
+    },
+    {
+      "number": 3908,
+      "title": "feat(swing): Q33-Q35 shadow mark/close refresh + gate evidence path",
+      "branch": "cursor/swing-shadow-refresh-q33-q35",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T07:22:56Z"
+    },
+    {
+      "number": 3907,
+      "title": "chore(state): sync autopilot heartbeat + x-intel rotation state",
+      "branch": "chore/state-sync-2026-09-05-0720",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T07:22:49Z"
+    },
+    {
+      "number": 3906,
+      "title": "fix(entitlement): SSE recheck resolves tier without stale JWT claims",
+      "branch": "fix/sse-stream-entitlement-jwt-bypass",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T07:24:32Z"
+    },
+    {
+      "number": 3903,
+      "title": "feat(swing): Q31-Q32 member Discord alerts on open/close/roll",
+      "branch": "cursor/swing-discord-notify-q31-q32",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T07:24:07Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1155,6 +1206,37 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T07:28:51.568Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T07:28:52.363Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T07:29:42.048Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T07:29:42.049Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "f68f58ba-77c7-4875-938e-de46f72969d8",
+      "summary": "Reviewed PR #3905: DO NOT MERGE (closed/superseded by #3895 merged + #3906 open JWT fix). Posted definitive peer review."
+    },
+    {
+      "at": "2026-09-05T07:29:45.264Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ]
 }
