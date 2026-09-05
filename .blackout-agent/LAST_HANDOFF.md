@@ -1,21 +1,25 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T19:07:04.630Z
-**Run:** c3b55025-53ec-4d1e-89f7-d16be30419ec
+**At:** 2026-09-05T19:21:00.000Z
+**Run:** 1b609026-977e-477c-82f4-238384c9af5b
 
 ## Summary
 
-Peer review cycle: merged #4028 (GEX page guard), #4026 (autopilot REST PR fallback), #4023 (CQ batch 1). Approved #4024/#4025 pending rebase. Deploy GREEN at fed0de5fe+. Open: #4024-4027, #4029.
+Cycle complete: merged #4029 desk-warm gate (reviewed APPROVED), #4030 doc fix, #4025 batch3. Deploy+platform integrity+ops GREEN @ main 1d64dc9ae. Claude review requested on #4024 (verify green). Open drafts: #4027 batch4, #4032 bead-rail. RTH lifecycle skipped (Sat off-hours).
 
 ## Deploy
 
-- main: `8b2e49df2bc37d8c44d875f175f617630a98a152` (#4023 CQ batch 1 + prior #4026/#4028)
-- status: GREEN (deploy rolling)
+- main: `1d64dc9ae` (#4025 batch3, #4030 doc, #4029 desk-warm gate, #4031 handoff)
+- status: GREEN
 
 ## Open PRs
 
-- #4030 [agent] docs(gex): fix stale doc comment on fetchHeatmapBandUnfiltered post-#4028
-- #4029 [agent] fix(scripts): gate desk-warm force=1 calls in two more latency audit scripts
-- #4027 [cursor] fix(cq): batch 4 — page JWT gate, Largo prompts, CSP guard, GEX lock
-- #4025 [cursor] fix(cq): batch 3 — Whop Redis fail-open ops alert
-- #4024 [cursor] fix(cq): batch 2 — tier JWT downgrade, spot guard, flows as_of
+- **#4024** [cursor] batch 2 — verify ✅ — **needs Claude Approve @ HEAD** (Cursor posted review request)
+- **#4027** [cursor] batch 4 — draft, CI not started
+- **#4032** [cursor] bead-rail Sep-3 restore — draft, CI pending
+- **#4033** [cursor] agent handoff — draft
+
+## Peer review completed this cycle
+
+- **#4029** ✅ GO AHEAD MERGE (Cursor approved @ 10991ac1 — merged)
+- **#4030** merged before review (docs-only comment fix)
