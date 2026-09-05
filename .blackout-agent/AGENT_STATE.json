@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:35:35.991Z",
+  "updated_at": "2026-09-05T18:55:59.719Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:26:09.737Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-05T18:40:17.769Z",
+      "lease_until": "2026-09-05T20:24:56.405Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": "09dbe13c-5f85-4d02-b7e1-8d74d5250dbf",
       "title": null
     },
     "BO-P1-0101": {
@@ -267,8 +267,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T16:30:48.265Z",
-      "current_task": "BO-P1-0101"
+      "last_seen": "2026-09-05T18:40:17.770Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "cross_examination": {
@@ -326,147 +326,75 @@
     }
   },
   "deploy": {
-    "last_main_sha": "86227e70b57d7dc962673f750a952173dea85088",
+    "last_main_sha": "543ec6f3f53db88e8e26e6879ac611c38bdb4d58",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:34:11Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978273189",
-    "last_deploy_sha": "86227e70b57d7dc962673f750a952173dea85088"
+    "last_deploy_at": "2026-09-05T18:27:48Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33983804884",
+    "last_deploy_sha": "543ec6f3f53db88e8e26e6879ac611c38bdb4d58"
   },
-  "open_prs": [],
-  "events": [
+  "open_prs": [
     {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
+      "number": 4028,
+      "title": "fix(gex): flat 12-page guard truncated GEX full-chain escalation for megacap names (NFLX/GOOGL)",
+      "branch": "fix/gex-heatmap-unfiltered-page-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T18:52:37Z"
     },
     {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:02.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.919Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:14.071Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:14.852Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:15.659Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:15.832Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0001",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-03T23:46:15.941Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0006",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-03T23:46:43.648Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:43.649Z",
-      "type": "handoff",
+      "number": 4027,
+      "title": "fix(cq): batch 4 — page JWT gate, Largo prompts, CSP guard, GEX lock",
+      "branch": "cursor/cq-fix-pass-batch4",
+      "author": "coreentryadmin-web",
       "agent": "cursor",
-      "run_id": "b6a6f190-ae16-419f-b758-eb4c74961bc0",
-      "summary": "Autopilot v1+v2 on cursor/blackout-autopilot. Audited Claude implementation, added session/review/watchdog/guard. PR opened. Next: BO-P1-0004 post-deploy 0DTE replay after merge."
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T18:55:36Z"
     },
     {
-      "at": "2026-09-03T23:48:41.515Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 10
+      "number": 4026,
+      "title": "fix(autopilot): REST fallback for open PR sync when GraphQL rate-limited",
+      "branch": "fix/sync-context-rest-pr-fallback",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T18:55:50Z"
     },
     {
-      "at": "2026-09-03T23:48:42.657Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 10
+      "number": 4025,
+      "title": "fix(cq): batch 3 — Whop Redis fail-open ops alert",
+      "branch": "cursor/cq-fix-pass-batch3",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T18:48:29Z"
     },
     {
-      "at": "2026-09-03T23:48:50.414Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 10
+      "number": 4024,
+      "title": "fix(cq): batch 2 — tier JWT downgrade, spot guard, flows as_of",
+      "branch": "cursor/cq-fix-pass-batch2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T18:51:33Z"
     },
     {
-      "at": "2026-09-03T23:49:07.593Z",
-      "type": "pr_review",
-      "pr": 3434,
-      "head_sha": "5d436c976978fe5bddad53474c688f861bac853a",
-      "reviewer": "cursor",
-      "verdict": "APPROVED — safe to merge",
-      "reviewed_at": "2026-09-03T23:49:07.593Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-03T23:53:48.680Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0005",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-03T23:53:48.869Z",
-      "type": "pr_review",
-      "pr": 3434,
-      "head_sha": "5d436c976978fe5bddad53474c688f861bac853a",
-      "reviewer": "cursor",
-      "verdict": "APPROVED — safe to merge",
-      "reviewed_at": "2026-09-03T23:53:48.868Z",
-      "safe_to_merge": true
-    },
-    {
-      "at": "2026-09-04T00:27:37.439Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T00:29:37.634Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-04T00:29:38.494Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
+      "number": 4023,
+      "title": "fix(cq): batch 1 — internals_estimated UI, tier gate test, email enum",
+      "branch": "cursor/cq-fix-pass-batch1",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T18:51:16Z"
+    }
+  ],
+  "events": [
     {
       "at": "2026-09-04T00:29:39.513Z",
       "type": "context_sync",
@@ -1622,6 +1550,151 @@
       "agent": "cursor",
       "run_id": "7241539d-60c7-4e6b-ac5b-c9b3aa85b828",
       "summary": "Continuous loop cycle complete. Peer review: pr-sweep 0 open PRs. Platform integrity 14/14 GREEN, lifecycle sweep GREEN (weekend RTH skip). Deploy drift: prod rolling feaba670 (in_progress 25m+), main now 86227e70 (#3995+#3998) with pending ECR run 33978273189. Opened draft #4001 (agent state sync — awaits Claude review). GitHub GraphQL rate-limited until ~17:06 UTC; REST still works. Next: monitor ECR → validate:deploy post-rollout; Claude peer-review #4001 + any new claude/* PRs."
+    },
+    {
+      "at": "2026-09-05T18:40:06.844Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:40:12.640Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:40:13.263Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:40:13.979Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:40:17.770Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T18:43:21.071Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:43:21.946Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:43:22.681Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:54:27.766Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-05T18:54:29.266Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-05T18:54:30.489Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-05T18:54:36.191Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-05T18:54:37.481Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-05T18:54:38.815Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-05T18:54:43.088Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-05T18:54:44.859Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-05T18:54:46.130Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-05T18:54:56.403Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:54:57.029Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:54:57.760Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:55:50.484Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:55:50.486Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "8d487a5b-187a-46d8-8490-66e55c643cfc",
+      "summary": "Work-loop wake (pull_request): lifecycle GREEN (deploy, ops:collect 0, api-auth, platform-integrity 14/14, seo 22/22). Open PRs: #4023-#4028 (CQ batches + #4026 REST fallback). #4026 verify GREEN + Cursor APPROVED — release comment posted (gh rate-limited). #4023 verify pending @ 9810747b (relative admin-access import fix). GitHub GraphQL/PAT rate-limited (user 284440397). Weekend RTH skipped."
+    },
+    {
+      "at": "2026-09-05T18:55:56.596Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-05T18:55:59.719Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "pr_activity": {
