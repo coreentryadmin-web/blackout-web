@@ -49,6 +49,18 @@ test("mergeTierZeroScreens: unions paths, dedups, drops excluded, stable order",
   assert.deepEqual(merged.map((m) => m.ticker), ["AMD", "ASTS", "NVDA"], "sorted by ticker (deterministic)");
 });
 
+test("mergeTierZeroScreens: V2 POSITIONING and CATALYST origins union into provenance", () => {
+  const merged = mergeTierZeroScreens(["NVDA"], ["ASTS"], {
+    positioning: ["NVDA", "COIN"],
+    catalyst: ["COIN", "MSTR"],
+  });
+  const byT = new Map(merged.map((m) => [m.ticker, m.paths]));
+  assert.deepEqual(byT.get("NVDA"), ["FLOW", "POSITIONING"]);
+  assert.deepEqual(byT.get("ASTS"), ["STRUCTURE"]);
+  assert.deepEqual(byT.get("COIN"), ["POSITIONING", "CATALYST"]);
+  assert.deepEqual(byT.get("MSTR"), ["CATALYST"]);
+});
+
 test("rankTierZeroSeeds: corroborated first, then flow strength, then $-volume", () => {
   const seeds: TierZeroSeed[] = [
     { ticker: "AMD", paths: ["FLOW"] },

@@ -59,6 +59,7 @@ import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibratio
 import { classificationMetaFromVerdict } from "./archetype";
 import { resolveSwingTier1Cap } from "./v2/tier1-cap";
 import { isSwingEngineV2Enabled } from "./v2/config";
+import { evaluateSwingConfluence } from "./v2/confluence";
 import {
   computeSwingCommitPlan,
   executeSwingCommits,
@@ -87,7 +88,7 @@ import type { SwingPositionInsert, SwingShadowPositionInsert } from "../db";
 // observable instead of silent. `computeSwingDiscoveryRecall` is PURE/deterministic on fixed inputs.
 
 /** Which Tier-0 screen(s) surfaced a name — provenance carried through the merge for ranking + explain. */
-export type SwingDiscoveryPath = "FLOW" | "STRUCTURE";
+export type SwingDiscoveryPath = "FLOW" | "STRUCTURE" | "POSITIONING" | "CATALYST";
 
 /** Discovery cadence phase. The plan ships POST_CLOSE first (cleanest full-session accumulation read); the
  *  other phases land in PR-13. Accreted into the accumulation memory's `phases_seen`. */
@@ -179,6 +180,7 @@ export const WATCH_ELIGIBLE_FETCH_LIMIT = 500;
 export function mergeTierZeroScreens(
   flowTickers: string[],
   structureTickers: string[],
+  extra?: { positioning?: string[]; catalyst?: string[] },
 ): TierZeroSeed[] {
   const paths = new Map<string, Set<SwingDiscoveryPath>>();
   const add = (raw: string, path: SwingDiscoveryPath) => {
@@ -190,12 +192,15 @@ export function mergeTierZeroScreens(
   };
   for (const t of flowTickers) add(t, "FLOW");
   for (const t of structureTickers) add(t, "STRUCTURE");
+  for (const t of extra?.positioning ?? []) add(t, "POSITIONING");
+  for (const t of extra?.catalyst ?? []) add(t, "CATALYST");
+
+  const pathOrder: SwingDiscoveryPath[] = ["FLOW", "STRUCTURE", "POSITIONING", "CATALYST"];
 
   return Array.from(paths.entries())
     .map(([ticker, set]) => ({
       ticker,
-      // Stable path order (FLOW before STRUCTURE) so provenance is deterministic.
-      paths: (["FLOW", "STRUCTURE"] as SwingDiscoveryPath[]).filter((p) => set.has(p)),
+      paths: pathOrder.filter((p) => set.has(p)),
     }))
     .sort((a, b) => a.ticker.localeCompare(b.ticker));
 }
@@ -418,6 +423,10 @@ export interface SwingDiscoveryDeps {
   fetchIntradayStructureBars?: () => Promise<
     Array<{ T?: string; o?: number; h?: number; l?: number; c?: number; v?: number }>
   >;
+  /** V2 — tickers from POSITIONING origin screen (GEX/walls). Optional; empty when unwired. */
+  fetchPositioningTickers?: () => Promise<string[]>;
+  /** V2 — tickers from CATALYST origin screen (earnings/news impulse). Optional. */
+  fetchCatalystTickers?: () => Promise<string[]>;
   /** SPY ascending daily closes — fetched ONCE, passed into every Tier-1 enrich (relative-strength base). */
   fetchSpyCloses: () => Promise<number[]>;
   /** Tier-1 enrich: assemble the dossier input for a name (swing-ingest). Null → the name is dropped. */
@@ -506,6 +515,8 @@ export interface SwingDiscoveryResult {
   tier1CapApplied: number;
   /** Whether Swing Engine V2 dynamic recall path was active. */
   engineV2: boolean;
+  /** V2 shadow: confluence near-miss count (would-block if gate enforced). */
+  confluenceNearMissCount?: number;
   /** Rows retired by fadeStaleAccum this scan (0 when none / fade skipped). */
   fadedStale?: number;
 }
@@ -520,6 +531,7 @@ export async function runSwingDiscoveryScan(
 ): Promise<SwingDiscoveryResult> {
   const cfg: SwingDiscoveryConfig = { ...DEFAULT_SWING_DISCOVERY_CONFIG, ...deps.config };
   const asOf = new Date(deps.nowMs).toISOString();
+  const engineV2 = isSwingEngineV2Enabled();
 
   // ── TIER-0 FLOW: multi-day accumulation over the flow window → directional names. ──
   const flows = await deps.fetchFlowWindow();
@@ -540,8 +552,20 @@ export async function runSwingDiscoveryScan(
   const moverByTicker = new Map<string, BreakoutMover>(movers.map((m) => [m.ticker.toUpperCase(), m]));
   const structureTickers = movers.map((m) => m.ticker);
 
+  const positioningTickers =
+    engineV2 && deps.fetchPositioningTickers
+      ? await deps.fetchPositioningTickers().catch(() => [] as string[])
+      : [];
+  const catalystTickers =
+    engineV2 && deps.fetchCatalystTickers
+      ? await deps.fetchCatalystTickers().catch(() => [] as string[])
+      : [];
+
   // ── MERGE + rank + cap to the Tier-1 budget. ──
-  const merged = mergeTierZeroScreens(flowTickers, structureTickers);
+  const merged = mergeTierZeroScreens(flowTickers, structureTickers, {
+    positioning: positioningTickers,
+    catalyst: catalystTickers,
+  });
   // Keep the FULL ranked order so the recall instrumentation can see WHO the top-N cap severed (not just
   // the survivors). The behavior is unchanged — only `ranked` (the capped slice) feeds Tier-1.
   const rankedFull = rankTierZeroSeeds(merged, accSignals, moverByTicker);
@@ -573,6 +597,20 @@ export async function runSwingDiscoveryScan(
     return lane != null && lane !== d.subLane ? { ...d, subLane: lane } : d;
   });
 
+  let confluenceNearMissCount = 0;
+  if (engineV2) {
+    for (const d of dossiers) {
+      const seed = candidateSeeds.find((s) => s.ticker === d.ticker);
+      const verdict = evaluateSwingConfluence(seed?.paths ?? [], d.archetype.archetype);
+      if (!verdict.pass && verdict.count >= verdict.required - 1) {
+        confluenceNearMissCount += 1;
+      }
+    }
+    if (confluenceNearMissCount > 0) {
+      console.info(`[swing-discovery] V2 confluence near-miss: ${confluenceNearMissCount} names at required-1 kinds`);
+    }
+  }
+
   // ── RECALL (pure, evidence-only): measure the funnel so a dropped-strong-candidate is VISIBLE. ──
   const recall = computeSwingDiscoveryRecall({
     tier0FlowCount: flowTickers.length,
@@ -585,7 +623,6 @@ export async function runSwingDiscoveryScan(
     moverByTicker,
   });
   // One-line recall summary in the shell (the funnel + the load-bearing capped-out leak).
-  const engineV2 = isSwingEngineV2Enabled();
   if (capResolution.dynamic) {
     console.log(
       `[swing-discovery] V2 dynamic tier1Cap=${tier1CapApplied} (pool=${merged.length}, ` +
@@ -816,6 +853,7 @@ export async function runSwingDiscoveryScan(
     recall,
     tier1CapApplied,
     engineV2,
+    confluenceNearMissCount: engineV2 ? confluenceNearMissCount : undefined,
     fadedStale,
   };
 }

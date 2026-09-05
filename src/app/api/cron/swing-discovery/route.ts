@@ -28,6 +28,8 @@ import {
 } from "@/lib/swing/discovery";
 import { ingestSwingReads } from "@/lib/swing/swing-ingest";
 import { persistSwingCapRejections } from "@/lib/swing/v2/rejections";
+import { positioningTickersFromVectorLeaders } from "@/lib/swing/v2/origins/positioning-screen";
+import { fetchVectorPickLeaderRows } from "@/lib/vector/vector-pick-leaders-db";
 import { persistSwingServingSnapshot, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
 import { carryLegacyPromotedIntoSnapshot } from "@/lib/swing/legacy-confirm-promote";
 import { swingThesisKey } from "@/lib/swing/accumulation-store";
@@ -150,6 +152,12 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
         }
       : {}),
     fetchSpyCloses: async () => closesFor("SPY"),
+    // V2 POSITIONING origin — GEX/walls screen on Vector leader tickers (fail-soft; only consumed when SWING_ENGINE_V2=1).
+    fetchPositioningTickers: async () => {
+      const rows = await fetchVectorPickLeaderRows({ limit: 80 }).catch(() => []);
+      const tickers = rows.map((r) => r.ticker).filter((t): t is string => Boolean(t));
+      return positioningTickersFromVectorLeaders(tickers);
+    },
     enrichCandidate: (seed, ctx) =>
       ingestSwingReads(
         {
