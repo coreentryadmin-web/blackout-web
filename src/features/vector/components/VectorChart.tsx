@@ -132,7 +132,7 @@ import { etMinutesOfDay } from "@/lib/swing/scan-cadence";
 import { GammaRegimePrimitive } from "@/features/vector/lib/vector-gamma-regime-primitive";
 import { ExtendedHoursShadePrimitive } from "@/features/vector/lib/vector-extended-hours-shade-primitive";
 import { extendedHoursShadeBands } from "@/features/vector/lib/vector-session-hours";
-import { computeVolumeProfile } from "@/features/vector/lib/vector-volume-profile";
+import { computeVolumeProfile, sessionRthVolumeProfileBars } from "@/features/vector/lib/vector-volume-profile";
 import { VolumeProfilePrimitive } from "@/features/vector/lib/vector-volume-profile-primitive";
 import { vectorChartTimeScaleGutter } from "@/features/vector/lib/vector-volume-profile-layout";
 import type { WallBeadRenderProfile } from "@/features/vector/lib/vector-wall-rail-core";
@@ -2863,7 +2863,7 @@ export function VectorChart({
       const volumeProfileOn = enabled.has("volume-profile");
       const lastBarTime = bars.length ? (bars[bars.length - 1]!.time as Time) : null;
       volumeProfilePrimitiveRef.current?.setData(
-        volumeProfileOn ? computeVolumeProfile(minuteBarsRef.current) : null,
+        volumeProfileOn ? computeVolumeProfile(sessionRthVolumeProfileBars(minuteBarsRef.current)) : null,
         volumeProfileOn,
         lastBarTime
       );
