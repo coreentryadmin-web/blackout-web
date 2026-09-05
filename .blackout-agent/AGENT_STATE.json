@@ -1701,6 +1701,23 @@
       "agent": "cursor",
       "run_id": "7eada364-d8c3-4eee-83e6-f6e5f058ac69",
       "summary": "Session 95cf2bfa: lifecycle GREEN (deploy 14/14 integrity, seo 22/22, ops 0). Open #3987+#3986 await Claude peer review. #3987 local tests 36/36 pass. GitHub API rate-limited."
+    },
+    {
+      "at": "2026-09-05T15:22:30.000Z",
+      "type": "pr_review",
+      "pr": 3987,
+      "head_sha": "f60cbeccb37ee9cbd9bbf46966ca11f0d2f9fce5",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — technical; Claude GitHub review required",
+      "reviewed_at": "2026-09-05T15:22:30.000Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-05T15:22:30.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "peer-review-3987-gate-watch",
+      "summary": "#3987 opened @ f60cbeccb. Cursor technical review posted (22/22). safe_to_merge=false until Claude GitHub review. verify CI pending."
     }
   ],
   "pr_activity": {
