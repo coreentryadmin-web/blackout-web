@@ -79,9 +79,11 @@ test("the RTH gate is evaluated BEFORE the staleness check, not merged into it",
   // trap. Keeping the market-hours question first makes the two checks obviously independent.
   const src = read(SNAPSHOT);
   const gateIdx = src.indexOf("if (!wallRailRecordingOpen()) return false;");
-  const staleIdx = src.indexOf("nowMs - s.cachedWallsAt <= STALE_RECORD_MAX_MS");
+  const staleIdx = src.indexOf(
+    "isWsUpdatedAtFresh(s.cachedWallsAt, STALE_RECORD_MAX_MS + 1, nowMs)"
+  );
   assert.ok(gateIdx > -1, "recordVectorWallSamplesFromWarm must gate on wallRailRecordingOpen()");
-  assert.ok(staleIdx > -1, "the staleness check must still exist");
+  assert.ok(staleIdx > -1, "the staleness check must still exist (via isWsUpdatedAtFresh)");
   assert.ok(gateIdx < staleIdx, "the RTH gate must come before the first staleness check");
 });
 
