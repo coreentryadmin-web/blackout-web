@@ -40,3 +40,12 @@ export const SPX_PIN_MAX_PAIN_LABEL = "EFF MAX PAIN";
 
 /** Sentence-case form used in the pin panel's driver prose. */
 export const SPX_PIN_MAX_PAIN_LABEL_PROSE = "effective max pain";
+
+/**
+ * EOD pin panel: when long-gamma regime picks the heaviest |GEX| strike (king node) over distant
+ * effective max pain. Distinct from both OI-only desk max pain and volume-weighted effective max pain.
+ */
+export const SPX_PIN_GEX_KING_LABEL = "GEX KING";
+
+/** Lower-case variant for inline magnet prose in the pin panel. */
+export const SPX_PIN_GEX_KING_LABEL_PROSE = "GEX king node";

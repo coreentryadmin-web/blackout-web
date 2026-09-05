@@ -5,6 +5,8 @@ import {
   SPX_DESK_MAX_PAIN_LABEL_IOS,
   SPX_PIN_MAX_PAIN_LABEL,
   SPX_PIN_MAX_PAIN_LABEL_PROSE,
+  SPX_PIN_GEX_KING_LABEL,
+  SPX_PIN_GEX_KING_LABEL_PROSE,
 } from "./spx-metric-labels";
 
 /** Compare the way a member reads a label, not the way a string equality does. */
@@ -16,6 +18,11 @@ test("the desk and pin max-pain labels are distinct to a reader, not just to ===
   assert.notEqual(normalize(SPX_DESK_MAX_PAIN_LABEL), normalize(SPX_PIN_MAX_PAIN_LABEL));
   assert.notEqual(normalize(SPX_DESK_MAX_PAIN_LABEL_IOS), normalize(SPX_PIN_MAX_PAIN_LABEL));
   assert.notEqual(normalize(SPX_DESK_MAX_PAIN_LABEL_IOS), normalize(SPX_PIN_MAX_PAIN_LABEL_PROSE));
+});
+
+test("GEX king pin label is distinct from effective max pain", () => {
+  assert.notEqual(normalize(SPX_PIN_GEX_KING_LABEL), normalize(SPX_PIN_MAX_PAIN_LABEL));
+  assert.notEqual(normalize(SPX_PIN_GEX_KING_LABEL_PROSE), normalize(SPX_PIN_MAX_PAIN_LABEL_PROSE));
 });
 
 test("every max-pain label carries a basis qualifier — none is the bare term", () => {
