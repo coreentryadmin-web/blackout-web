@@ -32,7 +32,10 @@ export async function requireTierApi(
     return jsonResponse({ error: "Unauthorized" }, 401);
   }
 
-  const { isAdminUser } = await import("@/lib/admin-access");
+  // Relative specifier — dynamic `import("@/…")` breaks under Node's experimental
+  // mock.module() in CI (resolves to `src/lib/@/lib/...`); static top-level imports
+  // are rewritten by tsx but dynamic imports are not.
+  const { isAdminUser } = await import("./admin-access");
   if (await isAdminUser(userId, sessionClaims)) {
     return { userId, tier: "premium" };
   }

@@ -7,6 +7,7 @@ import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { deskScopeConfig } from "@/lib/largo/desk-scope";
 import { resolveSubmodule } from "@/lib/largo/slash-submodules";
 import { fmtPremium } from "@/lib/fmt-money";
+import { formatInternalReading } from "@/features/spx/lib/spx-internals-display";
 
 export type MiniPanelRow = {
   label: string;
@@ -110,6 +111,7 @@ export async function fetchMiniPanelPayload(input: {
           ema20?: number;
           tick?: number;
           trin?: number;
+          internals_estimated?: { tick?: boolean; trin?: boolean; add?: boolean };
         } | null;
         if (subId === "play" || subId === "gates") {
           base.rows = [
@@ -151,9 +153,17 @@ export async function fetchMiniPanelPayload(input: {
             { label: "Flip", value: gex?.flip != null ? String(Math.round(gex.flip)) : "—" },
           ];
         } else if (subId === "internals") {
+          const est = desk?.internals_estimated;
           base.rows = [
-            { label: "TICK", value: desk?.tick != null ? String(Math.round(desk.tick)) : "—", tone: (desk?.tick ?? 0) >= 0 ? "bull" : "bear" },
-            { label: "TRIN", value: desk?.trin != null ? desk.trin.toFixed(2) : "—" },
+            {
+              label: "TICK",
+              value: formatInternalReading(desk?.tick ?? null, est?.tick, 0),
+              tone: (desk?.tick ?? 0) >= 0 ? "bull" : "bear",
+            },
+            {
+              label: "TRIN",
+              value: formatInternalReading(desk?.trin ?? null, est?.trin, 2),
+            },
             { label: "Spot", value: desk?.price != null ? String(Math.round(desk.price)) : "—" },
             { label: "Play", value: [p?.phase, p?.action].filter(Boolean).join(" · ") || "—" },
           ];
