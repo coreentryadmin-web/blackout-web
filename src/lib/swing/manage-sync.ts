@@ -406,7 +406,10 @@ export interface ManageSyncRollPlan {
  *  drives the PR-15 gating execution — absent → the shell behaves exactly as PR-13 (evidence-only, HOLD). */
 export interface ManageSyncDeps extends Partial<RollLedgerDeps> {
   insertSnapshot: (s: SwingSnapshotInsert) => Promise<number>;
-  updateLiveState: (id: number, s: { status: string; mark?: number | null; underlyingMfe?: number | null; underlyingMae?: number | null }) => Promise<void>;
+  updateLiveState: (
+    id: number,
+    s: { status: string; mark?: number | null; underlyingMfe?: number | null; underlyingMae?: number | null }
+  ) => Promise<number>;
   /** Build the frozen parent grade + child leg for a gating roll/close. Null → can't execute (evidence-only). */
   buildRollPlan?: (row: SwingPositionRow, verdict: SwingManageVerdict, reads: ManageSyncReads) => Promise<ManageSyncRollPlan | null>;
   /** Execute the transactional roll/close (wraps `closeAndRollSwingPosition` with the PR-10 accessors bound).
@@ -499,15 +502,24 @@ export async function syncSwingManagement(
   return applyEvidenceOnly(deps, plan);
 }
 
-/** The PR-13 evidence-only application: append the snapshot (durable evidence first), then latch live state.
- *  NEVER writes a terminal status — the status carried on `plan.liveState` is the row's current live rung. */
+/** The PR-13 evidence-only application: latch live state, then append snapshot only when the row
+ *  is still non-terminal. Q36: a stale overlapping refresh must not mutate marks or append HOLD
+ *  snapshots onto a position already CLOSED/ROLLED by another pass. */
 async function applyEvidenceOnly(deps: ManageSyncDeps, plan: ManageSyncPlan): Promise<ManageSyncOutcome> {
   let snapshotId: number | null = null;
   let liveStateUpdated = false;
   try {
-    snapshotId = await deps.insertSnapshot(plan.snapshot);
-    await deps.updateLiveState(plan.positionId, plan.liveState);
+    const rows = await deps.updateLiveState(plan.positionId, plan.liveState);
+    if (rows === 0) {
+      return {
+        positionId: plan.positionId,
+        verdict: plan.verdict,
+        snapshotId: null,
+        liveStateUpdated: false,
+      };
+    }
     liveStateUpdated = true;
+    snapshotId = await deps.insertSnapshot(plan.snapshot);
   } catch (err) {
     return {
       positionId: plan.positionId,

@@ -7593,9 +7593,9 @@ export async function updateSwingLiveState(
     underlyingMfe?: number | null;
     underlyingMae?: number | null;
   }
-): Promise<void> {
+): Promise<number> {
   await ensureSchema();
-  await dbQuery(
+  const res = await dbQuery(
     `UPDATE swing_positions SET
        status = CASE
          WHEN status IN ('CLOSED','ROLLED') THEN status                      -- terminal frozen
@@ -7631,9 +7631,10 @@ export async function updateSwingLiveState(
        underlying_mfe = CASE WHEN $4::numeric IS NOT NULL THEN GREATEST(COALESCE(underlying_mfe, $4), $4) ELSE underlying_mfe END,
        underlying_mae = CASE WHEN $5::numeric IS NOT NULL THEN LEAST(COALESCE(underlying_mae, $5), $5) ELSE underlying_mae END,
        updated_at = NOW()
-     WHERE id = $1`,
+     WHERE id = $1 AND status NOT IN ('CLOSED','ROLLED')`,
     [id, s.status, s.mark ?? null, s.underlyingMfe ?? null, s.underlyingMae ?? null]
   );
+  return res.rowCount ?? 0;
 }
 
 /**
