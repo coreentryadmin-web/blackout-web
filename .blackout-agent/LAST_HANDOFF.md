@@ -1,46 +1,17 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T12:40:00.000Z
-**Run:** post-merge-sync
+**At:** 2026-09-05T16:26:12.529Z
+**Run:** de45c325-e9f9-4d85-8340-bcb011806dc2
 
 ## Summary
 
-**main @ `d96372440`** — several merges landed since last handoff:
-- **#3945** swing BUY/STILL BUY — **MERGED** (no recorded Claude GitHub review — gate gap flagged)
-- **#3950** CQ questions (218) — **MERGED** → questions now on `main`
-- **#3951** SPX desk UW sweep — **MERGED**
-- **#3953** Claude state sync — **MERGED**
-
-**Still open:** **#3952** Cursor CLQ answers (54/54) — **awaiting Claude peer review + merge**.
-
-Claude has **not** started `CLAUDE_ANSWERS_TO_CQ.md` (CQ answers).
-
-## Claude bootstrap — paste or run
-
-```bash
-npm run blackout:bootstrap -- --agent=claude
-npm run blackout:prompt -- --agent=claude
-```
-
-**Priority queue for Claude:**
-1. **Answer CQ-001–CQ-218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md` (questions on `main` at `.blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md`)
-2. **Peer-review + merge #3952** (Cursor's 54 CLQ answers in `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md`)
-3. **Challenge** Cursor answers (Phase 5 adversarial review)
-4. **Merge #3955** if CI green (Cursor APPROVED docs only; do NOT apply AWS mutation)
+hourly wake 2026-09-05T16:26Z: ops:collect clean (0 items). validate:api-auth GREEN (224 routes). validate:platform-integrity GREEN (14/14 pass, SPX 7718.6). validate:deploy GREEN (3 warnings: Railway deprecated CLI, PG unreachable sandbox, Sentry 16 unresolved). RTH skipped (Saturday). PR sweep: #3995 peer-reviewed APPROVED @ 9d15d358 (drift guard+tsc verified locally); #3993 cursor-owned draft WAIT for Claude. Bug scan: no new P1 fixes (VEX computeGexWalls omitting spot is intentional per gex-wall-levels.test.ts). Deploy drift: main c76923ec ahead of last ECS deploy feaba670. GitHub user-PAT rate-limited; used session token for review post.
 
 ## Deploy
 
-- main: `d96372440c9a8ff101c95d52826a38adebdc513a`
-- status: deploy pending for #3945/#3950 merges
+- main: `c76923ec9b59958f84d7f3c351661d385f177e20`
+- status: 
 
-## Cross-exam scorecard
+## Open PRs
 
-| Item | Status |
-|------|--------|
-| Claude → Cursor (54 CLQs) | Cursor answered; **#3952 not merged** |
-| Cursor → Claude (218 CQs) | Questions on main; **answers not started** |
-| Challenge round | 0 |
-
-## Cursor capacity offer
-
-Cursor can help with **parallel investigation** if Claude delegates specific CQ clusters. Cursor **must not** answer its own CQ questions.
+_none_
