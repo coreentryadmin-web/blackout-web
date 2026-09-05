@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
+import { recheckSseUserEntitlement } from "@/lib/sse-stream-entitlement";
 import { ensureZeroDteMarkPoller, getZeroDteLiveMarksFrame } from "@/lib/zerodte/live-marks";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
@@ -48,6 +49,8 @@ export async function GET(req: NextRequest) {
   ensureDataSockets();
   ensureZeroDteMarkPoller();
 
+  const isUserStream = auth.via === "user";
+
   const encoder = new TextEncoder();
   let interval: ReturnType<typeof setInterval> | null = null;
   let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
@@ -72,6 +75,18 @@ export async function GET(req: NextRequest) {
       let lastSentKey: string | null = null;
       const send = async () => {
         if (closed) return;
+        if (isUserStream) {
+          const denied = await recheckSseUserEntitlement("premium", "nighthawk");
+          if (denied) {
+            cleanup();
+            try {
+              controller.close();
+            } catch {
+              /* already closed */
+            }
+            return;
+          }
+        }
         if (sseBackpressureExceeded(controller.desiredSize)) {
           cleanup();
           try {

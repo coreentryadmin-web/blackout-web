@@ -104,6 +104,8 @@ export interface HorizonPlay {
   livePnlPct?: number | null;
   peakPremium?: number | null;
   troughPremium?: number | null;
+  /** ISO instant the ledger last observed a real option quote (last_mark_at). */
+  markAsOf?: string | null;
   /** ISO instant capital was committed (live ledger). */
   committedAt?: string;
   /** Discovery provenance kinds (FLOW / STRUCTURE / CATALYST). */

@@ -204,7 +204,8 @@ export function livePlayFromSwingPosition(
 ): HorizonPlay | null {
   if (!LIVE.has(row.status)) return null;
   // The same manage snapshot that carries the manage observables also carries the tick's option quote.
-  const contract = contractFromRow(row, liveQuoteFromEvent(manageEvent));
+  const quote = liveQuoteFromEvent(manageEvent);
+  const contract = contractFromRow(row, quote);
   if (!contract) return null;
   const direction: PlayDirection = row.direction === "short" ? "SHORT" : "LONG";
   const liveStatus = liveStatusOf(row.status)!;
@@ -224,6 +225,7 @@ export function livePlayFromSwingPosition(
 
   const entry = row.entry_premium;
   const mark = row.last_mark;
+  const markAsOf = row.last_mark_at ?? quote?.asOf ?? null;
 
   return {
     ticker: row.ticker.toUpperCase(),
@@ -245,6 +247,7 @@ export function livePlayFromSwingPosition(
     livePnlPct: livePnlPct(entry, mark),
     peakPremium: row.peak_premium,
     troughPremium: row.trough_premium,
+    markAsOf,
   };
 }
 

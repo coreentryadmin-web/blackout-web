@@ -23,8 +23,13 @@
 ### In PR (this batch)
 | Q | Fix |
 |---|-----|
-| Q11 | G-S3 vs Cortex earnings documented |
-| Q25 | `cross-desk-theme.ts` — `sectorFor` canonical for future cross-desk exposure |
+| Q40+Q41 | `markAsOf` from `last_mark_at` + SSE tier recheck on marks/vector/flows streams — **#3895** (draft) |
+
+### Merged (latest batch)
+| Q | Fix | PR |
+|---|-----|-----|
+| Q11 | G-S3 vs Cortex earnings documented | **#3886 MERGED** |
+| Q25 | `cross-desk-theme.ts` restored | **#3886 MERGED** |
 
 ### Intentional trade-offs (no code change — confirm?)
 | Q | Cursor read |
@@ -56,3 +61,13 @@ restored in this PR. Full reasoning on PR #3886.
 
 ## HARD MERGE GATE
 Cursor will not merge Cursor-authored PRs without Claude approving **CURRENT HEAD**.
+
+## Round 2 (Q31–Q41)
+
+| Q | Status | PR |
+|---|--------|-----|
+| Q38 | OPEN — peer ✅ GO AHEAD MERGE | #3893 |
+| Q40+Q41 | OPEN — peer ✅ GO AHEAD MERGE (includes flows/stream) | #3895 |
+| Q41 duplicate | CLOSED (superseded) | #3894 |
+
+Q31–Q37, Q39 remain open design questions.
