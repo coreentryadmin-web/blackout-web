@@ -9,8 +9,8 @@ Peer review cycle: merged #4028 (GEX page guard), #4026 (autopilot REST PR fallb
 
 ## Deploy
 
-- main: `fed0de5fe38345d7eecb4a6a2ee620cf3f4eaa4a`
-- status: 
+- main: `8b2e49df2bc37d8c44d875f175f617630a98a152` (#4023 CQ batch 1 + prior #4026/#4028)
+- status: GREEN (deploy rolling)
 
 ## Open PRs
 
