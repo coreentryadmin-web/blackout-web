@@ -430,6 +430,14 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+### 0aa. Tier/session/SPX ticket cache future-timestamp guards — fix/cache-freshness-future-timestamp-guards (pending)
+
+**What was broken:** Five caches (`tier-cache`, `session-cache`, SPX play ticket, playbook technicals, lotto ticket) used raw `Date.now() - at < ttl` without rejecting clock-skewed future `at` stamps — negative age reads as infinitely fresh. Tier path is a security concern (stale premium during Clerk outage); session-cache path affects desk/play hydration after reload.
+
+**Fix:** Replace with `isWsUpdatedAtFresh(at, ttlMs, now)` from `timestamp-freshness.ts` (5s future tolerance).
+
+**Check at the open:** Navigate SPX desk during RTH — play rail tickets and playbook technicals should refresh normally (not stuck on pre-open values). Premium tier users should not retain tier after downgrade when Clerk is reachable. Hard-reload desk mid-session — hydrated cache should respect maxAge, not serve stale payloads from skewed timestamps.
+
 ### 0z. Vector API unrounded floats + UW halt future-timestamp guard — fix/vector-roundfloats-uw-halt-freshness (pending)
 
 **What was broken:** Five Vector cache-reader routes (`universe`, `wall-history`, `daily-regime`, `rail-bootstrap`, `contract-picks`) returned raw IEEE float noise at the JSON boundary while sibling Vector routes already call `roundFloats`. Separately, `isUwHaltSourceStale()` used raw `Date.now() - freshest > maxAgeMs` — a clock-skewed future `effectiveFreshestUwMessageAt()` reads as live/trusted.
