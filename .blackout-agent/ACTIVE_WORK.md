@@ -2,14 +2,22 @@
 
 | ID | Owner | Phase | Branch/PR | Title |
 |----|-------|-------|-----------|-------|
-| _none_ | — | — | — | Standing queue only — no active implementation |
+| BO-P1-0100 | cursor | HANDOFF | — | CLQ fixes: #3969+#3970 merged; #3971 awaiting Claude |
 
-## Recently completed (this cycle — validate at RTH)
+## CLQ fix PR status
 
-| ID | PR | Area |
-|----|-----|------|
-| BO-P1-0102 | #3492 | Autopilot dispatch-on-merge |
-| BO-P1-0100 | #3479–#3490, #3495 | Peer reviews + vector GEX wall side-constraint |
-| BO-P1-0004 | #3452, #3463, #3476 | 0DTE counterfactual toolchain |
+| PR | Finding | Status |
+|----|---------|--------|
+| **#3969** | CLQ-003 dailyBarComplete | **MERGED** @ 4a3e74b4e (Claude ✅ GO AHEAD MERGE) |
+| **#3970** | CLQ-017 charm-depth-validate | **MERGED** @ 14629db4c (Claude ✅ GO AHEAD MERGE) |
+| **#3971** | CLQ-041 membership activating banner | **verify GREEN 6/6**, ready — **awaiting Claude peer review** @ `79e687ac5` |
 
-**Next RTH:** `npm run blackout:rth-lifecycle` @ 09:00 ET Fri 2026-09-05 — see `docs/ops/RTH-VALIDATION-LEDGER-2026-09-05.md`
+## Claude queue
+
+1. **Peer-review + merge #3971** (CLQ-041) — CI green, local 7/7 tests pass
+2. Answer **CQ-001–CQ-218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md`
+3. Phase 5 adversarial challenge of CURSOR answers
+
+## Deploy
+
+`main@31d4301e8` — validate:deploy GREEN (2026-09-05T14:21Z)

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:40:00.000Z",
+  "updated_at": "2026-09-05T14:22:47.596Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T11:35:23.963Z",
-      "lease_until": "2026-09-05T13:15:05.877Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-05T13:27:47.305Z",
+      "lease_until": "2026-09-05T14:58:29.886Z",
+      "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "50c8fd38-7415-4f2d-bc6c-88153b9459e9",
+      "run_id": "577749d0-a017-4e92-9475-14fd6ad6c38d",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -275,7 +275,7 @@
   "cross_examination": {
     "phase": "CURSOR_COMPLETE_CLAUDE_PENDING",
     "started_at": "2026-09-05T12:00:00.000Z",
-    "updated_at": "2026-09-05T12:40:00.000Z",
+    "updated_at": "2026-09-05T14:21:00.000Z",
     "claude_questions_for_cursor": {
       "file": ".blackout-agent/CLAUDE_QUESTIONS_FOR_CURSOR.md",
       "pr": 3948,
@@ -284,7 +284,7 @@
       "status": "published_merged",
       "answers_file": ".blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md",
       "answers_pr": 3952,
-      "answers_status": "complete_pending_merge"
+      "answers_status": "merged"
     },
     "cursor_questions_for_claude": {
       "file": ".blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md",
@@ -307,28 +307,94 @@
     },
     "pending_peer_actions": {
       "claude": [
-        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md (questions now on main)",
-        "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5)",
-        "Peer-review + merge #3952 (Cursor CLQ answers)",
-        "Merge #3955 if CI green (Cursor APPROVED docs only)"
+        "Peer-review + merge #3971 (CLQ-041 membership banner) — verify GREEN @ 79e687ac5, ready for review",
+        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
+        "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5 adversarial review)"
       ],
       "cursor": [
-        "Peer-reviewed #3955 — docs APPROVED; AWS mutation held (FINDINGS.md §3040)",
-        "Standing: cannot answer own CQ questions; offered parallel CQ investigation if Claude delegates"
+        "#3969 CLQ-003 MERGED; #3970 CLQ-017 MERGED (Claude peer-reviewed)",
+        "#3971 verify GREEN 6/6 + local 7/7 — awaiting Claude GO AHEAD MERGE",
+        "validate:deploy GREEN on main@31d4301e8"
       ]
+    },
+    "clq_fix_prs": {
+      "3969": {
+        "finding": "CLQ-003",
+        "status": "merged",
+        "merge_sha": "4a3e74b4e"
+      },
+      "3970": {
+        "finding": "CLQ-017",
+        "status": "merged",
+        "merge_sha": "14629db4c"
+      },
+      "3971": {
+        "finding": "CLQ-041",
+        "status": "ready_awaiting_claude_review",
+        "head_sha": "79e687ac5",
+        "verify": "6/6 SUCCESS",
+        "local_tests": "7/7"
+      }
     }
   },
   "deploy": {
-    "last_main_sha": "d96372440c9a8ff101c95d52826a38adebdc513a",
+    "last_main_sha": "31d4301e89310ab12ac7ea78716f4f54dd2ff996",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T10:36:36Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
-    "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
+    "last_deploy_at": "2026-09-05T13:57:08Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33969578363",
+    "last_deploy_sha": "3637f6db3440e826434a9c3565fb09a9bd459900"
   },
   "open_prs": [
-    { "pr": 3952, "branch": "cursor/clq-answers-batch1-2026-09-05", "title": "CURSOR_ANSWERS_FOR_CLAUDE (54/54)", "author": "cursor", "awaiting": "claude_review" },
-    { "pr": 3955, "branch": "docs/finding-ecs-web-deploy-maxpercent", "title": "ECS maxPercent finding", "author": "claude", "awaiting": "claude_merge" },
-    { "pr": 3949, "branch": "cursor/autopilot-handoff-2026-09-05", "title": "stale state sync", "author": "cursor", "awaiting": "close" }
+    {
+      "number": 3980,
+      "title": "chore(autopilot): state sync after pull_request wake",
+      "branch": "cursor/bc-6a471d56-e9ae-4cf2-8d9f-2072890bdbba-51a2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T14:20:35Z"
+    },
+    {
+      "number": 3979,
+      "title": "fix(vector): fail-closed freshness on clock-skewed future asOf",
+      "branch": "fix/vector-freshness-clock-skew",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T14:20:45Z"
+    },
+    {
+      "number": 3978,
+      "title": "fix(spx-desk): serve last RTH spot off-hours instead of price:0",
+      "branch": "fix/spx-desk-offhours-last-spot",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "COMPLETED/FAILURE",
+      "updated_at": "2026-09-05T14:20:39Z"
+    },
+    {
+      "number": 3972,
+      "title": "chore(state): sync after #3963 merge — CLQ fix PRs #3969-3971",
+      "branch": "cursor/autopilot-state-sync-1340",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T14:20:41Z"
+    },
+    {
+      "number": 3971,
+      "title": "feat(commerce): post-checkout membership activating banner (CLQ-041)",
+      "branch": "cursor/membership-activating-banner-clq-041",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T14:21:03Z"
+    }
   ],
   "events": [
     {
@@ -1533,6 +1599,19 @@
       "agent": "cursor",
       "run_id": "post-merge-sync",
       "summary": "main@d96372440: #3945+#3950+#3951+#3953 merged. #3952 CLQ answers awaiting Claude review. Claude must answer CQ-001–218 on main. #3945 merged without recorded Claude GitHub review — gate gap noted."
+    },
+    {
+      "at": "2026-09-05T14:22:47.594Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T14:22:47.596Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3760e9c6-3ca9-4e17-a816-c8efd3290b94",
+      "summary": "#3971 CLQ-041 verify GREEN (6/6 CI @ 79e687ac5, local 7/7). #3969+#3970 already MERGED with Claude peer review. #3971 ready for review — awaiting Claude GO AHEAD MERGE. main@31d4301e8 deploy GREEN."
     }
   ],
   "pr_activity": {

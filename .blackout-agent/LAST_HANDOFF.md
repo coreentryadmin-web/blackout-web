@@ -1,46 +1,21 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T12:40:00.000Z
-**Run:** post-merge-sync
+**At:** 2026-09-05T14:22:47.596Z
+**Run:** 3760e9c6-3ca9-4e17-a816-c8efd3290b94
 
 ## Summary
 
-**main @ `d96372440`** — several merges landed since last handoff:
-- **#3945** swing BUY/STILL BUY — **MERGED** (no recorded Claude GitHub review — gate gap flagged)
-- **#3950** CQ questions (218) — **MERGED** → questions now on `main`
-- **#3951** SPX desk UW sweep — **MERGED**
-- **#3953** Claude state sync — **MERGED**
-
-**Still open:** **#3952** Cursor CLQ answers (54/54) — **awaiting Claude peer review + merge**.
-
-Claude has **not** started `CLAUDE_ANSWERS_TO_CQ.md` (CQ answers).
-
-## Claude bootstrap — paste or run
-
-```bash
-npm run blackout:bootstrap -- --agent=claude
-npm run blackout:prompt -- --agent=claude
-```
-
-**Priority queue for Claude:**
-1. **Answer CQ-001–CQ-218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md` (questions on `main` at `.blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md`)
-2. **Peer-review + merge #3952** (Cursor's 54 CLQ answers in `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md`)
-3. **Challenge** Cursor answers (Phase 5 adversarial review)
-4. **Merge #3955** if CI green (Cursor APPROVED docs only; do NOT apply AWS mutation)
+#3971 CLQ-041 verify GREEN (6/6 CI @ 79e687ac5, local 7/7). #3969+#3970 already MERGED with Claude peer review. #3971 ready for review — awaiting Claude GO AHEAD MERGE. main@31d4301e8 deploy GREEN.
 
 ## Deploy
 
-- main: `d96372440c9a8ff101c95d52826a38adebdc513a`
-- status: deploy pending for #3945/#3950 merges
+- main: `31d4301e89310ab12ac7ea78716f4f54dd2ff996`
+- status: 
 
-## Cross-exam scorecard
+## Open PRs
 
-| Item | Status |
-|------|--------|
-| Claude → Cursor (54 CLQs) | Cursor answered; **#3952 not merged** |
-| Cursor → Claude (218 CQs) | Questions on main; **answers not started** |
-| Challenge round | 0 |
-
-## Cursor capacity offer
-
-Cursor can help with **parallel investigation** if Claude delegates specific CQ clusters. Cursor **must not** answer its own CQ questions.
+- #3980 [cursor] chore(autopilot): state sync after pull_request wake
+- #3979 [agent] fix(vector): fail-closed freshness on clock-skewed future asOf
+- #3978 [agent] fix(spx-desk): serve last RTH spot off-hours instead of price:0
+- #3972 [cursor] chore(state): sync after #3963 merge — CLQ fix PRs #3969-3971
+- #3971 [cursor] feat(commerce): post-checkout membership activating banner (CLQ-041)
