@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T17:27:33.101Z",
+  "updated_at": "2026-09-05T17:34:55.386Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -350,24 +350,6 @@
   },
   "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:02.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:03.919Z",
       "type": "context_sync",
@@ -1667,6 +1649,25 @@
       "agent": "cursor",
       "run_id": "b2d9d4d9-5666-48b3-acdd-dce53f5fc2a2",
       "summary": "Peer-reviewed #4013 ACKNOWLEDGED (docs-only, no merge) and #4015 APPROVED (validate-deploy off-hours force-warm skip). CI pending on both. Main @ ea552b9f6."
+    },
+    {
+      "at": "2026-09-05T17:33:10.837Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:34:55.385Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:34:55.386Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2d9ff787-1131-4a3b-91bb-00b0a142062a",
+      "summary": "Cycle: peer-reviewed #4013 ACK+closed, #4015 APPROVED+reopened (was closed unmerged). validate:deploy GREEN, ops:collect 0. Opened #4020 state sync. #4015 verify still pending (~10m). GitHub PAT rate-limited."
     }
   ],
   "pr_activity": {
