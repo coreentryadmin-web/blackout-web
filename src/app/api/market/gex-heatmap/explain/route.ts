@@ -13,6 +13,7 @@ import { requireAnyToolApi } from "@/lib/tool-access-server";
 import { checkNumbersGrounded } from "@/lib/grounding-guard";
 import { fmtPremium } from "@/lib/fmt-money";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -204,7 +205,7 @@ export async function GET(req: NextRequest) {
 
   // 2a. In-memory cache (co-located requests skip Redis + Claude).
   const mem = explainMem.get(ticker);
-  if (mem && now - mem.at < EXPLAIN_TTL_MS) {
+  if (mem && isWsUpdatedAtFresh(mem.at, EXPLAIN_TTL_MS, now)) {
     return NextResponse.json(
       { available: true, narrative: mem.narrative, asof: mem.asof, ticker },
       { status: 200, headers: NO_STORE_HEADERS }
@@ -214,7 +215,7 @@ export async function GET(req: NextRequest) {
   // 2b. Redis cache (cross-replica) — one Claude call per ticker per TTL cluster-wide.
   try {
     const hit = await sharedCacheGet<ExplainEntry>(cacheKey);
-    if (hit && now - hit.at < EXPLAIN_TTL_MS) {
+    if (hit && isWsUpdatedAtFresh(hit.at, EXPLAIN_TTL_MS, now)) {
       explainMem.set(ticker, hit);
       return NextResponse.json(
         { available: true, narrative: hit.narrative, asof: hit.asof, ticker },
@@ -242,7 +243,7 @@ export async function GET(req: NextRequest) {
       const ov = await sharedCacheGet<{ at: number; overlays: GexHeatmapOverlays }>(
         `gex-overlay:${ticker}`
       );
-      if (ov && now - ov.at < EXPLAIN_TTL_MS) overlays = ov.overlays;
+      if (ov && isWsUpdatedAtFresh(ov.at, EXPLAIN_TTL_MS, now)) overlays = ov.overlays;
     } catch {
       /* overlays are optional context */
     }
