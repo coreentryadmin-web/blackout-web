@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T02:26:27.580Z",
+  "updated_at": "2026-09-05T03:44:09.830Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T03:34:05.001Z",
+      "lease_until": "2026-09-05T05:10:58.685Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "5dc06cc8-0910-43e4-96d7-f132040f0b0b",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -234,6 +234,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3835": {
+      "pr": 3835,
+      "head_sha": "51f5c764d80b99a3178695f5a072b611d8ce9d3e",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-05T03:44:06.995Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -248,7 +256,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0985f93191097d8bfab07f06212bfb6969389468",
+    "last_main_sha": "8a5712001a458afa04a26606e857adc7bebeba9f",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-04T22:52:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
@@ -1116,6 +1124,35 @@
     },
     {
       "at": "2026-09-05T02:26:27.580Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T03:44:06.679Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T03:44:06.679Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9bb4a4d7-f31f-495d-af87-b47b6b332b47",
+      "summary": "pull_request wake: synced main@8a5712001, validate:deploy GREEN, platform-integrity 14/14, ops:collect 0. Open PRs: #3835 (fix/vector-universe-spot-fail-closed, Cursor-authored — diff reviewed, WAIT for verify + Claude approval), #3841 (docs-only swing-v2 questions). Deploy run 33941767096 was in_progress for 8a5712001. GitHub GraphQL rate-limited (user 284440397) — pr-sweep via REST found 2 open PRs."
+    },
+    {
+      "at": "2026-09-05T03:44:06.996Z",
+      "type": "pr_review",
+      "pr": 3835,
+      "head_sha": "51f5c764d80b99a3178695f5a072b611d8ce9d3e",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-05T03:44:06.995Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-05T03:44:09.830Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
