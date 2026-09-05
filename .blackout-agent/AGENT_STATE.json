@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:52:09.464Z",
+  "updated_at": "2026-09-05T21:57:40.019Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T21:50:28.223Z",
-      "lease_until": "2026-09-05T23:21:06.704Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-05T21:50:35.477Z",
+      "lease_until": "2026-09-05T23:21:07.971Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "63df6a11-e518-41ee-9ec8-8058806e4a7d",
+      "run_id": "730365e1-32af-456a-8d55-98877bec47f4",
       "title": null
     },
     "BO-P1-0105": {
@@ -50,7 +50,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "73e58b8937d8a20704b2527c4be090315d9de015",
+    "last_main_sha": "d584df68f22290d965a531c80b04dc8cab0bf1de",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T21:51:22Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993937878",
@@ -310,9 +310,38 @@
       "agent": "cursor",
       "run_id": "5c1f0e77-137b-4489-82be-fac3de120d0f",
       "summary": "Continuous loop: lifecycle 6/6 GREEN (deploy, api-auth, platform-integrity 14/14, seo 22/22, rth-open off-hours). ops:collect 0. #4052 verify in_progress — cursor-authored, awaits Claude review. No peer PRs. GraphQL rate-limited."
+    },
+    {
+      "at": "2026-09-05T21:57:39.163Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:57:40.019Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:57:40.019Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "737b4448-4975-43e5-a05b-6b5027db4841",
+      "summary": "Peer-reviewed #4053 (vector undatedSince) + #4054 (cluster health/VIX SSE) — APPROVED, tests GREEN. Lifecycle 6/6. ops:collect 0. ECR #4047 deploy in_progress."
     }
   ],
   "open_prs": [
+    {
+      "number": 4054,
+      "title": "fix(ws): cluster health future-skew guard + VIX SSE change% gate",
+      "branch": "fix/cluster-health-vix-sse-change",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T21:56:12Z"
+    },
     {
       "number": 4053,
       "title": "fix(vector): undated universe rows never age out of the scanner snapshot",
@@ -320,8 +349,8 @@
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "QUEUED/",
-      "updated_at": "2026-09-05T21:52:04Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T21:55:51Z"
     }
   ],
   "pr_activity": {
