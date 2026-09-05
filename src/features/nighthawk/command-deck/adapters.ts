@@ -17,6 +17,11 @@ import { thesisManagementOverlay, formatComputedEt } from "@/lib/zerodte/thesis-
 import { buildTerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import { SWING_SCALE_OUT_POLICY } from "@/lib/swing/exit-policy";
 import { swingEntryVerdict } from "@/lib/swing/entry-verdict";
+import {
+  evaluateSwingEntryEnterability,
+  type SwingEntryAction,
+} from "@/lib/swing/entry-enterability";
+import type { SwingSubLane } from "@/lib/swing/taxonomy";
 import { computeSwingThesisHealth } from "@/lib/swing/thesis-health";
 import type { SwingManageAction } from "@/lib/swing/manage";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
@@ -768,6 +773,27 @@ export function greeksFromContract(contract: HorizonDeckSource["contract"]): Dec
 
 export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
   const baseStatus = horizonDeckStatus(src);
+  const deskCommitted = Boolean(src.liveStatus || src.committedAt);
+  const swingEnterability =
+    src.horizon === "SWING"
+      ? evaluateSwingEntryEnterability({
+          setupState: src.setupState,
+          entryStatus: src.entryStatus,
+          aboveFloor: String(src.status ?? "").toUpperCase() === "COMMIT",
+          persistenceObserved: src.persistenceObserved,
+          commitGateBlockedBy: src.commitGateBlockedBy,
+          signalKinds: src.signalKinds,
+          archetype: src.archetype,
+          subLane: (src.subLane as SwingSubLane) ?? null,
+          anchoredAt: src.committedAt ?? src.firstSeenAt ?? null,
+          deskCommitted,
+        })
+      : null;
+  const swingEntryAction: SwingEntryAction | null =
+    swingEnterability?.enterable &&
+    (swingEnterability.action === "buy" || swingEnterability.action === "still_buy")
+      ? swingEnterability.action
+      : null;
   const swingPreEntry =
     src.horizon === "SWING" &&
     !src.liveStatus &&
@@ -783,6 +809,9 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
         commitGateBlockedBy: src.commitGateBlockedBy,
         signalKinds: src.signalKinds,
         archetype: src.archetype,
+        subLane: src.subLane,
+        anchoredAt: src.committedAt ?? src.firstSeenAt ?? null,
+        deskCommitted,
       })
     : null;
   const status = entryVerdict?.deckStatus ?? baseStatus;
@@ -911,6 +940,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     setupState: src.setupState ?? null,
     entryStatus: src.entryStatus ?? null,
     servingSection: src.servingSection ?? null,
+    swingEntryAction,
     detectedAt: src.firstSeenAt ?? null,
     firstFlaggedAt: src.committedAt ?? null,
     committedAt: src.committedAt ?? null,

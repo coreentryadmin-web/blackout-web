@@ -15,7 +15,19 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.equal(v?.gateBlocks, null);
   });
 
-  it("WAITING_FOR_ENTRY → WATCH + WAIT", () => {
+  it("WAITING_FOR_ENTRY + PULLBACK → WATCH + BUY (enterable pullback)", () => {
+    const v = swingEntryVerdict({
+      servingSection: "WAITING_FOR_ENTRY",
+      setupState: "TRIGGERED",
+      entryStatus: "PULLBACK_TO_ENTRY",
+      aboveFloor: true,
+    });
+    assert.equal(v?.deckStatus, "WATCH");
+    assert.equal(v?.recommendation, "BUY");
+    assert.equal(v?.actionLabel, "BUY");
+  });
+
+  it("WAITING_FOR_ENTRY + PRE_TRIGGER → WATCH + WAIT", () => {
     const v = swingEntryVerdict({
       servingSection: "WAITING_FOR_ENTRY",
       setupState: "TRIGGERED",
@@ -94,6 +106,19 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.equal(v?.actionLabel, "WAIT");
     assert.equal(v?.recommendation, "HOLD");
     assert.equal(v?.gateBlocks?.[0]?.code, "g_s6_confluence");
+  });
+
+  it("desk committed + AT_TRIGGER → STILL BUY label", () => {
+    const v = swingEntryVerdict({
+      servingSection: "COMMIT_NOW",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+      deskCommitted: true,
+    });
+    assert.equal(v?.recommendation, "BUY");
+    assert.equal(v?.actionLabel, "STILL BUY");
+    assert.equal(v?.entryAction, "still_buy");
   });
 
   it("COMMIT_NOW + legacy NIGHT HAWK only → WAIT with legacy_exempt, not BUY (Q22)", () => {

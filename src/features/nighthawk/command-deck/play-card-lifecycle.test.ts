@@ -442,7 +442,39 @@ describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
     assert.equal(swingActionDisplay(base({ horizon: "SWING", status: "SKIP" })), null);
   });
 
-  it("live OPEN swing uses HOLD/TRIM/EXIT like 0DTE scale-out rows", () => {
+  it("live OPEN with swingEntryAction still_buy → STILL BUY pill (not HOLD)", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "OPEN",
+          recommendation: "HOLD",
+          swingEntryAction: "still_buy",
+        }),
+      ),
+      { label: "STILL BUY", tone: "watch" },
+    );
+  });
+
+  it("TRIM recommendation wins over STILL BUY when desk is scaling out", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          swingEntryAction: "still_buy",
+          exitPolicy: {
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 50, fraction: 0.33, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
+        }),
+      ),
+      { label: "TRIM 50%", tone: "active" },
+    );
+  });
+
+  it("live OPEN swing uses HOLD when not enterable", () => {
     assert.deepEqual(
       swingActionDisplay(base({ horizon: "SWING", status: "OPEN", recommendation: "HOLD" })),
       { label: "HOLD", tone: "active" },

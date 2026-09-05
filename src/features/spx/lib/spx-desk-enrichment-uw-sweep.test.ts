@@ -24,3 +24,19 @@ test("fetchDeskEnrichmentFields wraps UW fan-out in runWithBackgroundUwSweep", (
   assert.match(fnBody, /return runWithBackgroundUwSweep\(async \(\) => \{/);
   assert.match(fnBody, /runUwPooled\(/);
 });
+
+test("fetchUwDeskRestSupplemental wraps UW fan-out in runWithBackgroundUwSweep", () => {
+  const fnStart = deskSrc.indexOf("async function fetchUwDeskRestSupplemental");
+  assert.ok(fnStart >= 0, "fetchUwDeskRestSupplemental must exist");
+  const fnBody = deskSrc.slice(fnStart, fnStart + 1200);
+  assert.match(fnBody, /return runWithBackgroundUwSweep\(async \(\) => \{/);
+  assert.match(fnBody, /runUwPooled\(/);
+});
+
+test("buildSpxDeskFlow wraps UW fan-out in runWithBackgroundUwSweep", () => {
+  const fnStart = deskSrc.indexOf("export async function buildSpxDeskFlow");
+  assert.ok(fnStart >= 0, "buildSpxDeskFlow must exist");
+  const fnBody = deskSrc.slice(fnStart, fnStart + 3500);
+  assert.match(fnBody, /runWithBackgroundUwSweep\(\(\) =>/);
+  assert.match(fnBody, /runUwPooled\(\[/);
+});

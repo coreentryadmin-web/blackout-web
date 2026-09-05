@@ -18,7 +18,12 @@ export function SwingCockpitStrip({
   const working = plays.filter((p) => WORKING.has(p.status));
   const openCount = working.length;
   const watchCount = plays.filter((p) => WATCHING.has(p.status)).length;
-  const buyCount = plays.filter((p) => p.status === "WATCH" && p.recommendation === "BUY").length;
+  const buyCount = plays.filter(
+    (p) =>
+      p.swingEntryAction === "buy" ||
+      p.swingEntryAction === "still_buy" ||
+      (p.status === "WATCH" && p.recommendation === "BUY"),
+  ).length;
   const pnls = working.map((p) => p.pnlPct).filter((n): n is number => n != null && Number.isFinite(n));
   const sessionPnl =
     pnls.length > 0 ? Math.round((pnls.reduce((a, b) => a + b, 0) / pnls.length) * 10) / 10 : null;
