@@ -58,7 +58,7 @@ import { subLaneForDte } from "./taxonomy";
 import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration";
 import { classificationMetaFromVerdict } from "./archetype";
 import { resolveSwingTier1Cap } from "./v2/tier1-cap";
-import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, swingCortexPreflightCap } from "./v2/config";
+import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, isSwingEarningsGateEnforced, swingCortexPreflightCap } from "./v2/config";
 import { evaluateSwingCortexForCommit } from "./v2/cortex-swing";
 import { persistSwingGateRejections } from "./v2/rejections";
 import { evaluateSwingConfluence } from "./v2/confluence";
@@ -239,9 +239,15 @@ export function rankTierZeroSeeds(
  * score: the gate/persistence layer decides what surfaces, not this producer.
  */
 export function deriveSwingCandidates(seeds: SwingCandidateSeed[]): SwingDossier[] {
-  return seeds
-    .map((s) => buildSwingDossier(s.input))
-    .sort((a, b) => b.score.score - a.score.score || a.ticker.localeCompare(b.ticker));
+  const out: SwingDossier[] = [];
+  for (const s of seeds) {
+    try {
+      out.push(buildSwingDossier(s.input));
+    } catch {
+      // Per-candidate isolation: one poisoned seed must not abort the whole scan batch.
+    }
+  }
+  return out.sort((a, b) => b.score.score - a.score.score || a.ticker.localeCompare(b.ticker));
 }
 
 /**
@@ -823,6 +829,7 @@ export async function runSwingDiscoveryScan(
         classificationMargin: classMeta?.margin ?? null,
         ivRank: d?.ivRank ?? null,
         discoveryPaths: pathsByTicker.get(w.ticker.toUpperCase()) ?? [],
+        earningsInWindow: d?.earningsInWindow === true,
       };
     });
 
@@ -854,7 +861,13 @@ export async function runSwingDiscoveryScan(
       book,
       budget: deps.budget,
       caps: deps.caps,
-      v2: engineV2 && isSwingConfluenceEnforced() ? { enforceConfluence: true } : undefined,
+      v2:
+        engineV2 && (isSwingConfluenceEnforced() || isSwingEarningsGateEnforced())
+          ? {
+              enforceConfluence: isSwingConfluenceEnforced(),
+              enforceEarnings: isSwingEarningsGateEnforced(),
+            }
+          : undefined,
     });
     commitEligibleCount = plan.commitEligibleCount;
 
