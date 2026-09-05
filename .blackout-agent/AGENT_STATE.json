@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:32:24.787Z",
+  "updated_at": "2026-09-05T15:32:55.861Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -80,13 +80,13 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T11:42:09.507Z",
-      "lease_until": "2026-09-05T13:15:05.877Z",
+      "claimed_at": "2026-09-05T15:32:45.655Z",
+      "lease_until": "2026-09-05T17:02:45.655Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "50c8fd38-7415-4f2d-bc6c-88153b9459e9",
+      "run_id": null,
       "title": null
     },
     "BO-P1-0104": {
@@ -268,7 +268,7 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T12:20:00.000Z",
+      "last_seen": "2026-09-05T15:32:45.656Z",
       "current_task": "BO-P1-0101"
     }
   },
@@ -1548,6 +1548,25 @@
       "agent": "cursor",
       "run_id": "06224fe4-b3d6-45d6-8db7-edcd242efc32",
       "summary": "Weekend cycle: main@430f33982. validate:deploy + platform-integrity 14/14 GREEN (SPX 7718.6). ops:collect 0. #3952/#3955 CI GREEN awaiting Claude. ECR deploy 33973466010 in_progress 30m+. GitHub API rate-limited. RTH skipped (Saturday)."
+    },
+    {
+      "at": "2026-09-05T15:32:45.656Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T15:32:55.859Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:32:55.861Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "5109eb49-4e6a-4c77-a3d6-f225ba5a27d5",
+      "summary": "Cycle complete: main@430f33982. All standing checks GREEN (deploy, platform-integrity 14/14, api-auth, data-validator 22 PASS, ops:collect 0). Branch cursor/autopilot-handoff-1788622352 pushed — PR creation blocked by GitHub rate limit. #3952/#3955 CI GREEN awaiting Claude. ECR 33973466010 in_progress 32m+ but prod healthy. Saturday — RTH skipped."
     }
   ],
   "pr_activity": {
