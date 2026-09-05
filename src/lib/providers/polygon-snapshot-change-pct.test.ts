@@ -25,3 +25,17 @@ test("fetchStockSnapshotPerformance + fetchMarketMovers must not default missing
   assert.doesNotMatch(src, /todaysChangePerc \?\? 0/);
   assert.match(src, /snapshotChangePctFromRow/);
 });
+
+test("_rowToSnapshot: does not fabricate flat 0% when change is unknowable (source scan)", () => {
+  const src = readFileSync("src/lib/providers/polygon.ts", "utf8");
+  assert.match(
+    src,
+    /function _rowToSnapshot[\s\S]*?change_pct: number \| null/,
+    "StockQuoteSnapshot.change_pct must allow null"
+  );
+  assert.doesNotMatch(
+    src,
+    /function _rowToSnapshot[\s\S]*?:\s*0;\s*\n\s*return \{/,
+    "_rowToSnapshot must not fall through to fabricated 0% for change_pct"
+  );
+});

@@ -99,7 +99,8 @@ export type StockQuoteSnapshot = {
   ticker: string;
   price: number;
   prev_close: number;
-  change_pct: number;
+  /** Null when the provider omits change and we cannot derive it — never fabricate flat 0%. */
+  change_pct: number | null;
   /** Day extremes / VWAP from the day aggregate. NULL when the aggregate is absent (pre-open /
    *  market closed / untraded) — do NOT dress the spot price up as a real HOD/LOD/VWAP
    *  (mirrors the gap #14 HOD/LOD null fix). */
@@ -124,11 +125,11 @@ function _rowToSnapshot(sym: string, row: SnapshotTicker): StockQuoteSnapshot | 
   }
   const prevClose = Number(prev.c ?? 0);
   const changePct =
-    row.todaysChangePerc != null
+    row.todaysChangePerc != null && Number.isFinite(row.todaysChangePerc)
       ? Number(row.todaysChangePerc.toFixed(2))
-      : prevClose
+      : prevClose > 0 && Number.isFinite(price)
         ? Number((((price - prevClose) / prevClose) * 100).toFixed(2))
-        : 0;
+        : null;
   return {
     ticker: sym,
     price,

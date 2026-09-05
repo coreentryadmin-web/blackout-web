@@ -15,6 +15,7 @@ import {
   legacyOccForSnapshot,
   lookupLegacyOptionSnapshot,
 } from "@/features/nighthawk/lib/legacy-play-contract";
+import { roundFloats } from "@/lib/round-floats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,5 +55,5 @@ export async function GET(req: NextRequest) {
     return buildLegacyOptionMarkRow(occ, ws, snap, now);
   });
 
-  return NextResponse.json({ available: true, marks }, { headers: NO_STORE_HEADERS });
+  return NextResponse.json(roundFloats({ available: true, marks }), { headers: NO_STORE_HEADERS });
 }

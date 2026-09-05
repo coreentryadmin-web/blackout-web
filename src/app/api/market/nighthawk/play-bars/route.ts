@@ -5,6 +5,7 @@ import { requireToolApi } from "@/lib/tool-access-server";
 import { fetchOptionMinuteBars } from "@/lib/providers/polygon";
 import { withServerCache } from "@/lib/server-cache";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -85,7 +86,7 @@ export async function GET(req: NextRequest) {
       .map((b) => ({ t: new Date(b.t!).toISOString(), c: b.c }));
 
     return NextResponse.json(
-      { occ, since: sinceIso, points },
+      roundFloats({ occ, since: sinceIso, points }),
       { headers: NO_STORE_HEADERS }
     );
   } catch (err) {
