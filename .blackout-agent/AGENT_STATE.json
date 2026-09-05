@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T08:38:26.730Z",
+  "updated_at": "2026-09-05T09:51:18.596Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T09:24:33.191Z",
+      "lease_until": "2026-09-05T10:57:12.390Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "f761ff43-a18a-46e7-8ce9-6f3a3ae55a88",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -234,6 +234,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3931": {
+      "pr": 3931,
+      "head_sha": "a755c978",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-05T09:51:18.595Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,7 +256,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "6a217bf89893d5cae3c0bd1480ac8262bf45bab7",
+    "last_main_sha": "49eeb7ca3f493f3befd9c663dc4c3e0b323ad0d2",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-04T22:52:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
@@ -1209,6 +1217,29 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T09:51:12.018Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T09:51:12.018Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "0e97d347-1338-4632-9ba4-cdc9b4db291a",
+      "summary": "Work loop cycle: #3926 merged (APPROVED). #3931 peer-reviewed WAIT (6/6 tests pass, CI pending, draft). validate:deploy GREEN, ops:collect 0. GitHub API rate-limited — resume #3931 merge on CI green."
+    },
+    {
+      "at": "2026-09-05T09:51:18.596Z",
+      "type": "pr_review",
+      "pr": 3931,
+      "head_sha": "a755c978",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-05T09:51:18.595Z",
+      "safe_to_merge": true
     }
   ]
 }
