@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T16:35:35.991Z
-**Run:** 7241539d-60c7-4e6b-ac5b-c9b3aa85b828
+**At:** 2026-09-05T17:33:04.069Z
+**Run:** a3ae8226-41c8-4862-998f-473be72893b1
 
 ## Summary
 
-Continuous loop cycle complete. Peer review: pr-sweep 0 open PRs. Platform integrity 14/14 GREEN, lifecycle sweep GREEN (weekend RTH skip). Deploy drift: prod rolling feaba670 (in_progress 25m+), main now 86227e70 (#3995+#3998) with pending ECR run 33978273189. Opened draft #4001 (agent state sync — awaits Claude review). GitHub GraphQL rate-limited until ~17:06 UTC; REST still works. Next: monitor ECR → validate:deploy post-rollout; Claude peer-review #4001 + any new claude/* PRs.
+Cycle complete: peer-reviewed+merged #4006/#4011/#4007. Deploy+platform-integrity GREEN. ops:collect clean. Opened #4013 handoff state sync. Awaiting Claude on #3996/#3993/#4008/#4009.
 
 ## Deploy
 
-- main: `86227e70b57d7dc962673f750a952173dea85088`
+- main: `ea552b9f69c0c553d879486bbe317688148c988e`
 - status: 
 
 ## Open PRs
