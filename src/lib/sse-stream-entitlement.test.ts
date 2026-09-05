@@ -6,10 +6,10 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
-test("recheckSseUserEntitlement re-runs tier + optional tool gate", () => {
+test("recheckSseUserEntitlement omits session JWT claims on tier recheck", () => {
   const src = readFileSync(join(root, "src/lib/sse-stream-entitlement.ts"), "utf8");
-  assert.match(src, /requireTierApi/);
-  assert.match(src, /requireToolApi/);
+  assert.match(src, /resolveUserTier\(ctx\.userId\)/);
+  assert.doesNotMatch(src, /sessionClaims/);
 });
 
 test("zerodte marks stream rechecks entitlement on every user tick", () => {
@@ -17,18 +17,20 @@ test("zerodte marks stream rechecks entitlement on every user tick", () => {
     join(root, "src/app/api/market/zerodte/marks/stream/route.ts"),
     "utf8",
   );
-  assert.match(src, /recheckSseUserEntitlement\("premium", "nighthawk"\)/);
-  assert.match(src, /isUserStream/);
+  assert.match(src, /recheckSseUserEntitlement\(\{/);
+  assert.match(src, /tool: "nighthawk"/);
+  assert.match(src, /streamUserId/);
 });
 
 test("vector stream rechecks entitlement on every user tick", () => {
   const src = readFileSync(join(root, "src/app/api/market/vector/stream/route.ts"), "utf8");
-  assert.match(src, /recheckSseUserEntitlement\("premium", "vector"\)/);
-  assert.match(src, /isUserStream/);
+  assert.match(src, /recheckSseUserEntitlement\(\{/);
+  assert.match(src, /tool: "vector"/);
+  assert.match(src, /streamUserId/);
 });
 
 test("flows stream rechecks entitlement on every user send", () => {
   const src = readFileSync(join(root, "src/app/api/market/flows/stream/route.ts"), "utf8");
-  assert.match(src, /recheckSseUserEntitlement\("premium"\)/);
-  assert.match(src, /isUserStream/);
+  assert.match(src, /recheckSseUserEntitlement\(\{/);
+  assert.match(src, /streamUserId/);
 });

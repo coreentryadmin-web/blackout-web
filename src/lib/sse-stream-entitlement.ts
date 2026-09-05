@@ -1,19 +1,43 @@
-import type { Tier } from "@/lib/tiers";
+import { tierAtLeast, type Tier } from "@/lib/tiers";
+import { resolveUserTier, TierUnavailableError } from "@/lib/tier-cache";
+import { userCanAccessTool } from "@/lib/tool-access-server";
 import type { ToolKey } from "@/lib/tool-access";
-import { requireTierApi } from "@/lib/market-api-auth";
-import { requireToolApi } from "@/lib/tool-access-server";
+
+export type SseEntitlementVerdict = "ok" | "forbidden" | "unavailable";
+
+export type SseEntitlementContext = {
+  userId: string;
+  minTier: Tier;
+  tool?: ToolKey;
+};
 
 /**
- * Re-run tier + tool gates on each SSE tick so a lapsed membership stops receiving
- * premium live data without waiting for the browser to reconnect. Cron bearer auth is
- * checked only at connection open — callers skip this when `via === "cron"`.
+ * Re-check tier (+ optional tool launch gate) for a long-lived SSE connection.
+ * Intentionally omits session JWT claims so Whop cancellation / publishTierChanged
+ * invalidation is honored on the next tick — connect-time auth() is not enough.
  */
 export async function recheckSseUserEntitlement(
-  minTier: Tier,
-  tool?: ToolKey,
-): Promise<Response | null> {
-  const tier = await requireTierApi(minTier);
-  if (tier instanceof Response) return tier;
-  if (!tool) return null;
-  return requireToolApi(tool);
+  ctx: SseEntitlementContext
+): Promise<SseEntitlementVerdict> {
+  try {
+    const { isAdminUser } = await import("@/lib/admin-access");
+    if (await isAdminUser(ctx.userId)) {
+      if (ctx.tool) {
+        const allowed = await userCanAccessTool(ctx.userId, ctx.tool);
+        if (!allowed) return "forbidden";
+      }
+      return "ok";
+    }
+
+    const tier = await resolveUserTier(ctx.userId);
+    if (!tierAtLeast(tier, ctx.minTier)) return "forbidden";
+    if (ctx.tool) {
+      const allowed = await userCanAccessTool(ctx.userId, ctx.tool);
+      if (!allowed) return "forbidden";
+    }
+    return "ok";
+  } catch (err) {
+    if (err instanceof TierUnavailableError) return "unavailable";
+    throw err;
+  }
 }

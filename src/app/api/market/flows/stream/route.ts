@@ -41,7 +41,8 @@ export async function GET(req: NextRequest) {
 
   await initFlowEventBridge();
 
-  const isUserStream = auth.via === "user";
+  const isUserStream = auth.via === "user" && auth.userId;
+  const streamUserId = isUserStream ? auth.userId! : null;
   const encoder = new TextEncoder();
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   let unsubscribe: (() => void) | undefined;
@@ -61,17 +62,26 @@ export async function GET(req: NextRequest) {
     start(controller) {
       const send = async (payload: unknown) => {
         if (closed) return;
-        if (isUserStream) {
-          const denied = await recheckSseUserEntitlement("premium");
-          if (denied) {
+        if (streamUserId) {
+          const verdict = await recheckSseUserEntitlement({
+            userId: streamUserId,
+            minTier: "premium",
+          });
+          if (verdict === "forbidden") {
             cleanup();
             try {
+              controller.enqueue(
+                encoder.encode(
+                  `event: error\ndata: ${JSON.stringify({ error: "Forbidden — upgrade required" })}\n\n`
+                )
+              );
               controller.close();
             } catch {
               /* already closed */
             }
             return;
           }
+          if (verdict === "unavailable") return;
         }
         // Backpressure: a slow client lets the controller's internal queue grow
         // (desiredSize goes increasingly negative). Drop the lagging client rather
