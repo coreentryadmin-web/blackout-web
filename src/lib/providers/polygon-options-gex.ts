@@ -215,7 +215,7 @@ export async function fetchPolygonOdteDeskBundle(
   if (
     !skipCache &&
     cachedOdteBundle &&
-    now - cachedOdteBundle.at < polygonGexCacheMs() &&
+    gexHeatmapCacheEntryWithinTtl(cachedOdteBundle.at, now, polygonGexCacheMs()) &&
     Math.abs(cachedOdteBundle.spot - spot) < Math.max(spot * 0.003, 5)
   ) {
     return { rows: cachedOdteBundle.rows, maxPain: cachedOdteBundle.maxPain };
@@ -232,7 +232,7 @@ export async function fetchPolygonOdteDeskBundle(
     if (
       !skipCache &&
       redisHit &&
-      now - redisHit.at < polygonGexCacheMs() &&
+      gexHeatmapCacheEntryWithinTtl(redisHit.at, now, polygonGexCacheMs()) &&
       Math.abs(redisHit.spot - spot) < Math.max(spot * 0.003, 5)
     ) {
       cachedOdteBundle = redisHit;
@@ -4021,7 +4021,12 @@ export function gexHeatmapCacheEntryStale(entryAtMs: number, nowMs: number): boo
   return Math.max(0, ageMs) > gexHeatmapMaxStaleMs();
 }
 
-/** True when a heatmap cache entry.at is within TTL and not clock-skewed future. */
+/** True when a cache entry.at is within `ttlMs` of `nowMs` and not clock-skewed into the future
+ *  beyond `GEX_WS_FUTURE_TOLERANCE_MS`. Despite the name (kept for #3834's git blame), this is a
+ *  generic TTL-freshness check shared by every in-memory/Redis cache-hit gate in this module
+ *  (heatmap fetch, 0DTE bundle, positioning bundle, IV term structure, realized vol) — they all
+ *  had the identical `now - entry.at < ttlMs` shape, which reads a future-skewed `at` as age 0
+ *  and serves stale-but-"fresh" data indefinitely. See findings-staging 2026-09-05 for both PRs. */
 export function gexHeatmapCacheEntryWithinTtl(entryAtMs: number, nowMs: number, ttlMs: number): boolean {
   const ageMs = nowMs - entryAtMs;
   if (ageMs < -GEX_WS_FUTURE_TOLERANCE_MS) return false;
@@ -4508,7 +4513,7 @@ export async function fetchPolygonPositioningBundle(
   const cacheKey = `${sym}:${expiry}`;
   const now = Date.now();
   const cached = positioningCache.get(cacheKey);
-  if (cached && now - cached.at < positioningCacheMs()) {
+  if (cached && gexHeatmapCacheEntryWithinTtl(cached.at, now, positioningCacheMs())) {
     return cached.bundle;
   }
 
@@ -4653,7 +4658,7 @@ export async function fetchPolygonIvTermStructure(
   const root = ticker.toUpperCase();
   const now = Date.now();
   const cached = ivTermCache.get(root);
-  if (cached && now - cached.at < IV_TERM_CACHE_MS) return cached.data;
+  if (cached && gexHeatmapCacheEntryWithinTtl(cached.at, now, IV_TERM_CACHE_MS)) return cached.data;
 
   const today = todayEtYmd();
   const todayMs = new Date(today).getTime();
@@ -4768,7 +4773,7 @@ export async function fetchPolygonRealizedVol(
   const root = ticker.toUpperCase();
   const now = Date.now();
   const cached = realizedVolCache.get(root);
-  if (cached && now - cached.at < REALIZED_VOL_CACHE_MS) return cached.data;
+  if (cached && gexHeatmapCacheEntryWithinTtl(cached.at, now, REALIZED_VOL_CACHE_MS)) return cached.data;
 
   // Import fetchAggBars from polygon-largo to avoid duplicating the bar-fetch logic.
   const { fetchAggBars } = await import("./polygon-largo");
