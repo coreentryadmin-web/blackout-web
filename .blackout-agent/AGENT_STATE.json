@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T14:40:35.980Z",
+  "updated_at": "2026-09-05T14:53:14.360Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -266,6 +266,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T14:30:27.015Z",
       "safe_to_merge": true
+    },
+    "pr-3978": {
+      "pr": 3978,
+      "head_sha": "51704fef0",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T14:52:48.556Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -334,24 +342,6 @@
   },
   "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:46:14.852Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:15.659Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:15.832Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0001",
-      "owner": "cursor"
-    },
     {
       "at": "2026-09-03T23:46:15.941Z",
       "type": "task_claimed",
@@ -1664,6 +1654,29 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T14:52:48.557Z",
+      "type": "pr_review",
+      "pr": 3978,
+      "head_sha": "51704fef0",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T14:52:48.556Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T14:53:14.359Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T14:53:14.360Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "7fb5afda-0598-4f4d-93bc-84b42fb962aa",
+      "summary": "BO-P1-0100: #3979 merged; #3978 CI GREEN + Cursor APPROVED (merge blocked by GitHub rate limit on PAT — retry merge). RTH lifecycle + deploy validate GREEN. State pushed cursor/autopilot-state-recovery-loop-e18e. Next: merge #3978, Claude review #3971."
     }
   ],
   "pr_activity": {
