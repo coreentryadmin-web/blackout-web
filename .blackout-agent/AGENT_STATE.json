@@ -1,29 +1,29 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:44:47.519Z",
+  "updated_at": "2026-09-05T21:45:47.404Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-05T21:27:52.126Z",
-      "lease_until": "2026-09-05T22:59:35.079Z",
+      "lease_until": "2026-09-05T23:15:16.133Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "f03a0d79-f012-4cb1-acbc-959c7564a839"
+      "run_id": "a3dc2729-e53c-4411-be96-88f5bfb30afa"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-05T21:44:35.838Z",
-      "lease_until": "2026-09-05T23:14:35.838Z",
+      "lease_until": "2026-09-05T23:15:16.133Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "a3dc2729-e53c-4411-be96-88f5bfb30afa",
       "title": null
     }
   },
@@ -49,11 +49,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "7345b9a6352928ffb53134c263f9e81dd7b1845c",
+    "last_main_sha": "73e58b8937d8a20704b2527c4be090315d9de015",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T21:38:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993614498",
-    "last_deploy_sha": "7345b9a6352928ffb53134c263f9e81dd7b1845c"
+    "last_deploy_at": "2026-09-05T21:45:07Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993937878",
+    "last_deploy_sha": "73e58b8937d8a20704b2527c4be090315d9de015"
   },
   "events": [
     {
@@ -140,6 +140,77 @@
       "agent": "cursor",
       "run_id": "90a144f1-1abe-47d1-9980-1df0e7144f56",
       "summary": "Cycle complete: #4049 peer-reviewed+merged. #4047 verify GREEN — Claude peer review requested. Deploy validation GREEN, ops:collect 0. ECR deploy pending (run 33993614498). Standing queue continues."
+    },
+    {
+      "at": "2026-09-05T21:45:16.132Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:45:17.201Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:45:18.332Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:45:24.653Z",
+      "type": "pr_webhook",
+      "pr": 4050,
+      "event": "sweep",
+      "head": "48239e58bf2f8320b06741c63bcae050fda45430",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T21:45:27.183Z",
+      "type": "pr_webhook",
+      "pr": 4048,
+      "event": "sweep",
+      "head": "236068c7d82393ba5e2a3258c6e8ccfc03df10a1",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T21:45:29.718Z",
+      "type": "pr_webhook",
+      "pr": 4050,
+      "event": "sweep",
+      "head": "48239e58bf2f8320b06741c63bcae050fda45430",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T21:45:31.666Z",
+      "type": "pr_webhook",
+      "pr": 4048,
+      "event": "sweep",
+      "head": "236068c7d82393ba5e2a3258c6e8ccfc03df10a1",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T21:45:47.403Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T21:45:47.404Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e139b149-f141-42a8-bb4b-5b1c87aabd41",
+      "summary": "CI wake: #4049+#4047 merged to main (73e58b89). Deploy validation GREEN. ops:collect 0. ECR deploy pending for #4047. No peer-review candidates — only handoff PRs #4050/#4048 remain."
     }
   ],
   "open_prs": [
@@ -150,28 +221,26 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-09-05T21:42:17Z"
-    },
-    {
-      "number": 4048,
-      "title": "chore(blackout-agent): cursor recovery cycle — post-bcb5ce5 merge wave",
-      "branch": "cursor/cursor-agent-work-loop-03da",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-09-05T21:41:20Z"
-    },
-    {
-      "number": 4047,
-      "title": "feat(swing): Ask Largo — deterministic play intelligence engine",
-      "branch": "cursor/swing-play-intelligence-engine",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "completed/success",
-      "updated_at": "2026-09-05T21:44:45Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T21:45:00Z"
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-4050": {
+      "last_event": "sweep",
+      "last_head": "48239e58bf2f8320b06741c63bcae050fda45430",
+      "last_feedback_at": "2026-09-05T21:45:29.718Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4048": {
+      "last_event": "sweep",
+      "last_head": "236068c7d82393ba5e2a3258c6e8ccfc03df10a1",
+      "last_feedback_at": "2026-09-05T21:45:31.666Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
