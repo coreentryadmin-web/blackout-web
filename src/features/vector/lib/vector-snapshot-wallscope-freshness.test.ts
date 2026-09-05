@@ -14,3 +14,37 @@ test("vector-snapshot: gamma-wall memo rejects future cachedWallsAt stamps", () 
   assert.match(src, /isWsUpdatedAtFresh\(s\.cachedWallsAt, WALLS_CACHE_MS, now\)/);
   assert.doesNotMatch(src, /now - s\.cachedWallsAt < WALLS_CACHE_MS/);
 });
+
+test("vector-snapshot: VEX wall memo rejects future cachedVexWallsAt stamps", () => {
+  assert.match(src, /isWsUpdatedAtFresh\(s\.cachedVexWallsAt, VEX_WALLS_CACHE_MS, now\)/);
+  assert.doesNotMatch(src, /now - s\.cachedVexWallsAt < VEX_WALLS_CACHE_MS/);
+});
+
+test("vector-snapshot: gamma flip memo rejects future cachedFlipAt stamps", () => {
+  assert.match(src, /isWsUpdatedAtFresh\(s\.cachedFlipAt, FLIP_CACHE_MS, now\)/);
+  assert.doesNotMatch(src, /now - s\.cachedFlipAt < FLIP_CACHE_MS/);
+});
+
+test("vector-snapshot: hub flip/dark-pool SWR gates reject future cached*At stamps", () => {
+  assert.match(
+    src,
+    /!isWsUpdatedAtFresh\(s\.cachedFlipAt, FLIP_CACHE_MS, hubNowMs\) && !s\.flipRefreshInFlight/
+  );
+  assert.match(
+    src,
+    /!isWsUpdatedAtFresh\(s\.cachedDarkPoolAt, DARK_POOL_LOCAL_CACHE_MS, hubNowMs\)/
+  );
+});
+
+test("vector-snapshot: wall bead recordability rejects future cached*At stamps", () => {
+  assert.match(
+    src,
+    /gexRecordable[\s\S]*?isWsUpdatedAtFresh\(s\.cachedWallsAt, STALE_RECORD_MAX_MS, nowMs\)/
+  );
+  assert.match(
+    src,
+    /vexRecordable[\s\S]*?isWsUpdatedAtFresh\(s\.cachedVexWallsAt, STALE_RECORD_MAX_MS, nowMs\)/
+  );
+  assert.doesNotMatch(src, /nowMs - s\.cachedWallsAt <= STALE_RECORD_MAX_MS/);
+  assert.doesNotMatch(src, /nowMs - s\.cachedVexWallsAt <= STALE_RECORD_MAX_MS/);
+});
