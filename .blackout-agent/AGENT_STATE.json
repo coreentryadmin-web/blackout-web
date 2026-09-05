@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:48:32.836Z",
+  "updated_at": "2026-09-05T21:49:00.498Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T21:46:23.151Z",
-      "lease_until": "2026-09-05T23:17:05.154Z",
+      "claimed_at": "2026-09-05T21:47:55.481Z",
+      "lease_until": "2026-09-05T23:17:55.481Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "66edd54f-2d20-4a0f-8e52-2ea380904724",
+      "run_id": null,
       "title": null
     },
     "BO-P1-0105": {
@@ -258,6 +258,19 @@
       "agent": "cursor",
       "run_id": "13e1e5dd-01bd-4e4c-8b89-1f107f5ffa12",
       "summary": "Continuous loop cycle complete. Lifecycle GREEN (6/6). ops:collect 0. #4047 merged on main@73e58b89. No Claude/fix PRs for peer review. Created handoff PR #4052 (supersedes #4050/#4051). GitHub GraphQL rate-limited — duplicate PR close deferred. npm ci restored missing pg dep."
+    },
+    {
+      "at": "2026-09-05T21:49:00.497Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T21:49:00.498Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "456a6a37-4c0b-4391-9b5c-41a0444c56be",
+      "summary": "PR-event recovery. Closed duplicate #4051. Deploy GREEN, ops:collect 0. #4047 merged to main. No Claude/fix PRs for peer review. #4052 handoff PR updated. GraphQL rate-limited — REST works."
     }
   ],
   "open_prs": [
@@ -269,17 +282,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:48:11Z"
-    },
-    {
-      "number": 4051,
-      "title": "chore(blackout-agent): cursor PR-event recovery — #4047 merged, lifecycle GREEN",
-      "branch": "cursor/autopilot-work-loop-275b",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-05T21:48:22Z"
+      "updated_at": "2026-09-05T21:48:41Z"
     }
   ],
   "pr_activity": {
