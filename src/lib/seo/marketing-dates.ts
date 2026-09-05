@@ -10,14 +10,14 @@
 // the generator script if that limitation ever needs widening.
 
 export const MARKETING_DATES: Record<string, string> = {
-  "/": "2026-09-01",
-  "/pricing": "2026-08-20",
-  "/faq": "2026-08-20",
-  "/why-blackout": "2026-08-20",
+  "/": "2026-09-02",
+  "/pricing": "2026-09-04",
+  "/faq": "2026-08-08",
+  "/why-blackout": "2026-08-08",
   "/methodology": "2026-08-27",
-  "/vs/others": "2026-09-01",
+  "/vs/others": "2026-09-04",
   "/tools/gamma-snapshot": "2026-08-23",
-  "/about": "2026-09-01",
-  "/contact": "2026-08-20",
+  "/about": "2026-09-04",
+  "/contact": "2026-08-08",
   "/learn": "2026-08-21",
 };
