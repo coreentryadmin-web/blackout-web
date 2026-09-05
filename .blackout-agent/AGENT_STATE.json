@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:35:35.991Z",
+  "updated_at": "2026-09-05T17:36:01.069Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:26:09.737Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
+      "claimed_at": "2026-09-05T17:15:44.868Z",
+      "lease_until": "2026-09-05T18:47:05.312Z",
       "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": "4742f26c-f858-4ef2-bc24-10805b62715e",
       "title": null
     },
     "BO-P1-0101": {
@@ -258,6 +258,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T12:35:00.000Z",
       "safe_to_merge": true
+    },
+    "pr-4017": {
+      "pr": 4017,
+      "head_sha": "3cde66147",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T17:36:01.067Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -326,18 +334,14 @@
     }
   },
   "deploy": {
-    "last_main_sha": "86227e70b57d7dc962673f750a952173dea85088",
+    "last_main_sha": "ea552b9f69c0c553d879486bbe317688148c988e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:34:11Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978273189",
-    "last_deploy_sha": "86227e70b57d7dc962673f750a952173dea85088"
+    "last_deploy_at": "2026-09-05T17:22:13Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33980746889",
+    "last_deploy_sha": "ea552b9f69c0c553d879486bbe317688148c988e"
   },
   "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
     {
       "at": "2026-09-03T23:45:07.056Z",
       "type": "context_sync",
@@ -1622,6 +1626,35 @@
       "agent": "cursor",
       "run_id": "7241539d-60c7-4e6b-ac5b-c9b3aa85b828",
       "summary": "Continuous loop cycle complete. Peer review: pr-sweep 0 open PRs. Platform integrity 14/14 GREEN, lifecycle sweep GREEN (weekend RTH skip). Deploy drift: prod rolling feaba670 (in_progress 25m+), main now 86227e70 (#3995+#3998) with pending ECR run 33978273189. Opened draft #4001 (agent state sync — awaits Claude review). GitHub GraphQL rate-limited until ~17:06 UTC; REST still works. Next: monitor ECR → validate:deploy post-rollout; Claude peer-review #4001 + any new claude/* PRs."
+    },
+    {
+      "at": "2026-09-05T17:27:39.284Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:27:39.285Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3225261d-7b61-4e5a-9ea7-56ec38ae645a",
+      "summary": "Peer-reviewed #4007 (RTH workflow scripts), #4006 (CHARM dividend-yield fix), #4011 (SPX gex_age_ms fail-closed). All three merged to main. ops:collect clean. Continuing work loop."
+    },
+    {
+      "at": "2026-09-05T17:28:05.240Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:36:01.069Z",
+      "type": "pr_review",
+      "pr": 4017,
+      "head_sha": "3cde66147",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T17:36:01.067Z",
+      "safe_to_merge": true
     }
   ],
   "pr_activity": {
