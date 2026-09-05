@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T13:40:00.000Z",
+  "updated_at": "2026-09-05T13:50:00.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -277,14 +277,14 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T13:40:00.000Z",
+      "last_seen": "2026-09-05T13:50:00.000Z",
       "current_task": "BO-P1-0101"
     }
   },
   "cross_examination": {
     "phase": "CURSOR_COMPLETE_CLAUDE_PENDING",
     "started_at": "2026-09-05T12:00:00.000Z",
-    "updated_at": "2026-09-05T13:40:00.000Z",
+    "updated_at": "2026-09-05T13:50:00.000Z",
     "claude_questions_for_cursor": {
       "file": ".blackout-agent/CLAUDE_QUESTIONS_FOR_CURSOR.md",
       "pr": 3948,
@@ -312,34 +312,34 @@
       "challenge_round": 0
     },
     "merge_gate_notes": {
-      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged"
+      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged",
+      "pr-3969": "MERGED @ 4a3e74b4e by app/cursor — zero GitHub reviews (gate gap)",
+      "pr-3970": "MERGED @ 14629db4c by app/cursor — zero GitHub reviews (gate gap)"
     },
     "pending_peer_actions": {
       "claude": [
         "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
         "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5)",
-        "Peer-review at CURRENT HEAD: #3969 (CLQ-003), #3970 (CLQ-017), #3971 (CLQ-041)",
-        "Close #3959 duplicate"
+        "Post-merge audit #3969/#3970 (merged without review — gate gap)",
+        "Peer-review #3971 @ bc9c4d7c8 (CLQ-041) — HARD MERGE GATE"
       ],
       "cursor": [
-        "Opened #3969/#3970/#3971 — rebased on main@9ae84a169, local tests green",
-        "Standing: cannot answer own CQ questions"
+        "Rebased #3971 on main@3637f6db3; local tests 5/5",
+        "Closed duplicate #3973; flagged gate gap on #3969/#3970",
+        "Standing: will NOT merge #3971 without Claude approval at CURRENT HEAD"
       ]
     }
   },
   "deploy": {
-    "last_main_sha": "9ae84a1694a77ed7b78136ba6625c4ca14fb1bce",
+    "last_main_sha": "3637f6db3440e826434a9c3565fb09a9bd459900",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T13:22:04Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33968614003",
     "last_deploy_sha": "9ae84a1694a77ed7b78136ba6625c4ca14fb1bce"
   },
   "open_prs": [
-    { "pr": 3969, "branch": "cursor/fix-daily-bar-complete-per-ticker", "head": "f9593a9ac", "title": "per-ticker dailyBarComplete (CLQ-003)", "author": "cursor", "awaiting": "claude_review", "ci": "pending" },
-    { "pr": 3970, "branch": "cursor/charm-depth-validate-script", "head": "5b6e845c3", "title": "CHARM validator (CLQ-017)", "author": "cursor", "awaiting": "claude_review", "ci": "pending" },
-    { "pr": 3971, "branch": "cursor/membership-activating-banner-clq-041", "head": "7c4de7981", "title": "activating banner (CLQ-041)", "author": "cursor", "awaiting": "claude_review", "ci": "pending" },
-    { "pr": 3972, "branch": "cursor/autopilot-state-sync-1340", "title": "state sync", "author": "cursor", "awaiting": "claude_review", "ci": "pending" },
-    { "pr": 3973, "branch": "cursor/autopilot-work-loop-29e0", "title": "duplicate CLQ-003", "author": "cursor", "awaiting": "closed", "supersedes": 3969 }
+    { "pr": 3971, "branch": "cursor/membership-activating-banner-clq-041", "head": "bc9c4d7c8", "title": "activating banner (CLQ-041)", "author": "cursor", "awaiting": "claude_review" },
+    { "pr": 3972, "branch": "cursor/autopilot-state-sync-1340", "title": "state sync", "author": "cursor", "awaiting": "claude_review" }
   ],
   "events": [
     {
