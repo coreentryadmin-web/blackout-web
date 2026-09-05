@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T17:23:24.137Z",
+  "updated_at": "2026-09-05T17:31:31.482Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -348,97 +348,8 @@
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33980746889",
     "last_deploy_sha": "ea552b9f69c0c553d879486bbe317688148c988e"
   },
-  "open_prs": [
-    {
-      "number": 4014,
-      "title": "chore(blackout-agent): peer review cycle state sync — #4006/#4007/#4011 merged",
-      "branch": "cursor/autopilot-work-loop-8988",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-05T17:23:21Z"
-    },
-    {
-      "number": 4013,
-      "title": "docs(finding): desk-warm force=1 storm from 54 distinct IPs on a Saturday, live now",
-      "branch": "docs/desk-warm-weekend-force-storm",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T17:23:08Z"
-    },
-    {
-      "number": 4012,
-      "title": "chore(blackout-agent): autopilot session — peer review #4006 CHARM fix",
-      "branch": "cursor/autopilot-work-loop-9f28",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T17:22:56Z"
-    },
-    {
-      "number": 4009,
-      "title": "docs(blackout-agent): salvage Phase 5 cross-exam docs from stale #3993",
-      "branch": "cursor/cross-exam-phase5-docs-salvage",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T17:22:59Z"
-    },
-    {
-      "number": 4008,
-      "title": "docs(blackout-agent): Cursor Phase 5 response to CLAUDE_PHASE5 CLQ challenges",
-      "branch": "cursor/phase5-clq-response-2026-09-05",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-05T17:23:00Z"
-    },
-    {
-      "number": 3996,
-      "title": "chore(autopilot): state sync after #3994 merge + peer review cycle",
-      "branch": "cursor/bc-daf6ff49-8f01-4d90-8c8f-1234adb99ec7-0a51",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T17:23:03Z"
-    },
-    {
-      "number": 3993,
-      "title": "chore(autopilot): Phase 5 CQ challenges + gate-watch state sync",
-      "branch": "cursor/autopilot-work-loop-740a",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T17:23:05Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:46:14.071Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:14.852Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:15.659Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:15.832Z",
       "type": "task_claimed",
@@ -1739,6 +1650,25 @@
       "agent": "cursor",
       "run_id": "ced411f6-3a9d-46e3-b391-c01141b833dd",
       "summary": "#4006 MERGED @ ea552b9f (verify GREEN, Cursor APPROVED). validate:deploy GREEN on main. Peer-reviewed #4013 docs finding APPROVED (desk-warm force"
+    },
+    {
+      "at": "2026-09-05T17:30:48.464Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:31:31.480Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:31:31.482Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "cc6a680a-fe25-4e09-8ff8-4f025926f424",
+      "summary": "#4013 CI GREEN (9/9) — closed (docs-only finding). #4015 closed superseded by #4017. #4017 draft: skip validate-deploy force"
     }
   ],
   "pr_activity": {
