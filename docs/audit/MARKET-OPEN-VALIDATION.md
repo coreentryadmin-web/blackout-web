@@ -136,6 +136,14 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** SPX desk market-phase chip (open/closed/extended) should still flip correctly at session boundaries; no stuck "closed" or "open" state after deploy if a process clock was ahead.
 
+### 0az. Freshness tail + spx-evaluate UW sweep — fix/freshness-tail-spx-evaluate-uw-sweep (pending)
+
+**What was broken:** `spx-evaluate` called `loadMergedSpxDesk()` without `runWithBackgroundUwSweep`. Four tail caches (SPY VWAP proxy, macro predictions, live-marks active set, stock-candle Redis fallback) used raw `now - fetchedAt`. `computeSessionChangePct` returned `0` without a session anchor.
+
+**Fix:** UW sweep on evaluate; route caches through `isWsUpdatedAtFresh`; `computeSessionChangePct` returns `null` without anchor.
+
+**Check at the open:** `spx-evaluate` completes without UW 429 storms on cold cache; SPX pulse change% shows `—` not `0.00%` before anchor; Night Hawk marks pick up new commits within ~10s.
+
 ### 0aw. Lit/dark ratio + Vector universe age chips future-at guard — fix/future-timestamp-lit-dark-vector-universe (PR #3853)
 
 **What was broken:** `computeLitDarkRatio()` and Vector universe staleness chips (`VectorScanner`, `VectorTickerComparisonStrip`) used raw `now - updatedAt` without the shared future-timestamp guard. Clock-skewed future store timestamps read as fresh (SPX desk lit/dark ratio served from untrusted data); far-future universe `updatedAt` never flipped the stale warning chip while `formatVectorAge` clamped display to `"0s"`.

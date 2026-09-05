@@ -13,6 +13,7 @@ import { isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guard
 import { logCronRun } from "@/lib/cron-run";
 import { requireDatabaseInProduction } from "@/lib/db";
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { dbQuery } from "@/lib/db";
 import { deriveComposite } from "./derive-composite";
 import {
@@ -88,7 +89,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const [{ merged }, anomalies] = await Promise.all([
-      loadMergedSpxDesk(),
+      runWithBackgroundUwSweep(() => loadMergedSpxDesk()),
       detectFlowAnomalies({ nearMisses }),
     ]);
 

@@ -14,6 +14,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guards";
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { computeSpxConfluence, matchingHelixSweepFlows } from "@/features/spx/lib/spx-signals";
 import { etMinutes, etClock } from "@/features/spx/lib/spx-play-session-time";
 import {
@@ -67,7 +68,7 @@ export async function GET(req: NextRequest) {
   let action = "WAIT";
 
   try {
-    const { merged } = await loadMergedSpxDesk();
+    const { merged } = await runWithBackgroundUwSweep(() => loadMergedSpxDesk());
     const confluence = computeSpxConfluence(merged);
 
     if (confluence && merged.price > 0) {
