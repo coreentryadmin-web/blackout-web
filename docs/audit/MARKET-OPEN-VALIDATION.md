@@ -2532,18 +2532,18 @@ than an end-of-session patch.
 - **What changed:** Apply `roundFloats(frame)` inside `encodeSpotFrame()` in `stocks-spot-stream-hub.ts` before `JSON.stringify`.
 - **RTH check:** Open any desk surface using the spot SSE stream (Network tab → EventStream on `/api/market/stocks/spot-stream?tickers=NVDA,AAPL`); confirm `quotes.*.price` and `changePct` are 2dp-clean with no IEEE tails during RTH ticks.
 
-### 32. Vector snapshot VEX/flip/dark-pool + GEX cache reader — future-timestamp guards — fix/vector-snapshot-gex-cache-future-guards — 2026-09-05
-
-- **What was broken:** After gamma-wall memo was migrated to `isWsUpdatedAtFresh`, sibling Vector snapshot caches (VEX walls, gamma flip, dark-pool refresh triggers, wall-history recordability) still used raw `Date.now() - at` — a future stamp reads as infinitely fresh and can skip background refresh or record stale walls into durable rails. `readGexHeatmapCacheOnly` and `pickStaleHeatmapForHandoff` had the same shape for 0DTE thesis evidence reads.
-- **What changed:** Route VEX walls, flip, dark-pool, and recordability gates through `isWsUpdatedAtFresh`; cache-only reader uses `gexHeatmapCacheEntryStale`; handoff uses `gexHeatmapCacheEntryWithinTtl` and skips far-future entries from the `any` fallback.
-- **RTH check:** Vector stream (`/vector` or SPX desk embed) — VEX lens + gamma-flip line should refresh on cadence; no indefinitely-stale wall chips after deploy. Admin GEX health panel `age_sec` should not read negative.
-
 ### 31. Swing Q40/Q41 — mark freshness dropped + SSE tier never rechecked — fix/swing-mark-asof-sse-tier-recheck — 2026-09-05
 
 - **What was broken (Q40):** `swing_positions.last_mark_at` and manage-snapshot `quote.asOf` were persisted but never reached `HorizonDeck`/`terminalPlayFromHorizon`, so swing OPEN rows showed SYNC (not STALE) when the incidental 0DTE SSE lane wasn't carrying their OCC.
 - **What was broken (Q41):** `/api/market/zerodte/marks/stream` and `/api/market/vector/stream` checked tier/tool only at connection open — a lapsed Whop member kept receiving live swing + 0DTE P&L until tab close.
 - **What changed:** `HorizonPlay.markAsOf` from `last_mark_at` (quote.asOf fallback); `recheckSseUserEntitlement()` on every user SSE tick.
 - **RTH check:** Night Hawk Swing lane — OPEN position with stale `last_mark_at` should show STALE chip without 0DTE SSE carrying the OCC. Tier revocation mid-session should close SSE within ~1s.
+
+### 32. Vector snapshot VEX/flip/dark-pool + GEX cache reader — future-timestamp guards — fix/vector-snapshot-gex-cache-future-guards — 2026-09-05
+
+- **What was broken:** After gamma-wall memo was migrated to `isWsUpdatedAtFresh`, sibling Vector snapshot caches (VEX walls, gamma flip, dark-pool refresh triggers, wall-history recordability) still used raw `Date.now() - at` — a future stamp reads as infinitely fresh and can skip background refresh or record stale walls into durable rails. `readGexHeatmapCacheOnly` and `pickStaleHeatmapForHandoff` had the same shape for 0DTE thesis evidence reads.
+- **What changed:** Route VEX walls, flip, dark-pool, and recordability gates through `isWsUpdatedAtFresh`; cache-only reader uses `gexHeatmapCacheEntryStale`; handoff uses `gexHeatmapCacheEntryWithinTtl` and skips far-future entries from the `any` fallback.
+- **RTH check:** Vector stream (`/vector` or SPX desk embed) — VEX lens + gamma-flip line should refresh on cadence; no indefinitely-stale wall chips after deploy. Admin GEX health panel `age_sec` should not read negative.
 
 
 - **What was broken:** `buildVectorUniverseSnapshot` fired every universe ticker's `fetchGexHeatmap` at once via a raw `Promise.allSettled` (no concurrency bound). Live-confirmed: `GET /api/market/vector/universe` served fully-null rows (`spot`, `gammaFlip`, walls all null) for `DIA`, `AAOI`, `DRAM`, `ZS`, `NOK` while a solo `GET /api/market/gex-heatmap?ticker=<T>` for each of those same tickers, run ~20 minutes later with no contention, returned `available: true` with a real spot price — proving the batch fan-out (not real data absence) dropped them. Same root-cause shape as the already-fixed `vector-dark-pool-warm` unbounded fan-out (entry above this file's predecessor list, FINDINGS.md 2026-09-02).
