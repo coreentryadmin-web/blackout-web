@@ -33,6 +33,9 @@ export async function GET(req: NextRequest) {
   const right = (req.nextUrl.searchParams.get("right") ?? "").trim() || null;
   const strikeRaw = req.nextUrl.searchParams.get("strike");
   const strike = strikeRaw != null && strikeRaw !== "" ? Number(strikeRaw) : null;
+  const positionIdRaw = req.nextUrl.searchParams.get("positionId");
+  const positionId =
+    positionIdRaw != null && positionIdRaw !== "" ? Number(positionIdRaw) : null;
   if (!playId) {
     return NextResponse.json({ error: "playId is required" }, { status: 400, headers: NO_STORE_HEADERS });
   }
@@ -41,6 +44,7 @@ export async function GET(req: NextRequest) {
     const ctx = await loadSwingPlayBriefContext({
       playId,
       ticker,
+      positionId: positionId != null && Number.isFinite(positionId) ? positionId : null,
       status,
       strike: strike != null && Number.isFinite(strike) ? strike : null,
       right,

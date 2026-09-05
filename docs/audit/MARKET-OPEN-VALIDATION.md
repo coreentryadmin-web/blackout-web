@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1j. Swing Ask Largo OPEN brief — ticker collision picked WATCH lane row — fix/swing-play-brief-ticker-collision (pending)
+
+**What was broken:** Selecting an OPEN swing row (e.g. NRG 110C HOLD) fetched `/api/market/swing/play-brief?playId=SWING:NRG` and resolved the WATCH lane row (115C) — UI showed `Entry` sections instead of `Management`, headline contract mismatch. Post-#4056 prod validation OPEN tab RED.
+
+**Fix:** Stamp ledger `positionId` on live horizon rows → `SWING:{TICKER}:{id}` play ids; pass `positionId` in brief URL; prefer live ledger row in `pickLanePlayForBrief` when status hint absent; disambiguate multi-row open ledger by contract/status.
+
+**Check at the open:** Swings desk OPEN tab → select a ticker with both OPEN capital and WATCH lane rows (NRG if still present) → Ask Largo panel must show **Management** + **Position** sections matching the selected row's contract; re-run `node scripts/audit/ask-largo-swing-brief-validate.mjs` → OPEN pass.
+
 ### 0a-1i. Cluster health future-skew + VIX SSE change% gate — fix/cluster-health-vix-sse-change — #4054 (pending)
 
 **What was broken:** (1) `buildUwClusterHealth` / `readPolygonClusterHealth` used `Math.max(0, now - at)` — a clock-skewed future heartbeat read as age 0 and `cluster_live: true` on web-tier followers while `uw-socket.ts` already used `isWsUpdatedAtFresh`. (2) SSE pulse overlay transported `vix_change_pct` verbatim; ws-bar anchors measure from session open, not prior close — same failure class as the 2026-08-07 SPX P0 but VIX has no prior close to derive from.

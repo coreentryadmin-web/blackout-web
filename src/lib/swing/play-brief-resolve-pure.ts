@@ -45,6 +45,24 @@ export function pickLanePlayForBrief(
   }
 
   const status = String(hints.status ?? "").toUpperCase();
+
+  // No status hint: prefer the single live ledger row over a same-ticker WATCH lane row
+  // (NRG OPEN 110C vs WATCH 115C — ticker-only playId collision).
+  if (!status) {
+    const liveOnly = forTicker.filter((p) => p.liveStatus);
+    if (liveOnly.length === 1) return liveOnly[0]!;
+    if (liveOnly.length > 1) {
+      if (strike != null || right != null) {
+        const byContract = liveOnly.filter((p) => contractMatches(p, strike, right));
+        if (byContract.length === 1) return byContract[0]!;
+        if (byContract.length > 1) {
+          return byContract.sort((a, b) => (b.livePnlPct ?? 0) - (a.livePnlPct ?? 0))[0]!;
+        }
+      }
+      return liveOnly.sort((a, b) => (b.livePnlPct ?? 0) - (a.livePnlPct ?? 0))[0]!;
+    }
+  }
+
   if (WORKING.has(status)) {
     const live = forTicker.filter((p) => p.liveStatus);
     if (live.length === 1) return live[0]!;

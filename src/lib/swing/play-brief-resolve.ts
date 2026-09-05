@@ -40,6 +40,7 @@ const WORKING = new Set(["OPEN", "HOLD", "TRIM"]);
 export type SwingBriefResolveHints = {
   playId: string;
   ticker?: string | null;
+  positionId?: number | null;
   status?: string | null;
   strike?: number | null;
   right?: string | null;
@@ -185,7 +186,15 @@ async function loadOpenTerminalPlay(
   }
   if (!row && matches.length === 1) row = matches[0];
   if (!row && hints.status && WORKING.has(hints.status.toUpperCase())) {
-    row = matches[0];
+    const working = matches.filter((r) => WORKING.has(String(r.status ?? "").toUpperCase()));
+    if (working.length === 1) row = working[0];
+    else if (working.length > 1 && (hints.strike != null || hints.right != null)) {
+      row = working.find((r) => rowContractMatches(r, hints.strike ?? null, hints.right ?? null));
+    }
+    if (!row && working.length > 0) {
+      row = working.sort((a, b) => (b.last_mark ?? 0) - (a.last_mark ?? 0))[0];
+    }
+    if (!row) row = matches[0];
   }
   if (!row) return null;
 
@@ -213,6 +222,10 @@ export async function resolveSwingPlayForBrief(
   const ticker = (input.ticker ?? parsed.ticker).toUpperCase();
   if (!ticker) return null;
 
+  const positionId =
+    input.positionId != null && Number.isFinite(input.positionId)
+      ? input.positionId
+      : parsed.positionId;
   const right = normalizeRight(input.right);
   const strike = input.strike != null && Number.isFinite(input.strike) ? input.strike : null;
   const status = input.status ?? null;
@@ -220,7 +233,7 @@ export async function resolveSwingPlayForBrief(
   const [{ rows, scanAsOf, scanSessionDay }, openPlay] = await Promise.all([
     loadLaneRows(ticker),
     loadOpenTerminalPlay(ticker, {
-      positionId: parsed.positionId,
+      positionId,
       strike,
       right,
       status,
