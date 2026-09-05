@@ -3,6 +3,11 @@
  *
  * Design §9: evaluateCortexForCommit({ horizon: "swing", dteWindow: [5, 15] }).
  * Vector scope maps to "monthly" (≤35 DTE) so the 5–15 DTE window is fully covered.
+ *
+ * EARNINGS (deep-dive Q11): Cortex preflight does NOT read an earnings calendar — it evaluates dealer
+ * walls / flow / regime via Vector. Swing earnings print protection is G-S3 (`evaluateEarningsGate` in
+ * v2/gates.ts), which blocks COMMIT when `earningsInWindow` is true on the dossier. Do not expect
+ * Cortex to duplicate G-S3; the two layers are complementary (structure vs binary-gap hazard).
  */
 
 import type { PlayDirection } from "@/lib/horizon-fanout";

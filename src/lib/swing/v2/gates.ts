@@ -74,7 +74,9 @@ export function evaluateRegimeGate(input: SwingCommitGateInput): SwingGateVerdic
   };
 }
 
-/** G-S3 — earnings/binary inside holding window blocks COMMIT unless explicitly authorized. */
+/** G-S3 — earnings/binary inside holding window blocks COMMIT unless explicitly authorized.
+ *  This is swing's print-protection gate (deep-dive Q11): Cortex preflight does not read earnings dates;
+ *  G-S3 is the authoritative COMMIT-time block for binary-gap risk inside the thesis holding window. */
 export function evaluateEarningsGate(input: SwingCommitGateInput): SwingGateVerdict {
   const inWindow = input.earningsInWindow === true;
   const pass = !inWindow || input.eventAuthorized === true;
