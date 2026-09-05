@@ -143,6 +143,25 @@ test("isMemoryFresh respects maxAgeSeconds parameter", () => {
   assert.strictEqual(isMemoryFresh(memory, 10), true);
 });
 
+test("isMemoryFresh does not treat a clock-skewed future lastUpdated as infinitely fresh", () => {
+  // `lastUpdated` is a plain Date, currently always stamped in-process (`initializeMemory`'s own
+  // clock) since cross-turn persistence is deferred (Phase 4b). But the age check itself is a
+  // raw `now - lastUpdated` subtraction with no future guard — the same bug shape fixed 20+ times
+  // elsewhere in this repo (src/lib/ws/timestamp-freshness.ts's isWsUpdatedAtFresh) once a
+  // timestamp crosses any process/clock boundary. A future lastUpdated (e.g. once Phase 4b wires
+  // real cross-request persistence and two containers' clocks disagree by even a few seconds)
+  // produces a negative age, which a bare `ageSeconds < maxAgeSeconds` reads as trivially fresh.
+  let memory = updateMemoryWithConsensus(initializeMemory(), mockConsensus, "SPX");
+  memory.lastUpdated = new Date(Date.now() + 60_000); // 60s in the future
+  assert.strictEqual(isMemoryFresh(memory), false);
+});
+
+test("isMemoryFresh tolerates sub-second future skew (NTP jitter) as fresh", () => {
+  let memory = updateMemoryWithConsensus(initializeMemory(), mockConsensus, "SPX");
+  memory.lastUpdated = new Date(Date.now() + 500); // 500ms ahead — within tolerance
+  assert.strictEqual(isMemoryFresh(memory), true);
+});
+
 test("suggestTickerFromQuestion extracts explicit ticker", () => {
   const question = "What's the setup on NVDA today?";
   const suggested = suggestTickerFromQuestion(question, initializeMemory());
