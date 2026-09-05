@@ -20,8 +20,25 @@ import { isEtExtendedWarmHours } from "@/lib/et-market-hours";
  * Removed the escape hatch entirely rather than special-casing "ignore it in production": it has
  * no live consumer now, and keeping a knob nobody is supposed to set is how it gets set again.
  * `force=1` remains for legitimate on-demand/debug warms.
+ *
+ * OBSERVABILITY: `force=1` bypassing an active hours-block reproduces the exact same
+ * upstream-saturation shape as the `CACHE_WARM_ALWAYS` bug above (a warm cron running off real
+ * member-traffic hours) through a legitimate mechanism this gate can't remove — on-demand/debug
+ * warms are supposed to be able to override the window. What was missing is which cron and how
+ * often: nothing logged a force-driven off-hours run, so a NEW unmonitored caller hammering
+ * `?force=1` overnight (a leftover debug habit, a misconfigured health check, an in-app dispatcher
+ * whose own gate has a bug) would recreate the same tail-latency/CPU-burst pattern with zero trace
+ * of who triggered it — undiagnosable the same way CACHE_WARM_ALWAYS was until Secrets Manager was
+ * checked by hand. Every bypass now logs its key so the next investigation is one log grep away.
  */
-export function shouldRunCacheWarmer(force: boolean, now = new Date()): boolean {
-  if (force) return true;
+export function shouldRunCacheWarmer(force: boolean, now = new Date(), key?: string): boolean {
+  if (force) {
+    if (!isEtExtendedWarmHours(now)) {
+      console.info(
+        `[cache-warmer-gate] force=1 bypassed the hours gate${key ? ` for '${key}'` : ""} at ${now.toISOString()}`
+      );
+    }
+    return true;
+  }
   return isEtExtendedWarmHours(now);
 }
