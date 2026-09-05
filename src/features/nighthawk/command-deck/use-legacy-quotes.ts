@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { TerminalPlay } from "./types";
 import { parseLevelNum } from "./adapters";
 import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
+import { rebaseChangePct } from "@/lib/providers/change-pct";
 
 interface StockQuote {
   price: number;
@@ -11,6 +12,8 @@ interface StockQuote {
   asof: string;
   sessionHigh: number;
   sessionLow: number;
+  /** Last REST poll anchor — push ticks rebase change_pct against this, not raw WS changePct. */
+  restAnchor: { price: number; change_pct: number } | null;
 }
 
 const POLL_MS = 5_000;
@@ -35,11 +38,11 @@ export function useLegacyStockQuotes(tickers: string[], enabled = true, pollMs =
   const key = tickers.join(",");
   const uniqueTickers = useMemo(() => (enabled ? [...new Set(tickers)] : []), [key, enabled]);
 
-  const applyObservedPrice = useCallback(
+  const applyRestQuote = useCallback(
     (ticker: string, price: number, changePct: number, asof: string) => {
       setQuotes((prev) => {
         const old = prev.get(ticker);
-        if (old && old.asof === asof && old.price === price) return prev;
+        if (old && old.asof === asof && old.price === price && old.changePct === changePct) return prev;
         const next = new Map(prev);
         next.set(ticker, {
           price,
@@ -47,6 +50,31 @@ export function useLegacyStockQuotes(tickers: string[], enabled = true, pollMs =
           asof,
           sessionHigh: Math.max(price, old?.sessionHigh ?? price),
           sessionLow: Math.min(price, old?.sessionLow ?? price),
+          restAnchor: { price, change_pct: changePct },
+        });
+        return next;
+      });
+    },
+    [],
+  );
+
+  const applyPushQuote = useCallback(
+    (ticker: string, price: number, pushChangePct: number, asof: string) => {
+      setQuotes((prev) => {
+        const old = prev.get(ticker);
+        const rebased =
+          old?.restAnchor != null
+            ? (rebaseChangePct(price, old.restAnchor) ?? pushChangePct ?? old.changePct)
+            : (pushChangePct ?? old?.changePct ?? 0);
+        if (old && old.asof === asof && old.price === price && old.changePct === rebased) return prev;
+        const next = new Map(prev);
+        next.set(ticker, {
+          price,
+          changePct: rebased,
+          asof,
+          sessionHigh: Math.max(price, old?.sessionHigh ?? price),
+          sessionLow: Math.min(price, old?.sessionLow ?? price),
+          restAnchor: old?.restAnchor ?? null,
         });
         return next;
       });
@@ -88,7 +116,7 @@ export function useLegacyStockQuotes(tickers: string[], enabled = true, pollMs =
 
         for (const r of results) {
           if (r.status === "fulfilled" && r.value) {
-            applyObservedPrice(r.value.ticker, r.value.price, r.value.changePct, r.value.asof);
+            applyRestQuote(r.value.ticker, r.value.price, r.value.changePct, r.value.asof);
           }
         }
       } finally {
@@ -102,16 +130,16 @@ export function useLegacyStockQuotes(tickers: string[], enabled = true, pollMs =
       cancelled = true;
       clearInterval(id);
     };
-  }, [key, enabled, pollMs, applyObservedPrice]);
+  }, [key, enabled, pollMs, applyRestQuote]);
 
-  // Sub-second overlay: a fresh push tick is treated as an observed price exactly like a REST
-  // poll result — see the doc comment above for why (progress/stop/target reacts immediately).
+  // Sub-second overlay: push price drives progress/stop/target immediately, but change_pct is
+  // rebased off the last REST anchor (same discipline as ThermalTripleDesk / GexHeatmap).
   const { quotes: pushQuotes } = useLiveQuoteStream(uniqueTickers);
   useEffect(() => {
     for (const [ticker, q] of Object.entries(pushQuotes)) {
-      if (q.price > 0) applyObservedPrice(ticker, q.price, q.changePct, q.asof);
+      if (q.price > 0) applyPushQuote(ticker, q.price, q.changePct, q.asof);
     }
-  }, [pushQuotes, applyObservedPrice]);
+  }, [pushQuotes, applyPushQuote]);
 
   return quotes;
 }
