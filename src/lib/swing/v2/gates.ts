@@ -10,6 +10,7 @@ import type { SwingArchetype } from "../taxonomy";
 import { evaluateSwingConfluence } from "./confluence";
 
 export type SwingGateId =
+  | "G-S3"
   | "G-S6"
   | "G-S14";
 
@@ -23,6 +24,9 @@ export interface SwingCommitGateInput {
   discoveryPaths: readonly SwingDiscoveryPath[];
   archetype: SwingArchetype | null | undefined;
   extras?: { rsTopQuartile?: boolean; vectorAligned?: boolean };
+  /** From catalyst reads — when true, COMMIT blocked unless eventAuthorized. */
+  earningsInWindow?: boolean | null;
+  eventAuthorized?: boolean | null;
 }
 
 /** G-S6 — independent signal-kind confluence (≥3 standard, ≥2 event). */
@@ -35,12 +39,29 @@ export function evaluateConfluenceGate(input: SwingCommitGateInput): SwingGateVe
   };
 }
 
+/** G-S3 — earnings/binary inside holding window blocks COMMIT unless explicitly authorized. */
+export function evaluateEarningsGate(input: SwingCommitGateInput): SwingGateVerdict {
+  const inWindow = input.earningsInWindow === true;
+  const pass = !inWindow || input.eventAuthorized === true;
+  return {
+    gate: "G-S3",
+    pass,
+    reason: pass
+      ? "G-S3 earnings: clear"
+      : "G-S3 earnings: print inside holding window — block COMMIT (binary-gap risk)",
+  };
+}
+
 /** Evaluate enforced V2 commit gates. Returns failing gates only (empty ⇒ pass). */
 export function failingSwingCommitGates(
   input: SwingCommitGateInput,
-  opts: { enforceConfluence?: boolean } = {},
+  opts: { enforceConfluence?: boolean; enforceEarnings?: boolean } = {},
 ): SwingGateVerdict[] {
   const out: SwingGateVerdict[] = [];
+  if (opts.enforceEarnings) {
+    const g3 = evaluateEarningsGate(input);
+    if (!g3.pass) out.push(g3);
+  }
   if (opts.enforceConfluence) {
     const g6 = evaluateConfluenceGate(input);
     if (!g6.pass) out.push(g6);
@@ -50,5 +71,9 @@ export function failingSwingCommitGates(
 
 /** Map gate failures to commit `blockedBy` tokens (queryable in ledger / ops). */
 export function blockedByFromSwingGates(failures: readonly SwingGateVerdict[]): string[] {
-  return failures.map((f) => `gate:${f.gate}:${f.gate === "G-S6" ? "confluence" : "cortex"}`);
+  return failures.map((f) => {
+    if (f.gate === "G-S6") return "gate:G-S6:confluence";
+    if (f.gate === "G-S3") return "gate:G-S3:earnings_in_window";
+    return "gate:G-S14:cortex";
+  });
 }

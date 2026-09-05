@@ -423,6 +423,24 @@ test("computeSwingCommitPlan: V2 G-S6 confluence blocks when enforceConfluence o
   assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S6:confluence"));
 });
 
+test("computeSwingCommitPlan: V2 G-S3 earnings blocks when enforceEarnings on", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [
+      candidate({
+        discoveryPaths: ["FLOW", "STRUCTURE", "CATALYST"],
+        archetype: "EVENT_DRIVEN",
+        earningsInWindow: true,
+      }),
+    ],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+    v2: { enforceEarnings: true },
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S3:earnings_in_window"));
+});
+
 test("computeSwingCommitPlan: V2 confluence off by default (legacy path)", () => {
   const plan = computeSwingCommitPlan({
     candidates: [candidate({ discoveryPaths: ["FLOW"], archetype: "BREAKOUT" })],

@@ -87,6 +87,8 @@ export interface SwingDossier {
   topFlowStrike?: number | null;
   /** UW EOD IV rank (0–100) when resolved at ingest — honest null otherwise; pinned onto the feature vector. */
   ivRank?: number | null;
+  /** Catalyst read: earnings print inside intended holding window (drives G-S3 when enforced). */
+  earningsInWindow?: boolean;
 }
 
 /** Grounded pillar-helper inputs. Each cluster is optional; an absent cluster → that pillar is null (absent),
@@ -165,6 +167,7 @@ export function buildSwingDossier(input: SwingDossierInput): SwingDossier {
   const topFlowStrike =
     input.topFlowStrike != null && Number.isFinite(input.topFlowStrike) ? input.topFlowStrike : null;
   const ivRank = numOrNull(input.ivRank);
+  const earningsInWindow = input.catalyst?.earningsInWindow === true;
 
   return {
     v: SWING_DOSSIER_VERSION,
@@ -179,5 +182,6 @@ export function buildSwingDossier(input: SwingDossierInput): SwingDossier {
     plan,
     topFlowStrike,
     ivRank,
+    earningsInWindow,
   };
 }

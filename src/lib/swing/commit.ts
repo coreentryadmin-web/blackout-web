@@ -156,6 +156,8 @@ export interface SwingCommitCandidate {
   ivRank?: number | null;
   /** Tier-0 discovery provenance — used by V2 G-S6 confluence gate when enforced. */
   discoveryPaths?: readonly SwingDiscoveryPath[];
+  /** Catalyst read — G-S3 earnings binary when enforced. */
+  earningsInWindow?: boolean;
   /** V2 async preflight blocks (G-S14 Cortex) evaluated before computeSwingCommitPlan. */
   preflightV2BlockedBy?: string[];
 }
@@ -251,8 +253,8 @@ export function computeSwingCommitPlan(args: {
   book: CommitBookPosition[];
   budget?: PortfolioBudget;
   caps?: SwingCaps;
-  /** V2 commit gates (P3) — off unless caller passes enforceConfluence. */
-  v2?: { enforceConfluence?: boolean };
+  /** V2 commit gates (P3) — off unless caller passes enforceConfluence / enforceEarnings. */
+  v2?: { enforceConfluence?: boolean; enforceEarnings?: boolean };
 }): SwingCommitPlan {
   const budget = args.budget ?? DEFAULT_PORTFOLIO_BUDGET;
   const caps = args.caps ?? DEFAULT_SWING_CAPS;
@@ -299,6 +301,19 @@ export function computeSwingCommitPlan(args: {
     if (!cand.contract) blockedBy.push("no_contract");
     else if (!isFin(riskUsd)) blockedBy.push("unknown_premium");
     if (subLane == null) blockedBy.push("no_sub_lane");
+
+    // Gate 0.55 — V2 earnings binary (G-S3), LIVE when Swing Engine V2 earnings enforcement is on.
+    if (args.v2?.enforceEarnings) {
+      const gateFails = failingSwingCommitGates(
+        {
+          discoveryPaths: cand.discoveryPaths ?? [],
+          archetype: cand.archetype,
+          earningsInWindow: cand.earningsInWindow,
+        },
+        { enforceEarnings: true },
+      );
+      blockedBy.push(...blockedByFromSwingGates(gateFails));
+    }
 
     // Gate 0.6 — V2 confluence (G-S6), LIVE when Swing Engine V2 is on.
     if (args.v2?.enforceConfluence) {
