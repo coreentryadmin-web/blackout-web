@@ -20,6 +20,7 @@ import { fetchBangerOpenBookRows } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { readBangerWatchSnapshot } from "@/lib/banger/watch-cache";
 import { fetchVectorPickLeaderRows } from "@/lib/vector/vector-pick-leaders-db";
+import { isSwingEngineV2Enabled } from "@/lib/swing/v2/config";
 import { todayEt } from "@/lib/et-date";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
@@ -76,15 +77,17 @@ export async function GET(req: NextRequest) {
     // SWING branch: persisted discovery lane + OPEN ledger rows for live sections. Cache-reader on
     // providers (spots come from the serving snapshot); DB open-book read is the member board's job.
     const snap = await readSwingServingSnapshot().catch(() => null);
-    const vectorRows = await fetchVectorPickLeaderRows({ limit: 120 }).catch(() => []);
+    const engineV2 = isSwingEngineV2Enabled();
+    const vectorRows = engineV2 ? [] : await fetchVectorPickLeaderRows({ limit: 120 }).catch(() => []);
     const vectorLeaders = vectorRows.map((r) => ({
       ticker: r.ticker,
       leaderKey: r.leader_key,
       peakPremiumPct: r.peak_premium_pct,
     }));
-    const bangerWatchSnap = isBangerEngineEnabled()
-      ? await readBangerWatchSnapshot(todayEt()).catch(() => null)
-      : null;
+    const bangerWatchSnap =
+      !engineV2 && isBangerEngineEnabled()
+        ? await readBangerWatchSnapshot(todayEt()).catch(() => null)
+        : null;
     const swingLane = await getSwingServingLane({
       discover: discoverSwingFromPersisted,
       fetchOpenPositions: () => fetchOpenSwingPositions().catch(() => []),
