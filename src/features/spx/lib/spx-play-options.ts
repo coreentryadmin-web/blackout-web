@@ -5,6 +5,7 @@ import { todayEtYmd } from "@/lib/providers/spx-session";
 import { gradeRank } from "@/features/spx/lib/spx-play-config";
 import { effectiveChainMaxSpreadPct } from "@/features/spx/lib/spx-play-chain";
 import { round5 } from "@/lib/round5";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const BASE = polygonRestBase();
 const KEY = polygonRestApiKey();
@@ -296,7 +297,8 @@ export async function quoteSpxOdteContract(
 
   const key = `${expiry}:${option_type}:${Math.round(strike)}`;
   const cached = quoteCache.get(key);
-  if (cached && Date.now() - cached.at < QUOTE_TTL_MS) return cached.quote;
+  const now = Date.now();
+  if (cached && isWsUpdatedAtFresh(cached.at, QUOTE_TTL_MS, now)) return cached.quote;
 
   const contracts = await fetchContractsAtStrike(Math.round(strike), expiry);
   const match = contracts.find((c) => {
