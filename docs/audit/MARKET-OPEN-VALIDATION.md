@@ -2539,6 +2539,12 @@ than an end-of-session patch.
 - **What changed:** `HorizonPlay.markAsOf` from `last_mark_at` (quote.asOf fallback); `recheckSseUserEntitlement()` on every user SSE tick.
 - **RTH check:** Night Hawk Swing lane — OPEN position with stale `last_mark_at` should show STALE chip without 0DTE SSE carrying the OCC. Tier revocation mid-session should close SSE within ~1s.
 
+### 32. BIE stage5 + swing ex-div caches — future `at` bypasses TTL — fix/cache-future-timestamp-guards-round2 — 2026-09-05
+
+- **What was broken:** `findStage5Proposals` (1h scan cache) and `resolveSwingExDividendContext` (6h ex-div cache) used raw `Date.now() - at` TTL checks. A far-future `at` stamp yields negative age → entry never expires (same class as #3912/#3915).
+- **What changed:** Route both through `isWsUpdatedAtFresh(at, maxAgeMs)` from `@/lib/ws/timestamp-freshness`.
+- **RTH check:** Low blast radius (in-process caches). If swing structural stops look wrong after an ex-div print, confirm `resolveSwingExDividendContext` refreshes within 6h — not pinned by a skewed timestamp.
+
 
 - **What was broken:** `buildVectorUniverseSnapshot` fired every universe ticker's `fetchGexHeatmap` at once via a raw `Promise.allSettled` (no concurrency bound). Live-confirmed: `GET /api/market/vector/universe` served fully-null rows (`spot`, `gammaFlip`, walls all null) for `DIA`, `AAOI`, `DRAM`, `ZS`, `NOK` while a solo `GET /api/market/gex-heatmap?ticker=<T>` for each of those same tickers, run ~20 minutes later with no contention, returned `available: true` with a real spot price — proving the batch fan-out (not real data absence) dropped them. Same root-cause shape as the already-fixed `vector-dark-pool-warm` unbounded fan-out (entry above this file's predecessor list, FINDINGS.md 2026-09-02).
 - **What changed:** Added `runPolygonPool` (`polygon-rate-limiter.ts`, mirrors `runUwPool`), bounded-concurrency default 8 (`POOL_MAX_CONCURRENCY`, env-overridable). `buildVectorUniverseSnapshot`'s ticker fan-out now routes through it instead of the raw `Promise.allSettled`.
