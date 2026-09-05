@@ -1578,6 +1578,13 @@
       "agent": "cursor",
       "run_id": "dedup-3973-closed",
       "summary": "Closed duplicate #3973 (autopilot-work-loop CLQ-003) in favor of #3969 — canonical PR has integration test runSwingDiscoveryScan per-ticker regression. CI pending on #3969-3972."
+    },
+    {
+      "at": "2026-09-05T13:55:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "automerge-gate-fix",
+      "summary": "Pushed cursor/fix-automerge-cursor-hard-merge-gate @ 0b2f1a584 — automerge.yml now claude/* only. Flagged #3977 cursor self-reviews invalid. #3971 CI running."
     }
   ],
   "pr_activity": {
