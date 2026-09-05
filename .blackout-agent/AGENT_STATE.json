@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:40:00.000Z",
+  "updated_at": "2026-09-05T13:42:17.812Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T11:35:23.963Z",
-      "lease_until": "2026-09-05T13:15:05.877Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-05T13:36:47.310Z",
+      "lease_until": "2026-09-05T15:08:10.653Z",
+      "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "50c8fd38-7415-4f2d-bc6c-88153b9459e9",
+      "run_id": "88b99d5b-1bde-4197-a61a-3316a932ffb1",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -259,6 +259,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T12:35:00.000Z",
       "safe_to_merge": true
+    },
+    "pr-3974": {
+      "pr": 3974,
+      "head_sha": "b1b10382724f1a0f0e89cd95c903e5d48b030f80",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T13:40:03.979Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -319,17 +327,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d96372440c9a8ff101c95d52826a38adebdc513a",
+    "last_main_sha": "14629db4cd994481af309a42c7437fdd542b87f8",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T10:36:36Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
-    "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
+    "last_deploy_at": "2026-09-05T13:40:23Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33969578363",
+    "last_deploy_sha": "3637f6db3440e826434a9c3565fb09a9bd459900"
   },
-  "open_prs": [
-    { "pr": 3952, "branch": "cursor/clq-answers-batch1-2026-09-05", "title": "CURSOR_ANSWERS_FOR_CLAUDE (54/54)", "author": "cursor", "awaiting": "claude_review" },
-    { "pr": 3955, "branch": "docs/finding-ecs-web-deploy-maxpercent", "title": "ECS maxPercent finding", "author": "claude", "awaiting": "claude_merge" },
-    { "pr": 3949, "branch": "cursor/autopilot-handoff-2026-09-05", "title": "stale state sync", "author": "cursor", "awaiting": "close" }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1533,6 +1537,47 @@
       "agent": "cursor",
       "run_id": "post-merge-sync",
       "summary": "main@d96372440: #3945+#3950+#3951+#3953 merged. #3952 CLQ answers awaiting Claude review. Claude must answer CQ-001–218 on main. #3945 merged without recorded Claude GitHub review — gate gap noted."
+    },
+    {
+      "at": "2026-09-05T13:38:10.652Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T13:38:11.426Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T13:38:12.168Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T13:40:03.980Z",
+      "type": "pr_review",
+      "pr": 3974,
+      "head_sha": "b1b10382724f1a0f0e89cd95c903e5d48b030f80",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T13:40:03.979Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T13:42:17.811Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T13:42:17.812Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d57974d2-f462-4962-8c6f-c5a3a19f12c0",
+      "summary": "pull_request wake: merged Claude-approved #3969 (CLQ-003 swing dailyBarComplete), #3970 (CLQ-017 charm-depth-validate), peer-reviewed+merged #3974 (BIE SPX brief magnet labels). Fixed #3971 per Claude review (resolveDisplayTier admin gate + copy). Closed draft handoff PRs #3972/#3975. main@14629db4c deploy validate GREEN. #3971 awaiting Claude re-review. Claude still owes CQ-001–218 answers."
     }
   ],
   "pr_activity": {
