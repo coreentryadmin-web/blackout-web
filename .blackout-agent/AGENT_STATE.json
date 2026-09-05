@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T17:24:33.436Z",
+  "updated_at": "2026-09-05T17:24:49.663Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -266,6 +266,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T17:23:43.512Z",
       "safe_to_merge": true
+    },
+    "pr-4013": {
+      "pr": 4013,
+      "head_sha": "273418e0b1cf9cc63a0fa150e39e863eb278b5e7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T17:24:43.918Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -349,7 +357,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T17:24:13Z"
+      "updated_at": "2026-09-05T17:24:42Z"
     },
     {
       "number": 4014,
@@ -359,17 +367,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T17:24:05Z"
-    },
-    {
-      "number": 4012,
-      "title": "chore(blackout-agent): autopilot session — peer review #4006 CHARM fix",
-      "branch": "cursor/autopilot-work-loop-9f28",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T17:24:10Z"
+      "updated_at": "2026-09-05T17:24:45Z"
     },
     {
       "number": 4009,
@@ -413,18 +411,6 @@
     }
   ],
   "events": [
-    {
-      "at": "2026-09-03T23:46:15.659Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:15.832Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0001",
-      "owner": "cursor"
-    },
     {
       "at": "2026-09-03T23:46:15.941Z",
       "type": "task_claimed",
@@ -1754,6 +1740,22 @@
       "agent": "cursor",
       "run_id": "6dc320c8-0b7e-4f63-b33a-e4885acbd4e7",
       "summary": "Peer-reviewed + merged #4007 (rth workflow scripts). Approved #4006 (CHARM q>0 put/call fix) + #4011 (SPX gex_age future guard) — both merged. Deploy validate GREEN. ops:collect clean. Next: review #4013 desk-warm finding, sweep stale cursor state-sync PRs (#3993/#3996/#4009)."
+    },
+    {
+      "at": "2026-09-05T17:24:43.919Z",
+      "type": "pr_review",
+      "pr": 4013,
+      "head_sha": "273418e0b1cf9cc63a0fa150e39e863eb278b5e7",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T17:24:43.918Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T17:24:49.663Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     }
   ],
   "pr_activity": {
