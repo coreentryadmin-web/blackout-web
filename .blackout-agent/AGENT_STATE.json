@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:31:45.062Z",
+  "updated_at": "2026-09-05T12:33:25.874Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -241,6 +241,14 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T11:41:58.397Z",
+      "safe_to_merge": true
+    },
+    "pr-3955": {
+      "pr": 3955,
+      "head_sha": "f649e67b96ca",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T12:33:25.874Z",
       "safe_to_merge": true
     }
   },
@@ -1452,6 +1460,35 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T12:33:05.841Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T12:33:05.842Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "cbb0a85f-5425-4464-98c3-15d244f6b979",
+      "summary": "Workflow_run wake: lifecycle GREEN (deploy, ops:collect 0, platform-integrity 14/14, api-auth, seo). Weekend RTH skipped. GitHub API rate-limited (user 284440397) — pr-sweep via WebFetch found 8 open PRs. #3955 Claude docs finding revised @ f649e67 (withdrawn maxPercent fix, OBSERVED ONLY) — peer review APPROVED pending verify CI. #3945 cursor swing BUY labels awaiting Claude. Subscribed CI on docs/finding-ecs-web-deploy-maxpercent branch."
+    },
+    {
+      "at": "2026-09-05T12:33:08.885Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T12:33:25.874Z",
+      "type": "pr_review",
+      "pr": 3955,
+      "head_sha": "f649e67b96ca",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T12:33:25.874Z",
+      "safe_to_merge": true
     }
   ],
   "pr_activity": {
