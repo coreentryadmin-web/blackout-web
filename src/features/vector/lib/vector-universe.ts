@@ -125,12 +125,13 @@ async function buildVectorUniverseRow(
   // is not a real resistance/support read, the exact "wrong side of spot" bug PR #2417 fixed for
   // the canonical gex-heatmap route but not here (2026-09-04 audit finding). VEX (vanna) has no
   // inherent above/below-spot geometry (see gex-wall-levels.ts's NAMING doc) and stays unconstrained.
-  const gexWalls = hm?.gex?.strike_totals
-    ? computeGexWalls(mapFromStrikeTotalsRecord(hm.gex.strike_totals), {
-        maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-        spot: spot != null && spot > 0 ? spot : undefined,
-      })
-    : { callWalls: [], putWalls: [] };
+  const gexWalls =
+    hm?.gex?.strike_totals && spot != null && spot > 0
+      ? computeGexWalls(mapFromStrikeTotalsRecord(hm.gex.strike_totals), {
+          maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+          spot,
+        })
+      : { callWalls: [], putWalls: [] };
   const vexWalls = hm?.vex?.strike_totals
     ? computeGexWalls(mapFromStrikeTotalsRecord(hm.vex.strike_totals), {
         maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
@@ -191,10 +192,13 @@ async function buildVectorUniverseRow(
         // 0dte/weekly/monthly wall-history rails via writeWallHistorySample below, so an
         // unconstrained call here persisted "wrong side of spot" walls into history even
         // after the live rail was fixed.
-        const horizonWalls = computeGexWalls(totals, {
-          maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-          spot: spot != null && spot > 0 ? spot : undefined,
-        });
+        const horizonWalls =
+          spot != null && spot > 0
+            ? computeGexWalls(totals, {
+                maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+                spot,
+              })
+            : { callWalls: [], putWalls: [] };
         const horizonSample = buildWallHistorySample({
           time: sampleTime,
           gexWalls: horizonWalls,

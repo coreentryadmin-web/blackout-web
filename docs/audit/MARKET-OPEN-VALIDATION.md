@@ -128,7 +128,15 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** Thermal SPX matrix header day-change% vs SPX desk pulse — must agree or both show honest absence; never diverge on anchor basis when reading via cluster snapshot on a cold web replica.
 
-### 0aq. Largo technicals live change_pct + Night Hawk record roundFloats — fix/largo-technicals-change-pct-nighthawk-record-roundfloats (pending)
+### 0ar. Vector universe null-spot fail-closed — fix/vector-universe-spot-fail-closed (pending)
+
+**What was broken:** When `fetchGexHeatmap` returned `strike_totals` but `spot` was still `null` (cold-cache Polygon contention), `buildVectorUniverseRow` passed `undefined` spot into `computeGexWalls`, running the unconstrained peak scan. That served wrong-side `topCallWall` / `topPutWall` on `/api/market/vector/universe` and persisted the same into narrowed 0DTE/weekly/monthly wall-history rails.
+
+**Fix:** Fail-closed — skip `computeGexWalls` for GAMMA walls when `spot` is unknown; emit empty wall arrays (mirrors `getVectorGexWalls()` returning null).
+
+**Check at the open:** During the first minutes of RTH, poll `/api/market/vector/universe` for tickers that briefly show `spot:null` — they must not carry a non-null `topCallWall` below the spot that resolves seconds later on solo `/api/market/gex-heatmap`.
+
+### 0aq. Largo technicals live change_pct + Night Hawk record roundFloats — fix/largo-technicals-change-pct-nighthawk-record-roundfloats (merged #3836)
 
 **What was broken:** `buildLargoTechnicals` returned live WS spot for stocks but dropped `changePct` (null day % during RTH). Index path (SPX/VIX) used REST-only snapshots instead of the live `indexStore` overlay the quote route uses. `GET /api/market/nighthawk/record` omitted the standard `roundFloats` API boundary.
 

@@ -39,6 +39,7 @@ mock.module("./vector-dynamic-universe", {
       const t = String(raw).toUpperCase();
       if (!dynamicTickers.includes(t)) dynamicTickers.push(t);
     },
+    removeDynamicUniverseTicker: async () => {},
   },
 });
 
@@ -74,6 +75,20 @@ mock.module("../../../lib/providers/polygon-options-gex", {
           spot: 100,
           asof: new Date().toISOString(),
           gex: { flip: 101, strike_totals: { "100": 1, "105": 2 } },
+          vex: { flip: 99, strike_totals: { "95": 1, "100": 1 } },
+        };
+      }
+      // Cold-cache contention shape (2026-09-04 audit): heatmap returns strike_totals but spot is
+      // still null — the old `spot ? spot : undefined` path still ran computeGexWalls unconstrained
+      // and picked strike 90 (below where spot would land) as the call wall.
+      if (ticker === "NOSPOT") {
+        return {
+          spot: null,
+          asof: new Date().toISOString(),
+          gex: {
+            flip: 101,
+            strike_totals: { "90": 5e9, "108": 1e9, "92": -1e9 },
+          },
           vex: { flip: 99, strike_totals: { "95": 1, "100": 1 } },
         };
       }
@@ -321,14 +336,45 @@ test("warmDynamicTickerSessionWall: skips static allowlist tickers", async () =>
   assert.deepEqual(wallSampleCalls, []);
 });
 
-test("vector-universe: computeGexWalls spot args reject zero/negative (source scan)", async () => {
+test("buildVectorUniverseSnapshot: null spot fail-closes GEX walls (no unconstrained pick)", async () => {
+  dynamicTickers = ["NOSPOT"];
+  fetchCalls = [];
+  cacheStore = null;
+
+  const snap = await buildVectorUniverseSnapshot();
+  const row = snap.rows.find((r) => r.ticker === "NOSPOT");
+  assert.ok(row, "NOSPOT row must be present");
+  assert.equal(row!.spot, null);
+  assert.equal(row!.topCallWall, null, "must not pick strike 90 as call wall when spot is unknown");
+  assert.equal(row!.topPutWall, null, "must not pick strike 92 as put wall when spot is unknown");
+});
+
+test("recordVectorUniverseWallSample: null spot skips narrowed-horizon wall writes", async () => {
+  wallSampleWrites = [];
+  wallSampleCalls = [];
+
+  await recordVectorUniverseWallSample("NOSPOT", { sessionYmd: "2026-09-04" });
+
+  const zeroDte = wallSampleWrites.find((w) => w.ticker === "NOSPOT" && w.horizon === "0dte");
+  assert.equal(zeroDte, undefined, "must not persist wrong-side walls when spot is unknown");
+});
+
+test("vector-universe: GEX computeGexWalls is gated on spot > 0 (source scan)", async () => {
   const { readFileSync } = await import("node:fs");
   const src = readFileSync(new URL("./vector-universe.ts", import.meta.url), "utf8");
-  const matches = [...src.matchAll(/spot:\s*spot\s*!=\s*null\s*&&\s*spot\s*>\s*0\s*\?\s*spot\s*:\s*undefined/g)];
-  assert.equal(
-    matches.length,
-    2,
-    "both blended and narrowed-horizon computeGexWalls calls must guard spot > 0"
+  assert.match(
+    src,
+    /hm\?\.gex\?\.strike_totals && spot != null && spot > 0/,
+    "blended gexWalls must fail-closed when spot is unknown"
   );
-  assert.doesNotMatch(src, /spot:\s*spot\s*\?\?\s*undefined/, "must not pass raw spot ?? undefined to computeGexWalls");
+  assert.match(
+    src,
+    /spot != null && spot > 0\s*\?\s*computeGexWalls\(totals/,
+    "narrowed-horizon walls must fail-closed when spot is unknown"
+  );
+  assert.doesNotMatch(
+    src,
+    /spot:\s*spot\s*!=\s*null\s*&&\s*spot\s*>\s*0\s*\?\s*spot\s*:\s*undefined/,
+    "must not pass undefined spot into computeGexWalls (unconstrained fallback)"
+  );
 });
