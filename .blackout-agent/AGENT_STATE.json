@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:45:37.074Z",
+  "updated_at": "2026-09-05T21:45:58.848Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -151,6 +151,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:45:58.847Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T21:45:58.848Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "70ee5a42-d52e-4a10-a864-ed2fa9756a96",
+      "summary": "Cycle complete: #4047 swing play intelligence MERGED. Lifecycle GREEN (22 checks). validate:deploy GREEN, ops:collect 0. Open: #4050 handoff draft, #4048 duplicate. Pushed cursor/autopilot-work-loop-275b handoff. GitHub token lacks PR comment/close scope."
     }
   ],
   "open_prs": [
@@ -161,18 +174,8 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:45:00Z"
-    },
-    {
-      "number": 4048,
-      "title": "chore(blackout-agent): cursor recovery cycle — post-bcb5ce5 merge wave",
-      "branch": "cursor/cursor-agent-work-loop-03da",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
       "verify": "unknown",
-      "updated_at": "2026-09-05T21:45:33Z"
+      "updated_at": "2026-09-05T21:45:57Z"
     }
   ]
 }
