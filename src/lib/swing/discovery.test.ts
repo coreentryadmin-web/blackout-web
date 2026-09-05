@@ -14,6 +14,7 @@ import {
   discoveryPathsForConfluence,
   reconcileDiscoveryAfterCommit,
   stampCommitGateBlocksOnPlays,
+  tickerHasGroupedDailyBar,
   type SwingCandidateSeed,
   type SwingDiscoveryDeps,
   type TierZeroSeed,
@@ -750,4 +751,11 @@ test("runSwingDiscoveryScan: emits a recall block; cap severs the flow-less stru
     if (prevDisabled === undefined) delete process.env.SWING_ENGINE_V2_DISABLED;
     else process.env.SWING_ENGINE_V2_DISABLED = prevDisabled;
   }
+});
+
+test("tickerHasGroupedDailyBar: per-ticker presence, not whole-feed non-empty", () => {
+  const feed = [{ T: "SPY", o: 500, h: 501, l: 499, c: 500.5, v: 1_000_000 }];
+  assert.equal(tickerHasGroupedDailyBar(feed, "SPY"), true);
+  assert.equal(tickerHasGroupedDailyBar(feed, "NVDA"), false, "IPO/day-1 name absent from grouped must not pass");
+  assert.equal(tickerHasGroupedDailyBar([], "SPY"), false);
 });
