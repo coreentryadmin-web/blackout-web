@@ -12,6 +12,7 @@ import {
 } from "@/features/spx/lib/spx-play-config";
 import { dbConfigured, getMeta, setMeta, insertAlertAuditLog } from "@/lib/db";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { findSimilarPrecedents } from "@/lib/bie/precedent-search";
 import { bieEmbeddingsConfigured } from "@/lib/bie/embeddings";
 import {
@@ -93,7 +94,8 @@ function bieSearchAvailable(): boolean {
 
 async function readCache(key: string): Promise<ClaudePlayVerdict | null> {
   const mem = memoryCache.get(key);
-  if (mem && Date.now() - mem.at <= playClaudeCacheSec() * 1000) {
+  const cacheTtlMs = playClaudeCacheSec() * 1000;
+  if (mem && isWsUpdatedAtFresh(mem.at, cacheTtlMs)) {
     return { ...mem.verdict, source: "cache" };
   }
   if (!dbConfigured()) return null;
@@ -109,7 +111,7 @@ async function readCache(key: string): Promise<ClaudePlayVerdict | null> {
         : "key" in parsed && parsed.key === key
           ? { at: parsed.at, verdict: parsed.verdict }
           : null;
-    if (!slot || Date.now() - slot.at > playClaudeCacheSec() * 1000) return null;
+    if (!slot || !isWsUpdatedAtFresh(slot.at, cacheTtlMs)) return null;
     memoryCache.set(key, slot);
     return { ...slot.verdict, source: "cache" };
   } catch {
