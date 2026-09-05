@@ -25,9 +25,10 @@ export function thermalEodRecapDedupKey(sessionDate: string = todayEt()): string
 
 export async function claimThermalEodRecap(sessionDate: string, bypass = false): Promise<boolean> {
   if (bypass) return true;
+  // fail OPEN on a Redis error — a missed dedup window is a harmless duplicate post
   return sharedCacheSetNx(
     thermalEodRecapDedupKey(sessionDate),
     { at: new Date().toISOString() },
     20 * 60 * 60
-  );
+  ).catch(() => true);
 }

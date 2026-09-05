@@ -31,3 +31,15 @@ test("darkpool-discord wraps UW REST tick in runWithBackgroundUwSweep", () => {
     "UW REST work must live inside runDarkpoolDiscordTick, not bare in GET"
   );
 });
+
+// Regression for #3960 (CLQ-037/044): sharedCacheSetNx now THROWS on a Redis command error
+// instead of silently falling back to an in-memory acquire — every caller must decide fail-open
+// vs fail-closed explicitly. This dedup guard is a duplicate-post-tolerant cooldown, so it must
+// fail OPEN (post anyway) rather than let a transient Redis blip fail the whole digest run.
+test("darkpool-discord digest dedup fails OPEN on a sharedCacheSetNx rejection", () => {
+  assert.match(
+    routeSrc,
+    /await sharedCacheSetNx\(DEDUP_DIGEST_KEY,[\s\S]{0,120}\)\.catch\(\s*\(\) => true\s*\)/,
+    "DEDUP_DIGEST_KEY claim must have an explicit .catch(() => true) now that Redis errors propagate"
+  );
+});
