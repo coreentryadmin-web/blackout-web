@@ -13,13 +13,13 @@ const adminUsers = new Set<string>();
 let signedInUserId: string | null = null;
 let sessionClaims: Record<string, unknown> | undefined;
 
-mock.module("./auth-server", {
+mock.module("@/lib/auth-server", {
   namedExports: {
     auth: async () => ({ userId: signedInUserId, sessionClaims }),
   },
 });
 
-mock.module("./tier-cache", {
+mock.module("@/lib/tier-cache", {
   namedExports: {
     resolveUserTier: async (userId: string) => {
       if (!tierForUser.has(userId)) return "free";
@@ -29,7 +29,7 @@ mock.module("./tier-cache", {
   },
 });
 
-mock.module("./admin-access", {
+mock.module("@/lib/admin-access", {
   namedExports: {
     isAdminUser: async (userId: string) => adminUsers.has(userId),
   },
