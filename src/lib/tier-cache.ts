@@ -53,7 +53,7 @@ function setTierCache(userId: string, tier: Tier): void {
   if (tierCache.size >= MAX_TIER_CACHE) {
     const now = Date.now();
     for (const [k, v] of Array.from(tierCache)) {
-      if (now - v.at >= TIER_CACHE_TTL_MS) tierCache.delete(k); // reclaim expired before evicting live keys
+      if (!isWsUpdatedAtFresh(v.at, TIER_CACHE_TTL_MS, now)) tierCache.delete(k);
     }
     while (tierCache.size >= MAX_TIER_CACHE) {
       const oldest = tierCache.keys().next().value as string | undefined;
