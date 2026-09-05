@@ -465,8 +465,9 @@ describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
           recommendation: "TRIM",
           swingEntryAction: "still_buy",
           exitPolicy: {
-            trim_levels: [{ trigger_pct: 50, fired: false }],
-          },
+            policy: "trim_scale",
+            trim_levels: [{ trigger_pct: 50, fraction: 0.33, premium: null, fired: false }],
+          } as TerminalPlay["exitPolicy"],
         }),
       ),
       { label: "TRIM 50%", tone: "active" },
