@@ -31,6 +31,16 @@ export function gexStaleFromAge(ageMs: number | null): boolean {
   return ageMs > GEX_STALE_MS;
 }
 
+/** Raw GEX snapshot age for stale checks — may be negative within clock-skew tolerance. */
+export function deskGexRawAgeMs(asOfMs: number, nowMs: number = Date.now()): number {
+  return nowMs - asOfMs;
+}
+
+/** Member-visible GEX age — never negative (display / gate max-age only). */
+export function deskGexDisplayAgeMs(rawAgeMs: number): number {
+  return Math.max(0, rawAgeMs);
+}
+
 /**
  * Round the price-class numerics on the fast pulse lane at the data layer (repo policy: round once,
  * at the source). buildSpxDeskFull already rounds via roundDeskNum; the pulse lane returned every

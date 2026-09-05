@@ -15,7 +15,13 @@ import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 import { serverCache } from "@/lib/server-cache";
 // Pure numeric helpers (round + GEX staleness + pulse rounding) live in a server-only-free module
 // so they can be unit-tested in isolation. See spx-desk-numerics.ts.
-import { roundDeskNum, gexStaleFromAge, roundPulseNumerics } from "./spx-desk-numerics";
+import {
+  roundDeskNum,
+  gexStaleFromAge,
+  roundPulseNumerics,
+  deskGexDisplayAgeMs,
+  deskGexRawAgeMs,
+} from "./spx-desk-numerics";
 import { mergePulseIntoDesk } from "./spx-desk-merge";
 import { safeTime } from "@/lib/safe-time";
 import { tapeDedupKey } from "@/lib/tape-dedup-key";
@@ -164,7 +170,7 @@ let lastPulseForSignals: SpxDeskPulse | null = null;
 let lastGoodGexComputedAt = 0;
 /** Age (ms) of the freshest GEX strike ladder; null until one has ever been computed. */
 function gexDataAgeMs(now = Date.now()): number | null {
-  return lastGoodGexComputedAt > 0 ? Math.max(0, now - lastGoodGexComputedAt) : null;
+  return lastGoodGexComputedAt > 0 ? now - lastGoodGexComputedAt : null;
 }
 /**
  * Beyond this age the served GEX walls/flip/regime are treated as STALE (sticky fallback
@@ -251,7 +257,8 @@ function stickyDeskGexFallback(spot: number): CanonicalDeskGexSnapshot {
     ? topGexWalls(fallbackLevels, spot, GEX_WALL_LADDER_LIMIT)
     : [];
   const finalWalls = wallsFromLevels.length ? wallsFromLevels : lastGoodGexWalls;
-  const gexAgeMs = gexDataAgeMs();
+  const rawGexAgeMs = gexDataAgeMs();
+  const gexAgeMs = rawGexAgeMs != null ? deskGexDisplayAgeMs(rawGexAgeMs) : null;
   return {
     gex_net: null,
     gex_king: null,
@@ -261,7 +268,7 @@ function stickyDeskGexFallback(spot: number): CanonicalDeskGexSnapshot {
     gamma_regime: gRegime !== "unknown" ? gRegime : lastGoodGammaRegime,
     gex_walls: finalWalls,
     gex_age_ms: gexAgeMs,
-    gex_stale: gexStaleFromAge(gexAgeMs),
+    gex_stale: gexStaleFromAge(rawGexAgeMs),
     fresh_this_cycle: false,
   };
 }
@@ -428,7 +435,10 @@ async function resolveCanonicalDeskGex(spot: number): Promise<CanonicalDeskGexSn
   if (regime !== "unknown") lastGoodGammaRegime = regime;
 
   const asofMs = Date.parse(pos.asof);
-  const gexAgeMs = Number.isFinite(asofMs) ? Math.max(0, Date.now() - asofMs) : gexDataAgeMs();
+  const rawGexAgeMs = Number.isFinite(asofMs)
+    ? deskGexRawAgeMs(asofMs)
+    : gexDataAgeMs();
+  const gexAgeMs = rawGexAgeMs != null ? deskGexDisplayAgeMs(rawGexAgeMs) : null;
 
   return {
     gex_net: pos.net_gex,
@@ -441,7 +451,7 @@ async function resolveCanonicalDeskGex(spot: number): Promise<CanonicalDeskGexSn
     gex_age_ms: gexAgeMs,
     // Derive from the snapshot age, NOT a hardcoded false: `pos.asof` can lag the fetch (UW feed
     // cooldown / cache miss), so a "fresh fetch this cycle" is not the same as fresh DATA.
-    gex_stale: gexStaleFromAge(gexAgeMs),
+    gex_stale: gexStaleFromAge(rawGexAgeMs),
     fresh_this_cycle: levels.length > 0,
   };
 }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { gexStaleFromAge, roundPulseNumerics } from "./spx-desk-numerics";
+import { gexStaleFromAge, roundPulseNumerics, deskGexRawAgeMs, deskGexDisplayAgeMs } from "./spx-desk-numerics";
 import type { SpxDeskPulse } from "./spx-desk";
 
 // ── P1: the "GEX stale" pill must fire from the snapshot age on BOTH desk-GEX paths ──
@@ -22,6 +22,21 @@ test("gexStaleFromAge: unknown age → stale (never claim fresh on a missing age
 
 test("gexStaleFromAge: clock-skewed future age → stale (must not read as fresh)", () => {
   assert.equal(gexStaleFromAge(-60_000), true);
+});
+
+test("deskGexRawAgeMs + gexStaleFromAge: future as_of beyond tolerance is stale, not age 0 fresh", () => {
+  const now = 1_000_000;
+  const futureAsOf = now + 60_001; // beyond WS_TIMESTAMP_FUTURE_TOLERANCE_MS (5s) — use 60s+ for gexStaleFromAge test
+  const raw = deskGexRawAgeMs(futureAsOf, now);
+  assert.equal(raw, -60_001);
+  assert.equal(gexStaleFromAge(raw), true);
+  assert.equal(deskGexDisplayAgeMs(raw), 0); // display clamps, stale check uses raw
+});
+
+test("deskGexRawAgeMs: slight future skew within tolerance is not stale", () => {
+  const now = 1_000_000;
+  const raw = deskGexRawAgeMs(now + 3_000, now);
+  assert.equal(gexStaleFromAge(raw), false);
 });
 
 // ── P2: the fast pulse lane must round price-class numerics at the data layer ──
