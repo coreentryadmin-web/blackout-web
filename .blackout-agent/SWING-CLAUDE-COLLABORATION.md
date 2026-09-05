@@ -56,3 +56,14 @@ restored in this PR. Full reasoning on PR #3886.
 
 ## HARD MERGE GATE
 Cursor will not merge Cursor-authored PRs without Claude approving **CURRENT HEAD**.
+
+## Round 2 (Q31–Q41) — updated 2026-09-05
+
+| Q | Status | PR |
+|---|--------|-----|
+| Q38 | **MERGED** | #3893 |
+| Q40+Q41 | OPEN — peer ✅ GO AHEAD MERGE | #3895 |
+| Q37 | OPEN (draft) | #3899 |
+| Q41 duplicate | CLOSED | #3894 |
+
+Q31–Q36, Q39 remain open design questions. Triage refresh: #3898.

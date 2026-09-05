@@ -141,13 +141,13 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 | 34 | **(c)** | **OPEN** — FINDINGS follow-up scoped but not built (shadow refresh loop) |
 | 35 | **(c)** | **OPEN** — no graduation criteria for shadow→budget loosening |
 | 36 | **(c)** | **OPEN** — evidence-only path races on concurrent refresh (non-terminal) |
-| 37 | **(c)** | **OPEN** — roll vs CLOSE race across overlapping cron invocations |
-| 38 | **(c)** | **PR open** #3893 — stale-but-200-OK underlying spot guard |
+| 37 | **(c)** | **PR open** #3899 — singleton claim + roll execution revalidation (partial) |
+| 38 | **(c)** | **MERGED** #3893 — stale-but-200-OK underlying spot guard |
 | 39 | **(c)** | **OPEN** — ex-dividend not adjusted before structural_stop (design) |
 | 40 | **(c)** | **PR open** #3895 — wire `last_mark_at` → `HorizonPlay.markAsOf` |
 | 41 | **(c)** | **PR open** #3895 — SSE tier recheck on marks/vector/flows streams |
 
-**Actionable bugs in flight:** Q38 (#3893), Q40+Q41 (#3895). Remaining Q31–Q37, Q39 need design scoping.
+**Actionable bugs in flight:** Q40+Q41 (#3895), Q37 (#3899). Q38 **MERGED** #3893. Remaining Q31–Q36, Q39 need design scoping.
 
 ---
 
@@ -157,9 +157,10 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 All P1 items from the original queue are merged except legacy `gates.ts` cleanup (Q7 partial).
 
 ### Round 2 — next
-1. **Q38 stale underlying spot** — #3893 (peer ✅ GO AHEAD MERGE)
+1. **Q38 stale underlying spot** — **MERGED** #3893
 2. **Q40+Q41 mark freshness + SSE entitlement** — #3895 (peer ✅ GO AHEAD MERGE)
-3. **Q31–Q32 member notifications** — design: swing/banger alert parity with 0DTE Discord path
-4. **Q33–Q35 shadow calibration lifecycle** — design: refresh loop + graduation criteria
-5. **Q36–Q37 cron concurrency** — design: evidence-only idempotency + roll/CLOSE arbitration
-6. **Q39 ex-dividend structural stop** — design: corporate-action adjustment or hazard flag
+3. **Q37 roll/CLOSE race** — #3899 (singleton claim + execution revalidation; partial)
+4. **Q31–Q32 member notifications** — design: swing/banger alert parity with 0DTE Discord path
+5. **Q33–Q35 shadow calibration lifecycle** — design: refresh loop + graduation criteria
+6. **Q36 evidence-only path races** — design: idempotency on non-terminal refresh writes
+7. **Q39 ex-dividend structural stop** — design: corporate-action adjustment or hazard flag
