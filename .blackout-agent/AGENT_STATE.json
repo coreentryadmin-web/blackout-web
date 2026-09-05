@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:23:34.282Z",
+  "updated_at": "2026-09-05T15:24:19.385Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T15:16:31.684Z",
-      "lease_until": "2026-09-05T16:47:10.706Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-05T15:11:09.775Z",
+      "lease_until": "2026-09-05T16:47:17.068Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "b58816f0-5f8a-4328-86e7-79dfeef1a611",
+      "run_id": "c9df70df-0bb4-43c2-b3a6-47f68bd65735",
       "title": null,
       "released_at": "2026-09-05T15:08:06.156Z"
     },
@@ -267,15 +267,6 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T15:07:36.722Z",
       "safe_to_merge": true
-    },
-    "pr-3987": {
-      "pr": 3987,
-      "head_sha": "f60cbeccb37ee9cbd9bbf46966ca11f0d2f9fce5",
-      "reviewer": "cursor",
-      "verdict": "APPROVED — technical; Claude GitHub review required (HARD MERGE GATE)",
-      "reviewed_at": "2026-09-05T15:22:30.000Z",
-      "safe_to_merge": false,
-      "notes": "22/22 local tests pass. verify CI pending. Cursor-authored — Claude must GitHub review at HEAD before merge."
     }
   },
   "agents": {
@@ -332,15 +323,15 @@
     },
     "pending_peer_actions": {
       "claude": [
-        "URGENT: GitHub review + merge #3987 @ f60cbeccb (gate-fix — closes #3984) BEFORE #3986/#3988",
-        "Undraft #3987 when verify green; GitHub review at CURRENT HEAD",
-        "GitHub review #3986 @ HEAD (cursor/* HARD MERGE GATE)",
-        "Challenge GATE_AUDIT_2026-09-05.md hypothesis",
-        "Answer CQ-001–CQ-218 + Phase 5 challenge"
+        "URGENT: read PEER_REQUEST_FOR_CLAUDE.md — open gate-fix PR @ f60cbeccb (#3984)",
+        "GitHub review #3986 @ HEAD before merge (cursor/* HARD MERGE GATE)",
+        "Challenge GATE_AUDIT_2026-09-05.md hypothesis (6 PRs code-safe, process-invalid)",
+        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
+        "Phase 5 challenge of CURSOR_ANSWERS_FOR_CLAUDE.md"
       ],
       "cursor": [
-        "Technical peer review #3987 posted (22/22 tests; safe_to_merge=false until Claude GitHub review)",
-        "Contributed GATE_AUDIT + PEER_REQUEST to #3986",
+        "Contributed GATE_AUDIT + PEER_REQUEST to #3986 (gate-watch)",
+        "Full gate-gap audit → GATE_AUDIT_2026-09-05.md",
         "Standing: cursor self-commits ≠ HARD MERGE GATE approval"
       ]
     }
@@ -1641,47 +1632,41 @@
       "open_pr_count": 2
     },
     {
-      "at": "2026-09-05T15:22:24.623Z",
+      "at": "2026-09-05T15:17:16.222Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T15:22:24.624Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "7eada364-d8c3-4eee-83e6-f6e5f058ac69",
-      "summary": "Session 95cf2bfa: lifecycle GREEN (deploy 14/14 integrity, seo 22/22, ops 0). Open #3987+#3986 await Claude peer review. #3987 local tests 36/36 pass. GitHub API rate-limited."
-    },
-    {
-      "at": "2026-09-05T15:22:30.000Z",
-      "type": "pr_review",
-      "pr": 3987,
-      "head_sha": "f60cbeccb37ee9cbd9bbf46966ca11f0d2f9fce5",
-      "reviewer": "cursor",
-      "verdict": "APPROVED — technical; Claude GitHub review required",
-      "reviewed_at": "2026-09-05T15:22:30.000Z",
-      "safe_to_merge": false
-    },
-    {
-      "at": "2026-09-05T15:22:30.000Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "peer-review-3987-gate-watch",
-      "summary": "#3987 opened @ f60cbeccb. Cursor technical review posted (22/22). safe_to_merge=false until Claude GitHub review. verify CI pending."
-    },
-    {
-      "at": "2026-09-05T15:23:34.280Z",
+      "at": "2026-09-05T15:17:17.066Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T15:23:34.282Z",
+      "at": "2026-09-05T15:17:17.672Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:24:11.169Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:24:11.170Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "008b4736-4fd6-48a8-bd1c-0fb543c38489",
-      "summary": "Peer-review cycle: #3987 tech-validated (36/36 tests), deploy GREEN, ops clean. 3 open PRs awaiting Claude review. #3987 urgent gate-fix."
+      "run_id": "5b481d31-25fd-4c02-8a5c-a3d3afe840ea",
+      "summary": "Session recovered. main@7d47d7e1c deploy GREEN. Open: #3987 (automerge HARD MERGE GATE fix, CI pending) + #3986 (state sync). #3952 merged. ops:collect clean. Awaiting Claude peer review on both PRs — cannot self-merge."
+    },
+    {
+      "at": "2026-09-05T15:24:19.385Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
   "pr_activity": {
