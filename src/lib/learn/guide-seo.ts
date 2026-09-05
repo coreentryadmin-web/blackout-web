@@ -58,6 +58,22 @@ export const GUIDE_SEO: Record<LearnSlug, GuideSeo> = {
     dateModified: "2026-08-01",
     breadcrumb: "Thermal",
   },
+  vector: {
+    metaTitle: "Vector Guide — Cross-Ticker Gamma & Flow Screener",
+    metaDescription:
+      "Learn how Vector screens the whole universe: nearest-flip, most-pinned, most-explosive presets, GEX ladders, wall integrity, and ranked contract picks.",
+    datePublished: "2026-09-04",
+    dateModified: "2026-09-04",
+    breadcrumb: "Vector",
+  },
+  meridian: {
+    metaTitle: "Meridian Guide — Catalyst Timeline & Earnings Desk",
+    metaDescription:
+      "Learn how Meridian tracks earnings, macro, OpEx, and FDA catalysts on one timeline, with a five-tab earnings desk for estimates, positioning, and history.",
+    datePublished: "2026-09-04",
+    dateModified: "2026-09-04",
+    breadcrumb: "Meridian",
+  },
   glossary: {
     metaTitle: "Options Trading Glossary — Gamma, 0DTE, Flow Terms",
     metaDescription:

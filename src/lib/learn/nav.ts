@@ -7,6 +7,8 @@ export type LearnSlug =
   | "largo-ai"
   | "night-hawk"
   | "heat-maps"
+  | "vector"
+  | "meridian"
   | "glossary";
 
 export type LearnNavItem = {
@@ -54,6 +56,18 @@ export const LEARN_NAV: LearnNavItem[] = [
     product: "heatmap",
     label: "Thermal",
     description: "GEX, VEX, DEX, and CHARM dealer positioning surfaces.",
+  },
+  {
+    slug: "vector",
+    product: "vector",
+    label: "Vector",
+    description: "Cross-ticker gamma and flow radar — ranked setups across the whole universe.",
+  },
+  {
+    slug: "meridian",
+    product: "docs",
+    label: "Meridian",
+    description: "Catalyst timeline — earnings, macro, OpEx, and FDA — with a five-tab earnings desk.",
   },
   {
     slug: "glossary",

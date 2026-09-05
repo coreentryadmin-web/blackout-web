@@ -11,6 +11,8 @@ import {
 } from "./product-manifest.ts";
 import { MARKETING_PRODUCTS } from "./products.ts";
 import { LEARN_NAV } from "../learn/nav.ts";
+import type { LearnSlug } from "../learn/nav.ts";
+import type { MarketingModuleId } from "../images.ts";
 
 const REPO = join(import.meta.dirname, "..", "..", "..");
 
@@ -163,5 +165,50 @@ test("SPX Slayer's manifest capabilities match its real matrix UI (GEX/VEX only,
     thermal.lifecycle,
     /DEX.*CHARM|CHARM.*DEX/i,
     "Thermal genuinely ships all four lenses — this assertion should not be narrowed to match SPX"
+  );
+});
+
+// Regression for a P3 IA finding (2026-09-04): Vector and Meridian had no Academy chapter at
+// all — LEARN_NAV (the structured Learn hub's chapter list) stopped at 5 product chapters plus
+// Getting Started and Glossary, even though the manifest already listed all 7 products as live
+// and even pointed their `learnHref` at real guide content. A prospective member reading the
+// Academy's "structured textbook" saw only 5 of 7 products; Vector and Meridian's guides existed
+// only as loose entries in the unstructured Guides catalog (LEARN_ARTICLES), never as numbered
+// curriculum chapters. `MarketingModuleId` (product-manifest.ts ids) and `LearnSlug` (nav.ts
+// chapter slugs) use different naming schemes for the same products (e.g. "thermal" vs
+// "heat-maps", "hawk" vs "night-hawk") — this explicit mapping is the join between them the
+// codebase doesn't otherwise provide, so this test can assert the invariant the finding asked
+// for: every live paid product has exactly one first-class Academy chapter.
+const MANIFEST_ID_TO_LEARN_SLUG: Record<MarketingModuleId, LearnSlug> = {
+  spx: "spx-slayer",
+  helix: "helix-flows",
+  thermal: "heat-maps",
+  largo: "largo-ai",
+  hawk: "night-hawk",
+  vector: "vector",
+  meridian: "meridian",
+};
+
+test("every live product in the manifest has exactly one first-class Academy chapter", () => {
+  const chapterSlugs = new Set(LEARN_NAV.map((item) => item.slug));
+  const missing: string[] = [];
+  for (const id of MANIFEST_PRODUCT_ORDER) {
+    if (PRODUCT_MANIFEST[id].launchStatus !== "live") continue;
+    const slug = MANIFEST_ID_TO_LEARN_SLUG[id];
+    if (!chapterSlugs.has(slug)) missing.push(`${id} (expected LEARN_NAV slug "${slug}")`);
+  }
+  assert.deepEqual(
+    missing,
+    [],
+    `live products missing a first-class Academy chapter: ${missing.join(", ")}`
+  );
+
+  // Every chapter slug in the mapping must actually resolve to a distinct LEARN_NAV entry —
+  // catches a copy-paste duplicate slug as loudly as a missing one.
+  const mappedSlugs = Object.values(MANIFEST_ID_TO_LEARN_SLUG);
+  assert.equal(
+    new Set(mappedSlugs).size,
+    mappedSlugs.length,
+    "product-to-chapter mapping must not alias two products onto the same chapter slug"
   );
 });

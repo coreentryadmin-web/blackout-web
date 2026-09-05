@@ -5,6 +5,8 @@ export {
   largoAiGuide,
   nightHawkGuide,
   heatMapsGuide,
+  vectorGuide,
+  meridianGuide,
 } from "@/lib/learn/guides/tool-guides";
 export { glossaryGuide } from "@/lib/learn/guides/glossary";
 
@@ -17,6 +19,8 @@ import {
   largoAiGuide,
   nightHawkGuide,
   heatMapsGuide,
+  vectorGuide,
+  meridianGuide,
 } from "@/lib/learn/guides/tool-guides";
 import { glossaryGuide } from "@/lib/learn/guides/glossary";
 
@@ -27,6 +31,8 @@ const GUIDES: Record<LearnSlug, LearnGuide> = {
   "largo-ai": largoAiGuide,
   "night-hawk": nightHawkGuide,
   "heat-maps": heatMapsGuide,
+  vector: vectorGuide,
+  meridian: meridianGuide,
   glossary: glossaryGuide,
 };
 

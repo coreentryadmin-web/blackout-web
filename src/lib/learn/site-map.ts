@@ -11,6 +11,8 @@ export const TOOL_ROUTES: Record<
   "largo-ai": "/terminal",
   "night-hawk": "/nighthawk",
   "heat-maps": "/heatmap",
+  vector: "/vector",
+  meridian: "/meridian",
 };
 
 export const SITE_ROUTES = {
