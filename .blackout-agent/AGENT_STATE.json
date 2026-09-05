@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T19:35:26.152Z",
+  "updated_at": "2026-09-05T20:23:48.297Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-05T20:03:14.471Z",
+      "lease_until": "2026-09-05T21:33:57.613Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "d74e2d38-745c-4e9f-b204-beb14043f165"
     }
   },
   "reviews": {
@@ -36,11 +36,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "1d64dc9ae143d6c03b976714341e7706eefe0182",
+    "last_main_sha": "8ff68d3b54419b2c9a7bc705462ac8093161b32d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-05T20:16:29Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33989517061",
+    "last_deploy_sha": "8ff68d3b54419b2c9a7bc705462ac8093161b32d"
   },
   "events": [
     {
@@ -102,78 +102,31 @@
       "agent": "cursor",
       "run_id": "b9a3c786-97ee-4a0e-9f0c-a9c61879bc90",
       "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) — 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
+    },
+    {
+      "at": "2026-09-05T20:23:48.296Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T20:23:48.297Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "af1a73e8-c487-4647-8692-02941b8fe8f9",
+      "summary": "Recovery cycle: merged #4035 swing desk + #4041 findings fold + #4039 state. Deploy GREEN at 8ff68d3b5. Verified #4040 GH_TOKEN fix locally (sync 9 PRs). Rebased #4027 on main. Open: #4040 (infra), #4027 (CQ batch 4) — both verify pending, need Claude peer review."
     }
   ],
   "open_prs": [
     {
-      "number": 4039,
-      "title": "chore(blackout-agent): cursor recovery cycle — lifecycle GREEN, GitHub rate-limited",
-      "branch": "cursor/autopilot-work-loop-cddd",
+      "number": 4040,
+      "title": "fix(autopilot): strip invalid GH_TOKEN so gh sync sees open PRs",
+      "branch": "cursor/autopilot-work-loop-bb65",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-05T19:35:17Z"
-    },
-    {
-      "number": 4038,
-      "title": "chore(blackout-agent): cursor recovery cycle handoff — #4035 CI fix",
-      "branch": "cursor/autopilot-state-recovery-loop-9792",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-05T19:35:24Z"
-    },
-    {
-      "number": 4037,
-      "title": "fix(spx-desk): anchor off-hours pulse to prior close on cold replica",
-      "branch": "fix/spx-desk-pulse-cold-prior-close",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-05T19:35:19Z"
-    },
-    {
-      "number": 4036,
-      "title": "chore(blackout-agent): cursor cycle handoff — #4024 rebased, deploy GREEN",
-      "branch": "cursor/autopilot-work-loop-e8dd",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-05T19:35:10Z"
-    },
-    {
-      "number": 4035,
-      "title": "fix(nighthawk): swing desk grade, Largo center rail, detail header",
-      "branch": "cursor/swing-desk-layout-largo",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-05T19:32:16Z"
-    },
-    {
-      "number": 4034,
-      "title": "chore(state): sync autopilot after #4029 merge + Claude peer queue",
-      "branch": "cursor/autopilot-state-sync-1919",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-05T19:19:33Z"
-    },
-    {
-      "number": 4033,
-      "title": "chore(blackout-agent): cursor cycle handoff — merged #4029/#4030",
-      "branch": "cursor/autopilot-handoff-cycle2-v2",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-05T19:19:10Z"
+      "verify": "in_progress/pending",
+      "updated_at": "2026-09-05T20:22:01Z"
     },
     {
       "number": 4027,
@@ -181,9 +134,9 @@
       "branch": "cursor/cq-fix-pass-batch4",
       "author": "coreentryadmin-web",
       "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-05T19:34:52Z"
+      "draft": false,
+      "verify": "in_progress/pending",
+      "updated_at": "2026-09-05T20:20:59Z"
     }
   ]
 }
