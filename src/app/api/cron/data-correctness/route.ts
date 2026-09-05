@@ -40,6 +40,7 @@ import {
   renderScorecardMarkdown,
   scorecardStatus,
 } from "@/lib/correctness/run-correctness";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -97,7 +98,7 @@ export async function GET(req: NextRequest) {
     }
 
     const dispatchSweep = () => {
-      void (async () => {
+      void runWithBackgroundUwSweep(async () => {
         try {
           const tickers = correctnessTickers();
           const card = await runFullCorrectness(tickers);
@@ -134,7 +135,11 @@ export async function GET(req: NextRequest) {
           console.error("[data-correctness] background sweep REJECTED:", detail);
           await logCronRun("data-correctness", started, { ok: false, error: detail });
         }
-      })();
+      }).catch((error) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error("[data-correctness] background sweep REJECTED:", detail);
+        void logCronRun("data-correctness", started, { ok: false, error: detail });
+      });
     };
 
     try {
@@ -155,7 +160,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const tickers = correctnessTickers();
-    const card = surface === "heatmap" ? await runHeatmapCorrectness(tickers) : await runFullCorrectness(tickers);
+    const card =
+      surface === "heatmap"
+        ? await runHeatmapCorrectness(tickers)
+        : await runWithBackgroundUwSweep(() => runFullCorrectness(tickers));
     const overall = scorecardStatus(card);
 
     // ── Markdown scorecard → docs/auto/data-correctness-<date>.md (best-effort) ──
