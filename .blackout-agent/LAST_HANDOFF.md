@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-04T19:52:08.396Z
-**Run:** 01ba5e3e-d264-48b8-b6f9-953c859c62cd
+**At:** 2026-09-05T05:44:32.292Z
+**Run:** 54200c10-3680-4099-8c4f-c1423d8534e1
 
 ## Summary
 
-Hourly sweep: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14. Pattern scan found Vector roundFloats gap + UW halt future-timestamp bug — PR opening on fix/vector-roundfloats-uw-halt-freshness. Deploy run 33912534346 pending at db208131. GitHub API rate-limited (user 284440397) — pr-sweep empty.
+PR-event wake: validate:deploy GREEN, platform-integrity 14/14, ops:collect 0. Peer review: no claude/* PRs; Cursor PRs #3872 (verify GREEN) + #3868 await Claude review. Shipped fix/vector-snapshot-wallscope-future-at (PR opening). Main @ fe7c581c5 (#3859 merged).
 
 ## Deploy
 
-- main: `db208131ed3f66843d8743e6847ccc05a1dfab75`
+- main: `fe7c581c554c76b83fe43eb42769ef5540fabff0`
 - status: 
 
 ## Open PRs
