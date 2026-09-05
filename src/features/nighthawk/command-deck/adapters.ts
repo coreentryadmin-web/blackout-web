@@ -25,6 +25,7 @@ import type { SwingSubLane } from "@/lib/swing/taxonomy";
 import { computeSwingThesisHealth } from "@/lib/swing/thesis-health";
 import { convictionFromScore } from "@/features/nighthawk/lib/conviction";
 import type { SwingManageAction } from "@/lib/swing/manage";
+import type { SwingClosedDeckSource } from "@/lib/swing/closed-plays";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
 import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
 import { resolveLegacyPlayOcc } from "@/features/nighthawk/lib/legacy-play-contract";
@@ -1198,4 +1199,29 @@ export function terminalPlayFromEdition(src: EditionDeckSource): TerminalPlay {
     pulledReason: src.pulled_reason ?? null,
     morningReason: src.morning_reason ?? null,
   };
+}
+
+/** Map a graded CLOSED swing ledger row onto TerminalPlay (CLOSED tab parity). */
+export function terminalPlayFromClosedSwing(src: SwingClosedDeckSource): TerminalPlay {
+  return terminalPlayFromHorizon({
+    ticker: src.ticker,
+    direction: src.direction,
+    horizon: src.horizon,
+    score: src.score,
+    status: src.status,
+    reason: src.reason,
+    contract: src.contract,
+    archetype: src.archetype ?? null,
+    subLane: src.subLane ?? null,
+    firstSeenAt: src.firstSeenAt ?? null,
+    committedAt: src.committedAt ?? null,
+    entryPremium: src.entryPremium ?? null,
+    peakPremium: src.peakPremium ?? null,
+    troughPremium: src.troughPremium ?? null,
+    occ: src.occ ?? null,
+    positionId: src.positionId,
+    exitAt: src.exitAt ?? null,
+    exitPnlPct: src.exitPnlPct ?? null,
+    closedReason: src.closedReason ?? null,
+  });
 }
