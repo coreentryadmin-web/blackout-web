@@ -4,36 +4,36 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 
 | Q | Verdict | Fix status / PR |
 |---|---------|-------------------|
-| 1 | **(c)** | Open — `fix/swing-discovery-force-claim-guard` |
-| 2 | **(c)** | **FIXED** this PR — per-candidate dossier isolation |
-| 3 | **(c)** | Open — `fix/swing-serving-committed-watch-reconcile` |
-| 4 | **(c)** | **FIXED** #3845 |
-| 5 | **(c)** | Open — `fix/swing-positioning-direction-confluence` |
-| 6 | **(c)** | Open — delete or wire `data-fusion.ts` |
-| 7 | **(c)** | Open — wire G-S3/quote/bar gates or delete dead `gates.ts` |
-| 8 | **(c)** | Open — G-S4 regime degraded→WATCH |
-| 9 | **(c)** | Open — swing halt/LULD gate (reuse zerodte pattern) |
-| 10 | **(c)** | **FIXED** this PR — G-S3 in v2/gates |
-| 11 | **(c)** | Open — earnings calendar reader for Cortex(swing) |
-| 12 | **(c)** | Open — single authoritative `intendedDte` post-classify |
+| 1 | **(c)** | **MERGED** #3854 — force=1 claim guard |
+| 2 | **(c)** | **MERGED** #3850 — per-candidate dossier isolation |
+| 3 | **(c)** | **PR open** — post-commit WATCH/COMMITTED reconcile |
+| 4 | **(c)** | **MERGED** #3845 |
+| 5 | **(c)** | **PR open** — POSITIONING direction agreement for G-S6 |
+| 6 | **(c)** | **PR open** — deleted dead `v2/data-fusion.ts`; `swing-ingest.ts` canonical |
+| 7 | **(c)** | **MERGED** #3850 — G-S3 in v2/gates (legacy gates.ts still dead) |
+| 8 | **(c)** | **MERGED** #3868 — G-S4 regime degraded→WATCH |
+| 9 | **(c)** | **MERGED** #3852 — halt/LULD |
+| 10 | **(c)** | **MERGED** #3850 — G-S3 earnings binary |
+| 11 | **(c)** | **Partial** — G-S3 blocks commit; Cortex earnings reader still open (see collaboration doc) |
+| 12 | **(c)** | **PR open** — `finalizeSwingDossierForArchetype` re-runs `deriveCatalystReads` post-classify |
 | 13 | **(a)** | Document; optional proximity-scaled hazard later |
 | 14 | **(a)** | Accept race; optional cross-horizon coalesce later |
-| 15 | **(c)** | Open — e2e test omitted-horizon 0DTE veto path |
-| 16 | **(c)** | Open — wire `thesisBroken`/edge reads in active-refresh |
+| 15 | **(c)** | **FIXED** — e2e test omitted horizon → `0dte` in `fetch.test.ts` |
+| 16 | **(c)** | **PR open** — `manage-edge-reads.ts` wired in active-refresh `loadReads` |
 | 17 | **(a)** | Roll = continuation; optional re-confluence flag later |
-| 18 | **(c)** | **FIXED** #3842 |
+| 18 | **(c)** | **MERGED** #3842 |
 | 19 | **(a)** | Structural stop pinned to thesis level by design |
-| 20 | **(c)** | Open — archetype in `commit_key` or block multi-archetype |
-| 21 | **(c)** | Open — key `gateBlockedByKey` by thesisKey |
-| 22 | **(c)** | Open — legacy plays: stamp gate state or show EXEMPT |
+| 20 | **(c)** | **PR open** — archetype in `commit_key` |
+| 21 | **(c)** | **PR open** — key `gateBlockedByKey` by thesisKey (supersedes #3875) |
+| 22 | **(c)** | **PR open** — legacy `legacy:exempt` gate stamp |
 | 23 | **(a)** | Per-desk budget by design; cross-desk view not built |
 | 24 | **(a)** | Banger uncapped per operator directive |
-| 25 | **(c)** | Open — unify correlation clusters cross-desk |
-| 26 | **(c)** | Open — CLOSED tab chain-composite parity with record |
-| 27 | **(c)** | Open — Tier-0 origin failure counters/logs |
-| 28 | **(c)** | Open — require CATALYST kind for event archetypes |
-| 29 | **(c)** | Open — fail-closed Cortex + pin `entry_context.cortex` |
-| 30 | **(c)** | Open — shadow-grade G-S6/G-S14-only blocks |
+| 25 | **(c)** | Open — unify correlation clusters cross-desk (needs design) |
+| 26 | **(c)** | **PR open** — CLOSED tab chain-composite P&L |
+| 27 | **(c)** | **MERGED** #3861 — Tier-0 origin failure observability |
+| 28 | **(c)** | **MERGED** #3858 — CATALYST kind for event archetypes |
+| 29 | **(c)** | **MERGED** #3857 — Cortex fail-closed + pin |
+| 30 | **(c)** | **MERGED** #3859 — shadow G-S6/G-S14-only blocks |
 
 ---
 
@@ -73,7 +73,7 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 **(c) real gap.** Swing Cortex reuses 0DTE readers; none read earnings calendar. 0DTE has hard `earnings` gate. **Fix:** add earnings-date reader or wire G-S3 before Cortex.
 
 ### Q12 — three intendedDte values
-**(c) real gap.** Pre-classify 14d in enrich, `catalystShortHorizon` in ingest, `intendedDteForArchetype` post-classify for subLane only — catalyst pillar not recomputed. **Fix:** recompute catalyst reads after archetype/subLane finalization.
+**(c) fixed in PR.** `assembleSwingDossierInput` pins `catalystDerive`; `finalizeSwingDossierForArchetype` re-runs `deriveCatalystReads` with `intendedDteForArchetype` after classification so `earningsInWindow`/CATALYST hazard match the traded horizon.
 
 ### Q13 — flat catalyst hazard discount
 **(a) intentional simplification** for v1: binary in-window hazard. Proximity is partially captured by `preEarnings01` on the same pillar. **Optional (c):** scale hazard term by `daysUntil` if calibration shows T-1 still committing too often.
@@ -85,7 +85,7 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 **(c) real gap (test coverage).** `fetch.test.ts` covers explicit `horizon: "swing"`; no e2e asserting omitted horizon → `"0dte"` through `evaluateCortexForCommit`. **Fix:** one integration test on default path.
 
 ### Q16 — management edge reads unwired
-**(c) real gap.** `loadReads` in active-refresh never sets `thesisBroken`, `catalystShift`, `regimeShift`, `flowDecayed`, `relStrengthLost`. Rungs #2/#5/#6/#8/#9 cannot fire in production.
+**(c) fixed in PR.** New pure `manage-edge-reads.ts` derives `thesisBroken`/`catalystShift`/`regimeShift`/`flowDecayed`/`relStrengthLost` from commit-pinned pillars + live daily-bar recompute; `swing-active-refresh` `loadReads` wires them into manage-sync.
 
 ### Q17 — roll skips G-S6/G-S14
 **(a) intentional:** roll continues authorized thesis; re-checks budget/caps/idempotency/DTE buffer only. **Optional (c):** advisory re-confluence flag on roll when RS/archetype inputs invert (P4).

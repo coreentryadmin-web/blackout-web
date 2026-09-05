@@ -29,7 +29,7 @@ import {
 } from "@/lib/swing/discovery";
 import { ingestSwingReads } from "@/lib/swing/swing-ingest";
 import { persistSwingCapRejections } from "@/lib/swing/v2/rejections";
-import { positioningTickersFromVectorLeaders } from "@/lib/swing/v2/origins/positioning-screen";
+import { positioningHitsFromVectorLeaders, positioningTickersFromVectorLeaders } from "@/lib/swing/v2/origins/positioning-screen";
 import { catalystTickersFromBenzingaBundle } from "@/lib/swing/v2/origins/catalyst-screen";
 import { bangerTickersFromGroupedDaily } from "@/lib/swing/v2/origins/banger-screen";
 import { vectorTickersFromPickLeaders } from "@/lib/swing/v2/origins/vector-screen-fetch";
@@ -165,6 +165,11 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
       const rows = await fetchVectorPickLeaderRows({ limit: 80 }).catch(() => []);
       const tickers = rows.map((r) => r.ticker).filter((t): t is string => Boolean(t));
       return positioningTickersFromVectorLeaders(tickers);
+    },
+    fetchPositioningHits: async () => {
+      const rows = await fetchVectorPickLeaderRows({ limit: 80 }).catch(() => []);
+      const tickers = rows.map((r) => r.ticker).filter((t): t is string => Boolean(t));
+      return positioningHitsFromVectorLeaders(tickers);
     },
     // V2 CATALYST origin — Benzinga earnings window (fail-soft).
     fetchCatalystTickers: async () => catalystTickersFromBenzingaBundle(sessionDay),

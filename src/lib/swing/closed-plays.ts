@@ -6,6 +6,7 @@
 import type { SwingPositionRow } from "../db";
 import { calendarDte } from "../horizon-fanout";
 import { HORIZONS } from "../horizons";
+import { buildSwingRecord } from "./record";
 
 const fin = (n: unknown): number | null => (typeof n === "number" && Number.isFinite(n) ? n : null);
 
@@ -104,7 +105,7 @@ export function closedDeckSourceFromRow(row: SwingPositionRow): SwingClosedDeckS
 
 /**
  * From roll chains already loaded for the record API: one CLOSED deck row per resolved chain
- * (terminal leg graded + CLOSED). Sorted newest exit first.
+ * (terminal leg graded + CLOSED). Uses chain-composite P&L/outcome (deep-dive Q26), not terminal leg only.
  */
 export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][]): SwingClosedDeckSource[] {
   const out: SwingClosedDeckSource[] = [];
@@ -113,10 +114,24 @@ export function closedDeckSourcesFromChains(chains: readonly SwingPositionRow[][
     const ordered = [...chain].sort((a, b) => a.roll_seq - b.roll_seq || a.id - b.id);
     const terminal = ordered[ordered.length - 1];
     if (!terminal) continue;
+    const record = buildSwingRecord(ordered);
+    if (!record.composite.chainResolved) continue;
     const src = closedDeckSourceFromRow(terminal);
     if (!src || seen.has(src.positionId)) continue;
     seen.add(src.positionId);
-    out.push(src);
+    const compositePnl = record.composite.worstLegPnlPct;
+    const compositeReason =
+      record.composite.outcome === "win"
+        ? "target"
+        : record.composite.outcome === "loss"
+          ? "stopped"
+          : src.closedReason;
+    out.push({
+      ...src,
+      exitPnlPct: compositePnl ?? src.exitPnlPct,
+      closedReason: compositeReason,
+      reason: `${src.reason} · chain composite (${record.composite.gradedLegs} leg${record.composite.gradedLegs === 1 ? "" : "s"})`,
+    });
   }
   return out.sort((a, b) => {
     const at = Date.parse(a.exitAt ?? "") || 0;

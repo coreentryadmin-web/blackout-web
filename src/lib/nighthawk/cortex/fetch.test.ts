@@ -382,6 +382,20 @@ describe("fetch: assembler (injected deps)", () => {
     assert.equal(vectorHorizonForCortexCommit("swing"), "monthly");
   });
 
+  test("omitted horizon defaults to 0dte Vector grid (live 0DTE veto path, Q15)", async () => {
+    let seenHorizon: string | null = null;
+    await fetchCortexInputs("NVDA", "long", {
+      now: NOW,
+      deps: deps({
+        fetchVectorFullState: async (_t, h) => {
+          seenHorizon = h;
+          return vectorState();
+        },
+      }),
+    });
+    assert.equal(seenHorizon, "0dte");
+  });
+
   test("horizon=swing requests monthly Vector full state", async () => {
     let seenHorizon: string | null = null;
     await fetchCortexInputs("NVDA", "long", {

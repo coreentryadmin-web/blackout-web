@@ -4,17 +4,22 @@ import {
   mergeTierZeroScreens,
   rankTierZeroSeeds,
   deriveSwingCandidates,
+  finalizeSwingDossierForArchetype,
+  intendedDteForArchetype,
   runSwingDiscoveryScan,
   computeSwingDiscoveryRecall,
   liquidityTierForDollar,
   regimeBandFor01,
   signalKindsForObservation,
   discoveryPathsForConfluence,
+  reconcileDiscoveryAfterCommit,
+  stampCommitGateBlocksOnPlays,
   type SwingCandidateSeed,
   type SwingDiscoveryDeps,
   type TierZeroSeed,
 } from "./discovery.ts";
 import { assembleSwingDossierInput } from "./swing-ingest.ts";
+import { parseEarningsWindows } from "./swing-catalyst.ts";
 import type { SwingAccumAccessors } from "./accumulation-store.ts";
 import type { SwingAccumRow, SwingPositionInsert } from "../db.ts";
 import type { SwingCalibrationRow } from "./calibration.ts";
@@ -138,6 +143,35 @@ test("FM#1: a flow-less structure-only candidate STILL produces a dossier", () =
   assert.equal(dossiers[0].ticker, "ASTS");
   assert.equal(dossiers[0].direction, null, "no flow → no signed direction");
   assert.ok(dossiers[0].score.presentCount > 0, "still scores on the pillars it CAN ground (structure/rel-strength)");
+});
+
+test("finalizeSwingDossierForArchetype: earningsInWindow realigns to archetype DTE (Q12)", () => {
+  const asOfMs = Date.parse("2026-07-24T21:00:00.000Z");
+  const earnings = parseEarningsWindows(
+    [{ earnings_date: "2026-08-01", is_confirmed: true }],
+    asOfMs,
+  );
+  const input = assembleSwingDossierInput({
+    ticker: "MRNA",
+    asOf: "2026-07-24T21:00:00.000Z",
+    intendedDte: 14,
+    accumulation: bullSignal("MRNA"),
+    flowWindowDays: 5,
+    nameCloses: ASC,
+    spyCloses: FLAT_SPY,
+    catalyst: {
+      freshCatalystAgeDays: 0,
+      earnings,
+    },
+  });
+  // Pre-classify at 14d: earnings 8 sessions out is in-window.
+  assert.equal(input.catalyst?.earningsInWindow, true, "pre-classify 14d window includes 8d-out print");
+
+  const dossier = finalizeSwingDossierForArchetype(input, 14);
+  assert.equal(dossier.archetype.archetype, "EVENT_DRIVEN");
+  assert.equal(intendedDteForArchetype("EVENT_DRIVEN", 14), 5);
+  assert.equal(dossier.subLane, "TACTICAL");
+  assert.equal(dossier.earningsInWindow, false, "post-classify 5d window excludes 8d-out print");
 });
 
 // ── IO shell (fully injected deps) ────────────────────────────────────────────────
@@ -374,7 +408,7 @@ test("runSwingDiscoveryScan: idempotency — a name already OPEN on the book is 
         ticker: "NVDA",
         direction: "LONG" as const,
         archetype: nvda.archetype.archetype,
-        commitKey: "2026-07-25:NVDA:STANDARD:long",
+        commitKey: "2026-07-25:NVDA:BREAKOUT:STANDARD:long",
         riskUsd: 510,
         isOvernight: true,
       },
@@ -439,6 +473,103 @@ test("discoveryPathsForConfluence: includes grounded CATALYST pillar for G-S6 (Q
   );
   const noCatalyst = deriveSwingCandidates([mkSeed("AMD", bullSignal("AMD"), null)])[0];
   assert.deepEqual(discoveryPathsForConfluence(["FLOW", "STRUCTURE"], noCatalyst).sort(), ["FLOW", "STRUCTURE"]);
+});
+
+test("discoveryPathsForConfluence: drops POSITIONING when origin direction disagrees with dossier (Q5)", () => {
+  const [dossier] = deriveSwingCandidates([mkSeed("GME", bullSignal("GME"), null)]);
+  assert.equal(dossier.direction, "LONG");
+  assert.deepEqual(
+    discoveryPathsForConfluence(["FLOW", "POSITIONING"], dossier, {
+      dossierDirection: "LONG",
+      positioningDirection: "SHORT",
+    }).sort(),
+    ["FLOW"],
+    "SHORT positioning must not credit a LONG thesis",
+  );
+  assert.deepEqual(
+    discoveryPathsForConfluence(["FLOW", "POSITIONING"], dossier, {
+      dossierDirection: "LONG",
+      positioningDirection: "LONG",
+    }).sort(),
+    ["FLOW", "POSITIONING"],
+  );
+});
+
+test("reconcileDiscoveryAfterCommit: removes opened theses from WATCH and stamps plays (Q3)", () => {
+  const contract = {
+    expiry: "2026-08-08",
+    strike: 150,
+    call_bid: 5,
+    call_ask: 5.2,
+    call_delta: 0.6,
+    call_oi: 1000,
+    put_bid: 4.6,
+    put_ask: 4.9,
+    put_delta: -0.4,
+    put_oi: 900,
+  };
+  const play = {
+    ticker: "NVDA",
+    direction: "LONG" as const,
+    horizon: "SWING" as const,
+    score: 90,
+    status: "WATCH" as const,
+    contract,
+    scoreFloor: 70,
+    reason: "test",
+    archetype: "BREAKOUT" as const,
+  };
+  const watch = [
+    {
+      ticker: "NVDA",
+      direction: "LONG" as const,
+      archetype: "BREAKOUT" as const,
+      observationCount: 2,
+      distinctSessionDays: 2,
+      phasesSeen: ["POST_CLOSE"],
+      signalKinds: ["FLOW"],
+      sessionSignalKinds: ["FLOW"],
+      firstSeenAt: "2026-07-24T21:00:00.000Z",
+      lastSeenAt: "2026-07-25T21:00:00.000Z",
+      lastSessionDay: "2026-07-25",
+    },
+  ];
+  const plan = {
+    decisions: [
+      {
+        ticker: "NVDA",
+        direction: "LONG" as const,
+        archetype: "BREAKOUT" as const,
+        subLane: "STANDARD" as const,
+        commitKey: "2026-07-25:NVDA:BREAKOUT:STANDARD:long",
+        graduated: true,
+        committable: true,
+        riskUsd: 500,
+        blockedBy: [],
+        reason: "ok",
+      },
+    ],
+    commitEligibleCount: 1,
+    committableCount: 1,
+    shadowEligibleCount: 0,
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  };
+  const commit = {
+    committed: [{ ticker: "NVDA", commitKey: "2026-07-25:NVDA:BREAKOUT:STANDARD:long", positionId: 99, blockedBy: [] }],
+    skipped: [],
+    shadowed: [],
+    errors: 0,
+  };
+  const out = reconcileDiscoveryAfterCommit({
+    playSet: { ZERO_DTE: [], SWING: [play], LEAPS: [] },
+    watchCandidates: watch,
+    plan,
+    commit,
+    asOfIso: "2026-07-25T21:00:00.000Z",
+  });
+  assert.equal(out.watchCandidates.length, 0);
+  assert.equal(out.playSet.SWING[0]?.status, "COMMIT");
+  assert.ok(out.playSet.SWING[0]?.committedAt);
 });
 
 test("runSwingDiscoveryScan: an EVENT_DRIVEN name gets the 1-session fast-track (resolver + FLOW+CATALYST corroboration)", async () => {

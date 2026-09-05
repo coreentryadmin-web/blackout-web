@@ -33,7 +33,7 @@ function etYmdPlus(days: number): string {
 function row(over: Partial<SwingPositionRow> = {}): SwingPositionRow {
   return {
     id: 1,
-    commit_key: "2026-07-24:NVDA:STANDARD:long",
+    commit_key: "2026-07-24:NVDA:BREAKOUT:STANDARD:long",
     root_position_id: null,
     parent_position_id: null,
     roll_seq: 0,

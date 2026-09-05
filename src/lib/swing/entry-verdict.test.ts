@@ -96,15 +96,16 @@ describe("swingEntryVerdict — BUY / WAIT / SKIP", () => {
     assert.equal(v?.gateBlocks?.[0]?.code, "g_s6_confluence");
   });
 
-  it("COMMIT_NOW + G-S14 block → WATCH/WAIT with gate blocks, not BUY", () => {
+  it("COMMIT_NOW + legacy NIGHT HAWK only → WAIT with legacy_exempt, not BUY (Q22)", () => {
     const v = swingEntryVerdict({
       servingSection: "COMMIT_NOW",
       setupState: "TRIGGERED",
       entryStatus: "AT_TRIGGER",
-      commitGateBlockedBy: ["gate:G-S14:cortex"],
+      signalKinds: ["NIGHT HAWK"],
     });
     assert.equal(v?.deckStatus, "WATCH");
     assert.equal(v?.actionLabel, "WAIT");
     assert.notEqual(v?.recommendation, "BUY");
+    assert.equal(v?.gateBlocks?.[0]?.code, "legacy_exempt");
   });
 });

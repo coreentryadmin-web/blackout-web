@@ -13,8 +13,9 @@
 //   2. BOOK-PERCENT CAPS (swing-allocation.ts). Orthogonal %-of-member-book concentration: per-position 5% /
 //      per-theme 20% / total-in-swings 40% / max-3-same-week-expiry. A candidate whose inclusion breaches a
 //      cap is skipped.
-//   3. IDEMPOTENCY (commit_key). A stable `${session}:${TICKER}:${SUBLANE}:${dir}` key — a name already open
-//      on the book under that key is NEVER re-opened (and `insertSwingPosition` upserts on it as a DB backstop).
+//   3. IDEMPOTENCY (commit_key). A stable `${session}:${TICKER}:${ARCHETYPE}:${SUBLANE}:${dir}` key — a name
+//      already open on the book under that key is NEVER re-opened (deep-dive Q20: archetype in key so two
+//      theses on the same name+side+lane cannot upsert over each other). `insertSwingPosition` upserts on it.
 //
 // GRADUATION IS EVIDENCE-ONLY, NOT A GATE (2026-08-06, member-authorized — matches the 0DTE calibration
 // philosophy in zerodte/calibration.ts: "CALIBRATION mode: they never block, they only pin a would-block
@@ -56,7 +57,7 @@ import type { PlayDirection, ChainContract } from "../horizon-fanout";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy";
 import { subLaneForDte } from "./taxonomy";
 import { occFromChainContract } from "./occ-from-row";
-import { swingThesisKey } from "./accumulation-store";
+import { normalizeSwingAccumArchetype, swingThesisKey } from "./accumulation-store";
 import type { SwingCalibrationReport } from "./calibration";
 import type { SwingPillarSignals } from "./swing-pillars";
 import { buildSwingFeatureVector } from "./feature-vector";
@@ -243,9 +244,16 @@ export interface SwingCommitPlan {
 
 const isFin = (x: number | null | undefined): x is number => x != null && Number.isFinite(x);
 
-/** Stable idempotency key: one per (session, name, sub-lane, side). Matches the ledger's commit_key format. */
-export function swingCommitKey(sessionDate: string, ticker: string, subLane: SwingSubLane, dir: "long" | "short"): string {
-  return `${sessionDate}:${ticker.trim().toUpperCase()}:${subLane}:${dir}`;
+/** Stable idempotency key: one per (session, name, archetype, sub-lane, side). Matches ledger commit_key (Q20). */
+export function swingCommitKey(
+  sessionDate: string,
+  ticker: string,
+  subLane: SwingSubLane,
+  dir: "long" | "short",
+  archetype: SwingArchetype | string | null | undefined = null,
+): string {
+  const arch = normalizeSwingAccumArchetype(archetype);
+  return `${sessionDate}:${ticker.trim().toUpperCase()}:${arch}:${subLane}:${dir}`;
 }
 
 /** Idempotency key for a ROLL child — the base key plus the roll generation (`:r{seq}`), so a child NEVER
@@ -257,8 +265,9 @@ export function swingRollCommitKey(
   subLane: SwingSubLane,
   dir: "long" | "short",
   rollSeq: number,
+  archetype: SwingArchetype | string | null | undefined = null,
 ): string {
-  return `${swingCommitKey(sessionDate, ticker, subLane, dir)}:r${Math.max(1, Math.floor(rollSeq))}`;
+  return `${swingCommitKey(sessionDate, ticker, subLane, dir, archetype)}:r${Math.max(1, Math.floor(rollSeq))}`;
 }
 
 /**
@@ -306,7 +315,10 @@ export function computeSwingCommitPlan(args: {
     // so a graduated name with no liquid contract is still counted eligible (then blocked by no_contract).
     const subLane: SwingSubLane | null = cand.contract ? subLaneForDte(cand.contract.dte) : null;
     const gradeSubLane: SwingSubLane | null = subLane ?? cand.subLane;
-    const commitKey = subLane && dirLc ? swingCommitKey(cand.sessionDate, ticker, subLane, dirLc) : `${cand.sessionDate}:${ticker}:_:_`;
+    const commitKey =
+      subLane && dirLc
+        ? swingCommitKey(cand.sessionDate, ticker, subLane, dirLc, cand.archetype)
+        : `${cand.sessionDate}:${ticker}:_:_`;
 
     const grad = isCommitGraduated(report, cand.archetype, gradeSubLane);
     const blockedBy: string[] = [];

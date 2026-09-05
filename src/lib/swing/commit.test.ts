@@ -53,7 +53,11 @@ function candidate(over: Partial<SwingCommitCandidate> = {}): SwingCommitCandida
   };
 }
 const book = (over: Partial<CommitBookPosition> & { ticker: string }): CommitBookPosition => ({
-  direction: "LONG", archetype: "BREAKOUT", commitKey: `2026-07-24:${over.ticker.toUpperCase()}:STANDARD:long`, isOvernight: true, ...over,
+  direction: "LONG",
+  archetype: "BREAKOUT",
+  commitKey: `2026-07-24:${over.ticker.toUpperCase()}:BREAKOUT:STANDARD:long`,
+  isOvernight: true,
+  ...over,
 });
 
 // ─── the REAL graduation integration (wire, don't weaken) ──────────────────────
@@ -102,7 +106,7 @@ test("commit FIRES when contract-present ∧ budget-cleared ∧ caps-cleared ∧
   assert.equal(plan.committableCount, 1);
   // The ledger row is built with the traded contract + the pinned commit-gate evidence.
   assert.ok(d.insert, "committable → an insert row is built");
-  assert.equal(d.insert!.commit_key, swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long"));
+  assert.equal(d.insert!.commit_key, swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long", "BREAKOUT"));
   assert.equal(d.insert!.sub_lane, "STANDARD");
   assert.equal(d.insert!.direction, "long");
   assert.equal(d.insert!.contract_type, "call");
@@ -236,7 +240,7 @@ test("shadow: a budget-blocked-only candidate gets a shadow row, counted in shad
 });
 
 test("shadow: an idempotency-blocked (already_open) candidate does NOT get a shadow row — it's already trading for real", () => {
-  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long") })];
+  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long", "BREAKOUT") })];
   const plan = computeSwingCommitPlan({ candidates: [candidate()], report: graduatedReport(), book: existing, budget: PRODUCTION_PORTFOLIO_BUDGET });
   const d = plan.decisions[0]!;
   assert.ok(d.blockedBy.includes("already_open"));
@@ -266,7 +270,7 @@ test("shadow: a candidate blocked by BOTH budget and cap still gets exactly one 
 // ─── idempotency ────────────────────────────────────────────────────────────────
 
 test("idempotency: a name already OPEN under its commit_key is never re-opened", () => {
-  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long") })];
+  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long", "BREAKOUT") })];
   const plan = computeSwingCommitPlan({ candidates: [candidate()], report: graduatedReport(), book: existing, budget: PRODUCTION_PORTFOLIO_BUDGET });
   const d = plan.decisions[0];
   assert.equal(d.graduated, true, "still graduated (counts as eligible)…");
@@ -276,7 +280,7 @@ test("idempotency: a name already OPEN under its commit_key is never re-opened",
 });
 
 test("idempotency: a name open from a PRIOR session (different commit_key) is still blocked — one thesis root per name+side+archetype", () => {
-  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-17", "NVDA", "STANDARD", "long"), archetype: "BREAKOUT" })];
+  const existing = [book({ ticker: "NVDA", riskUsd: 510, commitKey: swingCommitKey("2026-07-17", "NVDA", "STANDARD", "long", "BREAKOUT"), archetype: "BREAKOUT" })];
   const plan = computeSwingCommitPlan({ candidates: [candidate({ sessionDate: "2026-07-24" })], report: graduatedReport(), book: existing, budget: PRODUCTION_PORTFOLIO_BUDGET });
   assert.equal(plan.decisions[0].committable, false);
   assert.ok(plan.decisions[0].blockedBy.includes("already_open"), "prior-session open blocks a same-thesis re-commit");
@@ -546,11 +550,23 @@ test("helpers: event archetype set + commit_key formats", () => {
   assert.equal(isEventArchetype("FAILED_BREAKDOWN"), false, "structural reclaim is not event exposure");
   assert.equal(isEventArchetype("BREAKOUT"), false);
   assert.equal(isEventArchetype(null), false);
-  assert.equal(swingCommitKey("2026-07-24", "nvda", "STANDARD", "long"), "2026-07-24:NVDA:STANDARD:long");
-  assert.equal(swingRollCommitKey("2026-07-24", "nvda", "STANDARD", "long", 1), "2026-07-24:NVDA:STANDARD:long:r1");
+  assert.equal(swingCommitKey("2026-07-24", "nvda", "STANDARD", "long"), "2026-07-24:NVDA:UNCLASSIFIED:STANDARD:long");
+  assert.equal(
+    swingCommitKey("2026-07-24", "nvda", "STANDARD", "long", "BREAKOUT"),
+    "2026-07-24:NVDA:BREAKOUT:STANDARD:long",
+  );
   assert.notEqual(
-    swingRollCommitKey("2026-07-24", "NVDA", "STANDARD", "long", 1),
-    swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long"),
+    swingCommitKey("2026-07-24", "TSLA", "STANDARD", "long", "EVENT_DRIVEN"),
+    swingCommitKey("2026-07-24", "TSLA", "STANDARD", "long", "POST_EARNINGS_DRIFT"),
+    "Q20: distinct archetypes on same name+lane+side must not share commit_key",
+  );
+  assert.equal(
+    swingRollCommitKey("2026-07-24", "nvda", "STANDARD", "long", 1, "BREAKOUT"),
+    "2026-07-24:NVDA:BREAKOUT:STANDARD:long:r1",
+  );
+  assert.notEqual(
+    swingRollCommitKey("2026-07-24", "NVDA", "STANDARD", "long", 1, "BREAKOUT"),
+    swingCommitKey("2026-07-24", "NVDA", "STANDARD", "long", "BREAKOUT"),
     "a roll child key never collides with the parent key",
   );
 });

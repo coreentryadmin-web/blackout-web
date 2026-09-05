@@ -29,6 +29,7 @@
 // orchestration is testable without a live DB or provider (Postgres/WS are blocked in the sandbox anyway).
 
 import { buildSwingDossier, type SwingDossier, type SwingDossierInput } from "./dossier";
+import { deriveCatalystReads } from "./swing-catalyst";
 import {
   observeSwingCandidate,
   fetchWatchEligible,
@@ -50,6 +51,7 @@ import {
 import {
   produceHorizonPlays,
   type HorizonCandidate,
+  type HorizonPlay,
   type HorizonPlaySet,
 } from "../horizon-plays";
 import type { PlayDirection, ChainContract } from "../horizon-fanout";
@@ -67,11 +69,14 @@ import type { ZeroDteCortexAssessment } from "@/lib/zerodte/cortex-gate";
 import { persistSwingGateRejections } from "./v2/rejections";
 import { evaluateSwingConfluence } from "./v2/confluence";
 import { fetchTier0OriginTickers, type Tier0V2OriginKind } from "./v2/tier0-origin-fetch";
+import type { PositioningOriginCandidate } from "./v2/origins/positioning";
 import {
   computeSwingCommitPlan,
   executeSwingCommits,
   isCommitGraduated,
   type SwingCommitCandidate,
+  type SwingCommitDecision,
+  type SwingCommitPlan,
   type CommitBookPosition,
   type SwingCommitDeps,
   type SwingCommitResult,
@@ -153,6 +158,50 @@ export function intendedDteForArchetype(
 ): number {
   if (archetype && ARCHETYPE_INTENDED_DTE[archetype] != null) return ARCHETYPE_INTENDED_DTE[archetype]!;
   return fallback;
+}
+
+/**
+ * After archetype classification, realign sub-lane + catalyst reads to the archetype's natural horizon so
+ * `earningsInWindow` and the CATALYST pillar hazard describe the window the member actually trades (Q12).
+ */
+export function finalizeSwingDossierForArchetype(
+  input: SwingDossierInput,
+  scanDefaultDte: number,
+): SwingDossier {
+  const preliminary = buildSwingDossier(input);
+  const finalDte = intendedDteForArchetype(preliminary.archetype.archetype, scanDefaultDte);
+  const lane = subLaneForDte(finalDte);
+
+  const derive = input.catalystDerive;
+  const hasCatalystContext =
+    derive != null &&
+    ((derive.freshCatalystAgeDays != null && Number.isFinite(derive.freshCatalystAgeDays)) ||
+      derive.earnings.nextEarnings != null ||
+      derive.earnings.lastEarnings != null);
+
+  if (!hasCatalystContext) {
+    return lane != null && lane !== preliminary.subLane ? { ...preliminary, subLane: lane } : preliminary;
+  }
+
+  const catReads = deriveCatalystReads({
+    ...derive!,
+    intendedDte: finalDte,
+  });
+  const alignedInput: SwingDossierInput = {
+    ...input,
+    intendedDte: finalDte,
+    archetypeExtras: {
+      ...input.archetypeExtras,
+      catalystInWindow01: catReads.catalystInWindow01,
+      earningsGapRecent01: catReads.earningsGapRecent01,
+      postEarningsDrift01: catReads.postEarningsDrift01,
+    },
+    catalyst:
+      catReads.catalystStrength01 != null
+        ? { catalystStrength01: catReads.catalystStrength01, earningsInWindow: catReads.earningsInWindow }
+        : undefined,
+  };
+  return buildSwingDossier(alignedInput);
 }
 
 /** Bounded-concurrency map — preserve input order in the output array. */
@@ -243,11 +292,14 @@ export function rankTierZeroSeeds(
  * accumulation read is null, so it simply scores without the FLOW pillar (FM#1). Nothing is filtered out on
  * score: the gate/persistence layer decides what surfaces, not this producer.
  */
-export function deriveSwingCandidates(seeds: SwingCandidateSeed[]): SwingDossier[] {
+export function deriveSwingCandidates(
+  seeds: SwingCandidateSeed[],
+  scanDefaultDte = DEFAULT_SWING_DISCOVERY_CONFIG.intendedDte,
+): SwingDossier[] {
   const out: SwingDossier[] = [];
   for (const s of seeds) {
     try {
-      out.push(buildSwingDossier(s.input));
+      out.push(finalizeSwingDossierForArchetype(s.input, scanDefaultDte));
     } catch {
       // Per-candidate isolation: one poisoned seed must not abort the whole scan batch.
     }
@@ -280,15 +332,91 @@ const CONFLUENCE_PATHS = new Set<SwingDiscoveryPath>([
   "VECTOR",
 ]);
 
-/** Signal kinds for G-S6 — Tier-0 paths plus grounded CATALYST pillar (deep-dive Q28). */
+/** Signal kinds for G-S6 — Tier-0 paths plus grounded CATALYST pillar (deep-dive Q28).
+ *  POSITIONING credit is dropped when the origin's computed direction disagrees with the dossier (Q5). */
 export function discoveryPathsForConfluence(
   paths: readonly SwingDiscoveryPath[],
   dossier: SwingDossier | null | undefined,
+  opts?: {
+    dossierDirection?: PlayDirection | null;
+    positioningDirection?: "LONG" | "SHORT" | null;
+  },
 ): SwingDiscoveryPath[] {
-  if (!dossier) return [...paths];
-  return signalKindsForObservation([...paths], dossier).filter((k): k is SwingDiscoveryPath =>
+  let tier0 = [...paths];
+  if (
+    opts?.positioningDirection &&
+    opts?.dossierDirection &&
+    opts.positioningDirection !== opts.dossierDirection
+  ) {
+    tier0 = tier0.filter((p) => p !== "POSITIONING");
+  }
+  if (!dossier) {
+    return tier0.filter((k): k is SwingDiscoveryPath => CONFLUENCE_PATHS.has(k as SwingDiscoveryPath));
+  }
+  return signalKindsForObservation(tier0, dossier).filter((k): k is SwingDiscoveryPath =>
     CONFLUENCE_PATHS.has(k as SwingDiscoveryPath),
   );
+}
+
+/**
+ * Stamp G-S6/G-S14 commit blocks from plan decisions onto SWING plays (deep-dive Q21: thesisKey).
+ */
+export function stampCommitGateBlocksOnPlays(
+  plays: readonly HorizonPlay[],
+  decisions: readonly SwingCommitDecision[],
+): HorizonPlay[] {
+  const gateBlockedByKey = new Map<string, string[]>();
+  for (const d of decisions) {
+    const gateBlocks = d.blockedBy.filter((b) => b.startsWith("gate:G-S"));
+    if (gateBlocks.length === 0 || !d.direction) continue;
+    gateBlockedByKey.set(swingThesisKey(d.ticker, d.direction, d.archetype), gateBlocks);
+  }
+  return plays.map((p) => {
+    const blocks = gateBlockedByKey.get(swingThesisKey(p.ticker, p.direction, p.archetype ?? null));
+    return blocks?.length ? { ...p, commitGateBlockedBy: blocks } : p;
+  });
+}
+
+/** After live commits, drop opened theses from WATCH and stamp plays opened this scan (Q3). */
+export function reconcileDiscoveryAfterCommit(args: {
+  playSet: HorizonPlaySet;
+  watchCandidates: SwingWatchCandidate[];
+  plan: SwingCommitPlan;
+  commit?: SwingCommitResult;
+  asOfIso?: string;
+}): { playSet: HorizonPlaySet; watchCandidates: SwingWatchCandidate[] } {
+  if (!args.commit) return { playSet: args.playSet, watchCandidates: args.watchCandidates };
+  const openedKeys = new Set<string>();
+  for (const d of args.plan.decisions) {
+    if (!d.committable || !d.direction) continue;
+    const opened = args.commit.committed.some(
+      (c) =>
+        c.positionId != null &&
+        c.ticker.toUpperCase() === d.ticker.toUpperCase() &&
+        c.commitKey === d.commitKey,
+    );
+    if (opened) openedKeys.add(swingThesisKey(d.ticker, d.direction, d.archetype));
+  }
+  if (openedKeys.size === 0) return { playSet: args.playSet, watchCandidates: args.watchCandidates };
+  const stampedAt = args.asOfIso ?? new Date().toISOString();
+  return {
+    playSet: {
+      ...args.playSet,
+      SWING: args.playSet.SWING.map((p) => {
+        const key = swingThesisKey(p.ticker, p.direction, p.archetype ?? null);
+        if (!openedKeys.has(key)) return p;
+        return {
+          ...p,
+          status: "COMMIT",
+          committedAt: stampedAt,
+          reason: `${p.reason} · opened this scan`,
+        };
+      }),
+    },
+    watchCandidates: args.watchCandidates.filter(
+      (w) => !openedKeys.has(swingThesisKey(w.ticker, w.direction, w.archetype)),
+    ),
+  };
 }
 
 // ─── PURE recall instrumentation (evidence-only — see the WHY-RECALL header) ────────
@@ -456,6 +584,8 @@ export interface SwingDiscoveryDeps {
   >;
   /** V2 — tickers from POSITIONING origin screen (GEX/walls). Optional; empty when unwired. */
   fetchPositioningTickers?: () => Promise<string[]>;
+  /** V2 — full POSITIONING hits (ticker + direction). Preferred over fetchPositioningTickers for Q5. */
+  fetchPositioningHits?: () => Promise<PositioningOriginCandidate[]>;
   /** V2 — tickers from CATALYST origin screen (earnings/news impulse). Optional. */
   fetchCatalystTickers?: () => Promise<string[]>;
   /** V2 — tickers from BANGER origin screen (whole-market breakout). Optional. */
@@ -593,11 +723,20 @@ export async function runSwingDiscoveryScan(
 
   const originFetchErrors: Tier0V2OriginKind[] = [];
   let positioningTickers: string[] = [];
+  const positioningDirectionByTicker = new Map<string, "LONG" | "SHORT">();
   let catalystTickers: string[] = [];
   let bangerTickers: string[] = [];
   let vectorTickers: string[] = [];
 
-  if (engineV2 && deps.fetchPositioningTickers) {
+  if (engineV2 && deps.fetchPositioningHits) {
+    try {
+      const hits = await deps.fetchPositioningHits();
+      positioningTickers = hits.map((h) => h.ticker);
+      for (const h of hits) positioningDirectionByTicker.set(h.ticker.toUpperCase(), h.direction);
+    } catch {
+      originFetchErrors.push("POSITIONING");
+    }
+  } else if (engineV2 && deps.fetchPositioningTickers) {
     const r = await fetchTier0OriginTickers("POSITIONING", deps.fetchPositioningTickers);
     positioningTickers = r.tickers;
     if (r.fetchError) originFetchErrors.push("POSITIONING");
@@ -647,14 +786,7 @@ export async function runSwingDiscoveryScan(
   });
   const candidateSeeds: SwingCandidateSeed[] = enrichedOrNull.filter((s): s is SwingCandidateSeed => s != null);
 
-  // ── SCORE (pure). ──
-  // After classify, realign sub-lane to the archetype's natural horizon (event theses → TACTICAL) so the
-  // contract ranker + graduation bucket match the thesis duration — not a flat 14d STANDARD for every name.
-  const dossiers = deriveSwingCandidates(candidateSeeds).map((d) => {
-    const want = intendedDteForArchetype(d.archetype.archetype, cfg.intendedDte);
-    const lane = subLaneForDte(want);
-    return lane != null && lane !== d.subLane ? { ...d, subLane: lane } : d;
-  });
+  const dossiers = deriveSwingCandidates(candidateSeeds, cfg.intendedDte);
 
   let confluenceNearMissCount = 0;
   if (engineV2) {
@@ -742,7 +874,7 @@ export async function runSwingDiscoveryScan(
     cfg.minPersistenceSessions,
     WATCH_ELIGIBLE_FETCH_LIMIT,
   );
-  const watchCandidates = eligible.filter((c) =>
+  let watchCandidates = eligible.filter((c) =>
     seenThisScan.has(swingThesisKey(c.ticker, c.direction, c.archetype)),
   );
   const watchKeys = new Set(
@@ -882,6 +1014,10 @@ export async function runSwingDiscoveryScan(
         discoveryPaths: discoveryPathsForConfluence(
           pathsByTicker.get(w.ticker.toUpperCase()) ?? [],
           d ?? null,
+          {
+            dossierDirection: d?.direction ?? w.direction,
+            positioningDirection: positioningDirectionByTicker.get(w.ticker.toUpperCase()) ?? null,
+          },
         ),
         earningsInWindow: d?.earningsInWindow === true,
         halted: haltActive.has(w.ticker.toUpperCase()),
@@ -939,18 +1075,9 @@ export async function runSwingDiscoveryScan(
 
     // Stamp G-S6/G-S14 blocks onto produced plays so the desk BUY/WAIT verdict matches commit reality.
     if (engineV2 && playSet.SWING.length > 0) {
-      const gateBlockedByKey = new Map<string, string[]>();
-      for (const d of plan.decisions) {
-        const gateBlocks = d.blockedBy.filter((b) => b.startsWith("gate:G-S"));
-        if (gateBlocks.length === 0) continue;
-        gateBlockedByKey.set(`${d.ticker.toUpperCase()}|${d.direction}`, gateBlocks);
-      }
       playSet = {
         ...playSet,
-        SWING: playSet.SWING.map((p) => {
-          const blocks = gateBlockedByKey.get(`${p.ticker.toUpperCase()}|${p.direction}`);
-          return blocks?.length ? { ...p, commitGateBlockedBy: blocks } : p;
-        }),
+        SWING: stampCommitGateBlocksOnPlays(playSet.SWING, plan.decisions),
       };
     }
 
@@ -995,6 +1122,15 @@ export async function runSwingDiscoveryScan(
           `${plan.shadowEligibleCount} shadow-eligible / ${commit.shadowed.length} shadowed` +
           (commit.errors ? ` (${commit.errors} errors)` : ""),
       );
+      const reconciled = reconcileDiscoveryAfterCommit({
+        playSet,
+        watchCandidates,
+        plan,
+        commit,
+        asOfIso: asOf,
+      });
+      playSet = reconciled.playSet;
+      watchCandidates = reconciled.watchCandidates;
     } else {
       console.error(
         `[swing-discovery] commit gate: ${commitEligibleCount} graduated-eligible but book read failed — 0 opened (fail-closed)`,

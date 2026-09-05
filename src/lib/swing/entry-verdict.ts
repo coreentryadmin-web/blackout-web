@@ -93,11 +93,20 @@ const DISCOVERY_PATH_KINDS = new Set<SwingDiscoveryPath>([
   "VECTOR",
 ]);
 
+export const LEGACY_COMMIT_GATE_EXEMPT = "legacy:exempt";
+
 /** Map commit `blockedBy` tokens to member-facing gate blocks. */
 export function commitGateBlocksForVerdict(blockedBy: readonly string[]): SwingEntryGateBlock[] {
   return blockedBy
-    .filter((b) => b.startsWith("gate:G-S"))
+    .filter((b) => b.startsWith("gate:G-S") || b === LEGACY_COMMIT_GATE_EXEMPT)
     .map((b) => {
+      if (b === LEGACY_COMMIT_GATE_EXEMPT) {
+        return {
+          code: "legacy_exempt",
+          reason:
+            "Legacy morning-confirm promotion — Swing V2 confluence/Cortex gates were not evaluated on this path.",
+        };
+      }
       if (b.startsWith("gate:G-S6:")) {
         return {
           code: "g_s6_confluence",
@@ -143,6 +152,10 @@ export function commitGateBlocksForVerdict(blockedBy: readonly string[]): SwingE
 /** Resolve V2 commit gate blocks — stamped discovery output wins; else evaluate G-S6 from signal kinds. */
 export function resolveSwingCommitGateBlockedBy(input: SwingEntryVerdictInput): string[] {
   if (input.commitGateBlockedBy?.length) return [...input.commitGateBlockedBy];
+  const kinds = input.signalKinds ?? [];
+  const legacyOnly =
+    kinds.length > 0 && kinds.every((k) => k === "NIGHT HAWK" || k === "NIGHT_HAWK");
+  if (legacyOnly) return [LEGACY_COMMIT_GATE_EXEMPT];
   if (!isSwingConfluenceEnforced()) return [];
   const paths = (input.signalKinds ?? []).filter((k): k is SwingDiscoveryPath =>
     DISCOVERY_PATH_KINDS.has(k as SwingDiscoveryPath),
