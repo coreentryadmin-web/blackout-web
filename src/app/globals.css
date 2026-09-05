@@ -22914,6 +22914,34 @@ html.product-shell .nav-mega {
 
 /* ── 0DTE lifecycle play cards (left queue) — table grid ── */
 .nh-deck-play-table{--nh-play-cols:22px 80px minmax(0,1.5fr) 120px 96px 72px}
+/* Swing Command — tighter grid: no dead air between Play and Grade; grade is letter-only. */
+.nh-deck--swing-largo .nh-deck-play-table{--nh-play-cols:20px 64px minmax(0,1fr) 44px 72px 60px}
+.nh-deck--swing-largo .nh-deck-play-grid{column-gap:10px}
+.nh-deck--swing-largo .nh-deck-left{width:30%;min-width:220px}
+.nh-deck--swing-largo .nh-deck-largo{width:26%;min-width:200px;display:flex;flex-direction:column;min-height:0;
+  border-right:1px solid var(--dk-border);background:var(--dk-bg-panel);overflow-y:auto}
+.nh-deck--swing-largo .nh-deck-right{flex:1;min-width:0}
+.nh-deck-largo-empty,.nh-deck-largo{display:flex;flex-direction:column;min-height:0;height:100%}
+.nh-deck-largo__placeholder{padding:16px 14px;color:var(--dk-text-secondary);font-size:12px;line-height:1.45}
+.nh-deck-largo__kicker{display:block;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--dk-cyan);margin-bottom:6px}
+.nh-deck-largo__head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:12px 14px 8px;border-bottom:1px solid var(--dk-line)}
+.nh-deck-largo__title{margin:4px 0 0;font-size:18px;font-weight:800;letter-spacing:.02em;color:var(--dk-text-primary);line-height:1.15}
+.nh-deck-largo__open{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dk-cyan);white-space:nowrap}
+.nh-deck-largo__meta{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px}
+.nh-deck-largo__pill{font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;border:1px solid var(--dk-border);color:var(--dk-text-secondary)}
+.nh-deck-largo__pill b{color:var(--dk-bull)}
+.nh-deck-largo__mini{margin:0 10px 10px}
+.nh-deck-largo__section{padding:0 14px 12px}
+.nh-deck-largo__section-title{margin:0 0 8px;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--dk-cyan)}
+.nh-deck-largo__factors{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.nh-deck-largo__factors li{display:flex;justify-content:space-between;gap:8px;font-size:11px}
+.nh-deck-largo__factors .lab{color:var(--dk-text-secondary)}
+.nh-deck-largo__factors .pts{font-weight:800;font-variant-numeric:tabular-nums}
+.nh-deck-largo__factors .pts.up{color:var(--dk-bull)}
+.nh-deck-largo__factors .pts.dn{color:var(--dk-bear)}
+.nh-deck-largo__note{margin:0;font-size:11px;line-height:1.45;color:var(--dk-text-secondary)}
+.nh-deck-trade-hero__tk-contract{font-size:22px;letter-spacing:.03em}
+@media (max-width:1100px){.nh-deck--swing-largo .nh-deck-largo{display:none}}
 .nh-deck-play-grid{display:grid;grid-template-columns:var(--nh-play-cols);column-gap:20px;align-items:center;min-width:0;width:100%}
 .nh-deck-play-table-head{padding:8px 12px 10px;margin:0 6px;border-bottom:1px solid rgba(110,122,153,.18);
   position:sticky;top:0;z-index:2;background:linear-gradient(180deg,#0C0C0E 0%,#0C0C0E 100%)}

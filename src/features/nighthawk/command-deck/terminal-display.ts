@@ -6,6 +6,7 @@ import type { ThesisHealthPayload, ThesisPillarState } from "@/lib/zerodte/thesi
 import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import type { DeckStatus, ExitModel, Recommendation, TerminalPlay } from "./types";
 import { playQualityPct } from "./play-card-display";
+import { convictionFromScore } from "@/features/nighthawk/lib/scorer";
 import { ARCHETYPE_META, SWING_SUB_LANES, type SwingArchetype, type SwingSubLane } from "@/lib/swing/taxonomy";
 
 export type ChecklistItem = { label: string; ok: boolean | null };
@@ -99,7 +100,10 @@ export function unifiedChecklist(play: TerminalPlay): ChecklistItem[] {
 }
 
 export function convictionDisplay(play: TerminalPlay): ConvictionDisplay {
-  const grade = play.tierLabel?.trim() || null;
+  let grade = play.tierLabel?.trim() || null;
+  if (!grade && (play.horizon === "SWING" || play.horizon === "LEAPS") && play.score > 0) {
+    grade = convictionFromScore(Math.round(play.score));
+  }
   const q = playQualityPct(play);
   const score =
     q ??

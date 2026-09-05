@@ -3,6 +3,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import { PlayTerminal, etClock } from "./PlayTerminal";
+import { SwingLargoInsightsPanel } from "./SwingLargoInsightsPanel";
 import { DiscoveryFunnelStrip, MarketStateStrip, SessionStatsStrip, SpxSlayerBadgeStrip, VectorNearMissStrip, VetoShadowStrip } from "@/features/nighthawk/components/zerodte-board-strips";
 import type { VetoShadowSummary } from "@/lib/zerodte/veto-shadow-summary";
 import type { ZeroDteVectorNearMiss } from "@/lib/zerodte/vector-near-miss";
@@ -274,6 +275,7 @@ export function CommandDeck({
       className={clsx(
         "nh-deck nh-deck-fill",
         boardChrome === "vector" && "nh-deck--vector-chrome",
+        deckHorizon === "SWING" && commandCenter && "nh-deck--swing-largo",
       )}
       data-mobile-view={mobileDetailOpen ? "detail" : "list"}
     >
@@ -362,6 +364,9 @@ export function CommandDeck({
           ))}
         </div>
       </div>
+      {deckHorizon === "SWING" && commandCenter && (
+        <SwingLargoInsightsPanel play={selected} />
+      )}
       <PlayTerminal
         play={selected}
         sessionClosed={sessionClosed}

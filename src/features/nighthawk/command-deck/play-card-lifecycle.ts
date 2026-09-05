@@ -526,6 +526,11 @@ export function playSymbolLine(play: TerminalPlay): string {
   return `${play.ticker} ${leg}`;
 }
 
+/** Compact contract headline for detail surfaces — e.g. INTC 90P 4DTE (no extra spacing). */
+export function playContractHeadline(play: TerminalPlay): string {
+  return playSymbolLine(play).replace(/\s+/g, " ").trim();
+}
+
 /** Primary trigger/discovery instant for sort — ms since epoch; 0 when unknown. */
 export function playTriggeredAtMs(play: TerminalPlay): number {
   const phase = playLifecyclePhase(play.status);
