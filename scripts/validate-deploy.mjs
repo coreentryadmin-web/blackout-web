@@ -20,6 +20,7 @@ import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } fro
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
+import { isDeployCacheWarmAllowed } from "./lib/cache-warm-deploy-gate.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const IS_STAGING = BASE.includes("staging.");
@@ -360,7 +361,12 @@ const cronSecret = resolveCronSecret();
 const warmPaths = IS_STAGING
   ? ["/api/cron/desk-warm?force=1", "/api/cron/heatmap-warm?force=1", "/api/cron/zerodte-warm?force=1"]
   : ["/api/cron/desk-warm?force=1"];
-if (cronSecret) {
+if (!isDeployCacheWarmAllowed()) {
+  warn(
+    "Outside ET extended warm window (weekday 4 AM–8 PM) — skipping force=1 cache warmers " +
+      "(prevents off-hours desk-warm storms from concurrent validate:deploy runs)"
+  );
+} else if (cronSecret) {
   for (const warmPath of warmPaths) {
     try {
       const t0 = Date.now();
