@@ -690,6 +690,20 @@ export interface SwingDiscoveryResult {
   fadedStale?: number;
 }
 
+/** True when the grouped-daily feed includes a bar for `ticker` (per-symbol, not market-wide non-empty). */
+export function tickerHasGroupedDailyBar(
+  grouped: ReadonlyArray<{ T?: string }>,
+  ticker: string,
+): boolean {
+  const sym = ticker.trim().toUpperCase();
+  if (!sym) return false;
+  for (const row of grouped) {
+    const rowSym = (row.T ?? "").trim().toUpperCase();
+    if (rowSym === sym) return true;
+  }
+  return false;
+}
+
 /**
  * Run one whole-market swing discovery scan (two-tier, persistence-gated, WATCH-only). See the file header
  * for the full pipeline. Every side-effecting step is injected via `deps`, so this is deterministic given
@@ -1021,8 +1035,8 @@ export async function runSwingDiscoveryScan(
         ),
         earningsInWindow: d?.earningsInWindow === true,
         halted: haltActive.has(w.ticker.toUpperCase()),
-        // Reference bar = grouped-daily feed posted for this scan (NOT "market is open").
-        dailyBarComplete: grouped.length > 0,
+        // Per-ticker grouped-daily presence (CLQ-003) — not merely "feed posted for any symbol".
+        dailyBarComplete: tickerHasGroupedDailyBar(grouped, w.ticker),
         quoteAgeMs: (() => {
           const c = contractByKey.get(key) ?? null;
           const at = c?.quoteUpdatedMs;

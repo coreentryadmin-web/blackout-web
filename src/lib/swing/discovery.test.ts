@@ -7,6 +7,7 @@ import {
   finalizeSwingDossierForArchetype,
   intendedDteForArchetype,
   runSwingDiscoveryScan,
+  tickerHasGroupedDailyBar,
   computeSwingDiscoveryRecall,
   liquidityTierForDollar,
   regimeBandFor01,
@@ -749,5 +750,53 @@ test("runSwingDiscoveryScan: emits a recall block; cap severs the flow-less stru
   } finally {
     if (prevDisabled === undefined) delete process.env.SWING_ENGINE_V2_DISABLED;
     else process.env.SWING_ENGINE_V2_DISABLED = prevDisabled;
+  }
+});
+
+test("tickerHasGroupedDailyBar: per-ticker presence, not market-wide non-empty", () => {
+  const grouped = [
+    { T: "SPY", o: 500, h: 501, l: 499, c: 500.5, v: 1_000_000 },
+    { T: "MSFT", o: 400, h: 402, l: 399, c: 400.5, v: 500_000 },
+  ];
+  assert.equal(tickerHasGroupedDailyBar(grouped, "SPY"), true);
+  assert.equal(tickerHasGroupedDailyBar(grouped, "NVDA"), false, "IPO/day-1 name absent from feed");
+  assert.equal(tickerHasGroupedDailyBar(grouped, ""), false);
+  assert.equal(tickerHasGroupedDailyBar([], "SPY"), false);
+});
+
+test("runSwingDiscoveryScan: dailyBarComplete is per-ticker — NVDA blocked when feed lacks its bar", async () => {
+  const prevDailyBar = process.env.SWING_ENGINE_V2_ENFORCE_DAILY_BAR;
+  process.env.SWING_ENGINE_V2_ENFORCE_DAILY_BAR = "1";
+  try {
+    const { accessors } = makeFakeAccum();
+    await runSwingDiscoveryScan(makeDeps("2026-07-23", accessors));
+    await runSwingDiscoveryScan(makeDeps("2026-07-24", accessors));
+
+    const opened: SwingPositionInsert[] = [];
+    const deps: SwingDiscoveryDeps = {
+      ...makeDeps("2026-07-25", accessors),
+      fetchGroupedDaily: async () => [
+        { T: "MSFT", o: 400, h: 402, l: 399, c: 400.5, v: 500_000 },
+      ],
+      fetchChainRows: async () => nvdaChain(),
+      fetchGradedHistory: async () => [],
+      fetchOpenBook: async () => [],
+      insertPosition: async (pos) => {
+        opened.push(pos);
+        return opened.length;
+      },
+      budget: PRODUCTION_PORTFOLIO_BUDGET,
+    };
+    const res = await runSwingDiscoveryScan(deps);
+    assert.equal(opened.length, 0, "NVDA missing from grouped-daily → daily bar gate blocks commit");
+    const nvdaSkip = res.commit?.skipped.find((s) => s.ticker === "NVDA");
+    assert.ok(nvdaSkip, "NVDA should appear in skipped");
+    assert.ok(
+      nvdaSkip!.blockedBy.includes("gate:daily_bar_incomplete"),
+      `expected daily_bar_incomplete, got ${nvdaSkip!.blockedBy.join(", ")}`,
+    );
+  } finally {
+    if (prevDailyBar === undefined) delete process.env.SWING_ENGINE_V2_ENFORCE_DAILY_BAR;
+    else process.env.SWING_ENGINE_V2_ENFORCE_DAILY_BAR = prevDailyBar;
   }
 });
