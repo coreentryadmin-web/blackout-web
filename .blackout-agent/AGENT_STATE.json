@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:09:59.148Z",
+  "updated_at": "2026-09-05T16:20:16.779Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -332,13 +332,34 @@
     }
   },
   "deploy": {
-    "last_main_sha": "66664fe394847ccebc881865ae06e228f7b3aea8",
-    "last_deploy_status": "success",
-    "last_deploy_at": "2026-09-05T15:42:30Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33973466010",
-    "last_deploy_sha": "7d47d7e1c293cce146306808ca8a2dad616a94e5"
+    "last_main_sha": "c76923ec9b59958f84d7f3c351661d385f177e20",
+    "last_deploy_status": "",
+    "last_deploy_at": "2026-09-05T16:11:14Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33977069971",
+    "last_deploy_sha": "feaba670d88bb211db9614bec0c2738010d18b1c"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3995,
+      "title": "fix(seo): sitemap lastmod drifted stale again + add CI drift guard",
+      "branch": "fix/marketing-dates-drift-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T16:19:47Z"
+    },
+    {
+      "number": 3993,
+      "title": "chore(autopilot): Phase 5 CQ challenges + gate-watch state sync",
+      "branch": "cursor/autopilot-work-loop-740a",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T16:19:57Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1576,6 +1597,25 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T16:09:59.147Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T16:20:06.418Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T16:20:06.420Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9bc52cad-0db6-426b-8261-7c2cc6eff2dd",
+      "summary": "pull_request wake: #3991 merged (CQ answers on main). Peer-reviewed #3994 APPROVED (verified CLQ-046 ALB"
+    },
+    {
+      "at": "2026-09-05T16:20:16.779Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     }
   ],
   "pr_activity": {
