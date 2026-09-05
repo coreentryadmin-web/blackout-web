@@ -456,6 +456,23 @@ describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
     );
   });
 
+  it("TRIM recommendation wins over STILL BUY when desk is scaling out", () => {
+    assert.deepEqual(
+      swingActionDisplay(
+        base({
+          horizon: "SWING",
+          status: "TRIM",
+          recommendation: "TRIM",
+          swingEntryAction: "still_buy",
+          exitPolicy: {
+            trim_levels: [{ trigger_pct: 50, fired: false }],
+          },
+        }),
+      ),
+      { label: "TRIM 50%", tone: "active" },
+    );
+  });
+
   it("live OPEN swing uses HOLD when not enterable", () => {
     assert.deepEqual(
       swingActionDisplay(base({ horizon: "SWING", status: "OPEN", recommendation: "HOLD" })),

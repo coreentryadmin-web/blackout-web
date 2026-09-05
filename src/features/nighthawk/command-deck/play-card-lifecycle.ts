@@ -290,8 +290,8 @@ export function swingActionDisplay(play: TerminalPlay): { label: string; tone: S
   }
   if (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM") {
     if (play.recommendation === "SELL") return { label: "EXIT", tone: "active" };
-    if (play.swingEntryAction === "still_buy") return { label: "STILL BUY", tone: "watch" };
-    if (play.swingEntryAction === "buy") return { label: "BUY", tone: "watch" };
+    // Exit-management labels win over entryability pills (same order as zeroDteActionDisplay).
+    // STILL BUY is for members still working a limit — it must not mask an active TRIM ladder.
     if (play.recommendation === "TRIM") {
       const next = play.exitPolicy?.trim_levels?.find((t) => !t.fired);
       if (next) return { label: `TRIM ${Math.round(next.trigger_pct)}%`, tone: "active" };
@@ -299,6 +299,8 @@ export function swingActionDisplay(play: TerminalPlay): { label: string; tone: S
     }
     const anyTrimFired = play.exitPolicy?.trim_levels?.some((t) => t.fired) ?? false;
     if (anyTrimFired) return { label: "RUNNER", tone: "active" };
+    if (play.swingEntryAction === "still_buy") return { label: "STILL BUY", tone: "watch" };
+    if (play.swingEntryAction === "buy") return { label: "BUY", tone: "watch" };
     if (play.recommendation === "HOLD") return { label: "HOLD", tone: "active" };
     return null;
   }

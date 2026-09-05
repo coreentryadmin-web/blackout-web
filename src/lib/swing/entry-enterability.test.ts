@@ -88,4 +88,33 @@ describe("evaluateSwingEntryEnterability", () => {
     assert.equal(r.action, "wait");
     assert.equal(r.enterable, false);
   });
+
+  it("roll child: entry deadline anchors from committedAt, not stale firstSeenAt", () => {
+    const nowMs = Date.parse("2026-09-06T12:00:00.000Z");
+    const rollCommittedAt = "2026-09-05T14:00:00.000Z";
+    const staleFirstSeenAt = "2026-08-28T14:00:00.000Z";
+
+    const fromRollCommit = evaluateSwingEntryEnterability({
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+      deskCommitted: true,
+      subLane: "TACTICAL",
+      anchoredAt: rollCommittedAt,
+      nowMs,
+    });
+    assert.equal(fromRollCommit.action, "still_buy");
+
+    const fromStaleDiscovery = evaluateSwingEntryEnterability({
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      aboveFloor: true,
+      deskCommitted: true,
+      subLane: "TACTICAL",
+      anchoredAt: staleFirstSeenAt,
+      nowMs,
+    });
+    assert.equal(fromStaleDiscovery.action, "dont_buy");
+    assert.match(fromStaleDiscovery.reason, /expired/i);
+  });
 });
