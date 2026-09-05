@@ -442,6 +442,10 @@ export interface SwingDiscoveryDeps {
   fetchBangerTickers?: () => Promise<string[]>;
   /** V2 — tickers from VECTOR origin (vector_pick_leaders). Optional. */
   fetchVectorTickers?: () => Promise<string[]>;
+  /** V2 — halt/LULD read for G-S12 commit gate. Injectable for tests (default: live uw-socket read). */
+  fetchHaltStateForTickers?: (
+    tickers: readonly string[],
+  ) => Promise<{ active: Set<string>; feedStale: boolean }>;
   /** SPY ascending daily closes — fetched ONCE, passed into every Tier-1 enrich (relative-strength base). */
   fetchSpyCloses: () => Promise<number[]>;
   /** Tier-1 enrich: assemble the dossier input for a name (swing-ingest). Null → the name is dropped. */
@@ -806,7 +810,8 @@ export async function runSwingDiscoveryScan(
     let haltActive = new Set<string>();
     let haltFeedStale = false;
     if (engineV2 && isSwingHaltGateEnforced() && uniqueWatchTickers.length > 0) {
-      const haltState = await readSwingHaltStateForTickers(uniqueWatchTickers);
+      const haltReader = deps.fetchHaltStateForTickers ?? readSwingHaltStateForTickers;
+      const haltState = await haltReader(uniqueWatchTickers);
       haltActive = haltState.active;
       haltFeedStale = haltState.feedStale;
     }
