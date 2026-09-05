@@ -8,7 +8,7 @@ import {
   type ScreenerPreset,
 } from "@/features/vector/lib/vector-screener";
 import { useVectorUniverseSnapshot } from "@/features/vector/lib/vector-universe-client";
-import { formatVectorAge, VECTOR_UNIVERSE_STALE_MS } from "@/features/vector/lib/vector-age-format";
+import { formatVectorAge, isVectorUniverseSnapshotStale } from "@/features/vector/lib/vector-age-format";
 
 type Props = {
   activeTicker: string;
@@ -70,7 +70,7 @@ export function VectorScanner({ activeTicker, onSelect }: Props) {
   const activePreset = PRESETS.find((p) => p.key === preset) ?? PRESETS[0]!;
   const displayRows = screenUniverse(data.rows, { preset });
   const age = formatVectorAge(data.updatedAt, now);
-  const isStale = now != null && data.updatedAt > 0 && now - data.updatedAt >= VECTOR_UNIVERSE_STALE_MS;
+  const isStale = isVectorUniverseSnapshotStale(data.updatedAt, now);
 
   return (
     <div className="vector-scanner-table-wrap">

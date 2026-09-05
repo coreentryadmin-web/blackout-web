@@ -128,13 +128,21 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** SPX desk pulse lane (prior-day levels, structure refresh cadence) and dark pool panel should refresh on TTL during RTH — no stuck stale marks after deploy clock skew.
 
-### 0ay. Polygon market-status cache future-at guard — fix/polygon-market-status-cache-future-guard (PR #3855)
+### 0ay. Polygon market-status cache future-at guard — fix/polygon-market-status-cache-future-guard (merged #3855)
 
 **What was broken:** `fetchMarketStatusNow()` gated its 60s in-process cache with raw `Date.now() - fetchedAt < MARKET_STATUS_CACHE_MS`. A clock-skewed future `fetchedAt` yields negative age, which still satisfies `< 60_000`, pinning market-status as infinitely fresh until real time catches up — same class as `fetchVixIvRankPercentile` (fixed #3846) and UW/LULD halt gates.
 
 **Fix:** Route cache hit through `isWsUpdatedAtFresh(marketStatusCache.fetchedAt, MARKET_STATUS_CACHE_MS, now)`.
 
 **Check at the open:** SPX desk market-phase chip (open/closed/extended) should still flip correctly at session boundaries; no stuck "closed" or "open" state after deploy if a process clock was ahead.
+
+### 0aw. Lit/dark ratio + Vector universe age chips future-at guard — fix/future-timestamp-lit-dark-vector-universe (PR #3853)
+
+**What was broken:** `computeLitDarkRatio()` and Vector universe staleness chips (`VectorScanner`, `VectorTickerComparisonStrip`) used raw `now - updatedAt` without the shared future-timestamp guard. Clock-skewed future store timestamps read as fresh (SPX desk lit/dark ratio served from untrusted data); far-future universe `updatedAt` never flipped the stale warning chip while `formatVectorAge` clamped display to `"0s"`.
+
+**Fix:** Route lit/dark freshness through `isWsUpdatedAtFresh`; add `isVectorUniverseSnapshotStale()` for Vector consumers.
+
+**Check at the open:** Vector scanner age chip should turn amber after ~10m without a cron rebuild; SPX desk lit/dark ratio should absent (not serve) when UW stores carry only future `updatedAt` (synthetic/off-hours only).
 
 ### 0at. Off-hours `?force=1` desk-warm storm still unexplained — now logs caller IP/UA — fix/cache-warmer-caller-identity (merged #3847)
 
