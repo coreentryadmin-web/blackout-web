@@ -16,6 +16,6 @@ test("VectorTickerComparisonStrip: surfaces the shared universe snapshot's stale
   assert.match(src, /\berror\b.*=\s*useVectorUniverseSnapshot\(\)|useVectorUniverseSnapshot\(\).*\berror\b/s, "must destructure error from the snapshot hook");
   assert.match(src, /data\.updatedAt/, "must read the snapshot's updatedAt field");
   assert.match(src, /formatVectorAge\(/, "must format the age using the shared age formatter");
-  assert.match(src, /VECTOR_UNIVERSE_STALE_MS/, "must use the shared staleness threshold");
+  assert.match(src, /isVectorUniverseSnapshotStale\(/, "must use the shared staleness helper (future-at guard)");
   assert.match(src, /is-stale/, "must render a distinct visual state once the snapshot is old");
 });
