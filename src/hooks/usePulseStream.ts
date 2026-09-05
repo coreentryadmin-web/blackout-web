@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPulseEventSource, type PulseStreamSnapshot } from "@/lib/api";
 import type { SpxDeskPulse } from "@/features/spx/lib/spx-desk";
-import { pulseChangePctFromPriorClose } from "@/features/spx/lib/spx-change-anchor";
+import {
+  pulseChangePctFromPriorClose,
+  restAnchoredIndexChangePct,
+} from "@/features/spx/lib/spx-change-anchor";
 import { computeVixTermStructure } from "@/lib/vix-term-utils";
 
 function indexPrice(snap?: { price: number } | null): number | null {
@@ -60,9 +63,8 @@ export function overlayFromStream(
       snap.spx?.change_pct ?? base?.spx_change_pct ?? null
     ),
     vix: vix ?? base?.vix ?? null,
-    // VIX is left transported: SpxDeskPulse carries no VIX prior close, so there is nothing to
-    // derive from here. Same latent ambiguity, no local fix — recorded in SLAYER-MAP §8b.
-    vix_change_pct: snap.vix?.change_pct ?? base?.vix_change_pct ?? null,
+    // VIX has no prior close on the pulse payload — gate transported change% on REST anchor only.
+    vix_change_pct: restAnchoredIndexChangePct(snap.vix, base?.vix_change_pct ?? null),
     tick: tick ?? base?.tick ?? null,
     trin: trin ?? base?.trin ?? null,
     add: add ?? base?.add ?? null,

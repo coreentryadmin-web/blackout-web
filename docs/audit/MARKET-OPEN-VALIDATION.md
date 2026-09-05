@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1i. Cluster health future-skew + VIX SSE change% gate — fix/cluster-health-vix-sse-change — #4054 (pending)
+
+**What was broken:** (1) `buildUwClusterHealth` / `readPolygonClusterHealth` used `Math.max(0, now - at)` — a clock-skewed future heartbeat read as age 0 and `cluster_live: true` on web-tier followers while `uw-socket.ts` already used `isWsUpdatedAtFresh`. (2) SSE pulse overlay transported `vix_change_pct` verbatim; ws-bar anchors measure from session open, not prior close — same failure class as the 2026-08-07 SPX P0 but VIX has no prior close to derive from.
+
+**Fix:** Route cluster liveness through `isWsUpdatedAtFresh` + `wsUpdatedAtAgeMs`. Gate VIX SSE overlay via `restAnchoredIndexChangePct()` (`open_source === "rest"` only).
+
+**Check at the open:** Admin Operations → socket-health during RTH — follower replicas must not show UW/Polygon cluster live when heartbeat timestamp is skewed. SPX desk header VIX change% must agree with REST pulse when SSE stream carries ws-bar anchor (toggle network: compare `/api/market/spx/pulse` vs live SSE overlay during first 30 min after open).
+
 ### 0a-1h. Polygon single-ticker snapshot fabricated flat 0% change — cursor/autopilot-work-loop-ce5a (pending)
 
 **What was broken:** `fetchStockSnapshot()` → `_rowToSnapshot()` returned `change_pct: 0` when Polygon omitted `todaysChangePerc` and `prevDay.c`, while batch movers already used `snapshotChangePctFromRow()` (null when absent).
