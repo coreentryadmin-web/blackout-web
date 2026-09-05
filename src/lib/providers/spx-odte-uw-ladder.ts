@@ -1,6 +1,7 @@
 import { fetchUwOdteSpotExposuresByStrike } from "@/lib/providers/unusual-whales";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { hasLiveGexStrikeExpiry, getGexStrikeExpiryLadder } from "@/lib/ws/uw-socket";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 export type SpxOdteUwLadderResult = {
   /** Per-strike net gamma rows in {strike, call_gamma_oi, put_gamma_oi} shape. */
@@ -141,7 +142,7 @@ export async function getSpxOdteScopedUwLadderMap(
   if (
     cachedScoped &&
     cachedScoped.expiry === expiry &&
-    now - cachedScoped.at < scopedLadderCacheMs()
+    isWsUpdatedAtFresh(cachedScoped.at, scopedLadderCacheMs(), now)
   ) {
     return strikeLadderFromUwRows(cachedScoped.result.rows);
   }
