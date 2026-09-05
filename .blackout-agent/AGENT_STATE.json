@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T03:17:06.276Z",
+  "updated_at": "2026-09-05T05:27:13.930Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T05:19:53.805Z",
+      "lease_until": "2026-09-05T06:49:53.805Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -248,11 +248,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b558e1321c827f97e43cad8eaae5937f3d4eded9",
+    "last_main_sha": "c25a1d2f7c975dbbd7d145239de0da263dbf9c2b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T22:52:50Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
-    "last_deploy_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450"
+    "last_deploy_at": "2026-09-05T05:26:43Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33947218979",
+    "last_deploy_sha": "c25a1d2f7c975dbbd7d145239de0da263dbf9c2b"
   },
   "open_prs": [],
   "events": [
@@ -1137,6 +1137,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T05:27:13.929Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T05:27:13.930Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9ca0f0d8-ee96-4e51-b86e-3bed8664904a",
+      "summary": "All 4 Claude fix/* freshness PRs merged: #3866, #3855, #3863, #3853 → main @ c25a1d2f7. Peer reviews recorded. ECR deploy in flight. Next: Claude review on green cursor swing PRs (#3861, #3859, #3858)."
     }
   ]
 }
