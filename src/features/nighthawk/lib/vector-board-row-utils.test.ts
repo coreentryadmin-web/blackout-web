@@ -4,6 +4,7 @@ import type { VectorBoardTableRow } from "./vector-board-table-utils";
 import {
   vectorBoardExportCsv,
   vectorBoardRowAtRisk,
+  vectorBoardRowIsLive,
   vectorBoardScorecard,
   vectorBoardSparklinePoints,
   vectorBoardTradeTicket,
@@ -37,6 +38,26 @@ test("vectorBoardRowAtRisk flags caution and giveback", () => {
   assert.equal(vectorBoardRowAtRisk(row({ status: "caution" })), true);
   assert.equal(vectorBoardRowAtRisk(row({ premiumPct: 5, peakPct: 40 })), true);
   assert.equal(vectorBoardRowAtRisk(row({ premiumPct: 25, peakPct: 30 })), false);
+});
+
+test("vectorBoardRowIsLive: row within 60s window is live", () => {
+  const now = 1_000_000;
+  assert.equal(
+    vectorBoardRowIsLive(row({ timestamp: new Date(now - 30_000).toISOString() }), now),
+    true,
+  );
+});
+
+test("vectorBoardRowIsLive: far-future timestamp is not live forever", () => {
+  const now = 1_000_000;
+  assert.equal(
+    vectorBoardRowIsLive(row({ timestamp: new Date(now + 60_000).toISOString() }), now),
+    false,
+  );
+});
+
+test("vectorBoardRowIsLive: closed rows are never live", () => {
+  assert.equal(vectorBoardRowIsLive(row({ kind: "closed", status: "closed" })), false);
 });
 
 test("vectorBoardScorecard computes hit rate and meters inputs", () => {

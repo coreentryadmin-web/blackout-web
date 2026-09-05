@@ -1,5 +1,6 @@
 import type { VectorBoardTableRow } from "@/features/nighthawk/lib/vector-board-table-utils";
 import { formatPremiumPct } from "@/features/nighthawk/lib/vector-board-table-utils";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 const LIVE_MS = 60_000;
 
@@ -27,7 +28,8 @@ export function vectorBoardRowIsLive(row: VectorBoardTableRow, now = Date.now())
   if (row.kind === "closed") return false;
   const ts = Date.parse(row.timestamp);
   if (Number.isNaN(ts)) return false;
-  return now - ts <= LIVE_MS;
+  // +1 preserves inclusive `age <= LIVE_MS` while rejecting far-future row timestamps.
+  return isWsUpdatedAtFresh(ts, LIVE_MS + 1, now);
 }
 
 /** Composite desk signal: gave back from peak + caution/invalidated. */
