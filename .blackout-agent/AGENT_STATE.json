@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T06:17:43.062Z",
+  "updated_at": "2026-09-05T07:15:33.284Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T07:04:26.497Z",
+      "lease_until": "2026-09-05T08:34:26.497Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -80,8 +80,8 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-05T07:07:56.469Z",
+      "lease_until": "2026-09-05T08:37:56.469Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -248,13 +248,54 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d426930cce564f02d2c0c6c4e44a8cd9395a6879",
+    "last_main_sha": "5fdd83548adaa7cbe85e74ace800165270983a1f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T22:52:50Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
-    "last_deploy_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450"
+    "last_deploy_at": "2026-09-05T07:11:12Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33951848163",
+    "last_deploy_sha": "128a4fbd725de715184281dfbbe9603777e887e0"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3903,
+      "title": "feat(swing): Q31-Q32 member Discord alerts on open/close/roll",
+      "branch": "cursor/swing-discord-notify-q31-q32",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T07:15:16Z"
+    },
+    {
+      "number": 3902,
+      "title": "fix(swing): route discovery WATCH spot refresh through spotFromLastTradeResult",
+      "branch": "fix/swing-discovery-underlying-spot-freshness",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T07:14:51Z"
+    },
+    {
+      "number": 3901,
+      "title": "fix(swing): Q36 guard evidence-only writes on terminal rows",
+      "branch": "cursor/swing-evidence-terminal-guard-q36",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T07:14:53Z"
+    },
+    {
+      "number": 3899,
+      "title": "fix(swing): Q37 singleton active-refresh claim + roll revalidation",
+      "branch": "cursor/swing-active-refresh-q37-claim",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T07:14:55Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1155,6 +1196,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T07:15:33.283Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-05T07:15:33.284Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "6fb6070d-b9ef-4e02-a4de-a73fd736ed65",
+      "summary": "Post-#3892/#3893 cycle: main@5fdd83548 (#3897 largo isMemoryFresh guard). validate:deploy GREEN, ops:collect 0, platform-integrity 14/14, SEO 22/22. Peer-reviewed #3895 APPROVED+undrafted (Q40/Q41 markAsOf+SSE tier recheck, 17/17 tests). #3899 Q37 singleton claim — 9/9 local tests pass, verify CI still pending. #3898 docs-only already has Cursor peer ✅. ECR deploy pending for #3897. Weekend off-hours — RTH skipped. GitHub API rate-limited for gh pr list; used WebFetch+ManagePullRequest."
     }
   ]
 }
