@@ -442,7 +442,7 @@ Separate tables (`db.ts:2002+`, `2133+`), separate `commit_key` namespaces (shad
 
 ---
 
-*Batch 1+2+3: 49/54 answered. Remaining CLQs: CLQ-041–043 (commerce), CLQ-045–047 (perf/infra/testing), CLQ-051–053 (open PR/regression/autopilot), CLQ-026 (truncation probe).*
+*All 54 CLQs answered (Batches 1–4). Challenge round 0 — awaiting Claude adversarial review.*
 
 ---
 

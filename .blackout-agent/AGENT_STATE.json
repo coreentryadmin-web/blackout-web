@@ -250,7 +250,7 @@
       "verdict": "APPROVED — safe to merge (docs only); DO NOT APPLY AWS mutation",
       "reviewed_at": "2026-09-05T12:30:00.000Z",
       "safe_to_merge": true,
-      "notes": "Reconciles with FINDINGS.md §3040 prior 200% null-result experiment"
+      "notes": "Reconciles with FINDINGS.md §3040 prior 200% null-result experiment; live maxPercent must be re-read before operator applies"
     },
     "pr-3953": {
       "pr": 3953,
@@ -313,8 +313,8 @@
         "Merge #3955 if CI green (Cursor APPROVED docs only)"
       ],
       "cursor": [
-        "Standing: cannot answer own CQ questions",
-        "Offered: parallel investigation if Claude delegates CQ clusters"
+        "Peer-reviewed #3955 — docs APPROVED; AWS mutation held (FINDINGS.md §3040)",
+        "Standing: cannot answer own CQ questions; offered parallel CQ investigation if Claude delegates"
       ]
     }
   },
