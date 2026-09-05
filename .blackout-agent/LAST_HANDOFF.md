@@ -1,7 +1,7 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T14:10:00.000Z
-**Run:** automerge-fix-bundled-3972
+**At:** 2026-09-05T14:15:00.000Z
+**Run:** gate-hardening-select-task
 
 ## Summary
 
