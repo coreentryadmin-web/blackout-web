@@ -79,8 +79,8 @@ test("consecutiveClosesVsLevel: counts trailing m3 closes", () => {
 
 test("sessionBreakoutExtremesFromBars: excludes forming last bar", () => {
   const bars = [
-    { t: 1, o: 100, h: 105, l: 99, c: 104 },
-    { t: 2, o: 104, h: 110, l: 103, c: 109 },
+    etBar(9, 30, 104, 105, 99),
+    etBar(9, 31, 109, 110, 103),
   ];
   const ext = sessionBreakoutExtremesFromBars(bars);
   assert.equal(ext.hod, 105);
@@ -88,9 +88,9 @@ test("sessionBreakoutExtremesFromBars: excludes forming last bar", () => {
 });
 
 test("sessionBreakoutExtremesFromBars: single bar uses open as reference", () => {
-  const ext = sessionBreakoutExtremesFromBars([{ t: 1, o: 5500, h: 5505, l: 5498, c: 5503 }]);
-  assert.equal(ext.hod, 5500);
-  assert.equal(ext.lod, 5500);
+  const ext = sessionBreakoutExtremesFromBars([etBar(10, 0, 5503, 5505, 5498)]);
+  assert.equal(ext.hod, 5503);
+  assert.equal(ext.lod, 5503);
 });
 
 test("hodLodBreakoutFlags: fires when price clears prior session high", () => {
@@ -104,17 +104,28 @@ test("hodLodBreakoutFlags: spot-widened desk HOD=price cannot fire — bar path 
   const widenedHod = price;
   assert.equal(widenedHod != null && price > widenedHod + 0.25, false);
   const ext = sessionBreakoutExtremesFromBars([
-    { t: 1, o: 5480, h: 5500, l: 5470, c: 5495 },
-    { t: 2, o: 5495, h: 5505, l: 5490, c: 5505 },
+    etBar(10, 0, 5495, 5500, 5470),
+    etBar(10, 1, 5505, 5505, 5490),
   ]);
   const flags = hodLodBreakoutFlags(price, ext, 0.25);
   assert.equal(flags.hod_break, true);
 });
 
+test("sessionBreakoutExtremesFromBars: ignores premarket bars outside RTH window", () => {
+  const bars = [
+    etBar(8, 0, 7400, 7500, 7350), // premarket spike — must not set session HOD
+    etBar(9, 30, 7400, 7410, 7395),
+    etBar(10, 0, 7410, 7415, 7405),
+  ];
+  const ext = sessionBreakoutExtremesFromBars(bars);
+  assert.equal(ext.hod, 7410);
+  assert.equal(ext.lod, 7395);
+});
+
 test("hodLodBreakoutFlags: lod_break when price clears prior session low", () => {
   const ext = sessionBreakoutExtremesFromBars([
-    { t: 1, o: 5500, h: 5510, l: 5400, c: 5490 },
-    { t: 2, o: 5390, h: 5395, l: 5385, c: 5388 },
+    etBar(10, 0, 5490, 5510, 5400),
+    etBar(10, 1, 5388, 5395, 5385),
   ]);
   const flags = hodLodBreakoutFlags(5380, ext, 0.25);
   assert.equal(flags.lod_break, true);

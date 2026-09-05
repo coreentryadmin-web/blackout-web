@@ -1,6 +1,6 @@
 import { polygonConfigured } from "@/lib/providers/config";
 import { fetchIndexMinuteBars, fetchIndexRsi } from "@/lib/providers/polygon";
-import { todayEtYmd } from "@/lib/providers/spx-session";
+import { filterRthBars, todayEtYmd } from "@/lib/providers/spx-session";
 import {
   playMtfBufferPts,
   playOpeningRangeMinutes,
@@ -234,10 +234,13 @@ function ema9CurlingTowardVwap(m3: Bar[], vwap: number | null, ema9Now: number |
  */
 export function sessionBreakoutExtremesFromBars(bars: Bar[]): { hod: number | null; lod: number | null } {
   if (!bars.length) return { hod: null, lod: null };
-  const completed = bars.length > 1 ? bars.slice(0, -1) : [];
+  // RTH-only — premarket/after-hours prints must not inflate session HOD/LOD for breakout gates.
+  const rth = filterRthBars(bars);
+  const completed = rth.length > 1 ? rth.slice(0, -1) : [];
   if (!completed.length) {
-    const open = bars[0]!.o;
-    const ref = Number.isFinite(open) ? open : null;
+    const refBar = rth[0] ?? bars[0];
+    const open = refBar?.o;
+    const ref = open != null && Number.isFinite(open) ? open : null;
     return { hod: ref, lod: ref };
   }
   let hod = -Infinity;
