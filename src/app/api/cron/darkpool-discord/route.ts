@@ -151,7 +151,10 @@ async function runDarkpoolDiscordTick({
   if (wantDigest) {
     const claimed = bypassDedup
       ? true
-      : await sharedCacheSetNx(DEDUP_DIGEST_KEY, { at: now.toISOString() }, DEDUP_DIGEST_TTL_SEC);
+      : // fail OPEN on a Redis error — a missed dedup window is a harmless duplicate post
+        await sharedCacheSetNx(DEDUP_DIGEST_KEY, { at: now.toISOString() }, DEDUP_DIGEST_TTL_SEC).catch(
+          () => true
+        );
     if (claimed) {
       const { fetchUwDarkPoolRecent } = await import("@/lib/providers/unusual-whales");
       const rawRows = await fetchUwDarkPoolRecent(100);

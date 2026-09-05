@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   buildDarkpoolEodRecapEmbed,
   buildHelixEodRecapEmbed,
@@ -8,6 +10,8 @@ import {
   isDiscordEodRecapWindow,
 } from "./discord-eod-recap.ts";
 import type { HelixDiscordFlowInput } from "./helix-discord-format.ts";
+
+const moduleSrc = readFileSync(fileURLToPath(new URL("./discord-eod-recap.ts", import.meta.url)), "utf8");
 
 const helixBase: HelixDiscordFlowInput = {
   ticker: "NVDA",
@@ -71,4 +75,16 @@ test("buildDarkpoolEodRecapEmbed includes buy/sell counts", () => {
     now: new Date("2026-08-04T20:06:00.000Z"),
   });
   assert.match(emb.description ?? "", /buy \/ 1 sell/);
+});
+
+// Regression for #3960 (CLQ-037/044): sharedCacheSetNx now THROWS on a Redis command error
+// instead of silently falling back to an in-memory acquire — every caller must decide fail-open
+// vs fail-closed explicitly. This EOD-recap dedup guard is duplicate-post-tolerant, so it must
+// fail OPEN (post anyway) rather than let a transient Redis blip suppress the recap entirely.
+test("claimDiscordEodRecap fails OPEN on a sharedCacheSetNx rejection", () => {
+  assert.match(
+    moduleSrc,
+    /return sharedCacheSetNx\(eodRecapDedupKey\(channel, sessionDate\)[\s\S]{0,80}\)\.catch\(\s*\(\) => true\s*\)/,
+    "claimDiscordEodRecap must have an explicit .catch(() => true) now that Redis errors propagate"
+  );
 });

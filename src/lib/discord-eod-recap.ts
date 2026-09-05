@@ -36,7 +36,10 @@ export async function claimDiscordEodRecap(
   bypass = false
 ): Promise<boolean> {
   if (bypass) return true;
-  return sharedCacheSetNx(eodRecapDedupKey(channel, sessionDate), { at: new Date().toISOString() }, 20 * 60 * 60);
+  // fail OPEN on a Redis error — a missed dedup window is a harmless duplicate post
+  return sharedCacheSetNx(eodRecapDedupKey(channel, sessionDate), { at: new Date().toISOString() }, 20 * 60 * 60).catch(
+    () => true
+  );
 }
 
 function sessionOpenMs(sessionDate: string): number {

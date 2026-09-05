@@ -30,7 +30,8 @@ function seenKey(print: DarkPoolDiscordPrint): string {
 
 /** Claim dedup slot — true when this print has not been posted recently. */
 export async function claimDarkpoolDiscordPrint(print: DarkPoolDiscordPrint): Promise<boolean> {
-  return sharedCacheSetNx(seenKey(print), { at: new Date().toISOString() }, SEEN_TTL_SEC);
+  // fail OPEN on a Redis error — a missed dedup window is a harmless duplicate post
+  return sharedCacheSetNx(seenKey(print), { at: new Date().toISOString() }, SEEN_TTL_SEC).catch(() => true);
 }
 
 async function enrichAdvContext(print: DarkPoolDiscordPrint): Promise<DarkPoolDiscordPrint> {
