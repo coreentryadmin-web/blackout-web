@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "08b783f8-5fb3-4c0a-9427-e8eec87fded7",
-  "last_seen": "2026-09-05T23:40:30.498Z",
-  "last_productive_action": "session_start",
+  "run_id": "4c6f4e6d-d7b5-4db6-ad12-d1af8da1e27a",
+  "last_seen": "2026-09-05T23:49:55.233Z",
+  "last_productive_action": "handoff",
   "current_task": "BO-P1-0100",
-  "current_phase": "RESUMED",
-  "branch": null,
-  "pr": null,
+  "current_phase": "HANDOFF",
+  "branch": "cursor/autopilot-handoff-2026-09-05-workflow-run",
+  "pr": 4067,
   "healthy": true
 }

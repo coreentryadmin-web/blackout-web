@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T23:45:38.992Z
-**Run:** 2559423b-3092-403f-8080-95a0367732d5
+**At:** 2026-09-05T23:49:55.233Z
+**Run:** 3d56a7c6-75dc-4983-b384-f7bbf6d2c6ed
 
 ## Summary
 
-workflow_run cycle: main@a3ddea86 deployed. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo 22/22, rth-open off-hours). ops:collect 0. No open PRs — #4066 handoff closed without merge. Peer review queue empty. Standing validations complete.
+PR-event cycle: bootstrap+session recovered. #4064 thermal cluster fix deployed (main@a3ddea86d). Lifecycle GREEN — validate:deploy, api-auth, platform-integrity 14/14, ops:collect 0. No Claude/fix PRs for peer review. #4066 closed without merge; #4067 draft handoff open (verify pending). Peer Claude last_seen 22:19Z.
 
 ## Deploy
 
@@ -14,4 +14,4 @@ workflow_run cycle: main@a3ddea86 deployed. Lifecycle GREEN (deploy, api-auth, p
 
 ## Open PRs
 
-_none_
+- #4067 [cursor] chore(blackout-agent): cursor workflow_run cycle handoff — lifecycle GREEN

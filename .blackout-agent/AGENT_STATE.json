@@ -1,30 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T23:45:38.993Z",
+  "updated_at": "2026-09-05T23:49:55.233Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T23:39:49.356Z",
-      "lease_until": "2026-09-06T01:10:30.497Z",
+      "claimed_at": "2026-09-05T23:38:35.819Z",
+      "lease_until": "2026-09-06T01:08:35.819Z",
       "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "08b783f8-5fb3-4c0a-9427-e8eec87fded7"
-    },
-    "BO-P1-0101": {
-      "task_id": "BO-P1-0101",
-      "owner": "cursor",
-      "claimed_at": "2026-09-05T23:40:11.531Z",
-      "lease_until": "2026-09-06T01:10:30.497Z",
-      "phase": "VERIFY",
-      "branch": null,
-      "pr": null,
-      "reviewer": null,
-      "run_id": "08b783f8-5fb3-4c0a-9427-e8eec87fded7",
-      "title": null
+      "run_id": "4c6f4e6d-d7b5-4db6-ad12-d1af8da1e27a"
     }
   },
   "reviews": {
@@ -44,8 +32,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T23:40:11.531Z",
-      "current_task": "BO-P1-0101"
+      "last_seen": "2026-09-05T23:49:55.233Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
@@ -85,7 +73,7 @@
       "type": "handoff",
       "agent": "cursor",
       "run_id": "19909047-90ae-4042-a2ad-3b6697cd2078",
-      "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) — peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
+      "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) \u2014 peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
     },
     {
       "at": "2026-09-05T19:35:03.828Z",
@@ -114,7 +102,7 @@
       "type": "handoff",
       "agent": "cursor",
       "run_id": "b9a3c786-97ee-4a0e-9f0c-a9c61879bc90",
-      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) — 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
+      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) \u2014 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
     },
     {
       "at": "2026-09-05T20:41:08.341Z",
@@ -247,7 +235,14 @@
       "type": "handoff",
       "agent": "cursor",
       "run_id": "2559423b-3092-403f-8080-95a0367732d5",
-      "summary": "workflow_run cycle: main@a3ddea86 deployed. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo 22/22, rth-open off-hours). ops:collect 0. No open PRs — #4066 handoff closed without merge. Peer review queue empty. Standing validations complete."
+      "summary": "workflow_run cycle: main@a3ddea86 deployed. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo 22/22, rth-open off-hours). ops:collect 0. No open PRs \u2014 #4066 handoff closed without merge. Peer review queue empty. Standing validations complete."
+    },
+    {
+      "at": "2026-09-05T23:49:55.233Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3d56a7c6-75dc-4983-b384-f7bbf6d2c6ed",
+      "summary": "PR-event cycle: bootstrap+session recovered. #4064 thermal cluster fix deployed (main@a3ddea86d). Lifecycle GREEN \u2014 validate:deploy, api-auth, platform-integrity 14/14, ops:collect 0. No Claude/fix PRs for peer review. #4066 closed; #4067 draft handoff open (verify pending). Peer Claude last_seen 22:19Z."
     }
   ],
   "open_prs": []
