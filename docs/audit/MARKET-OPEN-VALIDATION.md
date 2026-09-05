@@ -432,6 +432,14 @@ is instrumentation only.
 
 **Check at the open:** Admin System Vitals → Massive LULD tile shows live during RTH when feed is healthy; 0DTE halt gate still blocks when BOTH UW and LULD are genuinely down (not on a single future-skewed stamp).
 
+### 0za. 0DTE live marks SSE quiet gate future-at guard — fix/zerodte-live-marks-sse-future-guard (pending)
+
+**What was broken:** `useZeroDteLiveMarks` poll fallback used `Date.now() - lastSseAtRef < SSE_QUIET_MS`. A clock-skewed future SSE timestamp suppresses REST fallback while marks may be stale.
+
+**Fix:** Route quiet gate through `isWsUpdatedAtFresh(lastSseAtRef.current, SSE_QUIET_MS)`.
+
+**Check at the open:** Night Hawk 0DTE board with open plays — live marks continue updating via poll when SSE proxy breaks; no frozen premiums after a skewed SSE heartbeat.
+
 ### 0z. SPX pulse stream local freshness future guard — fix/spx-pulse-stream-future-guard (pending)
 
 **What was broken:** `refreshSnapshot()` in `/api/market/spx/pulse/stream` preferred local `indexStore` when `Date.now() - fresh < 10_000` with no future-timestamp guard — clock-skewed future `updatedAt` reads as infinitely fresh and skips cross-replica Redis fallback.
