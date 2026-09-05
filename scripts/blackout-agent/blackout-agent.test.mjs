@@ -211,17 +211,23 @@ test("fetchOpenPrs: empty GraphQL success short-circuits without REST fallback",
   // separate budget. Guard via source — ghJson now lives in lib/gh.mjs (module mocks are brittle
   // when run outside npm test's --experimental-test-module-mocks harness).
   const src = readFileSync(join(repoRoot, "scripts/blackout-agent/sync-context.mjs"), "utf8");
+  const fn = src.slice(src.indexOf("export function fetchOpenPrs"), src.indexOf("export async function fetchOpenPrsAsync"));
   assert.match(
-    src,
+    fn,
     /if \(Array\.isArray\(graphql\)\)/,
     "must treat any GraphQL array (including empty) as authenticated success"
   );
+  assert.match(fn, /ok:\s*true/, "successful GraphQL answer must mark ok=true even when zero PRs");
   assert.doesNotMatch(
-    src,
+    fn,
     /graphql\.length\s*>\s*0/,
     "must not require length>0 before accepting GraphQL success"
   );
+  const graphqlReturn = fn.indexOf("if (Array.isArray(graphql))");
+  const restFallback = fn.indexOf('ghJson(["api", `repos/${repo}/pulls');
+  assert.ok(graphqlReturn >= 0 && restFallback > graphqlReturn, "REST fallback must come after GraphQL success branch");
 });
+
 
 test("fetchOpenPrsAsync: falls back to public API when authenticated gh paths fail", async () => {
   const { fetchOpenPrsViaPublicApi } = await import("./sync-context.mjs");
