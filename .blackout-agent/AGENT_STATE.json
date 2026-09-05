@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:09:04.195Z",
+  "updated_at": "2026-09-05T21:21:58.167Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T21:05:38.999Z",
-      "lease_until": "2026-09-05T22:36:11.160Z",
+      "claimed_at": "2026-09-05T19:32:33.868Z",
+      "lease_until": "2026-09-05T21:03:12.506Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "b5645072-2c90-43c0-b889-506a71046812"
+      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
     }
   },
   "reviews": {
@@ -122,120 +122,23 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T21:06:11.159Z",
+      "at": "2026-09-05T21:21:57.295Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 2
+      "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T21:06:11.861Z",
+      "at": "2026-09-05T21:21:57.899Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 2
+      "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T21:06:12.520Z",
+      "at": "2026-09-05T21:21:58.167Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-05T21:07:12.974Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-05T21:07:33.881Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-05T21:07:33.882Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "4c860e46-d235-4934-9d08-199c2acaee28",
-      "summary": "PR-event wake: lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo, rth-open off-hours). ops:collect 0. main@8f1b953ba synced. Open PRs: #4045 (handoff, verify pending), #4046 (draft duplicate). GitHub REST/GraphQL rate-limited — peer review blocked for cursor-owned PRs; awaiting Claude. Subscribed to #4045 CI."
-    },
-    {
-      "at": "2026-09-05T21:08:48.831Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-05T21:08:55.835Z",
-      "type": "pr_webhook",
-      "pr": 4047,
-      "event": "sweep",
-      "head": "729b650e7367324f91297c28efc683599e907e7e",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-05T21:08:58.378Z",
-      "type": "pr_webhook",
-      "pr": 4045,
-      "event": "sweep",
-      "head": "81cc0761005e0f68c66095abbd1a75662d208db0",
-      "verdict": "⏳ **WAIT** — CI pending",
-      "directive": "WAIT",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-05T21:09:04.194Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-05T21:09:04.195Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "881f35ac-f60c-4c31-a37c-1fc61b435912",
-      "summary": "PR-event cycle complete. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo, rth-open). ops:collect 0. main@8f1b953ba. Closed duplicate #4046. Updated #4045 handoff@81cc0761 (verify pending). Discovered #4047 swing play-brief draft (WAIT). No Claude/fix PRs for peer review. GitHub GraphQL rate-limited for comments; REST push works."
+      "open_pr_count": 0
     }
   ],
-  "open_prs": [
-    {
-      "number": 4047,
-      "title": "feat(swing): Ask Largo — deterministic play intelligence engine",
-      "branch": "cursor/swing-play-intelligence-engine",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:08:07Z"
-    },
-    {
-      "number": 4045,
-      "title": "chore(blackout-agent): cursor cycle handoff — post-#4035 merge wave",
-      "branch": "cursor/autopilot-handoff-4044-cycle",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:07:57Z"
-    }
-  ],
-  "pr_activity": {
-    "pr-4047": {
-      "last_event": "sweep",
-      "last_head": "729b650e7367324f91297c28efc683599e907e7e",
-      "last_feedback_at": "2026-09-05T21:08:55.835Z",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "comment_action": "created"
-    },
-    "pr-4045": {
-      "last_event": "sweep",
-      "last_head": "81cc0761005e0f68c66095abbd1a75662d208db0",
-      "last_feedback_at": "2026-09-05T21:08:58.378Z",
-      "verdict": "⏳ **WAIT** — CI pending",
-      "directive": "WAIT",
-      "comment_action": "created"
-    }
-  }
+  "open_prs": []
 }
