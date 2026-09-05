@@ -931,6 +931,16 @@ test("gexHeatmapCacheEntryWithinTtl: future entry.at beyond tolerance fails TTL 
   assert.equal(gexHeatmapCacheEntryWithinTtl(now - 30_000, now, ttlMs), false, "past TTL is not fresh");
 });
 
+test("readGexHeatmapCacheOnly: rejects future-skewed entry.at via gexHeatmapCacheEntryStale", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  const fn = src.slice(src.indexOf("export async function readGexHeatmapCacheOnly"));
+  assert.match(fn, /gexHeatmapCacheEntryStale\(entry\.at, now\)/);
+  assert.doesNotMatch(fn, /now - entry\.at > maxStaleMs/);
+});
+
 // ── #3834 fixed the shared heatmap fetch cache but the SAME raw `now - entry.at < ttlMs`
 // shape lived on in 4 sibling caches in this file (0DTE desk bundle mem+Redis, positioning
 // bundle, IV term structure, realized vol) — none reachable via fetchGexHeatmap's own tests.
