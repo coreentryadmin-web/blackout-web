@@ -170,10 +170,16 @@ async function waitForPeerSpxPlaySnapshot(
  * cache misses on different ECS replicas can return divergent grade/score/direction
  * (spx-bie-consistency prod double-fetch caught flow-skew long vs SCANNING).
  */
-async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>>> {
+export async function evaluateSpxPlayStateCrossReplica(): Promise<Awaited<ReturnType<typeof evaluateSpxPlayState>>> {
   const date = todayEtYmd();
   const lockKey = `${SPX_PLAY_EVAL_LOCK_PREFIX}:${date}`;
-  const won = await sharedCacheSetNx(lockKey, Date.now(), SPX_PLAY_EVAL_LOCK_TTL_SEC);
+  // Fail CLOSED (treat as lock-not-won) on a Redis error: this lock only exists to stop every
+  // replica recomputing the expensive eval at once, and Redis being unavailable is exactly the
+  // moment the platform can least afford N-way redundant compute. Falling through to the
+  // stale-cache/peer-wait/degraded chain below costs nothing extra, unlike a cron overlap guard
+  // (where fail-open is the right call because the alternative is a stuck cron) — this is a
+  // single-flight optimization, not a guard against a stuck background job.
+  const won = await sharedCacheSetNx(lockKey, Date.now(), SPX_PLAY_EVAL_LOCK_TTL_SEC).catch(() => false);
   if (!won) {
     const stale = await sharedCacheGetWithTtl<Awaited<ReturnType<typeof evaluateSpxPlayState>>>(
       spxPlayServerCacheKey(date)
