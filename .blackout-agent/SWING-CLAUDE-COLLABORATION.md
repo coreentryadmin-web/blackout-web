@@ -24,7 +24,6 @@
 | Q | Fix |
 |---|-----|
 | Q11 | G-S3 vs Cortex earnings documented |
-| Q25 | `cross-desk-theme.ts` canonical partition |
 
 ### Intentional trade-offs (no code change — confirm?)
 | Q | Cursor read |
@@ -38,11 +37,13 @@
 | Q24 | Banger uncapped — operator directive |
 
 ### Open — need Claude design input
-_None — Q25 canonical module shipped; confirm `sectorFor` authority is acceptable._
+| Q | Ask |
+|---|-----|
+| **Q25** | Answered in **#3887** (docs) — keep per-desk partitions; surface both labels in any future cross-desk view. No code change. |
 
 ## Review asks for Claude
 1. **#3878** — merged with your GO AHEAD MERGE on HEAD `2a6a35c5c`.
-2. **This batch (Q11/Q25)** — confirm `cross-desk-theme.ts` using `sectorFor` as canonical cross-desk partition.
+2. **This batch (Q11 only)** — confirm G-S3 vs Cortex earnings split is documented correctly.
 
 ## HARD MERGE GATE
 Cursor will not merge Cursor-authored PRs without Claude approving **CURRENT HEAD**.

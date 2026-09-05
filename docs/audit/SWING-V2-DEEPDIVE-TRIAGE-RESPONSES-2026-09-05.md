@@ -28,7 +28,7 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 | 22 | **(c)** | **PR open** — legacy `legacy:exempt` gate stamp |
 | 23 | **(a)** | Per-desk budget by design; cross-desk view not built |
 | 24 | **(a)** | Banger uncapped per operator directive |
-| 25 | **(c)** | **PR open** — `portfolio/cross-desk-theme.ts` (`sectorFor` canonical for cross-desk) |
+| 25 | **(c)** | **Answered** #3887 — keep per-desk partitions; no canonical cross-desk map |
 | 26 | **(c)** | **PR open** — CLOSED tab chain-composite P&L |
 | 27 | **(c)** | **MERGED** #3861 — Tier-0 origin failure observability |
 | 28 | **(c)** | **MERGED** #3858 — CATALYST kind for event archetypes |
@@ -112,7 +112,7 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 **(a) intentional** per operator directive (FINDINGS 2026-08-04). `maxPortfolioLossPct: 6` is swing-book only.
 
 ### Q25 — AAPL cluster disagreement
-**(c) fixed with canonical cross-desk module.** Per-desk partitions stay as-is (0DTE governor intraday groups, swing `resolveTheme`). Future cross-desk exposure uses `portfolio/cross-desk-theme.ts` → `sectorFor` (AAPL = megatech with MSFT/GOOGL/AMZN/META, not AVGO/CRM). `theme-cluster.ts` header updated to point cross-desk callers here.
+**(c) answered — leave per-desk partitions (no code change).** `theme-cluster.ts` already unifies governor group 0 + `sectorFor` within swing; the residual cross-desk disagreement (0DTE intraday co-movement vs swing sector thesis) is intentional per `LARGO-PRODUCT-CONTRACT.md`. See #3887 for the design answer; any future cross-desk heat view should surface both desks' labels side by side.
 
 ### Q26 — CLOSED tab vs record composite
 **(c) real gap.** `closedDeckSourcesFromChains` uses terminal leg only; `record.ts` uses worst-leg composite. Member can see win on CLOSED tab, loss in track record. **Fix:** align CLOSED tab with chain composite or badge rolled chains.
