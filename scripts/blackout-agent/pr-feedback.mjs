@@ -53,7 +53,7 @@ export function resolveGithubRepo() {
 }
 
 const CLAUDE_BODY_MARKERS = [/generated with \[claude code\]/i, /claude\.ai\/code\/session/i];
-const CURSOR_TEXT_MARKERS = [/cursor agent/i];
+const CURSOR_TEXT_MARKERS = [/cursor agent/i, /cursor-authored/i];
 // Exact hostnames a PR body's own links are checked against -- never a bare substring regex on
 // the raw body text. `cursor.com/agents` as an unanchored regex matches ANYWHERE, including
 // inside a different, unrelated host (e.g. `https://evil.example/cursor.com/agents` or
@@ -87,8 +87,9 @@ export function classifyBranch(headRef, prData = null) {
   if (!headRef) return detectBuilderFromBody(prData?.body) ?? "human";
   if (headRef.startsWith("cursor/")) return "cursor";
   if (headRef.startsWith("claude/")) return "claude";
-  if (headRef.startsWith("fix/")) return "agent";
-  if (headRef.startsWith("docs/")) return "agent";
+  if (headRef.startsWith("fix/") || headRef.startsWith("docs/")) {
+    return detectBuilderFromBody(prData?.body) ?? "agent";
+  }
   if (headRef.startsWith("dependabot/")) return "dependabot";
   return detectBuilderFromBody(prData?.body) ?? "human";
 }
@@ -119,9 +120,10 @@ export function builderLabel(agent) {
   return "author";
 }
 
-export function isOwnPr(agent, headRef) {
-  if (agent === "cursor") return headRef?.startsWith("cursor/");
-  if (agent === "claude") return headRef?.startsWith("claude/");
+export function isOwnPr(agent, headRef, prData = null) {
+  const who = classifyBranch(headRef, prData);
+  if (agent === "cursor") return who === "cursor";
+  if (agent === "claude") return who === "claude";
   return false;
 }
 
@@ -381,7 +383,7 @@ const DISPATCH_EVENTS = new Set([
 ]);
 
 export function shouldDispatchDeepReview({ event, prData, checks, agent, reviewingAgent }) {
-  if (isOwnPr(reviewingAgent, prData.headRefName)) return false;
+  if (isOwnPr(reviewingAgent, prData.headRefName, prData)) return false;
   if (classifyBranch(prData.headRefName, prData) === "dependabot") return false;
 
   const peer = reviewerForBranch(prData.headRefName, prData);

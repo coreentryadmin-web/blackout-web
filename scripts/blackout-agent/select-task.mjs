@@ -7,7 +7,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { MARKDOWN_FILES } from "./lib/paths.mjs";
 import { readLock } from "./lib/locks.mjs";
 import { syncContext } from "./sync-context.mjs";
-import { acceptPriorReview, classifyBranch, reviewerForBranch } from "./pr-feedback.mjs";
+import { acceptPriorReview, classifyBranch, reviewerForBranch, isOwnPr } from "./pr-feedback.mjs";
 
 function parseArgs(argv) {
   const out = { agent: process.env.BLACKOUT_AGENT ?? "cursor" };
@@ -41,14 +41,12 @@ export function discoverStandingWork(agent, state) {
     if (pr.draft) continue;
     if (pr.verify?.includes("FAILURE")) continue;
 
-    const isOwnPr =
-      (agent === "cursor" && (pr.branch?.startsWith("cursor/") || pr.agent === "cursor")) ||
-      (agent === "claude" && (pr.branch?.startsWith("claude/") || pr.agent === "claude"));
-    if (isOwnPr) continue;
+    const prData = pr.body ? { body: pr.body } : null;
+    if (isOwnPr(agent, pr.branch, prData)) continue;
 
     const reviewKey = `pr-${pr.number}`;
-    const branchAgent = pr.agent ?? classifyBranch(pr.branch);
-    const peer = reviewerForBranch(pr.branch);
+    const branchAgent = pr.agent ?? classifyBranch(pr.branch, prData);
+    const peer = reviewerForBranch(pr.branch, prData);
     const reviewed = acceptPriorReview(reviews[reviewKey], branchAgent, peer);
     const verifyGreen = pr.verify?.includes("SUCCESS");
     if (reviewed?.safe_to_merge && verifyGreen) continue;

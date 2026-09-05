@@ -21,6 +21,10 @@ test("classifyBranch", () => {
   assert.equal(classifyBranch("claude/bar"), "claude");
   assert.equal(classifyBranch("fix/baz"), "agent");
   assert.equal(classifyBranch("docs/thermal-stubs"), "agent");
+  assert.equal(
+    classifyBranch("fix/automerge", { body: "Cursor-authored — awaiting Claude GitHub review" }),
+    "cursor"
+  );
   assert.equal(classifyBranch("dependabot/npm"), "dependabot");
   assert.equal(
     classifyBranch("feature/foo", { body: "Generated with [Claude Code](https://claude.com/claude-code)" }),
@@ -32,6 +36,10 @@ test("reviewerForBranch — cursor reviews all non-cursor PRs", () => {
   assert.equal(reviewerForBranch("claude/x"), "cursor");
   assert.equal(reviewerForBranch("cursor/x"), "claude");
   assert.equal(reviewerForBranch("fix/x"), "cursor");
+  assert.equal(
+    reviewerForBranch("fix/automerge", { body: "Cursor-authored — awaiting Claude GitHub review" }),
+    "claude"
+  );
   assert.equal(reviewerForBranch("docs/x"), "cursor");
   assert.equal(reviewerForBranch("feature/human"), "cursor");
 });
@@ -39,6 +47,10 @@ test("reviewerForBranch — cursor reviews all non-cursor PRs", () => {
 test("isOwnPr blocks self-review", () => {
   assert.equal(isOwnPr("cursor", "cursor/foo"), true);
   assert.equal(isOwnPr("cursor", "claude/foo"), false);
+  assert.equal(
+    isOwnPr("cursor", "fix/automerge", { body: "Cursor-authored — awaiting Claude GitHub review" }),
+    true
+  );
 });
 
 test("analyzeDiff flags risks and docs-only", () => {
