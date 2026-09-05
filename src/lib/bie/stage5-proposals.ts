@@ -17,6 +17,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 export type Stage5Proposal = {
   kind: "orphaned_component";
@@ -111,7 +112,7 @@ const CACHE_TTL_MS = 60 * 60_000; // filesystem content only changes on redeploy
  *  writes anything, never touches git. Cached for an hour (source only changes
  *  on redeploy) since this reads every file under src/ on a cache miss. */
 export async function findStage5Proposals(): Promise<Stage5Proposal[]> {
-  if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.proposals;
+  if (cache && isWsUpdatedAtFresh(cache.at, CACHE_TTL_MS)) return cache.proposals;
 
   try {
     const componentFiles = listFiles(COMPONENTS_ROOT, [".tsx"]);
