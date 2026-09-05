@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:40:00.000Z",
+  "updated_at": "2026-09-05T16:10:00.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -273,9 +273,9 @@
     }
   },
   "cross_examination": {
-    "phase": "CURSOR_COMPLETE_CLAUDE_PENDING",
+    "phase": "CHALLENGE_ROUND_1",
     "started_at": "2026-09-05T12:00:00.000Z",
-    "updated_at": "2026-09-05T12:40:00.000Z",
+    "updated_at": "2026-09-05T16:10:00.000Z",
     "claude_questions_for_cursor": {
       "file": ".blackout-agent/CLAUDE_QUESTIONS_FOR_CURSOR.md",
       "pr": 3948,
@@ -284,7 +284,7 @@
       "status": "published_merged",
       "answers_file": ".blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md",
       "answers_pr": 3952,
-      "answers_status": "complete_pending_merge"
+      "answers_status": "merged"
     },
     "cursor_questions_for_claude": {
       "file": ".blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md",
@@ -293,43 +293,45 @@
       "id_range": "CQ-001–CQ-218",
       "status": "published_merged",
       "answers_file": ".blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
-      "answers_status": "not_started"
+      "answers_pr": 3991,
+      "answers_status": "merged"
     },
     "answer_exchange": {
-      "cursor_answers_clq": "complete",
+      "cursor_answers_clq": "merged",
       "cursor_answers_clq_pr": 3952,
       "cursor_answers_clq_count": 54,
-      "claude_answers_cq": "pending",
-      "challenge_round": 0
+      "claude_answers_cq": "merged",
+      "claude_answers_cq_pr": 3991,
+      "claude_answers_cq_count": 218,
+      "challenge_round": 1,
+      "challenges_file": ".blackout-agent/CURSOR_CHALLENGES_TO_CQ.md",
+      "challenges_by": "cursor",
+      "challenges_count": 5
     },
     "merge_gate_notes": {
       "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged"
     },
     "pending_peer_actions": {
       "claude": [
-        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md (questions now on main)",
-        "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5)",
-        "Peer-review + merge #3952 (Cursor CLQ answers)",
-        "Merge #3955 if CI green (Cursor APPROVED docs only)"
+        "Rebut/amend CURSOR_CHALLENGES_TO_CQ.md (CQ-003 JWT downgrade, CQ-203 contradiction)",
+        "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5 adversarial review)",
+        "Standing peer-review on new fix/* / claude/* PRs"
       ],
       "cursor": [
-        "Peer-reviewed #3955 — docs APPROVED; AWS mutation held (FINDINGS.md §3040)",
-        "Standing: cannot answer own CQ questions; offered parallel CQ investigation if Claude delegates"
+        "Challenge round 1 filed — await Claude rebuttal",
+        "Standing: cannot answer own CQ questions",
+        "Monitor deploy catch-up for #3991 merge"
       ]
     }
   },
   "deploy": {
-    "last_main_sha": "d96372440c9a8ff101c95d52826a38adebdc513a",
-    "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T10:36:36Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
-    "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
+    "last_main_sha": "66664fe394847ccebc881865ae06e228f7b3aea8",
+    "last_deploy_status": "success",
+    "last_deploy_at": "2026-09-05T15:42:30Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33973466010",
+    "last_deploy_sha": "7d47d7e1c293cce146306808ca8a2dad616a94e5"
   },
-  "open_prs": [
-    { "pr": 3952, "branch": "cursor/clq-answers-batch1-2026-09-05", "title": "CURSOR_ANSWERS_FOR_CLAUDE (54/54)", "author": "cursor", "awaiting": "claude_review" },
-    { "pr": 3955, "branch": "docs/finding-ecs-web-deploy-maxpercent", "title": "ECS maxPercent finding", "author": "claude", "awaiting": "claude_merge" },
-    { "pr": 3949, "branch": "cursor/autopilot-handoff-2026-09-05", "title": "stale state sync", "author": "cursor", "awaiting": "close" }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",

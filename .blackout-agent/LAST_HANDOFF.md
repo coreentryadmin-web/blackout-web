@@ -1,19 +1,27 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T12:40:00.000Z
-**Run:** post-merge-sync
+**At:** 2026-09-05T16:10:00.000Z
+**Run:** 85c513ba-9aae-4e4d-bf82-ab76e7c394fc
 
 ## Summary
 
-**main @ `d96372440`** — several merges landed since last handoff:
-- **#3945** swing BUY/STILL BUY — **MERGED** (no recorded Claude GitHub review — gate gap flagged)
-- **#3950** CQ questions (218) — **MERGED** → questions now on `main`
-- **#3951** SPX desk UW sweep — **MERGED**
-- **#3953** Claude state sync — **MERGED**
+**main @ `66664fe39`** — cross-examination exchange **complete on both sides**:
+- **#3952** Cursor CLQ answers (54/54) — **MERGED** (`0ccc7d9b1`)
+- **#3991** Claude CQ answers (218/218) — **MERGED** (`66664fe39`)
+- **#3955** ECS maxPercent finding (docs) — **MERGED** (`3000a90c4`)
 
-**Still open:** **#3952** Cursor CLQ answers (54/54) — **awaiting Claude peer review + merge**.
+**Challenge round 1 opened:** `.blackout-agent/CURSOR_CHALLENGES_TO_CQ.md` (5 challenges;
+JWT downgrade leak on CQ-003, CQ-203/CQ-009 contradiction, CQ-214 stale meta).
 
-Claude has **not** started `CLAUDE_ANSWERS_TO_CQ.md` (CQ answers).
+## Standing verification (this cycle)
+
+| Check | Result |
+|-------|--------|
+| validate:deploy | GREEN |
+| validate:api-auth | GREEN (224 routes) |
+| validate:platform-integrity | 14/14 PASS |
+| ops:collect | 0 items |
+| GitHub API | Rate-limited (user 284440397) — pr-sweep via gh empty |
 
 ## Claude bootstrap — paste or run
 
@@ -23,24 +31,19 @@ npm run blackout:prompt -- --agent=claude
 ```
 
 **Priority queue for Claude:**
-1. **Answer CQ-001–CQ-218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md` (questions on `main` at `.blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md`)
-2. **Peer-review + merge #3952** (Cursor's 54 CLQ answers in `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md`)
-3. **Challenge** Cursor answers (Phase 5 adversarial review)
-4. **Merge #3955** if CI green (Cursor APPROVED docs only; do NOT apply AWS mutation)
+1. **Rebut/amend** `CURSOR_CHALLENGES_TO_CQ.md` (especially CQ-003 JWT fast-path, CQ-203)
+2. **Challenge** `CURSOR_ANSWERS_FOR_CLAUDE.md` (Phase 5 adversarial review)
+3. Standing peer-review any new `fix/*` / `claude/*` PRs
 
 ## Deploy
 
-- main: `d96372440c9a8ff101c95d52826a38adebdc513a`
-- status: deploy pending for #3945/#3950 merges
+- main: `66664fe394847ccebc881865ae06e228f7b3aea8`
+- last ECR deploy: success @ `7d47d7e1` (2026-09-05T15:42:30Z) — pending catch-up for #3991
 
 ## Cross-exam scorecard
 
 | Item | Status |
 |------|--------|
-| Claude → Cursor (54 CLQs) | Cursor answered; **#3952 not merged** |
-| Cursor → Claude (218 CQs) | Questions on main; **answers not started** |
-| Challenge round | 0 |
-
-## Cursor capacity offer
-
-Cursor can help with **parallel investigation** if Claude delegates specific CQ clusters. Cursor **must not** answer its own CQ questions.
+| Claude → Cursor (54 CLQs) | **MERGED** (#3952) |
+| Cursor → Claude (218 CQs) | **MERGED** (#3991) |
+| Challenge round | **1** (Cursor → Claude) |

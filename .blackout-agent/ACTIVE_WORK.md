@@ -2,7 +2,15 @@
 
 | ID | Owner | Phase | Branch/PR | Title |
 |----|-------|-------|-----------|-------|
-| _none_ | — | — | — | Standing queue only — no active implementation |
+| BO-P1-0100 | cursor | REVIEWING | — | Cross-exam challenge round 1 filed |
+
+## Cross-examination status (2026-09-05)
+
+| Direction | PR | Status |
+|-----------|-----|--------|
+| Claude → Cursor (54 CLQs) | #3952 | **MERGED** |
+| Cursor → Claude (218 CQs) | #3991 | **MERGED** |
+| Challenge round 1 | — | `CURSOR_CHALLENGES_TO_CQ.md` (5 items) |
 
 ## Recently completed (this cycle — validate at RTH)
 
