@@ -74,6 +74,7 @@ import {
 } from "@/lib/providers/unusual-whales";
 import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 import { fetchStockLastTrade } from "@/lib/providers/polygon-largo";
+import { spotFromLastTradeResult } from "@/lib/swing/underlying-spot-freshness";
 import {
   shouldRefuseForceClearRunningClaim,
   type SwingDiscoveryPhaseClaim,
@@ -407,8 +408,8 @@ export async function GET(req: NextRequest) {
       watchTickers.map(async (ticker) => {
         try {
           const trade = await fetchStockLastTrade(ticker);
-          const p = trade && typeof trade === "object" ? Number((trade as Record<string, unknown>).p) : NaN;
-          if (Number.isFinite(p) && p > 0) spotsByTicker[ticker] = p;
+          const p = spotFromLastTradeResult(trade);
+          if (p != null) spotsByTicker[ticker] = p;
         } catch {
           // fail-soft: keep the plan-entry fallback
         }
