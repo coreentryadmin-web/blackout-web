@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "5f135cc2-8968-4b7a-823d-973f093790cd",
-  "last_seen": "2026-09-05T19:02:21.899Z",
-  "last_productive_action": "session_start",
-  "current_task": null,
-  "current_phase": "DISCOVERY",
-  "branch": null,
+  "run_id": "3fb76a63-261b-4e87-8e88-b4741c3bb7c3",
+  "last_seen": "2026-09-05T19:07:04.630Z",
+  "last_productive_action": "handoff",
+  "current_task": "BO-P1-0100",
+  "current_phase": "REVIEWING",
+  "branch": "cursor/autopilot-state-recovery-loop-2870",
   "pr": null,
   "healthy": true
 }
