@@ -151,6 +151,20 @@ test("a new session date invalidates the cache", async () => {
   assert.equal(fetched, 2, "yesterday's volume map must never weight today's VWAP");
 });
 
+test("future fetchedAt does not pin the SPY volume cache as fresh", async () => {
+  let fetched = 0;
+  await resolveSessionVwap(BARS, "2026-07-13", deps({
+    fetchSpyVolume: async () => { fetched++; return new Map(HEAVY_ON_SECOND); },
+    now: () => 2_000_000,
+  }));
+  assert.equal(fetched, 1);
+  await resolveSessionVwap(BARS, "2026-07-13", deps({
+    fetchSpyVolume: async () => { fetched++; return new Map(HEAVY_ON_SECOND); },
+    now: () => 1_900_000, // 100s before cache stamp — negative age must not read fresh
+  }));
+  assert.equal(fetched, 2, "future cache stamp must not suppress a refetch");
+});
+
 // ── THE REGRESSION THAT MATTERS: PB-01/PB-02 can fire again ─────────────────────────────────────
 //
 // This is the member-facing assertion. `PLAYBOOK_LIVE_GATE=1` in production means a BUY requires a

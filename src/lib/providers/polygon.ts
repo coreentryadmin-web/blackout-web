@@ -1786,7 +1786,7 @@ const MARKET_STATUS_CACHE_MS = 60_000;
 /** GET /v1/marketstatus/now — RTH / extended / closed. Cached 60s to avoid ~23k calls/day at 1s pulse. */
 export async function fetchMarketStatusNow(): Promise<PolygonMarketNow | null> {
   if (!polygonConfigured()) return null;
-  if (Date.now() - marketStatusCache.fetchedAt < MARKET_STATUS_CACHE_MS) {
+  if (isWsUpdatedAtFresh(marketStatusCache.fetchedAt, MARKET_STATUS_CACHE_MS)) {
     return marketStatusCache.data;
   }
   try {

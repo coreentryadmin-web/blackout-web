@@ -440,6 +440,14 @@ is instrumentation only.
 
 **Check at the open:** SPX pulse rail shows live spot during RTH; no stale local indexStore stuck when Redis has fresher cross-replica snapshot.
 
+### 0aa. spx-evaluate UW sweep + freshness future-guards — fix/spx-evaluate-uw-sweep-freshness-guards (pending)
+
+**What was broken:** `spx-evaluate` called `loadMergedSpxDesk()` without `runWithBackgroundUwSweep`, racing live member UW traffic on cold cache. Lit/dark ratio, Polygon market-status cache, SPY VWAP proxy cache, and `computeSessionChangePct` used raw `Date.now() - timestamp` — future stamps read as infinitely fresh; missing session anchor fabricated `0%` change.
+
+**Fix:** Wrap desk load in `runWithBackgroundUwSweep`; route caches through `isWsUpdatedAtFresh`; `computeSessionChangePct` returns `null` without anchor.
+
+**Check at the open:** `spx-evaluate` cron completes without UW 429 storms when desk cache is cold; SPX headline change% shows `—` not `0.00%` before REST anchor lands.
+
 ### 0y. HELIX score probe lacked real-ledger mode — fix/helix-score-signal-ledger-mode (pending)
 
 **What was broken:** `helix-score-signal.mjs` could only grade flow prints via Polygon minute-bar replay; the signal-outcome ledger writer is live since 2026-09-03 but the probe had no path to use official continued/reversed outcomes.

@@ -1,5 +1,6 @@
 import type { DarkPoolSnapshot } from "@/lib/providers/unusual-whales";
 import { darkPoolStore, litTradesStore } from "@/lib/ws/uw-socket";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 export type LitDarkRatio = {
   lit_premium: number;
@@ -13,9 +14,8 @@ const LIT_DARK_MAX_AGE_MS = 120_000;
 /** Lit vs dark premium share from UW WS stores (SPY lit tape + dark pool snapshot). */
 export function computeLitDarkRatio(): LitDarkRatio | null {
   const now = Date.now();
-  const litFresh = litTradesStore.updatedAt > 0 && now - litTradesStore.updatedAt <= LIT_DARK_MAX_AGE_MS;
-  const darkFresh =
-    darkPoolStore.updatedAt > 0 && now - darkPoolStore.updatedAt <= LIT_DARK_MAX_AGE_MS;
+  const litFresh = isWsUpdatedAtFresh(litTradesStore.updatedAt, LIT_DARK_MAX_AGE_MS, now);
+  const darkFresh = isWsUpdatedAtFresh(darkPoolStore.updatedAt, LIT_DARK_MAX_AGE_MS, now);
   if (!litFresh && !darkFresh) return null;
 
   let litPremium = 0;
