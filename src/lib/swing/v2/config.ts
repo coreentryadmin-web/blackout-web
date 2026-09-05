@@ -70,6 +70,12 @@ export function isSwingEarningsGateEnforced(env: Record<string, string | undefin
   return envTriState(env, "SWING_ENGINE_V2_ENFORCE_EARNINGS", true);
 }
 
+/** P3 — G-S12 halt/LULD at COMMIT. LIVE when V2 is on; opt out with SWING_ENGINE_V2_ENFORCE_HALT=0. */
+export function isSwingHaltGateEnforced(env: Record<string, string | undefined> = process.env): boolean {
+  if (!isSwingEngineV2Enabled(env)) return false;
+  return envTriState(env, "SWING_ENGINE_V2_ENFORCE_HALT", true);
+}
+
 /** Max watch candidates to Cortex-preflight per scan (provider budget). */
 export function swingCortexPreflightCap(env: Record<string, string | undefined> = process.env): number {
   const n = Number(env.SWING_CORTEX_PREFLIGHT_CAP ?? 12);

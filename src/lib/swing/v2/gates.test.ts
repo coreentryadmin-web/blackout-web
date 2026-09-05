@@ -4,6 +4,7 @@ import {
   blockedByFromSwingGates,
   evaluateEarningsGate,
   evaluateConfluenceGate,
+  evaluateHaltGate,
   failingSwingCommitGates,
 } from "./gates";
 
@@ -50,6 +51,40 @@ test("failingSwingCommitGates: G-S3 when enforceEarnings on", () => {
 test("blockedByFromSwingGates: maps G-S3 to gate token", () => {
   const v = evaluateEarningsGate({ discoveryPaths: [], archetype: "EVENT_DRIVEN", earningsInWindow: true });
   assert.deepEqual(blockedByFromSwingGates([v]), ["gate:G-S3:earnings_in_window"]);
+});
+
+test("evaluateHaltGate: blocks when halted", () => {
+  const blocked = evaluateHaltGate({ discoveryPaths: [], archetype: "BREAKOUT", halted: true });
+  assert.equal(blocked.pass, false);
+  assert.equal(blocked.gate, "G-S12");
+  const clear = evaluateHaltGate({ discoveryPaths: [], archetype: "BREAKOUT", halted: false });
+  assert.equal(clear.pass, true);
+});
+
+test("evaluateHaltGate: blocks on halt feed stale when fail-closed enabled", () => {
+  const blocked = evaluateHaltGate({
+    discoveryPaths: [],
+    archetype: "BREAKOUT",
+    haltFeedStale: true,
+  });
+  assert.equal(blocked.pass, false);
+  assert.match(blocked.reason, /feed cold/);
+});
+
+test("failingSwingCommitGates: G-S12 when enforceHalt on", () => {
+  const fails = failingSwingCommitGates(
+    { discoveryPaths: [], archetype: "BREAKOUT", halted: true },
+    { enforceHalt: true },
+  );
+  assert.equal(fails.length, 1);
+  assert.equal(fails[0]!.gate, "G-S12");
+});
+
+test("blockedByFromSwingGates: maps G-S12 tokens", () => {
+  const halted = evaluateHaltGate({ discoveryPaths: [], archetype: "BREAKOUT", halted: true });
+  assert.deepEqual(blockedByFromSwingGates([halted]), ["gate:G-S12:halted"]);
+  const stale = evaluateHaltGate({ discoveryPaths: [], archetype: "BREAKOUT", haltFeedStale: true });
+  assert.deepEqual(blockedByFromSwingGates([stale]), ["gate:G-S12:halt_feed_stale"]);
 });
 
 test("failingSwingCommitGates: empty when enforceConfluence off", () => {

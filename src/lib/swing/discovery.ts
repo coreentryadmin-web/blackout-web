@@ -58,7 +58,8 @@ import { subLaneForDte } from "./taxonomy";
 import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration";
 import { classificationMetaFromVerdict } from "./archetype";
 import { resolveSwingTier1Cap } from "./v2/tier1-cap";
-import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, isSwingEarningsGateEnforced, swingCortexPreflightCap } from "./v2/config";
+import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, isSwingEarningsGateEnforced, isSwingHaltGateEnforced, swingCortexPreflightCap } from "./v2/config";
+import { readSwingHaltStateForTickers } from "./v2/halt-read";
 import { evaluateSwingCortexForCommit } from "./v2/cortex-swing";
 import { persistSwingGateRejections } from "./v2/rejections";
 import { evaluateSwingConfluence } from "./v2/confluence";
@@ -801,6 +802,15 @@ export async function runSwingDiscoveryScan(
       const key = `${p.ticker.toUpperCase()}|${p.direction}`;
       if (!contractByKey.has(key)) contractByKey.set(key, p.contract); // best (first — plays are score-sorted)
     }
+    const uniqueWatchTickers = [...new Set(watchCandidates.map((w) => w.ticker.toUpperCase()))];
+    let haltActive = new Set<string>();
+    let haltFeedStale = false;
+    if (engineV2 && isSwingHaltGateEnforced() && uniqueWatchTickers.length > 0) {
+      const haltState = await readSwingHaltStateForTickers(uniqueWatchTickers);
+      haltActive = haltState.active;
+      haltFeedStale = haltState.feedStale;
+    }
+
     const commitCandidates: SwingCommitCandidate[] = watchCandidates.map((w) => {
       const key = `${w.ticker.toUpperCase()}|${w.direction}`;
       const d = dossierByKey.get(key);
@@ -830,6 +840,7 @@ export async function runSwingDiscoveryScan(
         ivRank: d?.ivRank ?? null,
         discoveryPaths: pathsByTicker.get(w.ticker.toUpperCase()) ?? [],
         earningsInWindow: d?.earningsInWindow === true,
+        halted: haltActive.has(w.ticker.toUpperCase()),
       };
     });
 
@@ -862,10 +873,13 @@ export async function runSwingDiscoveryScan(
       budget: deps.budget,
       caps: deps.caps,
       v2:
-        engineV2 && (isSwingConfluenceEnforced() || isSwingEarningsGateEnforced())
+        engineV2 &&
+        (isSwingConfluenceEnforced() || isSwingEarningsGateEnforced() || isSwingHaltGateEnforced())
           ? {
               enforceConfluence: isSwingConfluenceEnforced(),
               enforceEarnings: isSwingEarningsGateEnforced(),
+              enforceHalt: isSwingHaltGateEnforced(),
+              haltFeedStale,
             }
           : undefined,
     });
