@@ -74,11 +74,59 @@ import {
   type SwingCommitCandidate,
   type CommitBookPosition,
   type SwingCommitDeps,
+  type SwingCommitPlan,
   type SwingCommitResult,
 } from "./commit";
+import type { HorizonPlay } from "../horizon-plays";
 import type { PortfolioBudget } from "./swing-portfolio-budget";
 import type { SwingCaps } from "./swing-allocation";
 import type { SwingPositionInsert, SwingShadowPositionInsert } from "../db";
+
+/**
+ * Deep-dive Q3: after a successful commit this scan, remove committed theses from the WATCH rail and stamp
+ * matching plays COMMIT so the persisted serving snapshot matches ledger reality (not only the horizons
+ * open-book merge at request time).
+ */
+export function reconcileServingAfterCommits(
+  watchCandidates: SwingWatchCandidate[],
+  playSet: HorizonPlaySet,
+  plan: SwingCommitPlan,
+  commitResult: SwingCommitResult,
+  dossierByKey: Map<string, SwingDossier>,
+): { watchCandidates: SwingWatchCandidate[]; playSet: HorizonPlaySet } {
+  const successCommitKeys = new Set(
+    commitResult.committed
+      .filter((e) => e.positionId != null && !e.error)
+      .map((e) => `${e.ticker.toUpperCase()}|${e.commitKey}`),
+  );
+  const committedThesisKeys = new Set<string>();
+  for (const d of plan.decisions) {
+    if (!d.committable || !d.direction) continue;
+    if (!successCommitKeys.has(`${d.ticker.toUpperCase()}|${d.commitKey}`)) continue;
+    committedThesisKeys.add(swingThesisKey(d.ticker, d.direction, d.archetype));
+  }
+  if (committedThesisKeys.size === 0) {
+    return { watchCandidates, playSet };
+  }
+  const playThesisKey = (p: HorizonPlay): string => {
+    const dossier = dossierByKey.get(`${p.ticker.toUpperCase()}|${p.direction}`);
+    const arch = p.archetype ?? dossier?.archetype?.archetype ?? null;
+    return swingThesisKey(p.ticker, p.direction, arch);
+  };
+  return {
+    watchCandidates: watchCandidates.filter(
+      (c) => !committedThesisKeys.has(swingThesisKey(c.ticker, c.direction, c.archetype)),
+    ),
+    playSet: {
+      ...playSet,
+      SWING: playSet.SWING.map((p) =>
+        committedThesisKeys.has(playThesisKey(p))
+          ? { ...p, status: "COMMIT" as const }
+          : p,
+      ),
+    },
+  };
+}
 
 // ─── WHY RECALL MATTERS (operator critique #7) ──────────────────────────────────
 // A discovery funnel is easy to optimize for PRECISION (everything that surfaces is good) while
@@ -742,7 +790,7 @@ export async function runSwingDiscoveryScan(
     cfg.minPersistenceSessions,
     WATCH_ELIGIBLE_FETCH_LIMIT,
   );
-  const watchCandidates = eligible.filter((c) =>
+  let watchCandidates = eligible.filter((c) =>
     seenThisScan.has(swingThesisKey(c.ticker, c.direction, c.archetype)),
   );
   const watchKeys = new Set(
@@ -990,6 +1038,15 @@ export async function runSwingDiscoveryScan(
         insertShadowPosition: deps.insertShadowPosition,
       };
       commit = await executeSwingCommits(commitDeps, plan);
+      const reconciled = reconcileServingAfterCommits(
+        watchCandidates,
+        playSet,
+        plan,
+        commit,
+        dossierByKey,
+      );
+      watchCandidates = reconciled.watchCandidates;
+      playSet = reconciled.playSet;
       console.info(
         `[swing-discovery] commit gate: ${commitEligibleCount} graduated-eligible / ${plan.committableCount} opened / ` +
           `${plan.shadowEligibleCount} shadow-eligible / ${commit.shadowed.length} shadowed` +
