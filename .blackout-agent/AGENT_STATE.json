@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T20:41:09.263Z",
+  "updated_at": "2026-09-05T20:50:11.776Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-05T20:46:31.181Z",
+      "lease_until": "2026-09-05T22:19:27.077Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "3937a5fd-46b1-4069-b328-35ea830a864d"
     }
   },
   "reviews": {
@@ -36,7 +36,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "35dfd63d53133c0da47c6130015a6c67d6f4c17d",
+    "last_main_sha": "fd1eb8ceab4562d76c48f8f3af8708d387d2c45d",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T19:34:47Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
@@ -120,7 +120,59 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T20:49:27.077Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T20:49:27.615Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T20:49:28.143Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T20:50:11.775Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T20:50:11.776Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9e690c7f-2bde-4ec5-94c9-14b6f609be3a",
+      "summary": "hourly wake 2026-09-05T20:46Z: ops:collect clean (0 items). validate:api-auth/platform-integrity/deploy/lifecycle all GREEN (14/14 integrity, deploy warnings only: off-hours warmers, RDS unreachable, Sentry 16 issues). Peer review #4043 APPROVED (dead BIE router cleanup, ai-env tests 2/2) — recorded in REVIEWS; GitHub comment blocked (no auth). #4044 WAIT verify in_progress — local route.test.ts 4/4 pass pre-review. RTH skipped (Sat off-hours). Swing V2 #3787 already merged; no open swing-v2-p1 PR. Bug pattern scan: no new high-severity hits (future-guard/change_pct/GEX spot constraints already guarded). Deploy main fd1eb8ce current."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4044,
+      "title": "fix(seo): add missing /methodology page to llms.txt",
+      "branch": "fix/llms-txt-missing-methodology",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T20:45:57Z"
+    },
+    {
+      "number": 4043,
+      "title": "chore(cleanup): remove dead largoSkipBieRouter/largoBieOnly (zero real callers)",
+      "branch": "fix/ai-env-dead-bie-router-code",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T20:40:38Z"
+    }
+  ]
 }
