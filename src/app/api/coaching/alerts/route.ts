@@ -3,6 +3,7 @@ import { dbQuery } from "@/lib/db";
 import { authorizeMarketDeskApi, isCronAuthorized } from "@/lib/market-api-auth";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { coachingAlertAgeFields } from "@/lib/coaching-alert-age";
+import { roundFloats } from "@/lib/round-floats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
       []
     );
     const now = Date.now();
-    return NextResponse.json({
+    return NextResponse.json(roundFloats({
       alerts: result.rows.map(r => {
         const generatedAt = r.generated_at;
         // coachingAlertAgeFields clamps a future-dated generated_at (RDS-vs-app clock skew)
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
           forShorts: r.for_shorts,
         };
       })
-    }, { status: 200, headers: NO_STORE_HEADERS });
+    }), { status: 200, headers: NO_STORE_HEADERS });
   } catch {
     return NextResponse.json({ alerts: [] }, { status: 200, headers: NO_STORE_HEADERS });
   }
