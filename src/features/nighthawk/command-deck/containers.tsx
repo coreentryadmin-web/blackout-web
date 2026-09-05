@@ -287,6 +287,7 @@ export function HorizonDeck({
           livePnlPct: p.livePnlPct ?? null,
           peakPremium: p.peakPremium ?? null,
           troughPremium: p.troughPremium ?? null,
+          markAsOf: p.markAsOf ?? null,
           manageAction: p.manageAction ?? null,
           thesisBreak:
             p.thesisLevel != null

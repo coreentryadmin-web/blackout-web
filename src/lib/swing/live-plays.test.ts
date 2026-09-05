@@ -233,3 +233,21 @@ test("liveQuoteFromEvent: malformed / empty / absent quote blobs all degrade to 
     asOf: null,
   });
 });
+
+test("Q40: markAsOf prefers ledger last_mark_at over manage snapshot quote.asOf", () => {
+  const play = livePlayFromSwingPosition(
+    row({ last_mark_at: "2026-09-05T14:00:00.000Z" }),
+    178,
+    { quote: { bid: 5.4, ask: 5.6, asOf: "2026-09-05T13:00:00.000Z" } },
+  )!;
+  assert.equal(play.markAsOf, "2026-09-05T14:00:00.000Z");
+});
+
+test("Q40: markAsOf falls back to manage snapshot quote.asOf when last_mark_at is null", () => {
+  const play = livePlayFromSwingPosition(
+    row({ last_mark_at: null }),
+    178,
+    { quote: { bid: 5.4, ask: 5.6, asOf: "2026-09-05T13:00:00.000Z" } },
+  )!;
+  assert.equal(play.markAsOf, "2026-09-05T13:00:00.000Z");
+});
