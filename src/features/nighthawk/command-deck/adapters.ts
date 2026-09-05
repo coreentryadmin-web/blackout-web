@@ -16,6 +16,7 @@ import { condorGeometryFrom, type CondorGeometry } from "@/lib/zerodte/condor-re
 import { thesisManagementOverlay, formatComputedEt } from "@/lib/zerodte/thesis-health";
 import { buildTerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import { SWING_SCALE_OUT_POLICY } from "@/lib/swing/exit-policy";
+import { swingEntryVerdict } from "@/lib/swing/entry-verdict";
 import { computeSwingThesisHealth } from "@/lib/swing/thesis-health";
 import type { SwingManageAction } from "@/lib/swing/manage";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
@@ -671,6 +672,9 @@ export interface HorizonDeckSource {
   archetype?: string | null;
   subLane?: string | null;
   servingSection?: SwingServingSection | null;
+  /** True when seen but below cross-session persistence — routes to RESEARCH / SKIP. */
+  persistenceObserved?: boolean | null;
+  persistenceGapReason?: string | null;
   /** ISO instant the thesis was first observed. */
   firstSeenAt?: string | null;
   /** ISO instant capital was committed. */
@@ -756,7 +760,22 @@ export function greeksFromContract(contract: HorizonDeckSource["contract"]): Dec
 }
 
 export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
-  const status = horizonDeckStatus(src);
+  const baseStatus = horizonDeckStatus(src);
+  const swingPreEntry =
+    src.horizon === "SWING" &&
+    !src.liveStatus &&
+    (baseStatus === "WATCH" || baseStatus === "SKIP" || String(src.status ?? "").toUpperCase() === "COMMIT");
+  const entryVerdict = swingPreEntry
+    ? swingEntryVerdict({
+        servingSection: src.servingSection,
+        setupState: src.setupState,
+        entryStatus: src.entryStatus,
+        aboveFloor: String(src.status ?? "").toUpperCase() === "COMMIT",
+        persistenceObserved: src.persistenceObserved,
+        persistenceGapReason: src.persistenceGapReason,
+      })
+    : null;
+  const status = entryVerdict?.deckStatus ?? baseStatus;
   const entry = fin(src.entryPremium);
   const bid = fin(src.contract.bid);
   const ask = fin(src.contract.ask);
@@ -810,6 +829,13 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     },
     src.reason || mgmt.recNote,
   );
+  const preEntrySwingMgmt =
+    entryVerdict != null
+      ? {
+          recommendation: entryVerdict.recommendation,
+          recNote: entryVerdict.recNote,
+        }
+      : null;
   const flagPx = fin(src.flagUnderlyingPx);
   const watchTrack = status === "WATCH" || status === "SKIP";
   const trackPct = watchTrack
@@ -843,6 +869,8 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     regime: src.regime ?? null,
     thesisBreak: thesisBreakResolved,
     ...mgmtWithThesis,
+    ...(preEntrySwingMgmt ?? {}),
+    gateBlocks: entryVerdict?.gateBlocks ?? null,
     progress: mgmt.progress,
     entry,
     mark: markMid,

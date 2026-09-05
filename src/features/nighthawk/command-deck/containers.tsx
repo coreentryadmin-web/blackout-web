@@ -247,6 +247,8 @@ export function HorizonDeck({
           archetype: p.archetype ?? null,
           subLane: p.subLane ?? null,
           servingSection: p.serving ?? null,
+          persistenceObserved: p.persistenceObserved ?? null,
+          persistenceGapReason: p.persistenceGapReason ?? null,
           firstSeenAt: p.firstSeenAt ?? null,
           committedAt: p.committedAt ?? null,
           signalKinds: p.signalKinds ?? null,

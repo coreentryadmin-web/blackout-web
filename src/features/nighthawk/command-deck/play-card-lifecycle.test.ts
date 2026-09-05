@@ -20,6 +20,7 @@ import {
   playTriggeredAtMs,
   openMetricsValues,
   zeroDteActionDisplay,
+  swingActionDisplay,
   legacyActionDisplay,
   closedCapturePct,
 } from "./play-card-lifecycle.ts";
@@ -419,6 +420,37 @@ describe("zeroDteActionDisplay — grounded ACTION vocabulary (2026-08-29)", () 
     // grader) but never appear on the live board's closed_reason — correctly null here.
     assert.equal(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "doubled" })), null);
     assert.equal(zeroDteActionDisplay(base({ status: "CLOSED", closedReason: "trim_scale_first" })), null);
+  });
+});
+
+describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
+  it("pre-entry BUY recommendation → BUY pill", () => {
+    assert.deepEqual(
+      swingActionDisplay(base({ horizon: "SWING", status: "WATCH", recommendation: "BUY" })),
+      { label: "BUY", tone: "watch" },
+    );
+  });
+
+  it("pre-entry WATCH without BUY → WAIT pill", () => {
+    assert.deepEqual(
+      swingActionDisplay(base({ horizon: "SWING", status: "WATCH", recommendation: "HOLD" })),
+      { label: "WAIT", tone: "watch" },
+    );
+  });
+
+  it("SKIP → null (PASSED lifecycle pill)", () => {
+    assert.equal(swingActionDisplay(base({ horizon: "SWING", status: "SKIP" })), null);
+  });
+
+  it("live OPEN swing uses HOLD/TRIM/EXIT like 0DTE scale-out rows", () => {
+    assert.deepEqual(
+      swingActionDisplay(base({ horizon: "SWING", status: "OPEN", recommendation: "HOLD" })),
+      { label: "HOLD", tone: "active" },
+    );
+    assert.deepEqual(
+      swingActionDisplay(base({ horizon: "SWING", status: "HOLD", recommendation: "SELL" })),
+      { label: "EXIT", tone: "active" },
+    );
   });
 });
 

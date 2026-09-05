@@ -10,6 +10,7 @@ import {
   playSymbolLine,
   playTimeRangeCompact,
   zeroDteActionDisplay,
+  swingActionDisplay,
   legacyActionDisplay,
 } from "./play-card-lifecycle";
 import {
@@ -67,7 +68,11 @@ export function PlayLifecycleCardBody({
   // RUNNER on OPEN 0DTE rows, TARGET/STOPPED/EOD EXIT on CLOSED ones — else the honest coarse
   // ACTIVE/WATCH/CLOSED/PASSED lifecycle pill (see zeroDteActionDisplay's own doc for why WATCH
   // and 3 of the 6 CLOSED labels are deliberately never fabricated here).
-  const status = legacyActionDisplay(play) ?? zeroDteActionDisplay(play) ?? playStatusDisplay(play.status);
+  const status =
+    legacyActionDisplay(play) ??
+    swingActionDisplay(play) ??
+    zeroDteActionDisplay(play) ??
+    playStatusDisplay(play.status);
   const ret = playListReturnPct(play);
   const times = playTimeRangeCompact(play);
   const grade = playGradeLabel(play);
