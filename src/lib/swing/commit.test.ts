@@ -487,6 +487,22 @@ test("computeSwingCommitPlan: V2 G-S3 earnings blocks when enforceEarnings on", 
   assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S3:earnings_in_window"));
 });
 
+test("computeSwingCommitPlan: V2 G-S4 regime blocks when enforceRegime on", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [
+      candidate({
+        pillars: { REGIME: 0.1 },
+      }),
+    ],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+    v2: { enforceRegime: true },
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S4:regime_degraded"));
+});
+
 test("computeSwingCommitPlan: V2 confluence off by default (legacy path)", () => {
   const plan = computeSwingCommitPlan({
     candidates: [candidate({ discoveryPaths: ["FLOW"], archetype: "BREAKOUT" })],

@@ -4,6 +4,7 @@ import {
   blockedByFromSwingGates,
   evaluateEarningsGate,
   evaluateConfluenceGate,
+  evaluateRegimeGate,
   evaluateHaltGate,
   failingSwingCommitGates,
 } from "./gates";
@@ -51,6 +52,28 @@ test("failingSwingCommitGates: G-S3 when enforceEarnings on", () => {
 test("blockedByFromSwingGates: maps G-S3 to gate token", () => {
   const v = evaluateEarningsGate({ discoveryPaths: [], archetype: "EVENT_DRIVEN", earningsInWindow: true });
   assert.deepEqual(blockedByFromSwingGates([v]), ["gate:G-S3:earnings_in_window"]);
+});
+
+test("evaluateRegimeGate: blocks RISK_OFF and UNKNOWN; passes NEUTRAL/RISK_ON", () => {
+  assert.equal(evaluateRegimeGate({ discoveryPaths: [], archetype: "BREAKOUT", regime01: 0.1 }).pass, false);
+  assert.equal(evaluateRegimeGate({ discoveryPaths: [], archetype: "BREAKOUT", regime01: null }).pass, false);
+  assert.equal(evaluateRegimeGate({ discoveryPaths: [], archetype: "BREAKOUT", regime01: 0.5 }).pass, true);
+  assert.equal(evaluateRegimeGate({ discoveryPaths: [], archetype: "BREAKOUT", regime01: 0.8 }).pass, true);
+});
+
+test("failingSwingCommitGates: G-S4 when enforceRegime on", () => {
+  const fails = failingSwingCommitGates(
+    { discoveryPaths: [], archetype: "BREAKOUT", regime01: 0.1 },
+    { enforceRegime: true },
+  );
+  assert.equal(fails.length, 1);
+  assert.equal(fails[0]!.gate, "G-S4");
+  assert.deepEqual(blockedByFromSwingGates(fails), ["gate:G-S4:regime_degraded"]);
+});
+
+test("blockedByFromSwingGates: maps G-S4 unknown regime", () => {
+  const v = evaluateRegimeGate({ discoveryPaths: [], archetype: "BREAKOUT", regime01: null });
+  assert.deepEqual(blockedByFromSwingGates([v]), ["gate:G-S4:regime_unknown"]);
 });
 
 test("evaluateHaltGate: blocks when halted", () => {

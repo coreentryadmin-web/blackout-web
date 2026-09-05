@@ -76,6 +76,12 @@ export function isSwingHaltGateEnforced(env: Record<string, string | undefined> 
   return envTriState(env, "SWING_ENGINE_V2_ENFORCE_HALT", true);
 }
 
+/** P3 — G-S4 regime blind at COMMIT. LIVE when V2 is on; opt out with SWING_ENGINE_V2_ENFORCE_REGIME=0. */
+export function isSwingRegimeGateEnforced(env: Record<string, string | undefined> = process.env): boolean {
+  if (!isSwingEngineV2Enabled(env)) return false;
+  return envTriState(env, "SWING_ENGINE_V2_ENFORCE_REGIME", true);
+}
+
 /** Max watch candidates to Cortex-preflight per scan (provider budget). */
 export function swingCortexPreflightCap(env: Record<string, string | undefined> = process.env): number {
   const n = Number(env.SWING_CORTEX_PREFLIGHT_CAP ?? 12);

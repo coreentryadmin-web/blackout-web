@@ -58,8 +58,10 @@ import { subLaneForDte } from "./taxonomy";
 import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration";
 import { classificationMetaFromVerdict } from "./archetype";
 import { resolveSwingTier1Cap } from "./v2/tier1-cap";
-import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, isSwingEarningsGateEnforced, isSwingHaltGateEnforced, swingCortexPreflightCap } from "./v2/config";
+import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, isSwingEarningsGateEnforced, isSwingHaltGateEnforced, isSwingRegimeGateEnforced, swingCortexPreflightCap } from "./v2/config";
 import { readSwingHaltStateForTickers } from "./v2/halt-read";
+import { regimeBandFor01 } from "./v2/regime";
+export { regimeBandFor01 };
 import { evaluateSwingCortexForCommit } from "./v2/cortex-swing";
 import type { ZeroDteCortexAssessment } from "@/lib/zerodte/cortex-gate";
 import { persistSwingGateRejections } from "./v2/rejections";
@@ -336,13 +338,7 @@ export function liquidityTierForDollar(dollar: number | null | undefined): strin
   return "SMALL";
 }
 
-/** Bucket a normalized (0–1) regime read into a named band; null/absent → UNKNOWN. */
-export function regimeBandFor01(regime01: number | null | undefined): string {
-  if (regime01 == null || !Number.isFinite(regime01)) return "UNKNOWN";
-  if (regime01 >= 0.66) return "RISK_ON";
-  if (regime01 >= 0.34) return "NEUTRAL";
-  return "RISK_OFF";
-}
+/** Bucket a normalized (0–1) regime read into a named band; null/absent → UNKNOWN. Re-exported from v2/regime. */
 
 /**
  * PURE: compute the discovery-recall metrics for one scan. See the WHY-RECALL header for the motivation.
@@ -926,11 +922,15 @@ export async function runSwingDiscoveryScan(
       caps: deps.caps,
       v2:
         engineV2 &&
-        (isSwingConfluenceEnforced() || isSwingEarningsGateEnforced() || isSwingHaltGateEnforced())
+        (isSwingConfluenceEnforced() ||
+          isSwingEarningsGateEnforced() ||
+          isSwingHaltGateEnforced() ||
+          isSwingRegimeGateEnforced())
           ? {
               enforceConfluence: isSwingConfluenceEnforced(),
               enforceEarnings: isSwingEarningsGateEnforced(),
               enforceHalt: isSwingHaltGateEnforced(),
+              enforceRegime: isSwingRegimeGateEnforced(),
               haltFeedStale,
             }
           : undefined,

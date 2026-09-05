@@ -118,6 +118,12 @@ export function commitGateBlocksForVerdict(blockedBy: readonly string[]): SwingE
             : "Underlying is halted or in LULD band — desk will not open until trading resumes.",
         };
       }
+      if (b.startsWith("gate:G-S4:")) {
+        return {
+          code: "g_s4_regime",
+          reason: "Broad-market regime degraded — desk will not open new swings (WATCH only).",
+        };
+      }
       if (b.startsWith("gate:G-S14:")) {
         if (b.includes("cortex_unavailable")) {
           return {
