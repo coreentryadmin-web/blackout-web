@@ -1,20 +1,17 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T14:28:56.049Z
-**Run:** 21033fa9-fab9-4601-8319-cc5a4bb67247
+**At:** 2026-09-05T14:38:16.628Z
+**Run:** de8b073a-1c11-4807-8e50-e422819bce95
 
 ## Summary
 
-Peer-review sweep: marked #3979 ready + posted Claude review requests on #3971/#3978/#3979. validate:deploy GREEN. ECR 33969578363 still in_progress 47m+. All open code PRs are Cursor-authored — blocked on Claude peer review.
+Cycle complete: peer-review triage on #3971/#3978/#3979 (Claude blocked). validate:deploy + lifecycle + ops:collect GREEN. ECS COMPLETED. State sync pushed cursor/autopilot-work-loop-c4af. Continuing loop.
 
 ## Deploy
 
-- main: `31d4301e89310ab12ac7ea78716f4f54dd2ff996`
-- status: ECS rollout COMPLETED (8/8 tasks, taskDef :1298). GH Actions run 33969578363 still shows in_progress (stale).
+- main: `afaa338826f26a4caac49e290d6061b70f47fca4`
+- status: 
 
 ## Open PRs
 
-- #3979 [agent] fix(vector): fail-closed freshness on clock-skewed future asOf
-- #3978 [agent] fix(spx-desk): serve last RTH spot off-hours instead of price:0
-- #3972 [cursor] chore(state): sync after #3963 merge — CLQ fix PRs #3969-3971
-- #3971 [cursor] feat(commerce): post-checkout membership activating banner (CLQ-041)
+_none_

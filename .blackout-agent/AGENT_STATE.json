@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T14:29:09.664Z",
+  "updated_at": "2026-09-05T14:38:16.629Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -318,65 +318,14 @@
     }
   },
   "deploy": {
-    "last_main_sha": "31d4301e89310ab12ac7ea78716f4f54dd2ff996",
+    "last_main_sha": "afaa338826f26a4caac49e290d6061b70f47fca4",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T13:57:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33969578363",
-    "last_deploy_sha": "3637f6db3440e826434a9c3565fb09a9bd459900"
+    "last_deploy_at": "2026-09-05T14:33:49Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33972172332",
+    "last_deploy_sha": "85627d9c6cbeeafb2610b60fbd7fafbacf1f872b"
   },
-  "open_prs": [
-    {
-      "number": 3979,
-      "title": "fix(vector): fail-closed freshness on clock-skewed future asOf",
-      "branch": "fix/vector-freshness-clock-skew",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T14:29:06Z"
-    },
-    {
-      "number": 3978,
-      "title": "fix(spx-desk): serve last RTH spot off-hours instead of price:0",
-      "branch": "fix/spx-desk-offhours-last-spot",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T14:29:08Z"
-    },
-    {
-      "number": 3972,
-      "title": "chore(state): sync after #3963 merge — CLQ fix PRs #3969-3971",
-      "branch": "cursor/autopilot-state-sync-1340",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T14:28:08Z"
-    },
-    {
-      "number": 3971,
-      "title": "feat(commerce): post-checkout membership activating banner (CLQ-041)",
-      "branch": "cursor/membership-activating-banner-clq-041",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T14:28:55Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
-    {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:02.378Z",
       "type": "context_sync",
@@ -1686,6 +1635,25 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-05T14:38:11.160Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T14:38:16.627Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T14:38:16.629Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "de8b073a-1c11-4807-8e50-e422819bce95",
+      "summary": "Cycle complete: peer-review triage on #3971/#3978/#3979 (Claude blocked). validate:deploy + lifecycle + ops:collect GREEN. ECS COMPLETED. State sync pushed cursor/autopilot-work-loop-c4af. Continuing loop."
     }
   ],
   "pr_activity": {
