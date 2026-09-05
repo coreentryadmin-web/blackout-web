@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T14:39:07.053Z",
+  "updated_at": "2026-09-05T14:39:31.589Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,12 +68,12 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-05T14:34:18.279Z",
-      "lease_until": "2026-09-05T16:04:18.279Z",
+      "lease_until": "2026-09-05T16:09:19.486Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "b7367aac-d00a-4153-aef0-a1f43314172a",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -1542,6 +1542,37 @@
       "agent": "cursor",
       "run_id": "25004632-a821-4fa5-96d7-7f6d7fe5ebfb",
       "summary": "main@85627d9c6 post-#3971 merge; validate:deploy GREEN; #3978+#3972 awaiting Claude peer review; #3952 merged"
+    },
+    {
+      "at": "2026-09-05T14:39:18.687Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T14:39:19.485Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T14:39:20.134Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T14:39:31.588Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T14:39:31.589Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "fb47b6cf-ab6b-4236-8f49-ed99dea0b4b4",
+      "summary": "Cycle complete: #3971 merged deploy GREEN; #3978+#3972 pushed awaiting Claude; automerge gate tests 35/35 pass"
     }
   ],
   "pr_activity": {
