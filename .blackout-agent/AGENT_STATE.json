@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:40:00.000Z",
+  "updated_at": "2026-09-05T14:08:01.684Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,26 +67,26 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T11:35:23.963Z",
-      "lease_until": "2026-09-05T13:15:05.877Z",
+      "claimed_at": "2026-09-05T13:56:04.134Z",
+      "lease_until": "2026-09-05T15:26:36.798Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "50c8fd38-7415-4f2d-bc6c-88153b9459e9",
+      "run_id": "fde1486f-2852-42f3-85ac-f145698b5c58",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T11:42:09.507Z",
-      "lease_until": "2026-09-05T13:15:05.877Z",
+      "claimed_at": "2026-09-05T14:08:01.683Z",
+      "lease_until": "2026-09-05T15:38:01.683Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "50c8fd38-7415-4f2d-bc6c-88153b9459e9",
+      "run_id": null,
       "title": null
     },
     "BO-P1-0104": {
@@ -268,7 +268,7 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T12:20:00.000Z",
+      "last_seen": "2026-09-05T14:08:01.684Z",
       "current_task": "BO-P1-0101"
     }
   },
@@ -319,17 +319,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d96372440c9a8ff101c95d52826a38adebdc513a",
+    "last_main_sha": "9ae84a1694a77ed7b78136ba6625c4ca14fb1bce",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T10:36:36Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
-    "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
+    "last_deploy_at": "2026-09-05T13:57:08Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33969578363",
+    "last_deploy_sha": "3637f6db3440e826434a9c3565fb09a9bd459900"
   },
-  "open_prs": [
-    { "pr": 3952, "branch": "cursor/clq-answers-batch1-2026-09-05", "title": "CURSOR_ANSWERS_FOR_CLAUDE (54/54)", "author": "cursor", "awaiting": "claude_review" },
-    { "pr": 3955, "branch": "docs/finding-ecs-web-deploy-maxpercent", "title": "ECS maxPercent finding", "author": "claude", "awaiting": "claude_merge" },
-    { "pr": 3949, "branch": "cursor/autopilot-handoff-2026-09-05", "title": "stale state sync", "author": "cursor", "awaiting": "close" }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1533,6 +1529,25 @@
       "agent": "cursor",
       "run_id": "post-merge-sync",
       "summary": "main@d96372440: #3945+#3950+#3951+#3953 merged. #3952 CLQ answers awaiting Claude review. Claude must answer CQ-001–218 on main. #3945 merged without recorded Claude GitHub review — gate gap noted."
+    },
+    {
+      "at": "2026-09-05T14:07:57.289Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T14:07:57.291Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ff15b636-8260-4e7d-878e-3e63b36c4037",
+      "summary": "Autopilot wake (pull_request): RTH lifecycle GREEN (weekend skip); ops:collect 0 items; platform-integrity + SEO GREEN; deploy #3974 ECR still in_progress @13:40Z; open PRs: #3971 CLQ-041 membership banner verify GREEN — awaiting Claude peer review (Cursor cannot merge); #3972 draft state-sync CI pending; #3952 merged; no claude/fix PRs for Cursor review; local pre-review #3971: 8/8 unit tests pass, institutional cyan banner, 3s×40 poll with 429 Retry-After"
+    },
+    {
+      "at": "2026-09-05T14:08:01.684Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
     }
   ],
   "pr_activity": {
