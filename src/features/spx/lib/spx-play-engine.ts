@@ -244,7 +244,11 @@ async function evaluateOpenPlay(
   // We must NOT fire price-driven exits (stop/target/trail/trim) off a stale quote, and
   // we must not record MFE/MAE excursion peaks from a stale price. Time-based exits
   // (theta force-exit, session close) are independent of price and stay live below.
-  const deskStale = isDeskStale(deskAgeSec(desk.polled_at, desk.as_of), playGexStaleMaxSec());
+  const deskStaleMaxSec = playGexStaleMaxSec();
+  const deskStale = isDeskStale(
+    deskAgeSec(desk.polled_at, desk.as_of, Date.now(), deskStaleMaxSec),
+    deskStaleMaxSec
+  );
   const mfe = Math.max(row.mfe_pts, dir === "long" ? price - row.entry_price : row.entry_price - price);
   const mae = Math.max(row.mae_pts, dir === "long" ? row.entry_price - price : price - row.entry_price);
   if (mutate && !deskStale) {
