@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-2. GEX positioning polygon-fallback unconstrained walls — fix/gex-positioning-fallback-walls (pending)
+
+**What was broken:** When `getGexPositioning()` cache-missed, `/api/market/gex-positioning` fallback picked max +/- GEX strikes without side constraint — call walls could land below spot, put walls above spot (inverted resistance/support).
+
+**Fix:** Route fallback through `wallsFromStrikeTotals(strikeTotals, bundle.spot)` matching the primary `gex-positioning.ts` path.
+
+**Check at the open:** On a natural or forced cache-miss ticker during RTH, confirm degraded `call_wall >= spot` and `put_wall <= spot` when non-null.
+
 ### 0a-1b. Swing discovery WATCH spot refresh trusted stale last trades — fix/swing-discovery-underlying-spot-freshness (pending, #3893 sibling)
 
 **What was broken:** `swing-discovery` refreshed WATCH-name underlying spots via `fetchStockLastTrade` trusting any finite positive `.p` with no SIP timestamp check. A degraded-but-200-OK feed could overwrite plan-entry fallback with a stale price, skewing FORMING/TRIGGERED/EXTENDED setup-maturity flags on the member board.
