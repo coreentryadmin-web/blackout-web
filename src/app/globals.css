@@ -2998,6 +2998,23 @@ html.product-shell .nav-mega {
     @apply font-mono text-[11px] font-semibold text-sky-100/80;
   }
 
+  .nh-analytics-body {
+    @apply flex flex-col gap-2.5;
+  }
+
+  .nh-analytics-footnote {
+    @apply font-mono text-[10px] leading-relaxed text-sky-300/65;
+  }
+
+  /* Swing Command — analytics + cockpit strip above the play ledger. */
+  .nh-swing-deck-chrome {
+    @apply mb-2.5 flex shrink-0 flex-col gap-2;
+  }
+
+  .nh-swing-cockpit {
+    @apply flex-wrap px-1;
+  }
+
   .nh-analytics-tiles {
     @apply grid gap-2;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr));
@@ -22941,6 +22958,67 @@ html.product-shell .nav-mega {
 .nh-deck-largo__factors .pts.dn{color:var(--dk-bear)}
 .nh-deck-largo__note{margin:0;font-size:11px;line-height:1.45;color:var(--dk-text-secondary)}
 .nh-deck-trade-hero__tk-contract{font-size:22px;letter-spacing:.03em}
+
+/* Swing Command — readability: brighter secondary text + larger type on dense panels. */
+.nh-deck--swing-largo{
+  --dk-text-secondary:#B8BDC8;--dk-ink-dim:#B8BDC8;
+  font-size:13px;
+}
+.nh-deck--swing-largo .nh-deck-play-th,
+.nh-deck--swing-largo .nh-deck-play-th--sort{font-size:11px;color:#7DD3FC}
+.nh-deck--swing-largo .nh-deck-play-cell--rank{font-size:11px;color:#B8BDC8}
+.nh-deck--swing-largo .nh-deck-play-cell--play{font-size:15px;font-weight:800;color:#F8FAFC}
+.nh-deck--swing-largo .nh-deck-play-grade{font-size:15px;font-weight:900}
+.nh-deck--swing-largo .nh-deck-play-cell--time{font-size:14px;color:#67E8F9}
+.nh-deck--swing-largo .nh-deck-play-pnl{font-size:16px;font-weight:900}
+.nh-deck--swing-largo .nh-deck-premlab{font-size:10px;color:#B8BDC8;opacity:1}
+.nh-deck--swing-largo .nh-deck-status-pill{font-size:11px}
+.nh-deck--swing-largo .nh-deck-trade-hero__tk-contract{font-size:28px;font-weight:900;color:#F8FAFC}
+.nh-deck--swing-largo .nh-deck-trade-hero-dense .nh-deck-trade-hero__tk{font-size:28px}
+.nh-deck--swing-largo .nh-deck-trade-hero__dir{font-size:11px}
+.nh-deck--swing-largo .nh-deck-trade-hero__metric .k{font-size:11px;color:#B8BDC8;letter-spacing:.12em}
+.nh-deck--swing-largo .nh-deck-trade-hero__metric .v{font-size:18px;color:#F8FAFC}
+.nh-deck--swing-largo .nh-deck-trade-hero__metric.is-primary .v{font-size:28px}
+.nh-deck--swing-largo .nh-deck-trade-hero__chip{font-size:11px;color:#D1D5DB;border-color:rgba(148,163,184,.35)}
+.nh-deck--swing-largo .nh-deck-lifecycle-strip__lab{font-size:10px;color:#7DD3FC}
+.nh-deck--swing-largo .nh-deck-lifecycle-strip__val{font-size:13px;font-weight:800;color:#F8FAFC}
+.nh-deck--swing-largo .nh-deck-th-title{font-size:11px;color:#7DD3FC}
+.nh-deck--swing-largo .nh-deck-th-score{font-size:38px;color:#E0F2FE}
+.nh-deck--swing-largo .nh-deck-th-delta{font-size:12px}
+.nh-deck--swing-largo .nh-deck-th-delta .k{font-size:10px;color:#B8BDC8}
+.nh-deck--swing-largo .nh-deck-th-grid-hd{font-size:10px;color:#B8BDC8}
+.nh-deck--swing-largo .nh-deck-th-row{font-size:12px;padding:6px 0}
+.nh-deck--swing-largo .nh-deck-th-row .col-pillar .nm{font-size:12px;color:#F1F5F9;font-weight:700}
+.nh-deck--swing-largo .nh-deck-thlbl{font-size:10px;color:#B8BDC8}
+.nh-deck--swing-largo .nh-deck-th-advisory{font-size:12px;border-color:rgba(56,189,248,.28);background:rgba(56,189,248,.06)}
+.nh-deck--swing-largo .nh-deck-th-advisory .tx{font-size:12px;color:#F1F5F9;line-height:1.5}
+.nh-deck--swing-largo .nh-deck-th-advisory .mgmt{font-size:12px}
+.nh-deck--swing-largo .nh-deck-premium__heading{font-size:11px;color:#9DD9FF;letter-spacing:.14em}
+.nh-deck--swing-largo .nh-deck-premium-note{font-size:12px;line-height:1.45}
+.nh-deck--swing-largo .nh-deck-action-card__banner{font-size:10px}
+.nh-deck--swing-largo .nh-deck-action-card__verb{font-size:24px}
+.nh-deck--swing-largo .nh-deck-action-card__row{font-size:12px}
+.nh-deck--swing-largo .nh-deck-action-card__key{color:#7DD3FC}
+.nh-deck--swing-largo .nh-deck-action-card__val{color:#F8FAFC}
+.nh-deck--swing-largo .nh-deck-recnote{font-size:12px;color:#D1D5DB;line-height:1.45}
+.nh-deck--swing-largo .nh-deck-meta .k,
+.nh-deck--swing-largo .nh-deck-grid .k{font-size:11px;color:#B8BDC8}
+.nh-deck--swing-largo .nh-deck-meta .v,
+.nh-deck--swing-largo .nh-deck-grid .v{font-size:14px;color:#F8FAFC}
+.nh-deck--swing-largo .nh-deck-excursion-graphic__stat .s{font-size:11px;color:#B8BDC8}
+.nh-deck--swing-largo .nh-deck-excursion-graphic__stat .v{font-size:14px}
+.nh-deck--swing-largo .nh-deck-largo__title{font-size:20px}
+.nh-deck--swing-largo .nh-deck-largo__factors li{font-size:12px}
+.nh-deck--swing-largo .nh-deck-largo__note{font-size:12px;color:#D1D5DB}
+.nh-swing-deck-chrome .nh-analytics-panel-title{font-size:12px}
+.nh-swing-deck-chrome .nh-analytics-panel-sub{font-size:11px;color:#9DD9FF}
+.nh-swing-deck-chrome .nh-analytics-tile-label{font-size:10px;color:#7DD3FC}
+.nh-swing-deck-chrome .nh-analytics-tile-value{font-size:1.35rem}
+.nh-swing-deck-chrome .nh-analytics-footnote{font-size:11px;color:#B8BDC8}
+.nh-swing-deck-chrome .nh-deck-ck--compact .ckh{font-size:9px;color:#7DD3FC}
+.nh-swing-deck-chrome .nh-deck-ck--compact .ckv,
+.nh-swing-deck-chrome .nh-deck-ck--compact .ckv b{font-size:13px;color:#F8FAFC}
+
 @media (max-width:1100px){.nh-deck--swing-largo .nh-deck-largo{display:none}}
 .nh-deck-play-grid{display:grid;grid-template-columns:var(--nh-play-cols);column-gap:20px;align-items:center;min-width:0;width:100%}
 .nh-deck-play-table-head{padding:8px 12px 10px;margin:0 6px;border-bottom:1px solid rgba(110,122,153,.18);

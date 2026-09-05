@@ -1,10 +1,22 @@
 "use client";
 
+import { clsx } from "clsx";
 import type { TerminalPlay } from "./types";
 import { formatScanFreshnessEt } from "./swing-cockpit-utils";
 
 const WORKING = new Set(["OPEN", "HOLD", "TRIM"]);
 const WATCHING = new Set(["WATCH", "SKIP"]);
+
+function CockpitStat({ label, value, tone }: { label: string; value: string; tone?: "up" | "down" }) {
+  return (
+    <div className="nh-deck-ck nh-deck-ck--compact">
+      <span className="ckh">{label}</span>
+      <span className={clsx("ckv", tone === "up" && "nh-deck-pos", tone === "down" && "nh-deck-neg")}>
+        <b>{value}</b>
+      </span>
+    </div>
+  );
+}
 
 export function SwingCockpitStrip({
   plays,
@@ -32,38 +44,17 @@ export function SwingCockpitStrip({
 
   return (
     <div className="nh-deck-cockpit nh-deck-cockpit--compact nh-swing-cockpit" aria-label="Swing command cockpit">
-      <div className="nh-deck-cockpit__stat">
-        <span className="k">Open</span>
-        <span className="v">{openCount}</span>
-      </div>
-      <div className="nh-deck-cockpit__stat">
-        <span className="k">Buyable</span>
-        <span className="v">{buyCount}</span>
-      </div>
-      <div className="nh-deck-cockpit__stat">
-        <span className="k">Watch</span>
-        <span className="v">{watchCount}</span>
-      </div>
-      <div className="nh-deck-cockpit__stat">
-        <span className="k">Session P&L</span>
-        <span className={`v ${sessionPnl != null && sessionPnl > 0 ? "nh-deck-pos" : sessionPnl != null && sessionPnl < 0 ? "nh-deck-neg" : ""}`}>
-          {sessionPnl != null ? `${sessionPnl >= 0 ? "+" : ""}${sessionPnl}%` : "—"}
-        </span>
-      </div>
-      <div className="nh-deck-cockpit__stat">
-        <span className="k">30d WR</span>
-        <span className="v">{winRatePct != null ? `${winRatePct}%` : "—"}</span>
-      </div>
-      <div className="nh-deck-cockpit__stat">
-        <span className="k">Scan</span>
-        <span className="v">{scanLabel}</span>
-      </div>
-      {regime && (
-        <div className="nh-deck-cockpit__stat">
-          <span className="k">Regime</span>
-          <span className="v">{regime}</span>
-        </div>
-      )}
+      <CockpitStat label="Open" value={String(openCount)} />
+      <CockpitStat label="Buyable" value={String(buyCount)} />
+      <CockpitStat label="Watch" value={String(watchCount)} />
+      <CockpitStat
+        label="Session P&L"
+        value={sessionPnl != null ? `${sessionPnl >= 0 ? "+" : ""}${sessionPnl}%` : "—"}
+        tone={sessionPnl != null ? (sessionPnl > 0 ? "up" : sessionPnl < 0 ? "down" : undefined) : undefined}
+      />
+      <CockpitStat label="30d WR" value={winRatePct != null ? `${winRatePct}%` : "—"} />
+      <CockpitStat label="Scan" value={scanLabel} />
+      {regime && <CockpitStat label="Regime" value={regime} />}
     </div>
   );
 }

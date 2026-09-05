@@ -104,22 +104,29 @@ export function SwingAnalyticsPanel() {
       </button>
       {!collapsed && summary && (
         <div className="nh-analytics-body" id="nh-swing-analytics-body">
-          <div className="nh-analytics-kpis">
-            <div className="nh-analytics-kpi">
-              <span className="k">Win rate</span>
-              <span className="v">{fmtPct(summary.win_rate_pct)}</span>
+          <div className="nh-analytics-tiles">
+            <div className="nh-analytics-tile">
+              <span className="nh-analytics-tile-label">Win rate</span>
+              <span className="nh-analytics-tile-value text-sky-100">{fmtPct(summary.win_rate_pct)}</span>
             </div>
-            <div className="nh-analytics-kpi">
-              <span className="k">Avg chain</span>
-              <span className="v">{fmtSignedPct(summary.avg_compounded_return_pct)}</span>
+            <div className="nh-analytics-tile">
+              <span className="nh-analytics-tile-label">Avg chain</span>
+              <span
+                className={clsx(
+                  "nh-analytics-tile-value",
+                  (summary.avg_compounded_return_pct ?? 0) >= 0 ? "text-emerald-300" : "text-rose-300",
+                )}
+              >
+                {fmtSignedPct(summary.avg_compounded_return_pct)}
+              </span>
             </div>
-            <div className="nh-analytics-kpi">
-              <span className="k">Resolved</span>
-              <span className="v">{summary.resolved_chains}</span>
+            <div className="nh-analytics-tile">
+              <span className="nh-analytics-tile-label">Resolved</span>
+              <span className="nh-analytics-tile-value text-sky-100">{summary.resolved_chains}</span>
             </div>
-            <div className="nh-analytics-kpi">
-              <span className="k">Open</span>
-              <span className="v">{summary.opens}</span>
+            <div className="nh-analytics-tile">
+              <span className="nh-analytics-tile-label">Open</span>
+              <span className="nh-analytics-tile-value text-sky-100">{summary.opens}</span>
             </div>
           </div>
           <p className="nh-analytics-footnote">

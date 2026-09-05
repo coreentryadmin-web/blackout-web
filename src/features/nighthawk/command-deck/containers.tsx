@@ -321,10 +321,10 @@ export function HorizonDeck({
   return (
     <>
       {horizon === "SWING" && (
-        <>
+        <div className="nh-swing-deck-chrome">
           <SwingAnalyticsPanel />
           <SwingCockpitStrip plays={playsWithTrack} scanAsOf={scanAsOf} winRatePct={swingWinRate} />
-        </>
+        </div>
       )}
       <CommandDeck
       plays={playsWithTrack}
