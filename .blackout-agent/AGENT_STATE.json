@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T17:27:07.001Z",
+  "updated_at": "2026-09-05T17:28:17.570Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,12 +68,12 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-05T17:24:39.742Z",
-      "lease_until": "2026-09-05T18:54:39.742Z",
+      "lease_until": "2026-09-05T18:57:31.526Z",
       "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "6a38829e-a3a3-457d-aca5-d8d3997025ea",
       "title": null
     },
     "BO-P1-0101": {
@@ -334,34 +334,6 @@
   },
   "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
-    {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:02.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.919Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:14.071Z",
       "type": "context_sync",
@@ -1635,6 +1607,43 @@
       "agent": "cursor",
       "run_id": "fec0e72b-0e6f-48ed-9dd3-0b94f72640f9",
       "summary": "Peer-reviewed #4015 APPROVED (validate-deploy off-hours force-warm skip). validate:deploy GREEN on main. ops:collect 0 items. #4015 still draft awaiting agent mark-ready. Duplicate cursor state-sync PRs (#4012/#4014/#3996) need Claude review or close."
+    },
+    {
+      "at": "2026-09-05T17:27:22.298Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:27:31.524Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:27:32.241Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:27:33.032Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:28:17.568Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:28:17.570Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "a0c429ef-c8f0-486e-97a7-194c6a34efaa",
+      "summary": "Cycle complete: #4015 APPROVED (verify pending), lifecycle GREEN, ops clean, #4018 state sync opened. Standing queue continues — #4015 blocked on draft clearance."
     }
   ],
   "pr_activity": {
