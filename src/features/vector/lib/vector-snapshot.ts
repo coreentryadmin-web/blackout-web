@@ -443,7 +443,7 @@ export async function getVectorGammaFlip(ticker: string = VECTOR_DEFAULT_TICKER)
   const t = normalizeVectorTicker(ticker);
   const s = state(t);
   const now = Date.now();
-  if (now - s.cachedFlipAt < FLIP_CACHE_MS) return s.cachedFlip;
+  if (isWsUpdatedAtFresh(s.cachedFlipAt, FLIP_CACHE_MS, now)) return s.cachedFlip;
   try {
     const pos = await getGexPositioning(t);
     s.cachedFlip = pos?.flip ?? null;
@@ -674,7 +674,7 @@ export async function buildVectorStreamPayload(
   // exceeded the 1s hub tick budget, tripping the refreshInFlight guard in
   // vector-stream-hub and freezing the entire SSE frame — including spot price.
   const gammaFlip = s.cachedFlip;
-  if (Date.now() - s.cachedFlipAt >= FLIP_CACHE_MS && !s.flipRefreshInFlight) {
+  if (!isWsUpdatedAtFresh(s.cachedFlipAt, FLIP_CACHE_MS) && !s.flipRefreshInFlight) {
     s.flipRefreshInFlight = true;
     getGexPositioning(t)
       .then(pos => { s.cachedFlip = pos?.flip ?? null; })
@@ -683,7 +683,7 @@ export async function buildVectorStreamPayload(
   }
   const vexFlip = getVectorVexFlip(t);
   const darkPool = s.cachedDarkPool;
-  if (Date.now() - s.cachedDarkPoolAt >= DARK_POOL_LOCAL_CACHE_MS && !s.darkPoolRefreshInFlight) {
+  if (!isWsUpdatedAtFresh(s.cachedDarkPoolAt, DARK_POOL_LOCAL_CACHE_MS) && !s.darkPoolRefreshInFlight) {
     s.darkPoolRefreshInFlight = true;
     getCachedVectorDarkPoolWithAge(t)
       .then(dp => { s.cachedDarkPool = dp; })
