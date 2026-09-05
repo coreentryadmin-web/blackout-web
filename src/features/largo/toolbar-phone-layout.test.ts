@@ -82,3 +82,11 @@ test("REGRESSION: no toolbar button collapses to nothing when labels are hidden"
 test("the mobile label-hiding rule still exists — the fix depends on it", () => {
   assert.match(CSS, /\.largo-toolbar-btn-label \{\s*display: none;/);
 });
+
+test("REGRESSION: no local formatRelative helper — history uses ET clock via session-grouping", () => {
+  // An old flat "2h ago" helper used raw Date.now()-ts with no future guard; the list now uses
+  // groupConversationsByDay → etClock. Re-adding a subtract-only relative helper would revive
+  // the false-fresh "just now" defect on clock-skewed timestamps.
+  assert.doesNotMatch(TOOLBAR, /function formatRelative\(/);
+  assert.match(TOOLBAR, /groupConversationsByDay\(/);
+});
