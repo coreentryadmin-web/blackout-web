@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:36:57.625Z",
+  "updated_at": "2026-09-05T15:45:35.995Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -258,6 +258,14 @@
       "reviewer": "cursor",
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T12:35:00.000Z",
+      "safe_to_merge": true
+    },
+    "pr-3991": {
+      "pr": 3991,
+      "head_sha": "a3abf2cb6b5016bba1485771750d271f368c3761",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T15:45:35.994Z",
       "safe_to_merge": true
     }
   },
@@ -1560,6 +1568,16 @@
       "agent": "cursor",
       "run_id": "d02d1424-0026-4940-a711-90d8afef98a1",
       "summary": "pull_request wake: lifecycle GREEN (deploy, platform-integrity 14/14, SEO 22/22, ops:collect 0). Closed duplicate state-sync PRs #3986/#3989. #3991 Claude CQ-001–218 answers (218/218) — CI pending, peer review queued. #3987 Cursor HARD MERGE GATE — awaiting Claude review (cannot self-approve). #3952/#3955 merged since last handoff."
+    },
+    {
+      "at": "2026-09-05T15:45:35.995Z",
+      "type": "pr_review",
+      "pr": 3991,
+      "head_sha": "a3abf2cb6b5016bba1485771750d271f368c3761",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T15:45:35.994Z",
+      "safe_to_merge": true
     }
   ],
   "pr_activity": {
