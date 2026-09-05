@@ -211,15 +211,17 @@ test("fetchOpenPrs: a genuinely empty GraphQL result (real 0 open PRs) short-cir
   // empty-but-successful `gh pr list` the same as a GraphQL FAILURE, falling through to REST and
   // spending its separate, scarcer budget on a call that was never needed.
   let calls = 0;
-  t.mock.module("node:child_process", {
+  t.mock.module("./lib/gh.mjs", {
     namedExports: {
-      spawnSync: (cmd, args) => {
+      ghEnv: () => ({ ...process.env }),
+      ghJson: (args) => {
         calls += 1;
-        if (cmd === "gh" && args[0] === "pr" && args[1] === "list") {
-          return { status: 0, stdout: "[]" };
+        if (args[0] === "pr" && args[1] === "list") {
+          return [];
         }
-        throw new Error(`unexpected spawnSync call: ${cmd} ${args.join(" ")}`);
+        return null;
       },
+      ghRun: () => ({ ok: false, stdout: "", stderr: "", status: 1 }),
     },
   });
   const { fetchOpenPrs } = await import(`./sync-context.mjs?t=${Date.now()}`);
