@@ -11,6 +11,30 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-05 (00:16 UTC / Fri 2026-09-04 20:16 ET) — [SEO] Lane heartbeat: own PR merged, sweep clean
+
+**Severity.** — (no defect found)
+
+**Step 1 — re-validate shipped fixes.** `/api/og?title=Test`: `200`, `image/png`, 44687 bytes —
+still crawlable (#2448 holds). CLS not re-measured (already confirmed clean this morning,
+09:35 ET, 0.0001 post-purge; no homepage-affecting change landed since).
+
+**Step 2 — unblock self.** `agent-pr-sweep.mjs`: 4 open agent PRs. Of those, **#3797** (`fix(seo):
+stop Pricing describing a six-module platform that sells seven` — my own earlier PR, hardcoded
+"six trading modules" copy vs. the manifest's real 7 products) had Cursor's substance approval
+pending only on `verify` CI. Watched it clear (had briefly gone `dirty` after #3788/#3794 landed
+underneath it, then cleared once rebased), confirmed `verify` GREEN, Cursor posted final
+`✅ GO AHEAD MERGE`, and it merged cleanly per the CARVE-OUT protocol — `4b18a4b65` on `main`.
+The other 3 open PRs (#3808, #3809, #3807) are swing/api/admin-lane, not SEO — nothing to rebase.
+
+**Step 3 — new work.** Re-swept all 74 sitemap URLs post-881-commits: still 74/74 return 200, no
+new drift. GSC resubmit and CF token re-check not retried this cycle (already tried twice this
+session, both denied by the permission classifier; retrying a third time in the same session adds
+no new information).
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-04 (22:16 UTC / Fri 2026-09-04 18:16 ET) — [UW rate limiter, follows up PR #3759] First live data from the new queue-wait instrumentation: MANY untagged waits of 11-19s, far more than the tagged "(background sweep)" waits — source not yet conclusively identified
 
 **Severity.** — investigation only, real new evidence, but the causal attribution below is
