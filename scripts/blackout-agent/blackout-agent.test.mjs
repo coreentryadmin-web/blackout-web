@@ -7,6 +7,19 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
+test("ghEnv strips GH_TOKEN so hosts.yml auth can succeed", async () => {
+  const { ghEnv } = await import("./lib/gh.mjs");
+  const prior = process.env.GH_TOKEN;
+  process.env.GH_TOKEN = "invalid-placeholder";
+  try {
+    const env = ghEnv();
+    assert.equal(env.GH_TOKEN, undefined);
+  } finally {
+    if (prior === undefined) delete process.env.GH_TOKEN;
+    else process.env.GH_TOKEN = prior;
+  }
+});
+
 test("claimLock: first claim succeeds", async () => {
   const { claimLock, releaseLock } = await import("./lib/locks.mjs");
   const r = claimLock("BO-TEST-0001", "cursor", { phase: "IMPLEMENTING", leaseMs: 60_000 });

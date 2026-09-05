@@ -3,17 +3,8 @@ import { spawnSync } from "node:child_process";
 import { appendEvent, readAgentState, writeAgentState } from "./lib/state.mjs";
 import { expireStaleLocksSync, readLock } from "./lib/locks.mjs";
 import { LOCKS_DIR } from "./lib/paths.mjs";
+import { ghJson } from "./lib/gh.mjs";
 import { existsSync, readdirSync } from "node:fs";
-
-function ghJson(args) {
-  const r = spawnSync("gh", args, { encoding: "utf8" });
-  if (r.status !== 0) return null;
-  try {
-    return JSON.parse(r.stdout || "[]");
-  } catch {
-    return null;
-  }
-}
 
 export function resolveGithubRepo() {
   const env = process.env.GITHUB_REPOSITORY?.trim();

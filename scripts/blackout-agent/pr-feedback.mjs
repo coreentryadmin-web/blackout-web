@@ -6,9 +6,9 @@
  *   GITHUB_EVENT_NAME=opened GITHUB_PR_NUMBER=123 node scripts/blackout-agent/pr-feedback.mjs
  *   node scripts/blackout-agent/pr-feedback.mjs --pr=123 --event=synchronize [--dry-run]
  */
-import { spawnSync } from "node:child_process";
 import { appendEvent, readAgentState, writeAgentState } from "./lib/state.mjs";
 import { withStateLock } from "./lib/state-lock.mjs";
+import { ghJson, ghRun } from "./lib/gh.mjs";
 
 function parseArgs(argv) {
   const out = {
@@ -28,21 +28,6 @@ function parseArgs(argv) {
   }
   if (typeof out.pr === "string") out.pr = Number(out.pr);
   return out;
-}
-
-function ghJson(args) {
-  const r = spawnSync("gh", args, { encoding: "utf8" });
-  if (r.status !== 0) return null;
-  try {
-    return JSON.parse(r.stdout || "null");
-  } catch {
-    return null;
-  }
-}
-
-function ghRun(args) {
-  const r = spawnSync("gh", args, { encoding: "utf8" });
-  return { ok: r.status === 0, stdout: r.stdout, stderr: r.stderr, status: r.status };
 }
 
 /** GITHUB_REPOSITORY is set in Actions; local agents resolve via gh. */
