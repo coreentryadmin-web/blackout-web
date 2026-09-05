@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildPolygonLargoFetchInit } from "./polygon-largo";
+import {
+  buildPolygonLargoFetchInit,
+  freshStockLastTradePrice,
+  stockLastTradeAtMs,
+  STOCK_LAST_TRADE_DEFAULT_MAX_STALE_MS,
+} from "./polygon-largo";
 
 // Regression for #3187 / PR #3202: a trailing spread `{ cache: "no-store", ...fetchInit }` left
 // `cache` in place when `fetchInit` only set `next.revalidate`, so Next's fetch patch ignored
@@ -23,4 +28,22 @@ test("buildPolygonLargoFetchInit: explicit cache override when no next.revalidat
   const init = buildPolygonLargoFetchInit({ cache: "force-cache" });
   assert.equal(init.cache, "force-cache");
   assert.equal(init.next, undefined);
+});
+
+test("stockLastTradeAtMs: nanosecond sip_timestamp converts to epoch ms", () => {
+  const at = 1_700_000_000_000_000_000; // ns
+  assert.equal(stockLastTradeAtMs({ sip_timestamp: at }), 1_700_000_000_000);
+});
+
+test("freshStockLastTradePrice: rejects stale prints beyond default bound", () => {
+  const now = 1_700_000_000_000;
+  const staleAt = now - STOCK_LAST_TRADE_DEFAULT_MAX_STALE_MS - 1;
+  assert.equal(
+    freshStockLastTradePrice({ p: 150, t: staleAt * 1e6 }, STOCK_LAST_TRADE_DEFAULT_MAX_STALE_MS, now),
+    null,
+  );
+  assert.equal(
+    freshStockLastTradePrice({ p: 150, t: (now - 60_000) * 1e6 }, STOCK_LAST_TRADE_DEFAULT_MAX_STALE_MS, now),
+    150,
+  );
 });

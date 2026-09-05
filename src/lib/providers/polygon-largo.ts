@@ -7,6 +7,7 @@ import { polygonConfigured } from "./config";
 import { priorEtYmd, todayEtYmd } from "./spx-session";
 import { recordDataSourceing } from "@/features/nighthawk/lib/diagnostics";
 import { stampBars } from "@/lib/largo/temporal/bar-session-date";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 // Primary/fallback URL failover: when the circuit breaker trips (5 consecutive 429s),
 // switch to the fallback URL so requests aren't blocked for the full pause window.
@@ -498,6 +499,30 @@ export async function fetchStockLastNbbo(ticker: string) {
   const sym = ticker.toUpperCase().replace(/^I:/, "");
   const data = await polygonGet<{ results?: Record<string, unknown> }>(`/v2/last/nbbo/${sym}`, {});
   return data?.results ?? null;
+}
+
+/** Default staleness bound for stock last-trade reads that gate real-money manage paths. */
+export const STOCK_LAST_TRADE_DEFAULT_MAX_STALE_MS = 25 * 60 * 1000;
+
+/** Epoch ms from a Polygon `/v2/last/trade` row — null when timestamp missing or unusable. */
+export function stockLastTradeAtMs(trade: Record<string, unknown> | null | undefined): number | null {
+  if (!trade || typeof trade !== "object") return null;
+  const raw = Number(trade.t ?? trade.sip_timestamp ?? trade.participant_timestamp ?? 0);
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  return raw > 1e15 ? Math.floor(raw / 1e6) : Math.floor(raw);
+}
+
+/** Price from last-trade only when the print timestamp is fresh — null otherwise (honest absence). */
+export function freshStockLastTradePrice(
+  trade: Record<string, unknown> | null | undefined,
+  maxStaleMs: number = STOCK_LAST_TRADE_DEFAULT_MAX_STALE_MS,
+  now = Date.now(),
+): number | null {
+  const p = trade && typeof trade === "object" ? Number(trade.p) : NaN;
+  if (!Number.isFinite(p) || p <= 0) return null;
+  const atMs = stockLastTradeAtMs(trade);
+  if (atMs == null || !isWsUpdatedAtFresh(atMs, maxStaleMs, now)) return null;
+  return p;
 }
 
 export async function fetchStockLastTrade(ticker: string) {

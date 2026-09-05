@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a0b. Swing active-refresh underlying spot stale last-trade guard — fix/swing-underlying-spot-stale-guard (pending)
+
+**What was broken:** `loadUnderlyingSpot` in `swing-active-refresh` read Polygon `/v2/last/trade` price without checking the print timestamp. A prior-session last trade could feed `structural_stop` and falsely latch BROKEN on a held swing position.
+
+**Fix:** `freshStockLastTradePrice` + `stockLastTradeAtMs` in `polygon-largo.ts` (25m bound via `isWsUpdatedAtFresh`); stale → null → position skipped this tick.
+
+**Check at the open:** Held swing with pinned `thesis_invalidation_px` — Monday first `swing-active-refresh` pass must not append structural_stop BROKEN off Friday's last print when spot is actually above/below stop.
+
 ### 0a0. SPX playbook breakout HOD/LOD used extended-hours bars — fix/spx-playbook-breakout-rth-filter (pending)
 
 **What was broken:** `sessionBreakoutExtremesFromBars` computed session HOD/LOD from all Polygon minute bars including premarket/after-hours. Premarket spikes could inflate HOD and suppress `hod_break` during RTH (desk session stats already RTH-gated via `filterRthBars`).

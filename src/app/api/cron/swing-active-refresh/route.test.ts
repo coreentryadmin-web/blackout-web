@@ -30,3 +30,12 @@ test("swing-active-refresh background dispatch is wrapped in runWithBackgroundUw
   );
   assert.match(routeSrc, /runWithBackgroundUwSweep\(\(\) => runSwingActiveRefreshCron\(started\)\)/);
 });
+
+test("swing-active-refresh: underlying spot rejects stale last-trade timestamps", () => {
+  assert.match(routeSrc, /freshStockLastTradePrice/);
+  assert.doesNotMatch(
+    routeSrc,
+    /Number\(\(trade as Record<string, unknown>\)\.p\)/,
+    "must not use raw last-trade price without freshness guard"
+  );
+});
