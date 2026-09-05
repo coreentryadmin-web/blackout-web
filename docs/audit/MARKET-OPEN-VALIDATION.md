@@ -118,6 +118,18 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
+
+### 0ao. Vector volume profile extended-hours pollution — fix/vector-volume-profile-rth-scope (pending)
+
+**What was broken:** Default-on Vector volume profile fed the full multi-session minute buffer (including premarket/after-hours) into `computeVolumeProfile`, so POC and value-area bands on equities could anchor to extended-hours spikes instead of the current RTH session. HOD/LOD, opening range, and VWAP got the RTH gate in the 2026-08-05 audit; volume profile was missed.
+
+**Fix:** Add `sessionRthVolumeProfileBars()` (`lastSessionBars` + `filterRthBarsSec`) and scope `VectorChart.tsx` + `vector-analytics-core.ts` through it.
+
+**Check at the open:** On `/vector` with volume profile enabled for NVDA or TSLA during RTH, POC must sit near the RTH price cluster — not at a premarket spike level visible only in extended hours.
+
+---
+
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
 ### 0an. Night Hawk hunt roundFloats — fix/nighthawk-hunt-roundfloats (pending)
