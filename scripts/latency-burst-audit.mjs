@@ -21,6 +21,7 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
+import { isDeployCacheWarmAllowed } from "./lib/cache-warm-deploy-gate.mjs";
 
 const ROUNDS = Number(process.argv.find((a) => a.startsWith("--rounds="))?.split("=")[1] ?? 5);
 const OUT = join(process.cwd(), "audit-output");
@@ -41,11 +42,18 @@ const PATHS = [
 ];
 
 async function warm(base, cron) {
-  for (const p of ["/api/cron/desk-warm?force=1", "/api/cron/heatmap-warm?force=1"]) {
-    try {
-      await fetchRetry(`${base}${p}`, { headers: { Authorization: `Bearer ${cron}` } }, { retries: 2, timeoutMs: 180_000 });
-    } catch {
-      /* best-effort */
+  if (!isDeployCacheWarmAllowed()) {
+    console.warn(
+      "Outside ET extended warm window (weekday 4 AM–8 PM) — skipping force=1 cache warmers " +
+        "(prevents off-hours desk-warm storms from concurrent audit runs, see #4013/#4017)"
+    );
+  } else {
+    for (const p of ["/api/cron/desk-warm?force=1", "/api/cron/heatmap-warm?force=1"]) {
+      try {
+        await fetchRetry(`${base}${p}`, { headers: { Authorization: `Bearer ${cron}` } }, { retries: 2, timeoutMs: 180_000 });
+      } catch {
+        /* best-effort */
+      }
     }
   }
   for (const path of PATHS) {

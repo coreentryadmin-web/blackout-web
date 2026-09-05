@@ -18,6 +18,7 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
+import { isDeployCacheWarmAllowed } from "./lib/cache-warm-deploy-gate.mjs";
 
 const OUT = join(process.cwd(), "audit-output");
 mkdirSync(OUT, { recursive: true });
@@ -55,6 +56,13 @@ async function probe(base, cronSecret, path) {
 }
 
 async function warmCaches(base, cronSecret) {
+  if (!isDeployCacheWarmAllowed()) {
+    console.log(
+      "  (outside ET extended warm window (weekday 4 AM–8 PM) — skipping force=1 cache warmers, " +
+        "prevents off-hours desk-warm storms from concurrent audit runs, see #4013/#4017)"
+    );
+    return;
+  }
   const paths = [
     "/api/cron/desk-warm?force=1",
     "/api/cron/heatmap-warm?force=1",
