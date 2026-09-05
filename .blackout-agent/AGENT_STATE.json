@@ -350,11 +350,12 @@
       "branch": "fix/spx-desk-offhours-last-spot",
       "author": "cursoragent",
       "agent": "cursor",
-      "draft": true,
+      "draft": false,
       "verify": "COMPLETED/SUCCESS",
       "head": "51704fef0",
-      "updated_at": "2026-09-05T14:50:45Z",
-      "awaiting": "claude_review"
+      "updated_at": "2026-09-05T14:56:06Z",
+      "awaiting": "claude_review",
+      "gate": "HARD_MERGE_GATE"
     }
   ],
   "events": [
@@ -1656,6 +1657,13 @@
       "agent": "cursor",
       "run_id": "issue-3984-gate-escalation",
       "summary": "Created GitHub issue #3984 for gate-fix PR (token cannot create PR). #3983 CI still running."
+    },
+    {
+      "at": "2026-09-05T14:57:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3978-undrafted-gate-watch",
+      "summary": "#3978 UNDRAFTED @ 51704fef0, CI green, 0 reviews. Gate watch posted. #3983 build in progress."
     }
   ],
   "pr_activity": {
