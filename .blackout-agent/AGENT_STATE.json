@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T10:47:06.318Z",
+  "updated_at": "2026-09-05T11:08:19.772Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -248,24 +248,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38",
+    "last_main_sha": "6ab35e6816e05fb1c523006c4d01a103ddae9640",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T10:36:36Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
     "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
   },
-  "open_prs": [
-    {
-      "number": 3939,
-      "title": "chore(state): sync autopilot after #3934-#3937 merge sweep",
-      "branch": "cursor/state-sync-20260905-1038",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T10:38:52Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1318,6 +1307,24 @@
       "agent": "cursor",
       "run_id": "a1f2cc6c-aeb4-4224-95ee-9207269e436b",
       "summary": "#3939 CI GREEN @ 833c7a36b, undrafted for Claude merge. Closed duplicate #3938. main@1eeb1c277. Standing verify GREEN. Pattern scan: no new freshness/UW-sweep gaps found."
+    },
+    {
+      "at": "2026-09-05T11:08:19.284Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T11:08:19.630Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T11:08:19.772Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ]
 }
