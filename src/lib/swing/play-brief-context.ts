@@ -29,6 +29,7 @@ import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
 import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { normalizeDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { SwingPlayBriefContext } from "./play-brief-types";
+import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 
 function horizonRowToDeckSource(p: HorizonPlay): HorizonDeckSource {
   return {
@@ -166,6 +167,7 @@ export async function loadSwingPlayBriefContext(input: {
   return {
     play: terminal,
     asOf,
+    sessionDate: etSessionDate(nowMs),
     scanAsOf,
     scanSessionDay,
     ecosystem,

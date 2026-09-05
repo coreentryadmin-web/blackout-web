@@ -7,6 +7,8 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
 export type SwingPlayBriefContext = {
   play: TerminalPlay;
   asOf: string;
+  /** ET session date for the brief stamp (YYYY-MM-DD). */
+  sessionDate: string | null;
   scanAsOf: string | null;
   ecosystem: EcosystemContext | null;
   vector: VectorFullState | null;

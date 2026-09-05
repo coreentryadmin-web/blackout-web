@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { etClock } from "@/lib/et-clock";
 import type { TerminalPlay } from "./types";
 import { playContractHeadline } from "./play-card-lifecycle";
 import { useSwingPlayBrief } from "@/hooks/useSwingPlayBrief";
 import { BieAnswer } from "@/features/largo/answer/BieAnswer";
 import { renderEnvelopeMarkdown } from "@/lib/bie/answer-envelope";
-import { etClock } from "@/lib/et-clock";
 
 /** Center-rail Largo play intelligence — deterministic Ask Largo brief per selected play. */
 export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null }) {
