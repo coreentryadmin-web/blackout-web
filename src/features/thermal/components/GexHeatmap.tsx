@@ -26,6 +26,7 @@ import ThermalTripleDesk, {
 } from "@/features/thermal/components/ThermalTripleDesk";
 import { ThermalGridSectorPicker } from "@/features/thermal/components/ThermalGridSectorPicker";
 import { GreeksDistributionPanel } from "@/features/thermal/components/GreeksDistributionPanel";
+import { ThetaDistributionPanel } from "@/features/thermal/components/ThetaDistributionPanel";
 import {
   buildThermalUrlSearch,
   keyLevelsKicker,
@@ -4520,11 +4521,15 @@ export function GexHeatmap({
                 )}
               </TabPanel>
               <TabPanel value="pair-d">
-                <GreeksDistributionPanel
-                  cells={cells}
-                  spot={data?.spot ?? null}
-                  ticker={ticker}
-                />
+                {lens === "charm" ? (
+                  <ThetaDistributionPanel cells={cells} spot={data?.spot ?? null} />
+                ) : (
+                  <GreeksDistributionPanel
+                    cells={cells}
+                    spot={data?.spot ?? null}
+                    ticker={ticker}
+                  />
+                )}
               </TabPanel>
             </TabPanels>
           </Tabs>
