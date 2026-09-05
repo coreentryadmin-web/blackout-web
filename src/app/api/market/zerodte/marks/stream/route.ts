@@ -8,7 +8,8 @@
 // Client fallback: GET /api/market/zerodte/marks polled at 2–3s.
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
-import { requireToolApi } from "@/lib/tool-access-server";
+import { recheckUserSseDeskAccess } from "@/lib/sse-desk-stream-auth";
+import { requireToolApiForDeskCaller } from "@/lib/tool-access-server";
 import { ensureZeroDteMarkPoller, getZeroDteLiveMarksFrame } from "@/lib/zerodte/live-marks";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
@@ -35,11 +36,8 @@ function releaseStream(): void {
 export async function GET(req: NextRequest) {
   const auth = await authorizeCronOrTierApi(req, "premium");
   if (auth instanceof Response) return auth;
-  if (auth.via === "user") {
-    // Same launch gate as the board route — 0DTE Command lives under Night Hawk.
-    const denied = await requireToolApi("nighthawk");
-    if (denied) return denied;
-  }
+  const denied = await requireToolApiForDeskCaller(auth, "nighthawk");
+  if (denied) return denied;
 
   if (!tryAcquireStream()) {
     return new NextResponse("Too many active streams — try again shortly", { status: 503 });
@@ -72,6 +70,16 @@ export async function GET(req: NextRequest) {
       let lastSentKey: string | null = null;
       const send = async () => {
         if (closed) return;
+        const denied = await recheckUserSseDeskAccess(auth, "premium", "nighthawk");
+        if (denied) {
+          cleanup();
+          try {
+            controller.close();
+          } catch {
+            /* already closed */
+          }
+          return;
+        }
         if (sseBackpressureExceeded(controller.desiredSize)) {
           cleanup();
           try {

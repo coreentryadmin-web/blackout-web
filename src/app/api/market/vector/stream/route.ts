@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
-import { requireToolApi } from "@/lib/tool-access-server";
+import { recheckUserSseDeskAccess } from "@/lib/sse-desk-stream-auth";
+import { requireToolApiForDeskCaller } from "@/lib/tool-access-server";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import {
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
   const auth = await authorizePremiumDeskApi(req);
   if (auth instanceof Response) return auth;
 
-  const locked = await requireToolApi("vector");
+  const locked = await requireToolApiForDeskCaller(auth, "vector");
   if (locked) return locked;
 
   const rawTicker = req.nextUrl.searchParams.get("ticker");
@@ -68,8 +69,18 @@ export async function GET(req: NextRequest) {
   const stream = new ReadableStream({
     start(controller) {
       let lastSentFrame: string | null = null;
-      const send = () => {
+      const send = async () => {
         if (closed) return;
+        const denied = await recheckUserSseDeskAccess(auth, "premium", "vector");
+        if (denied) {
+          cleanup();
+          try {
+            controller.close();
+          } catch {
+            /* already closed */
+          }
+          return;
+        }
         if (sseBackpressureExceeded(controller.desiredSize)) {
           cleanup();
           try {
@@ -110,8 +121,10 @@ export async function GET(req: NextRequest) {
       registerVectorUniverseView(ticker);
       req.signal.addEventListener("abort", cleanup);
 
-      interval = setInterval(send, TICK_MS);
-      send();
+      interval = setInterval(() => {
+        void send();
+      }, TICK_MS);
+      void send();
 
       heartbeatInterval = setInterval(() => {
         if (closed) return;
