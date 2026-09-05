@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T20:41:09.263Z",
+  "updated_at": "2026-09-05T20:57:59.748Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-05T20:43:10.351Z",
+      "lease_until": "2026-09-05T22:27:14.696Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "40b4455c-f1a1-4b17-a8bf-47003d207122"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-05T20:57:59.747Z",
+      "lease_until": "2026-09-05T22:27:59.747Z",
+      "phase": "DEPLOY_VERIFY",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -31,12 +43,13 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-05T20:57:59.748Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "35dfd63d53133c0da47c6130015a6c67d6f4c17d",
+    "last_main_sha": "8f1b953ba05ef5cdb818c04fa32f18e7151f9605",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T19:34:47Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
@@ -120,6 +133,49 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T20:57:10.312Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T20:57:10.312Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "f9ad6945-9cd7-497f-be4c-1bc1cde27e18",
+      "summary": "Peer review: #4044 (llms.txt /methodology GEO fix) APPROVED+merged f88cca7. Prior: #4043+#4040 merged. Main pulled. ops:collect clean (0 items). validate:deploy GREEN. Open PRs: checking."
+    },
+    {
+      "at": "2026-09-05T20:57:10.762Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T20:57:14.696Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T20:57:15.064Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T20:57:15.466Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T20:57:59.748Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
     }
   ],
   "open_prs": []
