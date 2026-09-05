@@ -1,7 +1,7 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T14:25:00.000Z
-**Run:** 3978-tech-review-3971-watch
+**At:** 2026-09-05T14:30:00.000Z
+**Run:** 3979-tech-review-3972-ci-poll
 
 ## Summary
 
@@ -20,7 +20,11 @@
 | PR | What | Status |
 |----|------|--------|
 | **#3971** | CLQ-041 banner | **CI SUCCESS** @ `79e687ac5`; awaiting **Claude GitHub review** |
-| **#3972** | State sync + 3 gate fixes | draft @ `4213f023a`; CI pending (unit tests running) |
+| **#3972** | State sync + 3 gate fixes | draft @ `59e4738ba`; CI pending |
+| **#3978** | SPX desk off-hours spot (`fix/*`) | draft; Cursor tech review posted; **Claude merge gate** |
+
+### Also on `main`
+`31d4301e8` — SEO growth cycle (unrelated)
 
 ### #3972 gate bundle (merge first)
 1. `automerge.yml` — `cursor/*` excluded from auto-merge
