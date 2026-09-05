@@ -134,6 +134,9 @@ export interface ManageSyncReads {
   addEligible?: boolean | null;
   /** Edge rungs the PR-16 ladder has graduated to enforced (gates ignore this). */
   graduatedRungs?: readonly SwingManageRung[];
+  /** Ex-dividend session — LONG structural compare uses dividend-adjusted spot (Q39). */
+  exDividendSession?: boolean;
+  exDividendCash?: number | null;
 }
 
 /** The live-state latch this refresh will apply (mirrors updateSwingLiveState's arg). status NEVER terminal. */
@@ -312,6 +315,8 @@ export function planManageSync(
     thesisProgress01: numOrNull(reads.thesisProgress01),
     addEligible: reads.addEligible ?? null,
     graduatedRungs: reads.graduatedRungs,
+    exDividendSession: reads.exDividendSession === true,
+    exDividendCash: numOrNull(reads.exDividendCash),
   };
   const verdict = evaluateSwingManagement(input);
 

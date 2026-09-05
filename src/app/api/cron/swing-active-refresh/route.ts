@@ -51,6 +51,7 @@ import type { ParentGradeFreeze } from "@/lib/swing/roll";
 import type { SwingArchetype } from "@/lib/swing/taxonomy";
 import { resolveTickerChainRows } from "@/features/nighthawk/lib/option-chain-prompt";
 import { occSymbolFromSwingRow } from "@/lib/swing/occ-from-row";
+import { resolveSwingExDividendContext } from "@/lib/swing/ex-dividend-reads";
 import { thesisProgress01, volCollapsedFromIvRanks, addEligibleFromProgress } from "@/lib/swing/thesis-progress";
 import { SWING_RETURN_LOOKBACK_SESSIONS } from "@/lib/swing/swing-ingest";
 import {
@@ -225,13 +226,17 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
       // via null-honesty, but the underlying path + snapshot still record). The live mark ALSO lets the roll
       // executor freeze the parent grade at roll time (roll-plan.ts gradeParentFromMark).
       loadReads: async (row): Promise<ManageSyncReads | null> => {
-        const [spot, optionQuote, ivRank, nameBars, spyCloses] = await Promise.all([
+        const [spot, optionQuote, ivRank, nameBars, spyCloses, exDiv] = await Promise.all([
           loadUnderlyingSpot(row.ticker),
           loadOptionQuote(row),
           // EOD-cadence, Redis-cached — never a per-tick UW blast. Honest null on miss.
           fetchUwIvRank(row.ticker).catch(() => null),
           closesFor(row.ticker).catch(() => [] as CloseBar[]),
           spyClosesPromise.catch(() => [] as number[]),
+          resolveSwingExDividendContext(row.ticker, sessionDay).catch(() => ({
+            exDividendSession: false,
+            exDividendCash: null,
+          })),
         ]);
         if (spot == null) return null; // no usable underlying read → skip (fail-soft, no snapshot)
         const mark = optionQuote.mark;
@@ -304,6 +309,9 @@ async function runSwingActiveRefreshCron(started: number): Promise<void> {
           relStrengthLost: edge.relStrengthLost,
           // Ladder-graduated edge rungs → manage.ts flips advisory→enforced for those rungs only.
           graduatedRungs,
+          // Q39: ex-dividend mechanical gap must not false-trigger structural_stop on LONG.
+          exDividendSession: exDiv.exDividendSession,
+          exDividendCash: exDiv.exDividendCash,
         };
       },
       insertSnapshot: insertSwingSnapshot,
