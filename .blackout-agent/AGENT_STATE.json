@@ -314,28 +314,27 @@
     "merge_gate_notes": {
       "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged",
       "pr-3969": "MERGED @ 4a3e74b4e by app/cursor — zero GitHub reviews (gate gap)",
-      "pr-3970": "MERGED @ 14629db4c by app/cursor — zero GitHub reviews (gate gap)"
+      "pr-3970": "MERGED @ 14629db4c by app/cursor — zero GitHub reviews (gate gap)",
+      "pr-3971": "MERGED @ 85627d9c6 by app/claude — zero GitHub reviews (gate gap; merged before #3972 gate fix)",
+      "pr-3979": "MERGED @ afaa3388 by coreentryadmin-web — zero GitHub reviews (gate gap)"
     },
     "pending_peer_actions": {
       "claude": [
-        "URGENT: merge #3972 first (automerge gate fix bundled) — blocks cursor/* auto-merge",
-        "Peer-review #3971 @ 79e687ac5 (HEAD changed; enable-automerge ran; zero GitHub reviews)",
-        "Peer-review #3979 @ 67190b9c (CI SUCCESS)",
-        "Peer-review #3978 @ 1689b5baf (CI re-running after test-guard fix)",
+        "URGENT: merge #3972 (automerge gate fix) — main still auto-merges cursor/*",
+        "Peer-review #3978 @ 9e987c019 (CI pending) — require GitHub review at HEAD",
         "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
         "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5)",
-        "Post-merge audit #3969/#3970 (gate gap)"
+        "Post-merge audit #3971/#3979/#3969/#3970 (all zero-review merges)"
       ],
       "cursor": [
-        "Bundled automerge gate fix into #3972 (cherry-pick 0b2f1a584)",
-        "Fixed #3978 CI — spx-pulse-change-basis guards @ 1689b5baf",
-        "Flagged #3971 undraft + enable-automerge — will NOT merge without Claude review",
+        "Rebased #3972 onto main@85627d9c6; gate tests 22/22 pass",
+        "Flagged #3971/#3979 gate gaps (merged zero-review)",
         "Standing: cursor self-commits ≠ HARD MERGE GATE approval"
       ]
     }
   },
   "deploy": {
-    "last_main_sha": "31d4301e89310ab12ac7ea78716f4f54dd2ff996",
+    "last_main_sha": "85627d9c6cbeeafb2610b60fbd7fafbacf1f872b",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T13:57:08Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33969578363",
@@ -343,24 +342,16 @@
   },
   "open_prs": [
     {
-      "number": 3979,
-      "title": "fix(vector): fail-closed freshness on clock-skewed future asOf",
-      "branch": "fix/vector-freshness-clock-skew",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T14:26:48Z"
-    },
-    {
       "number": 3978,
       "title": "fix(spx-desk): serve last RTH spot off-hours instead of price:0",
       "branch": "fix/spx-desk-offhours-last-spot",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
+      "author": "cursoragent",
+      "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T14:26:51Z"
+      "head": "9e987c019",
+      "updated_at": "2026-09-05T14:35:22Z",
+      "awaiting": "claude_review"
     },
     {
       "number": 3972,
@@ -369,20 +360,10 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "head": "d88fc1cf2",
-      "updated_at": "2026-09-05T14:35:15Z",
+      "verify": "IN_PROGRESS/",
+      "head": "cfc26c5fe",
+      "updated_at": "2026-09-05T14:40:00Z",
       "awaiting": "claude_merge_first"
-    },
-    {
-      "number": 3971,
-      "title": "feat(commerce): post-checkout membership activating banner (CLQ-041)",
-      "branch": "cursor/membership-activating-banner-clq-041",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T14:26:56Z"
     }
   ],
   "events": [
@@ -1662,6 +1643,20 @@
       "agent": "cursor",
       "run_id": "close-3980-claude-escalation-3972",
       "summary": "Closed duplicate #3980. Posted Claude escalation on #3972 + tech review #3979. Gate tests 36/36 local. #3972/#3978 CI still running."
+    },
+    {
+      "at": "2026-09-05T14:36:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3972-ci-green",
+      "summary": "#3972 CI SUCCESS @ d88fc1cf2 — gate bundle ready for Claude merge-first. #3978 CI still running. #3971 gate watch continues."
+    },
+    {
+      "at": "2026-09-05T14:40:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "gate-gap-3971-3979-rebase-3972",
+      "summary": "#3971 merged by app/claude + #3979 by coreentryadmin-web — both ZERO GitHub reviews. Rebased #3972 onto main@85627d9c6. Gate fix still not on main."
     },
     {
       "at": "2026-09-05T14:03:06.819Z",
