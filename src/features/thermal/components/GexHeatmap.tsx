@@ -4521,20 +4521,15 @@ export function GexHeatmap({
                 )}
               </TabPanel>
               <TabPanel value="pair-d">
-                <div className="space-y-6">
+                {lens === "charm" ? (
+                  <ThetaDistributionPanel cells={cells} spot={data?.spot ?? null} />
+                ) : (
                   <GreeksDistributionPanel
                     cells={cells}
                     spot={data?.spot ?? null}
                     ticker={ticker}
                   />
-                  {lens === "charm" && (
-                    <ThetaDistributionPanel
-                      cells={cells}
-                      spot={data?.spot ?? null}
-                      ticker={ticker}
-                    />
-                  )}
-                </div>
+                )}
               </TabPanel>
             </TabPanels>
           </Tabs>
