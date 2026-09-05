@@ -5,7 +5,7 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 | Q | Verdict | Fix status / PR |
 |---|---------|-------------------|
 | 1 | **(c)** | Open — `fix/swing-discovery-force-claim-guard` |
-| 2 | **(c)** | Open — `fix/swing-discovery-per-candidate-isolation` |
+| 2 | **(c)** | **FIXED** this PR — per-candidate dossier isolation |
 | 3 | **(c)** | Open — `fix/swing-serving-committed-watch-reconcile` |
 | 4 | **(c)** | **FIXED** #3845 |
 | 5 | **(c)** | Open — `fix/swing-positioning-direction-confluence` |
@@ -13,7 +13,7 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 | 7 | **(c)** | Open — wire G-S3/quote/bar gates or delete dead `gates.ts` |
 | 8 | **(c)** | Open — G-S4 regime degraded→WATCH |
 | 9 | **(c)** | Open — swing halt/LULD gate (reuse zerodte pattern) |
-| 10 | **(c)** | Open — G-S3 earnings binary in V2 commit path |
+| 10 | **(c)** | **FIXED** this PR — G-S3 in v2/gates |
 | 11 | **(c)** | Open — earnings calendar reader for Cortex(swing) |
 | 12 | **(c)** | Open — single authoritative `intendedDte` post-classify |
 | 13 | **(a)** | Document; optional proximity-scaled hazard later |
@@ -133,9 +133,9 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 
 ## Recommended fix queue (P1 first)
 
-1. **G-S3 earnings binary** (Q7+Q10) — blocks same-day-into-print commits
+1. **G-S3 earnings binary** (Q7+Q10) — **FIXED this PR**
 2. **Swing halt/LULD** (Q9) — real-money mark/commit on halted names
-3. **force=1 claim guard** (Q1) — double-open under recovery
-4. **Per-candidate isolation** (Q2) — scan wedge on poison data
+3. **Per-candidate isolation** (Q2) — **FIXED this PR**
+4. **force=1 claim guard** (Q1) — double-open under recovery
 5. **Cortex fail-closed + pin** (Q29)
 6. **Event archetype CATALYST kind required** (Q28)
