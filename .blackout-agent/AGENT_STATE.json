@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T22:19:17.459Z",
+  "updated_at": "2026-09-05T23:20:36.176Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-05T23:09:10.495Z",
+      "lease_until": "2026-09-06T00:49:47.189Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "670ff3d9-e071-4e3a-8589-e2661d53d6e5",
+      "title": null
     }
   },
   "reviews": {
@@ -23,6 +24,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T19:35:19.109Z",
       "safe_to_merge": true
+    },
+    "pr-4062": {
+      "pr": 4062,
+      "head_sha": "e021815cdcd19d0a47be2545bcebeb8fd6b1f7f2",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-05T23:19:44.426Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -31,16 +40,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-05T23:09:10.496Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "297faf10db7a9d1340dfe580ea108ed507ce41b2",
+    "last_main_sha": "70535baf1d8fa9af6ae5de67dc1107fdc2947eb1",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-05T23:19:14Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33998349400",
+    "last_deploy_sha": "24c22fed5d3b9cc46fc99670f574d4dec0d789be"
   },
   "events": [
     {
@@ -171,6 +181,83 @@
     },
     {
       "at": "2026-09-05T22:19:17.459Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T23:08:51.849Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T23:08:56.353Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T23:08:57.068Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T23:08:57.836Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T23:09:10.496Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T23:19:44.426Z",
+      "type": "pr_review",
+      "pr": 4062,
+      "head_sha": "e021815cdcd19d0a47be2545bcebeb8fd6b1f7f2",
+      "reviewer": "cursor",
+      "verdict": "WAIT",
+      "reviewed_at": "2026-09-05T23:19:44.426Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-05T23:19:47.189Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T23:19:47.897Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T23:19:48.577Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T23:20:32.489Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T23:20:32.490Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e15925f3-48cc-4c4a-9eb4-bdc5a4793d63",
+      "summary": "PR-event cycle: #4062 technical review PASS (verify+CodeQL GREEN, tsc GREEN, regression test 4/4). Cursor-authored — recorded WAIT, posted peer comment, blocked self-merge pending Claude. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo, rth-open off-hours skip). main@70535baf1 deployed. No Claude/fix PRs for independent review. Continue: Claude sign-off on #4062 → undraft → merge."
+    },
+    {
+      "at": "2026-09-05T23:20:36.176Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
