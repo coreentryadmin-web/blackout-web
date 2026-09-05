@@ -1,11 +1,11 @@
 {
   "agent": "cursor",
-  "run_id": "8f4a2a06-cc14-4a26-b876-6c631c196c3f",
-  "last_seen": "2026-09-05T15:44:10.172Z",
-  "last_productive_action": "heartbeat",
+  "run_id": "4654ef52-6481-4079-a354-6011b711d193",
+  "last_seen": "2026-09-05T15:44:59.513Z",
+  "last_productive_action": "session_start",
   "current_task": "BO-P1-0100",
-  "current_phase": "HANDOFF",
+  "current_phase": "RESUMED",
   "branch": null,
-  "pr": 3991,
+  "pr": null,
   "healthy": true
 }

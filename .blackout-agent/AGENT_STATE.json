@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:44:22.639Z",
+  "updated_at": "2026-09-05T15:45:45.785Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,24 +68,24 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-05T15:35:16.217Z",
-      "lease_until": "2026-09-05T17:05:16.217Z",
+      "lease_until": "2026-09-05T17:14:59.513Z",
       "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "4654ef52-6481-4079-a354-6011b711d193",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
       "claimed_at": "2026-09-05T15:44:22.638Z",
-      "lease_until": "2026-09-05T17:14:22.638Z",
+      "lease_until": "2026-09-05T17:14:59.513Z",
       "phase": "VERIFY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "4654ef52-6481-4079-a354-6011b711d193",
       "title": null
     },
     "BO-P1-0104": {
@@ -328,7 +328,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "430f33982aa1390616080fb175ee1f530323b8a2",
+    "last_main_sha": "66664fe394847ccebc881865ae06e228f7b3aea8",
     "last_deploy_status": "success",
     "last_deploy_at": "2026-09-05T15:42:30Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33973466010",
@@ -1609,6 +1609,43 @@
       "type": "task_claimed",
       "task_id": "BO-P1-0101",
       "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T15:44:55.500Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:44:59.511Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:45:00.095Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:45:00.725Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:45:45.784Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:45:45.785Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "d95168c0-cd98-4784-b487-431e4224e892",
+      "summary": "Cycle complete: #3991 peer-reviewed APPROVED + merged (66664fe39). Cross-exam BOTH_COMPLETE_CHALLENGE_PENDING. Lifecycle sweep GREEN. State sync pushed fix/autopilot-state-sync-3991. #3987 awaiting Claude. gh API rate-limited for PR create."
     }
   ],
   "pr_activity": {
