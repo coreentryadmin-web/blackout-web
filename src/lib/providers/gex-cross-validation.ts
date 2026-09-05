@@ -47,6 +47,7 @@ import {
   type GexCrossValidationCoreResult,
 } from "@/lib/providers/gex-cross-validation-core";
 import { getGexStrikeExpiryLadder, isUwChannelFresh } from "@/lib/ws/uw-socket";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 // ---------------------------------------------------------------------------
 // In-process 60-second cache (avoids hammering the UW 2 RPS budget).
@@ -82,7 +83,8 @@ async function getUwStrikeLadder(
   const key = ticker.toUpperCase();
   const cacheKey = ladderCacheKey(ticker, nearTermExpiries);
   const entry = cache.get(cacheKey);
-  if (entry && Date.now() - entry.cachedAt < CACHE_TTL_MS) {
+  const now = Date.now();
+  if (entry && isWsUpdatedAtFresh(entry.cachedAt, CACHE_TTL_MS, now)) {
     return entry.strikeLadder;
   }
 

@@ -100,7 +100,7 @@ export type StockQuoteSnapshot = {
   ticker: string;
   price: number;
   prev_close: number;
-  change_pct: number;
+  change_pct: number | null;
   /** Day extremes / VWAP from the day aggregate. NULL when the aggregate is absent (pre-open /
    *  market closed / untraded) — do NOT dress the spot price up as a real HOD/LOD/VWAP
    *  (mirrors the gap #14 HOD/LOD null fix). */
@@ -124,12 +124,7 @@ function _rowToSnapshot(sym: string, row: SnapshotTicker): StockQuoteSnapshot | 
     throw new Error(`[polygon] Implausible price for ${sym}: ${price}`);
   }
   const prevClose = Number(prev.c ?? 0);
-  const changePct =
-    row.todaysChangePerc != null
-      ? Number(row.todaysChangePerc.toFixed(2))
-      : prevClose
-        ? Number((((price - prevClose) / prevClose) * 100).toFixed(2))
-        : 0;
+  const changePct = snapshotChangePctFromRow(row);
   return {
     ticker: sym,
     price,

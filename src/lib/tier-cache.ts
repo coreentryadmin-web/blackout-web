@@ -2,6 +2,7 @@ import { tierFromSessionClaims } from "@/lib/clerk-session-claims";
 import { parseTier, type Tier } from "@/lib/tiers";
 import { getUserProfile } from "@/lib/user-directory";
 import { getClerkUserCached } from "@/lib/clerk-user-cache";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 /**
  * Short-lived per-user tier cache SHARED by both auth gates:
@@ -128,7 +129,8 @@ export async function resolveUserTier(
 ): Promise<Tier> {
   ensureTierCacheSubscription();
   const cached = tierCache.get(userId);
-  if (cached && Date.now() - cached.at < TIER_CACHE_TTL_MS) {
+  const now = Date.now();
+  if (cached && isWsUpdatedAtFresh(cached.at, TIER_CACHE_TTL_MS, now)) {
     return cached.tier;
   }
   try {
@@ -145,7 +147,7 @@ export async function resolveUserTier(
     setTierCache(userId, tier);
     return tier;
   } catch (err) {
-    if (cached && Date.now() - cached.at < TIER_STALE_MAX_MS) {
+    if (cached && isWsUpdatedAtFresh(cached.at, TIER_STALE_MAX_MS, now)) {
       console.warn("[tier-cache] Clerk getUser failed; using last-known tier:", err);
       return cached.tier;
     }

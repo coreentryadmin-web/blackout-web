@@ -25,3 +25,10 @@ test("fetchStockSnapshotPerformance + fetchMarketMovers must not default missing
   assert.doesNotMatch(src, /todaysChangePerc \?\? 0/);
   assert.match(src, /snapshotChangePctFromRow/);
 });
+
+test("_rowToSnapshot must delegate change_pct to snapshotChangePctFromRow — never fabricate 0%", () => {
+  const src = readFileSync("src/lib/providers/polygon.ts", "utf8");
+  const fn = src.slice(src.indexOf("function _rowToSnapshot"), src.indexOf("export async function fetchStockSnapshot"));
+  assert.match(fn, /snapshotChangePctFromRow\(row\)/);
+  assert.doesNotMatch(fn, /:\s*0;/, "must not fall back to fabricated flat 0%");
+});
