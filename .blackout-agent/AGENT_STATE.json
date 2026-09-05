@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T03:17:06.276Z",
+  "updated_at": "2026-09-05T07:12:22.679Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T06:58:09.245Z",
+      "lease_until": "2026-09-05T08:28:09.245Z",
+      "phase": "REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -234,6 +234,38 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3893": {
+      "pr": 3893,
+      "head_sha": "e29a2517c0380ef895d5345f596b0e96abc761cb",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T07:06:43.883Z",
+      "safe_to_merge": true
+    },
+    "pr-3892": {
+      "pr": 3892,
+      "head_sha": "3aa95a1f55381eae6e2c8ccf8edca1d7a8a050ae",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T07:06:44.634Z",
+      "safe_to_merge": true
+    },
+    "pr-3896": {
+      "pr": 3896,
+      "head_sha": "0392797b6101c0e620152f21c96ff889711b839d",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T07:08:38.239Z",
+      "safe_to_merge": true
+    },
+    "pr-3895": {
+      "pr": 3895,
+      "head_sha": "fc871cf78f2df0cd850a372b0ad20b59ac8fb040",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T07:12:22.678Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,13 +280,64 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b558e1321c827f97e43cad8eaae5937f3d4eded9",
+    "last_main_sha": "92f8ada51d33b59cd03b7616b375425645845e1f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T22:52:50Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
-    "last_deploy_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450"
+    "last_deploy_at": "2026-09-05T07:07:42Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33951690117",
+    "last_deploy_sha": "5fdd83548adaa7cbe85e74ace800165270983a1f"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3902,
+      "title": "fix(swing): route discovery WATCH spot refresh through spotFromLastTradeResult",
+      "branch": "fix/swing-discovery-underlying-spot-freshness",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-05T07:08:52Z"
+    },
+    {
+      "number": 3901,
+      "title": "fix(swing): Q36 guard evidence-only writes on terminal rows",
+      "branch": "cursor/swing-evidence-terminal-guard-q36",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T07:08:48Z"
+    },
+    {
+      "number": 3899,
+      "title": "fix(swing): Q37 singleton active-refresh claim + roll revalidation",
+      "branch": "cursor/swing-active-refresh-q37-claim",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T07:08:24Z"
+    },
+    {
+      "number": 3898,
+      "title": "docs(swing): refresh triage Q1-Q30 merged status + round-2 Q31-Q41",
+      "branch": "cursor/swing-triage-round2-refresh",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T07:08:44Z"
+    },
+    {
+      "number": 3895,
+      "title": "fix(swing): wire markAsOf freshness + recheck SSE tier on each tick",
+      "branch": "fix/swing-mark-asof-sse-tier-recheck",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T07:08:28Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1137,6 +1220,83 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T06:17:42.595Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T06:17:42.945Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T06:17:43.062Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T07:06:43.884Z",
+      "type": "pr_review",
+      "pr": 3893,
+      "head_sha": "e29a2517c0380ef895d5345f596b0e96abc761cb",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T07:06:43.883Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T07:06:44.635Z",
+      "type": "pr_review",
+      "pr": 3892,
+      "head_sha": "3aa95a1f55381eae6e2c8ccf8edca1d7a8a050ae",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T07:06:44.634Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T07:08:38.239Z",
+      "type": "pr_review",
+      "pr": 3896,
+      "head_sha": "0392797b6101c0e620152f21c96ff889711b839d",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T07:08:38.239Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T07:08:48.924Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T07:08:48.925Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "5674b7dc-2693-41c6-bc95-39ef0631dbac",
+      "summary": "Peer-reviewed 3 Claude PRs: #3893 (swing underlying spot staleness guard) APPROVED+MERGED, #3892 (Discord digest finding heading) APPROVED+MERGED, #3896 APPROVED but closed without merge (superseded). validate:deploy GREEN, ops:collect 0. Deploy run 33951068709 still in_progress. 4 open PRs remain (#3898 ready for review, 3 drafts)."
+    },
+    {
+      "at": "2026-09-05T07:08:53.203Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T07:12:22.679Z",
+      "type": "pr_review",
+      "pr": 3895,
+      "head_sha": "fc871cf78f2df0cd850a372b0ad20b59ac8fb040",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T07:12:22.678Z",
+      "safe_to_merge": true
     }
   ]
 }
