@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { NextRequest } from "next/server";
 
 test("shouldRunCacheWarmer: force always runs", async () => {
   delete process.env.CACHE_WARM_ALWAYS;
@@ -64,4 +65,60 @@ test("shouldRunCacheWarmer: logs the cron key when force overrides an active off
   } finally {
     console.info = originalInfo;
   }
+});
+
+test("shouldRunCacheWarmer: logs callerInfo alongside the key when supplied", async () => {
+  // Regression pin: logging the key alone answers "which cron" but the 2026-09-05 investigation
+  // hit a dead end on "who" — desk-warm measured 81 force-driven off-hours completions in 3 hours
+  // with every known in-app dispatcher (EventBridge, rth-warm-leader, cron-staleness-watchdog)
+  // independently confirmed silent for the same window, so the caller was provably external to
+  // every named source yet left no trace. callerInfo (built by callerInfoFromRequest from the
+  // request each route already has) must appear in the same log line the key does.
+  const { shouldRunCacheWarmer } = await import("./cache-warmer-gate");
+  const offHours = new Date("2026-07-08T07:00:00Z");
+
+  const originalInfo = console.info;
+  const calls: unknown[][] = [];
+  console.info = (...args: unknown[]) => {
+    calls.push(args);
+  };
+  try {
+    calls.length = 0;
+    shouldRunCacheWarmer(true, offHours, "desk-warm", "ip=203.0.113.7 ua=curl/8.4.0");
+    assert.equal(calls.length, 1);
+    assert.match(String(calls[0][0]), /force=1 bypassed the hours gate for 'desk-warm'/);
+    assert.match(
+      String(calls[0][0]),
+      /\(caller: ip=203\.0\.113\.7 ua=curl\/8\.4\.0\)/,
+      "callerInfo must appear in the bypass log line so the caller is traceable"
+    );
+
+    calls.length = 0;
+    shouldRunCacheWarmer(true, offHours, "desk-warm");
+    assert.equal(calls.length, 1);
+    assert.doesNotMatch(
+      String(calls[0][0]),
+      /\(caller:/,
+      "omitting callerInfo must not print an empty '(caller: )' fragment"
+    );
+  } finally {
+    console.info = originalInfo;
+  }
+});
+
+test("callerInfoFromRequest: prefers cf-connecting-ip, falls back to x-forwarded-for, then a sentinel", async () => {
+  const { callerInfoFromRequest } = await import("./cache-warmer-gate");
+
+  const withCf = new NextRequest("http://localhost/api/cron/desk-warm?force=1", {
+    headers: { "cf-connecting-ip": "198.51.100.9", "x-forwarded-for": "10.0.0.1", "user-agent": "node-fetch/1.0" },
+  });
+  assert.equal(callerInfoFromRequest(withCf), "ip=198.51.100.9 ua=node-fetch/1.0");
+
+  const withXff = new NextRequest("http://localhost/api/cron/desk-warm?force=1", {
+    headers: { "x-forwarded-for": "10.0.0.1, 10.0.0.2" },
+  });
+  assert.equal(callerInfoFromRequest(withXff), "ip=10.0.0.1 ua=no-ua");
+
+  const withNothing = new NextRequest("http://localhost/api/cron/desk-warm?force=1");
+  assert.equal(callerInfoFromRequest(withNothing), "ip=unknown ua=no-ua");
 });

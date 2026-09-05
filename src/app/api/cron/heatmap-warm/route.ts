@@ -22,7 +22,7 @@ import { logCronRun } from "@/lib/cron-run";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { listSharedUniverseTickers } from "@/features/vector/lib/vector-dynamic-universe";
 import { comparePresetWarmTickers } from "@/features/thermal/lib/thermal-compare-presets";
-import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
+import { callerInfoFromRequest, shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
 import { calculateMatrixDelta, type GexMatrix } from "@/lib/gex-matrix-delta";
 import { broadcastMatrixDelta } from "@/lib/gex-matrix-broadcast";
 import { sharedCacheDel, sharedCacheGet, sharedCacheSet, sharedCacheSetNx } from "@/lib/shared-cache";
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
   }
 
   const force = req.nextUrl.searchParams.get("force") === "1";
-  if (!shouldRunCacheWarmer(force, undefined, "heatmap-warm")) {
+  if (!shouldRunCacheWarmer(force, undefined, "heatmap-warm", callerInfoFromRequest(req))) {
     const payload = {
       ok: true,
       skipped: true,
