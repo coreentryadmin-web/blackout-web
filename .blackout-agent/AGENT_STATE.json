@@ -1,40 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:39:02.075Z",
+  "updated_at": "2026-09-05T21:40:00.000Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T21:26:14.628Z",
-      "lease_until": "2026-09-05T23:00:25.118Z",
+      "claimed_at": "2026-09-05T19:32:33.868Z",
+      "lease_until": "2026-09-05T21:03:12.506Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "5c82be3d-0cd9-4b05-b600-90b8c8d32345"
-    },
-    "BO-P1-0101": {
-      "task_id": "BO-P1-0101",
-      "owner": "cursor",
-      "claimed_at": "2026-09-05T21:28:21.534Z",
-      "lease_until": "2026-09-05T23:00:25.118Z",
-      "phase": "VERIFYING",
-      "branch": null,
-      "pr": null,
-      "reviewer": null,
-      "run_id": "5c82be3d-0cd9-4b05-b600-90b8c8d32345"
-    },
-    "BO-P1-0105": {
-      "task_id": "BO-P1-0105",
-      "owner": "cursor",
-      "claimed_at": "2026-09-05T21:34:31.358Z",
-      "lease_until": "2026-09-05T23:04:31.358Z",
-      "phase": "VERIFYING",
-      "branch": null,
-      "pr": null,
-      "reviewer": null,
-      "run_id": null
+      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
     }
   },
   "reviews": {
@@ -44,6 +22,14 @@
       "reviewer": "cursor",
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T19:35:19.109Z",
+      "safe_to_merge": true
+    },
+    "pr-4049": {
+      "pr": 4049,
+      "head_sha": "b2d8370a5d5b9882dce58ab1122129802fb67934",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T21:38:37.203Z",
       "safe_to_merge": true
     }
   },
@@ -58,11 +44,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "7345b9a6352928ffb53134c263f9e81dd7b1845c",
+    "last_main_sha": "35dfd63d53133c0da47c6130015a6c67d6f4c17d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T21:38:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993614498",
-    "last_deploy_sha": "7345b9a6352928ffb53134c263f9e81dd7b1845c"
+    "last_deploy_at": "2026-09-05T19:34:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
+    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
   },
   "events": [
     {
@@ -94,7 +80,7 @@
       "type": "handoff",
       "agent": "cursor",
       "run_id": "19909047-90ae-4042-a2ad-3b6697cd2078",
-      "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) — peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
+      "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) \u2014 peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
     },
     {
       "at": "2026-09-05T19:35:03.828Z",
@@ -123,7 +109,7 @@
       "type": "handoff",
       "agent": "cursor",
       "run_id": "b9a3c786-97ee-4a0e-9f0c-a9c61879bc90",
-      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) — 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
+      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) \u2014 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
     },
     {
       "at": "2026-09-05T20:41:08.341Z",
@@ -144,63 +130,15 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T21:21:57.295Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:21:57.899Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:21:58.167Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T21:39:00.881Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-05T21:39:02.073Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-05T21:39:02.075Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "17346f73-3179-4168-8ee4-661ce8e5fc11",
-      "summary": "Cycle complete: merged #4049 (dead-code sweep). Lifecycle GREEN. ops:collect 0. Open: #4047 swing play-brief (CI pending, WAIT Claude), #4048 handoff. Deploy #4044 ECR still building."
+      "at": "2026-09-05T21:38:37.204Z",
+      "type": "pr_review",
+      "pr": 4049,
+      "head_sha": "b2d8370a5d5b9882dce58ab1122129802fb67934",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T21:38:37.203Z",
+      "safe_to_merge": true
     }
   ],
-  "open_prs": [
-    {
-      "number": 4048,
-      "title": "chore(blackout-agent): cursor recovery cycle — post-bcb5ce5 merge wave",
-      "branch": "cursor/cursor-agent-work-loop-03da",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-05T21:38:56Z"
-    },
-    {
-      "number": 4047,
-      "title": "feat(swing): Ask Largo — deterministic play intelligence engine",
-      "branch": "cursor/swing-play-intelligence-engine",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:32:57Z"
-    }
-  ]
+  "open_prs": []
 }
