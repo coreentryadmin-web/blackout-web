@@ -36,6 +36,7 @@ import {
   peakPnlPct,
   pinnedLivePnlPct,
   reconcileLedgerLivePnlPct,
+  zeroDteSnapshotAgeMs,
   ZERODTE_MARK_STALE_MS,
   type ZeroDteMarkSource,
 } from "@/lib/zerodte/marks-math";
@@ -862,7 +863,7 @@ export function localBoardIsServable(
 ): boolean {
   const asOfMs = Date.parse(String(asOf ?? ""));
   if (!Number.isFinite(asOfMs)) return false; // undateable board → cannot be shown to be current
-  return nowMs - asOfMs <= maxAgeMs;
+  return !isZeroDteMarkStale(asOfMs, nowMs, maxAgeMs);
 }
 
 /** Read the shared board snapshot from Redis (in-memory fallback when Redis is
@@ -874,7 +875,8 @@ async function readSharedBoardSnapshot(): Promise<SharedBoardRead | null> {
     if (!snap || snap.available !== true || typeof snap.as_of !== "string") return null;
     const asOfMs = Date.parse(snap.as_of);
     if (!Number.isFinite(asOfMs)) return null;
-    const read = { value: snap, ageMs: Math.max(0, Date.now() - asOfMs) };
+    const nowMs = Date.now();
+    const read = { value: snap, ageMs: zeroDteSnapshotAgeMs(asOfMs, nowMs) };
     lastGoodBoardLocal = snap;
     return read;
   } catch {

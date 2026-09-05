@@ -23,6 +23,7 @@ import {
   zeroDteExecutableExit,
   zeroDteHalfSpreadFrac,
   zeroDteMidOf,
+  zeroDteSnapshotAgeMs,
   ZERODTE_DEFAULT_HALF_SPREAD_FRAC,
   ZERODTE_MARK_STALE_MS,
   ZERODTE_MARK_FUTURE_TOLERANCE_MS,
@@ -305,6 +306,22 @@ test("isZeroDteMarkStale: a timestamp far AHEAD of now is stale, not treated as 
   assert.equal(isZeroDteMarkStale(now + 30_000, now), false); // the exact fixture pattern this codebase relies on
   assert.equal(isZeroDteMarkStale(now + ZERODTE_MARK_FUTURE_TOLERANCE_MS, now), false); // exactly the bound → NOT stale
   assert.equal(isZeroDteMarkStale(now + (ZERODTE_MARK_FUTURE_TOLERANCE_MS + 1), now), true); // 1ms further ahead → stale
+});
+
+test("zeroDteSnapshotAgeMs: future beyond tolerance is +Infinity, not age 0", () => {
+  const now = 1_000_000;
+  assert.equal(zeroDteSnapshotAgeMs(now - 5_000, now), 5_000);
+  assert.equal(zeroDteSnapshotAgeMs(now + 30_000, now), 0); // fixture headroom
+  assert.equal(zeroDteSnapshotAgeMs(now + ZERODTE_MARK_FUTURE_TOLERANCE_MS + 1, now), Number.POSITIVE_INFINITY);
+  assert.equal(zeroDteSnapshotAgeMs(0, now), Number.POSITIVE_INFINITY);
+});
+
+test("board serve: future as_of beyond tolerance is not servable (isZeroDteMarkStale with board max age)", () => {
+  const now = 1_000_000;
+  const boardMaxAgeMs = 10 * 60_000;
+  const futureAsOf = now + ZERODTE_MARK_FUTURE_TOLERANCE_MS + 60_000;
+  assert.equal(isZeroDteMarkStale(futureAsOf, now, boardMaxAgeMs), true);
+  assert.equal(zeroDteSnapshotAgeMs(futureAsOf, now) > boardMaxAgeMs, true);
 });
 
 // ── closedStopReason: a stopped CLOSED row books the stop P&L, not a frozen last_mark ─
