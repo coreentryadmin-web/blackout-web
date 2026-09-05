@@ -160,6 +160,8 @@ export interface SwingCommitCandidate {
   discoveryPaths?: readonly SwingDiscoveryPath[];
   /** Catalyst read — G-S3 earnings binary when enforced. */
   earningsInWindow?: boolean;
+  /** Halt/LULD read — G-S12 when enforced. */
+  halted?: boolean;
   /** V2 async preflight blocks (G-S14 Cortex) evaluated before computeSwingCommitPlan. */
   preflightV2BlockedBy?: string[];
   /** G-S14 Cortex assessment when preflight ran — pinned into entry_context at commit (Q29). */
@@ -257,8 +259,8 @@ export function computeSwingCommitPlan(args: {
   book: CommitBookPosition[];
   budget?: PortfolioBudget;
   caps?: SwingCaps;
-  /** V2 commit gates (P3) — off unless caller passes enforceConfluence / enforceEarnings. */
-  v2?: { enforceConfluence?: boolean; enforceEarnings?: boolean };
+  /** V2 commit gates (P3) — off unless caller passes enforceConfluence / enforceEarnings / enforceHalt. */
+  v2?: { enforceConfluence?: boolean; enforceEarnings?: boolean; enforceHalt?: boolean; haltFeedStale?: boolean };
 }): SwingCommitPlan {
   const budget = args.budget ?? DEFAULT_PORTFOLIO_BUDGET;
   const caps = args.caps ?? DEFAULT_SWING_CAPS;
@@ -315,6 +317,20 @@ export function computeSwingCommitPlan(args: {
           earningsInWindow: cand.earningsInWindow,
         },
         { enforceEarnings: true },
+      );
+      blockedBy.push(...blockedByFromSwingGates(gateFails));
+    }
+
+    // Gate 0.56 — V2 halt/LULD (G-S12), LIVE when Swing Engine V2 halt enforcement is on.
+    if (args.v2?.enforceHalt) {
+      const gateFails = failingSwingCommitGates(
+        {
+          discoveryPaths: cand.discoveryPaths ?? [],
+          archetype: cand.archetype,
+          halted: cand.halted,
+          haltFeedStale: args.v2.haltFeedStale,
+        },
+        { enforceHalt: true },
       );
       blockedBy.push(...blockedByFromSwingGates(gateFails));
     }

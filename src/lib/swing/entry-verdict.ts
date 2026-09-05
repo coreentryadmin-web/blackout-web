@@ -110,6 +110,14 @@ export function commitGateBlocksForVerdict(blockedBy: readonly string[]): SwingE
           reason: "Earnings print inside holding window — desk will not open into binary-gap risk.",
         };
       }
+      if (b.startsWith("gate:G-S12:")) {
+        return {
+          code: b.includes("halt_feed_stale") ? "g_s12_halt_feed_stale" : "g_s12_halted",
+          reason: b.includes("halt_feed_stale")
+            ? "Trading-halt feed unavailable — desk will not open until halt/LULD data recovers."
+            : "Underlying is halted or in LULD band — desk will not open until trading resumes.",
+        };
+      }
       if (b.startsWith("gate:G-S14:")) {
         if (b.includes("cortex_unavailable")) {
           return {

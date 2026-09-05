@@ -408,6 +408,30 @@ test("executeSwingCommits: a throwing insertShadowPosition is fail-soft (caught 
   assert.ok(res.shadowed[0]!.error);
 });
 
+test("computeSwingCommitPlan: V2 G-S12 halt blocks when enforceHalt on", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ halted: true })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+    v2: { enforceHalt: true },
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S12:halted"));
+});
+
+test("computeSwingCommitPlan: V2 G-S12 halt feed stale blocks when enforceHalt on", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ halted: false })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+    v2: { enforceHalt: true, haltFeedStale: true },
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S12:halt_feed_stale"));
+});
+
 test("computeSwingCommitPlan: V2 G-S6 confluence blocks when enforceConfluence on", () => {
   const plan = computeSwingCommitPlan({
     candidates: [

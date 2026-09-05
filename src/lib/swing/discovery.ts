@@ -58,7 +58,8 @@ import { subLaneForDte } from "./taxonomy";
 import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration";
 import { classificationMetaFromVerdict } from "./archetype";
 import { resolveSwingTier1Cap } from "./v2/tier1-cap";
-import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, isSwingEarningsGateEnforced, swingCortexPreflightCap } from "./v2/config";
+import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, isSwingEarningsGateEnforced, isSwingHaltGateEnforced, swingCortexPreflightCap } from "./v2/config";
+import { readSwingHaltStateForTickers } from "./v2/halt-read";
 import { evaluateSwingCortexForCommit } from "./v2/cortex-swing";
 import type { ZeroDteCortexAssessment } from "@/lib/zerodte/cortex-gate";
 import { persistSwingGateRejections } from "./v2/rejections";
@@ -465,6 +466,10 @@ export interface SwingDiscoveryDeps {
   fetchBangerTickers?: () => Promise<string[]>;
   /** V2 — tickers from VECTOR origin (vector_pick_leaders). Optional. */
   fetchVectorTickers?: () => Promise<string[]>;
+  /** V2 — halt/LULD read for G-S12 commit gate. Injectable for tests (default: live uw-socket read). */
+  fetchHaltStateForTickers?: (
+    tickers: readonly string[],
+  ) => Promise<{ active: Set<string>; feedStale: boolean }>;
   /** SPY ascending daily closes — fetched ONCE, passed into every Tier-1 enrich (relative-strength base). */
   fetchSpyCloses: () => Promise<number[]>;
   /** Tier-1 enrich: assemble the dossier input for a name (swing-ingest). Null → the name is dropped. */
@@ -841,6 +846,16 @@ export async function runSwingDiscoveryScan(
       const key = `${p.ticker.toUpperCase()}|${p.direction}`;
       if (!contractByKey.has(key)) contractByKey.set(key, p.contract); // best (first — plays are score-sorted)
     }
+    const uniqueWatchTickers = [...new Set(watchCandidates.map((w) => w.ticker.toUpperCase()))];
+    let haltActive = new Set<string>();
+    let haltFeedStale = false;
+    if (engineV2 && isSwingHaltGateEnforced() && uniqueWatchTickers.length > 0) {
+      const haltReader = deps.fetchHaltStateForTickers ?? readSwingHaltStateForTickers;
+      const haltState = await haltReader(uniqueWatchTickers);
+      haltActive = haltState.active;
+      haltFeedStale = haltState.feedStale;
+    }
+
     const commitCandidates: SwingCommitCandidate[] = watchCandidates.map((w) => {
       const key = `${w.ticker.toUpperCase()}|${w.direction}`;
       const d = dossierByKey.get(key);
@@ -873,6 +888,7 @@ export async function runSwingDiscoveryScan(
           d ?? null,
         ),
         earningsInWindow: d?.earningsInWindow === true,
+        halted: haltActive.has(w.ticker.toUpperCase()),
       };
     });
 
@@ -909,10 +925,13 @@ export async function runSwingDiscoveryScan(
       budget: deps.budget,
       caps: deps.caps,
       v2:
-        engineV2 && (isSwingConfluenceEnforced() || isSwingEarningsGateEnforced())
+        engineV2 &&
+        (isSwingConfluenceEnforced() || isSwingEarningsGateEnforced() || isSwingHaltGateEnforced())
           ? {
               enforceConfluence: isSwingConfluenceEnforced(),
               enforceEarnings: isSwingEarningsGateEnforced(),
+              enforceHalt: isSwingHaltGateEnforced(),
+              haltFeedStale,
             }
           : undefined,
     });

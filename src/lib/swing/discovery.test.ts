@@ -207,6 +207,7 @@ function makeDeps(sessionDay: string, accessors: SwingAccumAccessors): SwingDisc
     fetchCatalystTickers: async () => ["NVDA"],
     fetchVectorTickers: async () => ["NVDA"],
     fetchBangerTickers: async () => [],
+    fetchHaltStateForTickers: async () => ({ active: new Set<string>(), feedStale: false }),
     enrichCandidate: async (seed, ctx) =>
       assembleSwingDossierInput({
         ticker: seed.ticker,
