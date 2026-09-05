@@ -20,6 +20,7 @@
 // The pure core (`assembleSwingDossierInput`) is IO-free and deterministic over fetched arrays; the thin
 // `ingestSwingReads` shell fetches the name's daily closes via an INJECTED fetcher (testable without live
 // providers). The discovery shell fetches SPY once and passes its closes in, so we never re-fetch the index.
+// Canonical Tier-1 fusion path (deep-dive Q6): abandoned v2/data-fusion.ts — extend HERE, not a dead module.
 
 import type { SwingDossierInput } from "./dossier";
 import type { SwingReads } from "../swing-signals";

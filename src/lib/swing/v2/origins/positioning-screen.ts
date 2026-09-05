@@ -42,3 +42,10 @@ export async function positioningTickersFromVectorLeaders(
   const hits = await screenPositioningFromTickers(leaderTickers);
   return hits.map((h) => h.ticker);
 }
+
+/** Full POSITIONING hits (ticker + direction) for G-S6 direction agreement (deep-dive Q5). */
+export async function positioningHitsFromVectorLeaders(
+  leaderTickers: string[],
+): Promise<PositioningOriginCandidate[]> {
+  return screenPositioningFromTickers(leaderTickers);
+}

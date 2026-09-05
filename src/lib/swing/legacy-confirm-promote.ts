@@ -243,6 +243,7 @@ export function buildLegacySwingArtifacts(params: {
     setupState: meta.setupState ?? undefined,
     entryStatus: meta.entryStatus ?? undefined,
     signalKinds: [LEGACY_SWING_SIGNAL_KIND],
+    commitGateBlockedBy: ["legacy:exempt"],
     firstSeenAt: checkedAt,
     bucketGraduated: false,
     factors: meta.factors,

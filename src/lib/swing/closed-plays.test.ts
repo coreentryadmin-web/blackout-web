@@ -66,7 +66,7 @@ describe("closedDeckSourceFromRow", () => {
 });
 
 describe("closedDeckSourcesFromChains", () => {
-  it("emits one row per resolved chain terminal leg", () => {
+  it("emits one row per resolved chain using chain-composite P&L (Q26)", () => {
     const parent = row({ id: 10, roll_seq: 0, realized_pnl_pct: -20, graded_at: "2026-08-05T12:00:00Z" });
     const child = row({
       id: 11,
@@ -80,6 +80,7 @@ describe("closedDeckSourcesFromChains", () => {
     const out = closedDeckSourcesFromChains([[parent, child]]);
     assert.equal(out.length, 1);
     assert.equal(out[0]!.positionId, 11);
-    assert.equal(out[0]!.exitPnlPct, 15);
+    assert.equal(out[0]!.exitPnlPct, -20, "worst-leg composite, not terminal-leg +15");
+    assert.equal(out[0]!.closedReason, "stopped");
   });
 });
