@@ -20,6 +20,21 @@ const json = (url: string) =>
     r.ok ? r.json() : ({ available: false, degraded: true } as SwingPlayBriefResponse),
   );
 
+function briefUrl(play: TerminalPlay): string | null {
+  if (!play?.id || !play.ticker) return null;
+  const params = new URLSearchParams({
+    playId: play.id,
+    ticker: play.ticker,
+  });
+  if (play.status) params.set("status", play.status);
+  const m = play.contract.match(/^(\d+(?:\.\d+)?)([CP])/);
+  if (m) {
+    params.set("strike", m[1]!);
+    params.set("right", m[2]!);
+  }
+  return `/api/market/swing/play-brief?${params.toString()}`;
+}
+
 /** Live refresh cadence — faster during RTH when marks move. */
 function briefRefreshMs(): number {
   try {
@@ -44,10 +59,7 @@ function briefRefreshMs(): number {
 }
 
 export function useSwingPlayBrief(play: TerminalPlay | null) {
-  const key =
-    play?.id && play.ticker
-      ? `/api/market/swing/play-brief?playId=${encodeURIComponent(play.id)}&ticker=${encodeURIComponent(play.ticker)}`
-      : null;
+  const key = play ? briefUrl(play) : null;
 
   const { data, error, isLoading, mutate } = useSWR<SwingPlayBriefResponse>(key, json, {
     refreshInterval: briefRefreshMs(),

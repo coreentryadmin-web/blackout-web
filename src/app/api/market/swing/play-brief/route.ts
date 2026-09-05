@@ -29,12 +29,22 @@ export async function GET(req: NextRequest) {
 
   const playId = (req.nextUrl.searchParams.get("playId") ?? "").trim();
   const ticker = (req.nextUrl.searchParams.get("ticker") ?? "").trim();
+  const status = (req.nextUrl.searchParams.get("status") ?? "").trim() || null;
+  const right = (req.nextUrl.searchParams.get("right") ?? "").trim() || null;
+  const strikeRaw = req.nextUrl.searchParams.get("strike");
+  const strike = strikeRaw != null && strikeRaw !== "" ? Number(strikeRaw) : null;
   if (!playId) {
     return NextResponse.json({ error: "playId is required" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
   try {
-    const ctx = await loadSwingPlayBriefContext({ playId, ticker });
+    const ctx = await loadSwingPlayBriefContext({
+      playId,
+      ticker,
+      status,
+      strike: strike != null && Number.isFinite(strike) ? strike : null,
+      right,
+    });
     if (!ctx) {
       return NextResponse.json({ available: false, error: "play not found" }, { status: 404, headers: NO_STORE_HEADERS });
     }
