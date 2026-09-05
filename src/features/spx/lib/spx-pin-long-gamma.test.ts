@@ -25,6 +25,14 @@ test("pickLongGammaMagnet prefers king when nearer to spot than max pain", () =>
     frac
   );
   assert.equal(r.magnetStrike, 7580, "king above spot should win when closer than distant max pain");
+  assert.equal(r.magnetKind, "gex_king", "king-driven magnet must not be mislabeled max_pain");
+});
+
+test("pickLongGammaMagnet labels king-only book as gex_king", () => {
+  const frac = (n: number | undefined) => (n && n > 0 ? n / 10000 : 0);
+  const r = pickLongGammaMagnet(7560, null, { strike: 7580, oi: 5000 }, 5, frac);
+  assert.equal(r.magnetStrike, 7580);
+  assert.equal(r.magnetKind, "gex_king");
 });
 
 test("long_gamma rally: projected close can sit ABOVE spot when king clusters above", () => {
@@ -57,6 +65,7 @@ test("long_gamma rally: projected close can sit ABOVE spot when king clusters ab
     (f.pinDriftPts ?? 0) > 0,
     `pinDriftPts ${f.pinDriftPts} must read upward vs spot`
   );
+  assert.equal(f.magnet?.kind, "gex_king", "long-gamma rally with king above spot must label magnet honestly");
 });
 
 test("pinDriftPts tracks projectedClose minus spot", () => {

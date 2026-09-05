@@ -35,7 +35,7 @@ export type PinConeStep = { tMin: number; p10: number; p50: number; p90: number 
  *  hold (e.g. a 7751 pin rendered as "max pain" beside the real effective max pain of 7720 —
  *  two different numbers, same label, on one panel). */
 export type PinScenario = { close: number; p: number; kind: PinMagnetKind | "path" | "pin" };
-export type PinMagnetKind = "call_wall" | "put_wall" | "max_pain" | "flip";
+export type PinMagnetKind = "call_wall" | "put_wall" | "max_pain" | "gex_king" | "flip";
 export type PinDriver = { label: string; detail: string; weight: number };
 
 export type PinForecast = {
@@ -477,14 +477,14 @@ export function pickLongGammaMagnet(
     return { magnetStrike: maxPain, magnetKind: "max_pain", magnetStrengthPct: frac(0) };
   }
   if (maxPain == null && king != null) {
-    return { magnetStrike: king.strike, magnetKind: "max_pain", magnetStrengthPct: frac(king.oi) };
+    return { magnetStrike: king.strike, magnetKind: "gex_king", magnetStrengthPct: frac(king.oi) };
   }
   const mp = maxPain!;
   const k = king!;
   const kingCloser =
     Math.abs(k.strike - spot) + strikeSpacing * 0.25 < Math.abs(mp - spot);
   if (kingCloser) {
-    return { magnetStrike: k.strike, magnetKind: "max_pain", magnetStrengthPct: frac(k.oi) };
+    return { magnetStrike: k.strike, magnetKind: "gex_king", magnetStrengthPct: frac(k.oi) };
   }
   return { magnetStrike: mp, magnetKind: "max_pain", magnetStrengthPct: frac(k.oi) };
 }
@@ -599,10 +599,20 @@ function buildDrivers(p: Prep, input: PinForecastInput, medianClose: number): Pi
     // is the better INTRADAY pin estimator (it is what the magnet actually tracked all session),
     // and the audit's Polygon cross-check confirmed the forecast's magnet location to the strike.
     const kindLabel =
-      p.magnetKind === "call_wall" ? "call wall" : p.magnetKind === "put_wall" ? "put wall" : "effective max pain";
+      p.magnetKind === "call_wall"
+        ? "call wall"
+        : p.magnetKind === "put_wall"
+          ? "put wall"
+          : p.magnetKind === "gex_king"
+            ? "GEX king node"
+            : "effective max pain";
+    const magnetDetail =
+      p.magnetKind === "gex_king"
+        ? `Heaviest |GEX| anchor ${p.direction === "up" ? "above" : p.direction === "down" ? "below" : "at"} spot (${(p.magnetStrengthPct * 100).toFixed(0)}% of book |gamma|). Long-gamma hedging drags toward this king node into the close.`
+        : `Heaviest ${p.magnetKind === "put_wall" ? "negative" : "positive"}-gamma level ${p.direction === "up" ? "above" : p.direction === "down" ? "below" : "at"} spot (${(p.magnetStrengthPct * 100).toFixed(0)}% of |gamma|). Hedging drags price ${p.direction} into the close.`;
     d.push({
       label: `${p.magnetStrike.toFixed(0)} ${kindLabel} is the dominant magnet`,
-      detail: `Heaviest ${p.magnetKind === "put_wall" ? "negative" : "positive"}-gamma level ${p.direction === "up" ? "above" : p.direction === "down" ? "below" : "at"} spot (${(p.magnetStrengthPct * 100).toFixed(0)}% of |gamma|). Hedging drags price ${p.direction} into the close.`,
+      detail: magnetDetail,
       weight: 0.8 * (0.5 + p.magnetStrengthPct),
     });
   }
