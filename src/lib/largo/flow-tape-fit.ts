@@ -14,6 +14,7 @@ export function fitFlowTapeForModel(raw: FlowTapeSummary): { fitted: FlowTapeFit
 
   const base: Omit<FlowTapeSummary, "recent"> = {
     as_of: raw.as_of,
+    session_date: raw.session_date,
     count: raw.count,
     total_premium: raw.total_premium,
     top_tickers: raw.top_tickers,

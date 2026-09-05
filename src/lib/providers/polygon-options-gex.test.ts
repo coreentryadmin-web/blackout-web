@@ -171,6 +171,9 @@ test("fetchGexHeatmap caps inflight/cold builds with gexHeatmapMaxBlockMs (never
     /if\s*\(\s*existing\s*\)\s*return\s+existing\s*;/,
     "inflight coalesce must not return the raw promise — callers would block 20–57s"
   );
+  assert.match(src, /sharedCacheSetNx/, "CQ-112: cluster build lock for cross-replica herd");
+  assert.match(src, /gex:heatmap:build-lock:/);
+  assert.match(src, /pollPeerHeatmapCache/);
 });
 
 test("SPX matrix build applies UW 0DTE overlay before cache write (#2503)", () => {

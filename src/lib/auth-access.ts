@@ -3,7 +3,7 @@ import { tierAtLeast, type Tier } from "@/lib/tiers";
 import { resolveUserTier, TierUnavailableError } from "@/lib/tier-cache";
 import { getSession } from "@/lib/auth-server";
 import { adminFromJwtRole } from "@/lib/admin-from-jwt";
-import { roleFromSessionClaims, tierFromSessionClaims } from "@/lib/clerk-session-claims";
+import { roleFromSessionClaims } from "@/lib/clerk-session-claims";
 import type { ToolKey } from "@/lib/tool-access";
 
 export async function requireAuth(): Promise<string> {
@@ -33,23 +33,14 @@ export async function requireTier(minTier: Tier) {
   const { userId, sessionClaims } = await getSession();
   if (!userId) redirect("/sign-in");
 
-  // JWT fast path — most signed-in members carry tier/role in session claims. Skip Clerk
-  // Backend getUser on every page navigation when the token already proves access.
+  // Admin JWT fast path only — paid tier always via resolveUserTier (CQ-113).
   const jwtAdmin = adminFromJwtRole(roleFromSessionClaims(sessionClaims));
   if (jwtAdmin === true) {
     return { userId, tier: "premium" as Tier, sessionClaims };
   }
 
-  const jwtTier = tierFromSessionClaims(sessionClaims);
-  if (jwtTier === "premium" || jwtTier === "community") {
-    if (tierAtLeast(jwtTier, minTier)) return { userId, tier: jwtTier, sessionClaims };
-    redirect("/upgrade");
-  }
-
-  // Relative, not "@/lib/admin-access": identical at runtime (same directory), but a path-alias
-  // specifier inside a dynamic import() resolves fine under webpack/SWC (production) while
-  // failing to resolve under the tsx/node:test harness used by src/**/*.test.ts — this keeps the
-  // lazy import (still avoids the static circular import with admin-access.ts) test-reachable.
+  // Page gate uses the same resolveUserTier path as API routes (CQ-113): do not grant
+  // premium/community from JWT claims alone — session claims lag Whop downgrades.
   const { isAdminUser } = await import("./admin-access");
   if (await isAdminUser(userId, sessionClaims)) {
     return { userId, tier: "premium" as Tier, sessionClaims };

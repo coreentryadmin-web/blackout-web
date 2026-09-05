@@ -266,6 +266,8 @@ mock.module("../shared-cache", {
   namedExports: {
     sharedCacheGet: async () => null,
     sharedCacheSet: async () => {},
+    sharedCacheSetNx: async () => true,
+    sharedCacheDel: async () => {},
   },
 });
 
