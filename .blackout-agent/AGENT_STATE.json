@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:49:00.498Z",
+  "updated_at": "2026-09-05T21:49:51.176Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T21:47:55.481Z",
-      "lease_until": "2026-09-05T23:17:55.481Z",
+      "claimed_at": "2026-09-05T21:40:04.984Z",
+      "lease_until": "2026-09-05T23:10:52.095Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "9e177c0b-d117-41b1-897b-5ef873773a4a",
       "title": null
     },
     "BO-P1-0105": {
@@ -271,6 +271,19 @@
       "agent": "cursor",
       "run_id": "456a6a37-4c0b-4391-9b5c-41a0444c56be",
       "summary": "PR-event recovery. Closed duplicate #4051. Deploy GREEN, ops:collect 0. #4047 merged to main. No Claude/fix PRs for peer review. #4052 handoff PR updated. GraphQL rate-limited — REST works."
+    },
+    {
+      "at": "2026-09-05T21:49:51.176Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T21:49:51.176Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "41568cc6-5afb-4ce5-902e-d415ff84278d",
+      "summary": "Autopilot cycle complete: #4047 merged to main (73e58b89). validate:deploy GREEN, lifecycle GREEN off-hours, platform-integrity 14/14, SEO 22/22, ops:collect 0. No claude/fix PRs for peer review. Only open PR #4052 (this handoff). GraphQL rate-limited — REST paths OK."
     }
   ],
   "open_prs": [
@@ -282,7 +295,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:48:41Z"
+      "updated_at": "2026-09-05T21:49:07Z"
     }
   ],
   "pr_activity": {
