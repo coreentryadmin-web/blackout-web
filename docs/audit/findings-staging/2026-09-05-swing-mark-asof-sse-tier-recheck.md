@@ -9,7 +9,7 @@
 | **Status** | FIXED |
 | **Priority** | P1 |
 | **Area** | Night Hawk Swing desk + premium SSE streams |
-| **PR** | (this branch) |
+| **PR** | #3895 |
 
 ### Root cause
 
