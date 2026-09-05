@@ -13,6 +13,7 @@ import {
 } from "@/features/vector/lib/vector-stream-hub";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
+import { recheckSseStreamAuth } from "@/lib/sse-stream-auth";
 import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -27,6 +28,12 @@ export async function GET(req: NextRequest) {
 
   const locked = await requireToolApi("vector");
   if (locked) return locked;
+
+  const streamAuth = {
+    via: auth.via,
+    minTier: "premium" as const,
+    toolKey: "vector" as const,
+  };
 
   const rawTicker = req.nextUrl.searchParams.get("ticker");
   // Missing ticker → SPX default (matches createVectorEventSource + normalizeVectorTicker).
@@ -68,8 +75,18 @@ export async function GET(req: NextRequest) {
   const stream = new ReadableStream({
     start(controller) {
       let lastSentFrame: string | null = null;
-      const send = () => {
+      const send = async () => {
         if (closed) return;
+        const denied = await recheckSseStreamAuth(streamAuth);
+        if (denied) {
+          cleanup();
+          try {
+            controller.close();
+          } catch {
+            /* already closed */
+          }
+          return;
+        }
         if (sseBackpressureExceeded(controller.desiredSize)) {
           cleanup();
           try {
@@ -110,8 +127,10 @@ export async function GET(req: NextRequest) {
       registerVectorUniverseView(ticker);
       req.signal.addEventListener("abort", cleanup);
 
-      interval = setInterval(send, TICK_MS);
-      send();
+      interval = setInterval(() => {
+        void send();
+      }, TICK_MS);
+      void send();
 
       heartbeatInterval = setInterval(() => {
         if (closed) return;

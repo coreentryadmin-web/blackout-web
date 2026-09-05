@@ -12,6 +12,7 @@ import { requireToolApi } from "@/lib/tool-access-server";
 import { ensureZeroDteMarkPoller, getZeroDteLiveMarksFrame } from "@/lib/zerodte/live-marks";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
+import { recheckSseStreamAuth } from "@/lib/sse-stream-auth";
 import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -40,6 +41,12 @@ export async function GET(req: NextRequest) {
     const denied = await requireToolApi("nighthawk");
     if (denied) return denied;
   }
+
+  const streamAuth = {
+    via: auth.via,
+    minTier: "premium" as const,
+    toolKey: auth.via === "user" ? ("nighthawk" as const) : undefined,
+  };
 
   if (!tryAcquireStream()) {
     return new NextResponse("Too many active streams — try again shortly", { status: 503 });
@@ -72,6 +79,16 @@ export async function GET(req: NextRequest) {
       let lastSentKey: string | null = null;
       const send = async () => {
         if (closed) return;
+        const denied = await recheckSseStreamAuth(streamAuth);
+        if (denied) {
+          cleanup();
+          try {
+            controller.close();
+          } catch {
+            /* already closed */
+          }
+          return;
+        }
         if (sseBackpressureExceeded(controller.desiredSize)) {
           cleanup();
           try {
