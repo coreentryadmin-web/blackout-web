@@ -1,24 +1,24 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:46:22.238Z",
+  "updated_at": "2026-09-05T21:47:00.593Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T21:28:22.516Z",
-      "lease_until": "2026-09-05T22:58:22.516Z",
+      "claimed_at": "2026-09-05T21:27:25.179Z",
+      "lease_until": "2026-09-05T23:01:55.960Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null
+      "run_id": "44ace42e-4ac2-49a4-8e3f-bea84ed18a44"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T21:38:18.868Z",
-      "lease_until": "2026-09-05T23:08:18.868Z",
+      "claimed_at": "2026-09-05T21:44:12.421Z",
+      "lease_until": "2026-09-05T23:14:12.421Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -49,7 +49,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "73e58b8937d8a20704b2527c4be090315d9de015",
+    "last_main_sha": "7345b9a6352928ffb53134c263f9e81dd7b1845c",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T21:45:07Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993937878",
@@ -224,6 +224,19 @@
       "agent": "cursor",
       "run_id": "31c70c1b-7efb-4b73-889c-b49eb0aa834c",
       "summary": "Recovery cycle complete. main@73e58b89. Merged #4049 (peer APPROVED). validate:deploy GREEN. ops:collect 0. ECR pending. Open: #4050 handoff."
+    },
+    {
+      "at": "2026-09-05T21:47:00.593Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:47:00.593Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9ab468fc-b6bc-4ebd-b20d-dbb185334d7c",
+      "summary": "PR-event cycle: merged #4049 (dead-code sweep, peer APPROVED). Deploy validate GREEN, platform-integrity 14/14, api-auth GREEN, ops:collect 0. #4047 swing play-brief verify GREEN — awaiting Claude peer review. ECR deploy #4044 still rolling."
     }
   ],
   "open_prs": [
@@ -245,7 +258,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:45:57Z"
+      "updated_at": "2026-09-05T21:46:25Z"
     }
   ],
   "pr_activity": {
