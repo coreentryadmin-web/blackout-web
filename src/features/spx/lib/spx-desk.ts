@@ -1997,6 +1997,21 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
         market_label: label,
       };
     }
+    // Cold replica after deploy: in-process lastPulse is empty — anchor to prior session close.
+    const prior = await priorDayForPulseLane();
+    if (prior.pdc != null && prior.pdc > 0) {
+      return {
+        ...empty,
+        available: true,
+        price: prior.pdc,
+        prior_close: prior.pdc,
+        pdh: prior.pdh,
+        pdl: prior.pdl,
+        market_open: false,
+        market_status: marketNow?.market ?? "closed",
+        market_label: label,
+      };
+    }
     const closedPulse: SpxDeskPulse = {
       ...empty,
       market_open: false,
@@ -2186,7 +2201,7 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
     (async () => {
       const snapsRaw = await fetchPulseLaneSnapshots();
       const spxSnap = snapsRaw[SPX];
-      const price = spxSnap?.price ?? lastPulseForSignals?.price ?? 0;
+      const price = spxSnap?.price ?? lastPulseForSignals?.price ?? prior.pdc ?? 0;
       if (!(price > 0)) return empty;
       const structure = cachedPulseStructure;
       return {

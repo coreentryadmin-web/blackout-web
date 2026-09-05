@@ -29,3 +29,21 @@ test("buildSpxDesk: falls back to lastPulseForSignals when index snap is empty",
     "full desk build must reuse last RTH print or prior session close off-hours"
   );
 });
+
+test("buildSpxDeskPulse: cold replica off-hours falls back to priorDayForPulseLane pdc", () => {
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  assert.match(
+    src,
+    /if \(!rthOpen && !premarketPlan\) \{[\s\S]*priorDayForPulseLane\(\)[\s\S]*prior\.pdc/,
+    "closed-market branch must anchor to prior session close when lastPulse is empty"
+  );
+});
+
+test("buildSpxDeskPulseMinimal: price chain includes prior.pdc", () => {
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  const minimalIdx = src.indexOf("export async function buildSpxDeskPulseMinimal");
+  const priceLine = src.slice(minimalIdx).match(
+    /const price = spxSnap\?\.price \?\? lastPulseForSignals\?\.price \?\? prior\.pdc \?\? 0;/
+  );
+  assert.ok(priceLine, "minimal pulse must fall back to prior.pdc on cold cache");
+});
