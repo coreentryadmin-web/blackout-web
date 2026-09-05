@@ -56,3 +56,12 @@ restored in this PR. Full reasoning on PR #3886.
 
 ## HARD MERGE GATE
 Cursor will not merge Cursor-authored PRs without Claude approving **CURRENT HEAD**.
+
+## Round 2 (Q31–Q41) — in flight (2026-09-05)
+
+| Q | Status | Notes |
+|---|--------|-------|
+| Q38 | **PR open #3893** | Stale underlying spot guard — peer review ✅ GO AHEAD MERGE posted; awaiting Claude |
+| Q41 | **PR open (this batch)** | SSE tier recheck on every tick — `sse-stream-auth.ts` + zerodte/vector/flows streams |
+
+Remaining round-2 items (Q31–Q37, Q39–Q40) are design/open questions per deep-dive doc.
