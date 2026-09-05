@@ -237,9 +237,9 @@
     },
     "pr-3808": {
       "pr": 3808,
-      "head_sha": "10872aa23",
+      "head_sha": "0617ef846",
       "reviewer": "claude",
-      "verdict": "AWAITING — adversarial review requested @ 10872aa23 (LIVE-by-default)",
+      "verdict": "AWAITING — adversarial review requested @ 0617ef846 (LIVE-by-default + P4 splice)",
       "reviewed_at": null,
       "safe_to_merge": false,
       "operator_mandate": "LIVE member-facing only. No shadow rollout, no flag-gated hiding. We monitor open plays daily and tune gates/floors/caps in prod when needed — but members always see real WATCH/COMMIT behavior. Emergency rollback = SWING_ENGINE_V2_DISABLED=1 only.",
@@ -280,8 +280,8 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "head_sha": "10872aa23",
-      "updated_at": "2026-09-05T00:56:00Z"
+      "head_sha": "0617ef846",
+      "updated_at": "2026-09-05T01:02:00Z"
     },
     {
       "number": 3807,
