@@ -698,6 +698,11 @@ export interface HorizonDeckSource {
   markAsOf?: string | null;
   /** Management engine action for live rows (manage.ts). */
   manageAction?: SwingManageAction | null;
+  /** Ledger position id — disambiguates multiple closed rows on the same ticker. */
+  positionId?: number | null;
+  exitAt?: string | null;
+  exitPnlPct?: number | null;
+  closedReason?: string | null;
 }
 
 /**
@@ -850,7 +855,7 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
       ? Math.round(((src.troughPremium! / entry - 1) * 100) * 10) / 10
       : null;
   return {
-    id: `${src.horizon}:${src.ticker}`,
+    id: `${src.horizon}:${src.ticker.toUpperCase()}${src.positionId != null ? `:${src.positionId}` : ""}`,
     ticker: src.ticker.toUpperCase(),
     direction: src.direction,
     contract: `${src.contract.strike}${src.contract.right} · ${src.contract.dte}DTE`,
@@ -874,9 +879,14 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     progress: mgmt.progress,
     entry,
     mark: markMid,
-    pnlPct: status === "WATCH" || status === "SKIP" ? null : livePnl ?? exec.pnl_pct,
-    execMark: status === "WATCH" || status === "SKIP" ? null : exec.fill,
-    execPnlPct: status === "WATCH" || status === "SKIP" ? null : exec.pnl_pct,
+    pnlPct:
+      status === "WATCH" || status === "SKIP"
+        ? null
+        : status === "CLOSED"
+          ? fin(src.exitPnlPct)
+          : livePnl ?? exec.pnl_pct,
+    execMark: status === "WATCH" || status === "SKIP" || status === "CLOSED" ? null : exec.fill,
+    execPnlPct: status === "WATCH" || status === "SKIP" || status === "CLOSED" ? null : exec.pnl_pct,
     occ: occPrefixed,
     markAsOf: src.markAsOf ?? null,
     markIsSync: src.markAsOf == null,
@@ -901,6 +911,9 @@ export function terminalPlayFromHorizon(src: HorizonDeckSource): TerminalPlay {
     committedAt: src.committedAt ?? null,
     discoveryOrigin:
       Array.isArray(src.signalKinds) && src.signalKinds.length > 0 ? src.signalKinds : null,
+    closedReason: src.closedReason ?? null,
+    exitAt: src.exitAt ?? null,
+    exitPnlPct: fin(src.exitPnlPct),
   };
 }
 

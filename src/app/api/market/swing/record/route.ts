@@ -9,6 +9,7 @@ import {
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { buildSwingRecord, buildSwingRecordSummary } from "@/lib/swing/record";
+import { closedDeckSourcesFromChains } from "@/lib/swing/closed-plays";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
@@ -51,11 +52,13 @@ export async function GET(req: NextRequest) {
     const chains = await Promise.all(rootIds.map((id) => fetchSwingPositionChain(id)));
     const records = chains.map((chain) => buildSwingRecord(chain));
     const summary = buildSwingRecordSummary(records, { since, through, days });
+    const closedDeck = closedDeckSourcesFromChains(chains);
     return NextResponse.json(
       roundFloats({
         available: true,
         summary,
         records,
+        closedDeck,
       }),
       { headers: NO_STORE_HEADERS },
     );

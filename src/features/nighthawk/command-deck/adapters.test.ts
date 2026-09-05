@@ -1076,6 +1076,28 @@ test("horizon adapter: RESEARCH + INVALIDATED → SKIP with gate blocks", () => 
   assert.equal(skip.gateBlocks?.[0]?.code, "thesis_invalidated");
 });
 
+test("horizon adapter: graded CLOSED swing row wires exit fields + position-scoped id", () => {
+  const closed = terminalPlayFromHorizon({
+    ticker: "nvda",
+    direction: "LONG",
+    horizon: "SWING",
+    score: 80,
+    status: "CLOSED",
+    positionId: 42,
+    exitAt: "2026-08-10T16:00:00Z",
+    exitPnlPct: 28.5,
+    closedReason: "target",
+    contract: { strike: 180, right: "C", expiry: "2026-08-14", dte: 0, mid: 6.4 },
+    entryPremium: 5.0,
+    peakPremium: 7.0,
+  });
+  assert.equal(closed.id, "SWING:NVDA:42");
+  assert.equal(closed.status, "CLOSED");
+  assert.equal(closed.pnlPct, 28.5);
+  assert.equal(closed.exitPnlPct, 28.5);
+  assert.equal(closed.closedReason, "target");
+});
+
 test("horizon adapter: live OPEN row wires entry/mark/pnl from live book fields", () => {
   const open = terminalPlayFromHorizon({
     ticker: "nvda",

@@ -278,6 +278,14 @@ export function swingActionDisplay(play: TerminalPlay): { label: string; tone: S
     return { label: "WAIT", tone: "watch" };
   }
   if (play.status === "SKIP") return null;
+  if (play.status === "CLOSED") {
+    if (play.closedReason === "target") return { label: "TARGET", tone: "closed" };
+    if (play.closedReason === "stopped" || play.closedReason === "stop") {
+      return { label: "STOPPED", tone: "closed" };
+    }
+    if (play.closedReason === "flat") return { label: "SCRATCH", tone: "closed" };
+    return null;
+  }
   if (play.status === "OPEN" || play.status === "HOLD" || play.status === "TRIM") {
     if (play.recommendation === "SELL") return { label: "EXIT", tone: "active" };
     if (play.recommendation === "TRIM") {

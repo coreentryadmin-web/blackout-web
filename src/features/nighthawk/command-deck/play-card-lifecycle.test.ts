@@ -452,6 +452,17 @@ describe("swingActionDisplay — BUY / WAIT / manage vocabulary", () => {
       { label: "EXIT", tone: "active" },
     );
   });
+
+  it("CLOSED swing maps closedReason to TARGET/STOPPED", () => {
+    assert.deepEqual(
+      swingActionDisplay(base({ horizon: "SWING", status: "CLOSED", closedReason: "target" })),
+      { label: "TARGET", tone: "closed" },
+    );
+    assert.deepEqual(
+      swingActionDisplay(base({ horizon: "SWING", status: "CLOSED", closedReason: "stopped" })),
+      { label: "STOPPED", tone: "closed" },
+    );
+  });
 });
 
 describe("closedCapturePct — honest post-trade attribution (2026-08-29)", () => {
