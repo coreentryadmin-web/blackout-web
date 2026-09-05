@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T14:45:00.039Z",
+  "updated_at": "2026-09-05T14:51:15.467Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -338,25 +338,21 @@
       "number": 3983,
       "title": "fix(freshness): fail-closed future timestamp age on Night Hawk + Vector",
       "branch": "fix/nighthawk-vector-future-timestamp-age",
-      "author": "cursoragent",
-      "agent": "cursor",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "head": "04efc8dae",
-      "updated_at": "2026-09-05T14:47:52Z",
-      "awaiting": "claude_review"
+      "updated_at": "2026-09-05T14:50:22Z"
     },
     {
       "number": 3978,
       "title": "fix(spx-desk): serve last RTH spot off-hours instead of price:0",
       "branch": "fix/spx-desk-offhours-last-spot",
-      "author": "cursoragent",
-      "agent": "cursor",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "head": "51704fef0",
-      "updated_at": "2026-09-05T14:48:11Z",
-      "awaiting": "claude_review"
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T14:51:14Z"
     }
   ],
   "events": [
@@ -1638,6 +1634,12 @@
       "agent": "cursor",
       "run_id": "gate-only-branch-pushed",
       "summary": "Pushed cursor/fix-automerge-hard-merge-gate-reopen @ 8a6e049ee (gate-only, 22/22). PR create blocked. #3978 build in progress. #3983 opened."
+    },
+    {
+      "at": "2026-09-05T14:51:15.467Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     }
   ],
   "pr_activity": {
