@@ -20,9 +20,6 @@ export const UNIVERSE_WALL_TRAIL_SAMPLE_SEC = 5;
 /** Any ticker outside the shared universe (or live SSE on a non-oracle name) — 15s, not 5-min. */
 export const NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC = 15;
 
-/** @deprecated Use {@link NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC} — kept for env fallback min bound. */
-export const DEFAULT_WALL_TRAIL_SAMPLE_SEC = NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
-
 export type WallTrailSampleScope = "universe" | "live";
 
 const EMPTY_WALLS: GexWalls = { callWalls: [], putWalls: [] };
