@@ -57,5 +57,5 @@ floor) and `!= 12`. RED→GREEN proven: reverting the fix locally reproduced the
 | **Status** | FIXED |
 |-----------|-------|
 | **Branch** | `fix/gex-heatmap-unfiltered-page-guard` |
-| **PR** | (pending) |
+| **PR** | #4028 |
 | **Regression Test** | `src/lib/providers/polygon-options-gex.test.ts` (69/69 pass) |
