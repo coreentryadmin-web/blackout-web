@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T03:17:06.276Z",
+  "updated_at": "2026-09-05T05:27:29.110Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,8 +67,8 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
+      "claimed_at": "2026-09-05T04:58:48.218Z",
+      "lease_until": "2026-09-05T06:28:48.218Z",
       "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
@@ -234,6 +234,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3856": {
+      "pr": 3856,
+      "head_sha": "10d067bc",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:06:13.453Z",
+      "safe_to_merge": true
+    },
+    "pr-3855": {
+      "pr": 3855,
+      "head_sha": "ea711ce3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:08:55.938Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,11 +264,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b558e1321c827f97e43cad8eaae5937f3d4eded9",
+    "last_main_sha": "c25a1d2f7c975dbbd7d145239de0da263dbf9c2b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T22:52:50Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
-    "last_deploy_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450"
+    "last_deploy_at": "2026-09-05T05:26:43Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33947218979",
+    "last_deploy_sha": "c25a1d2f7c975dbbd7d145239de0da263dbf9c2b"
   },
   "open_prs": [],
   "events": [
@@ -1134,6 +1150,51 @@
     },
     {
       "at": "2026-09-05T03:17:06.276Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T05:06:13.453Z",
+      "type": "pr_review",
+      "pr": 3856,
+      "head_sha": "10d067bc",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:06:13.453Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T05:08:55.939Z",
+      "type": "pr_review",
+      "pr": 3855,
+      "head_sha": "ea711ce3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:08:55.938Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T05:26:53.982Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T05:27:23.959Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T05:27:23.960Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "5830885a-7eeb-49db-9529-2a62b563bc47",
+      "summary": "Autopilot cycle: peer-reviewed+merged #3856 (SPX ticket/lotto cache guard). #3855 APPROVED+auto-merge (Polygon market-status guard, merged). #3853/#3863/#3850/#3857 also merged by fleet. validate:deploy GREEN, platform-integrity 14/14, ops:collect 0. ECR deploy pending @ c25a1d2. Open cursor PRs #3861/#3858 non-draft awaiting Claude adversarial review. No fix/* PRs remain open. Saturday off-hours — RTH lifecycle skipped."
+    },
+    {
+      "at": "2026-09-05T05:27:29.110Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
