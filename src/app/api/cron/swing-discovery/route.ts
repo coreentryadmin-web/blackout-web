@@ -31,6 +31,7 @@ import { persistSwingCapRejections } from "@/lib/swing/v2/rejections";
 import { positioningTickersFromVectorLeaders } from "@/lib/swing/v2/origins/positioning-screen";
 import { catalystTickersFromBenzingaBundle } from "@/lib/swing/v2/origins/catalyst-screen";
 import { bangerTickersFromGroupedDaily } from "@/lib/swing/v2/origins/banger-screen";
+import { vectorTickersFromPickLeaders } from "@/lib/swing/v2/origins/vector-screen-fetch";
 import { fetchVectorPickLeaderRows } from "@/lib/vector/vector-pick-leaders-db";
 import { persistSwingServingSnapshot, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
 import { carryLegacyPromotedIntoSnapshot } from "@/lib/swing/legacy-confirm-promote";
@@ -154,13 +155,13 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
         }
       : {}),
     fetchSpyCloses: async () => closesFor("SPY"),
-    // V2 POSITIONING origin — GEX/walls screen on Vector leader tickers (fail-soft; only consumed when SWING_ENGINE_V2=1).
+    // V2 POSITIONING origin — GEX/walls screen on Vector leader tickers (fail-soft).
     fetchPositioningTickers: async () => {
       const rows = await fetchVectorPickLeaderRows({ limit: 80 }).catch(() => []);
       const tickers = rows.map((r) => r.ticker).filter((t): t is string => Boolean(t));
       return positioningTickersFromVectorLeaders(tickers);
     },
-    // V2 CATALYST origin — Benzinga earnings window (fail-soft; only consumed when SWING_ENGINE_V2=1).
+    // V2 CATALYST origin — Benzinga earnings window (fail-soft).
     fetchCatalystTickers: async () => catalystTickersFromBenzingaBundle(sessionDay),
     fetchBangerTickers: async () => {
       const summary = await fetchDailyMarketSummary(to);
@@ -176,6 +177,7 @@ function buildDiscoveryDeps(nowMs: number, sessionDay: string, phase: SwingDisco
         })),
       );
     },
+    fetchVectorTickers: async () => vectorTickersFromPickLeaders({ sessionDate: sessionDay, limit: 80 }),
     enrichCandidate: (seed, ctx) =>
       ingestSwingReads(
         {

@@ -300,7 +300,7 @@ export function computeSwingCommitPlan(args: {
     else if (!isFin(riskUsd)) blockedBy.push("unknown_premium");
     if (subLane == null) blockedBy.push("no_sub_lane");
 
-    // Gate 0.6 — V2 confluence (G-S6), enforced only when SWING_ENGINE_V2_ENFORCE_CONFLUENCE=1.
+    // Gate 0.6 — V2 confluence (G-S6), LIVE when Swing Engine V2 is on.
     if (args.v2?.enforceConfluence) {
       const gateFails = failingSwingCommitGates(
         { discoveryPaths: cand.discoveryPaths ?? [], archetype: cand.archetype },

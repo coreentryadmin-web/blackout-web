@@ -90,7 +90,7 @@ import type { SwingPositionInsert, SwingShadowPositionInsert } from "../db";
 // observable instead of silent. `computeSwingDiscoveryRecall` is PURE/deterministic on fixed inputs.
 
 /** Which Tier-0 screen(s) surfaced a name — provenance carried through the merge for ranking + explain. */
-export type SwingDiscoveryPath = "FLOW" | "STRUCTURE" | "POSITIONING" | "CATALYST" | "BANGER";
+export type SwingDiscoveryPath = "FLOW" | "STRUCTURE" | "POSITIONING" | "CATALYST" | "BANGER" | "VECTOR";
 
 /** Discovery cadence phase. The plan ships POST_CLOSE first (cleanest full-session accumulation read); the
  *  other phases land in PR-13. Accreted into the accumulation memory's `phases_seen`. */
@@ -182,7 +182,7 @@ export const WATCH_ELIGIBLE_FETCH_LIMIT = 500;
 export function mergeTierZeroScreens(
   flowTickers: string[],
   structureTickers: string[],
-  extra?: { positioning?: string[]; catalyst?: string[]; banger?: string[] },
+  extra?: { positioning?: string[]; catalyst?: string[]; banger?: string[]; vector?: string[] },
 ): TierZeroSeed[] {
   const paths = new Map<string, Set<SwingDiscoveryPath>>();
   const add = (raw: string, path: SwingDiscoveryPath) => {
@@ -197,8 +197,9 @@ export function mergeTierZeroScreens(
   for (const t of extra?.positioning ?? []) add(t, "POSITIONING");
   for (const t of extra?.catalyst ?? []) add(t, "CATALYST");
   for (const t of extra?.banger ?? []) add(t, "BANGER");
+  for (const t of extra?.vector ?? []) add(t, "VECTOR");
 
-  const pathOrder: SwingDiscoveryPath[] = ["FLOW", "STRUCTURE", "POSITIONING", "CATALYST", "BANGER"];
+  const pathOrder: SwingDiscoveryPath[] = ["FLOW", "STRUCTURE", "POSITIONING", "CATALYST", "BANGER", "VECTOR"];
 
   return Array.from(paths.entries())
     .map(([ticker, set]) => ({
@@ -432,6 +433,8 @@ export interface SwingDiscoveryDeps {
   fetchCatalystTickers?: () => Promise<string[]>;
   /** V2 — tickers from BANGER origin screen (whole-market breakout). Optional. */
   fetchBangerTickers?: () => Promise<string[]>;
+  /** V2 — tickers from VECTOR origin (vector_pick_leaders). Optional. */
+  fetchVectorTickers?: () => Promise<string[]>;
   /** SPY ascending daily closes — fetched ONCE, passed into every Tier-1 enrich (relative-strength base). */
   fetchSpyCloses: () => Promise<number[]>;
   /** Tier-1 enrich: assemble the dossier input for a name (swing-ingest). Null → the name is dropped. */
@@ -520,7 +523,7 @@ export interface SwingDiscoveryResult {
   tier1CapApplied: number;
   /** Whether Swing Engine V2 dynamic recall path was active. */
   engineV2: boolean;
-  /** V2 shadow: confluence near-miss count (would-block if gate enforced). */
+  /** V2 telemetry: confluence near-miss count (at required-1 kinds; still blocked when gate enforced). */
   confluenceNearMissCount?: number;
   /** Rows retired by fadeStaleAccum this scan (0 when none / fade skipped). */
   fadedStale?: number;
@@ -569,12 +572,17 @@ export async function runSwingDiscoveryScan(
     engineV2 && deps.fetchBangerTickers
       ? await deps.fetchBangerTickers().catch(() => [] as string[])
       : [];
+  const vectorTickers =
+    engineV2 && deps.fetchVectorTickers
+      ? await deps.fetchVectorTickers().catch(() => [] as string[])
+      : [];
 
   // ── MERGE + rank + cap to the Tier-1 budget. ──
   const merged = mergeTierZeroScreens(flowTickers, structureTickers, {
     positioning: positioningTickers,
     catalyst: catalystTickers,
     banger: bangerTickers,
+    vector: vectorTickers,
   });
   // Keep the FULL ranked order so the recall instrumentation can see WHO the top-N cap severed (not just
   // the survivors). The behavior is unchanged — only `ranked` (the capped slice) feeds Tier-1.

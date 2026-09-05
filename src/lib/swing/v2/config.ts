@@ -1,8 +1,8 @@
 /**
  * Swing Engine V2 feature flags and env knobs.
  *
- * Shadow mode: SWING_ENGINE_V2=1 enables dynamic recall + rejection ledger without
- * changing commit authorization until P3 gates graduate.
+ * LIVE by default — member-facing cron runs dynamic recall, multi-origin Tier-0,
+ * and commit gates unless explicitly opted out (`SWING_ENGINE_V2_DISABLED=1`).
  */
 
 const TRUTHY = new Set(["1", "true", "on", "yes"]);
@@ -13,12 +13,22 @@ function norm(v: string | undefined): string | null {
   return t ? t : null;
 }
 
-/** Master flag — dynamic tier-1 cap, rejection ledger, lowered corroborated flow floor. */
+function envTriState(
+  env: Record<string, string | undefined>,
+  key: string,
+  defaultWhenEnabled: boolean,
+): boolean {
+  const v = norm(env[key]);
+  if (v == null) return defaultWhenEnabled;
+  if (FALSEY.has(v)) return false;
+  if (TRUTHY.has(v)) return true;
+  return defaultWhenEnabled;
+}
+
+/** Master flag — dynamic tier-1 cap, rejection ledger, multi-origin merge, commit gates. ON unless disabled. */
 export function isSwingEngineV2Enabled(env: Record<string, string | undefined> = process.env): boolean {
-  const kill = norm(env.SWING_ENGINE_V2_DISABLED);
-  if (kill != null && TRUTHY.has(kill)) return false;
-  const on = norm(env.SWING_ENGINE_V2);
-  return on != null && TRUTHY.has(on);
+  if (envTriState(env, "SWING_ENGINE_V2_DISABLED", false)) return false;
+  return envTriState(env, "SWING_ENGINE_V2", true);
 }
 
 export function swingTier1CapFloor(env: Record<string, string | undefined> = process.env): number {
@@ -42,18 +52,16 @@ export function swingCorroboratedFlowMinPremium(env: Record<string, string | und
   return Number.isFinite(n) && n > 0 ? n : 150_000;
 }
 
-/** P3 — enforce G-S6 confluence at COMMIT (requires master V2 flag). Shadow by default. */
+/** P3 — G-S6 confluence at COMMIT. LIVE when V2 is on; opt out with SWING_ENGINE_V2_ENFORCE_CONFLUENCE=0. */
 export function isSwingConfluenceEnforced(env: Record<string, string | undefined> = process.env): boolean {
   if (!isSwingEngineV2Enabled(env)) return false;
-  const on = norm(env.SWING_ENGINE_V2_ENFORCE_CONFLUENCE);
-  return on != null && TRUTHY.has(on);
+  return envTriState(env, "SWING_ENGINE_V2_ENFORCE_CONFLUENCE", true);
 }
 
-/** P3 — enforce G-S14 Cortex veto at COMMIT (requires master V2 flag). Off by default. */
+/** P3 — G-S14 Cortex veto at COMMIT. LIVE when V2 is on; opt out with SWING_ENGINE_V2_ENFORCE_CORTEX=0. */
 export function isSwingCortexEnforced(env: Record<string, string | undefined> = process.env): boolean {
   if (!isSwingEngineV2Enabled(env)) return false;
-  const on = norm(env.SWING_ENGINE_V2_ENFORCE_CORTEX);
-  return on != null && TRUTHY.has(on);
+  return envTriState(env, "SWING_ENGINE_V2_ENFORCE_CORTEX", true);
 }
 
 /** Max watch candidates to Cortex-preflight per scan (provider budget). */

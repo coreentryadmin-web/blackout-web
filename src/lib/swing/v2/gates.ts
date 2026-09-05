@@ -1,7 +1,7 @@
 /**
  * Swing Engine V2 commit gates — G-S1..G-S14 (P3 scaffold).
  *
- * P3 ships G-S6 confluence enforce behind SWING_ENGINE_V2_ENFORCE_CONFLUENCE=1.
+ * P3 ships G-S6 confluence + G-S14 Cortex enforce LIVE when V2 is on (opt-out via env).
  * G-S14 Cortex(swing) lands when fetch.ts gains swing horizon profile (design §9).
  */
 

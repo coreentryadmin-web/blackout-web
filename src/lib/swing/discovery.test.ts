@@ -190,6 +190,11 @@ function makeDeps(sessionDay: string, accessors: SwingAccumAccessors): SwingDisc
     fetchFlowWindow: async () => nvdaFlowRows(),
     fetchGroupedDaily: async () => groupedBars,
     fetchSpyCloses: async () => FLAT_SPY,
+    // LIVE V2 origins — stack corroboration on NVDA so commit-path tests hit real G-S6 bars.
+    fetchPositioningTickers: async () => ["NVDA"],
+    fetchCatalystTickers: async () => ["NVDA"],
+    fetchVectorTickers: async () => ["NVDA"],
+    fetchBangerTickers: async () => [],
     enrichCandidate: async (seed, ctx) =>
       assembleSwingDossierInput({
         ticker: seed.ticker,
@@ -414,6 +419,11 @@ test("runSwingDiscoveryScan: an EVENT_DRIVEN name gets the 1-session fast-track 
   // pillar — giving it two independent signal KINDS in a SINGLE session (FLOW screen + CATALYST).
   const deps: SwingDiscoveryDeps = {
     ...makeDeps("2026-07-23", accessors),
+    // Isolate enrich-grounded catalyst corroboration — not Tier-0 origin paths.
+    fetchPositioningTickers: async () => [],
+    fetchCatalystTickers: async () => [],
+    fetchVectorTickers: async () => [],
+    fetchBangerTickers: async () => [],
     enrichCandidate: async (seed, ctx) =>
       assembleSwingDossierInput({
         ticker: seed.ticker,
@@ -564,13 +574,21 @@ test("computeSwingDiscoveryRecall: per-cut seen/enriched sum correctly + recall 
 test("runSwingDiscoveryScan: emits a recall block; cap severs the flow-less structure name", async () => {
   const { accessors } = makeFakeAccum();
   // tier1Cap=1 keeps only the top-ranked (corroboration/strength → NVDA), severing ASTS.
-  const deps = { ...makeDeps("2026-07-23", accessors), config: { tier1Cap: 1 } };
-  const res = await runSwingDiscoveryScan(deps);
+  // Legacy fixed cap requires V2 off — live default uses dynamic floor (80).
+  const prevDisabled = process.env.SWING_ENGINE_V2_DISABLED;
+  process.env.SWING_ENGINE_V2_DISABLED = "1";
+  try {
+    const deps = { ...makeDeps("2026-07-23", accessors), config: { tier1Cap: 1 } };
+    const res = await runSwingDiscoveryScan(deps);
 
-  assert.ok(res.recall, "recall block is threaded through the result");
-  assert.equal(res.recall.tier0Count, 2);
-  assert.equal(res.recall.tier1EnrichedCount, res.dossiers.length);
-  assert.equal(res.recall.cappedOutCount, 1, "the top-1 cap severed one Tier-0 candidate");
-  assert.equal(res.recall.cappedOut[0].ticker, "ASTS");
-  assert.equal(res.recall.cappedOut[0].tier0Rank, 2);
+    assert.ok(res.recall, "recall block is threaded through the result");
+    assert.equal(res.recall.tier0Count, 2);
+    assert.equal(res.recall.tier1EnrichedCount, res.dossiers.length);
+    assert.equal(res.recall.cappedOutCount, 1, "the top-1 cap severed one Tier-0 candidate");
+    assert.equal(res.recall.cappedOut[0].ticker, "ASTS");
+    assert.equal(res.recall.cappedOut[0].tier0Rank, 2);
+  } finally {
+    if (prevDisabled === undefined) delete process.env.SWING_ENGINE_V2_DISABLED;
+    else process.env.SWING_ENGINE_V2_DISABLED = prevDisabled;
+  }
 });

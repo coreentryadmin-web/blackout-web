@@ -4,7 +4,7 @@
  * Mirror of zerodte/confluence.ts for multi-day holds: COMMIT requires ≥N independent
  * kinds (FLOW, STRUCTURE, POSITIONING, CATALYST, RS, VECTOR) not a single loud pillar.
  *
- * P2: evaluate only (shadow log). P3: enforce at commit via gates.ts.
+ * P2+: evaluate + enforce at commit via gates.ts (G-S6 live when V2 on).
  */
 
 import type { SwingDiscoveryPath } from "../discovery";
@@ -33,7 +33,7 @@ export interface SwingConfluenceVerdict {
   label: string;
 }
 
-/** Required independent kinds for COMMIT eligibility (shadow / P3 gate). */
+/** Required independent kinds for COMMIT eligibility (G-S6). */
 export function requiredSwingConfluenceCount(archetype: SwingArchetype | null | undefined): number {
   if (archetype && EVENT_ARCHETYPES.has(archetype)) {
     return 2; // event archetypes: CATALYST + 1 other
