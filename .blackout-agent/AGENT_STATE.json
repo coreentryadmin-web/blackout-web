@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T06:01:23.174Z",
+  "updated_at": "2026-09-05T06:06:44.390Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -249,11 +249,41 @@
   "deploy": {
     "last_main_sha": "46fa96a26923196f0146e8e9cc74261ca26d3993",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T05:51:32Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33947962193",
-    "last_deploy_sha": "46fa96a26923196f0146e8e9cc74261ca26d3993"
+    "last_deploy_at": "2026-09-05T06:01:38Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33948705188",
+    "last_deploy_sha": "3bf3e979772f3d84e28e37f3f391b08109382322"
   },
   "open_prs": [
+    {
+      "number": 3879,
+      "title": "fix(freshness): guard GEX cross-validation + Largo desk cache TTL",
+      "branch": "fix/cache-future-timestamp-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T06:05:14Z"
+    },
+    {
+      "number": 3878,
+      "title": "fix(swing): deep-dive Q3/Q5/Q6/Q15/Q20-Q22/Q26 batch",
+      "branch": "cursor/swing-deepdive-q20-commit-key-archetype",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T06:03:23Z"
+    },
+    {
+      "number": 3877,
+      "title": "fix(spx): RTH-only session HOD/LOD for playbook breakout flags",
+      "branch": "fix/spx-playbook-breakout-rth-filter",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T06:02:00Z"
+    },
     {
       "number": 3876,
       "title": "chore(autopilot): cursor PR-event wake — #3868 verify GREEN, deploy synced",
@@ -262,7 +292,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T06:01:15Z"
+      "updated_at": "2026-09-05T06:01:58Z"
     },
     {
       "number": 3875,
@@ -271,8 +301,8 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T05:56:32Z"
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T06:06:32Z"
     },
     {
       "number": 3874,
@@ -323,16 +353,6 @@
       "draft": true,
       "verify": "COMPLETED/SUCCESS",
       "updated_at": "2026-09-05T05:31:47Z"
-    },
-    {
-      "number": 3868,
-      "title": "fix(swing): G-S4 degraded-regime blocks COMMIT (deep-dive Q8)",
-      "branch": "cursor/swing-gs4-regime-gate-q8",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T06:01:22Z"
     }
   ],
   "events": [
@@ -1272,6 +1292,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 8
+    },
+    {
+      "at": "2026-09-05T06:06:44.389Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 10
+    },
+    {
+      "at": "2026-09-05T06:06:44.390Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9ce2c781-8fef-4e87-964d-36c4dd0e9afc",
+      "summary": "Cycle complete. Ops GREEN (deploy/ops:collect/platform-integrity/api-auth). main@46fa96a26 ECR deploy in_progress. Peer queue: no claude/fix PRs. Cursor PRs verified locally — #3868 G-S4 regime gate (61/61 tests, verify GREEN), #3875 thesisKey gate blocks (37/37 tests, verify GREEN) — both awaiting Claude adversarial review+merge. Handoff state #3876 (verify pending). Stale autopilot drafts #3869-#3874 need close (token blocked). RTH skipped (Sat). Next: Claude review #3868/#3875; merge #3876 when green."
     }
   ]
 }
