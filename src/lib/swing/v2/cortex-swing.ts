@@ -13,6 +13,9 @@ import {
   type ZeroDteCortexAssessment,
 } from "@/lib/zerodte/cortex-gate";
 
+/** G-S14 token when Cortex preflight throws or returns an unrecoverable error. */
+export const SWING_CORTEX_UNAVAILABLE_TOKEN = "gate:G-S14:cortex_unavailable";
+
 export interface SwingCortexPreflightResult {
   blocked: boolean;
   blockedBy: string[];
@@ -54,7 +57,17 @@ export function swingCortexBlockedByFromAssessment(
   };
 }
 
-/** Async preflight for one swing commit candidate. Fail-soft: errors → ABSTAIN (no block). */
+/** Build a fail-closed block when Cortex preflight cannot complete. */
+export function swingCortexUnavailableResult(reason: string): SwingCortexPreflightResult {
+  return {
+    blocked: true,
+    blockedBy: [SWING_CORTEX_UNAVAILABLE_TOKEN],
+    reason,
+    assessment: { decision: "ABSTAIN", abstained: true, reason },
+  };
+}
+
+/** Async preflight for one swing commit candidate. Fail-closed on thrown errors (Q29). */
 export async function evaluateSwingCortexForCommit(
   ticker: string,
   direction: PlayDirection,
@@ -63,12 +76,17 @@ export async function evaluateSwingCortexForCommit(
 ): Promise<SwingCortexPreflightResult> {
   const dir = direction === "LONG" ? "long" : "short";
   const evaluate = deps.evaluate ?? evaluateCortexForCommit;
-  const assessment = await evaluate(
-    ticker,
-    dir,
-    new Date(nowMs),
-    {},
-    { failClosedOnVetoBlind: true, horizon: "swing" },
-  );
-  return swingCortexBlockedByFromAssessment(assessment);
+  try {
+    const assessment = await evaluate(
+      ticker,
+      dir,
+      new Date(nowMs),
+      {},
+      { failClosedOnVetoBlind: true, horizon: "swing" },
+    );
+    return swingCortexBlockedByFromAssessment(assessment);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return swingCortexUnavailableResult(`Cortex preflight error — commit blocked (G-S14 fail-closed): ${msg}`);
+  }
 }

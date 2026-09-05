@@ -23,6 +23,8 @@ import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibratio
 import type { ChainContract, PlayDirection } from "../horizon-fanout.ts";
 import { PRODUCTION_PORTFOLIO_BUDGET, DEFAULT_PORTFOLIO_BUDGET } from "./swing-portfolio-budget.ts";
 import type { SwingArchetype, SwingSubLane } from "./taxonomy.ts";
+import { composeCortexEvidence } from "@/lib/nighthawk/cortex";
+import { baseInputs } from "@/lib/nighthawk/cortex/test-helpers";
 
 // ── report builders — REAL graded rows run through the shipped ladder (no faked graduation) ──
 function gradedRows(archetype: SwingArchetype, subLane: SwingSubLane, nWin: number, nLoss: number): SwingCalibrationRow[] {
@@ -446,6 +448,23 @@ test("computeSwingCommitPlan: V2 Cortex preflight blocks with G-S14 token", () =
   });
   assert.equal(plan.committableCount, 0);
   assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S14:cortex_veto:gex-walls"));
+});
+
+test("computeSwingCommitPlan: pins cortex assessment into entry_context when provided", () => {
+  const assessment = {
+    decision: "PASS" as const,
+    abstained: false,
+    verdict: composeCortexEvidence(baseInputs({ ticker: "NVDA", direction: "long" })),
+  };
+  const plan = computeSwingCommitPlan({
+    candidates: [candidate({ cortexAssessment: assessment })],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  });
+  const ctx = plan.decisions[0]!.insert?.entry_context as Record<string, unknown>;
+  assert.ok(ctx?.cortex);
+  assert.equal((ctx.cortex as { decision?: string }).decision, "PASS");
 });
 
 // ─── small helpers ────────────────────────────────────────────────────────────
