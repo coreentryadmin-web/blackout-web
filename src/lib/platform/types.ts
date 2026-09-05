@@ -61,8 +61,13 @@ export type SpxDeskSummary = {
 export type FlowTapeSummary = {
   /** When this summary was computed — distinct from PlatformSnapshot.as_of wrapper stamp (CQ-083). */
   as_of: string;
+<<<<<<< HEAD
   /** ET session date for the anchor instant — required beside UTC as_of for Largo session resolution (C1). */
   session_date: string | null;
+=======
+  /** ET session date for the newest print (or now when empty) — pairs with UTC as_of (C1 contract). */
+  session_date?: string | null;
+>>>>>>> c224ff6ca (fix(cq): batch 4 CI — auth tier test, flow session_date anchor, sharedCacheDel mock)
   count: number;
   total_premium: number;
   top_tickers: Array<{ ticker: string; premium: number; count: number }>;

@@ -13,6 +13,7 @@ test("requireTier uses resolveUserTier not JWT tier claims (CQ-113)", () => {
   const src = readFileSync(join(process.cwd(), "src/lib/auth-access.ts"), "utf8");
   assert.doesNotMatch(src, /tierFromSessionClaims/);
   assert.match(src, /resolveUserTier|getUserTier/);
+  assert.doesNotMatch(src, /await requireAuth\(\)/);
   assert.match(src, /requireDeskTool/);
   const getSessionCalls = src.match(/getSession\(\)/g) ?? [];
   assert.ok(getSessionCalls.length <= 2, `expected ≤2 getSession calls, got ${getSessionCalls.length}`);
