@@ -836,6 +836,20 @@ function normPdf(x: number): number {
   return INV_SQRT_2PI * Math.exp(-0.5 * x * x);
 }
 
+/**
+ * Standard normal CDF (Zelen & Severo 26.2.17 approximation, |error| < 7.5e-8). Duplicated from
+ * gex-depth.ts on purpose (same reason that file gives for its own copy): importing across
+ * modules here would be needless coupling for a five-line pure function. Needed for the
+ * dividend-yield-correct CHARM formula below (charm's q·N(d1) term).
+ */
+function normCdf(x: number): number {
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const poly =
+    t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  const p = normPdf(x) * poly;
+  return x >= 0 ? 1 - p : p;
+}
+
 /** Year fraction (ACT/365) from today (ET) to an expiry YYYY-MM-DD. <=0 → not tradeable. */
 function yearsToExpiry(expiry: string, todayYmd: string): number {
   const expMs = new Date(`${expiry}T16:00:00-04:00`).getTime(); // ~US market close ET
@@ -959,32 +973,50 @@ function vannaPerShare(spot: number, strike: number, t: number, sigma: number, q
 }
 
 /**
- * Closed-form Black-Scholes CHARM per share (delta decay) for r=q=0: φ(d1)·d2 / (2T).
+ * Closed-form Black-Scholes CHARM per share (delta decay), full dividend-yield term included.
  *
- * Derivation (verified against the textbook form): the standard charm for a CALL is
- *   charm_call = −φ(d1)·(2(r−q)T − d2·σ√T) / (2T·σ√T).
- * With r=q=0 the numerator collapses to −d2·σ√T, so
- *   charm_call = −φ(d1)·(−d2·σ√T)/(2T·σ√T) = φ(d1)·d2 / (2T).
- * This is "charm" in the standard sense: the change in delta per unit of CALENDAR time passing
- * (delta DECAY), i.e. −∂Δ/∂(time-to-expiry). NUMERICALLY VERIFIED: φ(d1)·d2/(2T) matches the
- * central finite-difference −∂Δ/∂T to ~1e-7 across S/K/T/σ test points (and equals +∂Δ/∂T's
- * negative — the same magnitude with the decay sign). Because Δ_put = Δ_call − 1, the two share
- * the same time-derivative → put charm EQUALS call charm at r=q=0, so charm is type-independent
- * exactly like gamma; the caller applies the dealer call(+)/put(−) sign at accumulation, identical
- * to the gamma/vanna pattern.
+ * charm = −dDelta/dT (delta decay per unit of calendar time passing, i.e. per year of T =
+ * time-to-expiry elapsing). For a CALL, Delta(T) = e^(−qT)·N(d1(T)); differentiating w.r.t. T
+ * (chain rule through both the e^(−qT) discount factor and d1(T)) and negating gives:
+ *   charm_call = e^(−qT) · ( q·N(d1) − φ(d1)·d1' ),  d1' = (σ²/2 − q)/(σ√T) − d1/(2T)   [r=0]
+ * For a PUT, Delta_put(T) = e^(−qT)·(N(d1)−1) = Delta_call(T) − e^(−qT), so:
+ *   charm_put = charm_call − q·e^(−qT)
+ * At q=0 both collapse to the SAME value (the formula this replaced, φ(d1)·d2/(2T) at r=q=0,
+ * kept as a regression test below) — but for q>0 (any real ETF/index dividend yield — SPY/QQQ/IWM
+ * are exactly the tickers this codebase already flags as dividend-yield-material for GEX, see
+ * gex-depth-validate.mjs's 9.5–21.7% raw BS-vs-provider gaps) call and put charm genuinely
+ * DIVERGE. The formula this replaced used the call-shaped expression for BOTH types (comment:
+ * "type-independent... like gamma"), which is only true at q=0 — it silently understated call
+ * charm (measured ~11% low at q=1.5%, T=0.18y) and used the outright wrong value for puts.
  *
+ * Found via CLQ-017 (BLACKOUT Claude<->Cursor cross-exam, 2026-09-05): GEX has a dedicated live
+ * provider-vs-closed-form validator; CHARM had neither that (Polygon's greeks don't carry charm —
+ * no provider ground truth exists to check against over the wire) nor even a cheap,
+ * dependency-free numerical check. Adding the independent finite-difference check
+ * (polygon-options-gex.test.ts) is what surfaced this.
+ *
+ * NUMERICALLY VERIFIED: both charm_call and charm_put match an INDEPENDENT central
+ * finite-difference of their own Delta(T) to ~1e-6 relative, across S/K/T/σ/q test points
+ * (including q=0, where the new formula must also reproduce the old one's output exactly).
  * Units: per-share charm per UNIT of time in YEARS (ACT/365), matching the year-fraction `t`
  * from yearsToExpiry → reads as delta decay per year. Returns 0 (skip) on non-finite inputs,
  * T<=0, or σ<=0 — SAME guard as vannaPerShare — never fabricated.
  */
-function charmPerShare(spot: number, strike: number, t: number, sigma: number, q = 0): number {
+function charmPerShare(
+  spot: number,
+  strike: number,
+  t: number,
+  sigma: number,
+  q = 0,
+  type: "call" | "put" = "call"
+): number {
   if (!(spot > 0) || !(strike > 0) || !(t > 0) || !(sigma > 0)) return 0;
   const sqrtT = Math.sqrt(t);
-  const r = 0;
-  const d1 = (Math.log(spot / strike) + (r - q + 0.5 * sigma * sigma) * t) / (sigma * sqrtT);
-  const d2 = d1 - sigma * sqrtT;
-  // Full BS call charm at r=0: −φ(d1)·(−2qT − d2·σ√T) / (2T·σ√T). Collapses to φ(d1)·d2/(2T) when q=0.
-  const c = (-normPdf(d1) * (2 * (r - q) * t - d2 * sigma * sqrtT)) / (2 * t * sigma * sqrtT);
+  const d1 = (Math.log(spot / strike) + (0 - q + 0.5 * sigma * sigma) * t) / (sigma * sqrtT);
+  const d1prime = (0.5 * sigma * sigma - q) / (sigma * sqrtT) - d1 / (2 * t);
+  const discount = Math.exp(-q * t);
+  const callCharm = discount * (q * normCdf(d1) - normPdf(d1) * d1prime);
+  const c = type === "put" ? callCharm - q * discount : callCharm;
   return Number.isFinite(c) ? c : 0;
 }
 
@@ -3311,10 +3343,12 @@ async function buildGexHeatmapUncached(
     // CHARM: closed-form charm × oi × 100 × spot, call +/put −. SAME guard as vanna (skip when
     // T<=0 or σ<=0 → charmPerShare returns 0). dollar-charm scaling MIRRORS dollar-vanna (the
     // notional `× 100 × spot` convention, per-year — DISTINCT from GEX's per-1%-move × spot² × 0.01
-    // scale above); the per-unit-time is YEARS of time-to-expiry (ACT/365), so
-    // it reads as net dealer delta decay per year. Charm is type-independent (put charm = call
-    // charm at r=q=0, like gamma); the dealer call(+)/put(−) sign is applied here at accumulation.
-    const cps = charmPerShare(spot, strike, t, iv, dividendYieldQ);
+    // scale above); the per-unit-time is YEARS of time-to-expiry (ACT/365), so it reads as net
+    // dealer delta decay per year. Charm is type-independent ONLY at q=0 — with a real dividend
+    // yield (SPY/QQQ/IWM etc.) call and put charm diverge, so the contract's own `type` is passed
+    // through to get the correct per-type value (see charmPerShare's docstring); the dealer
+    // call(+)/put(−) sign is still applied here at accumulation.
+    const cps = charmPerShare(spot, strike, t, iv, dividendYieldQ, type === "put" ? "put" : "call");
     if (cps !== 0) {
       const signedCharm = sign * cps * oi * sharesPerContract * spot;
       if (signedCharm !== 0 && Number.isFinite(signedCharm)) {

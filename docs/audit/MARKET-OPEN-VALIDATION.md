@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1g. SPX play gate: future-skewed gex_age_ms bypassed stale block — fix/spx-play-gate-gex-age-future-guard (pending)
+
+**What was broken:** `gexStaleFromAge()` correctly lit the GEX stale pill when `pos.asof` was clock-skewed into the future (>5s), but `evaluatePlayGates()` passed the raw negative `gex_age_ms` as a negative `gexSec` that never exceeded `playGexStaleMaxSec()`. A desk with a lit GEX-stale pill could still open plays when `polled_at` was fresh.
+
+**Fix:** Apply `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` fail-closed guard to `gex_age_ms` in play gates (same pattern as `polled_at` fix 2026-09-03).
+
+**Check at the open:** If GEX snapshot age shows stale on SPX desk during RTH, confirm play rail does not surface new BUY entries for that desk state.
+
 ### 0a-1e. Vector Largo freshness: future `asOf` clamped to "live" — #3979 MERGED
 
 **What was broken:** `describeVectorFreshness()` clamped negative age to 0 and classified `freshnessFromAgeMs(0)` as **live**. A Vector snapshot stamped >5s ahead of the reader (cron writer vs API reader clock skew) read as falsely fresh — Largo/Cortex consumers could present stale tape as live.
@@ -2603,3 +2611,9 @@ than an end-of-session patch.
 - **What was broken:** `fetchUwDeskRestSupplemental` (NOPE/max pain/IV) and `buildSpxDeskFlow` (6-endpoint UW fan-out) called `runUwPooled` without `runWithBackgroundUwSweep`, unlike `fetchDeskEnrichmentFields` and `desk-warm`. Cron cold rebuilds (`spx-evaluate`, `spx-signal-observe`, `market-regime-detector`) could consume UW slots reserved for live member traffic.
 - **What changed:** Wrap both UW blocks in `runWithBackgroundUwSweep`; extend static regression test to cover all three paths.
 - **RTH check:** During RTH, confirm SPX desk flow lane + supplemental fields (NOPE, max pain, IV rank on SPX Slayer) populate normally; no elevated UW 429s or member-facing staleness on concurrent desk loads when crons fire (CloudWatch `uw-rate-limiter` / cron `elapsed=` logs).
+
+### 34. Thermal CHARM — call-shaped formula used for puts too, wrong at nonzero dividend yield — test/charm-numerical-derivative-check — 2026-09-05
+
+- **What was broken:** `charmPerShare` used ONE call-shaped closed-form expression for both call and put contracts ("type-independent... like gamma"), true only at dividend yield `q=0`. Missing the `q`-dependent term from differentiating `e^(-qT)` in `Delta(T)`, so even calls were subtly wrong at `q>0`. SPY/QQQ/IWM carry a material dividend yield per this repo's own GEX findings (`gex-depth-validate.mjs`).
+- **What changed:** `charmPerShare(..., type: "call"|"put")` now implements the full dividend-yield-correct formula per-type; the one call site passes the contract's real type through.
+- **RTH check:** On `/heatmap` (Thermal desk) for SPY/QQQ/IWM during RTH, spot-check the CHARM tab's per-strike dollar-charm values before/after this deploys — magnitudes should shift (calls slightly larger in magnitude, puts now genuinely distinct from calls rather than mirroring them) with no sign flips or NaN/null cells. No live provider ground truth exists for charm (Polygon doesn't supply it), so this is a magnitude/shape sanity check, not a numeric cross-check.
