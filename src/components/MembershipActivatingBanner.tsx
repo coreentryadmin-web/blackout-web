@@ -14,7 +14,7 @@ import {
 } from "@/lib/membership-activating";
 
 /**
- * Post-Whop-checkout UX (CLQ-041): when a member returns signed-in but tier is still free,
+ * Post-checkout activation UX (CLQ-041): when a member returns signed-in but tier is still free,
  * show an activating banner and poll `/api/membership/sync` until access lands or we time out.
  */
 export function MembershipActivatingBanner() {
@@ -104,8 +104,8 @@ export function MembershipActivatingBanner() {
           </>
         ) : (
           <>
-            Activating membership{syncing ? "…" : ""} — desk access unlocks automatically once Whop
-            confirms payment.
+            Activating membership{syncing ? "…" : ""} — desk access unlocks automatically once
+            payment confirms.
           </>
         )}
       </p>

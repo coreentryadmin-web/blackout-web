@@ -30,6 +30,18 @@ test("shouldPollMembershipActivation: false when tier already paid", () => {
   );
 });
 
+test("shouldPollMembershipActivation: false for admin tier even with remembered plan", () => {
+  assert.equal(
+    shouldPollMembershipActivation({
+      isLoaded: true,
+      isSignedIn: true,
+      tier: "admin",
+      rememberedPlan: "monthly",
+    }),
+    false,
+  );
+});
+
 test("shouldPollMembershipActivation: false without remembered checkout plan", () => {
   assert.equal(
     shouldPollMembershipActivation({
