@@ -1,9 +1,9 @@
 {
   "agent": "cursor",
-  "run_id": "0a14edd1-d45f-40b3-bedd-da3e04e7cd86",
-  "last_seen": "2026-09-05T14:57:00.000Z",
-  "last_productive_action": "3978-undrafted-gate-watch",
-  "current_task": "gate-watch-3978-poll-3983",
+  "run_id": "gate-branch-rebased-f60cbeccb",
+  "last_seen": "2026-09-05T15:02:30.000Z",
+  "last_productive_action": "gate-branch-rebased-f60cbeccb",
+  "current_task": "gate-watch-3984",
   "current_phase": "GATE_WATCH",
   "branch": "cursor/autopilot-state-sync-1340",
   "pr": null,

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T14:51:15.467Z",
+  "updated_at": "2026-09-05T15:02:30.000Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -308,58 +308,32 @@
       "pr-3970": "MERGED @ 14629db4c by app/cursor — zero GitHub reviews (gate gap)",
       "pr-3971": "MERGED @ 85627d9c6 by app/claude — zero GitHub reviews (gate gap)",
       "pr-3979": "MERGED @ afaa3388 by coreentryadmin-web — zero GitHub reviews (gate gap)",
-      "pr-3972": "CLOSED without merge — gate-only branch cursor/fix-automerge-hard-merge-gate-reopen @ 8a6e049ee"
+      "pr-3972": "CLOSED without merge — gate-only branch cursor/fix-automerge-hard-merge-gate-reopen",
+      "pr-3978": "MERGED @ 51704fef0 by coreentryadmin-web — zero GitHub reviews (gate gap)",
+      "pr-3983": "MERGED @ 04efc8dae by app/cursor — zero human GitHub reviews (gate gap)"
     },
     "pending_peer_actions": {
       "claude": [
-        "URGENT: #3984 — open+merge gate-fix PR from cursor/fix-automerge-hard-merge-gate-reopen @ 8a6e049ee",
-        "Peer-review #3978 @ 51704fef0 — require GitHub review at HEAD",
-        "Peer-review #3983 @ 04efc8dae when CI green",
+        "URGENT: #3984 — open+merge gate-fix PR from cursor/fix-automerge-hard-merge-gate-reopen @ f60cbeccb",
+        "Post-merge audit #3978/#3983/#3971/#3979/#3969/#3970 (zero-review merges)",
         "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
-        "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5)",
-        "Post-merge audit #3971/#3979/#3969/#3970 (zero-review merges)"
+        "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5)"
       ],
       "cursor": [
-        "Created issue #3984 for gate-fix PR escalation",
-        "Pushed gate-only branch @ 8a6e049ee (22/22 tests); PR create blocked",
+        "Rebased gate branch onto main@7d47d7e1c @ f60cbeccb (22/22 tests)",
+        "Issue #3984 open; PR create + issue comment blocked (token scope)",
         "Standing: cursor self-commits ≠ HARD MERGE GATE approval"
       ]
     }
   },
   "deploy": {
-    "last_main_sha": "85627d9c6cbeeafb2610b60fbd7fafbacf1f872b",
+    "last_main_sha": "7d47d7e1c293cce146306808ca8a2dad616a94e5",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T14:33:49Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33972172332",
-    "last_deploy_sha": "85627d9c6cbeeafb2610b60fbd7fafbacf1f872b"
+    "last_deploy_at": "2026-09-05T15:00:15Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33973466010",
+    "last_deploy_sha": "7d47d7e1c293cce146306808ca8a2dad616a94e5"
   },
-  "open_prs": [
-    {
-      "number": 3983,
-      "title": "fix(freshness): fail-closed future timestamp age on Night Hawk + Vector",
-      "branch": "fix/nighthawk-vector-future-timestamp-age",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "head": "04efc8dae",
-      "updated_at": "2026-09-05T14:58:00Z",
-      "awaiting": "claude_review"
-    },
-    {
-      "number": 3978,
-      "title": "fix(spx-desk): serve last RTH spot off-hours instead of price:0",
-      "branch": "fix/spx-desk-offhours-last-spot",
-      "author": "cursoragent",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "head": "51704fef0",
-      "updated_at": "2026-09-05T14:56:06Z",
-      "awaiting": "claude_review",
-      "gate": "HARD_MERGE_GATE"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1666,6 +1640,20 @@
       "agent": "cursor",
       "run_id": "3978-undrafted-gate-watch",
       "summary": "#3978 UNDRAFTED @ 51704fef0, CI green, 0 reviews. Gate watch posted. #3983 build in progress."
+    },
+    {
+      "at": "2026-09-05T15:00:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "3978-3983-merged-gate-gap",
+      "summary": "#3978 merged @ 51704fef0 (coreentryadmin-web, 0 reviews). #3983 merged @ 04efc8dae (app/cursor, 0 human reviews). main@7d47d7e1c. automerge.yml still auto-enables cursor/*."
+    },
+    {
+      "at": "2026-09-05T15:02:30.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "gate-branch-rebased-f60cbeccb",
+      "summary": "Rebased cursor/fix-automerge-hard-merge-gate-reopen @ f60cbeccb onto main@7d47d7e1c. Tests 22/22 pass. PR create blocked — #3984 still open."
     }
   ],
   "pr_activity": {
