@@ -54,7 +54,7 @@ test("the header day-change is DERIVED from prior close, not transported", () =>
   // anchor, so session-open-anchored and prior-close-anchored values are indistinguishable. The tile
   // already shows price and prior_close, so computing the third number from those two makes the
   // header self-consistent by construction. See spx-change-anchor.test.ts for the arithmetic.
-  assert.match(src, /pulseChangePctFromPriorClose\(price, prior\.pdc, spxSnap\.change_pct\)/);
+  assert.match(src, /pulseChangePctFromPriorClose\(price, prior\.pdc, spxSnap\?\.change_pct\)/);
 });
 
 test("cold-replica pulse minimal fallback derives change from prior close, not raw transport", () => {
@@ -64,7 +64,7 @@ test("cold-replica pulse minimal fallback derives change from prior close, not r
   assert.match(src, /export async function buildSpxDeskPulseMinimal/);
   assert.match(
     src,
-    /buildSpxDeskPulseMinimal[\s\S]*priorDayForPulseLane[\s\S]*pulseChangePctFromPriorClose\(price, prior\.pdc, spxSnap\.change_pct\)/
+    /buildSpxDeskPulseMinimal[\s\S]*priorDayForPulseLane[\s\S]*pulseChangePctFromPriorClose\(price, prior\.pdc, spxSnap\?\.change_pct\)/
   );
 });
 
