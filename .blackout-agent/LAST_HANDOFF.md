@@ -1,15 +1,15 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T16:35:35.991Z
-**Run:** 7241539d-60c7-4e6b-ac5b-c9b3aa85b828
+**At:** 2026-09-05T17:03:40.967Z
+**Run:** e2282697-889f-45bf-9096-d2ce946e9687
 
 ## Summary
 
-Continuous loop cycle complete. Peer review: pr-sweep 0 open PRs. Platform integrity 14/14 GREEN, lifecycle sweep GREEN (weekend RTH skip). Deploy drift: prod rolling feaba670 (in_progress 25m+), main now 86227e70 (#3995+#3998) with pending ECR run 33978273189. Opened draft #4001 (agent state sync — awaits Claude review). GitHub GraphQL rate-limited until ~17:06 UTC; REST still works. Next: monitor ECR → validate:deploy post-rollout; Claude peer-review #4001 + any new claude/* PRs.
+PR wake cycle: #4002+#4003 merged (SPX lock fail-closed + Largo triple-hop test). Peer-reviewed APPROVED post-merge. Salvaged Phase5 docs branch cursor/cross-exam-phase5-docs-salvage pushed (awaiting PR — gh rate-limited). Platform integrity 14/14 GREEN, validate:deploy GREEN, ops:collect 0. ECR deploy pending #4003 @ 3ae28b772. Stale #3993/#3996/#3996 should close — revert risk.
 
 ## Deploy
 
-- main: `86227e70b57d7dc962673f750a952173dea85088`
+- main: `3ae28b7721d5d696f4354949ea9e0b9cbfbac727`
 - status: 
 
 ## Open PRs
