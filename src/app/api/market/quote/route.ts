@@ -12,6 +12,7 @@ import { withFreshPrice } from "@/lib/providers/change-pct";
 import { overlayRestIndexWithWs } from "@/lib/providers/index-snapshot-overlay";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { roundFloats } from "@/lib/round-floats";
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,6 +63,12 @@ const QUOTE_REDIS_TTL_SEC = 3;
  */
 const QUOTE_FAILURE_CACHE_MS = 3_000;
 
+/** True when a cache `at` stamp is within [−futureTolerance, ttlMs) of `now`. */
+function isQuoteCacheAtFresh(at: number, now: number, ttlMs: number): boolean {
+  const ageMs = now - at;
+  return ageMs >= -WS_TIMESTAMP_FUTURE_TOLERANCE_MS && ageMs < ttlMs;
+}
+
 /** Per-process REST cache (in-memory L1), shared across all concurrent requests. */
 const quoteMem = new Map<string, { at: number; payload: QuotePayload }>();
 /** Coalesce concurrent REST fetches for the same ticker into one upstream call. */
@@ -108,16 +115,16 @@ async function getRestQuote(
   // Negative cache — a recent failure for this ticker skips straight to { available:false }
   // instead of re-hitting a possibly-still-down upstream on every poll.
   const failedAt = quoteFailureMem.get(ticker);
-  if (failedAt != null && now - failedAt < QUOTE_FAILURE_CACHE_MS) return null;
+  if (failedAt != null && isQuoteCacheAtFresh(failedAt, now, QUOTE_FAILURE_CACHE_MS)) return null;
 
   // L1 — in-memory, fresh within the ~1.5s window.
   const mem = quoteMem.get(ticker);
-  if (mem && now - mem.at < QUOTE_CACHE_MS) return mem.payload;
+  if (mem && isQuoteCacheAtFresh(mem.at, now, QUOTE_CACHE_MS)) return mem.payload;
 
   // L2 — Redis (cross-replica), so staggered polls across instances also collapse.
   try {
     const hit = await sharedCacheGet<{ at: number; payload: QuotePayload }>(`quote:${ticker}`);
-    if (hit && now - hit.at < QUOTE_CACHE_MS) {
+    if (hit && isQuoteCacheAtFresh(hit.at, now, QUOTE_CACHE_MS)) {
       quoteMem.set(ticker, hit);
       return hit.payload;
     }
@@ -187,7 +194,8 @@ async function buildIndexWsQuote(
 ): Promise<QuotePayload> {
   let restSnap: IndexQuote | null = null;
   const mem = quoteMem.get(ticker);
-  if (mem && Date.now() - mem.at < QUOTE_CACHE_MS) {
+  const now = Date.now();
+  if (mem && isQuoteCacheAtFresh(mem.at, now, QUOTE_CACHE_MS)) {
     restSnap = {
       symbol: optionsRoot,
       price: mem.payload.price,
@@ -293,7 +301,7 @@ export async function GET(req: NextRequest) {
         // header doesn't show session-open–anchored drift before the REST seed lands.
         const mem = quoteMem.get(ticker);
         let changePct = candle.changePct;
-        if (mem && Date.now() - mem.at < QUOTE_CACHE_MS) {
+        if (mem && isQuoteCacheAtFresh(mem.at, Date.now(), QUOTE_CACHE_MS)) {
           const rebased = withFreshPrice(
             { price: mem.payload.price, change_pct: mem.payload.change_pct },
             candle.current.close
