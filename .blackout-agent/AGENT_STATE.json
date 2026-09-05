@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T07:12:06.739Z",
+  "updated_at": "2026-09-05T08:47:13.240Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T08:34:46.520Z",
+      "lease_until": "2026-09-05T10:16:27.317Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "258c1644-e5ec-4366-a900-40253d720c5a",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -234,6 +234,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3919": {
+      "pr": 3919,
+      "head_sha": "ec7a6a8060ee312e1907c1a5a4ad2178f4d945be",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T08:46:06.056Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,7 +256,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "92f8ada51d33b59cd03b7616b375425645845e1f",
+    "last_main_sha": "b3762200f57ab5c969d38c476f4bfa50353483c0",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-04T22:52:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
@@ -1191,6 +1199,104 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:36:05.204Z",
+      "type": "pr_webhook",
+      "pr": 3919,
+      "event": "sweep",
+      "head": "ec7a6a8060ee312e1907c1a5a4ad2178f4d945be",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-05T08:36:07.191Z",
+      "type": "pr_webhook",
+      "pr": 3916,
+      "event": "sweep",
+      "head": "5a6e4f3af21de10de8a4f1caecb80dbd49df856a",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T08:44:25.271Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:44:25.272Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2cfb1301-a3a7-4aa5-963c-c1c7a5ee4041",
+      "summary": "pull_request wake: ops:collect 0, validate:deploy GREEN, platform-integrity 14/14. PR #3916 verify GREEN → marked ready for Claude review. PR #3919 peer-review in progress — local 1508/1508 pass + targeted freshness test; verify CI still pending (subscribed). GitHub PAT rate-limited — using ManagePullRequest for CI polls."
+    },
+    {
+      "at": "2026-09-05T08:44:27.730Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:46:06.057Z",
+      "type": "pr_review",
+      "pr": 3919,
+      "head_sha": "ec7a6a8060ee312e1907c1a5a4ad2178f4d945be",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T08:46:06.056Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T08:46:27.316Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:46:27.734Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:46:28.121Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:47:13.239Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:47:13.240Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "36a3c27e-e2eb-4c39-8e7d-4f42f55ad0a8",
+      "summary": "Cycle complete: #3916+#3919 merged to main (b3762200f). Peer-reviewed #3919 ✅ APPROVED @ ec7a6a8. ops:collect 0, validate:deploy GREEN, platform-integrity 14/14, rth-lifecycle GREEN (off-hours skip). pr-sweep: 0 open PRs. Next: monitor ECS deploy for b3762200f, RTH validation Fri ledger."
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-3919": {
+      "last_event": "sweep",
+      "last_head": "ec7a6a8060ee312e1907c1a5a4ad2178f4d945be",
+      "last_feedback_at": "2026-09-05T08:36:05.203Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3916": {
+      "last_event": "sweep",
+      "last_head": "5a6e4f3af21de10de8a4f1caecb80dbd49df856a",
+      "last_feedback_at": "2026-09-05T08:36:07.191Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    }
+  }
 }
