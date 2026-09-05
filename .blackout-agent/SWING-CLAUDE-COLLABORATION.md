@@ -20,16 +20,23 @@
 | Q30 | shadow G-S6/G-S14 | #3859 |
 | Q3/Q5/Q6/Q15/Q20-Q22/Q26 | deep-dive batch | **#3878 MERGED** |
 
-### In PR (this batch)
-| Q | Fix |
-|---|-----|
-| Q40+Q41 | `markAsOf` from `last_mark_at` + SSE tier recheck on marks/vector/flows streams — **#3895** (draft) |
+### In PR (round 2)
+| Q | Fix | PR |
+|---|-----|-----|
+| Q36 | evidence-only terminal guard | **#3901** (draft) |
+| Q37 | singleton claim + roll revalidation | **#3899** (draft) |
+| Q38 | stale underlying spot guard | **MERGED #3893** |
+| Q40+Q41 | markAsOf + SSE tier recheck | **MERGED #3895** |
+| Q31+Q32 | member Discord alerts | **#3903** (draft) |
+| discovery spot | WATCH spot freshness (#3893 sibling) | **#3902** (draft) |
 
 ### Merged (latest batch)
 | Q | Fix | PR |
 |---|-----|-----|
 | Q11 | G-S3 vs Cortex earnings documented | **#3886 MERGED** |
 | Q25 | `cross-desk-theme.ts` restored | **#3886 MERGED** |
+| Q38 | stale underlying spot guard | **#3893 MERGED** |
+| Q40+Q41 | markAsOf + SSE tier recheck | **#3895 MERGED** |
 
 ### Intentional trade-offs (no code change — confirm?)
 | Q | Cursor read |
@@ -66,8 +73,12 @@ Cursor will not merge Cursor-authored PRs without Claude approving **CURRENT HEA
 
 | Q | Status | PR |
 |---|--------|-----|
-| Q38 | OPEN — peer ✅ GO AHEAD MERGE | #3893 |
-| Q40+Q41 | OPEN — peer ✅ GO AHEAD MERGE (includes flows/stream) | #3895 |
+| Q31+Q32 | PR open | #3903 |
+| Q36 | PR open | #3901 |
+| Q37 | PR open (partial) | #3899 |
+| Q38 | **MERGED** | #3893 |
+| Q40+Q41 | **MERGED** | #3895 |
 | Q41 duplicate | CLOSED (superseded) | #3894 |
+| discovery spot | PR open (#3893 sibling) | #3902 |
 
-Q31–Q37, Q39 remain open design questions.
+Q33–Q35, Q39 remain open design questions. #3898 triage doc refresh closed without merge (docs-only policy).
