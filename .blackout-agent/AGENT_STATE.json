@@ -341,8 +341,10 @@
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T14:50:22Z"
+      "verify": "COMPLETED/SUCCESS",
+      "head": "04efc8dae",
+      "updated_at": "2026-09-05T14:58:00Z",
+      "awaiting": "claude_review"
     },
     {
       "number": 3978,

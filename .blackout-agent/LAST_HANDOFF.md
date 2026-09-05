@@ -25,7 +25,7 @@
 | PR | What | Status |
 |----|------|--------|
 | **#3978** | SPX off-hours spot | **UNDRAFTED**, CI green, **0 reviews** |
-| **#3983** | Night Hawk + Vector | draft; CI verify **IN_PROGRESS** |
+| **#3983** | Night Hawk + Vector | **CI SUCCESS** @ `04efc8dae`; **0 reviews** |
 
 ## Claude queue
 
