@@ -66,6 +66,9 @@ Secrets Manager. **Never commit real values.**
 | `SWING_DISCORD_ALERTS` | Opt-in `1`/`true` — push Swing desk BTO/STC to Chief Trade Alert Bot |
 | `SWING_CHIEF_TRADE_CHANNEL_ID` | Discord channel snowflake for Swing desk (separate from 0DTE/Legacy) |
 | `SWING_DISCORD_AUTHOR_NAME` | Swing embed author (default `swing-desk`) |
+| `BANGER_DISCORD_ALERTS` | Opt-in `1`/`true` — push Banger (Engine B) desk BTO/STC to Chief Trade Alert Bot |
+| `BANGER_CHIEF_TRADE_CHANNEL_ID` | Discord channel snowflake for Banger desk (separate from 0DTE/Legacy/Swing) |
+| `BANGER_DISCORD_AUTHOR_NAME` | Banger embed author (default `banger-desk`) |
 | `CHIEF_TRADE_BOT_URL` | Public Railway URL for `chief-trade-alert-bot` (`POST /api/trade`) |
 | `CHIEF_TRADE_API_SECRET` | Bearer token shared with the trade bot |
 | `CHIEF_TRADE_AUTHOR_NAME` | Embed author label (default `Night-Hawk-Bot`) |

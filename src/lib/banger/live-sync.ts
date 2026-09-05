@@ -19,12 +19,16 @@ import type { BangerStatus } from "@/lib/banger/positions-db";
 
 export type BangerLiveSyncRow = {
   id: number;
+  session_date: string;
   ticker: string;
+  contract_strike: number;
+  contract_expiry: string;
   contract_occ: string;
   entry_premium: number;
   peak_premium: number | null;
   scaled_already: boolean;
   partial_realized_premium: number | null;
+  last_mark?: number | null;
   status: BangerStatus;
 };
 
@@ -135,7 +139,29 @@ export async function runBangerLiveSync(deps: BangerLiveSyncDeps): Promise<Bange
     }
 
     await deps.updateLiveState(row.id, update);
-    if (newStatus !== row.status) transitions.push({ id: row.id, ticker: row.ticker, action });
+    if (newStatus !== row.status) {
+      transitions.push({ id: row.id, ticker: row.ticker, action });
+      void import("./discord-trade-notify")
+        .then(({ notifyBangerFromScaleOutAction }) =>
+          notifyBangerFromScaleOutAction(
+            {
+              session_date: row.session_date,
+              position_id: row.id,
+              ticker: row.ticker,
+              contract_strike: row.contract_strike,
+              contract_expiry: row.contract_expiry,
+              entry_premium: row.entry_premium,
+              last_mark: mark,
+              scaled_already: row.scaled_already,
+            },
+            action,
+            mark
+          )
+        )
+        .catch((err) => {
+          console.warn(`[banger-discord] scale-out notify failed for ${row.ticker} (${action}):`, err);
+        });
+    }
   }
 
   return { ok: true, skipped: false, positions: rows.length, refreshed, noQuote, transitions };

@@ -108,23 +108,29 @@ export async function runBangerCommit(deps: BangerCommitDeps): Promise<BangerCom
     const watch = horizonPlayFromBangerWatch(mover, pick, deps.sessionDate);
     if (watch) watchPlays.push(watch);
     const commitKey = `${deps.sessionDate}:${mover.ticker}:${pick.expiry}:${pick.strike}`;
+    const insertPayload = {
+      commit_key: commitKey,
+      session_date: deps.sessionDate,
+      ticker: mover.ticker,
+      discovery_gain: mover.gain,
+      discovery_vol: mover.vol,
+      discovery_dollar_vol: mover.dollar,
+      discovery_close_strength: mover.closeStrength,
+      contract_strike: pick.strike,
+      contract_expiry: pick.expiry,
+      contract_occ: pick.occ,
+      entry_premium: pick.entryPremium,
+      entry_context: { discovery: mover, screen: "banger_v1" },
+    };
     try {
-      await deps.insertPosition({
-        commit_key: commitKey,
-        session_date: deps.sessionDate,
-        ticker: mover.ticker,
-        discovery_gain: mover.gain,
-        discovery_vol: mover.vol,
-        discovery_dollar_vol: mover.dollar,
-        discovery_close_strength: mover.closeStrength,
-        contract_strike: pick.strike,
-        contract_expiry: pick.expiry,
-        contract_occ: pick.occ,
-        entry_premium: pick.entryPremium,
-        entry_context: { discovery: mover, screen: "banger_v1" },
-      });
+      const positionId = await deps.insertPosition(insertPayload);
       committed += 1;
       tickers.push(mover.ticker);
+      void import("./discord-trade-notify")
+        .then(({ notifyBangerTradeOpenFromInsert }) => notifyBangerTradeOpenFromInsert(positionId, insertPayload))
+        .catch((err) => {
+          console.warn(`[banger-discord] open notify failed for ${mover.ticker}:`, err);
+        });
     } catch (err) {
       console.error(`[banger/commit] insert failed for ${mover.ticker}`, err);
       errors += 1;

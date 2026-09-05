@@ -32,12 +32,16 @@ export async function GET(req: NextRequest) {
         const rows = await fetchOpenBangerPositions();
         return rows.map((r) => ({
           id: r.id,
+          session_date: r.session_date,
           ticker: r.ticker,
+          contract_strike: r.contract_strike,
+          contract_expiry: r.contract_expiry,
           contract_occ: r.contract_occ,
           entry_premium: r.entry_premium,
           peak_premium: r.peak_premium,
           scaled_already: r.scaled_already,
           partial_realized_premium: r.partial_realized_premium,
+          last_mark: r.last_mark,
           status: r.status,
         }));
       },
