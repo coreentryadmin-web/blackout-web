@@ -26,6 +26,7 @@ import {
   trailingTwelveMonthDividendYield,
   warnChainTruncated,
   clampedCacheAgeSec,
+  gexHeatmapCacheEntryStale,
 } from "./polygon-options-gex";
 
 function contract(
@@ -911,4 +912,11 @@ test("clampedCacheAgeSec: an entry.at from the future (cross-replica clock skew)
   const now = 1_000_000_000;
   assert.equal(clampedCacheAgeSec(now + 2_000, now), 0, "2s of skew must not read as age_sec: -2");
   assert.equal(clampedCacheAgeSec(now + 1, now), 0, "reachable at 1ms of skew — Math.round(-0.001) would otherwise floor toward -1s");
+});
+
+test("gexHeatmapCacheEntryStale: future entry.at beyond tolerance is stale, not falsely fresh", () => {
+  const now = 1_000_000_000;
+  assert.equal(gexHeatmapCacheEntryStale(now - 5_000, now), false);
+  assert.equal(gexHeatmapCacheEntryStale(now + 2_000, now), false, "modest future skew inside 5s tolerance stays fresh");
+  assert.equal(gexHeatmapCacheEntryStale(now + 6_000, now), true, "6s ahead must not read as freshest-possible");
 });

@@ -134,6 +134,29 @@ test("thermalLayerFreshness: matrix live / stale / overlays off / UW off", () =>
   assert.equal(stale.crossVal.status, "live");
 });
 
+test("thermalLayerFreshness: cross-check uses age guard, not hardcoded live", () => {
+  const now = Date.parse("2026-08-12T14:00:00Z");
+  const future = thermalLayerFreshness({
+    nowMs: now,
+    matrixAsof: new Date(now - 2_000).toISOString(),
+    hasOverlays: true,
+    overlaysAt: new Date(now - 5_000).toISOString(),
+    crossValPresent: true,
+    crossValUwAsof: new Date(now + 120_000).toISOString(),
+  });
+  assert.equal(future.crossVal.status, "syncing", "far-future asOf must not read live");
+
+  const aged = thermalLayerFreshness({
+    nowMs: now,
+    matrixAsof: new Date(now - 2_000).toISOString(),
+    hasOverlays: true,
+    overlaysAt: new Date(now - 5_000).toISOString(),
+    crossValPresent: true,
+    crossValUwAsof: new Date(now - 120_000).toISOString(),
+  });
+  assert.equal(aged.crossVal.status, "stale");
+});
+
 test("the cross-check layer never shows a member our vendor's initials", () => {
   const now = Date.parse("2026-08-12T14:00:00Z");
   const on = thermalLayerFreshness({
