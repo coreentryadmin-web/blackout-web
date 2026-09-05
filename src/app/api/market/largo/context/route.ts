@@ -4,6 +4,7 @@ import { requireTierApi } from "@/lib/market-api-auth";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { canonicalTicker } from "@/lib/largo/core/entities";
 import { validateFlowTape } from "@/lib/largo/core/flow-validation";
+import { roundFloats } from "@/lib/round-floats";
 
 export const dynamic = "force-dynamic";
 
@@ -85,7 +86,7 @@ export async function GET(req: NextRequest) {
   );
 
   return NextResponse.json(
-    {
+    roundFloats({
       ticker,
       as_of: new Date().toISOString(),
       // null, never 0 — "could not read" and "is zero" are different claims.
@@ -127,7 +128,7 @@ export async function GET(req: NextRequest) {
         flow: flows != null,
         swing: swingLane?.available === true,
       },
-    },
+    }),
     { headers: NO_STORE_HEADERS }
   );
 }
