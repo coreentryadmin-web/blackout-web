@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T17:17:33.177Z",
+  "updated_at": "2026-09-05T17:23:24.137Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,25 +67,25 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T17:05:12.731Z",
-      "lease_until": "2026-09-05T18:40:05.185Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-05T17:05:40.646Z",
+      "lease_until": "2026-09-05T18:37:03.627Z",
+      "phase": "IMPLEMENTING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "be7faa1c-fff0-4864-8f07-7430454bd9ae",
+      "run_id": "f340ab37-86b4-4f05-9575-ecfec6ed4835",
       "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T17:17:27.351Z",
-      "lease_until": "2026-09-05T18:47:27.351Z",
+      "claimed_at": "2026-09-05T16:30:48.264Z",
+      "lease_until": "2026-09-05T18:04:10.983Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
       "title": null
     },
     "BO-P1-0104": {
@@ -266,6 +266,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T17:14:33.665Z",
       "safe_to_merge": true
+    },
+    "pr-4013": {
+      "pr": 4013,
+      "head_sha": "273418e0b1cf",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T17:23:19.393Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -275,7 +283,7 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T17:17:27.352Z",
+      "last_seen": "2026-09-05T16:30:48.265Z",
       "current_task": "BO-P1-0101"
     }
   },
@@ -334,13 +342,33 @@
     }
   },
   "deploy": {
-    "last_main_sha": "0b44680aab2dc99d7ec220397ddd8c8da80f4d9f",
+    "last_main_sha": "ea552b9f69c0c553d879486bbe317688148c988e",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:59:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33979523407",
-    "last_deploy_sha": "3ae28b7721d5d696f4354949ea9e0b9cbfbac727"
+    "last_deploy_at": "2026-09-05T17:22:13Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33980746889",
+    "last_deploy_sha": "ea552b9f69c0c553d879486bbe317688148c988e"
   },
   "open_prs": [
+    {
+      "number": 4014,
+      "title": "chore(blackout-agent): peer review cycle state sync — #4006/#4007/#4011 merged",
+      "branch": "cursor/autopilot-work-loop-8988",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T17:23:21Z"
+    },
+    {
+      "number": 4013,
+      "title": "docs(finding): desk-warm force=1 storm from 54 distinct IPs on a Saturday, live now",
+      "branch": "docs/desk-warm-weekend-force-storm",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T17:23:08Z"
+    },
     {
       "number": 4012,
       "title": "chore(blackout-agent): autopilot session — peer review #4006 CHARM fix",
@@ -349,17 +377,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T17:16:23Z"
-    },
-    {
-      "number": 4011,
-      "title": "fix(spx): fail-closed future-skewed gex_age_ms in play gates",
-      "branch": "fix/spx-play-gate-gex-age-future-guard",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T17:16:30Z"
+      "updated_at": "2026-09-05T17:22:56Z"
     },
     {
       "number": 4009,
@@ -368,8 +386,8 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T17:16:28Z"
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T17:22:59Z"
     },
     {
       "number": 4008,
@@ -379,17 +397,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "unknown",
-      "updated_at": "2026-09-05T17:16:31Z"
-    },
-    {
-      "number": 4006,
-      "title": "fix(thermal): CHARM used call-shaped formula for puts too — wrong at q>0 (CLQ-017)",
-      "branch": "test/charm-numerical-derivative-check",
-      "author": "app/claude",
-      "agent": "human",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T17:17:27Z"
+      "updated_at": "2026-09-05T17:23:00Z"
     },
     {
       "number": 3996,
@@ -399,7 +407,7 @@
       "agent": "cursor",
       "draft": false,
       "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T17:17:01Z"
+      "updated_at": "2026-09-05T17:23:03Z"
     },
     {
       "number": 3993,
@@ -409,22 +417,10 @@
       "agent": "cursor",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T17:17:21Z"
+      "updated_at": "2026-09-05T17:23:05Z"
     }
   ],
   "events": [
-    {
-      "at": "2026-09-03T23:46:03.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.919Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:14.071Z",
       "type": "context_sync",
@@ -1710,23 +1706,39 @@
       "summary": "pull_request wake: peer-reviewed Claude #4006 (CHARM call/put dividend-yield fix) — APPROVED locally (8/8 charm finite-diff tests pass on Node 20). PR still draft + verify pending. main@0b44680aa, validate:deploy GREEN, ops:collect 0. GitHub API rate-limited for gh pr list — used WebFetch. Subscribed to #4006 CI."
     },
     {
-      "at": "2026-09-05T17:17:27.352Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0101",
-      "owner": "cursor"
+      "at": "2026-09-05T17:22:48.865Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
     },
     {
-      "at": "2026-09-05T17:17:33.174Z",
+      "at": "2026-09-05T17:22:53.944Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-09-05T17:23:19.394Z",
+      "type": "pr_review",
+      "pr": 4013,
+      "head_sha": "273418e0b1cf",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T17:23:19.393Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T17:23:24.135Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 7
     },
     {
-      "at": "2026-09-05T17:17:33.177Z",
+      "at": "2026-09-05T17:23:24.137Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "ddca6689-82db-4af6-a702-912375f87b27",
-      "summary": "Cycle 2: #4006 peer review APPROVED @ 6f53517c (68/68 charm tests local). #4007 verify GREEN — cursor-owned, Claude must review+undraft. #4011 pre-reviewed by parallel cursor session (WAIT CI). State sync on #4012 (draft, Claude review). Deploy drift: ECR pending 3ae28b7→0b44680aa. Platform 14/14 GREEN. Weekend off-hours."
+      "run_id": "ced411f6-3a9d-46e3-b391-c01141b833dd",
+      "summary": "#4006 MERGED @ ea552b9f (verify GREEN, Cursor APPROVED). validate:deploy GREEN on main. Peer-reviewed #4013 docs finding APPROVED (desk-warm force"
     }
   ],
   "pr_activity": {
