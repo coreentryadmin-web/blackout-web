@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:28:42.960Z",
+  "updated_at": "2026-09-05T16:30:04.583Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -337,9 +337,9 @@
   "deploy": {
     "last_main_sha": "c76923ec9b59958f84d7f3c351661d385f177e20",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:11:14Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33977069971",
-    "last_deploy_sha": "feaba670d88bb211db9614bec0c2738010d18b1c"
+    "last_deploy_at": "2026-09-05T16:29:17Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978015633",
+    "last_deploy_sha": "7c4b7e8e9cde7a8c3f231c4550d3d1c04fe2e77e"
   },
   "open_prs": [],
   "events": [
@@ -1626,6 +1626,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:30:04.580Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:30:04.583Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "7823d81c-ba72-4686-9b84-26fc7db3fef3",
+      "summary": "Cycle complete: peer-reviewed #3997+#3995 (APPROVED), deploy/ops GREEN, state sync pushed cursor/autopilot-pr-wake-2026-09-05. Open drafts awaiting undraft. Platform-integrity 14/14 on re-run."
     }
   ],
   "pr_activity": {
