@@ -1,18 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T22:19:17.459Z",
+  "updated_at": "2026-09-05T22:49:55.838Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-05T22:45:59.952Z",
+      "lease_until": "2026-09-06T00:17:13.882Z",
+      "phase": "CLAIMED",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "7405412c-a193-45d6-b903-9a75272d8339",
+      "title": null
     }
   },
   "reviews": {
@@ -31,16 +32,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-05T22:45:59.953Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "297faf10db7a9d1340dfe580ea108ed507ce41b2",
+    "last_main_sha": "f6ddee840a1fbb0e8120fc5ea2bd0079b898a876",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-05T22:35:14Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33996334947",
+    "last_deploy_sha": "f6ddee840a1fbb0e8120fc5ea2bd0079b898a876"
   },
   "events": [
     {
@@ -140,41 +142,127 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T21:48:49.766Z",
+      "at": "2026-09-05T22:45:51.486Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 3
     },
     {
-      "at": "2026-09-05T21:48:50.307Z",
+      "at": "2026-09-05T22:45:52.859Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 3
     },
     {
-      "at": "2026-09-05T21:48:50.539Z",
+      "at": "2026-09-05T22:45:56.326Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 3
     },
     {
-      "at": "2026-09-05T22:19:16.536Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
+      "at": "2026-09-05T22:45:59.953Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
     },
     {
-      "at": "2026-09-05T22:19:17.152Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
+      "at": "2026-09-05T22:46:58.505Z",
+      "type": "pr_webhook",
+      "pr": 4060,
+      "event": "sweep",
+      "head": "1363cb11b6eaaa78882ec3bd69e0b2e7a069ac08",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": true
     },
     {
-      "at": "2026-09-05T22:19:17.459Z",
+      "at": "2026-09-05T22:47:00.547Z",
+      "type": "pr_webhook",
+      "pr": 4059,
+      "event": "sweep",
+      "head": "2a0c22f2d8bcd51487569db80fed31cda6c570d9",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T22:47:02.918Z",
+      "type": "pr_webhook",
+      "pr": 4056,
+      "event": "sweep",
+      "head": "1fd738da97ae33f45ef133515d24890f3cf689df",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T22:47:13.881Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-05T22:47:14.671Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-05T22:47:15.500Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-05T22:49:55.838Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T22:49:55.838Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ae88496f-af4b-42f4-8bf5-d49b699a8ec7",
+      "summary": "PR-event cycle: peer-review sweep complete. No claude/fix PRs. #4056 verify GREEN + local tsc/tests pass — awaiting Claude review (draft). #4059 closed (dup). #4060 handoff draft verify pending. Lifecycle GREEN. ops:collect 0. main@f6ddee840."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4056,
+      "title": "feat(swing): Rich Ask Largo intelligence — factors, levels, flow, catalysts, hold plan",
+      "branch": "cursor/swing-play-intelligence-v2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T22:49:39Z"
+    }
+  ],
+  "pr_activity": {
+    "pr-4060": {
+      "last_event": "sweep",
+      "last_head": "1363cb11b6eaaa78882ec3bd69e0b2e7a069ac08",
+      "last_feedback_at": "2026-09-05T22:46:58.505Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4059": {
+      "last_event": "sweep",
+      "last_head": "2a0c22f2d8bcd51487569db80fed31cda6c570d9",
+      "last_feedback_at": "2026-09-05T22:47:00.547Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4056": {
+      "last_event": "sweep",
+      "last_head": "1fd738da97ae33f45ef133515d24890f3cf689df",
+      "last_feedback_at": "2026-09-05T22:47:02.918Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
