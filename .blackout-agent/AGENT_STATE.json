@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T03:17:06.276Z",
+  "updated_at": "2026-09-05T05:14:53.034Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T05:05:43.284Z",
+      "lease_until": "2026-09-05T06:35:43.284Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -234,6 +234,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3855": {
+      "pr": 3855,
+      "head_sha": "ea711ce3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:09:07.901Z",
+      "safe_to_merge": true
+    },
+    "pr-3862": {
+      "pr": 3862,
+      "head_sha": "e31dd99d",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:14:46.338Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,13 +264,154 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b558e1321c827f97e43cad8eaae5937f3d4eded9",
+    "last_main_sha": "11511c8736e94be4271bdfda2ce4c2eb8bdece76",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T22:52:50Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
-    "last_deploy_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450"
+    "last_deploy_at": "2026-09-05T05:06:51Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33946344468",
+    "last_deploy_sha": "11511c8736e94be4271bdfda2ce4c2eb8bdece76"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3866,
+      "title": "fix(nighthawk): guard 0DTE live marks SSE quiet gate against future at",
+      "branch": "fix/zerodte-live-marks-sse-future-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T05:13:50Z"
+    },
+    {
+      "number": 3865,
+      "title": "chore(autopilot): cursor handoff — #3850/#3856 merged, PR review queue updated",
+      "branch": "cursor/autopilot-handoff-0509",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T05:13:51Z"
+    },
+    {
+      "number": 3864,
+      "title": "chore(autopilot): cursor handoff — deploy GREEN, Claude review queue",
+      "branch": "cursor/autopilot-handoff-0507",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T05:13:54Z"
+    },
+    {
+      "number": 3863,
+      "title": "fix(spx): guard remaining play-path caches against future at stamps",
+      "branch": "fix/spx-play-cache-freshness-tail",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T05:13:55Z"
+    },
+    {
+      "number": 3862,
+      "title": "fix(spx): guard desk dark-pool/prior-day/pulse caches against future fetchedAt",
+      "branch": "fix/spx-desk-inprocess-cache-future-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T05:14:51Z"
+    },
+    {
+      "number": 3861,
+      "title": "fix(swing): observable Tier-0 origin fetch failures in recall (Q27)",
+      "branch": "cursor/swing-tier0-origin-observability-q27",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T05:14:12Z"
+    },
+    {
+      "number": 3859,
+      "title": "fix(swing): shadow-track G-S6/G-S14-only commit blocks (Q30)",
+      "branch": "cursor/swing-shadow-gs6-gs14-q30",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T05:14:01Z"
+    },
+    {
+      "number": 3858,
+      "title": "fix(swing): G-S6 requires CATALYST kind for event archetypes (Q28)",
+      "branch": "cursor/swing-gs6-catalyst-required-q28",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T05:14:39Z"
+    },
+    {
+      "number": 3857,
+      "title": "fix(swing): G-S14 Cortex fail-closed on preflight error + pin assessment (Q29)",
+      "branch": "cursor/swing-cortex-fail-closed-q29",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T05:14:05Z"
+    },
+    {
+      "number": 3855,
+      "title": "fix(providers): guard Polygon market-status cache against future fetchedAt",
+      "branch": "fix/polygon-market-status-cache-future-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T05:14:07Z"
+    },
+    {
+      "number": 3854,
+      "title": "fix(swing): refuse force=1 when discovery scan still in flight (Q1)",
+      "branch": "cursor/swing-force1-claim-guard",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T05:14:10Z"
+    },
+    {
+      "number": 3853,
+      "title": "fix(freshness): guard lit/dark ratio + Vector universe age against future timestamps",
+      "branch": "fix/future-timestamp-lit-dark-vector-universe",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T05:14:12Z"
+    },
+    {
+      "number": 3852,
+      "title": "fix(swing): G-S12 halt/LULD gate at commit (deep-dive Q9)",
+      "branch": "cursor/swing-v2-halt-luld-gate",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T05:14:14Z"
+    },
+    {
+      "number": 3851,
+      "title": "fix(spx): guard play ticket/technicals/gates/lotto caches against future at",
+      "branch": "cursor/autopilot-work-loop-c18f",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T05:14:16Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1137,6 +1294,45 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T05:09:07.902Z",
+      "type": "pr_review",
+      "pr": 3855,
+      "head_sha": "ea711ce3",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:09:07.901Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T05:14:27.344Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 14
+    },
+    {
+      "at": "2026-09-05T05:14:27.345Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "5029a085-6a59-47d5-9820-b2d19bd613bc",
+      "summary": "Peer review cycle: validate:deploy GREEN, ops:collect 0. Merged #3856 already on main. PR #3855 (Polygon market-status cache guard) APPROVED + auto-merge armed. PR #3851 (SPX technicals/telemetry guards) Claude GO AHEAD MERGE, verify still in_progress @ dbfc9a95 — awaiting CI. 9 draft PRs in queue (swing/cache-freshness lane)."
+    },
+    {
+      "at": "2026-09-05T05:14:46.339Z",
+      "type": "pr_review",
+      "pr": 3862,
+      "head_sha": "e31dd99d",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:14:46.338Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T05:14:53.034Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 14
     }
   ]
 }
