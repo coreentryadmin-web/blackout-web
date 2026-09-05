@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:33:19.003Z",
+  "updated_at": "2026-09-05T15:33:59.887Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -68,12 +68,12 @@
       "task_id": "BO-P1-0100",
       "owner": "cursor",
       "claimed_at": "2026-09-05T15:31:14.597Z",
-      "lease_until": "2026-09-05T17:01:14.597Z",
+      "lease_until": "2026-09-05T17:03:58.671Z",
       "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": null,
+      "run_id": "590b060a-c393-4010-a56e-48483d145671",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -1542,6 +1542,30 @@
       "agent": "cursor",
       "run_id": "879e7b1d-f3f9-4486-8cff-f9cb7b5eb1b0",
       "summary": "pull_request wake: main@430f33982 GREEN (deploy/api-auth/platform-integrity 14/14). #3952/#3955/#3971 merged. 0 claude/* PRs. #3987 awaits Claude review. ECR 33973466010 in_progress@7d47d7e1. Closing duplicate state-sync drafts #3986/#3989."
+    },
+    {
+      "at": "2026-09-05T15:33:30.749Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:33:58.669Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:33:59.275Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:33:59.887Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
   "pr_activity": {
