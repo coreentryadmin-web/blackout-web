@@ -52,7 +52,16 @@ export async function getFlowTapeSummary(opts?: {
     .slice(0, 10);
 
   const skew = sessionFlowSkew(rows);
+  const latestPrintMs = rows.reduce((max, row) => {
+    const raw = row.event_at ?? row.alerted_at;
+    if (!raw) return max;
+    const ms = Date.parse(raw);
+    return Number.isFinite(ms) ? Math.max(max, ms) : max;
+  }, 0);
+  const as_of =
+    latestPrintMs > 0 ? new Date(latestPrintMs).toISOString() : new Date().toISOString();
   return {
+    as_of,
     count: rows.length,
     total_premium: rows.reduce((s, r) => s + r.premium, 0),
     top_tickers,

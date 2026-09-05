@@ -16,7 +16,10 @@ const ACTIONABLE = {
   "095": { gap: "internals_estimated UI badge (0 tsx consumers)", status: "FIXED_BATCH1", pr: "cursor/cq-fix-pass-batch1" },
   "173": { gap: "premium gate functional 403 test", status: "FIXED_BATCH1", pr: "cursor/cq-fix-pass-batch1" },
   "007": { gap: "email enumeration via isNew response", status: "FIXED_BATCH1", pr: "cursor/cq-fix-pass-batch1" },
-  "003": { gap: "JWT fast-path tier downgrade window", status: "DEFERRED", pr: "security — needs design" },
+  "003": { gap: "JWT fast-path tier downgrade window", status: "FIXED_BATCH2", pr: "cursor/cq-fix-pass-batch2" },
+  "054": { gap: "evaluateVectorPickLiveStatus spot<=0 guard + test", status: "FIXED_BATCH2", pr: "cursor/cq-fix-pass-batch2" },
+  "051": { gap: "vector offline audit scripts not in package.json", status: "FIXED_BATCH2", pr: "cursor/cq-fix-pass-batch2" },
+  "083": { gap: "FlowTapeSummary missing per-desk as_of freshness", status: "FIXED_BATCH2", pr: "cursor/cq-fix-pass-batch2" },
 };
 
 const blocks = ANSWERS.split(/\n\*\*CQ-/);
