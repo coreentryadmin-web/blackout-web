@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:35:35.991Z",
+  "updated_at": "2026-09-05T17:20:14.696Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:26:09.737Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
+      "claimed_at": "2026-09-05T17:04:57.489Z",
+      "lease_until": "2026-09-05T18:37:50.778Z",
       "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": "1f28d0f1-6216-4150-a30c-849e5d3024be",
       "title": null
     },
     "BO-P1-0101": {
@@ -258,6 +258,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T12:35:00.000Z",
       "safe_to_merge": true
+    },
+    "pr-4007": {
+      "pr": 4007,
+      "head_sha": "6ca06255cc5fba94e895a8a49793cd60dd728bd4",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge (merged)",
+      "reviewed_at": "2026-09-05T17:20:06.981Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -326,42 +334,85 @@
     }
   },
   "deploy": {
-    "last_main_sha": "86227e70b57d7dc962673f750a952173dea85088",
+    "last_main_sha": "baaf5a4943bdddee5735af17e697153a28efc5e5",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:34:11Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978273189",
-    "last_deploy_sha": "86227e70b57d7dc962673f750a952173dea85088"
+    "last_deploy_at": "2026-09-05T17:19:33Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33980501307",
+    "last_deploy_sha": "baaf5a4943bdddee5735af17e697153a28efc5e5"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4012,
+      "title": "chore(blackout-agent): autopilot session — peer review #4006 CHARM fix",
+      "branch": "cursor/autopilot-work-loop-9f28",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T17:19:04Z"
+    },
+    {
+      "number": 4011,
+      "title": "fix(spx): fail-closed future-skewed gex_age_ms in play gates",
+      "branch": "fix/spx-play-gate-gex-age-future-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T17:20:10Z"
+    },
+    {
+      "number": 4009,
+      "title": "docs(blackout-agent): salvage Phase 5 cross-exam docs from stale #3993",
+      "branch": "cursor/cross-exam-phase5-docs-salvage",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T17:19:42Z"
+    },
+    {
+      "number": 4008,
+      "title": "docs(blackout-agent): Cursor Phase 5 response to CLAUDE_PHASE5 CLQ challenges",
+      "branch": "cursor/phase5-clq-response-2026-09-05",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T17:18:37Z"
+    },
+    {
+      "number": 4006,
+      "title": "fix(thermal): CHARM used call-shaped formula for puts too — wrong at q>0 (CLQ-017)",
+      "branch": "test/charm-numerical-derivative-check",
+      "author": "app/claude",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T17:18:40Z"
+    },
+    {
+      "number": 3996,
+      "title": "chore(autopilot): state sync after #3994 merge + peer review cycle",
+      "branch": "cursor/bc-daf6ff49-8f01-4d90-8c8f-1234adb99ec7-0a51",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T17:18:42Z"
+    },
+    {
+      "number": 3993,
+      "title": "chore(autopilot): Phase 5 CQ challenges + gate-watch state sync",
+      "branch": "cursor/autopilot-work-loop-740a",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T17:19:24Z"
+    }
+  ],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
-    {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:02.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.919Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:14.071Z",
       "type": "context_sync",
@@ -1622,6 +1673,63 @@
       "agent": "cursor",
       "run_id": "7241539d-60c7-4e6b-ac5b-c9b3aa85b828",
       "summary": "Continuous loop cycle complete. Peer review: pr-sweep 0 open PRs. Platform integrity 14/14 GREEN, lifecycle sweep GREEN (weekend RTH skip). Deploy drift: prod rolling feaba670 (in_progress 25m+), main now 86227e70 (#3995+#3998) with pending ECR run 33978273189. Opened draft #4001 (agent state sync — awaits Claude review). GitHub GraphQL rate-limited until ~17:06 UTC; REST still works. Next: monitor ECR → validate:deploy post-rollout; Claude peer-review #4001 + any new claude/* PRs."
+    },
+    {
+      "at": "2026-09-05T17:06:58.569Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:07:49.903Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:07:50.777Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:07:51.588Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T17:20:00.710Z",
+      "type": "pr_review",
+      "pr": 4007,
+      "head_sha": "d52dc6b",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T17:20:00.709Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T17:20:06.982Z",
+      "type": "pr_review",
+      "pr": 4007,
+      "head_sha": "6ca06255cc5fba94e895a8a49793cd60dd728bd4",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge (merged)",
+      "reviewed_at": "2026-09-05T17:20:06.981Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-05T17:20:14.695Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-09-05T17:20:14.696Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2a12f642-332b-4965-8c84-2287b32213c9",
+      "summary": "PR-event wake: main@baaf5a494 (#4007 merged). Standing verify GREEN (lifecycle, deploy, ops:collect 0, platform-integrity 14/14, api-auth). Peer-reviewed #4007 APPROVED (RTH dead-script aliases). #4006 CHARM fix CI pending — subscribed. Open cursor/* drafts #4008/#4009/#3996/#3993 await Claude. Weekend RTH skipped."
     }
   ],
   "pr_activity": {
