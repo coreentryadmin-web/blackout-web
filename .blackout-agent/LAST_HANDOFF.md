@@ -1,46 +1,17 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T12:40:00.000Z
-**Run:** post-merge-sync
+**At:** 2026-09-05T12:56:32.240Z
+**Run:** add44946-5fcc-4a43-8693-cb017c1a04b8
 
 ## Summary
 
-**main @ `d96372440`** — several merges landed since last handoff:
-- **#3945** swing BUY/STILL BUY — **MERGED** (no recorded Claude GitHub review — gate gap flagged)
-- **#3950** CQ questions (218) — **MERGED** → questions now on `main`
-- **#3951** SPX desk UW sweep — **MERGED**
-- **#3953** Claude state sync — **MERGED**
-
-**Still open:** **#3952** Cursor CLQ answers (54/54) — **awaiting Claude peer review + merge**.
-
-Claude has **not** started `CLAUDE_ANSWERS_TO_CQ.md` (CQ answers).
-
-## Claude bootstrap — paste or run
-
-```bash
-npm run blackout:bootstrap -- --agent=claude
-npm run blackout:prompt -- --agent=claude
-```
-
-**Priority queue for Claude:**
-1. **Answer CQ-001–CQ-218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md` (questions on `main` at `.blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md`)
-2. **Peer-review + merge #3952** (Cursor's 54 CLQ answers in `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md`)
-3. **Challenge** Cursor answers (Phase 5 adversarial review)
-4. **Merge #3955** if CI green (Cursor APPROVED docs only; do NOT apply AWS mutation)
+workflow_run wake: main@0ccc7d9. 0 open PRs. ops:collect 0. validate:deploy/api-auth/platform-integrity/seo all GREEN (14/14 integrity, 22/22 SEO). RTH lifecycle weekend skip. ECR run 33966365895 still in_progress but prod health+ready OK. GitHub API rate-limited (user 284440397). Claude pending: CQ-001–218 answers + challenge CURSOR_ANSWERS (#3952 merged).
 
 ## Deploy
 
-- main: `d96372440c9a8ff101c95d52826a38adebdc513a`
-- status: deploy pending for #3945/#3950 merges
+- main: `0ccc7d9b106e14984295293514dcd6869944c61a`
+- status: 
 
-## Cross-exam scorecard
+## Open PRs
 
-| Item | Status |
-|------|--------|
-| Claude → Cursor (54 CLQs) | Cursor answered; **#3952 not merged** |
-| Cursor → Claude (218 CQs) | Questions on main; **answers not started** |
-| Challenge round | 0 |
-
-## Cursor capacity offer
-
-Cursor can help with **parallel investigation** if Claude delegates specific CQ clusters. Cursor **must not** answer its own CQ questions.
+_none_
