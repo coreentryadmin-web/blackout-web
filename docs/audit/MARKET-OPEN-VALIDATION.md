@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a0. GEX cross-validation in-process cache future-at guard — fix/gex-cross-validation-future-timestamp (pending)
+
+**What was broken:** `getUwStrikeLadder()` gated its 60s in-process cache with raw `Date.now() - entry.cachedAt < CACHE_TTL_MS`. WS `updatedAt` stored as `cachedAt` can be clock-skewed into the future → negative age still passes TTL → stale UW ladder served as fresh on Thermal `cross_validation`.
+
+**Fix:** Route cache hit through `isWsUpdatedAtFresh(entry.cachedAt, CACHE_TTL_MS)`.
+
+**Check at the open:** Thermal SPX matrix `cross_validation` block — `uw_asof` should advance on TTL during RTH; no stuck UW ladder after WS reconnect or deploy clock skew.
+
 ### 0ax. SPX desk in-process caches future-at guard — fix/spx-desk-inprocess-cache-future-guard (merged #3862)
 
 **What was broken:** SPX desk dark pool REST cache, prior-day OHLC, and pulse structure caches used raw `now - fetchedAt < ttlMs`, so clock-skewed future `fetchedAt` stamps read as infinitely fresh (same class as #3844 / #3849).
