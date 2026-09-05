@@ -1,3 +1,5 @@
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
+
 /**
  * Per-request / short-window Clerk `users.getUser` dedupe.
  *
@@ -29,7 +31,7 @@ function setResolved(userId: string, user: ClerkUser): void {
   if (resolved.size >= MAX_RESOLVED) {
     const now = Date.now();
     for (const [k, v] of Array.from(resolved)) {
-      if (now - v.at >= DEDUPE_TTL_MS) resolved.delete(k);
+      if (!isWsUpdatedAtFresh(v.at, DEDUPE_TTL_MS, now)) resolved.delete(k);
     }
     while (resolved.size >= MAX_RESOLVED) {
       const oldest = resolved.keys().next().value as string | undefined;
@@ -42,7 +44,7 @@ function setResolved(userId: string, user: ClerkUser): void {
 
 export async function getClerkUserCached(userId: string): Promise<ClerkUser> {
   const hit = resolved.get(userId);
-  if (hit && Date.now() - hit.at < DEDUPE_TTL_MS) return hit.user;
+  if (hit && isWsUpdatedAtFresh(hit.at, DEDUPE_TTL_MS)) return hit.user;
 
   const pending = inflight.get(userId);
   if (pending) return pending;
