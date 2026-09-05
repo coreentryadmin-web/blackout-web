@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   resolveHeatmapPageGuard,
   resolveChainBandPageGuard,
+  __test_heatmapUnfilteredPageGuard,
   __test_heatmapBandPct as heatmapBandPct,
   computeGexEvents,
   computeMaxPainFromChain,
@@ -70,6 +71,22 @@ test("resolveChainBandPageGuard: default 40, honors override, floors at the old 
   assert.equal(resolveChainBandPageGuard("120"), 120); // wide/deep band needs more
   assert.equal(resolveChainBandPageGuard("3"), 8); // never below the old bare cap
   assert.equal(resolveChainBandPageGuard("0"), 40); // falsy → treated as unset
+});
+
+test("fetchHeatmapBandUnfiltered's page guard shares HEATMAP_PAGE_GUARD, not a flat 12 (live-caught 2026-09-05: NFLX/GOOGL truncated)", () => {
+  // Live-caught: shouldEscalateToFullChain fires for ANY thin ladder regardless of price (the
+  // ASTS fix), so the "full chain, no strike filter" fetch now also runs for megacap names with
+  // hundreds of strikes across many expiries — not just the "tiny low-priced chains (NIO-class)"
+  // its own doc comment assumed when the guard was written as a flat 12. A flat 12-page cap
+  // truncates that megacap chain every time, understating walls/OI/IV exactly like the two prior,
+  // now-fixed instances of this same bug class elsewhere in this file (fetchPolygonOiByExpiry and
+  // the OI-by-expiry term-structure loop). Asserting >= the shared guard's floor (40) — not a
+  // literal 200 — keeps this test from breaking if OPTIONS_HEATMAP_PAGE_GUARD is overridden in CI.
+  assert.ok(
+    __test_heatmapUnfilteredPageGuard >= 40,
+    `expected the unfiltered heatmap guard to share HEATMAP_PAGE_GUARD's floor (>=40), got ${__test_heatmapUnfilteredPageGuard} — the old flat 12 truncates megacap full-chain escalations`
+  );
+  assert.notEqual(__test_heatmapUnfilteredPageGuard, 12);
 });
 
 test("resolveSpotSnapshot falls back to prev-bar + SPY×10 proxy when snapshots fail", () => {
