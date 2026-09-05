@@ -1,18 +1,30 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T23:22:37.921Z",
+  "updated_at": "2026-09-05T23:45:38.993Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-05T23:39:49.356Z",
+      "lease_until": "2026-09-06T01:10:30.497Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "08b783f8-5fb3-4c0a-9427-e8eec87fded7"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-05T23:40:11.531Z",
+      "lease_until": "2026-09-06T01:10:30.497Z",
+      "phase": "VERIFY",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "08b783f8-5fb3-4c0a-9427-e8eec87fded7",
+      "title": null
     }
   },
   "reviews": {
@@ -31,16 +43,17 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-05T23:40:11.531Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
-    "last_main_sha": "70535baf1d8fa9af6ae5de67dc1107fdc2947eb1",
+    "last_main_sha": "a3ddea86dab2333cc34d1c37352543caacb07729",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-05T23:36:37Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33999109081",
+    "last_deploy_sha": "a3ddea86dab2333cc34d1c37352543caacb07729"
   },
   "events": [
     {
@@ -192,6 +205,49 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T23:40:11.531Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T23:40:30.497Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T23:40:31.553Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T23:40:32.756Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T23:43:38.640Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T23:45:38.992Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T23:45:38.993Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2559423b-3092-403f-8080-95a0367732d5",
+      "summary": "workflow_run cycle: main@a3ddea86 deployed. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo 22/22, rth-open off-hours). ops:collect 0. No open PRs — #4066 handoff closed without merge. Peer review queue empty. Standing validations complete."
     }
   ],
   "open_prs": []
