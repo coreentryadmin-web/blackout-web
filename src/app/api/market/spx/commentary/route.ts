@@ -7,6 +7,7 @@ import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { serverCache } from "@/lib/server-cache";
 import { sharedCacheGet } from "@/lib/shared-cache";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 
 export const dynamic = "force-dynamic";
 
@@ -67,11 +68,14 @@ export async function POST(req: NextRequest) {
       return { commentary, desk };
     });
 
-    return NextResponse.json({
-      commentary: result.commentary,
-      window_slot: windowSlot,
-      next_refresh_ms: COMMENTARY_TTL_MS - (now % COMMENTARY_TTL_MS),
-    }, { headers: NO_STORE_HEADERS });
+    return NextResponse.json(
+      roundFloats({
+        commentary: result.commentary,
+        window_slot: windowSlot,
+        next_refresh_ms: COMMENTARY_TTL_MS - (now % COMMENTARY_TTL_MS),
+      }),
+      { headers: NO_STORE_HEADERS }
+    );
   } catch (error) {
     console.error("[market/spx/commentary]", error);
     const message = error instanceof Error ? error.message : String(error);

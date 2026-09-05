@@ -8,6 +8,7 @@ import {
   MERIDIAN_TIMELINE_TTL_MS,
 } from "@/lib/meridian/meridian-snapshot";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { roundFloats } from "@/lib/round-floats";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
       MERIDIAN_TIMELINE_TTL_MS,
       () => loadMeridianTimelineResponse(daysAhead, { skipEnrich })
     );
-    return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
+    return NextResponse.json(roundFloats(payload), { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[market/meridian/timeline]", error);
     return NextResponse.json({ error: "Timeline failed" }, { status: 502, headers: NO_STORE_HEADERS });
