@@ -67,7 +67,7 @@ export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null })
       {envelope && (
         <footer className="nh-deck-largo__foot">
           <span className="nh-deck-largo__engine">Deterministic · no LLM</span>
-          {asOf ? <span className="nh-deck-largo__asof">Updated {etClock(asOf) ?? "—"}</span> : null}
+          {asOf ? <span className="nh-deck-largo__asof">Updated {etClock(asOf) ?? "—"} ET</span> : null}
         </footer>
       )}
     </aside>
