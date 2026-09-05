@@ -58,7 +58,9 @@ import { subLaneForDte } from "./taxonomy";
 import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration";
 import { classificationMetaFromVerdict } from "./archetype";
 import { resolveSwingTier1Cap } from "./v2/tier1-cap";
-import { isSwingEngineV2Enabled, isSwingConfluenceEnforced } from "./v2/config";
+import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, swingCortexPreflightCap } from "./v2/config";
+import { evaluateSwingCortexForCommit } from "./v2/cortex-swing";
+import { persistSwingGateRejections } from "./v2/rejections";
 import { evaluateSwingConfluence } from "./v2/confluence";
 import {
   computeSwingCommitPlan,
@@ -808,6 +810,28 @@ export async function runSwingDiscoveryScan(
       };
     });
 
+    if (engineV2 && isSwingCortexEnforced()) {
+      const cap = swingCortexPreflightCap();
+      const ranked = [...commitCandidates]
+        .filter((c) => c.direction)
+        .sort((a, b) => b.score - a.score || a.ticker.localeCompare(b.ticker))
+        .slice(0, cap);
+      const blocked = new Map<string, string[]>();
+      await Promise.all(
+        ranked.map(async (c) => {
+          const key = `${c.ticker.toUpperCase()}|${c.direction}`;
+          const pre = await evaluateSwingCortexForCommit(c.ticker, c.direction!, deps.nowMs).catch(() => null);
+          if (pre?.blocked) blocked.set(key, pre.blockedBy);
+        }),
+      );
+      for (const c of commitCandidates) {
+        if (!c.direction) continue;
+        const key = `${c.ticker.toUpperCase()}|${c.direction}`;
+        const extra = blocked.get(key);
+        if (extra?.length) c.preflightV2BlockedBy = extra;
+      }
+    }
+
     const plan = computeSwingCommitPlan({
       candidates: commitCandidates,
       report,
@@ -817,6 +841,33 @@ export async function runSwingDiscoveryScan(
       v2: engineV2 && isSwingConfluenceEnforced() ? { enforceConfluence: true } : undefined,
     });
     commitEligibleCount = plan.commitEligibleCount;
+
+    if (engineV2) {
+      const gateRows = plan.decisions.flatMap((d) => {
+        const origins = pathsByTicker.get(d.ticker.toUpperCase()) ?? null;
+        return d.blockedBy
+          .filter((b) => b.startsWith("gate:G-S"))
+          .map((b) => {
+            const gate = b.split(":")[1] ?? b;
+            return {
+              ticker: d.ticker,
+              gate,
+              reason: d.reason,
+              score: dossierByKey.get(`${d.ticker.toUpperCase()}|${d.direction}`)?.score.score ?? null,
+              origins: origins ? [...origins] : null,
+            };
+          });
+      });
+      if (gateRows.length > 0) {
+        await persistSwingGateRejections({
+          sessionDay: deps.sessionDay,
+          scanPhase: deps.phase,
+          rows: gateRows,
+        }).catch((err) => {
+          console.warn("[swing-discovery] gate rejection persist failed:", err);
+        });
+      }
+    }
 
     // Execute the cleared opens ONLY when the book read succeeded (fail-closed above) — graduation is
     // evidence-only and no longer required. Link each promotion through the accumulation store (best-effort).

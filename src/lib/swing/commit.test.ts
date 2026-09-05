@@ -433,6 +433,21 @@ test("computeSwingCommitPlan: V2 confluence off by default (legacy path)", () =>
   assert.equal(plan.committableCount, 1);
 });
 
+test("computeSwingCommitPlan: V2 Cortex preflight blocks with G-S14 token", () => {
+  const plan = computeSwingCommitPlan({
+    candidates: [
+      candidate({
+        preflightV2BlockedBy: ["gate:G-S14:cortex_veto:gex-walls"],
+      }),
+    ],
+    report: graduatedReport(),
+    book: [],
+    budget: PRODUCTION_PORTFOLIO_BUDGET,
+  });
+  assert.equal(plan.committableCount, 0);
+  assert.ok(plan.decisions[0]!.blockedBy.includes("gate:G-S14:cortex_veto:gex-walls"));
+});
+
 // ─── small helpers ────────────────────────────────────────────────────────────
 
 test("helpers: event archetype set + commit_key formats", () => {

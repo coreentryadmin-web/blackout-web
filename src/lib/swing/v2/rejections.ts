@@ -80,3 +80,49 @@ export async function persistSwingCapRejections(args: PersistSwingCapRejectionsA
   if (written > 0) await saveCursor(today, cursor);
   return written;
 }
+
+export interface PersistSwingGateRejectionsArgs {
+  sessionDay: string;
+  scanPhase: string | null;
+  rows: Array<{
+    ticker: string;
+    gate: string;
+    reason: string;
+    score: number | null;
+    origins: string[] | null;
+  }>;
+}
+
+/** Persist V2 gate failures (G-S6, G-S14) from the commit plan — throttled per ticker+gate per session. */
+export async function persistSwingGateRejections(args: PersistSwingGateRejectionsArgs): Promise<number> {
+  if (!dbConfigured() || args.rows.length === 0) return 0;
+
+  const today = args.sessionDay || todayEtYmd();
+  const cursor = await loadCursor(today);
+  let written = 0;
+
+  for (const row of args.rows) {
+    const ticker = row.ticker.toUpperCase();
+    const gate = row.gate;
+    const key = rejectionStateKey(gate, ticker);
+    if (cursor.get(ticker) === key) continue;
+
+    await insertSwingScanRejection({
+      session_date: today,
+      scan_phase: args.scanPhase,
+      ticker,
+      gate_failed: gate,
+      score: row.score,
+      origins: row.origins,
+      reason: row.reason,
+      rank: null,
+      tier0_pool_size: null,
+      tier1_cap: null,
+    });
+    cursor.set(ticker, key);
+    written += 1;
+  }
+
+  if (written > 0) await saveCursor(today, cursor);
+  return written;
+}

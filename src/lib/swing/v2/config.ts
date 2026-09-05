@@ -49,6 +49,19 @@ export function isSwingConfluenceEnforced(env: Record<string, string | undefined
   return on != null && TRUTHY.has(on);
 }
 
+/** P3 — enforce G-S14 Cortex veto at COMMIT (requires master V2 flag). Off by default. */
+export function isSwingCortexEnforced(env: Record<string, string | undefined> = process.env): boolean {
+  if (!isSwingEngineV2Enabled(env)) return false;
+  const on = norm(env.SWING_ENGINE_V2_ENFORCE_CORTEX);
+  return on != null && TRUTHY.has(on);
+}
+
+/** Max watch candidates to Cortex-preflight per scan (provider budget). */
+export function swingCortexPreflightCap(env: Record<string, string | undefined> = process.env): number {
+  const n = Number(env.SWING_CORTEX_PREFLIGHT_CAP ?? 12);
+  return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 25) : 12;
+}
+
 export function swingLegacyFlowMinPremium(env: Record<string, string | undefined> = process.env): number {
   const n = Number(env.SWING_FLOW_MIN_PREMIUM ?? 250_000);
   return Number.isFinite(n) && n > 0 ? n : 250_000;

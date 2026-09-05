@@ -156,6 +156,8 @@ export interface SwingCommitCandidate {
   ivRank?: number | null;
   /** Tier-0 discovery provenance — used by V2 G-S6 confluence gate when enforced. */
   discoveryPaths?: readonly SwingDiscoveryPath[];
+  /** V2 async preflight blocks (G-S14 Cortex) evaluated before computeSwingCommitPlan. */
+  preflightV2BlockedBy?: string[];
 }
 
 /** A live-book position the commit gate reads for budget + caps + idempotency. */
@@ -305,6 +307,11 @@ export function computeSwingCommitPlan(args: {
         { enforceConfluence: true },
       );
       blockedBy.push(...blockedByFromSwingGates(gateFails));
+    }
+
+    // Gate 0.7 — V2 Cortex preflight (G-S14), evaluated async in discovery when enforced.
+    if (cand.preflightV2BlockedBy?.length) {
+      blockedBy.push(...cand.preflightV2BlockedBy);
     }
 
     // Gate 3 — IDEMPOTENCY: never double-open a thesis that already has a live root on the book.
