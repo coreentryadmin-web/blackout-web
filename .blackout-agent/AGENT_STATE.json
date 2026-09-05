@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T02:10:35.893Z",
+  "updated_at": "2026-09-05T02:12:35.757Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -80,8 +80,8 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-05T02:11:52.549Z",
+      "lease_until": "2026-09-05T03:41:52.549Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -256,13 +256,23 @@
     }
   },
   "deploy": {
-    "last_main_sha": "751192b8399e6e8eca412dd9370b81c6d03dc35d",
+    "last_main_sha": "0985f93191097d8bfab07f06212bfb6969389468",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T02:06:28Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33938125527",
-    "last_deploy_sha": "751192b8399e6e8eca412dd9370b81c6d03dc35d"
+    "last_deploy_at": "2026-09-05T02:11:57Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33938389503",
+    "last_deploy_sha": "0985f93191097d8bfab07f06212bfb6969389468"
   },
   "open_prs": [
+    {
+      "number": 3822,
+      "title": "chore(autopilot): swing-v2 merge handoff — #3808 LIVE, #3820 peer-reviewed",
+      "branch": "cursor/swing-v2-merge-handoff",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T02:12:29Z"
+    },
     {
       "number": 3821,
       "title": "chore(autopilot): hourly wake handoff — PR #3818 approved, validations GREEN",
@@ -271,17 +281,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T02:10:23Z"
-    },
-    {
-      "number": 3820,
-      "title": "fix(spx): fail-closed desk staleness on future timestamps + anomalies roundFloats",
-      "branch": "fix/spx-desk-future-timestamp-guard-anomalies-roundfloats",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T02:10:27Z"
+      "updated_at": "2026-09-05T02:12:31Z"
     }
   ],
   "events": [
@@ -1141,6 +1141,25 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T02:10:35.892Z",
       "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T02:12:34.799Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T02:12:35.756Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T02:12:35.757Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "4caf2443-4870-4903-8507-9058f564f0d2",
+      "summary": "Main @ 0985f9319 — #3808 swing-v2 LIVE + #3820 SPX desk guard merged. Platform integrity 14/14, validate:deploy GREEN, ops:collect 0. Open handoffs: #3822 (current), #3821 superseded. RTH lifecycle @ 09:00 ET."
     }
   ]
 }
