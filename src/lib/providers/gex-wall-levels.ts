@@ -58,6 +58,23 @@ export const DEFAULT_WALL_NODES_PER_SIDE = 6;
  * the wrong side of spot at the same instant the canonical (already-constrained) gex-heatmap
  * matrix served the correct one for the identical book.
  */
+/**
+ * GEX walls for the Vector bead rail (wall-history recorder + live trail).
+ *
+ * Deliberately UNCONSTRAINED by spot — the Sep 3 desk bead ribbons ranked every
+ * positive/negative strike by |gamma| share regardless of above/below spot. PR
+ * #3495 (2026-09-03 evening) added spot side-filtering for overlay/scanner reads;
+ * applying that same filter to the bead rail thinned SPX rows and members reported
+ * the dense yellow/magenta structure was gone. Overlay labels keep the constrained
+ * `computeGexWalls(..., { spot })` path; only bead persistence uses this helper.
+ */
+export function computeBeadRailGexWalls(
+  ladder: Map<number, number>,
+  { maxPerSide = DEFAULT_WALL_NODES_PER_SIDE }: { maxPerSide?: number } = {}
+): GexWalls {
+  return computeGexWalls(ladder, { maxPerSide });
+}
+
 export function computeGexWalls(
   ladder: Map<number, number>,
   { maxPerSide = DEFAULT_WALL_NODES_PER_SIDE, spot }: { maxPerSide?: number; spot?: number } = {}
