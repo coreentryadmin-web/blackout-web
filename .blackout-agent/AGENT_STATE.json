@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:22:24.624Z",
+  "updated_at": "2026-09-05T15:23:34.282Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T15:14:19.562Z",
-      "lease_until": "2026-09-05T16:46:13.089Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-05T15:16:31.684Z",
+      "lease_until": "2026-09-05T16:47:10.706Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "216e79ed-d92a-42e6-bb28-85af34c677d2",
+      "run_id": "b58816f0-5f8a-4328-86e7-79dfeef1a611",
       "title": null,
       "released_at": "2026-09-05T15:08:06.156Z"
     },
@@ -352,57 +352,8 @@
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33973466010",
     "last_deploy_sha": "7d47d7e1c293cce146306808ca8a2dad616a94e5"
   },
-  "open_prs": [
-    {
-      "number": 3987,
-      "title": "fix(automerge): HARD MERGE GATE — exclude cursor/* from auto-merge",
-      "branch": "fix/automerge-hard-merge-gate",
-      "head": "f60cbeccb",
-      "draft": true,
-      "verify": "IN_PROGRESS",
-      "awaiting": "claude_github_review",
-      "priority": "P0"
-    },
-    {
-      "number": 3986,
-      "title": "chore(autopilot): state sync after #3978/#3983 merges",
-      "branch": "cursor/autopilot-work-loop-740a",
-      "head": "7793ca9db",
-      "draft": true,
-      "awaiting": "claude_github_review",
-      "gate": "HARD_MERGE_GATE"
-    },
-    {
-      "number": 3988,
-      "title": "chore(state): sync autopilot heartbeat + agent state",
-      "branch": "chore/state-sync-20260905-1514",
-      "draft": true,
-      "awaiting": "claude_review"
-    }
-  ],
+  "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
-    {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:02.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:03.919Z",
       "type": "context_sync",
@@ -1718,6 +1669,19 @@
       "agent": "cursor",
       "run_id": "peer-review-3987-gate-watch",
       "summary": "#3987 opened @ f60cbeccb. Cursor technical review posted (22/22). safe_to_merge=false until Claude GitHub review. verify CI pending."
+    },
+    {
+      "at": "2026-09-05T15:23:34.280Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:23:34.282Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "008b4736-4fd6-48a8-bd1c-0fb543c38489",
+      "summary": "Peer-review cycle: #3987 tech-validated (36/36 tests), deploy GREEN, ops clean. 3 open PRs awaiting Claude review. #3987 urgent gate-fix."
     }
   ],
   "pr_activity": {
