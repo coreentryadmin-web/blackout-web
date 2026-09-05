@@ -27,6 +27,7 @@ import {
   type SwingDiscoveryDeps,
 } from "@/lib/swing/discovery";
 import { ingestSwingReads } from "@/lib/swing/swing-ingest";
+import { persistSwingCapRejections } from "@/lib/swing/v2/rejections";
 import { persistSwingServingSnapshot, readSwingServingSnapshot } from "@/lib/swing/serving-lane";
 import { carryLegacyPromotedIntoSnapshot } from "@/lib/swing/legacy-confirm-promote";
 import { swingThesisKey } from "@/lib/swing/accumulation-store";
@@ -321,6 +322,18 @@ export async function GET(req: NextRequest) {
     // UW REST (IV rank / earnings history) is tagged as a background sweep so live traffic keeps
     // a reserved slot while the once-per-phase whole-market scan fans out.
     const result = await runWithBackgroundUwSweep(() => runSwingDiscoveryScan(deps));
+
+    if (result.engineV2 && result.recall.cappedOut.length > 0) {
+      await persistSwingCapRejections({
+        sessionDay,
+        scanPhase: decision.phase ?? null,
+        cappedOut: result.recall.cappedOut,
+        tier0PoolSize: result.mergedCount,
+        tier1Cap: result.tier1CapApplied,
+      }).catch((err) => {
+        console.warn("[swing-discovery] cap rejection persist failed:", err);
+      });
+    }
 
     // Persist the scored output so the member horizons route can serve it. If the write fails, RELEASE the
     // phase claim so the next EventBridge fire can retry — upgrading to DONE without a snapshot locks the

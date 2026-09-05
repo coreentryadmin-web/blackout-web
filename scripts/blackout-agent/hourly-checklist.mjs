@@ -49,6 +49,12 @@ File findings to docs/audit/findings-staging/ when fixed.
 - If work remains: leave branch + draft PR; do NOT stop with a clean tree and open bugs
 - IMMEDIATELY loop: blackout:select → next task (continuous work loop)
 
+## 6. Swing Engine V2 sprint (standing P1 — do every wake until P4 ships)
+- npm run blackout:swing-v2-wake
+- Read .blackout-agent/SWING-V2-ROADMAP.md — implement next unchecked item
+- #3787 P0: Claude adversarial review required before merge
+- cursor/swing-engine-v2-p1: dynamic recall + rejection ledger (SWING_ENGINE_V2=1 shadow)
+
 RULES: You drive everything. Do not prompt the user. CI green ≠ merge without peer review.`;
 
 process.stdout.write(checklist);

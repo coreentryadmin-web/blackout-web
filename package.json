@@ -166,6 +166,7 @@
     "blackout:rth-lifecycle": "node scripts/blackout-agent/rth-lifecycle.mjs",
     "blackout:prompt": "node scripts/blackout-agent/dispatch-prompt.mjs",
     "blackout:hourly": "node scripts/blackout-agent/hourly-checklist.mjs",
+    "blackout:swing-v2-wake": "node scripts/blackout-agent/swing-v2-wake.mjs",
     "blackout:session": "node scripts/blackout-agent/session-start.mjs",
     "blackout:select": "node scripts/blackout-agent/select-task.mjs",
     "blackout:review": "node scripts/blackout-agent/record-review.mjs",

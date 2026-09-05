@@ -57,6 +57,8 @@ import type { SwingArchetype } from "./taxonomy";
 import { subLaneForDte } from "./taxonomy";
 import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration";
 import { classificationMetaFromVerdict } from "./archetype";
+import { resolveSwingTier1Cap } from "./v2/tier1-cap";
+import { isSwingEngineV2Enabled } from "./v2/config";
 import {
   computeSwingCommitPlan,
   executeSwingCommits,
@@ -500,6 +502,10 @@ export interface SwingDiscoveryResult {
   commit?: SwingCommitResult;
   /** Discovery-recall instrumentation (evidence-only; does NOT change what surfaces). See WHY-RECALL header. */
   recall: SwingDiscoveryRecall;
+  /** Tier-1 cap applied this scan (may differ from config when V2 dynamic cap is on). */
+  tier1CapApplied: number;
+  /** Whether Swing Engine V2 dynamic recall path was active. */
+  engineV2: boolean;
   /** Rows retired by fadeStaleAccum this scan (0 when none / fade skipped). */
   fadedStale?: number;
 }
@@ -539,7 +545,9 @@ export async function runSwingDiscoveryScan(
   // Keep the FULL ranked order so the recall instrumentation can see WHO the top-N cap severed (not just
   // the survivors). The behavior is unchanged — only `ranked` (the capped slice) feeds Tier-1.
   const rankedFull = rankTierZeroSeeds(merged, accSignals, moverByTicker);
-  const ranked = rankedFull.slice(0, cfg.tier1Cap);
+  const capResolution = resolveSwingTier1Cap(merged.length, cfg.tier1Cap);
+  const tier1CapApplied = capResolution.cap;
+  const ranked = rankedFull.slice(0, tier1CapApplied);
 
   // ── TIER-1 enrich (one SPY fetch shared across every name; parallel workers under the cron budget). ──
   const spyCloses = await deps.fetchSpyCloses();
@@ -571,12 +579,19 @@ export async function runSwingDiscoveryScan(
     tier0StructureCount: structureTickers.length,
     merged,
     rankedFull,
-    tier1Cap: cfg.tier1Cap,
+    tier1Cap: tier1CapApplied,
     dossiers,
     accSignals,
     moverByTicker,
   });
   // One-line recall summary in the shell (the funnel + the load-bearing capped-out leak).
+  const engineV2 = isSwingEngineV2Enabled();
+  if (capResolution.dynamic) {
+    console.log(
+      `[swing-discovery] V2 dynamic tier1Cap=${tier1CapApplied} (pool=${merged.length}, ` +
+        `floor=${capResolution.floor}, ceiling=${capResolution.ceiling})`,
+    );
+  }
   const nearFloor = recall.cappedOut.filter((c) => c.reason.includes("NEAR ENRICHED FLOOR")).length;
   console.info(
     `[swing-discovery] recall: tier0 ${recall.tier0Count} (flow ${recall.tier0FlowCount}/struct ${recall.tier0StructureCount}) ` +
@@ -799,6 +814,8 @@ export async function runSwingDiscoveryScan(
     commitEligibleCount,
     commit,
     recall,
+    tier1CapApplied,
+    engineV2,
     fadedStale,
   };
 }
