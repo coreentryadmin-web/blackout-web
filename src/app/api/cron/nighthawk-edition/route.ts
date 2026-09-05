@@ -7,6 +7,7 @@ import { nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 const CRON_KEY = "nighthawk-playbook";
 
@@ -124,10 +125,15 @@ export async function GET(req: NextRequest) {
   // `.catch` serializes + ops-alerts so an unhandled rejection can NEVER crash the replica. A re-fire
   // (cron schedule or ?force=1) resumes from the last checkpoint exactly as before.
   const dispatchBuild = () => {
-    void buildEveningEdition({
-      force,
-      ...(asOfEtParam ? { asOfEt: asOfEtParam, persist: persist || force } : {}),
-    })
+    // buildEveningEdition -> fetchAllDossiers fans out ~10+ UW REST calls per ticker via
+    // runUwPooled. Tag the cron dispatch so it reserves a slot for live member traffic, matching
+    // zerodte-warm and the four Vector-family crons (PR #3759 pattern).
+    void runWithBackgroundUwSweep(() =>
+      buildEveningEdition({
+        force,
+        ...(asOfEtParam ? { asOfEt: asOfEtParam, persist: persist || force } : {}),
+      })
+    )
       .then((result) => {
         if (result.ok) {
           console.info(
