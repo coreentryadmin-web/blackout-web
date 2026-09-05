@@ -518,6 +518,7 @@ standing instruction in `CLAUDE.md` (2026-09-04), this list is now maintained ev
 just for performance findings — and is separate from, and in addition to, each fix's own
 `docs/audit/findings-staging/` entry (the audit record; this is the next-session checklist).
 
+<<<<<<< HEAD
 ### 0aa. Desk enrichment UW fan-out missing background sweep — fix/desk-enrichment-uw-sweep (pending)
 
 **What was broken:** `fetchDeskEnrichmentFields()` in `spx-desk.ts` fans out to 5 UW REST endpoints via `runUwPooled` but was not tagged with `runWithBackgroundUwSweep`. Desk-touching crons (`spx-evaluate`, `spx-signal-observe`, `market-regime-detector`, `data-correctness`) that call `loadMergedSpxDesk()` could trigger enrichment refresh on a stale sticky without reserving a background UW slot.
@@ -525,6 +526,15 @@ just for performance findings — and is separate from, and in addition to, each
 **Fix:** Wrap `fetchDeskEnrichmentFields` body in `runWithBackgroundUwSweep` at the single fan-out site.
 
 **Check at the open:** Admin Operations → UW rate limiter during RTH — no member-facing 429s when `spx-evaluate` fires on a cold enrichment sticky; SPX desk enrichment panels (greek exposure, flow by expiry, macro) still populate normally.
+=======
+### 0ab. SPX desk GEX age Math.max(0) false-fresh on future asof — fix/spx-desk-gex-age-future-skew (pending)
+
+**What was broken:** `gexDataAgeMs()` and the canonical desk GEX path clamped `Date.now() - asofMs` with `Math.max(0, …)` before `gexStaleFromAge()`. A clock-skewed future `pos.asof` became `gex_age_ms: 0` → `gex_stale: false` even though `gexStaleFromAge(-60000)` already fail-closes.
+
+**Fix:** Remove the `Math.max(0, …)` clamp at both sites so negative age reaches `gexStaleFromAge`.
+
+**Check at the open:** SPX desk GEX stale pill fires when matrix `pos.asof` lags or skews; `/api/market/spx/bootstrap` `gex_age_ms` / `gex_stale` coherent under RTH.
+>>>>>>> b923b85a6 (fix(spx-desk): stop clamping GEX age before gexStaleFromAge)
 
 ### 0z. Vector API unrounded floats + UW halt future-timestamp guard — fix/vector-roundfloats-uw-halt-freshness (pending)
 
