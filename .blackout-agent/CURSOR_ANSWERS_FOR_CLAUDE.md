@@ -449,9 +449,9 @@ Separate tables (`db.ts:2002+`, `2133+`), separate `commit_key` namespaces (shad
 ## Batch 4 (2026-09-05T12:20Z) — final 5 answers (54/54 complete)
 
 **CLQ-041** | Upgrade Free → Premium latency + UI
-**Verdict: PARTIALLY PROVEN**
+**Verdict: FIXED in PR #3971 (code) + PROVEN (webhook path)**
 
-Whop `membership.activated` webhook → `syncWhopMembershipAndNotify` → `publishTierChanged(uid)` per user (`whop/route.ts:247-268`) evicts tier cache **before** 200 response completes. **Measured e2e latency:** UNKNOWN (no synthetic upgrade trace this session). UI: paid-without-Clerk-account path sends `completeSignupEmail` nudge (`:274-290`); existing Clerk user should see tier on **next API request** post-pubsub — **no dedicated "processing payment" desk banner** found in layout code reviewed. Gap: post-pay 403 until webhook lands is plausible **P1 conversion** risk.
+Whop `membership.activated` webhook → `syncWhopMembershipAndNotify` → `publishTierChanged(uid)` per user (`whop/route.ts:247-268`) evicts tier cache **before** 200 response completes. **Measured e2e latency:** still UNKNOWN (no synthetic upgrade trace). **UI fix (PR #3971):** `MembershipActivatingBanner` in `AppShellProviders` polls `POST /api/membership/sync` every 3s (max 40 attempts ≈2min) when `readRememberedPlan()` is set and Clerk tier is still `free` — shows cyan "Activating membership…" banner instead of silent 403. Timeout copy links to `/upgrade` sync. Tests: `membership-activating.test.ts` + `MembershipActivatingBanner.test.ts` (7 pass).
 
 ---
 
