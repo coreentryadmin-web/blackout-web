@@ -1532,9 +1532,10 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
 
   const spxSnap = snaps[SPX];
   const vixSnap = snaps[VIX];
-  if (!spxSnap?.price) return empty;
-
-  const price = spxSnap.price;
+  const priorFromBars = priorDayFromDailyBars(dailyBars);
+  const price =
+    spxSnap?.price ?? lastPulseForSignals?.price ?? priorFromBars.pdc ?? 0;
+  if (!(price > 0)) return empty;
   // Gap #11: liveness of the SPX index tick backing `price`. A frozen WS feed (TCP half-open)
   // shows a non-zero-but-stale price; surface its age + stall so the UI never labels it live.
   const spxFeed = getIndexFeedFreshness(SPX);
@@ -1556,7 +1557,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
           forming: etMinsNow >= 9 * 60 + 30 && etMinsNow < 10 * 60,
         }
       : null;
-  const prior = priorDayFromDailyBars(dailyBars);
+  const prior = priorFromBars;
   const newsHeadlines: DeskNewsHeadline[] = (newsRaw ?? [])
     .map((a) => ({
       title: a.title,
@@ -1728,7 +1729,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     source: intel?.available ? "merged" : uwConfigured() ? "polygon+uw-flow" : "polygon",
     price: roundDeskNum(price)!,
     // Derived from prior_close (served two lines below as `pdc`) — see pulseChangePctFromPriorClose.
-    spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap.change_pct),
+    spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap?.change_pct),
     vix: roundDeskNum(vixSnap?.price ?? intel?.vix ?? null),
     vix_change_pct: vixSnap?.change_pct ?? intel?.vix_change_pct ?? null,
     above_vwap: vwap != null ? price >= vwap : false,
@@ -1985,13 +1986,23 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
   const label = marketStatusLabel(now, marketNow);
 
   if (!rthOpen && !premarketPlan) {
+    // Off-hours the fast lane has no live index tick — serve the last RTH print instead of
+    // price:0 (platform-integrity FAIL vs gex-heatmap; pin forecast "Collecting" regression).
+    if (lastPulseForSignals?.price) {
+      return {
+        ...lastPulseForSignals,
+        polled_at: polledAt,
+        market_open: false,
+        market_status: marketNow?.market ?? "closed",
+        market_label: label,
+      };
+    }
     const closedPulse: SpxDeskPulse = {
       ...empty,
       market_open: false,
       market_status: marketNow?.market ?? "closed",
       market_label: label,
     };
-    lastPulseForSignals = closedPulse;
     return closedPulse;
   }
 
@@ -2073,7 +2084,7 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
     price,
     // Derived from prior_close (served below) — see pulseChangePctFromPriorClose. This is the tile
     // the 2026-08-07 P0 was measured on.
-    spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap.change_pct),
+    spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap?.change_pct),
     vix: vixSnap?.price ?? null,
     vix_change_pct: vixSnap?.change_pct ?? null,
     above_vwap: vwap != null ? price >= vwap : false,
@@ -2175,15 +2186,15 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
     (async () => {
       const snapsRaw = await fetchPulseLaneSnapshots();
       const spxSnap = snapsRaw[SPX];
-      if (!spxSnap?.price) return empty;
+      const price = spxSnap?.price ?? lastPulseForSignals?.price ?? 0;
+      if (!(price > 0)) return empty;
       const structure = cachedPulseStructure;
-      const price = spxSnap.price;
       return {
         ...empty,
         available: true,
         price,
         prior_close: prior.pdc,
-        spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap.change_pct),
+        spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap?.change_pct),
         vix: snapsRaw[VIX]?.price ?? null,
         vix_change_pct: snapsRaw[VIX]?.change_pct ?? null,
         vwap: structure.vwap,
