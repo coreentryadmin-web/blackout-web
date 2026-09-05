@@ -140,14 +140,14 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 | 33 | **(c)** | **OPEN** — shadow rows never graded/refreshed (calibration evidence gap) |
 | 34 | **(c)** | **OPEN** — FINDINGS follow-up scoped but not built (shadow refresh loop) |
 | 35 | **(c)** | **OPEN** — no graduation criteria for shadow→budget loosening |
-| 36 | **(c)** | **OPEN** — evidence-only path races on concurrent refresh (non-terminal) |
+| 36 | **(c)** | **PR open** #3901 — terminal-row guard on evidence-only latch |
 | 37 | **(c)** | **PR open** #3899 — singleton claim + roll execution revalidation (partial) |
 | 38 | **(c)** | **MERGED** #3893 — stale-but-200-OK underlying spot guard |
 | 39 | **(c)** | **OPEN** — ex-dividend not adjusted before structural_stop (design) |
 | 40 | **(c)** | **PR open** #3895 — wire `last_mark_at` → `HorizonPlay.markAsOf` |
 | 41 | **(c)** | **PR open** #3895 — SSE tier recheck on marks/vector/flows streams |
 
-**Actionable bugs in flight:** Q40+Q41 (#3895), Q37 (#3899). Q38 **MERGED** #3893. Remaining Q31–Q36, Q39 need design scoping.
+**Actionable bugs in flight:** Q40+Q41 (#3895, verify ✅), Q37 (#3899), Q36 (#3901). Q38 **MERGED** #3893. Remaining Q31–Q35, Q39 need design scoping.
 
 ---
 
@@ -158,9 +158,9 @@ All P1 items from the original queue are merged except legacy `gates.ts` cleanup
 
 ### Round 2 — next
 1. **Q38 stale underlying spot** — **MERGED** #3893
-2. **Q40+Q41 mark freshness + SSE entitlement** — #3895 (peer ✅ GO AHEAD MERGE)
+2. **Q40+Q41 mark freshness + SSE entitlement** — #3895 (peer ✅ GO AHEAD MERGE, **verify ✅**)
 3. **Q37 roll/CLOSE race** — #3899 (singleton claim + execution revalidation; partial)
-4. **Q31–Q32 member notifications** — design: swing/banger alert parity with 0DTE Discord path
+4. **Q36 evidence-only terminal guard** — #3901 (peer ✅ GO AHEAD MERGE)
+5. **Q31–Q32 member notifications** — design: swing/banger alert parity with 0DTE Discord path
 5. **Q33–Q35 shadow calibration lifecycle** — design: refresh loop + graduation criteria
-6. **Q36 evidence-only path races** — design: idempotency on non-terminal refresh writes
-7. **Q39 ex-dividend structural stop** — design: corporate-action adjustment or hazard flag
+6. **Q39 ex-dividend structural stop** — design: corporate-action adjustment or hazard flag
