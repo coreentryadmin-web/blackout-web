@@ -35,3 +35,18 @@ test("automerge.yml's merge step does not rely solely on GITHUB_TOKEN", () => {
       "or its merges silently never trigger CI/CodeQL/deploy on main"
   );
 });
+
+test("automerge.yml does not enable auto-merge for cursor/* (HARD MERGE GATE)", () => {
+  const workflow = readFileSync(join(REPO_ROOT, ".github/workflows/automerge.yml"), "utf8");
+
+  const jobIfMatch = /enable-automerge:[\s\S]*?if:\s*\$\{\{([^}]+)\}\}/.exec(workflow);
+  assert.ok(jobIfMatch, "expected enable-automerge job with an `if` condition");
+
+  const jobIf = jobIfMatch[1];
+  assert.match(jobIf, /startsWith\(github\.head_ref, 'claude\/'\)/, "claude/* should remain eligible");
+  assert.doesNotMatch(
+    jobIf,
+    /startsWith\(github\.head_ref, 'cursor\/'\)/,
+    "cursor/* must not be auto-merge eligible — Claude GitHub review required at CURRENT HEAD"
+  );
+});
