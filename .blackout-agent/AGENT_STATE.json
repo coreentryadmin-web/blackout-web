@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T13:23:32.405Z",
+  "updated_at": "2026-09-05T13:42:05.375Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -328,9 +328,9 @@
   "deploy": {
     "last_main_sha": "9ae84a1694a77ed7b78136ba6625c4ca14fb1bce",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T13:22:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33968614003",
-    "last_deploy_sha": "9ae84a1694a77ed7b78136ba6625c4ca14fb1bce"
+    "last_deploy_at": "2026-09-05T13:40:23Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33969578363",
+    "last_deploy_sha": "3637f6db3440e826434a9c3565fb09a9bd459900"
   },
   "open_prs": [],
   "events": [
@@ -1577,6 +1577,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T13:42:05.374Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T13:42:05.375Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "ed1a0015-7f99-47af-8c16-b54da49afb33",
+      "summary": "Cycle: merged #3963 after peer review. main@9ae84a169 includes #3962+#3963. ECR deploy run 33968614003 still in_progress (~20m). ops:collect clean. State PR #3975 opened."
     }
   ],
   "pr_activity": {
