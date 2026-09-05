@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T19:23:51.493Z",
+  "updated_at": "2026-09-05T19:24:17.878Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -58,9 +58,32 @@
       "agent": "cursor",
       "run_id": "1693754a-7744-4991-b3c5-dc034362fd10",
       "summary": "Cycle: rebased #4024 batch2 onto main@1d64dc9 (conflicts resolved, 29/29 Node20 tests). Cursor RECUSE @ d7d41c7 — Claude Approve required. validate:deploy GREEN; ops:collect 0 items. Open: #4024 READY, 5 drafts (#4027,#4032-4035)."
+    },
+    {
+      "at": "2026-09-05T19:24:17.878Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-09-05T19:24:17.878Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2d29e8a6-8a8e-4082-a002-9e52bdc55f08",
+      "summary": "Hourly wake complete. #4024 rebased MERGEABLE @ d7d41c7 (verify CI in flight). Cursor RECUSE — Claude Approve required. validate:deploy + platform-integrity 14/14 GREEN. ops:collect 0. Agent state PR #4036 opened. 5 draft PRs remain (#4027,#4032-4035)."
     }
   ],
   "open_prs": [
+    {
+      "number": 4036,
+      "title": "chore(blackout-agent): cursor cycle handoff — #4024 rebased, deploy GREEN",
+      "branch": "cursor/autopilot-work-loop-e8dd",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T19:24:05Z"
+    },
     {
       "number": 4035,
       "title": "fix(nighthawk): swing desk grade, Largo center rail, detail header",
@@ -99,7 +122,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "unknown",
-      "updated_at": "2026-09-05T19:17:58Z"
+      "updated_at": "2026-09-05T19:24:04Z"
     },
     {
       "number": 4027,
@@ -119,7 +142,7 @@
       "agent": "cursor",
       "draft": false,
       "verify": "unknown",
-      "updated_at": "2026-09-05T19:23:29Z"
+      "updated_at": "2026-09-05T19:24:10Z"
     }
   ]
 }
