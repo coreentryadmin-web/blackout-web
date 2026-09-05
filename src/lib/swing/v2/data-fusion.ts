@@ -68,7 +68,7 @@ export function assembleSwingDataFusion(args: AssembleSwingDataFusionArgs): Swin
       ? "LONG"
       : args.accumulation?.direction === "bear"
         ? "SHORT"
-        : args.mover?.direction === "down"
+        : args.mover && args.mover.gain < 0
           ? "SHORT"
           : args.mover
             ? "LONG"
