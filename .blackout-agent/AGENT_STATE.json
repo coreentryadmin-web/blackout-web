@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T22:56:27.878Z",
+  "updated_at": "2026-09-05T02:10:35.893Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -234,6 +234,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3820": {
+      "pr": 3820,
+      "head_sha": "6f19cbd8ef28b92c6c3e432a0840cb844ae0fd3a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-05T02:10:35.892Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,112 +256,32 @@
     }
   },
   "deploy": {
-    "last_main_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450",
+    "last_main_sha": "751192b8399e6e8eca412dd9370b81c6d03dc35d",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T22:52:50Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
-    "last_deploy_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450"
+    "last_deploy_at": "2026-09-05T02:06:28Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33938125527",
+    "last_deploy_sha": "751192b8399e6e8eca412dd9370b81c6d03dc35d"
   },
   "open_prs": [
     {
-      "number": 3785,
-      "title": "fix(api): roundFloats on dark-pool + future guard on Vector live-quote staleness",
-      "branch": "fix/dark-pool-roundfloats-vector-live-future-guard",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T22:56:15Z"
-    },
-    {
-      "number": 3784,
-      "title": "fix(learn): stop Learn nav describing Night Hawk as evening-only",
-      "branch": "fix/learn-nav-night-hawk-stale-descriptor",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T22:56:02Z"
-    },
-    {
-      "number": 3783,
-      "title": "fix(swing): discovery COMMIT without ledger is pre-entry for banger merge",
-      "branch": "cursor/swing-command-bugbot-fixes",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-09-04T22:49:40Z"
-    },
-    {
-      "number": 3782,
-      "title": "fix(test): isolate quote route negative-cache test from the real UW fallback",
-      "branch": "fix/quote-uw-fallback-test-isolation",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T22:56:26Z"
-    },
-    {
-      "number": 3781,
-      "title": "docs(audit): resolve committed git conflict markers on main in MARKET-OPEN-VALIDATION.md",
-      "branch": "docs/main-market-open-validation-conflict-markers",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T22:50:33Z"
-    },
-    {
-      "number": 3780,
-      "title": "fix(docs): resolve MARKET-OPEN-VALIDATION merge conflict markers on main",
-      "branch": "cursor/autopilot-work-loop-3021",
+      "number": 3821,
+      "title": "chore(autopilot): hourly wake handoff — PR #3818 approved, validations GREEN",
+      "branch": "cursor/hourly-autonomous-wake-b96a",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T22:54:05Z"
+      "updated_at": "2026-09-05T02:10:23Z"
     },
     {
-      "number": 3779,
-      "title": "chore(autopilot): cursor session handoff — peer-review wave merged, platform GREEN",
-      "branch": "cursor/autopilot-work-loop-eb39",
+      "number": 3820,
+      "title": "fix(spx): fail-closed desk staleness on future timestamps + anomalies roundFloats",
+      "branch": "fix/spx-desk-future-timestamp-guard-anomalies-roundfloats",
       "author": "coreentryadmin-web",
-      "agent": "cursor",
+      "agent": "agent",
       "draft": true,
       "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T22:49:47Z"
-    },
-    {
-      "number": 3778,
-      "title": "fix(swing): keep open Banger positions visible once they age under 5 DTE",
-      "branch": "fix/banger-sub5dte-visibility",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T22:55:30Z"
-    },
-    {
-      "number": 3774,
-      "title": "fix(ws): guard UW L1 cache + stocks/polygon stall against future timestamps",
-      "branch": "fix/ws-stall-uw-cache-future-timestamp",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-09-04T22:45:26Z"
-    },
-    {
-      "number": 3773,
-      "title": "fix(swing-command): Bugbot blockers — banger merge collision + open-book fetch",
-      "branch": "cursor/hourly-autonomous-wake",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-09-04T22:52:11Z"
+      "updated_at": "2026-09-05T02:10:27Z"
     }
   ],
   "events": [
@@ -1184,6 +1112,35 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 10
+    },
+    {
+      "at": "2026-09-05T02:09:00.514Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T02:10:33.445Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T02:10:33.446Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "8ab513f0-2d9f-4e9d-a9db-08dd38f57e4f",
+      "summary": "PR #3808 merged to main @ 751192b83 — swing-v2 LIVE with BUY/WAIT/SKIP entry verdict, CLOSED tab parity, buyable cockpit count. Peer-reviewing #3820 (SPX desk future-timestamp guard + anomalies roundFloats) — tests 5/5 local, CI pending. Open PRs: 2 (#3820, #3821 handoff). Standing: await Claude review on #3820 when verify green."
+    },
+    {
+      "at": "2026-09-05T02:10:35.893Z",
+      "type": "pr_review",
+      "pr": 3820,
+      "head_sha": "6f19cbd8ef28b92c6c3e432a0840cb844ae0fd3a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED — safe to merge",
+      "reviewed_at": "2026-09-05T02:10:35.892Z",
+      "safe_to_merge": true
     }
   ]
 }
