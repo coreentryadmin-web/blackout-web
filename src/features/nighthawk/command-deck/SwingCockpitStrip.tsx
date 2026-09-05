@@ -18,6 +18,7 @@ export function SwingCockpitStrip({
   const working = plays.filter((p) => WORKING.has(p.status));
   const openCount = working.length;
   const watchCount = plays.filter((p) => WATCHING.has(p.status)).length;
+  const buyCount = plays.filter((p) => p.status === "WATCH" && p.recommendation === "BUY").length;
   const pnls = working.map((p) => p.pnlPct).filter((n): n is number => n != null && Number.isFinite(n));
   const sessionPnl =
     pnls.length > 0 ? Math.round((pnls.reduce((a, b) => a + b, 0) / pnls.length) * 10) / 10 : null;
@@ -29,6 +30,10 @@ export function SwingCockpitStrip({
       <div className="nh-deck-cockpit__stat">
         <span className="k">Open</span>
         <span className="v">{openCount}</span>
+      </div>
+      <div className="nh-deck-cockpit__stat">
+        <span className="k">Buyable</span>
+        <span className="v">{buyCount}</span>
       </div>
       <div className="nh-deck-cockpit__stat">
         <span className="k">Watch</span>
