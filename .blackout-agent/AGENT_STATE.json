@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:18:20.505Z",
+  "updated_at": "2026-09-05T12:21:24.185Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -79,8 +79,8 @@
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T07:10:54.063Z",
-      "lease_until": "2026-09-04T08:40:54.063Z",
+      "claimed_at": "2026-09-05T12:20:52.984Z",
+      "lease_until": "2026-09-05T13:50:52.984Z",
       "phase": "VERIFYING",
       "branch": null,
       "pr": null,
@@ -242,18 +242,28 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T12:07:44.047Z",
-      "current_task": "BO-P1-0100"
+      "last_seen": "2026-09-05T12:20:52.985Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
     "last_main_sha": "72a81ec4aedb25570eb85a522b2fe89a0b35d7cf",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T12:14:57Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33964003342",
-    "last_deploy_sha": "4433d215c6e558531790b0f3c3f5edae6dd87d89"
+    "last_deploy_at": "2026-09-05T12:19:11Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33965696965",
+    "last_deploy_sha": "e95240d66e5512b05e019e43b420830ef494dcd2"
   },
   "open_prs": [
+    {
+      "number": 3953,
+      "title": "chore(state): sync autopilot heartbeat + x-intel rotation state",
+      "branch": "chore/state-sync-20260905-1215",
+      "author": "coreentryadmin-web",
+      "agent": "human",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T12:21:14Z"
+    },
     {
       "number": 3952,
       "title": "docs(autopilot): Cursor answers for Claude 360° cross-exam batch 1",
@@ -262,17 +272,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T12:17:48Z"
-    },
-    {
-      "number": 3951,
-      "title": "fix(spx-desk): tag UW supplemental + flow fan-out as background sweep",
-      "branch": "fix/spx-desk-uw-sweep-rest-flow",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T12:17:51Z"
+      "updated_at": "2026-09-05T12:21:17Z"
     },
     {
       "number": 3950,
@@ -282,7 +282,7 @@
       "agent": "cursor",
       "draft": false,
       "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T12:17:53Z"
+      "updated_at": "2026-09-05T12:21:20Z"
     },
     {
       "number": 3949,
@@ -291,8 +291,8 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T12:17:56Z"
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T12:21:11Z"
     },
     {
       "number": 3945,
@@ -302,7 +302,7 @@
       "agent": "cursor",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T12:17:58Z"
+      "updated_at": "2026-09-05T12:21:14Z"
     }
   ],
   "events": [
@@ -1420,21 +1420,120 @@
       "agent": "cursor",
       "run_id": "28c77b70-7d75-4fa0-977e-9739268cd385",
       "summary": "Peer sweep: 2 open PRs (#3945 swing STILL BUY awaiting Claude review; #3949 state sync draft CI pending). No claude/* PRs to review. validate:deploy GREEN. ops:collect clean (0 items). ECR deploy runs stuck pending/in_progress (4433d21, 7c84207). Saturday off-hours — RTH skipped."
+    },
+    {
+      "at": "2026-09-05T12:20:48.395Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T12:20:52.985Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T12:21:04.684Z",
+      "type": "pr_webhook",
+      "pr": 3953,
+      "event": "sweep",
+      "head": "545061c9ca4838387759106e4e41e44d4cb0036a",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": true
+    },
+    {
+      "at": "2026-09-05T12:21:07.302Z",
+      "type": "pr_webhook",
+      "pr": 3952,
+      "event": "sweep",
+      "head": "68aa704f908d70392946b01da6ae1c83c6400bd2",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T12:21:09.799Z",
+      "type": "pr_webhook",
+      "pr": 3950,
+      "event": "sweep",
+      "head": "1ef009b72d710e53493bcc8ee0474205b9a400d6",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T12:21:12.215Z",
+      "type": "pr_webhook",
+      "pr": 3949,
+      "event": "sweep",
+      "head": "8dac7eb163f40f606a9ccce05337e8878a6f6ddd",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T12:21:14.595Z",
+      "type": "pr_webhook",
+      "pr": 3945,
+      "event": "sweep",
+      "head": "acd91a4190122b971728f6d066fd74fdaebd0f6f",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T12:21:24.183Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T12:21:24.185Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "4db839b6-ebe8-4a20-a8f8-07c6d0d6ce36",
+      "summary": "Autopilot cycle complete. Open PRs: #3945 swing STILL BUY (CI green, 207 tests pass locally, awaiting Claude); #3949 state sync (undrafted, CI green, awaiting Claude); #3950 cross-exam questions (CI green, awaiting Claude); #3952 Cursor answers draft; #3953 state sync pending CI. No claude/* PRs for Cursor review. validate:deploy + platform-integrity + api-auth GREEN. ops:collect 0 items. ECR deploy in_progress (4433d21 thermal). Saturday off-hours."
     }
   ],
   "pr_activity": {
     "pr-3949": {
       "last_event": "sweep",
-      "last_head": "ca1aa08aab05fcea2555427f4945634b7b118db7",
-      "last_feedback_at": "2026-09-05T12:07:46.793Z",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
+      "last_head": "8dac7eb163f40f606a9ccce05337e8878a6f6ddd",
+      "last_feedback_at": "2026-09-05T12:21:12.215Z",
+      "verdict": "👀 **REVIEW** — peer sign-off required",
+      "directive": "REVIEW",
       "comment_action": "updated"
     },
     "pr-3945": {
       "last_event": "sweep",
-      "last_head": "56cea676fb7036a8c5859afc73f6d0dbb5fc29c7",
-      "last_feedback_at": "2026-09-05T12:07:49.597Z",
+      "last_head": "acd91a4190122b971728f6d066fd74fdaebd0f6f",
+      "last_feedback_at": "2026-09-05T12:21:14.595Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3953": {
+      "last_event": "sweep",
+      "last_head": "545061c9ca4838387759106e4e41e44d4cb0036a",
+      "last_feedback_at": "2026-09-05T12:21:04.684Z",
+      "verdict": "⏳ **WAIT** — CI pending",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3952": {
+      "last_event": "sweep",
+      "last_head": "68aa704f908d70392946b01da6ae1c83c6400bd2",
+      "last_feedback_at": "2026-09-05T12:21:07.302Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "updated"
+    },
+    "pr-3950": {
+      "last_event": "sweep",
+      "last_head": "1ef009b72d710e53493bcc8ee0474205b9a400d6",
+      "last_feedback_at": "2026-09-05T12:21:09.799Z",
       "verdict": "👀 **REVIEW** — peer sign-off required",
       "directive": "REVIEW",
       "comment_action": "updated"
