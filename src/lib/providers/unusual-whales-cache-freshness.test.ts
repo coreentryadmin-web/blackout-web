@@ -13,3 +13,12 @@ test("readUwCache rejects far-future fetchedAt (source scan)", () => {
     "in-process UW REST cache must not treat clock-skewed future fetchedAt as fresh"
   );
 });
+
+test("marketFlowCache 429 fallback rejects future cachedAt (source scan)", () => {
+  assert.match(
+    src,
+    /isWsUpdatedAtFresh\(marketFlowCache\.cachedAt, MARKET_FLOW_MAX_STALE_MS, now\)/,
+    "429 fallback must not serve flow-alerts cache with clock-skewed future cachedAt"
+  );
+  assert.doesNotMatch(src, /now - marketFlowCache\.cachedAt <= MARKET_FLOW_MAX_STALE_MS/);
+});

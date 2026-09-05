@@ -842,7 +842,7 @@ export async function fetchMarketFlowAlertRows(params?: {
       // catch, so use the static endpoint label).
       noteUw429("market/flow-alerts");
     }
-    if (marketFlowCache && now - marketFlowCache.cachedAt <= MARKET_FLOW_MAX_STALE_MS) {
+    if (marketFlowCache && isWsUpdatedAtFresh(marketFlowCache.cachedAt, MARKET_FLOW_MAX_STALE_MS, now)) {
       console.warn("[uw] flow-alerts rate limited — serving cache:", message);
       return filterMarketFlowRows(marketFlowCache.rows, params);
     }
