@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T22:19:17.459Z",
+  "updated_at": "2026-09-05T22:51:58.676Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -13,6 +13,17 @@
       "pr": null,
       "reviewer": null,
       "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-05T22:38:49.920Z",
+      "lease_until": "2026-09-06T00:21:14.029Z",
+      "phase": "IMPLEMENTING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": "01c69327-0ba6-431a-97a4-5ea79816a422"
     }
   },
   "reviews": {
@@ -36,11 +47,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "297faf10db7a9d1340dfe580ea108ed507ce41b2",
+    "last_main_sha": "f6ddee840a1fbb0e8120fc5ea2bd0079b898a876",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:34:47Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
-    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
+    "last_deploy_at": "2026-09-05T22:35:14Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33996334947",
+    "last_deploy_sha": "f6ddee840a1fbb0e8120fc5ea2bd0079b898a876"
   },
   "events": [
     {
@@ -174,7 +185,81 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T22:41:08.814Z",
+      "type": "pr_webhook",
+      "pr": 4056,
+      "event": "sweep",
+      "head": "1fd738da97ae33f45ef133515d24890f3cf689df",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T22:41:16.357Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 3
+    },
+    {
+      "at": "2026-09-05T22:51:14.028Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T22:51:15.354Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T22:51:16.319Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T22:51:55.426Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T22:51:55.428Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e4d922cc-59ab-4861-8c5a-180d91a650d5",
+      "summary": "Workflow-run cycle: recovered state, fixed PR #4056 tsc (GexWalls callWalls/putWalls — already on branch), verified locally 6/6 tests + tsc GREEN. CI verify PASS @1fd738d. Marked #4056 ready for Claude peer review. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo, rth-open off-hours). ops:collect 0. main@f6ddee840. No claude/fix PRs for peer review. Weekend — RTH skipped."
+    },
+    {
+      "at": "2026-09-05T22:51:58.676Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4056,
+      "title": "feat(swing): Rich Ask Largo intelligence — factors, levels, flow, catalysts, hold plan",
+      "branch": "cursor/swing-play-intelligence-v2",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T22:50:30Z"
+    }
+  ],
+  "pr_activity": {
+    "pr-4056": {
+      "last_event": "sweep",
+      "last_head": "1fd738da97ae33f45ef133515d24890f3cf689df",
+      "last_feedback_at": "2026-09-05T22:41:08.814Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
