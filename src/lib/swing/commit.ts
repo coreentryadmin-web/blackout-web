@@ -43,8 +43,9 @@
 // that writes the cleared rows through injected accessors (no live DB in tests).
 //
 // SHADOW POSITIONS (2026-08-06, member-authorized): a candidate that clears every open-ability check
-// (direction/contract/premium/sub-lane) but is blocked ONLY by budget:*/cap:* — a real signal the RISK
-// CONTROLS turned away, never idempotency (an already-open name is already being traded for real, so
+// (direction/contract/premium/sub-lane) but is blocked ONLY by budget:*/cap:* OR V2 commit gates
+// (gate:G-S* — confluence/Cortex/etc.) — a real signal the RISK/EVIDENCE CONTROLS turned away, never
+// idempotency (an already-open name is already being traded for real, so shadow-tracking a duplicate adds
 // shadow-tracking a duplicate adds noise, not evidence) — gets a `shadowInsert` built alongside its
 // (blocked) real decision. `executeSwingCommits` writes these to the SEPARATE `swing_shadow_positions`
 // table (db.ts) when `insertShadowPosition` is wired: zero real capital, never read by the real book /
@@ -89,6 +90,20 @@ export const OPTION_CONTRACT_MULTIPLIER = 100;
 export const EVENT_EXPOSURE_ARCHETYPES: readonly SwingArchetype[] = ["EVENT_DRIVEN", "POST_EARNINGS_DRIFT"];
 export function isEventArchetype(a: SwingArchetype | null | undefined): boolean {
   return a != null && (EVENT_EXPOSURE_ARCHETYPES as readonly string[]).includes(a);
+}
+
+/** A blockedBy token that qualifies for shadow tracking (deep-dive Q30). */
+export function isShadowEligibleBlockReason(reason: string): boolean {
+  return (
+    reason.startsWith("budget:") ||
+    reason.startsWith("cap:") ||
+    reason.startsWith("gate:G-S")
+  );
+}
+
+/** Candidate blocked ONLY by shadow-eligible reasons (budget/caps/V2 commit gates). */
+export function isShadowEligibleBlockedBy(blockedBy: readonly string[]): boolean {
+  return blockedBy.length > 0 && blockedBy.every(isShadowEligibleBlockReason);
 }
 
 /** Max-loss debit of ONE reference long-option contract = premium/share × 100, rounded to cents (a dollar risk
@@ -397,11 +412,11 @@ export function computeSwingCommitPlan(args: {
     }
 
     // SHADOW: a candidate that's otherwise fully open-able (direction/contract/premium/sub-lane all clear)
-    // but blocked ONLY by a risk-control gate (budget/caps — never idempotency/no_contract/etc, see the file
-    // header for why) gets a shadow row instead of a real one. Zero real capital; graded on the same pipeline.
+    // but blocked ONLY by a shadow-eligible gate (budget/caps/V2 commit gates — never idempotency/etc.)
+    // gets a shadow row instead of a real one. Zero real capital; graded on the same pipeline (Q30).
     let shadowInsert: SwingShadowPositionInsert | undefined;
-    const isRiskGateOnly = blockedBy.length > 0 && blockedBy.every((b) => b.startsWith("budget:") || b.startsWith("cap:"));
-    if (!committable && isRiskGateOnly && cand.contract && dirLc && subLane && isFin(riskUsd)) {
+    const shadowEligibleOnly = isShadowEligibleBlockedBy(blockedBy);
+    if (!committable && shadowEligibleOnly && cand.contract && dirLc && subLane && isFin(riskUsd)) {
       shadowInsert = buildShadowInsert(cand, subLane, dirLc, commitKey, riskUsd, grad, blockedBy);
       shadowEligibleCount += 1;
     }
@@ -412,7 +427,7 @@ export function computeSwingCommitPlan(args: {
       reason: committable
         ? `COMMIT: ${grad.graduated ? grad.reason : "not yet graduated — evidence-only, real-time gates cleared"}; risk $${(riskUsd as number).toFixed(0)} cleared budget + caps`
         : shadowInsert
-          ? `SHADOW: real signal, blocked by risk gate(s) ${blockedBy.join(", ")} — tracked without real capital`
+          ? `SHADOW: real signal, blocked by ${blockedBy.join(", ")} — tracked without real capital`
           : `blocked by ${blockedBy.join(", ")}`,
       budget: budgetVerdict,
       insert,
