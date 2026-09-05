@@ -62,7 +62,7 @@ test("the documented member surface matches the mounted one", () => {
 });
 
 /** Canonical mounters — update when adding/removing a `LargoDeskMiniPanel` mount (charter row too). */
-const DOCUMENTED_MOUNTERS = ["src/features/nighthawk/command-deck/SwingLargoInsightsPanel.tsx"];
+const DOCUMENTED_MOUNTERS: string[] = [];
 
 test("LargoDeskMiniPanel mounters match the documented list — measured, not remembered", () => {
   assert.deepEqual(

@@ -6,6 +6,7 @@ import { playContractHeadline } from "./play-card-lifecycle";
 import { useSwingPlayBrief } from "@/hooks/useSwingPlayBrief";
 import { BieAnswer } from "@/features/largo/answer/BieAnswer";
 import { renderEnvelopeMarkdown } from "@/lib/bie/answer-envelope";
+import { etClock } from "@/lib/et-clock";
 
 /** Center-rail Largo play intelligence — deterministic Ask Largo brief per selected play. */
 export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null }) {
@@ -66,7 +67,7 @@ export function SwingLargoInsightsPanel({ play }: { play: TerminalPlay | null })
       {envelope && (
         <footer className="nh-deck-largo__foot">
           <span className="nh-deck-largo__engine">Deterministic · no LLM</span>
-          {asOf ? <span className="nh-deck-largo__asof">Updated {new Date(asOf).toLocaleTimeString()}</span> : null}
+          {asOf ? <span className="nh-deck-largo__asof">Updated {etClock(asOf) ?? "—"}</span> : null}
         </footer>
       )}
     </aside>
