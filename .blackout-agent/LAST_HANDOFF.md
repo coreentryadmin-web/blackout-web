@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T12:36:39.834Z
-**Run:** 752441df-da2e-4f69-8fae-e3fadf13f1a9
+**At:** 2026-09-05T12:37:33.066Z
+**Run:** edf01cf2-886e-4201-b6bd-bf3f080c14f8
 
 ## Summary
 
-Peer-reviewed Claude #3953 APPROVED @ 545061c9 (state sync, no runtime). validate:deploy GREEN. ops:collect clean. #3945 verify GREEN awaiting Claude. Rate-limited on gh REST — subscribed CI for #3953.
+State sync PR opened. #3953 APPROVED+GREEN (Claude merge). #3945 GREEN awaiting Claude. Lifecycle GREEN. ops clean.
 
 ## Deploy
 
