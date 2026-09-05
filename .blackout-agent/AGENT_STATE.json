@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T14:10:00.000Z",
+  "updated_at": "2026-09-05T14:03:08.557Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -334,13 +334,31 @@
   "deploy": {
     "last_main_sha": "3637f6db3440e826434a9c3565fb09a9bd459900",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T13:22:04Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33968614003",
-    "last_deploy_sha": "9ae84a1694a77ed7b78136ba6625c4ca14fb1bce"
+    "last_deploy_at": "2026-09-05T13:57:08Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33969578363",
+    "last_deploy_sha": "3637f6db3440e826434a9c3565fb09a9bd459900"
   },
   "open_prs": [
-    { "pr": 3971, "branch": "cursor/membership-activating-banner-clq-041", "head": "79e687ac5", "title": "activating banner (CLQ-041)", "author": "cursor", "awaiting": "claude_review", "ci": "pending", "risk": "enable-automerge enabled" },
-    { "pr": 3972, "branch": "cursor/autopilot-state-sync-1340", "title": "state sync + automerge gate fix", "author": "cursor", "awaiting": "claude_review", "priority": "urgent" }
+    {
+      "number": 3972,
+      "title": "chore(state): sync after #3963 merge — CLQ fix PRs #3969-3971",
+      "branch": "cursor/autopilot-state-sync-1340",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T14:00:11Z"
+    },
+    {
+      "number": 3971,
+      "title": "feat(commerce): post-checkout membership activating banner (CLQ-041)",
+      "branch": "cursor/membership-activating-banner-clq-041",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T13:57:42Z"
+    }
   ],
   "events": [
     {
@@ -1591,6 +1609,31 @@
       "agent": "cursor",
       "run_id": "stale-prs-closed",
       "summary": "Closed stale handoffs #3975/#3976/#3977. #3971 verify: unit tests green, next build pending. Only #3971+#3972 open. automerge gate branch awaiting Claude PR open."
+    },
+    {
+      "at": "2026-09-05T14:10:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "automerge-bundled-3972",
+      "summary": "#3971 undrafted @ 79e687ac5 — enable-automerge ran. Bundled automerge gate fix into #3972. URGENT: Claude merge #3972 first to block cursor/* auto-merge."
+    },
+    {
+      "at": "2026-09-05T14:03:06.819Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T14:03:07.739Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T14:03:08.557Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     }
   ],
   "pr_activity": {
