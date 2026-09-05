@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:13:44.890Z",
+  "updated_at": "2026-09-05T15:13:57.397Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -346,13 +346,23 @@
   "open_prs": [
     {
       "number": 3987,
+      "title": "fix(automerge): HARD MERGE GATE — exclude cursor/* from auto-merge",
       "branch": "fix/automerge-hard-merge-gate",
-      "status": "draft_ci_pending"
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T15:13:53Z"
     },
     {
       "number": 3986,
+      "title": "chore(autopilot): state sync after #3978/#3983 merges",
       "branch": "cursor/autopilot-work-loop-740a",
-      "status": "draft_ci_pending"
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-05T15:13:49Z"
     }
   ],
   "events": [
@@ -1657,6 +1667,12 @@
       "verdict": "⏸️ **WAIT** — still draft",
       "directive": "WAIT",
       "dispatch": false
+    },
+    {
+      "at": "2026-09-05T15:13:57.397Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
     }
   ],
   "pr_activity": {
