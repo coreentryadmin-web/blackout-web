@@ -23,7 +23,7 @@ import {
 test("mapSwingPositionRow: NUMERIC columns arriving as strings (node-pg) become real numbers", () => {
   const row = mapSwingPositionRow({
     id: "17",
-    commit_key: "2026-07-24:NVDA:STANDARD:long",
+    commit_key: "2026-07-24:NVDA:BREAKOUT:STANDARD:long",
     root_position_id: null,
     parent_position_id: null,
     roll_seq: "0",

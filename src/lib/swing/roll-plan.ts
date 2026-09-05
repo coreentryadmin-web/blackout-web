@@ -190,7 +190,7 @@ async function buildRollChild(
   if (!isFin(riskUsd)) return { blocked: ["unknown_child_premium"] };
 
   const archetype = coerceArchetype(row.archetype);
-  const childKey = swingRollCommitKey(deps.sessionDay, row.ticker, subLane, dirLc, (row.roll_seq ?? 0) + 1);
+  const childKey = swingRollCommitKey(deps.sessionDay, row.ticker, subLane, dirLc, (row.roll_seq ?? 0) + 1, archetype);
 
   // IDEMPOTENCY: a child under this generation's key already open → the roll already happened; do not re-roll.
   if (deps.book.some((p) => p.commitKey === childKey)) return { blocked: ["already_rolled"] };

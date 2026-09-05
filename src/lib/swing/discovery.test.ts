@@ -374,7 +374,7 @@ test("runSwingDiscoveryScan: idempotency — a name already OPEN on the book is 
         ticker: "NVDA",
         direction: "LONG" as const,
         archetype: nvda.archetype.archetype,
-        commitKey: "2026-07-25:NVDA:STANDARD:long",
+        commitKey: "2026-07-25:NVDA:BREAKOUT:STANDARD:long",
         riskUsd: 510,
         isOvernight: true,
       },

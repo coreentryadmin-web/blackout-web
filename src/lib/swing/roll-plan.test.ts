@@ -15,7 +15,7 @@ import type { ManageSyncReads } from "./manage-sync.ts";
 // ── fixtures ──
 function parentRow(over: Partial<SwingPositionRow> = {}): SwingPositionRow {
   return {
-    id: 42, commit_key: "2026-07-01:NVDA:STANDARD:long", root_position_id: null, parent_position_id: null, roll_seq: 0,
+    id: 42, commit_key: "2026-07-01:NVDA:BREAKOUT:STANDARD:long", root_position_id: null, parent_position_id: null, roll_seq: 0,
     session_date: "2026-07-01", ticker: "NVDA", direction: "long", sub_lane: "STANDARD", archetype: "BREAKOUT",
     top_flow_strike: null, contract_strike: 150, contract_expiry: "2026-07-28", contract_type: "call", contract_occ: null,
     contract_delta: 0.6, entry_underlying_px: 148, thesis_invalidation_px: 140, target_underlying_px: 170,
@@ -64,7 +64,7 @@ test("ROLL: grades the parent + builds a gated, further-out child leg", async ()
   assert.equal(plan!.parentGrade.realized_pnl_pct, 20, "(6-5)/5*100");
   assert.ok(plan!.childSpec, "a ROLL carries a child spec");
   const child = plan!.childSpec!;
-  assert.equal(child.commit_key, swingRollCommitKey("2026-07-25", "NVDA", "STANDARD", "long", 1), "child key carries the roll generation");
+  assert.equal(child.commit_key, swingRollCommitKey("2026-07-25", "NVDA", "STANDARD", "long", 1, "BREAKOUT"), "child key carries the roll generation");
   assert.equal(child.ticker, "NVDA");
   assert.equal(child.direction, "long");
   assert.equal(child.sub_lane, "STANDARD");
@@ -124,7 +124,7 @@ test("DEFER: the child budget gate blocks a lot richer than the 2% per-trade cap
 test("DEFER: budget removes the CLOSING parent — a roll that fits after freeing the parent's risk still opens", async () => {
   // Book heat is exactly at the 6% ($6k) portfolio cap, ALL of it the parent. The roll closes the parent (frees
   // $6k) and opens a $600 child → after removing the parent it fits. Proves the gate nets the parent out.
-  const book: CommitBookPosition[] = [{ ticker: "NVDA", direction: "LONG", commitKey: "2026-07-01:NVDA:STANDARD:long", riskUsd: 6000, isOvernight: true }];
+  const book: CommitBookPosition[] = [{ ticker: "NVDA", direction: "LONG", commitKey: "2026-07-01:NVDA:BREAKOUT:STANDARD:long", riskUsd: 6000, isOvernight: true }];
   const plan = await buildSwingRollPlan(parentRow(), verdict(), reads(), deps({ book }));
   assert.ok(plan?.childSpec, "the roll opens because the closing parent's risk is netted out of the budget");
 });
@@ -132,11 +132,11 @@ test("DEFER: budget removes the CLOSING parent — a roll that fits after freein
 // ─── same-pass book growth (FINDINGS 2026-08-06 P1) ────────────────────────────────
 
 test("book growth: a successful ROLL swaps the closing parent for the new child IN PLACE on the caller's shared book array", async () => {
-  const book: CommitBookPosition[] = [{ ticker: "NVDA", direction: "LONG", commitKey: "2026-07-01:NVDA:STANDARD:long", riskUsd: 500, isOvernight: true }];
+  const book: CommitBookPosition[] = [{ ticker: "NVDA", direction: "LONG", commitKey: "2026-07-01:NVDA:BREAKOUT:STANDARD:long", riskUsd: 500, isOvernight: true }];
   const plan = await buildSwingRollPlan(parentRow(), verdict(), reads(), deps({ book }));
   assert.ok(plan?.childSpec);
-  assert.equal(book.some((p) => p.commitKey === "2026-07-01:NVDA:STANDARD:long"), false, "the closing parent is removed from the shared book");
-  const childKey = swingRollCommitKey("2026-07-25", "NVDA", "STANDARD", "long", 1);
+  assert.equal(book.some((p) => p.commitKey === "2026-07-01:NVDA:BREAKOUT:STANDARD:long"), false, "the closing parent is removed from the shared book");
+  const childKey = swingRollCommitKey("2026-07-25", "NVDA", "STANDARD", "long", 1, "BREAKOUT");
   assert.ok(book.some((p) => p.commitKey === childKey), "the new child is added to the shared book");
 });
 
@@ -155,7 +155,7 @@ test("book growth: a SECOND same-pass roll sees the FIRST roll's child risk (not
   assert.ok(first?.childSpec, "first roll (NVDA) opens: 2000 (AAPL) + 1900 (NVDA child) = 3900, under the 4000 overnight cap");
 
   const second = await buildSwingRollPlan(
-    parentRow({ id: 99, commit_key: "2026-07-01:TSLA:STANDARD:long", ticker: "TSLA" }),
+    parentRow({ id: 99, commit_key: "2026-07-01:TSLA:BREAKOUT:STANDARD:long", ticker: "TSLA" }),
     verdict(),
     reads(),
     deps({ book, fetchChainRows: async () => richChain() }),
@@ -168,7 +168,7 @@ test("book growth: a SECOND same-pass roll sees the FIRST roll's child risk (not
 });
 
 test("DEFER: idempotency — a child already open under this roll generation is not re-rolled", async () => {
-  const childKey = swingRollCommitKey("2026-07-25", "NVDA", "STANDARD", "long", 1);
+  const childKey = swingRollCommitKey("2026-07-25", "NVDA", "STANDARD", "long", 1, "BREAKOUT");
   const book: CommitBookPosition[] = [{ ticker: "NVDA", direction: "LONG", commitKey: childKey, riskUsd: 600, isOvernight: true }];
   const plan = await buildSwingRollPlan(parentRow(), verdict(), reads(), deps({ book }));
   assert.equal(plan, null, "the roll already happened → do not re-roll");
