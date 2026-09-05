@@ -102,6 +102,53 @@ mock.module("@clerk/nextjs/server", {
   },
 });
 
+// Layout gates call getSession() from auth-server (not clerk auth() directly). Mock the same
+// module specifier the app uses so tsx --test resolves the mock (CQ-113 page-gate path).
+const AUTH_SERVER = path.join(process.cwd(), "src/lib/auth-server.ts");
+const TIER_CACHE = path.join(process.cwd(), "src/lib/tier-cache.ts");
+const CLERK_USER_CACHE = path.join(process.cwd(), "src/lib/clerk-user-cache.ts");
+const USER_DIRECTORY = path.join(process.cwd(), "src/lib/user-directory.ts");
+
+mock.module(AUTH_SERVER, {
+  namedExports: {
+    getSession: async () => ({
+      userId: mockUserId,
+      email: mockClerkUser.emailAddresses[0]?.emailAddress ?? null,
+      sessionClaims: mockSessionClaims,
+    }),
+    auth: async () => ({ userId: mockUserId, sessionClaims: mockSessionClaims }),
+  },
+});
+
+mock.module(TIER_CACHE, {
+  namedExports: {
+    resolveUserTier: async () => {
+      const tier = String(mockClerkUser.publicMetadata?.tier ?? "free");
+      return tier as "free" | "community" | "premium";
+    },
+    TierUnavailableError: class TierUnavailableError extends Error {
+      name = "TierUnavailableError";
+    },
+    publishTierChanged: () => {},
+  },
+});
+
+mock.module(CLERK_USER_CACHE, {
+  namedExports: {
+    getClerkUserCached: async () => mockClerkUser,
+  },
+});
+
+mock.module(USER_DIRECTORY, {
+  namedExports: {
+    getUserProfile: async () => ({
+      email: mockClerkUser.emailAddresses[0]?.emailAddress ?? null,
+      tier: mockClerkUser.publicMetadata.tier as string,
+    }),
+    isUserAdmin: async () => mockClerkUser.publicMetadata.role === "admin",
+  },
+});
+
 function setSession(opts: {
   role?: "admin" | "member";
   tier?: "free" | "community" | "premium";
@@ -233,13 +280,13 @@ describe("gated route layouts redirect non-qualifying sessions (integration, not
     );
   });
 
-  test("premium session passes the /flows tier gate (JWT fast path — no redirect thrown)", async () => {
+  test("premium session passes the /flows tier gate (resolveUserTier — no redirect thrown)", async () => {
     setSession({ tier: "premium" });
     const result = await FlowsLayout({ children: "ok" as unknown as React.ReactNode });
     assert.equal(result, "ok");
   });
 
-  test("admin session passes the /admin role gate (JWT fast path — no redirect thrown)", async () => {
+  test("admin session passes the /admin role gate (JWT role claim — no redirect thrown)", async () => {
     setSession({ role: "admin", tier: "free" });
     const result = await AdminLayout({ children: "ok" as unknown as React.ReactNode });
     assert.equal(result, "ok");
