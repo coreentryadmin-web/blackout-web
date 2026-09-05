@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1g. SPX play gate: future-skewed gex_age_ms bypassed stale block — fix/spx-play-gate-gex-age-future-guard (pending)
+
+**What was broken:** `gexStaleFromAge()` correctly lit the GEX stale pill when `pos.asof` was clock-skewed into the future (>5s), but `evaluatePlayGates()` passed the raw negative `gex_age_ms` as a negative `gexSec` that never exceeded `playGexStaleMaxSec()`. A desk with a lit GEX-stale pill could still open plays when `polled_at` was fresh.
+
+**Fix:** Apply `WS_TIMESTAMP_FUTURE_TOLERANCE_MS` fail-closed guard to `gex_age_ms` in play gates (same pattern as `polled_at` fix 2026-09-03).
+
+**Check at the open:** If GEX snapshot age shows stale on SPX desk during RTH, confirm play rail does not surface new BUY entries for that desk state.
+
 ### 0a-1e. Vector Largo freshness: future `asOf` clamped to "live" — #3979 MERGED
 
 **What was broken:** `describeVectorFreshness()` clamped negative age to 0 and classified `freshnessFromAgeMs(0)` as **live**. A Vector snapshot stamped >5s ahead of the reader (cron writer vs API reader clock skew) read as falsely fresh — Largo/Cortex consumers could present stale tape as live.
