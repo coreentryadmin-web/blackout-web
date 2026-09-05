@@ -154,7 +154,7 @@ export function evaluateQuoteStaleGate(input: SwingCommitGateInput): SwingGateVe
   };
 }
 
-/** Daily bar completeness — open session reference bar blocks COMMIT until close. */
+/** Daily bar completeness — blocks COMMIT when reference grouped-daily feed is absent. */
 export function evaluateDailyBarGate(input: SwingCommitGateInput): SwingGateVerdict {
   const pass = input.dailyBarComplete !== false;
   return {

@@ -182,7 +182,7 @@ export interface SwingCommitCandidate {
   halted?: boolean;
   /** Quote age in ms at commit time — quote_stale gate when enforced. */
   quoteAgeMs?: number | null;
-  /** False during cash RTH — daily_bar_incomplete gate when enforced. */
+  /** False when grouped-daily reference feed is empty — daily_bar_incomplete gate when enforced. */
   dailyBarComplete?: boolean | null;
   /** V2 async preflight blocks (G-S14 Cortex) evaluated before computeSwingCommitPlan. */
   preflightV2BlockedBy?: string[];

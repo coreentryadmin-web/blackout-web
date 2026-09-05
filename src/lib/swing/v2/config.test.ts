@@ -56,8 +56,8 @@ test("isSwingQuoteStaleGateEnforced: LIVE when V2 on; opt-out only", () => {
   assert.equal(isSwingQuoteStaleGateEnforced({ SWING_ENGINE_V2_DISABLED: "1" }), false);
 });
 
-test("isSwingDailyBarGateEnforced: LIVE when V2 on; opt-out only", () => {
-  assert.equal(isSwingDailyBarGateEnforced({}), true);
-  assert.equal(isSwingDailyBarGateEnforced({ SWING_ENGINE_V2_ENFORCE_DAILY_BAR: "0" }), false);
+test("isSwingDailyBarGateEnforced: OFF by default until reference-bar signal is opt-in", () => {
+  assert.equal(isSwingDailyBarGateEnforced({}), false);
+  assert.equal(isSwingDailyBarGateEnforced({ SWING_ENGINE_V2_ENFORCE_DAILY_BAR: "1" }), true);
   assert.equal(isSwingDailyBarGateEnforced({ SWING_ENGINE_V2_DISABLED: "1" }), false);
 });

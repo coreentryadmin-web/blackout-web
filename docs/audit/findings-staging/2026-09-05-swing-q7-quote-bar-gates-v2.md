@@ -17,7 +17,8 @@ Deep-dive Q7: legacy `evaluateSwingGates` implemented `quote_stale` and `daily_b
 - `v2/gates.ts` — `evaluateQuoteStaleGate` + `evaluateDailyBarGate` with tokens `gate:quote_stale` / `gate:daily_bar_incomplete`.
 - `v2/config.ts` — `isSwingQuoteStaleGateEnforced` / `isSwingDailyBarGateEnforced` (LIVE when V2 on, opt-out via env).
 - `commit.ts` — gates 0.61/0.62; shadow-eligible block reasons extended.
-- `discovery.ts` — plumbs `quoteAgeMs` from contract `quoteUpdatedMs` when present; `dailyBarComplete = !isEtCashRth(now)`.
+- `discovery.ts` — plumbs `quoteAgeMs` from contract `quoteUpdatedMs` when present; `dailyBarComplete = grouped.length > 0` (reference feed posted, not cash-RTH clock).
+- `v2/config.ts` — daily-bar gate **OFF by default** (`SWING_ENGINE_V2_ENFORCE_DAILY_BAR=1` to opt in) until reference-bar semantics are fully calibrated.
 - `ChainContract.quoteUpdatedMs` via `chainContractFromSnapshot`.
 
 Unknown quote age fails open (matches legacy null handling).
@@ -28,5 +29,5 @@ Unknown quote age fails open (matches legacy null handling).
 
 ## RTH validation
 
-- POST_CLOSE discovery: commits should proceed when quotes fresh and session bar closed.
-- Midday scan (if enabled): `daily_bar_incomplete` should block COMMIT during cash RTH.
+- POST_CLOSE discovery: commits should proceed when quotes fresh and grouped-daily feed populated.
+- Midday scan: `quote_stale` should block on stale contract quotes; daily-bar gate is OFF unless `SWING_ENGINE_V2_ENFORCE_DAILY_BAR=1`.

@@ -61,7 +61,6 @@ import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibratio
 import { classificationMetaFromVerdict } from "./archetype";
 import { resolveSwingTier1Cap } from "./v2/tier1-cap";
 import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, isSwingEarningsGateEnforced, isSwingHaltGateEnforced, isSwingRegimeGateEnforced, isSwingQuoteStaleGateEnforced, isSwingDailyBarGateEnforced, swingCortexPreflightCap } from "./v2/config";
-import { isEtCashRth } from "@/lib/et-market-hours";
 import { readSwingHaltStateForTickers } from "./v2/halt-read";
 import { regimeBandFor01 } from "./v2/regime";
 export { regimeBandFor01 };
@@ -1022,7 +1021,8 @@ export async function runSwingDiscoveryScan(
         ),
         earningsInWindow: d?.earningsInWindow === true,
         halted: haltActive.has(w.ticker.toUpperCase()),
-        dailyBarComplete: !isEtCashRth(new Date(deps.nowMs)),
+        // Reference bar = grouped-daily feed posted for this scan (NOT "market is open").
+        dailyBarComplete: grouped.length > 0,
         quoteAgeMs: (() => {
           const c = contractByKey.get(key) ?? null;
           const at = c?.quoteUpdatedMs;
