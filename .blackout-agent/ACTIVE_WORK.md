@@ -9,7 +9,7 @@
 | PR | Finding | Status |
 |----|---------|--------|
 | #3969 | CLQ-003 dailyBarComplete per-ticker | draft, verify pending, local 27/27 |
-| #3970 | CLQ-017 charm-depth-validate script | draft, verify pending |
+| #3970 | CLQ-017 charm-depth-validate script | **verify GREEN 7/7**, local 2/2 — undraft blocked (GitHub rate limit) |
 | #3971 | CLQ-041 membership activating banner | draft, verify pending, local 5/5 |
 | #3973 | CLQ-003 duplicate? | draft — dedupe vs #3969 |
 

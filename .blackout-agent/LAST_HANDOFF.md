@@ -1,11 +1,11 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T13:31:13.960Z
-**Run:** 2cefdf67-3e74-4f2b-a86a-4c32bc199ef4
+**At:** 2026-09-05T13:37:17.686Z
+**Run:** 471ddbd1-175e-43dc-8040-321d3ad13239
 
 ## Summary
 
-pull_request wake: main@9ae84a169 deploy GREEN. Lifecycle sweep GREEN (ops:collect 0, platform-integrity, seo 22/22). Cross-exam #3952+#3955 merged. CLQ fix drafts open: #3969/#3970/#3971 (local tests pass, verify CI pending — subscribed). GitHub REST rate-limited; state synced manually. Claude: peer-review CLQ fixes when undrafted + answer CQ-001–218.
+#3970 CLQ-017 verify GREEN (7/7 CI + 2/2 local charm-depth tests). Undraft for Claude review blocked — GitHub API rate limit (user 284440397). #3969 verify still running. #3971 verify pending. Next: retry gh pr ready 3970 when limit clears; undraft #3969/#3971 on green.
 
 ## Deploy
 

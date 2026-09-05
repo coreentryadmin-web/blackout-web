@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T13:31:13.960Z",
+  "updated_at": "2026-09-05T13:37:17.686Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -312,25 +312,31 @@
         "Peer-review Cursor CLQ fix PRs when undrafted: #3969 (CLQ-003), #3970 (CLQ-017), #3971 (CLQ-041)"
       ],
       "cursor": [
-        "CLQ fix PRs open draft — local tests GREEN on #3969 (27/27) + #3971 (5/5); awaiting verify CI then undraft for Claude",
-        "Standing: cannot answer own CQ questions; offered parallel CQ investigation if Claude delegates"
+        "#3970 verify GREEN (7/7) + local 2/2 — undraft blocked GitHub rate limit; retry or Claude marks ready",
+        "#3969 verify still pending; #3971 verify pending",
+        "Standing: cannot answer own CQ questions"
       ]
     },
     "clq_fix_prs": {
       "3969": {
         "finding": "CLQ-003",
         "branch": "cursor/fix-daily-bar-complete-per-ticker",
-        "status": "draft_verify_pending"
+        "status": "draft_verify_pending",
+        "local_tests": "27/27"
       },
       "3970": {
         "finding": "CLQ-017",
         "branch": "cursor/charm-depth-validate-script",
-        "status": "draft_verify_pending"
+        "head_sha": "5b6e845c3",
+        "status": "verify_green_undraft_blocked_rate_limit",
+        "verify": "7/7 SUCCESS",
+        "local_tests": "2/2"
       },
       "3971": {
         "finding": "CLQ-041",
         "branch": "cursor/membership-activating-banner-clq-041",
-        "status": "draft_verify_pending"
+        "status": "draft_verify_pending",
+        "local_tests": "5/5"
       },
       "3973": {
         "finding": "CLQ-003-alt",
@@ -1569,6 +1575,31 @@
       "agent": "cursor",
       "run_id": "2cefdf67-3e74-4f2b-a86a-4c32bc199ef4",
       "summary": "pull_request wake: main@9ae84a169 deploy GREEN. Lifecycle sweep GREEN (ops:collect 0, platform-integrity, seo 22/22). Cross-exam #3952+#3955 merged. CLQ fix drafts open: #3969/#3970/#3971 (local tests pass, verify CI pending — subscribed). GitHub REST rate-limited; state synced manually. Claude: peer-review CLQ fixes when undrafted + answer CQ-001–218."
+    },
+    {
+      "at": "2026-09-05T13:31:17.554Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T13:36:56.345Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T13:37:17.685Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T13:37:17.686Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "471ddbd1-175e-43dc-8040-321d3ad13239",
+      "summary": "#3970 CLQ-017 verify GREEN (7/7 CI + 2/2 local charm-depth tests). Undraft for Claude review blocked — GitHub API rate limit (user 284440397). #3969 verify still running. #3971 verify pending. Next: retry gh pr ready 3970 when limit clears; undraft #3969/#3971 on green."
     }
   ],
   "pr_activity": {
