@@ -72,3 +72,11 @@ export function isWeekdayEt(now = new Date()) {
   const { weekday } = etParts(now);
   return weekday !== "Sat" && weekday !== "Sun";
 }
+
+/** Weekday trading days, 4:00 AM–8:00 PM ET — mirrors src/lib/et-market-hours.ts isEtExtendedWarmHours. */
+export function isEtExtendedWarmHours(now = new Date()) {
+  const ymd = todayEtYmd(now);
+  if (!isTradingDayEt(ymd)) return false;
+  const { mins } = etParts(now);
+  return mins >= 4 * 60 && mins <= 20 * 60;
+}

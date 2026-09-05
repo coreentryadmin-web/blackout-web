@@ -20,7 +20,7 @@ import { createAuditClient, resolveAuditDbUrl, isPrivateDbUnreachableError } fro
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { prodSecret, auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
-import { isEtExtendedWarmHours } from "../src/lib/et-market-hours.ts";
+import { isEtExtendedWarmHours } from "./gha-et-window.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const IS_STAGING = BASE.includes("staging.");
