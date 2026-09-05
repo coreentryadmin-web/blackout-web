@@ -206,8 +206,12 @@ export function evaluateSwingEntryEnterability(
   };
 }
 
+export type SwingEntryActionLabel = "BUY" | "STILL BUY" | "WAIT";
+
 /** Member-facing action pill text. */
-export function swingEntryActionLabel(action: SwingEntryAction | null | undefined): string | null {
+export function swingEntryActionLabel(
+  action: SwingEntryAction | null | undefined,
+): SwingEntryActionLabel | null {
   switch (action) {
     case "buy":
       return "BUY";
