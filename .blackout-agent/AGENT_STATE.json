@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T07:12:06.739Z",
+  "updated_at": "2026-09-05T08:06:06.046Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T08:00:17.245Z",
+      "lease_until": "2026-09-05T09:30:17.245Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -248,11 +248,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "92f8ada51d33b59cd03b7616b375425645845e1f",
+    "last_main_sha": "bd2561d28d42bd5f00a18cc2b8e01982290b135a",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T22:52:50Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
-    "last_deploy_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450"
+    "last_deploy_at": "2026-09-05T08:01:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33954138555",
+    "last_deploy_sha": "cfbf22b6e10edd5641797a995c518537e004927e"
   },
   "open_prs": [],
   "events": [
@@ -1191,6 +1191,25 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:06:01.891Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:06:06.045Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T08:06:06.046Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "e316fbeb-57c0-4414-aa51-412d536b89c8",
+      "summary": "Hourly wake: validate:deploy GREEN, ops:collect 0, platform-integrity 14/14, api-auth GREEN, SEO 22/22. Open PRs 0. Pattern scan: removed dead formatRelative from Largo toolbar (branch fix/largo-toolbar-dead-formatRelative pushed @6525c362 — PR create blocked by integration token scope; awaiting Claude/open). ECR deploy run 33954138555 pending @cfbf22b6. RTH lifecycle Fri 09:00 ET."
     }
   ]
 }

@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1c. Largo toolbar dead formatRelative helper — fix/largo-toolbar-dead-formatRelative (pending)
+
+**What was broken:** `LargoTerminalToolbar.tsx` retained an unused `formatRelative(ts)` using raw `Date.now() - ts` with no future guard. After the history list moved to `groupConversationsByDay` → `etClock`, the helper was dead code — but re-adding it would revive false-fresh "just now" on clock-skewed timestamps.
+
+**Fix:** Remove dead helper; regression test asserts history still routes through `groupConversationsByDay`.
+
+**Check at the open:** `/largo` → History popover — entries show ET clock times (e.g. `09:48`), not relative "2h ago".
+
 ### 0a-1b. Swing discovery WATCH spot refresh trusted stale last trades — fix/swing-discovery-underlying-spot-freshness (pending, #3893 sibling)
 
 **What was broken:** `swing-discovery` refreshed WATCH-name underlying spots via `fetchStockLastTrade` trusting any finite positive `.p` with no SIP timestamp check. A degraded-but-200-OK feed could overwrite plan-entry fallback with a stale price, skewing FORMING/TRIGGERED/EXTENDED setup-maturity flags on the member board.
