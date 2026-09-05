@@ -1,21 +1,20 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T07:08:48.925Z
-**Run:** 5674b7dc-2693-41c6-bc95-39ef0631dbac
+**At:** 2026-09-05T07:14:45.213Z
+**Run:** 177d89de-211a-4a65-b232-3a7938ddb2dc
 
 ## Summary
 
-Peer-reviewed 3 Claude PRs: #3893 (swing underlying spot staleness guard) APPROVED+MERGED, #3892 (Discord digest finding heading) APPROVED+MERGED, #3896 APPROVED but closed without merge (superseded). validate:deploy GREEN, ops:collect 0. Deploy run 33951068709 still in_progress. 4 open PRs remain (#3898 ready for review, 3 drafts).
+Continuous loop cycle: peer-reviewed+merged #3893 (swing spot staleness), #3892 (finding heading), #3895 (markAsOf+SSE tier recheck). #3896 closed/superseded; #3898 WAIT (rebase). 3 draft PRs pending CI (#3902 discovery spot freshness sibling, #3901 Q36, #3899 Q37). validate:deploy GREEN; ops:collect 0. Deploy 33951848163 pending for #3895 merge.
 
 ## Deploy
 
-- main: `92f8ada51d33b59cd03b7616b375425645845e1f`
+- main: `128a4fbd725de715184281dfbbe9603777e887e0`
 - status: 
 
 ## Open PRs
 
+- #3903 [cursor] feat(swing): Q31-Q32 member Discord alerts on open/close/roll
 - #3902 [agent] fix(swing): route discovery WATCH spot refresh through spotFromLastTradeResult
 - #3901 [cursor] fix(swing): Q36 guard evidence-only writes on terminal rows
 - #3899 [cursor] fix(swing): Q37 singleton active-refresh claim + roll revalidation
-- #3898 [cursor] docs(swing): refresh triage Q1-Q30 merged status + round-2 Q31-Q41
-- #3895 [agent] fix(swing): wire markAsOf freshness + recheck SSE tier on each tick
