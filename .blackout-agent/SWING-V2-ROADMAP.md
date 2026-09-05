@@ -20,7 +20,7 @@ Rebuild the swing hunt to **0DTE-grade quality**: whole-market recall, multi-sou
 | **P0** | Command Deck parity (live deck, thesis health, cockpit) | `cursor/swing-command-p0` #3787 | **MERGED** `aea0a0751` | Done |
 | **P1** | Dynamic tier1 cap + rejection ledger + data-fusion types | `cursor/swing-engine-v2-p1` #3808 | **VERIFYING** @ `07c87dca1` | After CI green |
 | **P2** | POSITIONING + CATALYST origins + confluence gate (shadow) | `cursor/swing-engine-v2-p1` #3808 | **IN PR** (both origins wired) | Required |
-| **P3** | Cortex(swing) + G-S14 + absorb banger cron | TBD | Pending P2 | Required |
+| **P3** | Cortex + G-S6 enforce (scaffold) | `cursor/swing-engine-v2-p1` #3808 | **STARTED** — G-S6 behind `SWING_ENGINE_V2_ENFORCE_CONFLUENCE=1` | Required |
 | **P4** | 15m tactical manage + unified engine + UI signal stack | TBD | Pending P3 | Required |
 | **P5** | Calibration graduation + sim regression | Ongoing | Pending P4 | Periodic |
 
