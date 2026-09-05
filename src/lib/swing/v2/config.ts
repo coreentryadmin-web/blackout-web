@@ -42,6 +42,13 @@ export function swingCorroboratedFlowMinPremium(env: Record<string, string | und
   return Number.isFinite(n) && n > 0 ? n : 150_000;
 }
 
+/** P3 — enforce G-S6 confluence at COMMIT (requires master V2 flag). Shadow by default. */
+export function isSwingConfluenceEnforced(env: Record<string, string | undefined> = process.env): boolean {
+  if (!isSwingEngineV2Enabled(env)) return false;
+  const on = norm(env.SWING_ENGINE_V2_ENFORCE_CONFLUENCE);
+  return on != null && TRUTHY.has(on);
+}
+
 export function swingLegacyFlowMinPremium(env: Record<string, string | undefined> = process.env): number {
   const n = Number(env.SWING_FLOW_MIN_PREMIUM ?? 250_000);
   return Number.isFinite(n) && n > 0 ? n : 250_000;

@@ -73,6 +73,8 @@ import {
   type ExistingSwingPosition,
 } from "./swing-allocation";
 import type { SwingPositionInsert, SwingShadowPositionInsert } from "../db";
+import type { SwingDiscoveryPath } from "./discovery";
+import { blockedByFromSwingGates, failingSwingCommitGates } from "./v2/gates";
 
 /** Shares per option contract — the standard US equity-option multiplier. */
 export const OPTION_CONTRACT_MULTIPLIER = 100;
@@ -152,6 +154,8 @@ export interface SwingCommitCandidate {
   classificationMargin?: number | null;
   /** UW IV rank (0–100) when known at commit — honest null otherwise; first refresh tick can fill it. */
   ivRank?: number | null;
+  /** Tier-0 discovery provenance — used by V2 G-S6 confluence gate when enforced. */
+  discoveryPaths?: readonly SwingDiscoveryPath[];
 }
 
 /** A live-book position the commit gate reads for budget + caps + idempotency. */
@@ -245,6 +249,8 @@ export function computeSwingCommitPlan(args: {
   book: CommitBookPosition[];
   budget?: PortfolioBudget;
   caps?: SwingCaps;
+  /** V2 commit gates (P3) — off unless caller passes enforceConfluence. */
+  v2?: { enforceConfluence?: boolean };
 }): SwingCommitPlan {
   const budget = args.budget ?? DEFAULT_PORTFOLIO_BUDGET;
   const caps = args.caps ?? DEFAULT_SWING_CAPS;
@@ -291,6 +297,15 @@ export function computeSwingCommitPlan(args: {
     if (!cand.contract) blockedBy.push("no_contract");
     else if (!isFin(riskUsd)) blockedBy.push("unknown_premium");
     if (subLane == null) blockedBy.push("no_sub_lane");
+
+    // Gate 0.6 — V2 confluence (G-S6), enforced only when SWING_ENGINE_V2_ENFORCE_CONFLUENCE=1.
+    if (args.v2?.enforceConfluence) {
+      const gateFails = failingSwingCommitGates(
+        { discoveryPaths: cand.discoveryPaths ?? [], archetype: cand.archetype },
+        { enforceConfluence: true },
+      );
+      blockedBy.push(...blockedByFromSwingGates(gateFails));
+    }
 
     // Gate 3 — IDEMPOTENCY: never double-open a thesis that already has a live root on the book.
     const thesisKey = swingThesisKey(ticker, cand.direction as PlayDirection, cand.archetype);

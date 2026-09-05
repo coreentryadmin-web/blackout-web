@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveSwingTier1Cap } from "./tier1-cap";
+import { isSwingConfluenceEnforced } from "./config";
 
 test("resolveSwingTier1Cap: legacy mode returns fixed cap", () => {
   const r = resolveSwingTier1Cap(500, 40, {});
@@ -25,4 +26,10 @@ test("resolveSwingTier1Cap: kill-switch disables dynamic", () => {
   const r = resolveSwingTier1Cap(500, 40, { SWING_ENGINE_V2: "1", SWING_ENGINE_V2_DISABLED: "1" });
   assert.equal(r.dynamic, false);
   assert.equal(r.cap, 40);
+});
+
+test("isSwingConfluenceEnforced: requires master V2 + enforce flag", () => {
+  assert.equal(isSwingConfluenceEnforced({ SWING_ENGINE_V2: "1", SWING_ENGINE_V2_ENFORCE_CONFLUENCE: "1" }), true);
+  assert.equal(isSwingConfluenceEnforced({ SWING_ENGINE_V2: "1" }), false);
+  assert.equal(isSwingConfluenceEnforced({ SWING_ENGINE_V2_ENFORCE_CONFLUENCE: "1" }), false);
 });

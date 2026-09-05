@@ -58,7 +58,7 @@ import { subLaneForDte } from "./taxonomy";
 import { analyzeSwingCalibration, type SwingCalibrationRow, type SwingCalibrationReport } from "./calibration";
 import { classificationMetaFromVerdict } from "./archetype";
 import { resolveSwingTier1Cap } from "./v2/tier1-cap";
-import { isSwingEngineV2Enabled } from "./v2/config";
+import { isSwingEngineV2Enabled, isSwingConfluenceEnforced } from "./v2/config";
 import { evaluateSwingConfluence } from "./v2/confluence";
 import {
   computeSwingCommitPlan,
@@ -804,10 +804,18 @@ export async function runSwingDiscoveryScan(
         archetypeScores: classMeta?.scores ?? null,
         classificationMargin: classMeta?.margin ?? null,
         ivRank: d?.ivRank ?? null,
+        discoveryPaths: pathsByTicker.get(w.ticker.toUpperCase()) ?? [],
       };
     });
 
-    const plan = computeSwingCommitPlan({ candidates: commitCandidates, report, book, budget: deps.budget, caps: deps.caps });
+    const plan = computeSwingCommitPlan({
+      candidates: commitCandidates,
+      report,
+      book,
+      budget: deps.budget,
+      caps: deps.caps,
+      v2: engineV2 && isSwingConfluenceEnforced() ? { enforceConfluence: true } : undefined,
+    });
     commitEligibleCount = plan.commitEligibleCount;
 
     // Execute the cleared opens ONLY when the book read succeeded (fail-closed above) — graduation is
