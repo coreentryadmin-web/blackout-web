@@ -1,30 +1,19 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:45:58.848Z",
+  "updated_at": "2026-09-05T21:48:17.413Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T21:43:06.255Z",
-      "lease_until": "2026-09-05T23:15:00.132Z",
+      "claimed_at": "2026-09-05T21:46:37.053Z",
+      "lease_until": "2026-09-05T23:17:18.544Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "96b3e2c4-0903-4bc8-a89d-11ddb3f175ca",
+      "run_id": "4b6baf41-4335-408a-bea4-f5d14ec988d0",
       "title": null
-    },
-    "BO-P1-0101": {
-      "task_id": "BO-P1-0101",
-      "owner": "cursor",
-      "claimed_at": "2026-09-05T21:44:59.145Z",
-      "lease_until": "2026-09-05T23:15:00.132Z",
-      "phase": "VERIFYING",
-      "branch": null,
-      "pr": null,
-      "reviewer": null,
-      "run_id": "96b3e2c4-0903-4bc8-a89d-11ddb3f175ca"
     }
   },
   "reviews": {
@@ -44,12 +33,12 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T21:43:06.255Z",
+      "last_seen": "2026-09-05T21:46:37.054Z",
       "current_task": "BO-P1-0100"
     }
   },
   "deploy": {
-    "last_main_sha": "7345b9a6352928ffb53134c263f9e81dd7b1845c",
+    "last_main_sha": "73e58b8937d8a20704b2527c4be090315d9de015",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T21:45:07Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33993937878",
@@ -117,65 +106,161 @@
       "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) — 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
     },
     {
-      "at": "2026-09-05T21:42:51.576Z",
+      "at": "2026-09-05T20:41:08.341Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 3
+      "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T21:42:57.717Z",
+      "at": "2026-09-05T20:41:08.976Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 3
+      "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T21:42:59.911Z",
+      "at": "2026-09-05T20:41:09.263Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 3
+      "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T21:43:02.242Z",
+      "at": "2026-09-05T21:21:57.295Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 3
+      "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T21:43:06.255Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0100",
-      "owner": "cursor"
+      "at": "2026-09-05T21:21:57.899Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T21:45:37.074Z",
+      "at": "2026-09-05T21:21:58.167Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T21:46:28.383Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
     },
     {
-      "at": "2026-09-05T21:45:58.847Z",
+      "at": "2026-09-05T21:46:32.136Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 1
+      "open_pr_count": 2
     },
     {
-      "at": "2026-09-05T21:45:58.848Z",
+      "at": "2026-09-05T21:46:32.942Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:46:33.788Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:46:37.054Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T21:46:39.613Z",
+      "type": "pr_webhook",
+      "pr": 4051,
+      "event": "sweep",
+      "head": "78cce74c5081e313e9d006253af746cfa86d48ae",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T21:46:41.539Z",
+      "type": "pr_webhook",
+      "pr": 4050,
+      "event": "sweep",
+      "head": "5798dd4a832405e90a4e4aace7a5e59d610a2744",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T21:47:18.543Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:47:19.730Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:47:20.640Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:48:17.413Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:48:17.413Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "70ee5a42-d52e-4a10-a864-ed2fa9756a96",
-      "summary": "Cycle complete: #4047 swing play intelligence MERGED. Lifecycle GREEN (22 checks). validate:deploy GREEN, ops:collect 0. Open: #4050 handoff draft, #4048 duplicate. Pushed cursor/autopilot-work-loop-275b handoff. GitHub token lacks PR comment/close scope."
+      "run_id": "f074a701-d6e7-47f7-b33a-f13f9fbda105",
+      "summary": "PR-event recovery cycle. Lifecycle GREEN (deploy, api-auth, platform-integrity 14/14, seo, rth-open). ops:collect 0. Closed duplicate #4050. #4047 merged to main@73e58b89. No Claude/fix PRs for peer review. #4051 handoff pending verify."
     }
   ],
   "open_prs": [
     {
-      "number": 4050,
-      "title": "chore(blackout-agent): cursor PR-event recovery handoff — lifecycle GREEN",
-      "branch": "cursor/autopilot-handoff-recovery",
+      "number": 4052,
+      "title": "chore(blackout-agent): cursor PR-event recovery — lifecycle GREEN, #4047 merged",
+      "branch": "cursor/autopilot-work-loop-d4e7",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
-      "verify": "unknown",
-      "updated_at": "2026-09-05T21:45:57Z"
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-05T21:48:11Z"
+    },
+    {
+      "number": 4051,
+      "title": "chore(blackout-agent): cursor PR-event recovery — #4047 merged, lifecycle GREEN",
+      "branch": "cursor/autopilot-work-loop-275b",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T21:46:08Z"
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-4051": {
+      "last_event": "sweep",
+      "last_head": "78cce74c5081e313e9d006253af746cfa86d48ae",
+      "last_feedback_at": "2026-09-05T21:46:39.613Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    },
+    "pr-4050": {
+      "last_event": "sweep",
+      "last_head": "5798dd4a832405e90a4e4aace7a5e59d610a2744",
+      "last_feedback_at": "2026-09-05T21:46:41.539Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
