@@ -62,6 +62,7 @@ import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforce
 import { evaluateSwingCortexForCommit } from "./v2/cortex-swing";
 import { persistSwingGateRejections } from "./v2/rejections";
 import { evaluateSwingConfluence } from "./v2/confluence";
+import { fetchTier0OriginTickers, type Tier0V2OriginKind } from "./v2/tier0-origin-fetch";
 import {
   computeSwingCommitPlan,
   executeSwingCommits,
@@ -300,6 +301,8 @@ export interface SwingDiscoveryRecall {
   byArchetype: Record<string, RecallCut>;
   byLiquidityTier: Record<string, RecallCut>;
   byRegime: Record<string, RecallCut>;
+  /** V2 Tier-0 origins whose fetch threw this scan (empty screen ≠ failure). Deep-dive Q27. */
+  tier0OriginFetchErrors?: Tier0V2OriginKind[];
 }
 
 /** Bucket a breakout-mover's $-volume into a coarse liquidity tier (flow-only names have no $-vol → UNKNOWN). */
@@ -566,22 +569,32 @@ export async function runSwingDiscoveryScan(
   const moverByTicker = new Map<string, BreakoutMover>(movers.map((m) => [m.ticker.toUpperCase(), m]));
   const structureTickers = movers.map((m) => m.ticker);
 
-  const positioningTickers =
-    engineV2 && deps.fetchPositioningTickers
-      ? await deps.fetchPositioningTickers().catch(() => [] as string[])
-      : [];
-  const catalystTickers =
-    engineV2 && deps.fetchCatalystTickers
-      ? await deps.fetchCatalystTickers().catch(() => [] as string[])
-      : [];
-  const bangerTickers =
-    engineV2 && deps.fetchBangerTickers
-      ? await deps.fetchBangerTickers().catch(() => [] as string[])
-      : [];
-  const vectorTickers =
-    engineV2 && deps.fetchVectorTickers
-      ? await deps.fetchVectorTickers().catch(() => [] as string[])
-      : [];
+  const originFetchErrors: Tier0V2OriginKind[] = [];
+  let positioningTickers: string[] = [];
+  let catalystTickers: string[] = [];
+  let bangerTickers: string[] = [];
+  let vectorTickers: string[] = [];
+
+  if (engineV2 && deps.fetchPositioningTickers) {
+    const r = await fetchTier0OriginTickers("POSITIONING", deps.fetchPositioningTickers);
+    positioningTickers = r.tickers;
+    if (r.fetchError) originFetchErrors.push("POSITIONING");
+  }
+  if (engineV2 && deps.fetchCatalystTickers) {
+    const r = await fetchTier0OriginTickers("CATALYST", deps.fetchCatalystTickers);
+    catalystTickers = r.tickers;
+    if (r.fetchError) originFetchErrors.push("CATALYST");
+  }
+  if (engineV2 && deps.fetchBangerTickers) {
+    const r = await fetchTier0OriginTickers("BANGER", deps.fetchBangerTickers);
+    bangerTickers = r.tickers;
+    if (r.fetchError) originFetchErrors.push("BANGER");
+  }
+  if (engineV2 && deps.fetchVectorTickers) {
+    const r = await fetchTier0OriginTickers("VECTOR", deps.fetchVectorTickers);
+    vectorTickers = r.tickers;
+    if (r.fetchError) originFetchErrors.push("VECTOR");
+  }
 
   // ── MERGE + rank + cap to the Tier-1 budget. ──
   const merged = mergeTierZeroScreens(flowTickers, structureTickers, {
@@ -636,7 +649,8 @@ export async function runSwingDiscoveryScan(
   }
 
   // ── RECALL (pure, evidence-only): measure the funnel so a dropped-strong-candidate is VISIBLE. ──
-  const recall = computeSwingDiscoveryRecall({
+  const recall = {
+    ...computeSwingDiscoveryRecall({
     tier0FlowCount: flowTickers.length,
     tier0StructureCount: structureTickers.length,
     merged,
@@ -645,7 +659,9 @@ export async function runSwingDiscoveryScan(
     dossiers,
     accSignals,
     moverByTicker,
-  });
+    }),
+    ...(originFetchErrors.length > 0 ? { tier0OriginFetchErrors: originFetchErrors } : {}),
+  };
   // One-line recall summary in the shell (the funnel + the load-bearing capped-out leak).
   if (capResolution.dynamic) {
     console.log(
@@ -657,7 +673,10 @@ export async function runSwingDiscoveryScan(
   console.info(
     `[swing-discovery] recall: tier0 ${recall.tier0Count} (flow ${recall.tier0FlowCount}/struct ${recall.tier0StructureCount}) ` +
       `→ enriched ${recall.tier1EnrichedCount}; capped-out ${recall.cappedOutCount}` +
-      (recall.cappedOutCount ? ` (${nearFloor} near enriched floor)` : ""),
+      (recall.cappedOutCount ? ` (${nearFloor} near enriched floor)` : "") +
+      (recall.tier0OriginFetchErrors?.length
+        ? `; origin-fetch-errors ${recall.tier0OriginFetchErrors.join(",")}`
+        : ""),
   );
 
   // ── PERSISTENCE: observe each directional dossier this session, then read who has cleared the bar. ──

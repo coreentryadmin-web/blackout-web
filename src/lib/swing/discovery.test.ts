@@ -49,6 +49,17 @@ test("mergeTierZeroScreens: unions paths, dedups, drops excluded, stable order",
   assert.deepEqual(merged.map((m) => m.ticker), ["AMD", "ASTS", "NVDA"], "sorted by ticker (deterministic)");
 });
 
+test("runSwingDiscoveryScan: records tier0OriginFetchErrors when a V2 origin fetch throws (Q27)", async () => {
+  const { accessors } = makeFakeAccum();
+  const res = await runSwingDiscoveryScan({
+    ...makeDeps("2026-07-23", accessors),
+    fetchVectorTickers: async () => {
+      throw new Error("vector_pick_leaders pool exhausted");
+    },
+  });
+  assert.deepEqual(res.recall.tier0OriginFetchErrors, ["VECTOR"]);
+});
+
 test("mergeTierZeroScreens: V2 POSITIONING, CATALYST, and BANGER origins union into provenance", () => {
   const merged = mergeTierZeroScreens(["NVDA"], ["ASTS"], {
     positioning: ["NVDA", "COIN"],
