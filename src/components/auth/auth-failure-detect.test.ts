@@ -62,3 +62,8 @@ test("shouldReportAuthFailure: a DIFFERENT message reports immediately, even ins
   const last = { message: "Password is incorrect", at: 1000 };
   assert.equal(shouldReportAuthFailure("Too many requests", last, 1001), true);
 });
+
+test("shouldReportAuthFailure: future lastReported.at beyond tolerance does not dedupe forever", () => {
+  const last = { message: "Password is incorrect", at: 20_000 };
+  assert.equal(shouldReportAuthFailure("Password is incorrect", last, 1000), true);
+});
