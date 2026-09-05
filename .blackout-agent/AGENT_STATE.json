@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T20:41:09.263Z",
+  "updated_at": "2026-09-05T21:04:36.280Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:32:33.868Z",
-      "lease_until": "2026-09-05T21:03:12.506Z",
+      "claimed_at": "2026-09-05T21:03:06.158Z",
+      "lease_until": "2026-09-05T22:33:35.493Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
+      "run_id": "adf5329c-8d7a-4c7c-bae5-c878e5c93dbf"
     }
   },
   "reviews": {
@@ -36,7 +36,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "35dfd63d53133c0da47c6130015a6c67d6f4c17d",
+    "last_main_sha": "8f1b953ba05ef5cdb818c04fa32f18e7151f9605",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T19:34:47Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
@@ -120,7 +120,31 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T21:04:36.279Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T21:04:36.280Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "431ac556-5d30-4dd3-9c5c-bf58e7a2a68c",
+      "summary": "Recovery loop: lifecycle GREEN (deploy/platform-integrity/seo/api-auth). ops:collect clean. GitHub API rate-limited (user 284440397) — REST+GraphQL blocked; pr-sweep empty. Deploy main@8f1b953ba. Open PR #4045 is cursor handoff — superseding with this recovery branch. Off-hours RTH skip."
     }
   ],
-  "open_prs": []
+  "open_prs": [
+    {
+      "number": 4045,
+      "title": "chore(blackout-agent): cursor cycle handoff — post-#4035 merge wave",
+      "branch": "cursor/autopilot-handoff-4044-cycle",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T21:03:54Z"
+    }
+  ]
 }
