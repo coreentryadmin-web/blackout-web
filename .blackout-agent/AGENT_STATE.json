@@ -348,11 +348,13 @@
       "number": 3978,
       "title": "fix(spx-desk): serve last RTH spot off-hours instead of price:0",
       "branch": "fix/spx-desk-offhours-last-spot",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
+      "author": "cursoragent",
+      "agent": "cursor",
       "draft": true,
       "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T14:51:14Z"
+      "head": "51704fef0",
+      "updated_at": "2026-09-05T14:50:45Z",
+      "awaiting": "claude_review"
     }
   ],
   "events": [
