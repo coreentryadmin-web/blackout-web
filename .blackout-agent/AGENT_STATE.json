@@ -1,30 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T23:37:23.347Z",
+  "updated_at": "2026-09-05T23:40:08.838Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T23:28:53.786Z",
-      "lease_until": "2026-09-06T01:06:34.063Z",
+      "claimed_at": "2026-09-05T23:37:19.243Z",
+      "lease_until": "2026-09-06T01:07:53.381Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "a2f8f0a5-63a1-4726-8f7e-ca38ded6b7e8"
-    },
-    "BO-P1-0101": {
-      "task_id": "BO-P1-0101",
-      "owner": "cursor",
-      "claimed_at": "2026-09-05T23:36:15.317Z",
-      "lease_until": "2026-09-06T01:06:34.063Z",
-      "phase": "VERIFYING",
-      "branch": null,
-      "pr": null,
-      "reviewer": null,
-      "run_id": "a2f8f0a5-63a1-4726-8f7e-ca38ded6b7e8",
-      "title": null
+      "run_id": "775a0182-92b5-44b2-a189-7bc298d61e6b"
     }
   },
   "reviews": {
@@ -43,9 +31,8 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "active",
-      "last_seen": "2026-09-05T23:36:15.317Z",
-      "current_task": "BO-P1-0101"
+      "status": "unknown",
+      "last_seen": null
     }
   },
   "deploy": {
@@ -207,62 +194,47 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T23:36:15.317Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0101",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-05T23:36:18.704Z",
-      "type": "pr_webhook",
-      "pr": 4065,
-      "event": "sweep",
-      "head": "960f78d8426c750efa383f01f3fa1738e14c6ae3",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "dispatch": false
-    },
-    {
-      "at": "2026-09-05T23:36:34.063Z",
+      "at": "2026-09-05T23:37:53.380Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 1
     },
     {
-      "at": "2026-09-05T23:36:35.023Z",
+      "at": "2026-09-05T23:37:54.533Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 1
     },
     {
-      "at": "2026-09-05T23:36:35.878Z",
+      "at": "2026-09-05T23:37:55.497Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 1
     },
     {
-      "at": "2026-09-05T23:37:23.346Z",
+      "at": "2026-09-05T23:40:08.837Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 0
+      "open_pr_count": 1
     },
     {
-      "at": "2026-09-05T23:37:23.347Z",
+      "at": "2026-09-05T23:40:08.838Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "b90bd0b2-a69f-47a9-b227-798f079aaacc",
-      "summary": "Workflow_run cycle: peer-reviewed #4064 thermal clusterCount/isClustered fix (APPROVED, merged@a3ddea86d). Local 28/28 tests GREEN. validate:deploy GREEN. lifecycle sweep GREEN (ops:collect 0, platform-integrity 14/14, seo, rth-open off-hours skip). No open PRs. main@a3ddea86d."
+      "run_id": "4dda0e69-1029-4631-9373-4856e8160575",
+      "summary": "workflow_run cycle: main@a3ddea86 deployed (#4064 thermal clusterCount fix). Lifecycle GREEN — ops:collect 0, validate:deploy/api-auth/platform-integrity 14/14/seo/rth-open all pass. No claude/fix PRs for peer review. Only open PR #4066 cursor handoff draft (verify pending — await Claude review before merge). Off-hours Sat 19:38 ET. Next: poll #4066 verify → Claude review; Mon RTH blackout:rth-lifecycle."
     }
   ],
-  "open_prs": [],
-  "pr_activity": {
-    "pr-4065": {
-      "last_event": "sweep",
-      "last_head": "960f78d8426c750efa383f01f3fa1738e14c6ae3",
-      "last_feedback_at": "2026-09-05T23:36:18.704Z",
-      "verdict": "⏸️ **WAIT** — still draft",
-      "directive": "WAIT",
-      "comment_action": "created"
+  "open_prs": [
+    {
+      "number": 4066,
+      "title": "chore(blackout-agent): cursor cycle handoff — #4064 merged, lifecycle GREEN",
+      "branch": "cursor/autopilot-handoff-2026-09-05-cycle",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T23:37:43Z"
     }
-  }
+  ]
 }
