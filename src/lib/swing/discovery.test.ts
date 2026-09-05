@@ -9,6 +9,7 @@ import {
   liquidityTierForDollar,
   regimeBandFor01,
   signalKindsForObservation,
+  discoveryPathsForConfluence,
   type SwingCandidateSeed,
   type SwingDiscoveryDeps,
   type TierZeroSeed,
@@ -422,6 +423,19 @@ test("signalKindsForObservation: Tier-0 screen paths + a grounded CATALYST are t
 
   const noCatalyst = deriveSwingCandidates([mkSeed("AMD", bullSignal("AMD"), null)])[0];
   assert.deepEqual(signalKindsForObservation(["FLOW", "STRUCTURE"], noCatalyst).sort(), ["FLOW", "STRUCTURE"], "no catalyst → just the screens");
+});
+
+test("discoveryPathsForConfluence: includes grounded CATALYST pillar for G-S6 (Q28)", () => {
+  const withCatalyst = mkSeed("MRNA", bullSignal("MRNA"), null);
+  withCatalyst.input.catalyst = { catalystStrength01: 0.9 };
+  const [dossier] = deriveSwingCandidates([withCatalyst]);
+  assert.deepEqual(
+    discoveryPathsForConfluence(["FLOW"], dossier).sort(),
+    ["CATALYST", "FLOW"],
+    "commit gate sees pillar-grounded CATALYST, not just Tier-0 paths",
+  );
+  const noCatalyst = deriveSwingCandidates([mkSeed("AMD", bullSignal("AMD"), null)])[0];
+  assert.deepEqual(discoveryPathsForConfluence(["FLOW", "STRUCTURE"], noCatalyst).sort(), ["FLOW", "STRUCTURE"]);
 });
 
 test("runSwingDiscoveryScan: an EVENT_DRIVEN name gets the 1-session fast-track (resolver + FLOW+CATALYST corroboration)", async () => {

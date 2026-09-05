@@ -41,6 +41,11 @@ export function requiredSwingConfluenceCount(archetype: SwingArchetype | null | 
   return 3; // standard multi-session thesis
 }
 
+/** Event archetypes require a discrete CATALYST signal kind (Tier-0 path or grounded pillar). */
+export function eventArchetypeRequiresCatalystKind(archetype: SwingArchetype | null | undefined): boolean {
+  return archetype != null && EVENT_ARCHETYPES.has(archetype);
+}
+
 export function evaluateSwingConfluence(
   paths: readonly SwingDiscoveryPath[],
   archetype: SwingArchetype | null | undefined,
@@ -49,9 +54,13 @@ export function evaluateSwingConfluence(
   const kinds = swingConfluenceKinds(paths, extras);
   const required = requiredSwingConfluenceCount(archetype);
   const count = kinds.length;
-  const pass = count >= required;
-  const label = pass
-    ? `${count}/${required} kinds agree (${kinds.join("+")})`
-    : `needs ${required - count} more kind(s) — have ${kinds.join("+") || "none"}`;
+  const hasCatalystKind = kinds.includes("CATALYST");
+  const catalystOk = !eventArchetypeRequiresCatalystKind(archetype) || hasCatalystKind;
+  const pass = count >= required && catalystOk;
+  const label = !catalystOk
+    ? `event archetype needs CATALYST kind + 1 other — have ${kinds.join("+") || "none"}`
+    : pass
+      ? `${count}/${required} kinds agree (${kinds.join("+")})`
+      : `needs ${required - count} more kind(s) — have ${kinds.join("+") || "none"}`;
   return { kinds, count, required, pass, label };
 }
