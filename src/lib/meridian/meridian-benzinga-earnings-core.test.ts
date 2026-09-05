@@ -12,7 +12,6 @@ import {
   impactFromEarningsImportance,
   overlayTimelineExpectedMoves,
   parseNextEarningsFromBenzinga,
-  mergeEarningsTimelineSources,
   mergeStreetEstimates,
   pickEarningsCalendarRow,
   postPrintSurpriseLean,
@@ -127,44 +126,6 @@ test("parseNextEarningsFromBenzinga picks nearest upcoming print", () => {
   assert.equal(next?.days_until, 9);
   assert.equal(next?.report_time, "afterhours");
   assert.equal(next?.is_confirmed, true);
-});
-
-test("mergeEarningsTimelineSources overlays expected move on Benzinga row", () => {
-  const merged = mergeEarningsTimelineSources(
-    [bz({ ticker: "NVDA", company_name: "NVIDIA", date: "2026-08-26", time: "16:20:00" })],
-    [
-      {
-        ticker: "NVDA",
-        name: "NVDA",
-        report_date: "2026-08-26",
-        when: "afterhours",
-        expected_move_pct: 6.2,
-        source: "chain_iv",
-      },
-    ]
-  );
-  assert.equal(merged.length, 1);
-  assert.equal(merged[0]?.name, "NVIDIA");
-  assert.equal(merged[0]?.expected_move_pct, 6.2);
-  assert.equal(merged[0]?.report_time, "16:20");
-});
-
-test("mergeEarningsTimelineSources drops stale UW-only date when Benzinga confirmed differs", () => {
-  const merged = mergeEarningsTimelineSources(
-    [bz({ ticker: "NVDA", date: "2026-08-26", date_status: "confirmed" })],
-    [
-      {
-        ticker: "NVDA",
-        name: "NVDA",
-        report_date: "2026-08-20",
-        when: "afterhours",
-        expected_move_pct: 5,
-        source: "chain_iv",
-      },
-    ]
-  );
-  assert.equal(merged.length, 1);
-  assert.equal(merged[0]?.report_date, "2026-08-26");
 });
 
 test("mergeStreetEstimates prefers Benzinga then UW tail", () => {

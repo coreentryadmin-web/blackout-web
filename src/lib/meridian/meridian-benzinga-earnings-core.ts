@@ -131,10 +131,6 @@ export function benzingaRowToTimelineInput(row: BenzingaStructuredEarnings): Ear
   };
 }
 
-function earningsTimelineKey(ticker: string, date: string): string {
-  return `${ticker.toUpperCase()}:${date.slice(0, 10)}`;
-}
-
 /**
  * Benzinga calendar rows → timeline inputs (sorted by report date).
  */
@@ -196,66 +192,6 @@ export function parseNextEarningsFromBenzinga(
     is_confirmed:
       row.date_status === "confirmed" ? true : row.date_status === "projected" ? false : null,
   };
-}
-
-/**
- * @deprecated UW grid removed — use benzingaRowsToTimelineInputs + overlayTimelineExpectedMoves.
- * Kept for tests migrating off the old merge shape.
- */
-export function mergeEarningsTimelineSources(
-  benzingaRows: BenzingaStructuredEarnings[],
-  gridRows: EarningsTimelineInput[]
-): EarningsTimelineInput[] {
-  const byKey = new Map<string, EarningsTimelineInput>();
-  const benzingaByTicker = new Map<string, BenzingaStructuredEarnings>();
-
-  for (const row of benzingaRows) {
-    byKey.set(earningsTimelineKey(row.ticker, row.date), benzingaRowToTimelineInput(row));
-    const prev = benzingaByTicker.get(row.ticker);
-    if (!prev || row.date < prev.date) benzingaByTicker.set(row.ticker, row);
-  }
-
-  for (const grid of gridRows) {
-    const ticker = grid.ticker.trim().toUpperCase();
-    const date = grid.report_date?.slice(0, 10);
-    if (!ticker || !date) continue;
-    const key = earningsTimelineKey(ticker, date);
-    const existing = byKey.get(key);
-    if (existing) {
-      byKey.set(key, {
-        ...existing,
-        expected_move_pct: grid.expected_move_pct ?? existing.expected_move_pct,
-        when: existing.when ?? grid.when,
-        source: existing.source ?? "earnings_calendar",
-      });
-      continue;
-    }
-
-    const bz = benzingaByTicker.get(ticker);
-    if (bz && bz.date !== date && bz.date_status === "confirmed") {
-      continue;
-    }
-    byKey.set(key, {
-      ...grid,
-      ticker,
-      report_date: date,
-      source: "chain_iv",
-    });
-  }
-
-  return [...byKey.values()].sort((a, b) => (a.report_date ?? "").localeCompare(b.report_date ?? ""));
-}
-
-/** @deprecated Use mergeEarningsTimelineSources */
-export function mergeBenzingaTimelineRows(
-  existing: Map<string, EarningsTimelineInput>,
-  benzingaRows: BenzingaStructuredEarnings[]
-): Map<string, EarningsTimelineInput> {
-  const grid = [...existing.values()];
-  const merged = mergeEarningsTimelineSources(benzingaRows, grid);
-  const out = new Map<string, EarningsTimelineInput>();
-  for (const row of merged) out.set(row.ticker.toUpperCase(), row);
-  return out;
 }
 
 export function mergeStreetEstimates(
