@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
-import { requireToolApi } from "@/lib/tool-access-server";
+import { requireToolApiForDeskCaller } from "@/lib/tool-access-server";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import {
@@ -13,6 +13,7 @@ import {
 } from "@/features/vector/lib/vector-stream-hub";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
+import { revalidateSseStreamAccess } from "@/lib/sse-stream-auth";
 import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -25,8 +26,13 @@ export async function GET(req: NextRequest) {
   const auth = await authorizePremiumDeskApi(req);
   if (auth instanceof Response) return auth;
 
-  const locked = await requireToolApi("vector");
+  const locked = await requireToolApiForDeskCaller(auth, "vector");
   if (locked) return locked;
+
+  const streamAuth =
+    auth.via === "user" && auth.userId
+      ? { userId: auth.userId, minTier: "premium" as const, toolKey: "vector" as const }
+      : null;
 
   const rawTicker = req.nextUrl.searchParams.get("ticker");
   // Missing ticker → SPX default (matches createVectorEventSource + normalizeVectorTicker).
@@ -68,8 +74,24 @@ export async function GET(req: NextRequest) {
   const stream = new ReadableStream({
     start(controller) {
       let lastSentFrame: string | null = null;
-      const send = () => {
+      const send = async () => {
         if (closed) return;
+        if (streamAuth) {
+          const verdict = await revalidateSseStreamAccess(streamAuth);
+          if (verdict === "forbidden") {
+            cleanup();
+            try {
+              controller.enqueue(
+                encoder.encode(`event: error\ndata: ${JSON.stringify({ error: "Forbidden — upgrade required" })}\n\n`)
+              );
+              controller.close();
+            } catch {
+              /* already closed */
+            }
+            return;
+          }
+          if (verdict === "unavailable") return;
+        }
         if (sseBackpressureExceeded(controller.desiredSize)) {
           cleanup();
           try {
@@ -110,8 +132,10 @@ export async function GET(req: NextRequest) {
       registerVectorUniverseView(ticker);
       req.signal.addEventListener("abort", cleanup);
 
-      interval = setInterval(send, TICK_MS);
-      send();
+      interval = setInterval(() => {
+        void send();
+      }, TICK_MS);
+      void send();
 
       heartbeatInterval = setInterval(() => {
         if (closed) return;

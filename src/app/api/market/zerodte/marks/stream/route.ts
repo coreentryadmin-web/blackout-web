@@ -8,10 +8,11 @@
 // Client fallback: GET /api/market/zerodte/marks polled at 2–3s.
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
-import { requireToolApi } from "@/lib/tool-access-server";
+import { requireToolApi, requireToolApiForDeskCaller } from "@/lib/tool-access-server";
 import { ensureZeroDteMarkPoller, getZeroDteLiveMarksFrame } from "@/lib/zerodte/live-marks";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { sseBackpressureExceeded } from "@/lib/sse-backpressure";
+import { revalidateSseStreamAccess } from "@/lib/sse-stream-auth";
 import { NO_STORE_HEADERS, NO_STORE_STREAM_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -37,9 +38,14 @@ export async function GET(req: NextRequest) {
   if (auth instanceof Response) return auth;
   if (auth.via === "user") {
     // Same launch gate as the board route — 0DTE Command lives under Night Hawk.
-    const denied = await requireToolApi("nighthawk");
+    const denied = await requireToolApiForDeskCaller(auth, "nighthawk");
     if (denied) return denied;
   }
+
+  const streamAuth =
+    auth.via === "user" && auth.userId
+      ? { userId: auth.userId, minTier: "premium" as const, toolKey: "nighthawk" as const }
+      : null;
 
   if (!tryAcquireStream()) {
     return new NextResponse("Too many active streams — try again shortly", { status: 503 });
@@ -72,6 +78,22 @@ export async function GET(req: NextRequest) {
       let lastSentKey: string | null = null;
       const send = async () => {
         if (closed) return;
+        if (streamAuth) {
+          const verdict = await revalidateSseStreamAccess(streamAuth);
+          if (verdict === "forbidden") {
+            cleanup();
+            try {
+              controller.enqueue(
+                encoder.encode(`event: error\ndata: ${JSON.stringify({ error: "Forbidden — upgrade required" })}\n\n`)
+              );
+              controller.close();
+            } catch {
+              /* already closed */
+            }
+            return;
+          }
+          if (verdict === "unavailable") return;
+        }
         if (sseBackpressureExceeded(controller.desiredSize)) {
           cleanup();
           try {
