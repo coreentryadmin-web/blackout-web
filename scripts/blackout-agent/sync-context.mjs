@@ -4,9 +4,10 @@ import { appendEvent, readAgentState, writeAgentState } from "./lib/state.mjs";
 import { expireStaleLocksSync, readLock } from "./lib/locks.mjs";
 import { LOCKS_DIR } from "./lib/paths.mjs";
 import { existsSync, readdirSync } from "node:fs";
+import { ghSpawn } from "./lib/gh.mjs";
 
 function ghJson(args) {
-  const r = spawnSync("gh", args, { encoding: "utf8" });
+  const r = ghSpawn(args);
   if (r.status !== 0) return null;
   try {
     return JSON.parse(r.stdout || "[]");

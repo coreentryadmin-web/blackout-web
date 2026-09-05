@@ -6,6 +6,7 @@ import {
   reviewerForBranch,
   GH_PR_CHECKS_JSON_FIELDS,
 } from "./pr-feedback.mjs";
+import { ghSpawn } from "./lib/gh.mjs";
 
 function parseArgs(argv) {
   const out = {
@@ -23,7 +24,7 @@ function parseArgs(argv) {
 }
 
 function ghJson(args) {
-  const r = spawnSync("gh", args, { encoding: "utf8" });
+  const r = ghSpawn(args);
   if (r.status !== 0) return null;
   return JSON.parse(r.stdout);
 }

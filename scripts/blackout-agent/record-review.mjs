@@ -8,6 +8,7 @@
 import { spawnSync } from "node:child_process";
 import { appendEvent, readAgentState, writeAgentState } from "./lib/state.mjs";
 import { withStateLock } from "./lib/state-lock.mjs";
+import { ghSpawn } from "./lib/gh.mjs";
 
 function parseArgs(argv) {
   const out = { agent: process.env.BLACKOUT_AGENT ?? "cursor" };
@@ -30,7 +31,7 @@ if (!pr) {
 let head = args.head ?? null;
 let headBranch = args.branch ?? null;
 if (!head || !headBranch) {
-  const r = spawnSync("gh", ["pr", "view", String(pr), "--json", "headRefOid,headRefName,author"], { encoding: "utf8" });
+  const r = ghSpawn(["pr", "view", String(pr), "--json", "headRefOid,headRefName,author"]);
   if (r.status === 0) {
     const j = JSON.parse(r.stdout);
     head = head ?? j.headRefOid;

@@ -9,6 +9,7 @@
 import { spawnSync } from "node:child_process";
 import { appendEvent, readAgentState, writeAgentState } from "./lib/state.mjs";
 import { withStateLock } from "./lib/state-lock.mjs";
+import { ghSpawn } from "./lib/gh.mjs";
 
 function parseArgs(argv) {
   const out = {
@@ -31,7 +32,7 @@ function parseArgs(argv) {
 }
 
 function ghJson(args) {
-  const r = spawnSync("gh", args, { encoding: "utf8" });
+  const r = ghSpawn(args);
   if (r.status !== 0) return null;
   try {
     return JSON.parse(r.stdout || "null");
@@ -41,7 +42,7 @@ function ghJson(args) {
 }
 
 function ghRun(args) {
-  const r = spawnSync("gh", args, { encoding: "utf8" });
+  const r = ghSpawn(args);
   return { ok: r.status === 0, stdout: r.stdout, stderr: r.stderr, status: r.status };
 }
 
