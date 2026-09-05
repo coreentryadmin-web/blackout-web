@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:35:35.991Z",
+  "updated_at": "2026-09-05T17:09:45.180Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:26:09.737Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-05T16:51:28.736Z",
+      "lease_until": "2026-09-05T18:31:07.955Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": "d8bbae01-cfcd-4825-beb6-1f92541d2c94",
       "title": null
     },
     "BO-P1-0101": {
@@ -258,6 +258,22 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T12:35:00.000Z",
       "safe_to_merge": true
+    },
+    "pr-4003": {
+      "pr": 4003,
+      "head_sha": "0ca5b4058a5e453159e31c73b41ade17d80a5fa9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T17:09:37.181Z",
+      "safe_to_merge": true
+    },
+    "pr-4002": {
+      "pr": 4002,
+      "head_sha": "21d0abc37af798c71a0b15dc96528db5ae2ef538",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T17:09:40.404Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -326,24 +342,85 @@
     }
   },
   "deploy": {
-    "last_main_sha": "86227e70b57d7dc962673f750a952173dea85088",
+    "last_main_sha": "0b44680aab2dc99d7ec220397ddd8c8da80f4d9f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:34:11Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978273189",
-    "last_deploy_sha": "86227e70b57d7dc962673f750a952173dea85088"
+    "last_deploy_at": "2026-09-05T16:59:04Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33979523407",
+    "last_deploy_sha": "3ae28b7721d5d696f4354949ea9e0b9cbfbac727"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 4011,
+      "title": "fix(spx): fail-closed future-skewed gex_age_ms in play gates",
+      "branch": "fix/spx-play-gate-gex-age-future-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T17:09:16Z"
+    },
+    {
+      "number": 4009,
+      "title": "docs(blackout-agent): salvage Phase 5 cross-exam docs from stale #3993",
+      "branch": "cursor/cross-exam-phase5-docs-salvage",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T17:09:18Z"
+    },
+    {
+      "number": 4008,
+      "title": "docs(blackout-agent): Cursor Phase 5 response to CLAUDE_PHASE5 CLQ challenges",
+      "branch": "cursor/phase5-clq-response-2026-09-05",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T17:09:21Z"
+    },
+    {
+      "number": 4007,
+      "title": "fix(ci): wire rth-autonomous-open to real validate scripts",
+      "branch": "fix/rth-workflow-dead-scripts-2026-09-05",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T17:09:23Z"
+    },
+    {
+      "number": 4006,
+      "title": "fix(thermal): CHARM used call-shaped formula for puts too — wrong at q>0 (CLQ-017)",
+      "branch": "test/charm-numerical-derivative-check",
+      "author": "app/claude",
+      "agent": "human",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T17:09:26Z"
+    },
+    {
+      "number": 3996,
+      "title": "chore(autopilot): state sync after #3994 merge + peer review cycle",
+      "branch": "cursor/bc-daf6ff49-8f01-4d90-8c8f-1234adb99ec7-0a51",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T17:09:29Z"
+    },
+    {
+      "number": 3993,
+      "title": "chore(autopilot): Phase 5 CQ challenges + gate-watch state sync",
+      "branch": "cursor/autopilot-work-loop-740a",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T17:09:31Z"
+    }
+  ],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
-    {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:02.378Z",
       "type": "context_sync",
@@ -1622,6 +1699,45 @@
       "agent": "cursor",
       "run_id": "7241539d-60c7-4e6b-ac5b-c9b3aa85b828",
       "summary": "Continuous loop cycle complete. Peer review: pr-sweep 0 open PRs. Platform integrity 14/14 GREEN, lifecycle sweep GREEN (weekend RTH skip). Deploy drift: prod rolling feaba670 (in_progress 25m+), main now 86227e70 (#3995+#3998) with pending ECR run 33978273189. Opened draft #4001 (agent state sync — awaits Claude review). GitHub GraphQL rate-limited until ~17:06 UTC; REST still works. Next: monitor ECR → validate:deploy post-rollout; Claude peer-review #4001 + any new claude/* PRs."
+    },
+    {
+      "at": "2026-09-05T17:09:37.182Z",
+      "type": "pr_review",
+      "pr": 4003,
+      "head_sha": "0ca5b4058a5e453159e31c73b41ade17d80a5fa9",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T17:09:37.181Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T17:09:40.404Z",
+      "type": "pr_review",
+      "pr": 4002,
+      "head_sha": "21d0abc37af798c71a0b15dc96528db5ae2ef538",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T17:09:40.404Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T17:09:41.383Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-09-05T17:09:41.385Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "43f23f7c-8f58-451e-b046-a18f09e35079",
+      "summary": "workflow_run wake: peer-reviewed+merged Claude #4002 (SPX play-eval lock fail-closed) and #4003 (Largo triple-hop carry test). Platform integrity 14/14 GREEN, validate:deploy GREEN, ops:collect 0. Open cursor PRs #3993+#3996 awaiting Claude review (verify GREEN). #4004 docs-only staged finding OPEN — defer merge per no-docs-only PR policy. ECR deploy queue still backing up (33978427509 in_progress 32m+). Weekend — RTH lifecycle skipped."
+    },
+    {
+      "at": "2026-09-05T17:09:45.180Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "pr_activity": {
