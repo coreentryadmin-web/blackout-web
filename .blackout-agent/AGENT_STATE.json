@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:04:36.280Z",
+  "updated_at": "2026-09-05T21:05:02.278Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -13,6 +13,18 @@
       "pr": null,
       "reviewer": null,
       "run_id": "adf5329c-8d7a-4c7c-bae5-c878e5c93dbf"
+    },
+    "BO-P1-0101": {
+      "task_id": "BO-P1-0101",
+      "owner": "cursor",
+      "claimed_at": "2026-09-05T21:04:54.112Z",
+      "lease_until": "2026-09-05T22:34:54.112Z",
+      "phase": "SCANNING",
+      "branch": null,
+      "pr": null,
+      "reviewer": null,
+      "run_id": null,
+      "title": null
     }
   },
   "reviews": {
@@ -31,8 +43,9 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "unknown",
-      "last_seen": null
+      "status": "active",
+      "last_seen": "2026-09-05T21:04:54.113Z",
+      "current_task": "BO-P1-0101"
     }
   },
   "deploy": {
@@ -133,9 +146,44 @@
       "agent": "cursor",
       "run_id": "431ac556-5d30-4dd3-9c5c-bf58e7a2a68c",
       "summary": "Recovery loop: lifecycle GREEN (deploy/platform-integrity/seo/api-auth). ops:collect clean. GitHub API rate-limited (user 284440397) — REST+GraphQL blocked; pr-sweep empty. Deploy main@8f1b953ba. Open PR #4045 is cursor handoff — superseding with this recovery branch. Off-hours RTH skip."
+    },
+    {
+      "at": "2026-09-05T21:04:51.001Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T21:04:54.113Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0101",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T21:05:02.278Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T21:05:02.278Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "2bf1f26e-e6f5-4ff2-a2d4-70a5513395da",
+      "summary": "Recovery complete: lifecycle GREEN, ops clean. Pushed cursor/autopilot-state-recovery-loop-0529, opened draft PR #4046. GitHub rate-limited early cycle; PR create succeeded on retry. Supersedes #4045. Peer review blocked until rate limit clears. Deploy main@8f1b953ba."
     }
   ],
   "open_prs": [
+    {
+      "number": 4046,
+      "title": "chore(blackout-agent): cursor recovery loop — lifecycle GREEN, GitHub rate-limited",
+      "branch": "cursor/autopilot-state-recovery-loop-0529",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "QUEUED/",
+      "updated_at": "2026-09-05T21:04:58Z"
+    },
     {
       "number": 4045,
       "title": "chore(blackout-agent): cursor cycle handoff — post-#4035 merge wave",
@@ -144,7 +192,7 @@
       "agent": "cursor",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T21:03:54Z"
+      "updated_at": "2026-09-05T21:04:42Z"
     }
   ]
 }
