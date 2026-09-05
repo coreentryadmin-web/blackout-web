@@ -40,6 +40,7 @@ import {
   renderScorecardMarkdown,
   scorecardStatus,
 } from "@/lib/correctness/run-correctness";
+import { runWithBackgroundUwSweep } from "@/lib/providers/uw-rate-limiter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -100,7 +101,7 @@ export async function GET(req: NextRequest) {
       void (async () => {
         try {
           const tickers = correctnessTickers();
-          const card = await runFullCorrectness(tickers);
+          const card = await runWithBackgroundUwSweep(() => runFullCorrectness(tickers));
           const overall = scorecardStatus(card);
           if (card.flags.length > 0) {
             const body = card.flags
@@ -155,7 +156,9 @@ export async function GET(req: NextRequest) {
 
   try {
     const tickers = correctnessTickers();
-    const card = surface === "heatmap" ? await runHeatmapCorrectness(tickers) : await runFullCorrectness(tickers);
+    const card = await runWithBackgroundUwSweep(() =>
+      surface === "heatmap" ? runHeatmapCorrectness(tickers) : runFullCorrectness(tickers)
+    );
     const overall = scorecardStatus(card);
 
     // ── Markdown scorecard → docs/auto/data-correctness-<date>.md (best-effort) ──

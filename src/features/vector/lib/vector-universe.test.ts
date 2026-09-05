@@ -39,6 +39,7 @@ mock.module("./vector-dynamic-universe", {
       const t = String(raw).toUpperCase();
       if (!dynamicTickers.includes(t)) dynamicTickers.push(t);
     },
+    removeDynamicUniverseTicker: async () => {},
   },
 });
 
@@ -81,7 +82,6 @@ mock.module("../../../lib/providers/polygon-options-gex", {
       // |gamma| than strike 108 (above spot), so the unconstrained scan used to pick 90 as the
       // "call wall" — a resistance level below current price — the exact live IBIT/SPX shape.
       if (ticker === "INVERT") {
-        // Also carries `expiries`/`gex.cells` (2026-09-04 audit follow-up to #3495) — same
         // "wrong side of spot" shape reproduced through the narrowed-horizon path
         // (`strikeTotalsForHorizonFromCells`, which sums `cells` rather than reading the
         // already-summed `strike_totals` the main gexWalls computation uses).
@@ -321,14 +321,18 @@ test("warmDynamicTickerSessionWall: skips static allowlist tickers", async () =>
   assert.deepEqual(wallSampleCalls, []);
 });
 
-test("vector-universe: computeGexWalls spot args reject zero/negative (source scan)", async () => {
+test("vector-universe: GEX walls require positive spot (source scan)", async () => {
   const { readFileSync } = await import("node:fs");
   const src = readFileSync(new URL("./vector-universe.ts", import.meta.url), "utf8");
-  const matches = [...src.matchAll(/spot:\s*spot\s*!=\s*null\s*&&\s*spot\s*>\s*0\s*\?\s*spot\s*:\s*undefined/g)];
-  assert.equal(
-    matches.length,
-    2,
-    "both blended and narrowed-horizon computeGexWalls calls must guard spot > 0"
+  assert.match(
+    src,
+    /hm\?\.gex\?\.strike_totals && spot != null && spot > 0/,
+    "blended GEX walls must fail-closed when spot is missing"
+  );
+  assert.match(
+    src,
+    /recordNarrowedHorizons && spot != null && spot > 0 && hm\?\.gex\?\.cells/,
+    "narrowed-horizon writes must skip when spot is missing"
   );
   assert.doesNotMatch(src, /spot:\s*spot\s*\?\?\s*undefined/, "must not pass raw spot ?? undefined to computeGexWalls");
 });

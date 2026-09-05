@@ -1,6 +1,45 @@
 import { before, describe, test, mock } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { NextRequest } from "next/server";
+
+const routeSrc = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "route.ts"),
+  "utf8"
+);
+
+test("data-correctness imports runWithBackgroundUwSweep from the shared rate limiter", () => {
+  assert.match(
+    routeSrc,
+    /import \{[^}]*\brunWithBackgroundUwSweep\b[^}]*\} from "@\/lib\/providers\/uw-rate-limiter"/,
+    "must import the background-sweep tag from the shared rate limiter"
+  );
+});
+
+test("data-correctness wraps correctness sweeps in runWithBackgroundUwSweep", () => {
+  assert.match(
+    routeSrc,
+    /await runWithBackgroundUwSweep\(\(\) => runFullCorrectness\(tickers\)\)/,
+    "async full-platform sweep must run inside the background-sweep tag"
+  );
+  assert.match(
+    routeSrc,
+    /await runWithBackgroundUwSweep\(\(\) =>[\s\S]*runHeatmapCorrectness\(tickers\)[\s\S]*runFullCorrectness\(tickers\)/,
+    "synchronous sweep must run inside the background-sweep tag"
+  );
+  assert.doesNotMatch(
+    routeSrc,
+    /await runFullCorrectness\(tickers\)/,
+    "runFullCorrectness must never be called bare"
+  );
+  assert.doesNotMatch(
+    routeSrc,
+    /await runHeatmapCorrectness\(tickers\)/,
+    "runHeatmapCorrectness must never be called bare"
+  );
+});
 
 // Regression coverage for the duplicate "Data-correctness FLAG" Discord alert (caught live in
 // #website-logs, docs/audit/findings-staging/2026-08-28-data-correctness-force-sweep-debounce.md):
@@ -69,6 +108,11 @@ mock.module("../../../../lib/correctness/run-correctness", {
     correctnessTickers: () => ["SPX"],
     renderScorecardMarkdown: () => "",
     scorecardStatus: () => "flag",
+  },
+});
+mock.module("../../../../lib/providers/uw-rate-limiter", {
+  namedExports: {
+    runWithBackgroundUwSweep: async <T>(fn: () => Promise<T>) => fn(),
   },
 });
 

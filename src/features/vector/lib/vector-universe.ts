@@ -125,12 +125,13 @@ async function buildVectorUniverseRow(
   // is not a real resistance/support read, the exact "wrong side of spot" bug PR #2417 fixed for
   // the canonical gex-heatmap route but not here (2026-09-04 audit finding). VEX (vanna) has no
   // inherent above/below-spot geometry (see gex-wall-levels.ts's NAMING doc) and stays unconstrained.
-  const gexWalls = hm?.gex?.strike_totals
-    ? computeGexWalls(mapFromStrikeTotalsRecord(hm.gex.strike_totals), {
-        maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-        spot: spot != null && spot > 0 ? spot : undefined,
-      })
-    : { callWalls: [], putWalls: [] };
+  const gexWalls =
+    hm?.gex?.strike_totals && spot != null && spot > 0
+      ? computeGexWalls(mapFromStrikeTotalsRecord(hm.gex.strike_totals), {
+          maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
+          spot,
+        })
+      : { callWalls: [], putWalls: [] };
   const vexWalls = hm?.vex?.strike_totals
     ? computeGexWalls(mapFromStrikeTotalsRecord(hm.vex.strike_totals), {
         maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
@@ -179,7 +180,7 @@ async function buildVectorUniverseRow(
     // all session. The sweep overran and the blended rail everyone depends on regressed to 10-25s.
     // Here 0DTE writes every tick (the rail the 5s requirement is about) while weekly/monthly write
     // every Nth — see vector-narrowed-write-cadence for the budget and its stated trade-off.
-    if (recordNarrowedHorizons && hm?.gex?.cells && hm?.expiries?.length) {
+    if (recordNarrowedHorizons && spot != null && spot > 0 && hm?.gex?.cells && hm?.expiries?.length) {
       const todayYmd = todayEtYmd();
       for (const horizon of horizonsForTick(narrowedTickIndex)) {
         const totals = strikeTotalsForHorizonFromCells(hm.gex.cells, hm.expiries, horizon, todayYmd);
@@ -193,7 +194,7 @@ async function buildVectorUniverseRow(
         // after the live rail was fixed.
         const horizonWalls = computeGexWalls(totals, {
           maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
-          spot: spot != null && spot > 0 ? spot : undefined,
+          spot,
         });
         const horizonSample = buildWallHistorySample({
           time: sampleTime,
