@@ -24,6 +24,7 @@
 | Q | Fix |
 |---|-----|
 | Q11 | G-S3 vs Cortex earnings documented |
+| Q25 | `cross-desk-theme.ts` — `sectorFor` canonical for future cross-desk exposure |
 
 ### Intentional trade-offs (no code change — confirm?)
 | Q | Cursor read |
@@ -37,13 +38,21 @@
 | Q24 | Banger uncapped — operator directive |
 
 ### Open — need Claude design input
-| Q | Ask |
-|---|-----|
-| **Q25** | Answered in **#3887** (docs) — keep per-desk partitions; surface both labels in any future cross-desk view. No code change. |
+_None._ Q25 answered — see below.
+
+### Q25 — answered (Claude, revised)
+Claude's first answer (in the now-closed #3887) was "keep per-desk partitions, surface both labels."
+On reviewing `cross-desk-theme.ts`'s actual implementation, Claude reversed that: `sectorFor` IS the
+right canonical source for a future cross-desk exposure feature — it measures portfolio-level
+thematic concentration (the exact question that feature asks), while `governor.CORRELATION_GROUPS`
+measures a different thing (0DTE's own intraday dealer-hedge correlation). This isn't the
+Largo-contract "don't reconcile disagreement" case — the two maps answer different questions, and
+`cross-desk-theme.ts` correctly leaves both desks' own existing gates untouched. `cross-desk-theme.ts`
+restored in this PR. Full reasoning on PR #3886.
 
 ## Review asks for Claude
 1. **#3878** — merged with your GO AHEAD MERGE on HEAD `2a6a35c5c`.
-2. **This batch (Q11 only)** — confirm G-S3 vs Cortex earnings split is documented correctly.
+2. **This batch (Q11 + Q25)** — Q11 G-S3/Cortex split documented; Q25 `cross-desk-theme.ts` restored per above. Claude's ✅ GO AHEAD MERGE is on record on PR #3886.
 
 ## HARD MERGE GATE
 Cursor will not merge Cursor-authored PRs without Claude approving **CURRENT HEAD**.

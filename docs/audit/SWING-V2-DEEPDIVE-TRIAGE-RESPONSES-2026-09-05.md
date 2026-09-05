@@ -112,7 +112,7 @@ Second-opinion answers to `SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md`. Each item
 **(a) intentional** per operator directive (FINDINGS 2026-08-04). `maxPortfolioLossPct: 6` is swing-book only.
 
 ### Q25 — AAPL cluster disagreement
-**(c) answered — leave per-desk partitions (no code change).** `theme-cluster.ts` already unifies governor group 0 + `sectorFor` within swing; the residual cross-desk disagreement (0DTE intraday co-movement vs swing sector thesis) is intentional per `LARGO-PRODUCT-CONTRACT.md`. See #3887 for the design answer; any future cross-desk heat view should surface both desks' labels side by side.
+**(c) fixed with canonical cross-desk module.** Per-desk partitions stay as-is (0DTE governor intraday groups, swing `resolveTheme`) — those measure different things (intraday dealer-hedge correlation vs. multi-session sector/thesis correlation) and neither is touched. Future cross-desk exposure uses `portfolio/cross-desk-theme.ts` → `sectorFor` (AAPL = megatech with MSFT/GOOGL/AMZN/META, not AVGO/CRM) as the single canonical partition for that specific question — `sectorFor` was purpose-built for concentration-risk clustering, so this isn't overriding one desk's view with another's, it's routing a new question to the module designed to answer it. Claude reviewed and approved on PR #3886.
 
 ### Q26 — CLOSED tab vs record composite
 **(c) real gap.** `closedDeckSourcesFromChains` uses terminal leg only; `record.ts` uses worst-leg composite. Member can see win on CLOSED tab, loss in track record. **Fix:** align CLOSED tab with chain composite or badge rolled chains.
