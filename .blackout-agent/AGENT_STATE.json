@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T03:17:06.276Z",
+  "updated_at": "2026-09-05T05:36:19.312Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T05:34:38.908Z",
+      "lease_until": "2026-09-05T07:04:38.908Z",
+      "phase": "REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -248,7 +248,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b558e1321c827f97e43cad8eaae5937f3d4eded9",
+    "last_main_sha": "b5ebc0f98c6dd8b92a944d29d0b3d978c591ce32",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-04T22:52:50Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
@@ -1137,6 +1137,25 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T05:36:07.558Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T05:36:19.310Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T05:36:19.312Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "97965f6b-1e23-4e8d-aa46-5ddc004e8f61",
+      "summary": "Hourly wake (Sat off-hours): synced main→b5ebc0f98. validate:deploy GREEN, ops:collect 0, platform-integrity 14/14, api-auth GREEN, validate:seo 22/22. pr-sweep empty (0 open PRs). GitHub API rate-limited (user 284440397) — cannot poll PR checks/deploy runs until reset. npm ci restored node_modules. RTH lifecycle deferred (weekend). Next: RTH ledger Fri 09:00 ET; re-run pr-sweep when rate limit clears."
     }
   ]
 }
