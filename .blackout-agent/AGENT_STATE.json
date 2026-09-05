@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T19:34:45.361Z",
+  "updated_at": "2026-09-05T19:35:26.152Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -15,7 +15,16 @@
       "run_id": "c239b249-1f8d-4860-bc2f-7d48b9e4d427"
     }
   },
-  "reviews": {},
+  "reviews": {
+    "pr-4037": {
+      "pr": 4037,
+      "head_sha": "2c4363b2c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T19:35:19.109Z",
+      "safe_to_merge": true
+    }
+  },
   "agents": {
     "claude": {
       "status": "unknown",
@@ -29,9 +38,9 @@
   "deploy": {
     "last_main_sha": "1d64dc9ae143d6c03b976714341e7706eefe0182",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:19:05Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33986744578",
-    "last_deploy_sha": "1d64dc9ae143d6c03b976714341e7706eefe0182"
+    "last_deploy_at": "2026-09-05T19:34:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33987532744",
+    "last_deploy_sha": "f8613a3a2593a9af78edf8488adf4df03792e784"
   },
   "events": [
     {
@@ -64,9 +73,48 @@
       "agent": "cursor",
       "run_id": "19909047-90ae-4042-a2ad-3b6697cd2078",
       "summary": "Recovery cycle: synced main@1d64dc9ae. Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. pr-sweep empty. GitHub API rate-limited (user 284440397) — peer review blocked until reset. ECR deploy #4025 run 33986744578 still pending. Next: retry BO-P1-0100 peer review when API resets; monitor deploy completion."
+    },
+    {
+      "at": "2026-09-05T19:35:03.828Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-09-05T19:35:19.110Z",
+      "type": "pr_review",
+      "pr": 4037,
+      "head_sha": "2c4363b2c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T19:35:19.109Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T19:35:26.152Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-09-05T19:35:26.152Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b9a3c786-97ee-4a0e-9f0c-a9c61879bc90",
+      "summary": "Peer review: APPROVED #4037 (SPX cold-replica prior-close pulse fix) — 4/4 tests pass. Recovery handoff PR #4039 opened. GitHub GraphQL still rate-limited for listing; REST comment path works. Deploy #4025 run pending. Standing queue continues."
     }
   ],
   "open_prs": [
+    {
+      "number": 4039,
+      "title": "chore(blackout-agent): cursor recovery cycle — lifecycle GREEN, GitHub rate-limited",
+      "branch": "cursor/autopilot-work-loop-cddd",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "updated_at": "2026-09-05T19:35:17Z"
+    },
     {
       "number": 4038,
       "title": "chore(blackout-agent): cursor recovery cycle handoff — #4035 CI fix",
@@ -75,7 +123,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "unknown",
-      "updated_at": "2026-09-05T19:34:41Z"
+      "updated_at": "2026-09-05T19:35:24Z"
     },
     {
       "number": 4037,
@@ -85,7 +133,7 @@
       "agent": "agent",
       "draft": true,
       "verify": "unknown",
-      "updated_at": "2026-09-05T19:31:44Z"
+      "updated_at": "2026-09-05T19:35:19Z"
     },
     {
       "number": 4036,
@@ -95,7 +143,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "unknown",
-      "updated_at": "2026-09-05T19:25:05Z"
+      "updated_at": "2026-09-05T19:35:10Z"
     },
     {
       "number": 4035,
@@ -135,7 +183,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "unknown",
-      "updated_at": "2026-09-05T19:34:28Z"
+      "updated_at": "2026-09-05T19:34:52Z"
     }
   ]
 }
