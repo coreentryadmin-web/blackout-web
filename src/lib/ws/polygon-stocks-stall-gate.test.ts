@@ -29,3 +29,17 @@ test("polygon-socket: indices stall watchdog uses isWsUpdatedAtFresh (source sca
     "raw Date.now()-lastIndicesMessageAt must not gate indices feed stall"
   );
 });
+
+test("polygon-socket: getIndexStoreStatus age uses wsUpdatedAtAgeMs (source scan)", () => {
+  const src = readFileSync(new URL("./polygon-socket.ts", import.meta.url), "utf8");
+  assert.match(
+    src,
+    /getIndexStoreStatus[\s\S]*?ageMs: indexStore\[sym\]\.updatedAt > 0 \? wsUpdatedAtAgeMs\(indexStore\[sym\]\.updatedAt\)/,
+    "admin index store status must clamp future-skewed updatedAt via wsUpdatedAtAgeMs"
+  );
+  assert.doesNotMatch(
+    src,
+    /getIndexStoreStatus[\s\S]*?Date\.now\(\)\s*-\s*indexStore\[sym\]\.updatedAt/,
+    "raw Date.now()-updatedAt must not report index store age"
+  );
+});
