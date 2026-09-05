@@ -165,19 +165,20 @@ export const PRODUCT_MANIFEST: Record<MarketingModuleId, ProductManifestEntry> =
     id: "meridian",
     label: "Meridian",
     launchStatus: "live",
-    tag: "Earnings intelligence",
+    tag: "Catalyst intelligence",
     audience: "Event traders",
-    positioning: "Earnings calendar with estimates, reactions, and cross-tool positioning context.",
+    positioning:
+      "Catalyst timeline — earnings, macro releases, OpEx, and FDA decisions — with earnings as the deepest workflow.",
     lifecycle:
-      "Timeline of upcoming and recent earnings with estimate revisions, reaction history, and Thermal/flow context per print.",
+      "Catalyst timeline spanning earnings, macro releases, OpEx, and FDA decision dates, each with its own filter and event-specific detail view; earnings get the deepest workflow — estimate revisions, reaction history, and Thermal/flow context per print.",
     capabilities: [
-      "Timeline of upcoming and recent earnings events",
-      "Estimate revisions and beat-rate history",
+      "Catalyst timeline: earnings, macro, OpEx, and FDA events with dedicated filters",
+      "Earnings desk: estimate revisions and beat-rate history",
       "Positioning and flow context tied to each print",
     ],
     faqAnswer:
-      "Meridian is the earnings desk: calendar, estimate revisions, reaction history, and cross-tool positioning and flow context for every major print — not a generic screener.",
-    planInclude: "Meridian earnings desk",
+      "Meridian is the catalyst desk: a timeline of earnings, macro releases, OpEx, and FDA decisions, with earnings as the deepest workflow — calendar, estimate revisions, reaction history, and cross-tool positioning and flow context for every major print.",
+    planInclude: "Meridian catalyst desk",
     learnHref: "/learn/meridian-earnings-desk-guide",
     href: "/meridian",
   },
@@ -237,4 +238,5 @@ export const BANNED_PUBLIC_MARKETING_PHRASES = [
   "rolling out",
   "six modules",
   "Six engines",
+  "Earnings intelligence",
 ] as const;

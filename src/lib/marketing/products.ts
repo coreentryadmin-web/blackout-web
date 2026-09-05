@@ -44,7 +44,7 @@ const HEADLINES: Record<MarketingProductId, string> = {
   largo: "Ask the desk — get structure, not chat fluff.",
   hawk: "Intraday scanner with evening prep.",
   vector: "Broaden the hunt beyond SPX.",
-  meridian: "Earnings prints with positioning context.",
+  meridian: "Catalyst timeline — earnings, macro, OpEx, and FDA.",
 };
 
 const STATS: Record<MarketingProductId, { k: string; v: string }> = {
@@ -54,7 +54,7 @@ const STATS: Record<MarketingProductId, { k: string; v: string }> = {
   largo: { k: "BIE", v: "structure-first AI" },
   hawk: { k: "Live", v: "0DTE command" },
   vector: { k: "Live", v: "universe scan" },
-  meridian: { k: "Live", v: "earnings desk" },
+  meridian: { k: "Live", v: "catalyst desk" },
 };
 
 function toLaunchStatus(s: ProductLaunchStatus): "live" | "soon" {

@@ -64,14 +64,14 @@ test("the AuthProofRail slice (first 7 rows) covers every desk product", () => {
     "Night Hawk 0DTE Command",
     "Thermal dealer-gamma heatmaps",
     "Vector universe scanner",
-    "Meridian earnings desk",
+    "Meridian catalyst desk",
   ]) {
     assert.ok(visible.includes(label), `proof-rail slice is missing "${label}"`);
   }
 });
 
 test("Meridian's row has no mark (no MarkProduct entry exists for it) — falls back to the ✓ honestly", () => {
-  const row = FEATURE_MATRIX.find((r) => r.label === "Meridian earnings desk");
+  const row = FEATURE_MATRIX.find((r) => r.label === "Meridian catalyst desk");
   assert.ok(row, "FEATURE_MATRIX is missing the Meridian row");
   assert.equal(row.mark, undefined);
 });
@@ -85,7 +85,7 @@ const DESK_ROWS: Array<{ label: string; key: ToolKey }> = [
   { label: "Night Hawk 0DTE Command", key: "nighthawk" },
   { label: "Thermal dealer-gamma heatmaps", key: "heatmap" },
   { label: "Vector universe scanner", key: "vector" },
-  { label: "Meridian earnings desk", key: "meridian" },
+  { label: "Meridian catalyst desk", key: "meridian" },
 ];
 
 test("every desk row's community/premium access matches DESK_TIER_REQUIREMENTS — no manual override can drift from the real gate", () => {

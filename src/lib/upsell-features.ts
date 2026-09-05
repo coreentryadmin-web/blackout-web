@@ -85,7 +85,7 @@ export const FEATURE_MATRIX: FeatureRow[] = [
     mark: "vector",
   },
   {
-    label: "Meridian earnings desk",
+    label: "Meridian catalyst desk",
     detail: PRODUCT_MANIFEST.meridian.positioning,
     free: false,
     ...deskAccess("meridian"),

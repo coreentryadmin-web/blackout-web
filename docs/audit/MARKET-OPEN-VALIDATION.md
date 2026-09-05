@@ -152,6 +152,14 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** Google/search-console snippet for `/learn/night-hawk` and the Course JSON-LD chapter list should show the corrected title; confirm no SERP-truncation regression (title 49/60 chars, description 146/160 chars).
 
+### 0ah. Meridian manifest undersold catalyst coverage as earnings-only — fix/meridian-manifest-catalyst-coverage (pending)
+
+**What was broken:** `PRODUCT_MANIFEST.meridian` framed the product as narrowly "Earnings intelligence" (homepage card, pricing matrix, SEO schema, marketing email all derive from this one object) — but Meridian genuinely ships four catalyst classes (earnings, macro, OpEx, FDA), each with its own filter chip and detail panel, confirmed in `meridian-types.ts`/`MeridianDesk.tsx`/`MeridianEventDetailPanel.tsx`. Meridian's own Academy guide already documented this correctly; only the manifest (and a hand-duplicated About-page line) was stale.
+
+**Fix:** Broadened the manifest's `tag`/`positioning`/`lifecycle`/`capabilities`/`faqAnswer` to name all four classes, keeping earnings as the deepest workflow. Synced `about/page.tsx`. Added "Earnings intelligence" to `BANNED_PUBLIC_MARKETING_PHRASES` and a dedicated regression test.
+
+**Check at the open:** Homepage Meridian card should read "Catalyst intelligence" with macro/OpEx/FDA mentioned; `/meridian` desk filter chips (Macro/Earnings/FDA/OpEx) should all resolve real data during a session with active catalysts of each type.
+
 ### 0ak. Learn hub Night Hawk descriptor still said "Evening playbook" after the 0DTE Command redesign — fix/learn-nav-night-hawk-stale-descriptor (merged #3784)
 
 **What was broken:** `LEARN_NAV`'s `night-hawk` entry (`src/lib/learn/nav.ts`) described the
