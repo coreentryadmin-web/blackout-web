@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T11:46:09.554Z",
+  "updated_at": "2026-09-05T12:07:43.151Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -256,7 +256,7 @@
     }
   },
   "deploy": {
-    "last_main_sha": "4433d215c6e558531790b0f3c3f5edae6dd87d89",
+    "last_main_sha": "72a81ec4aedb25570eb85a522b2fe89a0b35d7cf",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T10:36:36Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
@@ -1434,6 +1434,24 @@
       "agent": "cursor",
       "run_id": "ca196296-6df4-40a2-b8fc-b5d7f4844066",
       "summary": "Session complete: #3944 peer-reviewed APPROVED (merged). main@4433d215c. Lifecycle GREEN. State sync on #3947. Awaiting Claude review: #3945 swing BUY labels. Weekend RTH skipped."
+    },
+    {
+      "at": "2026-09-05T12:07:42.497Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T12:07:43.000Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T12:07:43.151Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
   "pr_activity": {
