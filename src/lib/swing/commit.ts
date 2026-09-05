@@ -76,6 +76,8 @@ import {
 import type { SwingPositionInsert, SwingShadowPositionInsert } from "../db";
 import type { SwingDiscoveryPath } from "./discovery";
 import { blockedByFromSwingGates, failingSwingCommitGates } from "./v2/gates";
+import { cortexEntryContextFor } from "@/lib/zerodte/cortex-gate";
+import type { ZeroDteCortexAssessment } from "@/lib/zerodte/cortex-gate";
 
 /** Shares per option contract — the standard US equity-option multiplier. */
 export const OPTION_CONTRACT_MULTIPLIER = 100;
@@ -175,6 +177,8 @@ export interface SwingCommitCandidate {
   earningsInWindow?: boolean;
   /** V2 async preflight blocks (G-S14 Cortex) evaluated before computeSwingCommitPlan. */
   preflightV2BlockedBy?: string[];
+  /** G-S14 Cortex assessment when preflight ran — pinned into entry_context at commit (Q29). */
+  cortexAssessment?: ZeroDteCortexAssessment | null;
 }
 
 /** A live-book position the commit gate reads for budget + caps + idempotency. */
@@ -473,6 +477,7 @@ function buildCommitInsert(
         enforce: budget.enforce,
       },
       budget_verdict: budgetVerdict ? { blocked: budgetVerdict.blocked, blockedDimensions: budgetVerdict.blockedDimensions } : null,
+      cortex: cortexEntryContextFor(cand.cortexAssessment ?? null),
     },
     gate_calibration_json: {
       methodology: "swing.commit.graduation.v1",

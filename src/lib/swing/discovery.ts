@@ -60,6 +60,7 @@ import { classificationMetaFromVerdict } from "./archetype";
 import { resolveSwingTier1Cap } from "./v2/tier1-cap";
 import { isSwingEngineV2Enabled, isSwingConfluenceEnforced, isSwingCortexEnforced, isSwingEarningsGateEnforced, swingCortexPreflightCap } from "./v2/config";
 import { evaluateSwingCortexForCommit } from "./v2/cortex-swing";
+import type { ZeroDteCortexAssessment } from "@/lib/zerodte/cortex-gate";
 import { persistSwingGateRejections } from "./v2/rejections";
 import { evaluateSwingConfluence } from "./v2/confluence";
 import {
@@ -840,11 +841,13 @@ export async function runSwingDiscoveryScan(
         .sort((a, b) => b.score - a.score || a.ticker.localeCompare(b.ticker))
         .slice(0, cap);
       const blocked = new Map<string, string[]>();
+      const assessments = new Map<string, ZeroDteCortexAssessment>();
       await Promise.all(
         ranked.map(async (c) => {
           const key = `${c.ticker.toUpperCase()}|${c.direction}`;
-          const pre = await evaluateSwingCortexForCommit(c.ticker, c.direction!, deps.nowMs).catch(() => null);
-          if (pre?.blocked) blocked.set(key, pre.blockedBy);
+          const pre = await evaluateSwingCortexForCommit(c.ticker, c.direction!, deps.nowMs);
+          if (pre.blocked) blocked.set(key, pre.blockedBy);
+          assessments.set(key, pre.assessment);
         }),
       );
       for (const c of commitCandidates) {
@@ -852,6 +855,8 @@ export async function runSwingDiscoveryScan(
         const key = `${c.ticker.toUpperCase()}|${c.direction}`;
         const extra = blocked.get(key);
         if (extra?.length) c.preflightV2BlockedBy = extra;
+        const assessment = assessments.get(key);
+        if (assessment) c.cortexAssessment = assessment;
       }
     }
 

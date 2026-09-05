@@ -128,6 +128,22 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** SPX desk pulse lane (prior-day levels, structure refresh cadence) and dark pool panel should refresh on TTL during RTH — no stuck stale marks after deploy clock skew.
 
+### 0ay. Polygon market-status cache future-at guard — fix/polygon-market-status-cache-future-guard (merged #3855)
+
+**What was broken:** `fetchMarketStatusNow()` gated its 60s in-process cache with raw `Date.now() - fetchedAt < MARKET_STATUS_CACHE_MS`. A clock-skewed future `fetchedAt` yields negative age, which still satisfies `< 60_000`, pinning market-status as infinitely fresh until real time catches up — same class as `fetchVixIvRankPercentile` (fixed #3846) and UW/LULD halt gates.
+
+**Fix:** Route cache hit through `isWsUpdatedAtFresh(marketStatusCache.fetchedAt, MARKET_STATUS_CACHE_MS, now)`.
+
+**Check at the open:** SPX desk market-phase chip (open/closed/extended) should still flip correctly at session boundaries; no stuck "closed" or "open" state after deploy if a process clock was ahead.
+
+### 0aw. Lit/dark ratio + Vector universe age chips future-at guard — fix/future-timestamp-lit-dark-vector-universe (PR #3853)
+
+**What was broken:** `computeLitDarkRatio()` and Vector universe staleness chips (`VectorScanner`, `VectorTickerComparisonStrip`) used raw `now - updatedAt` without the shared future-timestamp guard. Clock-skewed future store timestamps read as fresh (SPX desk lit/dark ratio served from untrusted data); far-future universe `updatedAt` never flipped the stale warning chip while `formatVectorAge` clamped display to `"0s"`.
+
+**Fix:** Route lit/dark freshness through `isWsUpdatedAtFresh`; add `isVectorUniverseSnapshotStale()` for Vector consumers.
+
+**Check at the open:** Vector scanner age chip should turn amber after ~10m without a cron rebuild; SPX desk lit/dark ratio should absent (not serve) when UW stores carry only future `updatedAt` (synthetic/off-hours only).
+
 ### 0at. Off-hours `?force=1` desk-warm storm still unexplained — now logs caller IP/UA — fix/cache-warmer-caller-identity (merged #3847)
 
 **What was broken:** Live measurement (this sweep) found `AWS/ApplicationELB` `TargetResponseTime` holding a healthy p50/p90 but p99 3.1-8.2s / Max 10.4-34.0s across 3+ straight off-hours hours (Sat 01:12-04:05 UTC) — tail latency, not fleet load. Root cause: `[cron/desk-warm]` fired 81 times in 3 hours (avg 28s, max 108.5s) via the documented `?force=1` off-hours bypass, entirely outside its deployed EventBridge schedule (weekday 11-21 UTC only). This is the SAME shape a 2026-09-04 investigation found and rate-limited (60s cooldown) after ruling out every known in-app dispatcher (EventBridge, `rth-warm-leader`, `cron-staleness-watchdog`) — the caller holds a valid `CRON_SECRET` but was never identified, because nothing captured about the request itself.
@@ -136,13 +152,21 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** This doesn't fix the underlying storm — it only makes the NEXT one traceable. Grep CloudWatch for `[cache-warmer-gate] force=1 bypassed` during any future off-hours window and read the `(caller: ip=... ua=...)` field; if it's a known internal IP/UA, route the fix to that caller directly instead of re-running this same "rule out the usual suspects" investigation a third time.
 
-### 0as. SPX graded + lotto ticket caches future-at guard — fix/spx-ticket-lotto-cache-future-guard (pending)
+### 0as. SPX graded + lotto ticket caches future-at guard — fix/spx-ticket-lotto-cache-future-guard (merged #3856)
 
 **What was broken:** `pickChainContract()` and `pickLottoChainContract()` in-process ticket caches (45s / 60s TTL) used raw `now - entry.at < ttlMs`, so clock-skewed future `at` stamps read as infinitely fresh — same class as #3844/#3846/#3849.
 
 **Fix:** Route both through `isWsUpdatedAtFresh(at, ttlMs, now)` (5s future tolerance).
 
 **Check at the open:** Open SPX Slayer play rail during RTH — graded tickets and lotto tickets should refresh chain quotes normally after deploy; no stuck stale ticket from a skewed cache stamp.
+
+### 0ar. SPX play technicals + adaptive gates cache future-at guard — fix/spx-play-technicals-telemetry-future-guard (pending)
+
+**What was broken:** `spx-play-technicals.ts` and `spx-play-telemetry.ts` in-process caches used raw `now - entry.at < ttlMs`, so clock-skewed future `at` stamps read as infinitely fresh (ticket/lotto paths fixed in #3856).
+
+**Fix:** Route both through `isWsUpdatedAtFresh(at, ttlMs, now)` (5s future tolerance).
+
+**Check at the open:** SPX Open desk technicals panel and adaptive gate banner should refresh on TTL during RTH — no stuck stale marks after deploy clock skew.
 
 ### 0au. VIX IV rank + SPX UW ladder cache future-at guard — fix/cache-future-guard-polygon-uw-ladder (merged #3846)
 
@@ -423,6 +447,14 @@ is instrumentation only.
 **Fix:** Gate all LULD freshness probes through shared `isWsUpdatedAtFresh`.
 
 **Check at the open:** Admin System Vitals → Massive LULD tile shows live during RTH when feed is healthy; 0DTE halt gate still blocks when BOTH UW and LULD are genuinely down (not on a single future-skewed stamp).
+
+### 0za. 0DTE live marks SSE quiet gate future-at guard — fix/zerodte-live-marks-sse-future-guard (pending)
+
+**What was broken:** `useZeroDteLiveMarks` poll fallback used `Date.now() - lastSseAtRef < SSE_QUIET_MS`. A clock-skewed future SSE timestamp suppresses REST fallback while marks may be stale.
+
+**Fix:** Route quiet gate through `isWsUpdatedAtFresh(lastSseAtRef.current, SSE_QUIET_MS)`.
+
+**Check at the open:** Night Hawk 0DTE board with open plays — live marks continue updating via poll when SSE proxy breaks; no frozen premiums after a skewed SSE heartbeat.
 
 ### 0z. SPX pulse stream local freshness future guard — fix/spx-pulse-stream-future-guard (pending)
 
