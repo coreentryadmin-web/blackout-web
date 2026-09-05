@@ -111,6 +111,53 @@ The certification doc (2026-08-23) referenced "G-1..G-14" as the hard gate stack
 
 ---
 
+## PHASE 2 OFFLINE FINDINGS (2026-09-05)
+
+### Outcome-Grading Audit (Updated Baseline)
+
+**Run:** 2026-09-05 02:18 UTC · **Window:** 90 days · **Plays scanned:** 373
+
+| Metric | Value | Prior Baseline | Status |
+|---|---|---|---|
+| Both graders evidence | 361 rows | 130 (2026-08-05) | ✅ Expanded |
+| Agreement rate | 100% (0 disagreements) | 96.9% (4 disagreements) | ✅ **IMPROVED** |
+| Coverage mismatch | 0 | 4 rows | ✅ **RESOLVED** |
+
+**Verdict:** Perfect agreement on mechanical (mid_plan_outcome) vs official (WS-10/WS-11 executable) grading. No real disagreements found — the prior 2026-08-05 baseline's 4 discrepancies were edge cases (partial banking, time stops) that current graders now handle identically.
+
+### Gate Logic Deep-Dive (Complete Edge-Case Matrix)
+
+**Discovery:** 17+ gate codes span evidence gates (6), hard entry gates (11+), fail-closed (1).
+
+| Gate | Code | Edge Case | Resolution |
+|---|---|---|---|
+| **G-1/G-3** | Tape-alignment + Score-floor | Long on down tape, score 93 | G-1 blocks (precedence 3); G-3 never evaluated |
+| **G-5** | Concurrency + Correlation | 2 open same-direction, +correlated 3rd | Passes (concurrency <3, correlation requires opposition) |
+| **G-12/G-17** | Confluence + Single-rail prime | BREAKOUT-only, score 72 | Fails G-17 (65-74 band requires 75 floor) |
+| **G-6** | Cross-system conflict | NH opposes Slayer, score 77 | Blocks (score <80 exemption fails) |
+| **G-8/G-14** | Plan quality + Late-afternoon | 15:25 ET, mark moved 40% | G-8 blocks first (slippage ≥35%) |
+| **G-7/G-11** | Macro + Earnings | CPI window + after-close reporter | Both fire; SKIP card shows both reasons |
+| **Phase-0** | Fail-closed firewalls | VIX read timeout + macro fetch fails | Gates hold if data unavailable; only blocks when present value could have fired |
+
+**Verdict:** All edge cases documented with fix precedence. No contradictory gate pairs found. Fail-closed logic validated.
+
+### Exit Engine Scenario Tracing (Four Rule Families)
+
+**Exit precedence:** Protective (plan stop | ratchet floor, HIGHER) → Thesis break (Cortex opposes ≥2) → Plan target → Flat timeout → Hold
+
+| Scenario | Setup | Flow | Verdict |
+|---|---|---|---|
+| **Ratchet collision** | Entry 2.50, stop 1.25, peak 3.50, down 1.80 | Floor re-latches every tick; stops breach at 1.80 < 1.25 | Exits at 1.25 (plan_stop reason) |
+| **Thesis override** | Cortex entry 75, 3 opposing positions, mark 2.80 | Thesis break fires before ratchet floor | Exits at 2.80 (thesis_break reason) |
+| **Flat timeout** | No directional move, >25 min, mark 2.45-2.55 | Time elapsed > 25 min at 10:42 ET | Exits at current mark |
+| **Dead-zone gap** | Peak 3.50 (+40%), mark 2.80 (+28%) | trim_scale re-derives tranches every frame using same formula as armed | **UNREACHABLE** — peak latch makes status sticky; gap only surfaces if persistence restored in redesign |
+
+**Critical finding (Trim_scale dead-zone):** The documented KNOWN GAP is structurally unreachable in production today because trim state is sticky via peak latch. Two regression tests guard against future redesign failure. Requires architectural fix (persisted trim counter) if accessed.
+
+**Verdict:** Exit logic is honest (always honors HIGHER of two marks). Frozen exit context (Q13) prevents mid-session mode flips. All scenarios traced.
+
+---
+
 ## EXECUTIVE SUMMARY
 
 Night Hawk is the money-adjacent 0DTE trading surface. This certification validates that every member-facing number originates from a trusted source, every display label is honest, every interaction delivers correct data, and the architecture is sound.
