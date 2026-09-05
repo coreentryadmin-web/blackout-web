@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:40:00.000Z",
+  "updated_at": "2026-09-05T16:24:19.316Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,15 +67,14 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T11:35:23.963Z",
-      "lease_until": "2026-09-05T13:15:05.877Z",
+      "claimed_at": "2026-09-05T16:24:18.558Z",
+      "lease_until": "2026-09-05T17:54:18.558Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "50c8fd38-7415-4f2d-bc6c-88153b9459e9",
-      "title": null,
-      "released_at": "2026-09-04T05:31:04.504Z"
+      "run_id": null,
+      "title": null
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -259,6 +258,14 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T12:35:00.000Z",
       "safe_to_merge": true
+    },
+    "pr-3998": {
+      "pr": 3998,
+      "head_sha": "47a37476009d148a1fbbbb3bf19598c46339715e",
+      "reviewer": "cursor",
+      "verdict": "CHANGES REQUESTED — CI pending; code review clean pending verify green",
+      "reviewed_at": "2026-09-05T16:24:15.317Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
@@ -268,8 +275,8 @@
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T12:20:00.000Z",
-      "current_task": "BO-P1-0101"
+      "last_seen": "2026-09-05T16:24:18.558Z",
+      "current_task": "BO-P1-0100"
     }
   },
   "cross_examination": {
@@ -319,17 +326,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "d96372440c9a8ff101c95d52826a38adebdc513a",
+    "last_main_sha": "430f33982aa1390616080fb175ee1f530323b8a2",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T10:36:36Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33961122872",
-    "last_deploy_sha": "1eeb1c277310b88a751e6d1d2214f0f67bfaea38"
+    "last_deploy_at": "2026-09-05T16:11:14Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33977069971",
+    "last_deploy_sha": "feaba670d88bb211db9614bec0c2738010d18b1c"
   },
-  "open_prs": [
-    { "pr": 3952, "branch": "cursor/clq-answers-batch1-2026-09-05", "title": "CURSOR_ANSWERS_FOR_CLAUDE (54/54)", "author": "cursor", "awaiting": "claude_review" },
-    { "pr": 3955, "branch": "docs/finding-ecs-web-deploy-maxpercent", "title": "ECS maxPercent finding", "author": "claude", "awaiting": "claude_merge" },
-    { "pr": 3949, "branch": "cursor/autopilot-handoff-2026-09-05", "title": "stale state sync", "author": "cursor", "awaiting": "close" }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1533,6 +1536,71 @@
       "agent": "cursor",
       "run_id": "post-merge-sync",
       "summary": "main@d96372440: #3945+#3950+#3951+#3953 merged. #3952 CLQ answers awaiting Claude review. Claude must answer CQ-001–218 on main. #3945 merged without recorded Claude GitHub review — gate gap noted."
+    },
+    {
+      "at": "2026-09-05T16:22:53.664Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:22:54.321Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:22:54.842Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:23:40.526Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:23:41.200Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:23:41.990Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:24:15.317Z",
+      "type": "pr_review",
+      "pr": 3998,
+      "head_sha": "47a37476009d148a1fbbbb3bf19598c46339715e",
+      "reviewer": "cursor",
+      "verdict": "CHANGES REQUESTED — CI pending; code review clean pending verify green",
+      "reviewed_at": "2026-09-05T16:24:15.317Z",
+      "safe_to_merge": false
+    },
+    {
+      "at": "2026-09-05T16:24:18.558Z",
+      "type": "task_claimed",
+      "task_id": "BO-P1-0100",
+      "owner": "cursor"
+    },
+    {
+      "at": "2026-09-05T16:24:19.315Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:24:19.316Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "f7c37778-ceac-40be-876d-1c2872cd7d8a",
+      "summary": "Reviewed PR #3998: WAIT — CI pending (verify+CodeQL); code/tests clean locally at 47a37476009d; posted peer review comment"
     }
   ],
   "pr_activity": {
