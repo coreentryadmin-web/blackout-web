@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T14:15:54.925Z",
+  "updated_at": "2026-09-05T14:55:59.042Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T14:07:03.516Z",
-      "lease_until": "2026-09-05T15:44:19.806Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-05T14:18:27.177Z",
+      "lease_until": "2026-09-05T16:24:47.756Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "bb48773c-fdf4-41a0-82ad-ff4448a51c4b",
+      "run_id": "f4e2bf8d-6968-46dd-bd29-f9832058bc25",
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -319,54 +319,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "3637f6db3440e826434a9c3565fb09a9bd459900",
+    "last_main_sha": "85627d9c6cbeeafb2610b60fbd7fafbacf1f872b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T13:57:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33969578363",
-    "last_deploy_sha": "3637f6db3440e826434a9c3565fb09a9bd459900"
+    "last_deploy_at": "2026-09-05T14:33:49Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33972172332",
+    "last_deploy_sha": "85627d9c6cbeeafb2610b60fbd7fafbacf1f872b"
   },
-  "open_prs": [
-    {
-      "number": 3979,
-      "title": "fix(vector): fail-closed freshness on clock-skewed future asOf",
-      "branch": "fix/vector-freshness-clock-skew",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T14:15:26Z"
-    },
-    {
-      "number": 3978,
-      "title": "fix(spx-desk): serve last RTH spot off-hours instead of price:0",
-      "branch": "fix/spx-desk-offhours-last-spot",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T14:15:42Z"
-    },
-    {
-      "number": 3972,
-      "title": "chore(state): sync after #3963 merge — CLQ fix PRs #3969-3971",
-      "branch": "cursor/autopilot-state-sync-1340",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-05T14:12:50Z"
-    },
-    {
-      "number": 3971,
-      "title": "feat(commerce): post-checkout membership activating banner (CLQ-041)",
-      "branch": "cursor/membership-activating-banner-clq-041",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-05T14:12:53Z"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1572,35 +1531,41 @@
       "summary": "main@d96372440: #3945+#3950+#3951+#3953 merged. #3952 CLQ answers awaiting Claude review. Claude must answer CQ-001–218 on main. #3945 merged without recorded Claude GitHub review — gate gap noted."
     },
     {
-      "at": "2026-09-05T14:14:19.804Z",
+      "at": "2026-09-05T14:54:43.676Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 4
+      "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T14:14:20.705Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-09-05T14:14:21.487Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-09-05T14:15:54.924Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-09-05T14:15:54.925Z",
+      "at": "2026-09-05T14:54:43.678Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "59e3f190-8148-42ae-879b-75460beb0bc7",
-      "summary": "pull_request wake: main@3637f6db3 (#3974 merged path). Open PRs: #3971 CLQ-041 membership banner (cursor, verify GREEN, 8/8 tests) awaiting Claude peer-review; #3972 draft state sync. ECR deploy run 33969578363 still in_progress 35m+ (monitor). validate:deploy GREEN, ops:collect 0, platform-integrity 14/14 on re-run (earlier transient spx-desk-spot SPX 0). Weekend RTH skipped. AGENT_RELEASE_TOKEN rate-limited — REST gh api still works for PR reads."
+      "run_id": "7929f685-84bc-4b9f-b5dc-bb5bd465527c",
+      "summary": "Session: #3971+#3979 merged to main. #3978 SPX off-hours spot fix CI GREEN (12768 tests pass Node 20, platform-integrity 14/14). Marked #3978 ready for Claude peer review. Retrospective APPROVED #3979 vector clock-skew fix. Deploy validate GREEN, ops:collect clean."
+    },
+    {
+      "at": "2026-09-05T14:54:47.755Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T14:54:48.517Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T14:54:49.547Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T14:55:59.042Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
     }
   ],
   "pr_activity": {
