@@ -120,7 +120,15 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
-### 0as. Swing TRIM latch ignored `verdict.enforced`, could silently disable the −60% premium_stop — fix/swing-trim-latch-enforced (pending)
+### 0at. Legacy swing promotion fabricated REL_STRENGTH via `?? 0` — fix/swing-legacy-rel-strength-null-honesty (pending #3845)
+
+**What was broken:** `buildLegacySwingArtifacts()` passed `relStrength: { nameReturnPct: reads.returnPct10d ?? 0, spyReturnPct: reads.spyReturnPct10d ?? 0 }` even though `swingReadsForLegacy()` intentionally leaves both 10d returns `null`. `relStrengthSignal()` treats `0` as present, scoring `relativeStrengthScore(0,0)=0` — worst case — on every morning-confirm promoted name instead of omitting REL_STRENGTH from the pillar denominator.
+
+**Fix:** Only pass `relStrength` when both 10d returns are grounded; otherwise omit the cluster so `buildSwingDossier` marks REL_STRENGTH absent.
+
+**Check at the open:** After morning-confirm promotes a Legacy CONFIRMED name to Swings, dossier scoring must not include a fabricated REL_STRENGTH=0 contribution — pillar should be absent/missing.
+
+### 0as. Swing TRIM latch ignored `verdict.enforced`, could silently disable the −60% premium_stop — fix/swing-trim-latch-enforced (merged #3842)
 
 **What was broken:** `latchSwingLiveStatus()` (`manage-sync.ts`) flipped a swing position's ledger `status` to `TRIM` on ANY `TAKE_PARTIAL`/`EXIT_RUNNER` verdict, without checking `verdict.enforced`. Those two actions are exclusively produced by EDGE rungs (`profit_ladder`, `catalyst_shift`, `regime_shift`, `flow_decay`, `rel_strength_loss`, `vol_collapse`) — advisory-only until the PR-16 calibration ladder graduates them — so an un-graduated 2× profit-ladder recommendation that nobody actually executed still latched TRIM. The very next refresh tick derives `scaledAlready` from `row.status === "TRIM"`, and `deriveScaleOutAction` disables the −60% `premium_stop` hard stop entirely once `scaledAlready` is true (only the trailing-stop rule re-arms). Net effect: an un-enforced advisory partial could permanently disable capital-preservation on a position that was, in reality, still 100% open and fully exposed. Found during a Swing V2 architecture-review pass (`docs/audit/SWING-V2-DEEPDIVE-QUESTIONS-2026-09-05.md` #18), independently confirmed by Cursor.
 

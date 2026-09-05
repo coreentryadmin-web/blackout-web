@@ -210,7 +210,11 @@ export function buildLegacySwingArtifacts(params: {
       ema20AboveEma50: direction === "LONG",
       ema50Rising: direction === "LONG",
     },
-    relStrength: { nameReturnPct: reads.returnPct10d ?? 0, spyReturnPct: reads.spyReturnPct10d ?? 0 },
+    // Omit relStrength when 10d returns are absent — `?? 0` would fabricate a worst-case REL_STRENGTH
+    // score (relativeStrengthScore(0,0)=0) instead of dropping the pillar from the denominator.
+    ...(reads.returnPct10d != null && reads.spyReturnPct10d != null
+      ? { relStrength: { nameReturnPct: reads.returnPct10d, spyReturnPct: reads.spyReturnPct10d } }
+      : {}),
     flow: {
       accumAlignedDays: reads.accumulation?.days ?? 2,
       accumTotalDays: reads.flowWindowDays,

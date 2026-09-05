@@ -60,6 +60,23 @@ test("legacyPlayDirection normalizes short variants", () => {
   assert.equal(legacyPlayDirection(legacyPlay({ direction: "LONG" })), "LONG");
 });
 
+test("buildLegacySwingArtifacts: absent 10d returns omit REL_STRENGTH (no fabricated 0/0)", () => {
+  const artifact = buildLegacySwingArtifacts({
+    play: legacyPlay(),
+    checkedAt: "2026-08-04T13:20:00.000Z",
+    editionFor: "2026-08-04",
+    spot: 99.5,
+    chainRows,
+    chainSpot: 99.5,
+  });
+  assert.ok(artifact);
+  assert.equal(artifact!.dossier.pillarSignals.REL_STRENGTH, null);
+  assert.ok(
+    artifact!.dossier.dataQuality.missing.includes("REL_STRENGTH"),
+    "REL_STRENGTH must be listed missing, not scored as 0/0 outperformance",
+  );
+});
+
 test("buildLegacySwingArtifacts stamps NIGHT HAWK provenance and serve-only graduation", () => {
   const artifact = buildLegacySwingArtifacts({
     play: legacyPlay(),
