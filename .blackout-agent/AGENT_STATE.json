@@ -237,7 +237,7 @@
     },
     "pr-3808": {
       "pr": 3808,
-      "head_sha": "3bc9a97b4",
+      "head_sha": "45273a3dd",
       "reviewer": "claude",
       "verdict": "AWAITING — adversarial review requested",
       "reviewed_at": null,
@@ -276,7 +276,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "IN_PROGRESS/",
-      "head_sha": "3bc9a97b4",
+      "head_sha": "45273a3dd",
       "updated_at": "2026-09-05T00:20:00Z"
     },
     {
