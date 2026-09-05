@@ -4,6 +4,7 @@ import {
   fetchUserTweets,
   X_ACCOUNT_USER_ID,
 } from "@/lib/x-api";
+import { minutesSinceIso } from "@/lib/ws/timestamp-freshness";
 
 /** One showcase post every 2 hours (8am–8pm ET) ≈ 7/day max. */
 export const X_POST_LIMITS = {
@@ -57,7 +58,7 @@ export async function minutesSinceLastProductPost(): Promise<number | null> {
     (t) => t.created_at && t.text && !t.text.trim().startsWith("@"),
   )?.created_at;
   if (!latest) return null;
-  return (Date.now() - new Date(latest).getTime()) / 60_000;
+  return minutesSinceIso(latest);
 }
 
 export interface PostGuardResult {

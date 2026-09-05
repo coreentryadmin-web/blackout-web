@@ -22,6 +22,30 @@ export function ageMinFromIso(iso: string | null | undefined, now = Date.now()):
   return Math.round(sec / 60);
 }
 
+/** Elapsed minutes since an ISO timestamp — null when missing, invalid, or clock-skewed future. */
+export function minutesSinceIso(iso: string | null | undefined, now = Date.now()): number | null {
+  if (!iso) return null;
+  const atMs = new Date(iso).getTime();
+  if (!Number.isFinite(atMs)) return null;
+  const rawAgeMs = now - atMs;
+  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return null;
+  return Math.max(0, rawAgeMs) / 60_000;
+}
+
+/** Elapsed hours since an ISO timestamp — large sentinel when missing/invalid/skewed (filter-out). */
+export function ageHoursFromIso(
+  iso: string | null | undefined,
+  staleHours = 999,
+  now = Date.now()
+): number {
+  if (!iso) return staleHours;
+  const atMs = new Date(iso).getTime();
+  if (!Number.isFinite(atMs)) return staleHours;
+  const rawAgeMs = now - atMs;
+  if (rawAgeMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return staleHours;
+  return Math.max(0, rawAgeMs) / 3_600_000;
+}
+
 /** True when `updatedAt` is within [−futureTolerance, staleMs) of `now`. */
 export function isWsUpdatedAtFresh(
   updatedAt: number | null | undefined,

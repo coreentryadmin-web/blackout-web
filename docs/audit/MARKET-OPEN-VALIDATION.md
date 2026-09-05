@@ -120,6 +120,14 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — 2026-09-05 coordinator sweep (read this before the routine pass)
 
+### 0a-1h. Polygon single-ticker snapshot fabricated flat 0% change — cursor/autopilot-work-loop-ce5a (pending)
+
+**What was broken:** `fetchStockSnapshot()` → `_rowToSnapshot()` returned `change_pct: 0` when Polygon omitted `todaysChangePerc` and `prevDay.c`, while batch movers already used `snapshotChangePctFromRow()` (null when absent).
+
+**Fix:** Wire `_rowToSnapshot` to `snapshotChangePctFromRow(row)`; type `change_pct` as `number | null`.
+
+**Check at the open:** `/api/market/quote?ticker=SPY` during pre-open with no prior close must omit change % (null/—), not show flat `0.00%`.
+
 ### 0a-1g. SPX play gate: future-skewed gex_age_ms bypassed stale block — fix/spx-play-gate-gex-age-future-guard (pending)
 
 **What was broken:** `gexStaleFromAge()` correctly lit the GEX stale pill when `pos.asof` was clock-skewed into the future (>5s), but `evaluatePlayGates()` passed the raw negative `gex_age_ms` as a negative `gexSec` that never exceeded `playGexStaleMaxSec()`. A desk with a lit GEX-stale pill could still open plays when `polled_at` was fresh.
