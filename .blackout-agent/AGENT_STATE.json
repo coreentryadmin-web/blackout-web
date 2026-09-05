@@ -1619,6 +1619,13 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 2
+    },
+    {
+      "at": "2026-09-05T14:46:00.000Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "reopen-gate-fix-pr-3972-closed",
+      "summary": "#3972 CLOSED without merge — gate fix still on cursor/autopilot-state-sync-1340. Opening new PR. #3982 docs-only duplicate. Gate gaps #3971/#3979 flagged."
     }
   ],
   "pr_activity": {

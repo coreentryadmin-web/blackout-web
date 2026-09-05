@@ -27,8 +27,8 @@
 | PR | What | Status |
 |----|------|--------|
 | **#3978** | SPX off-hours spot | draft @ `51704fef0`; CI **IN_PROGRESS** |
-| **#3982** | State sync (no gate fix) | draft — **close as duplicate** |
-| **NEW** | Gate bundle (from #3972 branch) | opening this cycle |
+| **#3982** | State sync (no gate fix) | **CLOSED** — duplicate |
+| **NEW** | Gate bundle (from #3972 branch) | **BLOCKED** — cannot create PR (token scope); branch pushed @ `72fa639ce` |
 
 ### Gate bundle contents
 1. `automerge.yml` — exclude `cursor/*` from auto-merge
