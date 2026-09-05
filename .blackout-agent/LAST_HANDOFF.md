@@ -1,46 +1,50 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T12:40:00.000Z
-**Run:** post-merge-sync
+**At:** 2026-09-05T13:22:00.000Z
+**Run:** post-3957-3962-merge
 
 ## Summary
 
-**main @ `d96372440`** — several merges landed since last handoff:
-- **#3945** swing BUY/STILL BUY — **MERGED** (no recorded Claude GitHub review — gate gap flagged)
-- **#3950** CQ questions (218) — **MERGED** → questions now on `main`
-- **#3951** SPX desk UW sweep — **MERGED**
-- **#3953** Claude state sync — **MERGED**
+**main @ `bf2e44cc9`**
+- **#3957** findings staging — **MERGED**
+- **#3962** ThermalCompareStrip rebase (CLQ-018) — **MERGED**
+- **#3960/#3961** P1/P2 fixes — **MERGED**
 
-**Still open:** **#3952** Cursor CLQ answers (54/54) — **awaiting Claude peer review + merge**.
+### Claude queue (high priority)
+| Item | Status |
+|------|--------|
+| CQ-001–218 answers | **not started** |
+| Phase 5 challenge CLQ answers | **not started** |
+| **#3963** catch-guards (#3960 follow-up) | CI **SUCCESS** — **Cursor APPROVED** @ `7f23dd5e` — **merge now** |
 
-Claude has **not** started `CLAUDE_ANSWERS_TO_CQ.md` (CQ answers).
+### Cursor branches awaiting Claude PR open + review
+| Branch | CLQ |
+|--------|-----|
+| `cursor/fix-daily-bar-complete-per-ticker` | 003 |
+| `cursor/charm-depth-validate-script` | 017 |
+| `cursor/membership-activating-banner-clq-041` | 041 |
 
-## Claude bootstrap — paste or run
+## Claude bootstrap
 
 ```bash
 npm run blackout:bootstrap -- --agent=claude
 npm run blackout:prompt -- --agent=claude
 ```
 
-**Priority queue for Claude:**
-1. **Answer CQ-001–CQ-218** → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md` (questions on `main` at `.blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md`)
-2. **Peer-review + merge #3952** (Cursor's 54 CLQ answers in `.blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md`)
-3. **Challenge** Cursor answers (Phase 5 adversarial review)
-4. **Merge #3955** if CI green (Cursor APPROVED docs only; do NOT apply AWS mutation)
+**Priority:**
+1. Answer CQ-001–218 → `CLAUDE_ANSWERS_TO_CQ.md`
+2. Challenge `CURSOR_ANSWERS_FOR_CLAUDE.md`
+3. **Merge #3963** @ CURRENT HEAD (Cursor approved, CI green)
+4. Open + peer-review the three Cursor branches above
+5. Close **#3959** duplicate
 
-## Deploy
+## Cross-exam P2 scorecard
 
-- main: `d96372440c9a8ff101c95d52826a38adebdc513a`
-- status: deploy pending for #3945/#3950 merges
-
-## Cross-exam scorecard
-
-| Item | Status |
-|------|--------|
-| Claude → Cursor (54 CLQs) | Cursor answered; **#3952 not merged** |
-| Cursor → Claude (218 CQs) | Questions on main; **answers not started** |
-| Challenge round | 0 |
-
-## Cursor capacity offer
-
-Cursor can help with **parallel investigation** if Claude delegates specific CQ clusters. Cursor **must not** answer its own CQ questions.
+| CLQ | Status |
+|-----|--------|
+| 037/044 | FIXED #3960 + **#3963** ready |
+| 005 | FIXED #3961 |
+| 018 | **MERGED** #3962 |
+| 003 | branch pushed |
+| 017 | branch pushed |
+| 041 | branch pushed (activating banner) |
