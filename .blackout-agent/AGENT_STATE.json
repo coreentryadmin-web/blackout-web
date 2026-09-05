@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T19:07:42.137Z",
+  "updated_at": "2026-09-05T19:18:50.545Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T19:04:19.720Z",
-      "lease_until": "2026-09-05T20:35:21.822Z",
+      "claimed_at": "2026-09-05T19:06:50.159Z",
+      "lease_until": "2026-09-05T20:36:50.159Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "07b06eab-e0bc-45c5-af9d-be542e63217e"
+      "run_id": null
     }
   },
   "reviews": {},
@@ -27,11 +27,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "8b2e49df2bc37d8c44d875f175f617630a98a152",
+    "last_main_sha": "f86e43a233142e18d1400a9d35cf3a5ff1cc7dda",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T19:06:44Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33986112563",
-    "last_deploy_sha": "8b2e49df2bc37d8c44d875f175f617630a98a152"
+    "last_deploy_at": "2026-09-05T19:16:58Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33986637633",
+    "last_deploy_sha": "31ef7c377262e5374b10f19e0024b11befc71a8d"
   },
   "events": [
     {
@@ -45,28 +45,31 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-09-05T19:18:50.544Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-05T19:18:50.545Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "9af8c1dd-e991-4ab8-b3ee-2e2eb4107c53",
+      "summary": "Peer-review cycle: merged #4029 (desk-warm gate in latency scripts, verify GREEN, Cursor APPROVED) + #4030 (GEX doc comment, already merged). Platform integrity 14/14 GREEN, ops:collect clean, validate:deploy GREEN. Open: #4024/#4025 cursor/* awaiting Claude review+merge; #4031 agent-state ready for Claude; #4027 draft+conflicts; #4032 new draft vector bead rail. Saturday off-hours — RTH skipped."
     }
   ],
   "open_prs": [
     {
-      "number": 4030,
-      "title": "docs(gex): fix stale doc comment on fetchHeatmapBandUnfiltered post-#4028",
-      "branch": "fix/gex-heatmap-unfiltered-doc-comment",
+      "number": 4032,
+      "title": "fix(vector): restore Sep-3 bead rail wall data (split from overlay constraint)",
+      "branch": "cursor/bead-rail-sep3-data-restore",
       "author": "coreentryadmin-web",
-      "agent": "agent",
+      "agent": "cursor",
       "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-09-05T19:06:25Z"
-    },
-    {
-      "number": 4029,
-      "title": "fix(scripts): gate desk-warm force=1 calls in two more latency audit scripts",
-      "branch": "fix/latency-scripts-desk-warm-hours-gate",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "in_progress/pending",
-      "updated_at": "2026-09-05T19:05:20Z"
+      "verify": "unknown",
+      "updated_at": "2026-09-05T19:17:58Z"
     },
     {
       "number": 4027,
@@ -76,7 +79,7 @@
       "agent": "cursor",
       "draft": true,
       "verify": "unknown",
-      "updated_at": "2026-09-05T19:03:48Z"
+      "updated_at": "2026-09-05T19:18:02Z"
     },
     {
       "number": 4025,
@@ -85,8 +88,8 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-09-05T19:07:17Z"
+      "verify": "unknown",
+      "updated_at": "2026-09-05T19:18:05Z"
     },
     {
       "number": 4024,
@@ -95,8 +98,8 @@
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": false,
-      "verify": "completed/success",
-      "updated_at": "2026-09-05T19:06:57Z"
+      "verify": "unknown",
+      "updated_at": "2026-09-05T19:18:32Z"
     }
   ]
 }
