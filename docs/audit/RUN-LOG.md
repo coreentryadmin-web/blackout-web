@@ -11,6 +11,24 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-09-05 (06:16 UTC / Fri 2026-09-04 22:17 ET → Sat 02:17 ET) — [SEO] Lane heartbeat: overnight sweep clean
+
+**Severity.** — (no defect found)
+
+Weekend overnight cycle, market closed. `/api/og?title=Test`: `200`, `image/png`, 44687 bytes —
+still crawlable (#2448 holds). CLS not re-measured (no homepage-affecting change since yesterday's
+09:35 ET post-purge 0.0001 measurement). `agent-pr-sweep.mjs`: 2 open agent PRs, both
+swing/api-lane (#3878, #3881) — none SEO, nothing to rebase.
+
+Sitemap grew 74→76 URLs since yesterday (2 new `/learn/` articles). Verified coverage: all 61
+`/learn/` paths present in `ARTICLE_DATES` (or covered by `GUIDE_SEO` for curriculum slugs), all 9
+non-learn marketing paths present in `MARKETING_DATES` — no gap, the new articles were already
+picked up by the existing git-derived-date generators. Re-swept all 76 URLs for HTTP status:
+76/76 return 200.
+
+**Result — `OVERALL: GREEN, NO ACTION`, `EXIT=0`.**
+
+---
 ## 2026-09-05 (00:16 UTC / Fri 2026-09-04 20:16 ET) — [SEO] Lane heartbeat: own PR merged, sweep clean
 
 **Severity.** — (no defect found)
