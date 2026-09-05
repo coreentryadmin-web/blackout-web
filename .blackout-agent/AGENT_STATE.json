@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-04T22:56:27.878Z",
+  "updated_at": "2026-09-05T00:19:24.403Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T00:07:40.526Z",
+      "lease_until": "2026-09-05T01:37:40.526Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -234,6 +234,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3804": {
+      "pr": 3804,
+      "head_sha": "ef6a2bc3e0715afb3eb106be2f7c0df2ee2d8269",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T00:09:15.717Z",
+      "safe_to_merge": true
+    },
+    "pr-3797": {
+      "pr": 3797,
+      "head_sha": "44f6a9fdcdf42ba3da145a1d6156292acbd414ab",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T00:19:24.402Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,112 +264,52 @@
     }
   },
   "deploy": {
-    "last_main_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450",
+    "last_main_sha": "281bae63cc82b8f1b273ee0a34c491fe9512a50a",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T22:52:50Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
-    "last_deploy_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450"
+    "last_deploy_at": "2026-09-05T00:08:03Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33931953667",
+    "last_deploy_sha": "281bae63cc82b8f1b273ee0a34c491fe9512a50a"
   },
   "open_prs": [
     {
-      "number": 3785,
-      "title": "fix(api): roundFloats on dark-pool + future guard on Vector live-quote staleness",
-      "branch": "fix/dark-pool-roundfloats-vector-live-future-guard",
+      "number": 3809,
+      "title": "fix(api): roundFloats on dark-pool ticker + UW sweep on nighthawk-edition cron",
+      "branch": "fix/dark-pool-ticker-roundfloats-nighthawk-uw-sweep",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T22:56:15Z"
-    },
-    {
-      "number": 3784,
-      "title": "fix(learn): stop Learn nav describing Night Hawk as evening-only",
-      "branch": "fix/learn-nav-night-hawk-stale-descriptor",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T22:56:02Z"
-    },
-    {
-      "number": 3783,
-      "title": "fix(swing): discovery COMMIT without ledger is pre-entry for banger merge",
-      "branch": "cursor/swing-command-bugbot-fixes",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
       "verify": "unknown",
-      "updated_at": "2026-09-04T22:49:40Z"
+      "updated_at": "2026-09-05T00:16:02Z"
     },
     {
-      "number": 3782,
-      "title": "fix(test): isolate quote route negative-cache test from the real UW fallback",
-      "branch": "fix/quote-uw-fallback-test-isolation",
+      "number": 3808,
+      "title": "feat(swing-v2): P1 dynamic recall + P2 POSITIONING origin",
+      "branch": "cursor/swing-engine-v2-p1",
       "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T22:56:26Z"
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T00:17:54Z"
     },
     {
-      "number": 3781,
-      "title": "docs(audit): resolve committed git conflict markers on main in MARKET-OPEN-VALIDATION.md",
-      "branch": "docs/main-market-open-validation-conflict-markers",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T22:50:33Z"
-    },
-    {
-      "number": 3780,
-      "title": "fix(docs): resolve MARKET-OPEN-VALIDATION merge conflict markers on main",
-      "branch": "cursor/autopilot-work-loop-3021",
+      "number": 3807,
+      "title": "docs(swing): SWING-ENGINE-V2 architectural redesign",
+      "branch": "cursor/swing-engine-v2-design",
       "author": "coreentryadmin-web",
       "agent": "cursor",
       "draft": true,
       "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T22:54:05Z"
+      "updated_at": "2026-09-05T00:16:08Z"
     },
     {
-      "number": 3779,
-      "title": "chore(autopilot): cursor session handoff — peer-review wave merged, platform GREEN",
-      "branch": "cursor/autopilot-work-loop-eb39",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "COMPLETED/SUCCESS",
-      "updated_at": "2026-09-04T22:49:47Z"
-    },
-    {
-      "number": 3778,
-      "title": "fix(swing): keep open Banger positions visible once they age under 5 DTE",
-      "branch": "fix/banger-sub5dte-visibility",
+      "number": 3797,
+      "title": "fix(seo): stop Pricing describing a six-module platform that sells seven",
+      "branch": "fix/pricing-seo-stale-six-modules",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/",
-      "updated_at": "2026-09-04T22:55:30Z"
-    },
-    {
-      "number": 3774,
-      "title": "fix(ws): guard UW L1 cache + stocks/polygon stall against future timestamps",
-      "branch": "fix/ws-stall-uw-cache-future-timestamp",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-09-04T22:45:26Z"
-    },
-    {
-      "number": 3773,
-      "title": "fix(swing-command): Bugbot blockers — banger merge collision + open-book fetch",
-      "branch": "cursor/hourly-autonomous-wake",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": false,
-      "verify": "unknown",
-      "updated_at": "2026-09-04T22:52:11Z"
+      "updated_at": "2026-09-05T00:16:10Z"
     }
   ],
   "events": [
@@ -1184,6 +1140,45 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 10
+    },
+    {
+      "at": "2026-09-05T00:09:15.718Z",
+      "type": "pr_review",
+      "pr": 3804,
+      "head_sha": "ef6a2bc3e0715afb3eb106be2f7c0df2ee2d8269",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T00:09:15.717Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T00:15:09.433Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-05T00:15:09.433Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "39c18e2e-e6a2-4795-80f2-799bc485763f",
+      "summary": "Post-merge sweep @ 72c99fa→281bae63: peer-reviewed #3804 (spot-stream roundFloats) APPROVED+merged; #3805 already closed superseded; #3797 pricing SEO tests 23/23 pass, verify CI in_progress — awaiting green to approve. validate:deploy GREEN, ops:collect 0."
+    },
+    {
+      "at": "2026-09-05T00:18:15.329Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-05T00:19:24.403Z",
+      "type": "pr_review",
+      "pr": 3797,
+      "head_sha": "44f6a9fdcdf42ba3da145a1d6156292acbd414ab",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T00:19:24.402Z",
+      "safe_to_merge": true
     }
   ]
 }
