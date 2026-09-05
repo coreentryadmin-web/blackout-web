@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T03:17:06.276Z",
+  "updated_at": "2026-09-05T05:27:13.721Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T05:13:16.783Z",
+      "lease_until": "2026-09-05T06:43:16.783Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -234,6 +234,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3863": {
+      "pr": 3863,
+      "head_sha": "e9039b92ae7c95ecf850aa30cd5507e062dd6cc2",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:26:26.203Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,11 +256,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b558e1321c827f97e43cad8eaae5937f3d4eded9",
+    "last_main_sha": "c25a1d2f7c975dbbd7d145239de0da263dbf9c2b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T22:52:50Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
-    "last_deploy_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450"
+    "last_deploy_at": "2026-09-05T05:26:43Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33947218979",
+    "last_deploy_sha": "c25a1d2f7c975dbbd7d145239de0da263dbf9c2b"
   },
   "open_prs": [],
   "events": [
@@ -1137,6 +1145,29 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T05:26:26.204Z",
+      "type": "pr_review",
+      "pr": 3863,
+      "head_sha": "e9039b92ae7c95ecf850aa30cd5507e062dd6cc2",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T05:26:26.203Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T05:27:13.721Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T05:27:13.721Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "26e67aa0-8a6f-4a4d-b2cf-40abe8574e35",
+      "summary": "Peer-review cycle: merged #3862 (SPX desk cache guard, conflict resolved), #3863 (play-path caches), approved via REST when GraphQL rate-limited. Fleet merged #3853/#3855/#3866 while reviewing. validate:deploy GREEN. No open fix/* PRs remain — cursor swing PRs (#3858/#3861) await Claude peer review."
     }
   ]
 }
