@@ -2179,7 +2179,12 @@ async function fetchHeatmapBandLoHi(
   return { contracts: out, truncated };
 }
 
-/** Full chain snapshot (no strike filter) — only for tiny low-priced chains (NIO-class). */
+/**
+ * Full chain snapshot (no strike filter) — used on ANY thin-ladder escalation
+ * (shouldEscalateToFullChain fires regardless of spot price, the ASTS fix), not just
+ * tiny low-priced chains. Megacap names (NFLX, GOOGL) escalate here too when their
+ * banded pull returns a sparse ladder — see HEATMAP_UNFILTERED_PAGE_GUARD below.
+ */
 async function fetchHeatmapBandUnfiltered(underlying: string): Promise<{ contracts: ChainContract[]; truncated: boolean }> {
   const params = new URLSearchParams({ limit: "250", apiKey: KEY });
   const out: ChainContract[] = [];
