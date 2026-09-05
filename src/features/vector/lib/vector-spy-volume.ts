@@ -1,5 +1,6 @@
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { fetchStockMinuteBars } from "@/lib/providers/polygon";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 type AggBar = { t?: number; o: number; h: number; l: number; c: number; v?: number };
 type FetchSpyBars = (symbol: string, from: string, to: string) => Promise<AggBar[]>;
@@ -69,13 +70,13 @@ export async function spyVolumeForMinuteBar(
   if (
     cache &&
     cache.barTimeSec === barTimeSec &&
-    nowMs - cache.fetchedAt < CACHE_MS
+    isWsUpdatedAtFresh(cache.fetchedAt, CACHE_MS, nowMs)
   ) {
     return cache.volume;
   }
 
   const ymd = todayEtYmd();
-  if (!dayBars || dayBars.ymd !== ymd || nowMs - dayBars.fetchedAt >= DAY_BARS_CACHE_MS) {
+  if (!dayBars || dayBars.ymd !== ymd || !isWsUpdatedAtFresh(dayBars.fetchedAt, DAY_BARS_CACHE_MS, nowMs)) {
     const bars = await fetchSpy("SPY", ymd, ymd).catch(() => []);
     const volumeByBarSec = new Map<number, number>();
     for (const b of bars) {
