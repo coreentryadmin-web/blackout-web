@@ -7,6 +7,7 @@ import {
   playTechnicalsCacheSec,
 } from "@/features/spx/lib/spx-play-config";
 import { etClock, etMinutes } from "@/features/spx/lib/spx-play-session-time";
+import { isWsUpdatedAtFresh } from "@/lib/ws/timestamp-freshness";
 
 type Bar = { t: number; o: number; h: number; l: number; c: number; v?: number };
 
@@ -308,7 +309,7 @@ export async function buildPlayTechnicals(
   const cacheMs = playTechnicalsCacheSec() * 1000;
   // 1.5-pt price step is tight enough to catch gap-open moves (which can gap 10+ pts
   // between minutes) while avoiding needless Polygon refetches on sub-tick noise.
-  if (cached && now - cached.at < cacheMs && Math.abs(cached.data.price - price) < 1.5) {
+  if (cached && isWsUpdatedAtFresh(cached.at, cacheMs, now) && Math.abs(cached.data.price - price) < 1.5) {
     return { ...cached.data, price };
   }
 
