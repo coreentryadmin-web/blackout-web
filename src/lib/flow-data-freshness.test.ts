@@ -4,6 +4,8 @@ import {
   markFlowDataFresh,
   newestFlowAgeMsFromBriefs,
   resolveFlowDataAgeMs,
+  flowDataAgeMs,
+  _resetFlowDataFreshnessForTest,
 } from "./flow-data-freshness";
 
 test("newestFlowAgeMsFromBriefs uses the newest alerted_at row", () => {
@@ -23,4 +25,19 @@ test("resolveFlowDataAgeMs prefers fresh tape over stale in-memory stamp", () =>
   const now = Date.parse("2026-06-29T16:00:00.000Z");
   const age = resolveFlowDataAgeMs([{ alerted_at: "2026-06-29T15:58:00.000Z" }], now);
   assert.equal(age, 2 * 60_000);
+});
+
+test("newestFlowAgeMsFromBriefs returns null for far-future alerted_at", () => {
+  const now = Date.parse("2026-06-29T16:00:00.000Z");
+  assert.equal(
+    newestFlowAgeMsFromBriefs([{ alerted_at: "2026-06-29T16:02:00.000Z" }], now),
+    null
+  );
+});
+
+test("markFlowDataFresh ignores far-future stamps", () => {
+  _resetFlowDataFreshnessForTest();
+  const realNow = Date.now();
+  markFlowDataFresh(realNow + 120_000);
+  assert.equal(flowDataAgeMs(realNow), null);
 });

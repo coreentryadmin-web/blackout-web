@@ -1,11 +1,19 @@
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
+
 let lastFlowDataAt: number | null = null;
+
+function flowAgeMsFromStamp(stamp: number, now: number): number | null {
+  const age = now - stamp;
+  if (age < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return null;
+  return Math.max(0, age);
+}
 
 /** Mark UW flow data fresh (WS, REST ingest, or desk poll). */
 export function markFlowDataFresh(at = Date.now()): void {
   if (!Number.isFinite(at)) return;
   // Reject future-dated timestamps (clock skew / bad source data). A future value would
   // pin freshness ahead of real time and permanently disable the staleness trade gate.
-  if (at > Date.now() + 60_000) return;
+  if (at > Date.now() + WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return;
   if (lastFlowDataAt == null || at > lastFlowDataAt) {
     lastFlowDataAt = at;
   }
@@ -31,11 +39,11 @@ export function newestFlowAgeMsFromBriefs(
     if (!Number.isFinite(t)) continue;
     if (newest == null || t > newest) newest = t;
   }
-  return newest != null ? Math.max(0, now - newest) : null;
+  return newest != null ? flowAgeMsFromStamp(newest, now) : null;
 }
 
 export function flowDataAgeMs(now = Date.now()): number | null {
-  return lastFlowDataAt != null ? Math.max(0, now - lastFlowDataAt) : null;
+  return lastFlowDataAt != null ? flowAgeMsFromStamp(lastFlowDataAt, now) : null;
 }
 
 /**
@@ -57,4 +65,9 @@ export function resolveFlowDataAgeMs(
 
 export function lastFlowDataTimestamp(): number | null {
   return lastFlowDataAt;
+}
+
+/** Test-only reset of in-memory flow freshness stamp. */
+export function _resetFlowDataFreshnessForTest(): void {
+  lastFlowDataAt = null;
 }

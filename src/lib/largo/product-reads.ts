@@ -4,6 +4,7 @@
 // never crash on a cold lane.
 
 import { roundFloats } from "@/lib/round-floats";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 import { VECTOR_FRACTION_DP } from "@/features/vector/lib/vector-response-rounding";
 // Session phase comes from the ONE canonical helper (largo/core), not a local re-derivation —
 // a second copy of the RTH boundaries is how two surfaces end up disagreeing about the session.
@@ -1339,10 +1340,7 @@ export function etSessionNow(now = new Date()): { phase: string; et_time: string
 
 /** Whole seconds between an ISO timestamp and now, or null when the stamp is unusable. */
 export function ageSecondsFrom(iso: string | null | undefined, now = Date.now()): number | null {
-  if (!iso) return null;
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return null;
-  return Math.max(0, Math.round((now - t) / 1000));
+  return ageSecFromIso(iso, now);
 }
 
 /** The subset of `GexPositioning` the compare strip serves. Structural so this stays pure. */

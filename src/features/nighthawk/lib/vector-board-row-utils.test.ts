@@ -4,6 +4,7 @@ import type { VectorBoardTableRow } from "./vector-board-table-utils";
 import {
   vectorBoardExportCsv,
   vectorBoardRowAtRisk,
+  vectorBoardRowIsLive,
   vectorBoardScorecard,
   vectorBoardSparklinePoints,
   vectorBoardTradeTicket,
@@ -32,6 +33,18 @@ function row(partial: Partial<VectorBoardTableRow>): VectorBoardTableRow {
     ...partial,
   };
 }
+
+test("vectorBoardRowIsLive rejects far-future timestamps (clock skew)", () => {
+  const now = Date.parse("2026-09-01T16:00:00.000Z");
+  assert.equal(
+    vectorBoardRowIsLive(row({ timestamp: "2026-09-01T16:02:00.000Z" }), now),
+    false
+  );
+  assert.equal(
+    vectorBoardRowIsLive(row({ timestamp: "2026-09-01T15:59:30.000Z" }), now),
+    true
+  );
+});
 
 test("vectorBoardRowAtRisk flags caution and giveback", () => {
   assert.equal(vectorBoardRowAtRisk(row({ status: "caution" })), true);

@@ -8,6 +8,7 @@
  */
 
 import { roundFloats } from "@/lib/round-floats";
+import { ageSecFromIso } from "@/lib/ws/timestamp-freshness";
 // ONE definition of "what session is it" across every lane. A local Intl call here would be a
 // second definition, and two tools that disagree about today is exactly the failure #2418/#2420
 // were opened for.
@@ -195,10 +196,7 @@ export function regimeInteractionFor(
 
 /** Whole seconds between an ISO stamp and `now`, or null when the stamp is unusable. */
 function ageSecondsFromIso(iso: string | null | undefined, now: number): number | null {
-  if (!iso) return null;
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return null;
-  return Math.max(0, Math.round((now - t) / 1000));
+  return ageSecFromIso(iso, now);
 }
 
 /**
