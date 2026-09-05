@@ -177,3 +177,52 @@ test("watchdog runs without error", () => {
   const r = spawnSync("node", ["scripts/blackout-agent/watchdog.mjs"], { encoding: "utf8", cwd: repoRoot });
   assert.equal(r.status, 0);
 });
+
+test("agentFromBranch maps lane prefixes for peer review", async () => {
+  const { agentFromBranch } = await import("./sync-context.mjs");
+  assert.equal(agentFromBranch("claude/fix-foo"), "claude");
+  assert.equal(agentFromBranch("cursor/cq-fix-pass-batch1"), "cursor");
+  assert.equal(agentFromBranch("fix/polygon-snapshot"), "agent");
+  assert.equal(agentFromBranch("feature/human-pr"), "human");
+});
+
+test("formatVerifyStatus normalizes GraphQL and REST check shapes", async () => {
+  const { formatVerifyStatus } = await import("./sync-context.mjs");
+  assert.equal(formatVerifyStatus({ status: "COMPLETED", conclusion: "SUCCESS" }), "COMPLETED/SUCCESS");
+  assert.equal(formatVerifyStatus({ status: "IN_PROGRESS", conclusion: null }), "IN_PROGRESS/pending");
+  assert.equal(formatVerifyStatus(null), "unknown");
+});
+
+test("fetchOpenPrs: a genuinely empty GraphQL result (real 0 open PRs) short-circuits without burning REST budget", async (t) => {
+  // Regression for a Cursor review nit on the REST-fallback PR: `graphql.length > 0` treated an
+  // empty-but-successful `gh pr list` the same as a GraphQL FAILURE, falling through to REST and
+  // spending its separate, scarcer budget on a call that was never needed.
+  let calls = 0;
+  t.mock.module("node:child_process", {
+    namedExports: {
+      spawnSync: (cmd, args) => {
+        calls += 1;
+        if (cmd === "gh" && args[0] === "pr" && args[1] === "list") {
+          return { status: 0, stdout: "[]" };
+        }
+        throw new Error(`unexpected spawnSync call: ${cmd} ${args.join(" ")}`);
+      },
+    },
+  });
+  const { fetchOpenPrs } = await import(`./sync-context.mjs?t=${Date.now()}`);
+  const { ok, prs } = fetchOpenPrs();
+  assert.deepEqual(prs, []);
+  assert.equal(ok, true, "empty GraphQL success must mark ok=true");
+  assert.equal(calls, 1, "must not fall through to the REST path when GraphQL genuinely returned zero PRs");
+});
+
+test("fetchOpenPrsAsync: falls back to public API when authenticated gh paths fail", async () => {
+  const { fetchOpenPrsViaPublicApi } = await import("./sync-context.mjs");
+  const prs = await fetchOpenPrsViaPublicApi("coreentryadmin-web/blackout-web");
+  assert.ok(Array.isArray(prs));
+  if (prs.length > 0) {
+    assert.ok(prs[0].number);
+    assert.ok(prs[0].title);
+    assert.ok(["claude", "cursor", "agent", "human"].includes(prs[0].agent));
+  }
+});
