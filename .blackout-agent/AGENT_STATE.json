@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T12:06:30.717Z",
+  "updated_at": "2026-09-05T12:09:23.876Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T11:57:35.878Z",
-      "lease_until": "2026-09-05T13:33:34.688Z",
-      "phase": "REVIEWING",
+      "claimed_at": "2026-09-05T12:07:22.644Z",
+      "lease_until": "2026-09-05T13:37:22.644Z",
+      "phase": "DISCOVERY",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "a44cf239-8b61-4729-960a-238cd55f4772",
+      "run_id": null,
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -256,13 +256,54 @@
     }
   },
   "deploy": {
-    "last_main_sha": "86af27f90785e9983dc4333454b09453240a324a",
+    "last_main_sha": "72a81ec4aedb25570eb85a522b2fe89a0b35d7cf",
     "last_deploy_status": "",
     "last_deploy_at": "2026-09-05T11:41:22Z",
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33964003342",
     "last_deploy_sha": "4433d215c6e558531790b0f3c3f5edae6dd87d89"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3951,
+      "title": "fix(spx-desk): tag UW supplemental + flow fan-out as background sweep",
+      "branch": "fix/spx-desk-uw-sweep-rest-flow",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T12:09:15Z"
+    },
+    {
+      "number": 3950,
+      "title": "docs(autopilot): publish CURSOR_QUESTIONS_FOR_CLAUDE (360° cross-exam, 218 questions)",
+      "branch": "cursor/cross-exam-questions-batch1",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T12:08:41Z"
+    },
+    {
+      "number": 3949,
+      "title": "chore(state): sync autopilot after #3948 merge + peer review cycle",
+      "branch": "cursor/autopilot-handoff-2026-09-05",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-09-05T12:08:43Z"
+    },
+    {
+      "number": 3945,
+      "title": "feat(swing): BUY / STILL BUY labels tied to entryability",
+      "branch": "cursor/swing-still-buy-labels",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-09-05T12:08:45Z"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1459,6 +1500,19 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T12:09:23.874Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-09-05T12:09:23.876Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b5cc54fc-6b01-47a8-a665-f95083bfb7da",
+      "summary": "Post-#3948 merge cycle: main@72a81ec4a. validate:deploy + platform-integrity + api-auth GREEN. ops:collect clean. #3945 verify GREEN awaiting Claude peer review (CLQ-048/049/050 traced: STILL BUY beats TRIM in swingActionDisplay; deadline fallback anchoredAt+subLane days; no ROLL test). ECR deploy queue stuck (4433d215 pending, 7c84207f in_progress 50m+). #3949 state sync."
     }
   ],
   "pr_activity": {
