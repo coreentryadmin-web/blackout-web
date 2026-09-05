@@ -3,22 +3,34 @@
 // path can decide whether desk.price is fresh enough to drive price-based exits.
 // No imports, no I/O, no @/ alias — directly unit-testable via `npx tsx --test`.
 
+/** Keep in sync with ZERODTE_MARK_FUTURE_TOLERANCE_MS in marks-math.ts. */
+const DESK_FUTURE_TOLERANCE_MS = 60_000;
+
 /**
  * Age of the desk snapshot in seconds. Prefers polled_at (the real quote time),
  * falling back to as_of. Returns null when neither timestamp is usable, so callers
  * can decide their own fail policy (we treat null as NOT stale to avoid spuriously
  * freezing management when a timestamp is simply missing).
+ *
+ * When `staleMaxSec` is provided and the stamp is more than DESK_FUTURE_TOLERANCE_MS
+ * in the future (cross-process clock skew), returns staleMaxSec + 1 so isDeskStale()
+ * fails closed — same shape as spx-play-gates.ts's entry gate.
  */
 export function deskAgeSec(
   polledAt: string | null | undefined,
   asOf: string | null | undefined,
-  now: number = Date.now()
+  now: number = Date.now(),
+  staleMaxSec?: number
 ): number | null {
   const stamp = polledAt ?? asOf;
   if (!stamp) return null;
   const t = new Date(stamp).getTime();
   if (!Number.isFinite(t)) return null;
-  return (now - t) / 1000;
+  const ageMs = now - t;
+  if (ageMs < -DESK_FUTURE_TOLERANCE_MS) {
+    return staleMaxSec != null ? staleMaxSec + 1 : Number.POSITIVE_INFINITY;
+  }
+  return ageMs / 1000;
 }
 
 /**
