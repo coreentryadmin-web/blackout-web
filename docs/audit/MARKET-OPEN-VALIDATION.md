@@ -136,13 +136,21 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** This doesn't fix the underlying storm — it only makes the NEXT one traceable. Grep CloudWatch for `[cache-warmer-gate] force=1 bypassed` during any future off-hours window and read the `(caller: ip=... ua=...)` field; if it's a known internal IP/UA, route the fix to that caller directly instead of re-running this same "rule out the usual suspects" investigation a third time.
 
-### 0as. SPX graded + lotto ticket caches future-at guard — fix/spx-ticket-lotto-cache-future-guard (pending)
+### 0as. SPX graded + lotto ticket caches future-at guard — fix/spx-ticket-lotto-cache-future-guard (merged #3856)
 
 **What was broken:** `pickChainContract()` and `pickLottoChainContract()` in-process ticket caches (45s / 60s TTL) used raw `now - entry.at < ttlMs`, so clock-skewed future `at` stamps read as infinitely fresh — same class as #3844/#3846/#3849.
 
 **Fix:** Route both through `isWsUpdatedAtFresh(at, ttlMs, now)` (5s future tolerance).
 
 **Check at the open:** Open SPX Slayer play rail during RTH — graded tickets and lotto tickets should refresh chain quotes normally after deploy; no stuck stale ticket from a skewed cache stamp.
+
+### 0ar. SPX play technicals + adaptive gates cache future-at guard — fix/spx-play-technicals-telemetry-future-guard (pending)
+
+**What was broken:** `spx-play-technicals.ts` and `spx-play-telemetry.ts` in-process caches used raw `now - entry.at < ttlMs`, so clock-skewed future `at` stamps read as infinitely fresh (ticket/lotto paths fixed in #3856).
+
+**Fix:** Route both through `isWsUpdatedAtFresh(at, ttlMs, now)` (5s future tolerance).
+
+**Check at the open:** SPX Open desk technicals panel and adaptive gate banner should refresh on TTL during RTH — no stuck stale marks after deploy clock skew.
 
 ### 0au. VIX IV rank + SPX UW ladder cache future-at guard — fix/cache-future-guard-polygon-uw-ladder (merged #3846)
 
