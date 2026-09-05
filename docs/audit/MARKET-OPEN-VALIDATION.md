@@ -128,13 +128,23 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** For any swing position that hits a 2× profit-ladder-style mark during RTH while `profit_ladder` has NOT yet graduated (check the calibration ladder state), confirm the ledger row's `status` stays `OPEN`/`HOLD` (not `TRIM`) and that a subsequent adverse move to −60% still triggers a `STOP_OUT` rather than being silently skipped.
 
-### 0ap. Cluster snapshot change_pct without open_source guard — fix/cluster-spot-change-open-source-guard (pending)
+### 0ap. Cluster snapshot change_pct without open_source guard — fix/cluster-spot-change-open-source-guard (merged #3837)
 
 **What was broken:** `readClusterIndexSpot()` served `change_pct` from `spx:pulse:snapshot` whenever finite, without checking `open_source`. Web-tier GEX/Thermal cache readers on the Redis cluster fallback could pair a live price with session-open–anchored change% (`ws-bar`), while the SPX desk and `liveWsIndexSpot` already null non-REST anchors.
 
 **Fix:** `clusterIndexSpotChangePct()` — only returns change% when `open_source === "rest"`.
 
 **Check at the open:** Thermal SPX matrix header day-change% vs SPX desk pulse — must agree or both show honest absence; never diverge on anchor basis when reading via cluster snapshot on a cold web replica.
+
+### 0aq. Largo technicals live change_pct + Night Hawk record roundFloats — fix/largo-technicals-change-pct-nighthawk-record-roundfloats (pending)
+
+**What was broken:** `buildLargoTechnicals` returned live WS spot for stocks but dropped `changePct` (null day % during RTH). Index path (SPX/VIX) used REST-only snapshots instead of the live `indexStore` overlay the quote route uses. `GET /api/market/nighthawk/record` omitted the standard `roundFloats` API boundary.
+
+**Fix:** Stock WS → `changePct = wsCandle.changePct`; index → `resolveLiveIndexWsEntry` + `overlayRestIndexWithWs`; record route wraps payload in `roundFloats`.
+
+**Check at the open:** Largo `get_technicals` for NVDA during RTH must return non-null `change_pct` beside live spot when REST seed landed. SPX technicals spot/`change_pct` must track desk header (not lag REST-only). Night Hawk record JSON must have clean 2dp numerics.
+
+---
 
 ### 0ao. Vector volume profile extended-hours pollution — fix/vector-volume-profile-rth-scope (pending)
 

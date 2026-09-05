@@ -6,7 +6,12 @@ import {
   fetchStockSnapshot,
   fetchTickerEma,
   fetchTickerRsi,
+  type IndexQuote,
 } from "@/lib/providers/polygon";
+import {
+  overlayRestIndexWithWs,
+  resolveLiveIndexWsEntry,
+} from "@/lib/providers/index-snapshot-overlay";
 import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
 import { priorEtYmd, todayEtYmd } from "@/lib/providers/spx-session";
 
@@ -61,19 +66,41 @@ export async function buildLargoTechnicals(ticker: string) {
 
   let price = 0;
   let changePct: number | null = null;
-  const wsTicker = isIndex ? sym.replace(/^I:/, "") : stockSymbol(ticker);
-  const wsCandle = getStockLiveCandle(wsTicker);
-  const ws = wsCandle.current && wsCandle.current.close > 0 ? wsCandle.current.close : null;
-  if (ws != null) {
-    price = ws;
-  } else if (isIndex) {
-    const row = quoteRaw?.[sym];
-    price = row?.price ?? 0;
-    changePct = row?.change_pct ?? null;
+
+  if (isIndex) {
+    const restRow = quoteRaw?.[sym];
+    const restSnap: IndexQuote | null = restRow
+      ? {
+          symbol: sym,
+          price: restRow.price,
+          change_pct: restRow.change_pct,
+          prev_close: null,
+        }
+      : null;
+    const wsEntry = await resolveLiveIndexWsEntry(sym);
+    if (restSnap && wsEntry) {
+      const overlaid = overlayRestIndexWithWs(restSnap, wsEntry);
+      price = overlaid.price;
+      changePct = overlaid.change_pct ?? null;
+    } else if (wsEntry && wsEntry.open_source === "rest" && Number.isFinite(wsEntry.change_pct)) {
+      price = wsEntry.price;
+      changePct = wsEntry.change_pct ?? null;
+    } else if (restSnap) {
+      price = restSnap.price;
+      changePct = restSnap.change_pct ?? null;
+    }
   } else {
-    const snap = await fetchStockSnapshot(stockSymbol(ticker));
-    price = snap?.price ?? 0;
-    changePct = snap?.change_pct ?? null;
+    const wsCandle = getStockLiveCandle(stockSymbol(ticker));
+    const ws = wsCandle.current && wsCandle.current.close > 0 ? wsCandle.current.close : null;
+    if (ws != null) {
+      price = ws;
+      // Same authoritative anchor as quote/route — do not drop day % when WS price is live.
+      changePct = wsCandle.changePct;
+    } else {
+      const snap = await fetchStockSnapshot(stockSymbol(ticker));
+      price = snap?.price ?? 0;
+      changePct = snap?.change_pct ?? null;
+    }
   }
 
   const last = dailyBars.at(-1)?.c ?? price;
