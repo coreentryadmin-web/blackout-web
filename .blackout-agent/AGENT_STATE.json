@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T03:17:06.276Z",
+  "updated_at": "2026-09-05T07:05:03.540Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,9 +67,9 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-04T19:47:02.706Z",
-      "lease_until": "2026-09-04T21:17:02.706Z",
-      "phase": "DISCOVERY",
+      "claimed_at": "2026-09-05T06:53:31.166Z",
+      "lease_until": "2026-09-05T08:23:31.166Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
@@ -234,6 +234,22 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-04T17:19:14.963Z",
       "safe_to_merge": true
+    },
+    "pr-3893": {
+      "pr": 3893,
+      "head_sha": "e29a2517c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T06:54:51.189Z",
+      "safe_to_merge": true
+    },
+    "pr-3892": {
+      "pr": 3892,
+      "head_sha": "3aa95a1f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T07:03:04.070Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -248,11 +264,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "b558e1321c827f97e43cad8eaae5937f3d4eded9",
+    "last_main_sha": "92f8ada51d33b59cd03b7616b375425645845e1f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-04T22:52:50Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33927321211",
-    "last_deploy_sha": "264bfab6bb751cdaf0db0c925ee482276ca85450"
+    "last_deploy_at": "2026-09-05T07:05:00Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33951565494",
+    "last_deploy_sha": "eba3b0d59e975c544d18d1eac199284132feb4d8"
   },
   "open_prs": [],
   "events": [
@@ -1134,6 +1150,63 @@
     },
     {
       "at": "2026-09-05T03:17:06.276Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T06:17:42.595Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T06:17:42.945Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T06:17:43.062Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T06:54:51.190Z",
+      "type": "pr_review",
+      "pr": 3893,
+      "head_sha": "e29a2517c",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T06:54:51.189Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T07:03:04.071Z",
+      "type": "pr_review",
+      "pr": 3892,
+      "head_sha": "3aa95a1f",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T07:03:04.070Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T07:03:12.475Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T07:03:12.476Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "1964eaa6-2239-4563-a6ea-957298921e11",
+      "summary": "PR-event wake: peer-reviewed #3893 (swing underlying spot staleness guard) APPROVED + rebased onto main (fixed #3890 revert blocker), marked ready. #3892 (FINDINGS heading fix) APPROVED, verify GREEN — merge blocked by GitHub API rate limit (user 284440397). validate:deploy GREEN, ops:collect 0. #3891 cursor state PR left for Claude review. RTH lifecycle deferred (Sat off-hours)."
+    },
+    {
+      "at": "2026-09-05T07:05:03.540Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
