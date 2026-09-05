@@ -118,6 +118,16 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — 2026-09-05 Cursor autopilot (read this before the routine pass)
+
+### 0al. Night Hawk legacy-marks + play-bars missing roundFloats — fix/nighthawk-roundfloats-clean (pending)
+
+**What was broken:** `GET /api/market/nighthawk/legacy-marks` and `GET /api/market/nighthawk/play-bars` returned raw IEEE floats at the JSON boundary while sibling Night Hawk routes (`edition`, `horizons`) already wrap responses in `roundFloats`.
+
+**Fix:** Wrap success payloads with `roundFloats(...)` before `NextResponse.json`. Source-scan regression tests on both routes.
+
+**Check at the open:** Open a Legacy play with live marks — network JSON must not show `7499.360000000001`-style noise. Open a 0DTE play detail chart — mark closes must be 2dp at the wire.
+
 ## WATCH LIST — 2026-09-04 coordinator sweep (read this before the routine pass)
 
 ### 0af. Polygon batch snapshot fabricated flat 0% — fix/polygon-snapshot-change-pct-null (pending)
