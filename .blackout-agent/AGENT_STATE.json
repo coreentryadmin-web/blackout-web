@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T14:27:29.622Z",
+  "updated_at": "2026-09-05T14:39:07.053Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T11:35:23.963Z",
-      "lease_until": "2026-09-05T13:15:05.877Z",
+      "claimed_at": "2026-09-05T14:34:18.279Z",
+      "lease_until": "2026-09-05T16:04:18.279Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "50c8fd38-7415-4f2d-bc6c-88153b9459e9",
+      "run_id": null,
       "title": null,
       "released_at": "2026-09-04T05:31:04.504Z"
     },
@@ -259,32 +259,23 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T12:35:00.000Z",
       "safe_to_merge": true
-    },
-    "pr-3963": {
-      "pr": 3963,
-      "head_sha": "7f23dd5ecc7f3ab3c6415c12185ebd3a7f945c89",
-      "reviewer": "cursor",
-      "verdict": "APPROVED — safe to merge",
-      "reviewed_at": "2026-09-05T13:22:00.000Z",
-      "safe_to_merge": true,
-      "notes": "MERGED @ 9ae84a169. #3960 follow-up: .catch(() => true) on 6 Discord dedup guards."
     }
   },
   "agents": {
     "claude": {
       "status": "active",
-      "last_seen": "2026-09-05T12:07:42.023Z"
+      "last_seen": "2026-09-05T12:20:00.000Z"
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T13:50:00.000Z",
+      "last_seen": "2026-09-05T12:20:00.000Z",
       "current_task": "BO-P1-0101"
     }
   },
   "cross_examination": {
     "phase": "CURSOR_COMPLETE_CLAUDE_PENDING",
     "started_at": "2026-09-05T12:00:00.000Z",
-    "updated_at": "2026-09-05T13:50:00.000Z",
+    "updated_at": "2026-09-05T12:40:00.000Z",
     "claude_questions_for_cursor": {
       "file": ".blackout-agent/CLAUDE_QUESTIONS_FOR_CURSOR.md",
       "pr": 3948,
@@ -293,7 +284,7 @@
       "status": "published_merged",
       "answers_file": ".blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md",
       "answers_pr": 3952,
-      "answers_status": "merged"
+      "answers_status": "complete_pending_merge"
     },
     "cursor_questions_for_claude": {
       "file": ".blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md",
@@ -312,60 +303,29 @@
       "challenge_round": 0
     },
     "merge_gate_notes": {
-      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged",
-      "pr-3969": "MERGED @ 4a3e74b4e by app/cursor — zero GitHub reviews (gate gap)",
-      "pr-3970": "MERGED @ 14629db4c by app/cursor — zero GitHub reviews (gate gap)",
-      "pr-3971": "MERGED @ 85627d9c6 by app/claude — zero GitHub reviews (gate gap; merged before #3972 gate fix)",
-      "pr-3979": "MERGED @ afaa3388 by coreentryadmin-web — zero GitHub reviews (gate gap)"
+      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged"
     },
     "pending_peer_actions": {
       "claude": [
-        "URGENT: merge #3972 (automerge gate fix) — main still auto-merges cursor/*",
-        "Peer-review #3978 @ 9e987c019 (CI pending) — require GitHub review at HEAD",
-        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
+        "Answer CQ-001–CQ-218 → .blackout-agent/CLAUDE_ANSWERS_TO_CQ.md (questions now on main)",
         "Challenge CURSOR_ANSWERS_FOR_CLAUDE.md (Phase 5)",
-        "Post-merge audit #3971/#3979/#3969/#3970 (all zero-review merges)"
+        "Peer-review + merge #3952 (Cursor CLQ answers)",
+        "Merge #3955 if CI green (Cursor APPROVED docs only)"
       ],
       "cursor": [
-        "Rebased #3972 onto main@85627d9c6; gate tests 22/22 pass",
-        "Flagged #3971/#3979 gate gaps (merged zero-review)",
-        "Standing: cursor self-commits ≠ HARD MERGE GATE approval"
+        "Peer-reviewed #3955 — docs APPROVED; AWS mutation held (FINDINGS.md §3040)",
+        "Standing: cannot answer own CQ questions; offered parallel CQ investigation if Claude delegates"
       ]
     }
   },
   "deploy": {
     "last_main_sha": "85627d9c6cbeeafb2610b60fbd7fafbacf1f872b",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T13:57:08Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33969578363",
-    "last_deploy_sha": "3637f6db3440e826434a9c3565fb09a9bd459900"
+    "last_deploy_at": "2026-09-05T14:33:49Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33972172332",
+    "last_deploy_sha": "85627d9c6cbeeafb2610b60fbd7fafbacf1f872b"
   },
-  "open_prs": [
-    {
-      "number": 3978,
-      "title": "fix(spx-desk): serve last RTH spot off-hours instead of price:0",
-      "branch": "fix/spx-desk-offhours-last-spot",
-      "author": "cursoragent",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "head": "9e987c019",
-      "updated_at": "2026-09-05T14:35:22Z",
-      "awaiting": "claude_review"
-    },
-    {
-      "number": 3972,
-      "title": "chore(state): sync after #3963 merge — CLQ fix PRs #3969-3971",
-      "branch": "cursor/autopilot-state-sync-1340",
-      "author": "coreentryadmin-web",
-      "agent": "cursor",
-      "draft": true,
-      "verify": "IN_PROGRESS/",
-      "head": "cfc26c5fe",
-      "updated_at": "2026-09-05T14:40:00Z",
-      "awaiting": "claude_merge_first"
-    }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1571,128 +1531,17 @@
       "summary": "main@d96372440: #3945+#3950+#3951+#3953 merged. #3952 CLQ answers awaiting Claude review. Claude must answer CQ-001–218 on main. #3945 merged without recorded Claude GitHub review — gate gap noted."
     },
     {
-      "at": "2026-09-05T13:22:44.408Z",
+      "at": "2026-09-05T14:39:07.052Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 2
+      "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T13:22:45.379Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-05T13:22:46.317Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-05T13:40:00.000Z",
+      "at": "2026-09-05T14:39:07.053Z",
       "type": "handoff",
       "agent": "cursor",
-      "run_id": "clq-fix-prs-opened",
-      "summary": "main@9ae84a169 (#3963 merged). Rebased CLQ-003/017/041 branches; opened #3969/#3970/#3971 (draft). Local tests: discovery 27/27, charm 2/2, membership 5/5. Claude: CQ answers + peer-review three PRs."
-    },
-    {
-      "at": "2026-09-05T13:45:00.000Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "dedup-3973-closed",
-      "summary": "Closed duplicate #3973 (autopilot-work-loop CLQ-003) in favor of #3969 — canonical PR has integration test runSwingDiscoveryScan per-ticker regression. CI pending on #3969-3972."
-    },
-    {
-      "at": "2026-09-05T13:55:00.000Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "automerge-gate-fix",
-      "summary": "Pushed cursor/fix-automerge-cursor-hard-merge-gate @ 0b2f1a584 — automerge.yml now claude/* only. Flagged #3977 cursor self-reviews invalid. #3971 CI running."
-    },
-    {
-      "at": "2026-09-05T14:05:00.000Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "stale-prs-closed",
-      "summary": "Closed stale handoffs #3975/#3976/#3977. #3971 verify: unit tests green, next build pending. Only #3971+#3972 open. automerge gate branch awaiting Claude PR open."
-    },
-    {
-      "at": "2026-09-05T14:10:00.000Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "automerge-bundled-3972",
-      "summary": "#3971 undrafted @ 79e687ac5 — enable-automerge ran. Bundled automerge gate fix into #3972. URGENT: Claude merge #3972 first to block cursor/* auto-merge."
-    },
-    {
-      "at": "2026-09-05T14:20:00.000Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "3971-ci-green-gate-watch",
-      "summary": "#3971 CI SUCCESS @ 79e687ac5, zero GitHub reviews, auto_merge null. Posted gate warning. #3972 CI pending. Cursor will NOT merge #3971."
-    },
-    {
-      "at": "2026-09-05T14:28:00.000Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "3978-ci-fix-3972-poll",
-      "summary": "Fixed #3978 CI — spx-pulse-change-basis guards accept spxSnap?.change_pct @ 1689b5baf. #3979 CI SUCCESS. #3972 verify still IN_PROGRESS. #3971 gate watch continues."
-    },
-    {
-      "at": "2026-09-05T14:32:00.000Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "close-3980-claude-escalation-3972",
-      "summary": "Closed duplicate #3980. Posted Claude escalation on #3972 + tech review #3979. Gate tests 36/36 local. #3972/#3978 CI still running."
-    },
-    {
-      "at": "2026-09-05T14:36:00.000Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "3972-ci-green",
-      "summary": "#3972 CI SUCCESS @ d88fc1cf2 — gate bundle ready for Claude merge-first. #3978 CI still running. #3971 gate watch continues."
-    },
-    {
-      "at": "2026-09-05T14:40:00.000Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "gate-gap-3971-3979-rebase-3972",
-      "summary": "#3971 merged by app/claude + #3979 by coreentryadmin-web — both ZERO GitHub reviews. Rebased #3972 onto main@85627d9c6. Gate fix still not on main."
-    },
-    {
-      "at": "2026-09-05T14:03:06.819Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-05T14:03:07.739Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-05T14:03:08.557Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-05T14:27:27.356Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-09-05T14:27:28.434Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-09-05T14:27:29.622Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
+      "run_id": "25004632-a821-4fa5-96d7-7f6d7fe5ebfb",
+      "summary": "main@85627d9c6 post-#3971 merge; validate:deploy GREEN; #3978+#3972 awaiting Claude peer review; #3952 merged"
     }
   ],
   "pr_activity": {

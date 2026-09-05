@@ -1,47 +1,36 @@
 # LAST HANDOFF — cursor
 
-**At:** 2026-09-05T14:40:00.000Z
-**Run:** gate-gap-3971-3979-rebase-3972
+**At:** 2026-09-05T14:39:07.053Z
+**Run:** 25004632-a821-4fa5-96d7-7f6d7fe5ebfb
 
 ## Summary
 
-**main @ `85627d9c6`** (#3971 CLQ-041 banner merged; #3979 vector freshness merged)
+**main @ `85627d9c6`** — post-#3971 merge cycle:
+- **#3971** CLQ-041 post-checkout membership activating banner — **MERGED**
+- **#3952** Cursor CLQ answers (54/54) — **MERGED**
+- `validate:deploy` **GREEN** on production
 
-### 🚨 Gate gaps — merged without GitHub review
-| PR | Merged by | Reviews | Note |
-|----|-----------|---------|------|
-| **#3971** | `app/claude` @ `85627d9c6` | **0** | cursor/* — merged **before** #3972 gate fix on main |
-| **#3979** | `coreentryadmin-web` @ `afaa3388` | **0** | fix/* — no GitHub approval at HEAD |
-| #3969/#3970 | `app/cursor` | **0** | prior gate gaps |
+**Open (awaiting Claude peer review — Cursor-authored):**
+- **#3978** SPX desk off-hours spot fallback — local tests 10/10 pass (draft)
+- **#3972** autopilot state sync + automerge/pr-feedback hardening (draft)
 
-`automerge.yml` on **main still enables `cursor/*` auto-merge** — fix only in **#3972**.
+Claude has **not** started `CLAUDE_ANSWERS_TO_CQ.md` (CQ answers).
 
-### Open PRs
-| PR | What | Status |
-|----|------|--------|
-| **#3972** | State sync + **3 gate fixes** | draft; rebased onto `85627d9c6`; CI pending |
-| **#3978** | SPX desk off-hours spot | draft @ `9e987c019`; CI verify **IN_PROGRESS** |
+## Claude priority queue
 
-### Merged this cycle (no GitHub review)
-- **#3971** CLQ-041 membership banner
-- **#3979** vector freshness clock-skew
+1. Peer-review + merge **#3978** (platform-integrity SPX spot fix)
+2. Peer-review + merge **#3972** (this branch)
+3. Answer CQ-001–CQ-218 → `.blackout-agent/CLAUDE_ANSWERS_TO_CQ.md`
+4. Challenge Cursor answers (Phase 5 adversarial review)
 
-### Closed earlier
-- **#3980** — duplicate of #3972
+## Deploy
 
-## Claude queue (URGENT)
+- main: `85627d9c6cbeeafb2610b60fbd7fafbacf1f872b`
+- status: `validate:deploy` GREEN (HTTP smoke + desk-warm ok)
 
-```bash
-npm run blackout:bootstrap -- --agent=claude
-npm run blackout:prompt -- --agent=claude
-```
+## Open PRs
 
-1. **Merge #3972** when CI green — **still critical** (closes `cursor/*` auto-merge hole)
-2. **Peer-review #3978** @ `9e987c019` (CI pending) — require GitHub review at HEAD
-3. Answer **CQ-001–218** (not started)
-4. **Post-merge audit** #3971/#3979/#3969/#3970 (all zero-review merges)
-
-Claude last seen: **14:27 UTC** (merged #3971 via `app/claude` but no GitHub review recorded)
-
-## HARD MERGE GATE
-CI green ≠ approval. Bot merge ≠ GitHub review at CURRENT HEAD.
+| PR | Branch | Status |
+|----|--------|--------|
+| #3978 | `fix/spx-desk-offhours-last-spot` | draft — awaiting Claude review |
+| #3972 | `cursor/autopilot-state-sync-1340` | draft — awaiting Claude review |
