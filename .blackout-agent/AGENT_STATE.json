@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:35:35.991Z",
+  "updated_at": "2026-09-05T18:23:01.479Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:26:09.737Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
-      "phase": "PEER_REVIEW",
+      "claimed_at": "2026-09-05T18:20:55.818Z",
+      "lease_until": "2026-09-05T19:51:21.905Z",
+      "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": "acb766e0-f902-43ed-a3af-4f41d7cc2429",
       "title": null
     },
     "BO-P1-0101": {
@@ -326,11 +326,11 @@
     }
   },
   "deploy": {
-    "last_main_sha": "86227e70b57d7dc962673f750a952173dea85088",
+    "last_main_sha": "543ec6f3f53db88e8e26e6879ac611c38bdb4d58",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:34:11Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978273189",
-    "last_deploy_sha": "86227e70b57d7dc962673f750a952173dea85088"
+    "last_deploy_at": "2026-09-05T18:21:29Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33983804884",
+    "last_deploy_sha": "543ec6f3f53db88e8e26e6879ac611c38bdb4d58"
   },
   "open_prs": [],
   "events": [
@@ -1622,6 +1622,25 @@
       "agent": "cursor",
       "run_id": "7241539d-60c7-4e6b-ac5b-c9b3aa85b828",
       "summary": "Continuous loop cycle complete. Peer review: pr-sweep 0 open PRs. Platform integrity 14/14 GREEN, lifecycle sweep GREEN (weekend RTH skip). Deploy drift: prod rolling feaba670 (in_progress 25m+), main now 86227e70 (#3995+#3998) with pending ECR run 33978273189. Opened draft #4001 (agent state sync — awaits Claude review). GitHub GraphQL rate-limited until ~17:06 UTC; REST still works. Next: monitor ECR → validate:deploy post-rollout; Claude peer-review #4001 + any new claude/* PRs."
+    },
+    {
+      "at": "2026-09-05T18:22:53.940Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:23:01.478Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T18:23:01.479Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "b0b9b58f-2f66-4704-80b0-2fd7d4af58d7",
+      "summary": "pull_request wake (#4022 merged): main@543ec6f3f. pr-sweep 0 open PRs (GitHub API rate-limited user 284440397). validate:deploy GREEN, platform-integrity 14/14, api-auth GREEN, SEO 22/22, ops:collect 0. RTH lifecycle GREEN (Sat off-hours skip). Deploy drift: ECR may still be rolling ea552b9→543ec6f3f — prod HTTP healthy. Next: retry peer-review sweep when rate limit resets; monitor ECR for 543ec6f3f."
     }
   ],
   "pr_activity": {
