@@ -241,9 +241,6 @@ export function strikeDistancePct(
 /** How many strikes above/below spot get a matrix DR% (gamma build/melt) label. */
 export const STRIKE_DRIFT_PCT_NEAR_SPOT = 3;
 
-/** @deprecated Name predates DR% switching to gamma shift; use {@link shouldShowMatrixDriftPct}. */
-export const STRIKE_DISTANCE_PCT_NEAR_SPOT = STRIKE_DRIFT_PCT_NEAR_SPOT;
-
 /**
  * Show gamma build/melt DR% only on the nearest N strikes above and below spot — not the
  * full ladder (readability). Same row window as SPX Slayer matrix DR%.
@@ -255,15 +252,6 @@ export function shouldShowMatrixDriftPct(
 ): boolean {
   if (spotIndex < 0 || rowIndex === spotIndex) return false;
   return Math.abs(rowIndex - spotIndex) <= nearCount;
-}
-
-/** @deprecated Use {@link shouldShowMatrixDriftPct} — DR% is gamma shift %, not spot distance. */
-export function shouldShowStrikeDistancePct(
-  rowIndex: number,
-  spotIndex: number,
-  nearCount: number = STRIKE_DRIFT_PCT_NEAR_SPOT,
-): boolean {
-  return shouldShowMatrixDriftPct(rowIndex, spotIndex, nearCount);
 }
 
 /** "+0.12%" / "−0.05%" / "—" — two decimals, true minus sign (desk ladder parity). */

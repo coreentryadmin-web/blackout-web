@@ -104,8 +104,3 @@ export function useHeroPlayCard(_play: TerminalPlay, _selected: boolean, _rank: 
 export function useLifecyclePlayCard(_play: TerminalPlay): boolean {
   return true;
 }
-
-/** @deprecated Use useLifecyclePlayCard — kept for call-site clarity during migration. */
-export function useEnhancedZeroDteRow(play: TerminalPlay): boolean {
-  return useLifecyclePlayCard(play);
-}

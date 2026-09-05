@@ -47,12 +47,6 @@ export const VECTOR_HELIX_RANKED_MAX_DTE = 45;
  * LEAPS-only illiquid ticker never goes blank) fixes that at the source.
  */
 export const VECTOR_HELIX_POOL_MAX_DTE = 60;
-/** @deprecated Alias for legacy imports. */
-export const VECTOR_HELIX_FETCH_LIMIT = VECTOR_LIVE_HELIX_TAPE_CAP;
-/** @deprecated Alias for legacy imports. */
-export const VECTOR_HELIX_MAJOR_TOP_N = VECTOR_LIVE_HELIX_TAPE_CAP;
-/** @deprecated Alias for legacy imports. */
-export const VECTOR_HELIX_PAGE_SIZE = VECTOR_LIVE_HELIX_TAPE_CAP;
 
 export type VectorHelixTypeFilter = "ALL" | "CALL" | "PUT";
 

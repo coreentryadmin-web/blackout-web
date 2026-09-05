@@ -353,9 +353,6 @@ export function TradeExcursionGraphic({
   );
 }
 
-/** @deprecated Use TradeExcursionGraphic — kept as alias for any stale imports. */
-export const PremiumMarkChart = TradeExcursionGraphic;
-
 function StrengthBar({
   pct,
   className = "",
