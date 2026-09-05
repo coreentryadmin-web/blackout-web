@@ -307,7 +307,7 @@ export const ROW_HALO_BAR_SPACING_FILL = 0.55;
  * dominant wall READS as dominant, and squeezing the peak toward the floor trades this complaint
  * for the opposite one — which is the exact oscillation #2310 and #2244 already went through once.
  */
-export const ROW_HALO_ROW_GAP_FILL = 0.45;
+export const ROW_HALO_ROW_GAP_FILL = 0.7;
 
 /**
  * Strength halo radius beyond core bead — grows with row swell, fades to a trace.
@@ -608,7 +608,7 @@ const BEAD_BAR_FILL = 2.4;
 /** Fraction of the ROW GAP (price-axis distance to the nearest neighbouring row) a bead's diameter
  *  may occupy. Deliberately about half: this is what keeps rows visibly SEPARATE — the property the
  *  reference product has and the slab render did not — and what stops beads burying the candles. */
-const BEAD_ROW_FILL = 0.34;
+const BEAD_ROW_FILL = 0.55;
 
 /** The core budget, exported for the sum invariant in the tests. It must never exceed
  *  {@link ROW_HALO_ROW_GAP_FILL}; exporting it is what lets a test assert that ordering. */
