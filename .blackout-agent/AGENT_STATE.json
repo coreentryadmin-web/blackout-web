@@ -1,19 +1,18 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T21:01:05.075Z",
+  "updated_at": "2026-09-05T21:00:43.656Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T20:59:23.849Z",
-      "lease_until": "2026-09-05T22:30:06.050Z",
+      "claimed_at": "2026-09-05T20:31:10.983Z",
+      "lease_until": "2026-09-05T22:30:42.391Z",
       "phase": "REVIEWING",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "e790fc3a-2ad4-4a6a-b8b4-69d649f5e37d",
-      "title": null
+      "run_id": "26b32120-f037-48dc-ae44-62bc91e853fa"
     }
   },
   "reviews": {
@@ -24,6 +23,14 @@
       "verdict": "APPROVED",
       "reviewed_at": "2026-09-05T19:35:19.109Z",
       "safe_to_merge": true
+    },
+    "pr-4044": {
+      "pr": 4044,
+      "head_sha": "f88cca73bdf7482bb92df3809a09b8b2bf422bdf",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T20:58:40.592Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -32,9 +39,8 @@
       "last_seen": null
     },
     "cursor": {
-      "status": "active",
-      "last_seen": "2026-09-05T21:01:04.187Z",
-      "current_task": "BO-P1-0100"
+      "status": "unknown",
+      "last_seen": null
     }
   },
   "deploy": {
@@ -124,23 +130,54 @@
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T21:01:04.187Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0100",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-05T21:01:05.074Z",
+      "at": "2026-09-05T20:51:13.265Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 1
     },
     {
-      "at": "2026-09-05T21:01:05.075Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "15e5e127-771f-4093-be97-a7a312af1730",
-      "summary": "Fixed PR #4045: resolved merge-conflict markers in AGENT_STATE.json (invalid JSON would break autopilot bootstrap). Lifecycle GREEN (deploy, api-auth, platform-integrity, seo, rth-open off-hours). ops:collect 0 items. GitHub API rate-limited (user 284440397) — peer review/PR ops blocked until reset. Deploy current @8f1b953. Only open PR: #4045 (cursor handoff, draft)."
+      "at": "2026-09-05T20:58:40.593Z",
+      "type": "pr_review",
+      "pr": 4044,
+      "head_sha": "f88cca73bdf7482bb92df3809a09b8b2bf422bdf",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T20:58:40.592Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T21:00:34.053Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T21:00:37.398Z",
+      "type": "pr_webhook",
+      "pr": 4045,
+      "event": "sweep",
+      "head": "d4cdfc8b7014ff632bd10b3d52f1ff7f06acfb88",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "dispatch": false
+    },
+    {
+      "at": "2026-09-05T21:00:42.391Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T21:00:43.034Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
+    },
+    {
+      "at": "2026-09-05T21:00:43.656Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 1
     }
   ],
   "open_prs": [
@@ -154,5 +191,15 @@
       "verify": "IN_PROGRESS/",
       "updated_at": "2026-09-05T20:59:11Z"
     }
-  ]
+  ],
+  "pr_activity": {
+    "pr-4045": {
+      "last_event": "sweep",
+      "last_head": "d4cdfc8b7014ff632bd10b3d52f1ff7f06acfb88",
+      "last_feedback_at": "2026-09-05T21:00:37.398Z",
+      "verdict": "⏸️ **WAIT** — still draft",
+      "directive": "WAIT",
+      "comment_action": "created"
+    }
+  }
 }
