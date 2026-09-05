@@ -510,6 +510,14 @@ just for performance findings — and is separate from, and in addition to, each
 
 **Check at the open:** Poll `/api/market/vector/universe` and `/api/market/vector/daily-regime?ticker=SPX` — strike/flip/spot fields should be 2dp with no long float tails. Confirm 0DTE halt gate still blocks entries when UW socket is genuinely down (admin System Vitals).
 
+### 0za. Vector VEX walls memo future-stamp guard — fix/vector-vex-walls-freshness-guard (pending)
+
+**What was broken:** `getVectorVexWalls()` memoized with raw `now - cachedVexWallsAt < VEX_WALLS_CACHE_MS` while gamma walls and wallScope already used `isWsUpdatedAtFresh` — a future `cachedVexWallsAt` (clock skew) read as infinitely fresh.
+
+**Fix:** Replace with `isWsUpdatedAtFresh(s.cachedVexWallsAt, VEX_WALLS_CACHE_MS, now)`; source-scan test in `vector-snapshot-wallscope-freshness.test.ts`.
+
+**Check at the open:** Vector desk SPX — toggle GEX/VEX lens; vanna walls refresh within ~8s during RTH, no stuck VEX overlay after tab sleep/reconnect.
+
 ### 0y. darkpool-discord missing runWithBackgroundUwSweep — fix/darkpool-discord-uw-sweep (pending)
 
 **What was broken:** `darkpool-discord` cron called `fetchUwDarkPoolRecent` (live scan, 15m digest, EOD recap) without the shared `runWithBackgroundUwSweep` tag, competing with member UW REST traffic on cache miss.

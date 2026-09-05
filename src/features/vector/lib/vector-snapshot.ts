@@ -287,7 +287,7 @@ export function getVectorVexWalls(ticker: string = VECTOR_DEFAULT_TICKER): GexWa
   const s = state(t);
   refreshWallScope(t);
   const now = Date.now();
-  if (now - s.cachedVexWallsAt < VEX_WALLS_CACHE_MS) return s.cachedVexWalls;
+  if (isWsUpdatedAtFresh(s.cachedVexWallsAt, VEX_WALLS_CACHE_MS, now)) return s.cachedVexWalls;
   if (s.fallbackVexStrikeTotals && Object.keys(s.fallbackVexStrikeTotals).length > 0) {
     s.cachedVexWalls = computeGexWalls(mapFromStrikeTotalsRecord(s.fallbackVexStrikeTotals), {
       maxPerSide: VECTOR_WALL_NODES_PER_SIDE,
