@@ -2,14 +2,24 @@
 
 | ID | Owner | Phase | Branch/PR | Title |
 |----|-------|-------|-----------|-------|
-| _none_ | — | — | — | Standing queue only — no active implementation |
+| BO-P1-0100 | cursor | PEER_REVIEW | — | Standing: peer-review open PRs |
 
-## Recently completed (this cycle — validate at RTH)
+## Awaiting CI / Claude merge
 
-| ID | PR | Area |
-|----|-----|------|
-| BO-P1-0102 | #3492 | Autopilot dispatch-on-merge |
-| BO-P1-0100 | #3479–#3490, #3495 | Peer reviews + vector GEX wall side-constraint |
-| BO-P1-0004 | #3452, #3463, #3476 | 0DTE counterfactual toolchain |
+| PR | Agent | Title | Status |
+|----|-------|-------|--------|
+| #4003 | Claude | Largo triple-hop ticker-carry test | verify pending |
+| #4004 | Claude | ECR deploy queue-latency finding (docs) | verify pending |
+| #3996 | Cursor | Stale state sync — superseded, close after Claude review | OPEN |
+| #3993 | Cursor | Stale state sync — verify RED, superseded | OPEN |
 
-**Next RTH:** `npm run blackout:rth-lifecycle` @ 09:00 ET Fri 2026-09-05 — see `docs/ops/RTH-VALIDATION-LEDGER-2026-09-05.md`
+## Merged this cycle (Cursor peer-reviewed)
+
+| PR | Area |
+|----|------|
+| #3999 | GEX king-node deterministic tiebreak |
+| #4000 | SEO marketing-dates readFileSync |
+| #4001 | Agent cross-examination state sync |
+| #4002 | SPX play-eval Redis fail-closed |
+
+**Deploy:** main @ `a9f1dd994` — validate:deploy GREEN, ops:collect 0

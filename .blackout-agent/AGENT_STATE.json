@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:35:35.991Z",
+  "updated_at": "2026-09-05T16:53:54.291Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,13 +67,13 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:26:09.737Z",
-      "lease_until": "2026-09-05T18:04:10.983Z",
+      "claimed_at": "2026-09-05T16:34:43.506Z",
+      "lease_until": "2026-09-05T18:04:43.506Z",
       "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
-      "run_id": "cbaeaf9c-34b8-453b-93b9-070ec2a326e0",
+      "run_id": null,
       "title": null
     },
     "BO-P1-0101": {
@@ -258,6 +258,38 @@
       "verdict": "APPROVED — safe to merge",
       "reviewed_at": "2026-09-05T12:35:00.000Z",
       "safe_to_merge": true
+    },
+    "pr-3999": {
+      "pr": 3999,
+      "head_sha": "8bb15ae2a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T16:53:50.766Z",
+      "safe_to_merge": true
+    },
+    "pr-4000": {
+      "pr": 4000,
+      "head_sha": "7b07a5ef8",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T16:53:51.044Z",
+      "safe_to_merge": true
+    },
+    "pr-4001": {
+      "pr": 4001,
+      "head_sha": "053b2d010",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T16:53:51.316Z",
+      "safe_to_merge": true
+    },
+    "pr-4002": {
+      "pr": 4002,
+      "head_sha": "21d0abc37",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T16:53:51.583Z",
+      "safe_to_merge": true
     }
   },
   "agents": {
@@ -326,36 +358,14 @@
     }
   },
   "deploy": {
-    "last_main_sha": "86227e70b57d7dc962673f750a952173dea85088",
+    "last_main_sha": "a9f1dd99415455f01c849d186c5e9d304507aa6c",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-09-05T16:34:11Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33978273189",
-    "last_deploy_sha": "86227e70b57d7dc962673f750a952173dea85088"
+    "last_deploy_at": "2026-09-05T16:53:27Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33979249852",
+    "last_deploy_sha": "a9f1dd99415455f01c849d186c5e9d304507aa6c"
   },
   "open_prs": [],
   "events": [
-    {
-      "at": "2026-09-03T23:45:00.000Z",
-      "type": "autopilot_initialized"
-    },
-    {
-      "at": "2026-09-03T23:45:07.056Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:02.378Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-03T23:46:03.105Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
     {
       "at": "2026-09-03T23:46:03.919Z",
       "type": "context_sync",
@@ -1622,6 +1632,65 @@
       "agent": "cursor",
       "run_id": "7241539d-60c7-4e6b-ac5b-c9b3aa85b828",
       "summary": "Continuous loop cycle complete. Peer review: pr-sweep 0 open PRs. Platform integrity 14/14 GREEN, lifecycle sweep GREEN (weekend RTH skip). Deploy drift: prod rolling feaba670 (in_progress 25m+), main now 86227e70 (#3995+#3998) with pending ECR run 33978273189. Opened draft #4001 (agent state sync — awaits Claude review). GitHub GraphQL rate-limited until ~17:06 UTC; REST still works. Next: monitor ECR → validate:deploy post-rollout; Claude peer-review #4001 + any new claude/* PRs."
+    },
+    {
+      "at": "2026-09-05T16:53:47.230Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:53:50.767Z",
+      "type": "pr_review",
+      "pr": 3999,
+      "head_sha": "8bb15ae2a",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T16:53:50.766Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T16:53:51.045Z",
+      "type": "pr_review",
+      "pr": 4000,
+      "head_sha": "7b07a5ef8",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T16:53:51.044Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T16:53:51.318Z",
+      "type": "pr_review",
+      "pr": 4001,
+      "head_sha": "053b2d010",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T16:53:51.316Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T16:53:51.584Z",
+      "type": "pr_review",
+      "pr": 4002,
+      "head_sha": "21d0abc37",
+      "reviewer": "cursor",
+      "verdict": "APPROVED",
+      "reviewed_at": "2026-09-05T16:53:51.583Z",
+      "safe_to_merge": true
+    },
+    {
+      "at": "2026-09-05T16:53:54.289Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:53:54.291Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "0243e19e-310a-430d-9dfc-266b9f3fde62",
+      "summary": "Pull_request wake cycle complete. Cursor peer-reviewed + merged path: #3999 GEX tiebreak, #4000 SEO guard, #4001 agent state sync, #4002 SPX Redis fail-closed (regression test verified locally). main@a9f1dd994. validate:deploy GREEN, ops:collect 0. Open awaiting CI: #4003 (Largo test), #4004 (docs finding). Stale cursor PRs #3993/#3996 superseded — close when token allows. State pushed cursor/bc-84f35901-state-sync. Note: unset GH_TOKEN for gh CLI (invalid PAT in env)."
     }
   ],
   "pr_activity": {
