@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
+import {
+  SPX_DESK_MAX_PAIN_LABEL,
+  SPX_PIN_GEX_KING_LABEL_PROSE,
+} from "@/features/spx/lib/spx-metric-labels";
 import { computeSpxConfluence } from "@/features/spx/lib/spx-signals";
 import { composeSpxDeskBrief } from "@/lib/bie/spx-desk-brief";
 
@@ -126,5 +130,32 @@ describe("composeSpxDeskBrief", () => {
     const result = composeSpxDeskBrief(desk, confluence!, [], "afternoon");
     assert.ok(result.body.includes("LEVELS"));
     assert.match(result.body, /HOD|PDH/);
+  });
+
+  test("WHY and LEVELS name GEX king node — not generic pin — when gex_king is the magnet", () => {
+    const desk = fakeDesk();
+    desk.gex_king = 5900;
+    desk.max_pain = 5850;
+    const confluence = computeSpxConfluence(desk);
+    assert.ok(confluence);
+
+    const result = composeSpxDeskBrief(desk, confluence!, [], "mid-morning");
+
+    assert.ok(result.body.includes(SPX_PIN_GEX_KING_LABEL_PROSE));
+    assert.doesNotMatch(result.body, /toward pin \{\{/);
+    assert.doesNotMatch(result.body, /LEVELS.*\bpin \{\{/);
+  });
+
+  test("WHY and LEVELS use OI max pain label when gex_king absent", () => {
+    const desk = fakeDesk();
+    desk.gex_king = undefined;
+    desk.max_pain = 5900;
+    const confluence = computeSpxConfluence(desk);
+    assert.ok(confluence);
+
+    const result = composeSpxDeskBrief(desk, confluence!, [], "mid-morning");
+
+    assert.ok(result.body.includes(SPX_DESK_MAX_PAIN_LABEL.toLowerCase()));
+    assert.doesNotMatch(result.body, /toward pin \{\{/);
   });
 });
