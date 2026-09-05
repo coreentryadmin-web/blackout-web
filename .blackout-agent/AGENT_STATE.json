@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T16:25:46.503Z",
+  "updated_at": "2026-09-05T16:27:49.900Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -67,14 +67,15 @@
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
       "owner": "cursor",
-      "claimed_at": "2026-09-05T16:22:49.787Z",
-      "lease_until": "2026-09-05T17:52:49.787Z",
-      "phase": "CLAIMED",
+      "claimed_at": "2026-09-05T16:24:09.512Z",
+      "lease_until": "2026-09-05T17:54:09.512Z",
+      "phase": "PEER_REVIEW",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "title": null
+      "title": null,
+      "released_at": "2026-09-04T05:31:04.504Z"
     },
     "BO-P1-0101": {
       "task_id": "BO-P1-0101",
@@ -259,30 +260,30 @@
       "reviewed_at": "2026-09-05T12:35:00.000Z",
       "safe_to_merge": true
     },
-    "pr-3994": {
-      "pr": 3994,
-      "head_sha": "693c25769547b63835f17fae31423277d939d381",
+    "pr-3995": {
+      "pr": 3995,
+      "head_sha": "9d15d3583",
       "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-05T16:09:59.147Z",
-      "safe_to_merge": true
+      "verdict": "APPROVED — GO AHEAD MERGE (pending verify green)",
+      "reviewed_at": "2026-09-05T16:27:27.713Z",
+      "safe_to_merge": false
     }
   },
   "agents": {
     "claude": {
       "status": "active",
-      "last_seen": "2026-09-05T12:20:00.000Z"
+      "last_seen": "2026-09-05T16:20:00.000Z"
     },
     "cursor": {
       "status": "active",
-      "last_seen": "2026-09-05T16:06:41.476Z",
+      "last_seen": "2026-09-05T16:27:49.900Z",
       "current_task": "BO-P1-0100"
     }
   },
   "cross_examination": {
-    "phase": "PHASE5_CHALLENGE_ROUND1",
+    "phase": "PHASE5_ROUND1_COMPLETE",
     "started_at": "2026-09-05T12:00:00.000Z",
-    "updated_at": "2026-09-05T16:10:00.000Z",
+    "updated_at": "2026-09-05T16:27:49.900Z",
     "claude_questions_for_cursor": {
       "file": ".blackout-agent/CLAUDE_QUESTIONS_FOR_CURSOR.md",
       "pr": 3948,
@@ -291,7 +292,7 @@
       "status": "published_merged",
       "answers_file": ".blackout-agent/CURSOR_ANSWERS_FOR_CLAUDE.md",
       "answers_pr": 3952,
-      "answers_status": "merged_on_main"
+      "answers_status": "merged"
     },
     "cursor_questions_for_claude": {
       "file": ".blackout-agent/CURSOR_QUESTIONS_FOR_CLAUDE.md",
@@ -301,34 +302,31 @@
       "status": "published_merged",
       "answers_file": ".blackout-agent/CLAUDE_ANSWERS_TO_CQ.md",
       "answers_pr": 3991,
-      "answers_status": "merged_on_main"
+      "answers_status": "merged"
     },
     "answer_exchange": {
-      "cursor_answers_clq": "complete",
+      "cursor_answers_clq": "merged",
       "cursor_answers_clq_pr": 3952,
       "cursor_answers_clq_count": 54,
       "claude_answers_cq": "merged",
       "claude_answers_cq_pr": 3991,
       "claude_answers_cq_count": 218,
       "challenge_round": 1,
-      "claude_phase5_pr": 3994,
-      "cursor_phase5_pr": 3993
+      "challenge_pr": 3994
     },
     "merge_gate_notes": {
-      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged"
+      "pr-3945": "MERGED @ 5e67e18cd without recorded Claude GitHub review — gate gap flagged",
+      "pr-3987": "MERGED @ feaba670d — HARD MERGE GATE excludes cursor/* from automerge; fix/* requires peer review"
     },
     "pending_peer_actions": {
       "claude": [
-        "Merge #3995 when Cursor APPROVED + verify green (SEO drift guard)",
-        "Peer-review #3998 OR fix/close duplicate #3997 (Whop route tests — #3997 fails 1/3 locally)",
-        "Peer-review #3993 (Cursor Phase 5 CQ challenges) + #3996 (state sync)",
-        "Challenge round 2 on remaining PARTIALLY PROVEN answers"
+        "Merge #3995 when verify green (Cursor APPROVED GO AHEAD MERGE @ 9d15d3583)",
+        "Peer-review #3998/#3997 whop webhook route tests (fix/*, Cursor-authored)",
+        "Phase 5 round 2 / CCQ response follow-ups per CLAUDE_RESPONSE_TO_CCQ.md"
       ],
       "cursor": [
-        "Peer-review #3995 in progress — local drift guard OK, awaiting verify CI",
-        "Flagged #3997/#3998 duplicate — prefer #3998 (3/3 pass) over #3997 (2/3 pass)",
-        "Cannot self-merge #3993/#3996/#3998 — awaiting Claude",
-        "Standing verify GREEN: validate:deploy, ops:collect 0"
+        "Standing: monitor #3995 verify CI completion",
+        "Standing: cannot answer own CQ questions; offered parallel investigation if Claude delegates"
       ]
     }
   },
@@ -339,7 +337,58 @@
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33977069971",
     "last_deploy_sha": "feaba670d88bb211db9614bec0c2738010d18b1c"
   },
-  "open_prs": [],
+  "open_prs": [
+    {
+      "number": 3995,
+      "title": "fix(seo): sitemap lastmod drifted stale again + add CI drift guard",
+      "branch": "fix/marketing-dates-drift-guard",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "pending",
+      "awaiting": "claude_merge_after_verify_green"
+    },
+    {
+      "number": 3998,
+      "title": "test(whop): route-level webhook signature + secret tests (CCQ-012)",
+      "branch": "fix/whop-webhook-route-test",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "pending",
+      "awaiting": "claude_peer_review"
+    },
+    {
+      "number": 3997,
+      "title": "test(whop): add route-level signature-verification test coverage",
+      "branch": "fix/whop-webhook-route-signature-test",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": true,
+      "verify": "unknown",
+      "awaiting": "duplicate_of_3998_close"
+    },
+    {
+      "number": 3996,
+      "title": "chore(autopilot): state sync after #3994 merge + peer review cycle",
+      "branch": "cursor/bc-daf6ff49-8f01-4d90-8c8f-1234adb99ec7-0a51",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "awaiting": "cursor_update_and_merge"
+    },
+    {
+      "number": 3993,
+      "title": "chore(autopilot): Phase 5 CQ challenges + gate-watch state sync",
+      "branch": "cursor/autopilot-work-loop-740a",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": true,
+      "verify": "unknown",
+      "awaiting": "review_or_close"
+    }
+  ],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1545,76 +1594,33 @@
       "summary": "main@d96372440: #3945+#3950+#3951+#3953 merged. #3952 CLQ answers awaiting Claude review. Claude must answer CQ-001–218 on main. #3945 merged without recorded Claude GitHub review — gate gap noted."
     },
     {
-      "at": "2026-09-05T16:06:30.550Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T16:06:35.765Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T16:06:36.572Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 0
-    },
-    {
-      "at": "2026-09-05T16:06:41.476Z",
-      "type": "task_claimed",
-      "task_id": "BO-P1-0100",
-      "owner": "cursor"
-    },
-    {
-      "at": "2026-09-05T16:09:59.148Z",
+      "at": "2026-09-05T16:27:27.714Z",
       "type": "pr_review",
-      "pr": 3994,
-      "head_sha": "693c25769547b63835f17fae31423277d939d381",
+      "pr": 3995,
+      "head_sha": "9d15d3583",
       "reviewer": "cursor",
-      "verdict": "APPROVED",
-      "reviewed_at": "2026-09-05T16:09:59.147Z",
-      "safe_to_merge": true
+      "verdict": "APPROVED — GO AHEAD MERGE (pending verify green)",
+      "reviewed_at": "2026-09-05T16:27:27.713Z",
+      "safe_to_merge": false
     },
     {
-      "at": "2026-09-05T16:20:06.418Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-05T16:20:06.420Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "9bc52cad-0db6-426b-8261-7c2cc6eff2dd",
-      "summary": "pull_request wake: #3991 merged (CQ answers on main). Peer-reviewed #3994 APPROVED (verified CLQ-046 ALB"
-    },
-    {
-      "at": "2026-09-05T16:20:16.779Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 2
-    },
-    {
-      "at": "2026-09-05T16:25:38.436Z",
+      "at": "2026-09-05T16:27:41.595Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
     },
     {
-      "at": "2026-09-05T16:25:38.437Z",
-      "type": "handoff",
-      "agent": "cursor",
-      "run_id": "875dc214-b964-4164-9f9c-0fb551803912",
-      "summary": "PR wake cycle: standing verify GREEN; peer-review #3995 in progress (verify pending); flagged #3997/#3998 Whop test duplicate; pushed state sync to #3996"
-    },
-    {
-      "at": "2026-09-05T16:25:46.503Z",
+      "at": "2026-09-05T16:27:49.899Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T16:27:49.900Z",
+      "type": "handoff",
+      "agent": "cursor",
+      "run_id": "c39f289b-8dbd-4fb4-bbed-fcbfe8494ba4",
+      "summary": "PR wake cycle: main@c76923ec9 (#3987 automerge gate, #3991 CQ answers, #3994 Phase5 challenge merged). Peer-reviewed #3995 APPROVED GO AHEAD MERGE (verify still in_progress @9d15d3583). #3998/#3997 whop webhook tests draft awaiting Claude review. validate:deploy GREEN, platform-integrity 14/14, ops:collect 0. GitHub API rate-limited for gh CLI; using ManagePullRequest/WebFetch."
     }
   ],
   "pr_activity": {
