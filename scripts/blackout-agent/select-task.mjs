@@ -125,5 +125,8 @@ function runSelect(args) {
 }
 
 if (process.argv[1]?.endsWith("select-task.mjs")) {
-  runSelect(parseArgs(process.argv));
+  runSelect(parseArgs(process.argv)).catch((err) => {
+    console.error(`[select-task] syncContext failed: ${err.message}`);
+    process.exit(2);
+  });
 }
