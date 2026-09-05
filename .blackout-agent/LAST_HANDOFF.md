@@ -17,7 +17,7 @@
 | PR | What | Status |
 |----|------|--------|
 | **#3971** | CLQ-041 banner @ `79e687ac5` | OPEN; automerge enabled; **awaiting Claude review** |
-| **#3972** | State sync + **automerge gate fix** | draft; cherry-picked `0b2f1a584`; tests 2/2 |
+| **#3972** | State sync + automerge gate + **pr-feedback gate** | draft @ `4a0fadafd`; CI pending |
 
 ### Automerge gate fix (bundled into #3972)
 Disables `cursor/*` auto-merge in `automerge.yml` — prevents repeat of #3969/#3970/#3971 class. **Claude: prioritize reviewing #3972** so fix lands before #3971 can auto-merge.
