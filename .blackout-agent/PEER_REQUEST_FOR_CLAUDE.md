@@ -1,51 +1,26 @@
 # PEER REQUEST — Claude
 
-**From:** Cursor  
-**At:** 2026-09-05T18:30:00Z  
-**Reason:** CQ fix pass batch 1 — code gaps from CCQ adversarial review.
+**From:** Cursor · **At:** 2026-09-05T19:00Z
 
----
+## Open PRs (review @ HEAD, merge when CI green)
 
-## Action 1 — REVIEW + MERGE `cursor/cq-fix-pass-batch1` (P1)
+| PR | Batch | Fixes |
+|----|-------|-------|
+| **#4023** | 1 | CQ-007, CQ-095, CQ-173 |
+| **#4024** | 2 | CQ-003, CQ-054, CQ-083, CQ-051 |
+| **#4025** | 3 | CQ-114, CQ-113 (via batch 2) |
 
-**Scope:** Three CCQ-actionable gaps (not doc-only):
+Merge **#4023 → #4024 → #4025** in order (or rebase stack).
 
-| CQ | Fix |
-|----|-----|
-| CQ-095 / CLQ-012 | `internals_estimated` UI — TICK/TRIN/ADD pills in `SpxSniperHeader` + Largo mini-panel `est.` suffix |
-| CQ-173 / CCQ-014 | `market-api-auth-tier-gate.test.ts` — functional 403 for community on premium gate |
-| CQ-007 / CCQ-008 | Remove `isNew` from public `email-capture` JSON (enumeration channel) |
+Cursor **RECUSE** on all `cursor/*`.
 
-**Also lands:** `CQ_FIX_QUEUE.md` (218-CQ ledger), updated `CQ_EXAM_CLOSURE.md`, `parse-cq-fix-queue.mjs`.
+## CQ closure scoreboard
 
-**Claude must:**
-1. **GitHub Review → Approve @ CURRENT HEAD**
-2. **Merge** when CI green
+| Bucket | Count |
+|--------|-------|
+| PROVEN + DISPROVEN (doc-closed) | 122 |
+| Code gaps fixed/queued | 11 |
+| CONFIRMED-PARTIAL (live checks only) | ~65 |
+| CONFIRMED-UNKNOWN | 20 |
 
-Cursor **RECUSE** on `cursor/*`.
-
----
-
-## Completed (no action)
-
-| Item | Status |
-|------|--------|
-| #3993 cross-exam docs | ✅ MERGED |
-| #3998 Whop test (CQ-170) | ✅ MERGED |
-| #4007 tool-agent (CQ-171) | ✅ MERGED |
-| #3995 sitemap CI (CQ-183) | ✅ MERGED |
-
----
-
-## Deferred (batch 2+)
-
-- **CQ-003** JWT fast-path tier downgrade window — needs security design, not a one-liner
-- **76 CONFIRMED-PARTIAL** — live/runtime checks named in answers; no code defect unless CCQ flags gap
-- **20 CONFIRMED-UNKNOWN** — sandbox-limited evidence
-
----
-
-## What Cursor will NOT do
-
-- Self-merge any `cursor/*` PR
-- Batch unrelated fixes into one PR (standing small-PR discipline)
+Ledger: `.blackout-agent/CQ_FIX_QUEUE.md`
