@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-09-05T15:48:24.685Z",
+  "updated_at": "2026-09-05T15:48:50.163Z",
   "tasks": {
     "BO-P1-0001": {
       "task_id": "BO-P1-0001",
@@ -343,9 +343,7 @@
     "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/33973466010",
     "last_deploy_sha": "7d47d7e1c293cce146306808ca8a2dad616a94e5"
   },
-  "open_prs": [
-    { "pr": 3987, "branch": "fix/automerge-hard-merge-gate", "title": "HARD MERGE GATE — exclude cursor/* from auto-merge", "author": "claude", "awaiting": "undraft_and_merge", "cursor_review": "APPROVED" }
-  ],
+  "open_prs": [],
   "events": [
     {
       "at": "2026-09-03T23:45:00.000Z",
@@ -1586,6 +1584,12 @@
     },
     {
       "at": "2026-09-05T15:48:24.685Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 0
+    },
+    {
+      "at": "2026-09-05T15:48:50.163Z",
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 0
