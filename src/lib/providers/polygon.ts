@@ -1786,7 +1786,10 @@ const MARKET_STATUS_CACHE_MS = 60_000;
 /** GET /v1/marketstatus/now — RTH / extended / closed. Cached 60s to avoid ~23k calls/day at 1s pulse. */
 export async function fetchMarketStatusNow(): Promise<PolygonMarketNow | null> {
   if (!polygonConfigured()) return null;
-  if (Date.now() - marketStatusCache.fetchedAt < MARKET_STATUS_CACHE_MS) {
+  const now = Date.now();
+  // Same future-stamp guard as fetchVixIvRankPercentile below — a clock-skewed fetchedAt must
+  // not pin market-status as "fresh" until real time catches up.
+  if (isWsUpdatedAtFresh(marketStatusCache.fetchedAt, MARKET_STATUS_CACHE_MS, now)) {
     return marketStatusCache.data;
   }
   try {
@@ -1803,7 +1806,7 @@ export async function fetchMarketStatusNow(): Promise<PolygonMarketNow | null> {
       afterHours: Boolean(data.afterHours),
       serverTime: String(data.serverTime ?? ""),
     };
-    marketStatusCache = { data: result, fetchedAt: Date.now() };
+    marketStatusCache = { data: result, fetchedAt: now };
     return result;
   } catch {
     return marketStatusCache.data; // return last good value on error

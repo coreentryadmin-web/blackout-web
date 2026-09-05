@@ -128,6 +128,14 @@ never printed. Pure verdict/coherence logic lives in
 
 **Check at the open:** SPX desk pulse lane (prior-day levels, structure refresh cadence) and dark pool panel should refresh on TTL during RTH — no stuck stale marks after deploy clock skew.
 
+### 0ay. Polygon market-status cache future-at guard — fix/polygon-market-status-cache-future-guard (PR #3855)
+
+**What was broken:** `fetchMarketStatusNow()` gated its 60s in-process cache with raw `Date.now() - fetchedAt < MARKET_STATUS_CACHE_MS`. A clock-skewed future `fetchedAt` yields negative age, which still satisfies `< 60_000`, pinning market-status as infinitely fresh until real time catches up — same class as `fetchVixIvRankPercentile` (fixed #3846) and UW/LULD halt gates.
+
+**Fix:** Route cache hit through `isWsUpdatedAtFresh(marketStatusCache.fetchedAt, MARKET_STATUS_CACHE_MS, now)`.
+
+**Check at the open:** SPX desk market-phase chip (open/closed/extended) should still flip correctly at session boundaries; no stuck "closed" or "open" state after deploy if a process clock was ahead.
+
 ### 0at. Off-hours `?force=1` desk-warm storm still unexplained — now logs caller IP/UA — fix/cache-warmer-caller-identity (merged #3847)
 
 **What was broken:** Live measurement (this sweep) found `AWS/ApplicationELB` `TargetResponseTime` holding a healthy p50/p90 but p99 3.1-8.2s / Max 10.4-34.0s across 3+ straight off-hours hours (Sat 01:12-04:05 UTC) — tail latency, not fleet load. Root cause: `[cron/desk-warm]` fired 81 times in 3 hours (avg 28s, max 108.5s) via the documented `?force=1` off-hours bypass, entirely outside its deployed EventBridge schedule (weekday 11-21 UTC only). This is the SAME shape a 2026-09-04 investigation found and rate-limited (60s cooldown) after ruling out every known in-app dispatcher (EventBridge, `rth-warm-leader`, `cron-staleness-watchdog`) — the caller holds a valid `CRON_SECRET` but was never identified, because nothing captured about the request itself.
