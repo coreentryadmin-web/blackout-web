@@ -56,6 +56,11 @@ mock.module("../../../../lib/providers/polygon-options-gex", {
       events_count: null,
     }),
     readGexHeatmapSnapshot: async () => mockHeatmap,
+    gexHeatmapCacheEntryWithinTtl: (entryAtMs: number, nowMs: number, ttlMs: number) => {
+      const ageMs = nowMs - entryAtMs;
+      if (ageMs < -5_000) return false;
+      return Math.max(0, ageMs) < ttlMs;
+    },
   },
 });
 mock.module("../../../../lib/providers/gex-cross-validation", {

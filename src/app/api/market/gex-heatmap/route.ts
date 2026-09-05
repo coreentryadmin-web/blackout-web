@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
-import { fetchGexHeatmap, peekGexHeatmapCache } from "@/lib/providers/polygon-options-gex";
+import {
+  fetchGexHeatmap,
+  gexHeatmapCacheEntryWithinTtl,
+  peekGexHeatmapCache,
+} from "@/lib/providers/polygon-options-gex";
 import type {
   GexFlowByStrike,
   GexDarkPoolLevel,
@@ -170,7 +174,7 @@ function withEnrichmentTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> 
 async function getNightHawkContext(ticker: string): Promise<NightHawkContext> {
   const now = Date.now();
   const mem = nighthawkContextMem.get(ticker);
-  if (mem && now - mem.at < NH_CONTEXT_TTL_MS) return mem.value;
+  if (mem && gexHeatmapCacheEntryWithinTtl(mem.at, now, NH_CONTEXT_TTL_MS)) return mem.value;
 
   if (!dbConfigured()) return null;
   try {
@@ -244,13 +248,15 @@ async function getOverlays(
 ): Promise<{ overlays: GexHeatmapOverlays; at: number | null }> {
   const now = Date.now();
   const mem = overlayMem.get(ticker);
-  if (mem && now - mem.at < OVERLAY_TTL_MS) return { overlays: mem.overlays, at: mem.at };
+  if (mem && gexHeatmapCacheEntryWithinTtl(mem.at, now, OVERLAY_TTL_MS)) {
+    return { overlays: mem.overlays, at: mem.at };
+  }
 
   try {
     const hit = await sharedCacheGet<{ at: number; overlays: GexHeatmapOverlays }>(
       `gex-overlay:${ticker}`
     );
-    if (hit && now - hit.at < OVERLAY_TTL_MS) {
+    if (hit && gexHeatmapCacheEntryWithinTtl(hit.at, now, OVERLAY_TTL_MS)) {
       overlayMem.set(ticker, hit);
       return { overlays: hit.overlays, at: hit.at };
     }
