@@ -143,6 +143,23 @@ test("isMemoryFresh respects maxAgeSeconds parameter", () => {
   assert.strictEqual(isMemoryFresh(memory, 10), true);
 });
 
+test("isMemoryFresh returns false when lastUpdated is far in the future (clock skew)", () => {
+  const now = Date.now();
+  let memory = updateMemoryWithConsensus(initializeMemory(), mockConsensus, "SPX");
+  memory.lastUpdated = new Date(now + 60_000);
+  assert.strictEqual(isMemoryFresh(memory, 300, now), false);
+});
+
+test("shouldReuseCachedConsensus returns false when lastUpdated is far in the future", () => {
+  const now = Date.now();
+  let memory = updateMemoryWithConsensus(initializeMemory(), mockConsensus, "SPX");
+  memory.lastUpdated = new Date(now + 60_000);
+  assert.strictEqual(
+    shouldReuseCachedConsensus("How strong is the HELIX read?", memory),
+    false
+  );
+});
+
 test("suggestTickerFromQuestion extracts explicit ticker", () => {
   const question = "What's the setup on NVDA today?";
   const suggested = suggestTickerFromQuestion(question, initializeMemory());

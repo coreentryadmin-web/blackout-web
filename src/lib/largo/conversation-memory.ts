@@ -21,6 +21,7 @@
  * - **Expire:** After 5 min or user asks different ticker → reset
  */
 
+import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 import type { ConsensusMatrix } from "./consensus-read-extract";
 import type { DeskReadDecision } from "./desk-read-decision";
 import { etClock } from "@/lib/et-clock";
@@ -157,11 +158,18 @@ export function recordDecisionInMemory(
  * Check if memory is still fresh (live data, not stale).
  * Data is considered stale after 5 minutes or if explicitly marked so.
  */
-export function isMemoryFresh(memory: ConversationMemoryState, maxAgeSeconds = 300): boolean {
+export function isMemoryFresh(
+  memory: ConversationMemoryState,
+  maxAgeSeconds = 300,
+  now = Date.now()
+): boolean {
   if (!memory.lastUpdated) return false;
   if (memory.dataFreshness === "stale") return false;
 
-  const ageSeconds = (Date.now() - memory.lastUpdated.getTime()) / 1000;
+  const ageMs = now - memory.lastUpdated.getTime();
+  // Clock-skewed future lastUpdated must not read as live (same guard as UW halt / flow liveness).
+  if (ageMs < -WS_TIMESTAMP_FUTURE_TOLERANCE_MS) return false;
+  const ageSeconds = Math.max(0, ageMs) / 1000;
   return ageSeconds < maxAgeSeconds;
 }
 
