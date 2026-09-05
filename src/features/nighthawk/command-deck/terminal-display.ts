@@ -6,7 +6,7 @@ import type { ThesisHealthPayload, ThesisPillarState } from "@/lib/zerodte/thesi
 import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 import type { DeckStatus, ExitModel, Recommendation, TerminalPlay } from "./types";
 import { playQualityPct } from "./play-card-display";
-import { convictionFromScore } from "@/features/nighthawk/lib/scorer";
+import { convictionFromScore } from "@/features/nighthawk/lib/conviction";
 import { ARCHETYPE_META, SWING_SUB_LANES, type SwingArchetype, type SwingSubLane } from "@/lib/swing/taxonomy";
 
 export type ChecklistItem = { label: string; ok: boolean | null };

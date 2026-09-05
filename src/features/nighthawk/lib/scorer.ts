@@ -878,22 +878,7 @@ export function scoreNewsCatalyst(
   return Math.max(-6, Math.min(8, score));
 }
 
-export function convictionFromScore(score: number): string {
-  if (score >= 70) return "A+";
-  if (score >= 55) return "A";
-  if (score >= 40) return "B";
-  return "C";
-}
-
-/** Ordinal rank for conviction letters (higher = stronger). Unknown letters read as B. */
-export function convictionRank(conviction: string): number {
-  const c = conviction.trim().toUpperCase();
-  if (c === "A+") return 4;
-  if (c === "A") return 3;
-  if (c === "B") return 2;
-  if (c === "C") return 1;
-  return 2;
-}
+export { convictionFromScore, convictionRank } from "./conviction";
 
 /**
  * UW's `risk_reversal` field (the source of `dossierExtras.risk_reversal_skew`, parsed by

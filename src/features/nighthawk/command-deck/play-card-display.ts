@@ -1,7 +1,7 @@
 import type { TerminalPlay } from "./types";
 import { tierRank } from "./deck-sort";
 import { isWatchTrackStatus } from "./play-card-lifecycle";
-import { convictionFromScore } from "@/features/nighthawk/lib/scorer";
+import { convictionFromScore } from "@/features/nighthawk/lib/conviction";
 
 /** Quality / confidence % for the row — score is 0–100 on 0DTE; confidence is 0–1 when wired. */
 export function playQualityPct(play: TerminalPlay): number | null {

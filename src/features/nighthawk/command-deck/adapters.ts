@@ -23,7 +23,7 @@ import {
 } from "@/lib/swing/entry-enterability";
 import type { SwingSubLane } from "@/lib/swing/taxonomy";
 import { computeSwingThesisHealth } from "@/lib/swing/thesis-health";
-import { convictionFromScore } from "@/features/nighthawk/lib/scorer";
+import { convictionFromScore } from "@/features/nighthawk/lib/conviction";
 import type { SwingManageAction } from "@/lib/swing/manage";
 import type { WhyNow, WhyNowReason } from "@/lib/zerodte/why-now";
 import type { NighthawkTierFactor } from "@/features/nighthawk/lib/nighthawk-tiers";
